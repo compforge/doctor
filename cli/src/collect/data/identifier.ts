@@ -4,6 +4,7 @@ import type {
   ServiceDataResult,
 } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
+import { terminalStdout } from "../../terminal/output";
 import { resolveDataConfig, resolveDataServiceSelection } from "./config";
 import { prepareDataAccess } from "./preparation";
 
@@ -51,6 +52,9 @@ export async function resolveDataIdentifier(
     executor,
   });
   if (!selections) return undefined;
+  terminalStdout.write(
+    `[collect] 正在通过 ${selections.map((selection) => selection.service).join(", ")} 解析 ${opts.identifier}…\n`,
+  );
 
   const access = await prepareDataAccess(
     executor,

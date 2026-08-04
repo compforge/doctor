@@ -4,6 +4,7 @@ import type { StoreConfig } from "../config";
 export interface VdbConfig {
   collect: StoreConfig["collect"];
   target: StoreConfig["target"];
+  capability: ServiceVdbStoreCapability;
   store?: string;
   service?: string;
   endpoint?: string;
@@ -15,6 +16,7 @@ export function vdbConfigFromStore(config: StoreConfig): VdbConfig {
   return {
     collect: config.collect,
     target: config.target,
+    capability,
     store: capability.store,
     service: config.backendService,
     endpoint: config.endpoint,

@@ -130,10 +130,41 @@ export interface ServiceDatabaseStoreCapability extends ServiceStoreCapabilityBa
   envPrefix: string;
 }
 
+export interface ServiceVdbTarget {
+  backend: string;
+  store: string;
+  endpoint?: string;
+  username?: string;
+  password?: string;
+  configurationKind: string;
+  configPath?: string;
+}
+
+export interface ServiceVdbConfigurationInput {
+  environment: Readonly<Record<string, string>>;
+  file?: {
+    path: string;
+    content: string;
+  };
+}
+
+export interface ServiceVdbConfiguration {
+  /** Doctor 负责读取文件；路径规则及文件内容语义由 Plugin 拥有。 */
+  file?: {
+    pathEnvironment: string;
+    defaultPath: string;
+  };
+  resolve(
+    input: ServiceVdbConfigurationInput,
+  ): ServiceVdbTarget | Promise<ServiceVdbTarget>;
+}
+
 export interface ServiceVdbStoreCapability extends ServiceStoreCapabilityBase {
   kind: "vdb";
   backend: "opensearch";
   store?: string;
+  /** 非标准 VDB 配置由 Plugin 投影为 Doctor 可消费的统一 target。 */
+  configuration?: ServiceVdbConfiguration;
 }
 
 export interface ServiceS3StoreCapability extends ServiceStoreCapabilityBase {

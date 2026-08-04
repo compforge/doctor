@@ -20,7 +20,7 @@ export function makeVdbConfigurationInspect(
   return {
     id: "vdb-configuration",
     run: async (ctx) => {
-      const confirmed = await confirmVdbTarget(ctx.executor, ctx.execTarget, config.store);
+      const confirmed = await confirmVdbTarget(ctx.executor, ctx.execTarget, config.capability);
       for (const [index, capture] of confirmed.captures.entries()) {
         ctx.bundle.addStep({
           id: `runtime-config-source-${index + 1}`,
@@ -55,6 +55,7 @@ export function makeVdbConfigurationInspect(
         store: connection.store,
         configSource: connection.configSource,
         configurationKind: connection.configurationKind,
+        configPath: connection.configPath,
         endpoint: connection.type === "opensearch" ? connection.endpoint : undefined,
         username: connection.type === "opensearch" ? connection.username : undefined,
         credentials: connection.type === "opensearch"
