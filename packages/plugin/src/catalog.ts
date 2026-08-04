@@ -1,0 +1,50 @@
+import type {
+  ServiceCapabilities,
+  ServiceDefinition,
+} from "./service";
+
+export type ServiceCapabilityName = keyof ServiceCapabilities;
+
+export type ServiceWithCapability<
+  T extends ServiceDefinition,
+  K extends ServiceCapabilityName,
+> = T & {
+  capabilities: T["capabilities"] & Required<Pick<ServiceCapabilities, K>>;
+};
+
+/** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
+export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
+  constructor(readonly services: readonly T[]) {
+    const names = services.map((service) => service.name);
+    if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
+  }
+
+  find(name: string): T | undefined {
+    return this.services.find((service) => service.name === name);
+  }
+
+  findWith<K extends ServiceCapabilityName>(
+    name: string,
+    capability: K,
+  ): ServiceWithCapability<T, K> | undefined {
+    const service = this.find(name);
+    return service?.capabilities[capability] !== undefined
+      ? service as ServiceWithCapability<T, K>
+      : undefined;
+  }
+
+  servicesWith<K extends ServiceCapabilityName>(
+    capability: K,
+  ): ServiceWithCapability<T, K>[] {
+    return this.services.filter(
+      (service): service is ServiceWithCapability<T, K> =>
+        service.capabilities[capability] !== undefined,
+    );
+  }
+}
+
+export function createServiceCatalog<const T extends readonly ServiceDefinition[]>(
+  services: T,
+): ServiceCatalog<T[number]> {
+  return new ServiceCatalog(services);
+}

@@ -1,0 +1,25 @@
+import { kubernetesPackageInstaller } from "./k8s";
+import type { PackageInstaller } from "./model";
+
+export { onlineInstallCommands } from "./k8s";
+export {
+  bundleMatches,
+  inspectPackageBundle,
+  selectPackageBundle,
+} from "./archive";
+export {
+  discoverPackageBundles,
+  inspectPackageBundles,
+} from "./distribution";
+export { materializePackageBundle } from "./set";
+export type {
+  MaterializedPackageBundle,
+  PackageBundle,
+  PackageBundleManifest,
+  PackageInstaller,
+  PackageManager,
+  PackageManagerKind,
+  PackageTargetFact,
+} from "./model";
+
+export const packageInstaller: PackageInstaller = kubernetesPackageInstaller;

@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: doctor-memory-leak-demo
+  labels:
+    app: doctor-memory-leak-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: doctor-memory-leak-demo
+  template:
+    metadata:
+      labels:
+        app: doctor-memory-leak-demo
+    spec:
+      containers:
+        - name: leaky-python
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/demo/leaky_app.py"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: script
+              mountPath: /demo
+              readOnly: true
+      volumes:
+        - name: script
+          configMap:
+            name: doctor-memory-leak-demo

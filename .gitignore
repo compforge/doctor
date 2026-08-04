@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+.vscode/
+node_modules/
+*.tsbuildinfo
+*.log
+.env
+**/.env
+!**/.env.example
+dist/
+build/
+*.tgz
+.worktrees/
+.devloop/
+.learnings/
+

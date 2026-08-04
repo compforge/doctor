@@ -1,0 +1,14 @@
+*
+!docker/
+!docker/memory-debug/
+!docker/memory-debug/Dockerfile
+!package-bundles/
+!package-bundles/debian/
+!package-bundles/debian/Dockerfile
+!package-bundles/debian/build-bundle.sh
+!assets/
+!assets/py-spy/
+!assets/py-spy/*.gz
+!assets/pyheap/
+!assets/pyheap/pyheap_dump-0.7.0+doctor.2.gz
+!assets/pyheap/pyheap_analyzer-0.7.0+doctor.2.gz

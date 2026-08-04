@@ -1,0 +1,14 @@
+{
+  "name": "compforge-doctor",
+  "private": true,
+  "workspaces": [
+    "cli",
+    "packages/*"
+  ],
+  "scripts": {
+    "test:cli": "bun run --cwd cli test",
+    "test:plugin-sdk": "bun run --cwd packages/plugin test",
+    "typecheck:cli": "bun run --cwd cli typecheck",
+    "typecheck:plugin-sdk": "bun run --cwd packages/plugin typecheck"
+  }
+}

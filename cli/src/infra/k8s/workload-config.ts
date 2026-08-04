@@ -1,0 +1,264 @@
+import type { ExecResult, Executor } from "./executor";
+import { parseServices, type KubernetesService } from "./service";
+
+export interface KubernetesConfigMap {
+  name: string;
+  data: Record<string, string>;
+}
+
+export interface KubernetesEnvValue {
+  name: string;
+  value?: string;
+  valueFrom?: {
+    configMapKeyRef?: { name?: string; key?: string; optional?: boolean };
+    secretKeyRef?: { name?: string; key?: string; optional?: boolean };
+    fieldRef?: { fieldPath?: string };
+    resourceFieldRef?: { resource?: string };
+  };
+}
+
+export interface KubernetesContainerConfig {
+  name: string;
+  ports: Array<{ name?: string; containerPort: number }>;
+  envFrom: Array<{
+    prefix?: string;
+    configMapRef?: { name?: string; optional?: boolean };
+  }>;
+  env: KubernetesEnvValue[];
+}
+
+export interface KubernetesDeploymentConfig {
+  name: string;
+  labels: Record<string, string>;
+  containers: KubernetesContainerConfig[];
+}
+
+export interface KubernetesWorkloadConfigSnapshot {
+  services: KubernetesService[];
+  deployments: KubernetesDeploymentConfig[];
+  configMaps: KubernetesConfigMap[];
+}
+
+export interface KubernetesWorkloadConfigCapture {
+  serviceCapture: ExecResult;
+  deploymentCapture: ExecResult;
+  configMapCapture: ExecResult;
+  snapshot?: KubernetesWorkloadConfigSnapshot;
+  parseError?: string;
+}
+
+interface ResourceList {
+  items?: Array<Record<string, unknown>>;
+}
+
+function items(raw: string): Array<Record<string, unknown>> {
+  const parsed = JSON.parse(raw) as ResourceList;
+  if (!Array.isArray(parsed.items)) throw new Error("Kubernetes list 响应缺少 items");
+  return parsed.items;
+}
+
+function record(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  return Object.fromEntries(Object.entries(record(value)).flatMap(([name, child]) =>
+    typeof child === "string" ? [[name, child]] : []
+  ));
+}
+
+export function parseDeployments(raw: string): KubernetesDeploymentConfig[] {
+  return items(raw).flatMap((item) => {
+    const metadata = record(item.metadata);
+    const spec = record(item.spec);
+    const template = record(spec.template);
+    const templateMetadata = record(template.metadata);
+    const podSpec = record(template.spec);
+    const name = typeof metadata.name === "string" ? metadata.name : "";
+    if (!name) return [];
+    const containers = Array.isArray(podSpec.containers) ? podSpec.containers : [];
+    return [{
+      name,
+      labels: stringRecord(templateMetadata.labels),
+      containers: containers.flatMap((rawContainer): KubernetesContainerConfig[] => {
+        const container = record(rawContainer);
+        const containerName = typeof container.name === "string" ? container.name : "";
+        if (!containerName) return [];
+        const ports = Array.isArray(container.ports) ? container.ports : [];
+        const envFrom = Array.isArray(container.envFrom) ? container.envFrom : [];
+        const env = Array.isArray(container.env) ? container.env : [];
+        return [{
+          name: containerName,
+          ports: ports.flatMap((rawPort) => {
+            const port = record(rawPort);
+            const containerPort = Number(port.containerPort);
+            return Number.isInteger(containerPort)
+              ? [{
+                  name: typeof port.name === "string" ? port.name : undefined,
+                  containerPort,
+                }]
+              : [];
+          }),
+          envFrom: envFrom.map((rawSource) => {
+            const source = record(rawSource);
+            const configMapRef = record(source.configMapRef);
+            return {
+              prefix: typeof source.prefix === "string" ? source.prefix : undefined,
+              configMapRef: Object.keys(configMapRef).length
+                ? {
+                    name: typeof configMapRef.name === "string" ? configMapRef.name : undefined,
+                    optional: configMapRef.optional === true,
+                  }
+                : undefined,
+            };
+          }),
+          env: env.flatMap((rawEnv): KubernetesEnvValue[] => {
+            const item = record(rawEnv);
+            const envName = typeof item.name === "string" ? item.name : "";
+            if (!envName) return [];
+            const valueFrom = record(item.valueFrom);
+            const configMapKeyRef = record(valueFrom.configMapKeyRef);
+            const secretKeyRef = record(valueFrom.secretKeyRef);
+            const fieldRef = record(valueFrom.fieldRef);
+            const resourceFieldRef = record(valueFrom.resourceFieldRef);
+            return [{
+              name: envName,
+              value: typeof item.value === "string" ? item.value : undefined,
+              valueFrom: Object.keys(valueFrom).length
+                ? {
+                    configMapKeyRef: Object.keys(configMapKeyRef).length ? {
+                      name: typeof configMapKeyRef.name === "string" ? configMapKeyRef.name : undefined,
+                      key: typeof configMapKeyRef.key === "string" ? configMapKeyRef.key : undefined,
+                      optional: configMapKeyRef.optional === true,
+                    } : undefined,
+                    secretKeyRef: Object.keys(secretKeyRef).length ? {
+                      name: typeof secretKeyRef.name === "string" ? secretKeyRef.name : undefined,
+                      key: typeof secretKeyRef.key === "string" ? secretKeyRef.key : undefined,
+                      optional: secretKeyRef.optional === true,
+                    } : undefined,
+                    fieldRef: Object.keys(fieldRef).length ? {
+                      fieldPath: typeof fieldRef.fieldPath === "string" ? fieldRef.fieldPath : undefined,
+                    } : undefined,
+                    resourceFieldRef: Object.keys(resourceFieldRef).length ? {
+                      resource: typeof resourceFieldRef.resource === "string" ? resourceFieldRef.resource : undefined,
+                    } : undefined,
+                  }
+                : undefined,
+            }];
+          }),
+        }];
+      }),
+    }];
+  }).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+export function parseConfigMaps(raw: string): KubernetesConfigMap[] {
+  return items(raw).flatMap((item) => {
+    const metadata = record(item.metadata);
+    const name = typeof metadata.name === "string" ? metadata.name : "";
+    return name ? [{ name, data: stringRecord(item.data) }] : [];
+  }).sort((left, right) => left.name.localeCompare(right.name));
+}
+
+function selectorMatches(labels: Readonly<Record<string, string>>, selector: Readonly<Record<string, string>>): boolean {
+  const entries = Object.entries(selector);
+  return entries.length > 0 && entries.every(([name, value]) => labels[name] === value);
+}
+
+export function deploymentsForService(
+  snapshot: KubernetesWorkloadConfigSnapshot,
+  serviceName: string,
+): KubernetesDeploymentConfig[] {
+  const service = snapshot.services.find((item) => item.name === serviceName);
+  if (!service) return [];
+  return snapshot.deployments.filter((deployment) => selectorMatches(deployment.labels, service.selector));
+}
+
+export function selectServiceContainer(
+  service: KubernetesService,
+  deployment: KubernetesDeploymentConfig,
+): { container?: KubernetesContainerConfig; reason?: string } {
+  if (deployment.containers.length === 1) return { container: deployment.containers[0] };
+  const exact = deployment.containers.find((item) => item.name === service.name);
+  if (exact) return { container: exact };
+  const byPort = deployment.containers.filter((container) => service.ports.some((servicePort) =>
+    container.ports.some((port) => typeof servicePort.targetPort === "string"
+      ? port.name === servicePort.targetPort
+      : port.containerPort === (servicePort.targetPort ?? servicePort.port))
+  ));
+  if (byPort.length === 1) return { container: byPort[0] };
+  return {
+    reason: deployment.containers.length
+      ? `Deployment 有多个 Container，Service port 无法唯一定位业务容器：${deployment.containers.map((item) => item.name).join(", ")}`
+      : "Deployment 没有 Container",
+  };
+}
+
+export function resolveContainerEnvironment(
+  container: KubernetesContainerConfig,
+  configMaps: readonly KubernetesConfigMap[],
+): { values: Record<string, string>; missing: string[] } {
+  const configMapByName = new Map(configMaps.map((item) => [item.name, item]));
+  const values: Record<string, string> = {};
+  const missing: string[] = [];
+  for (const source of container.envFrom) {
+    const name = source.configMapRef?.name;
+    if (!name) continue;
+    const configMap = configMapByName.get(name);
+    if (!configMap) {
+      if (!source.configMapRef?.optional) missing.push(`ConfigMap '${name}' 不存在`);
+      continue;
+    }
+    const prefix = source.prefix ?? "";
+    for (const [key, value] of Object.entries(configMap.data)) values[`${prefix}${key}`] = value;
+  }
+  for (const env of container.env) {
+    if (env.value !== undefined) {
+      values[env.name] = env.value;
+      continue;
+    }
+    const configMapRef = env.valueFrom?.configMapKeyRef;
+    if (configMapRef?.name && configMapRef.key) {
+      const value = configMapByName.get(configMapRef.name)?.data[configMapRef.key];
+      if (value !== undefined) values[env.name] = value;
+      else if (!configMapRef.optional) missing.push(`ConfigMap '${configMapRef.name}' 缺少 key '${configMapRef.key}'`);
+      continue;
+    }
+    const secretRef = env.valueFrom?.secretKeyRef;
+    if (secretRef) {
+      values[env.name] = `[secretKeyRef:${secretRef.name ?? "?"}/${secretRef.key ?? "?"}]`;
+      continue;
+    }
+    const fieldPath = env.valueFrom?.fieldRef?.fieldPath;
+    if (fieldPath) {
+      values[env.name] = `[fieldRef:${fieldPath}]`;
+      continue;
+    }
+    const resource = env.valueFrom?.resourceFieldRef?.resource;
+    if (resource) values[env.name] = `[resourceFieldRef:${resource}]`;
+  }
+  return { values, missing };
+}
+
+export async function captureKubernetesWorkloadConfig(
+  executor: Executor,
+  namespace: string,
+): Promise<KubernetesWorkloadConfigCapture> {
+  const [serviceCapture, deploymentCapture, configMapCapture] = await Promise.all([
+    executor.run(["get", "services", "-o", "json"], { timeoutMs: 30_000 }),
+    executor.run(["get", "deployments", "-o", "json"], { timeoutMs: 30_000 }),
+    executor.run(["get", "configmaps", "-o", "json"], { timeoutMs: 30_000 }),
+  ]);
+  const result: KubernetesWorkloadConfigCapture = { serviceCapture, deploymentCapture, configMapCapture };
+  if (!serviceCapture.ok || !deploymentCapture.ok || !configMapCapture.ok) return result;
+  try {
+    result.snapshot = {
+      services: parseServices(serviceCapture.stdout, namespace),
+      deployments: parseDeployments(deploymentCapture.stdout),
+      configMaps: parseConfigMaps(configMapCapture.stdout),
+    };
+  } catch (error) {
+    result.parseError = error instanceof Error ? error.message : String(error);
+  }
+  return result;
+}

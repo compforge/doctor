@@ -1,0 +1,139 @@
+# Memory 诊断
+
+## 理念 / 概念
+
+Doctor 的 Python 内存诊断以 PyHeap artifact 为中心，只保留两个命令：
+
+- `doctor mem` 负责在线采集：attach 一个 Python 进程、生成 `.pyheap`、校验并回传本机。
+- `doctor mema` 负责离线分析：在 Doctor 本机把 `.pyheap` 解析为
+  `pyheap.analysis/v1` JSON，再运行 detector 和报告；已有匹配 JSON 时直接复用。
+
+旧的短窗口采样和三档 mode 已经删除。读取 Kubernetes、cgroup 与 `/proc` 的低成本事实会随
+capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路线；没有对象堆时，Doctor 不会用
+这些有限事实替代 PyHeap 结论。
+
+PyHeap dump 会通过 GDB/ptrace 暂停目标 Python 进程，并在目标解释器中遍历对象图。暂停通常
+持续数秒，大堆可能达到数分钟，期间请求可能超时，异常中断也可能影响进程稳定性。因此
+`doctor mem` 在真正 attach 前展示目标、执行位置、暂停影响、Uvicorn 保护和回传行为，并要求
+用户确认；非交互调用必须显式传 `-y`。
+
+## 流程
+
+### `doctor mem`
+
+```text
+选择 Pod / container / Python PID
+  ↓
+探测已有 doctor debug container
+  ├─ 可用：在 debug container 内运行 PyHeap dumper
+  └─ 不可用：检查目标 container 是否已具备完整 attach 前置
+                 ↓
+              临时上传 Doctor 内嵌的 dumper
+  ↓
+展示影响并取得确认
+  ↓
+必要时暂停 Uvicorn master（watchdog 兜底恢复）
+  ↓
+GDB attach → 生成 .pyheap → detach → 恢复 master
+  ↓
+压缩、分片回传、双端 SHA-256 校验、原子落盘
+  ↓
+写入同 basename 的 .json 采集索引，并提示 doctor mema
+```
+
+默认输出：
+
+```text
+doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.pyheap
+doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
+```
+
+采集索引使用 `doctor.memory-capture/v1`，记录目标 Pod/container/PID、镜像与重启次数、
+采集策略、heap 大小和 SHA-256，以及顺手取得的进程扫描、cgroup 和 `/proc/<pid>/status`
+事实。sidecar 中 heap 路径使用相对路径，便于两个文件一起移动。
+
+### 两条 attach 路径
+
+`auto` 默认先尝试已有且兼容的 doctor debug container。该容器必须正在运行，并同时具备：
+
+- Python 3；
+- GDB，且 Python scripting 与 Doctor 自建临时 Python 进程的 inferior function call 验收通过；
+- PyHeap dumper；
+- 可写的 `/tmp/doctor-pyheap`；
+- 对目标 PID 实际可用的 ptrace 条件。
+
+没有可用 debug container 时，Doctor 才检查目标业务容器。目标容器必须已经具备 Python 3、
+通过同一能力验收的 GDB、可写临时目录和 ptrace；Python 环境本身不够。inferior call smoke test
+只 attach Doctor 自建的短生命周期进程，不 attach 业务 PID。全部前置满足后，Doctor 把内嵌
+dumper 临时上传到 `/tmp/doctor-pyheap/pyheap_dump` 再 attach。
+
+如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
+GDB、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
+
+可用 `--capture-via debug-container` 或 `--capture-via target-container` 强制指定路径；
+指定路径不满足前置时直接失败，不跨路径兜底。
+
+### Uvicorn 保护
+
+procscan 明确识别到目标 PID 是 Uvicorn worker 时，dump 前先暂停 master，避免 master 因 worker
+暂时无法回应健康检查而替换它。GDB detach 后先给 worker 留出恢复时间，再恢复 master；独立
+watchdog 会在 Doctor 或 kubectl 意外中断后兜底恢复同一生命周期的 master。
+
+暂停 master 不会暂停兄弟 worker，但 master 暂停期间不处理信号或 worker 管理，目标 worker
+上的已有请求和新请求仍可能超时。
+
+### Artifact 交付
+
+远端 heap 先压缩，再通过多个有界分片回传。每片失败可从同一 offset 重试；本机先写临时文件，
+压缩文件与解压后的 heap 都通过容器端元数据校验，成功后才原子改名。失败时不交付半份本地
+heap，并告诉用户远端文件位置。
+
+远端 `/tmp/doctor-pyheap` 默认保留，便于回传失败后人工恢复；显式传
+`--cleanup-remote` 才会在本地交付成功后删除。
+
+### `doctor mema`
+
+`doctor mema [inputs...]` 完全在 Doctor Host 运行，不连接 Kubernetes。输入支持：
+
+- 一个或多个 `.pyheap`；
+- `doctor.memory-capture/v1` sidecar；
+- 已解析的 `pyheap.analysis/v1` JSON。
+
+输入 `.pyheap` 时，分析 JSON 使用同 basename 的 `.pyheap-analysis.json`。Doctor 先核对 JSON
+中的 source size 和 SHA-256；匹配则复用，不匹配或损坏才重新运行内嵌 analyzer。Doctor 先验证
+本机 `python3` 能否启动 analyzer；不可用或不兼容时，改用本地 Docker、Podman 或 nerdctl 中
+已经 load 且携带兼容 analyzer 的 doctor-debug image。container 分析关闭网络，并只读挂载 heap
+文件。retained-heap 可能显著消耗 Doctor Host 内存，因此不再支持 Pod 内分析。
+
+未给输入时，Doctor 扫描当前目录：优先跟踪 `doctor.memory-capture/v1` 采集索引；没有索引时
+才使用分析 JSON，最后兼容裸 `.pyheap`。这样一次采集只有一个默认入口，不会因派生产物重复发现。
+
+多个 heap 会按 dump 时间排序，报告除逐份 detector 结论外，还给出首次到末次的 type 级对象数
+与 shallow size 变化。对象地址跨进程和时点不稳定，因此 retained owner 地址不直接做差。单次
+或多次存量快照都不能单独证明泄漏；确认持续泄漏仍需要结合时间趋势、请求负载和分配历史。
+
+## 关键设计
+
+### Capture 与 analysis 生命周期分离
+
+在线 attach 的首要目标是尽快恢复业务进程并可靠交付原始 artifact；retained-heap 分析可能非常
+吃内存，放在 Pod 内会与业务争抢资源。两者拆开后，同一 heap 可以在更合适的机器上重复分析，
+分析规则升级也不需要重新触碰客户进程。
+
+### 不把工具存在等同于 attach 可用
+
+GDB 可执行文件存在不代表支持 Python scripting，支持 scripting 也不代表能在当前 Target kernel
+上正确保存和恢复 inferior 的寄存器状态；容器声明 `SYS_PTRACE` 同样不代表运行态 attach 一定可行。
+Doctor 在上传和确认前分别验证 Python、GDB scripting、临时 inferior call、临时目录与实际 ptrace
+条件，任一缺失都停止。
+
+### 原始 heap 是事实来源
+
+analysis JSON 和 HTML 都是可重建派生物；`.pyheap` 才是对象图的稳定事实来源。缓存命中绑定
+heap 大小与 SHA-256，避免同 basename 被替换后误用旧结论。
+
+### 目标端与 Doctor Host 能力分开
+
+`doctor mem` 所需 Python、GDB 和 ptrace 属于诊断目标；`doctor mema` 所需 Python 或本地
+container engine 属于 Doctor Host。两边独立探测、独立报错，不能把“目标容器有 Python”
+误当成本机能够分析。通用 Host/Target 能力边界见 `kernel.md`。

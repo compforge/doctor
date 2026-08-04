@@ -1,0 +1,58 @@
+# doctor CLI 配置示例
+#
+# 默认读取 ~/.doctor/config.yaml；可用 --config <path> 或 DOCTOR_CONFIG 覆盖。
+# 配置可包含多个 profile，命令行 --profile <name> 优先于 default_profile。
+# 同一配置项的取值优先级统一为：doctor CLI 手动输入 > 当前 profile 的 config.yaml > 程序默认值。
+# 没有程序默认值的必填项仍需由命令行或 config.yaml 提供。
+
+# 未显式传 --profile 时使用的 profile；省略后取 profiles 中第一个。
+default_profile: dev
+
+profiles:
+  dev:
+    # doctor chat 连接的 doctor-server 地址。
+    # 省略 server 时，chat 使用本地能力；mem/trace/log/db 不依赖 server。
+    server: "https://doctor.example.com"
+
+    # 只读意图声明。真正的只读边界仍由 kubeconfig 和 DB 用户权限保证。
+    readonly: true
+
+    # mem/trace/log/db 默认操作的 namespace。
+    # 优先级：命令行 -n/--namespace > 此配置 > default。
+    namespace: default
+
+    kube:
+      # 本地 kubeconfig 文件；支持 ~ 展开。
+      # collect 命令用它访问 K8s，doctor chat 连接 server 时会上传文件内容。
+      kubeconfig_path: ~/.kube/demo
+
+      # 可选：doctor debug deploy 使用的通用临时诊断镜像。
+      # mem/memd 只消费已启动的 debug container，不会自行发布镜像或修改 Pod。
+      # debug_image: registry.example.com/doctor/doctor-debug:0.0.8
+
+    db:
+      # doctor data 优先使用各 data capability 所引用 Store 的运行时 DB 身份；
+      # 服务未暴露完整身份时，使用这里的 user/password 兜底。
+      user: doctor_readonly
+      password: change-me
+
+      # 预留的 DB 地址覆盖字段；当前 v0 server 暂不消费，通常无需配置。
+      # host_override: mysql-primary
+      # port_override: 3306
+
+    llm:
+      # 配置 server 时 provider/api_key/model 必填；endpoint 可省略。
+      provider: openai
+      endpoint: https://llm.example.com/v1
+      api_key: sk-example
+      model: example-model
+
+      # 是否请求模型输出 thinking；缺省由调用链默认行为决定。
+      thinking: false
+
+  # 仅使用本地 kubectl/collect 能力的最小 profile 示例。
+  local:
+    readonly: true
+    namespace: default
+    kube:
+      kubeconfig_path: ~/.kube/config

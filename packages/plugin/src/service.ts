@@ -1,0 +1,197 @@
+import type { PluginContext } from "./context";
+import type {
+  ModelCatalog,
+  ModelInference,
+} from "./definition";
+import type { ServiceMcpCapability } from "./mcp";
+
+export interface TenantSummary {
+  id: string;
+  name: string;
+  displayName: string;
+}
+
+export interface TenantDirectory {
+  listActive(): Promise<TenantSummary[]>;
+  getByName(name: string): Promise<TenantSummary>;
+}
+
+export interface ServiceTenantDirectoryCapability {
+  create(context: PluginContext): TenantDirectory;
+}
+
+export interface ServiceModelCatalogCapability {
+  create(context: PluginContext): ModelCatalog;
+}
+
+export interface ServiceInferenceCapability {
+  create(
+    context: PluginContext,
+    apiBase: string,
+    timeoutMs: number,
+  ): ModelInference;
+}
+
+export interface ServiceMetricQuery {
+  /** Query for a cumulative /metrics snapshot. */
+  instant: string;
+  /** Query for a watched window. `{{window}}` is replaced with the collection duration. */
+  range: string;
+}
+
+export interface ServiceMetricChart {
+  id: string;
+  title: string;
+  description: string;
+  kind: "line" | "pie";
+  query: ServiceMetricQuery;
+  unit?: "seconds" | "percent" | "count";
+  /** PromQL result labels used as the chart series/slice name. */
+  label?: string;
+}
+
+export interface ServiceMetricDetector {
+  id: string;
+  title: string;
+  query: ServiceMetricQuery;
+  operator: "gt";
+  threshold: number;
+  severity: "warning" | "critical";
+  message: string;
+}
+
+/** Service-owned Prometheus contract consumed by doctor metric. */
+export interface ServiceMetricCapability {
+  endpoint: { port: number; path: string };
+  /** Limits embedded scraping to the metric families required by this declaration. */
+  metricNames: readonly string[];
+  charts: readonly ServiceMetricChart[];
+  detectors?: readonly ServiceMetricDetector[];
+}
+
+export interface ServiceDataResult {
+  kind: string;
+  service: string;
+  resolution: {
+    inputId: string;
+    resolvedAs: string;
+  };
+}
+
+export interface ServiceDataSummary {
+  resolvedAs: string;
+  identifiers: Readonly<Record<string, string | undefined>>;
+}
+
+export interface ServiceDataFinding {
+  id: string;
+  kind: string;
+  severity: "info" | "warning" | "critical";
+  confidence: "low" | "medium" | "high";
+  message: string;
+  [name: string]: unknown;
+}
+
+export interface ServiceDataInput {
+  inputId: string;
+  results: ReadonlyMap<string, readonly ServiceDataResult[]>;
+}
+
+/** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
+export interface ServiceDataTarget {
+  endpoint: string;
+  database: string;
+  username: string;
+  credentialSource: string;
+}
+
+export interface ServiceDataCapability {
+  /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
+  provides: readonly string[];
+  /** 存在时表示此 Service 还可扩展这些规范 ID 类型。 */
+  expands?: readonly string[];
+  store: string;
+  inspectTarget(context: PluginContext): Promise<ServiceDataTarget>;
+  inspect(context: PluginContext, input: ServiceDataInput): Promise<ServiceDataResult>;
+  summarize(result: ServiceDataResult): ServiceDataSummary;
+  detect(result: ServiceDataResult): ServiceDataFinding[];
+}
+
+export type ServiceStoreKind = "db" | "vdb" | "s3" | "redis";
+
+interface ServiceStoreCapabilityBase {
+  id: string;
+  kind: ServiceStoreKind;
+}
+
+export interface ServiceDatabaseStoreCapability extends ServiceStoreCapabilityBase {
+  kind: "db";
+  backend: "mysql";
+  envPrefix: string;
+}
+
+export interface ServiceVdbStoreCapability extends ServiceStoreCapabilityBase {
+  kind: "vdb";
+  backend: "opensearch";
+  store?: string;
+}
+
+export interface ServiceS3StoreCapability extends ServiceStoreCapabilityBase {
+  kind: "s3";
+  backend: "s3-compatible";
+  environment: {
+    endpoint: string;
+    bucket: string;
+    region: string;
+    accessKey: string;
+    secretKey: string;
+    bucketPrefix?: string;
+    addressStyle?: string;
+  };
+}
+
+export interface ServiceRedisStoreCapability extends ServiceStoreCapabilityBase {
+  kind: "redis";
+  backend: "redis";
+  environment: {
+    address: string;
+    port?: string;
+    database?: string;
+    username?: string;
+    password?: string;
+    useSsl?: string;
+    clusterType?: string;
+    sentinels?: string;
+    sentinelMasterName?: string;
+    sentinelUsername?: string;
+    sentinelPassword?: string;
+    timeout?: string;
+  };
+}
+
+export type ServiceStoreCapability =
+  | ServiceDatabaseStoreCapability
+  | ServiceVdbStoreCapability
+  | ServiceS3StoreCapability
+  | ServiceRedisStoreCapability;
+
+export interface ServiceCapabilities {
+  stores?: readonly ServiceStoreCapability[];
+  config?: Record<string, never>;
+  log?: {
+    default: boolean;
+  };
+  data?: ServiceDataCapability;
+  tenantDirectory?: ServiceTenantDirectoryCapability;
+  modelCatalog?: ServiceModelCatalogCapability;
+  inference?: ServiceInferenceCapability;
+  metric?: ServiceMetricCapability;
+  mcp?: ServiceMcpCapability;
+}
+
+/** Doctor 跨产品共用的 Service 元描述；具体产品只声明身份和 capability。 */
+export interface ServiceDefinition {
+  name: string;
+  port?: number;
+  capabilities: ServiceCapabilities;
+}
