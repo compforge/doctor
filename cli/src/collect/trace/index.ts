@@ -232,12 +232,13 @@ export async function runCollectTrace(
         terminalStderr.warning("[collect] 已取消\n");
         return 130;
       }
+      if (resolvedStore.config.capability.kind !== "vdb") {
+        throw new Error("Trace OpenSearch Store capability 类型不匹配");
+      }
       const confirmed = await confirmVdbTarget(
         runtime.executor,
         resolvedStore.config.target,
-        resolvedStore.config.capability.kind === "vdb"
-          ? resolvedStore.config.capability.store
-          : undefined,
+        resolvedStore.config.capability,
       );
       if (confirmed.connection?.type === "opensearch") {
         configuredEndpoint = confirmed.connection.endpoint;

@@ -127,6 +127,10 @@ VDB 的业务配置是“该 Service 实际连接哪个 VDB”的 target Fact；
 如何访问它的通道准备。OpenSearch 通道与 Trace 共用 `collect/shared/opensearch-access`，但两个领域互不
 依赖；配置中的 endpoint namespace、port 与 scheme 保持权威。
 
+标准部署直接读取 `OPENSEARCH_*` 环境变量。产品使用自有挂载文件或配置结构时，由 VDB Store capability
+声明文件定位规则并把内容投影成统一 target；Doctor 只负责从所选 Service Pod 取得配置材料，不理解产品
+配置 schema。这样固定路径、字段和选择规则留在具体 Plugin，后续增加产品不会继续扩张 CLI 分支。
+
 ### 单项失败保留其余证据
 
 健康与容量探针独立记账。某个 API 被权限拒绝或 provider 不暴露容量时，其余结果仍进入 Bundle；缺失证据

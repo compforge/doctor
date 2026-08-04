@@ -11,7 +11,8 @@ export interface VdbConfigurationFact {
   backend: string;
   store: string;
   configSource: "kubernetes-config" | "container-runtime";
-  configurationKind: "environment";
+  configurationKind: string;
+  configPath?: string;
   endpoint?: string;
   username?: string;
   credentials?: "configured" | "anonymous-or-incomplete";

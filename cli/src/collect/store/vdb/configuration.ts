@@ -1,3 +1,8 @@
+import type {
+  ServiceVdbConfiguration,
+  ServiceVdbStoreCapability,
+  ServiceVdbTarget,
+} from "@compforge/doctor-plugin";
 import type { ExecResult, ExecTarget, Executor } from "../../../infra/k8s/executor";
 import { loadDeclaredContainerConfig } from "../../../infra/k8s/container-config";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
@@ -5,7 +10,8 @@ import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 interface VdbConnectionBase {
   store: string;
   configSource: "kubernetes-config" | "container-runtime";
-  configurationKind: "environment";
+  configurationKind: string;
+  configPath?: string;
 }
 
 export interface OpenSearchVdbConnection extends VdbConnectionBase {
@@ -26,6 +32,7 @@ export interface VdbTargetConfirmation {
   connection?: VdbConnection;
   captures: ExecResult[];
   environmentCapture?: ExecResult;
+  configCapture?: ExecResult;
   reason?: string;
 }
 
@@ -44,6 +51,61 @@ function firstEnvironment(values: Map<string, string>, names: readonly string[])
     if (value) return value;
   }
   return undefined;
+}
+
+function environmentRecord(values: Map<string, string>): Readonly<Record<string, string>> {
+  return Object.fromEntries(values);
+}
+
+function connectionFromTarget(
+  target: ServiceVdbTarget,
+  configSource: VdbConnectionBase["configSource"],
+): VdbConnection {
+  const common = {
+    store: target.store,
+    configSource,
+    configurationKind: target.configurationKind,
+    configPath: target.configPath,
+  };
+  return target.backend === "opensearch"
+    ? {
+        ...common,
+        type: "opensearch",
+        endpoint: target.endpoint,
+        username: target.username,
+        password: target.password,
+      }
+    : { ...common, type: "unsupported", backend: target.backend };
+}
+
+async function resolveVdbConnection(
+  capability: ServiceVdbStoreCapability,
+  environment: Map<string, string>,
+  configSource: VdbConnectionBase["configSource"],
+  file?: { path: string; content: string },
+): Promise<VdbConnection> {
+  const resolver = capability.configuration;
+  // 声明了文件来源但本轮没有取得文件时，仍允许标准 OPENSEARCH_* env 回退。
+  if (resolver && (!resolver.file || file)) {
+    return connectionFromTarget(
+      await resolver.resolve({ environment: environmentRecord(environment), file }),
+      configSource,
+    );
+  }
+  return parseVdbConnection(
+    [...environment].map(([name, value]) => `${name}=${value}`).join("\n"),
+    capability.store,
+    configSource,
+  );
+}
+
+function configurationPath(
+  configuration: ServiceVdbConfiguration | undefined,
+  environment: Map<string, string>,
+): string | undefined {
+  if (!configuration?.file) return undefined;
+  return environment.get(configuration.file.pathEnvironment)?.trim()
+    || configuration.file.defaultPath;
 }
 
 export function parseVdbConnection(
@@ -91,19 +153,21 @@ export function parseVdbConnection(
 export async function confirmVdbTarget(
   executor: Executor,
   target: ExecTarget,
-  selectedStore?: string,
+  capability: ServiceVdbStoreCapability,
 ): Promise<VdbTargetConfirmation> {
   const declared = await loadDeclaredContainerConfig(executor, target);
-  const declaredEnvironment = [...declared.environment]
-    .map(([name, value]) => `${name}=${value}`)
-    .join("\n");
+  const declaredPath = configurationPath(capability.configuration, declared.environment);
+  const declaredFile = declaredPath ? declared.files.get(declaredPath) : undefined;
   try {
-    if (declaredEnvironment) {
+    if (declared.environment.size || declaredFile) {
       return {
-        connection: parseVdbConnection(
-          declaredEnvironment,
-          selectedStore,
+        connection: await resolveVdbConnection(
+          capability,
+          declared.environment,
           "kubernetes-config",
+          declaredFile && declaredPath
+            ? { path: declaredPath, content: declaredFile }
+            : undefined,
         ),
         captures: declared.captures,
       };
@@ -120,21 +184,39 @@ export async function confirmVdbTarget(
       reason: `读取 Container env 失败：${environmentCapture.stderr.trim() || `exit=${environmentCapture.exitCode}`}`,
     };
   }
+  const environment = parseEnvironment(environmentCapture.stdout);
+  const configPath = configurationPath(capability.configuration, environment);
+  const configCapture = configPath
+    ? await executor.exec(target, ["cat", configPath], { timeoutMs: 20_000 })
+    : undefined;
   try {
     return {
-      connection: parseVdbConnection(
-        environmentCapture.stdout,
-        selectedStore,
+      connection: await resolveVdbConnection(
+        capability,
+        environment,
         "container-runtime",
+        configCapture?.ok && configPath
+          ? { path: configPath, content: configCapture.stdout }
+          : undefined,
       ),
-      captures: [...declared.captures, environmentCapture],
+      captures: [
+        ...declared.captures,
+        environmentCapture,
+        ...(configCapture ? [configCapture] : []),
+      ],
       environmentCapture,
+      configCapture,
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {
-      captures: [...declared.captures, environmentCapture],
+      captures: [
+        ...declared.captures,
+        environmentCapture,
+        ...(configCapture ? [configCapture] : []),
+      ],
       environmentCapture,
+      configCapture,
       reason,
     };
   }
@@ -152,5 +234,6 @@ export function sanitizeVdbConnection(connection: VdbConnection): Record<string,
       : undefined,
     config_source: connection.configSource,
     configuration_kind: connection.configurationKind,
+    config_path: connection.configPath,
   };
 }
