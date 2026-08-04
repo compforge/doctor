@@ -3,12 +3,14 @@
   "private": true,
   "workspaces": [
     "cli",
-    "packages/*"
+    "packages/*",
+    "plugins/*"
   ],
   "scripts": {
     "test:cli": "bun run --cwd cli test",
     "test:plugin-sdk": "bun run --cwd packages/plugin test",
     "typecheck:cli": "bun run --cwd cli typecheck",
-    "typecheck:plugin-sdk": "bun run --cwd packages/plugin typecheck"
+    "typecheck:plugin-sdk": "bun run --cwd packages/plugin typecheck",
+    "typecheck:example-plugin": "bun run --cwd plugins/example typecheck"
   }
 }

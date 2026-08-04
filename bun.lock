@@ -56,6 +56,17 @@
         "typescript": "^5.6.0",
       },
     },
+    "plugins/example": {
+      "name": "@compforge/doctor-plugin-example",
+      "version": "0.0.1",
+      "dependencies": {
+        "@compforge/doctor-plugin": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "typescript": "^5.6.0",
+      },
+    },
   },
   "packages": {
     "@alcalzone/ansi-tokenize": ["@alcalzone/ansi-tokenize@0.3.0", "", { "dependencies": { "ansi-styles": "^6.2.1", "is-fullwidth-code-point": "^5.0.0" } }, "sha512-p+CMKJ93HFmLkjXKlXiVGlMQEuRb6H0MokBSwUsX+S6BRX8eV5naFZpQJFfJHjRZY0Hmnqy1/r6UWl3x+19zYA=="],
@@ -63,6 +74,8 @@
     "@colors/colors": ["@colors/colors@1.5.0", "", {}, "sha512-ooWCrlZP11i8GImSjTHYHLkvFDP48nS4+204nGb1RiX/WXYHmJA2III9/e2DWVabCESdW7hBAEzHRqUn9OUVvQ=="],
 
     "@compforge/doctor-plugin": ["@compforge/doctor-plugin@workspace:packages/plugin"],
+
+    "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
 
     "@compforge/prombed": ["@compforge/prombed@0.0.2", "", {}, "sha512-HeQyJeAuwNPI7RtLeS8dCApvHJFZYlyUq2EatMQxVaaywszwKCTfdY851JEDIGrW7Sh92h9AXc2ITYz3VwoVcA=="],
 

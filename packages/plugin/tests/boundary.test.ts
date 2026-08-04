@@ -28,7 +28,7 @@ test("CLI core 不依赖具体 Plugin 实现", () => {
 
 test("config/data/log collect 不按示例 Service 名分支", () => {
   const root = join(import.meta.dir, "../../../cli/src/collect");
-  const exampleServices = /example-frontend|example-worker|example-database/i;
+  const exampleServices = /example-api|example-worker/i;
   for (const domain of ["config", "data", "log"]) {
     for (const path of sourceFiles(join(root, domain))) {
       expect(readFileSync(path, "utf-8")).not.toMatch(exampleServices);
