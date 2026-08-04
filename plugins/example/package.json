@@ -1,0 +1,19 @@
+{
+  "name": "@compforge/doctor-plugin-example",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@compforge/doctor-plugin": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
