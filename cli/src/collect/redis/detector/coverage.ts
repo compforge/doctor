@@ -41,6 +41,7 @@ function scansGap(e: RedisEvidence): string {
   if (overview?.scanMode === "quick") {
     return `${base}（quick 模式不扫描 key；去掉 --quick 以 sample 模式重新采集可取得）`;
   }
+  if (overview?.partialReason) return `${base}（${overview.partialReason}）`;
   return base;
 }
 
@@ -63,7 +64,7 @@ export function buildRedisCoverage(
     : undefined;
   const missingEvidence: string[] = [];
   if (masters.length === 0) missingEvidence.push(mastersGap(e));
-  if (scans.length === 0) missingEvidence.push(scansGap(e));
+  if (scans.length < masters.length) missingEvidence.push(scansGap(e));
   return [
     {
       goal: "redis-memory-capacity",

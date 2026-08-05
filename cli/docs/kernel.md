@@ -126,64 +126,14 @@ OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`co
 
 ## Collect 共享协议
 
-### 单向数据流
+Collect 的结果不是成功/失败二态，而是命令终止、诊断覆盖度与产物交付三个正交维度。只要流程正常
+结束、形成可解释的部分证据并成功交付报告，`partial` 也是成功完成；报告必须醒目标明缺失证据、原因
+及不能支持的结论。Finding 严重度只描述 Target 健康，不改变命令完成语义。
 
-1. 配置确认合并 CLI/profile/交互输入，确定目标身份，但不创建临时访问资源。
-2. preparation 建立 port-forward、临时文件等访问条件，并拥有其清理生命周期。
-3. `runInspects` 按依赖顺序取得初始 Facts；Facts 在本轮后续只读。
-4. `runDiagnosis` 调度 Probes，构建 Evidence，再执行纯 Detector 与 Coverage。
-5. Renderer 只消费 Diagnosis 和产物元数据，不访问 infra，也不从 Markdown 文案反解析结构化数据。
-
-Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DSN 或 Probe 运行结果；带凭据 target
-只存在于本轮 Ctx，进入 manifest 和 detector 前使用领域脱敏投影。Detector 可以读取 Evidence 中领域
-显式选择的 Facts，以解释证据为何缺失，但不能借此追加 I/O。
-
-Facts 与 Observations 的边界是取得阶段和访问规则，不是要求同一事实绝不投影两次。若 detector 既需要
-行动前状态又需要一次 Probe 的组合结果，领域可以显式投影，但不能把未执行 Probe 的推测伪装成 Observation。
-
-### 缺口驱动与 Probe 调度
-
-构建期从诊断目标反推所需 Fact/Observation，再实现 Probe、Strategy、工具与 Operation；运行期从
-Facts、mode、授权、超时和容量预算收敛到本次实际可得的证据。工具不是 Probe，attach/安装/rollout
-等前置动作也不是 Observation。
-
-同一 Probe 的多个 `ProbeStrategy` 表示取得同一种 Observation 的升级链：优先已有 dump、只读 API 或
-现成工具，只有不可行时才升级到 attach、注入或 rollout。策略返回执行状态和 `stop/continue` 决策，
-runner 不替领域猜测“失败后是否值得升级”。`dependsOn` 只描述 Probe 间真实数据依赖；`targetAccess`
-表达整条策略链可能产生的最大影响，不能因第一条策略只读就隐去后续风险。
-
-单项失败只降低对应 Coverage，不阻断其它独立 Probe。缺口必须能沿 required evidence → Probe → Strategy
-解释为缺工具、目标不支持、权限不足、用户拒绝、预算耗尽或执行失败。
-
-### Evidence、交付与退出码
-
-Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证据面可通过 Worksheet 预声明 Outcome，
-每个格子只填一次，收尾时未填格子必须 settle 为明确缺失原因；即时查询或运行时才发现 id 的命令可使用
-纯追加 Step，不为形式统一预印空格。
-
-`evaluateCollectOutcome` 将证据完整性、交付状态和退出码分开：
-
-- 必需证据完整且产物交付成功时退出 `0`；
-- 必需证据 partial/missing，或报告/Bundle 交付失败时退出 `1`；
-- 用户取消为 `130`，参数错误为 `2`；
-- Finding 严重度描述目标健康，不改变退出码。
-
-报告保持单文件、离线可读。公共 output 只拥有 shell、通用表格/图表和交付格式；domain renderer 决定
-章节顺序、领域文案与数据口径。多 domain 汇总可以用隔离 Tab 组合各自报告，但不能在 shell 中硬编码
-Store、HTTP 等领域语义。
-
-### 副作用与授权
-
-| mode | 含义 |
-|---|---|
-| `observe` | 不主动改变业务进程或 Pod 状态 |
-| `overhead` | 允许 profiler、handler 等受控诊断负担 |
-| `disrupt` | 允许安装、注入、临时容器或 rollout 等显式变更 |
-
-mode 是副作用上限，不是 blanket approval。Operation 描述 `risk / target / impact / steps`，具体执行与
-清理由 Probe 或 Provision 工作流拥有。授权发生在动作真正需要执行时：高于 mode 直接拒绝；同一
-`operation.id@target` 的 gate 决定在一次命令内复用；用户拒绝、非交互、gate 异常和 `--yes` 必须保留
-不同来源。拒绝只终止依赖该 Operation 的 Strategy，不应吞掉其它只读证据。
+Collect 仍遵循 Config → Facts → Observations → Evidence → Findings/Coverage → Render 的单向数据流。
+单项 Probe 失败只降低相应 Coverage，不阻断其它独立 Probe；未声明可降级处理的异常继续向上抛，避免
+把 Doctor 自身错误伪装成部分完成。完整状态、调度、Evidence、退出码与授权契约见
+[`collect-protocol.md`](collect-protocol.md)。
 
 ## 关键边界
 

@@ -109,13 +109,14 @@ describe("Store output", () => {
     const root = mkdtempSync(join(tmpdir(), "doctor-store-tabs-test-"));
     const outputPath = join(root, "store.html");
     writeTabbedStoreReport(outputPath, [
-      { kind: "db", status: "complete", html: "<!doctype html><h1>DB report</h1>" },
-      { kind: "redis", status: "complete", html: "<!doctype html><h1>Redis report</h1>" },
+      { kind: "db", status: "delivered", html: "<!doctype html><h1>DB report</h1>" },
+      { kind: "redis", status: "delivered", html: "<!doctype html><h1>Redis report</h1>" },
     ]);
     const html = readFileSync(outputPath, "utf8");
     expect(html).toContain('role="tablist"');
     expect(html).toContain('data-kind="db"');
     expect(html).toContain('data-kind="redis"');
+    expect(html).toContain("已交付");
     expect(html).toContain("frame.srcdoc=new TextDecoder().decode(bytes)");
     rmSync(root, { recursive: true, force: true });
   });

@@ -52,6 +52,7 @@ export function redisObservationsFromRuntimeOutput(output: RedisRuntimeProbeOutp
       scanMode: output.scan_mode,
       selectedDatabase: output.selected_database,
       slotRanges: output.slot_ranges,
+      partialReason: output.error,
     },
     ...output.masters.map((node): RedisNodeObservation => ({
       id: `node:${node.host}:${node.port}`,
@@ -128,6 +129,13 @@ function needsTenSecondPressureObservation(
   }) || oneSecond.some((window) => window.evictedKeysDelta > 0 || window.oomErrorsDelta > 0);
 }
 
+function failedUpstream(
+  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCollectContext>["evaluate"]>[2],
+): string | undefined {
+  const failed = progress.find((item) => item.status === "failed" || item.status === "unavailable");
+  return failed ? `${failed.probeId} ${failed.status}：${failed.reason ?? "未取得上游证据"}` : undefined;
+}
+
 /** 一次受预算约束的只读访问，同时采集拓扑、节点状态和 keyspace 样本。 */
 export function makeRedisRuntimeProbe(): Probe<
   RedisObservation,
@@ -146,17 +154,18 @@ export function makeRedisRuntimeProbe(): Probe<
       try {
         const output = await collectRedisRuntime(ctx, config.scan);
         ctx.bundle.fill("redis-probe", {
-          status: "ok",
+          status: output.error ? "partial" : "ok",
+          reason: output.error,
           output: `${JSON.stringify(output, null, 2)}\n`,
           ext: "json",
         });
         return redisObservationsFromRuntimeOutput(output);
-      } catch (err) {
+      } catch (error) {
         ctx.bundle.fill("redis-probe", {
           status: "failed",
-          reason: err instanceof Error ? err.message : String(err),
+          reason: error instanceof Error ? error.message : String(error),
         });
-        throw err;
+        throw error;
       }
     },
   };
@@ -196,6 +205,8 @@ export function makeRedisKeyStatsProbe(): Probe<
     evaluate: (facts, config, progress) => {
       const runtime = evaluateRedisRuntime(facts);
       if (!runtime.runnable) return runtime;
+      const upstream = failedUpstream(progress);
+      if (upstream) return probeUnavailable(upstream);
       return keyStatsTargets(progress, config.scan?.keyStats ?? false).length > 0
         ? PROBE_RUNNABLE
         : probeUnnecessary("仅 Cluster sample 模式且 master 数据集内存倾斜达到 1.5x 时执行");
@@ -206,36 +217,31 @@ export function makeRedisKeyStatsProbe(): Probe<
     onUnnecessary: (ctx, reason) => {
       ctx.bundle.fill(id, { status: "unnecessary", reason });
     },
+    onFailed: (ctx, reason) => {
+      ctx.bundle.fill(id, { status: "failed", reason });
+    },
     run: async (ctx, _facts, config, progress) => {
       const targets = keyStatsTargets(progress, config.scan?.keyStats ?? false);
       if (!targets.length) throw new Error("Redis keyStats Probe 缺少可用的 master");
-      try {
-        const observations: RedisKeyStatsObservation[] = [];
-        for (const target of targets) {
-          const node = { host: target.node.host, port: target.node.port };
-          ctx.log(`[collect] 对 master ${node.host}:${node.port} 运行 keyStats…`);
-          const scan = await collectRedisMasterKeyStats(ctx, node, config.scan, target.masterCount);
-          observations.push({
-            id: `key-stats:${node.host}:${node.port}:db${scan.database}`,
-            kind: "key-stats",
-            trigger: target.trigger,
-            memoryRatio: target.memoryRatio,
-            scan,
-          });
-        }
-        ctx.bundle.fill(id, {
-          status: "ok",
-          output: `${JSON.stringify({ scans: observations }, null, 2)}\n`,
-          ext: "json",
+      const observations: RedisKeyStatsObservation[] = [];
+      for (const target of targets) {
+        const node = { host: target.node.host, port: target.node.port };
+        ctx.log(`[collect] 对 master ${node.host}:${node.port} 运行 keyStats…`);
+        const scan = await collectRedisMasterKeyStats(ctx, node, config.scan, target.masterCount);
+        observations.push({
+          id: `key-stats:${node.host}:${node.port}:db${scan.database}`,
+          kind: "key-stats",
+          trigger: target.trigger,
+          memoryRatio: target.memoryRatio,
+          scan,
         });
-        return observations;
-      } catch (err) {
-        ctx.bundle.fill(id, {
-          status: "failed",
-          reason: err instanceof Error ? err.message : String(err),
-        });
-        throw err;
       }
+      ctx.bundle.fill(id, {
+        status: "ok",
+        output: `${JSON.stringify({ scans: observations }, null, 2)}\n`,
+        ext: "json",
+      });
+      return observations;
     },
   };
 }
@@ -253,7 +259,10 @@ export function makeRedisPressureProbe(seconds: 1 | 10): Probe<
     dependsOn: seconds === 1 ? ["redis-probe"] : ["redis-probe", "redis-pressure-1s"],
     evaluate: (facts, _config, progress) => {
       const runtime = evaluateRedisRuntime(facts);
-      if (!runtime.runnable || seconds === 1) return runtime;
+      if (!runtime.runnable) return runtime;
+      const upstream = failedUpstream(progress);
+      if (upstream) return probeUnavailable(upstream);
+      if (seconds === 1) return runtime;
       return needsTenSecondPressureObservation(progress)
         ? PROBE_RUNNABLE
         : probeUnnecessary("容量低于 90%，且 1 秒窗口未发现 eviction / OOM 拒写");
@@ -264,23 +273,18 @@ export function makeRedisPressureProbe(seconds: 1 | 10): Probe<
     onUnnecessary: (ctx, reason) => {
       ctx.bundle.fill(id, { status: "unnecessary", reason });
     },
+    onFailed: (ctx, reason) => {
+      ctx.bundle.fill(id, { status: "failed", reason });
+    },
     run: async (ctx) => {
       ctx.log(`[collect] 采集 Redis ${seconds} 秒容量压力窗口…`);
-      try {
-        const output = await collectRedisPressure(ctx, seconds);
-        ctx.bundle.fill(id, {
-          status: "ok",
-          output: `${JSON.stringify(output, null, 2)}\n`,
-          ext: "json",
-        });
-        return redisObservationsFromPressureOutput(output);
-      } catch (err) {
-        ctx.bundle.fill(id, {
-          status: "failed",
-          reason: err instanceof Error ? err.message : String(err),
-        });
-        throw err;
-      }
+      const output = await collectRedisPressure(ctx, seconds);
+      ctx.bundle.fill(id, {
+        status: "ok",
+        output: `${JSON.stringify(output, null, 2)}\n`,
+        ext: "json",
+      });
+      return redisObservationsFromPressureOutput(output);
     },
   };
 }

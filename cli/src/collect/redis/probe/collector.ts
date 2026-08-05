@@ -220,18 +220,39 @@ export async function collectRedisRuntime(
   ctx.log("[collect] 正在发现 Redis 拓扑…");
   const topology = await discoverRedisTopology(access, topologyConfig(ctx));
   ctx.log(`[collect] 拓扑发现完成：${topology.clusterType}，${topology.masters.length} 个 master，${topology.replicas.length} 个 replica`);
+  const errors: string[] = [];
   const masters: RedisNode[] = [];
   for (const [index, endpoint] of topology.masters.entries()) {
     ctx.log(`[collect] 正在读取 master ${index + 1}/${topology.masters.length}（${endpoint.host}:${endpoint.port}）…`);
-    masters.push(await nodeObservation(await access.connection(endpoint, target.database), endpoint, "master", target.database));
+    try {
+      masters.push(await nodeObservation(await access.connection(endpoint, target.database), endpoint, "master", target.database));
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      errors.push(`${endpoint.host}:${endpoint.port} 节点状态：${reason}`);
+      masters.push({
+        ...endpoint,
+        role: "master",
+        selected_database: target.database,
+        databases: [],
+        error: reason,
+      });
+    }
   }
   const replicas: RedisNode[] = [];
   for (const [index, endpoint] of topology.replicas.entries()) {
     ctx.log(`[collect] 正在读取 replica ${index + 1}/${topology.replicas.length}（${endpoint.host}:${endpoint.port}）…`);
     try {
       replicas.push(await nodeObservation(await access.connection(endpoint, target.database), endpoint, "replica", target.database));
-    } catch (err) {
-      replicas.push({ ...endpoint, role: "replica", selected_database: target.database, databases: [], error: err instanceof Error ? err.message : String(err) });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      errors.push(`${endpoint.host}:${endpoint.port} 节点状态：${reason}`);
+      replicas.push({
+        ...endpoint,
+        role: "replica",
+        selected_database: target.database,
+        databases: [],
+        error: reason,
+      });
     }
   }
   const scans: RedisScan[] = [];
@@ -240,10 +261,15 @@ export async function collectRedisRuntime(
     const remainder = options.maxKeys % Math.max(1, topology.masters.length);
     for (const [index, endpoint] of topology.masters.entries()) {
       const limit = perMaster + (index < remainder ? 1 : 0);
-      scans.push(await scanMaster(
-        await access.connection(endpoint, target.database), endpoint, target.database,
-        options, limit, (line) => ctx.log(`[collect] ${line}`),
-      ));
+      try {
+        scans.push(await scanMaster(
+          await access.connection(endpoint, target.database), endpoint, target.database,
+          options, limit, (line) => ctx.log(`[collect] ${line}`),
+        ));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        errors.push(`${endpoint.host}:${endpoint.port} keyspace 抽样：${reason}`);
+      }
     }
   }
   return {
@@ -254,6 +280,7 @@ export async function collectRedisRuntime(
     slot_ranges: topology.slotRanges,
     scan_mode: options.mode,
     scans,
+    error: errors.length ? errors.join("；") : undefined,
   };
 }
 

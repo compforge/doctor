@@ -378,7 +378,24 @@ export async function runCollectRedis(
     keyDistributionHtml = buildRedisKeyDistributionHtml(diagnosis);
     keyStatsHtml = buildRedisKeyStatsHtml(diagnosis);
     ttlPieCharts = buildRedisTtlPieCharts(diagnosis);
-    terminalStdout.success("[collect] 完成。\n");
+    const outcome = evaluateCollectOutcome([
+      facts.capabilities.status === "collected",
+      ...diagnosis.coverage.map((item) => item.status === "sufficient"),
+    ]);
+    if (outcome.evidence === "partial") {
+      terminalStdout.warning("[collect] 部分完成：报告中已标明缺失证据。\n");
+    } else if (outcome.evidence === "missing") {
+      terminalStderr.error("[collect] 未形成可用诊断证据。\n");
+    } else {
+      terminalStdout.success("[collect] 完成。\n");
+    }
+    const disabledCatalogStore = !!config.store
+      && !confirmed.target
+      && confirmed.targetFact.status === "unavailable";
+    return finish(
+      { ...sanitizedTarget, service: config.service, store: config.store?.id },
+      disabledCatalogStore ? 0 : outcome.exitCode,
+    );
   } catch (err) {
     writeErrorLog(err, "doctor store/redis/runDiagnosis");
     const reason = err instanceof Error ? err.message : String(err);
@@ -387,19 +404,4 @@ export async function runCollectRedis(
     bundle.writeSummary(`# Redis 诊断失败\n\n${reason}\n`);
     return finish(sanitizedTarget, 1);
   }
-
-  const outcome = evaluateCollectOutcome([
-    facts.execution.status === "collected",
-    facts.target.status === "collected",
-    facts.capabilities.status === "collected",
-  ]);
-  // Catalog 声明的是“可能提供”的能力；运行时地址为空代表本次部署未启用，
-  // 这是可交付的诊断结论，不应伪装成连接失败。
-  const disabledCatalogStore = !!config.store
-    && !confirmed.target
-    && confirmed.targetFact.status === "unavailable";
-  return finish(
-    { ...sanitizedTarget, service: config.service, store: config.store?.id },
-    disabledCatalogStore ? 0 : outcome.exitCode,
-  );
 }

@@ -31,12 +31,12 @@ function failureLog(bundleDir: string, collectCode: number, reason?: string): st
   const lines = [`collect_exit_code=${collectCode}`, ...(reason ? [`reason=${reason}`] : [])];
   try {
     const manifest = JSON.parse(readFileSync(resolve(bundleDir, "manifest.json"), "utf-8")) as EvidenceManifest;
-    const failed = (manifest.steps ?? []).filter((step) =>
-      step.status === "failed" || step.status === "unavailable"
+    const incomplete = (manifest.steps ?? []).filter((step) =>
+      step.status === "partial" || step.status === "failed" || step.status === "unavailable"
     );
-    if (failed.length) {
-      lines.push("", "failed_or_unavailable_steps:");
-      for (const step of failed) {
+    if (incomplete.length) {
+      lines.push("", "incomplete_steps:");
+      for (const step of incomplete) {
         lines.push(
           `- ${step.id ?? "unknown"} [${step.status ?? "unknown"}]`
           + `${step.reason ? `: ${step.reason}` : ""}`
