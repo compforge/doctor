@@ -240,3 +240,63 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => {
+  const facts = buildRedisInspectionFacts({
+    endpoints: [["redis-1.example.com", 6379]],
+    database: 7,
+    useSsl: false,
+    clusterType: "cluster",
+    endpointSource: "service-env",
+    credentialSource: "service-env",
+  }, { namespace: "ns", pod: "app-0" }, { available: true });
+  const evidence = buildRedisEvidence([
+    {
+      id: "overview",
+      kind: "overview",
+      clusterType: "cluster",
+      scanMode: "sample",
+      selectedDatabase: 7,
+      slotRanges: [],
+      partialReason: "redis-2.example.com:6379 keyspace 抽样：SCAN timed out",
+    },
+    ...["redis-1.example.com", "redis-2.example.com"].map((host) => ({
+      id: `node:${host}:6379`,
+      kind: "node" as const,
+      node: {
+        host,
+        port: 6379,
+        role: "master",
+        selected_database: 7,
+        databases: [],
+        info: { used_memory: 100, maxmemory: 1_000 },
+      },
+    })),
+    {
+      id: "keyspace:redis-1.example.com:6379:db7",
+      kind: "keyspace",
+      scan: {
+        node: { host: "redis-1.example.com", port: 6379 },
+        database: 7,
+        scanned_keys: 10,
+        scan_complete: false,
+        sampled_memory_bytes: 100,
+        average_sampled_bytes_per_key: 10,
+        types: [],
+        prefixes: [],
+        ttl_buckets: {},
+        top_slots: [],
+        top_keys: [],
+        top_streams: [],
+      },
+    },
+  ], facts);
+
+  expect(buildRedisCoverage(evidence)).toContainEqual({
+    goal: "redis-memory-distribution",
+    status: "partial",
+    missingEvidence: [
+      "Redis keyspace 抽样（redis-2.example.com:6379 keyspace 抽样：SCAN timed out）",
+    ],
+  });
+});

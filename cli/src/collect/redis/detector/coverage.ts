@@ -64,7 +64,7 @@ export function buildRedisCoverage(
     : undefined;
   const missingEvidence: string[] = [];
   if (masters.length === 0) missingEvidence.push(mastersGap(e));
-  if (scans.length === 0) missingEvidence.push(scansGap(e));
+  if (scans.length < masters.length) missingEvidence.push(scansGap(e));
   return [
     {
       goal: "redis-memory-capacity",
