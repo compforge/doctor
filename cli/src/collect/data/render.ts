@@ -1,4 +1,10 @@
-import { htmlHeading, htmlList, htmlParagraph, htmlTable } from "../output/html";
+import {
+  escapeHtml,
+  htmlHeading,
+  htmlList,
+  htmlParagraph,
+  htmlTable,
+} from "../output/html";
 import type { DataDiagnosis, DataObservation } from "./model";
 
 function value(value: string | undefined): string {
@@ -16,6 +22,16 @@ function observationRows(observations: readonly DataObservation[], identifiers: 
     item.summary.resolvedAs,
     ...identifiers.map((name) => value(item.summary.identifiers[name])),
   ]);
+}
+
+function observationResults(observations: readonly DataObservation[]): string {
+  const resolved = observations.filter((item) => item.summary.resolvedAs !== "unresolved");
+  if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
+  return resolved.map((item) => {
+    const title = `${item.service} · ${item.stage} · ${item.result.resolution.inputId} · ${item.summary.resolvedAs}`;
+    const result = JSON.stringify(item.result, null, 2) ?? String(item.result);
+    return `<details class="data-result" open><summary><span>${escapeHtml(title)}</span></summary><pre><code>${escapeHtml(result)}</code></pre></details>`;
+  }).join("");
 }
 
 export function buildDataSummary(diagnosis: DataDiagnosis): string {
@@ -52,6 +68,8 @@ export function buildDataHtml(diagnosis: DataDiagnosis): string {
       ["service", "stage", "resolved as", ...identifiers],
       observationRows(diagnosis.evidence.observations, identifiers),
     ),
+    htmlHeading(2, "业务数据"),
+    observationResults(diagnosis.evidence.observations),
     htmlHeading(2, "Findings"),
     htmlList(diagnosis.findings.length
       ? diagnosis.findings.map((item) => item.message)
@@ -61,6 +79,6 @@ export function buildDataHtml(diagnosis: DataDiagnosis): string {
       `状态：${coverage?.status ?? "insufficient"}`,
       ...(coverage?.missingEvidence ?? []).map((item) => `缺失：${item}`),
     ]),
-    htmlParagraph("完整业务记录与解析结果见原始证据。"),
+    htmlParagraph("完整解析过程仍保留在原始证据中。"),
   ].join("\n");
 }

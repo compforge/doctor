@@ -54,14 +54,14 @@ describe("CLI command routing", () => {
   });
 
   test("core entry explains a missing Plugin before K8s access", () => {
-    const missing = runCoreCli("data", "biz-1");
+    const missing = runCoreCli("data", "--biz-id", "biz-1");
     expect(missing.exitCode).toBe(1);
     expect(missing.stderr).toContain("doctor data 需要当前 profile 选择 Plugin");
     expect(missing.stderr).not.toContain("Kubernetes");
   });
 
   test("selected Plugin missing a required capability reports that capability", () => {
-    const result = runCli("data", "biz-1");
+    const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("service.data");
     expect(result.stderr).toContain("Plugin 'test'");
@@ -483,13 +483,19 @@ describe("CLI command routing", () => {
     expect(database.stderr).toContain("--database 需要 >= 0 的整数");
   });
 
-  test("data accepts multiple biz ids and exposes JSON and HTML", () => {
+  test("data requires one --biz-id and exposes JSON and HTML", () => {
     const result = runCli("data", "--help");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Usage: doctor data [options] <ids...>");
+    expect(result.stdout).toContain("Usage: doctor data [options]");
+    expect(result.stdout).toContain("--biz-id <id>");
+    expect(result.stdout).not.toContain("<ids...>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("json（stdout）或 html");
     expect(result.stdout).toContain("--output <path>");
+
+    const positional = runCli("data", "biz-1");
+    expect(positional.exitCode).not.toBe(0);
+    expect(positional.stderr).toContain("required option '--biz-id <id>' not specified");
   });
 
   test("standalone db and redis commands have been removed", () => {

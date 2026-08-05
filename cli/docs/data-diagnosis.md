@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-`doctor data <biz-id...>` 汇集一组业务 ID 在当前 Plugin 中的关联数据。它不是通用 SQL 控制台，也不在
+`doctor data --biz-id <id>` 汇集一个业务 ID 在当前 Plugin 中的关联数据。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
 `data` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
 
@@ -20,7 +20,7 @@ data capability 的两个角色彼此独立：
 
 ## 流程
 
-1. 对命令行传入的一个或多个 biz ID 去重，并从 Catalog 选择本次参与的数据 Service。
+1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。
 2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
    按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 按 Catalog 顺序串行执行全部带 `expands` 的 capability。第一个接收原始 ID；后续 expander 同时接收
@@ -48,7 +48,7 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 
 ### ID 是不带类型的输入，类型来自证据
 
-用户可以同时输入不同类型的业务 ID，无需先知道类型。每个 capability 以
+用户无需先知道业务 ID 的具体类型。每个 capability 以
 自身稳定关系尝试解析，并在 Observation 中记录 `inputId`、`resolvedAs` 和解析出的命名 ID。未命中是
 证据缺口，不等于异常；只有数据库已经证明的业务不变量才形成 Finding。
 
