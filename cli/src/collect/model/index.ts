@@ -46,19 +46,20 @@ export async function runCollectModel(
   let modelCatalogService: ServiceWithCapability<ServiceDefinition, "modelCatalog"> | undefined;
   let inferenceService: ServiceWithCapability<ServiceDefinition, "inference"> | undefined;
   try {
-    const tenantCapability = plugin.tenantConfiguration;
     const modelCapability = plugin.modelDiagnosis;
-    if (!tenantCapability) throw new Error(`Plugin '${plugin.id}' 未提供租户目录能力`);
-    tenantDirectoryService = plugin.services.findWith(tenantCapability.directoryService, "tenantDirectory");
+    if (!modelCapability) throw new Error(`Plugin '${plugin.id}' 未提供模型诊断能力`);
+    tenantDirectoryService = plugin.services.findWith(
+      modelCapability.tenantDirectoryService,
+      "tenantDirectory",
+    );
     if (!tenantDirectoryService) {
       throw new Error(
-        `Plugin '${plugin.id}' 的 Service '${tenantCapability.directoryService}' 未声明 tenantDirectory 能力`,
+        `Plugin '${plugin.id}' 的 Service '${modelCapability.tenantDirectoryService}' 未声明 tenantDirectory 能力`,
       );
     }
     if (tenantDirectoryService.port === undefined) {
       throw new Error(`租户目录 Service '${tenantDirectoryService.name}' 未声明端口`);
     }
-    if (!modelCapability) throw new Error(`Plugin '${plugin.id}' 未提供模型诊断能力`);
     modelCatalogService = plugin.services.findWith(modelCapability.catalogService, "modelCatalog");
     if (!modelCatalogService) {
       throw new Error(
@@ -174,11 +175,11 @@ export async function runCollectModel(
     terminalStdout.write(
       `[model] model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}）\n`,
     );
-    terminalStdout.write(`[model] inference endpoint: ${model.metaData.apiBase}\n`);
+    terminalStdout.write(`[model] inference endpoint: ${model.inference.baseUrl}\n`);
 
     const inference = inferenceService.capabilities.inference.create(
       contextFor(inferenceService),
-      model.metaData.apiBase,
+      model.inference,
       timeoutMs,
     );
     if (opts.performance && model.type !== "llm") {

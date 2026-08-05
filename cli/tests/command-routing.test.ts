@@ -68,6 +68,13 @@ describe("CLI command routing", () => {
     expect(result.stderr).not.toContain("Kubernetes");
   });
 
+  test("trace reports a missing traceId capability before Kubernetes access", () => {
+    const result = runCli("trace", "--biz-id", "biz-1");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("service.traceId");
+    expect(result.stderr).not.toContain("Kubernetes");
+  });
+
   test("bare doctor only displays help", () => {
     const result = runCli();
     expect(result.exitCode).toBe(0);

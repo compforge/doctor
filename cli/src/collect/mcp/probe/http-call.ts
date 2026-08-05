@@ -1,4 +1,4 @@
-import type { Probe } from "../../protocol";
+import { probeUnavailable, type Probe } from "../../protocol";
 import { terminalStdout } from "../../../terminal/output";
 import { executeHttpFromGatewayPod } from "../http";
 import type {
@@ -12,13 +12,20 @@ import { approveProbeCall } from "./approval";
 
 export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCollectContext> = {
   id: "http-call",
-  evaluate: () => ({ runnable: true }),
+  evaluate: (facts) => facts.httpPlan
+    ? { runnable: true }
+    : probeUnavailable("Plugin 未提供该 tool 的直接 HTTP 映射"),
+  onUnavailable: (ctx, reason) => {
+    ctx.bundle.fill("http-response", { status: "unavailable", reason });
+  },
   async run(ctx, facts, config) {
+    const plan = facts.httpPlan;
+    if (!plan) return [];
     const approved = await approveProbeCall(
       ctx,
       "direct-http-call",
       "在 MCP Service Pod 内直接重放映射后的 HTTP",
-      facts.httpPlan.url,
+      plan.url,
       ["这是第二次真实下游 API 调用，可能重复写入或修改业务数据", "curl 与 Go http.Client 共享 Pod 网络/CA 文件，但实现并非完全相同"],
     );
     if (!approved) {
@@ -27,10 +34,10 @@ export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, 
     }
 
     ctx.requiredEvidence.add("http-response");
-    if (facts.httpPlan.unsupported.length) {
+    if (plan.unsupported.length) {
       ctx.bundle.fill("http-response", {
         status: "unavailable",
-        reason: `HTTP 映射包含 doctor 暂不支持的规则：${facts.httpPlan.unsupported.join("; ")}`,
+        reason: `HTTP 映射包含 doctor 暂不支持的规则：${plan.unsupported.join("; ")}`,
         output: "完整 request plan: http-request.json\n",
       });
       return [];
@@ -42,7 +49,7 @@ export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, 
     }
 
     terminalStdout.write(`[mcp] 在 ${pod} 内执行直接 HTTP…\n`);
-    const capture = await executeHttpFromGatewayPod(ctx.executor, pod, facts.httpPlan, config.timeoutMs);
+    const capture = await executeHttpFromGatewayPod(ctx.executor, pod, plan, config.timeoutMs);
     const responseFile = ctx.writeArtifact("http-response.txt", capture.rawResponse);
     const stderrFile = capture.stderr
       ? ctx.writeArtifact("http-stderr.txt", capture.stderr)

@@ -9,7 +9,6 @@ import {
   buildIndexExpr,
   countSpans,
   downloadSpans,
-  resolveTraceId,
 } from "../src/collect/trace/opensearch";
 import {
   accumulateStats,
@@ -122,56 +121,6 @@ describe("countSpans / downloadSpans", () => {
   });
 });
 
-describe("resolveTraceId", () => {
-  test("trace_id 直查命中即返回，不再 tag 反查", async () => {
-    let searches = 0;
-    const search: SearchEngine = {
-      count: async () => 3,
-      search: async () => {
-        searches += 1;
-        return {};
-      },
-    };
-    const r = await resolveTraceId(search, "idx", "t1");
-    expect(r).toEqual({ traceId: "t1", resolvedAs: "trace_id" });
-    expect(searches).toBe(0);
-  });
-
-  test("直查未命中时按 tag 值反查，取最近活跃 trace", async () => {
-    const payloads: any[] = [];
-    const search: SearchEngine = {
-      count: async () => 0,
-      search: async (index, body) => {
-        payloads.push({ index, body });
-        return {
-        aggregations: {
-          t: {
-            buckets: [
-              { key: "trace-new", doc_count: 2, m: { value: 2000 } },
-              { key: "trace-old", doc_count: 5, m: { value: 1000 } },
-            ],
-          },
-        },
-        };
-      },
-    };
-    const r = await resolveTraceId(search, "idx", "msg-1");
-    expect(r?.resolvedAs).toBe("tag");
-    expect(r?.traceId).toBe("trace-new");
-    expect(r?.candidates?.length).toBe(2);
-    // 反查是 nested tags.value 精确匹配，不限定业务 key
-    expect(payloads[0].body.query).toEqual({ nested: { path: "tags", query: { term: { "tags.value": "msg-1" } } } });
-  });
-
-  test("两种方式都未命中返回 undefined", async () => {
-    const search: SearchEngine = {
-      count: async () => 0,
-      search: async () => ({ aggregations: { t: { buckets: [] } } }),
-    };
-    expect(await resolveTraceId(search, "idx", "nope")).toBeUndefined();
-  });
-});
-
 describe("stats 与 summary", () => {
   test("按 service 累计 + 时间范围 + error span", () => {
     const stats = newTraceStats();
@@ -233,7 +182,9 @@ describe("collectTrace 记账", () => {
 
   function traceOpts(outputDir: string) {
     return {
-      id: "abc123",
+      traceId: "abc123",
+      bizId: "message-1",
+      traceIdResolution: { service: "example-api", resolvedAs: "request_id" },
       index: "jaeger-span-*",
       auth: { username: "u", password: "p" },
       endpoint: "https://os.example:9200",
@@ -242,40 +193,19 @@ describe("collectTrace 记账", () => {
     };
   }
 
-  /**
-   * 假 OpenSearch。真实调用序列（见 opensearch.ts:141-170）：
-   *   1. resolveTraceId → _count(输入 id) 直查；>0 就当 trace_id 用
-   *   2. 未命中 → _search 带 aggs.t 按 span tag 反查
-   *   3. countSpans → 再 _count(解析出的 trace_id)
-   *   4. downloadSpans → _search 带 sort/search_after
-   * 两次 _count 打同一个 URL，用调用序号区分。
-   */
   function fakeSearch(routes: {
-    /** 反查是否命中；命中则解析出 trace-xyz */
-    resolves?: boolean;
-    /** 第 2 次 _count（countSpans）的返回；undefined 表示 500 */
+    /** _count（countSpans）的返回；undefined 表示 500 */
     count?: number;
     spans?: unknown[];
   }): SearchEngine {
-    let countCalls = 0;
     return {
       count: async () => {
-        countCalls += 1;
-        // 第 1 次是 resolveTraceId 的直查——总是未命中，逼它走 tag 反查
-        if (countCalls === 1) return 0;
         if (routes.count === undefined) throw new Error("HTTP 500: boom");
         return routes.count;
       },
-      search: async (_index, body) => {
-        if (body.aggs) {
-          return {
-            aggregations: {
-              t: { buckets: routes.resolves ? [{ key: "trace-xyz", doc_count: 1, m: { value: 1 } }] : [] },
-            },
-          };
-        }
-        return { hits: { hits: (routes.spans ?? []).map((source) => ({ _source: source, sort: [1] })) } };
-      },
+      search: async () => ({
+        hits: { hits: (routes.spans ?? []).map((source) => ({ _source: source, sort: [1] })) },
+      }),
     };
   }
 
@@ -283,24 +213,9 @@ describe("collectTrace 记账", () => {
     return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
   }
 
-  test("id 解析不到时，count / download 仍在 manifest 里有交代", async () => {
-    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
-    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ resolves: false }));
-    expect(code).toBe(1);
-    const steps: any[] = manifestOf(dir).steps;
-    const byId = new Map(steps.map((s) => [s.id, s]));
-    // 以前这条路径 manifest 里只有 resolve-id，count/download 直接消失
-    for (const id of OUTCOME_IDS) expect(byId.has(id)).toBe(true);
-    expect(byId.get("resolve-id")).toMatchObject({ status: "failed" });
-    expect(byId.get("count")).toMatchObject({ status: "unavailable" });
-    expect(byId.get("download")).toMatchObject({ status: "unavailable" });
-    // 原因来自早退点，不是 writeManifest 的兜底文案
-    expect(byId.get("count")!.reason).toContain("id 未解析到 trace");
-  });
-
   test("span 数为 0 时，download 有交代且原因说得清", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
-    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ resolves: true, count: 0 }));
+    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ count: 0 }));
     expect(code).toBe(1);
     const byId = new Map(manifestOf(dir).steps.map((s: any) => [s.id, s]));
     expect(byId.get("count")).toMatchObject({ status: "ok" });
@@ -312,7 +227,7 @@ describe("collectTrace 记账", () => {
 
   test("count 查询失败时，download 有交代", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
-    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ resolves: true }));
+    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({}));
     expect(code).toBe(1);
     const byId = new Map(manifestOf(dir).steps.map((s: any) => [s.id, s]));
     expect(byId.get("count")).toMatchObject({ status: "failed" });
@@ -324,7 +239,7 @@ describe("collectTrace 记账", () => {
     const code = await collectTrace(
       traceOpts(dir),
       () => {},
-      fakeSearch({ resolves: true, count: 1, spans: [{ traceID: "trace-xyz", spanID: "s1", operationName: "op" }] }),
+      fakeSearch({ count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }] }),
     );
     expect(code).toBe(0);
     const steps: any[] = manifestOf(dir).steps;

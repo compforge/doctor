@@ -67,7 +67,6 @@ function evaluateDataService(service: string, facts: DataInspectionFacts) {
 function makeObservation(
   declared: ServiceWithCapability<ServiceDefinition, "data">,
   stage: DataStage,
-  pod: string,
   inputId: string,
   result: ServiceDataResult,
 ): DataObservation {
@@ -76,7 +75,6 @@ function makeObservation(
     kind: "service-data-inspection",
     stage,
     service: declared.name,
-    pod,
     result,
     summary: declared.capabilities.data.summarize(result),
   };
@@ -87,10 +85,9 @@ async function inspectIds(input: {
   stage: DataStage;
   ids: readonly string[];
   ctx: DataCollectContext;
-  pod: string;
   results: ReadonlyMap<string, readonly ServiceDataResult[]>;
 }): Promise<{ observations: DataObservation[]; failures: string[] }> {
-  const { declared, stage, ids, ctx, pod, results } = input;
+  const { declared, stage, ids, ctx, results } = input;
   const observations: DataObservation[] = [];
   const failures: string[] = [];
   for (const inputId of ids) {
@@ -102,7 +99,7 @@ async function inspectIds(input: {
         results,
         },
       );
-      observations.push(makeObservation(declared, stage, pod, inputId, result));
+      observations.push(makeObservation(declared, stage, inputId, result));
     } catch (error) {
       failures.push(`${inputId}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -130,7 +127,6 @@ function makeExpansionProbe(
         stage: "expand",
         ids: expandedInputIds(config, progress, catalog),
         ctx,
-        pod: fact.target.pod,
         results: completedResults(progress),
       });
       if (!inspected.observations.length && inspected.failures.length) {
@@ -176,7 +172,6 @@ function makeProviderProbe(
         stage: "provide",
         ids: missingIds,
         ctx,
-        pod: fact.target.pod,
         results: completedResults(progress),
       });
       if (!reusable.size && !inspected.observations.length && inspected.failures.length) {

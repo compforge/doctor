@@ -138,7 +138,7 @@ function withCpuOptions(cmd: CommandT): CommandT {
 
 function withTraceOptions(cmd: CommandT): CommandT {
   return cmd
-    .requiredOption("--biz-id <id>", "业务 ID；Plugin data capability 先解析为 trace_id")
+    .requiredOption("--biz-id <id>", "业务 ID；Plugin traceId capability 先解析为 trace_id")
     .option("-n, --namespace <ns>", "业务 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("--service <name>", "OpenSearch backend service 覆盖值")
     .option("--endpoint <url>", "Doctor Host 直连 OpenSearch 的地址；缺省也读 DOCTOR_OPENSEARCH_URL")
@@ -215,7 +215,6 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       "--services <names>",
       `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
-    .option("--pods <assignments>", "多 Pod Service 的选择，格式 service=pod[,service=pod]")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("-f, --format <format>", "输出格式：json（stdout）或 html", "json")
     .option("--kubeconfig <path>", "kubeconfig 路径")
@@ -511,7 +510,13 @@ export async function main(plugin?: PluginDefinition) {
   withTraceOptions(
     program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
   ).action(async (opts) => {
-    await runCommand("doctor trace", opts, (context) => runCollectTrace(opts, context, plugin));
+    await runPluginCommand(
+      "doctor trace",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.trace,
+      (activePlugin, context) => runCollectTrace(opts, activePlugin, context),
+    );
   });
   const defaultLogServices = plugin?.services
     .servicesWith("log")

@@ -1,9 +1,15 @@
 import { expect, test } from "bun:test";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import {
+  createServiceCatalog,
+  type PluginContext,
+  type PluginDefinition,
+} from "@compforge/doctor-plugin";
 import {
   evaluatePluginCapabilities,
   type PluginCapabilityContract,
 } from "../src/command/plugin-capability";
+import { PLUGIN_COMMAND_CAPABILITIES } from "../src/app/plugin-command-capabilities";
+import { resolvePluginTraceId } from "../src/plugin/trace-id";
 
 const plugin = {
   id: "sample",
@@ -56,4 +62,82 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
 
   expect(evaluation.runnable).toBe(true);
   expect(evaluation.facts[0]?.available).toBe(false);
+});
+
+test("model command 不依赖租户配置采集能力", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.model.needs.map((need) => need.capability)).toEqual([
+    { scope: "plugin", name: "modelDiagnosis" },
+    { scope: "service", name: "tenantDirectory" },
+    { scope: "service", name: "modelCatalog" },
+    { scope: "service", name: "inference" },
+  ]);
+});
+
+test("traceId capability 以 Service provider 为单位发现", () => {
+  const tracePlugin = {
+    id: "trace-sample",
+    services: createServiceCatalog([{
+      name: "trace-api",
+      capabilities: {
+        traceId: {
+          resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
+        },
+      },
+    }]),
+  } satisfies PluginDefinition;
+  const evaluation = evaluatePluginCapabilities(tracePlugin, {
+    command: "doctor trace",
+    needs: [{
+      requirement: "required",
+      capability: { scope: "service", name: "traceId" },
+      purpose: "解析 trace_id",
+    }],
+  });
+
+  expect(evaluation.runnable).toBe(true);
+  expect(evaluation.facts[0]).toMatchObject({ available: true, providers: ["trace-api"] });
+});
+
+test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的 Service", async () => {
+  const tracePlugin = {
+    id: "trace-sample",
+    services: createServiceCatalog([{
+      name: "first-api",
+      capabilities: { traceId: { resolve: async () => undefined } },
+    }, {
+      name: "trace-api",
+      capabilities: {
+        traceId: {
+          resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
+            expect(context).toMatchObject({
+              profileName: "test",
+              kubeconfig: "/tmp/test-kubeconfig",
+              kubeContext: "test-context",
+              namespace: "default",
+              service: { name: "trace-api" },
+            });
+            expect(context.databaseIdentity).toBeUndefined();
+            context.onDispose(() => { throw new Error("cleanup failed"); });
+            return { traceId: `trace-${bizId}`, resolvedAs: "request_id" };
+          },
+        },
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  expect(await resolvePluginTraceId({
+    bizId: "biz-1",
+    namespace: "default",
+    kubeconfig: "/tmp/test-kubeconfig",
+    context: "test-context",
+    profileName: "test",
+  }, tracePlugin, {
+    run: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },
+    exec: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },
+  })).toEqual({
+    bizId: "biz-1",
+    traceId: "trace-biz-1",
+    service: "trace-api",
+    resolvedAs: "request_id",
+  });
 });

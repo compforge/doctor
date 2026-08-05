@@ -2,7 +2,7 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import type { SearchEngine } from "../../infra/search";
 import type { EvidenceBundle } from "../evidence";
-import { countSpans, downloadSpans, resolveTraceId, type ResolvedTrace } from "./opensearch";
+import { countSpans, downloadSpans } from "./opensearch";
 
 export interface TraceStats {
   total: number;
@@ -39,7 +39,7 @@ export function accumulateStats(stats: TraceStats, sources: Array<Record<string,
 }
 
 export interface TraceProbeOptions {
-  inputId: string;
+  traceId: string;
   index: string;
   pageSize: number;
   outputDir: string;
@@ -49,7 +49,6 @@ export type TraceProbeResult =
   | {
       ok: true;
       traceId: string;
-      resolved: ResolvedTrace;
       count: number;
       downloaded: number;
       complete: boolean;
@@ -69,42 +68,8 @@ export async function probeTrace(
   bundle: EvidenceBundle,
   log: (line: string) => void,
 ): Promise<TraceProbeResult> {
-  log(`[collect] 解析 id（index=${opts.index}）…`);
-  let resolved: ResolvedTrace | undefined;
-  try {
-    resolved = await resolveTraceId(search, opts.index, opts.inputId);
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    bundle.fill("resolve-id", { status: "failed", reason });
-    log(`[collect] id 解析失败：${reason}`);
-    return { ok: false, title: "id 解析失败", reason };
-  }
-  if (!resolved) {
-    const reason = `index '${opts.index}' 中既没有 traceID=${opts.inputId}，span tag 值反查也未命中（id 有误 / 已过保留期 / index 或环境不对）`;
-    bundle.fill("resolve-id", { status: "failed", reason });
-    log(`[collect] ${reason}`);
-    return { ok: false, title: "id 未解析到 trace", reason: `${reason}；确认 id、--index-date 与目标环境` };
-  }
-
-  const traceId = resolved.traceId;
-  bundle.fill("resolve-id", {
-    status: "ok",
-    output: JSON.stringify({
-      input_id: opts.inputId,
-      resolved_as: resolved.resolvedAs,
-      trace_id: traceId,
-      candidates: resolved.candidates,
-    }),
-    ext: "json",
-  });
-  if (resolved.resolvedAs === "tag") {
-    const extra = (resolved.candidates?.length ?? 0) > 1
-      ? `；另有 ${resolved.candidates!.length - 1} 个候选 trace（取最近活跃，全部见 raw/resolve-id）`
-      : "";
-    log(`[collect] id 经 span tag 反查解析为 trace_id=${traceId}${extra}`);
-  }
-
-  log(`[collect] 查询 span 总数（trace_id=${traceId}）…`);
+  const traceId = opts.traceId;
+  log(`[collect] 查询 span 总数（trace_id=${traceId}，index=${opts.index}）…`);
   let count: number;
   try {
     count = await countSpans(search, opts.index, traceId);
@@ -148,5 +113,5 @@ export async function probeTrace(
     reason: complete ? undefined : `下载条数 ${downloaded} != count ${count}（下载期间索引可能有写入/滚动）`,
     output: `count=${count} downloaded=${downloaded}`,
   });
-  return { ok: true, traceId, resolved, count, downloaded, complete, stats };
+  return { ok: true, traceId, count, downloaded, complete, stats };
 }

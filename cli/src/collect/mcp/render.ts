@@ -69,12 +69,14 @@ export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
     htmlHeading(2, "MCP Probe"),
     htmlList(mcpResultSummary(diagnosis)),
     htmlHeading(2, "HTTP Probe"),
-    htmlList([
-      `method：${plan.method}`,
-      `url：${plan.url}`,
-      `映射限制：${plan.unsupported.length}`,
-      ...plan.unsupported,
-    ]),
+    plan
+      ? htmlList([
+          `method：${plan.method}`,
+          `url：${plan.url}`,
+          `映射限制：${plan.unsupported.length}`,
+          ...plan.unsupported,
+        ])
+      : htmlParagraph("Plugin 未提供该 tool 的直接 HTTP 映射。"),
     facts.httpCurl
       ? `${htmlHeading(3, "可复制复现 cURL")}<pre><code class="language-bash">${escapeHtml(facts.httpCurl)}</code></pre>`
       : "",
@@ -87,7 +89,7 @@ export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
         "完整响应 headers 与 body 位于 Evidence Bundle raw 文件中。",
       ])
       : htmlParagraph("直接 HTTP 未执行或未取得响应。"),
-    plan.warnings.length ? `${htmlHeading(3, "等价性边界")}${htmlList(plan.warnings)}` : "",
+    plan?.warnings.length ? `${htmlHeading(3, "等价性边界")}${htmlList(plan.warnings)}` : "",
     `<p class="muted">HTML 只展示结构化 Diagnosis 与复现 cURL，不内嵌真实响应和日志；完整原始证据请使用 <code>--format bundle</code>。</p>`,
     mcp ? "" : htmlParagraph("MCP Probe 未形成 Observation，具体原因见 Evidence Bundle manifest。"),
   ].join("\n");
@@ -118,7 +120,7 @@ export function renderMcpSummary(diagnosis: McpDiagnosis): string {
     ...diagnosis.coverage.map((item) =>
       `- ${item.goal}: ${item.status}${item.missingEvidence.length ? `（缺少：${item.missingEvidence.join("；")}）` : ""}`
     ),
-    ...facts.httpPlan.unsupported.map((item) => `- mapping unsupported: ${item}`),
+    ...(facts.httpPlan?.unsupported ?? []).map((item) => `- mapping unsupported: ${item}`),
     "",
     "完整原始证据见 raw/。",
     "",

@@ -22,6 +22,11 @@ export interface TenantConfigReader {
 
 export type ModelType = "llm" | "embedding" | "rerank" | "audio";
 
+export interface ModelInferenceTarget {
+  baseUrl: string;
+  model: string;
+}
+
 export interface Model {
   id: string;
   name: string;
@@ -29,27 +34,25 @@ export interface Model {
   provider: string;
   vendor?: string;
   version?: string;
-  metaData?: {
-    apiBase?: string;
-    endpointId?: string;
-  };
+  inference?: Partial<ModelInferenceTarget>;
 }
 
-export interface ModelBackend extends Record<string, unknown> {
-  ModelID: string;
-  ModelName: string;
-  Model: string;
-  Type: string;
-  Provider: string;
+/** Plugin 持有的临时 backend handle；原始厂商配置和凭据不穿透到 Core。 */
+export interface ModelBackendHandle {
+  modelId: string;
+  modelName: string;
+  model: string;
+  type: string;
+  provider: string;
+  validate(timeoutMs: number): Promise<ServiceHttpResponse>;
 }
 
 export interface ModelCatalog {
   listAvailable(tenantId: string, type?: ModelType): Promise<Model[]>;
-  getBackend(modelId: string): Promise<ModelBackend | undefined>;
+  getBackend(model: Model): Promise<ModelBackendHandle | undefined>;
 }
 
 export interface ModelInference {
-  validate(backend: ModelBackend): Promise<ServiceHttpResponse>;
   invoke(path: string, body: Record<string, unknown>): Promise<ServiceHttpResponse>;
   invokeStream(
     path: string,
@@ -59,6 +62,7 @@ export interface ModelInference {
 }
 
 export interface ModelDiagnosisCapability {
+  tenantDirectoryService: string;
   catalogService: string;
   inferenceService: string;
 }

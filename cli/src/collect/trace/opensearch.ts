@@ -20,52 +20,6 @@ export async function countSpans(
   return search.count(index, termQuery(traceId));
 }
 
-export interface ResolvedTrace {
-  traceId: string;
-  /** trace_id=输入本身就是 trace；tag=经 span tag 值反查（message_id/conversation_id 等） */
-  resolvedAs: "trace_id" | "tag";
-  /** tag 反查时命中的全部候选 trace（按最近活跃倒序），第一个即选中项 */
-  candidates?: Array<{ traceId: string; lastSeenMs: number; spanHits: number }>;
-}
-
-/**
- * 任意 id → trace_id（对齐 trace-as resolve 的语义，但通道业务无关）：
- * 1. 先当 trace_id 直查（term traceID）；
- * 2. 未命中则按 span tag **值**反查（nested tags.value term，不限定 key）——
- *    message_id / conversation_id / task_id 等只要进过 span tag 都能命中，
- *    无需维护业务 key 台账；多候选 trace 时选最近活跃的一条（与 trace-as
- *    chat_db「会话取最新一条 message 的 trace」语义一致），其余进 candidates。
- * 返回 undefined = 两种方式都未命中。
- */
-export async function resolveTraceId(
-  search: SearchEngine,
-  index: string,
-  id: string,
-): Promise<ResolvedTrace | undefined> {
-  if ((await countSpans(search, index, id)) > 0) {
-    return { traceId: id, resolvedAs: "trace_id" };
-  }
-  const payload = {
-    size: 0,
-    query: { nested: { path: "tags", query: { term: { "tags.value": id } } } },
-    aggs: {
-      t: {
-        terms: { field: "traceID", size: 10, order: { m: "desc" } },
-        aggs: { m: { max: { field: "startTimeMillis" } } },
-      },
-    },
-  };
-  const result = await search.search(index, payload);
-  const buckets = ((result.aggregations as any)?.t?.buckets ?? []) as Array<Record<string, any>>;
-  if (!buckets.length) return undefined;
-  const candidates = buckets.map((b) => ({
-    traceId: String(b.key),
-    lastSeenMs: Number(b.m?.value ?? 0),
-    spanHits: Number(b.doc_count ?? 0),
-  }));
-  return { traceId: candidates[0]!.traceId, resolvedAs: "tag", candidates };
-}
-
 /** search_after 分页拉全量 span，每页把 hits 的 _source 交给 onPage；返回实际下载条数 */
 export async function downloadSpans(
   search: SearchEngine,

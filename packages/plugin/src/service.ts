@@ -2,6 +2,7 @@ import type { PluginContext } from "./context";
 import type {
   ModelCatalog,
   ModelInference,
+  ModelInferenceTarget,
 } from "./definition";
 import type { ServiceMcpCapability } from "./mcp";
 
@@ -27,7 +28,7 @@ export interface ServiceModelCatalogCapability {
 export interface ServiceInferenceCapability {
   create(
     context: PluginContext,
-    apiBase: string,
+    target: ModelInferenceTarget,
     timeoutMs: number,
   ): ModelInference;
 }
@@ -115,6 +116,23 @@ export interface ServiceDataCapability {
   inspect(context: PluginContext, input: ServiceDataInput): Promise<ServiceDataResult>;
   summarize(result: ServiceDataResult): ServiceDataSummary;
   detect(result: ServiceDataResult): ServiceDataFinding[];
+}
+
+export interface ServiceTraceIdInput {
+  bizId: string;
+}
+
+export interface ServiceTraceIdResolution {
+  traceId: string;
+  resolvedAs: string;
+}
+
+/** 把 Plugin 认识的业务 ID 解析为 Doctor trace/log 消费的规范 trace_id。 */
+export interface ServiceTraceIdCapability {
+  resolve(
+    context: PluginContext,
+    input: ServiceTraceIdInput,
+  ): Promise<ServiceTraceIdResolution | undefined>;
 }
 
 export type ServiceStoreKind = "db" | "vdb" | "s3" | "redis";
@@ -212,6 +230,7 @@ export interface ServiceCapabilities {
   log?: {
     default: boolean;
   };
+  traceId?: ServiceTraceIdCapability;
   data?: ServiceDataCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
   modelCatalog?: ServiceModelCatalogCapability;

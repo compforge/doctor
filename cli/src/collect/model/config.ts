@@ -198,20 +198,20 @@ export function requireInferenceModel(model: Model): SelectedInferenceModel {
   if (model.type === "audio") {
     throw new Error("doctor model 当前支持 llm、embedding、rerank，暂不支持 audio inference");
   }
-  const apiBase = model.metaData?.apiBase;
-  const endpointId = model.metaData?.endpointId;
-  if (!apiBase || !endpointId) {
-    throw new Error(`模型 '${model.name}' 缺少 inference api_base 或 endpoint_id`);
+  const baseUrl = model.inference?.baseUrl;
+  const inferenceModel = model.inference?.model;
+  if (!baseUrl || !inferenceModel) {
+    throw new Error(`模型 '${model.name}' 缺少 inference baseUrl 或 model`);
   }
   return {
     ...model,
     type: model.type,
-    metaData: { apiBase, endpointId },
+    inference: { baseUrl, model: inferenceModel },
   };
 }
 
 export function buildModelTestRequest(model: SelectedInferenceModel): ModelTestRequest {
-  const id = model.metaData.endpointId;
+  const id = model.inference.model;
   if (model.type === "llm") {
     return {
       path: "/chat/completions",

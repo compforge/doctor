@@ -35,7 +35,7 @@ import { renderLogResult, renderTimelineJsonl } from "./render";
 import { parseLogOutputFormat, resolveLogOutputPath } from "./output";
 import type { LogOutputFormat } from "./output";
 import { writeLogHtmlReport } from "./html";
-import { resolveDataIdentifier } from "../data/identifier";
+import { resolvePluginTraceId } from "../../plugin/trace-id";
 
 export * from "./config";
 export * from "./html";
@@ -134,26 +134,16 @@ export async function runCollectLog(
       requirement: "required",
       rule: { verb: "get", resource: "pods/log" },
       purpose: "读取 current/previous Container 日志",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/exec" },
-      purpose: "读取业务 ID expander 的 Service 运行时配置",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "访问 Plugin 声明的业务 ID 数据源",
     }],
   });
   let trace;
   try {
-    trace = await resolveDataIdentifier({
-      inputId: opts.bizId,
-      identifier: "trace_id",
+    trace = await resolvePluginTraceId({
+      bizId: opts.bizId,
       namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig,
       context: opts.context,
-      profile: opts.profile,
-      config: opts.config,
+      profileName: resolveWorkingProfileName(opts),
     }, plugin, executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -164,7 +154,7 @@ export async function runCollectLog(
     return 130;
   }
   terminalStdout.write(
-    `[collect] biz-id: ${opts.bizId} → trace-id: ${trace.value}`
+    `[collect] biz-id: ${opts.bizId} → trace-id: ${trace.traceId}`
     + `（${trace.service} 按 ${trace.resolvedAs} 解析）\n`,
   );
   let services: string[] | undefined;
@@ -196,7 +186,7 @@ export async function runCollectLog(
     terminalStdout.write(`[collect] 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}\n`);
   }
 
-  const bundleName = defaultLogBundleName(trace.value, new Date());
+  const bundleName = defaultLogBundleName(trace.traceId, new Date());
   let outputPath: string;
   try {
     outputPath = resolveLogOutputPath(opts.output, bundleName, format);
@@ -208,7 +198,7 @@ export async function runCollectLog(
   const code = await collectLog(
     {
       bizId: opts.bizId,
-      traceId: trace.value,
+      traceId: trace.traceId,
       namespace: resolvedNamespace.namespace,
       services,
       since: timeWindow.since,

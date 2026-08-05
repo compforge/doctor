@@ -3,7 +3,7 @@ import type { TraceStats } from "./probe";
 export function buildTraceSummary(input: {
   traceId: string;
   inputId?: string;
-  resolvedAs?: "trace_id" | "tag";
+  resolvedAs?: string;
   index: string;
   channel: string;
   count: number;
@@ -13,8 +13,8 @@ export function buildTraceSummary(input: {
 }): string {
   const lines: string[] = [];
   lines.push(`# trace 采集摘要：${input.traceId}`, "");
-  if (input.resolvedAs === "tag" && input.inputId) {
-    lines.push(`- 输入 id: \`${input.inputId}\`（经 span tag 反查解析为本 trace，候选清单见 raw/resolve-id）`);
+  if (input.inputId) {
+    lines.push(`- 业务 ID: \`${input.inputId}\`（Plugin 按 ${input.resolvedAs ?? "unknown"} 解析）`);
   }
   lines.push(`- index: \`${input.index}\`  通道: ${input.channel}`);
   lines.push(`- span 总数: ${input.count}  已下载: ${input.downloaded}`);

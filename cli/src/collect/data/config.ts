@@ -3,17 +3,8 @@ import { join } from "node:path";
 import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
-import type { Executor } from "../../infra/k8s/executor";
-import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
-import { parsePodChoices, promptPod } from "../../infra/k8s/pod-selection";
-import { listServiceChoices, type ServiceChoice } from "../../infra/k8s/service-selection";
-import {
-  recentSelectionsForInteractive,
-  resolveKubernetesRecentScope,
-  type RecentSelections,
-} from "../../infra/recent";
+import type { ServiceChoice } from "../../infra/k8s/service-selection";
 import { promptNamedChoices } from "../../terminal/service-selection";
-import { terminalStdout } from "../../terminal/output";
 import {
   type CollectDataCliOpts,
   type DataConfig,
@@ -58,114 +49,35 @@ export function parseDataServices(raw: string | undefined, catalog: ServiceCatal
   return services;
 }
 
-export function parseDataPodAssignments(raw: string | undefined): Record<string, string> {
-  if (!raw?.trim()) return {};
-  const assignments: Record<string, string> = {};
-  for (const item of raw.split(",")) {
-    const index = item.indexOf("=");
-    const service = item.slice(0, index).trim();
-    const pod = item.slice(index + 1).trim();
-    if (index <= 0 || !service || !pod) {
-      throw new Error(`--pods 只支持 service=pod 形式: '${item.trim()}'`);
-    }
-    if (assignments[service]) throw new Error(`--pods 重复指定 Service '${service}'`);
-    assignments[service] = pod;
-  }
-  return assignments;
-}
-
 export interface DataServiceSelectionInput {
   config: DataConfig;
   catalog: ServiceCatalog;
-  executor: Executor;
   interactive?: boolean;
-  recent?: RecentSelections;
   promptServices?: (
     choices: readonly ServiceChoice[],
     defaults: readonly string[],
   ) => Promise<string[] | undefined>;
-  promptPod?: typeof promptPod;
 }
 
-/** Service 先多选；每个 Service 的 Pod 由 selector 候选确认，多候选不静默选择。 */
+/** Core 只选择 capability provider；Service 是否可用以及如何访问由 Plugin 判断。 */
 export async function resolveDataServiceSelection(
   input: DataServiceSelectionInput,
 ): Promise<DataServiceSelection[] | undefined> {
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
-  const recent = recentSelectionsForInteractive(input.interactive, input.recent);
-  const recentScope = resolveKubernetesRecentScope(input.config.kube);
-  let selectedInteractively = false;
   let services = input.config.services;
   if (!input.config.services.length) {
     services = input.catalog.servicesWith("data").map((service) => service.name);
   }
   if (interactive && !input.config.servicesExplicit) {
-    const listed = (await listServiceChoices(input.executor, input.config.namespace))
-      .filter((choice) => input.catalog.findWith(choice.name, "data"));
-    const choices = recent
-      ? recent.rankServices(recentScope, input.config.namespace, listed)
-      : listed;
+    const choices = input.catalog.servicesWith("data").map((service) => ({ name: service.name }));
     if (!choices.length) {
-      throw new Error(`namespace '${input.config.namespace}' 中没有已注册数据库检查能力的 Service`);
+      throw new Error("当前 Plugin 未声明 data capability");
     }
     const selected = await (input.promptServices ?? promptNamedChoices)(choices, services);
     if (!selected) return undefined;
     services = selected;
-    selectedInteractively = true;
   }
-
-  const podAccess = new KubectlPodLogAccess(input.executor, input.config.namespace);
-  const listed = await podAccess.listServicePods(services);
-  if (!listed.serviceCapture.ok || !listed.podCapture.ok || listed.parseError) {
-    const reason = listed.parseError
-      ?? (!listed.serviceCapture.ok ? listed.serviceCapture.stderr : listed.podCapture.stderr).trim();
-    throw new Error(`读取 Service/Pod 候选失败：${reason || "unknown error"}`);
-  }
-  const podChoices = parsePodChoices(listed.podCapture.stdout);
-  const selections: DataServiceSelection[] = [];
-  for (const service of services) {
-    const names = listed.byService[service] ?? [];
-    const listedChoices = podChoices.filter((pod) => names.includes(pod.name));
-    const choices = recent
-      ? recent.rankPods(recentScope, input.config.namespace, listedChoices, service)
-      : listedChoices;
-    const assigned = input.config.podAssignments[service];
-    if (assigned) {
-      if (!names.includes(assigned)) {
-        throw new Error(`Service '${service}' 的 Running Pod 中不存在 '${assigned}'`);
-      }
-      selections.push({ service, pod: assigned });
-      continue;
-    }
-    if (choices.length === 0) {
-      selections.push({ service });
-      continue;
-    }
-    if (choices.length === 1) {
-      terminalStdout.write(`[collect] ${service} pod: ${choices[0]!.name}（唯一 Running Pod，自动选择）\n`);
-      selections.push({ service, pod: choices[0]!.name });
-      continue;
-    }
-    if (!interactive) {
-      throw new Error(
-        `Service '${service}' 有 ${choices.length} 个 Running Pod；当前为非交互终端，请用 --pods ${service}=<pod> 指定`,
-      );
-    }
-    const selected = await (input.promptPod ?? promptPod)(choices);
-    if (!selected) return undefined;
-    selections.push({ service, pod: selected });
-    selectedInteractively = true;
-  }
-  if (selectedInteractively) {
-    for (const selection of selections) {
-      recent?.recordKubernetesTarget(recentScope, {
-        namespace: input.config.namespace,
-        service: selection.service,
-        pod: selection.pod,
-      });
-    }
-  }
-  return selections;
+  return services.map((service) => ({ service }));
 }
 
 export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCatalog): DataConfig {
@@ -184,7 +96,6 @@ export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCata
   const kubeconfig = resolveCollectKubeconfig(opts);
   const namespace = resolveCollectNamespace(opts);
   const services = parseDataServices(opts.services, catalog);
-  const podAssignments = parseDataPodAssignments(opts.pods);
   return {
     ids,
     format,
@@ -196,7 +107,6 @@ export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCata
     namespaceSource: namespace.source,
     services,
     servicesExplicit: opts.services !== undefined,
-    podAssignments,
     kube: {
       namespace: namespace.namespace,
       kubeconfig: kubeconfig.kubeconfig,

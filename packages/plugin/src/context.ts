@@ -17,10 +17,6 @@ export interface PluginContext {
   service: {
     name: string;
     port?: number;
-    pod?: string;
-    container?: string;
-    /** Doctor 已取得的当前 Service 环境；Plugin 也可忽略它并自行访问 Kubernetes。 */
-    environment?: Readonly<Record<string, string>>;
   };
   signal: AbortSignal;
   portForward(target: HttpServiceTarget): Promise<HttpServiceTarget & { servername?: string }>;

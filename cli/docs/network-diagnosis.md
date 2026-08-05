@@ -217,7 +217,7 @@ Header 拼进 BPF 会产生随机漏包。正确模型是：
 分析器假装解密成功。
 
 因此实现前必须在目标环境确认各跳的 HTTP 版本、TLS 终止位置、压缩方式和染色/trace Header 传播情况。
-这些是现场能力事实，进入 manifest 与 Coverage，不固化为 AS 链路永远明文的假设。
+这些是现场能力事实，进入 manifest 与 Coverage，不固化为业务链路永远明文的假设。
 
 ### 499 不一定存在于 PCAP 的 HTTP 响应中
 

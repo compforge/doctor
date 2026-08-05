@@ -90,6 +90,8 @@ preferred 被拒绝时进入手动输入或低能力降级；`kubectl auth can-i
 描述目标是什么、业务数据在哪里以及数据语义。Core command 不依赖 Plugin；Plugin command 始终注册，
 但在创建 `CommandContext` 和访问 Kubernetes 前先验证当前 profile 已选择 Plugin 且具备 required
 capability，缺失时直接说明具体 capability。preferred capability 缺失只触发声明过的降级路径。
+命令应声明自己真正消费的最窄业务契约：例如 `doctor trace` 和 `doctor log` 消费规范 `trace_id`，因此
+依赖 `service.traceId`，而不是借用宽泛的 `service.data` 或在 OpenSearch 中猜测业务 ID 语义。
 
 ```text
 Command requirements
@@ -100,6 +102,27 @@ Command requirements
 
 访问检查按实际阶段惰性发生，不能以命令可能使用的最大权限提前阻断低能力路径。例如 `doctor debug` 已有
 可复用 debug container 时不需要 `update pods/ephemeralcontainers`；只有确实需要注入时才检查该权限。
+
+### 业务型、基础设施型与混合型命令
+
+Collect command 按诊断算法和数据语义的所有者分为三类。这个分类用于判断 Core 与 Plugin 的职责，
+不是目录拆分规则；同一个命令可以先消费业务 capability，再进入标准基础设施诊断。
+
+| 类型 | 典型命令 | Plugin 负责 | CLI Core 负责 |
+|---|---|---|---|
+| 业务型 | `data` | 定位业务 Service，自行访问 Kubernetes/HTTP/DB，执行固定业务查询并返回约定结果 | 触发 capability，编排 Evidence、Detector/Coverage 和展示 |
+| 基础设施型 | `store`、`mem`、`net` | 按需贡献目标身份、连接配置或默认选择，不实现通用基础设施诊断 | 执行标准探测与分析，控制风险、资源生命周期和证据交付 |
+| 混合型 | `trace`、`log`、`config`、`model`、`mcp` | 处理业务入口、私有 schema 和目标投影 | 消费规范目标后执行通用采集、协议分析和报告 |
+
+Kubernetes 的分工遵循同一所有权：Core 注入当前 profile 选定的 kubeconfig、context、namespace、Service
+身份，并提供 port-forward 等需要统一回收的便利能力；Plugin 是同进程受信任代码，可以自行定位 Pod、
+读取运行时配置和访问其它资源。Core 不预先读取 selector、Pod、container 或 env 再回传给 Plugin。
+只有 Kubernetes 操作本身属于 Core command 时，例如 `log` 读取 Pod 日志、`mem` 操作目标进程，Core 才
+负责定位和操作对应 Target，并声明实际需要的 access contract。
+
+混合型命令按阶段保持边界。例如 `trace` 先由 Plugin 把业务 ID 解析为规范 `trace_id` 并贡献
+OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`config` 的 Deployment env 由 Core
+采集，租户配置等业务数据由 Plugin 取得。`collect` 不因上述分类拆成 `biz/infra` 两套框架。
 
 ## Collect 共享协议
 

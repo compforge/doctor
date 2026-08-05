@@ -14,8 +14,8 @@
 1. app 注入当前 `PluginDefinition`；配置确认从 Catalog 中具备 config capability 的 Service 与当前 Namespace 实际 Service 求交集，并按需选择租户。
 2. `config-targets` Inspect 一次读取 Namespace 中的 Service、Deployment 和 ConfigMap。Service selector 定位对应 Deployment，再以 Service port 或同名规则定位业务 Container。
 3. Env Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。
-4. 指定租户时，Doctor 把配置 Service 的 Env 放进 `PluginContext`；Plugin 自己解析数据源、建立有界连接
-   并读取声明的 scope。
+4. 指定租户时，Doctor 把当前 Kubernetes 环境和配置 Service 身份放进 `PluginContext`；Plugin 自行
+   定位运行实例、解析数据源、建立有界连接并读取声明的 scope。
 5. Evidence 以配置名归并两类 Observation；HTML 和 Markdown 都输出 `name | Env | Tenant config` 一张表，
    Tenant config 单元格内标明 scope。HTML 表支持按 name 检索。
 6. 必需证据不完整时统一交付 Evidence Bundle；Kubernetes 原始响应不落盘，报告只保存归并后的配置结果。

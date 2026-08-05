@@ -103,7 +103,7 @@ tag 只能说明几条请求“有关”，表达不了哪些字段应该相同�
 
 每次响应都会记录 body SHA-256，便于人工核对；只有显式设置 `compare.body: exact` 时，SHA-256 不同才形成 Finding。默认 `none` 是因为 response 常包含动态 ID、时间戳和 token，逐字节变化不能自动解释为链路异常。`compare.sse_events` 默认开启，只比较 event 序列，不比较 SSE payload 正文。
 
-SSE 的 framing 与时间线分析位于 `collect/shared/http`，因此普通 HTTP 响应仍走原有 status/body 路径，`text/event-stream` 响应则额外获得通用流指标。shared 层不解释 OpenAI token、AS UI Event 等业务语义；调用方可基于同一 frame 观测继续做领域分析。
+SSE 的 framing 与时间线分析位于 `collect/shared/http`，因此普通 HTTP 响应仍走原有 status/body 路径，`text/event-stream` 响应则额外获得通用流指标。shared 层不解释 OpenAI token、业务 UI Event 等领域语义；调用方可基于同一 frame 观测继续做领域分析。
 
 ### 为什么区分采集完整与请求成功
 

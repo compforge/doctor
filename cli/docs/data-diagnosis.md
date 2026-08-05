@@ -12,14 +12,17 @@ data capability 的两个角色彼此独立：
 - expander：可选通过 `expands` 声明能解析的规范 ID 类型。一个 Service 可以同时是 expander 和
   provider，扩展出的 ID 也可以继续交给后续 Service 使用。
 
+这里的 expansion 只服务 `doctor data` 的多 Service 数据汇集，不是其它命令的隐式通用依赖。需要规范
+`trace_id` 的 `doctor trace` 和 `doctor log` 使用更窄的 `service.traceId` capability。
+
 具体 Plugin capability 自己解释 Service 环境、建立数据库访问并执行固定查询；Catalog 的 data 契约
 只回答“能贡献什么业务数据”，不会把 Database client 或业务连接规则注入 Plugin。
 
 ## 流程
 
-1. 对命令行传入的一个或多个 biz ID 去重，并选择本次参与的数据 Service 和 Running Pod。
-2. Doctor 为每个 Service 准备 `PluginContext`，注入选中的 kubeconfig、Namespace、Service/Pod、已取得的
-   Service 环境和按需 port-forward。Plugin 解释自身配置并返回脱敏的数据源状态。
+1. 对命令行传入的一个或多个 biz ID 去重，并从 Catalog 选择本次参与的数据 Service。
+2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
+   按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 按 Catalog 顺序串行执行全部带 `expands` 的 capability。第一个接收原始 ID；后续 expander 同时接收
    此前解析出的 ID，因此可逐层扩展。扩展时取得的数据结果同时作为该 Service 的 provider 贡献。
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
@@ -51,7 +54,7 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 
 ### 访问准备与业务查询分开
 
-Doctor 只确认当前环境和 Service 位置，并托管 port-forward 生命周期；Plugin 决定如何解释配置、使用哪套
+Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命周期；Plugin 决定如何定位运行实例、解释配置、使用哪套
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
 连接凭据只存在于本轮执行态；Facts、Observations 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
 凭据来源。

@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { SpecSet } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
+import { resolveWorkingProfileName } from "../../app/profile";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -29,7 +30,7 @@ import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
-import { resolveDataIdentifier } from "../data/identifier";
+import { resolvePluginTraceId } from "../../plugin/trace-id";
 import { resolveStoreProviderConfig } from "../store/config";
 import { confirmVdbTarget } from "../store/vdb/configuration";
 import {
@@ -45,7 +46,7 @@ export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
 
 export interface CollectTraceCliOpts {
-  /** 由 Plugin data capability 解析为 trace_id 的业务 ID。 */
+  /** 由 Plugin traceId capability 解析为 trace_id 的业务 ID。 */
   bizId: string;
   namespace?: string;
   service?: string;
@@ -73,7 +74,7 @@ interface TraceKubernetesRuntime {
 async function prepareTraceKubernetes(
   opts: CollectTraceCliOpts,
   commandContext: CommandContext | undefined,
-  plugin: PluginDefinition | undefined,
+  needsOpenSearchKubernetes: boolean,
 ): Promise<TraceKubernetesRuntime | undefined> {
   const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!collect) return undefined;
@@ -89,40 +90,39 @@ async function prepareTraceKubernetes(
   const executor = createKubernetesExecutor(collect);
   await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor trace",
-    needs: [
+    needs: needsOpenSearchKubernetes ? [
       {
         requirement: "required",
         rule: { verb: "list", resource: "services" },
-        purpose: "定位业务配置来源与 OpenSearch Service",
+        purpose: "定位 OpenSearch 配置来源 Service",
       },
       {
         requirement: "required",
         rule: { verb: "list", resource: "pods" },
-        purpose: "定位业务配置来源与 backend Pod",
+        purpose: "定位 OpenSearch 配置来源 Pod",
       },
-      ...(plugin
-        ? [{
-            requirement: "preferred" as const,
-            rule: { verb: "get", resource: "configmaps" },
-            purpose: "读取 OpenSearch 与业务 ID 数据源配置",
-            fallback: "回退读取 Container 运行时配置",
-          }, {
-            requirement: "preferred" as const,
-            rule: { verb: "get", resource: "secrets" },
-            purpose: "读取 OpenSearch 与业务 ID 数据源凭据",
-            fallback: "回退读取 Container 运行时配置",
-          }, {
-            requirement: "required" as const,
-            rule: { verb: "create", resource: "pods/exec" },
-            purpose: "读取业务 ID expander 的 Service 运行时配置",
-          }]
-        : []),
+      {
+        requirement: "preferred",
+        rule: { verb: "get", resource: "configmaps" },
+        purpose: "读取 OpenSearch 配置",
+        fallback: "回退读取 Container 运行时配置",
+      }, {
+        requirement: "preferred",
+        rule: { verb: "get", resource: "secrets" },
+        purpose: "读取 OpenSearch 凭据",
+        fallback: "回退读取 Container 运行时配置",
+      }, {
+        requirement: "preferred",
+        rule: { verb: "create", resource: "pods/exec" },
+        purpose: "声明配置不足时读取 Container 运行时 env",
+        fallback: "配置不足时回退自动发现 OpenSearch",
+      },
       {
         requirement: "required",
         rule: { verb: "create", resource: "pods/portforward" },
-        purpose: "访问业务 ID 数据源与集群内 OpenSearch",
+        purpose: "访问集群内 OpenSearch",
       },
-    ],
+    ] : [],
   });
   return { collect, executor };
 }
@@ -161,8 +161,8 @@ function safeOpenSearchEndpoint(value: string | undefined): string | undefined {
 /** commander action 入口：参数校验 + 组装通道，核心流程在 collectTrace（可注入 SearchEngine 测试） */
 export async function runCollectTrace(
   opts: CollectTraceCliOpts,
+  plugin: PluginDefinition,
   commandContext?: CommandContext,
-  plugin?: PluginDefinition,
 ): Promise<number> {
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
@@ -178,50 +178,44 @@ export async function runCollectTrace(
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
   let runtime: TraceKubernetesRuntime | undefined;
-  if (plugin || !endpoint) {
-    try {
-      runtime = await prepareTraceKubernetes(opts, commandContext, plugin);
-    } catch (err) {
-      terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-      return 2;
-    }
-    if (!runtime) {
-      terminalStderr.warning("[collect] 已取消\n");
-      return 130;
-    }
+  try {
+    runtime = await prepareTraceKubernetes(opts, commandContext, !endpoint);
+  } catch (err) {
+    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
+  }
+  if (!runtime) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
   }
 
-  let traceId = opts.bizId;
-  if (plugin && runtime) {
-    try {
-      const resolved = await resolveDataIdentifier({
-        inputId: opts.bizId,
-        identifier: "trace_id",
-        namespace: runtime.collect.kubernetes.namespace,
-        kubeconfig: runtime.collect.kubernetes.kubeconfig,
-        context: runtime.collect.kubernetes.context,
-        profile: opts.profile,
-        config: opts.config,
-      }, plugin, runtime.executor);
-      if (!resolved) {
-        terminalStderr.warning("[collect] 已取消\n");
-        return 130;
-      }
-      traceId = resolved.value;
-      terminalStdout.write(
-        `[collect] biz-id: ${opts.bizId} → trace-id: ${traceId}`
-        + `（${resolved.service} 按 ${resolved.resolvedAs} 解析）\n`,
-      );
-    } catch (err) {
-      terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-      return 2;
-    }
+  let trace;
+  try {
+    trace = await resolvePluginTraceId({
+      bizId: opts.bizId,
+      namespace: runtime.collect.kubernetes.namespace,
+      kubeconfig: runtime.collect.kubernetes.kubeconfig,
+      context: runtime.collect.kubernetes.context,
+      profileName: resolveWorkingProfileName(opts),
+    }, plugin, runtime.executor);
+  } catch (err) {
+    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    return 2;
   }
+  if (!trace) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
+  }
+  const traceId = trace.traceId;
+  terminalStdout.write(
+    `[collect] biz-id: ${opts.bizId} → trace-id: ${traceId}`
+    + `（${trace.service} 按 ${trace.resolvedAs} 解析）\n`,
+  );
 
   let configuredEndpoint: string | undefined;
   let configuredAuth: OpenSearchAuth = {};
-  const openSearchStore = plugin?.traceDiagnosis?.openSearchStore;
-  if (!endpoint && runtime && plugin && openSearchStore) {
+  const openSearchStore = plugin.traceDiagnosis?.openSearchStore;
+  if (!endpoint && openSearchStore) {
     try {
       const resolvedStore = await resolveStoreProviderConfig({
         type: "vdb",
@@ -292,7 +286,7 @@ export async function runCollectTrace(
     : undefined;
   const code = await collectTrace(
     {
-      id: traceId,
+      traceId,
       bizId: opts.bizId,
       index: buildIndexExpr(opts.index, opts.indexDate),
       auth: explicitAuth.username ? explicitAuth : configuredAuth,
@@ -302,9 +296,13 @@ export async function runCollectTrace(
       kube,
       pageSize,
       outputDir: staging,
-      specs: plugin?.traceDiagnosis
+      specs: plugin.traceDiagnosis
         ? mergeSpecs(plugin.traceDiagnosis.specs, genAiSpecs())
         : genAiSpecs(),
+      traceIdResolution: {
+        service: trace.service,
+        resolvedAs: trace.resolvedAs,
+      },
     },
     (line, tone) => {
       if (tone === "warning") terminalStdout.warning(`${line}\n`);
@@ -340,9 +338,13 @@ export async function runCollectTrace(
 }
 
 export interface TraceCollectOptions {
-  /** 已由 Plugin data capability 解析的 trace_id；无 Plugin 时也允许按 span tag 兜底解析。 */
-  id: string;
-  bizId?: string;
+  /** 已由 Plugin traceId capability 解析的规范 trace_id。 */
+  traceId: string;
+  bizId: string;
+  traceIdResolution: {
+    service: string;
+    resolvedAs: string;
+  };
   index: string;
   auth: OpenSearchAuth;
   /** Doctor Host 直连地址（--endpoint / DOCTOR_OPENSEARCH_URL）；给了就不走 kubectl。 */
@@ -357,17 +359,18 @@ export interface TraceCollectOptions {
 }
 
 /**
- * 本次采集打算拿到的证据（检验项）。判据是**有前置条件**——OpenSearch 通不通、id 解析
- * 得出来没、有没有 span，这些都可能让下游拿不到东西。通道相关的 channel /
+ * 本次采集打算拿到的证据（检验项）。Plugin 是否解析出 trace_id 在进入本函数前已确认；
+ * 这里记录解析结果，并检查 OpenSearch 是否可达、目标 trace 是否有 span。
+ * 通道相关的 channel /
  * svc-discovery / port-forward / probe-scheme 是**工序**（怎么够到 OpenSearch），走
  * addStep 追加。
  *
- * 预印在这里，是为了让"没做"和"没记"长得不一样：以前六条早退路径（svc 定位失败、
- * port-forward 起不来、OpenSearch 不可达、id 解析失败、id 未命中、span 数为 0）
+ * 预印在这里，是为了让"没做"和"没记"长得不一样：早退路径（svc 定位失败、
+ * port-forward 起不来、OpenSearch 不可达、count 失败、span 数为 0）
  * 都只写 summary.md，manifest 里下游几行直接消失——而 manifest 才是机器消费的那份。
  */
 const TRACE_OUTCOMES: readonly OutcomeDecl[] = [
-  { id: "resolve-id", title: "trace_id 有效性确认", risk: "observe" },
+  { id: "resolve-id", title: "业务 ID 到 trace_id 的 Plugin 解析", risk: "observe" },
   { id: "count", title: "span 总数查询", risk: "observe" },
   { id: "download", title: "span 全量下载", risk: "observe" },
   { id: "render-html", title: "交互 node tree HTML", risk: "observe" },
@@ -384,14 +387,13 @@ export async function collectTrace(
   let search: SearchEngine | undefined;
   let channel = "";
   let confirmedTarget: Record<string, unknown> = {};
-  // 输入 id 可能不是 trace_id，解析成功后回填；失败时 manifest 里 trace_id 缺省为空
-  let traceId = "";
+  const traceId = opts.traceId;
 
   const finish = async (code: number, target: Record<string, unknown> = {}) => {
     await preparation?.close();
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
-      target: { input_id: opts.bizId ?? opts.id, trace_id: traceId, index: opts.index, ...target },
+      target: { input_id: opts.bizId, trace_id: traceId, index: opts.index, ...target },
       inspectionFacts: {},
       params: {
         index: opts.index,
@@ -415,6 +417,17 @@ export async function collectTrace(
     // manifest.json（给机器看）里下游几行就凭空消失了。
     bundle.settle(`${title}：${reason}`);
   };
+
+  bundle.fill("resolve-id", {
+    status: "ok",
+    output: JSON.stringify({
+      biz_id: opts.bizId,
+      trace_id: traceId,
+      service: opts.traceIdResolution.service,
+      resolved_as: opts.traceIdResolution.resolvedAs,
+    }),
+    ext: "json",
+  });
 
   if (!opts.auth.username) {
     log("[collect] 未提供 OpenSearch 凭据（--username/--password 或 DOCTOR_OPENSEARCH_USERNAME/PASSWORD），按匿名访问尝试");
@@ -451,12 +464,11 @@ export async function collectTrace(
   const baseUrl = preparation.baseUrl;
 
   const probe = await probeTrace(search, {
-    inputId: opts.id,
+    traceId,
     index: opts.index,
     pageSize: opts.pageSize,
     outputDir: opts.outputDir,
   }, bundle, log);
-  traceId = probe.traceId ?? "";
   if (!probe.ok) {
     failSummary(probe.title, probe.reason);
     return finish(1);
@@ -492,8 +504,8 @@ export async function collectTrace(
   bundle.writeSummary(
     buildTraceSummary({
       traceId,
-      inputId: opts.bizId ?? opts.id,
-      resolvedAs: probe.resolved.resolvedAs,
+      inputId: opts.bizId,
+      resolvedAs: opts.traceIdResolution.resolvedAs,
       index: opts.index,
       channel,
       count: probe.count,

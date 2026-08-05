@@ -7,15 +7,11 @@ import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runDiagnosis } from "../engine";
-import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
-import {
-  enforceKubernetesAccess,
-  requireKubernetesChannel,
-} from "../../terminal/kubernetes-access";
+import { requireKubernetesChannel } from "../../terminal/kubernetes-access";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { resolveDataConfig, resolveDataServiceSelection } from "./config";
@@ -33,7 +29,6 @@ import { buildDataHtml, buildDataSummary } from "./render";
 
 export * from "./config";
 export * from "./detector";
-export * from "./identifier";
 export * from "./model";
 export * from "./probe";
 
@@ -82,29 +77,9 @@ export async function runCollectData(
       commandContext,
     });
   }
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
-    command: "doctor data",
-    needs: [{
-      requirement: "required",
-      rule: { verb: "list", resource: "services" },
-      purpose: "解析具备 data capability 的 Service",
-    }, {
-      requirement: "required",
-      rule: { verb: "list", resource: "pods" },
-      purpose: "选择 Service 的 Running Pod",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/exec" },
-      purpose: "读取 Service Container 的数据源运行时配置",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "从 Doctor Host 访问集群内数据库",
-    }],
-  });
   let selections;
   try {
-    selections = await resolveDataServiceSelection({ config, catalog: plugin.services, executor });
+    selections = await resolveDataServiceSelection({ config, catalog: plugin.services });
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -138,7 +113,7 @@ export async function runCollectData(
     target: {
       namespace: config.namespace,
       input_ids: config.ids,
-      services: selections.map((item) => ({ service: item.service, pod: item.pod ?? null })),
+      services: selections.map((item) => item.service),
     },
     inspectionFacts: { services: facts.services },
     params: {
@@ -150,7 +125,6 @@ export async function runCollectData(
           expands: capability.expands ?? [],
         }];
       })),
-      pods: Object.fromEntries(selections.map((item) => [item.service, item.pod ?? null])),
       output_format: config.format,
     },
     startedAt,
@@ -182,7 +156,6 @@ export async function runCollectData(
       executor,
       config,
       selections,
-      bundle,
       plugin.services,
       injectedContexts,
     );

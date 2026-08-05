@@ -33,7 +33,7 @@ export function modelPerformanceObservationId(caseId: string, round: number): st
 }
 
 function logicalUrl(model: SelectedInferenceModel): string {
-  return `${model.metaData.apiBase.replace(/\/+$/, "")}/chat/completions`;
+  return `${model.inference.baseUrl.replace(/\/+$/, "")}/chat/completions`;
 }
 
 function requestPlan(
