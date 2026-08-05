@@ -22,7 +22,6 @@ export interface CollectDataCliOpts {
   format?: string;
   output?: string;
   services?: string;
-  pods?: string;
 }
 
 export interface DataConfig {
@@ -36,18 +35,15 @@ export interface DataConfig {
   namespaceSource: string;
   services: string[];
   servicesExplicit: boolean;
-  podAssignments: Record<string, string>;
   kube: KubectlOptions & { namespace: string };
 }
 
 export interface DataServiceSelection {
   service: string;
-  pod?: string;
 }
 
 export interface DataTargetFact {
   service: string;
-  pod: string;
   endpoint: string;
   database: string;
   username: string;
@@ -67,7 +63,6 @@ export interface DataObservation extends ObservationMeta {
   kind: "service-data-inspection";
   stage: "expand" | "provide";
   service: string;
-  pod: string;
   result: ServiceDataResult;
   summary: ServiceDataSummary;
 }

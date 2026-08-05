@@ -33,7 +33,7 @@ export interface McpFacts {
   runtimeTools: readonly string[];
   runtimeToolsError?: string;
   gatewayPods: readonly string[];
-  httpPlan: McpHttpRequestPlan;
+  httpPlan?: McpHttpRequestPlan;
   httpCurl?: string;
 }
 

@@ -1,7 +1,8 @@
-# CompForge Doctor CLI
+# Doctor CLI
 
-Doctor 是面向私有 Kubernetes 环境的诊断客户端。直接运行 `doctor` 查看能力索引，使用
-`doctor <command> --help` 查看某条命令的参数。业务相关命令由外部 Plugin 的 capability 决定是否出现。
+Doctor 是面向应用与基础设施的诊断客户端。直接运行 `doctor` 查看能力索引，使用
+`doctor <command> --help` 查看某条命令的参数。Plugin 命令始终可见；当前 Plugin 缺少 required
+capability 时，CLI 会在访问环境前说明具体缺口。
 
 ## 本地构建
 
@@ -47,7 +48,7 @@ make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
 | `doctor install` | 交互选择并向目标 Pod container 安装程序；首版支持 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor trace` | 从 OpenSearch 下载 trace 并生成逻辑节点树 / 火焰图 HTML；bundle 模式保留原始 span |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
-| `doctor log --biz-id <id>` | 通过 Plugin data capability 解析 trace ID，再聚合服务日志 |
+| `doctor log --biz-id <id>` | 通过 Plugin traceId capability 解析 trace ID，再聚合服务日志 |
 | `doctor data <biz-id...>` | 先扩展业务 ID，再按 Service Catalog 汇集各服务声明的数据 |
 | `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |

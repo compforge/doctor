@@ -3,7 +3,6 @@ import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { McpConfigStorage } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { McpClient } from "../../infra/mcp";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
@@ -22,11 +21,11 @@ import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveApprovalGate } from "../../terminal/approval";
+import { createPluginContext } from "../../plugin/context";
 import { resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
 import { buildMcpEvidence, type McpDiagnosis, type McpFacts } from "./model";
 import { parseMcpOutputFormat, resolveMcpOutputPath } from "./output";
-import { McpCollectionPreparation } from "./preparation";
 import { mcpProbes } from "./probe";
 import { buildMcpReportHtml, renderMcpSummary } from "./render";
 
@@ -48,7 +47,7 @@ export interface CollectMcpCliOptions {
 }
 
 const MCP_OUTCOMES: readonly OutcomeDecl[] = [
-  { id: "mcp-config", title: "Config Storage 全量 MCP 配置", risk: "observe" },
+  { id: "mcp-config", title: "Plugin MCP 配置投影", risk: "observe" },
   { id: "mcp-tools", title: "MCP tools/list 真实响应", risk: "observe" },
   { id: "mcp-response", title: "MCP tools/call 真实响应", risk: "disrupt" },
   { id: "http-curl", title: "映射 HTTP 请求的复现 cURL", risk: "observe" },
@@ -121,12 +120,8 @@ export async function runCollectMcp(
     command: "doctor mcp",
     needs: [{
       requirement: "required",
-      rule: { verb: "get", resource: "configmaps", resourceName: gatewayService },
-      purpose: "读取 MCP Config Storage 配置",
-    }, {
-      requirement: "required",
       rule: { verb: "list", resource: "services" },
-      purpose: "解析 MCP gateway 与 Config Storage Service",
+      purpose: "解析 MCP gateway Service",
     }, {
       requirement: "required",
       rule: { verb: "list", resource: "pods" },
@@ -138,7 +133,7 @@ export async function runCollectMcp(
     }, {
       requirement: "preferred",
       rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "从 Doctor Host 访问集群内 MCP/Config Storage endpoint",
+      purpose: "从 Doctor Host 访问 Plugin 配置源与 MCP endpoint",
       fallback: "仅当配置 endpoint 可由 Doctor Host 直连时可继续",
     }],
   });
@@ -155,8 +150,15 @@ export async function runCollectMcp(
     writeFileSync(join(staging, name), content, "utf-8");
     return name;
   };
-  let preparation: McpCollectionPreparation | undefined;
-  let configStorage: McpConfigStorage | undefined;
+  const pluginContext = createPluginContext(executor, {
+    namespace: collect.kubernetes.namespace,
+    kubeconfig: collect.kubernetes.kubeconfig,
+    context: collect.kubernetes.context,
+  }, {
+    profileName: collect.profileName,
+    service: { name: gatewayService, port: capability.endpoint.port },
+  });
+  let configSourceKind: string | undefined;
   let facts: McpFacts | undefined;
   let diagnosis: McpDiagnosis | undefined;
   let failureReason: string | undefined;
@@ -164,7 +166,13 @@ export async function runCollectMcp(
 
   const finish = async (forcedCode?: number) => {
     await client?.close();
-    preparation?.close();
+    try {
+      await pluginContext.dispose();
+    } catch (error) {
+      terminalStderr.warning(
+        `[mcp] Plugin context 清理失败：${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
     bundle.writeSummary(
       diagnosis
         ? renderMcpSummary(diagnosis)
@@ -190,8 +198,7 @@ export async function runCollectMcp(
       params: {
         kubeconfig_source: collect.kubernetes.kubeconfigSource,
         gateway_service: gatewayService,
-        config_storage_type: configStorage?.type,
-        config_storage_api_url: configStorage?.url,
+        config_source_kind: configSourceKind,
         timeout_seconds: timeoutMs / 1000,
         output_format: format,
         argument_names: facts?.target.argumentNames ?? [],
@@ -266,12 +273,10 @@ export async function runCollectMcp(
   };
 
   try {
-    preparation = await McpCollectionPreparation.create(executor, collect);
     const resolved = await resolveMcpConfiguration({
-      collect,
-      executor,
+      namespace: collect.kubernetes.namespace,
       podLogs,
-      preparation,
+      pluginContext,
       bundle,
       selection: opts,
       gatewayService,
@@ -282,7 +287,7 @@ export async function runCollectMcp(
       writeArtifact,
     });
     if (!resolved) return await finish(130);
-    ({ configStorage, facts, client } = resolved);
+    ({ configSourceKind, facts, client } = resolved);
 
     diagnosis = await runDiagnosis({
       ctx: {

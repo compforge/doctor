@@ -13,7 +13,6 @@ function observationRows(observations: readonly DataObservation[], identifiers: 
   return observations.map((item) => [
     item.service,
     item.stage,
-    item.pod,
     item.summary.resolvedAs,
     ...identifiers.map((name) => value(item.summary.identifiers[name])),
   ]);
@@ -21,7 +20,7 @@ function observationRows(observations: readonly DataObservation[], identifiers: 
 
 export function buildDataSummary(diagnosis: DataDiagnosis): string {
   const identifiers = identifierNames(diagnosis.evidence.observations);
-  const columns = ["service", "stage", "pod", "resolved as", ...identifiers];
+  const columns = ["service", "stage", "resolved as", ...identifiers];
   const rows = observationRows(diagnosis.evidence.observations, identifiers);
   const coverage = diagnosis.coverage[0];
   return [
@@ -50,7 +49,7 @@ export function buildDataHtml(diagnosis: DataDiagnosis): string {
   return [
     htmlHeading(1, "业务数据汇集诊断"),
     htmlTable(
-      ["service", "stage", "pod", "resolved as", ...identifiers],
+      ["service", "stage", "resolved as", ...identifiers],
       observationRows(diagnosis.evidence.observations, identifiers),
     ),
     htmlHeading(2, "Findings"),

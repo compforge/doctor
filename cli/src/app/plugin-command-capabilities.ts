@@ -2,6 +2,14 @@ import type { PluginCapabilityContract } from "../command";
 
 /** Plugin command 在接触环境前声明的静态业务能力；依赖 flags 的条件能力由对应 command 延迟检查。 */
 export const PLUGIN_COMMAND_CAPABILITIES = {
+  trace: {
+    command: "doctor trace",
+    needs: [{
+      requirement: "required",
+      capability: { scope: "service", name: "traceId" },
+      purpose: "把业务 ID 解析为规范 trace_id",
+    }],
+  },
   store: {
     command: "doctor store",
     needs: [{
@@ -18,8 +26,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "声明需要采集日志的业务 Service",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "data" },
-      purpose: "把业务 ID 解析为 trace_id",
+      capability: { scope: "service", name: "traceId" },
+      purpose: "把业务 ID 解析为规范 trace_id",
     }],
   },
   data: {
@@ -47,12 +55,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor model",
     needs: [{
       requirement: "required",
-      capability: { scope: "plugin", name: "tenantConfiguration" },
-      purpose: "声明模型诊断使用的租户上下文",
-    }, {
-      requirement: "required",
       capability: { scope: "plugin", name: "modelDiagnosis" },
-      purpose: "声明模型目录和推理服务",
+      purpose: "声明租户目录、模型目录和推理服务",
     }, {
       requirement: "required",
       capability: { scope: "service", name: "tenantDirectory" },

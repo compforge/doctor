@@ -3,7 +3,7 @@
 ## 项目定位与边界
 
 Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标、准备受控能力、采集事实、执行规则并
-交付 Evidence/报告；具体 Service、拓扑、查询和判读规则由外部 Plugin 提供。
+交付 Evidence/报告；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
@@ -32,7 +32,8 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
    Evidence，不能演变成隐藏式发布、环境创建或工具安装。
 3. **Collect 单向且可复查**：Inspect 形成 Facts，Probe 产生 Observations，再进入 Detector/Coverage 和
    Render；Detector/Render 不访问外部资源。
-4. **分层不穿透**：业务语义归外部 Plugin，公共契约归 `packages/plugin`；具体 Plugin 不能反向依赖 CLI。
+4. **分层不穿透**：业务目标与私有语义归外部 Plugin，标准基础设施采集与分析归 CLI Core，公共契约归
+   `packages/plugin`；具体 Plugin 不能反向依赖 CLI。
 5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 capability；collect 再结合现场环境判断本次
    是否可用。
 

@@ -3,8 +3,8 @@
 ## 理念 / 概念
 
 `doctor trace` 从 SearchEngine 下载一条 trace 的完整 span 证据，并在 Doctor Host 本地生成可交互
-HTML。命令接收业务 ID，先复用 Plugin data capability 解析为 trace_id；领域层负责确认、计数、分页下载和
-渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
+HTML。命令接收业务 ID，先调用 Plugin `traceId` capability 解析为规范 trace_id；领域层负责确认、计数、
+分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
 默认交付物是自包含 HTML，提供逻辑节点树、火焰图、节点摘要和物理 span 溯源。需要保留采集证据时
@@ -13,13 +13,15 @@ HTML。命令接收业务 ID，先复用 Plugin data capability 解析为 trace_
 
 ## 流程
 
-1. Plugin data capability 从 `--biz-id` 解析出规范 trace_id。
+1. app 在访问环境前确认当前 Plugin 至少声明一个 `service.traceId` provider；Core 注入当前选择的
+   Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并从 `--biz-id`
+   返回规范 trace_id 与解析语义。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
    未提供时复用 Plugin 声明的业务 Service Store 运行时配置，并从 endpoint 解析 backend Service 和
    namespace；配置不可用时才带 warning 跨 namespace 自动发现。
 3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期。
-4. Probe 先确认 trace_id；无 Plugin 的 core CLI 才保留按 span tag 值反查的通用兜底。
-5. 解析到 trace_id 后先查询 span 总数，再用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
+4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不再用任意 span tag 猜测业务 ID 关系。
+5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
 6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合 Plugin 声明的
    业务 spec 生成交互式 HTML。
 7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；`--format bundle` 将全部证据
@@ -40,7 +42,7 @@ Service 发现回答“本轮目标是谁”，属于配置确认；port-forward
 
 ### SearchEngine 保持协议通用
 
-输入 ID 的业务解析策略、Jaeger 字段和摘要统计属于 Trace domain。OpenSearch client、鉴权、请求
+输入 ID 的业务解析策略属于 Plugin `traceId` capability；Jaeger 字段和摘要统计属于 Trace domain。OpenSearch client、鉴权、请求
 超时和 search API 映射属于 infra。领域代码依赖 SearchEngine 契约，不把 Kubernetes 或官方 client
 对象穿透到 Probe 和 Render。
 

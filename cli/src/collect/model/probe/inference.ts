@@ -43,7 +43,7 @@ export function makeModelInferenceProbe(
     },
     run: async (ctx) => {
       const request = buildModelTestRequest(model);
-      ctx.log(`[model] POST ${model.metaData.apiBase}${request.path}`);
+      ctx.log(`[model] POST ${model.inference.baseUrl}${request.path}`);
       let observation: ModelResponseObservation;
       try {
         const response = await ctx.inference.invoke(request.path, request.body);

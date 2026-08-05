@@ -3,7 +3,6 @@ import { createPluginContext } from "../../../plugin/context";
 import {
   captureKubernetesWorkloadConfig,
   deploymentsForService,
-  resolveContainerEnvironment,
   selectServiceContainer,
 } from "../../../infra/k8s/workload-config";
 import type { Inspect } from "../../inspection";
@@ -108,32 +107,6 @@ export function makeConfigTargetsInspect(
         };
       }
 
-      const databaseService = snapshot.services.find(
-        (item) => item.name === config.tenantConfiguration!.databaseService,
-      );
-      const databaseDeployment = deploymentsForService(
-        snapshot,
-        config.tenantConfiguration.databaseService,
-      )[0];
-      if (!databaseService || !databaseDeployment) {
-        return {
-          serviceTargets: { status: "collected", services },
-          tenantDatabaseTarget: {
-            status: "unavailable",
-            reason: `未发现租户配置 Service '${config.tenantConfiguration.databaseService}' 对应的 Deployment`,
-          },
-          tenantRequest,
-        };
-      }
-      const selected = selectServiceContainer(databaseService, databaseDeployment);
-      if (!selected.container) {
-        return {
-          serviceTargets: { status: "collected", services },
-          tenantDatabaseTarget: { status: "unavailable", reason: selected.reason! },
-          tenantRequest,
-        };
-      }
-      const resolved = resolveContainerEnvironment(selected.container, snapshot.configMaps);
       let pluginContext: ReturnType<typeof createPluginContext> | undefined;
       try {
         if (!ctx.tenantConfigReader) {
@@ -142,8 +115,6 @@ export function makeConfigTargetsInspect(
             databaseIdentity: config.fallbackIdentity,
             service: {
               name: config.tenantConfiguration.databaseService,
-              container: selected.container.name,
-              environment: resolved.values,
             },
           });
           ctx.tenantConfigReader = await tenantCapability.createReader(pluginContext);

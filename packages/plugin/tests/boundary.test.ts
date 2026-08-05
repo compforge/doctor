@@ -14,10 +14,15 @@ function sourceFiles(root: string): string[] {
   return matchingFiles(root, /\.(?:ts|tsx)$/);
 }
 
-test("Plugin SDK 不反向依赖 CLI", () => {
-  const root = join(import.meta.dir, "../src");
-  for (const path of sourceFiles(root)) {
-    expect(readFileSync(path, "utf-8")).not.toMatch(/(?:from|import\()[^"'\n]*cli\//);
+test("Plugin SDK 与示例 Plugin 不反向依赖 CLI", () => {
+  const roots = [
+    join(import.meta.dir, "../src"),
+    join(import.meta.dir, "../../../plugins/example/src"),
+  ];
+  for (const root of roots) {
+    for (const path of sourceFiles(root)) {
+      expect(readFileSync(path, "utf-8")).not.toMatch(/(?:from|import\()[^"'\n]*cli\//);
+    }
   }
 });
 
@@ -45,12 +50,34 @@ test("CLI core 不包含具体 Plugin 配置约定", () => {
   }
 });
 
-test("config/data/log collect 不按示例 Service 名分支", () => {
+test("config/data/log/trace collect 不按示例 Service 名分支", () => {
   const root = join(import.meta.dir, "../../../cli/src/collect");
   const exampleServices = /example-api|example-worker/i;
-  for (const domain of ["config", "data", "log"]) {
+  for (const domain of ["config", "data", "log", "trace"]) {
     for (const path of sourceFiles(join(root, domain))) {
       expect(readFileSync(path, "utf-8")).not.toMatch(exampleServices);
+    }
+  }
+});
+
+test("MCP 私有配置访问不穿透到 CLI core", () => {
+  const root = join(import.meta.dir, "../../../cli/src/collect/mcp");
+  for (const path of sourceFiles(root)) {
+    const source = readFileSync(path, "utf-8");
+    expect(source).not.toMatch(/McpConfigStorage|parseConfigStorage|mcp-config\.json/);
+    expect(source).not.toMatch(/\["get",\s*"configmap"/);
+  }
+});
+
+test("模型协议不暴露 Plugin 原始 backend 配置", () => {
+  const roots = [
+    join(import.meta.dir, "../src"),
+    join(import.meta.dir, "../../../cli/src/collect/model"),
+  ];
+  const privateBackendFields = /\b(?:ModelID|ModelName|Credentials|Parameters|Features|AudioConfig|Property)\b/;
+  for (const root of roots) {
+    for (const path of sourceFiles(root)) {
+      expect(readFileSync(path, "utf-8")).not.toMatch(privateBackendFields);
     }
   }
 });

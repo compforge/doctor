@@ -100,7 +100,7 @@ function chatRequest(
   maxOutputTokens: number,
 ): Record<string, unknown> {
   return {
-    model: model.metaData.endpointId,
+    model: model.inference.model,
     messages: [{ role: "user", content: prompt }],
     stream: true,
     stream_options: { include_usage: true },

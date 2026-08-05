@@ -27,12 +27,11 @@ export function makeModelInspect(
           provider: model.provider,
           vendor: model.vendor,
           version: model.version,
-          apiBase: model.metaData.apiBase,
-          endpointId: model.metaData.endpointId,
+          inference: model.inference,
         },
       };
       try {
-        const backend = await ctx.catalog.getBackend(model.id);
+        const backend = await ctx.catalog.getBackend(model);
         if (!backend) {
           return {
             target,
@@ -42,17 +41,17 @@ export function makeModelInspect(
             },
           };
         }
-        // validation 需要 credentials，但它不应进入可持久化 Facts。
+        // Plugin handle 可能持有 credentials，因此只持久化规范化身份。
         ctx.backend = backend;
         return {
           target,
           backend: {
             status: "collected",
-            modelId: backend.ModelID,
-            modelName: backend.ModelName,
-            model: backend.Model,
-            type: backend.Type,
-            provider: backend.Provider,
+            modelId: backend.modelId,
+            modelName: backend.modelName,
+            model: backend.model,
+            type: backend.type,
+            provider: backend.provider,
           },
         };
       } catch (error) {

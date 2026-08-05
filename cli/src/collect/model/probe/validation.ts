@@ -22,13 +22,13 @@ export const modelValidationProbe: Probe<
   onUnavailable: (ctx, reason) => {
     ctx.bundle.fill(MODEL_VALIDATION_PROBE_ID, { status: "unavailable", reason });
   },
-  run: async (ctx) => {
+  run: async (ctx, _facts, config) => {
     if (!ctx.backend) {
-      throw new Error("Model Inspect 已确认 backend，但运行上下文中缺少原始 backend");
+      throw new Error("Model Inspect 已确认 backend，但运行上下文中缺少 Plugin backend handle");
     }
     let observation: ModelResponseObservation;
     try {
-      const response = await ctx.inference.validate(ctx.backend);
+      const response = await ctx.backend.validate(config.timeoutMs);
       observation = {
         id: MODEL_VALIDATION_PROBE_ID,
         kind: "model-validation",

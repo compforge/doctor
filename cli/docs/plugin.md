@@ -5,7 +5,7 @@
 
 ## 理念 / 概念
 
-doctor core 后续需要开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
+Doctor Core 保持开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
 Plugin 用一个版本化归档把这些业务扩展从 core 中分离，并允许同一份交付物同时贡献：
 
 - **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability；
@@ -13,6 +13,8 @@ Plugin 用一个版本化归档把这些业务扩展从 core 中分离，并允�
 
 一个 Plugin 只导出一个 `PluginDefinition`，不再增加额外业务中间层。Service Catalog 仍是 capability
 的事实来源；Plugin manifest 只定位代码和 Skill，不重复声明 store、log、data、model 等能力。
+例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明，`trace`/`log` 只消费其
+约定结果，不通过通用 data 查询或 span tag 猜测业务关系。
 
 monorepo 中的源码按依赖方向分为三层：
 
@@ -30,6 +32,8 @@ Doctor 与 Plugin 的运行边界只约定三件事：Plugin 声明自己能提�
 告知当前 profile 选择的 Kubernetes 环境和 Service；Plugin 返回对应 capability 约定的结果，使 Doctor
 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访问和 Doctor-owned operation，Plugin 负责业务
 目标与数据语义；Plugin 如何访问 Service、HTTP 或数据库仍属于其自身实现，不进入能力协议。
+当后续操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
+Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
 首版只保留两个持久事实：
 
@@ -150,13 +154,20 @@ Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主
 
 `doctor-plugin` 同时承担稳定协议和可选 SDK，但两者职责不同。协议定义 Plugin/Service/capability 的
 声明、调用输入输出，以及所有 Service 共用的 `PluginContext`；上下文提供当前 kubeconfig、context、namespace、
-当前 Service 和取消信号等已确定的运行态事实，不为不同 Service 固化不同访问接口。profile 切换后，
+当前 Service 和取消信号等已确定的运行态事实，不为不同 Service 固化不同访问接口。Plugin 可用这些
+Kubernetes 环境信息自行读取 Service、定位 Pod 或访问其它资源，Core 不接收再回传 Plugin-owned 的
+selector 等实现细节。profile 切换后，
 Doctor 在下一次调用中注入新的上下文，Plugin 不持有旧环境选择。
 
 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由 `PluginContext` 按需
 提供。HTTP、数据库和 Kubernetes 访问由 Plugin 自行实现；以后只有出现稳定的跨 Plugin 重复时，才把
 helper 提取到 SDK。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Service 定位规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin。
+
+Plugin 的贡献深度随 command 类型变化：业务型命令由 capability 执行业务访问并返回约定数据；
+基础设施型命令只需要 Plugin 贡献目标或连接信息，标准诊断算法仍由 Core 持有；混合型命令先由 Plugin
+完成业务 ID、私有配置等投影，再交给 Core 的标准采集阶段。分类、典型命令和 Kubernetes 分工统一见
+[`kernel.md`](kernel.md#业务型基础设施型与混合型命令)。
 
 ### 分发机制不进入业务层
 

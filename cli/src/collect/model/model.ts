@@ -1,8 +1,9 @@
 import type {
   Model,
-  ModelBackend,
+  ModelBackendHandle,
   ModelCatalog,
   ModelInference,
+  ModelInferenceTarget,
   ModelType,
 } from "@compforge/doctor-plugin";
 import type { TenantSummary } from "@compforge/doctor-plugin";
@@ -42,10 +43,7 @@ export interface ModelTestRequest {
 
 export interface SelectedInferenceModel extends Model {
   type: Exclude<ModelType, "audio">;
-  metaData: {
-    apiBase: string;
-    endpointId: string;
-  };
+  inference: ModelInferenceTarget;
 }
 
 export interface ModelTargetFact {
@@ -57,8 +55,7 @@ export interface ModelTargetFact {
     provider: string;
     vendor?: string;
     version?: string;
-    apiBase: string;
-    endpointId: string;
+    inference: ModelInferenceTarget;
   };
 }
 
@@ -72,7 +69,7 @@ export interface ModelBackendFact {
 
 export interface ModelInspectionFacts {
   target: Fact<ModelTargetFact>;
-  /** 只持久化 validation 所需 backend 的身份信息；credentials 留在运行上下文。 */
+  /** 只持久化 backend 身份；原始配置与 credentials 由 Plugin handle 持有。 */
   backend: Fact<ModelBackendFact>;
 }
 
@@ -85,7 +82,7 @@ export interface ModelDiagnosisConfig {
 
 export interface ModelInspectContext {
   catalog: ModelCatalog;
-  backend?: ModelBackend;
+  backend?: ModelBackendHandle;
 }
 
 export interface ModelCollectContext extends ModelInspectContext {

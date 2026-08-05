@@ -5,10 +5,10 @@
 `doctor model` 用一条确定性链路检查模型目录配置并发起真实 inference，帮助区分“租户看不到模型”“backend 数据不完整”“validation 失败”和“validation 通过但推理协议失败”。
 
 - **可用模型**：从 Plugin 声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型。
-- **Backend**：由模型目录读取，包含 inference service 执行 validation 所需的路由与凭据配置。
-- **Inference 模型**：使用可用模型返回的 `api_base` 与 `endpoint_id`，向 Plugin 声明的 `inference` capability 发出最小请求。
+- **Backend handle**：由模型目录返回，向 Core 暴露规范化身份和 validation 行为；原始路由、provider 参数与凭据只由 Plugin 实现持有。
+- **Inference 模型**：使用可用模型返回的规范化 `baseUrl` 与 `model` 目标，向 Plugin 声明的 `inference` capability 发出最小请求。
 - **轻量性能采样**：LLM validation 通过后可选执行的串行流式真实请求；从短、中、长输入观察 prefill/TTFT，再用持续生成场景观察 decode。它用于低成本发现明显异常，不模拟并发负载，也不代表模型容量。
-- **专业性能压测**：后续由 [AIPerf](https://github.com/ai-dynamo/aiperf) 承担负载调度、数据集生成和专业指标统计；Doctor 负责解析 AS 模型目标与访问上下文、显式授权执行，并把结果收进诊断报告。
+- **专业性能压测**：后续由 [AIPerf](https://github.com/ai-dynamo/aiperf) 承担负载调度、数据集生成和专业指标统计；Doctor 负责解析 Plugin 提供的模型目标与访问上下文、显式授权执行，并把结果收进诊断报告。
 - **Facts / Observations / Findings**：模型身份与脱敏 backend 摘要是 Inspect Facts；validation、inference 响应和性能样本是 Probe Observations；失败、usage 缺失和间歇性异常由纯 Detector 从 Evidence 推导。
 
 交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；LLM validation 通过后会展示请求规模并询问是否执行性能采样。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`，且只有 `--performance` 才会发起多轮性能请求。
@@ -18,8 +18,8 @@
 1. 解析 profile、namespace 与 Kubernetes 连接信息。
 2. 从 Plugin 声明的租户目录解析或交互选择 tenant。
 3. 从 `modelCatalog` capability 获取可用模型，并解析或交互选择目标 model。
-4. Model Inspect 从模型目录找到同一模型的 backend，生成目标与 backend Facts；credentials 仅留在本次运行上下文。
-5. Validation Probe 将原始 backend 交给 `inference` capability 执行 validation 并形成 Observation。
+4. Model Inspect 从模型目录取得同一模型的 backend handle，生成目标与脱敏 backend Facts；原始配置和 credentials 留在 Plugin 闭包内。
+5. Validation Probe 调用 backend handle 的 validation 行为并形成 Observation；Core 不解释 provider 私有字段或拼接 validation payload。
 6. validation 成功后，Performance Decision Probe 处理显式参数或交互选择；选择性能测试时 Inference Probe 标记为 unnecessary，否则执行最小 inference。
 7. Performance Probe 串行执行短、中、长输入和持续生成场景，每次真实响应形成独立 Observation；它不产生并发或目标 RPS。
 8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 再交付 HTML 报告。embedding / rerank 保持非流式最小请求。
@@ -28,11 +28,11 @@
 
 ### validation 与 inference 分开
 
-模型 validation 只证明 backend 配置能被 inference service 接受，不能证明租户实际拿到的 `api_base + endpoint_id` 能完成推理。两步分开输出，故障边界更清楚。
+模型 validation 只证明 backend 配置能被 inference service 接受，不能证明租户实际拿到的 `baseUrl + model` 能完成推理。两步分开输出，故障边界更清楚。
 
 ### 模型目录是配置事实源
 
-Doctor 不自行拼接凭据或 provider 参数。可用模型与 backend 都从 `modelCatalog` capability 读取；凭据只在内存中交给 `inference` capability，不打印到终端或落盘。
+Doctor 不自行拼接凭据或 provider 参数。可用模型与 backend 都从 `modelCatalog` capability 读取；Core 只持有脱敏 backend 身份和可调用 handle，凭据始终留在 Plugin 实现内，不进入公共 SDK 数据结构、终端或落盘证据。
 
 ### Inspect、Probe 与 Detector 保持硬边界
 
