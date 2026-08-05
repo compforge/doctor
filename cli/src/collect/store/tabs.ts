@@ -6,7 +6,8 @@ import type { DiagnosableStoreKind } from "./config";
 export interface StoreReportTab {
   kind: DiagnosableStoreKind;
   html: string;
-  status: "complete" | "failed";
+  /** 聚合层只表达产物是否交付；Evidence 完整度由各领域报告展示。 */
+  status: "delivered" | "failed";
 }
 
 export function defaultStoreReportName(now: Date): string {
@@ -35,7 +36,7 @@ export function writeTabbedStoreReport(outputPath: string, tabs: readonly StoreR
   const buttons = tabs.map((tab, index) => `
     <button type="button" role="tab" data-kind="${tab.kind}" aria-selected="${index === 0}">
       ${escapeHtml(tab.kind.toUpperCase())}
-      <span class="status status-${tab.status}">${tab.status === "complete" ? "完成" : "失败"}</span>
+      <span class="status status-${tab.status}">${tab.status === "delivered" ? "已交付" : "失败"}</span>
     </button>`).join("");
   writeFileSync(resolve(outputPath), `<!doctype html>
 <html lang="zh-CN">
@@ -50,7 +51,7 @@ export function writeTabbedStoreReport(outputPath: string, tabs: readonly StoreR
     [role=tablist]{display:flex;gap:8px;padding:14px 20px;border-bottom:1px solid #dfe5ee;background:#fff}
     [role=tab]{display:flex;align-items:center;gap:8px;border:1px solid #dfe5ee;border-radius:8px;padding:9px 14px;background:#f8fafc;color:#475569;font:inherit;font-weight:700;cursor:pointer}
     [role=tab][aria-selected=true]{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
-    .status{border-radius:999px;padding:1px 7px;font-size:11px}.status-complete{color:#166534;background:#dcfce7}.status-failed{color:#991b1b;background:#fee2e2}
+    .status{border-radius:999px;padding:1px 7px;font-size:11px}.status-delivered{color:#166534;background:#dcfce7}.status-failed{color:#991b1b;background:#fee2e2}
     iframe{display:block;width:100%;height:calc(100vh - 132px);border:0;background:#fff}
   </style>
 </head>

@@ -433,16 +433,14 @@ export async function runCollectHttp(
     staging,
   ));
 
-  const evidenceOutcome = evaluateCollectOutcome([
-    facts.endpoints.status === "collected"
-      && facts.endpoints.items.every((endpoint) => endpoint.status !== "unknown"),
-    ...attempts.map(({ request, round }) => diagnosis.observations.some(
+  const evidenceOutcome = evaluateCollectOutcome(
+    attempts.map(({ request, round }) => diagnosis.observations.some(
       (observation) => observation.requestId === request.requestId
         && observation.entrypointId === request.entrypointId
         && observation.round === round
         && observation.response.captureComplete,
     )),
-  ]);
+  );
 
   const delivered = await deliverHttpOutput(
     staging,

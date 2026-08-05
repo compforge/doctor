@@ -66,6 +66,8 @@ export interface RedisOverviewObservation {
   scanMode: "quick" | "sample";
   selectedDatabase: number;
   slotRanges: RedisSlotRange[];
+  /** 基础拓扑/节点已取得，但 keyspace 等子采集未完整完成。 */
+  partialReason?: string;
 }
 
 export interface RedisNodeObservation {

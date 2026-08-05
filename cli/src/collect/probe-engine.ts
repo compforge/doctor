@@ -48,7 +48,7 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
     .map((probe) => probe.id);
   const pending = new Set(probes.map((probe) => probe.id));
   const completed = new Set<string>();
-  const results = new Map<string, readonly Observation[]>();
+  const results = new Map<string, UpstreamProbeResult<Observation>>();
   const observations: Observation[] = [];
 
   while (pending.size > 0) {
@@ -63,7 +63,7 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
     }
 
     const progress: UpstreamProbeResult<Observation>[] = (probe.dependsOn ?? []).map(
-      (probeId) => ({ probeId, observations: results.get(probeId)! }),
+      (probeId) => results.get(probeId)!,
     );
     const evaluation = probe.evaluate(facts, config, progress);
     if (!evaluation.runnable) {
@@ -74,16 +74,29 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
         log(`[collect] Probe 不可用：${probe.id}（${evaluation.reason}）`);
         probe.onUnavailable?.(ctx, evaluation.reason);
       }
-      results.set(probe.id, []);
+      results.set(probe.id, {
+        probeId: probe.id,
+        status: evaluation.status,
+        reason: evaluation.reason,
+        observations: [],
+      });
       pending.delete(probe.id);
       completed.add(probe.id);
       continue;
     }
     log(`[collect] 执行 Probe：${probe.id}…`);
-    const probeObservations = await probe.run(ctx, facts, config, progress);
-    log(`[collect] Probe 完成：${probe.id}（${probeObservations.length} 条 Observation）`);
-    results.set(probe.id, probeObservations);
-    observations.push(...probeObservations);
+    try {
+      const probeObservations = await probe.run(ctx, facts, config, progress);
+      log(`[collect] Probe 完成：${probe.id}（${probeObservations.length} 条 Observation）`);
+      results.set(probe.id, { probeId: probe.id, status: "ok", observations: probeObservations });
+      observations.push(...probeObservations);
+    } catch (error) {
+      if (!probe.onFailed) throw error;
+      const reason = error instanceof Error ? error.message : String(error);
+      probe.onFailed(ctx, reason);
+      log(`[collect] Probe 失败：${probe.id}（${reason}）`);
+      results.set(probe.id, { probeId: probe.id, status: "failed", reason, observations: [] });
+    }
     pending.delete(probe.id);
     completed.add(probe.id);
   }

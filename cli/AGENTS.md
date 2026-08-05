@@ -22,7 +22,8 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 | `infra` | DB、HTTP、Kubernetes、进程和本机工具等访问原语 |
 | `terminal` / `tui` / `protocol` | 通用终端交互、展示与可选远端协议 client |
 
-展开的目录地图、Collect 共享协议、依赖方向和领域所有权见 `docs/kernel.md`。
+展开的目录地图、依赖方向和领域所有权见 `docs/kernel.md`；Collect 共享协议见
+`docs/collect-protocol.md`。
 
 ## 关键约定
 
@@ -40,6 +41,7 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 ## References
 
 - `docs/kernel.md` — CLI 核心分层、Collect/Evidence、Doctor Host/Target 与授权契约
+- `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/cpu-diagnosis.md` / `docs/memory-diagnosis.md` — CPU 与内存诊断
 - `docs/network-diagnosis.md` / `docs/http-diagnosis.md` — 网络与 HTTP 诊断

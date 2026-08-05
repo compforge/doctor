@@ -31,7 +31,8 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
 7. 成功诊断默认交付单文件 HTML。单选时直接输出该 Store 报告；多选时继续执行其余类型，并把
    DB、VDB、S3、Redis 的自包含报告合并到同一个 Tab 页面。显式选择 bundle 或 Markdown 时仍按类型
    分别交付，因此多选不接受单一 `--output`；HTML 多选只有一个总报告，可以指定统一输出路径。
-   任一 Store 采集失败时，对应 Tab 标记失败，并另外保留该类型的失败 Evidence Bundle。
+   Store 只取得部分证据时仍交付对应报告，并醒目标记 partial、缺失证据及结论边界；完全无法形成
+   可用诊断或产物交付失败时，才降级交付失败 Evidence Bundle。
 
 ## 关键设计
 

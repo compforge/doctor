@@ -97,7 +97,7 @@ export async function runCollectStore(
     if (tabbedHtml) {
       const htmlPath = `${kindOutput}.html`;
       if (code === 0 && existsSync(htmlPath)) {
-        tabs.push({ kind, status: "complete", html: readFileSync(htmlPath, "utf8") });
+        tabs.push({ kind, status: "delivered", html: readFileSync(htmlPath, "utf8") });
       } else {
         const temporaryBundle = `${kindOutput}.tar.gz`;
         let failurePath: string | undefined;

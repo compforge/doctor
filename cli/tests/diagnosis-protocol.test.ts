@@ -357,7 +357,53 @@ describe("runProbes 调度", () => {
       evaluate: () => PROBE_RUNNABLE,
       run: async () => [],
     }, consumer], undefined, {}, {});
-    expect(received).toEqual([{ probeId: "empty", observations: [] }]);
+    expect(received).toEqual([{ probeId: "empty", status: "ok", observations: [] }]);
+  });
+
+  test("声明 onFailed 的 Probe 失败后继续独立 Probe，并把失败状态传给依赖方", async () => {
+    const logs: string[] = [];
+    const recorded: string[] = [];
+    let dependency: unknown;
+    const observations = await runProbes<O, {}, {}, { name: string }>([
+      {
+        id: "failed-source",
+        evaluate: () => PROBE_RUNNABLE,
+        onFailed: (_ctx, reason) => recorded.push(reason),
+        run: async () => { throw new Error("source timeout"); },
+      },
+      {
+        id: "independent",
+        evaluate: () => PROBE_RUNNABLE,
+        run: async () => [{ id: "independent", kind: "x", from: "independent" }],
+      },
+      {
+        id: "consumer",
+        dependsOn: ["failed-source"],
+        evaluate: (_facts, _config, progress) => {
+          dependency = progress[0];
+          return probeUnavailable("上游证据缺失");
+        },
+        run: async () => [],
+      },
+    ], { name: "ctx" }, {}, {}, (line) => logs.push(line));
+
+    expect(recorded).toEqual(["source timeout"]);
+    expect(dependency).toEqual({
+      probeId: "failed-source",
+      status: "failed",
+      reason: "source timeout",
+      observations: [],
+    });
+    expect(observations.map((item) => item.from)).toEqual(["independent"]);
+    expect(logs).toContain("[collect] Probe 失败：failed-source（source timeout）");
+  });
+
+  test("未声明 onFailed 的 Probe 异常仍向上抛", async () => {
+    await expect(runProbes<O, {}, {}>([{
+      id: "buggy",
+      evaluate: () => PROBE_RUNNABLE,
+      run: async () => { throw new Error("programming error"); },
+    }], undefined, {}, {})).rejects.toThrow("programming error");
   });
 
   test("记录每个 probe 的开始、完成与 observation 数量", async () => {

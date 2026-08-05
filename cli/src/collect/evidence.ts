@@ -8,7 +8,7 @@ import { join } from "node:path";
 import type { OperationRisk } from "../command/approval";
 
 export type StepStatus = "ok" | "failed" | "skipped" | "unavailable";
-export type OutcomeStatus = "ok" | "failed" | "unavailable" | "unnecessary";
+export type OutcomeStatus = "ok" | "partial" | "failed" | "unavailable" | "unnecessary";
 export type EvidenceStatus = StepStatus | OutcomeStatus;
 
 // risk 表示该步骤实际执行到的最高副作用等级，而不是命令类别猜测。
@@ -59,7 +59,7 @@ export interface OutcomeDecl {
 }
 
 /**
- * 检验项只有四种终态：拿到 / 试了但坏了 / 需要但没拿到 / 已证明无需取得。
+ * 检验项有五种终态：完整拿到 / 部分拿到 / 试了但坏了 / 需要但没拿到 / 已证明无需取得。
  * **没有 skipped**——"我们选择不做"是工序的语义；对一份证据而言，选择不做的结果
  * 要么是 unavailable，要么是由上游证据支持的 unnecessary。
  */

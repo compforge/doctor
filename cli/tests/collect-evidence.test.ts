@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EvidenceBundle, OUTCOME_UNREACHED_REASON, truncateRaw } from "../src/collect/evidence";
@@ -162,6 +162,18 @@ describe("EvidenceBundle worksheet", () => {
       expect.objectContaining({ id: "probe", status: "unnecessary" }),
       expect.objectContaining({ id: "approval", status: "skipped" }),
     ]);
+  });
+
+  test("Outcome 可记录 partial 并保留缺失原因", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-evidence-test-"));
+    const bundle = new EvidenceBundle(dir, [{ id: "sample", title: "sample", risk: "observe" }]);
+    bundle.fill("sample", { status: "partial", reason: "达到采集预算" });
+    expect(bundle.getSteps()).toEqual([expect.objectContaining({
+      id: "sample",
+      status: "partial",
+      reason: "达到采集预算",
+    })]);
+    rmSync(dir, { recursive: true, force: true });
   });
 
   test("填格按执行顺序进 steps，不按声明顺序——manifest 仍是一条时间线", () => {

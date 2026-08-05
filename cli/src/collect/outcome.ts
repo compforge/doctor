@@ -8,8 +8,8 @@ export interface CollectOutcome {
 }
 
 /**
- * collect 的退出码只表达“要求的证据是否完整取得且产物是否交付成功”。
- * Finding 严重度属于诊断结果，不参与进程成功语义。
+ * collect 的退出码表达“是否形成并交付了可用诊断产物”，不要求所有证据完整。
+ * partial 是带明确证据缺口的正常完成；Finding 严重度属于目标健康，不参与进程成功语义。
  */
 export function evaluateCollectOutcome(
   requirements: readonly boolean[],
@@ -24,6 +24,6 @@ export function evaluateCollectOutcome(
   return {
     delivery,
     evidence,
-    exitCode: delivery === "complete" && evidence === "complete" ? 0 : 1,
+    exitCode: delivery === "complete" && evidence !== "missing" ? 0 : 1,
   };
 }

@@ -41,6 +41,7 @@ function scansGap(e: RedisEvidence): string {
   if (overview?.scanMode === "quick") {
     return `${base}（quick 模式不扫描 key；去掉 --quick 以 sample 模式重新采集可取得）`;
   }
+  if (overview?.partialReason) return `${base}（${overview.partialReason}）`;
   return base;
 }
 

@@ -237,9 +237,11 @@ export function buildRedisMarkdown(
   const configuredClusterType = diagnosis.evidence.facts.target.status === "collected"
     ? diagnosis.evidence.facts.target.configuredClusterType
     : "unknown";
+  const partial = diagnosis.coverage.some((item) => item.status !== "sufficient");
   const lines: string[] = [
     "# Redis 诊断摘要",
     "",
+    `- 采集状态: \`${partial ? "partial" : "complete"}\`${partial ? "；缺失证据及影响见诊断覆盖度" : ""}`,
     `- 目标: \`${target.endpoint}\`（${target.endpoint_source}）`,
     `- 拓扑类型: \`${overview?.clusterType ?? configuredClusterType}\``,
     `- 扫描模式: \`${overview?.scanMode ?? "未执行"}\`；深度扫描 \`db${overview?.selectedDatabase ?? 0}\`，仅扫描 master，replica 不重复扫描 key`,
@@ -382,9 +384,11 @@ export function buildRedisHtml(target: RedisRenderTarget, diagnosis: RedisDiagno
   const configuredClusterType = diagnosis.evidence.facts.target.status === "collected"
     ? diagnosis.evidence.facts.target.configuredClusterType
     : "unknown";
+  const partial = diagnosis.coverage.some((item) => item.status !== "sufficient");
   const parts = [
     htmlHeading(1, "Redis 诊断摘要"),
     htmlList([
+      `采集状态: ${partial ? "partial（部分完成；缺失证据及影响见诊断覆盖度）" : "complete"}`,
       `目标: ${target.endpoint}（${target.endpoint_source}）`,
       `拓扑类型: ${overview?.clusterType ?? configuredClusterType}`,
       `扫描模式: ${overview?.scanMode ?? "未执行"}；深度扫描 db${overview?.selectedDatabase ?? 0}，仅扫描 master，replica 不重复扫描 key`,
