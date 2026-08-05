@@ -4,7 +4,7 @@
 
 `doctor metric` 把“服务能提供什么诊断指标”与“现场是否有 Prometheus”分开。业务 Service 在 Catalog 的
 Metric capability 中声明 `/metrics` endpoint、所需 metric family、图表 PromQL 和可选 Detector；Doctor
-只负责采集、执行查询和生成单文件离线 HTML，不把任何产品指标口径写进通用采集器。
+只负责采集、执行查询和生成单文件离线 HTML，不把任何 Plugin 指标口径写进通用采集器。
 
 Metric capability 是潜在能力，查询结果才是本次运行事实。查询没有数据时报告保留缺口，不把“未观察到”
 解释为“指标正常”。Detector 只消费已取得的 PromQL 结果，不访问外部资源。

@@ -4,12 +4,13 @@
 
 Doctor is a local-first CLI for collecting reproducible diagnostic evidence. It combines
 deterministic collectors for CPU, memory, network, HTTP, traces and stores with a Plugin SDK for
-product-specific capabilities. Kubernetes is a supported target, but the diagnostic model is not
+business-specific capabilities. Kubernetes is a supported target, but the diagnostic model is not
 tied to a single deployment environment.
 
-Doctor keeps product knowledge outside the core CLI. A Plugin declares its Service Catalog and
-capabilities, receives the selected profile and target context, and returns data that Doctor can
-turn into evidence and reports.
+Doctor Core owns generic Host/Target access, authorization and evidence orchestration. A Plugin
+owns target identity and business data semantics: it declares a Service Catalog and capabilities,
+receives the selected profile and target context, and returns data that Doctor can turn into
+evidence and reports.
 
 ## Repository layout
 
@@ -18,7 +19,7 @@ turn into evidence and reports.
 | `cli/` | Self-contained Doctor CLI, collectors, evidence model and offline reports |
 | `server/` | Reserved for the optional Doctor server |
 | `packages/plugin/` | `@compforge/doctor-plugin` contracts and shared Plugin utilities |
-| `plugins/example/` | Minimal product-neutral Plugin example |
+| `plugins/example/` | Minimal business-neutral Plugin example |
 
 ## Development
 
@@ -45,9 +46,9 @@ Build only the local macOS binary:
 make build-local
 ```
 
-The resulting core CLI contains only product-neutral capabilities. Product-specific commands
-become available when a compatible Plugin is supplied by the distributor or loaded by a future
-Plugin loader.
+The resulting core CLI contains only generic access and diagnostic capabilities. Plugin commands
+remain visible, but explain which capability is missing until a compatible Plugin is supplied by
+the distributor or loaded by a future Plugin loader.
 
 ## Plugin boundary
 

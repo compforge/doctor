@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-`doctor data <biz-id...>` 汇集一组业务 ID 在当前产品中的关联数据。它不是通用 SQL 控制台，也不在
+`doctor data <biz-id...>` 汇集一组业务 ID 在当前 Plugin 中的关联数据。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
 `data` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
 

@@ -4,9 +4,9 @@
 
 `doctor model` 用一条确定性链路检查模型目录配置并发起真实 inference，帮助区分“租户看不到模型”“backend 数据不完整”“validation 失败”和“validation 通过但推理协议失败”。
 
-- **可用模型**：从产品声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型。
+- **可用模型**：从 Plugin 声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型。
 - **Backend**：由模型目录读取，包含 inference service 执行 validation 所需的路由与凭据配置。
-- **Inference 模型**：使用可用模型返回的 `api_base` 与 `endpoint_id`，向产品声明的 `inference` capability 发出最小请求。
+- **Inference 模型**：使用可用模型返回的 `api_base` 与 `endpoint_id`，向 Plugin 声明的 `inference` capability 发出最小请求。
 - **轻量性能采样**：LLM validation 通过后可选执行的串行流式真实请求；从短、中、长输入观察 prefill/TTFT，再用持续生成场景观察 decode。它用于低成本发现明显异常，不模拟并发负载，也不代表模型容量。
 - **专业性能压测**：后续由 [AIPerf](https://github.com/ai-dynamo/aiperf) 承担负载调度、数据集生成和专业指标统计；Doctor 负责解析 AS 模型目标与访问上下文、显式授权执行，并把结果收进诊断报告。
 - **Facts / Observations / Findings**：模型身份与脱敏 backend 摘要是 Inspect Facts；validation、inference 响应和性能样本是 Probe Observations；失败、usage 缺失和间歇性异常由纯 Detector 从 Evidence 推导。

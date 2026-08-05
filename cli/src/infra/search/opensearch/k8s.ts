@@ -4,7 +4,7 @@ export interface OpenSearchService {
   port: number;
 }
 
-/** Discover one OpenSearch Service without embedding product-specific service names. */
+/** Discover one OpenSearch Service without embedding Plugin-specific service names. */
 export function pickOpenSearchService(
   serviceJson: string,
   serviceName?: string,

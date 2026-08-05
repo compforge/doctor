@@ -63,6 +63,15 @@ export interface ModelDiagnosisCapability {
   inferenceService: string;
 }
 
+export interface TraceDiagnosisCapability {
+  specs: SpecSet;
+  /** 提供 Trace OpenSearch 运行时连接配置的业务 Service Store。 */
+  openSearchStore?: {
+    service: string;
+    store: string;
+  };
+}
+
 export interface TenantConfigurationCapability {
   /** 顺序从低优先级到高优先级，后一个 scope 覆盖前一个。 */
   scopes: readonly string[];
@@ -71,18 +80,17 @@ export interface TenantConfigurationCapability {
   createReader(context: PluginContext): Promise<TenantConfigReader>;
 }
 
-/** CLI 选择一个业务 Plugin；collect 只消费这里暴露的 Catalog 与插件级可选能力。 */
-export interface PluginDefinition {
-  id: string;
-  services: ServiceCatalog;
+/** 不属于单个 Service、但仍由 Plugin 提供的业务语义。 */
+export interface PluginLevelCapabilities {
   tenantConfiguration?: TenantConfigurationCapability;
   modelDiagnosis?: ModelDiagnosisCapability;
-  traceDiagnosis?: {
-    specs: SpecSet;
-    /** 提供 Trace OpenSearch 运行时连接配置的业务 Service Store。 */
-    openSearchStore?: {
-      service: string;
-      store: string;
-    };
-  };
+  traceDiagnosis?: TraceDiagnosisCapability;
+}
+
+export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;
+
+/** CLI 选择一个业务 Plugin；collect 只消费这里暴露的 Catalog 与 Plugin capability。 */
+export interface PluginDefinition extends PluginLevelCapabilities {
+  id: string;
+  services: ServiceCatalog;
 }

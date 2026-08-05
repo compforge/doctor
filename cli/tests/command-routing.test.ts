@@ -43,21 +43,38 @@ function runCoreCli(...args: string[]) {
 }
 
 describe("CLI command routing", () => {
-  test("core entry does not register Plugin capabilities", () => {
+  test("core entry advertises Plugin commands", () => {
     const result = runCoreCli();
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("cpu [options]");
     expect(result.stdout).toContain("http [options]");
-    expect(result.stdout).not.toContain("data [options]");
-    expect(result.stdout).not.toContain("store [options]");
+    expect(result.stdout).toContain("data [options]");
+    expect(result.stdout).toContain("store [options]");
+    expect(result.stdout).toContain("model [options]");
+  });
+
+  test("core entry explains a missing Plugin before K8s access", () => {
+    const missing = runCoreCli("data", "biz-1");
+    expect(missing.exitCode).toBe(1);
+    expect(missing.stderr).toContain("doctor data 需要当前 profile 选择 Plugin");
+    expect(missing.stderr).not.toContain("Kubernetes");
+  });
+
+  test("selected Plugin missing a required capability reports that capability", () => {
+    const result = runCli("data", "biz-1");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("service.data");
+    expect(result.stderr).toContain("Plugin 'test'");
+    expect(result.stderr).not.toContain("Kubernetes");
   });
 
   test("bare doctor only displays help", () => {
     const result = runCli();
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor [options] [command]");
-    expect(result.stdout).toContain("面向私有化 Kubernetes 环境的全面排查工具");
-    expect(result.stdout).toContain("确定性诊断、debug environment 准备和可选 AI 问诊");
+    expect(result.stdout).toContain("面向应用与基础设施的本地诊断工具");
+    expect(result.stdout).toContain("Core 提供通用 Target 访问与证据编排");
+    expect(result.stdout).toContain("Plugin 提供业务目标和数据语义");
     expect(result.stdout).toContain("默认旁路运行、证据优先");
     expect(result.stdout).toContain("chat [options]");
     expect(result.stdout).toContain("init [options]");

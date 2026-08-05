@@ -220,7 +220,7 @@ export interface ServiceCapabilities {
   mcp?: ServiceMcpCapability;
 }
 
-/** Doctor 跨产品共用的 Service 元描述；具体产品只声明身份和 capability。 */
+/** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
   port?: number;

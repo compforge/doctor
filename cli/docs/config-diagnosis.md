@@ -24,7 +24,7 @@
 
 ### 为什么不读取 Pod env 或 Settings
 
-这个命令的目标是盘点部署声明与策略中心落表配置，而不是推断特定版本业务代码解析后的最终值。Pod env 会混入 Kubernetes 自动注入项和其它运行时来源；导入 Settings 又依赖各版本模块路径、默认值和框架实现。直接读取 Deployment 与 ConfigMap 能保持产品版本无关，也准确限定 Env 列的来源。
+这个命令的目标是盘点部署声明与策略中心落表配置，而不是推断特定版本业务代码解析后的最终值。Pod env 会混入 Kubernetes 自动注入项和其它运行时来源；导入 Settings 又依赖各版本模块路径、默认值和框架实现。直接读取 Deployment 与 ConfigMap 能保持业务版本无关，也准确限定 Env 列的来源。
 
 ### ConfigMap 与显式 env 的关系
 
@@ -32,7 +32,7 @@
 
 ### 为什么由 Plugin 读取租户配置来源
 
-不同产品的配置 API 可能组合默认值、数据库覆盖和缓存，无法统一回答“实际保存了哪些记录”。Plugin 持有
+不同 Plugin 的配置 API 可能组合默认值、数据库覆盖和缓存，无法统一回答“实际保存了哪些记录”。Plugin 持有
 数据源身份、连接实现与查询语义，collect 只注入 `PluginContext` 并消费通用 reader；Doctor 仅托管
 port-forward 与命令结束时的资源回收。
 

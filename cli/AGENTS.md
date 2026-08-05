@@ -2,8 +2,8 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地产品入口和确定性诊断主体。它负责选择目标、准备受控能力、采集事实、执行规则并
-交付 Evidence/报告；具体产品的 Service、拓扑、查询和判读规则由外部 Plugin 提供。
+Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标、准备受控能力、采集事实、执行规则并
+交付 Evidence/报告；具体 Service、拓扑、查询和判读规则由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
@@ -46,4 +46,3 @@ Doctor CLI 是本地产品入口和确定性诊断主体。它负责选择目标
 - `docs/data-diagnosis.md` / `docs/store-diagnosis.md` — Plugin 数据与存储诊断
 - `docs/metric-diagnosis.md` / `docs/model-diagnosis.md` — 指标与模型诊断
 - `docs/image.md` / `docs/debug-container.md` / `docs/install.md` — 诊断能力准备
-
