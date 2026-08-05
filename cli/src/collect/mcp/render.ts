@@ -65,7 +65,7 @@ export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
       diagnosis.coverage.map((item) => [item.goal, item.status, item.missingEvidence.join("；") || "-"]),
     ),
     htmlHeading(2, "配置与运行时工具"),
-    toolRows.length ? htmlTable(["tool", "产品配置", "tools/list"], toolRows) : htmlParagraph("未取得 tool 列表。"),
+    toolRows.length ? htmlTable(["tool", "Plugin 配置", "tools/list"], toolRows) : htmlParagraph("未取得 tool 列表。"),
     htmlHeading(2, "MCP Probe"),
     htmlList(mcpResultSummary(diagnosis)),
     htmlHeading(2, "HTTP Probe"),

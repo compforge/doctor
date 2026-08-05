@@ -37,7 +37,7 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
 
 ### Catalog 声明契约，运行时决定状态
 
-Store capability 归 Service Catalog，因为“哪个 Service 用什么配置契约访问哪类存储”是稳定的产品知识。
+Store capability 归 Service Catalog，因为“哪个 Service 用什么配置契约访问哪类存储”是稳定的 Plugin 知识。
 是否启用则属于具体部署的运行时事实。这个边界允许 Service 始终声明 S3 契约，同时用
 空配置明确表示数据持久化未开启。
 
@@ -127,9 +127,9 @@ VDB 的业务配置是“该 Service 实际连接哪个 VDB”的 target Fact；
 如何访问它的通道准备。OpenSearch 通道与 Trace 共用 `collect/shared/opensearch-access`，但两个领域互不
 依赖；配置中的 endpoint namespace、port 与 scheme 保持权威。
 
-标准部署直接读取 `OPENSEARCH_*` 环境变量。产品使用自有挂载文件或配置结构时，由 VDB Store capability
-声明文件定位规则并把内容投影成统一 target；Doctor 只负责从所选 Service Pod 取得配置材料，不理解产品
-配置 schema。这样固定路径、字段和选择规则留在具体 Plugin，后续增加产品不会继续扩张 CLI 分支。
+标准部署直接读取 `OPENSEARCH_*` 环境变量。Plugin 使用自有挂载文件或配置结构时，由 VDB Store capability
+声明文件定位规则并把内容投影成统一 target；Doctor 只负责从所选 Service Pod 取得配置材料，不理解 Plugin
+配置 schema。这样固定路径、字段和选择规则留在具体 Plugin，后续增加 Plugin 不会继续扩张 CLI 分支。
 
 ### 单项失败保留其余证据
 

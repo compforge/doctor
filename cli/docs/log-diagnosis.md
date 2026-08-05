@@ -25,7 +25,7 @@
 
 ### Service 选择是业务策略，selector 解析是基础能力
 
-有哪些 Service 属于产品知识，只在对应 Product 的统一 Catalog 定义；是否采集日志以及是否属于默认主链由各 Service 的 log capability 声明，
+有哪些 Service 属于 Plugin 知识，只在对应 Plugin 的统一 Catalog 定义；是否采集日志以及是否属于默认主链由各 Service 的 log capability 声明，
 `collect/log` 不维护平行名单或按服务名分支。如何读取 Kubernetes Service、如何按 selector 找到 Pod、如何执行 `kubectl logs` 可被 MCP 等领域复用，因此属于
 `infra/k8s`。通用多选交互属于 `terminal/`，不进入 infra。
 

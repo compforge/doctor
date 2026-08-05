@@ -5,13 +5,13 @@
 
 ## 理念 / 概念
 
-doctor core 后续需要开源，但具体产品的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
-Plugin 用一个版本化归档把这些产品扩展从 core 中分离，并允许同一份交付物同时贡献：
+doctor core 后续需要开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
+Plugin 用一个版本化归档把这些业务扩展从 core 中分离，并允许同一份交付物同时贡献：
 
 - **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability；
 - **Skill**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
 
-一个 Plugin 只导出一个 `PluginDefinition`，不再增加 Product 中间层。Service Catalog 仍是 capability
+一个 Plugin 只导出一个 `PluginDefinition`，不再增加额外业务中间层。Service Catalog 仍是 capability
 的事实来源；Plugin manifest 只定位代码和 Skill，不重复声明 store、log、data、model 等能力。
 
 monorepo 中的源码按依赖方向分为三层：
@@ -28,7 +28,8 @@ plugins/<plugin>/            可独立构建、归档和分发的具体 Plugin �
 
 Doctor 与 Plugin 的运行边界只约定三件事：Plugin 声明自己能提供哪些 capability；Doctor 在每次调用时
 告知当前 profile 选择的 Kubernetes 环境和 Service；Plugin 返回对应 capability 约定的结果，使 Doctor
-能够统一串联、诊断和展示。Plugin 如何访问 Service、HTTP 或数据库属于其自身实现，不进入能力协议。
+能够统一串联、诊断和展示。Core 负责通用 Host/Target 访问和 Doctor-owned operation，Plugin 负责业务
+目标与数据语义；Plugin 如何访问 Service、HTTP 或数据库仍属于其自身实现，不进入能力协议。
 
 首版只保留两个持久事实：
 
@@ -119,7 +120,8 @@ CLI composition root 解析 profile 后加载其精确 Plugin 版本：
 1. 校验引用的版本仍存在，并加载 Plugin 代码与 Skill；
 2. Skill name 冲突时直接报错，不按加载顺序静默覆盖；
 3. 需要业务语义的 collect 命令取得 profile 选择的 `PluginDefinition`，继续走现有通用 collect 链路；
-4. 不依赖业务 Plugin 的离线命令保持零配置可用；
+4. Plugin command 始终可见，缺少 required capability 时提示具体缺口；不依赖 Plugin 的 Core/离线命令
+   保持零配置可用；
 5. 本地 `doctor chat` 合并 profile Plugin Skills 与用户级 `~/.doctor/skills`，按现有 Skill 协议渐进加载。
 
 Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上传本地 Skill 或 Plugin；若后续需要

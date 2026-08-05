@@ -47,7 +47,9 @@ import { runInstall } from "../provision/install";
 import {
   inspectCommandContext,
   type CommandContext,
+  type PluginCapabilityContract,
 } from "../command";
+import { requirePluginCapabilities } from "../terminal/plugin-capability";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-log";
 import { runInit } from "./init";
@@ -56,6 +58,7 @@ import {
   runProfile,
   type WorkingProfileOptions,
 } from "./profile";
+import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 
 // REPL 选项只属于 chat 子命令，root 保持为中性的能力索引。
 function withReplOptions(cmd: CommandT): CommandT {
@@ -183,12 +186,13 @@ function withStoreOptions(cmd: CommandT): CommandT {
 }
 
 function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
+  const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
   return cmd
     .requiredOption("--biz-id <id>", "用于解析 trace_id 的业务 ID（trace_id / message_id / conversation_id 等）")
     .option("-n, --namespace <ns>", "目标服务所在 namespace（缺省时按 profile 或交互选择，非交互默认 default）")
     .option(
       "--services <names>",
-      `逗号分隔的 Kubernetes Service；缺省时交互多选，非交互默认 ${defaultServices}`,
+      `逗号分隔的 Kubernetes Service；缺省时交互多选，非交互默认 ${defaultDescription}`,
     )
     .option("--since <duration>", "kubectl 日志回看窗口（缺省时优先从 UUIDv7 ID 推导，否则为 6h）")
     .option("--since-time <timestamp>", "从指定时间开始，优先于 --since")
@@ -203,10 +207,13 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
 }
 
 function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]): CommandT {
+  const defaultDescription = defaultServiceNames.length
+    ? defaultServiceNames.join(",")
+    : "当前 Plugin 声明的 data provider";
   return cmd
     .option(
       "--services <names>",
-      `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultServiceNames.join(",")}`,
+      `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
     .option("--pods <assignments>", "多 Pod Service 的选择，格式 service=pod[,service=pod]")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
@@ -352,13 +359,38 @@ async function runCommand(
   }
 }
 
+/** Plugin capability 先于 CommandContext/Kubernetes 检查，确保缺业务能力时提示正确边界。 */
+async function runPluginCommand(
+  context: string,
+  opts: WorkingProfileOptions,
+  plugin: PluginDefinition | undefined,
+  contract: PluginCapabilityContract,
+  action: (
+    plugin: PluginDefinition,
+    commandContext: CommandContext,
+    profileName?: string,
+  ) => Promise<number | void>,
+): Promise<void> {
+  try {
+    const profileName = resolveWorkingProfileName(opts);
+    terminalStdout.warning(`profile: ${profileName}\n`);
+    const activePlugin = requirePluginCapabilities(plugin, contract);
+    const commandContext = await inspectCommandContext(opts);
+    const code = await action(activePlugin, commandContext, profileName);
+    if (typeof code === "number") process.exitCode = code;
+  } catch (err) {
+    reportError(err, { context, summary: "fatal" });
+    process.exitCode = 1;
+  }
+}
+
 export async function main(plugin?: PluginDefinition) {
   const program = new Command();
   program
     .name("doctor")
     .description([
-      "面向私有化 Kubernetes 环境的全面排查工具。",
-      "以本地 CLI 为中心，提供确定性诊断、debug environment 准备和可选 AI 问诊；默认旁路运行、证据优先。",
+      "面向应用与基础设施的本地诊断工具。",
+      "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
     ].join("\n"))
     .version(DOCTOR_CLI_VERSION);
 
@@ -481,55 +513,77 @@ export async function main(plugin?: PluginDefinition) {
   ).action(async (opts) => {
     await runCommand("doctor trace", opts, (context) => runCollectTrace(opts, context, plugin));
   });
-  if (plugin) {
-    const defaultLogServices = plugin.services
-      .servicesWith("log")
-      .filter((service) => service.capabilities.log.default)
-      .map((service) => service.name)
-      .join(",");
-    const defaultDataServiceNames = plugin.services
-      .servicesWith("data")
-      .map((service) => service.name);
+  const defaultLogServices = plugin?.services
+    .servicesWith("log")
+    .filter((service) => service.capabilities.log.default)
+    .map((service) => service.name)
+    .join(",") ?? "";
+  const defaultDataServiceNames = plugin?.services
+    .servicesWith("data")
+    .map((service) => service.name) ?? [];
+  const dataProviders = defaultDataServiceNames.length
+    ? defaultDataServiceNames.join("、")
+    : "由当前 Plugin 声明";
 
-    withStoreOptions(
-      program.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
-    ).action(async (opts) => {
-      await runCommand(
-        "doctor store",
+  withStoreOptions(
+    program.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor store",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.store,
+      (activePlugin, context) => runCollectStore(opts, activePlugin, context),
+    );
+  });
+  withLogOptions(
+    program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
+    defaultLogServices,
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor log",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.log,
+      (activePlugin, context) => runCollectLog(opts, activePlugin, context),
+    );
+  });
+  withDataOptions(
+    program.command("data <ids...>").description(`先扩展业务 ID，再汇集 Service Catalog 声明的数据（${dataProviders}，只读）`),
+    defaultDataServiceNames,
+  ).action(async (ids, opts) => {
+    await runPluginCommand(
+      "doctor data",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.data,
+      (activePlugin, context) => runCollectData(
+        { ...opts, ids },
+        activePlugin,
+        undefined,
+        undefined,
+        context,
+      ),
+    );
+  });
+  withConfigOptions(
+    program.command("config").description("采集 Service 的部署配置与 Plugin 提供的租户配置（只读）"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor config",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.config,
+      (activePlugin, context) => runCollectConfig(
         opts,
-        (context) => runCollectStore(opts, plugin, context),
-      );
-    });
-    withLogOptions(
-      program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
-      defaultLogServices,
-    ).action(async (opts) => {
-      await runCommand(
-        "doctor log",
-        opts,
-        (context) => runCollectLog(opts, plugin, context),
-      );
-    });
-    withDataOptions(
-      program.command("data <ids...>").description(`先扩展业务 ID，再汇集 Service Catalog 声明的数据（${defaultDataServiceNames.join("、")}，只读）`),
-      defaultDataServiceNames,
-    ).action(async (ids, opts) => {
-      await runCommand(
-        "doctor data",
-        opts,
-        (context) => runCollectData({ ...opts, ids }, plugin, undefined, undefined, context),
-      );
-    });
-    withConfigOptions(
-      program.command("config").description("采集 Service 的部署配置与 Plugin 提供的租户配置（只读）"),
-    ).action(async (opts) => {
-      await runCommand(
-        "doctor config",
-        opts,
-        (context) => runCollectConfig(opts, plugin, undefined, undefined, undefined, context),
-      );
-    });
-  }
+        activePlugin,
+        undefined,
+        undefined,
+        undefined,
+        context,
+      ),
+    );
+  });
   withHttpOptions(
     program.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
   ).action(async (opts) => {
@@ -559,35 +613,43 @@ export async function main(plugin?: PluginDefinition) {
     .action(async (input, opts) => {
       await runCommand("doctor neta", opts, () => runAnalyzeNetwork(input, opts), false);
     });
-  if (plugin) {
-    withMcpOptions(
-      program.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
-    ).action(async (opts) => {
-      await runCommand("doctor mcp", opts, (context) => runCollectMcp(opts, plugin, context));
-    });
-    withModelOptions(
-      program.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
-    ).action(async (opts) => {
-      await runCommand(
-        "doctor model",
-        opts,
-        (context, profileName) => runCollectModel(
-          { ...opts, profileName },
-          plugin,
-          context,
-        ),
-      );
-    });
-    withMetricOptions(
-      program.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
-    ).action(async (opts) => {
-      await runCommand(
-        "doctor metric",
-        opts,
-        (context) => runCollectMetric(opts, plugin, context),
-      );
-    });
-  }
+  withMcpOptions(
+    program.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor mcp",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.mcp,
+      (activePlugin, context) => runCollectMcp(opts, activePlugin, context),
+    );
+  });
+  withModelOptions(
+    program.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor model",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.model,
+      (activePlugin, context, profileName) => runCollectModel(
+        { ...opts, profileName },
+        activePlugin,
+        context,
+      ),
+    );
+  });
+  withMetricOptions(
+    program.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      "doctor metric",
+      opts,
+      plugin,
+      PLUGIN_COMMAND_CAPABILITIES.metric,
+      (activePlugin, context) => runCollectMetric(opts, activePlugin, context),
+    );
+  });
 
   if (process.argv.length === 2) {
     program.outputHelp();

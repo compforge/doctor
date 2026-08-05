@@ -5,7 +5,7 @@
 CLI kernel 定义命令入口、能力准备、确定性诊断和问答交互之间的稳定边界。各链路共用底层能力，
 但不共享业务流程：
 
-- `app` 是 composition root，解析用户输入并注入产品与基础设施能力；
+- `app` 是 composition root，解析用户输入并注入 Plugin 与基础设施能力；
 - `command` 持有 collect/provision 共用的启动事实、目标解析和审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
 - `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和交付；
@@ -55,7 +55,7 @@ cli/src/
 └── infra/               Host、Target、K8s 与各类外部资源 adapter
 
 packages/plugin/         Plugin、Service Catalog 与 capability 公共协议
-plugins/<product>/       具体产品的 Catalog、领域模型与固定业务查询
+plugins/<plugin>/        具体 Plugin 的 Catalog、领域模型与固定业务查询
 ```
 
 目录按真实职责生长，不为概念对称提前创建空层。跨领域 Fact、Probe 或 infra 只有出现稳定、同语义的
@@ -72,7 +72,7 @@ profile 决定 CLI 能呈现的能力，而不是让不同执行模型互相渗�
 | 同时配置 `llm` 与 `server` | 连接 doctor-server 的完整 agent runtime |
 
 direct collect 不创建 connection、conversation 或 SSE，也不承担开放式 agent 推理；server mode 不把
-server 内的工具执行细节搬回 CLI。两种形态只共享产品入口和稳定协议。
+server 内的工具执行细节搬回 CLI。两种形态只共享 Doctor 入口和稳定协议。
 
 执行位置属于能力身份：
 
@@ -85,6 +85,21 @@ Kubernetes 是 Doctor Host 到 Target 的一种访问通道。`app` 先形成 `C
 资源作用域声明 `required` 或 `preferred` access contract：required 被明确拒绝时停止当前阶段；
 preferred 被拒绝时进入手动输入或低能力降级；`kubectl auth can-i` 无法判断时保留 `unknown`，由实际
 操作给出最终结论。权限上下文按 executor 缓存，但不进入诊断 Facts/Evidence。
+
+命令的前置条件沿两条正交能力轴表达：Core access 描述如何接近和安全操作 Target，Plugin capability
+描述目标是什么、业务数据在哪里以及数据语义。Core command 不依赖 Plugin；Plugin command 始终注册，
+但在创建 `CommandContext` 和访问 Kubernetes 前先验证当前 profile 已选择 Plugin 且具备 required
+capability，缺失时直接说明具体 capability。preferred capability 缺失只触发声明过的降级路径。
+
+```text
+Command requirements
+├── Plugin capability      业务目标、数据来源与语义
+├── Core access contract   Host/Target/Kubernetes 访问条件
+└── Operation              副作用上限与用户授权
+```
+
+访问检查按实际阶段惰性发生，不能以命令可能使用的最大权限提前阻断低能力路径。例如 `doctor debug` 已有
+可复用 debug container 时不需要 `update pods/ephemeralcontainers`；只有确实需要注入时才检查该权限。
 
 ## Collect 共享协议
 
@@ -165,14 +180,14 @@ Provision 当前不引入统一 engine。image、debug、install 各自拥有检
 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖该公共包；CLI infra 不知道业务 Service、表关系和诊断结论。
 
 运行时配置、Probe 生命周期、Evidence 适配和采集编排属于 `collect/<domain>`；Service 协议、固定查询
-和产品 capability 分别属于 `packages/plugin` 与 `plugins/<product>`；Registry、container engine、
+和 Plugin capability 分别属于 `packages/plugin` 与 `plugins/<plugin>`；Registry、container engine、
 package manager、文件传输和外部 client 属于 infra。Service Catalog 声明“可能提供什么”，具体部署
 是否启用由运行时 Facts 判断。
 
 Service 定义只由身份字段和 `capabilities` 容器组成。Catalog 只提供 `find`、`findWith`、`servicesWith`
 三种通用发现操作，不为每种能力增加专用方法；Store 选择等领域语义由对应 capability 模块提供 helper。
-产品原始配置 schema、解析规则和请求模板留在 `plugins/<product>`，必要时投影成中性 capability 接口供
-collect 消费，不能让 collect 反向知道某个产品的配置 key 或内部对象。
+Plugin 原始配置 schema、解析规则和请求模板留在 `plugins/<plugin>`，必要时投影成中性 capability 接口供
+collect 消费，不能让 collect 反向知道某个 Plugin 的配置 key 或内部对象。
 
 ### 入口、TUI 与终端输出
 

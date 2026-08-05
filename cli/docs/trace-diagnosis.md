@@ -47,5 +47,5 @@ Service 发现回答“本轮目标是谁”，属于配置确认；port-forward
 ### 业务语义由 Plugin 注入
 
 trace-harness 只提供与 Python 版本一致的 span 归一化、逻辑节点融合、诊断和 HTML 渲染能力，不认识
-具体产品。节点分类与节点旁的业务摘要由 Plugin 提供 spec，因此任何产品节点和字段都不会进入通用
+具体 Plugin。节点分类与节点旁的业务摘要由 Plugin 提供 spec，因此任何业务节点和字段都不会进入通用
 采集层。

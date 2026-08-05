@@ -30,7 +30,7 @@ test("CLI core 不依赖具体 Plugin 实现", () => {
   }
 });
 
-test("CLI core 不包含具体产品配置约定", () => {
+test("CLI core 不包含具体 Plugin 配置约定", () => {
   const cli = join(import.meta.dir, "../../../cli");
   const paths = [
     ...sourceFiles(join(cli, "src")),

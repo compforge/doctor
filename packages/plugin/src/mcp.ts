@@ -25,7 +25,7 @@ export interface McpToolDefinition {
   buildHttpRequest(args: Record<string, unknown>): McpHttpRequestPlan;
 }
 
-/** Product capability 向 collect 暴露的中性 MCP server 投影，不泄漏产品原始配置 schema。 */
+/** Plugin capability 向 collect 暴露的中性 MCP server 投影，不泄漏 Plugin 原始配置 schema。 */
 export interface McpServerDefinition {
   id: string;
   name: string;
