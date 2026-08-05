@@ -13,7 +13,7 @@ export type DataOutputFormat = "json" | "html";
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts {
-  ids: string[];
+  bizId: string;
   namespace?: string;
   kubeconfig?: string;
   context?: string;

@@ -211,6 +211,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
     ? defaultServiceNames.join(",")
     : "当前 Plugin 声明的 data provider";
   return cmd
+    .requiredOption("--biz-id <id>", "需要汇集关联数据的业务 ID")
     .option(
       "--services <names>",
       `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
@@ -554,16 +555,16 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withDataOptions(
-    program.command("data <ids...>").description(`先扩展业务 ID，再汇集 Service Catalog 声明的数据（${dataProviders}，只读）`),
+    program.command("data").description(`先扩展业务 ID，再汇集 Service Catalog 声明的数据（${dataProviders}，只读）`),
     defaultDataServiceNames,
-  ).action(async (ids, opts) => {
+  ).action(async (opts) => {
     await runPluginCommand(
       "doctor data",
       opts,
       plugin,
       PLUGIN_COMMAND_CAPABILITIES.data,
       (activePlugin, context) => runCollectData(
-        { ...opts, ids },
+        opts,
         activePlugin,
         undefined,
         undefined,

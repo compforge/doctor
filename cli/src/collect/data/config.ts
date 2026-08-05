@@ -81,8 +81,8 @@ export async function resolveDataServiceSelection(
 }
 
 export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCatalog): DataConfig {
-  const ids = [...new Set(opts.ids.map((id) => id.trim()).filter(Boolean))];
-  if (!ids.length) throw new Error("doctor data 至少需要一个 biz id");
+  const bizId = opts.bizId.trim();
+  if (!bizId) throw new Error("doctor data 需要非空 --biz-id");
   const format = parseDataOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 时可用");
   const reportName = dataReportName(new Date());
@@ -97,7 +97,7 @@ export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCata
   const namespace = resolveCollectNamespace(opts);
   const services = parseDataServices(opts.services, catalog);
   return {
-    ids,
+    ids: [bizId],
     format,
     outputPath,
     reportName,
