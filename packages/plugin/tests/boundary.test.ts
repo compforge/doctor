@@ -26,6 +26,12 @@ test("Plugin SDK 与示例 Plugin 不反向依赖 CLI", () => {
   }
 });
 
+test("Plugin Skill 协议不依赖具体 Agent runtime", () => {
+  for (const path of sourceFiles(join(import.meta.dir, "../src"))) {
+    expect(readFileSync(path, "utf-8")).not.toMatch(/@compforge\/doctor-agent|pi-agent/);
+  }
+});
+
 test("CLI core 不依赖具体 Plugin 实现", () => {
   const root = join(import.meta.dir, "../../../cli/src");
   for (const path of sourceFiles(root)) {

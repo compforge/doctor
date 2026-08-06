@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
+    "@compforge/doctor-plugin": "workspace:*",
     "@earendil-works/pi-agent-core": "0.80.6",
     "@earendil-works/pi-ai": "0.80.6"
   },

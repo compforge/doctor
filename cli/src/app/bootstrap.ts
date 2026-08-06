@@ -6,6 +6,7 @@ import {
   type AgentSource,
   type LlmConfig,
 } from "@compforge/doctor-agent";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 
 import { ServerAgent, createDoctorModel, type DoctorModel } from "../chat";
 import { DoctorClient } from "../protocol";
@@ -24,7 +25,10 @@ export interface BootstrapResult {
   model: DoctorModel;
 }
 
-export async function bootstrap(flags: CliFlags): Promise<BootstrapResult> {
+export async function bootstrap(
+  flags: CliFlags,
+  plugin?: PluginDefinition,
+): Promise<BootstrapResult> {
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
   const statePath = join(home, ".doctor", "state.yaml");
@@ -85,8 +89,7 @@ export async function bootstrap(flags: CliFlags): Promise<BootstrapResult> {
 
   const agent = new LocalAgent({
     llm: resolveLocalLlm(profile),
-    // Plugin loading owns Skill discovery and will pass the selected Plugin's resolved Skills here.
-    skills: [],
+    skills: plugin?.skills ?? [],
     verbose: flags.verbose,
   });
   return {

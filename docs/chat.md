@@ -9,8 +9,9 @@ adapter 取得事件；未配置 `server` 且 `llm` 完整时，CLI 在进程内
 AgentUE 表达 Agent 产出的语义 model/patch，chat-tui 表达 UI 快照与用户 intent。Doctor 的 `Session`
 持有一次 TUI 进程内的 turn、队列和投影状态；`conversation` 表示可持久化的 LLM 记忆，两者不混用。
 
-Skill 是 Plugin 的版本化资源。Profile 选择精确 Plugin 版本后，Plugin loader 把已经解析和校验的 Skill
-交给 Agent；Agent 不扫描全局 Skill 目录，也不解释 Plugin 的安装布局。
+Skill 是 Plugin 的版本化资源。Profile 选择精确 Plugin 版本后，Plugin loader 把已经解析和校验的
+`PluginSkill` 附到 runtime `PluginDefinition`，CLI 再交给 Agent；Agent 不扫描全局 Skill 目录，也不
+解释 Plugin 的安装布局。
 
 ## 流程
 

@@ -1,5 +1,5 @@
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { startDoctor } from "../../src/app/main";
+import { startDoctor } from "doctor-cli/embed";
 
 const plugin = {
   id: "test",

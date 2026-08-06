@@ -4,6 +4,9 @@
   "private": true,
   "description": "AI-driven diagnostic CLI for private Kubernetes environments",
   "type": "module",
+  "exports": {
+    "./embed": "./src/embed.ts"
+  },
   "scripts": {
     "dev": "bun run --watch src/app/entry.ts",
     "build:mac": "make build-mac",
