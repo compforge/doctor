@@ -126,7 +126,7 @@ CLI composition root 解析 profile 后加载其精确 Plugin 版本：
 3. 需要业务语义的 collect 命令取得 profile 选择的 `PluginDefinition`，继续走现有通用 collect 链路；
 4. Plugin command 始终可见，缺少 required capability 时提示具体缺口；不依赖 Plugin 的 Core/离线命令
    保持零配置可用；
-5. 本地 `doctor chat` 合并 profile Plugin Skills 与用户级 `~/.doctor/skills`，按现有 Skill 协议渐进加载。
+5. `doctor chat` 只加载 profile 精确选择的 Plugin 所携带的 Skills，并把解析结果交给本地 Agent。
 
 Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上传本地 Skill 或 Plugin；若后续需要
 会话级上传，应作为独立协议和授权能力设计，不能隐含在 Plugin load 中。
@@ -145,10 +145,10 @@ Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主
 选择，继续由它选择 Plugin/Skills 能避免再维护 Instance、Binding
 及二者与 profile 的同步关系。
 
-### 确定性能力与 Skill 是独立贡献
+### 确定性能力与 Skill 共用版本生命周期
 
-`PluginDefinition` 是确定性诊断的代码和 capability，Skill 是 agent 使用的知识与工作流。两者可在
-同一 Plugin 中一致交付；安装版本一致不意味着运行接口或生命周期需要合并。
+`PluginDefinition` 是确定性诊断的代码和 capability，Skill 是 agent 使用的知识与工作流。两者运行
+接口独立，但共同跟随 Plugin 安装、选择、信任和升级；Skill 不再建立平行的全局生命周期。
 
 ### 协议负责能力对接，SDK 负责代码复用
 
@@ -173,7 +173,7 @@ Plugin 的贡献深度随 command 类型变化：业务型命令由 capability �
 
 解包、路径校验、版本目录和 profile 更新属于 `cli/src/plugin` 宿主边界；`packages/plugin` 只定义
 Plugin 与 Service 公共语义，collect 只消费注入的 `PluginDefinition`，本地 agent loop 只消费解析后的
-Skill roots。这样将来由本地 tar
+Skills。这样将来由本地 tar
 扩展到私有下载源时，不会改变 Catalog 或诊断领域实现。
 
 ### 归档是受信任代码，但仍需安全解包

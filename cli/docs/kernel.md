@@ -9,7 +9,7 @@ CLI kernel 定义命令入口、能力准备、确定性诊断和问答交互之
 - `command` 持有 collect/provision 共用的启动事实、目标解析和审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
 - `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和交付；
-- `protocol → app/session → tui` 是独立的问答链路，不依赖 collect；
+- `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立的问答链路，不依赖 collect；
 - `packages/plugin` 定义 Plugin、Service 与 capability 公共协议，`plugins/<plugin>` 持有访问实现与固定业务查询；
   `infra` 只提供 Doctor 的外部资源访问能力。
 
@@ -38,11 +38,11 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 ```text
 cli/src/
 ├── app/                 命令入口、profile、会话流程与能力组装
+├── chat/                AgentUE model、Session/Controller 与旧 Server 协议 adapter
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
 ├── command/             启动检查、Kubernetes 目标解析、执行上下文与审批契约
 ├── provision/           image、debug environment 与目标工具准备
 ├── protocol/            CLI ↔ doctor-server 协议与 SSE client
-├── tui/                 Ink 问答界面
 ├── terminal/            命令共用的选择、输入、确认与输出边界
 ├── collect/
 │   ├── protocol.ts      Facts、Observation、Finding、Coverage 等共享协议
@@ -54,6 +54,7 @@ cli/src/
 │   └── <domain>/        领域 config/fact/probe/detector/render
 └── infra/               Host、Target、K8s 与各类外部资源 adapter
 
+packages/agent/          本地 chat 当前使用、未来 server 复用的 Agent、Skill 输入与 AgentUE 输出
 packages/plugin/         Plugin、Service Catalog 与 capability 公共协议
 plugins/<plugin>/        具体 Plugin 的 Catalog、领域模型与固定业务查询
 ```
@@ -68,11 +69,12 @@ profile 决定 CLI 能呈现的能力，而不是让不同执行模型互相渗�
 | profile 条件 | 能力形态 |
 |---|---|
 | 零配置 | 使用本地 kubeconfig 的确定性诊断 |
-| 配置 `llm`、未配置 `server` | 本地轻量问答（规划中） |
+| 配置 `llm`、未配置 `server` | 本地轻量问答 |
 | 同时配置 `llm` 与 `server` | 连接 doctor-server 的完整 agent runtime |
 
 direct collect 不创建 connection、conversation 或 SSE，也不承担开放式 agent 推理；server mode 不把
-server 内的工具执行细节搬回 CLI。两种形态只共享 Doctor 入口和稳定协议。
+server 内的工具执行细节搬回 CLI。本地模式当前由 `packages/agent` 实现；现有远端模式通过兼容 adapter
+对齐 AgentUE 交互语义，未来 TypeScript server 复用 `packages/agent` 并提供自己的 interface。
 
 执行位置属于能力身份：
 
@@ -150,7 +152,9 @@ Provision 当前不引入统一 engine。image、debug、install 各自拥有检
 
 `app` 可以组装 Plugin、`provision`、`collect` 和 `infra`；`provision` 与 `collect` 互不依赖。共同启动
 上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
-`packages/plugin` 不依赖 CLI，具体 Plugin 只依赖该公共包；CLI infra 不知道业务 Service、表关系和诊断结论。
+`packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 不知道业务
+Service、表关系和诊断结论。Plugin loader 把当前精确 Plugin 版本的 Skills 解析后交给本地 Agent，Agent
+不扫描独立的 Skill 目录。
 
 运行时配置、Probe 生命周期、Evidence 适配和采集编排属于 `collect/<domain>`；Service 协议、固定查询
 和 Plugin capability 分别属于 `packages/plugin` 与 `plugins/<plugin>`；Registry、container engine、
@@ -165,12 +169,8 @@ collect 消费，不能让 collect 反向知道某个 Plugin 的配置 key 或�
 ### 入口、TUI 与终端输出
 
 Command 同时服务交互用户和自动化调用：domain 只提供候选与选择语义，共用 prompt 和输出机制归
-`terminal`。TUI 只依赖 `Session`/`UiEvent`，不直接访问协议 client 或 collect；wire 字段以 server
-schema 为准。
-
-Ink history 分为已完成且永久写入 scrollback 的 committed 区，以及当前 turn 内可变的 pending 区，
-避免高频 chunk 重算全部历史。第三方 ANSI 文本进入 Ink 前必须剥离或显式 reset；这些是代码级维护约束，
-具体组件和依赖以 `tui/` 实现为准，不再维护独立框架调研稿。
+`terminal`。chat-tui 只依赖 `Controller` 提供的 view state 与 intent；`Session` 只接收 AgentUE patch，
+不直接解释 pi 或 server wire 字段。旧 doctor-server schema 由兼容 `ServerAgent` 收口。
 
 ### Runtime 与分发
 
