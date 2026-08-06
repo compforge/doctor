@@ -5,4 +5,5 @@ export * from "./http";
 export * from "./mcp";
 export * from "./definition";
 export * from "./service";
+export * from "./skill";
 export * from "./store";

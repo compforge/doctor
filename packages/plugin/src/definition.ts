@@ -5,6 +5,7 @@ import type {
 import type { HttpTransportResponse } from "./http";
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDataTarget } from "./service";
+import type { PluginSkill } from "./skill";
 import type { SpecSet } from "@compforge/trace-harness";
 
 export interface TenantConfigTarget {
@@ -97,4 +98,6 @@ export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;
 export interface PluginDefinition extends PluginLevelCapabilities {
   id: string;
   services: ServiceCatalog;
+  /** Runtime-resolved Skills from the same exact Plugin version. */
+  skills?: readonly PluginSkill[];
 }

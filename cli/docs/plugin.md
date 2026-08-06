@@ -8,11 +8,13 @@
 Doctor Core 保持开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
 Plugin 用一个版本化归档把这些业务扩展从 core 中分离，并允许同一份交付物同时贡献：
 
-- **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability；
-- **Skill**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
+- **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability，并在运行时携带同版本
+  已解析的 `PluginSkill`；
+- **Skill 资源**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
 
 一个 Plugin 只导出一个 `PluginDefinition`，不再增加额外业务中间层。Service Catalog 仍是 capability
-的事实来源；Plugin manifest 只定位代码和 Skill，不重复声明 store、log、data、model 等能力。
+的事实来源；Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
+`PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
 例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明，`trace`/`log` 只消费其
 约定结果，不通过通用 data 查询或 span tag 猜测业务关系。
 
@@ -100,7 +102,7 @@ doctor plugin load ./sample-1.2.0.tar.gz --profile sample
 `load` 是面向用户的一步式“安装并选择”操作：
 
 1. 在临时目录解包，读取并校验 manifest、Doctor 版本兼容性和所有资源路径；
-2. 加载代码入口并校验其满足 `PluginDefinition`，扫描 Skill 的基础元数据；
+2. 加载代码入口并校验其满足 `PluginDefinition`，扫描 Skill 的基础元数据并附加 runtime view；
 3. 原子移动到 `~/.doctor/plugins/<id>/<version>/`；目标版本已存在时不原地覆盖；
 4. 指定 `--profile` 时，在安装完全成功后把精确 `id@version` 写入该 profile；未指定时选择当前
    profile；
@@ -147,8 +149,9 @@ Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主
 
 ### 确定性能力与 Skill 共用版本生命周期
 
-`PluginDefinition` 是确定性诊断的代码和 capability，Skill 是 agent 使用的知识与工作流。两者运行
-接口独立，但共同跟随 Plugin 安装、选择、信任和升级；Skill 不再建立平行的全局生命周期。
+`PluginDefinition` 的 capability 是确定性诊断代码，`PluginSkill` 是 agent 使用的知识与工作流。
+两者运行接口独立，但由同一个 runtime definition 汇合，并共同跟随 Plugin 安装、选择、信任和升级；
+Skill 不再建立平行的全局生命周期。
 
 ### 协议负责能力对接，SDK 负责代码复用
 
@@ -195,5 +198,6 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 
 企业 Plugin 的 workspace `package.json` 可只服务开发和构建，保持 `private: true`，不发布 npm。
 标准交付把自包含 `plugin.mjs` 与 Skills 打成 tar，由通用 Doctor binary 手动加载；需要定制 binary 时，
-分发方可提供独立 composition entry 并复用 `cli/Makefile`。本仓根 `make build/install` 始终构建不带具体
-Plugin 的通用 CLI。两种形态共用 `PluginDefinition` 与 capability，差别只在启动时如何取得 Plugin。
+分发方可从 `doctor-cli/embed` 导入 `startDoctor`，提供独立 composition entry，并通过
+`cli/Makefile` 的 `DOCTOR_ENTRY` 构建。本仓根 `make build/install` 始终构建不带具体 Plugin 的通用 CLI。
+两种形态共用 `PluginDefinition` 与 capability，差别只在启动时如何取得 Plugin。

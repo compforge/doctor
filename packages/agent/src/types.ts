@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { BaseBlock, PatchEmitter, PatchEvent } from "@compforge/agentue/ui";
+import type { PluginSkill } from "@compforge/doctor-plugin";
 
 export interface MessageBlock extends BaseBlock {
   type: "message";
@@ -45,18 +46,11 @@ export interface LlmConfig {
   thinking?: boolean;
 }
 
-/** A Plugin owns the Skill files and passes this resolved view to the agent. */
-export interface Skill {
-  name: string;
-  description: string;
-  content: string;
-  filePath: string;
-  readResource?(relativePath: string, signal?: AbortSignal): Promise<string>;
-}
+export type Skill = PluginSkill;
 
 export interface AgentOptions {
   llm: LlmConfig;
-  skills?: readonly Skill[];
+  skills?: readonly PluginSkill[];
   tools?: readonly AgentTool[];
   systemPrompt?: string;
   verbose?: boolean;

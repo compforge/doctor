@@ -1,6 +1,7 @@
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
 import { ChatShell } from "chat-tui";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 
 import { CHAT_COMMANDS, Controller, Session } from "../chat";
 import type { CliFlags } from "../protocol";
@@ -8,7 +9,7 @@ import { mapErrorMessage } from "../protocol";
 import { bootstrap } from "./bootstrap";
 import { reportError } from "./error-log";
 
-export async function runRepl(flags: CliFlags): Promise<void> {
+export async function runRepl(flags: CliFlags, plugin?: PluginDefinition): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write(
       "doctor chat 仅支持交互式终端（非交互采集请用 doctor cpu / doctor mem / doctor trace）\n",
@@ -19,7 +20,7 @@ export async function runRepl(flags: CliFlags): Promise<void> {
 
   let boot;
   try {
-    boot = await bootstrap(flags);
+    boot = await bootstrap(flags, plugin);
   } catch (error) {
     reportError(error, {
       context: "doctor chat/startup",
