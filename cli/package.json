@@ -34,6 +34,7 @@
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/prombed": "0.0.2",
     "@compforge/trace-harness": "0.0.1",
+    "@earendil-works/pi-agent-core": "0.84.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentui/core": "0.4.5",
     "@opentui/keymap": "0.4.5",

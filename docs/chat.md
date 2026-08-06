@@ -27,6 +27,8 @@ Agent source ──► AgentUE patch ──► Session ──► Controller ─�
                                       └──── intent ───┘
 
 Profile ──► exact Plugin version ──► resolved Skills ──► shared Agent
+
+CLI ──► NodeExecutionEnv ──► Pi read/bash ──► Skill files and scripts
 ```
 
 现有 doctor-server 的 wire event 只存在于兼容 `ServerAgent` 内，不能反向进入 `packages/agent`。未来
@@ -36,20 +38,23 @@ TypeScript server 通过自己的 interface 使用共享 Agent，不在本阶段
 
 ### Agent 共用，宿主能力注入
 
-`packages/agent` 拥有 pi 驱动的模型循环、Skill 按需读取、Doctor 语义 block 和 AgentUE patch 输出。
-当前由 CLI 提供 Plugin 解析、模型凭据和 conversation 生命周期；未来 server 提供自己的 interface、
-凭据、工具、workspace 与持久化 adapter。chat-tui 只消费 AgentUE 投影，不直接依赖 pi。
+`packages/agent` 拥有 pi 驱动的模型循环、Skill 按需读取、`read`/`bash` 工具、Doctor 语义 block 和
+AgentUE patch 输出。当前由 CLI 提供 Plugin 解析、模型凭据、Pi `ExecutionEnv` 和 conversation 生命周期；
+未来 server 提供自己的 interface、凭据、执行环境与持久化 adapter。chat-tui 只消费 AgentUE 投影，
+不直接依赖 pi。
 
 ### Skill 跟随 Plugin
 
 Skill 不拥有独立的安装、选择、信任或升级生命周期。Plugin 切换或版本变化时必须新建 conversation，
-避免旧上下文继续依据另一版 Skill 推理。Agent 只消费结构化 Skill 输入；资源路径校验和读取能力由
-Plugin loader 收口。
+避免旧上下文继续依据另一版 Skill 推理。Plugin loader 交付 Skill 内容及 `SKILL.md` 的绝对路径；Pi
+只在 prompt 中暴露元数据和路径，由 Agent 通过 `read` 按需加载完整指令，并用同一执行环境读取引用、
+运行脚本。Doctor 不再维护独立的 Skill 读取工具或资源协议。
 
 ### 安全来自能力边界
 
-提示词不能替代权限。readonly profile 必须与只读 kubeconfig、DB 用户和最小 RBAC 一致；未来 shell、
-Kubernetes 或数据库工具进入共享 Agent 前，需要在宿主 runtime 落实作用域、超时、容量和审批策略。
+提示词不能替代权限。Pi `ExecutionEnv` 是文件与进程执行抽象，不是安全沙箱；本地 `read`/`bash` 继承
+Doctor 进程权限。readonly profile 必须与只读 kubeconfig、DB 用户和最小 RBAC 一致；未来 Kubernetes
+或数据库工具进入共享 Agent 前，需要在宿主侧落实作用域、超时、容量和审批策略。
 
 ## References
 

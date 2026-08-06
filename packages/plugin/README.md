@@ -10,5 +10,5 @@ Service Catalog、capability，以及同一精确 Plugin 版本已经解析的 S
 和操作方法，适合让原始凭据、厂商字段与请求拼装始终留在 Plugin 内。
 
 `PluginSkill` 是 runtime 视图，不规定归档或磁盘布局。Plugin loader 或定制发行入口负责读取
-`SKILL.md` 和资源，并把 `content`/`readResource` 注入对应 `PluginDefinition`。Skill 因此跟随 Plugin
-安装、选择、信任与升级，同时不让 Plugin SDK 依赖具体 agent framework。
+`SKILL.md`，并把内容及可由宿主 `ExecutionEnv` 访问的绝对路径注入对应 `PluginDefinition`。Skill 因此
+跟随 Plugin 安装、选择、信任与升级，同时不让 Plugin SDK 依赖具体 agent framework。
