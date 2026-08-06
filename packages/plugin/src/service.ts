@@ -111,7 +111,8 @@ export interface ServiceDataCapability {
   provides: readonly string[];
   /** 存在时表示此 Service 还可扩展这些规范 ID 类型。 */
   expands?: readonly string[];
-  store: string;
+  /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
+  store?: string;
   inspectTarget(context: PluginContext): Promise<ServiceDataTarget>;
   inspect(context: PluginContext, input: ServiceDataInput): Promise<ServiceDataResult>;
   summarize(result: ServiceDataResult): ServiceDataSummary;
