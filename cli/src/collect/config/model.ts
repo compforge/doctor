@@ -12,6 +12,7 @@ export type TenantConfigScope = string;
 export interface CollectConfigCliOpts {
   namespace?: string;
   services?: string;
+  deploymentConfig?: boolean;
   tenantId?: string;
   tenantName?: string;
   tenantConfigService?: string;
@@ -30,6 +31,7 @@ export interface ConfigCollectConfig {
   namespaceSource: string;
   services: string[];
   servicesExplicit: boolean;
+  includeDeploymentConfig: boolean;
   tenantId?: string;
   tenantName?: string;
   fallbackIdentity?: DatabaseIdentity;
@@ -51,10 +53,24 @@ export interface ConfigDeploymentTarget {
   container: string;
 }
 
+export interface ConfigPodContainerFact {
+  name: string;
+  image: string;
+  requests: { cpu?: string; memory?: string };
+  limits: { cpu?: string; memory?: string };
+}
+
+export interface ConfigPodRuntimeFact {
+  pod: string;
+  phase: string;
+  containers: ConfigPodContainerFact[];
+}
+
 export interface ConfigServiceTargetFact {
   service: string;
   deployments: ConfigDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
+  podRuntime: Fact<{ pods: ConfigPodRuntimeFact[] }>;
 }
 
 export interface ConfigTenantDatabaseTargetFact {
@@ -67,6 +83,7 @@ export interface ConfigTenantDatabaseTargetFact {
 
 export interface ConfigInspectionFacts {
   serviceTargets: Fact<{ services: Record<string, ConfigServiceTargetFact> }>;
+  deploymentConfiguration: Fact<{ requested: true }>;
   tenantDatabaseTarget: Fact<ConfigTenantDatabaseTargetFact>;
   tenantRequest: Fact<{ tenantId: string; tenantName?: string; scopes: string[] }>;
 }
@@ -103,7 +120,7 @@ export interface ConfigEvidence extends Evidence<ConfigObservation, ConfigInspec
 }
 
 export type ConfigFinding = never;
-export type ConfigDiagnosisGoal = "environment-config" | "tenant-config";
+export type ConfigDiagnosisGoal = "environment-config" | "workload-runtime" | "tenant-config";
 export type ConfigDiagnosis = Diagnosis<ConfigEvidence, ConfigFinding, ConfigDiagnosisGoal>;
 
 export interface ConfigCollectContext {

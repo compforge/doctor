@@ -83,9 +83,12 @@ export function buildConfigCoverage(
   evidence: ConfigEvidence,
 ): DiagnosisCoverage<ConfigDiagnosisGoal>[] {
   const environmentMissing: string[] = [];
+  if (evidence.facts.deploymentConfiguration.status !== "collected") {
+    environmentMissing.push(evidence.facts.deploymentConfiguration.reason);
+  }
   if (evidence.facts.serviceTargets.status !== "collected") {
     environmentMissing.push(evidence.facts.serviceTargets.reason);
-  } else {
+  } else if (evidence.facts.deploymentConfiguration.status !== "unavailable") {
     for (const [service, target] of Object.entries(evidence.facts.serviceTargets.services)) {
       if (!target.deployments.length) environmentMissing.push(`${service} 没有可采集的 Deployment/Container`);
       for (const deployment of target.unavailableDeployments) {
@@ -108,6 +111,26 @@ export function buildConfigCoverage(
       : collectedEnvironment > 0 ? "partial" : "insufficient",
     missingEvidence: environmentMissing,
   }];
+
+  const workloadMissing: string[] = [];
+  let workloadTargets = 0;
+  let collectedWorkloads = 0;
+  if (evidence.facts.serviceTargets.status !== "collected") {
+    workloadMissing.push(evidence.facts.serviceTargets.reason);
+  } else {
+    for (const [service, target] of Object.entries(evidence.facts.serviceTargets.services)) {
+      workloadTargets += 1;
+      if (target.podRuntime.status === "collected") collectedWorkloads += 1;
+      else workloadMissing.push(`${service}: ${target.podRuntime.reason}`);
+    }
+  }
+  coverage.push({
+    goal: "workload-runtime",
+    status: workloadTargets > 0 && collectedWorkloads === workloadTargets
+      ? "sufficient"
+      : collectedWorkloads > 0 ? "partial" : "insufficient",
+    missingEvidence: workloadMissing,
+  });
 
   if (evidence.facts.tenantRequest.status === "collected") {
     const tenantRequest = evidence.facts.tenantRequest;

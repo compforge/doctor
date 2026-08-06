@@ -22,11 +22,20 @@ function serviceList(targetPort: string | number = 6379): string {
           clusterIP: "10.0.0.8",
           selector: { app: "redis" },
           ports: [{ name: "redis", port: 6379, targetPort }],
+          containers: [{
+            name: "redis",
+            image: "registry.example/redis:7.2",
+            resources: {
+              requests: { cpu: "250m", memory: "256Mi" },
+              limits: { cpu: "1", memory: "1Gi" },
+            },
+          }],
         },
         status: {
           podIP: "10.1.0.8",
           containerStatuses: [{
             name: "redis",
+            imageID: "registry.example/redis@sha256:1234",
             restartCount: 2,
             lastState: { terminated: { containerID: "containerd://previous" } },
           }],
@@ -77,6 +86,10 @@ test("K8s Pod endpoint 可按 Pod 名、FQDN 和 PodIP 解析", () => {
     .toEqual(["redis"]);
   expect(pods[0]!.containers).toEqual([{
     name: "redis",
+    image: "registry.example/redis:7.2",
+    imageId: "registry.example/redis@sha256:1234",
+    requests: { cpu: "250m", memory: "256Mi" },
+    limits: { cpu: "1", memory: "1Gi" },
     restartCount: 2,
     hasPreviousTerminated: true,
   }]);

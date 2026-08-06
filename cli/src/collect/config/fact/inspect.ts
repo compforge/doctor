@@ -3,6 +3,7 @@ import { createPluginContext } from "../../../plugin/context";
 import {
   captureKubernetesWorkloadConfig,
   deploymentsForService,
+  podsForService,
   selectServiceContainer,
 } from "../../../infra/k8s/workload-config";
 import type { Inspect } from "../../inspection";
@@ -17,6 +18,8 @@ function commandReason(ok: boolean, stderr: string): string | undefined {
   return ok ? undefined : stderr.trim().split("\n")[0] || "kubectl 读取失败";
 }
 
+const DEPLOYMENT_CONFIG_SKIPPED_REASON = "用户未确认采集 Deployment Env/ConfigMap";
+
 export function makeConfigTargetsInspect(
   config: ConfigCollectConfig,
   tenantCapability?: TenantConfigurationCapability,
@@ -24,32 +27,71 @@ export function makeConfigTargetsInspect(
   return {
     id: "config-targets",
     run: async (ctx) => {
-      const capture = await captureKubernetesWorkloadConfig(ctx.executor, config.namespace);
-      for (const [id, title, result] of [
-        ["config-services", "Service 配置目标", capture.serviceCapture],
-        ["config-deployments", "Deployment env 配置", capture.deploymentCapture],
-        ["config-configmaps", "ConfigMap 配置", capture.configMapCapture],
-      ] as const) {
+      const capture = await captureKubernetesWorkloadConfig(
+        ctx.executor,
+        config.namespace,
+        config.includeDeploymentConfig,
+      );
+      const deploymentReasons = config.includeDeploymentConfig ? [
+        capture.deploymentParseError
+          ?? (capture.deploymentCapture
+            ? commandReason(capture.deploymentCapture.ok, capture.deploymentCapture.stderr)
+            : "Deployment 未读取"),
+        capture.configMapParseError
+          ?? (capture.configMapCapture
+            ? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
+            : "ConfigMap 未读取"),
+      ].filter((reason): reason is string => !!reason) : [];
+      const deploymentConfiguration: ConfigInspectionFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
+        ? { status: "unavailable", reason: DEPLOYMENT_CONFIG_SKIPPED_REASON }
+        : deploymentReasons.length
+          ? { status: "failed", reason: deploymentReasons.join("；") }
+          : { status: "collected", requested: true };
+      const steps = [
+        ["config-services", "Service 配置目标", capture.serviceCapture, undefined],
+        ["config-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
+        ...(capture.deploymentCapture ? [[
+          "config-deployments",
+          "Deployment env 配置",
+          capture.deploymentCapture,
+          capture.deploymentParseError,
+        ] as const] : []),
+        ...(capture.configMapCapture ? [[
+          "config-configmaps",
+          "ConfigMap 配置",
+          capture.configMapCapture,
+          capture.configMapParseError,
+        ] as const] : []),
+      ] as const;
+      for (const [id, title, result, parseError] of steps) {
         ctx.bundle.addStep({
           id,
           title,
           risk: "observe",
-          status: result.ok ? "ok" : "failed",
-          reason: commandReason(result.ok, result.stderr),
+          status: result.ok && !parseError ? "ok" : "failed",
+          reason: parseError ?? commandReason(result.ok, result.stderr),
           command: result.command,
           durationMs: result.durationMs,
           // Deployment 与 ConfigMap 可能包含凭据，不把 kubectl 原始输出落盘。
+        });
+      }
+      if (!config.includeDeploymentConfig) {
+        ctx.bundle.addStep({
+          id: "config-deployment-environment",
+          title: "Deployment Env/ConfigMap",
+          risk: "observe",
+          status: "skipped",
+          reason: DEPLOYMENT_CONFIG_SKIPPED_REASON,
         });
       }
       const snapshot = capture.snapshot;
       if (!snapshot) {
         const reason = capture.parseError
           ?? commandReason(capture.serviceCapture.ok, capture.serviceCapture.stderr)
-          ?? commandReason(capture.deploymentCapture.ok, capture.deploymentCapture.stderr)
-          ?? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
           ?? "读取 Kubernetes 配置失败";
         return {
           serviceTargets: { status: "failed", reason },
+          deploymentConfiguration,
           tenantDatabaseTarget: { status: "failed", reason },
           tenantRequest: config.tenantId && config.tenantConfiguration
             ? {
@@ -69,10 +111,14 @@ export function makeConfigTargetsInspect(
         const deployments: ConfigServiceTargetFact["deployments"] = [];
         const unavailableDeployments: ConfigServiceTargetFact["unavailableDeployments"] = [];
         if (!service) {
+          if (config.includeDeploymentConfig) {
+            unavailableDeployments.push({ deployment: "—", reason: "Service 不存在" });
+          }
           services[serviceName] = {
             service: serviceName,
             deployments,
-            unavailableDeployments: [{ deployment: "—", reason: "Service 不存在" }],
+            unavailableDeployments,
+            podRuntime: { status: "unavailable", reason: "Service 不存在" },
           };
           continue;
         }
@@ -88,7 +134,34 @@ export function makeConfigTargetsInspect(
             unavailableDeployments.push({ deployment: deployment.name, reason: selected.reason! });
           }
         }
-        services[serviceName] = { service: serviceName, deployments, unavailableDeployments };
+        const podFailure = capture.podParseError
+          ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
+        services[serviceName] = {
+          service: serviceName,
+          deployments,
+          unavailableDeployments,
+          podRuntime: podFailure
+            ? { status: "failed", reason: podFailure }
+            : {
+                status: "collected",
+                pods: podsForService(snapshot, serviceName).map((pod) => ({
+                  pod: pod.name,
+                  phase: pod.phase,
+                  containers: pod.containers.map((container) => ({
+                    name: container.name,
+                    image: container.image,
+                    requests: {
+                      cpu: container.requests.cpu,
+                      memory: container.requests.memory,
+                    },
+                    limits: {
+                      cpu: container.limits.cpu,
+                      memory: container.limits.memory,
+                    },
+                  })),
+                })),
+              },
+        };
       }
 
       const tenantRequest = config.tenantId && config.tenantConfiguration
@@ -102,6 +175,7 @@ export function makeConfigTargetsInspect(
       if (!config.tenantId || !config.tenantConfiguration || !tenantCapability) {
         return {
           serviceTargets: { status: "collected", services },
+          deploymentConfiguration,
           tenantDatabaseTarget: { status: "unavailable", reason: "未指定 --tenant-id" },
           tenantRequest,
         };
@@ -123,6 +197,7 @@ export function makeConfigTargetsInspect(
         const target = ctx.tenantConfigReader.target;
         return {
           serviceTargets: { status: "collected", services },
+          deploymentConfiguration,
           tenantDatabaseTarget: {
             status: "collected",
             service: config.tenantConfiguration.databaseService,
@@ -137,6 +212,7 @@ export function makeConfigTargetsInspect(
         await pluginContext?.dispose();
         return {
           serviceTargets: { status: "collected", services },
+          deploymentConfiguration,
           tenantDatabaseTarget: {
             status: "failed",
             reason: error instanceof Error ? error.message : String(error),
