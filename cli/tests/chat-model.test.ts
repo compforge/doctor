@@ -8,6 +8,7 @@ describe("Doctor AgentUE model projection", () => {
       profileName: "local",
       profile: {
         readonly: true,
+        server: "http://doctor.test",
         llm: { provider: "openai", api_key: "secret", model: "gpt-test" },
       },
       mode: "local",
@@ -25,6 +26,7 @@ describe("Doctor AgentUE model projection", () => {
 
     expect(state.timeline.header).toContain("╭─◯   ◯─╮");
     expect(state.timeline.header).toContain("agent    local");
+    expect(state.timeline.header).not.toContain("doctor.test");
     expect(state.timeline.items).toEqual([{
       type: "message",
       id: "m1",

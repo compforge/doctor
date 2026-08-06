@@ -66,15 +66,16 @@ plugins/<plugin>/        具体 Plugin 的 Catalog、领域模型与固定业务
 
 profile 决定 CLI 能呈现的能力，而不是让不同执行模型互相渗透：
 
-| profile 条件 | 能力形态 |
+| 条件 | 能力形态 |
 |---|---|
 | 零配置 | 使用本地 kubeconfig 的确定性诊断 |
-| 配置 `llm`、未配置 `server` | 本地轻量问答 |
-| 同时配置 `llm` 与 `server` | 连接 doctor-server 的完整 agent runtime |
+| 配置 `llm` | `doctor chat` 默认运行本地 Agent |
+| 配置 `server` 且显式 `--server` / `--resume` | 连接 doctor-server 的远端 Agent |
 
 direct collect 不创建 connection、conversation 或 SSE，也不承担开放式 agent 推理；server mode 不把
 server 内的工具执行细节搬回 CLI。本地模式当前由 `packages/agent` 实现；现有远端模式通过兼容 adapter
-对齐 AgentUE 交互语义，未来 TypeScript server 复用 `packages/agent` 并提供自己的 interface。
+对齐 AgentUE 交互语义。`server` 只声明 endpoint，不隐式改变运行位置；未来 TypeScript server 复用
+`packages/agent` 并提供自己的 interface。
 
 执行位置属于能力身份：
 

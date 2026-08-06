@@ -65,6 +65,7 @@ export interface AgentEventBase {
 export interface CliFlags {
   profile?: string;
   resume?: string | true;    // true = --resume without value; string = --resume <id>
+  server?: boolean;
   config?: string;
   verbose: boolean;
 }

@@ -55,7 +55,12 @@ export async function bootstrap(
   const validation = validateProfile(profile);
   if (validation.errors.length) throw new Error(validation.errors.join("\n"));
 
-  if (profile.server) {
+  // Endpoint 配置只描述可用能力，不隐式改变执行位置；普通 chat 始终默认本地。
+  // --server 与 --resume 都是显式远端意图，长期可继续复用同一 AgentUE 交互面。
+  if (flags.server || resumeConversationId) {
+    if (!profile.server) {
+      throw new Error(`profile '${profileName}' 未配置 server`);
+    }
     const client = new DoctorClient(profile.server);
     if (!(await client.healthz())) {
       throw new Error(`server ${profile.server} 不可达，请检查 VPN / profile.server`);
@@ -81,10 +86,6 @@ export async function bootstrap(
         conversationId: resumeConversationId,
       }),
     };
-  }
-
-  if (resumeConversationId) {
-    throw new Error("本地 agent 暂不支持 --resume；请选择 server profile 或直接开始新对话");
   }
 
   const agent = new LocalAgent({

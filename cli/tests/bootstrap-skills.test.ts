@@ -11,7 +11,7 @@ import {
 
 import { bootstrap } from "../src/app/bootstrap";
 
-test("bootstrap injects the embedded Plugin Skills into the local Agent", async () => {
+test("bootstrap uses the local Agent and injects embedded Plugin Skills even when server is configured", async () => {
   let requestBody: unknown;
   const server = Bun.serve({
     port: 0,
@@ -34,6 +34,7 @@ test("bootstrap injects the embedded Plugin Skills into the local Agent", async 
     "default_profile: local",
     "profiles:",
     "  local:",
+    "    server: http://127.0.0.1:1",
     "    llm:",
     "      provider: openai",
     `      endpoint: http://127.0.0.1:${server.port}/v1`,
@@ -67,4 +68,46 @@ test("bootstrap injects the embedded Plugin Skills into the local Agent", async 
   const serialized = JSON.stringify(requestBody);
   expect(serialized).toContain("<name>sample-ops</name>");
   expect(serialized).not.toContain("PRIVATE COMPLETE INSTRUCTIONS");
+});
+
+test("bootstrap keeps the remote adapter available behind explicit --server", async () => {
+  const requests: string[] = [];
+  const server = Bun.serve({
+    port: 0,
+    fetch(request) {
+      const url = new URL(request.url);
+      requests.push(`${request.method} ${url.pathname}`);
+      if (request.method === "GET" && url.pathname === "/healthz") {
+        return Response.json({ ok: true });
+      }
+      if (request.method === "POST" && url.pathname === "/connections") {
+        return Response.json({ connection_id: "connection-test" }, { status: 201 });
+      }
+      return new Response("not found", { status: 404 });
+    },
+  });
+  const directory = mkdtempSync(join(tmpdir(), "doctor-server-routing-"));
+  const configPath = join(directory, "config.yaml");
+  writeFileSync(configPath, [
+    "default_profile: remote",
+    "profiles:",
+    "  remote:",
+    `    server: http://127.0.0.1:${server.port}`,
+    "    readonly: true",
+    "    llm:",
+    "      provider: openai",
+    "      endpoint: http://llm.invalid/v1",
+    "      api_key: test",
+    "      model: test",
+    "",
+  ].join("\n"));
+
+  try {
+    const result = await bootstrap({ config: configPath, server: true, verbose: false });
+    expect(result.model.meta.mode).toBe("server");
+    expect(result.model.meta.server).toBe(`http://127.0.0.1:${server.port}`);
+    expect(requests).toEqual(["GET /healthz", "POST /connections"]);
+  } finally {
+    server.stop(true);
+  }
 });
