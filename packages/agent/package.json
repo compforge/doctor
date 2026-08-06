@@ -1,0 +1,25 @@
+{
+  "name": "@compforge/doctor-agent",
+  "version": "0.0.1",
+  "description": "Shared Doctor agent runtime for local and server hosts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
+    "@earendil-works/pi-agent-core": "0.80.6",
+    "@earendil-works/pi-ai": "0.80.6"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ]
+}

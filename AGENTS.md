@@ -2,12 +2,12 @@
 
 ## 项目定位与边界
 
-Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开源诊断工具。
-CLI 负责确定性采集、证据编排与报告交付；业务知识和私有 Service 访问规则不进入本仓，通过
-Plugin 协议由使用方独立实现和分发。
+Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开源诊断工具。CLI 负责确定性采集、证据
+编排、报告交付和本地 agent 问答。业务知识和私有 Service 访问规则不进入本仓，通过 Plugin 协议由
+使用方独立实现和分发。
 
-本仓包含通用 CLI、Plugin SDK、业务中立的示例 Plugin，以及未来 Doctor server 的目录占位；不包含
-任何企业内部 server、业务 Plugin、Skill、环境配置或私有部署信息。
+本仓包含通用 CLI、可复用 Agent、Plugin SDK、业务中立的示例 Plugin，以及未来 Doctor server 的目录
+占位；不包含任何企业内部 server、业务 Plugin、Skill、环境配置或私有部署信息。
 
 ## 代码地图与核心模块
 
@@ -15,6 +15,7 @@ Plugin 协议由使用方独立实现和分发。
 |---|---|
 | `cli/` | Doctor CLI：命令入口、诊断编排、通用 infra、Evidence 与报告 |
 | `server/` | 可选 Doctor server 的规划占位，当前没有实现 |
+| `packages/agent/` | `@compforge/doctor-agent`：本地 chat 当前使用、未来 server 复用的 agent loop、Skill 输入和 AgentUE 输出 |
 | `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog 与 capability 公共协议 |
 | `plugins/example/` | 只演示协议接入的业务中立 Plugin |
 
@@ -29,9 +30,12 @@ Plugin 协议由使用方独立实现和分发。
 3. **确定性诊断以 Evidence 为结果**：采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得
    的 Facts/Observations，不继续访问外部资源。
 4. **默认安全边界显式化**：外部访问应声明超时、容量与权限；有副作用的操作必须在执行前展示并确认。
+5. **Agent 共用，宿主分离**：本地 CLI 当前使用 `packages/agent`，未来 TypeScript server 复用同一实现；
+   Skill 跟随 profile 选中的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
 
 ## References
 
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
 - `cli/docs/kernel.md` — CLI 核心分层、Collect/Evidence 与授权契约
 - `cli/docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- `docs/chat.md` — Doctor Chat 数据流、Agent 复用边界与 Plugin Skill 生命周期

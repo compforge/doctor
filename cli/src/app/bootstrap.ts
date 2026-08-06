@@ -1,41 +1,42 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+
+import {
+  Agent as LocalAgent,
+  type AgentSource,
+  type LlmConfig,
+} from "@compforge/doctor-agent";
+
+import { ServerAgent, createDoctorModel, type DoctorModel } from "../chat";
+import { DoctorClient } from "../protocol";
+import type { CliFlags } from "../protocol";
 import {
   loadConfig,
+  profileToUpload,
   resolveProfile,
   validateProfile,
-  profileToUpload,
 } from "./config/config";
+import type { Profile } from "./config/model";
 import { loadState, resolveResumeTarget } from "./config/state";
-import { DoctorClient } from "../protocol";
-import type { CliFlags, State } from "../protocol";
 
 export interface BootstrapResult {
-  client: DoctorClient;
-  connectionId: string;
-  profileName: string;
-  resumeConversationId?: string;
-  state: State;
-  statePath: string;
-  warnings: string[];
+  agent: AgentSource;
+  model: DoctorModel;
 }
 
 export async function bootstrap(flags: CliFlags): Promise<BootstrapResult> {
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
   const statePath = join(home, ".doctor", "state.yaml");
-
   const config = loadConfig(configPath);
   const state = loadState(statePath);
 
-  // --profile X --resume[=...] is mutually exclusive.
   if (flags.profile && flags.resume !== undefined) {
     throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
   }
 
   let profileName: string;
   let resumeConversationId: string | undefined;
-
   if (flags.resume !== undefined) {
     const target = resolveResumeTarget(state, flags.resume);
     profileName = target.profile;
@@ -45,40 +46,77 @@ export async function bootstrap(flags: CliFlags): Promise<BootstrapResult> {
   }
 
   const profile = config.profiles[profileName];
-  if (!profile) {
-    throw new Error(`profile '${profileName}' not found in config`);
-  }
+  if (!profile) throw new Error(`profile '${profileName}' not found in config`);
 
   const validation = validateProfile(profile);
-  if (validation.errors.length) {
-    throw new Error(validation.errors.join("\n"));
+  if (validation.errors.length) throw new Error(validation.errors.join("\n"));
+
+  if (profile.server) {
+    const client = new DoctorClient(profile.server);
+    if (!(await client.healthz())) {
+      throw new Error(`server ${profile.server} 不可达，请检查 VPN / profile.server`);
+    }
+    const connectionId = await client.createConnection(profileToUpload(profile));
+    return {
+      agent: new ServerAgent({
+        client,
+        connectionId,
+        conversationId: resumeConversationId,
+        profileName,
+        profile,
+        state,
+        statePath,
+        verbose: flags.verbose,
+      }),
+      model: createDoctorModel({
+        profileName,
+        profile,
+        mode: "server",
+        warnings: validation.warnings,
+        connectionId,
+        conversationId: resumeConversationId,
+      }),
+    };
   }
 
-  // 未配 server = 本地 profile。本地 agent loop（llm 直连 + kubectl 渠道）尚未实现，
-  // 交互问诊目前只有 server 一条路；采集类排查走 doctor cpu / doctor mem / doctor trace（不需要 server）。
-  if (!profile.server) {
-    throw new Error(
-      `profile '${profileName}' 未配置 server（本地模式）：交互问诊需要 doctor-server；` +
-        `无 server 的采集排查请用 doctor cpu / doctor mem / doctor trace`,
-    );
+  if (resumeConversationId) {
+    throw new Error("本地 agent 暂不支持 --resume；请选择 server profile 或直接开始新对话");
   }
 
-  const client = new DoctorClient(profile.server);
-
-  if (!(await client.healthz())) {
-    throw new Error(`server ${profile.server} 不可达，请检查 VPN / profile.server`);
-  }
-
-  const upload = profileToUpload(profile);
-  const connectionId = await client.createConnection(upload);
-
+  const agent = new LocalAgent({
+    llm: resolveLocalLlm(profile),
+    // Plugin loading owns Skill discovery and will pass the selected Plugin's resolved Skills here.
+    skills: [],
+    verbose: flags.verbose,
+  });
   return {
-    client,
-    connectionId,
-    profileName,
-    resumeConversationId,
-    state,
-    statePath,
-    warnings: validation.warnings,
+    agent,
+    model: createDoctorModel({
+      profileName,
+      profile,
+      mode: "local",
+      warnings: validation.warnings,
+    }),
+  };
+}
+
+function resolveLocalLlm(profile: Profile): LlmConfig {
+  const llm = profile.llm;
+  if (!llm) throw new Error("本地问答需要完整的 llm.provider/api_key/model 配置");
+  const missing = ["provider", "api_key", "model"].filter(
+    (key) => !llm[key as keyof typeof llm],
+  );
+  if (missing.length) {
+    throw new Error(`本地问答需要完整的 llm.${missing.join("/")} 配置`);
+  }
+  if (llm.provider !== "openai" && llm.provider !== "deepseek") {
+    throw new Error(`本地问答暂不支持 llm.provider=${llm.provider}（支持 openai、deepseek）`);
+  }
+  return {
+    provider: llm.provider,
+    apiKey: llm.api_key!,
+    model: llm.model!,
+    ...(llm.endpoint ? { endpoint: llm.endpoint } : {}),
+    ...(llm.thinking !== undefined ? { thinking: llm.thinking } : {}),
   };
 }

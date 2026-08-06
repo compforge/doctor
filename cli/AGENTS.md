@@ -8,6 +8,7 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
+- **开放式问答**：`doctor chat` 通过 AgentUE/chat-tui 统一本地 Agent 与可选远端 Server 的交互。
 - **Plugin 扩展**：CLI 只负责选择并注入 Plugin；公共契约归 `../packages/plugin`。
 
 ## 代码地图与核心模块
@@ -15,12 +16,13 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 | 模块 | 所有权 |
 |---|---|
 | `app` | 命令入口、profile 与 composition root |
+| `chat` | AgentUE model、Session/Controller，以及旧 Server 协议兼容 adapter |
 | `command` | Collect/Provision 共用的启动检查、Kubernetes 目标解析与审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `infra` | DB、HTTP、Kubernetes、进程和本机工具等访问原语 |
-| `terminal` / `tui` / `protocol` | 通用终端交互、展示与可选远端协议 client |
+| `terminal` / `protocol` | 通用终端交互与可选远端协议 client；chat-tui 只消费 `chat` 投影 |
 
 展开的目录地图、依赖方向和领域所有权见 `docs/kernel.md`；Collect 共享协议见
 `docs/collect-protocol.md`。
@@ -43,6 +45,7 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 - `docs/kernel.md` — CLI 核心分层、Collect/Evidence、Doctor Host/Target 与授权契约
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- `docs/naming.md` — chat 内部短名与跨边界公开命名约定
 - `docs/cpu-diagnosis.md` / `docs/memory-diagnosis.md` — CPU 与内存诊断
 - `docs/network-diagnosis.md` / `docs/http-diagnosis.md` — 网络与 HTTP 诊断
 - `docs/log-diagnosis.md` / `docs/trace-diagnosis.md` — Log 与 Trace 证据

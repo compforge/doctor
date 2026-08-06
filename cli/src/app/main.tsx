@@ -2,7 +2,7 @@
 import { terminalStdout } from "../terminal/output";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
-//   doctor chat              → 连接 doctor-server 的交互式 REPL（app/repl.tsx）
+//   doctor chat              → 按 profile 选择本地或 server agent 的交互式 TUI（app/repl.tsx）
 //   doctor mem               → attach Python 进程并回传 PyHeap dump（collect/）
 //   doctor mema              → 在本机解析并诊断一个或多个 PyHeap dump（collect/）
 //   doctor cpu               → 无 server 直连采集：pod Python CPU 线程栈证据包（collect/）
