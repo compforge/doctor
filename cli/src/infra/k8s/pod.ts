@@ -12,6 +12,10 @@ export interface KubernetesPod {
 
 export interface KubernetesPodContainer {
   name: string;
+  image: string;
+  imageId?: string;
+  requests: Record<string, string>;
+  limits: Record<string, string>;
   restartCount: number;
   hasPreviousTerminated: boolean;
 }
@@ -19,11 +23,22 @@ export interface KubernetesPodContainer {
 interface KubernetesPodList {
   items?: Array<{
     metadata?: { namespace?: string; name?: string; labels?: Record<string, string> };
+    spec?: {
+      containers?: Array<{
+        name?: string;
+        image?: string;
+        resources?: {
+          requests?: Record<string, string>;
+          limits?: Record<string, string>;
+        };
+      }>;
+    };
     status?: {
       podIP?: string;
       phase?: string;
       containerStatuses?: Array<{
         name?: string;
+        imageID?: string;
         restartCount?: number;
         lastState?: { terminated?: { containerID?: string } };
       }>;
@@ -36,6 +51,24 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
   return (value.items ?? []).flatMap((item) => {
     const name = item.metadata?.name;
     if (!name) return [];
+    const statusByName = new Map((item.status?.containerStatuses ?? []).flatMap((container) => {
+      const containerName = container.name?.trim();
+      return containerName ? [[containerName, container] as const] : [];
+    }));
+    const declaredContainers = (item.spec?.containers ?? []).flatMap((container) => {
+      const containerName = container.name?.trim();
+      if (!containerName) return [];
+      const status = statusByName.get(containerName);
+      return [{
+        name: containerName,
+        image: container.image?.trim() ?? "",
+        imageId: status?.imageID?.trim() || undefined,
+        requests: container.resources?.requests ?? {},
+        limits: container.resources?.limits ?? {},
+        restartCount: status?.restartCount ?? 0,
+        hasPreviousTerminated: !!status?.lastState?.terminated?.containerID,
+      }];
+    });
     return [{
       kind: "pod",
       namespace: item.metadata?.namespace ?? defaultNamespace,
@@ -43,11 +76,15 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
       ip: item.status?.podIP,
       phase: item.status?.phase ?? "Unknown",
       labels: item.metadata?.labels ?? {},
-      containers: (item.status?.containerStatuses ?? []).flatMap((container) => {
+      containers: declaredContainers.length > 0 ? declaredContainers : (item.status?.containerStatuses ?? []).flatMap((container) => {
         const containerName = container.name?.trim();
         if (!containerName) return [];
         return [{
           name: containerName,
+          image: "",
+          imageId: container.imageID?.trim() || undefined,
+          requests: {},
+          limits: {},
           restartCount: container.restartCount ?? 0,
           hasPreviousTerminated: !!container.lastState?.terminated?.containerID,
         }];

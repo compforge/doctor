@@ -123,8 +123,9 @@ describe("CLI command routing", () => {
     const result = runCli("config", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor config [options]");
-    expect(result.stdout).toContain("采集 Service 的部署配置与 Plugin 提供的租户配置（只读）");
+    expect(result.stdout).toContain("采集 Service 的 Pod 运行态，可选部署配置与 Plugin 租户配置（只读）");
     expect(result.stdout).toContain("--services <names>");
+    expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--tenant-id <id>");
     expect(result.stdout).toContain("--tenant-name <name>");
     expect(result.stdout).toContain("--tenant-directory-service <name>");

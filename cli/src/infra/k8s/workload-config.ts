@@ -1,4 +1,5 @@
 import type { ExecResult, Executor } from "./executor";
+import { parsePods, type KubernetesPod } from "./pod";
 import { parseServices, type KubernetesService } from "./service";
 
 export interface KubernetesConfigMap {
@@ -37,14 +38,19 @@ export interface KubernetesWorkloadConfigSnapshot {
   services: KubernetesService[];
   deployments: KubernetesDeploymentConfig[];
   configMaps: KubernetesConfigMap[];
+  pods: KubernetesPod[];
 }
 
 export interface KubernetesWorkloadConfigCapture {
   serviceCapture: ExecResult;
-  deploymentCapture: ExecResult;
-  configMapCapture: ExecResult;
+  deploymentCapture?: ExecResult;
+  configMapCapture?: ExecResult;
+  podCapture: ExecResult;
   snapshot?: KubernetesWorkloadConfigSnapshot;
   parseError?: string;
+  deploymentParseError?: string;
+  configMapParseError?: string;
+  podParseError?: string;
 }
 
 interface ResourceList {
@@ -174,6 +180,17 @@ export function deploymentsForService(
   return snapshot.deployments.filter((deployment) => selectorMatches(deployment.labels, service.selector));
 }
 
+export function podsForService(
+  snapshot: KubernetesWorkloadConfigSnapshot,
+  serviceName: string,
+): KubernetesPod[] {
+  const service = snapshot.services.find((item) => item.name === serviceName);
+  if (!service) return [];
+  return snapshot.pods
+    .filter((pod) => pod.namespace === service.namespace && selectorMatches(pod.labels, service.selector))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
 export function selectServiceContainer(
   service: KubernetesService,
   deployment: KubernetesDeploymentConfig,
@@ -243,22 +260,56 @@ export function resolveContainerEnvironment(
 export async function captureKubernetesWorkloadConfig(
   executor: Executor,
   namespace: string,
+  includeDeploymentConfig: boolean,
 ): Promise<KubernetesWorkloadConfigCapture> {
-  const [serviceCapture, deploymentCapture, configMapCapture] = await Promise.all([
+  const [serviceCapture, podCapture, deploymentCapture, configMapCapture] = await Promise.all([
     executor.run(["get", "services", "-o", "json"], { timeoutMs: 30_000 }),
-    executor.run(["get", "deployments", "-o", "json"], { timeoutMs: 30_000 }),
-    executor.run(["get", "configmaps", "-o", "json"], { timeoutMs: 30_000 }),
+    executor.run(["get", "pods", "-o", "json"], { timeoutMs: 30_000 }),
+    includeDeploymentConfig
+      ? executor.run(["get", "deployments", "-o", "json"], { timeoutMs: 30_000 })
+      : Promise.resolve(undefined),
+    includeDeploymentConfig
+      ? executor.run(["get", "configmaps", "-o", "json"], { timeoutMs: 30_000 })
+      : Promise.resolve(undefined),
   ]);
-  const result: KubernetesWorkloadConfigCapture = { serviceCapture, deploymentCapture, configMapCapture };
-  if (!serviceCapture.ok || !deploymentCapture.ok || !configMapCapture.ok) return result;
+  const result: KubernetesWorkloadConfigCapture = {
+    serviceCapture,
+    deploymentCapture,
+    configMapCapture,
+    podCapture,
+  };
+  if (!serviceCapture.ok) return result;
   try {
     result.snapshot = {
       services: parseServices(serviceCapture.stdout, namespace),
-      deployments: parseDeployments(deploymentCapture.stdout),
-      configMaps: parseConfigMaps(configMapCapture.stdout),
+      deployments: [],
+      configMaps: [],
+      pods: [],
     };
   } catch (error) {
     result.parseError = error instanceof Error ? error.message : String(error);
+  }
+  // 三类证据彼此独立；任一可选读取失败都不应抹掉已经取得的其它事实。
+  if (result.snapshot && podCapture.ok) {
+    try {
+      result.snapshot.pods = parsePods(podCapture.stdout, namespace);
+    } catch (error) {
+      result.podParseError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (result.snapshot && deploymentCapture?.ok) {
+    try {
+      result.snapshot.deployments = parseDeployments(deploymentCapture.stdout);
+    } catch (error) {
+      result.deploymentParseError = error instanceof Error ? error.message : String(error);
+    }
+  }
+  if (result.snapshot && configMapCapture?.ok) {
+    try {
+      result.snapshot.configMaps = parseConfigMaps(configMapCapture.stdout);
+    } catch (error) {
+      result.configMapParseError = error instanceof Error ? error.message : String(error);
+    }
   }
   return result;
 }

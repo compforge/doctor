@@ -10,6 +10,12 @@ Coverage 分为 `sufficient / partial / insufficient`；跨领域的 Evidence �
 `complete / partial / missing`。`partial` 表示已经取得足以形成有效报告的 Facts 或 Observations，同时
 明确知道缺了什么、为什么缺、哪些结论不能支持。它是正常完成状态，不是把未知伪装成健康。
 
+面向使用者，一次 Collect 最终归为三类：**完整成功**表示请求范围内的证据充分且产物已交付；
+**部分成功**表示已有可用产物，但 Coverage 明确不完整；**失败**表示没有形成可用证据，或产物交付失败。
+部分成功既可能来自现场限制（权限、目标状态、时间窗口或采样预算只允许取得一部分），也可能来自用户
+在确认环节主动缩小采集范围。后者不是执行错误，但仍必须如实记录为用户选择导致的证据缺口，不能把
+较小范围包装成完整证据。
+
 Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证据面使用 Worksheet 预声明 Outcome，
 每格只填一次；完整取得记为 `ok`，部分取得记为 `partial`，访问失败、前置不可用和已证明无需取得分别
 记为 `failed / unavailable / unnecessary`。收尾仍未填的格子必须 settle 为明确缺失原因。
@@ -62,6 +68,10 @@ partial。依赖 Probe 除 Observations 外还会收到上游的状态和原因�
 Partial 报告沿用用户请求的 HTML、Markdown 或 Bundle 格式，并必须展示：已取得的证据、失败或不可用
 步骤、缺失原因、Coverage 以及不能支持的结论。非零退出码不应直接决定产物类型；完全无法形成有效
 诊断、Renderer 失败或产物写入失败时，才使用失败 Evidence Bundle 兜底。
+
+时间或样本预算耗尽时，报告应保留已采样部分和实际停止原因；用户拒绝某个可选采集面时，应把对应
+步骤记为 skipped、对应目标 Coverage 记为不充分。只要其它证据仍足以形成可用报告，两者都按 partial
+正常交付，而不是丢弃已有结果或返回失败。
 
 报告保持单文件、离线可读。公共 output 只拥有 shell、通用表格/图表和交付格式；领域 Renderer 决定
 章节顺序、文案与数据口径，不从 Markdown 文案反解析结构化数据。

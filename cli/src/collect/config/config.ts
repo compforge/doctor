@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -17,6 +18,8 @@ import {
 } from "../../infra/k8s/service-selection";
 import type { RecentSelections } from "../../infra/recent";
 import { promptNamedChoices } from "../../terminal/service-selection";
+import { prepareTerminalInput } from "../../terminal/input";
+import { terminalStdout } from "../../terminal/output";
 import {
   promptTenantChoice,
   type TenantPromptChoice,
@@ -137,6 +140,7 @@ export function resolveConfigCollectConfig(
     namespaceSource: namespace.source,
     services: opts.services === undefined ? [] : parseConfigServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
+    includeDeploymentConfig: opts.deploymentConfig === true,
     tenantId,
     tenantName,
     fallbackIdentity,
@@ -151,6 +155,37 @@ export function resolveConfigCollectConfig(
       context: opts.context,
     },
   };
+}
+
+async function promptDeploymentConfigCollection(): Promise<boolean> {
+  terminalStdout.write("[collect] 是否采集所选 Service 的 Deployment Env/ConfigMap（Pod 内配置）？\n");
+  terminalStdout.warning("[collect] 这些配置可能包含密码、密钥等敏感业务数据。\n");
+  prepareTerminalInput();
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return ["y", "yes"].includes(
+      (await readline.question("采集 Pod 内配置？[y/N] ")).trim().toLowerCase(),
+    );
+  } catch {
+    return false;
+  } finally {
+    readline.close();
+  }
+}
+
+export interface ConfigDeploymentSelectionInput {
+  config: ConfigCollectConfig;
+  interactive?: boolean;
+  prompt?: () => Promise<boolean>;
+}
+
+/** CLI flag 视为预先确认；交互终端在 Service 选择后询问，非交互缺省跳过敏感配置。 */
+export async function resolveConfigDeploymentSelection(
+  input: ConfigDeploymentSelectionInput,
+): Promise<boolean> {
+  if (input.config.includeDeploymentConfig) return true;
+  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  return interactive && await (input.prompt ?? promptDeploymentConfigCollection)();
 }
 
 export interface ConfigServiceSelectionInput {
