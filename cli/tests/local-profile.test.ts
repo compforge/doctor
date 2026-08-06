@@ -1,5 +1,4 @@
-// 本地 profile 语义：profile 未配 server = 本地模式（不连 doctor-server）。
-// - validateProfile 不再强制 llm（那是 server 裸装的要求）
+// profile 的 server 字段不再隐式选择远端；远端兼容所需的上传配置仍做校验。
 // - collect 可通过 --profile 取本地 profile 的 kubeconfig
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -12,13 +11,13 @@ import {
   resolveCollectNamespace,
 } from "../src/infra/k8s/context";
 
-describe("validateProfile（本地 profile）", () => {
-  test("未配 server 时 llm 可空", () => {
+describe("validateProfile", () => {
+  test("llm 可空", () => {
     const r = validateProfile({ readonly: true });
     expect(r.errors).toEqual([]);
   });
 
-  test("配了 server 仍强制 llm", () => {
+  test("配了 server 时仍校验远端兼容所需的 llm", () => {
     const r = validateProfile({ server: "h:1", readonly: true });
     expect(r.errors.some((e) => e.includes("llm"))).toBe(true);
   });

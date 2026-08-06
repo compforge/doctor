@@ -56,10 +56,12 @@ the distributor or loaded by a future Plugin loader.
 
 ## Chat runtime
 
-`doctor chat` uses the same AgentUE/chat-tui interaction model for both execution locations. A
-profile with `server` uses the remote compatibility adapter; otherwise a complete `llm` config runs
-`@compforge/doctor-agent` locally. The reserved `server/` directory has no implementation yet; a future
-TypeScript server will reuse the same package behind a different interface.
+`doctor chat` uses a complete profile `llm` config to run `@compforge/doctor-agent` locally by
+default. `doctor chat --server` explicitly selects the remote compatibility adapter and uses the
+profile `server`; merely configuring an endpoint does not change the execution location. Both modes
+project the same AgentUE/chat-tui interaction model. The reserved `server/` directory has no
+implementation yet; a future TypeScript server will reuse the same Agent package behind a different
+interface.
 
 ## Plugin boundary
 

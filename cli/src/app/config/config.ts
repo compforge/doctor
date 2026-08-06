@@ -126,8 +126,7 @@ export function validateProfile(p: Profile): ValidationResult {
     }
   }
 
-  // llm 必填仅约束 server 模式：doctor-server 裸装无默认，凭据必须随 profile 上传。
-  // 本地 profile（未配 server）走 kubectl 直连采集，llm 留空合法（配了则供后续本地 AI 分析用）。
+  // 兼容远端模式：doctor-server 裸装无默认，配置 server 时凭据必须可随 profile 上传。
   if (p.server) {
     const missingLlm: string[] = [];
     if (!p.llm?.provider) missingLlm.push("provider");

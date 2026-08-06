@@ -58,7 +58,9 @@ export function createDoctorModel(options: InitialModelOptions): DoctorModel {
       mode: options.mode,
       readonly: options.profile.readonly,
       ...(llm?.model ? { model: `${llm.provider ?? "?"}/${llm.model}` } : {}),
-      ...(options.profile.server ? { server: options.profile.server } : {}),
+      ...(options.mode === "server" && options.profile.server
+        ? { server: options.profile.server }
+        : {}),
       ...(options.connectionId ? { connection_id: options.connectionId } : {}),
       ...(options.conversationId ? { conversation_id: options.conversationId } : {}),
       busy: false,

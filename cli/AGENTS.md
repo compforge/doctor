@@ -8,7 +8,7 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
-- **开放式问答**：`doctor chat` 通过 AgentUE/chat-tui 统一本地 Agent 与可选远端 Server 的交互。
+- **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
 - **Plugin 扩展**：CLI 只负责选择并注入 Plugin；公共契约归 `../packages/plugin`。
 
 ## 代码地图与核心模块

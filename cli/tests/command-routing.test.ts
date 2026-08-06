@@ -97,6 +97,7 @@ describe("CLI command routing", () => {
     const result = runCli("chat", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor chat [options]");
+    expect(result.stdout).toContain("--server");
   });
 
   test("log exposes HTML-by-default and full Evidence Bundle output", () => {

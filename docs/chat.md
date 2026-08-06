@@ -2,9 +2,10 @@
 
 ## 理念 / 概念
 
-`doctor chat` 只有一套交互语义，profile 只决定 Agent 的运行位置。配置 `server` 时，CLI 通过远端
-adapter 取得事件；未配置 `server` 且 `llm` 完整时，CLI 在进程内运行 `packages/agent`。本阶段只落地
-本地消费方，`server/` 保持目录占位；未来 TypeScript server 复用同一 Agent 实现。
+`doctor chat` 只有一套交互语义，但 endpoint 配置与执行位置选择分开。默认由 CLI 使用 profile 的
+`llm` 在进程内运行 `packages/agent`；只有显式 `--server`（或恢复远端 conversation）才通过 profile
+的 `server` 和兼容 adapter 取得事件。本阶段以本地消费方为主，`server/` 保持目录占位；未来
+TypeScript server 复用同一 Agent 实现。
 
 AgentUE 表达 Agent 产出的语义 model/patch，chat-tui 表达 UI 快照与用户 intent。Doctor 的 `Session`
 持有一次 TUI 进程内的 turn、队列和投影状态；`conversation` 表示可持久化的 LLM 记忆，两者不混用。
@@ -17,9 +18,9 @@ Skill 是 Plugin 的版本化资源。Profile 选择精确 Plugin 版本后，Pl
 
 ```text
 doctor chat
-  └─ profile routing
-      ├─ server configured ──► ServerAgent ──► doctor-server SSE
-      └─ llm configured ─────► @compforge/doctor-agent
+  └─ execution choice
+      ├─ default ─────────────► @compforge/doctor-agent
+      └─ --server / --resume ─► ServerAgent ──► doctor-server SSE
 
 Agent source ──► AgentUE patch ──► Session ──► Controller ──► chat-tui / OpenTUI
                                       ▲               │

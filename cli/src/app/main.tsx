@@ -2,7 +2,7 @@
 import { terminalStdout } from "../terminal/output";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
-//   doctor chat              → 按 profile 选择本地或 server agent 的交互式 TUI（app/repl.tsx）
+//   doctor chat              → 默认本地 Agent；--server 显式选择远端 Agent（app/repl.tsx）
 //   doctor mem               → attach Python 进程并回传 PyHeap dump（collect/）
 //   doctor mema              → 在本机解析并诊断一个或多个 PyHeap dump（collect/）
 //   doctor cpu               → 无 server 直连采集：pod Python CPU 线程栈证据包（collect/）
@@ -64,6 +64,7 @@ import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 function withReplOptions(cmd: CommandT): CommandT {
   return cmd
     .option("-p, --profile <name>", "profile name from ~/.doctor/config.yaml")
+    .option("--server", "use the doctor-server configured by the profile", false)
     .option("--resume [conv_id]", "resume a previous conversation (latest if no id given)")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
     .option("-v, --verbose", "show thinking output and HTTP debug logs", false);
@@ -73,6 +74,7 @@ function toReplFlags(opts: Record<string, unknown>): CliFlags {
   return {
     profile: opts.profile as string | undefined,
     resume: opts.resume === true ? true : (opts.resume as string | undefined),
+    server: opts.server === true,
     config: opts.config as string | undefined,
     verbose: !!(opts.verbose || process.env.DOCTOR_DEBUG),
   };
