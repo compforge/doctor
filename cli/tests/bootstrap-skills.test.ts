@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -30,6 +30,9 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
   });
   const directory = mkdtempSync(join(tmpdir(), "doctor-plugin-skills-"));
   const configPath = join(directory, "config.yaml");
+  const skillPath = join(directory, "skills", "sample-ops", "SKILL.md");
+  mkdirSync(join(directory, "skills", "sample-ops"), { recursive: true });
+  writeFileSync(skillPath, "PRIVATE COMPLETE INSTRUCTIONS");
   writeFileSync(configPath, [
     "default_profile: local",
     "profiles:",
@@ -49,7 +52,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
       name: "sample-ops",
       description: "Diagnose sample services.",
       content: "PRIVATE COMPLETE INSTRUCTIONS",
-      filePath: "plugin://sample/skills/sample-ops/SKILL.md",
+      filePath: skillPath,
     }],
   } satisfies PluginDefinition;
 
@@ -67,6 +70,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
 
   const serialized = JSON.stringify(requestBody);
   expect(serialized).toContain("<name>sample-ops</name>");
+  expect(serialized).toContain(`<location>${skillPath}</location>`);
   expect(serialized).not.toContain("PRIVATE COMPLETE INSTRUCTIONS");
 });
 

@@ -2,12 +2,15 @@ import {
   Agent as PiAgent,
   type AgentEvent,
   type AgentTool,
+  type StreamFn,
+  formatSkillsForSystemPrompt,
 } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
+import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import type { PatchEvent } from "@compforge/agentue/ui";
 
 import { AsyncQueue } from "./async-queue";
-import { createSkillTools, formatSkillCatalog } from "./skills";
+import { createExecutionTools } from "./tools";
 import type {
   AgentOptions,
   AgentSource,
@@ -28,14 +31,20 @@ const DEFAULT_SYSTEM_PROMPT = [
   "Never claim that you executed a diagnostic action unless a tool result proves it.",
 ].join("\n");
 
+const streamOpenAICompletions: StreamFn = (model, context, options) => (
+  streamSimple(model as Model<"openai-completions">, context, options)
+);
+
 export class Agent implements AgentSource {
   private readonly agent: PiAgent;
+  private readonly env: AgentOptions["env"];
   private readonly verbose: boolean;
 
   constructor(options: AgentOptions) {
     const skills = options.skills ?? [];
-    const tools = mergeTools(options.tools ?? [], createSkillTools(skills));
-    const skillCatalog = formatSkillCatalog(skills);
+    const tools = mergeTools(options.tools ?? [], createExecutionTools(options.env));
+    const skillCatalog = formatSkillsForSystemPrompt([...skills]);
+    this.env = options.env;
     this.verbose = options.verbose ?? false;
     this.agent = new PiAgent({
       initialState: {
@@ -48,6 +57,7 @@ export class Agent implements AgentSource {
         messages: [],
       },
       getApiKey: () => options.llm.apiKey,
+      streamFn: streamOpenAICompletions,
       toolExecution: "sequential",
     });
   }
@@ -87,7 +97,11 @@ export class Agent implements AgentSource {
 
   async dispose(): Promise<void> {
     this.agent.abort();
-    await this.agent.waitForIdle();
+    try {
+      await this.agent.waitForIdle();
+    } finally {
+      await this.env.cleanup();
+    }
   }
 }
 

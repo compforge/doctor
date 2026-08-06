@@ -59,9 +59,10 @@ the distributor or loaded by a future Plugin loader.
 `doctor chat` uses a complete profile `llm` config to run `@compforge/doctor-agent` locally by
 default. `doctor chat --server` explicitly selects the remote compatibility adapter and uses the
 profile `server`; merely configuring an endpoint does not change the execution location. Both modes
-project the same AgentUE/chat-tui interaction model. The reserved `server/` directory has no
-implementation yet; a future TypeScript server will reuse the same Agent package behind a different
-interface.
+project the same AgentUE/chat-tui interaction model. In local mode, Pi's `read` and `bash` tools let
+the Agent load Plugin Skills and run their referenced diagnostic scripts in the CLI process. The
+reserved `server/` directory has no implementation yet; a future TypeScript server will reuse the
+same Agent package behind a different interface.
 
 ## Plugin boundary
 

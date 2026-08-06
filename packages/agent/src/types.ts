@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentTool, ExecutionEnv } from "@earendil-works/pi-agent-core";
 import type { BaseBlock, PatchEmitter, PatchEvent } from "@compforge/agentue/ui";
 import type { PluginSkill } from "@compforge/doctor-plugin";
 
@@ -50,6 +50,8 @@ export type Skill = PluginSkill;
 
 export interface AgentOptions {
   llm: LlmConfig;
+  /** Execution environment owned and cleaned up by this Agent. */
+  env: ExecutionEnv;
   skills?: readonly PluginSkill[];
   tools?: readonly AgentTool[];
   systemPrompt?: string;

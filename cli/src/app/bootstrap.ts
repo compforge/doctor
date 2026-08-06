@@ -7,6 +7,7 @@ import {
   type LlmConfig,
 } from "@compforge/doctor-agent";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
 import { ServerAgent, createDoctorModel, type DoctorModel } from "../chat";
 import { DoctorClient } from "../protocol";
@@ -90,6 +91,7 @@ export async function bootstrap(
 
   const agent = new LocalAgent({
     llm: resolveLocalLlm(profile),
+    env: new NodeExecutionEnv({ cwd: process.cwd() }),
     skills: plugin?.skills ?? [],
     verbose: flags.verbose,
   });
