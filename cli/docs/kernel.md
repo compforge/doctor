@@ -2,14 +2,16 @@
 
 ## 理念 / 概念
 
-CLI kernel 定义命令入口、能力准备、确定性诊断和问答交互之间的稳定边界。各链路共用底层能力，
+CLI kernel 定义 Provision、Collect 和 Chat 三条并列主路径的稳定边界。它们共用底层能力，
 但不共享业务流程：
 
 - `app` 是 composition root，解析用户输入并注入 Plugin 与基础设施能力；
-- `command` 持有 collect/provision 共用的启动事实、目标解析和审批契约；
+- `command` 持有三条主路径共用的启动事实、目标解析和 access/审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
 - `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和交付；
-- `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立的问答链路，不依赖 collect；
+- `packages/agent → chat/Session → chat/Controller → chat-tui` 是第三条独立问答链路，不依赖
+  provision 或 collect；
+- `model` 准备模型发现与 inference 访问，由 Chat 和 Model Collect 共用，不归属任一主路径；
 - `packages/plugin` 定义 Plugin、Service 与 capability 公共协议，`plugins/<plugin>` 持有访问实现与固定业务查询；
   `infra` 只提供 Doctor 的外部资源访问能力。
 
@@ -39,8 +41,9 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 cli/src/
 ├── app/                 命令入口、profile、会话流程与能力组装
 ├── chat/                AgentUE model、Session/Controller 与 Server wire protocol adapter
+├── model/               Chat 与 Model Collect 共用的模型发现、选择与 inference 访问
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
-├── command/             启动检查、Kubernetes 目标解析、执行上下文与审批契约
+├── command/             启动检查、Kubernetes 目标解析、执行上下文与 access/审批契约
 ├── provision/           image、debug environment 与目标工具准备
 ├── protocol/            CLI ↔ doctor-server 协议与 SSE client
 ├── terminal/            命令共用的选择、输入、确认与输出边界
@@ -91,7 +94,7 @@ preferred 被拒绝时进入手动输入或低能力降级；`kubectl auth can-i
 
 命令的前置条件沿两条正交能力轴表达：Core access 描述如何接近和安全操作 Target，Plugin capability
 描述目标是什么、业务数据在哪里以及数据语义。Core command 不依赖 Plugin；Plugin command 始终注册，
-但在创建 `CommandContext` 和访问 Kubernetes 前先验证当前 profile 已选择 Plugin 且具备 required
+但在创建 `CommandContext` 和访问 Kubernetes 前先验证 Doctor Host 已加载 Plugin 且具备 required
 capability，缺失时直接说明具体 capability。preferred capability 缺失只触发声明过的降级路径。
 命令应声明自己真正消费的最窄业务契约：例如 `doctor trace` 和 `doctor log` 消费规范 `trace_id`，因此
 依赖 `service.traceId`，而不是借用宽泛的 `service.data` 或在 OpenSearch 中猜测业务 ID 语义。
@@ -169,7 +172,8 @@ Provision 不使用统一 engine。image、debug、install 的结果和生命周
 
 ### 依赖方向与领域所有权
 
-`app` 可以组装 Plugin、`provision`、`collect` 和 `infra`；`provision` 与 `collect` 互不依赖。共同启动
+`app` 可以组装 Plugin、`provision`、`collect`、`chat` 和 `infra`；`provision`、`collect` 与 `chat`
+互不依赖。共同启动
 上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
 `packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 实现
 Plugin 公共包定义的 access port，但不知道业务

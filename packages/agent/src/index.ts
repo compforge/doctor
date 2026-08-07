@@ -5,6 +5,7 @@ export type {
   AgentSource,
   InfoBlock,
   LlmConfig,
+  LlmFetch,
   MessageBlock,
   RunContext,
   Skill,

@@ -69,7 +69,10 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-export function validateProfile(p: Profile): ValidationResult {
+export function validateProfile(
+  p: Profile,
+  options: { requireServerLlm?: boolean } = {},
+): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -127,7 +130,7 @@ export function validateProfile(p: Profile): ValidationResult {
   }
 
   // 兼容远端模式：doctor-server 裸装无默认，配置 server 时凭据必须可随 profile 上传。
-  if (p.server) {
+  if (p.server && options.requireServerLlm !== false) {
     const missingLlm: string[] = [];
     if (!p.llm?.provider) missingLlm.push("provider");
     if (!p.llm?.api_key) missingLlm.push("api_key");

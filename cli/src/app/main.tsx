@@ -427,9 +427,9 @@ export async function main(plugin?: PluginDefinition) {
     program.command("chat").description("交互式 AI 问诊（是否连接 doctor-server 取决于当前 profile 的 server 配置）"),
   ).action(async (opts) => {
     const flags = toReplFlags(opts);
-    await runCommand("doctor chat", flags, async () => {
+    await runCommand("doctor chat", flags, async (commandContext) => {
       const activePlugin = plugin ?? await loadActivePlugin();
-      return runRepl(flags, activePlugin);
+      return runRepl(flags, activePlugin, commandContext);
     });
   });
 

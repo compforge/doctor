@@ -2,15 +2,16 @@
 
 ## 理念 / 概念
 
-`doctor chat` 只有一套交互语义，但 endpoint 配置与执行位置选择分开。默认由 CLI 使用 profile 的
-`llm` 在进程内运行 `packages/agent`；只有显式 `--server`（或恢复远端 conversation）才通过 profile
-的 `server` 和 `ServerAgent` 取得事件。CLI 与 server 是两个宿主，通过各自的 interface、凭据、
-执行环境和持久化 adapter 使用同一 Agent 实现。
+`doctor chat` 只有一套交互语义，但模型来源与执行位置选择分开。默认由 CLI 在进程内
+运行 `packages/agent`；只有显式 `--server`（或恢复远端 conversation）才通过 profile 的
+`server` 和 `ServerAgent` 取得事件。本地 chat 优先使用 profile 显式配置的 `llm`；未配置时，
+从当前 Plugin 的模型目录中选择 LLM，并由 Plugin inference 提供推理访问。CLI 与 server 是两个
+宿主，通过各自的 interface、凭据、执行环境和持久化 adapter 使用同一 Agent 实现。
 
 AgentUE 表达 Agent 产出的语义 model/patch，chat-tui 表达 UI 快照与用户 intent。Doctor 的 `Session`
 持有一次 TUI 进程内的 turn、队列和投影状态；`conversation` 表示可持久化的 LLM 记忆，两者不混用。
 
-Skill 是 Plugin 的版本化资源。Profile 选择精确 Plugin 版本后，Plugin loader 把已经解析和校验的
+Skill 是 Plugin 的版本化资源。Doctor Host 加载精确 Plugin 版本后，Plugin loader 把已经解析和校验的
 `PluginSkill` 附到 runtime `PluginDefinition`，CLI 再交给 Agent；Agent 不扫描全局 Skill 目录，也不
 解释 Plugin 的安装布局。
 
@@ -19,14 +20,18 @@ Skill 是 Plugin 的版本化资源。Profile 选择精确 Plugin 版本后，Pl
 ```text
 doctor chat
   └─ execution choice
-      ├─ default ─────────────► @compforge/doctor-agent
+      ├─ default ──► model choice ──► @compforge/doctor-agent
       └─ --server / --resume ─► ServerAgent ──► doctor-server SSE
+
+model choice
+  ├─ profile.llm ──────────────► direct model endpoint
+  └─ no profile.llm ─► tenant + LLM selection ─► Plugin inference
 
 Agent source ──► AgentUE patch ──► Session ──► Controller ──► chat-tui / OpenTUI
                                       ▲               │
                                       └──── intent ───┘
 
-Profile ──► exact Plugin version ──► resolved Skills ──► shared Agent
+Doctor Host ──► exact Plugin version ──► resolved Skills ──► shared Agent
 
 Profile ──► prompt facts + TARGET_* env ──► NodeExecutionEnv ──► Pi read/bash ──► Skill files and scripts
 ```
@@ -42,6 +47,14 @@ doctor-server 的 wire event 只存在于 `ServerAgent` 内，由它投影为 Ag
 AgentUE patch 输出。宿主负责 Plugin 解析、模型凭据、Pi `ExecutionEnv` 和 conversation 生命周期：
 本地 chat 由 CLI 提供这些能力，server chat 由 server interface 提供。chat-tui 只消费 AgentUE 投影，
 不直接依赖 pi。
+
+本地 chat 的模型解析保持明确优先级：完整的 `profile.llm` 是用户显式选择，直接使用；
+否则消费共享 Model Capability 的 tenant directory 和 model catalog，只展示 `type=llm` 的候选项，
+embedding、rerank 和 audio 不进入 chat 选择。选中结果只在当前 Session 生效，不回写 profile。
+Plugin inference 持有路由与凭据，CLI 把它适配为 Pi 的 OpenAI-compatible streaming transport；Agent
+不需要看到 Plugin 的访问凭据。
+Core 在启动 Agent 前完成 Kubernetes access 预检并建立 inference port-forward，连接随
+Session 保持，并在 Session 结束时回收。
 
 本地 CLI 还会把当前 profile 已确定的基础设施目标同时写入 Agent prompt 和宿主中立的 `TARGET_*`
 shell 环境。

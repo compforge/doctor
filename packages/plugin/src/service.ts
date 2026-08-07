@@ -27,11 +27,12 @@ export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
 }
 
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
+  /** Resolve only after required connectivity, including any port-forward, is ready for use. */
   create(
     context: PluginContext,
     target: ModelInferenceTarget,
     timeoutMs: number,
-  ): ModelInference;
+  ): Promise<ModelInference>;
 }
 
 export interface ServiceMetricQuery {

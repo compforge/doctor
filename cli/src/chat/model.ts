@@ -44,6 +44,7 @@ export interface InitialModelOptions {
   profile: Profile;
   mode: AgentMode;
   warnings: string[];
+  model?: string;
   connectionId?: string;
   conversationId?: string;
 }
@@ -57,7 +58,11 @@ export function createDoctorModel(options: InitialModelOptions): DoctorModel {
       profile_name: options.profileName,
       mode: options.mode,
       readonly: options.profile.readonly,
-      ...(llm?.model ? { model: `${llm.provider ?? "?"}/${llm.model}` } : {}),
+      ...(options.model
+        ? { model: options.model }
+        : llm?.model
+          ? { model: `${llm.provider ?? "?"}/${llm.model}` }
+          : {}),
       ...(options.mode === "server" && options.profile.server
         ? { server: options.profile.server }
         : {}),

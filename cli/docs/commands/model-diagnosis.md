@@ -2,7 +2,9 @@
 
 ## 理念 / 概念
 
-`doctor model` 用一条确定性链路检查模型目录配置并发起真实 inference，帮助区分“租户看不到模型”“backend 数据不完整”“validation 失败”和“validation 通过但推理协议失败”。
+`doctor model` 消费 Chat 也会使用的 Model Capability，再用一条确定性链路检查模型目录配置
+并发起真实 inference，帮助区分“租户看不到模型”“backend 数据不完整”“validation 失败”和
+“validation 通过但推理协议失败”。模型诊断是 Core command 行为，不是 Plugin capability 的身份。
 
 - **可用模型**：从 Plugin 声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型。
 - **Backend handle**：由模型目录返回，向 Core 暴露规范化身份和 validation 行为；原始路由、provider 参数与凭据只由 Plugin 实现持有。
