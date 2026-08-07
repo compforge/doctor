@@ -126,6 +126,14 @@ describe("validateProfile", () => {
     expect(result.errors.some((e) => e.toLowerCase().includes("llm"))).toBe(true);
   });
 
+  it("allows local chat to resolve a model when llm is missing", () => {
+    const result = validateProfile(
+      { server: "h:1", readonly: true },
+      { requireServerLlm: false },
+    );
+    expect(result.errors).toEqual([]);
+  });
+
   it("errors when llm.api_key missing", () => {
     const result = validateProfile({
       server: "h:1",

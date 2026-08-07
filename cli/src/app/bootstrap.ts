@@ -6,10 +6,24 @@ import {
   type AgentSource,
   type LlmConfig,
 } from "@compforge/doctor-agent";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
+import type { Model, PluginDefinition } from "@compforge/doctor-plugin";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
-import { ServerAgent, createDoctorModel, type DoctorModel } from "../chat";
+import {
+  ServerAgent,
+  createDoctorModel,
+  createModelInferenceFetch,
+  type DoctorModel,
+} from "../chat";
+import type { CommandContext } from "../command";
+import {
+  openModelAccess,
+  requireInferenceModel,
+  resolveModelTenant,
+  selectModel,
+  type SelectedInferenceModel,
+} from "../collect/model";
+import { terminalStdout } from "../terminal/output";
 import { DoctorClient } from "../protocol";
 import type { CliFlags } from "../protocol";
 import {
@@ -32,9 +46,16 @@ export interface LocalAgentContext {
   shellEnv: Record<string, string>;
 }
 
+interface LocalModel {
+  llm: LlmConfig;
+  label: string;
+  dispose?: () => Promise<void>;
+}
+
 export async function bootstrap(
   flags: CliFlags,
   plugin?: PluginDefinition,
+  commandContext?: CommandContext,
 ): Promise<BootstrapResult> {
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
@@ -59,12 +80,13 @@ export async function bootstrap(
   const profile = config.profiles[profileName];
   if (!profile) throw new Error(`profile '${profileName}' not found in config`);
 
-  const validation = validateProfile(profile);
+  const remote = !!(flags.server || resumeConversationId);
+  const validation = validateProfile(profile, { requireServerLlm: remote });
   if (validation.errors.length) throw new Error(validation.errors.join("\n"));
 
   // Endpoint 配置只描述可用能力，不隐式改变执行位置；普通 chat 始终默认本地。
   // --server 与 --resume 都是显式远端意图，长期可继续复用同一 AgentUE 交互面。
-  if (flags.server || resumeConversationId) {
+  if (remote) {
     if (!profile.server) {
       throw new Error(`profile '${profileName}' 未配置 server`);
     }
@@ -95,23 +117,30 @@ export async function bootstrap(
     };
   }
 
-  const localContext = await prepareLocalAgentContext(profileName, profile, plugin);
-  const agent = new LocalAgent({
-    llm: resolveLocalLlm(profile),
-    env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: localContext.shellEnv }),
-    skills: plugin?.skills ?? [],
-    contextPrompt: localContext.contextPrompt,
-    verbose: flags.verbose,
-  });
-  return {
-    agent,
-    model: createDoctorModel({
-      profileName,
-      profile,
-      mode: "local",
-      warnings: validation.warnings,
-    }),
-  };
+  const localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
+  try {
+    const localContext = await prepareLocalAgentContext(profileName, profile, plugin);
+    const agent = new LocalAgent({
+      llm: localModel.llm,
+      env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: localContext.shellEnv }),
+      skills: plugin?.skills ?? [],
+      contextPrompt: localContext.contextPrompt,
+      verbose: flags.verbose,
+    });
+    return {
+      agent: localModel.dispose ? withDispose(agent, localModel.dispose) : agent,
+      model: createDoctorModel({
+        profileName,
+        profile,
+        mode: "local",
+        model: localModel.label,
+        warnings: validation.warnings,
+      }),
+    };
+  } catch (error) {
+    await localModel.dispose?.();
+    throw error;
+  }
 }
 
 /** Bind local Skill execution to the infrastructure target already selected by the profile. */
@@ -163,7 +192,7 @@ export async function prepareLocalAgentContext(
   };
 }
 
-function resolveLocalLlm(profile: Profile): LlmConfig {
+function resolveConfiguredLlm(profile: Profile): LlmConfig {
   const llm = profile.llm;
   if (!llm) throw new Error("本地问答需要完整的 llm.provider/api_key/model 配置");
   const missing = ["provider", "api_key", "model"].filter(
@@ -181,5 +210,84 @@ function resolveLocalLlm(profile: Profile): LlmConfig {
     model: llm.model!,
     ...(llm.endpoint ? { endpoint: llm.endpoint } : {}),
     ...(llm.thinking !== undefined ? { thinking: llm.thinking } : {}),
+  };
+}
+
+async function resolveLocalModel(
+  flags: CliFlags,
+  profileName: string,
+  profile: Profile,
+  plugin?: PluginDefinition,
+  commandContext?: CommandContext,
+): Promise<LocalModel> {
+  if (profile.llm) {
+    const llm = resolveConfiguredLlm(profile);
+    return { llm, label: `${llm.provider}/${llm.model}` };
+  }
+  if (!plugin) {
+    throw new Error(
+      "本地问答未配置 llm，且 Doctor Host 未加载提供模型目录与 inference 能力的 Plugin",
+    );
+  }
+  const access = await openModelAccess({
+    command: "doctor chat",
+    plugin,
+    commandContext,
+    profile: profileName,
+    config: flags.config,
+  });
+  if (!access) throw new Error("已取消 Doctor chat 模型选择");
+  try {
+    const tenant = await resolveModelTenant({ directory: access.directory });
+    if (!tenant) throw new Error("已取消租户选择");
+    terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
+    const model = await selectChatModel(await access.catalog.listAvailable(tenant.id, "llm"));
+    if (!model) throw new Error("已取消模型选择");
+    const inference = await access.createInference(model.inference, 60_000);
+    terminalStdout.write(
+      `[chat] model: ${model.name}（provider=${model.provider}, id=${model.id}）\n`,
+    );
+    return {
+      llm: {
+        provider: "openai",
+        apiKey: "doctor-plugin-inference",
+        model: model.inference.model,
+        endpoint: model.inference.baseUrl,
+        fetch: createModelInferenceFetch(inference),
+      },
+      label: `${model.provider}/${model.name}`,
+      dispose: access.dispose,
+    };
+  } catch (error) {
+    await access.dispose();
+    throw error;
+  }
+}
+
+export async function selectChatModel(
+  models: readonly Model[],
+  prompt?: (models: readonly Model[]) => Promise<Model | undefined>,
+): Promise<SelectedInferenceModel | undefined> {
+  const selected = await selectModel({
+    models: models.filter((model) => model.type === "llm"),
+    ...(prompt ? { interactive: true, prompt } : {}),
+  });
+  if (!selected) return undefined;
+  const model = requireInferenceModel(selected);
+  if (model.type !== "llm") throw new Error(`模型 '${model.name}' 不是 chat 可用的 LLM`);
+  return model;
+}
+
+function withDispose(agent: AgentSource, dispose: () => Promise<void>): AgentSource {
+  return {
+    run: (text, context) => agent.run(text, context),
+    abort: () => agent.abort(),
+    dispose: async () => {
+      try {
+        await agent.dispose();
+      } finally {
+        await dispose();
+      }
+    },
   };
 }

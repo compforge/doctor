@@ -44,7 +44,14 @@ export interface LlmConfig {
   model: string;
   endpoint?: string;
   thinking?: boolean;
+  /** Host-owned transport override, used when credentials and routing stay behind an adapter. */
+  fetch?: LlmFetch;
 }
+
+export type LlmFetch = (
+  input: string | URL | Request,
+  init?: RequestInit,
+) => Promise<Response>;
 
 export type Skill = PluginSkill;
 

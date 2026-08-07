@@ -46,6 +46,13 @@ export class Agent implements AgentSource {
     const skillCatalog = formatSkillsForSystemPrompt([...skills]);
     this.env = options.env;
     this.verbose = options.verbose ?? false;
+    const streamFn: StreamFn = options.llm.fetch
+      ? (model, context, streamOptions) => streamSimple(
+          model as Model<"openai-completions">,
+          context,
+          { ...streamOptions, fetch: options.llm.fetch as typeof globalThis.fetch },
+        )
+      : streamOpenAICompletions;
     this.agent = new PiAgent({
       initialState: {
         systemPrompt: [
@@ -61,7 +68,7 @@ export class Agent implements AgentSource {
         messages: [],
       },
       getApiKey: () => options.llm.apiKey,
-      streamFn: streamOpenAICompletions,
+      streamFn,
       toolExecution: "sequential",
     });
   }
