@@ -3,6 +3,7 @@ import { startDoctor } from "doctor-cli/embed";
 
 const plugin = {
   id: "test",
+  version: "0.0.1",
   services: createServiceCatalog([{
     name: "test-store",
     capabilities: {

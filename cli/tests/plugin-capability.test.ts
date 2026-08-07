@@ -13,6 +13,7 @@ import { resolvePluginTraceId } from "../src/plugin/trace-id";
 
 const plugin = {
   id: "sample",
+  version: "0.0.1",
   services: createServiceCatalog([{
     name: "sample-api",
     capabilities: { log: { default: true } },
@@ -76,6 +77,7 @@ test("model command 不依赖租户配置采集能力", () => {
 test("traceId capability 以 Service provider 为单位发现", () => {
   const tracePlugin = {
     id: "trace-sample",
+    version: "0.0.1",
     services: createServiceCatalog([{
       name: "trace-api",
       capabilities: {
@@ -102,6 +104,7 @@ test("traceId capability 以 Service provider 为单位发现", () => {
 test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的 Service", async () => {
   const tracePlugin = {
     id: "trace-sample",
+    version: "0.0.1",
     services: createServiceCatalog([{
       name: "first-api",
       capabilities: { traceId: { access: {}, resolve: async () => undefined } },

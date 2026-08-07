@@ -10,6 +10,7 @@
     "test:cli": "bun run --cwd cli test",
     "test:agent": "bun run --cwd packages/agent test",
     "test:plugin-sdk": "bun run --cwd packages/plugin test",
+    "check:plugin-versions": "bun packages/plugin/scripts/version.ts check plugins/example",
     "typecheck:cli": "bun run --cwd cli typecheck",
     "typecheck:agent": "bun run --cwd packages/agent typecheck",
     "typecheck:plugin-sdk": "bun run --cwd packages/plugin typecheck",

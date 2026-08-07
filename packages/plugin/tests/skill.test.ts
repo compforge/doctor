@@ -15,6 +15,7 @@ test("PluginDefinition carries resolved Skills from the same Plugin version", as
   };
   const plugin = {
     id: "sample",
+    version: "0.0.1",
     services: createServiceCatalog([]),
     skills: [skill],
   } satisfies PluginDefinition;

@@ -2,6 +2,7 @@ import {
   createServiceCatalog,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
+import pluginPackage from "../package.json" with { type: "json" };
 
 const services = createServiceCatalog([
   {
@@ -28,6 +29,7 @@ const services = createServiceCatalog([
 
 export const examplePlugin = {
   id: "example",
+  version: pluginPackage.version,
   services,
 } satisfies PluginDefinition;
 

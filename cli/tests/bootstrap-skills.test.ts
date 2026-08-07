@@ -36,6 +36,7 @@ test("local Agent context binds Skill execution to the selected profile", () => 
 test("Plugin can prepare infra facts but cannot override the profile target", async () => {
   const plugin = {
     id: "sample",
+    version: "0.0.1",
     services: createServiceCatalog([]),
     prepareSkillContext(target) {
       expect(target).toEqual({
@@ -103,6 +104,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
   ].join("\n"));
   const plugin = {
     id: "sample",
+    version: "0.0.1",
     services: createServiceCatalog([]),
     skills: [{
       name: "sample-ops",

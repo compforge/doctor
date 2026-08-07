@@ -60,6 +60,18 @@ describe("CLI command routing", () => {
     expect(missing.stderr).not.toContain("Kubernetes");
   });
 
+  test("version reports Doctor and the embedded Plugin identity", () => {
+    const core = runCoreCli("version");
+    expect(core.exitCode).toBe(0);
+    expect(core.stdout).toContain("doctor 0.1.2");
+    expect(core.stdout).toContain("plugin none");
+
+    const distribution = runCli("version");
+    expect(distribution.exitCode).toBe(0);
+    expect(distribution.stdout).toContain("doctor 0.1.2");
+    expect(distribution.stdout).toContain("plugin test@0.0.1");
+  });
+
   test("selected Plugin missing a required capability reports that capability", () => {
     const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);

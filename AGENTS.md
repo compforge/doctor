@@ -26,7 +26,8 @@ Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开�
 1. **Core/Plugin 只共享四类契约**：capability 声明 access，调用交换类型化 data，Core 注入
    Target-scoped infra，并透传 schema 归 Plugin 的 profile config；私有业务实现不进入 CLI/SDK。
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
-   capability 是业务能力和所需 access 的声明单元，Plugin 不持有 kubeconfig 或重建 Core 访问层。
+   capability 是业务能力和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
+   与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
 3. **确定性诊断以 Evidence 为结果**：采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得
    的 Facts/Observations，不继续访问外部资源。
 4. **默认安全边界显式化**：外部访问应声明超时、容量与权限；有副作用的操作必须在执行前展示并确认。
