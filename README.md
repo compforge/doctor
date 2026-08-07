@@ -106,6 +106,10 @@ Doctor provides. Plugins are trusted extensions, but remain on the application-s
 the boundary. Start with [`plugins/example`](plugins/example), then see
 [`cli/docs/plugin.md`](cli/docs/plugin.md) for the full design.
 
+To teach Doctor about a specific application, develop a Plugin: describe its services with the
+Service Catalog, connect business data and models through Capabilities, and inject operational
+knowledge and diagnostic workflows through Skills—without modifying Doctor Core.
+
 Skills are versioned resources inside a Plugin. They inherit Plugin selection and trust rather
 than introducing an independent global Skill lifecycle. `doctor version` reports the Doctor Core
 version and the exact embedded Plugin identity used by the distribution.

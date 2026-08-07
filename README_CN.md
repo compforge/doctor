@@ -98,6 +98,9 @@ make build-local
 Plugin 是受信任扩展，但仍位于应用语义一侧。可以从 [`plugins/example`](plugins/example) 开始，再阅读
 [`cli/docs/plugin.md`](cli/docs/plugin.md) 了解完整设计。
 
+要让 Doctor 理解一个具体项目，只需开发一个 Plugin：用 Service Catalog 描述服务组成，用 Capability
+接入业务数据和模型，用 Skill 注入业务知识与排查方法，而无需修改 Doctor Core。
+
 Skill 是 Plugin 内的版本化资源，继承 Plugin 的选择和信任关系，不建立独立的全局 Skill 生命周期。
 `doctor version` 会输出 Doctor Core 版本，以及当前发行版内嵌 Plugin 的精确身份。
 
