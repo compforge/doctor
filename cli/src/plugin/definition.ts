@@ -1,5 +1,6 @@
 import {
   createServiceCatalog,
+  isToolchain,
   type PluginDefinition,
   type ServiceCapabilityName,
   type ServiceDefinition,
@@ -28,6 +29,9 @@ function endpointPort(capability: Record<string, unknown>, label: string): void 
 function validateService(value: unknown, index: number): ServiceDefinition {
   const service = record(value, `Plugin Service[${index}]`);
   nonEmptyString(service.name, `Plugin Service[${index}].name`);
+  if (service.toolchain !== undefined && !isToolchain(service.toolchain)) {
+    throw new Error(`Plugin Service '${String(service.name)}'.toolchain is invalid`);
+  }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp"] as const) {
     const capability = capabilities[name];

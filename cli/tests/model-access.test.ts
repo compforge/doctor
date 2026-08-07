@@ -63,3 +63,23 @@ test("Plugin model capability requires an endpoint on each provider", () => {
     "inference.endpoint must be an object",
   );
 });
+
+test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
+  const base = {
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{ name: "api", capabilities: {} }] },
+  };
+  expect(validatePluginDefinition(base, manifest).services.find("api")?.toolchain).toBeUndefined();
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: {
+      services: [{
+        name: "api",
+        toolchain: { language: "python", executionPlatform: "unknown" },
+        capabilities: {},
+      }],
+    },
+  }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
+});

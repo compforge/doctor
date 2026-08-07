@@ -1,4 +1,8 @@
-import type { TenantConfigReader, TenantConfigTarget } from "@compforge/doctor-plugin";
+import type {
+  TenantConfigReader,
+  TenantConfigTarget,
+  Toolchain,
+} from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
@@ -14,6 +18,7 @@ export interface CollectConfigCliOpts {
   namespace?: string;
   services?: string;
   deploymentConfig?: boolean;
+  dependencies?: boolean;
   tenantId?: string;
   tenantName?: string;
   tenantConfigService?: string;
@@ -33,6 +38,7 @@ export interface ConfigCollectConfig {
   services: string[];
   servicesExplicit: boolean;
   includeDeploymentConfig: boolean;
+  includeDependencies: boolean;
   tenantId?: string;
   tenantName?: string;
   fallbackIdentity?: DatabaseIdentity;
@@ -57,6 +63,7 @@ export interface ConfigDeploymentTarget {
 export interface ConfigPodContainerFact {
   name: string;
   image: string;
+  imageId?: string;
   requests: { cpu?: string; memory?: string };
   limits: { cpu?: string; memory?: string };
 }
@@ -69,9 +76,20 @@ export interface ConfigPodRuntimeFact {
 
 export interface ConfigServiceTargetFact {
   service: string;
+  toolchain?: Toolchain;
   deployments: ConfigDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
   podRuntime: Fact<{ pods: ConfigPodRuntimeFact[] }>;
+}
+
+export interface ConfigDependencyTarget {
+  id: string;
+  services: string[];
+  pod: string;
+  container: string;
+  image: string;
+  imageId?: string;
+  toolchain: Toolchain;
 }
 
 export interface ConfigTenantDatabaseTargetFact {
@@ -85,6 +103,7 @@ export interface ConfigTenantDatabaseTargetFact {
 export interface ConfigInspectionFacts {
   serviceTargets: Fact<{ services: Record<string, ConfigServiceTargetFact> }>;
   deploymentConfiguration: Fact<{ requested: true }>;
+  dependencyTargets: Fact<{ targets: ConfigDependencyTarget[]; missing: string[] }>;
   tenantDatabaseTarget: Fact<ConfigTenantDatabaseTargetFact>;
   tenantRequest: Fact<{ tenantId: string; tenantName?: string; scopes: string[] }>;
 }
@@ -105,7 +124,30 @@ export interface TenantConfigObservation extends ObservationMeta {
   values: Record<string, JsonValue>;
 }
 
-export type ConfigObservation = EnvironmentConfigObservation | TenantConfigObservation;
+export interface RuntimeDependency {
+  name: string;
+  version?: string;
+}
+
+export interface DependencyInventoryObservation extends ObservationMeta {
+  kind: "dependency-inventory";
+  services: string[];
+  pod: string;
+  container: string;
+  image: string;
+  imageId?: string;
+  toolchain: Toolchain;
+  status: "collected" | "unavailable";
+  runtimeVersion?: string;
+  dependencies: RuntimeDependency[];
+  truncated?: boolean;
+  reason?: string;
+}
+
+export type ConfigObservation =
+  | EnvironmentConfigObservation
+  | TenantConfigObservation
+  | DependencyInventoryObservation;
 
 export interface ConfigComparisonRow {
   name: string;
@@ -121,7 +163,11 @@ export interface ConfigEvidence extends Evidence<ConfigObservation, ConfigInspec
 }
 
 export type ConfigFinding = never;
-export type ConfigDiagnosisGoal = "environment-config" | "workload-runtime" | "tenant-config";
+export type ConfigDiagnosisGoal =
+  | "environment-config"
+  | "workload-runtime"
+  | "runtime-dependencies"
+  | "tenant-config";
 export type ConfigDiagnosis = Diagnosis<ConfigEvidence, ConfigFinding, ConfigDiagnosisGoal>;
 
 export interface ConfigCollectContext {

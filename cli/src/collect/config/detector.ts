@@ -6,6 +6,7 @@ import type {
   ConfigFinding,
   ConfigInspectionFacts,
   ConfigObservation,
+  DependencyInventoryObservation,
   EnvironmentConfigObservation,
   JsonValue,
   TenantConfigObservation,
@@ -32,6 +33,14 @@ function environmentObservations(
 
 function tenantObservations(observations: readonly ConfigObservation[]): TenantConfigObservation[] {
   return observations.filter((item): item is TenantConfigObservation => item.kind === "tenant-config");
+}
+
+function dependencyObservations(
+  observations: readonly ConfigObservation[],
+): DependencyInventoryObservation[] {
+  return observations.filter(
+    (item): item is DependencyInventoryObservation => item.kind === "dependency-inventory",
+  );
 }
 
 export function buildConfigEvidence(
@@ -130,6 +139,44 @@ export function buildConfigCoverage(
       ? "sufficient"
       : collectedWorkloads > 0 ? "partial" : "insufficient",
     missingEvidence: workloadMissing,
+  });
+
+  const dependencyMissing: string[] = [];
+  let collectedDependencies = 0;
+  if (evidence.facts.dependencyTargets.status !== "collected") {
+    dependencyMissing.push(evidence.facts.dependencyTargets.reason);
+  } else {
+    dependencyMissing.push(...evidence.facts.dependencyTargets.missing);
+    const observationsById = new Map(
+      dependencyObservations(evidence.observations).map((item) => [item.id, item]),
+    );
+    for (const target of evidence.facts.dependencyTargets.targets) {
+      const observation = observationsById.get(target.id);
+      if (!observation) {
+        dependencyMissing.push(`${target.services.join(", ")}: 未取得应用依赖`);
+      } else if (observation.status !== "collected") {
+        dependencyMissing.push(
+          `${target.services.join(", ")}: ${observation.reason ?? "依赖采集不可用"}`,
+        );
+      } else {
+        collectedDependencies += 1;
+        if (observation.truncated) {
+          dependencyMissing.push(`${target.services.join(", ")}: 依赖数量超过采集上限`);
+        }
+      }
+    }
+  }
+  const dependencyTargets = evidence.facts.dependencyTargets.status === "collected"
+    ? evidence.facts.dependencyTargets.targets.length
+    : 0;
+  coverage.push({
+    goal: "runtime-dependencies",
+    status: dependencyTargets > 0
+      && collectedDependencies === dependencyTargets
+      && dependencyMissing.length === 0
+      ? "sufficient"
+      : collectedDependencies > 0 ? "partial" : "insufficient",
+    missingEvidence: dependencyMissing,
   });
 
   if (evidence.facts.tenantRequest.status === "collected") {

@@ -7,6 +7,12 @@ import pluginPackage from "../package.json" with { type: "json" };
 const services = createServiceCatalog([
   {
     name: "example-api",
+    toolchain: {
+      language: "typescript",
+      executionPlatform: "node",
+      dependencyManager: "npm",
+      buildTool: "tsc",
+    },
     capabilities: {
       config: {},
       log: { default: true },
@@ -14,6 +20,11 @@ const services = createServiceCatalog([
   },
   {
     name: "example-worker",
+    toolchain: {
+      language: "python",
+      executionPlatform: "python",
+      dependencyManager: "uv",
+    },
     capabilities: {
       log: { default: false },
       stores: [{

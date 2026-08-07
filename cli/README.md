@@ -50,6 +50,7 @@ make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log --biz-id <id>` | 通过 Plugin traceId capability 解析 trace ID，再聚合服务日志 |
 | `doctor data --biz-id <id>` | 先扩展业务 ID，再按 Service Catalog 汇集各服务声明的数据 |
+| `doctor config` | 展示 Service Pod、Toolchain 和配置对照，并可选采集 Deployment 配置与应用依赖 |
 | `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
 | `doctor metric` | 使用 profile 中的 Prometheus，或临时抓取 Service `/metrics`，执行业务 detector 并生成离线 HTML 图表 |

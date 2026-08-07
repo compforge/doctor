@@ -25,6 +25,7 @@ import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import {
   resolveConfigCollectConfig,
+  resolveConfigDependencySelection,
   resolveConfigDeploymentSelection,
   resolveConfigServiceSelection,
   resolveConfigTenantSelection,
@@ -97,11 +98,26 @@ export async function runCollectConfig(
   }
   config = { ...config, services };
   const includeDeploymentConfig = await resolveConfigDeploymentSelection({ config });
+  if (includeDeploymentConfig === undefined) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
+  }
   config = { ...config, includeDeploymentConfig };
   terminalStdout.write(
     includeDeploymentConfig
       ? "[collect] Deployment Env/ConfigMap：已确认采集\n"
       : "[collect] Deployment Env/ConfigMap：已跳过（未确认采集）\n",
+  );
+  const includeDependencies = await resolveConfigDependencySelection({ config });
+  if (includeDependencies === undefined) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
+  }
+  config = { ...config, includeDependencies };
+  terminalStdout.write(
+    includeDependencies
+      ? "[collect] 应用依赖及版本：已确认采集\n"
+      : "[collect] 应用依赖及版本：已跳过（未确认进入业务 Container）\n",
   );
   const deploymentNeeds = includeDeploymentConfig ? [{
     requirement: "preferred" as const,
@@ -114,6 +130,12 @@ export async function runCollectConfig(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod/Tenant 证据，ConfigMap 配置标记为缺失",
   }] : [];
+  const dependencyNeeds = includeDependencies ? [{
+    requirement: "preferred" as const,
+    rule: { verb: "create" as const, resource: "pods/exec" },
+    purpose: "进入每个不同业务镜像的代表 Container 采集应用依赖及版本",
+    fallback: "权限缺失时仍交付 Pod、Env 与 Tenant 配置，依赖清单标记为缺失",
+  }] : [];
   await enforceKubernetesAccess(authorization, {
     command: "doctor config",
     needs: [
@@ -123,7 +145,9 @@ export async function runCollectConfig(
         rule: { verb: "list", resource: "pods" },
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
         fallback: "权限缺失时仍交付 Env/Tenant 配置，Pod 运行态标记为缺失",
-      }, {
+      },
+      ...dependencyNeeds,
+      {
         requirement: "preferred",
         rule: { verb: "create", resource: "pods/portforward" },
         purpose: "访问 Plugin 声明的服务以补充租户配置",
@@ -212,12 +236,14 @@ export async function runCollectConfig(
     inspectionFacts: facts ? {
       serviceTargets: facts.serviceTargets,
       deploymentConfiguration: facts.deploymentConfiguration,
+      dependencyTargets: facts.dependencyTargets,
       tenantDatabaseTarget: facts.tenantDatabaseTarget,
       tenantRequest: facts.tenantRequest,
     } : {},
     params: {
       services: config.services,
       deployment_config: config.includeDeploymentConfig,
+      dependencies: config.includeDependencies,
       tenant_id: config.tenantId ?? null,
       tenant_name: config.tenantName ?? null,
       tenant_config_service: config.tenantConfiguration?.databaseService ?? null,
@@ -250,7 +276,7 @@ export async function runCollectConfig(
 
   try {
     facts = await runInspects(
-      [makeConfigTargetsInspect(config, tenantCapability)],
+      [makeConfigTargetsInspect(config, plugin.services, tenantCapability)],
       ctx,
       log,
     ) as ConfigInspectionFacts;

@@ -5,7 +5,12 @@ import {
   htmlTable,
   type HtmlReportSection,
 } from "../output/html";
-import type { ConfigComparisonRow, ConfigDiagnosis, JsonValue } from "./model";
+import type {
+  ConfigComparisonRow,
+  ConfigDiagnosis,
+  DependencyInventoryObservation,
+  JsonValue,
+} from "./model";
 
 function displayValue(value: JsonValue | undefined): string {
   if (value === undefined) return "—";
@@ -123,6 +128,69 @@ function deploymentConfigLabel(diagnosis: ConfigDiagnosis): string {
   return `${fact.status === "failed" ? "不完整" : "未采集"}（${fact.reason}）`;
 }
 
+function dependencyObservations(diagnosis: ConfigDiagnosis): DependencyInventoryObservation[] {
+  return diagnosis.evidence.observations.filter(
+    (item): item is DependencyInventoryObservation => item.kind === "dependency-inventory",
+  );
+}
+
+function dependencyLabel(diagnosis: ConfigDiagnosis): string {
+  const targets = diagnosis.evidence.facts.dependencyTargets;
+  if (targets.status !== "collected") return `未采集（${targets.reason}）`;
+  const observations = dependencyObservations(diagnosis);
+  const collected = observations.filter((item) => item.status === "collected").length;
+  if (collected === targets.targets.length && !targets.missing.length) return `已采集 ${collected} 个镜像`;
+  return `已采集 ${collected}/${targets.targets.length} 个镜像`;
+}
+
+const TOOLCHAIN_TABLE_HEADERS = [
+  "Service",
+  "Language",
+  "Execution platform",
+  "Dependency manager",
+  "Build tool",
+] as const;
+
+function toolchainRows(diagnosis: ConfigDiagnosis): string[][] {
+  if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
+  return Object.values(diagnosis.evidence.facts.serviceTargets.services)
+    .sort((left, right) => left.service.localeCompare(right.service))
+    .map((target) => [
+      target.service,
+      target.toolchain?.language ?? "未声明",
+      target.toolchain?.executionPlatform ?? "—",
+      target.toolchain?.dependencyManager ?? "—",
+      target.toolchain?.buildTool ?? "—",
+    ]);
+}
+
+const DEPENDENCY_TABLE_HEADERS = [
+  "Service",
+  "Image",
+  "Runtime version",
+  "Dependency",
+  "Version",
+] as const;
+
+function dependencyRows(diagnosis: ConfigDiagnosis): string[][] {
+  return dependencyObservations(diagnosis).flatMap((observation) => {
+    const prefix = [
+      observation.services.join(", "),
+      observation.imageId || observation.image || "—",
+      observation.runtimeVersion ?? "—",
+    ];
+    if (observation.status !== "collected") {
+      return [[...prefix, `unavailable: ${observation.reason ?? "采集失败"}`, "—"]];
+    }
+    if (!observation.dependencies.length) return [[...prefix, "（未发现依赖）", "—"]];
+    return observation.dependencies.map((dependency) => [
+      ...prefix,
+      dependency.name,
+      dependency.version ?? "—",
+    ]);
+  });
+}
+
 export function buildConfigSummary(diagnosis: ConfigDiagnosis): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
@@ -133,6 +201,7 @@ export function buildConfigSummary(diagnosis: ConfigDiagnosis): string {
     `- Service：${services}`,
     `- Pod：${podSummary(diagnosis)}`,
     `- Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
+    `- 应用依赖：${dependencyLabel(diagnosis)}`,
     `- 配置项：${diagnosis.evidence.rows.length}`,
     `- 租户：${tenantLabel(diagnosis)}`,
     "- Env 来源仅包含 ConfigMap 与 Deployment env；Tenant config 由 Plugin 的配置读取能力提供。",
@@ -147,6 +216,14 @@ export function buildConfigSummary(diagnosis: ConfigDiagnosis): string {
     "## Pod 运行态",
     "",
     ...markdownTable(POD_TABLE_HEADERS, podRows(diagnosis)),
+    "",
+    "## Toolchain",
+    "",
+    ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
+    "",
+    "## 应用依赖",
+    "",
+    ...markdownTable(DEPENDENCY_TABLE_HEADERS, dependencyRows(diagnosis)),
     "",
     "## 配置对照",
     "",
@@ -164,11 +241,13 @@ export function buildConfigHtml(diagnosis: ConfigDiagnosis): string {
       `Service：${services}`,
       `Pod：${podSummary(diagnosis)}`,
       `Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
+      `应用依赖：${dependencyLabel(diagnosis)}`,
       `配置项：${diagnosis.evidence.rows.length}`,
       `租户：${tenantLabel(diagnosis)}`,
     ]),
     htmlParagraph("同名配置合并为一行。Env 列来自 ConfigMap 与 Deployment env；Tenant config 列由 Plugin 提供，并在单元格内标明 scope。"),
     htmlParagraph("显式 Deployment env 按 Kubernetes 语义覆盖同名 ConfigMap 值。"),
+    htmlParagraph("Toolchain 来自 Plugin 声明；依赖清单与 runtime version 来自本次 Target 观测。"),
     htmlHeading(2, "Coverage"),
     htmlList(diagnosis.coverage.flatMap((item) => [
       `${item.goal}：${item.status}`,
@@ -182,6 +261,18 @@ export function buildConfigHtmlSections(diagnosis: ConfigDiagnosis): HtmlReportS
     {
       title: "Pod 运行态",
       html: htmlTable(POD_TABLE_HEADERS, podRows(diagnosis)),
+    },
+    {
+      title: "Toolchain",
+      html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
+    },
+    {
+      title: "应用依赖",
+      html: htmlTable(
+        DEPENDENCY_TABLE_HEADERS,
+        dependencyRows(diagnosis),
+        { search: { column: 3, placeholder: "按依赖名检索" } },
+      ),
     },
     {
       title: "配置对照",

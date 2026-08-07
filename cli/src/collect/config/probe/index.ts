@@ -7,6 +7,7 @@ import type {
 } from "../model";
 import { makeServiceConfigProbe } from "./service-environment";
 import { makeTenantConfigProbe } from "./tenant-config";
+import { makeDependencyInventoryProbe } from "./dependencies";
 
 export function makeConfigProbes(
   facts: ConfigInspectionFacts,
@@ -17,6 +18,9 @@ export function makeConfigProbes(
         service.deployments.map((target) => makeServiceConfigProbe(target))
       )
     : [];
+  if (facts.dependencyTargets.status === "collected") {
+    probes.push(...facts.dependencyTargets.targets.map(makeDependencyInventoryProbe));
+  }
   if (config.tenantId && config.tenantConfiguration) {
     probes.push(...config.tenantConfiguration.scopes.map(makeTenantConfigProbe));
   }
@@ -25,3 +29,4 @@ export function makeConfigProbes(
 
 export * from "./service-environment";
 export * from "./tenant-config";
+export * from "./dependencies";
