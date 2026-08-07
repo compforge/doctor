@@ -116,12 +116,16 @@ Plugin 入口是可直接执行的 Node-compatible ESM，默认导出一个 `Plu
 对象 id 必须一致；`pluginApiVersion` 必须与当前 Doctor 支持的 Plugin API 精确匹配。归档必须自包含运行依赖，不在客户现场执行 `npm install`、
 install script 或编译 TypeScript；Skill 目录可携带其 `references/`、`scripts/` 等标准资源。
 
+Service Catalog 还可声明 Toolchain，表达源码语言与稳定构建方式，供 Core 选择通用诊断采集器。它是
+Plugin 知识而非 Target Fact：当前 runtime、镜像和实际依赖必须在 collect 阶段重新观察；Plugin 不通过
+Toolchain 下发任意命令。
+
 ### 构建归档
 
 ```bash
 cd plugins/example
 make build
-# dist/example-0.0.3.doctor-plugin.tar.gz
+# dist/example-<version>.doctor-plugin.tar.gz
 ```
 
 Plugin 在自身 `dist/` 中产出 `<id>-<version>.doctor-plugin.tar.gz`。归档只包含 manifest、已 bundle 的

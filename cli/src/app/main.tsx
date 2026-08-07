@@ -224,6 +224,7 @@ function withConfigOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--services <names>", "逗号分隔的 Kubernetes Service；缺省时交互多选，非交互必须指定")
     .option("--deployment-config", "确认采集 Deployment Env/ConfigMap；交互模式缺省时询问")
+    .option("--dependencies", "确认进入业务 Container 采集应用依赖；交互模式缺省时询问")
     .option("--tenant-id <id>", "同时读取该租户的 Plugin 配置并按列对照")
     .option("--tenant-name <name>", "通过租户目录精确解析租户名，并读取 Plugin 配置")
     .option("--tenant-config-service <name>", "提供租户配置的 Kubernetes Service；缺省由 Plugin 声明")
@@ -575,7 +576,7 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withConfigOptions(
-    program.command("config").description("采集 Service 的 Pod 运行态，可选部署配置与 Plugin 租户配置（只读）"),
+    program.command("config").description("采集 Service 的 Pod 运行态、Toolchain、可选配置与应用依赖（只读）"),
   ).action(async (opts) => {
     await runPluginCommand(
       {

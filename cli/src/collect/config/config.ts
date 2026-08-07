@@ -145,6 +145,7 @@ export function resolveConfigCollectConfig(
     services: opts.services === undefined ? [] : parseConfigServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
     includeDeploymentConfig: opts.deploymentConfig === true,
+    includeDependencies: opts.dependencies === true,
     tenantId,
     tenantName,
     fallbackIdentity,
@@ -161,35 +162,70 @@ export function resolveConfigCollectConfig(
   };
 }
 
-async function promptDeploymentConfigCollection(): Promise<boolean> {
-  terminalStdout.write("[collect] 是否采集所选 Service 的 Deployment Env/ConfigMap（Pod 内配置）？\n");
-  terminalStdout.warning("[collect] 这些配置可能包含密码、密钥等敏感业务数据。\n");
+async function promptOptionalCollection(input: {
+  title: string;
+  warning: string;
+  question: string;
+}): Promise<boolean | undefined> {
+  terminalStdout.write(`[collect] ${input.title}\n`);
+  terminalStdout.warning(`[collect] ${input.warning}\n`);
   prepareTerminalInput();
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
     return ["y", "yes"].includes(
-      (await readline.question("采集 Pod 内配置？[y/N] ")).trim().toLowerCase(),
+      (await readline.question(input.question)).trim().toLowerCase(),
     );
   } catch {
-    return false;
+    return undefined;
   } finally {
     readline.close();
   }
 }
 
+function promptDeploymentConfigCollection(): Promise<boolean | undefined> {
+  return promptOptionalCollection({
+    title: "是否采集所选 Service 的 Deployment Env/ConfigMap（Pod 内配置）？",
+    warning: "这些配置可能包含密码、密钥等敏感业务数据。",
+    question: "采集 Pod 内配置？[y/N] ",
+  });
+}
+
+function promptDependencyCollection(): Promise<boolean | undefined> {
+  return promptOptionalCollection({
+    title: "是否进入所选 Service 的业务 Container 采集应用依赖及版本？",
+    warning: "依赖清单可能包含内部包名；Doctor 只保存归一化后的包名和版本。",
+    question: "采集应用依赖？[y/N] ",
+  });
+}
+
 export interface ConfigDeploymentSelectionInput {
   config: ConfigCollectConfig;
   interactive?: boolean;
-  prompt?: () => Promise<boolean>;
+  prompt?: () => Promise<boolean | undefined>;
 }
 
 /** CLI flag 视为预先确认；交互终端在 Service 选择后询问，非交互缺省跳过敏感配置。 */
 export async function resolveConfigDeploymentSelection(
   input: ConfigDeploymentSelectionInput,
-): Promise<boolean> {
+): Promise<boolean | undefined> {
   if (input.config.includeDeploymentConfig) return true;
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   return interactive && await (input.prompt ?? promptDeploymentConfigCollection)();
+}
+
+export interface ConfigDependencySelectionInput {
+  config: ConfigCollectConfig;
+  interactive?: boolean;
+  prompt?: () => Promise<boolean | undefined>;
+}
+
+/** CLI flag 视为预先确认；非交互缺省不进入业务 Container。 */
+export async function resolveConfigDependencySelection(
+  input: ConfigDependencySelectionInput,
+): Promise<boolean | undefined> {
+  if (input.config.includeDependencies) return true;
+  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  return interactive && await (input.prompt ?? promptDependencyCollection)();
 }
 
 export interface ConfigServiceSelectionInput {

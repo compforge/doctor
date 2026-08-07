@@ -191,6 +191,26 @@ export function podsForService(
     .sort((left, right) => left.name.localeCompare(right.name));
 }
 
+export function selectPodServiceContainer(
+  service: KubernetesService,
+  pod: KubernetesPod,
+): { container?: KubernetesPod["containers"][number]; reason?: string } {
+  if (pod.containers.length === 1) return { container: pod.containers[0] };
+  const exact = pod.containers.find((item) => item.name === service.name);
+  if (exact) return { container: exact };
+  const byPort = pod.containers.filter((container) => service.ports.some((servicePort) =>
+    (container.ports ?? []).some((port) => typeof servicePort.targetPort === "string"
+      ? port.name === servicePort.targetPort
+      : port.containerPort === (servicePort.targetPort ?? servicePort.port))
+  ));
+  if (byPort.length === 1) return { container: byPort[0] };
+  return {
+    reason: pod.containers.length
+      ? `Pod 有多个 Container，Service port 无法唯一定位业务容器：${pod.containers.map((item) => item.name).join(", ")}`
+      : "Pod 没有 Container",
+  };
+}
+
 export function selectServiceContainer(
   service: KubernetesService,
   deployment: KubernetesDeploymentConfig,

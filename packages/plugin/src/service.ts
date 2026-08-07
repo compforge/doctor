@@ -235,6 +235,47 @@ export type ServiceStoreCapability =
   | ServiceS3StoreCapability
   | ServiceRedisStoreCapability;
 
+/** Service 构建与运行所使用的稳定工具链声明；现场版本仍由 Doctor 从 Target 观测。 */
+export interface Toolchain {
+  language: "python" | "go" | "javascript" | "typescript" | "java" | "kotlin";
+  executionPlatform: "python" | "go-native" | "node" | "jvm";
+  dependencyManager?:
+    | "pip"
+    | "poetry"
+    | "uv"
+    | "go-modules"
+    | "npm"
+    | "pnpm"
+    | "yarn"
+    | "maven"
+    | "gradle";
+  buildTool?: "go" | "tsc" | "vite" | "webpack" | "maven" | "gradle";
+}
+
+const TOOLCHAIN_VALUES = {
+  language: new Set<string>(["python", "go", "javascript", "typescript", "java", "kotlin"]),
+  executionPlatform: new Set<string>(["python", "go-native", "node", "jvm"]),
+  dependencyManager: new Set<string>([
+    "pip", "poetry", "uv", "go-modules", "npm", "pnpm", "yarn", "maven", "gradle",
+  ]),
+  buildTool: new Set<string>(["go", "tsc", "vite", "webpack", "maven", "gradle"]),
+} as const;
+
+/** Validate the optional Toolchain across the untyped Plugin ESM boundary. */
+export function isToolchain(value: unknown): value is Toolchain {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.language === "string"
+    && TOOLCHAIN_VALUES.language.has(candidate.language)
+    && typeof candidate.executionPlatform === "string"
+    && TOOLCHAIN_VALUES.executionPlatform.has(candidate.executionPlatform)
+    && (candidate.dependencyManager === undefined
+      || (typeof candidate.dependencyManager === "string"
+        && TOOLCHAIN_VALUES.dependencyManager.has(candidate.dependencyManager)))
+    && (candidate.buildTool === undefined
+      || (typeof candidate.buildTool === "string" && TOOLCHAIN_VALUES.buildTool.has(candidate.buildTool)));
+}
+
 export interface ServiceCapabilities {
   stores?: readonly ServiceStoreCapability[];
   config?: Record<string, never>;
@@ -253,5 +294,6 @@ export interface ServiceCapabilities {
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
+  toolchain?: Toolchain;
   capabilities: ServiceCapabilities;
 }

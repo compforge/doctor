@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { examplePlugin } from "../../plugins/example/src";
 import {
   resolveConfigDeploymentSelection,
+  resolveConfigDependencySelection,
   runCollectConfig,
   type ConfigCollectConfig,
 } from "../src/collect/config";
@@ -29,6 +31,7 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
     services: ["example-api"],
     servicesExplicit: true,
     includeDeploymentConfig: false,
+    includeDependencies: false,
     format: "html",
     reportName: "doctor-config-test",
     profileName: "default",
@@ -42,6 +45,16 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
   })).toBe(true);
   expect(await resolveConfigDeploymentSelection({
     config: { ...config, includeDeploymentConfig: true },
+    interactive: false,
+  })).toBe(true);
+  expect(await resolveConfigDependencySelection({ config, interactive: false })).toBe(false);
+  expect(await resolveConfigDependencySelection({
+    config,
+    interactive: true,
+    prompt: async () => true,
+  })).toBe(true);
+  expect(await resolveConfigDependencySelection({
+    config: { ...config, includeDependencies: true },
     interactive: false,
   })).toBe(true);
 });
@@ -79,6 +92,7 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
     }] }),
   };
   const queriedResources: string[] = [];
+  const dependencyCommands: string[][] = [];
   const executor: Executor = {
     run: async (args) => {
       const resource = args[1];
@@ -86,7 +100,13 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
       if (resource && resource in resources) return result(resources[resource as keyof typeof resources]);
       throw new Error(`unexpected kubectl: ${args.join(" ")}`);
     },
-    exec: async () => { throw new Error("Pod exec must not be used"); },
+    exec: async (_target, command) => {
+      dependencyCommands.push(command);
+      return result(JSON.stringify({
+        runtimeVersion: "v22.0.0",
+        dependencies: [{ name: "zod", version: "4.4.3" }],
+      }));
+    },
   };
   const dir = mkdtempSync(join(tmpdir(), "doctor-config-test-"));
   try {
@@ -125,6 +145,49 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
     expect(partial).toContain("environment-config：insufficient");
     expect(partial).toContain("workload-runtime：sufficient");
     expect(partial).toContain("用户未确认采集 Deployment Env/ConfigMap");
+
+    const dependenciesOutput = join(dir, "dependencies.md");
+    expect(await runCollectConfig({
+      namespace: "demo",
+      services: "example-api",
+      dependencies: true,
+      config: configPath,
+      format: "md",
+      output: dependenciesOutput,
+    }, examplePlugin, executor)).toBe(0);
+    expect(dependencyCommands).toHaveLength(1);
+    expect(dependencyCommands[0]?.slice(0, 2)).toEqual(["node", "-e"]);
+    const dependencies = readFileSync(dependenciesOutput, "utf-8");
+    expect(dependencies).toContain("typescript");
+    expect(dependencies).toContain("v22.0.0");
+    expect(dependencies).toContain("zod");
+    expect(dependencies).toContain("4.4.3");
+    expect(dependencies).toContain("runtime-dependencies：sufficient");
+
+    const pluginWithoutToolchain = {
+      ...examplePlugin,
+      services: createServiceCatalog([{
+        name: "example-api",
+        capabilities: {
+          config: {},
+          log: { default: true },
+        },
+      }]),
+    } satisfies PluginDefinition;
+    const unavailableOutput = join(dir, "dependencies-without-toolchain.md");
+    const commandsBeforeUnavailable = dependencyCommands.length;
+    expect(await runCollectConfig({
+      namespace: "demo",
+      services: "example-api",
+      dependencies: true,
+      config: configPath,
+      format: "md",
+      output: unavailableOutput,
+    }, pluginWithoutToolchain, executor)).toBe(0);
+    expect(dependencyCommands).toHaveLength(commandsBeforeUnavailable);
+    const unavailable = readFileSync(unavailableOutput, "utf-8");
+    expect(unavailable).toContain("Plugin 未声明 Toolchain");
+    expect(unavailable).toContain("runtime-dependencies：insufficient");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

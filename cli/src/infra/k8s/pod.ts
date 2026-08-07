@@ -14,6 +14,7 @@ export interface KubernetesPodContainer {
   name: string;
   image: string;
   imageId?: string;
+  ports?: Array<{ name?: string; containerPort: number }>;
   requests: Record<string, string>;
   limits: Record<string, string>;
   restartCount: number;
@@ -27,6 +28,7 @@ interface KubernetesPodList {
       containers?: Array<{
         name?: string;
         image?: string;
+        ports?: Array<{ name?: string; containerPort?: number }>;
         resources?: {
           requests?: Record<string, string>;
           limits?: Record<string, string>;
@@ -59,10 +61,16 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
       const containerName = container.name?.trim();
       if (!containerName) return [];
       const status = statusByName.get(containerName);
+      const ports = (container.ports ?? []).flatMap((port) =>
+        Number.isInteger(port.containerPort)
+          ? [{ name: port.name, containerPort: port.containerPort! }]
+          : []
+      );
       return [{
         name: containerName,
         image: container.image?.trim() ?? "",
         imageId: status?.imageID?.trim() || undefined,
+        ...(ports.length ? { ports } : {}),
         requests: container.resources?.requests ?? {},
         limits: container.resources?.limits ?? {},
         restartCount: status?.restartCount ?? 0,

@@ -7,6 +7,10 @@ capability 及其 access，同一精确 Plugin 版本还可携带多个已解析
 协议和业务查询由 Plugin 持有。例如 `traceId` capability 只约定业务 ID 到规范 `trace_id` 的输入输出，
 查询哪个 Service、如何解释数据源和 ID 的业务语义都留在 Plugin。
 
+Service 可以通过 `Toolchain` 声明稳定的源码语言、执行平台、依赖管理器和构建工具。该声明帮助 Core
+选择通用依赖、性能与产物采集器；当前镜像、runtime version 和实际依赖仍由 Core 从 Target 观察，
+Toolchain 不作为现场状态使用，也不携带自定义执行命令。
+
 `PluginDefinition.id` 与 `PluginDefinition.version` 共同构成运行时身份。同一 `plugin@version` 的代码和
 Skills 内容不可变；`scripts/version.ts` 对两类内容统一计算并校验版本锁，任一内容变化都需要 bump
 Plugin version 后重新封存。
