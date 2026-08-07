@@ -66,6 +66,9 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
   if (catalogService.port === undefined) {
     throw new Error(`模型目录 Service '${catalogService.name}' 未声明端口`);
   }
+  if (inferenceService.port === undefined) {
+    throw new Error(`推理 Service '${inferenceService.name}' 未声明端口`);
+  }
   const tenantPort = parseModelPort(
     options.tenantDirectoryPort,
     tenantService.port,
