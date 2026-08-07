@@ -1,5 +1,7 @@
 # Doctor
 
+[English](README.md) | [简体中文](README_CN.md)
+
 > Extensible diagnostics for Kubernetes applications.
 
 Doctor is a local-first CLI for collecting reproducible diagnostic evidence and running diagnostic
@@ -7,8 +9,23 @@ conversations. It complements `kubectl` with application-aware diagnostics: Core
 reach and safely operate a selected target, while a Plugin teaches Doctor which services make up an
 application and what their business data means.
 
-Built-in collectors cover CPU, memory, network, HTTP, traces and stores. A local Agent can combine
-the same target context with Plugin-provided Skills for open-ended investigation.
+Doctor has three peer workflows: Provision prepares diagnostic capabilities, Collect produces
+auditable Evidence and reports, and Chat runs an Agent with application Skills in a sandbox. All
+three share the same profile, target, access and authorization context.
+
+![Doctor architecture](docs/doctor-architecture.svg)
+
+## How Doctor works
+
+| Workflow | Purpose | Result |
+|---|---|---|
+| Provision | Explicitly prepare a Host or Target capability such as an image, debug environment or diagnostic tool | A ready capability or visible state change |
+| Collect | Inspect a target, run bounded probes and apply deterministic detectors | Evidence, coverage, findings and an offline report |
+| Chat | Combine a model, Plugin Skills and scoped tools for open-ended investigation | An interactive diagnostic conversation |
+
+Provision, Collect and Chat are independent command workflows rather than modes of one engine.
+They reuse Core access and infrastructure primitives, while each owns its result and lifecycle.
+Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
 
 ## Core and Plugin
 
@@ -19,17 +36,15 @@ Core and Plugin form Doctor's main extension boundary:
 | Core | Profile and target selection, generic Host/Kubernetes access, authorization and resource lifecycle, deterministic collection, Evidence, reports and interaction hosting |
 | Plugin | A versioned bundle of application Services, their business capabilities, and Skills |
 
-Core binds access to the target selected by the user. A Plugin consumes that scoped access to locate
-application data and returns neutral results or temporary capability handles; it does not choose a
-different environment or recreate Doctor's access and lifecycle layer. Business protocols, private
-schemas and fixed queries remain inside the Plugin instead of leaking into the open-source Core.
-One Plugin may describe all Services that make up an application and ship multiple Skills with the
-same version; each Service declares its own capabilities and access needs.
+Core binds access to the target selected by the user and owns shared Kubernetes operations such as
+permission checks and port-forward lifecycle. A Plugin consumes that scoped context to locate
+application data. It performs its own business-specific HTTP and database access, then returns
+neutral results or temporary capability handles. Private protocols, schemas and fixed queries stay
+inside the Plugin instead of leaking into the open-source Core.
 
-```text
-Profile ──► Target ──► Core access ──► Plugin capability ──► Evidence / report
-                    └───────────────► Plugin Skills ──────► doctor chat
-```
+One Plugin may describe all Services that make up an application and ship multiple capabilities,
+model access declarations and Skills under one version. Service capabilities extend deterministic
+commands; Model and Skills also extend Chat.
 
 ## Repository layout
 
@@ -74,12 +89,15 @@ compatible Plugin.
 
 ## Chat runtime
 
-`doctor chat` uses a complete profile `llm` config to run `@compforge/doctor-agent` locally by
-default. `doctor chat --server` explicitly selects `ServerAgent` and uses the profile `server`;
-merely configuring an endpoint does not change the execution location. Both modes project the same
-AgentUE/chat-tui interaction model. In local mode, Pi's `read` and `bash` tools let the Agent load
-Plugin Skills and run their referenced diagnostic scripts in the CLI process. A server host uses
-the same Agent package with its own interface, credentials, execution environment and persistence.
+`doctor chat` runs `@compforge/doctor-agent` with scoped tools inside a sandbox. A profile `llm`
+takes precedence; when it is absent, Doctor can select an LLM from the active Plugin's Model
+Capability and use the Plugin-owned inference connection. The active Plugin also contributes the
+versioned Skills available to the Agent.
+
+`doctor chat --server` explicitly selects `ServerAgent` and uses the profile `server`; merely
+configuring an endpoint does not change the execution location. Local and server hosts project the
+same AgentUE/chat-tui interaction model and reuse the same Agent package behind different host
+interfaces.
 
 ## Plugin boundary
 
@@ -91,3 +109,6 @@ the boundary. Start with [`plugins/example`](plugins/example), then see
 Skills are versioned resources inside a Plugin. They inherit Plugin selection and trust rather
 than introducing an independent global Skill lifecycle. `doctor version` reports the Doctor Core
 version and the exact embedded Plugin identity used by the distribution.
+
+For the deeper boundaries, see [`cli/docs/kernel.md`](cli/docs/kernel.md),
+[`cli/docs/plugin.md`](cli/docs/plugin.md) and [`docs/chat.md`](docs/chat.md).
