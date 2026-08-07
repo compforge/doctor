@@ -19,7 +19,7 @@ make build-debug-images
 make build-debug-images DOCTOR_DEBUG_TAG=0.0.10
 ```
 
-产物为 `dist/doctor-debug-linux-amd64.tar` 和 `dist/doctor-debug-linux-arm64.tar`，与 doctor binary 一起交付但不纳入 Git、不嵌入 executable。`make build` 产出的每个平台 Doctor 单文件只内嵌匹配 OS/arch 的 regctl，客户不需要额外分发 regctl，也不强制要求本机 container engine。`doctor image [registry/namespace/image:tag]` 是 image tar 的唯一准备入口：从当前目录选择 tar，可用 `--registry` 发布到指定 registry/namespace、用 `--host` load 到 Doctor Host，或同时准备到两处。`doctor debug` 只消费已发布的 doctor-debug image，或在其不可用时复用目标 Pod 已有的业务镜像，不处理 tar 和镜像发布。
+产物为 `dist/doctor-debug-<version>-linux-amd64.tar` 和 `dist/doctor-debug-<version>-linux-arm64.tar`，与 doctor binary 一起交付但不纳入 Git、不嵌入 executable。`make build` 产出的每个平台 Doctor 单文件只内嵌匹配 OS/arch 的 regctl，客户不需要额外分发 regctl，也不强制要求本机 container engine。`doctor image [registry/namespace/image:tag]` 是 image tar 的唯一准备入口：从当前目录选择 tar，可用 `--registry` 发布到指定 registry/namespace、用 `--host` load 到 Doctor Host，或同时准备到两处。`doctor debug` 只消费已发布的 doctor-debug image，或在其不可用时复用目标 Pod 已有的业务镜像，不处理 tar 和镜像发布。
 
 Debian 12 的 GDB 离线安装包同样独立构建：
 

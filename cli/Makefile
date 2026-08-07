@@ -104,7 +104,7 @@ build-debug-linux-amd64:
 		--build-arg DOCTOR_DEBUG_VERSION=$(DOCTOR_DEBUG_TAG) \
 		--build-arg DOCTOR_CLI_VERSION=$(DOCTOR_CLI_VERSION) \
 		--tag $(DOCTOR_DEBUG_IMAGE):$(DOCTOR_DEBUG_TAG)-linux-amd64 \
-		--output type=docker,dest=$(DIST_DIR)/doctor-debug-linux-amd64.tar \
+		--output type=docker,dest=$(DIST_DIR)/doctor-debug-$(DOCTOR_DEBUG_TAG)-linux-amd64.tar \
 		-f docker/debug/Dockerfile .
 
 build-debug-linux-arm64:
@@ -114,7 +114,7 @@ build-debug-linux-arm64:
 		--build-arg DOCTOR_DEBUG_VERSION=$(DOCTOR_DEBUG_TAG) \
 		--build-arg DOCTOR_CLI_VERSION=$(DOCTOR_CLI_VERSION) \
 		--tag $(DOCTOR_DEBUG_IMAGE):$(DOCTOR_DEBUG_TAG)-linux-arm64 \
-		--output type=docker,dest=$(DIST_DIR)/doctor-debug-linux-arm64.tar \
+		--output type=docker,dest=$(DIST_DIR)/doctor-debug-$(DOCTOR_DEBUG_TAG)-linux-arm64.tar \
 		-f docker/debug/Dockerfile .
 
 # Debian 12 GDB 离线仓；对外只交付一个 package set，运行时按 Target 选择并提取内部 variant。
