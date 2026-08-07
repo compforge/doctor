@@ -49,6 +49,12 @@ Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共
 这四类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
+Model Capability 是 Plugin 对模型供给的聚合声明，它把 tenant directory、model catalog 与 inference
+Service 组成一项可消费能力。Chat 用它选择并调用 LLM，Model Collect 在同一能力上增加 validation、
+performance 和 Evidence；诊断是 Core command 行为，不是 Plugin capability 的身份。Core 在调用前
+检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
+所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
+
 持久化模型只包含两个事实：
 
 1. Doctor Host 已安装哪些 `plugin@version`；

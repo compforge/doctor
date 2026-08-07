@@ -1,14 +1,13 @@
 import type {
-  Model,
   ModelBackendHandle,
   ModelCatalog,
   ModelInference,
   ModelInferenceTarget,
-  ModelType,
+  TenantSummary,
 } from "@compforge/doctor-plugin";
-import type { TenantSummary } from "@compforge/doctor-plugin";
 import type { KubernetesCommandInput } from "../../command/kubernetes-target";
 import type { ServiceHttpResponse } from "../../infra/http";
+import type { SelectedInferenceModel } from "../../model";
 import type { EvidenceBundle } from "../evidence";
 import type {
   Diagnosis,
@@ -18,6 +17,8 @@ import type {
   ObservationMeta,
 } from "../protocol";
 import type { HttpCapture } from "../shared/http/capture";
+
+export type { SelectedInferenceModel } from "../../model";
 
 export interface CollectModelCliOptions extends KubernetesCommandInput {
   tenantId?: string;
@@ -39,11 +40,6 @@ export interface CollectModelCliOptions extends KubernetesCommandInput {
 export interface ModelTestRequest {
   path: string;
   body: Record<string, unknown>;
-}
-
-export interface SelectedInferenceModel extends Model {
-  type: Exclude<ModelType, "audio">;
-  inference: ModelInferenceTarget;
 }
 
 export interface ModelTargetFact {

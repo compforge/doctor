@@ -2,8 +2,8 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标、准备受控能力、采集事实、执行规则并
-交付 Evidence/报告；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+Doctor CLI 是本地诊断入口，以 Provision、Collect 和 Chat 三条并列主路径组织能力准备、
+确定性诊断和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
@@ -17,7 +17,8 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 |---|---|
 | `app` | 命令入口、profile 与 composition root |
 | `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
-| `command` | Collect/Provision 共用的启动检查、Kubernetes 目标解析与审批契约 |
+| `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
+| `command` | 三条主路径共用的启动检查、Kubernetes 目标解析与 access/审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |

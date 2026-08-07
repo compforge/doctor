@@ -49,10 +49,12 @@ AgentUE patch 输出。宿主负责 Plugin 解析、模型凭据、Pi `Execution
 不直接依赖 pi。
 
 本地 chat 的模型解析保持明确优先级：完整的 `profile.llm` 是用户显式选择，直接使用；
-否则复用 `doctor model` 的 tenant directory 和 model catalog，只展示 `type=llm` 的候选项，
+否则消费共享 Model Capability 的 tenant directory 和 model catalog，只展示 `type=llm` 的候选项，
 embedding、rerank 和 audio 不进入 chat 选择。选中结果只在当前 Session 生效，不回写 profile。
 Plugin inference 持有路由与凭据，CLI 把它适配为 Pi 的 OpenAI-compatible streaming transport；Agent
 不需要看到 Plugin 的访问凭据。
+Core 在启动 Agent 前完成 Kubernetes access 预检并建立 inference port-forward，连接随
+Session 保持，并在 Session 结束时回收。
 
 本地 CLI 还会把当前 profile 已确定的基础设施目标同时写入 Agent prompt 和宿主中立的 `TARGET_*`
 shell 环境。

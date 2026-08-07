@@ -1,20 +1,22 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
 import type { CommandContext } from "../../command";
+import {
+  openModelAccess,
+  requireInferenceModel,
+  resolveModelTenant,
+  selectModel,
+  type ModelAccess,
+} from "../../model";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   parseModelMaxOutputTokens,
   parseModelPerformanceRepeat,
   parseModelTimeout,
   parseModelType,
-  requireInferenceModel,
-  resolveModelTenant,
-  selectModel,
 } from "./config";
 import type { CollectModelCliOptions } from "./model";
-import { openModelAccess, type ModelAccess } from "./access";
 import { runModelDiagnosis } from "./runner";
 
-export * from "./access";
 export * from "./config";
 export * from "./detector";
 export * from "./fact/inspect";
@@ -78,6 +80,9 @@ export async function runCollectModel(
       return 130;
     }
     const model = requireInferenceModel(selected);
+    if (model.type === "audio") {
+      throw new Error("doctor model 当前支持 llm、embedding、rerank，暂不支持 audio inference");
+    }
     terminalStdout.write(
       `[model] model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}）\n`,
     );

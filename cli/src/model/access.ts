@@ -9,17 +9,16 @@ import type {
   TenantDirectory,
 } from "@compforge/doctor-plugin";
 
-import type { CommandContext } from "../../command";
+import type { CommandContext } from "../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
   type KubernetesCommandConfig,
   type KubernetesCommandInput,
-} from "../../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../../command";
-import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
-import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { parseModelPort } from "./config";
+} from "../command/kubernetes-target";
+import { resolveKubernetesCommandContext } from "../command";
+import { openPluginContext, type ManagedPluginContext } from "../plugin/context";
+import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 export interface OpenModelAccessOptions extends KubernetesCommandInput {
   command: string;
@@ -52,8 +51,8 @@ function requireService<C extends "tenantDirectory" | "modelCatalog" | "inferenc
 }
 
 export async function openModelAccess(options: OpenModelAccessOptions): Promise<ModelAccess | undefined> {
-  const declaration = options.plugin.modelDiagnosis;
-  if (!declaration) throw new Error(`Plugin '${options.plugin.id}' 未提供模型诊断能力`);
+  const declaration = options.plugin.model;
+  if (!declaration) throw new Error(`Plugin '${options.plugin.id}' 未提供模型能力`);
   const tenantService = requireService(
     options.plugin,
     declaration.tenantDirectoryService,
@@ -121,9 +120,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
     return context;
   };
   const dispose = async () => {
-    const settled = await Promise.allSettled(contexts.reverse().map((context) => context.dispose()));
-    const failure = settled.find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") throw failure.reason;
+    await Promise.allSettled(contexts.reverse().map((context) => context.dispose()));
   };
 
   try {
@@ -143,7 +140,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
       config,
       directory,
       catalog,
-      createInference: async (target, timeoutMs) => inferenceService.capabilities.inference.create(
+      createInference: async (target, timeoutMs) => await inferenceService.capabilities.inference.create(
         await contextFor(inferenceService, inferenceService.capabilities.inference),
         target,
         timeoutMs,
@@ -154,4 +151,13 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
     await dispose();
     throw error;
   }
+}
+
+function parseModelPort(value: string | undefined, fallback: number, flag: string): number {
+  if (value === undefined) return fallback;
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`${flag} 必须是 1..65535 的整数`);
+  }
+  return port;
 }

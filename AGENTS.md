@@ -32,7 +32,7 @@ Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开�
    的 Facts/Observations，不继续访问外部资源。
 4. **默认安全边界显式化**：外部访问应声明超时、容量与权限；有副作用的操作必须在执行前展示并确认。
 5. **Agent 共用，宿主分离**：CLI 与 server 通过各自的 interface、凭据和执行环境使用同一
-   `packages/agent`；Skill 跟随 profile 选中的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
+   `packages/agent`；Skill 跟随 Doctor Host 当前加载的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
 
 ## References
 

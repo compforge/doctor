@@ -22,7 +22,7 @@ import {
   resolveModelTenant,
   selectModel,
   type SelectedInferenceModel,
-} from "../collect/model";
+} from "../model";
 import { terminalStdout } from "../terminal/output";
 import { DoctorClient } from "../protocol";
 import type { CliFlags } from "../protocol";

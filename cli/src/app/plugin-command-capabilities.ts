@@ -59,7 +59,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor model",
     needs: [{
       requirement: "required",
-      capability: { scope: "plugin", name: "modelDiagnosis" },
+      capability: { scope: "plugin", name: "model" },
       purpose: "声明租户目录、模型目录和推理服务",
     }, {
       requirement: "required",

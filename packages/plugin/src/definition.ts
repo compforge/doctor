@@ -58,6 +58,7 @@ export interface ModelCatalog {
   getBackend(model: Model): Promise<ModelBackendHandle | undefined>;
 }
 
+/** Plugin-owned inference handle; LLM chat uses the OpenAI-compatible chat completions path. */
 export interface ModelInference {
   invoke(path: string, body: Record<string, unknown>): Promise<ServiceHttpResponse>;
   invokeStream(
@@ -67,7 +68,8 @@ export interface ModelInference {
   ): Promise<HttpTransportResponse>;
 }
 
-export interface ModelDiagnosisCapability {
+/** Services that together provide model discovery and OpenAI-compatible inference. */
+export interface ModelCapability {
   tenantDirectoryService: string;
   catalogService: string;
   inferenceService: string;
@@ -93,7 +95,7 @@ export interface TenantConfigurationCapability extends CapabilityWithAccess {
 /** 不属于单个 Service、但仍由 Plugin 提供的业务语义。 */
 export interface PluginLevelCapabilities {
   tenantConfiguration?: TenantConfigurationCapability;
-  modelDiagnosis?: ModelDiagnosisCapability;
+  model?: ModelCapability;
   traceDiagnosis?: TraceDiagnosisCapability;
 }
 

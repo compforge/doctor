@@ -67,7 +67,7 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
 
 test("model command 不依赖租户配置采集能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.model.needs.map((need) => need.capability)).toEqual([
-    { scope: "plugin", name: "modelDiagnosis" },
+    { scope: "plugin", name: "model" },
     { scope: "service", name: "tenantDirectory" },
     { scope: "service", name: "modelCatalog" },
     { scope: "service", name: "inference" },
