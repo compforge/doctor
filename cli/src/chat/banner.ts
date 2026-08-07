@@ -3,13 +3,15 @@ import boxen from "boxen";
 import type { DoctorMeta } from "./model";
 
 const LOGO = [
-  " ╭─◯   ◯─╮           ",
-  "  ╲     ╱            ",
-  "   ╲   ╱             ",
-  "    ═══              ",
-  "     ║     ◎         ",
-  "     ║     │         ",
-  "     ╰═════╯         ",
+  " ╭─●     ●─╮",
+  " │         │",
+  " │         │",
+  "  ╲       ╱   ╭───╮",
+  "   ╲     ╱    │ ◉ │",
+  "    ╲   ╱     ╰─┬─╯",
+  "     ╲ ╱        │",
+  "      │         │",
+  "      ╰─────────╯",
 ];
 
 export function renderBanner(options: { version: string; meta: DoctorMeta }): string {
@@ -24,9 +26,11 @@ export function renderBanner(options: { version: string; meta: DoctorMeta }): st
   info.push(`mode     ${meta.readonly ? "readonly" : "read-write"}`);
   if (meta.conversation_id) info.push(`resume   ${short(meta.conversation_id)}`);
 
+  // 各行按最大宽度对齐，保证 info 列左缘齐平，不依赖字符串里的尾部空格
+  const logoWidth = Math.max(...LOGO.map((line) => line.length));
   const rows = Math.max(LOGO.length, info.length);
   const content = Array.from({ length: rows }, (_, index) => {
-    const left = LOGO[index] ?? " ".repeat(LOGO[0]!.length);
+    const left = (LOGO[index] ?? "").padEnd(logoWidth);
     return `${left}  ${info[index] ?? ""}`;
   }).join("\n");
 
