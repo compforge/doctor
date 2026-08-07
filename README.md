@@ -89,4 +89,5 @@ the boundary. Start with [`plugins/example`](plugins/example), then see
 [`cli/docs/plugin.md`](cli/docs/plugin.md) for the full design.
 
 Skills are versioned resources inside a Plugin. They inherit Plugin selection and trust rather
-than introducing an independent global Skill lifecycle.
+than introducing an independent global Skill lifecycle. `doctor version` reports the Doctor Core
+version and the exact embedded Plugin identity used by the distribution.

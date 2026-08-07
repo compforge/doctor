@@ -9,7 +9,8 @@ Plugin 通过版本化、自包含、可离线交付的归档分发这些业务�
   已解析的 `PluginSkill`；
 - **Skill 资源**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
 
-Plugin 是 Service 与 Skill 的打包和分发单位。`PluginDefinition` 是唯一运行时入口，其中
+Plugin 是 Service 与 Skill 的打包和分发单位。`PluginDefinition` 是唯一运行时入口，`id@version`
+构成其精确身份，其中
 Service Catalog 可包含组成同一应用的多个 Service，每个 Service 各自声明 capability 及所需 access；
 同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
@@ -174,6 +175,9 @@ Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主
 `PluginDefinition` 的 capability 是确定性诊断代码，`PluginSkill` 是 agent 使用的知识与工作流。
 两者运行接口独立，但由同一个 runtime definition 汇合，并共同跟随 Plugin 安装、选择、信任和升级；
 Skill 没有平行的全局生命周期。
+
+同一 `plugin@version` 的代码与 Skill 内容不可变。Plugin workspace 对 `src/` 和 `skills/` 统一计算内容锁；
+构建和测试只接受与当前 version 匹配的锁，任一目录变化都必须 bump Plugin version 后重新封存。
 
 Skill 资源本身保持宿主中立：同一份多环境台账和脚本原样分发。环境选择与基础设施连接属于宿主和
 Plugin 的准备边界，不通过裁剪 Skill、修改 Skill 文案或维护宿主专属副本表达。

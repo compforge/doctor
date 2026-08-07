@@ -99,9 +99,14 @@ export interface PluginLevelCapabilities {
 
 export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;
 
-/** Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。 */
-export interface PluginDefinition extends PluginLevelCapabilities {
+/** Plugin identity names one immutable code-and-Skills distribution. */
+export interface PluginIdentity {
   id: string;
+  version: string;
+}
+
+/** Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。 */
+export interface PluginDefinition extends PluginIdentity, PluginLevelCapabilities {
   /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;
   /** Runtime-resolved Skills from the same exact Plugin version. */

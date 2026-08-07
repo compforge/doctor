@@ -21,7 +21,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
 // CLI 是多能力入口，bare `doctor` 显示 core 与当前注入 Plugin 提供的全部子命令帮助。
 import { Command, type Command as CommandT } from "commander";
-import { DOCTOR_CLI_VERSION } from "./version";
+import { formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
 import { runRepl } from "./repl";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
@@ -401,13 +401,14 @@ async function runPluginCommand(
 
 export async function main(plugin?: PluginDefinition) {
   const program = new Command();
+  const version = formatDoctorVersion(plugin);
   program
     .name("doctor")
     .description([
       "面向应用与基础设施的本地诊断工具。",
       "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
     ].join("\n"))
-    .version(DOCTOR_CLI_VERSION);
+    .version(version);
 
   withReplOptions(
     program.command("chat").description("交互式 AI 问诊（是否连接 doctor-server 取决于当前 profile 的 server 配置）"),
@@ -436,7 +437,7 @@ export async function main(plugin?: PluginDefinition) {
     .command("version")
     .description("显示版本信息")
     .action(() => {
-      terminalStdout.info(`doctor ${DOCTOR_CLI_VERSION} (${process.platform}-${process.arch})\n`);
+      terminalStdout.info(`${version}\n`);
     });
 
   program

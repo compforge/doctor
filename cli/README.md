@@ -55,7 +55,7 @@ make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
 | `doctor metric` | 使用 profile 中的 Prometheus，或临时抓取 Service `/metrics`，执行业务 detector 并生成离线 HTML 图表 |
 | `doctor net` | 协调多个 Service Pod 短时抓包；选择 YAML 跟踪已知请求，或守候页面操作产生的请求 |
 | `doctor neta [input]` | 纯离线分析 NetBundle，生成业务调用 Diagnosis 的 Markdown、泳道/瀑布 HTML 与结构化 JSON |
-| `doctor version` | 显示版本和当前平台 |
+| `doctor version` | 显示 Doctor、当前平台及嵌入 Plugin 的精确版本 |
 | `doctor help` | 显示命令帮助 |
 
 ## 详细文档
