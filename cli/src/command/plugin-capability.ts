@@ -17,7 +17,7 @@ export interface PluginCapabilityNeed {
   fallback?: string;
 }
 
-/** Command 依赖当前 profile 选中的 Plugin，并声明自身需要的业务语义。 */
+/** Command 依赖 Doctor Host 已加载的 Plugin，并声明自身需要的业务语义。 */
 export interface PluginCapabilityContract {
   command: string;
   needs: readonly PluginCapabilityNeed[];

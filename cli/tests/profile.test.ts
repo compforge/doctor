@@ -93,7 +93,6 @@ describe("resolveWorkingProfileName", () => {
         "  dev:",
         "    readonly: true",
         "    plugin:",
-        "      ref: sample@1.2.0",
         "      config:",
         "        region: example",
         "        feature:",
@@ -106,7 +105,6 @@ describe("resolveWorkingProfileName", () => {
       name: "dev",
       profile: {
         plugin: {
-          ref: "sample@1.2.0",
           config: { region: "example", feature: { enabled: true } },
         },
       },

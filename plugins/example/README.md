@@ -8,3 +8,7 @@ queries and access implementations belong in that Plugin rather than in the Doct
 
 The workspace version identifies both Plugin code and bundled Skills. Run
 `make bump-plugin-version PLUGIN=example` whenever either content set changes.
+
+Run `make build` in this directory to create the self-contained
+`dist/example-<version>.doctor-plugin.tar.gz` archive. The target Doctor host does not need the
+Plugin source tree or an additional package installation step.

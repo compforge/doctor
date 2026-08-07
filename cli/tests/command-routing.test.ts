@@ -56,7 +56,7 @@ describe("CLI command routing", () => {
   test("core entry explains a missing Plugin before K8s access", () => {
     const missing = runCoreCli("data", "--biz-id", "biz-1");
     expect(missing.exitCode).toBe(1);
-    expect(missing.stderr).toContain("doctor data 需要当前 profile 选择 Plugin");
+    expect(missing.stderr).toContain("doctor data 需要 Doctor Host 加载 Plugin");
     expect(missing.stderr).not.toContain("Kubernetes");
   });
 
@@ -72,7 +72,7 @@ describe("CLI command routing", () => {
     expect(distribution.stdout).toContain("plugin test@0.0.1");
   });
 
-  test("selected Plugin missing a required capability reports that capability", () => {
+  test("loaded Plugin missing a required capability reports that capability", () => {
     const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("service.data");
