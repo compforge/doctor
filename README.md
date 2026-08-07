@@ -27,6 +27,12 @@ Provision, Collect and Chat are independent command workflows rather than modes 
 They reuse Core access and infrastructure primitives, while each owns its result and lifecycle.
 Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
 
+Doctor runs from a deployment host with scoped Kubernetes access. It can use explicitly authorized
+debug containers for in-cluster diagnostics, then return raw artifacts and offline reports to the
+Host.
+
+![How Doctor runs onsite](docs/doctor-usage.svg)
+
 ## Core and Plugin
 
 Core and Plugin form Doctor's main extension boundary:
@@ -105,6 +111,10 @@ interfaces.
 Doctor provides. Plugins are trusted extensions, but remain on the application-semantics side of
 the boundary. Start with [`plugins/example`](plugins/example), then see
 [`cli/docs/plugin.md`](cli/docs/plugin.md) for the full design.
+
+To teach Doctor about a specific application, develop a Plugin: describe its services with the
+Service Catalog, connect business data and models through Capabilities, and inject operational
+knowledge and diagnostic workflows through Skills—without modifying Doctor Core.
 
 Skills are versioned resources inside a Plugin. They inherit Plugin selection and trust rather
 than introducing an independent global Skill lifecycle. `doctor version` reports the Doctor Core

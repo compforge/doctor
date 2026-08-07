@@ -25,6 +25,11 @@ Provision、Collect 和 Chat 是相互独立的命令工作流，而不是同一
 提供的访问和基础设施原语，但各自拥有独立的结果与生命周期。内置 Collector 覆盖 CPU、内存、
 网络、HTTP、Trace、Metric、Model 和 Store 等领域。
 
+Doctor 在部署机上运行，通过受限的 Kubernetes access 进入现场。它可以使用经过明确授权的 debug
+container 执行集群内诊断，再把原始产物和离线报告交付回 Doctor Host。
+
+![Doctor 现场使用方式](docs/doctor-usage.svg)
+
 ## Core 与 Plugin
 
 Core 与 Plugin 构成 Doctor 最主要的扩展边界：
@@ -97,6 +102,9 @@ make build-local
 `@compforge/doctor-plugin` 定义 Plugin 可以声明什么，以及 Doctor 提供哪些目标受限的 Capability。
 Plugin 是受信任扩展，但仍位于应用语义一侧。可以从 [`plugins/example`](plugins/example) 开始，再阅读
 [`cli/docs/plugin.md`](cli/docs/plugin.md) 了解完整设计。
+
+要让 Doctor 理解一个具体项目，只需开发一个 Plugin：用 Service Catalog 描述服务组成，用 Capability
+接入业务数据和模型，用 Skill 注入业务知识与排查方法，而无需修改 Doctor Core。
 
 Skill 是 Plugin 内的版本化资源，继承 Plugin 的选择和信任关系，不建立独立的全局 Skill 生命周期。
 `doctor version` 会输出 Doctor Core 版本，以及当前发行版内嵌 Plugin 的精确身份。
