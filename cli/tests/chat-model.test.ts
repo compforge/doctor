@@ -24,7 +24,7 @@ describe("Doctor AgentUE model projection", () => {
 
     const state = projectChatState(model, "0.0.1");
 
-    expect(state.timeline.header).toContain("╭─●     ●─╮");
+    expect(state.timeline.header).toContain("⡤⠤⠤●   ●⠤⠤⡄");
     expect(state.timeline.header).toContain("agent    local");
     expect(state.timeline.header).not.toContain("doctor.test");
     expect(state.timeline.items).toEqual([{
