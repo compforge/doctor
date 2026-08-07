@@ -27,6 +27,12 @@ Provision, Collect and Chat are independent command workflows rather than modes 
 They reuse Core access and infrastructure primitives, while each owns its result and lifecycle.
 Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
 
+Doctor runs from a deployment host with scoped Kubernetes access. It can use explicitly authorized
+debug containers for in-cluster diagnostics, then return raw artifacts and offline reports to the
+Host.
+
+![How Doctor runs onsite](docs/doctor-usage.svg)
+
 ## Core and Plugin
 
 Core and Plugin form Doctor's main extension boundary:
