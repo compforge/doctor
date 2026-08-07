@@ -25,8 +25,6 @@ export interface PrometheusProfileConfig {
 }
 
 export interface PluginProfileConfig {
-  /** Exact installed Plugin selected by this profile once dynamic loading is enabled. */
-  ref?: string;
   /** Opaque Plugin-owned config; Core stores and forwards it without interpreting the schema. */
   config?: Readonly<Record<string, unknown>>;
 }

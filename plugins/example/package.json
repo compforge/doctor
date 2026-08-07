@@ -3,7 +3,11 @@
   "version": "0.0.2",
   "private": true,
   "type": "module",
+  "doctorPlugin": {
+    "requiresDoctor": ">=0.1.2"
+  },
   "scripts": {
+    "build": "make build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

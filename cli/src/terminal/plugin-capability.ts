@@ -14,8 +14,8 @@ export function requirePluginCapabilities(
   const evaluation = evaluatePluginCapabilities(plugin, contract);
   if (!plugin) {
     throw new Error(
-      `[plugin] ${contract.command} 需要当前 profile 选择 Plugin；`
-      + "Plugin 负责提供业务目标和数据语义",
+      `[plugin] ${contract.command} 需要 Doctor Host 加载 Plugin；`
+      + "请先运行 doctor plugin install <archive>",
     );
   }
 

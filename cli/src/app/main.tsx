@@ -59,6 +59,8 @@ import {
   type WorkingProfileOptions,
 } from "./profile";
 import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
+import { loadActivePlugin } from "../plugin";
+import { runPluginInstall, runPluginUninstall } from "./plugin";
 
 // REPL 选项只属于 chat 子命令，root 保持为中性的能力索引。
 function withReplOptions(cmd: CommandT): CommandT {
@@ -386,7 +388,10 @@ async function runPluginCommand(
     const resolvedProfile = resolveWorkingProfile(opts);
     const profileName = resolvedProfile.name;
     terminalStdout.warning(`profile: ${profileName}\n`);
-    const activePlugin = requirePluginCapabilities(plugin, contract);
+    const activePlugin = requirePluginCapabilities(
+      plugin ?? await loadActivePlugin(),
+      contract,
+    );
     const commandContext = await inspectCommandContext(opts, {
       name: resolvedProfile.name,
       pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
@@ -399,9 +404,17 @@ async function runPluginCommand(
   }
 }
 
+async function resolveStartupPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
+  if (plugin) return plugin;
+  const command = process.argv[2];
+  if (!command || ["plugin", "profile", "init", "help"].includes(command)) return undefined;
+  return loadActivePlugin();
+}
+
 export async function main(plugin?: PluginDefinition) {
+  const startupPlugin = await resolveStartupPlugin(plugin);
   const program = new Command();
-  const version = formatDoctorVersion(plugin);
+  const version = formatDoctorVersion(startupPlugin);
   program
     .name("doctor")
     .description([
@@ -414,7 +427,10 @@ export async function main(plugin?: PluginDefinition) {
     program.command("chat").description("交互式 AI 问诊（是否连接 doctor-server 取决于当前 profile 的 server 配置）"),
   ).action(async (opts) => {
     const flags = toReplFlags(opts);
-    await runCommand("doctor chat", flags, () => runRepl(flags, plugin));
+    await runCommand("doctor chat", flags, async () => {
+      const activePlugin = plugin ?? await loadActivePlugin();
+      return runRepl(flags, activePlugin);
+    });
   });
 
   program
@@ -436,9 +452,20 @@ export async function main(plugin?: PluginDefinition) {
   program
     .command("version")
     .description("显示版本信息")
-    .action(() => {
-      terminalStdout.info(`${version}\n`);
+    .action(async () => {
+      const activePlugin = plugin ?? await loadActivePlugin();
+      terminalStdout.info(`${formatDoctorVersion(activePlugin)}\n`);
     });
+
+  const pluginCommand = program.command("plugin").description("安装和卸载 Doctor Plugin");
+  pluginCommand
+    .command("install <archive>")
+    .description("安装并加载 Plugin 归档")
+    .action(runPluginInstall);
+  pluginCommand
+    .command("uninstall <ref>")
+    .description("卸载精确 plugin@version")
+    .action(runPluginUninstall);
 
   program
     .command("help")
@@ -535,12 +562,12 @@ export async function main(plugin?: PluginDefinition) {
       (activePlugin, context) => runCollectTrace(opts, activePlugin, context),
     );
   });
-  const defaultLogServices = plugin?.services
+  const defaultLogServices = startupPlugin?.services
     .servicesWith("log")
     .filter((service) => service.capabilities.log.default)
     .map((service) => service.name)
     .join(",") ?? "";
-  const defaultDataServiceNames = plugin?.services
+  const defaultDataServiceNames = startupPlugin?.services
     .servicesWith("data")
     .map((service) => service.name) ?? [];
   const dataProviders = defaultDataServiceNames.length

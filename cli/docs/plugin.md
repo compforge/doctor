@@ -26,7 +26,7 @@ plugins/<plugin>/            可独立构建、归档和分发的具体 Plugin �
 ```
 
 领域依赖保持 `cli/collect -> packages/plugin <- plugins/<plugin>`。CLI core 只接收注入的
-`PluginDefinition`，不引用具体 Plugin；根目录发行构建和 profile loader 分别负责在编译期、运行期
+`PluginDefinition`，不引用具体 Plugin；根目录发行构建和 Host loader 分别负责在编译期、运行期
 取得具体实现，collect 不感知来源。
 
 Doctor 与 Plugin 的运行边界围绕 capability 调用展开：Plugin 声明自己能提供哪些 capability；Doctor 在每次调用时
@@ -52,21 +52,23 @@ Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共
 持久化模型只包含两个事实：
 
 1. Doctor Host 已安装哪些 `plugin@version`；
-2. 每个 profile 选择哪个精确插件版本。
+2. Doctor Host 当前加载哪个精确插件版本。
 
-profile 就是激活边界。运行态 capability 和 Skills 都从当前 profile 推导，不增加 Package / Instance /
-Binding、全局 current 软链或常驻插件进程。
+Plugin 安装/加载是 Host 级生命周期，profile 只选择诊断环境并提供该环境下的 Plugin config。两者正交，
+不增加 Package / Instance / Binding 或常驻插件进程。
 
 ```text
-Plugin archive ──load──> ~/.doctor/plugins/<plugin>/<version>/
+Plugin archive ──install──> ~/.doctor/plugins/<plugin>/<version>/
                                       │
-Profile ──select exact versions───────┘
-   ├── PluginDefinition ──> ServiceCatalog ──> collect
-   └── Skills ─────────────────────────────────> local doctor chat
+                         active.json ─┘
+                              ├── PluginDefinition ──> ServiceCatalog ──> collect
+                              └── Skills ─────────────────────────────> local doctor chat
+
+Profile ──> target / access / Plugin-owned config
 ```
 
-一个 profile 选择一个业务 Plugin；切换 profile 即切换整组 Service Catalog 与 Skills。一个 Plugin 可
-同时携带多个 Service 和多个 Skill，不为多个业务 Plugin 的并行组合设计额外生命周期。
+一个 Plugin 可同时携带多个 Service 和多个 Skill。切换 profile 只改变它们面对的环境、权限和配置，
+不会加载或卸载 Plugin。当前加载一个业务 Plugin，不为多个业务 Plugin 的并行组合设计额外生命周期。
 
 ## 流程
 
@@ -76,10 +78,12 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 
 ```text
 ~/.doctor/plugins/
+├── active.json
 └── sample/
     └── 1.2.0/
         ├── plugin.json
         ├── plugin.mjs
+        ├── .doctor-install.json
         └── skills/
             ├── service-ops/
             │   └── SKILL.md
@@ -95,6 +99,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
+  "contentDigest": "sha256:<64-hex>",
   "main": "./plugin.mjs",
   "skills": ["./skills/service-ops", "./skills/trace-ops"]
 }
@@ -104,49 +109,59 @@ Plugin 入口是可直接执行的 Node-compatible ESM，默认导出一个 `Plu
 对象 id 必须一致。归档必须自包含运行依赖，不在客户现场执行 `npm install`、
 install script 或编译 TypeScript；Skill 目录可携带其 `references/`、`scripts/` 等标准资源。
 
-### `doctor plugin load`
+### 构建归档
 
 ```bash
-doctor plugin load ./sample-1.2.0.tar.gz
-doctor plugin load ./sample-1.2.0.tar.gz --profile sample
+cd plugins/example
+make build
+# dist/example-0.0.2.doctor-plugin.tar.gz
 ```
 
-`load` 是面向用户的一步式“安装并选择”操作：
+Plugin 在自身 `dist/` 中产出 `<id>-<version>.doctor-plugin.tar.gz`。归档只包含 manifest、已 bundle 的
+ESM 入口和 Skills，不包含 TypeScript 源码或 `node_modules`。`plugins/example/Makefile` 是可复制的
+最短构建入口。
+
+### `doctor plugin install` / `uninstall`
+
+```bash
+doctor plugin install ./sample-1.2.0.doctor-plugin.tar.gz
+doctor plugin uninstall sample@1.2.0
+```
+
+`install` 是面向用户的一步式“安装并加载”操作：
 
 1. 在临时目录解包，读取并校验 manifest、Doctor 版本兼容性和所有资源路径；
 2. 加载代码入口并校验其满足 `PluginDefinition`，扫描 Skill 的基础元数据并附加 runtime view；
 3. 原子移动到 `~/.doctor/plugins/<id>/<version>/`；目标版本已存在时不原地覆盖；
-4. 指定 `--profile` 时，在安装完全成功后把精确 `id@version` 写入该 profile；未指定时选择当前
-   profile；
-5. profile 已选择同一 Plugin 的旧版本时替换该引用，但保留旧版本目录。
+4. 在安装完全成功后把精确 `id@version` 原子写入 `~/.doctor/plugins/active.json`；
+5. 已加载同一 Plugin 的旧版本时替换 Host 级引用，但保留旧版本目录。
 
-安装目录中的版本内容不可变。失败发生在 profile 更新前，不改变当前可用版本；旧版本的清理由显式
-remove/GC 能力负责，不隐含在 load 中。
+安装目录中的版本内容不可变。失败发生在 active state 更新前，不改变当前可用版本；旧版本由
+`uninstall` 显式清理，不隐含在 install 中。卸载当前版本时同时清除 Host 级 active state。
 
-profile 中的选择关系示意如下：
+profile 可提供随环境变化的 Plugin config，但不保存 Plugin 身份：
 
 ```yaml
 profiles:
   sample:
     plugin:
-      ref: sample@1.2.0
       config:
         region: example
 ```
 
-`ref` 选择精确交付版本；`config` 由 Core 原样保存并只放进该 Plugin 的调用上下文。Core 不根据其中
+`config` 由 Core 原样保存并只放进已加载 Plugin 的调用上下文。Core 不根据其中
 字段推导 Target 或权限，Plugin 负责校验自己的 schema。
 
 ### 命令运行
 
-CLI composition root 解析 profile 后加载其精确 Plugin 版本：
+CLI composition root 从 Doctor Host 的 active state 加载精确 Plugin 版本：
 
-1. 校验引用的版本仍存在，并加载 Plugin 代码与 Skill；
+1. 校验 active ref 的版本仍存在，并加载 Plugin 代码与 Skill；
 2. Skill name 冲突时直接报错，不按加载顺序静默覆盖；
-3. 需要业务语义的 collect 命令取得 profile 选择的 `PluginDefinition`，进入通用 collect 链路；
+3. 需要业务语义的 collect 命令取得 Host 已加载的 `PluginDefinition`，进入通用 collect 链路；
 4. Plugin command 始终可见，缺少 required capability 时提示具体缺口；不依赖 Plugin 的 Core/离线命令
    保持零配置可用；
-5. `doctor chat` 只加载 profile 精确选择的 Plugin 所携带的 Skills，并把解析结果交给本地 Agent。
+5. `doctor chat` 使用 Host 已加载 Plugin 所携带的 Skills，并把解析结果交给本地 Agent。
 
 启动本地 Agent 前，Doctor 以 profile name 作为 env 标识，并把 env、namespace、readonly 组成
 `SkillExecutionTarget`。Plugin 可用 `prepareSkillContext` 补充 OpenSearch、DB 等业务访问事实；Core
@@ -155,20 +170,20 @@ CLI composition root 解析 profile 后加载其精确 Plugin 版本：
 只能进入执行环境，不能写进会被模型看到的 `contextPrompt`。
 
 Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上传本地 Skill 或 Plugin；会话级上传属于
-独立协议和授权能力，不隐含在 Plugin load 中。
+独立协议和授权能力，不隐含在 Plugin install 中。
 
 ### 升级与回退
 
-升级不需要独立状态机：load 新版本成功后，将 profile 的精确版本引用从旧版切到新版。旧版本仍在时，
-把 profile 引用切回即可回退。进程启动后不监听目录变化；正在运行的命令或 chat 继续使用启动时解析的
+升级不需要独立状态机：install 新版本成功后，将 Host 的精确版本引用从旧版切到新版。旧版本仍在时，
+重新 install 对应归档即可回退。进程启动后不监听目录变化；正在运行的命令或 chat 继续使用启动时解析的
 版本，新版本在下一次进程启动时生效。
 
 ## 关键设计
 
-### Profile 是唯一激活边界
+### Plugin 生命周期与 profile 正交
 
-Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主。profile 同时承载环境、凭据、能力
-选择以及 Plugin/Skills 的精确版本选择，因此不需要 Instance、Binding 或额外的同步关系。
+Doctor Host 负责 Plugin 的安装、加载和版本身份；profile 负责目标环境、凭据和该环境下的 Plugin config。
+切换 profile 不改变代码与 Skills，安装或卸载 Plugin 也不改写任何 profile。
 
 ### 确定性能力与 Skill 共用版本生命周期
 
@@ -206,7 +221,7 @@ Plugin 的贡献深度随 command 类型变化：业务型命令由 capability �
 
 ### 分发机制不进入业务层
 
-解包、路径校验、版本目录和 profile 更新属于 `cli/src/plugin` 宿主边界；`packages/plugin` 只定义
+解包、路径校验、版本目录和 active state 更新属于 `cli/src/plugin` 宿主边界；`packages/plugin` 只定义
 Plugin 与 Service 公共语义，collect 只消费注入的 `PluginDefinition`，本地 agent loop 只消费解析后的
 Skills。归档来源只负责取得交付物，不影响 Catalog 或诊断领域实现。
 
@@ -228,7 +243,7 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 ### 同一实现支持 tar 与定制 binary
 
 企业 Plugin 的 workspace `package.json` 可只服务开发和构建，保持 `private: true`，不发布 npm。
-标准交付把自包含 `plugin.mjs` 与 Skills 打成 tar，由通用 Doctor binary 手动加载；需要定制 binary 时，
+标准交付把自包含 `plugin.mjs` 与 Skills 打成 tar，由通用 Doctor binary 安装并在 Host 上加载；需要定制 binary 时，
 分发方可从 `doctor-cli/embed` 导入 `startDoctor`，提供独立 composition entry，并通过
 `cli/Makefile` 的 `DOCTOR_ENTRY` 构建。本仓根 `make build/install` 始终构建不带具体 Plugin 的通用 CLI。
 两种形态共用 `PluginDefinition` 与 capability，差别只在启动时如何取得 Plugin。
