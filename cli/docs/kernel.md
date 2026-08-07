@@ -38,7 +38,7 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 ```text
 cli/src/
 ├── app/                 命令入口、profile、会话流程与能力组装
-├── chat/                AgentUE model、Session/Controller 与旧 Server 协议 adapter
+├── chat/                AgentUE model、Session/Controller 与 Server wire protocol adapter
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
 ├── command/             启动检查、Kubernetes 目标解析、执行上下文与审批契约
 ├── provision/           image、debug environment 与目标工具准备
@@ -54,7 +54,7 @@ cli/src/
 │   └── <domain>/        领域 config/fact/probe/detector/render
 └── infra/               Host、Target、K8s 与各类外部资源 adapter
 
-packages/agent/          本地 chat 当前使用、未来 server 复用的 Agent、Skill 输入与 AgentUE 输出
+packages/agent/          CLI 与 server 宿主共用的 Agent、Skill 输入与 AgentUE 输出
 packages/plugin/         Plugin、Service Catalog 与 capability 公共协议
 plugins/<plugin>/        具体 Plugin 的 Catalog、领域模型与固定业务查询
 ```
@@ -73,9 +73,9 @@ profile 决定 CLI 能呈现的能力，而不是让不同执行模型互相渗�
 | 配置 `server` 且显式 `--server` / `--resume` | 连接 doctor-server 的远端 Agent |
 
 direct collect 不创建 connection、conversation 或 SSE，也不承担开放式 agent 推理；server mode 不把
-server 内的工具执行细节搬回 CLI。本地模式当前由 `packages/agent` 实现；现有远端模式通过兼容 adapter
-对齐 AgentUE 交互语义。`server` 只声明 endpoint，不隐式改变运行位置；未来 TypeScript server 复用
-`packages/agent` 并提供自己的 interface。
+server 内的工具执行细节搬回 CLI。本地模式由 CLI interface 驱动 `packages/agent`；远端模式由
+`ServerAgent` 把 server wire protocol 投影为 AgentUE。`server` 只声明 endpoint，不隐式改变运行位置；
+server 宿主通过自己的 interface、凭据、执行环境和持久化 adapter 使用同一 Agent 实现。
 
 执行位置属于能力身份：
 
@@ -103,6 +103,23 @@ Command requirements
 └── Operation              副作用上限与用户授权
 ```
 
+Core 与 Plugin 的稳定协议面只有 access、data、infra、config：access 是 capability 的声明，data 是调用
+输入输出，infra 是 Core 为选中 Target 提供的运行便利，config 是 profile 对 Plugin-owned schema 的不透明
+透传。四者分开后，Core 不必理解业务配置，Plugin 也不能把获得 infra handle 等同于获得任意权限。
+
+```text
+Command orchestration
+├── Access plan = Core command needs + selected Service capability needs
+├── Core infra ──Target-scoped helpers──> PluginContext
+└── Plugin capability ──typed data/handle──> Evidence pipeline
+
+Plugin (versioned distribution unit)
+├── Service Catalog
+│   ├── Service A ── capabilities + access declarations
+│   └── Service B ── capabilities + access declarations
+└── Skills
+```
+
 访问检查按实际阶段惰性发生，不能以命令可能使用的最大权限提前阻断低能力路径。例如 `doctor debug` 已有
 可复用 debug container 时不需要 `update pods/ephemeralcontainers`；只有确实需要注入时才检查该权限。
 
@@ -113,13 +130,14 @@ Collect command 按诊断算法和数据语义的所有者分为三类。这个�
 
 | 类型 | 典型命令 | Plugin 负责 | CLI Core 负责 |
 |---|---|---|---|
-| 业务型 | `data` | 定位业务 Service，自行访问 Kubernetes/HTTP/DB，执行固定业务查询并返回约定结果 | 触发 capability，编排 Evidence、Detector/Coverage 和展示 |
+| 业务型 | `data` | 定位业务 Service，经 Core access 取得运行态事实，执行固定 HTTP/DB 查询并返回约定结果 | 提供 Target-scoped access，触发 capability，编排 Evidence、Detector/Coverage 和展示 |
 | 基础设施型 | `store`、`mem`、`net` | 按需贡献目标身份、连接配置或默认选择，不实现通用基础设施诊断 | 执行标准探测与分析，控制风险、资源生命周期和证据交付 |
 | 混合型 | `trace`、`log`、`config`、`model`、`mcp` | 处理业务入口、私有 schema 和目标投影 | 消费规范目标后执行通用采集、协议分析和报告 |
 
-Kubernetes 的分工遵循同一所有权：Core 注入当前 profile 选定的 kubeconfig、context、namespace、Service
-身份，并提供 port-forward 等需要统一回收的便利能力；Plugin 是同进程受信任代码，可以自行定位 Pod、
-读取运行时配置和访问其它资源。Core 不预先读取 selector、Pod、container 或 env 再回传给 Plugin。
+Kubernetes 的分工遵循同一所有权：Core 解析当前 profile 的 kubeconfig/context，但只向 Plugin 注入
+namespace、Service 身份和 Target-scoped Kubernetes access，并统一托管超时、输出上限、取消与
+port-forward 回收；Plugin 用该 access 自行解释 selector、定位 Pod、读取运行时配置。Core 不预先读取
+selector、Pod、container 或 env 再回传给 Plugin，Plugin 也不持有 kubeconfig 或自行启动 kubectl。
 只有 Kubernetes 操作本身属于 Core command 时，例如 `log` 读取 Pod 日志、`mem` 操作目标进程，Core 才
 负责定位和操作对应 Target，并声明实际需要的 access contract。
 
@@ -146,16 +164,21 @@ Collect 仍遵循 Config → Facts → Observations → Evidence → Findings/Co
 可审计 Evidence 为结果。Collect 不会为了绕过前置条件隐藏式发布 image、创建 debug environment 或
 安装工具；能力不足时说明缺口，由用户独立运行对应准备命令。
 
-Provision 当前不引入统一 engine。image、debug、install 各自拥有检查、授权、执行和验证流程，只共享
-`CommandContext`、terminal 交互和 infra 原语；等真正稳定的共同流程出现后再上提。
+Provision 不使用统一 engine。image、debug、install 的结果和生命周期不同，因此各自拥有检查、授权、
+执行和验证流程，只共享 `CommandContext`、terminal 交互和 infra 原语。
 
 ### 依赖方向与领域所有权
 
 `app` 可以组装 Plugin、`provision`、`collect` 和 `infra`；`provision` 与 `collect` 互不依赖。共同启动
 上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
-`packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 不知道业务
+`packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 实现
+Plugin 公共包定义的 access port，但不知道业务
 Service、表关系和诊断结论。Plugin loader 把当前精确 Plugin 版本的 Skills 解析后交给本地 Agent，Agent
 不扫描独立的 Skill 目录。
+
+Plugin 是多个 Service 与 Skill 的版本化分发单元；Service capability 才是业务能力与 access 的运行时
+选择单位。命令只把实际参与本次调用的 Service capability 合入 access plan，不能因为同一 Plugin 还打包了
+其它 Service 就预检整包最大权限。
 
 运行时配置、Probe 生命周期、Evidence 适配和采集编排属于 `collect/<domain>`；Service 协议、固定查询
 和 Plugin capability 分别属于 `packages/plugin` 与 `plugins/<plugin>`；Registry、container engine、
@@ -171,37 +194,38 @@ collect 消费，不能让 collect 反向知道某个 Plugin 的配置 key 或�
 
 Command 同时服务交互用户和自动化调用：domain 只提供候选与选择语义，共用 prompt 和输出机制归
 `terminal`。chat-tui 只依赖 `Controller` 提供的 view state 与 intent；`Session` 只接收 AgentUE patch，
-不直接解释 pi 或 server wire 字段。旧 doctor-server schema 由兼容 `ServerAgent` 收口。
+不直接解释 pi 或 server wire 字段。doctor-server wire schema 由 `ServerAgent` 收口。
 
 ### Runtime 与分发
 
 CLI core 只依赖 Node-compatible API，从同一个入口构建各平台单文件。runtime 差异留在 `infra/host`
-和构建脚本，collect domain 不直接调用 `Bun.*`。Linux x64 同时提供 modern Bun 与兼容旧 glibc 的
-legacy Node SEA；无法证明目标满足 modern 基线时保守选择 legacy。具体版本、文件名、校验和与发布矩阵
+和构建脚本，collect domain 不直接调用 `Bun.*`。Linux x64 同时提供 modern Bun 与 glibc 2.17-compatible
+Node SEA；无法证明目标满足 modern 基线时保守选择兼容产物。具体版本、文件名、校验和与发布矩阵
 以 Makefile、构建脚本和 CI gate 为事实源，不在设计文档复制。
 
-## Domain 文档约定
+## Command 文档约定
 
-每个 domain 只维护一篇文档，描述领域理念、主流程和不能从单文件代码看出的关键设计；共享执行协议只在
-本文定义，字段、阈值、参数和当前实现形状留在代码。当前 domain 文档：
+每个 `doctor <command>` 只在 `docs/commands/` 维护一篇文档，描述领域理念、主流程和不能从单文件代码
+看出的关键设计；共享执行协议只在本文定义，字段、阈值、参数和实现形状留在代码。命令文档如下：
 
-| Domain | 文档 |
+| Command | 文档 |
 |---|---|
-| Config | [`config-diagnosis.md`](config-diagnosis.md) |
-| CPU | [`cpu-diagnosis.md`](cpu-diagnosis.md) |
-| Data | [`data-diagnosis.md`](data-diagnosis.md) |
-| Debug | [`debug-container.md`](debug-container.md) |
-| HTTP | [`http-diagnosis.md`](http-diagnosis.md) |
-| Image | [`image.md`](image.md) |
-| Install | [`install.md`](install.md) |
-| Log | [`log-diagnosis.md`](log-diagnosis.md) |
-| MCP | [`mcp-diagnosis.md`](mcp-diagnosis.md) |
-| Memory | [`memory-diagnosis.md`](memory-diagnosis.md) |
-| Model | [`model-diagnosis.md`](model-diagnosis.md) |
-| Network | [`network-diagnosis.md`](network-diagnosis.md) |
-| Store（DB/VDB/S3/Redis） | [`store-diagnosis.md`](store-diagnosis.md) |
-| Trace | [`trace-diagnosis.md`](trace-diagnosis.md) |
+| Config | [`commands/config-diagnosis.md`](commands/config-diagnosis.md) |
+| CPU | [`commands/cpu-diagnosis.md`](commands/cpu-diagnosis.md) |
+| Data | [`commands/data-diagnosis.md`](commands/data-diagnosis.md) |
+| Debug | [`commands/debug-container.md`](commands/debug-container.md) |
+| HTTP | [`commands/http-diagnosis.md`](commands/http-diagnosis.md) |
+| Image | [`commands/image.md`](commands/image.md) |
+| Install | [`commands/install.md`](commands/install.md) |
+| Log | [`commands/log-diagnosis.md`](commands/log-diagnosis.md) |
+| MCP | [`commands/mcp-diagnosis.md`](commands/mcp-diagnosis.md) |
+| Memory | [`commands/memory-diagnosis.md`](commands/memory-diagnosis.md) |
+| Metric | [`commands/metric-diagnosis.md`](commands/metric-diagnosis.md) |
+| Model | [`commands/model-diagnosis.md`](commands/model-diagnosis.md) |
+| Network | [`commands/network-diagnosis.md`](commands/network-diagnosis.md) |
+| Store（DB/VDB/S3/Redis） | [`commands/store-diagnosis.md`](commands/store-diagnosis.md) |
+| Trace | [`commands/trace-diagnosis.md`](commands/trace-diagnosis.md) |
 
-新增 domain 时先定义 Facts、Observations、Evidence/Findings/Coverage 和纯 detector，再实现 Inspect/Probe
+新增 command 时先定义 Facts、Observations、Evidence/Findings/Coverage 和纯 detector，再实现 Inspect/Probe
 与 renderer；契约测试至少覆盖依赖调度、能力降级、授权拒绝、敏感信息边界和交付结果。若新增内容只是
-共享协议的一个 case，更新本文或代码即可，不再创建横切专题文档。
+共享协议的一个 case，更新本文或代码即可，无需创建横切专题文档。

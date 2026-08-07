@@ -32,6 +32,12 @@ test("Plugin Skill 协议不依赖具体 Agent runtime", () => {
   }
 });
 
+test("PluginContext 只暴露 Target-scoped Kubernetes access", () => {
+  const source = readFileSync(join(import.meta.dir, "../src/context.ts"), "utf-8");
+  expect(source).toMatch(/kubernetes:\s*KubernetesAccess/);
+  expect(source).not.toMatch(/\bkubeconfig\b|\bkubeContext\b/);
+});
+
 test("CLI core 不依赖具体 Plugin 实现", () => {
   const root = join(import.meta.dir, "../../../cli/src");
   for (const path of sourceFiles(root)) {

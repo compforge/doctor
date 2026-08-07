@@ -1,4 +1,3 @@
-import type { WorkingProfileOptions } from "../app/profile";
 import {
   createKubernetesCommandContext,
   type KubernetesCommandContext,
@@ -18,6 +17,11 @@ export interface CommandInspection {
   readonly kubernetes: KubernetesInspection;
 }
 
+export interface CommandProfile {
+  readonly name: string;
+  readonly pluginConfig: Readonly<Record<string, unknown>>;
+}
+
 /**
  * Shared execution state created once after CLI/profile resolution and before domain dispatch.
  * Collect and Provision consume the same immutable startup facts and command-scoped RBAC cache.
@@ -25,7 +29,10 @@ export interface CommandInspection {
 export class CommandContext {
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
 
-  constructor(readonly inspection: CommandInspection) {}
+  constructor(
+    readonly inspection: CommandInspection,
+    readonly profile: CommandProfile = { name: "default", pluginConfig: {} },
+  ) {}
 
   kubernetes(executor: Executor): KubernetesCommandContext {
     let context = this.#kubernetes.get(executor);
@@ -47,14 +54,18 @@ export function resolveKubernetesCommandContext(
 }
 
 export async function inspectCommandContext(
-  opts: WorkingProfileOptions & {
+  opts: {
     kubeconfig?: string;
     context?: string;
   },
+  profile: CommandProfile,
 ): Promise<CommandContext> {
   const [host, kubernetes] = await Promise.all([
     inspectDoctorHost(),
     inspectKubernetes(opts),
   ]);
-  return new CommandContext({ host, kubernetes });
+  return new CommandContext(
+    { host, kubernetes },
+    profile,
+  );
 }

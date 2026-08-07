@@ -45,7 +45,7 @@ make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
 | `doctor mema [inputs...]` | 在 Doctor Host 解析、缓存并诊断 PyHeap；本机 Python 不兼容时用已加载的 doctor-debug container |
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
-| `doctor install` | 交互选择并向目标 Pod container 安装程序；首版支持 GDB，在线源失败时尝试 Doctor 离线包 |
+| `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor trace` | 从 OpenSearch 下载 trace 并生成逻辑节点树 / 火焰图 HTML；bundle 模式保留原始 span |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log --biz-id <id>` | 通过 Plugin traceId capability 解析 trace ID，再聚合服务日志 |
@@ -61,18 +61,18 @@ make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
 ## 详细文档
 
 - [CLI Kernel 与 Collect 共享协议](docs/kernel.md)
-- [Config 诊断](docs/config-diagnosis.md)
-- [Metric 诊断](docs/metric-diagnosis.md)
-- [Memory 诊断](docs/memory-diagnosis.md)
-- [CPU 诊断](docs/cpu-diagnosis.md)
-- [Log 采集](docs/log-diagnosis.md)
-- [Data 汇集诊断](docs/data-diagnosis.md)
-- [Trace 采集](docs/trace-diagnosis.md)
-- [Store 诊断](docs/store-diagnosis.md)
-- [MCP 诊断](docs/mcp-diagnosis.md)
-- [Model 诊断](docs/model-diagnosis.md)
-- [Image 准备](docs/image.md)
-- [Debug container](docs/debug-container.md)
-- [Container GDB 安装](docs/install.md)
-- [HTTP 场景重放与诊断](docs/http-diagnosis.md)
-- [Network 抓包与离线分析](docs/network-diagnosis.md)
+- [Config 诊断](docs/commands/config-diagnosis.md)
+- [Metric 诊断](docs/commands/metric-diagnosis.md)
+- [Memory 诊断](docs/commands/memory-diagnosis.md)
+- [CPU 诊断](docs/commands/cpu-diagnosis.md)
+- [Log 采集](docs/commands/log-diagnosis.md)
+- [Data 汇集诊断](docs/commands/data-diagnosis.md)
+- [Trace 采集](docs/commands/trace-diagnosis.md)
+- [Store 诊断](docs/commands/store-diagnosis.md)
+- [MCP 诊断](docs/commands/mcp-diagnosis.md)
+- [Model 诊断](docs/commands/model-diagnosis.md)
+- [Image 准备](docs/commands/image.md)
+- [Debug container](docs/commands/debug-container.md)
+- [Container GDB 安装](docs/commands/install.md)
+- [HTTP 场景重放与诊断](docs/commands/http-diagnosis.md)
+- [Network 抓包与离线分析](docs/commands/network-diagnosis.md)

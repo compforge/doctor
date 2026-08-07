@@ -24,6 +24,13 @@ export interface PrometheusProfileConfig {
   max_response_bytes?: number;
 }
 
+export interface PluginProfileConfig {
+  /** Exact installed Plugin selected by this profile once dynamic loading is enabled. */
+  ref?: string;
+  /** Opaque Plugin-owned config; Core stores and forwards it without interpreting the schema. */
+  config?: Readonly<Record<string, unknown>>;
+}
+
 /** ~/.doctor/config.yaml 中的单个 profile。 */
 export interface Profile {
   // 未配 server = 本地 profile：不连 doctor-server，凭本地 kubectl 直连采集；
@@ -37,6 +44,7 @@ export interface Profile {
   registry?: RegistryProfileConfig;
   /** Prefer an existing Prometheus for metric history; omit to use embedded Prombed scraping. */
   prometheus?: PrometheusProfileConfig;
+  plugin?: PluginProfileConfig;
   kube?: {
     kubeconfig_path?: string;
     /** memd 在业务容器缺少 gdb 时使用的临时调试容器镜像。 */

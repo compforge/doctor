@@ -40,8 +40,12 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   },
   config: {
     command: "doctor config",
-    // Service Catalog 本身就是此命令需要的业务目标；租户配置只在用户选择该路径时检查。
-    needs: [],
+    needs: [{
+      requirement: "preferred",
+      capability: { scope: "plugin", name: "tenantConfiguration" },
+      purpose: "读取 Plugin 声明的租户配置",
+      fallback: "只交付 Kubernetes 部署配置",
+    }],
   },
   mcp: {
     command: "doctor mcp",

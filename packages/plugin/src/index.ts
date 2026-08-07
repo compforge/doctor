@@ -2,6 +2,7 @@ export * from "./catalog";
 export * from "./context";
 export * from "./database";
 export * from "./http";
+export * from "./kubernetes";
 export * from "./mcp";
 export * from "./definition";
 export * from "./service";

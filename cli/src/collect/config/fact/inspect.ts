@@ -1,5 +1,5 @@
 import type { TenantConfigurationCapability } from "@compforge/doctor-plugin";
-import { createPluginContext } from "../../../plugin/context";
+import { openPluginContext, type ManagedPluginContext } from "../../../plugin/context";
 import {
   captureKubernetesWorkloadConfig,
   deploymentsForService,
@@ -181,15 +181,19 @@ export function makeConfigTargetsInspect(
         };
       }
 
-      let pluginContext: ReturnType<typeof createPluginContext> | undefined;
+      let pluginContext: ManagedPluginContext | undefined;
       try {
         if (!ctx.tenantConfigReader) {
-          pluginContext = createPluginContext(ctx.executor, config.kube, {
-            profileName: config.profileName,
+          pluginContext = await openPluginContext(ctx.executor, config.kube, {
+            env: config.profileName,
+            config: ctx.pluginConfig,
             databaseIdentity: config.fallbackIdentity,
             service: {
               name: config.tenantConfiguration.databaseService,
             },
+            command: "doctor config",
+            capability: tenantCapability,
+            authorization: ctx.authorization,
           });
           ctx.tenantConfigReader = await tenantCapability.createReader(pluginContext);
           ctx.closeTenantAccess = () => pluginContext!.dispose();

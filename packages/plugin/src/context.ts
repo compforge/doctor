@@ -1,24 +1,32 @@
 import type { DatabaseIdentity } from "./database";
-import type { HttpServiceTarget } from "./http";
+import type { KubernetesAccess } from "./kubernetes";
 
 /**
  * Doctor 在一次 capability 调用中确认的运行态事实。
  *
- * Plugin 是同进程受信任代码，可以自行访问网络、文件和 Kubernetes；这里不是沙箱，
- * 也不规定 Plugin 内部如何实现 Service 访问。portForward/onDispose 只是由 Doctor 托管生命周期的便利能力。
+ * Plugin 拥有业务目标与数据语义；Kubernetes 传输和 port-forward 生命周期由 Doctor 托管。
+ * Plugin 仍是同进程受信任代码，这个接口是职责边界而不是安全沙箱。
  */
-export interface PluginContext {
-  profileName: string;
-  /** Profile 中显式配置的数据库身份，仅作为 Service 运行时配置的兜底。 */
-  databaseIdentity?: DatabaseIdentity;
-  kubeconfig?: string;
-  kubeContext?: string;
+export interface PluginTarget {
+  env: string;
   namespace: string;
   service: {
     name: string;
     port?: number;
   };
+}
+
+export interface PluginInfra {
+  kubernetes: KubernetesAccess;
+  /** Profile 中显式配置的数据库身份，仅作为 Service 运行时配置的兜底。 */
+  databaseIdentity?: DatabaseIdentity;
+}
+
+export interface PluginContext {
+  target: PluginTarget;
+  /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
+  config: Readonly<Record<string, unknown>>;
+  infra: PluginInfra;
   signal: AbortSignal;
-  portForward(target: HttpServiceTarget): Promise<HttpServiceTarget & { servername?: string }>;
   onDispose(disposer: () => void | Promise<void>): void;
 }

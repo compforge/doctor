@@ -13,6 +13,7 @@ import { ServerAgent, createDoctorModel, type DoctorModel } from "../chat";
 import { DoctorClient } from "../protocol";
 import type { CliFlags } from "../protocol";
 import {
+  expandHome,
   loadConfig,
   profileToUpload,
   resolveProfile,
@@ -24,6 +25,11 @@ import { loadState, resolveResumeTarget } from "./config/state";
 export interface BootstrapResult {
   agent: AgentSource;
   model: DoctorModel;
+}
+
+export interface LocalAgentContext {
+  contextPrompt: string;
+  shellEnv: Record<string, string>;
 }
 
 export async function bootstrap(
@@ -89,10 +95,12 @@ export async function bootstrap(
     };
   }
 
+  const localContext = await prepareLocalAgentContext(profileName, profile, plugin);
   const agent = new LocalAgent({
     llm: resolveLocalLlm(profile),
-    env: new NodeExecutionEnv({ cwd: process.cwd() }),
+    env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: localContext.shellEnv }),
     skills: plugin?.skills ?? [],
+    contextPrompt: localContext.contextPrompt,
     verbose: flags.verbose,
   });
   return {
@@ -103,6 +111,55 @@ export async function bootstrap(
       mode: "local",
       warnings: validation.warnings,
     }),
+  };
+}
+
+/** Bind local Skill execution to the infrastructure target already selected by the profile. */
+export function createLocalAgentContext(profileName: string, profile: Profile): LocalAgentContext {
+  const kubeconfig = profile.kube?.kubeconfig_path
+    ? expandHome(profile.kube.kubeconfig_path)
+    : undefined;
+  const shellEnv: Record<string, string> = {
+    TARGET_ENV: profileName,
+    TARGET_ACCESS_MODE: "remote",
+    TARGET_READONLY: String(profile.readonly),
+    ...(kubeconfig ? { TARGET_KUBECONFIG: kubeconfig } : {}),
+    ...(profile.namespace ? { TARGET_NAMESPACE: profile.namespace } : {}),
+  };
+  const target = [
+    `profile=${JSON.stringify(profileName)}`,
+    kubeconfig ? `kubeconfig=${JSON.stringify(kubeconfig)}` : undefined,
+    profile.namespace ? `namespace=${JSON.stringify(profile.namespace)}` : undefined,
+    `readonly=${profile.readonly}`,
+  ].filter(Boolean).join(", ");
+  const contextPrompt = [
+    `The Doctor host has already bound this session to one infrastructure target (${target}).`,
+    "The profile name is the selected environment identifier. Skill scripts can use the injected "
+      + "TARGET_ENV, TARGET_KUBECONFIG, TARGET_NAMESPACE, TARGET_READONLY, and TARGET_ACCESS_MODE variables.",
+    "Do not ask the user to choose an environment merely because a Skill contains a multi-environment catalog. "
+      + "Use the active profile context; if the user requests another environment, ask them to switch Doctor profile.",
+  ].join("\n");
+  return { contextPrompt, shellEnv };
+}
+
+/** Let the selected Plugin add access facts without allowing it to retarget the active profile. */
+export async function prepareLocalAgentContext(
+  profileName: string,
+  profile: Profile,
+  plugin?: PluginDefinition,
+): Promise<LocalAgentContext> {
+  const profileContext = createLocalAgentContext(profileName, profile);
+  const prepared = await plugin?.prepareSkillContext?.({
+    env: profileName,
+    namespace: profile.namespace,
+    readonly: profile.readonly,
+  });
+  return {
+    // Profile-owned target keys win so a Plugin cannot silently cross the selected boundary.
+    shellEnv: { ...prepared?.env, ...profileContext.shellEnv },
+    contextPrompt: [profileContext.contextPrompt, prepared?.contextPrompt]
+      .filter(Boolean)
+      .join("\n"),
   };
 }
 

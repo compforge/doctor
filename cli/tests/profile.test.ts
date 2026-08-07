@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { loadConfig } from "../src/app/config/config";
-import { persistDefaultProfile, resolveWorkingProfileName } from "../src/app/profile";
+import {
+  persistDefaultProfile,
+  resolveWorkingProfile,
+  resolveWorkingProfileName,
+} from "../src/app/profile";
 
 function makeTmpFile(name: string, content: string): string {
   const dir = mkdtempSync(join(tmpdir(), "doctor-profile-test-"));
@@ -78,6 +82,35 @@ describe("resolveWorkingProfileName", () => {
     expect(resolveWorkingProfileName({ config: path })).toBe("dev");
     expect(resolveWorkingProfileName({ config: path, profile: "prod" })).toBe("prod");
     expect(loadConfig(path).default_profile).toBe("dev");
+  });
+
+  it("keeps Plugin config opaque while resolving the active profile", () => {
+    const path = makeTmpFile(
+      "config.yaml",
+      [
+        "default_profile: dev",
+        "profiles:",
+        "  dev:",
+        "    readonly: true",
+        "    plugin:",
+        "      ref: sample@1.2.0",
+        "      config:",
+        "        region: example",
+        "        feature:",
+        "          enabled: true",
+        "",
+      ].join("\n"),
+    );
+
+    expect(resolveWorkingProfile({ config: path })).toMatchObject({
+      name: "dev",
+      profile: {
+        plugin: {
+          ref: "sample@1.2.0",
+          config: { region: "example", feature: { enabled: true } },
+        },
+      },
+    });
   });
 
   it("uses the conversation-bound profile when resuming", () => {

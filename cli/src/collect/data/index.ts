@@ -158,6 +158,7 @@ export async function runCollectData(
       selections,
       plugin.services,
       injectedContexts,
+      commandContext,
     );
     const pluginContexts = Object.fromEntries(
       access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),

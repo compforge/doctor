@@ -55,5 +55,7 @@ export interface AgentOptions {
   skills?: readonly PluginSkill[];
   tools?: readonly AgentTool[];
   systemPrompt?: string;
+  /** Host-owned facts appended to the system prompt for this Agent instance. */
+  contextPrompt?: string;
   verbose?: boolean;
 }

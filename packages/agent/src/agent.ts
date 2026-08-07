@@ -48,7 +48,11 @@ export class Agent implements AgentSource {
     this.verbose = options.verbose ?? false;
     this.agent = new PiAgent({
       initialState: {
-        systemPrompt: [options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT, skillCatalog]
+        systemPrompt: [
+          options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
+          options.contextPrompt,
+          skillCatalog,
+        ]
           .filter(Boolean)
           .join("\n\n"),
         model: createModel(options.llm),

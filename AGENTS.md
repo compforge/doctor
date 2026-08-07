@@ -6,16 +6,16 @@ Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开�
 编排、报告交付和本地 agent 问答。业务知识和私有 Service 访问规则不进入本仓，通过 Plugin 协议由
 使用方独立实现和分发。
 
-本仓包含通用 CLI、可复用 Agent、Plugin SDK、业务中立的示例 Plugin，以及未来 Doctor server 的目录
-占位；不包含任何企业内部 server、业务 Plugin、Skill、环境配置或私有部署信息。
+本仓包含通用 CLI、可复用 Agent、Plugin SDK、业务中立的示例 Plugin，以及可选 Doctor server 的宿主
+边界；不包含任何企业内部 server、业务 Plugin、Skill、环境配置或私有部署信息。
 
 ## 代码地图与核心模块
 
 | 目录 | 角色 |
 |---|---|
 | `cli/` | Doctor CLI：命令入口、诊断编排、通用 infra、Evidence 与报告 |
-| `server/` | 可选 Doctor server 的规划占位，当前没有实现 |
-| `packages/agent/` | `@compforge/doctor-agent`：本地 chat 当前使用、未来 server 复用的 agent loop、Skill 输入和 AgentUE 输出 |
+| `server/` | 可选 Doctor server 的宿主边界 |
+| `packages/agent/` | `@compforge/doctor-agent`：供 CLI 与 server 宿主共用的 agent loop、Skill 输入和 AgentUE 输出 |
 | `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog 与 capability 公共协议 |
 | `plugins/example/` | 只演示协议接入的业务中立 Plugin |
 
@@ -23,15 +23,15 @@ Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开�
 
 ## 关键约定
 
-1. **访问能力与 Plugin 能力分离**：Core 负责如何访问和安全操作 Target；Plugin 负责目标是什么、业务
-   数据在哪里以及数据语义，CLI、SDK 和 example Plugin 不依赖具体业务实现。
-2. **Plugin 是受信任扩展，不是沙箱**：Doctor 注入当前 profile、Kubernetes 目标和可选 port-forward；
-   Plugin 自行决定如何访问服务并按协议返回数据。
+1. **Core/Plugin 只共享四类契约**：capability 声明 access，调用交换类型化 data，Core 注入
+   Target-scoped infra，并透传 schema 归 Plugin 的 profile config；私有业务实现不进入 CLI/SDK。
+2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
+   capability 是业务能力和所需 access 的声明单元，Plugin 不持有 kubeconfig 或重建 Core 访问层。
 3. **确定性诊断以 Evidence 为结果**：采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得
    的 Facts/Observations，不继续访问外部资源。
 4. **默认安全边界显式化**：外部访问应声明超时、容量与权限；有副作用的操作必须在执行前展示并确认。
-5. **Agent 共用，宿主分离**：本地 CLI 当前使用 `packages/agent`，未来 TypeScript server 复用同一实现；
-   Skill 跟随 profile 选中的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
+5. **Agent 共用，宿主分离**：CLI 与 server 通过各自的 interface、凭据和执行环境使用同一
+   `packages/agent`；Skill 跟随 profile 选中的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
 
 ## References
 

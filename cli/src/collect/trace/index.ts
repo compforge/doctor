@@ -197,6 +197,8 @@ export async function runCollectTrace(
       kubeconfig: runtime.collect.kubernetes.kubeconfig,
       context: runtime.collect.kubernetes.context,
       profileName: resolveWorkingProfileName(opts),
+      command: "doctor trace",
+      commandContext,
     }, plugin, runtime.executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);

@@ -5,8 +5,13 @@ import type {
 import type { HttpTransportResponse } from "./http";
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDataTarget } from "./service";
-import type { PluginSkill } from "./skill";
+import type {
+  PluginSkill,
+  PreparedSkillContext,
+  SkillExecutionTarget,
+} from "./skill";
 import type { SpecSet } from "@compforge/trace-harness";
+import type { CapabilityWithAccess } from "./kubernetes";
 
 export interface TenantConfigTarget {
   service: string;
@@ -77,7 +82,7 @@ export interface TraceDiagnosisCapability {
   };
 }
 
-export interface TenantConfigurationCapability {
+export interface TenantConfigurationCapability extends CapabilityWithAccess {
   /** 顺序从低优先级到高优先级，后一个 scope 覆盖前一个。 */
   scopes: readonly string[];
   directoryService: string;
@@ -94,10 +99,15 @@ export interface PluginLevelCapabilities {
 
 export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;
 
-/** CLI 选择一个业务 Plugin；collect 只消费这里暴露的 Catalog 与 Plugin capability。 */
+/** Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。 */
 export interface PluginDefinition extends PluginLevelCapabilities {
   id: string;
+  /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;
   /** Runtime-resolved Skills from the same exact Plugin version. */
   skills?: readonly PluginSkill[];
+  /** Prepare target-specific access facts consumed by this Plugin's Skill scripts. */
+  prepareSkillContext?(
+    target: SkillExecutionTarget,
+  ): PreparedSkillContext | Promise<PreparedSkillContext>;
 }

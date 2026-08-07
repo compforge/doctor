@@ -1,21 +1,19 @@
 import type { ExecResult, Executor } from "./executor";
+import type {
+  KubernetesAccessNeed,
+  KubernetesAccessRule,
+  KubernetesAccessRequirement,
+} from "@compforge/doctor-plugin";
+
+export type {
+  KubernetesAccessNeed,
+  KubernetesAccessRule,
+  KubernetesAccessRequirement,
+} from "@compforge/doctor-plugin";
 
 export type K8sAccessStatus = "allowed" | "denied" | "unknown";
-export type KubernetesAccessRequirement = "required" | "preferred";
 
-export interface K8sAccessRule {
-  verb: string;
-  resource: string;
-  resourceName?: string;
-  allNamespaces?: boolean;
-}
-
-export interface KubernetesAccessNeed {
-  rule: K8sAccessRule;
-  requirement: KubernetesAccessRequirement;
-  purpose: string;
-  fallback?: string;
-}
+export type K8sAccessRule = KubernetesAccessRule;
 
 export interface KubernetesAccessContract {
   command: string;

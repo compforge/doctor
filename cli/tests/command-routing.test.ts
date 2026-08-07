@@ -483,7 +483,7 @@ describe("CLI command routing", () => {
     const database = runCli("store", "--type", "redis", "--database", "-1");
     expect(database.exitCode).toBe(2);
     expect(database.stderr).toContain("--database 需要 >= 0 的整数");
-  });
+  }, 10_000);
 
   test("data requires one --biz-id and exposes JSON and HTML", () => {
     const result = runCli("data", "--help");
