@@ -49,7 +49,7 @@
 - 覆盖：`linux/amd64`、`linux/arm64`
 - 内容：sh、Python 3、启用 Python scripting 的 GDB、py-spy 0.4.2、Austin 4.0.0，以及 PyHeap dumper / analyzer 0.7.0+doctor.2
 - 覆盖：`linux/amd64`、`linux/arm64`；Austin 从固定 tag 源码在 Alpine/musl 上构建，不受业务容器 glibc 版本约束
-- 形态：`dist/doctor-debug-linux-<arch>.tar`，一个架构一个 tar；与 doctor binary 并列交付，不嵌入 executable
+- 形态：`dist/doctor-debug-<version>-linux-<arch>.tar`，一个架构一个 tar；与 doctor binary 并列交付，不嵌入 executable
 - 体积：devbox amd64 实建镜像约 70.4 MiB，Docker archive 约 72.5 MiB；基础镜像与 apk 版本变化时会小幅漂移
 - 版本：独立版本源为 `docker/debug/VERSION`，变更记录见 `docker/debug/RELEASE.md`
 - 构建：在带 Docker Buildx 的 Linux/devbox 上执行 `make build-debug-images`；可用 `DOCTOR_DEBUG_TAG=<tag>` 覆盖默认的 debug image 版本
