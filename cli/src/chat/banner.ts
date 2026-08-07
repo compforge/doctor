@@ -3,15 +3,17 @@ import boxen from "boxen";
 import type { DoctorMeta } from "./model";
 
 const LOGO = [
-  " ╭─●     ●─╮",
-  " │         │",
-  " │         │",
-  "  ╲       ╱   ╭───╮",
-  "   ╲     ╱    │ ◉ │",
-  "    ╲   ╱     ╰─┬─╯",
-  "     ╲ ╱        │",
-  "      │         │",
-  "      ╰─────────╯",
+  // 用 Braille 点阵离线生成软管曲线，避免不同线型在终端字体中出现断裂接头。
+  "  ⡤⠤⠤●   ●⠤⠤⡄",
+  " ⡼          ⠸⡄",
+  " ⡇           ⡇",
+  " ⡇           ⡇",
+  " ⠱⣄        ⢀⡴⠁ ╭───╮",
+  "  ⠈⠳⣄    ⢀⡴⠋   │ ◉ │",
+  "    ⠈⠳⡀ ⡰⠋     ╰─┬─╯",
+  "      ⠘⡞         │",
+  "       │         │",
+  "       ╰─────────╯",
 ];
 
 export function renderBanner(options: { version: string; meta: DoctorMeta }): string {
