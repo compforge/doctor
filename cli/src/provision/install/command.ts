@@ -40,10 +40,7 @@ import {
   type InstallCompatibilityReport,
 } from "./report";
 
-export async function runInstall(
-  opts: InstallCliOpts,
-  commandContext: CommandContext,
-): Promise<number> {
+export function validateInstallOptions(opts: InstallCliOpts): void {
   const reportFormat = opts.format?.trim().toLowerCase();
   if (reportFormat && reportFormat !== "md" && reportFormat !== "json") {
     throw new Error(`--format 只支持 md 或 json：'${opts.format}'`);
@@ -52,6 +49,14 @@ export async function runInstall(
   if (!configuredProgram && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new Error("当前为非交互终端；请显式指定 --program gdb");
   }
+}
+
+export async function runInstall(
+  opts: InstallCliOpts,
+  commandContext: CommandContext,
+): Promise<number> {
+  validateInstallOptions(opts);
+  const configuredProgram = opts.program ? parseInstallProgram(opts.program) : undefined;
   const config = await resolveKubernetesCommandConfig(
     opts,
     undefined,

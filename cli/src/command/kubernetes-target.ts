@@ -63,9 +63,9 @@ export async function resolveKubernetesCommandConfig(
   executor?: Executor,
   commandContext?: CommandContext,
 ): Promise<KubernetesCommandConfig | undefined> {
-  const kube = resolveCollectKubeconfig(input);
-  const profileName = resolveWorkingProfileName(input);
-  const configuredNamespace = resolveCollectNamespace(input);
+  const kube = resolveCollectKubeconfig(input, commandContext?.profile);
+  const profileName = commandContext?.profile.name ?? resolveWorkingProfileName(input);
+  const configuredNamespace = resolveCollectNamespace(input, commandContext?.profile);
   const channelExecutor = executor ?? new KubectlExecutor({
     kubeconfig: kube.kubeconfig,
     context: input.context,

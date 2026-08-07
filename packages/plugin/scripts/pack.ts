@@ -16,6 +16,10 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import { gzipSync } from "node:zlib";
 import { checkPluginVersion } from "./version";
+import {
+  calculatePluginArtifactDigest,
+  DOCTOR_PLUGIN_API_VERSION,
+} from "../src/artifact";
 
 const BLOCK_SIZE = 512;
 
@@ -119,12 +123,14 @@ export async function buildPluginArchive(pluginRoot: string, outputDir?: string)
     if (existsSync(join(root, "skills"))) {
       cpSync(join(root, "skills"), join(stage, "skills"), { recursive: true, errorOnExist: true });
     }
+    const contentDigest = calculatePluginArtifactDigest(stage);
     writeFileSync(join(stage, "plugin.json"), `${JSON.stringify({
       manifestVersion: 1,
+      pluginApiVersion: DOCTOR_PLUGIN_API_VERSION,
       id: lock.pluginId,
       version: metadata.version,
       requiresDoctor: metadata.doctorPlugin?.requiresDoctor ?? ">=0.1.0",
-      contentDigest: lock.contentDigest,
+      contentDigest,
       main: "./plugin.mjs",
       skills: skillPaths(root),
     }, null, 2)}\n`);

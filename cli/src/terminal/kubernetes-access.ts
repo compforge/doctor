@@ -21,7 +21,7 @@ export async function requireKubernetesChannel(input: {
     + `kubeconfig=${input.kubeconfigSource}`
     + `${input.namespace ? `，namespace=${input.namespace}` : ""}\n`,
   );
-  const fact = input.commandContext?.inspection.kubernetes.channel
+  const fact = input.commandContext?.inspection.kubernetes?.channel
     ?? await inspectKubernetesChannel(input.executor);
   if (!fact.available) throw new Error(fact.reason ?? "Kubernetes 通道不可用");
   terminalStdout.success("[k8s] Kubernetes API Server 可达\n");

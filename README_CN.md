@@ -9,7 +9,7 @@ Doctor 是一个本地优先的 CLI，用于采集可复现的诊断证据并开
 Service，以及这些 Service 的业务数据代表什么。
 
 Doctor 提供三条平级工作流：Provision 准备诊断能力，Collect 生成可审计的 Evidence 和报告，Chat
-让 Agent 在沙箱中结合应用 Skill 开展诊断。三者共享同一套 profile、目标、访问与授权上下文。
+让 Agent 结合应用 Skill 和宿主提供的工具开展诊断。三者共享同一套 profile、目标、访问与授权上下文。
 
 ![Doctor 架构](docs/doctor-architecture.svg)
 
@@ -89,7 +89,7 @@ make build-local
 
 ## Chat runtime
 
-`doctor chat` 在沙箱中运行 `@compforge/doctor-agent` 及受限工具。Profile 中的 `llm` 配置优先；没有
+`doctor chat` 运行 `@compforge/doctor-agent` 及宿主提供的工具。Profile 中的 `llm` 配置优先；没有
 配置时，Doctor 可以从当前 Plugin 的 Model Capability 中选择 LLM，并使用 Plugin 提供的 inference
 连接。当前 Plugin 同时提供 Agent 可以使用的版本化 Skill。
 
@@ -111,3 +111,4 @@ Skill 是 Plugin 内的版本化资源，继承 Plugin 的选择和信任关系�
 
 更深入的边界说明见 [`cli/docs/kernel.md`](cli/docs/kernel.md)、
 [`cli/docs/plugin.md`](cli/docs/plugin.md) 和 [`docs/chat.md`](docs/chat.md)。
+执行安全的后续工作见 [`docs/backlog.md`](docs/backlog.md)。

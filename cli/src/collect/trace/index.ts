@@ -6,7 +6,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { SpecSet } from "@compforge/trace-harness";
+import type { KindSpec, SpecSet } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { resolveWorkingProfileName } from "../../app/profile";
 import {
@@ -196,7 +196,7 @@ export async function runCollectTrace(
       namespace: runtime.collect.kubernetes.namespace,
       kubeconfig: runtime.collect.kubernetes.kubeconfig,
       context: runtime.collect.kubernetes.context,
-      profileName: resolveWorkingProfileName(opts),
+      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
       command: "doctor trace",
       commandContext,
     }, plugin, runtime.executor);
@@ -275,7 +275,7 @@ export async function runCollectTrace(
     return 2;
   }
   // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
-  const { genAiSpecs, mergeSpecs } = await import("@compforge/trace-harness");
+  const { genAiSpecs, mergeSpecs, SpecSet } = await import("@compforge/trace-harness");
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
@@ -299,7 +299,10 @@ export async function runCollectTrace(
       pageSize,
       outputDir: staging,
       specs: plugin.traceDiagnosis
-        ? mergeSpecs(plugin.traceDiagnosis.specs, genAiSpecs())
+        ? mergeSpecs(
+            new SpecSet([...plugin.traceDiagnosis.specs] as KindSpec[]),
+            genAiSpecs(),
+          )
         : genAiSpecs(),
       traceIdResolution: {
         service: trace.service,

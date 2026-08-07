@@ -19,7 +19,7 @@ function result(stdout: string, ok = true): ExecResult {
   };
 }
 
-function commandContext(channel: CommandContext["inspection"]["kubernetes"]["channel"]) {
+function commandContext(channel: NonNullable<CommandContext["inspection"]["kubernetes"]>["channel"]) {
   return new CommandContext({
     host: {
       platform: process.platform,

@@ -13,6 +13,7 @@ import {
   type KubernetesRecentScope,
   type RecentSelections,
 } from "../infra/recent";
+import type { CommandProfile } from "../command";
 
 export interface ImageKubeOpts {
   kubeconfig?: string;
@@ -86,9 +87,10 @@ export async function discoverRegistryCatalog(
     allNamespaces?: boolean;
     access?: KubernetesAccessContext;
     channelChecked?: boolean;
+    profile?: CommandProfile;
   } = {},
 ): Promise<RegistryCatalog> {
-  const kubeconfig = executor ? undefined : resolveCollectKubeconfig(opts);
+  const kubeconfig = executor ? undefined : resolveCollectKubeconfig(opts, options.profile);
   const kubectl = executor ?? new KubectlExecutor({
     kubeconfig: kubeconfig?.kubeconfig,
     context: opts.context,
@@ -196,6 +198,7 @@ interface ResolveImageTargetOptions {
   discover?: () => Promise<RegistryCatalog>;
   prompt?: PromptLine;
   recent?: RecentSelections;
+  profile?: CommandProfile;
 }
 
 function sourceRepositoryAndTag(sourceImage: string): string {
@@ -227,7 +230,7 @@ export async function resolveImageTarget(
   if (recent) {
     try {
       recentScope = resolveKubernetesRecentScope({
-        kubeconfig: resolveCollectKubeconfig(opts).kubeconfig,
+        kubeconfig: resolveCollectKubeconfig(opts, options.profile).kubeconfig,
         context: opts.context,
       });
     } catch {
@@ -238,7 +241,9 @@ export async function resolveImageTarget(
 
   let catalog: RegistryCatalog = { registries: [], namespacesByRegistry: {} };
   try {
-    catalog = await (options.discover ?? (() => discoverRegistryCatalog(opts)))();
+    catalog = await (options.discover ?? (() => discoverRegistryCatalog(opts, undefined, {
+      profile: options.profile,
+    })))();
   } catch (err) {
     terminalStdout.warning(`[image] ${err instanceof Error ? err.message : String(err)}；改为手动输入。\n`);
   }

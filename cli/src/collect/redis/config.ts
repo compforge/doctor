@@ -180,7 +180,9 @@ export async function resolveRedisConfig(
   const configPath = input.config
     ?? process.env.DOCTOR_CONFIG
     ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = resolveProfile(loadConfig(configPath), input.profile);
+  const resolvedProfile = commandContext
+    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
+    : resolveProfile(loadConfig(configPath), input.profile);
   const redisProfile = resolvedProfile.profile.redis;
   let podKeyword = input.pod?.trim()
     || (!catalog ? redisProfile?.pod?.trim() || redisProfile?.deployment?.trim() : undefined);

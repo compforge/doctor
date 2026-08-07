@@ -50,10 +50,16 @@ export async function installPlugin(
     const manifest = readInstalledManifest(temporary);
     const ref = `${manifest.id}@${manifest.version}`;
     await loadPluginDirectory(temporary, ref);
+    const manifestRaw = readFileSync(join(temporary, "plugin.json"));
     const destination = installedPluginPath(ref, installRoot);
     if (existsSync(destination)) {
+      await loadPluginDirectory(destination, ref);
       const current = readInstalledManifest(destination);
-      if (current.contentDigest !== manifest.contentDigest) {
+      const currentManifestRaw = readFileSync(join(destination, "plugin.json"));
+      if (
+        current.contentDigest !== manifest.contentDigest
+        || !currentManifestRaw.equals(manifestRaw)
+      ) {
         throw new Error(`Plugin ${ref} is already installed with different content`);
       }
       writeActivePluginRef(ref, installRoot);
@@ -62,6 +68,8 @@ export async function installPlugin(
     writeFileSync(join(temporary, ".doctor-install.json"), `${JSON.stringify({
       schemaVersion: 1,
       archiveSha256: createHash("sha256").update(readFileSync(archivePath)).digest("hex"),
+      manifestSha256: createHash("sha256").update(manifestRaw).digest("hex"),
+      contentDigest: manifest.contentDigest,
       installedAt: new Date().toISOString(),
     }, null, 2)}\n`, { mode: 0o600 });
     mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });

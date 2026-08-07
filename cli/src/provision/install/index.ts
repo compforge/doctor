@@ -1,4 +1,4 @@
-export { runInstall } from "./command";
+export { runInstall, validateInstallOptions } from "./command";
 export {
   packageBundleMissingMessage,
   targetDescription,

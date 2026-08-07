@@ -52,7 +52,7 @@ export async function resolvePluginTraceId(
         config: opts.commandContext?.profile.pluginConfig,
         service: {
           name: provider.name,
-          port: provider.port,
+          port: provider.capabilities.traceId.endpoint.port,
         },
         command: opts.command,
         capability: provider.capabilities.traceId,

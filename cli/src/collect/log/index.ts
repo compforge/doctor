@@ -82,8 +82,8 @@ export async function runCollectLog(
   let resolved;
   let configuredNamespace;
   try {
-    resolved = resolveCollectKubeconfig(opts);
-    configuredNamespace = resolveCollectNamespace(opts);
+    resolved = resolveCollectKubeconfig(opts, commandContext?.profile);
+    configuredNamespace = resolveCollectNamespace(opts, commandContext?.profile);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
@@ -98,7 +98,7 @@ export async function runCollectLog(
   const bootstrapKubernetes = resolveKubernetesCommandContext(channelExecutor, commandContext);
   await requireKubernetesChannel({
     executor: channelExecutor,
-    profileName: resolveWorkingProfileName(opts),
+    profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
     kubeconfigSource: resolved.source,
     commandContext,
   });
@@ -143,7 +143,7 @@ export async function runCollectLog(
       namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig,
       context: opts.context,
-      profileName: resolveWorkingProfileName(opts),
+      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
       command: "doctor log",
       commandContext,
     }, plugin, executor);
@@ -221,7 +221,7 @@ export async function runCollectLog(
     writeLogHtmlReport(
       staging,
       reportPath,
-      resolveWorkingProfileName(opts),
+      commandContext?.profile.name ?? resolveWorkingProfileName(opts),
     );
   } catch (error) {
     reportError = error instanceof Error ? error.message : String(error);

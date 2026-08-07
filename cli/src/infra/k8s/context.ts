@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { expandHome, loadConfig, resolveProfile } from "../../app/config/config";
+import type { CommandProfile } from "../../command/context";
 
 export interface ResolvedKubeconfig {
   kubeconfig?: string;
@@ -26,13 +27,15 @@ export function resolveCollectDebugImage(opts: {
   debugImage?: string;
   profile?: string;
   config?: string;
-}): ResolvedDebugImage {
+}, commandProfile?: CommandProfile): ResolvedDebugImage {
   const flag = opts.debugImage?.trim();
   if (flag) return { image: flag, source: "flag" };
 
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   try {
-    const { name, profile } = resolveProfile(loadConfig(configPath), opts.profile);
+    const { name, profile } = commandProfile
+      ? { name: commandProfile.name, profile: commandProfile.value }
+      : resolveProfile(loadConfig(configPath), opts.profile);
     const configured = profile.kube?.debug_image?.trim();
     return configured
       ? { image: configured, source: `profile:${name}` }
@@ -48,13 +51,15 @@ export function resolveCollectNamespace(opts: {
   namespace?: string;
   profile?: string;
   config?: string;
-}): ResolvedNamespace {
+}, commandProfile?: CommandProfile): ResolvedNamespace {
   const flag = opts.namespace?.trim();
   if (flag) return { namespace: flag, source: "flag" };
 
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   try {
-    const { name, profile } = resolveProfile(loadConfig(configPath), opts.profile);
+    const { name, profile } = commandProfile
+      ? { name: commandProfile.name, profile: commandProfile.value }
+      : resolveProfile(loadConfig(configPath), opts.profile);
     const configured = typeof profile.namespace === "string" ? profile.namespace.trim() : "";
     if (configured) return { namespace: configured, source: `profile:${name}` };
   } catch (err) {
@@ -69,14 +74,28 @@ export function resolveCollectNamespace(opts: {
  * 2. --profile 指定时取该 profile 的 kube.kubeconfig_path（没配则报错——显式指定不做静默回退）；
  * 3. 都没给时 best-effort 看 default profile：配了 kube 就用（含零配置合成的 default profile
  *    指向 ~/.kube/config），文件不存在或没配则交给 kubectl 自身默认查找。
+ * Production command preparation passes CommandProfile; its configured path is authoritative and
+ * must exist, so later domain code cannot silently switch to another kubectl target.
  */
 export function resolveCollectKubeconfig(opts: {
   kubeconfig?: string;
   profile?: string;
   config?: string;
-}): ResolvedKubeconfig {
+}, commandProfile?: CommandProfile): ResolvedKubeconfig {
   if (opts.kubeconfig) return { kubeconfig: expandHome(opts.kubeconfig), source: "flag" };
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
+  if (commandProfile) {
+    const configured = commandProfile.value.kube?.kubeconfig_path;
+    if (configured) {
+      const path = expandHome(configured);
+      if (!existsSync(path)) throw new Error(`kubeconfig path not found: ${configured}`);
+      return { kubeconfig: path, source: `profile:${commandProfile.name}` };
+    }
+    if (opts.profile) {
+      throw new Error(`profile '${commandProfile.name}' 未配置 kube.kubeconfig_path，无法访问 Kubernetes`);
+    }
+    return { source: "kubectl-default" };
+  }
   if (opts.profile) {
     const { name, profile } = resolveProfile(loadConfig(configPath), opts.profile);
     if (!profile.kube?.kubeconfig_path) {

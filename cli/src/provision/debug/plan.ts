@@ -121,6 +121,7 @@ export async function prepareDebugImage(
   try {
     resolvedImage = await resolveDebugImage(target.containerImage, opts, {
       platform: target.imagePlatform,
+      profile: target.context.profile,
       discoverRepositories: () => discoverDebugImageRepositories(target),
     });
   } catch (error) {

@@ -1,10 +1,12 @@
 import { DOCTOR_CLI_VERSION } from "../app/version";
+import { DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
 
 const ID_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,62})$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+$/;
 
 export interface PluginManifest {
   manifestVersion: 1;
+  pluginApiVersion: number;
   id: string;
   version: string;
   requiresDoctor: string;
@@ -42,6 +44,12 @@ export function parsePluginManifest(raw: string): PluginManifest {
   const value = JSON.parse(raw) as Partial<PluginManifest>;
   if (value.manifestVersion !== 1) {
     throw new Error(`Unsupported Plugin manifest version: ${String(value.manifestVersion)}`);
+  }
+  if (value.pluginApiVersion !== DOCTOR_PLUGIN_API_VERSION) {
+    throw new Error(
+      `Unsupported Plugin API version: ${String(value.pluginApiVersion)}; `
+      + `Doctor supports ${DOCTOR_PLUGIN_API_VERSION}`,
+    );
   }
   if (typeof value.id !== "string" || !ID_PATTERN.test(value.id)) {
     throw new Error(`Invalid Plugin id: ${String(value.id)}`);

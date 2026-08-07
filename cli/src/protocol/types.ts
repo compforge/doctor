@@ -1,13 +1,8 @@
 // Wire types — must match cli-server-protocol-v0.md.
 
-// DB 凭据：身份（user/password）必填，host/port 由 skill 自寻（多 schema 共用同一 user 的现实）。
-// host_override/port_override 是 v0+1 escape hatch，server 端 v0 暂不消费，只占 schema 名字。
-export interface DbCredentials {
-  user: string;
-  password: string;
-  host_override?: string;
-  port_override?: number;
-}
+import type { DbCredentials } from "../command/profile";
+
+export type { DbCredentials } from "../command/profile";
 
 export interface ProfileUpload {
   readonly: boolean;

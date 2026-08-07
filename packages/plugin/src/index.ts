@@ -1,3 +1,4 @@
+export * from "./artifact";
 export * from "./catalog";
 export * from "./context";
 export * from "./database";

@@ -61,7 +61,7 @@ export async function runCollectData(
   const startedAt = new Date().toISOString();
   let config;
   try {
-    config = resolveDataConfig(opts, plugin.services);
+    config = resolveDataConfig(opts, plugin.services, commandContext);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;

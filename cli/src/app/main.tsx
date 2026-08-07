@@ -43,24 +43,15 @@ import { runCollectModel } from "../collect/model";
 import { runCollectMetric } from "../collect/metric";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
-import { runInstall } from "../provision/install";
-import {
-  inspectCommandContext,
-  type CommandContext,
-  type PluginCapabilityContract,
-} from "../command";
-import { requirePluginCapabilities } from "../terminal/plugin-capability";
+import { runInstall, validateInstallOptions } from "../provision/install";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-log";
 import { runInit } from "./init";
-import {
-  resolveWorkingProfile,
-  runProfile,
-  type WorkingProfileOptions,
-} from "./profile";
+import { runProfile } from "./profile";
 import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 import { loadActivePlugin } from "../plugin";
 import { runPluginInstall, runPluginUninstall } from "./plugin";
+import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
 
 // REPL 选项只属于 chat 子命令，root 保持为中性的能力索引。
 function withReplOptions(cmd: CommandT): CommandT {
@@ -346,75 +337,17 @@ function withMetricOptions(cmd: CommandT): CommandT {
     .option("-o, --output <path>", "单文件 HTML 报告输出路径");
 }
 
-async function runCommand(
-  context: string,
-  opts: WorkingProfileOptions & { kubeconfig?: string; context?: string },
-  action: (commandContext: CommandContext, profileName?: string) => Promise<number | void>,
-  printProfile = true,
-): Promise<void> {
-  try {
-    const resolvedProfile = resolveWorkingProfile(opts);
-    const profileName = printProfile ? resolvedProfile.name : undefined;
-    if (profileName) terminalStdout.warning(`profile: ${profileName}\n`);
-    const commandContext = await inspectCommandContext(opts, {
-      name: resolvedProfile.name,
-      pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
-    });
-    const code = await action(commandContext, profileName);
-    if (typeof code === "number") process.exitCode = code;
-  } catch (err) {
-    reportError(err, { context, summary: "fatal" });
-    process.exitCode = 1;
-  }
-}
-
-/** Plugin capability 先于 CommandContext/Kubernetes 检查，确保缺业务能力时提示正确边界。 */
-async function runPluginCommand(
-  context: string,
-  opts: WorkingProfileOptions & {
-    namespace?: string;
-    kubeconfig?: string;
-    context?: string;
-  },
-  plugin: PluginDefinition | undefined,
-  contract: PluginCapabilityContract,
-  action: (
-    plugin: PluginDefinition,
-    commandContext: CommandContext,
-    profileName?: string,
-  ) => Promise<number | void>,
-): Promise<void> {
-  try {
-    const resolvedProfile = resolveWorkingProfile(opts);
-    const profileName = resolvedProfile.name;
-    terminalStdout.warning(`profile: ${profileName}\n`);
-    const activePlugin = requirePluginCapabilities(
-      plugin ?? await loadActivePlugin(),
-      contract,
-    );
-    const commandContext = await inspectCommandContext(opts, {
-      name: resolvedProfile.name,
-      pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
-    });
-    const code = await action(activePlugin, commandContext, profileName);
-    if (typeof code === "number") process.exitCode = code;
-  } catch (err) {
-    reportError(err, { context, summary: "fatal" });
-    process.exitCode = 1;
-  }
-}
-
-async function resolveStartupPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
+async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
   if (plugin) return plugin;
-  const command = process.argv[2];
-  if (!command || ["plugin", "profile", "init", "help"].includes(command)) return undefined;
-  return loadActivePlugin();
+  return process.argv.slice(2).some((argument) => argument === "--version" || argument === "-V")
+    ? loadActivePlugin()
+    : undefined;
 }
 
 export async function main(plugin?: PluginDefinition) {
-  const startupPlugin = await resolveStartupPlugin(plugin);
+  const versionPlugin = await resolveVersionPlugin(plugin);
   const program = new Command();
-  const version = formatDoctorVersion(startupPlugin);
+  const version = formatDoctorVersion(versionPlugin);
   program
     .name("doctor")
     .description([
@@ -424,11 +357,12 @@ export async function main(plugin?: PluginDefinition) {
     .version(version);
 
   withReplOptions(
-    program.command("chat").description("交互式 AI 问诊（是否连接 doctor-server 取决于当前 profile 的 server 配置）"),
+    program.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
   ).action(async (opts) => {
     const flags = toReplFlags(opts);
-    await runCommand("doctor chat", flags, async (commandContext) => {
+    await runCommand({ name: "doctor chat" }, flags, async (commandContext) => {
       const activePlugin = plugin ?? await loadActivePlugin();
+      activePlugin?.validateConfig?.(commandContext.profile.pluginConfig);
       return runRepl(flags, activePlugin, commandContext);
     });
   });
@@ -438,7 +372,7 @@ export async function main(plugin?: PluginDefinition) {
     .description("首次初始化 local profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
     .action(async (opts) => {
-      await runCommand("doctor init", opts, () => runInit(opts));
+      await runStandaloneCommand("doctor init", () => runInit(opts));
     });
 
   program
@@ -446,7 +380,7 @@ export async function main(plugin?: PluginDefinition) {
     .description("交互选择 profile，或指定名称并持久为默认 profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
     .action(async (name, opts) => {
-      await runCommand("doctor profile", opts, () => runProfile(name, opts), false);
+      await runStandaloneCommand("doctor profile", () => runProfile(name, opts));
     });
 
   program
@@ -491,7 +425,12 @@ export async function main(plugin?: PluginDefinition) {
     .option("--profile <name>", "从 profile 取 kubeconfig 和 registry 凭据")
     .option("--config <path>", "config 文件路径")
     .action(async (image, opts) => {
-      await runCommand("doctor image", opts, (context) => runDoctorImage(image, opts, context));
+      const needsKubernetes = Boolean(opts.registry || image || !opts.host);
+      await runCommand(
+        { name: "doctor image", environment: { kubernetes: needsKubernetes } },
+        opts,
+        (context) => runDoctorImage(image, opts, context),
+      );
     });
 
   program
@@ -509,7 +448,11 @@ export async function main(plugin?: PluginDefinition) {
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认 Pod mutation", false)
     .action(async (opts) => {
-      await runCommand("doctor debug", opts, (context) => runDebug(opts, context));
+      await runCommand(
+        { name: "doctor debug", environment: { kubernetes: true } },
+        opts,
+        (context) => runDebug(opts, context),
+      );
     });
 
   program
@@ -529,19 +472,31 @@ export async function main(plugin?: PluginDefinition) {
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认修改目标 container 可写层", false)
     .action(async (opts) => {
-      await runCommand("doctor install", opts, (context) => runInstall(opts, context));
+      await runCommand(
+        {
+          name: "doctor install",
+          validate: () => validateInstallOptions(opts),
+          environment: { kubernetes: true },
+        },
+        opts,
+        (context) => runInstall(opts, context),
+      );
     });
 
   withMemOptions(
     program.command("mem").description("attach 目标 Python 进程并把 PyHeap 文件回传到本机"),
   ).action(async (opts) => {
-    await runCommand("doctor mem", opts, (context) => runCollectMemory(opts, context));
+    await runCommand(
+      { name: "doctor mem", environment: { kubernetes: true } },
+      opts,
+      (context) => runCollectMemory(opts, context),
+    );
   });
   withMemaOptions(
     program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 PyHeap 文件"),
   ).action(async (inputs, opts) => {
     await runCommand(
-      "doctor mema",
+      { name: "doctor mema" },
       opts,
       (_context, profileName) => runCollectMemoryAnalysis({ ...opts, inputs, profileName }),
     );
@@ -549,63 +504,67 @@ export async function main(plugin?: PluginDefinition) {
   withCpuOptions(
     program.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
   ).action(async (opts) => {
-    await runCommand("doctor cpu", opts, (context) => runCollectCpu(opts, context));
+    await runCommand(
+      { name: "doctor cpu", environment: { kubernetes: true } },
+      opts,
+      (context) => runCollectCpu(opts, context),
+    );
   });
   withTraceOptions(
     program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor trace",
+      {
+        name: "doctor trace",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.trace,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.trace,
       (activePlugin, context) => runCollectTrace(opts, activePlugin, context),
     );
   });
-  const defaultLogServices = startupPlugin?.services
-    .servicesWith("log")
-    .filter((service) => service.capabilities.log.default)
-    .map((service) => service.name)
-    .join(",") ?? "";
-  const defaultDataServiceNames = startupPlugin?.services
-    .servicesWith("data")
-    .map((service) => service.name) ?? [];
-  const dataProviders = defaultDataServiceNames.length
-    ? defaultDataServiceNames.join("、")
-    : "由当前 Plugin 声明";
-
   withStoreOptions(
     program.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor store",
+      {
+        name: "doctor store",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.store,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.store,
       (activePlugin, context) => runCollectStore(opts, activePlugin, context),
     );
   });
   withLogOptions(
     program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
-    defaultLogServices,
+    "",
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor log",
+      {
+        name: "doctor log",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.log,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.log,
       (activePlugin, context) => runCollectLog(opts, activePlugin, context),
     );
   });
   withDataOptions(
-    program.command("data").description(`先扩展业务 ID，再汇集 Service Catalog 声明的数据（${dataProviders}，只读）`),
-    defaultDataServiceNames,
+    program.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
+    [],
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor data",
+      {
+        name: "doctor data",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.data,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.data,
       (activePlugin, context) => runCollectData(
         opts,
         activePlugin,
@@ -619,10 +578,13 @@ export async function main(plugin?: PluginDefinition) {
     program.command("config").description("采集 Service 的 Pod 运行态，可选部署配置与 Plugin 租户配置（只读）"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor config",
+      {
+        name: "doctor config",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.config,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.config,
       (activePlugin, context) => runCollectConfig(
         opts,
         activePlugin,
@@ -637,7 +599,7 @@ export async function main(plugin?: PluginDefinition) {
     program.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
   ).action(async (opts) => {
     await runCommand(
-      "doctor http",
+      { name: "doctor http" },
       opts,
       (context, profileName) => runCollectHttp(
         { ...opts, profileName },
@@ -651,7 +613,11 @@ export async function main(plugin?: PluginDefinition) {
   withNetworkOptions(
     program.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
   ).action(async (opts) => {
-    await runCommand("doctor net", opts, (context) => runCollectNetwork(opts, context));
+    await runCommand(
+      { name: "doctor net", environment: { kubernetes: true } },
+      opts,
+      (context) => runCollectNetwork(opts, context),
+    );
   });
   program
     .command("neta [input]")
@@ -660,16 +626,19 @@ export async function main(plugin?: PluginDefinition) {
     .option("--capture-id <id>", "覆盖 NetBundle 中的染色 ID")
     .option("-o, --output <path>", "报告输出路径或前缀；生成同名 Markdown、HTML 与 JSON")
     .action(async (input, opts) => {
-      await runCommand("doctor neta", opts, () => runAnalyzeNetwork(input, opts), false);
+      await runStandaloneCommand("doctor neta", () => runAnalyzeNetwork(input, opts));
     });
   withMcpOptions(
     program.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor mcp",
+      {
+        name: "doctor mcp",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.mcp,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.mcp,
       (activePlugin, context) => runCollectMcp(opts, activePlugin, context),
     );
   });
@@ -677,10 +646,13 @@ export async function main(plugin?: PluginDefinition) {
     program.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor model",
+      {
+        name: "doctor model",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.model,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.model,
       (activePlugin, context, profileName) => runCollectModel(
         { ...opts, profileName },
         activePlugin,
@@ -692,10 +664,12 @@ export async function main(plugin?: PluginDefinition) {
     program.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
   ).action(async (opts) => {
     await runPluginCommand(
-      "doctor metric",
+      {
+        name: "doctor metric",
+        plugin: PLUGIN_COMMAND_CAPABILITIES.metric,
+      },
       opts,
       plugin,
-      PLUGIN_COMMAND_CAPABILITIES.metric,
       (activePlugin, context) => runCollectMetric(opts, activePlugin, context),
     );
   });

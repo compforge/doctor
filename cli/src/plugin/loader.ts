@@ -1,10 +1,24 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { PluginDefinition, PluginSkill } from "@compforge/doctor-plugin";
+import {
+  calculatePluginArtifactDigest,
+  type PluginDefinition,
+  type PluginSkill,
+} from "@compforge/doctor-plugin";
 import { parse as parseYaml } from "yaml";
 import { parsePluginManifest, parsePluginRef, type PluginManifest } from "./manifest";
+import { validatePluginDefinition } from "./definition";
+
+interface PluginInstallReceipt {
+  schemaVersion: 1;
+  archiveSha256: string;
+  manifestSha256: string;
+  contentDigest: string;
+  installedAt: string;
+}
 
 export function pluginInstallRoot(): string {
   return join(homedir(), ".doctor", "plugins");
@@ -21,6 +35,22 @@ export function readInstalledManifest(root: string): PluginManifest {
   return parsePluginManifest(readFileSync(path, "utf8"));
 }
 
+function readInstallReceipt(root: string): PluginInstallReceipt | undefined {
+  const path = join(root, ".doctor-install.json");
+  if (!existsSync(path)) return undefined;
+  const value = JSON.parse(readFileSync(path, "utf8")) as Partial<PluginInstallReceipt>;
+  if (
+    value.schemaVersion !== 1
+    || typeof value.archiveSha256 !== "string"
+    || typeof value.manifestSha256 !== "string"
+    || typeof value.contentDigest !== "string"
+    || typeof value.installedAt !== "string"
+  ) {
+    throw new Error(`Invalid Plugin install receipt: ${path}`);
+  }
+  return value as PluginInstallReceipt;
+}
+
 function loadSkill(root: string, path: string): PluginSkill {
   const filePath = resolve(root, path, "SKILL.md");
   if (!existsSync(filePath)) throw new Error(`Plugin Skill has no SKILL.md: ${path}`);
@@ -35,7 +65,19 @@ function loadSkill(root: string, path: string): PluginSkill {
 }
 
 export async function loadPluginDirectory(root: string, ref?: string): Promise<PluginDefinition> {
-  const manifest = readInstalledManifest(root);
+  const manifestPath = join(root, "plugin.json");
+  const manifestRaw = readFileSync(manifestPath, "utf8");
+  const manifest = parsePluginManifest(manifestRaw);
+  const receipt = readInstallReceipt(root);
+  if (receipt) {
+    const manifestDigest = createHash("sha256").update(manifestRaw).digest("hex");
+    if (manifestDigest !== receipt.manifestSha256) {
+      throw new Error(`Plugin manifest does not match its install receipt: ${manifest.id}@${manifest.version}`);
+    }
+    if (manifest.contentDigest !== receipt.contentDigest) {
+      throw new Error(`Plugin content digest does not match its install receipt: ${manifest.id}@${manifest.version}`);
+    }
+  }
   if (ref) {
     const expected = parsePluginRef(ref);
     if (manifest.id !== expected.id || manifest.version !== expected.version) {
@@ -44,25 +86,23 @@ export async function loadPluginDirectory(root: string, ref?: string): Promise<P
   }
   const main = resolve(root, manifest.main);
   if (!existsSync(main)) throw new Error(`Installed Plugin entry is missing: ${manifest.main}`);
-  const module = await import(`${pathToFileURL(main).href}?v=${manifest.contentDigest}`) as { default?: unknown };
-  const definition = module.default as Partial<PluginDefinition> | undefined;
-  if (
-    !definition
-    || definition.id !== manifest.id
-    || definition.version !== manifest.version
-    || typeof definition.services !== "object"
-    || definition.services === null
-    || typeof definition.services.servicesWith !== "function"
-  ) {
-    throw new Error(`Plugin entry does not export a matching PluginDefinition: ${manifest.id}@${manifest.version}`);
+  const contentDigest = calculatePluginArtifactDigest(root);
+  const expectedDigest = receipt?.contentDigest ?? manifest.contentDigest;
+  if (contentDigest !== expectedDigest) {
+    throw new Error(
+      `Plugin artifact content does not match ${manifest.id}@${manifest.version}: `
+      + `expected=${expectedDigest}, actual=${contentDigest}`,
+    );
   }
+  const module = await import(`${pathToFileURL(main).href}?v=${manifest.contentDigest}`) as { default?: unknown };
+  const definition = validatePluginDefinition(module.default, manifest);
   const skills = manifest.skills.map((path) => loadSkill(root, path));
   const names = new Set<string>();
   for (const skill of skills) {
     if (names.has(skill.name)) throw new Error(`Plugin has duplicate Skill name: ${skill.name}`);
     names.add(skill.name);
   }
-  return { ...definition, id: manifest.id, version: manifest.version, skills } as PluginDefinition;
+  return { ...definition, skills };
 }
 
 export async function loadInstalledPlugin(ref: string, installRoot = pluginInstallRoot()): Promise<PluginDefinition> {

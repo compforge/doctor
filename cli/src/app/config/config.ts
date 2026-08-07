@@ -19,16 +19,96 @@ function defaultConfig(): Config {
   };
 }
 
+function objectValue(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a map`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function optionalScalar(
+  value: unknown,
+  type: "string" | "number" | "boolean",
+  label: string,
+): void {
+  if (value !== undefined && typeof value !== type) {
+    throw new Error(`${label} must be a ${type}`);
+  }
+}
+
+function optionalMap(value: unknown, label: string): Record<string, unknown> | undefined {
+  return value === undefined ? undefined : objectValue(value, label);
+}
+
+function validateProfileShape(value: unknown, name: string): Profile {
+  const profile = objectValue(value, `profile '${name}'`);
+  if (typeof profile.readonly !== "boolean") {
+    throw new Error(`profile '${name}'.readonly must be a boolean`);
+  }
+  optionalScalar(profile.server, "string", `profile '${name}'.server`);
+  optionalScalar(profile.namespace, "string", `profile '${name}'.namespace`);
+
+  const kube = optionalMap(profile.kube, `profile '${name}'.kube`);
+  if (kube) {
+    optionalScalar(kube.kubeconfig_path, "string", `profile '${name}'.kube.kubeconfig_path`);
+    optionalScalar(kube.debug_image, "string", `profile '${name}'.kube.debug_image`);
+  }
+  const plugin = optionalMap(profile.plugin, `profile '${name}'.plugin`);
+  if (plugin?.config !== undefined) objectValue(plugin.config, `profile '${name}'.plugin.config`);
+
+  const stringMaps = ["db", "redis", "registry", "llm"] as const;
+  for (const field of stringMaps) {
+    const section = optionalMap(profile[field], `profile '${name}'.${field}`);
+    if (!section) continue;
+    for (const [key, item] of Object.entries(section)) {
+      if (item === undefined) continue;
+      const allowed = field === "db" && key === "port_override"
+        ? "number"
+        : field === "llm" && key === "thinking"
+          ? "boolean"
+          : "string";
+      optionalScalar(item, allowed, `profile '${name}'.${field}.${key}`);
+    }
+  }
+  const prometheus = optionalMap(profile.prometheus, `profile '${name}'.prometheus`);
+  if (prometheus) {
+    if (typeof prometheus.url !== "string" || !prometheus.url) {
+      throw new Error(`profile '${name}'.prometheus.url must be a non-empty string`);
+    }
+    optionalScalar(prometheus.username, "string", `profile '${name}'.prometheus.username`);
+    optionalScalar(prometheus.password, "string", `profile '${name}'.prometheus.password`);
+    optionalScalar(prometheus.timeout_ms, "number", `profile '${name}'.prometheus.timeout_ms`);
+    optionalScalar(
+      prometheus.max_response_bytes,
+      "number",
+      `profile '${name}'.prometheus.max_response_bytes`,
+    );
+  }
+  return profile as unknown as Profile;
+}
+
+function parseConfig(data: unknown, path: string): Config {
+  const root = objectValue(data, `config ${path}`);
+  optionalScalar(root.default_profile, "string", "config.default_profile");
+  const profiles = objectValue(root.profiles, "config.profiles");
+  const validated = Object.fromEntries(
+    Object.entries(profiles).map(([name, profile]) => [name, validateProfileShape(profile, name)]),
+  );
+  return {
+    ...(root.default_profile !== undefined ? { default_profile: root.default_profile as string } : {}),
+    profiles: validated,
+  };
+}
+
 export function loadConfig(path: string): Config {
   if (!existsSync(path)) return defaultConfig();
   const raw = readFileSync(path, "utf8");
   const data = parseYaml(raw) as unknown;
   // 空文件 / 没写 profiles / profiles 为空 map：同样按零配置对待，不再报错
   if (!data) return defaultConfig();
-  if (typeof data !== "object" || ("profiles" in data && (typeof (data as { profiles: unknown }).profiles !== "object" || (data as { profiles: unknown }).profiles === null))) {
-    throw new Error(`config missing 'profiles' map: ${path}`);
-  }
-  const cfg = data as Config;
+  const root = objectValue(data, `config ${path}`);
+  if (root.profiles === undefined) return defaultConfig();
+  const cfg = parseConfig(root, path);
   if (!cfg.profiles || Object.keys(cfg.profiles).length === 0) return defaultConfig();
   return cfg;
 }

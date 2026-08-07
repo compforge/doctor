@@ -48,7 +48,7 @@ export async function runDoctorImage(
       targetImage,
       "unused:latest",
       opts,
-      { interactive },
+      { interactive, profile: commandContext.profile },
     );
   }
 
@@ -82,6 +82,7 @@ export async function runDoctorImage(
       opts,
       {
         interactive,
+        profile: commandContext.profile,
         discover: () => discoverImageRegistryCatalog(opts, commandContext),
       },
     );

@@ -63,12 +63,12 @@ describe("CLI command routing", () => {
   test("version reports Doctor and the embedded Plugin identity", () => {
     const core = runCoreCli("version");
     expect(core.exitCode).toBe(0);
-    expect(core.stdout).toContain("doctor 0.1.3");
+    expect(core.stdout).toContain("doctor 0.1.4");
     expect(core.stdout).toContain("plugin none");
 
     const distribution = runCli("version");
     expect(distribution.exitCode).toBe(0);
-    expect(distribution.stdout).toContain("doctor 0.1.3");
+    expect(distribution.stdout).toContain("doctor 0.1.4");
     expect(distribution.stdout).toContain("plugin test@0.0.1");
   });
 
@@ -84,6 +84,18 @@ describe("CLI command routing", () => {
     const result = runCli("trace", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("service.traceId");
+    expect(result.stderr).not.toContain("Kubernetes");
+  });
+
+  test("command validates its profile before resolving Plugin capabilities", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-preflight-config-test-"));
+    const configPath = join(dir, "config.yaml");
+    writeFileSync(configPath, "profiles:\n  broken:\n    readonly: yes\n");
+
+    const result = runCli("trace", "--biz-id", "biz-1", "--config", configPath);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("profile 'broken'.readonly must be a boolean");
+    expect(result.stderr).not.toContain("service.traceId");
     expect(result.stderr).not.toContain("Kubernetes");
   });
 
@@ -184,8 +196,8 @@ describe("CLI command routing", () => {
     const result = runCli("init", "--config", configPath);
 
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toStartWith("profile: dev\n");
     expect(result.stdout).toContain("config 已存在，跳过初始化");
+    expect(result.stdout).not.toContain("profile: dev");
     expect(readFileSync(configPath, "utf8")).toBe(original);
   });
 
@@ -230,6 +242,20 @@ describe("CLI command routing", () => {
     expect(result.exitCode).not.toBe(0);
     expect(result.stdout).toStartWith("profile: prod\n");
     expect(readFileSync(configPath, "utf8")).toContain("default_profile: dev");
+  });
+
+  test("declared environment preparation fails before domain work", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-preflight-environment-test-"));
+    const configPath = join(dir, "config.yaml");
+    writeFileSync(
+      configPath,
+      "profiles:\n  test:\n    readonly: true\n    kube:\n      kubeconfig_path: /doctor/not-found\n",
+    );
+
+    const result = runCli("mem", "--config", configPath);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("kubeconfig path not found");
+    expect(result.stdout).not.toContain("[collect]");
   });
 
   test("ai is no longer a command", () => {

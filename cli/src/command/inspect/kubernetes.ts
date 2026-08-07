@@ -37,10 +37,11 @@ export async function inspectKubernetes(
     kubeconfig?: string;
     context?: string;
   },
+  profile?: import("../context").CommandProfile,
 ): Promise<KubernetesInspection> {
   let kubeconfig: ResolvedKubeconfig;
   try {
-    kubeconfig = resolveCollectKubeconfig(opts);
+    kubeconfig = resolveCollectKubeconfig(opts, profile);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return {

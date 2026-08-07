@@ -102,6 +102,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
+  "pluginApiVersion": 1,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -112,7 +113,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```
 
 Plugin 入口是可直接执行的 Node-compatible ESM，默认导出一个 `PluginDefinition`。manifest id 与导出
-对象 id 必须一致。归档必须自包含运行依赖，不在客户现场执行 `npm install`、
+对象 id 必须一致；`pluginApiVersion` 必须与当前 Doctor 支持的 Plugin API 精确匹配。归档必须自包含运行依赖，不在客户现场执行 `npm install`、
 install script 或编译 TypeScript；Skill 目录可携带其 `references/`、`scripts/` 等标准资源。
 
 ### 构建归档
@@ -120,7 +121,7 @@ install script 或编译 TypeScript；Skill 目录可携带其 `references/`、`
 ```bash
 cd plugins/example
 make build
-# dist/example-0.0.2.doctor-plugin.tar.gz
+# dist/example-0.0.3.doctor-plugin.tar.gz
 ```
 
 Plugin 在自身 `dist/` 中产出 `<id>-<version>.doctor-plugin.tar.gz`。归档只包含 manifest、已 bundle 的
@@ -137,12 +138,14 @@ doctor plugin uninstall sample@1.2.0
 `install` 是面向用户的一步式“安装并加载”操作：
 
 1. 在临时目录解包，读取并校验 manifest、Doctor 版本兼容性和所有资源路径；
-2. 加载代码入口并校验其满足 `PluginDefinition`，扫描 Skill 的基础元数据并附加 runtime view；
+2. 按 `contentDigest` 校验实际 ESM/Skill payload，加载代码入口并校验 `PluginDefinition` 的身份、
+   Service/capability 结构和跨 Service 引用，扫描 Skill 的基础元数据并附加 runtime view；
 3. 原子移动到 `~/.doctor/plugins/<id>/<version>/`；目标版本已存在时不原地覆盖；
 4. 在安装完全成功后把精确 `id@version` 原子写入 `~/.doctor/plugins/active.json`；
 5. 已加载同一 Plugin 的旧版本时替换 Host 级引用，但保留旧版本目录。
 
-安装目录中的版本内容不可变。失败发生在 active state 更新前，不改变当前可用版本；旧版本由
+安装时生成 Host-owned `.doctor-install.json`，封存归档、manifest 与实际 payload 的摘要；后续每次加载
+都在 import Plugin 代码前重新校验。安装目录中的版本内容不可变。失败发生在 active state 更新前，不改变当前可用版本；旧版本由
 `uninstall` 显式清理，不隐含在 install 中。卸载当前版本时同时清除 Host 级 active state。
 
 profile 可提供随环境变化的 Plugin config，但不保存 Plugin 身份：
@@ -155,8 +158,8 @@ profiles:
         region: example
 ```
 
-`config` 由 Core 原样保存并只放进已加载 Plugin 的调用上下文。Core 不根据其中
-字段推导 Target 或权限，Plugin 负责校验自己的 schema。
+`config` 由 Core 原样保存并只放进已加载 Plugin 的调用上下文。Core 不根据其中字段推导 Target 或权限；
+Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校验完成前不会开始 Target 访问。
 
 ### 命令运行
 
@@ -210,6 +213,10 @@ Plugin 的准备边界，不通过裁剪 Skill、修改 Skill 文案或维护宿
 取消信号和 Target-scoped Kubernetes access。Plugin 用 access 读取 Service、定位 Pod 或访问其它资源，
 Core 不接收再回传 Plugin-owned 的 selector 等实现细节。profile 切换后，Doctor 在下一次调用中注入新的
 上下文，Plugin 不持有 kubeconfig 或旧环境选择。
+
+网络 endpoint 跟随实际消费它的 capability 声明，不放在 Service 根上假设一个全局端口。同一 Service
+可以分别为 tenant directory、model catalog、inference、MCP 或 metrics 提供不同 endpoint；命令只为
+本轮选中的 capability 建立对应连接。
 
 Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
 `PluginContext` 按需提供。HTTP、数据库客户端由 Plugin 实现；SDK helper 只承载稳定且跨 Plugin 同义
