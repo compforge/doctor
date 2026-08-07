@@ -31,6 +31,14 @@ export interface ImageRecentTarget {
   use_count: number;
 }
 
+export interface SelectionRecentTarget {
+  kind: string;
+  scope: string;
+  value: string;
+  last_used_at: string;
+  use_count: number;
+}
+
 export interface RecentDocument {
   version: number;
   kubernetes: {
@@ -38,6 +46,9 @@ export interface RecentDocument {
   };
   images: {
     targets: ImageRecentTarget[];
+  };
+  selections: {
+    targets: SelectionRecentTarget[];
   };
   [key: string]: unknown;
 }
@@ -49,6 +60,7 @@ function emptyDocument(): RecentDocument {
     version: RECENT_VERSION,
     kubernetes: { targets: [] },
     images: { targets: [] },
+    selections: { targets: [] },
   };
 }
 
@@ -70,6 +82,11 @@ export class RecentStore {
         images: {
           targets: Array.isArray(parsed.images?.targets)
             ? parsed.images.targets
+            : [],
+        },
+        selections: {
+          targets: Array.isArray(parsed.selections?.targets)
+            ? parsed.selections.targets
             : [],
         },
       };

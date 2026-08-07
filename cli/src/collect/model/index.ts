@@ -65,6 +65,7 @@ export async function runCollectModel(
     const tenant = await resolveModelTenant({
       tenantId: opts.tenantId,
       tenantName: opts.tenantName,
+      profileName: access.config.profileName,
       directory: access.directory,
     });
     if (!tenant) {

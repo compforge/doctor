@@ -53,7 +53,12 @@ export function shouldPreviewTenantChoices(
 export async function promptTenantChoice<Choice extends TenantPromptChoice>(input: {
   choices: readonly Choice[];
   title: string;
+  recentChoices?: readonly Choice[];
 }): Promise<Choice | undefined> {
+  const tenantCount = input.choices.filter((choice) => choice.id).length;
+  const tenantCountHint = tenantCount > TENANT_PREVIEW_LIMIT
+    ? `当前租户候选 ${tenantCount} 个（超过 ${TENANT_PREVIEW_LIMIT} 个），`
+    : "";
   const printChoices = (items: readonly Choice[], title: string): void => printNumberedChoices(
     items,
     title,
@@ -62,7 +67,10 @@ export async function promptTenantChoice<Choice extends TenantPromptChoice>(inpu
       : `${choice.name}（${choice.displayName}）`,
   );
   let numberedChoices: readonly Choice[] = [];
-  if (shouldPreviewTenantChoices(input.choices)) {
+  if (tenantCount > TENANT_PREVIEW_LIMIT && input.recentChoices?.length) {
+    printChoices(input.recentChoices, "[recent] 最近常用租户：");
+    numberedChoices = input.recentChoices;
+  } else if (shouldPreviewTenantChoices(input.choices)) {
     printChoices(input.choices, input.title);
     numberedChoices = input.choices;
   }
@@ -71,9 +79,11 @@ export async function promptTenantChoice<Choice extends TenantPromptChoice>(inpu
   return promptSearchableChoice({
     choices: input.choices,
     numberedChoices,
-    question: (listed) => listed
-      ? "请选择租户（序号、名称、展示名或 ID，q 取消）："
-      : `请输入租户关键词（名称、展示名或 ID${specialHint}，q 取消）：`,
+    question: (listed) => tenantCount > TENANT_PREVIEW_LIMIT
+      ? `${tenantCountHint}请输入租户关键词（名称、展示名或 ID${specialHint}）${listed ? "或列表序号" : ""}（q 取消）：`
+      : listed
+        ? "请选择租户（序号、名称、展示名或 ID，q 取消）："
+        : `请输入租户关键词（名称、展示名或 ID${specialHint}，q 取消）：`,
     resolve: (answer, numberedChoices) =>
       resolveTenantPromptChoice(input.choices, answer, numberedChoices),
     printChoices,

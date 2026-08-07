@@ -128,4 +128,29 @@ describe("recent.json", () => {
       "team-b",
     ])).toEqual(["team-b", "team-a"]);
   });
+
+  test("通用选择历史按 kind 和 scope 隔离最近常用候选", () => {
+    const path = recentPath();
+    let now = new Date("2026-07-28T05:00:00.000Z");
+    const recent = new RecentSelections(path, () => now);
+    const choices = [{ id: "tenant-a" }, { id: "tenant-b" }, { id: "tenant-c" }];
+
+    recent.recordChoice("tenant", "profile-a", "tenant-a");
+    now = new Date("2026-07-28T06:00:00.000Z");
+    recent.recordChoice("tenant", "profile-a", "tenant-b");
+    recent.recordChoice("tenant", "profile-b", "tenant-c");
+
+    expect(recent.recentChoices(
+      "tenant",
+      "profile-a",
+      choices,
+      (choice) => choice.id,
+    )).toEqual([{ id: "tenant-b" }, { id: "tenant-a" }]);
+    expect(recent.recentChoices(
+      "tenant",
+      "profile-b",
+      choices,
+      (choice) => choice.id,
+    )).toEqual([{ id: "tenant-c" }]);
+  });
 });

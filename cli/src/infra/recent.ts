@@ -2,6 +2,7 @@ import {
   RecentStore,
   type ImageRecentTarget,
   type KubernetesRecentTarget,
+  type SelectionRecentTarget,
 } from "./recent-store";
 import type { KubernetesRecentScope } from "./k8s/recent-scope";
 export {
@@ -11,6 +12,7 @@ export {
 
 const MAX_KUBERNETES_TARGETS = 200;
 const MAX_IMAGE_TARGETS = 50;
+const MAX_SELECTION_TARGETS = 100;
 
 interface NamedChoice {
   name: string;
@@ -87,6 +89,12 @@ function imageTargetKey(
     target.registry,
     target.namespace,
   ].join("\u0000");
+}
+
+function selectionTargetKey(
+  target: Pick<SelectionRecentTarget, "kind" | "scope" | "value">,
+): string {
+  return [target.kind, target.scope, target.value].join("\u0000");
 }
 
 export class RecentSelections {
@@ -264,6 +272,51 @@ export class RecentSelections {
       ]
         .sort((left, right) => right.last_used_at.localeCompare(left.last_used_at))
         .slice(0, MAX_IMAGE_TARGETS);
+    });
+  }
+
+  recentChoices<Choice>(
+    kind: string,
+    scope: string,
+    choices: readonly Choice[],
+    valueOf: (choice: Choice) => string,
+    limit = 5,
+  ): Choice[] {
+    const usage = new Map(
+      this.#store.read().selections.targets
+        .filter((target) => target.kind === kind && target.scope === scope)
+        .map((target) => [
+          target.value,
+          { last_used_at: target.last_used_at, use_count: target.use_count },
+        ]),
+    );
+    return [...choices]
+      .filter((choice) => usage.has(valueOf(choice)))
+      .sort((left, right) =>
+        compareUsage(usage.get(valueOf(left)), usage.get(valueOf(right)))
+      )
+      .slice(0, limit);
+  }
+
+  recordChoice(kind: string, scope: string, value: string): void {
+    this.#store.update((document) => {
+      const next = { kind, scope, value };
+      const key = selectionTargetKey(next);
+      const previous = document.selections.targets.find(
+        (item) => selectionTargetKey(item) === key,
+      );
+      document.selections.targets = [
+        {
+          ...next,
+          last_used_at: this.now().toISOString(),
+          use_count: (previous?.use_count ?? 0) + 1,
+        },
+        ...document.selections.targets.filter(
+          (item) => selectionTargetKey(item) !== key,
+        ),
+      ]
+        .sort((left, right) => right.last_used_at.localeCompare(left.last_used_at))
+        .slice(0, MAX_SELECTION_TARGETS);
     });
   }
 
