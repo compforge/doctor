@@ -10,13 +10,19 @@ import {
   type SearchableChoiceResolution,
 } from "../terminal/selection";
 import { promptTenantChoice } from "../terminal/tenant-selection";
+import {
+  recentSelectionsForInteractive,
+  type RecentSelections,
+} from "../infra/recent";
 import type { SelectedInferenceModel } from "./types";
 
 export async function resolveModelTenant(input: {
   tenantId?: string;
   tenantName?: string;
+  profileName?: string;
   directory: TenantDirectory;
   interactive?: boolean;
+  recent?: RecentSelections;
   prompt?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
 }): Promise<TenantSummary | undefined> {
   const tenantId = input.tenantId?.trim();
@@ -31,10 +37,19 @@ export async function resolveModelTenant(input: {
   }
   const tenants = await input.directory.listActive();
   if (!tenants.length) throw new Error("租户目录未返回当前启用租户");
-  return (input.prompt ?? ((choices) => promptTenantChoice({
+  const recent = recentSelectionsForInteractive(input.interactive, input.recent);
+  const recentChoices = input.profileName && recent
+    ? recent.recentChoices("tenant", input.profileName, tenants, (tenant) => tenant.id)
+    : [];
+  const selected = await (input.prompt ?? ((choices) => promptTenantChoice({
     choices,
     title: "[model] 当前启用租户：",
+    recentChoices,
   })))(tenants);
+  if (selected && input.profileName) {
+    recent?.recordChoice("tenant", input.profileName, selected.id);
+  }
+  return selected;
 }
 
 function modelSearchKeys(model: Model): string[] {

@@ -204,7 +204,7 @@ export async function resolvePodTarget(input: {
       ? recent.recentPods(recentScope, input.config.kubernetes.namespace, matches)
       : [];
     if (recentPods.length) {
-      printPodChoices(recentPods, "[recent] 最近使用的 Pod：");
+      printPodChoices(recentPods, "[recent] 最近常用 Pod：");
     }
     const pod = await promptPod(matches, keyword ? true : recentPods);
     if (!pod) return undefined;

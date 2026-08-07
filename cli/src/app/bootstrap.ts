@@ -242,7 +242,10 @@ async function resolveLocalModel(
   });
   if (!access) throw new Error("已取消 Doctor chat 模型选择");
   try {
-    const tenant = await resolveModelTenant({ directory: access.directory });
+    const tenant = await resolveModelTenant({
+      directory: access.directory,
+      profileName,
+    });
     if (!tenant) throw new Error("已取消租户选择");
     terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
     const model = await selectChatModel(await access.catalog.listAvailable(tenant.id, "llm"));

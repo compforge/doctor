@@ -129,6 +129,9 @@ export async function promptPod(
   choices: readonly PodChoice[],
   listedChoices: boolean | readonly PodChoice[] = false,
 ): Promise<string | undefined> {
+  const podCountHint = choices.length > POD_PREVIEW_LIMIT
+    ? `当前 Pod 候选 ${choices.length} 个（超过 ${POD_PREVIEW_LIMIT} 个），`
+    : "";
   let numberedChoices = Array.isArray(listedChoices)
     ? listedChoices
     : listedChoices
@@ -141,9 +144,11 @@ export async function promptPod(
   return promptSearchableChoice({
     choices,
     numberedChoices,
-    question: (listed) => listed
-      ? "请选择 Pod（序号、名称或关键词，q 取消）："
-      : "请输入 Pod 名称或关键词（q 取消）：",
+    question: (listed) => choices.length > POD_PREVIEW_LIMIT
+      ? `${podCountHint}请输入 Pod 关键词（支持完整名称）${listed ? "或列表序号" : ""}（q 取消）：`
+      : listed
+        ? "请选择 Pod（序号、名称或关键词，q 取消）："
+        : "请输入 Pod 关键词（支持完整名称，q 取消）：",
     resolve: (answer, numberedChoices) => {
       const resolution = resolvePodAnswer(choices, answer, numberedChoices);
       return resolution.kind === "selected"

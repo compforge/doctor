@@ -16,7 +16,10 @@ import {
   recordRecentServiceTargets,
   type ServiceChoice,
 } from "../../infra/k8s/service-selection";
-import type { RecentSelections } from "../../infra/recent";
+import {
+  recentSelectionsForInteractive,
+  type RecentSelections,
+} from "../../infra/recent";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { prepareTerminalInput } from "../../terminal/input";
 import { terminalStdout } from "../../terminal/output";
@@ -228,7 +231,10 @@ export async function resolveConfigServiceSelection(
   return selected;
 }
 
-async function promptTenant(tenants: readonly TenantSummary[]): Promise<TenantPromptChoice | undefined> {
+async function promptTenant(
+  tenants: readonly TenantSummary[],
+  recentChoices: readonly TenantSummary[],
+): Promise<TenantPromptChoice | undefined> {
   const choices: TenantPromptChoice[] = [
     { name: "仅部署配置", displayName: "不读取租户配置" },
     ...tenants,
@@ -236,6 +242,7 @@ async function promptTenant(tenants: readonly TenantSummary[]): Promise<TenantPr
   return promptTenantChoice({
     choices,
     title: "[collect] 当前启用租户：",
+    recentChoices,
   });
 }
 
@@ -243,6 +250,7 @@ export interface ConfigTenantSelectionInput {
   config: ConfigCollectConfig;
   directory: TenantDirectory;
   interactive?: boolean;
+  recent?: RecentSelections;
   prompt?: (tenants: readonly TenantSummary[]) => Promise<TenantPromptChoice | undefined>;
   log?: (line: string) => void;
 }
@@ -271,9 +279,17 @@ export async function resolveConfigTenantSelection(
     input.log?.("[collect] 租户目录未返回启用租户，继续仅统计部署配置");
     return input.config;
   }
-  const selected = await (input.prompt ?? promptTenant)(tenants);
+  const recent = recentSelectionsForInteractive(input.interactive, input.recent);
+  const recentChoices = recent?.recentChoices(
+    "tenant",
+    input.config.profileName,
+    tenants,
+    (tenant) => tenant.id,
+  ) ?? [];
+  const selected = await (input.prompt ?? ((choices) => promptTenant(choices, recentChoices)))(tenants);
   if (!selected) return undefined;
   if (!selected.id) return { ...input.config, tenantName: undefined };
+  recent?.recordChoice("tenant", input.config.profileName, selected.id);
   input.log?.(`[collect] tenant: ${selected.name}（${selected.id}）`);
   return { ...input.config, tenantId: selected.id, tenantName: selected.name };
 }
