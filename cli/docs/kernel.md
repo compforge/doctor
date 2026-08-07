@@ -205,26 +205,26 @@ Node SEA；无法证明目标满足 modern 基线时保守选择兼容产物。�
 
 ## Command 文档约定
 
-每个 `doctor <command>` 只在 `docs/command/` 维护一篇文档，描述领域理念、主流程和不能从单文件代码
+每个 `doctor <command>` 只在 `docs/commands/` 维护一篇文档，描述领域理念、主流程和不能从单文件代码
 看出的关键设计；共享执行协议只在本文定义，字段、阈值、参数和实现形状留在代码。命令文档如下：
 
 | Command | 文档 |
 |---|---|
-| Config | [`command/config-diagnosis.md`](command/config-diagnosis.md) |
-| CPU | [`command/cpu-diagnosis.md`](command/cpu-diagnosis.md) |
-| Data | [`command/data-diagnosis.md`](command/data-diagnosis.md) |
-| Debug | [`command/debug-container.md`](command/debug-container.md) |
-| HTTP | [`command/http-diagnosis.md`](command/http-diagnosis.md) |
-| Image | [`command/image.md`](command/image.md) |
-| Install | [`command/install.md`](command/install.md) |
-| Log | [`command/log-diagnosis.md`](command/log-diagnosis.md) |
-| MCP | [`command/mcp-diagnosis.md`](command/mcp-diagnosis.md) |
-| Memory | [`command/memory-diagnosis.md`](command/memory-diagnosis.md) |
-| Metric | [`command/metric-diagnosis.md`](command/metric-diagnosis.md) |
-| Model | [`command/model-diagnosis.md`](command/model-diagnosis.md) |
-| Network | [`command/network-diagnosis.md`](command/network-diagnosis.md) |
-| Store（DB/VDB/S3/Redis） | [`command/store-diagnosis.md`](command/store-diagnosis.md) |
-| Trace | [`command/trace-diagnosis.md`](command/trace-diagnosis.md) |
+| Config | [`commands/config-diagnosis.md`](commands/config-diagnosis.md) |
+| CPU | [`commands/cpu-diagnosis.md`](commands/cpu-diagnosis.md) |
+| Data | [`commands/data-diagnosis.md`](commands/data-diagnosis.md) |
+| Debug | [`commands/debug-container.md`](commands/debug-container.md) |
+| HTTP | [`commands/http-diagnosis.md`](commands/http-diagnosis.md) |
+| Image | [`commands/image.md`](commands/image.md) |
+| Install | [`commands/install.md`](commands/install.md) |
+| Log | [`commands/log-diagnosis.md`](commands/log-diagnosis.md) |
+| MCP | [`commands/mcp-diagnosis.md`](commands/mcp-diagnosis.md) |
+| Memory | [`commands/memory-diagnosis.md`](commands/memory-diagnosis.md) |
+| Metric | [`commands/metric-diagnosis.md`](commands/metric-diagnosis.md) |
+| Model | [`commands/model-diagnosis.md`](commands/model-diagnosis.md) |
+| Network | [`commands/network-diagnosis.md`](commands/network-diagnosis.md) |
+| Store（DB/VDB/S3/Redis） | [`commands/store-diagnosis.md`](commands/store-diagnosis.md) |
+| Trace | [`commands/trace-diagnosis.md`](commands/trace-diagnosis.md) |
 
 新增 command 时先定义 Facts、Observations、Evidence/Findings/Coverage 和纯 detector，再实现 Inspect/Probe
 与 renderer；契约测试至少覆盖依赖调度、能力降级、授权拒绝、敏感信息边界和交付结果。若新增内容只是

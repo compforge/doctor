@@ -46,4 +46,4 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
-- `docs/command/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
+- `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
