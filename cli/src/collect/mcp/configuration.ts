@@ -132,7 +132,7 @@ export async function resolveMcpConfiguration(
   let runtimeToolsError: string | undefined;
   let gatewayEndpoint;
   try {
-    gatewayEndpoint = await pluginContext.portForward({
+    gatewayEndpoint = await pluginContext.infra.kubernetes.portForward({
       host: gatewayService,
       port: capability.endpoint.port,
     });

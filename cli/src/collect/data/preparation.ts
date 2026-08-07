@@ -3,7 +3,8 @@ import type {
   ServiceCatalog,
 } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
-import { createPluginContext } from "../../plugin/context";
+import { resolveKubernetesCommandContext, type CommandContext } from "../../command";
+import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import type {
   DataConfig,
   DataServiceSelection,
@@ -38,9 +39,10 @@ export async function prepareDataAccess(
   selections: readonly DataServiceSelection[],
   catalog: ServiceCatalog,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
+  commandContext?: CommandContext,
 ): Promise<DataAccessPreparation> {
   const confirmed: ConfirmedDataServiceTarget[] = [];
-  const managedContexts: Array<ReturnType<typeof createPluginContext>> = [];
+  const managedContexts: ManagedPluginContext[] = [];
 
   for (const selection of selections) {
     const declared = catalog.findWith(selection.service, "data");
@@ -55,12 +57,16 @@ export async function prepareDataAccess(
       continue;
     }
     let context = injectedContexts?.[selection.service];
-    let managed: ReturnType<typeof createPluginContext> | undefined;
+    let managed: ManagedPluginContext | undefined;
     if (!context) {
-      managed = createPluginContext(executor, config.kube, {
-        profileName: config.profileName,
+      managed = await openPluginContext(executor, config.kube, {
+        env: config.profileName,
+        config: commandContext?.profile.pluginConfig,
         databaseIdentity: config.fallbackIdentity,
         service: { name: selection.service },
+        command: "doctor data",
+        capability: declared.capabilities.data,
+        authorization: resolveKubernetesCommandContext(executor, commandContext).access,
       });
       context = managed;
     }

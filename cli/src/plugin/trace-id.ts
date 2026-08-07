@@ -1,7 +1,8 @@
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
+import { resolveKubernetesCommandContext, type CommandContext } from "../command";
 import type { Executor, KubectlOptions } from "../infra/k8s/executor";
 import { terminalStdout } from "../terminal/output";
-import { createPluginContext } from "./context";
+import { openPluginContext, type ManagedPluginContext } from "./context";
 
 export interface ResolvePluginTraceIdOptions {
   bizId: string;
@@ -9,6 +10,8 @@ export interface ResolvePluginTraceIdOptions {
   kubeconfig?: string;
   context?: string;
   profileName: string;
+  command: "doctor trace" | "doctor log";
+  commandContext?: CommandContext;
 }
 
 export interface ResolvedPluginTraceId {
@@ -42,14 +45,18 @@ export async function resolvePluginTraceId(
   terminalStdout.write(`[collect] 正在通过 ${services.join(", ")} 解析 trace_id…\n`);
   for (const provider of providers) {
     let context = injectedContexts?.[provider.name];
-    let managed: ReturnType<typeof createPluginContext> | undefined;
+    let managed: ManagedPluginContext | undefined;
     if (!context) {
-      managed = createPluginContext(executor, kube, {
-        profileName: opts.profileName,
+      managed = await openPluginContext(executor, kube, {
+        env: opts.profileName,
+        config: opts.commandContext?.profile.pluginConfig,
         service: {
           name: provider.name,
           port: provider.port,
         },
+        command: opts.command,
+        capability: provider.capabilities.traceId,
+        authorization: resolveKubernetesCommandContext(executor, opts.commandContext).access,
       });
       context = managed;
     }

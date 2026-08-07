@@ -1,19 +1,17 @@
 # Plugin 分发
 
-> 协议包与源码目录边界已落地，归档安装和 profile 加载尚未实现。本文定义 doctor CLI 的本地 Plugin
-> 分发边界；首版面向 ToB 离线交付，不引入 Marketplace、独立 Runner 或热加载。
-
 ## 理念 / 概念
 
 Doctor Core 保持开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
-Plugin 用一个版本化归档把这些业务扩展从 core 中分离，并允许同一份交付物同时贡献：
+Plugin 通过版本化、自包含、可离线交付的归档分发这些业务扩展，同一份交付物同时贡献：
 
 - **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability，并在运行时携带同版本
   已解析的 `PluginSkill`；
 - **Skill 资源**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
 
-一个 Plugin 只导出一个 `PluginDefinition`，不再增加额外业务中间层。Service Catalog 仍是 capability
-的事实来源；Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
+Plugin 是 Service 与 Skill 的打包和分发单位。`PluginDefinition` 是唯一运行时入口，其中
+Service Catalog 可包含组成同一应用的多个 Service，每个 Service 各自声明 capability 及所需 access；
+同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
 例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明，`trace`/`log` 只消费其
 约定结果，不通过通用 data 查询或 span tag 猜测业务关系。
@@ -27,17 +25,30 @@ plugins/<plugin>/            可独立构建、归档和分发的具体 Plugin �
 ```
 
 领域依赖保持 `cli/collect -> packages/plugin <- plugins/<plugin>`。CLI core 只接收注入的
-`PluginDefinition`，不引用具体 Plugin；根目录发行构建和后续 profile loader 分别负责在编译期、运行期
+`PluginDefinition`，不引用具体 Plugin；根目录发行构建和 profile loader 分别负责在编译期、运行期
 取得具体实现，collect 不感知来源。
 
-Doctor 与 Plugin 的运行边界只约定三件事：Plugin 声明自己能提供哪些 capability；Doctor 在每次调用时
-告知当前 profile 选择的 Kubernetes 环境和 Service；Plugin 返回对应 capability 约定的结果，使 Doctor
-能够统一串联、诊断和展示。Core 负责通用 Host/Target 访问和 Doctor-owned operation，Plugin 负责业务
-目标与数据语义；Plugin 如何访问 Service、HTTP 或数据库仍属于其自身实现，不进入能力协议。
-当后续操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
+Doctor 与 Plugin 的运行边界围绕 capability 调用展开：Plugin 声明自己能提供哪些 capability；Doctor 在每次调用时
+告知当前 profile 选择的 Target 和 Target-scoped access；Plugin 返回对应 capability 约定的结果，使
+Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访问和 Doctor-owned operation，Plugin
+负责业务目标与数据语义；业务 HTTP/数据库协议仍属于 Plugin，但 Kubernetes 传输和 port-forward
+生命周期不由 Plugin 重建。
+当操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
 Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
-首版只保留两个持久事实：
+协议面分为四类：
+
+| 协议面 | 方向 | 所有权 |
+|---|---|---|
+| access | Plugin capability → Core | Plugin 声明最小需求，Core 合并、预检并执行策略 |
+| data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
+| infra | Core → Plugin context | 当前 Target 的 Kubernetes access、取消与资源生命周期等运行便利 |
+| config | profile/Core → Plugin context | Core 不透明保存和透传，schema、校验和解释归 Plugin |
+
+这四类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
+连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
+
+持久化模型只包含两个事实：
 
 1. Doctor Host 已安装哪些 `plugin@version`；
 2. 每个 profile 选择哪个精确插件版本。
@@ -53,14 +64,14 @@ Profile ──select exact versions───────┘
    └── Skills ─────────────────────────────────> local doctor chat
 ```
 
-一个 profile 选择一个业务 Plugin；切换 profile 即切换 Plugin。一个 Plugin 可同时携带多个 Skill，
-不为多个业务 Plugin 的并行组合设计额外生命周期。
+一个 profile 选择一个业务 Plugin；切换 profile 即切换整组 Service Catalog 与 Skills。一个 Plugin 可
+同时携带多个 Service 和多个 Skill，不为多个业务 Plugin 的并行组合设计额外生命周期。
 
 ## 流程
 
 ### 归档与安装目录
 
-首版接受 tar/tar.gz；后续增加其它归档或下载来源时，仍落到同一安装目录：
+Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目录：
 
 ```text
 ~/.doctor/plugins/
@@ -116,8 +127,14 @@ profile 中的选择关系示意如下：
 ```yaml
 profiles:
   sample:
-    plugin: sample@1.2.0
+    plugin:
+      ref: sample@1.2.0
+      config:
+        region: example
 ```
+
+`ref` 选择精确交付版本；`config` 由 Core 原样保存并只放进该 Plugin 的调用上下文。Core 不根据其中
+字段推导 Target 或权限，Plugin 负责校验自己的 schema。
 
 ### 命令运行
 
@@ -125,13 +142,19 @@ CLI composition root 解析 profile 后加载其精确 Plugin 版本：
 
 1. 校验引用的版本仍存在，并加载 Plugin 代码与 Skill；
 2. Skill name 冲突时直接报错，不按加载顺序静默覆盖；
-3. 需要业务语义的 collect 命令取得 profile 选择的 `PluginDefinition`，继续走现有通用 collect 链路；
+3. 需要业务语义的 collect 命令取得 profile 选择的 `PluginDefinition`，进入通用 collect 链路；
 4. Plugin command 始终可见，缺少 required capability 时提示具体缺口；不依赖 Plugin 的 Core/离线命令
    保持零配置可用；
 5. `doctor chat` 只加载 profile 精确选择的 Plugin 所携带的 Skills，并把解析结果交给本地 Agent。
 
-Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上传本地 Skill 或 Plugin；若后续需要
-会话级上传，应作为独立协议和授权能力设计，不能隐含在 Plugin load 中。
+启动本地 Agent 前，Doctor 以 profile name 作为 env 标识，并把 env、namespace、readonly 组成
+`SkillExecutionTarget`。Plugin 可用 `prepareSkillContext` 补充 OpenSearch、DB 等业务访问事实；Core
+直接把 kubeconfig 等 profile-owned target 字段写入脚本的 `TARGET_*` 环境，不经 Plugin 转交。profile
+确定的 target 字段始终覆盖 Plugin 返回值，避免 Plugin 在无感知情况下把会话重定向到另一环境。凭据
+只能进入执行环境，不能写进会被模型看到的 `contextPrompt`。
+
+Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上传本地 Skill 或 Plugin；会话级上传属于
+独立协议和授权能力，不隐含在 Plugin load 中。
 
 ### 升级与回退
 
@@ -141,31 +164,36 @@ Plugin 是 Doctor Host 的本地状态。CLI 不向远端执行环境隐式上�
 
 ## 关键设计
 
-### Profile 取代独立激活生命周期
+### Profile 是唯一激活边界
 
-Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主。profile 已经拥有环境、凭据和能力
-选择，继续由它选择 Plugin/Skills 能避免再维护 Instance、Binding
-及二者与 profile 的同步关系。
+Doctor 的 ToB 使用方式以一套现场配置对应一个业务 Plugin 为主。profile 同时承载环境、凭据、能力
+选择以及 Plugin/Skills 的精确版本选择，因此不需要 Instance、Binding 或额外的同步关系。
 
 ### 确定性能力与 Skill 共用版本生命周期
 
 `PluginDefinition` 的 capability 是确定性诊断代码，`PluginSkill` 是 agent 使用的知识与工作流。
 两者运行接口独立，但由同一个 runtime definition 汇合，并共同跟随 Plugin 安装、选择、信任和升级；
-Skill 不再建立平行的全局生命周期。
+Skill 没有平行的全局生命周期。
+
+Skill 资源本身保持宿主中立：同一份多环境台账和脚本原样分发。环境选择与基础设施连接属于宿主和
+Plugin 的准备边界，不通过裁剪 Skill、修改 Skill 文案或维护宿主专属副本表达。
 
 ### 协议负责能力对接，SDK 负责代码复用
 
 `doctor-plugin` 同时承担稳定协议和可选 SDK，但两者职责不同。协议定义 Plugin/Service/capability 的
-声明、调用输入输出，以及所有 Service 共用的 `PluginContext`；上下文提供当前 kubeconfig、context、namespace、
-当前 Service 和取消信号等已确定的运行态事实，不为不同 Service 固化不同访问接口。Plugin 可用这些
-Kubernetes 环境信息自行读取 Service、定位 Pod 或访问其它资源，Core 不接收再回传 Plugin-owned 的
-selector 等实现细节。profile 切换后，
-Doctor 在下一次调用中注入新的上下文，Plugin 不持有旧环境选择。
+声明、调用输入输出，以及所有 Service 共用的 `PluginContext`；上下文提供 namespace、当前 Service、
+取消信号和 Target-scoped Kubernetes access。Plugin 用 access 读取 Service、定位 Pod 或访问其它资源，
+Core 不接收再回传 Plugin-owned 的 selector 等实现细节。profile 切换后，Doctor 在下一次调用中注入新的
+上下文，Plugin 不持有 kubeconfig 或旧环境选择。
 
-port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由 `PluginContext` 按需
-提供。HTTP、数据库和 Kubernetes 访问由 Plugin 自行实现；以后只有出现稳定的跨 Plugin 重复时，才把
-helper 提取到 SDK。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Service 定位规则、
-API、SQL、表结构及诊断知识始终属于具体 Plugin。
+Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
+`PluginContext` 按需提供。HTTP、数据库客户端由 Plugin 实现；SDK helper 只承载稳定且跨 Plugin 同义
+重复的代码。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Service 定位规则、API、
+SQL、表结构及诊断知识始终属于具体 Plugin。
+
+access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
+本轮参与的 Service，再把 Core command 自身需求与这些 capability 的声明合成阶段性的 access plan；
+因此同一 Plugin 中未参与本次命令的 Service 不会扩大预检权限。
 
 Plugin 的贡献深度随 command 类型变化：业务型命令由 capability 执行业务访问并返回约定数据；
 基础设施型命令只需要 Plugin 贡献目标或连接信息，标准诊断算法仍由 Core 持有；混合型命令先由 Plugin
@@ -176,17 +204,16 @@ Plugin 的贡献深度随 command 类型变化：业务型命令由 capability �
 
 解包、路径校验、版本目录和 profile 更新属于 `cli/src/plugin` 宿主边界；`packages/plugin` 只定义
 Plugin 与 Service 公共语义，collect 只消费注入的 `PluginDefinition`，本地 agent loop 只消费解析后的
-Skills。这样将来由本地 tar
-扩展到私有下载源时，不会改变 Catalog 或诊断领域实现。
+Skills。归档来源只负责取得交付物，不影响 Catalog 或诊断领域实现。
 
 ### 归档是受信任代码，但仍需安全解包
 
-Plugin 与 Doctor CLI 同进程运行，拥有相同的文件、网络和凭据权限；首版不承诺安全沙箱，只允许加载
+Plugin 与 Doctor CLI 同进程运行，拥有相同的文件、网络和凭据权限；Plugin 不是安全沙箱，只允许加载
 来自受信任交付渠道的 Plugin。解包仍必须拒绝绝对路径、`..` 穿越、符号链接逃逸和越出插件根目录的
-manifest 入口，并使用临时目录加原子 rename，避免半安装状态。签名和私有仓库可以后续增加，不改变
-本地安装模型。
+manifest 入口，并使用临时目录加原子 rename，避免半安装状态。签名校验和私有仓库属于归档来源与信任
+能力，不改变本地安装模型。
 
-### 首版明确不做
+### 非目标
 
 - Marketplace、在线搜索或自动升级；
 - Package / Instance / Binding、独立 Runner 或插件间依赖解析；

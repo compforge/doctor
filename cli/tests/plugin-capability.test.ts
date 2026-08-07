@@ -80,6 +80,7 @@ test("traceId capability 以 Service provider 为单位发现", () => {
       name: "trace-api",
       capabilities: {
         traceId: {
+          access: {},
           resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
         },
       },
@@ -103,20 +104,22 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     id: "trace-sample",
     services: createServiceCatalog([{
       name: "first-api",
-      capabilities: { traceId: { resolve: async () => undefined } },
+      capabilities: { traceId: { access: {}, resolve: async () => undefined } },
     }, {
       name: "trace-api",
       capabilities: {
         traceId: {
+          access: {},
           resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
             expect(context).toMatchObject({
-              profileName: "test",
-              kubeconfig: "/tmp/test-kubeconfig",
-              kubeContext: "test-context",
-              namespace: "default",
-              service: { name: "trace-api" },
+              target: {
+                env: "test",
+                namespace: "default",
+                service: { name: "trace-api" },
+              },
             });
-            expect(context.databaseIdentity).toBeUndefined();
+            expect(context.infra.kubernetes).toBeDefined();
+            expect(context.infra.databaseIdentity).toBeUndefined();
             context.onDispose(() => { throw new Error("cleanup failed"); });
             return { traceId: `trace-${bizId}`, resolvedAs: "request_id" };
           },
@@ -131,6 +134,7 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     kubeconfig: "/tmp/test-kubeconfig",
     context: "test-context",
     profileName: "test",
+    command: "doctor trace",
   }, tracePlugin, {
     run: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },
     exec: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },

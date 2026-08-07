@@ -41,6 +41,11 @@ export function resolveWorkingProfileName(
   return resolveProfile(loadConfig(resolveConfigPath(opts.config)), opts.profile).name;
 }
 
+export function resolveWorkingProfile(opts: WorkingProfileOptions): { name: string; profile: Profile } {
+  const name = resolveWorkingProfileName(opts);
+  return resolveProfile(loadConfig(resolveConfigPath(opts.config)), name);
+}
+
 function hasPersistedProfiles(raw: string): boolean {
   if (!raw.trim()) return false;
   const data = parseYaml(raw) as unknown;

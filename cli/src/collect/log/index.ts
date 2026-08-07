@@ -144,6 +144,8 @@ export async function runCollectLog(
       kubeconfig: resolved.kubeconfig,
       context: opts.context,
       profileName: resolveWorkingProfileName(opts),
+      command: "doctor log",
+      commandContext,
     }, plugin, executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);

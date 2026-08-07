@@ -8,7 +8,7 @@ import type {
   TenantConfigReader,
 } from "@compforge/doctor-plugin";
 import type { TenantDirectory } from "@compforge/doctor-plugin";
-import { createPluginContext } from "../../plugin/context";
+import { openPluginContext } from "../../plugin/context";
 import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runDiagnosis } from "../engine";
@@ -75,7 +75,8 @@ export async function runCollectConfig(
       commandContext,
     });
   }
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
+  await enforceKubernetesAccess(authorization, {
     command: "doctor config",
     needs: [{
       requirement: "required",
@@ -113,7 +114,7 @@ export async function runCollectConfig(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod/Tenant 证据，ConfigMap 配置标记为缺失",
   }] : [];
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+  await enforceKubernetesAccess(authorization, {
     command: "doctor config",
     needs: [
       ...deploymentNeeds,
@@ -141,13 +142,17 @@ export async function runCollectConfig(
     return 2;
   }
   const directoryContext = tenantDirectoryService && config.tenantConfiguration && !injectedTenantDirectory
-    ? createPluginContext(executor, config.kube, {
-        profileName: config.profileName,
+    ? await openPluginContext(executor, config.kube, {
+        env: config.profileName,
+        config: commandContext?.profile.pluginConfig,
         databaseIdentity: config.fallbackIdentity,
         service: {
           name: config.tenantConfiguration.directoryTarget.service,
           port: config.tenantConfiguration.directoryTarget.port,
         },
+        command: "doctor config",
+        capability: tenantDirectoryService.capabilities.tenantDirectory,
+        authorization,
       })
     : undefined;
   const tenantDirectory = injectedTenantDirectory ?? (
@@ -189,6 +194,8 @@ export async function runCollectConfig(
   let diagnosisFailure: string | undefined;
   const ctx: ConfigCollectContext = {
     executor,
+    authorization,
+    pluginConfig: commandContext?.profile.pluginConfig ?? {},
     bundle,
     tenantConfigReader: injectedTenantConfigReader,
     log,

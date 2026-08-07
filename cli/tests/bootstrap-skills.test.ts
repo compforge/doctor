@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PatchEmitter } from "@compforge/agentue/ui";
@@ -9,7 +9,61 @@ import {
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
 
-import { bootstrap } from "../src/app/bootstrap";
+import {
+  bootstrap,
+  createLocalAgentContext,
+  prepareLocalAgentContext,
+} from "../src/app/bootstrap";
+
+test("local Agent context binds Skill execution to the selected profile", () => {
+  const context = createLocalAgentContext("as-dev", {
+    readonly: true,
+    namespace: "vke-system",
+    kube: { kubeconfig_path: "~/.kube/a-dev" },
+  });
+
+  expect(context.shellEnv).toEqual({
+    TARGET_ENV: "as-dev",
+    TARGET_ACCESS_MODE: "remote",
+    TARGET_READONLY: "true",
+    TARGET_KUBECONFIG: join(homedir(), ".kube", "a-dev"),
+    TARGET_NAMESPACE: "vke-system",
+  });
+  expect(context.contextPrompt).toContain("already bound this session to one infrastructure target");
+  expect(context.contextPrompt).toContain("Do not ask the user to choose an environment");
+});
+
+test("Plugin can prepare infra facts but cannot override the profile target", async () => {
+  const plugin = {
+    id: "sample",
+    services: createServiceCatalog([]),
+    prepareSkillContext(target) {
+      expect(target).toEqual({
+        env: "dev",
+        namespace: "vke-system",
+        readonly: true,
+      });
+      return {
+        env: {
+          TARGET_ENV: "test",
+          TARGET_NAMESPACE: "other-system",
+          TARGET_OPENSEARCH_URL: "https://opensearch:9200",
+        },
+        contextPrompt: "The target OpenSearch connection is prepared.",
+      };
+    },
+  } satisfies PluginDefinition;
+  const context = await prepareLocalAgentContext("dev", {
+    readonly: true,
+    namespace: "vke-system",
+    kube: { kubeconfig_path: "~/.kube/a-dev" },
+  }, plugin);
+
+  expect(context.shellEnv.TARGET_ENV).toBe("dev");
+  expect(context.shellEnv.TARGET_NAMESPACE).toBe("vke-system");
+  expect(context.shellEnv.TARGET_OPENSEARCH_URL).toBe("https://opensearch:9200");
+  expect(context.contextPrompt).toContain("The target OpenSearch connection is prepared.");
+});
 
 test("bootstrap uses the local Agent and injects embedded Plugin Skills even when server is configured", async () => {
   let requestBody: unknown;
@@ -38,6 +92,8 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
     "profiles:",
     "  local:",
     "    server: http://127.0.0.1:1",
+    "    readonly: true",
+    "    namespace: vke-system",
     "    llm:",
     "      provider: openai",
     `      endpoint: http://127.0.0.1:${server.port}/v1`,
@@ -71,6 +127,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
   const serialized = JSON.stringify(requestBody);
   expect(serialized).toContain("<name>sample-ops</name>");
   expect(serialized).toContain(`<location>${skillPath}</location>`);
+  expect(serialized).toContain("already bound this session to one infrastructure target");
   expect(serialized).not.toContain("PRIVATE COMPLETE INSTRUCTIONS");
 });
 

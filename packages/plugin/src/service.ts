@@ -5,6 +5,7 @@ import type {
   ModelInferenceTarget,
 } from "./definition";
 import type { ServiceMcpCapability } from "./mcp";
+import type { CapabilityWithAccess } from "./kubernetes";
 
 export interface TenantSummary {
   id: string;
@@ -17,15 +18,15 @@ export interface TenantDirectory {
   getByName(name: string): Promise<TenantSummary>;
 }
 
-export interface ServiceTenantDirectoryCapability {
+export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {
   create(context: PluginContext): TenantDirectory;
 }
 
-export interface ServiceModelCatalogCapability {
+export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
   create(context: PluginContext): ModelCatalog;
 }
 
-export interface ServiceInferenceCapability {
+export interface ServiceInferenceCapability extends CapabilityWithAccess {
   create(
     context: PluginContext,
     target: ModelInferenceTarget,
@@ -106,7 +107,7 @@ export interface ServiceDataTarget {
   credentialSource: string;
 }
 
-export interface ServiceDataCapability {
+export interface ServiceDataCapability extends CapabilityWithAccess {
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
   /** 存在时表示此 Service 还可扩展这些规范 ID 类型。 */
@@ -129,7 +130,7 @@ export interface ServiceTraceIdResolution {
 }
 
 /** 把 Plugin 认识的业务 ID 解析为 Doctor trace/log 消费的规范 trace_id。 */
-export interface ServiceTraceIdCapability {
+export interface ServiceTraceIdCapability extends CapabilityWithAccess {
   resolve(
     context: PluginContext,
     input: ServiceTraceIdInput,

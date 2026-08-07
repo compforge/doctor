@@ -54,7 +54,7 @@ import type { CliFlags } from "../protocol";
 import { reportError } from "./error-log";
 import { runInit } from "./init";
 import {
-  resolveWorkingProfileName,
+  resolveWorkingProfile,
   runProfile,
   type WorkingProfileOptions,
 } from "./profile";
@@ -346,14 +346,18 @@ function withMetricOptions(cmd: CommandT): CommandT {
 
 async function runCommand(
   context: string,
-  opts: WorkingProfileOptions,
+  opts: WorkingProfileOptions & { kubeconfig?: string; context?: string },
   action: (commandContext: CommandContext, profileName?: string) => Promise<number | void>,
   printProfile = true,
 ): Promise<void> {
   try {
-    const profileName = printProfile ? resolveWorkingProfileName(opts) : undefined;
+    const resolvedProfile = resolveWorkingProfile(opts);
+    const profileName = printProfile ? resolvedProfile.name : undefined;
     if (profileName) terminalStdout.warning(`profile: ${profileName}\n`);
-    const commandContext = await inspectCommandContext(opts);
+    const commandContext = await inspectCommandContext(opts, {
+      name: resolvedProfile.name,
+      pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
+    });
     const code = await action(commandContext, profileName);
     if (typeof code === "number") process.exitCode = code;
   } catch (err) {
@@ -365,7 +369,11 @@ async function runCommand(
 /** Plugin capability 先于 CommandContext/Kubernetes 检查，确保缺业务能力时提示正确边界。 */
 async function runPluginCommand(
   context: string,
-  opts: WorkingProfileOptions,
+  opts: WorkingProfileOptions & {
+    namespace?: string;
+    kubeconfig?: string;
+    context?: string;
+  },
   plugin: PluginDefinition | undefined,
   contract: PluginCapabilityContract,
   action: (
@@ -375,10 +383,14 @@ async function runPluginCommand(
   ) => Promise<number | void>,
 ): Promise<void> {
   try {
-    const profileName = resolveWorkingProfileName(opts);
+    const resolvedProfile = resolveWorkingProfile(opts);
+    const profileName = resolvedProfile.name;
     terminalStdout.warning(`profile: ${profileName}\n`);
     const activePlugin = requirePluginCapabilities(plugin, contract);
-    const commandContext = await inspectCommandContext(opts);
+    const commandContext = await inspectCommandContext(opts, {
+      name: resolvedProfile.name,
+      pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
+    });
     const code = await action(activePlugin, commandContext, profileName);
     if (typeof code === "number") process.exitCode = code;
   } catch (err) {

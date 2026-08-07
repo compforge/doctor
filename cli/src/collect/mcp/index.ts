@@ -21,7 +21,7 @@ import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveApprovalGate } from "../../terminal/approval";
-import { createPluginContext } from "../../plugin/context";
+import { openPluginContext } from "../../plugin/context";
 import { resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
 import { buildMcpEvidence, type McpDiagnosis, type McpFacts } from "./model";
@@ -150,13 +150,17 @@ export async function runCollectMcp(
     writeFileSync(join(staging, name), content, "utf-8");
     return name;
   };
-  const pluginContext = createPluginContext(executor, {
+  const pluginContext = await openPluginContext(executor, {
     namespace: collect.kubernetes.namespace,
     kubeconfig: collect.kubernetes.kubeconfig,
     context: collect.kubernetes.context,
   }, {
-    profileName: collect.profileName,
+    env: collect.profileName,
+    config: commandContext?.profile.pluginConfig,
     service: { name: gatewayService, port: capability.endpoint.port },
+    command: "doctor mcp",
+    capability,
+    authorization: access,
   });
   let configSourceKind: string | undefined;
   let facts: McpFacts | undefined;

@@ -16,7 +16,7 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 | 模块 | 所有权 |
 |---|---|
 | `app` | 命令入口、profile 与 composition root |
-| `chat` | AgentUE model、Session/Controller，以及旧 Server 协议兼容 adapter |
+| `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
 | `command` | Collect/Provision 共用的启动检查、Kubernetes 目标解析与审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
@@ -46,9 +46,4 @@ Doctor CLI 是本地诊断入口和确定性诊断主体。它负责选择目标
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
-- `docs/cpu-diagnosis.md` / `docs/memory-diagnosis.md` — CPU 与内存诊断
-- `docs/network-diagnosis.md` / `docs/http-diagnosis.md` — 网络与 HTTP 诊断
-- `docs/log-diagnosis.md` / `docs/trace-diagnosis.md` — Log 与 Trace 证据
-- `docs/data-diagnosis.md` / `docs/store-diagnosis.md` — Plugin 数据与存储诊断
-- `docs/metric-diagnosis.md` / `docs/model-diagnosis.md` — 指标与模型诊断
-- `docs/image.md` / `docs/debug-container.md` / `docs/install.md` — 诊断能力准备
+- `docs/command/` — 各 `doctor <command>` 的领域理念、主流程与关键设计

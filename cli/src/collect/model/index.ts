@@ -1,7 +1,7 @@
-import type { ServiceWithCapability } from "@compforge/doctor-plugin";
+import type { CapabilityWithAccess, ServiceWithCapability } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { ServiceDefinition } from "@compforge/doctor-plugin";
-import { createPluginContext } from "../../plugin/context";
+import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   createKubernetesExecutor,
@@ -104,7 +104,8 @@ export async function runCollectModel(
     `[model] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
   );
   const executor = createKubernetesExecutor(collect);
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
+  await enforceKubernetesAccess(authorization, {
     command: "doctor model",
     needs: [{
       requirement: "required",
@@ -125,11 +126,20 @@ export async function runCollectModel(
     kubeconfig: collect.kubernetes.kubeconfig,
     context: collect.kubernetes.context,
   };
-  const contexts: Array<ReturnType<typeof createPluginContext>> = [];
-  const contextFor = (service: ServiceDefinition, name?: string, port?: number) => {
-    const context = createPluginContext(executor, kube, {
-      profileName: opts.profileName ?? opts.profile ?? "default",
+  const contexts: ManagedPluginContext[] = [];
+  const contextFor = async (
+    service: ServiceDefinition,
+    capability: CapabilityWithAccess,
+    name?: string,
+    port?: number,
+  ) => {
+    const context = await openPluginContext(executor, kube, {
+      env: opts.profileName ?? opts.profile ?? "default",
+      config: commandContext?.profile.pluginConfig,
       service: { name: name ?? service.name, port: port ?? service.port },
+      command: "doctor model",
+      capability,
+      authorization,
     });
     contexts.push(context);
     return context;
@@ -141,8 +151,9 @@ export async function runCollectModel(
       throw new Error(`Plugin '${plugin.id}' 未提供完整模型诊断能力`);
     }
     const directory = tenantDirectoryService.capabilities.tenantDirectory.create(
-      contextFor(
+      await contextFor(
         tenantDirectoryService,
+        tenantDirectoryService.capabilities.tenantDirectory,
         opts.tenantDirectoryService?.trim() || tenantDirectoryService.name,
         tenantDirectoryPort,
       ),
@@ -159,8 +170,9 @@ export async function runCollectModel(
     terminalStdout.write(`[model] tenant: ${tenant.name}（${tenant.id}）\n`);
 
     const catalog = modelCatalogService.capabilities.modelCatalog.create(
-      contextFor(
+      await contextFor(
         modelCatalogService,
+        modelCatalogService.capabilities.modelCatalog,
         opts.modelCatalogService?.trim() || modelCatalogService.name,
         modelCatalogPort,
       ),
@@ -178,7 +190,7 @@ export async function runCollectModel(
     terminalStdout.write(`[model] inference endpoint: ${model.inference.baseUrl}\n`);
 
     const inference = inferenceService.capabilities.inference.create(
-      contextFor(inferenceService),
+      await contextFor(inferenceService, inferenceService.capabilities.inference),
       model.inference,
       timeoutMs,
     );
