@@ -11,6 +11,7 @@ import {
   type DataOutputFormat,
   type DataServiceSelection,
 } from "./model";
+import type { CommandContext } from "../../command";
 
 export function parseDataOutputFormat(value: string | undefined): DataOutputFormat {
   const format = value?.trim() || "json";
@@ -80,7 +81,11 @@ export async function resolveDataServiceSelection(
   return services.map((service) => ({ service }));
 }
 
-export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCatalog): DataConfig {
+export function resolveDataConfig(
+  opts: CollectDataCliOpts,
+  catalog: ServiceCatalog,
+  commandContext?: CommandContext,
+): DataConfig {
   const bizId = opts.bizId.trim();
   if (!bizId) throw new Error("doctor data 需要非空 --biz-id");
   const format = parseDataOutputFormat(opts.format);
@@ -88,13 +93,15 @@ export function resolveDataConfig(opts: CollectDataCliOpts, catalog: ServiceCata
   const reportName = dataReportName(new Date());
   const outputPath = format === "html" ? resolveDataHtmlOutputPath(opts.output, reportName) : undefined;
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = commandContext
+    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
+    : resolveProfile(loadConfig(configPath), opts.profile);
   const profile = resolvedProfile.profile;
   const fallbackIdentity = profile.db?.user && profile.db.password
     ? { user: profile.db.user, password: profile.db.password }
     : undefined;
-  const kubeconfig = resolveCollectKubeconfig(opts);
-  const namespace = resolveCollectNamespace(opts);
+  const kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile);
+  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
   const services = parseDataServices(opts.services, catalog);
   return {
     ids: [bizId],

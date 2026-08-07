@@ -35,6 +35,27 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 | Operation | 需要授权的副作用描述，本身不执行动作 |
 | Evidence Bundle | manifest、原始输出和摘要组成的可审计产物 |
 
+所有命令在进入上述领域流程前，都经过同一条准备链路：
+
+```text
+validated Profile snapshot + command options
+  → required Plugin capability + Plugin config
+  → declared Host / Kubernetes environment
+  → selected Target + staged access plan
+  → permission check
+  → PreparedCommand
+  → Provision / Inspect+Probe / Chat
+```
+
+Profile 在单次命令内只解析和校验一次，后续 target、infra 与 Plugin context 均消费这份不可变快照。
+Command 声明需要的 Host/Kubernetes 环境和最窄 Plugin capability；目标选择完成后，再把 Core 自身需求与
+本次实际选中的 capability access 合成阶段性 access plan。配置、capability、通道或 required access
+任一不满足时，命令不得进入实际采集、变更或 Agent loop。
+
+环境准备不拥有隐式访问权。若 Service/Pod discovery 本身需要读 Kubernetes，它必须作为独立 access
+need 声明；preferred discovery 被拒绝时可进入已声明的手工输入路径，required operation 被拒绝时才
+终止对应阶段。这样既能在干活前暴露真实权限缺口，也不会按命令的最大可能权限过度预检。
+
 ## 代码地图
 
 ```text
@@ -87,7 +108,7 @@ server 宿主通过自己的 interface、凭据、执行环境和持久化 adapt
 - Host 与 Target 的文件传输由 `infra/file-transfer` 表达，路径和方向必须显式命名；
 - 某侧缺少能力时，错误必须指出缺的是 Host 还是 Target，不能用全局 `available` 混合表达。
 
-Kubernetes 是 Doctor Host 到 Target 的一种访问通道。`app` 先形成 `CommandContext`，各命令再按实际
+Kubernetes 是 Doctor Host 到 Target 的一种访问通道。`app` 完成通用准备并形成 `CommandContext`，各命令再按实际
 资源作用域声明 `required` 或 `preferred` access contract：required 被明确拒绝时停止当前阶段；
 preferred 被拒绝时进入手动输入或低能力降级；`kubectl auth can-i` 无法判断时保留 `unknown`，由实际
 操作给出最终结论。权限上下文按 executor 缓存，但不进入诊断 Facts/Evidence。
@@ -123,7 +144,7 @@ Plugin (versioned distribution unit)
 └── Skills
 ```
 
-访问检查按实际阶段惰性发生，不能以命令可能使用的最大权限提前阻断低能力路径。例如 `doctor debug` 已有
+访问检查在实际工作之前、按当前阶段惰性发生，不能以命令可能使用的最大权限提前阻断低能力路径。例如 `doctor debug` 已有
 可复用 debug container 时不需要 `update pods/ephemeralcontainers`；只有确实需要注入时才检查该权限。
 
 ### 业务型、基础设施型与混合型命令

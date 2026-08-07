@@ -82,6 +82,7 @@ test("traceId capability 以 Service provider 为单位发现", () => {
       name: "trace-api",
       capabilities: {
         traceId: {
+          endpoint: { port: 8080 },
           access: {},
           resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
         },
@@ -107,11 +108,14 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "first-api",
-      capabilities: { traceId: { access: {}, resolve: async () => undefined } },
+      capabilities: {
+        traceId: { endpoint: { port: 8080 }, access: {}, resolve: async () => undefined },
+      },
     }, {
       name: "trace-api",
       capabilities: {
         traceId: {
+          endpoint: { port: 8080 },
           access: {},
           resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
             expect(context).toMatchObject({

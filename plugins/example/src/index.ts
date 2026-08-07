@@ -7,7 +7,6 @@ import pluginPackage from "../package.json" with { type: "json" };
 const services = createServiceCatalog([
   {
     name: "example-api",
-    port: 8080,
     capabilities: {
       config: {},
       log: { default: true },

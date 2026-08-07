@@ -29,6 +29,7 @@ import type {
   ConfigCollectConfig,
   ConfigOutputFormat,
 } from "./model";
+import type { CommandContext } from "../../command";
 
 export { resolveTenantPromptChoice } from "../../terminal/tenant-selection";
 
@@ -82,6 +83,7 @@ export function resolveConfigMarkdownOutputPath(output: string | undefined, repo
 export function resolveConfigCollectConfig(
   opts: CollectConfigCliOpts,
   plugin: PluginDefinition,
+  commandContext?: CommandContext,
 ): ConfigCollectConfig {
   const format = parseConfigOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
@@ -92,13 +94,15 @@ export function resolveConfigCollectConfig(
       ? resolveConfigMarkdownOutputPath(opts.output, reportName)
       : undefined;
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = commandContext
+    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
+    : resolveProfile(loadConfig(configPath), opts.profile);
   const profile = resolvedProfile.profile;
   const fallbackIdentity = profile.db?.user && profile.db.password
     ? { user: profile.db.user, password: profile.db.password }
     : undefined;
-  const kubeconfig = resolveCollectKubeconfig(opts);
-  const namespace = resolveCollectNamespace(opts);
+  const kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile);
+  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
   const tenantId = opts.tenantId?.trim() || undefined;
   const tenantName = opts.tenantName?.trim() || undefined;
   if (tenantId && tenantName) throw new Error("--tenant-id 与 --tenant-name 不能同时使用");
@@ -119,10 +123,7 @@ export function resolveConfigCollectConfig(
       `Plugin '${plugin.id}' 的 Service '${tenantCapability.directoryService}' 未声明 tenantDirectory 能力`,
     );
   }
-  const tenantDirectoryPort = tenantDirectoryService?.port;
-  if (tenantDirectoryService && tenantDirectoryPort === undefined) {
-    throw new Error(`租户目录 Service '${tenantDirectoryService.name}' 未声明端口`);
-  }
+  const tenantDirectoryPort = tenantDirectoryService?.capabilities.tenantDirectory.endpoint.port;
   const tenantConfiguration = tenantCapability && tenantDirectoryService && tenantDirectoryPort !== undefined ? {
     scopes: [...tenantCapability.scopes],
     directoryTarget: {

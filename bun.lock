@@ -7,7 +7,7 @@
     },
     "cli": {
       "name": "doctor-cli",
-      "version": "0.1.1",
+      "version": "0.1.4",
       "dependencies": {
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
@@ -59,9 +59,9 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.2",
-      "dependencies": {
-        "@compforge/trace-harness": "0.0.1",
+      "version": "0.0.5",
+      "bin": {
+        "doctor-plugin-version": "./scripts/version.ts",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -70,7 +70,7 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.1",
+      "version": "0.0.3",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
       },

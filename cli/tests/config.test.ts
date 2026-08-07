@@ -54,6 +54,17 @@ describe("loadConfig", () => {
     const p = makeTmpFile("c.yaml", "profiles: 123\n");
     expect(() => loadConfig(p)).toThrow(/profiles/i);
   });
+
+  it("validates profile fields before returning typed config", () => {
+    const readonly = makeTmpFile("readonly.yaml", "profiles:\n  dev:\n    readonly: yes\n");
+    expect(() => loadConfig(readonly)).toThrow("profile 'dev'.readonly must be a boolean");
+
+    const plugin = makeTmpFile(
+      "plugin.yaml",
+      "profiles:\n  dev:\n    readonly: true\n    plugin:\n      config: invalid\n",
+    );
+    expect(() => loadConfig(plugin)).toThrow("profile 'dev'.plugin.config must be a map");
+  });
 });
 
 describe("resolveProfile", () => {

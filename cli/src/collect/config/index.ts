@@ -59,7 +59,7 @@ export async function runCollectConfig(
   const startedAt = new Date().toISOString();
   let config;
   try {
-    config = resolveConfigCollectConfig(opts, plugin);
+    config = resolveConfigCollectConfig(opts, plugin, commandContext);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;

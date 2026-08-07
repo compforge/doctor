@@ -60,23 +60,14 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
   );
   const catalogService = requireService(options.plugin, declaration.catalogService, "modelCatalog");
   const inferenceService = requireService(options.plugin, declaration.inferenceService, "inference");
-  if (tenantService.port === undefined) {
-    throw new Error(`租户目录 Service '${tenantService.name}' 未声明端口`);
-  }
-  if (catalogService.port === undefined) {
-    throw new Error(`模型目录 Service '${catalogService.name}' 未声明端口`);
-  }
-  if (inferenceService.port === undefined) {
-    throw new Error(`推理 Service '${inferenceService.name}' 未声明端口`);
-  }
   const tenantPort = parseModelPort(
     options.tenantDirectoryPort,
-    tenantService.port,
+    tenantService.capabilities.tenantDirectory.endpoint.port,
     "--tenant-directory-port",
   );
   const catalogPort = parseModelPort(
     options.modelCatalogPort,
-    catalogService.port,
+    catalogService.capabilities.modelCatalog.endpoint.port,
     "--model-catalog-port",
   );
   const config = await resolveKubernetesCommandConfig(options, undefined, options.commandContext);
@@ -109,7 +100,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
     service: ServiceDefinition,
     capability: CapabilityWithAccess,
     name = service.name,
-    port = service.port,
+    port?: number,
   ) => {
     const context = await openPluginContext(executor, kube, {
       env: options.commandContext?.profile.name ?? config.profileName,
@@ -144,7 +135,12 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
       directory,
       catalog,
       createInference: async (target, timeoutMs) => await inferenceService.capabilities.inference.create(
-        await contextFor(inferenceService, inferenceService.capabilities.inference),
+        await contextFor(
+          inferenceService,
+          inferenceService.capabilities.inference,
+          inferenceService.name,
+          inferenceService.capabilities.inference.endpoint.port,
+        ),
         target,
         timeoutMs,
       ),

@@ -7,6 +7,10 @@ import type {
 import type { ServiceMcpCapability } from "./mcp";
 import type { CapabilityWithAccess } from "./kubernetes";
 
+export interface ServiceEndpoint {
+  port: number;
+}
+
 export interface TenantSummary {
   id: string;
   name: string;
@@ -19,14 +23,17 @@ export interface TenantDirectory {
 }
 
 export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {
+  endpoint: ServiceEndpoint;
   create(context: PluginContext): TenantDirectory;
 }
 
 export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
+  endpoint: ServiceEndpoint;
   create(context: PluginContext): ModelCatalog;
 }
 
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
+  endpoint: ServiceEndpoint;
   /** Resolve only after required connectivity, including any port-forward, is ready for use. */
   create(
     context: PluginContext,
@@ -132,6 +139,7 @@ export interface ServiceTraceIdResolution {
 
 /** 把 Plugin 认识的业务 ID 解析为 Doctor trace/log 消费的规范 trace_id。 */
 export interface ServiceTraceIdCapability extends CapabilityWithAccess {
+  endpoint: ServiceEndpoint;
   resolve(
     context: PluginContext,
     input: ServiceTraceIdInput,
@@ -245,6 +253,5 @@ export interface ServiceCapabilities {
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
-  port?: number;
   capabilities: ServiceCapabilities;
 }

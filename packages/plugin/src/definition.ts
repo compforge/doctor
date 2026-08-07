@@ -10,7 +10,6 @@ import type {
   PreparedSkillContext,
   SkillExecutionTarget,
 } from "./skill";
-import type { SpecSet } from "@compforge/trace-harness";
 import type { CapabilityWithAccess } from "./kubernetes";
 
 export interface TenantConfigTarget {
@@ -75,8 +74,11 @@ export interface ModelCapability {
   inferenceService: string;
 }
 
+/** Trace rules stay opaque to the Plugin protocol; the Trace collector adapts the iterable. */
+export type TraceSpecCollection = Iterable<unknown>;
+
 export interface TraceDiagnosisCapability {
-  specs: SpecSet;
+  specs: TraceSpecCollection;
   /** 提供 Trace OpenSearch 运行时连接配置的业务 Service Store。 */
   openSearchStore?: {
     service: string;
@@ -113,6 +115,8 @@ export interface PluginDefinition extends PluginIdentity, PluginLevelCapabilitie
   services: ServiceCatalog;
   /** Runtime-resolved Skills from the same exact Plugin version. */
   skills?: readonly PluginSkill[];
+  /** Validate the opaque profile config before Doctor prepares target access for a command. */
+  validateConfig?(config: Readonly<Record<string, unknown>>): void;
   /** Prepare target-specific access facts consumed by this Plugin's Skill scripts. */
   prepareSkillContext?(
     target: SkillExecutionTarget,

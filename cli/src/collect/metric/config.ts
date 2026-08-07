@@ -5,6 +5,7 @@ import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../../terminal/selection";
 import type { CollectMetricCliOpts, MetricConfig, MetricWatch } from "./model";
+import type { CommandContext } from "../../command";
 
 const WATCH_CHOICES: readonly MetricWatch[] = [
   { mode: "snapshot", label: "0" },
@@ -67,17 +68,22 @@ export async function resolveMetricConfig(
   opts: CollectMetricCliOpts,
   catalog: ServiceCatalog,
   interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
+  commandContext?: CommandContext,
 ): Promise<MetricConfig | undefined> {
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = commandContext
+    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
+    : resolveProfile(loadConfig(configPath), opts.profile);
   const watch = await resolveMetricWatch(opts.watch, interactive);
   if (!watch) return undefined;
-  const namespace = resolveCollectNamespace(opts);
+  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
   const reportName = metricReportName(new Date());
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
   // An external Prometheus is a complete data channel; do not require this profile to also own kube credentials.
-  const kubeconfig = prometheusUrl ? undefined : resolveCollectKubeconfig(opts).kubeconfig;
+  const kubeconfig = prometheusUrl
+    ? undefined
+    : resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
   return {
     services: parseMetricServices(opts.services, catalog),
     servicesExplicit: opts.services !== undefined,

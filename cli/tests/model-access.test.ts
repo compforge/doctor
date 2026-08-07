@@ -1,9 +1,19 @@
 import { expect, test } from "bun:test";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import { validatePluginDefinition } from "../src/plugin/definition";
+import type { PluginManifest } from "../src/plugin/manifest";
 
-import { openModelAccess } from "../src/model";
+const manifest: PluginManifest = {
+  manifestVersion: 1,
+  pluginApiVersion: 1,
+  id: "test",
+  version: "0.0.1",
+  requiresDoctor: ">=0.1.0",
+  contentDigest: `sha256:${"0".repeat(64)}`,
+  main: "./plugin.mjs",
+  skills: [],
+};
 
-test("model access rejects an inference Service without a port", async () => {
+test("Plugin model capability requires an endpoint on each provider", () => {
   const plugin = {
     id: "test",
     version: "0.0.1",
@@ -12,11 +22,11 @@ test("model access rejects an inference Service without a port", async () => {
       catalogService: "model-catalog",
       inferenceService: "inference",
     },
-    services: createServiceCatalog([{
+    services: { services: [{
       name: "tenant-directory",
-      port: 8080,
       capabilities: {
         tenantDirectory: {
+          endpoint: { port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
@@ -26,9 +36,9 @@ test("model access rejects an inference Service without a port", async () => {
       },
     }, {
       name: "model-catalog",
-      port: 8081,
       capabilities: {
         modelCatalog: {
+          endpoint: { port: 8081 },
           access: {},
           create: () => ({
             listAvailable: async () => [],
@@ -46,11 +56,10 @@ test("model access rejects an inference Service without a port", async () => {
           },
         },
       },
-    }]),
-  } satisfies PluginDefinition;
+    }] },
+  };
 
-  await expect(openModelAccess({
-    command: "doctor chat",
-    plugin,
-  })).rejects.toThrow("推理 Service 'inference' 未声明端口");
+  expect(() => validatePluginDefinition(plugin, manifest)).toThrow(
+    "inference.endpoint must be an object",
+  );
 });

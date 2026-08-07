@@ -60,25 +60,29 @@ export async function bootstrap(
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
   const statePath = join(home, ".doctor", "state.yaml");
-  const config = loadConfig(configPath);
   const state = loadState(statePath);
 
   if (flags.profile && flags.resume !== undefined) {
     throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
   }
 
-  let profileName: string;
+  let profileName: string | undefined;
   let resumeConversationId: string | undefined;
   if (flags.resume !== undefined) {
     const target = resolveResumeTarget(state, flags.resume);
     profileName = target.profile;
     resumeConversationId = target.conversationId;
   } else {
-    profileName = resolveProfile(config, flags.profile).name;
+    profileName = commandContext?.profile.name;
   }
 
-  const profile = config.profiles[profileName];
-  if (!profile) throw new Error(`profile '${profileName}' not found in config`);
+  let profile = commandContext?.profile.value;
+  if (!profile) {
+    const resolved = resolveProfile(loadConfig(configPath), profileName ?? flags.profile);
+    profileName = resolved.name;
+    profile = resolved.profile;
+  }
+  if (!profileName) throw new Error("failed to resolve the working profile");
 
   const remote = !!(flags.server || resumeConversationId);
   const validation = validateProfile(profile, { requireServerLlm: remote });

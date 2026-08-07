@@ -1,10 +1,10 @@
 {
   "name": "@compforge/doctor-plugin-example",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "type": "module",
   "doctorPlugin": {
-    "requiresDoctor": ">=0.1.2"
+    "requiresDoctor": ">=0.1.4"
   },
   "scripts": {
     "build": "make build",

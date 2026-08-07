@@ -10,7 +10,7 @@ reach and safely operate a selected target, while a Plugin teaches Doctor which 
 application and what their business data means.
 
 Doctor has three peer workflows: Provision prepares diagnostic capabilities, Collect produces
-auditable Evidence and reports, and Chat runs an Agent with application Skills in a sandbox. All
+auditable Evidence and reports, and Chat runs an Agent with application Skills and host-provided tools. All
 three share the same profile, target, access and authorization context.
 
 ![Doctor architecture](docs/doctor-architecture.svg)
@@ -95,7 +95,7 @@ compatible Plugin.
 
 ## Chat runtime
 
-`doctor chat` runs `@compforge/doctor-agent` with scoped tools inside a sandbox. A profile `llm`
+`doctor chat` runs `@compforge/doctor-agent` with host-provided tools. A profile `llm`
 takes precedence; when it is absent, Doctor can select an LLM from the active Plugin's Model
 Capability and use the Plugin-owned inference connection. The active Plugin also contributes the
 versioned Skills available to the Agent.
@@ -122,3 +122,4 @@ version and the exact embedded Plugin identity used by the distribution.
 
 For the deeper boundaries, see [`cli/docs/kernel.md`](cli/docs/kernel.md),
 [`cli/docs/plugin.md`](cli/docs/plugin.md) and [`docs/chat.md`](docs/chat.md).
+Planned execution-safety work is tracked in [`docs/backlog.md`](docs/backlog.md).

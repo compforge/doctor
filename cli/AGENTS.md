@@ -37,7 +37,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect 和 Chat 三条并列
 3. **Collect 单向且可复查**：Inspect 形成 Facts，Probe 产生 Observations，再进入 Detector/Coverage 和
    Render；Detector/Render 不访问外部资源。
 4. **分层不穿透**：业务目标与私有语义归外部 Plugin，标准基础设施采集与分析归 CLI Core，公共契约归
-   `packages/plugin`；具体 Plugin 不能反向依赖 CLI。
+   `packages/plugin`；命令必须先完成配置、capability、环境和实际 access 准备，再进入领域工作，具体 Plugin
+   不能反向依赖 CLI。
 5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 capability；collect 再结合现场环境判断本次
    是否可用。
 

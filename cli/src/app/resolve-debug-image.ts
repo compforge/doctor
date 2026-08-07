@@ -7,6 +7,7 @@ import debugImageVersion from "../../docker/debug/VERSION" with { type: "text" }
 import { resolveCollectDebugImage } from "../infra/k8s/context";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 import { listRegistryTagsWithAuth } from "./registry-auth";
+import type { CommandProfile } from "../command";
 
 // Debug image repository 的单一来源；Makefile 构建默认值也从本常量读取。
 export const DOCTOR_DEBUG_IMAGE = "doctor-debug";
@@ -34,6 +35,7 @@ interface ResolveDebugImageOptions {
   ) => Promise<RegistryTagListResult & { credentials?: RegistryCredentials }>;
   discoverRepositories?: () => Promise<readonly string[]>;
   selectImage?: (images: readonly string[]) => Promise<string | undefined>;
+  profile?: CommandProfile;
 }
 
 export function appendImageTagSuffix(image: string, suffix: string): string {
@@ -105,7 +107,7 @@ export async function resolveDebugImage(
     debugImage: opts.image,
     profile: opts.profile,
     config: opts.config,
-  });
+  }, options.profile);
   if (configured.image && configured.source !== "unconfigured") {
     return { image: configured.image, source: configured.source };
   }

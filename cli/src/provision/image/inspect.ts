@@ -11,7 +11,7 @@ export async function discoverImageRegistryCatalog(
   opts: ImageCliOpts,
   commandContext: CommandContext,
 ) {
-  const resolved = resolveCollectKubeconfig(opts);
+  const resolved = resolveCollectKubeconfig(opts, commandContext.profile);
   const executor = new KubectlExecutor({
     kubeconfig: resolved.kubeconfig,
     context: opts.context,
@@ -20,7 +20,8 @@ export async function discoverImageRegistryCatalog(
   terminalStdout.write(
     `[k8s] Doctor Host -> Kubernetes: kubeconfig=${resolved.source}\n`,
   );
-  const channel = commandContext.inspection.kubernetes.channel;
+  const channel = commandContext.inspection.kubernetes?.channel;
+  if (!channel) throw new Error("doctor image requires Kubernetes startup inspection");
   if (!channel.available) {
     throw new Error(channel.reason ?? "Kubernetes 通道不可用");
   }
@@ -28,5 +29,6 @@ export async function discoverImageRegistryCatalog(
   return discoverRegistryCatalog(opts, kubernetes.executor, {
     access: kubernetes.access,
     channelChecked: true,
+    profile: commandContext.profile,
   });
 }

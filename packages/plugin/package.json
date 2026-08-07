@@ -1,6 +1,6 @@
 {
   "name": "@compforge/doctor-plugin",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Plugin protocol and shared SDK types for Doctor",
   "type": "module",
   "scripts": {
@@ -10,9 +10,6 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.6.0"
-  },
-  "dependencies": {
-    "@compforge/trace-harness": "0.0.1"
   },
   "bin": {
     "doctor-plugin-version": "./scripts/version.ts"

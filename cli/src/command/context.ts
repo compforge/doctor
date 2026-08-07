@@ -11,14 +11,22 @@ import {
   inspectKubernetes,
   type KubernetesInspection,
 } from "./inspect/kubernetes";
+import type { Profile } from "./profile";
 
 export interface CommandInspection {
-  readonly host: DoctorHostInspection;
-  readonly kubernetes: KubernetesInspection;
+  readonly host?: DoctorHostInspection;
+  readonly kubernetes?: KubernetesInspection;
+}
+
+export interface CommandEnvironmentRequirements {
+  readonly host?: boolean;
+  readonly kubernetes?: boolean;
 }
 
 export interface CommandProfile {
   readonly name: string;
+  readonly configPath: string;
+  readonly value: Profile;
   readonly pluginConfig: Readonly<Record<string, unknown>>;
 }
 
@@ -31,7 +39,12 @@ export class CommandContext {
 
   constructor(
     readonly inspection: CommandInspection,
-    readonly profile: CommandProfile = { name: "default", pluginConfig: {} },
+    readonly profile: CommandProfile = {
+      name: "default",
+      configPath: "",
+      value: { readonly: true },
+      pluginConfig: {},
+    },
   ) {}
 
   kubernetes(executor: Executor): KubernetesCommandContext {
@@ -53,17 +66,21 @@ export function resolveKubernetesCommandContext(
     ?? createKubernetesCommandContext(executor);
 }
 
-export async function inspectCommandContext(
+export async function prepareCommandContext(
   opts: {
     kubeconfig?: string;
     context?: string;
   },
   profile: CommandProfile,
+  requirements: CommandEnvironmentRequirements,
 ): Promise<CommandContext> {
   const [host, kubernetes] = await Promise.all([
-    inspectDoctorHost(),
-    inspectKubernetes(opts),
+    requirements.host ? inspectDoctorHost() : undefined,
+    requirements.kubernetes ? inspectKubernetes(opts, profile) : undefined,
   ]);
+  if (requirements.kubernetes && !kubernetes?.channel.available) {
+    throw new Error(kubernetes?.channel.reason ?? "Kubernetes environment preparation failed");
+  }
   return new CommandContext(
     { host, kubernetes },
     profile,

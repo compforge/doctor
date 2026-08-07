@@ -44,7 +44,12 @@ export async function runCollectMetric(
   commandContext?: CommandContext,
   injectedExecutor?: Executor,
 ): Promise<number> {
-  let config = await resolveMetricConfig(opts, plugin.services);
+  let config = await resolveMetricConfig(
+    opts,
+    plugin.services,
+    !!(process.stdin.isTTY && process.stdout.isTTY),
+    commandContext,
+  );
   if (!config) return 130;
   if (!config.servicesExplicit && process.stdin.isTTY && process.stdout.isTTY) {
     const selected = await promptNamedChoices(

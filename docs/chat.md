@@ -79,6 +79,8 @@ Skill 不拥有独立的安装、选择、信任或升级生命周期。Plugin �
 Doctor 进程权限。readonly profile 必须与只读 kubeconfig、DB 用户和最小 RBAC 一致；共享 Agent 使用的
 Kubernetes 或数据库工具由宿主落实作用域、超时、容量和审批策略。
 
+readonly 工具策略与本地执行沙箱属于明确的后续安全能力，见 [`backlog.md`](backlog.md)。
+
 ## References
 
 - `../cli/docs/kernel.md` — CLI 分层、Doctor Host/Target 与确定性诊断边界

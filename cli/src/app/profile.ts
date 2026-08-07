@@ -41,9 +41,25 @@ export function resolveWorkingProfileName(
   return resolveProfile(loadConfig(resolveConfigPath(opts.config)), opts.profile).name;
 }
 
-export function resolveWorkingProfile(opts: WorkingProfileOptions): { name: string; profile: Profile } {
-  const name = resolveWorkingProfileName(opts);
-  return resolveProfile(loadConfig(resolveConfigPath(opts.config)), name);
+export interface ResolvedWorkingProfile {
+  name: string;
+  profile: Profile;
+  configPath: string;
+}
+
+export function resolveWorkingProfile(opts: WorkingProfileOptions): ResolvedWorkingProfile {
+  const configPath = resolveConfigPath(opts.config);
+  if (opts.profile && opts.resume !== undefined) {
+    throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
+  }
+  const requested = opts.resume !== undefined
+    ? resolveResumeTarget(
+        loadState(join(homedir(), ".doctor", "state.yaml")),
+        opts.resume,
+      ).profile
+    : opts.profile;
+  // Loading once makes the validated profile the command's immutable configuration snapshot.
+  return { ...resolveProfile(loadConfig(configPath), requested), configPath };
 }
 
 function hasPersistedProfiles(raw: string): boolean {
