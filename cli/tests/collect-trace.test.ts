@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Detector } from "@compforge/trace-harness";
 import { OUTCOME_UNREACHED_REASON } from "../src/collect/evidence";
 import type { SearchEngine } from "../src/infra/search";
 import { pickOpenSearchService } from "../src/infra/search/opensearch";
@@ -253,5 +254,23 @@ describe("collectTrace 记账", () => {
     const html = readFileSync(join(dir, "trace.html"), "utf-8");
     expect(html).toContain("调用栈");
     expect(html).toContain("火焰图");
+  });
+
+  test("Plugin trace analysis 只注入本次 TraceHarness", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
+    const pluginDetector: Detector = (node) => [{
+      ref: node.node_id,
+      source: "test-plugin",
+      severity: "warn",
+      note: "plugin-scoped-finding",
+    }];
+    const code = await collectTrace(
+      { ...traceOpts(dir), contributions: { detectors: [pluginDetector] } },
+      () => {},
+      fakeSearch({ count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }] }),
+    );
+
+    expect(code).toBe(0);
+    expect(readFileSync(join(dir, "trace.html"), "utf-8")).toContain("plugin-scoped-finding");
   });
 });

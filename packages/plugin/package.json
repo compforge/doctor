@@ -1,11 +1,14 @@
 {
   "name": "@compforge/doctor-plugin",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "Plugin protocol and shared SDK types for Doctor",
   "type": "module",
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz"
   },
   "devDependencies": {
     "@types/bun": "latest",

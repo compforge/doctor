@@ -85,17 +85,19 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
       throw new Error(`tenantConfiguration.databaseService references unknown Service '${databaseService}'`);
     }
   }
-  if (definition.traceDiagnosis !== undefined) {
-    const trace = record(definition.traceDiagnosis, "Plugin traceDiagnosis capability");
-    if (trace.openSearchStore !== undefined) {
-      const target = record(trace.openSearchStore, "traceDiagnosis.openSearchStore");
-      const serviceName = nonEmptyString(target.service, "traceDiagnosis.openSearchStore.service");
-      const storeId = nonEmptyString(target.store, "traceDiagnosis.openSearchStore.store");
+  if (definition.trace !== undefined) {
+    const trace = record(definition.trace, "Plugin trace capability");
+    record(trace.analysis, "Plugin trace.analysis");
+    if (trace.source !== undefined) {
+      const source = record(trace.source, "trace.source");
+      const target = record(source.store, "trace.source.store");
+      const serviceName = nonEmptyString(target.service, "trace.source.store.service");
+      const storeId = nonEmptyString(target.store, "trace.source.store.store");
       const service = catalog.find(serviceName);
-      if (!service) throw new Error(`traceDiagnosis.openSearchStore references unknown Service '${serviceName}'`);
+      if (!service) throw new Error(`trace.source.store references unknown Service '${serviceName}'`);
       if (!service.capabilities.stores?.some((store) => store.id === storeId)) {
         throw new Error(
-          `traceDiagnosis.openSearchStore references unknown Store '${serviceName}/${storeId}'`,
+          `trace.source.store references unknown Store '${serviceName}/${storeId}'`,
         );
       }
     }

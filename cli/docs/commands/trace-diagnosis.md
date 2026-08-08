@@ -17,13 +17,13 @@ HTML。命令接收业务 ID，先调用 Plugin `traceId` capability 解析为�
    Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并从 `--biz-id`
    返回规范 trace_id 与解析语义。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
-   未提供时复用 Plugin 声明的业务 Service Store 运行时配置，并从 endpoint 解析 backend Service 和
-   namespace；配置不可用时才带 warning 跨 namespace 自动发现。
+   未提供时复用 `PluginDefinition.trace.source.store` 引用的业务 Service Store 运行时配置，并从 endpoint
+   解析 backend Service 和 namespace；配置不可用时才带 warning 跨 namespace 自动发现。
 3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期。
 4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不再用任意 span tag 猜测业务 ID 关系。
 5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
-6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合 Plugin 声明的
-   业务 spec 生成交互式 HTML。
+6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合
+   `PluginDefinition.trace.analysis` 显式提供的 specs / features / detectors / facets 生成交互式 HTML。
 7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；`--format bundle` 将全部证据
    归档，默认 `--format html` 只复制最终报告。
 8. 交付结束后关闭 SearchEngine、回收 forward；下载中断时保留已经落盘的 span 和失败上下文。
@@ -46,8 +46,10 @@ Service 发现回答“本轮目标是谁”，属于配置确认；port-forward
 超时和 search API 映射属于 infra。领域代码依赖 SearchEngine 契约，不把 Kubernetes 或官方 client
 对象穿透到 Probe 和 Render。
 
-### 业务语义由 Plugin 注入
+### 业务语义由 Plugin 显式贡献
 
 trace-harness 只提供与 Python 版本一致的 span 归一化、逻辑节点融合、诊断和 HTML 渲染能力，不认识
-具体 Plugin。节点分类与节点旁的业务摘要由 Plugin 提供 spec，因此任何业务节点和字段都不会进入通用
-采集层。
+具体 Plugin。Plugin 通过 `trace.analysis` 提供 trace-harness 原生的 scoped contributions，用于节点分类、
+派生特征、业务判读和展示意图；Core 为每次 trace 采集创建独立 TraceHarness，因此模块加载顺序不会改变
+分析结果，业务规则也不会进入通用采集层。analysis 只消费 Trace IR/Facts，不读取 Plugin config、infra
+或外部资源。

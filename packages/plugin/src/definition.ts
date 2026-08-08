@@ -1,3 +1,4 @@
+import type { TraceContributions } from "@compforge/trace-harness";
 import type { PluginContext } from "./context";
 import type {
   ServiceHttpResponse,
@@ -74,15 +75,15 @@ export interface ModelCapability {
   inferenceService: string;
 }
 
-/** Trace rules stay opaque to the Plugin protocol; the Trace collector adapts the iterable. */
-export type TraceSpecCollection = Iterable<unknown>;
-
-export interface TraceDiagnosisCapability {
-  specs: TraceSpecCollection;
-  /** 提供 Trace OpenSearch 运行时连接配置的业务 Service Store。 */
-  openSearchStore?: {
-    service: string;
-    store: string;
+export interface TraceCapability {
+  /** Trace Harness 原生的业务分析扩展；只能消费 Trace IR，不参与 Target 访问。 */
+  analysis: TraceContributions;
+  /** Core 采集 trace 时使用的业务数据源声明。 */
+  source?: {
+    store: {
+      service: string;
+      store: string;
+    };
   };
 }
 
@@ -98,7 +99,7 @@ export interface TenantConfigurationCapability extends CapabilityWithAccess {
 export interface PluginLevelCapabilities {
   tenantConfiguration?: TenantConfigurationCapability;
   model?: ModelCapability;
-  traceDiagnosis?: TraceDiagnosisCapability;
+  trace?: TraceCapability;
 }
 
 export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;

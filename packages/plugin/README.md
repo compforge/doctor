@@ -18,9 +18,14 @@ Plugin version 后重新封存。
 协议返回值既可以是可持久化数据，也可以是临时 capability handle。后者只暴露 Core 需要的规范化身份
 和操作方法，适合让原始凭据、厂商字段与请求拼装始终留在 Plugin 内。
 
-Core 与 Plugin 的协议面分为四类：capability 的 access 声明、调用时交换的类型化 data、Core 注入的
-Target-scoped infra，以及 profile 中由 Core 不透明透传的 Plugin config。config 的 schema 与解释权归
-Plugin；kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
+Core 与 Plugin 以 capability 为中心：capability 是 Doctor 发现、准备和消费 Plugin 能力的入口；access
+声明、调用时交换的类型化 data、Core 注入的 Target-scoped infra，以及 profile 中不透明透传的 Plugin
+config 都只支撑 capability 的调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
+kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
+
+`trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
+使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
+凭据和外部访问仍在进入 Trace Harness 前完成。
 
 `PluginSkill` 是 runtime 视图，不规定归档或磁盘布局。Plugin loader 或定制发行入口负责读取
 `SKILL.md`，并把内容及可由宿主 `ExecutionEnv` 访问的绝对路径注入对应 `PluginDefinition`。Skill 因此

@@ -83,3 +83,43 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
     },
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
 });
+
+test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
+  const base = {
+    id: "test",
+    version: "0.0.1",
+    trace: { analysis: {} },
+    services: {
+      services: [{
+        name: "trace-store",
+        capabilities: {
+          stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+        },
+      }],
+    },
+  };
+
+  expect(validatePluginDefinition({
+    ...base,
+    trace: {
+      ...base.trace,
+      source: { store: { service: "trace-store", store: "vdb" } },
+    },
+  }, manifest).trace?.source?.store).toEqual({ service: "trace-store", store: "vdb" });
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    trace: {
+      ...base.trace,
+      source: { store: { service: "missing", store: "vdb" } },
+    },
+  }, manifest)).toThrow("trace.source.store references unknown Service 'missing'");
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    trace: {
+      ...base.trace,
+      source: { store: { service: "trace-store", store: "missing" } },
+    },
+  }, manifest)).toThrow("trace.source.store references unknown Store 'trace-store/missing'");
+});

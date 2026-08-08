@@ -37,7 +37,8 @@ Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访�
 当操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
 Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
-协议面分为四类：
+capability 是 Core 发现、准备和调用 Plugin 能力的中心。下面四类契约只服务于 capability，不各自形成
+Plugin 扩展点或生命周期：
 
 | 协议面 | 方向 | 所有权 |
 |---|---|---|
@@ -48,6 +49,11 @@ Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共
 
 这四类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
+
+Trace Capability 把采集定位和纯分析明确分开：`trace.source.store` 引用 Service Catalog 中的静态 Store，
+供 Core 在运行时解析实际 OpenSearch target；`trace.analysis` 直接采用 trace-harness 的
+`TraceContributions`，只对已标准化的 Trace IR/Facts 做确定性 feature、detect 与 render 扩展。它不读取
+profile config，不持有 infra，也不访问外部资源；诊断流程和 TraceHarness 实例生命周期仍由 Core 拥有。
 
 Model Capability 是 Plugin 对模型供给的聚合声明，它把 tenant directory、model catalog 与 inference
 Service 组成一项可消费能力。Chat 用它选择并调用 LLM，Model Collect 在同一能力上增加 validation、
