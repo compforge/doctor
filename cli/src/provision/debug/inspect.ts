@@ -37,6 +37,10 @@ export async function resolveDebugTarget(
     container: opts.container,
     selectContainer: true,
     access,
+    selection: {
+      role: "diagnostic-target",
+      purpose: "准备 debug environment",
+    },
   });
   if (!selected) return undefined;
   const podResult = await executor.run(["get", "pod", selected.pod, "-o", "json"], {

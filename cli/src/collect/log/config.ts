@@ -99,6 +99,7 @@ export interface LogServiceSelectionInput {
   prompt?: (
     choices: readonly ServiceChoice[],
     defaults: readonly string[],
+    title: string,
   ) => Promise<string[] | undefined>;
 }
 
@@ -118,7 +119,11 @@ export async function resolveLogServiceSelection(
   if (!choices.length) {
     throw new Error(`namespace '${input.namespace}' 中没有具备日志采集能力的 Service`);
   }
-  const selected = await (input.prompt ?? promptNamedChoices)(choices, defaults);
+  const selected = await (input.prompt ?? promptNamedChoices)(
+    choices,
+    defaults,
+    "[collect] 选择要采集日志的 Service：",
+  );
   if (selected) recordRecentServiceTargets(selected, input);
   return selected;
 }

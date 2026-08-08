@@ -11,8 +11,10 @@ import { resolvePodNamespace } from "../infra/k8s/namespace-selection";
 import {
   matchPodChoices,
   parsePodChoices,
+  podSelectionLabel,
   printPodChoices,
   promptPod,
+  type PodSelectionContext,
 } from "../infra/k8s/pod-selection";
 import {
   printContainerChoices,
@@ -122,6 +124,7 @@ export async function resolvePodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
+  selection: PodSelectionContext;
 }): Promise<PodTarget | undefined> {
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
   const recentScope = resolveKubernetesRecentScope(input.config.kubernetes);
@@ -198,7 +201,11 @@ export async function resolvePodTarget(input: {
       );
     }
     if (keyword) {
-      printPodChoices(matches, `[target] 关键词 '${keyword}' 匹配到多个 Pod：`);
+      printPodChoices(
+        matches,
+        `${input.selection.role === "configuration-source" ? "[collect]" : "[target]"}`
+        + ` 关键词 '${keyword}' 匹配到多个${podSelectionLabel(input.selection, "Pod")}：`,
+      );
     }
     const recentPods = !keyword && recent
       ? recent.recentPods(recentScope, input.config.kubernetes.namespace, matches)
@@ -206,7 +213,10 @@ export async function resolvePodTarget(input: {
     if (recentPods.length) {
       printPodChoices(recentPods, "[recent] 最近常用 Pod：");
     }
-    const pod = await promptPod(matches, keyword ? true : recentPods);
+    const pod = await promptPod(matches, {
+      selection: input.selection,
+      listedChoices: keyword ? true : recentPods,
+    });
     if (!pod) return undefined;
     selected = choices.find((choice) => choice.name === pod);
     selectedInteractively = true;
@@ -237,8 +247,12 @@ export async function resolvePodTarget(input: {
   if (containers.length === 0) throw new Error(`pod/${pod} 没有可选 Container`);
   if (containers.length === 1) {
     const container = containers[0]!.name;
+    const label = input.selection.role === "configuration-source"
+      ? "[collect] 配置来源 Container"
+      : "[target] container";
     terminalStdout.write(
-      `[target] container: ${container}（pod/${pod} 仅有一个 Container，自动选择）\n`,
+      `${label}: ${container}`
+      + `（pod/${pod} 仅有一个 Container，自动选择）\n`,
     );
     return record({ pod, container }, selectedInteractively);
   }
@@ -247,8 +261,8 @@ export async function resolvePodTarget(input: {
       `pod/${pod} 有 ${containers.length} 个容器；当前为非交互终端，请显式指定 --container <name>`,
     );
   }
-  printContainerChoices(containers, pod);
-  const container = await promptContainer(containers);
+  printContainerChoices(containers, pod, input.selection);
+  const container = await promptContainer(containers, input.selection);
   return container ? record({ pod, container }, true) : undefined;
 }
 
@@ -262,6 +276,7 @@ async function resolveExplicitPodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
+  selection: PodSelectionContext;
 },
 recent = recentSelectionsForInteractive(input.interactive, input.recent),
 recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
@@ -273,7 +288,7 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
     if (!interactive) {
       throw new Error("无 list pods 权限；非交互环境请显式指定精确的 --pod <pod>");
     }
-    pod = await promptPod([], false);
+    pod = await promptPod([], { selection: input.selection });
     if (!pod) return undefined;
     selectedInteractively = true;
   }
@@ -337,8 +352,12 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
   if (containers.length === 0) throw new Error(`pod/${pod} 没有可选 Container`);
   if (containers.length === 1) {
     const container = containers[0]!.name;
+    const label = input.selection.role === "configuration-source"
+      ? "[collect] 配置来源 Container"
+      : "[target] container";
     terminalStdout.write(
-      `[target] container: ${container}（pod/${pod} 仅有一个 Container，自动选择）\n`,
+      `${label}: ${container}`
+      + `（pod/${pod} 仅有一个 Container，自动选择）\n`,
     );
     return record({ pod, container });
   }
@@ -347,7 +366,7 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
       `pod/${pod} 有 ${containers.length} 个容器；当前为非交互终端，请显式指定 --container <name>`,
     );
   }
-  printContainerChoices(containers, pod);
-  const container = await promptContainer(containers);
+  printContainerChoices(containers, pod, input.selection);
+  const container = await promptContainer(containers, input.selection);
   return container ? record({ pod, container }, true) : undefined;
 }

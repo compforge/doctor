@@ -281,9 +281,10 @@ describe("HTTP 场景文件入口", () => {
     };
     const selected = await resolveHttpScenarioRequests(scenario, {
       interactive: true,
-      prompt: async (choices, defaults) => {
+      prompt: async (choices, defaults, title) => {
         expect(choices.map((choice) => choice.name)).toEqual(["chat", "judge"]);
         expect(defaults).toEqual([]);
+        expect(title).toBe("[http] 选择本次要执行的 Request：");
         return ["chat", "judge"];
       },
     });

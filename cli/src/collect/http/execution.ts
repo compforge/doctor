@@ -55,6 +55,10 @@ export async function resolvePodHttpExecution(
     selectContainer: true,
     interactive: input.interactive,
     access,
+    selection: {
+      role: "diagnostic-target",
+      purpose: "执行 HTTP 场景请求",
+    },
   });
   if (!selected) return undefined;
 

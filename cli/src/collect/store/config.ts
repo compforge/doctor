@@ -17,7 +17,12 @@ import {
 } from "../../command";
 import type { Executor } from "../../infra/k8s/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
-import { parsePodChoices, promptPod } from "../../infra/k8s/pod-selection";
+import {
+  parsePodChoices,
+  podSelectionLabel,
+  promptPod,
+  type PodSelectionContext,
+} from "../../infra/k8s/pod-selection";
 import { listServiceChoices } from "../../infra/k8s/service-selection";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import {
@@ -213,6 +218,7 @@ async function resolveServicePod(input: {
   executor: Executor;
   namespace: string;
   interactive: boolean;
+  selection: PodSelectionContext;
 }): Promise<string | undefined> {
   const access = new KubectlPodLogAccess(input.executor, input.namespace);
   const listed = await access.listServicePods([input.service]);
@@ -230,11 +236,14 @@ async function resolveServicePod(input: {
   }
   if (!choices.length) throw new Error(`Service '${input.service}' 没有 Running Pod`);
   if (choices.length === 1) {
-    terminalStdout.write(`[collect] pod: ${choices[0]!.name}（唯一 Running Pod，自动选择）\n`);
+    terminalStdout.write(
+      `[collect] ${podSelectionLabel(input.selection, "Pod")}: ${choices[0]!.name}`
+      + "（唯一 Running Pod，自动选择）\n",
+    );
     return choices[0]!.name;
   }
   if (!input.interactive) throw new Error(`Service '${input.service}' 有多个 Running Pod；请用 --pod <pod> 指定`);
-  return promptPod(choices);
+  return promptPod(choices, { selection: input.selection });
 }
 
 export async function resolveStoreConfig(
@@ -282,7 +291,19 @@ export async function resolveStoreProviderConfig(
   if (!service) return undefined;
   const capability = await resolveCapability(service, kind, opts.store, plugin, interactive);
   if (!capability) return undefined;
-  const pod = await resolveServicePod({ service, pod: opts.pod, executor, namespace, interactive });
+  const selection: PodSelectionContext = {
+    role: "configuration-source",
+    purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
+    effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
+  };
+  const pod = await resolveServicePod({
+    service,
+    pod: opts.pod,
+    executor,
+    namespace,
+    interactive,
+    selection,
+  });
   if (!pod) return undefined;
   const target = await resolvePodTarget({
     config: collect,
@@ -292,6 +313,7 @@ export async function resolveStoreProviderConfig(
     selectContainer: true,
     interactive,
     access,
+    selection,
   });
   if (!target) return undefined;
   return {

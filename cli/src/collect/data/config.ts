@@ -57,6 +57,7 @@ export interface DataServiceSelectionInput {
   promptServices?: (
     choices: readonly ServiceChoice[],
     defaults: readonly string[],
+    title: string,
   ) => Promise<string[] | undefined>;
 }
 
@@ -74,7 +75,11 @@ export async function resolveDataServiceSelection(
     if (!choices.length) {
       throw new Error("当前 Plugin 未声明 data capability");
     }
-    const selected = await (input.promptServices ?? promptNamedChoices)(choices, services);
+    const selected = await (input.promptServices ?? promptNamedChoices)(
+      choices,
+      services,
+      "[collect] 选择要读取业务数据的 Service：",
+    );
     if (!selected) return undefined;
     services = selected;
   }

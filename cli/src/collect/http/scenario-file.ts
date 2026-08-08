@@ -105,7 +105,11 @@ export function filterHttpScenarioRequests(scenario: HttpScenario, requestIds: r
 export interface ResolveHttpScenarioRequestsInput {
   request?: string;
   interactive?: boolean;
-  prompt?: (choices: readonly { name: string }[], defaults: readonly string[]) => Promise<string[] | undefined>;
+  prompt?: (
+    choices: readonly { name: string }[],
+    defaults: readonly string[],
+    title: string,
+  ) => Promise<string[] | undefined>;
 }
 
 export async function resolveHttpScenarioRequests(
@@ -120,6 +124,10 @@ export async function resolveHttpScenarioRequests(
   if (!interactive || scenario.requests.length === 1) return scenario;
 
   const choices = scenario.requests.map((request) => ({ name: request.id }));
-  const selected = await (input.prompt ?? promptNamedChoices)(choices, []);
+  const selected = await (input.prompt ?? promptNamedChoices)(
+    choices,
+    [],
+    "[http] 选择本次要执行的 Request：",
+  );
   return selected ? filterHttpScenarioRequests(scenario, selected) : undefined;
 }

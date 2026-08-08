@@ -237,6 +237,7 @@ export interface ConfigServiceSelectionInput {
   prompt?: (
     choices: readonly ServiceChoice[],
     defaults: readonly string[],
+    title: string,
   ) => Promise<string[] | undefined>;
 }
 
@@ -262,7 +263,11 @@ export async function resolveConfigServiceSelection(
   if (!choices.length) {
     throw new Error(`namespace '${input.config.namespace}' 中没有具备配置采集能力的 Service`);
   }
-  const selected = await (input.prompt ?? promptNamedChoices)(choices, []);
+  const selected = await (input.prompt ?? promptNamedChoices)(
+    choices,
+    [],
+    "[collect] 选择要采集配置的 Service：",
+  );
   if (selected) recordRecentServiceTargets(selected, recentInput);
   return selected;
 }

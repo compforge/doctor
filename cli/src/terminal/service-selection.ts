@@ -8,7 +8,7 @@ export interface NamedChoice {
 export async function promptNamedChoices<Choice extends NamedChoice>(
   choices: readonly Choice[],
   defaults: readonly string[],
-  title = defaults.length ? "[collect] 可选资源（默认项已选中）：" : "[collect] 可选资源：",
+  title: string,
 ): Promise<string[] | undefined> {
   return promptMultiSelect({
     choices,

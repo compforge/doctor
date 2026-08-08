@@ -80,11 +80,13 @@ export async function promptNamespace(
   choices: readonly NamespaceChoice[],
   defaultNamespace: string,
 ): Promise<string | undefined> {
-  if (choices.length > 0) printNamespaceChoices(choices, "[collect] 可选 Namespace：");
+  if (choices.length > 0) {
+    printNamespaceChoices(choices, "[collect] 待操作 Service 所在的 Namespace：");
+  }
   return promptSearchableChoice({
     choices,
     choicesAreListed: choices.length > 0,
-    question: () => `请选择 Namespace（序号、名称或关键词，回车使用 ${defaultNamespace}，q 取消）：`,
+    question: () => `请选择待操作 Service 所在的 Namespace（序号、名称或关键词，回车使用 ${defaultNamespace}，q 取消）：`,
     resolve: (answer, numberedChoices) => {
       const resolution = resolveNamespaceAnswer(choices, answer, defaultNamespace, numberedChoices);
       return resolution.kind === "selected"

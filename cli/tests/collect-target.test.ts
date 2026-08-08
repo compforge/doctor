@@ -6,7 +6,12 @@ import {
 import { diagnosticPids, parseProcscan, pickPid } from "../src/collect/fact/process";
 import type { Executor } from "../src/infra/k8s/executor";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
-import { shouldPreviewPodChoices, type PodChoice } from "../src/infra/k8s/pod-selection";
+import {
+  podSelectionLabel,
+  podSelectionTitle,
+  shouldPreviewPodChoices,
+  type PodChoice,
+} from "../src/infra/k8s/pod-selection";
 import { parsePodJson, pickContainer } from "../src/infra/k8s/target";
 
 const POD_JSON = JSON.stringify({
@@ -47,6 +52,17 @@ test("Pod 候选较少且尚未展示时先打印列表", () => {
   expect(shouldPreviewPodChoices(pods, [])).toBe(true);
   expect(shouldPreviewPodChoices([...pods, pods[0]!], [])).toBe(false);
   expect(shouldPreviewPodChoices(pods, pods)).toBe(false);
+});
+
+test("配置来源选择明确说明用途和对象角色", () => {
+  const selection = {
+    role: "configuration-source" as const,
+    purpose: "读取 Service 'kb-server' 的 vdb Store 'trace' 运行时配置",
+  };
+  expect(podSelectionLabel(selection, "Container")).toBe("配置来源 Container");
+  expect(podSelectionTitle(selection)).toBe(
+    "[collect] 读取 Service 'kb-server' 的 vdb Store 'trace' 运行时配置，请选择配置来源 Pod：",
+  );
 });
 
 describe("parsePodJson", () => {
@@ -138,6 +154,7 @@ test("单 Container 自动选择时打印目标", async () => {
       pod: "app-0",
       selectContainer: true,
       interactive: false,
+      selection: { role: "diagnostic-target", purpose: "采集测试数据" },
     })).resolves.toEqual({ pod: "app-0", container: "app" });
     expect(write).toHaveBeenCalledWith(
       "[target] container: app（pod/app-0 仅有一个 Container，自动选择）\n",
@@ -194,6 +211,7 @@ test("需要时允许把 Running Ephemeral Container 作为目标", async () => 
     selectContainer: true,
     includeEphemeralContainers: true,
     interactive: false,
+    selection: { role: "diagnostic-target", purpose: "运行测试探针" },
   })).resolves.toEqual({ pod: "app-0", container: "doctor-debug-x" });
 });
 
@@ -234,6 +252,7 @@ test("preferred list pods 被拒绝时用精确 Pod get 完成目标选择", asy
     selectContainer: true,
     interactive: false,
     access: new KubernetesAccessContext(executor),
+    selection: { role: "diagnostic-target", purpose: "运行测试探针" },
   })).resolves.toEqual({ pod: "app-0", container: "app" });
   expect(calls).toEqual([
     ["auth", "can-i", "list", "pods"],
