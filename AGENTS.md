@@ -23,8 +23,9 @@ Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开�
 
 ## 关键约定
 
-1. **Core/Plugin 只共享四类契约**：capability 声明 access，调用交换类型化 data，Core 注入
-   Target-scoped infra，并透传 schema 归 Plugin 的 profile config；私有业务实现不进入 CLI/SDK。
+1. **Core/Plugin 以 capability 为中心**：capability 是 Core 发现和消费 Plugin 能力的入口；access、
+   类型化 data、Target-scoped infra 与 profile config 只支撑 capability 的准备和调用，不形成平行的
+   扩展生命周期。私有业务实现不进入 CLI/SDK。
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
    capability 是业务能力和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。

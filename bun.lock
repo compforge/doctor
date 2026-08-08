@@ -7,13 +7,13 @@
     },
     "cli": {
       "name": "doctor-cli",
-      "version": "0.1.4",
+      "version": "0.1.6",
       "dependencies": {
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/prombed": "0.0.2",
-        "@compforge/trace-harness": "0.0.1",
+        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz",
         "@earendil-works/pi-agent-core": "0.84.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@opensearch-project/opensearch": "3.6.0",
@@ -59,9 +59,12 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.5",
+      "version": "0.0.7",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
+      },
+      "dependencies": {
+        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -70,7 +73,7 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.3",
+      "version": "0.0.4",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
       },
@@ -145,7 +148,7 @@
 
     "@compforge/prombed": ["@compforge/prombed@0.0.2", "", {}, "sha512-HeQyJeAuwNPI7RtLeS8dCApvHJFZYlyUq2EatMQxVaaywszwKCTfdY851JEDIGrW7Sh92h9AXc2ITYz3VwoVcA=="],
 
-    "@compforge/trace-harness": ["@compforge/trace-harness@0.0.1", "", {}, "sha512-Sp3OqHEtxqZWtW/c0kgqPz0bQF4mqjNv/llF0eiVjSXx/r+67L2cT4QQosWj0JKmmXCHem3L8xB9FWf3MWGyzw=="],
+    "@compforge/trace-harness": ["@compforge/trace-harness@https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz", {}, "sha512-GRpcK7Wew1NgRbz7FkoP+rSUmhumSlO124EVvaPL8bKPLGRpdR/S3Tha0GbvrL8lltLS1ctVvUwYlav6GFXrHQ=="],
 
     "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@0.84.0", "", { "dependencies": { "@earendil-works/pi-ai": "^0.84.0", "@earendil-works/pi-telemetry": "^0.84.0", "diff": "8.0.4", "ignore": "7.0.5", "typebox": "1.3.7", "yaml": "2.9.0" } }, "sha512-L1lw0lwR5LXCzGEeHD9XNEruU2bg0H8clOA8ySdGMHvxutp8GC+yZL6MZp4tqQRnLKP3gHmY7TrWzQ3YnFdJYQ=="],
 

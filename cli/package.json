@@ -1,6 +1,6 @@
 {
   "name": "doctor-cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "AI-driven diagnostic CLI for private Kubernetes environments",
   "type": "module",
@@ -33,7 +33,7 @@
     "@compforge/doctor-agent": "workspace:*",
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/prombed": "0.0.2",
-    "@compforge/trace-harness": "0.0.1",
+    "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz",
     "@earendil-works/pi-agent-core": "0.84.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentui/core": "0.4.5",

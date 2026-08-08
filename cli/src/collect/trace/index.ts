@@ -6,7 +6,7 @@ import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { KindSpec, SpecSet } from "@compforge/trace-harness";
+import type { TraceContributions } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { resolveWorkingProfileName } from "../../app/profile";
 import {
@@ -216,13 +216,13 @@ export async function runCollectTrace(
 
   let configuredEndpoint: string | undefined;
   let configuredAuth: OpenSearchAuth = {};
-  const openSearchStore = plugin.traceDiagnosis?.openSearchStore;
-  if (!endpoint && openSearchStore) {
+  const traceStore = plugin.trace?.source?.store;
+  if (!endpoint && traceStore) {
     try {
       const resolvedStore = await resolveStoreProviderConfig({
         type: "vdb",
-        service: openSearchStore.service,
-        store: openSearchStore.store,
+        service: traceStore.service,
+        store: traceStore.store,
       }, plugin, runtime.collect, runtime.executor, commandContext);
       if (!resolvedStore) {
         terminalStderr.warning("[collect] 已取消\n");
@@ -247,7 +247,7 @@ export async function runCollectTrace(
         if (configuredEndpoint) {
           terminalStdout.write(
             `[collect] OpenSearch 配置: ${safeOpenSearchEndpoint(configuredEndpoint)}`
-            + `（${openSearchStore.service}/${openSearchStore.store}）\n`,
+            + `（${traceStore.service}/${traceStore.store}）\n`,
           );
         }
       }
@@ -275,7 +275,7 @@ export async function runCollectTrace(
     return 2;
   }
   // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
-  const { genAiSpecs, mergeSpecs, SpecSet } = await import("@compforge/trace-harness");
+  const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
@@ -298,12 +298,12 @@ export async function runCollectTrace(
       kube,
       pageSize,
       outputDir: staging,
-      specs: plugin.traceDiagnosis
-        ? mergeSpecs(
-            new SpecSet([...plugin.traceDiagnosis.specs] as KindSpec[]),
-            genAiSpecs(),
+      contributions: plugin.trace
+        ? mergeTraceContributions(
+            plugin.trace.analysis,
+            { specs: genAiSpecs() },
           )
-        : genAiSpecs(),
+        : { specs: genAiSpecs() },
       traceIdResolution: {
         service: trace.service,
         resolvedAs: trace.resolvedAs,
@@ -360,7 +360,7 @@ export interface TraceCollectOptions {
   kube?: KubectlOptions;
   pageSize: number;
   outputDir: string;
-  specs?: SpecSet;
+  contributions?: TraceContributions;
 }
 
 /**
@@ -481,20 +481,19 @@ export async function collectTrace(
 
   try {
     const {
-      assemble,
-      diagnose,
       genAiSpecs,
       normalizeJaegerSpans,
-      renderInteractive,
+      TraceHarness,
     } = await import("@compforge/trace-harness");
     const spanDocuments = readFileSync(join(opts.outputDir, "spans.jsonl"), "utf-8")
       .split("\n")
       .filter(Boolean)
       .map((line) => JSON.parse(line) as Record<string, unknown>);
-    const context = assemble(normalizeJaegerSpans(spanDocuments), opts.specs ?? genAiSpecs());
+    const harness = new TraceHarness(opts.contributions ?? { specs: genAiSpecs() });
+    const context = harness.assemble(normalizeJaegerSpans(spanDocuments));
     writeFileSync(
       join(opts.outputDir, "trace.html"),
-      renderInteractive(context, diagnose(context)),
+      harness.renderInteractive(context, harness.diagnose(context)),
       "utf-8",
     );
     bundle.fill("render-html", { status: "ok" });
