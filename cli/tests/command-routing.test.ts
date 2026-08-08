@@ -63,12 +63,12 @@ describe("CLI command routing", () => {
   test("version reports Doctor and the embedded Plugin identity", () => {
     const core = runCoreCli("version");
     expect(core.exitCode).toBe(0);
-    expect(core.stdout).toContain("doctor 0.1.5");
+    expect(core.stdout).toContain("doctor 0.1.6");
     expect(core.stdout).toContain("plugin none");
 
     const distribution = runCli("version");
     expect(distribution.exitCode).toBe(0);
-    expect(distribution.stdout).toContain("doctor 0.1.5");
+    expect(distribution.stdout).toContain("doctor 0.1.6");
     expect(distribution.stdout).toContain("plugin test@0.0.1");
   });
 
