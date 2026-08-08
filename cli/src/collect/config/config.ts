@@ -20,7 +20,10 @@ import {
   recentSelectionsForInteractive,
   type RecentSelections,
 } from "../../infra/recent";
-import { promptNamedChoices } from "../../terminal/service-selection";
+import {
+  promptNamedChoices,
+  type NamedChoiceSelectionInput,
+} from "../../terminal/service-selection";
 import { prepareTerminalInput } from "../../terminal/input";
 import { terminalStdout } from "../../terminal/output";
 import {
@@ -234,11 +237,7 @@ export interface ConfigServiceSelectionInput {
   executor: Executor;
   interactive?: boolean;
   recent?: RecentSelections;
-  prompt?: (
-    choices: readonly ServiceChoice[],
-    defaults: readonly string[],
-    title: string,
-  ) => Promise<string[] | undefined>;
+  prompt?: (input: NamedChoiceSelectionInput<ServiceChoice>) => Promise<string[] | undefined>;
 }
 
 /** 显式 flag 直接采用；交互终端从当前 namespace 多选；非交互必须声明目标。 */
@@ -263,11 +262,12 @@ export async function resolveConfigServiceSelection(
   if (!choices.length) {
     throw new Error(`namespace '${input.config.namespace}' 中没有具备配置采集能力的 Service`);
   }
-  const selected = await (input.prompt ?? promptNamedChoices)(
+  const selected = await (input.prompt ?? promptNamedChoices)({
     choices,
-    [],
-    "[collect] 选择要采集配置的 Service：",
-  );
+    defaults: [],
+    candidateType: "Service",
+    context: { purpose: "确定配置采集范围" },
+  });
   if (selected) recordRecentServiceTargets(selected, recentInput);
   return selected;
 }

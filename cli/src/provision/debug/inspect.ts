@@ -38,7 +38,7 @@ export async function resolveDebugTarget(
     selectContainer: true,
     access,
     selection: {
-      role: "diagnostic-target",
+      candidateRole: "目标",
       purpose: "准备 debug environment",
     },
   });

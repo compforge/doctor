@@ -11,10 +11,8 @@ import { resolvePodNamespace } from "../infra/k8s/namespace-selection";
 import {
   matchPodChoices,
   parsePodChoices,
-  podSelectionLabel,
   printPodChoices,
   promptPod,
-  type PodSelectionContext,
 } from "../infra/k8s/pod-selection";
 import {
   printContainerChoices,
@@ -34,6 +32,10 @@ import {
   resolveKubernetesRecentScope,
   type RecentSelections,
 } from "../infra/recent";
+import {
+  selectionCandidateLabel,
+  type SelectionContext,
+} from "../terminal/selection-context";
 
 export interface KubernetesCommandInput {
   namespace?: string;
@@ -124,7 +126,7 @@ export async function resolvePodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
-  selection: PodSelectionContext;
+  selection: SelectionContext;
 }): Promise<PodTarget | undefined> {
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
   const recentScope = resolveKubernetesRecentScope(input.config.kubernetes);
@@ -203,8 +205,8 @@ export async function resolvePodTarget(input: {
     if (keyword) {
       printPodChoices(
         matches,
-        `${input.selection.role === "configuration-source" ? "[collect]" : "[target]"}`
-        + ` 关键词 '${keyword}' 匹配到多个${podSelectionLabel(input.selection, "Pod")}：`,
+        `[collect] 关键词 '${keyword}' 匹配到多个`
+        + `${selectionCandidateLabel(input.selection, "Pod")}：`,
       );
     }
     const recentPods = !keyword && recent
@@ -247,7 +249,7 @@ export async function resolvePodTarget(input: {
   if (containers.length === 0) throw new Error(`pod/${pod} 没有可选 Container`);
   if (containers.length === 1) {
     const container = containers[0]!.name;
-    const label = input.selection.role === "configuration-source"
+    const label = input.selection.candidateRole === "配置来源"
       ? "[collect] 配置来源 Container"
       : "[target] container";
     terminalStdout.write(
@@ -276,7 +278,7 @@ async function resolveExplicitPodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
-  selection: PodSelectionContext;
+  selection: SelectionContext;
 },
 recent = recentSelectionsForInteractive(input.interactive, input.recent),
 recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
@@ -352,7 +354,7 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
   if (containers.length === 0) throw new Error(`pod/${pod} 没有可选 Container`);
   if (containers.length === 1) {
     const container = containers[0]!.name;
-    const label = input.selection.role === "configuration-source"
+    const label = input.selection.candidateRole === "配置来源"
       ? "[collect] 配置来源 Container"
       : "[target] container";
     terminalStdout.write(

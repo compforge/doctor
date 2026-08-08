@@ -239,13 +239,15 @@ requests:
     expect(await resolveNetworkServiceScope({
       interactive: true,
       loadChoices,
-      prompt: async (choices, defaults) => {
+      prompt: async ({ choices, defaults, candidateType, context }) => {
         expect(choices.map((choice) => choice.name)).toEqual([
           "frontend",
           "planner",
           "model-gateway-v2",
         ]);
         expect(defaults).toEqual([]);
+        expect(candidateType).toBe("Service");
+        expect(context.purpose).toBe("确定本次抓包范围");
         return ["frontend", "planner"];
       },
     })).toEqual(["frontend", "planner"]);

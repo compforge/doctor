@@ -111,7 +111,7 @@ export async function runCollectMemory(
       selectContainer: true,
       access,
       selection: {
-        role: "diagnostic-target",
+        candidateRole: "目标",
         purpose: "采集 Python 内存堆",
       },
     });

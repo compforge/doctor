@@ -1,4 +1,4 @@
-import { terminalStderr } from "../../terminal/output";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   matchSearchableChoices,
   printNumberedChoices,
@@ -13,6 +13,11 @@ import {
   resolveKubernetesRecentScope,
   type RecentSelections,
 } from "../recent";
+import {
+  selectionInstruction,
+  selectionTitle,
+  type SelectionContext,
+} from "../../terminal/selection-context";
 
 export interface NamespaceChoice {
   name: string;
@@ -77,18 +82,27 @@ export function resolveNamespaceAnswer(
 }
 
 export async function promptNamespace(
-  choices: readonly NamespaceChoice[],
-  defaultNamespace: string,
+  input: {
+    choices: readonly NamespaceChoice[];
+    defaultNamespace: string;
+    selection: SelectionContext;
+  },
 ): Promise<string | undefined> {
-  if (choices.length > 0) {
-    printNamespaceChoices(choices, "[collect] 待操作 Service 所在的 Namespace：");
+  if (input.selection.effect) terminalStdout.write(`[collect] ${input.selection.effect}\n`);
+  if (input.choices.length > 0) {
+    printNamespaceChoices(input.choices, selectionTitle(input.selection, "Namespace"));
   }
   return promptSearchableChoice({
-    choices,
-    choicesAreListed: choices.length > 0,
-    question: () => `请选择待操作 Service 所在的 Namespace（序号、名称或关键词，回车使用 ${defaultNamespace}，q 取消）：`,
+    choices: input.choices,
+    choicesAreListed: input.choices.length > 0,
+    question: () => `${selectionInstruction(input.selection, "Namespace", "请选择")}（序号、名称或关键词，回车使用 ${input.defaultNamespace}，q 取消）：`,
     resolve: (answer, numberedChoices) => {
-      const resolution = resolveNamespaceAnswer(choices, answer, defaultNamespace, numberedChoices);
+      const resolution = resolveNamespaceAnswer(
+        input.choices,
+        answer,
+        input.defaultNamespace,
+        numberedChoices,
+      );
       return resolution.kind === "selected"
         ? { kind: "selected", value: resolution.namespace }
         : resolution;
@@ -109,6 +123,7 @@ export interface PodNamespaceSelection {
   prompt?: typeof promptNamespace;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
+  selection?: SelectionContext;
 }
 
 /** Pod 选择之前确定其 namespace 作用域；显式 flag/profile 不再重复询问。 */
@@ -119,6 +134,7 @@ export async function resolvePodNamespace(
   if (input.resolved.source !== "default" || !interactive) return input.resolved;
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
   const recentScope = resolveKubernetesRecentScope(input);
+  const selection = input.selection ?? { purpose: "定位本次操作涉及的 Service" };
 
   const executor = input.executor ?? new KubectlExecutor({
     kubeconfig: input.kubeconfig,
@@ -141,7 +157,11 @@ export async function resolvePodNamespace(
       `[k8s] preferred: list namespaces ${permission.status}`
       + "（Namespace 候选发现）；改为手动输入\n",
     );
-    const selected = await (input.prompt ?? promptNamespace)([], input.resolved.namespace);
+    const selected = await (input.prompt ?? promptNamespace)({
+      choices: [],
+      defaultNamespace: input.resolved.namespace,
+      selection,
+    });
     return selected ? { namespace: selected, source: "prompt" } : undefined;
   }
   const listed = await executor.run(["get", "namespaces", "-o", "json"], { timeoutMs: 20_000 });
@@ -161,6 +181,10 @@ export async function resolvePodNamespace(
     );
   }
 
-  const selected = await (input.prompt ?? promptNamespace)(choices, input.resolved.namespace);
+  const selected = await (input.prompt ?? promptNamespace)({
+    choices,
+    defaultNamespace: input.resolved.namespace,
+    selection,
+  });
   return selected ? { namespace: selected, source: "prompt" } : undefined;
 }

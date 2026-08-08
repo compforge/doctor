@@ -72,7 +72,7 @@ export async function resolveCpuConfig(
     selectContainer: true,
     access,
     selection: {
-      role: "diagnostic-target",
+      candidateRole: "目标",
       purpose: "采集 CPU 诊断数据",
     },
   });

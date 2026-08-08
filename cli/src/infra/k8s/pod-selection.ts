@@ -5,6 +5,12 @@ import {
   resolveSearchableChoice,
 } from "../../terminal/selection";
 import { terminalStdout } from "../../terminal/output";
+import {
+  selectionCandidateLabel,
+  selectionInstruction,
+  selectionTitle,
+  type SelectionContext,
+} from "../../terminal/selection-context";
 import type { ContainerChoice } from "./container-selection";
 
 export interface PodChoice {
@@ -13,25 +19,6 @@ export interface PodChoice {
   ready: string;
   restarts: number;
   containers: ContainerChoice[];
-}
-
-export interface PodSelectionContext {
-  role: "diagnostic-target" | "configuration-source";
-  purpose: string;
-  effect?: string;
-}
-
-export function podSelectionLabel(
-  selection: PodSelectionContext,
-  resource: "Pod" | "Container",
-): string {
-  return selection.role === "configuration-source"
-    ? `配置来源 ${resource}`
-    : `目标 ${resource}`;
-}
-
-export function podSelectionTitle(selection: PodSelectionContext): string {
-  return `[collect] ${selection.purpose}，请选择${podSelectionLabel(selection, "Pod")}：`;
 }
 
 interface PodListItem {
@@ -148,12 +135,14 @@ export function resolvePodAnswer(
 export async function promptPod(
   choices: readonly PodChoice[],
   options: {
-    selection: PodSelectionContext;
+    selection: SelectionContext;
     listedChoices?: boolean | readonly PodChoice[];
   },
 ): Promise<string | undefined> {
   const { selection } = options;
-  const label = podSelectionLabel(selection, "Pod");
+  const label = selectionCandidateLabel(selection, "Pod");
+  const selectPod = selectionInstruction(selection, "Pod", "请选择");
+  const inputPod = selectionInstruction(selection, "Pod", "请输入");
   const podCountHint = choices.length > POD_PREVIEW_LIMIT
     ? `当前 Pod 候选 ${choices.length} 个（超过 ${POD_PREVIEW_LIMIT} 个），`
     : "";
@@ -165,17 +154,17 @@ export async function promptPod(
       : [];
   if (selection.effect) terminalStdout.write(`[collect] ${selection.effect}\n`);
   if (shouldPreviewPodChoices(choices, numberedChoices)) {
-    printPodChoices(choices, podSelectionTitle(selection));
+    printPodChoices(choices, selectionTitle(selection, "Pod"));
     numberedChoices = choices;
   }
   return promptSearchableChoice({
     choices,
     numberedChoices,
     question: (listed) => choices.length > POD_PREVIEW_LIMIT
-      ? `${podCountHint}请输入${label}的关键词（支持完整名称）${listed ? "或列表序号" : ""}（q 取消）：`
+      ? `${podCountHint}${inputPod}的关键词（支持完整名称）${listed ? "或列表序号" : ""}（q 取消）：`
       : listed
-        ? `请选择${label}（序号、名称或关键词，q 取消）：`
-        : `请输入${label}的名称或关键词，用于${selection.purpose}（支持完整名称，q 取消）：`,
+        ? `${selectPod}（序号、名称或关键词，q 取消）：`
+        : `${inputPod}的名称或关键词，用于${selection.purpose}（支持完整名称，q 取消）：`,
     resolve: (answer, numberedChoices) => {
       const resolution = resolvePodAnswer(choices, answer, numberedChoices);
       return resolution.kind === "selected"

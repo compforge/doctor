@@ -96,9 +96,10 @@ describe("Namespace 选择", () => {
       resolved: { namespace: "default", source: "default" },
       executor,
       interactive: true,
-      prompt: async (choices, defaultNamespace) => {
+      prompt: async ({ choices, defaultNamespace, selection }) => {
         expect(choices.map((choice) => choice.name)).toEqual(["app-system", "default", "z-terminating"]);
         expect(defaultNamespace).toBe("default");
+        expect(selection.purpose).toBe("定位本次操作涉及的 Service");
         return "app-system";
       },
     });
@@ -124,7 +125,7 @@ describe("Namespace 选择", () => {
       executor,
       interactive: true,
       recent,
-      prompt: async (choices) => {
+      prompt: async ({ choices }) => {
         expect(choices.map((choice) => choice.name)).toEqual([
           "default",
           "app-system",
@@ -145,7 +146,7 @@ describe("Namespace 选择", () => {
       resolved: { namespace: "default", source: "default" },
       executor,
       interactive: true,
-      prompt: async (choices) => {
+      prompt: async ({ choices }) => {
         expect(choices).toEqual([]);
         return "customer-system";
       },

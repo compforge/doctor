@@ -227,7 +227,7 @@ export async function resolveRedisConfig(
     selectContainer: true,
     access,
     selection: {
-      role: "configuration-source",
+      candidateRole: "配置来源",
       purpose: "读取 Redis 运行时配置",
       effect: "该选择用于读取 Redis 运行时配置，不代表仅分析该 Pod 自身的数据。",
     },

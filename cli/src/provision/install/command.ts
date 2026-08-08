@@ -82,7 +82,7 @@ export async function runInstall(
     includeEphemeralContainers: true,
     access,
     selection: {
-      role: "diagnostic-target",
+      candidateRole: "目标",
       purpose: "探测并安装诊断程序",
     },
   });

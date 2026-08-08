@@ -7,7 +7,10 @@ import {
   type ServiceChoice,
 } from "../../infra/k8s/service-selection";
 import type { RecentSelections } from "../../infra/recent";
-import { promptNamedChoices } from "../../terminal/service-selection";
+import {
+  promptNamedChoices,
+  type NamedChoiceSelectionInput,
+} from "../../terminal/service-selection";
 
 const ERROR_PATTERNS = [
   "\\bERROR\\b",
@@ -96,11 +99,7 @@ export interface LogServiceSelectionInput {
   context?: string;
   interactive?: boolean;
   recent?: RecentSelections;
-  prompt?: (
-    choices: readonly ServiceChoice[],
-    defaults: readonly string[],
-    title: string,
-  ) => Promise<string[] | undefined>;
+  prompt?: (input: NamedChoiceSelectionInput<ServiceChoice>) => Promise<string[] | undefined>;
 }
 
 /** 显式 flag 直接采用；交互终端列出 Service 多选；非交互使用 doctor 默认名单。 */
@@ -119,11 +118,12 @@ export async function resolveLogServiceSelection(
   if (!choices.length) {
     throw new Error(`namespace '${input.namespace}' 中没有具备日志采集能力的 Service`);
   }
-  const selected = await (input.prompt ?? promptNamedChoices)(
+  const selected = await (input.prompt ?? promptNamedChoices)({
     choices,
     defaults,
-    "[collect] 选择要采集日志的 Service：",
-  );
+    candidateType: "Service",
+    context: { purpose: "确定日志采集范围" },
+  });
   if (selected) recordRecentServiceTargets(selected, input);
   return selected;
 }

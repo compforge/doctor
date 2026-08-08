@@ -19,9 +19,7 @@ import type { Executor } from "../../infra/k8s/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
 import {
   parsePodChoices,
-  podSelectionLabel,
   promptPod,
-  type PodSelectionContext,
 } from "../../infra/k8s/pod-selection";
 import { listServiceChoices } from "../../infra/k8s/service-selection";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
@@ -31,6 +29,10 @@ import {
   promptListedChoice,
 } from "../../terminal/selection";
 import { terminalStdout } from "../../terminal/output";
+import {
+  selectionCandidateLabel,
+  type SelectionContext,
+} from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { resolveArchivePath } from "../output/archive";
 import { join } from "node:path";
@@ -156,7 +158,12 @@ export async function resolveStoreKinds(
     .filter((kind) => servicesWithStore(plugin.services, kind).length)
     .map((name) => ({ name }));
   if (!interactive) throw new Error(`非交互终端请用 --type <${choices.map((item) => item.name).join(",")}> 指定 Store 类型`);
-  const selected = await promptNamedChoices(choices, [], "[collect] 请选择本次要诊断的 Store 类型：");
+  const selected = await promptNamedChoices({
+    choices,
+    defaults: [],
+    candidateType: "Store 类型",
+    context: { purpose: "确定本次要诊断的 Store" },
+  });
   return selected?.length ? selected as DiagnosableStoreKind[] : undefined;
 }
 
@@ -218,7 +225,7 @@ async function resolveServicePod(input: {
   executor: Executor;
   namespace: string;
   interactive: boolean;
-  selection: PodSelectionContext;
+  selection: SelectionContext;
 }): Promise<string | undefined> {
   const access = new KubectlPodLogAccess(input.executor, input.namespace);
   const listed = await access.listServicePods([input.service]);
@@ -237,7 +244,7 @@ async function resolveServicePod(input: {
   if (!choices.length) throw new Error(`Service '${input.service}' 没有 Running Pod`);
   if (choices.length === 1) {
     terminalStdout.write(
-      `[collect] ${podSelectionLabel(input.selection, "Pod")}: ${choices[0]!.name}`
+      `[collect] ${selectionCandidateLabel(input.selection, "Pod")}: ${choices[0]!.name}`
       + "（唯一 Running Pod，自动选择）\n",
     );
     return choices[0]!.name;
@@ -291,8 +298,8 @@ export async function resolveStoreProviderConfig(
   if (!service) return undefined;
   const capability = await resolveCapability(service, kind, opts.store, plugin, interactive);
   if (!capability) return undefined;
-  const selection: PodSelectionContext = {
-    role: "configuration-source",
+  const selection: SelectionContext = {
+    candidateRole: "配置来源",
     purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
     effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
   };

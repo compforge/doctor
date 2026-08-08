@@ -56,7 +56,7 @@ export async function resolvePodHttpExecution(
     interactive: input.interactive,
     access,
     selection: {
-      role: "diagnostic-target",
+      candidateRole: "目标",
       purpose: "执行 HTTP 场景请求",
     },
   });
