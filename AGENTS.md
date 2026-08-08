@@ -2,9 +2,11 @@
 
 ## 项目定位与边界
 
-Doctor 是以本地 `doctor` CLI 为中心、面向应用与基础设施的开源诊断工具。CLI 负责确定性采集、证据
-编排、报告交付和本地 agent 问答。业务知识和私有 Service 访问规则不进入本仓，通过 Plugin 协议由
-使用方独立实现和分发。
+Doctor 是以本地 `doctor` CLI 为中心的开源业务诊断工具。在产品心智上，它是面向业务的增强版
+`kubectl`：`kubectl` 以 Kubernetes Resource/Object 为操作对象，Doctor 以业务 Service 为基本诊断
+粒度，围绕 `data`、`config`、`metric`、`mem`、`cpu` 等维度组织能力；Pod、Container 与 Process 是
+Service 下的运行目标和证据来源。CLI 负责确定性采集、证据编排、报告交付和本地 agent 问答。业务知识
+和私有 Service 访问规则不进入本仓，通过 Plugin 协议由使用方独立实现和分发。
 
 本仓包含通用 CLI、可复用 Agent、Plugin SDK、业务中立的示例 Plugin，以及可选 Doctor server 的宿主
 边界；不包含任何企业内部 server、业务 Plugin、Skill、环境配置或私有部署信息。
