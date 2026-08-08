@@ -6,7 +6,10 @@ import {
 import { diagnosticPids, parseProcscan, pickPid } from "../src/collect/fact/process";
 import type { Executor } from "../src/infra/k8s/executor";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
-import { shouldPreviewPodChoices, type PodChoice } from "../src/infra/k8s/pod-selection";
+import {
+  shouldPreviewPodChoices,
+  type PodChoice,
+} from "../src/infra/k8s/pod-selection";
 import { parsePodJson, pickContainer } from "../src/infra/k8s/target";
 
 const POD_JSON = JSON.stringify({
@@ -138,9 +141,58 @@ test("单 Container 自动选择时打印目标", async () => {
       pod: "app-0",
       selectContainer: true,
       interactive: false,
+      selection: { candidateRole: "目标", purpose: "采集测试数据" },
     })).resolves.toEqual({ pod: "app-0", container: "app" });
     expect(write).toHaveBeenCalledWith(
       "[target] container: app（pod/app-0 仅有一个 Container，自动选择）\n",
+    );
+  } finally {
+    write.mockRestore();
+  }
+});
+
+test("配置来源 Pod 关键词唯一匹配时保留候选角色", async () => {
+  const podList = JSON.stringify({
+    items: [{
+      metadata: { name: "kb-server-0" },
+      spec: { containers: [{ name: "app", image: "repo/app:1" }] },
+      status: { phase: "Running", containerStatuses: [{ ready: true, restartCount: 0 }] },
+    }],
+  });
+  const executor: Executor = {
+    run: async () => ({
+      ok: true,
+      exitCode: 0,
+      stdout: podList,
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+      command: [],
+    }),
+    exec: async () => { throw new Error("unexpected exec"); },
+  };
+  const config: KubernetesCommandConfig = {
+    profileName: "test",
+    kubernetes: {
+      namespace: "default",
+      namespaceSource: "profile:test",
+      kubeconfigSource: "profile:test",
+    },
+  };
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    await expect(resolvePodTarget({
+      config,
+      executor,
+      pod: "kb-server",
+      interactive: false,
+      selection: {
+        candidateRole: "配置来源",
+        purpose: "读取 Store 运行时配置",
+      },
+    })).resolves.toEqual({ pod: "kb-server-0" });
+    expect(write).toHaveBeenCalledWith(
+      "[collect] 配置来源 Pod: kb-server-0（关键词 'kb-server' 唯一匹配）\n",
     );
   } finally {
     write.mockRestore();
@@ -194,6 +246,7 @@ test("需要时允许把 Running Ephemeral Container 作为目标", async () => 
     selectContainer: true,
     includeEphemeralContainers: true,
     interactive: false,
+    selection: { candidateRole: "目标", purpose: "运行测试探针" },
   })).resolves.toEqual({ pod: "app-0", container: "doctor-debug-x" });
 });
 
@@ -234,6 +287,7 @@ test("preferred list pods 被拒绝时用精确 Pod get 完成目标选择", asy
     selectContainer: true,
     interactive: false,
     access: new KubernetesAccessContext(executor),
+    selection: { candidateRole: "目标", purpose: "运行测试探针" },
   })).resolves.toEqual({ pod: "app-0", container: "app" });
   expect(calls).toEqual([
     ["auth", "can-i", "list", "pods"],

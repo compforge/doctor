@@ -4,7 +4,10 @@ import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
 import type { ServiceChoice } from "../../infra/k8s/service-selection";
-import { promptNamedChoices } from "../../terminal/service-selection";
+import {
+  promptNamedChoices,
+  type NamedChoiceSelectionInput,
+} from "../../terminal/service-selection";
 import {
   type CollectDataCliOpts,
   type DataConfig,
@@ -54,10 +57,7 @@ export interface DataServiceSelectionInput {
   config: DataConfig;
   catalog: ServiceCatalog;
   interactive?: boolean;
-  promptServices?: (
-    choices: readonly ServiceChoice[],
-    defaults: readonly string[],
-  ) => Promise<string[] | undefined>;
+  promptServices?: (input: NamedChoiceSelectionInput<ServiceChoice>) => Promise<string[] | undefined>;
 }
 
 /** Core 只选择 capability provider；Service 是否可用以及如何访问由 Plugin 判断。 */
@@ -74,7 +74,12 @@ export async function resolveDataServiceSelection(
     if (!choices.length) {
       throw new Error("当前 Plugin 未声明 data capability");
     }
-    const selected = await (input.promptServices ?? promptNamedChoices)(choices, services);
+    const selected = await (input.promptServices ?? promptNamedChoices)({
+      choices,
+      defaults: services,
+      candidateType: "Service",
+      context: { purpose: "确定业务数据读取范围" },
+    });
     if (!selected) return undefined;
     services = selected;
   }

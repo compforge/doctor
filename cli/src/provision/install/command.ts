@@ -81,6 +81,10 @@ export async function runInstall(
     selectContainer: true,
     includeEphemeralContainers: true,
     access,
+    selection: {
+      candidateRole: "目标",
+      purpose: "探测并安装诊断程序",
+    },
   });
   if (!selected?.container) return 130;
   const program = configuredProgram ?? await promptInstallProgram();

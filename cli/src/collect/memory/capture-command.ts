@@ -110,6 +110,10 @@ export async function runCollectMemory(
       container: opts.container,
       selectContainer: true,
       access,
+      selection: {
+        candidateRole: "目标",
+        purpose: "采集 Python 内存堆",
+      },
     });
   } catch (error) {
     terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);

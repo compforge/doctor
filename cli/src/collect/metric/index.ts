@@ -52,11 +52,12 @@ export async function runCollectMetric(
   );
   if (!config) return 130;
   if (!config.servicesExplicit && process.stdin.isTTY && process.stdout.isTTY) {
-    const selected = await promptNamedChoices(
-      plugin.services.servicesWith("metric").map((service) => ({ name: service.name })),
-      config.services,
-      "[collect] 选择要分析的 Metric Service：",
-    );
+    const selected = await promptNamedChoices({
+      choices: plugin.services.servicesWith("metric").map((service) => ({ name: service.name })),
+      defaults: config.services,
+      candidateType: "Service",
+      context: { purpose: "确定 Metric 分析范围" },
+    });
     if (!selected) return 130;
     config = { ...config, services: selected };
   }

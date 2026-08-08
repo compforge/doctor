@@ -226,6 +226,11 @@ export async function resolveRedisConfig(
     container: input.container,
     selectContainer: true,
     access,
+    selection: {
+      candidateRole: "配置来源",
+      purpose: "读取 Redis 运行时配置",
+      effect: "该选择用于读取 Redis 运行时配置，不代表仅分析该 Pod 自身的数据。",
+    },
   });
   if (!target) return undefined;
 

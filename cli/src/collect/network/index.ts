@@ -34,7 +34,10 @@ import {
   promptEnter,
   promptListedChoice,
 } from "../../terminal/selection";
-import { promptNamedChoices } from "../../terminal/service-selection";
+import {
+  promptNamedChoices,
+  type NamedChoiceSelectionInput,
+} from "../../terminal/service-selection";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -246,10 +249,7 @@ export async function resolveNetworkServiceScope(input: {
   interactive?: boolean;
   recent?: RecentSelections;
   loadChoices: () => Promise<ServiceChoice[]>;
-  prompt?: (
-    choices: readonly ServiceChoice[],
-    defaults: readonly string[],
-  ) => Promise<string[] | undefined>;
+  prompt?: (input: NamedChoiceSelectionInput<ServiceChoice>) => Promise<string[] | undefined>;
 }): Promise<string[] | undefined> {
   if (input.services?.trim()) return parseNetworkServices(input.services);
 
@@ -268,9 +268,12 @@ export async function resolveNetworkServiceScope(input: {
       })
     : listed;
   if (!choices.length) throw new Error("当前 namespace 没有可选 Kubernetes Service");
-  const selected = input.prompt
-    ? await input.prompt(choices, [])
-    : await promptNamedChoices(choices, [], "[net] 请选择本次抓包覆盖的 Service：");
+  const selected = await (input.prompt ?? promptNamedChoices)({
+    choices,
+    defaults: [],
+    candidateType: "Service",
+    context: { purpose: "确定本次抓包范围" },
+  });
   if (!selected) terminalStdout.warning("已取消网络抓包范围选择。\n");
   if (selected && input.namespace) {
     recordRecentServiceTargets(selected, {

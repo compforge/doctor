@@ -1,6 +1,9 @@
 import { writeFileSync } from "node:fs";
 import { findSelectableFiles, resolveFileSelection } from "../../terminal/file-selection";
-import { promptNamedChoices } from "../../terminal/service-selection";
+import {
+  promptNamedChoices,
+  type NamedChoiceSelectionInput,
+} from "../../terminal/service-selection";
 import { loadHttpScenario } from "../shared/http/config";
 import type { HttpScenario } from "../shared/http/model";
 
@@ -105,7 +108,9 @@ export function filterHttpScenarioRequests(scenario: HttpScenario, requestIds: r
 export interface ResolveHttpScenarioRequestsInput {
   request?: string;
   interactive?: boolean;
-  prompt?: (choices: readonly { name: string }[], defaults: readonly string[]) => Promise<string[] | undefined>;
+  prompt?: (
+    input: NamedChoiceSelectionInput<{ name: string }>,
+  ) => Promise<string[] | undefined>;
 }
 
 export async function resolveHttpScenarioRequests(
@@ -120,6 +125,11 @@ export async function resolveHttpScenarioRequests(
   if (!interactive || scenario.requests.length === 1) return scenario;
 
   const choices = scenario.requests.map((request) => ({ name: request.id }));
-  const selected = await (input.prompt ?? promptNamedChoices)(choices, []);
+  const selected = await (input.prompt ?? promptNamedChoices)({
+    choices,
+    defaults: [],
+    candidateType: "Request",
+    context: { purpose: "确定本次要执行的 HTTP 场景请求" },
+  });
   return selected ? filterHttpScenarioRequests(scenario, selected) : undefined;
 }
