@@ -191,7 +191,8 @@ export async function resolvePodTarget(input: {
     const pod = selected.name;
     if (pod !== keyword) {
       terminalStdout.write(
-        `[target] pod: ${pod}（关键词 '${keyword}' 唯一匹配）\n`,
+        `[collect] ${selectionCandidateLabel(input.selection, "Pod")}: ${pod}`
+        + `（关键词 '${keyword}' 唯一匹配）\n`,
       );
     }
   } else {

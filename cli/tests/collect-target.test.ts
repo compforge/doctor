@@ -151,6 +151,54 @@ test("单 Container 自动选择时打印目标", async () => {
   }
 });
 
+test("配置来源 Pod 关键词唯一匹配时保留候选角色", async () => {
+  const podList = JSON.stringify({
+    items: [{
+      metadata: { name: "kb-server-0" },
+      spec: { containers: [{ name: "app", image: "repo/app:1" }] },
+      status: { phase: "Running", containerStatuses: [{ ready: true, restartCount: 0 }] },
+    }],
+  });
+  const executor: Executor = {
+    run: async () => ({
+      ok: true,
+      exitCode: 0,
+      stdout: podList,
+      stderr: "",
+      durationMs: 1,
+      timedOut: false,
+      command: [],
+    }),
+    exec: async () => { throw new Error("unexpected exec"); },
+  };
+  const config: KubernetesCommandConfig = {
+    profileName: "test",
+    kubernetes: {
+      namespace: "default",
+      namespaceSource: "profile:test",
+      kubeconfigSource: "profile:test",
+    },
+  };
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    await expect(resolvePodTarget({
+      config,
+      executor,
+      pod: "kb-server",
+      interactive: false,
+      selection: {
+        candidateRole: "配置来源",
+        purpose: "读取 Store 运行时配置",
+      },
+    })).resolves.toEqual({ pod: "kb-server-0" });
+    expect(write).toHaveBeenCalledWith(
+      "[collect] 配置来源 Pod: kb-server-0（关键词 'kb-server' 唯一匹配）\n",
+    );
+  } finally {
+    write.mockRestore();
+  }
+});
+
 test("需要时允许把 Running Ephemeral Container 作为目标", async () => {
   const podList = JSON.stringify({
     items: [{
