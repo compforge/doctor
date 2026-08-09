@@ -110,7 +110,14 @@ export interface PluginIdentity {
   version: string;
 }
 
-/** Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。 */
+/**
+ * Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。
+ *
+ * @spec Plugin identity、Service、Skill 与业务 capability 共享同一版本和选择生命周期
+ * @case id=plugin_distribution_unit,desc=`装配完整 Plugin`,expect=`Service 与 Skill 来自同一 Plugin 版本`,forbid=`独立选择或升级 Skill`
+ * @see {@link cli/docs/plugin.md}
+ * @rule 新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期
+ */
 export interface PluginDefinition extends PluginIdentity, PluginLevelCapabilities {
   /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;

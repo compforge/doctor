@@ -43,6 +43,12 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   }
 }
 
+/**
+ * @spec 构造保留 Service 原始类型的 Catalog，并拒绝重复的 Service name
+ * @case id=unique_service_names,desc=`注册重名 Service`,input=`两个相同 name 的 Service`,expect=`构造失败`,forbid=`静默覆盖已有 Service`
+ * @see {@link packages/plugin/tests/service.test.ts}
+ * @rule Service name 是 Plugin 内稳定身份，不能用数组顺序消解冲突
+ */
 export function createServiceCatalog<const T extends readonly ServiceDefinition[]>(
   services: T,
 ): ServiceCatalog<T[number]> {

@@ -1,0 +1,37 @@
+{
+  "packages/plugin/src/catalog.ts::createServiceCatalog": {
+    "cases": [
+      {
+        "desc": "注册重名 Service",
+        "expect": "构造失败",
+        "forbid": "静默覆盖已有 Service",
+        "id": "unique_service_names",
+        "input": "两个相同 name 的 Service"
+      }
+    ],
+    "links": [
+      "packages/plugin/tests/service.test.ts"
+    ],
+    "rules": [
+      "Service name 是 Plugin 内稳定身份，不能用数组顺序消解冲突"
+    ],
+    "spec": "构造保留 Service 原始类型的 Catalog，并拒绝重复的 Service name"
+  },
+  "packages/plugin/src/definition.ts::PluginDefinition": {
+    "cases": [
+      {
+        "desc": "装配完整 Plugin",
+        "expect": "Service 与 Skill 来自同一 Plugin 版本",
+        "forbid": "独立选择或升级 Skill",
+        "id": "plugin_distribution_unit"
+      }
+    ],
+    "links": [
+      "cli/docs/plugin.md"
+    ],
+    "rules": [
+      "新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期"
+    ],
+    "spec": "Plugin identity、Service、Skill 与业务 capability 共享同一版本和选择生命周期"
+  }
+}
