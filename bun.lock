@@ -4,6 +4,9 @@
   "workspaces": {
     "": {
       "name": "compforge-doctor",
+      "devDependencies": {
+        "@compforge/spec-case": "0.0.1",
+      },
     },
     "cli": {
       "name": "doctor-cli",
@@ -147,6 +150,8 @@
     "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
 
     "@compforge/prombed": ["@compforge/prombed@0.0.2", "", {}, "sha512-HeQyJeAuwNPI7RtLeS8dCApvHJFZYlyUq2EatMQxVaaywszwKCTfdY851JEDIGrW7Sh92h9AXc2ITYz3VwoVcA=="],
+
+    "@compforge/spec-case": ["@compforge/spec-case@0.0.1", "", { "dependencies": { "typescript": ">=6.0.3 <7" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-c8yJSndC10rwRRraJsOvj+I2CB+1HTCERY1z9C2QaP5VKB8IsmkMFRi4DX4U9jjUXpb+GTB7jVdfEqD+BjhiHA=="],
 
     "@compforge/trace-harness": ["@compforge/trace-harness@https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz", {}, "sha512-GRpcK7Wew1NgRbz7FkoP+rSUmhumSlO124EVvaPL8bKPLGRpdR/S3Tha0GbvrL8lltLS1ctVvUwYlav6GFXrHQ=="],
 
@@ -677,6 +682,8 @@
     "@aws-sdk/credential-provider-sso/@aws-sdk/token-providers": ["@aws-sdk/token-providers@3.1103.0", "", { "dependencies": { "@aws-sdk/core": "^3.977.6", "@aws-sdk/nested-clients": "^3.997.41", "@aws-sdk/types": "^3.974.2", "@smithy/core": "^3.31.1", "@smithy/types": "^4.16.1", "tslib": "^2.6.2" } }, "sha512-N4wy26MNn31ItGVHYHPrEuCIFY4MBBjC+C5v1lJKqIUSA7OZBdhleCY53zCCrXn27hsk7YNOaTuhQu807S4AfQ=="],
 
     "@aws-sdk/nested-clients/@smithy/node-http-handler": ["@smithy/node-http-handler@4.9.13", "", { "dependencies": { "@smithy/core": "^3.31.1", "@smithy/types": "^4.16.1", "tslib": "^2.6.2" } }, "sha512-Nmd/Nl35zfYrd+a6OO2cDJb3GPh9bgTjIUhcM+JFfjpp8/osCgboDV5nCT1I01Pv6R13eSKDKLSoVa5ZB6Zsfw=="],
+
+    "@compforge/spec-case/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 
     "@opentui/core/diff": ["diff@9.0.0", "", {}, "sha512-svtcdpS8CgJyqAjEQIXdb3OjhFVVYjzGAPO8WGCmRbrml64SPw/jJD4GoE98aR7r25A0XcgrK3F02yw9R/vhQw=="],
 
