@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz"
+    "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.3/compforge-trace-harness-0.0.3.tgz"
   },
   "devDependencies": {
     "@types/bun": "latest",

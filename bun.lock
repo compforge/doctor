@@ -16,7 +16,7 @@
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/prombed": "0.0.2",
-        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz",
+        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.3/compforge-trace-harness-0.0.3.tgz",
         "@earendil-works/pi-agent-core": "0.84.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@opensearch-project/opensearch": "3.6.0",
@@ -67,7 +67,7 @@
         "doctor-plugin-version": "./scripts/version.ts",
       },
       "dependencies": {
-        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz",
+        "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.3/compforge-trace-harness-0.0.3.tgz",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -153,7 +153,7 @@
 
     "@compforge/spec-case": ["@compforge/spec-case@0.0.1", "", { "dependencies": { "typescript": ">=6.0.3 <7" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-c8yJSndC10rwRRraJsOvj+I2CB+1HTCERY1z9C2QaP5VKB8IsmkMFRi4DX4U9jjUXpb+GTB7jVdfEqD+BjhiHA=="],
 
-    "@compforge/trace-harness": ["@compforge/trace-harness@https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.2/compforge-trace-harness-0.0.2.tgz", {}, "sha512-GRpcK7Wew1NgRbz7FkoP+rSUmhumSlO124EVvaPL8bKPLGRpdR/S3Tha0GbvrL8lltLS1ctVvUwYlav6GFXrHQ=="],
+    "@compforge/trace-harness": ["@compforge/trace-harness@https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.3/compforge-trace-harness-0.0.3.tgz", {}, "sha512-FCnfF9EXcnNVvxajZGjyjDcBdUGxwfvLWplw0fWDc9Uv9+Pbtx2W+9RVXEFuWSF6WPstvEPrqtfVljWC0UEoCw=="],
 
     "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@0.84.0", "", { "dependencies": { "@earendil-works/pi-ai": "^0.84.0", "@earendil-works/pi-telemetry": "^0.84.0", "diff": "8.0.4", "ignore": "7.0.5", "typebox": "1.3.7", "yaml": "2.9.0" } }, "sha512-L1lw0lwR5LXCzGEeHD9XNEruU2bg0H8clOA8ySdGMHvxutp8GC+yZL6MZp4tqQRnLKP3gHmY7TrWzQ3YnFdJYQ=="],
 
