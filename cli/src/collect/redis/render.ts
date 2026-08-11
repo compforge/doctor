@@ -176,7 +176,7 @@ function redisCapacityStatus(diagnosis: RedisDiagnosis): string {
 }
 
 function redisScanDetailsHtml(scan: RedisScan): string {
-  return `${htmlParagraph(`已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "按完整 SCAN 游标分组随机采样"}；检查范围内内存 ${formatBytes(scan.sampled_memory_bytes)}，平均 ${formatBytes(scan.average_sampled_bytes_per_key)}/key。`)}
+  return `${htmlParagraph(`已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "按有界随机方式采样"}；检查范围内内存 ${formatBytes(scan.sampled_memory_bytes)}，平均 ${formatBytes(scan.average_sampled_bytes_per_key)}/key。`)}
       <h4>类型 TopN</h4>
       ${htmlTable(
         ["type", "count", "memory", "no TTL", "no TTL memory"],
@@ -307,7 +307,7 @@ export function buildRedisMarkdown(
       "",
       `## Key 分布：${node} / db${scan.database}`,
       "",
-      `已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "按完整 SCAN 游标分组随机采样"}；检查范围内内存 ${formatBytes(scan.sampled_memory_bytes)}，平均 ${formatBytes(scan.average_sampled_bytes_per_key)}/key。`,
+      `已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "按有界随机方式采样"}；检查范围内内存 ${formatBytes(scan.sampled_memory_bytes)}，平均 ${formatBytes(scan.average_sampled_bytes_per_key)}/key。`,
       "",
       "### 类型 TopN",
       "",
@@ -358,7 +358,7 @@ export function buildRedisMarkdown(
         ? "已通过 --keystats 强制执行深度探测。"
         : `该 master 数据集内存是最小 master 的 ${focused.memoryRatio!.toFixed(2)}x，已触发独立深度探测。`,
       "",
-      `已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "keyspace 超过全量预算，按完整 SCAN 游标扩大分组随机采样"}。`,
+      `已检查 ${scan.scanned_keys} 个 key，${scan.scan_complete ? "已扫完整个 keyspace" : "keyspace 超过全量预算，按有界随机方式采样"}。`,
       "",
       "### Big Key TopN",
       "",

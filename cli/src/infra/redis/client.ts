@@ -137,17 +137,17 @@ export class RedisConnection implements RedisManagedConnection {
     return this.client.isReady;
   }
 
-  async #execute<T>(operation: () => Promise<T>): Promise<T> {
+  async #execute<T>(operationName: string, operation: () => Promise<T>): Promise<T> {
     try {
-      return await this.#executeOnce(operation);
+      return await this.#executeOnce(operationName, operation);
     } catch (err) {
       // node-redis 正在自动重连时，只读命令允许再入队一次；全程仍受同一命令 deadline 约束。
-      if (this.client.isOpen && !this.client.isReady) return this.#executeOnce(operation);
+      if (this.client.isOpen && !this.client.isReady) return this.#executeOnce(operationName, operation);
       throw err;
     }
   }
 
-  async #executeOnce<T>(operation: () => Promise<T>): Promise<T> {
+  async #executeOnce<T>(operationName: string, operation: () => Promise<T>): Promise<T> {
     if (!this.client.isOpen) {
       const reason = this.lastError()?.message;
       throw new Error(`Redis connection is closed${reason ? `: ${reason}` : ""}`);
@@ -155,7 +155,7 @@ export class RedisConnection implements RedisManagedConnection {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
-        reject(new Error(`Redis command timed out after ${this.timeoutMs}ms (${this.endpoint.host}:${this.endpoint.port})`));
+        reject(new Error(`Redis ${operationName} timed out after ${this.timeoutMs}ms (${this.endpoint.host}:${this.endpoint.port})`));
         // node-redis 的 command timeout 只覆盖待发送队列；销毁 socket 才能终止已发出但无响应的命令。
         this.close();
       }, this.timeoutMs);
@@ -168,26 +168,28 @@ export class RedisConnection implements RedisManagedConnection {
   }
 
   ping(): Promise<string> {
-    return this.#execute(() => this.client.ping());
+    return this.#execute("PING", () => this.client.ping());
   }
 
   async info(section?: string): Promise<Record<string, unknown>> {
-    const raw = await this.#execute(() => section
+    const raw = await this.#execute(section ? `INFO ${section}` : "INFO", () => section
       ? this.client.sendCommand(["INFO", section])
       : this.client.sendCommand(["INFO"]));
     return parseRedisInfo(stringValue(raw));
   }
 
   async dbSize(): Promise<number> {
-    return Number(await this.#execute(() => this.client.sendCommand(["DBSIZE"])));
+    return Number(await this.#execute("DBSIZE", () => this.client.sendCommand(["DBSIZE"])));
   }
 
   command(args: string[]): Promise<unknown> {
-    return this.#execute(() => this.client.sendCommand(args));
+    return this.#execute(args[0]?.toUpperCase() ?? "command", () => this.client.sendCommand(args));
   }
 
   async pipeline(commands: string[][]): Promise<unknown[]> {
-    return await this.#execute(() => {
+    const commandNames = new Set(commands.map((command) => command[0]?.toUpperCase()).filter(Boolean));
+    const operationName = commandNames.size === 1 ? `${[...commandNames][0]} pipeline` : "pipeline";
+    return await this.#execute(operationName, () => {
       // 重连后的只读重试必须重新创建 pipeline；已执行过的 multi builder 不可复用。
       const pipeline = this.client.multi();
       for (const command of commands) pipeline.addCommand(command);

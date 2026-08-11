@@ -14,6 +14,7 @@ export interface RedisKeyStatsOptions {
   scanCount: number;
   pipelineKeys: number;
   memorySamples: number;
+  onSelectionProgress?: (selected: number, limit: number) => void;
   onProgress?: (inspected: number, limit: number) => void;
 }
 
@@ -34,6 +35,9 @@ const LENGTH_COMMANDS: Record<string, string> = {
   stream: "XLEN",
 };
 
+const RANDOM_SAMPLE_MAX_FRACTION = 0.1;
+const RANDOM_SAMPLE_DRAW_MULTIPLIER = 1.25;
+
 function text(value: unknown): string {
   return Buffer.isBuffer(value) ? value.toString("utf8") : String(value ?? "");
 }
@@ -48,6 +52,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function throttle(startedAt: number, processed: number, maxPerSecond: number): Promise<void> {
+  const delay = processed / maxPerSecond * 1_000 - (performance.now() - startedAt);
+  if (delay > 0) await sleep(delay);
+}
+
 export function redisGroupedSampleSizes(totalKeys: number, targetSamples: number): number[] {
   const samples = Math.min(Math.max(0, totalKeys), Math.max(0, targetSamples));
   if (samples === 0) return [];
@@ -56,14 +65,16 @@ export function redisGroupedSampleSizes(totalKeys: number, targetSamples: number
   return Array.from({ length: samples }, (_, index) => baseSize + (index < largerGroups ? 1 : 0));
 }
 
-async function selectKeys(
+async function selectKeysByScan(
   client: RedisConnectionApi,
   totalKeys: number,
   limit: number,
   scanCount: number,
+  maxKeysPerSecond: number,
+  onProgress?: (selected: number, limit: number) => void,
 ): Promise<{ keys: string[]; visited: number }> {
+  const startedAt = performance.now();
   if (limit >= totalKeys) {
-    if (totalKeys === 0) return { keys: [], visited: 0 };
     const uniqueKeys = new Set<string>();
     let cursor = "0";
     let visited = 0;
@@ -72,6 +83,8 @@ async function selectKeys(
       cursor = page.cursor;
       visited += page.keys.length;
       for (const key of page.keys) uniqueKeys.add(key);
+      onProgress?.(uniqueKeys.size, limit);
+      await throttle(startedAt, visited, maxKeysPerSecond);
     } while (cursor !== "0");
     return { keys: [...uniqueKeys], visited };
   }
@@ -98,8 +111,62 @@ async function selectKeys(
           : -1;
       }
     }
+    onProgress?.(keys.length, limit);
+    await throttle(startedAt, visited, maxKeysPerSecond);
   } while (cursor !== "0");
   return { keys, visited };
+}
+
+async function selectKeysByRandomDraw(
+  client: RedisConnectionApi,
+  limit: number,
+  pipelineKeys: number,
+  maxKeysPerSecond: number,
+  onProgress?: (selected: number, limit: number) => void,
+): Promise<{ keys: string[]; visited: number }> {
+  const keys = new Set<string>();
+  const maxDraws = Math.ceil(limit * RANDOM_SAMPLE_DRAW_MULTIPLIER);
+  const startedAt = performance.now();
+  let visited = 0;
+  while (keys.size < limit && visited < maxDraws) {
+    const batchSize = Math.min(pipelineKeys, maxDraws - visited);
+    const replies = await client.pipeline(Array.from({ length: batchSize }, () => ["RANDOMKEY"]));
+    visited += batchSize;
+    for (const reply of replies) {
+      if (!(reply instanceof Error) && reply !== null && reply !== undefined) keys.add(text(reply));
+      if (keys.size >= limit) break;
+    }
+    onProgress?.(keys.size, limit);
+    await throttle(startedAt, visited, maxKeysPerSecond);
+  }
+  return { keys: [...keys].slice(0, limit), visited };
+}
+
+async function selectKeys(
+  client: RedisConnectionApi,
+  totalKeys: number,
+  limit: number,
+  options: RedisKeyStatsOptions,
+): Promise<{ keys: string[]; visited: number }> {
+  if (limit === 0) return { keys: [], visited: 0 };
+  // 抽样占比低时避免完整遍历大 keyspace；占比较高时 SCAN 更少重复，也能完成全量检查。
+  if (limit / totalKeys < RANDOM_SAMPLE_MAX_FRACTION) {
+    return selectKeysByRandomDraw(
+      client,
+      limit,
+      options.pipelineKeys,
+      options.maxKeysPerSecond,
+      options.onSelectionProgress,
+    );
+  }
+  return selectKeysByScan(
+    client,
+    totalKeys,
+    limit,
+    options.scanCount,
+    options.maxKeysPerSecond,
+    options.onSelectionProgress,
+  );
 }
 
 async function inspectKeys(
@@ -133,14 +200,14 @@ async function inspectKeys(
   });
 }
 
-/** redis-cli keyStats 的受预算实现：完整遍历 SCAN，并对均匀选中的 key 做 pipeline 检查。 */
+/** redis-cli keyStats 的受预算实现：有界选择 key，并用 pipeline 检查元数据。 */
 export async function collectRedisKeyStats(
   client: RedisConnectionApi,
   options: RedisKeyStatsOptions,
 ): Promise<RedisKeyStatsResult> {
   const totalKeys = Math.max(0, Number(await client.dbSize()));
   const limit = Math.min(totalKeys, Math.max(0, options.maxKeys));
-  const selected = await selectKeys(client, totalKeys, limit, options.scanCount);
+  const selected = await selectKeys(client, totalKeys, limit, options);
   const result: RedisKeyStat[] = [];
   const startedAt = performance.now();
   for (let offset = 0; offset < selected.keys.length; offset += options.pipelineKeys) {
@@ -150,8 +217,7 @@ export async function collectRedisKeyStats(
       options.memorySamples,
     );
     result.push(...rows);
-    const delay = result.length / options.maxKeysPerSecond * 1_000 - (performance.now() - startedAt);
-    if (delay > 0) await sleep(delay);
+    await throttle(startedAt, result.length, options.maxKeysPerSecond);
     options.onProgress?.(result.length, limit);
   }
   return {
