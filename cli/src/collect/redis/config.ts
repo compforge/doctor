@@ -36,6 +36,11 @@ export const REDIS_DEFAULTS = {
 
 export type RedisOutputFormat = "bundle" | "html" | "md";
 
+export interface RedisDatabaseScope {
+  mode: "all" | "single";
+  databases: number[];
+}
+
 export interface RedisConfig {
   collect: KubernetesCommandConfig;
   target: PodTarget;
@@ -44,7 +49,7 @@ export interface RedisConfig {
   service?: string;
   store?: ServiceRedisStoreCapability;
   url?: string;
-  database?: number;
+  requestedDatabase?: number;
   scan: {
     mode: "quick" | "sample";
     maxKeys: number;
@@ -163,6 +168,53 @@ export function parseRedisOutputFormat(value: string | undefined): RedisOutputFo
   return format;
 }
 
+export async function selectRedisDatabaseScope(
+  discoveredDatabases: readonly number[],
+  clusterType: "single" | "sentinel" | "cluster",
+  requestedDatabase?: number,
+  interactive = process.stdin.isTTY && process.stdout.isTTY,
+): Promise<RedisDatabaseScope | undefined> {
+  if (clusterType === "cluster") {
+    if (requestedDatabase !== undefined && requestedDatabase !== 0) {
+      throw new Error(`Redis Cluster 只支持 database 0，当前指定为 ${requestedDatabase}`);
+    }
+    return { mode: requestedDatabase === undefined ? "all" : "single", databases: [0] };
+  }
+  if (requestedDatabase !== undefined) {
+    return { mode: "single", databases: [requestedDatabase] };
+  }
+
+  const databases = [...new Set(discoveredDatabases)].sort((left, right) => left - right);
+  if (!interactive || databases.length === 0) return { mode: "all", databases };
+  const choices = [
+    {
+      name: "all",
+      label: `所有有数据的 DB（${databases.map((database) => `db${database}`).join("、")}）`,
+    },
+    ...databases.map((database) => ({ name: String(database), label: `db${database}` })),
+  ];
+  printNumberedChoices(choices, "[collect] Redis 深度分析范围：", (choice) => choice.label);
+  const selected = await promptListedChoice({
+    question: "请选择 DB 范围（序号、all 或 db 编号，回车 all，q 取消）：",
+    match: (answer) => {
+      const database = answer.match(/^db(\d+)$/i)?.[1];
+      if (database && choices.some((choice) => choice.name === database)) return database;
+      return matchListedChoice(
+        choices,
+        answer,
+        (choice) => choice.name,
+        (choice) => choice.name,
+      );
+    },
+    invalidMessage: "请输入有效的序号、all 或 db 编号。",
+    emptyValue: "all",
+  });
+  if (!selected) return undefined;
+  return selected === "all"
+    ? { mode: "all", databases }
+    : { mode: "single", databases: [Number(selected)] };
+}
+
 export async function resolveRedisConfig(
   input: RedisConfigInput,
   injectedExecutor?: Executor,
@@ -172,7 +224,7 @@ export async function resolveRedisConfig(
   const maxKeys = parseIntegerFlag("--max-keys", input.maxKeys, 1);
   const maxKeysPerSecond = parseIntegerFlag("--max-keys-per-second", input.maxKeysPerSecond, 1);
   const top = parseIntegerFlag("--top", input.top, 1);
-  const database = input.database === undefined
+  const requestedDatabase = input.database === undefined
     ? undefined
     : parseIntegerFlag("--database", input.database, 0);
   const outputFormat = parseRedisOutputFormat(input.format);
@@ -243,7 +295,7 @@ export async function resolveRedisConfig(
       service: catalogStore?.service,
       store: catalogStore?.store,
       url: catalogStore ? undefined : input.url,
-      database,
+      requestedDatabase,
       scan: {
         mode: input.quick ? "quick" : "sample",
         maxKeys,

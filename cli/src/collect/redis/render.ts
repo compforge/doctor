@@ -13,6 +13,7 @@ import {
   redisDatabases,
   redisMasters,
   redisMemoryCapacity,
+  redisNodeKeyCount,
   redisNodes,
   redisOverview,
   redisPressureWindows,
@@ -201,10 +202,7 @@ function redisScanDetailsHtml(scan: RedisScan): string {
 
 function redisKeyDistributionHtml(scans: readonly RedisScan[]): string {
   if (scans.length === 0) return "";
-  const options = scans.map((scan, index) => {
-    const label = `${scan.node.host}:${scan.node.port} / db${scan.database}`;
-    return `<option value="${index}">${escapeHtml(label)}</option>`;
-  }).join("");
+  const masterNames = [...new Set(scans.map((scan) => `${scan.node.host}:${scan.node.port}`))];
   const panels = scans.map((scan, index) => {
     const label = `${scan.node.host}:${scan.node.port} / db${scan.database}`;
     return `<div class="report-switcher-panel" data-switcher-value="${index}"${index === 0 ? "" : " hidden"}>
@@ -212,7 +210,46 @@ function redisKeyDistributionHtml(scans: readonly RedisScan[]): string {
       ${redisScanDetailsHtml(scan)}
     </div>`;
   }).join("");
-  return `<div class="report-switcher"><label>Master <select class="report-switcher-select" aria-label="选择 Redis master">${options}</select></label>${panels}</div>`;
+  if (scans.length === 1) return panels;
+  if (masterNames.length === 1) {
+    const options = scans.map((scan, index) => `<option value="${index}">db${scan.database}</option>`).join("");
+    return `<div class="report-switcher"><label>DB <select class="report-switcher-select" aria-label="选择 Redis database">${options}</select></label>${panels}</div>`;
+  }
+  if (masterNames.every((master) => scans.filter((scan) => `${scan.node.host}:${scan.node.port}` === master).length === 1)) {
+    const options = scans.map((scan, index) =>
+      `<option value="${index}">${escapeHtml(`${scan.node.host}:${scan.node.port}`)}</option>`
+    ).join("");
+    return `<div class="report-switcher"><label>Master <select class="report-switcher-select" aria-label="选择 Redis master">${options}</select></label>${panels}</div>`;
+  }
+
+  const masterOptions = masterNames.map((master, index) =>
+    `<option value="${index}">${escapeHtml(master)}</option>`
+  ).join("");
+  const databaseOptions = scans.map((scan, index) => {
+    const masterIndex = masterNames.indexOf(`${scan.node.host}:${scan.node.port}`);
+    return `<option value="${index}" data-cascade-parent="${masterIndex}">db${scan.database}</option>`;
+  }).join("");
+  const cascadePanels = scans.map((scan, index) => {
+    const masterIndex = masterNames.indexOf(`${scan.node.host}:${scan.node.port}`);
+    const label = `${scan.node.host}:${scan.node.port} / db${scan.database}`;
+    return `<div class="report-cascade-panel" data-cascade-parent="${masterIndex}" data-cascade-value="${index}"${index === 0 ? "" : " hidden"}>
+      <p class="report-switcher-title">${escapeHtml(label)}</p>
+      ${redisScanDetailsHtml(scan)}
+    </div>`;
+  }).join("");
+  return `<div class="report-cascade-switcher"><div class="report-switcher-controls"><label>Master <select class="report-cascade-parent-select report-switcher-select" aria-label="选择 Redis master">${masterOptions}</select></label><label>DB <select class="report-cascade-child-select report-switcher-select" aria-label="选择 Redis database">${databaseOptions}</select></label></div>${cascadePanels}</div>`;
+}
+
+function redisDatabaseScopeLabel(overview: ReturnType<typeof redisOverview>): string {
+  if (!overview) return "未执行";
+  if (overview.scanMode === "quick") return "quick 模式不扫描 key";
+  const databases = overview.selectedDatabases
+    ?? (overview.selectedDatabase === undefined ? [] : [overview.selectedDatabase]);
+  const labels = databases.map((database) => `db${database}`).join("、");
+  if (overview.databaseScope === "all") {
+    return labels ? `所有有数据的 DB（${labels}）` : "所有有数据的 DB（当前无 key）";
+  }
+  return labels || "未选择 DB";
 }
 
 function markdownInlineCode(value: string): string {
@@ -244,7 +281,7 @@ export function buildRedisMarkdown(
     `- 采集状态: \`${partial ? "partial" : "complete"}\`${partial ? "；缺失证据及影响见诊断覆盖度" : ""}`,
     `- 目标: \`${target.endpoint}\`（${target.endpoint_source}）`,
     `- 拓扑类型: \`${overview?.clusterType ?? configuredClusterType}\``,
-    `- 扫描模式: \`${overview?.scanMode ?? "未执行"}\`；深度扫描 \`db${overview?.selectedDatabase ?? 0}\`，仅扫描 master，replica 不重复扫描 key`,
+    `- 扫描模式: \`${overview?.scanMode ?? "未执行"}\`；深度扫描范围: ${redisDatabaseScopeLabel(overview)}，仅扫描 master，replica 不重复扫描 key`,
     "",
     "## 诊断结论",
     "",
@@ -266,7 +303,8 @@ export function buildRedisMarkdown(
     for (const node of nodes) {
       const info = node.info ?? {};
       const link = node.error ? `error: ${node.error}` : String(info.master_link_status ?? "-");
-      lines.push(`| ${node.host}:${node.port} | ${node.role} | db${node.selected_database} | ${node.dbsize ?? "-"} | ${link} |`);
+      const allDatabases = overview?.databaseScope === "all";
+      lines.push(`| ${node.host}:${node.port} | ${node.role} | ${allDatabases ? "all" : `db${node.selected_database}`} | ${allDatabases ? redisNodeKeyCount(node) ?? "-" : node.dbsize ?? "-"} | ${link} |`);
     }
   }
 
@@ -391,7 +429,7 @@ export function buildRedisHtml(target: RedisRenderTarget, diagnosis: RedisDiagno
       `采集状态: ${partial ? "partial（部分完成；缺失证据及影响见诊断覆盖度）" : "complete"}`,
       `目标: ${target.endpoint}（${target.endpoint_source}）`,
       `拓扑类型: ${overview?.clusterType ?? configuredClusterType}`,
-      `扫描模式: ${overview?.scanMode ?? "未执行"}；深度扫描 db${overview?.selectedDatabase ?? 0}，仅扫描 master，replica 不重复扫描 key`,
+      `扫描模式: ${overview?.scanMode ?? "未执行"}；深度扫描范围: ${redisDatabaseScopeLabel(overview)}，仅扫描 master，replica 不重复扫描 key`,
     ]),
     htmlHeading(2, "容量状态"),
     redisCapacityStatus(diagnosis),
@@ -418,8 +456,8 @@ export function buildRedisHtml(target: RedisRenderTarget, diagnosis: RedisDiagno
         nodes.map((node) => [
           `${node.host}:${node.port}`,
           node.role,
-          `db${node.selected_database}`,
-          node.dbsize ?? "-",
+          overview?.databaseScope === "all" ? "all" : `db${node.selected_database}`,
+          overview?.databaseScope === "all" ? redisNodeKeyCount(node) ?? "-" : node.dbsize ?? "-",
           node.error ? `error: ${node.error}` : String(node.info?.master_link_status ?? "-"),
         ]),
       ),

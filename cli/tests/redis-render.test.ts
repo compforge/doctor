@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { buildRedisInspectionFacts } from "../src/collect/redis/fact/model";
 import { buildRedisEvidence, type RedisDiagnosis } from "../src/collect/redis/model";
 import {
+  buildRedisKeyDistributionHtml,
   buildRedisPrefixKeyPieCharts,
   buildRedisPrefixMemoryPieCharts,
 } from "../src/collect/redis/render";
@@ -73,4 +74,45 @@ test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () =>
       { label: "其他前缀", value: 100, valueLabel: "100 B" },
     ],
   }]);
+});
+
+test("Redis Key 分布对同一 master 的多个 DB 使用独立 DB 下拉框", () => {
+  const facts = buildRedisInspectionFacts({
+    endpoints: [["redis.example.com", 6379]],
+    database: 7,
+    useSsl: false,
+    clusterType: "single",
+    endpointSource: "service-env",
+    credentialSource: "service-env",
+  }, { namespace: "default", pod: "redis-0" }, { available: true });
+  const scans = [0, 7].map((database) => ({
+    id: `keyspace:redis.example.com:6379:db${database}`,
+    kind: "keyspace" as const,
+    scan: {
+      node: { host: "redis.example.com", port: 6379 },
+      database,
+      scanned_keys: 1,
+      scan_complete: true,
+      sampled_memory_bytes: 100,
+      average_sampled_bytes_per_key: 100,
+      types: [],
+      prefixes: [],
+      top_prefixes_by_key_count: [],
+      ttl_buckets: {},
+      top_slots: [],
+      top_keys: [],
+      top_streams: [],
+    },
+  }));
+  const diagnosis: RedisDiagnosis = {
+    evidence: buildRedisEvidence(scans, facts),
+    findings: [],
+    coverage: [],
+  };
+
+  const html = buildRedisKeyDistributionHtml(diagnosis);
+  expect(html).toContain("<label>DB <select");
+  expect(html).toContain(">db0</option>");
+  expect(html).toContain(">db7</option>");
+  expect(html).not.toContain("<label>Master <select");
 });

@@ -164,7 +164,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
     .option("--s3-prefix <prefix>", "S3 对象画像范围；缺省使用 Service 配置的 bucket prefix")
     .option("--s3-max-objects <n>", "S3 对象画像最多扫描的对象数", "100000")
     .option("--s3-scan-timeout <seconds>", "S3 对象画像总时间预算", "120")
-    .option("--database <n>", "Redis 深度分析的 database")
+    .option("--database <n>", "Redis 仅深度分析指定 database；未指定时交互选择，非交互分析所有有数据的 DB")
     .option("--quick", "Redis 只采拓扑、容量和运行状态，不扫描 key", false)
     .option("--keystats", "Redis 强制对所有 master 运行 keyStats 深度探测", false)
     .option("--max-keys <n>", "Redis 最多检查的 key 总数", String(REDIS_DEFAULTS.maxKeys))

@@ -28,6 +28,7 @@ import {
   makeRedisRuntimeProbe,
   makeRedisKeyStatsProbe,
 } from "./probe/runtime";
+import { discoverRedisDatabases } from "./probe/collector";
 import { confirmRedisTarget, prepareRedisAccess } from "./preparation";
 import {
   buildRedisHtml,
@@ -42,6 +43,7 @@ import {
   REDIS_DEFAULTS,
   parseRedisOutputFormat,
   resolveRedisConfig,
+  selectRedisDatabaseScope,
   type RedisOutputFormat,
 } from "./config";
 
@@ -171,7 +173,7 @@ export async function runCollectRedis(
   if (mode === "quick") {
     terminalStdout.write("[collect] Redis scan limit: 基础探针不扫描 key\n");
   } else {
-    terminalStdout.write(`[collect] Redis scan limit: 最多 ${maxKeys} 个 key（在 master 间均分）\n`);
+    terminalStdout.write(`[collect] Redis scan limit: 最多 ${maxKeys} 个 key（在 master/DB 间均分）\n`);
     terminalStdout.write(`[collect] Redis scan rate: 最多 ${maxKeysPerSecond} key/s\n`);
   }
   if (keyStats) terminalStdout.write("[collect] Redis keyStats: 强制检查所有 master\n");
@@ -215,7 +217,12 @@ export async function runCollectRedis(
         top,
         show_key_names: config.scan.showKeyNames,
         key_stats: config.scan.keyStats,
-        database: collectContext.redisTarget?.database ?? config.database ?? null,
+        connection_database: collectContext.redisTarget?.database ?? null,
+        database_scope: collectContext.redisDatabaseScope?.mode ?? null,
+        databases: collectContext.redisDatabaseScope?.databases ?? [],
+        database: collectContext.redisDatabaseScope?.mode === "single"
+          ? collectContext.redisDatabaseScope.databases[0] ?? null
+          : null,
         output_format: format,
       },
       startedAt,
@@ -359,6 +366,33 @@ export async function runCollectRedis(
   }
 
   const sanitizedTarget = sanitizeRedisTarget(config, facts.target);
+
+  if (collectContext.redisAccess && facts.capabilities.status === "collected") {
+    if (mode === "sample") {
+      try {
+        collectContext.log("[collect] 正在发现 Redis database…");
+        const discovered = await discoverRedisDatabases(collectContext);
+        const scope = await selectRedisDatabaseScope(
+          discovered.databases,
+          discovered.clusterType,
+          config.requestedDatabase,
+        );
+        if (!scope) return finish(sanitizedTarget, 130);
+        collectContext.redisDatabaseScope = scope;
+        const databases = scope.databases.map((database) => `db${database}`).join("、") || "无数据 DB";
+        collectContext.log(`[collect] Redis database scope: ${scope.mode === "all" ? `所有有数据的 DB（${databases}）` : databases}`);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        bundle.settle(`Redis database 范围确认失败：${reason}`);
+        bundle.writeSummary(`# Redis 诊断失败\n\n${reason}\n`);
+        return finish(sanitizedTarget, 1);
+      }
+    } else {
+      collectContext.redisDatabaseScope = config.requestedDatabase === undefined
+        ? { mode: "all", databases: [] }
+        : { mode: "single", databases: [config.requestedDatabase] };
+    }
+  }
 
   try {
     // redis 是"一个方面、一次受限外部访问、多条 observation"的标准形态：

@@ -58,13 +58,21 @@ export function buildRedisCoverage(
   }
   const masters = redisMasters(e);
   const scans = redisScans(e);
+  const overview = e.observations.find(
+    (item): item is RedisOverviewObservation => item.kind === "overview",
+  );
   const mastersWithoutCapacity = masters.filter((master) => !redisMemoryCapacity(master));
   const capacityGap = mastersWithoutCapacity.length > 0
     ? `Redis master 未配置 maxmemory（${mastersWithoutCapacity.map((node) => `${node.host}:${node.port}`).join("、")}）；缺少 Pod/cgroup 容量证据`
     : undefined;
   const missingEvidence: string[] = [];
   if (masters.length === 0) missingEvidence.push(mastersGap(e));
-  if (scans.length < masters.length) missingEvidence.push(scansGap(e));
+  const selectedDatabaseCount = overview?.selectedDatabases?.length
+    ?? (overview?.selectedDatabase === undefined ? 0 : 1);
+  const expectedScans = overview?.scanMode === "sample"
+    ? masters.length * selectedDatabaseCount
+    : masters.length;
+  if (overview?.scanMode === "quick" || scans.length < expectedScans) missingEvidence.push(scansGap(e));
   return [
     {
       goal: "redis-memory-capacity",
