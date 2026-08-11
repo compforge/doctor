@@ -67,14 +67,17 @@ eviction/OOM 后果判读。短压力窗口始终采集；只有容量偏高、�
 才升级到更长的独立观察窗口。正常实例不增加等待，未执行窗口明确记为 unnecessary。累计计数只能说明
 历史上发生过后果，不能单独证明当前仍满。
 
-Redis database 是 key 命名空间，深度扫描只属于选定 database；节点内存、maxmemory、eviction 和 OOM
-仍是 master 级指标。Cluster 只支持 db0，不能把节点级容量伪装成某个 database 的内存结论。
+Redis database 是 key 命名空间，Service/Pod 配置中的 database 只是业务连接的默认值，不决定 Doctor
+的诊断范围。sample 模式由用户选择所有有数据的 database 或单个 database；非交互调用未指定
+`--database` 时覆盖所有有数据的 database。节点内存、maxmemory、eviction 和 OOM 仍是 master 级指标。
+Cluster 只支持 db0，不能把节点级容量伪装成某个 database 的内存结论。
 
 ### Redis Key 探测有界且独立
 
-Key 分析同时受总检查量和速率预算限制，并在多个 master 间分配额度、串行检查；达到预算时保留 partial
-Observation 和真实覆盖声明。小 keyspace 或采样比例较高时用 SCAN，低采样比例的大 keyspace 改用有界
-RANDOMKEY 去重，使选 key 的服务端工作量随采样预算增长，而不是先遍历完整 keyspace。随机选择和后续
+Key 分析同时受总检查量和速率预算限制，并在多个 master 与选定 database 间分配额度、串行检查；达到
+预算时保留 partial Observation 和真实覆盖声明。小 keyspace 或采样比例较高时用 SCAN，低采样比例的
+大 keyspace 改用有界 RANDOMKEY 去重，使选 key 的服务端工作量随采样预算增长，而不是先遍历完整
+keyspace。随机选择和后续
 元数据读取共用速率边界。Top-N key 默认保留名称以便定位，跨团队流转时可显式关闭名称，仅保存前缀与摘要。
 
 Cluster sample 发现 master 数据集明显倾斜时，独立 keyStats Probe 只深入最大的 master；显式启用时

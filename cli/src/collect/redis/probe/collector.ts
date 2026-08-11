@@ -71,6 +71,25 @@ function databases(info: Record<string, unknown>) {
   }).sort((left, right) => left.database - right.database);
 }
 
+export async function discoverRedisDatabases(
+  ctx: RedisCollectContext,
+): Promise<{ clusterType: "single" | "sentinel" | "cluster"; databases: number[] }> {
+  const access = ctx.redisAccess;
+  const target = ctx.redisTarget;
+  if (!access || !target) throw new Error("Redis 采集准备未完成");
+  const topology = await discoverRedisTopology(access, topologyConfig(ctx));
+  if (topology.clusterType === "cluster") return { clusterType: "cluster", databases: [0] };
+  const discovered = new Set<number>();
+  for (const endpoint of topology.masters) {
+    const info = await (await access.connection(endpoint, target.database)).info("keyspace");
+    for (const database of databases(info)) discovered.add(database.database);
+  }
+  return {
+    clusterType: topology.clusterType,
+    databases: [...discovered].sort((left, right) => left - right),
+  };
+}
+
 async function nodeObservation(
   client: RedisConnectionApi,
   endpoint: RedisEndpoint,
@@ -233,6 +252,7 @@ export async function collectRedisRuntime(
   const topology = await discoverRedisTopology(access, topologyConfig(ctx));
   ctx.log(`[collect] 拓扑发现完成：${topology.clusterType}，${topology.masters.length} 个 master，${topology.replicas.length} 个 replica`);
   const errors: string[] = [];
+  const databaseScope = ctx.redisDatabaseScope ?? { mode: "single" as const, databases: [target.database] };
   const masters: RedisNode[] = [];
   for (const [index, endpoint] of topology.masters.entries()) {
     ctx.log(`[collect] 正在读取 master ${index + 1}/${topology.masters.length}（${endpoint.host}:${endpoint.port}）…`);
@@ -269,24 +289,29 @@ export async function collectRedisRuntime(
   }
   const scans: RedisScan[] = [];
   if (options.mode === "sample") {
-    const perMaster = Math.floor(options.maxKeys / Math.max(1, topology.masters.length));
-    const remainder = options.maxKeys % Math.max(1, topology.masters.length);
-    for (const [index, endpoint] of topology.masters.entries()) {
-      const limit = perMaster + (index < remainder ? 1 : 0);
+    const targets = topology.masters.flatMap((endpoint) =>
+      databaseScope.databases.map((database) => ({ endpoint, database }))
+    );
+    const perTarget = Math.floor(options.maxKeys / Math.max(1, targets.length));
+    const remainder = options.maxKeys % Math.max(1, targets.length);
+    for (const [index, { endpoint, database }] of targets.entries()) {
+      const limit = perTarget + (index < remainder ? 1 : 0);
       try {
         scans.push(await scanMaster(
-          await access.connection(endpoint, target.database), endpoint, target.database,
+          await access.connection(endpoint, database), endpoint, database,
           options, limit, (line) => ctx.log(`[collect] ${line}`),
         ));
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        errors.push(`${endpoint.host}:${endpoint.port} keyspace 抽样：${reason}`);
+        errors.push(`${endpoint.host}:${endpoint.port} db${database} keyspace 抽样：${reason}`);
       }
     }
   }
   return {
     cluster_type: topology.clusterType,
-    selected_database: target.database,
+    database_scope: databaseScope.mode,
+    selected_databases: databaseScope.databases,
+    selected_database: databaseScope.mode === "single" ? databaseScope.databases[0] : undefined,
     masters,
     replicas,
     slot_ranges: topology.slotRanges,
@@ -299,22 +324,23 @@ export async function collectRedisRuntime(
 export async function collectRedisMasterKeyStats(
   ctx: RedisCollectContext,
   node: RedisEndpoint,
+  database: number,
   options: ScanOptions,
-  masterCount: number,
+  targetCount: number,
 ): Promise<RedisScan> {
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
-  const client = await access.connection(node, target.database);
+  const client = await access.connection(node, database);
   const totalKeys = Math.max(0, Number(await client.dbSize()));
-  const doubledPerMaster = Math.ceil(options.maxKeys / Math.max(1, masterCount)) * 2;
+  const doubledPerTarget = Math.ceil(options.maxKeys / Math.max(1, targetCount)) * 2;
   const limit = totalKeys <= REDIS_SKEW_KEY_STATS_FULL_SCAN_MAX_KEYS
     ? totalKeys
-    : Math.min(totalKeys, doubledPerMaster);
+    : Math.min(totalKeys, doubledPerTarget);
   return scanMaster(
     client,
     node,
-    target.database,
+    database,
     options,
     limit,
     (line) => ctx.log(`[collect] ${line}`),

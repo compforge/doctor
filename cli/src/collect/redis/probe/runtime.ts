@@ -24,7 +24,9 @@ import { collectRedisMasterKeyStats, collectRedisPressure, collectRedisRuntime }
 /** TS Redis collector 的原始结构化输出；进入 Evidence 前再拆成领域 Observations。 */
 export interface RedisRuntimeProbeOutput {
   cluster_type: "single" | "sentinel" | "cluster";
-  selected_database: number;
+  database_scope: "all" | "single";
+  selected_databases: number[];
+  selected_database?: number;
   masters: RedisNode[];
   replicas: RedisNode[];
   slot_ranges: RedisSlotRange[];
@@ -50,6 +52,8 @@ export function redisObservationsFromRuntimeOutput(output: RedisRuntimeProbeOutp
       kind: "overview",
       clusterType: output.cluster_type,
       scanMode: output.scan_mode,
+      databaseScope: output.database_scope,
+      selectedDatabases: output.selected_databases,
       selectedDatabase: output.selected_database,
       slotRanges: output.slot_ranges,
       partialReason: output.error,
@@ -174,7 +178,13 @@ export function makeRedisRuntimeProbe(): Probe<
 function keyStatsTargets(
   progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCollectContext>["evaluate"]>[2],
   forced: boolean,
-): Array<{ node: RedisNode; trigger: "forced" | "memory-skew"; memoryRatio?: number; masterCount: number }> {
+): Array<{
+  node: RedisNode;
+  database: number;
+  trigger: "forced" | "memory-skew";
+  memoryRatio?: number;
+  targetCount: number;
+}> {
   const observations = progress.flatMap((result) => result.observations);
   const overview = observations.find(
     (item): item is RedisOverviewObservation => item.kind === "overview",
@@ -184,12 +194,25 @@ function keyStatsTargets(
     .filter((item): item is RedisNodeObservation => item.kind === "node")
     .map((item) => item.node)
     .filter((node) => node.role === "master");
+  const databases = overview.selectedDatabases;
   if (forced) {
-    return masters.map((node) => ({ node, trigger: "forced", masterCount: masters.length }));
+    const targetCount = masters.length * databases.length;
+    return masters.flatMap((node) => databases.map((database) => ({
+      node,
+      database,
+      trigger: "forced" as const,
+      targetCount,
+    })));
   }
   if (overview.clusterType !== "cluster" || overview.scanMode !== "sample") return [];
   const skew = redisMasterMemorySkew(masters);
-  return skew ? [{ node: skew.target, trigger: "memory-skew", memoryRatio: skew.memoryRatio, masterCount: masters.length }] : [];
+  return skew && databases.length === 1 ? [{
+    node: skew.target,
+    database: databases[0]!,
+    trigger: "memory-skew",
+    memoryRatio: skew.memoryRatio,
+    targetCount: masters.length,
+  }] : [];
 }
 
 export function makeRedisKeyStatsProbe(): Probe<
@@ -227,7 +250,13 @@ export function makeRedisKeyStatsProbe(): Probe<
       for (const target of targets) {
         const node = { host: target.node.host, port: target.node.port };
         ctx.log(`[collect] 对 master ${node.host}:${node.port} 运行 keyStats…`);
-        const scan = await collectRedisMasterKeyStats(ctx, node, config.scan, target.masterCount);
+        const scan = await collectRedisMasterKeyStats(
+          ctx,
+          node,
+          target.database,
+          config.scan,
+          target.targetCount,
+        );
         observations.push({
           id: `key-stats:${node.host}:${node.port}:db${scan.database}`,
           kind: "key-stats",

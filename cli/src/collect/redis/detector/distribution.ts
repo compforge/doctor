@@ -44,15 +44,22 @@ export const detectMasterSkew: RedisDetector = (e: RedisEvidence): RedisFinding[
           keyRatio,
         });
   }
-  const averageRatio = ratio(scans.map((scan) => scan.average_sampled_bytes_per_key));
-  if (averageRatio >= 1.5) {
+  const scansByDatabase = new Map<number, typeof scans>();
+  for (const scan of scans) {
+    const group = scansByDatabase.get(scan.database) ?? [];
+    group.push(scan);
+    scansByDatabase.set(scan.database, group);
+  }
+  for (const [database, group] of scansByDatabase) {
+    const averageRatio = ratio(group.map((scan) => scan.average_sampled_bytes_per_key));
+    if (averageRatio < 1.5) continue;
     findings.push({
-      id: `redis.sampled-key-size-skew:db${scans[0]!.database}`,
+      id: `redis.sampled-key-size-skew:db${database}`,
       kind: "redis.sampled-key-size-skew",
       severity: "warning",
       confidence: "medium",
-      evidence: scans.map((scan) => keyspaceEvidence(scan.node.host, scan.node.port, scan.database)),
-      database: scans[0]!.database,
+      evidence: group.map((scan) => keyspaceEvidence(scan.node.host, scan.node.port, scan.database)),
+      database,
       ratio: averageRatio,
     });
   }

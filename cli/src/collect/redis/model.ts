@@ -70,7 +70,10 @@ export interface RedisOverviewObservation {
   kind: "overview";
   clusterType: "single" | "sentinel" | "cluster";
   scanMode: "quick" | "sample";
-  selectedDatabase: number;
+  databaseScope: "all" | "single";
+  selectedDatabases: number[];
+  /** 兼容旧 Evidence Bundle；新采集使用 selectedDatabases。 */
+  selectedDatabase?: number;
   slotRanges: RedisSlotRange[];
   /** 基础拓扑/节点已取得，但 keyspace 等子采集未完整完成。 */
   partialReason?: string;

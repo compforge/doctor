@@ -91,12 +91,12 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
     expect(observations.map((item) => item.kind)).toEqual(["overview", "node"]);
     expect(observations[0]).toMatchObject({
       kind: "overview",
-      partialReason: "redis.example.com:6379 keyspace 抽样：SCAN timed out",
+      partialReason: "redis.example.com:6379 db7 keyspace 抽样：SCAN timed out",
     });
     expect(bundle.getSteps()).toEqual([expect.objectContaining({
       id: "redis-probe",
       status: "partial",
-      reason: "redis.example.com:6379 keyspace 抽样：SCAN timed out",
+      reason: "redis.example.com:6379 db7 keyspace 抽样：SCAN timed out",
     })]);
     const evidence = buildRedisEvidence(observations, facts);
     const diagnosis = {
@@ -256,6 +256,8 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
       kind: "overview",
       clusterType: "cluster",
       scanMode: "sample",
+      databaseScope: "single",
+      selectedDatabases: [7],
       selectedDatabase: 7,
       slotRanges: [],
       partialReason: "redis-2.example.com:6379 keyspace 抽样：SCAN timed out",

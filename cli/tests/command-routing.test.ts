@@ -490,6 +490,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--store <id>");
     expect(result.stdout).not.toContain("--url <url>");
     expect(result.stdout).toContain("--database <n>");
+    expect(result.stdout).toContain("未指定时交互选择");
     expect(result.stdout).toContain("-p, --pod <pod>");
     expect(result.stdout).toContain("-c, --container <name>");
     expect(result.stdout).not.toContain("--deployment");

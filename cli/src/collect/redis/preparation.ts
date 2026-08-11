@@ -63,7 +63,6 @@ export async function confirmRedisTarget(
       envResult.ok ? envResult.stdout : "",
       config.profile,
       config.url,
-      config.database,
       config.store,
     );
     return {

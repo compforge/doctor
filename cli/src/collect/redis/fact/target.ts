@@ -161,13 +161,13 @@ export function extractRedisEnvironment(rawEnv: string): Record<string, string> 
 
 /**
  * 服务运行时 env 是动态事实，profile 身份只作兜底；flag/profile URL 可显式覆盖地址。
- * URL 未携带身份时仍按来源层级补齐身份。
+ * URL 未携带身份时仍按来源层级补齐身份。这里解析出的 database 只作为连接默认值，
+ * keyspace 诊断范围由用户选择，不从业务连接配置推断。
  */
 export function resolveRedisTarget(
   rawEnv: string,
   profile: RedisProfileConfig | undefined,
   flagUrl?: string,
-  databaseOverride?: number,
   capability?: ServiceRedisStoreCapability,
 ): RedisTarget {
   const env = parseEnv(capability ? projectRedisStoreEnvironment(rawEnv, capability) : rawEnv);
@@ -230,7 +230,6 @@ export function resolveRedisTarget(
   }
 
   const clusterType = normalizeClusterType(profile?.cluster_type ?? env.get("REDIS_CLUSTER_TYPE"));
-  if (databaseOverride !== undefined) database = databaseOverride;
   if (clusterType === "cluster" && database !== 0) {
     throw new Error(`Redis Cluster 只支持 database 0，当前为 ${database}`);
   }
