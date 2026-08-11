@@ -14,7 +14,7 @@ import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { packBundle, resolveArchivePath } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
-import { htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
+import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
 import type { RedisCollectContext } from "./context";
 import { buildRedisCoverage, redisDetectors } from "./detector";
 import { makeRedisInspect, sanitizeRedisTarget } from "./fact/inspect";
@@ -34,6 +34,8 @@ import {
   buildRedisKeyDistributionHtml,
   buildRedisKeyStatsHtml,
   buildRedisMarkdown,
+  buildRedisPrefixKeyPieCharts,
+  buildRedisPrefixMemoryPieCharts,
   buildRedisTtlPieCharts,
 } from "./render";
 import {
@@ -185,6 +187,8 @@ export async function runCollectRedis(
   let summaryHtml = "<h1>Redis 诊断未形成结果</h1><p>失败原因与已取得证据见采集步骤和原始证据。</p>";
   let keyDistributionHtml = "";
   let keyStatsHtml = "";
+  let prefixKeyPieCharts: HtmlPieChart[] = [];
+  let prefixMemoryPieCharts: HtmlPieChart[] = [];
   let ttlPieCharts: HtmlPieChart[] = [];
   const inspectionFacts: Record<string, unknown> = {};
 
@@ -252,6 +256,12 @@ export async function runCollectRedis(
           sections: [
             ...(keyDistributionHtml ? [{ title: "Key 分布", html: keyDistributionHtml }] : []),
             ...(keyStatsHtml ? [{ title: "keyStats", html: keyStatsHtml }] : []),
+            ...(prefixKeyPieCharts.length
+              ? [{ title: "前缀 Key 占比", html: htmlPieCharts(prefixKeyPieCharts) }]
+              : []),
+            ...(prefixMemoryPieCharts.length
+              ? [{ title: "前缀空间占比", html: htmlPieCharts(prefixMemoryPieCharts) }]
+              : []),
             ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
           ],
         });
@@ -377,6 +387,8 @@ export async function runCollectRedis(
     summaryHtml = buildRedisHtml(sanitizedTarget, diagnosis);
     keyDistributionHtml = buildRedisKeyDistributionHtml(diagnosis);
     keyStatsHtml = buildRedisKeyStatsHtml(diagnosis);
+    prefixKeyPieCharts = buildRedisPrefixKeyPieCharts(diagnosis);
+    prefixMemoryPieCharts = buildRedisPrefixMemoryPieCharts(diagnosis);
     ttlPieCharts = buildRedisTtlPieCharts(diagnosis);
     const outcome = evaluateCollectOutcome([
       facts.capabilities.status === "collected",

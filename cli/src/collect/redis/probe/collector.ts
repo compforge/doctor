@@ -201,11 +201,16 @@ async function scanMaster(
   }
   const top = <T extends { memory_bytes: number }>(rows: T[]) =>
     rows.sort((left, right) => right.memory_bytes - left.memory_bytes).slice(0, options.top);
+  const prefixesByKeyCount = [...prefixes.values()]
+    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))
+    .slice(0, options.top)
+    .map(({ name, count }) => ({ name, count }));
   return {
     node, database, scanned_keys: scanned, scan_complete: keyStats.scanComplete,
     sampled_memory_bytes: sampledMemory,
     average_sampled_bytes_per_key: scanned ? Math.round(sampledMemory / scanned * 100) / 100 : 0,
-    types: top([...types.values()]), prefixes: top([...prefixes.values()]), ttl_buckets: ttl,
+    types: top([...types.values()]), prefixes: top([...prefixes.values()]),
+    top_prefixes_by_key_count: prefixesByKeyCount, ttl_buckets: ttl,
     top_slots: top([...slots.values()]), top_keys: top(keys), top_streams: top(streams),
   };
 }
