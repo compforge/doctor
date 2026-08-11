@@ -165,6 +165,7 @@ async function scanMaster(
   let scanned = 0;
   let sampledMemory = 0;
   const reportEvery = Math.max(options.pipelineKeys, Math.min(1_000, Math.max(1, Math.floor(limit / 10))));
+  let lastSelected = 0;
   let lastReported = 0;
   const keyStats = await collectRedisKeyStats(client, {
     maxKeys: limit,
@@ -172,6 +173,12 @@ async function scanMaster(
     scanCount: options.scanCount,
     pipelineKeys: options.pipelineKeys,
     memorySamples: 5,
+    onSelectionProgress: (selected) => {
+      if (selected - lastSelected >= reportEvery || selected === limit) {
+        progress(`已选取 ${node.host}:${node.port} db${database} 的 ${selected}/${limit} 个 key`);
+        lastSelected = selected;
+      }
+    },
     onProgress: (inspected) => {
       if (inspected - lastReported >= reportEvery) {
         progress(`已检查 ${node.host}:${node.port} db${database} 的 ${inspected}/${limit} 个 key`);

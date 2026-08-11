@@ -72,12 +72,13 @@ Redis database 是 key 命名空间，深度扫描只属于选定 database；节
 
 ### Redis Key 探测有界且独立
 
-Key 分析同时受总检查量和速率预算限制，并在多个 master 间分配额度、串行扫描；达到预算时保留 partial
-Observation 和真实覆盖声明。Top-N key 默认保留名称以便定位，跨团队流转时可显式关闭名称，仅保存前缀
-与摘要。
+Key 分析同时受总检查量和速率预算限制，并在多个 master 间分配额度、串行检查；达到预算时保留 partial
+Observation 和真实覆盖声明。小 keyspace 或采样比例较高时用 SCAN，低采样比例的大 keyspace 改用有界
+RANDOMKEY 去重，使选 key 的服务端工作量随采样预算增长，而不是先遍历完整 keyspace。随机选择和后续
+元数据读取共用速率边界。Top-N key 默认保留名称以便定位，跨团队流转时可显式关闭名称，仅保存前缀与摘要。
 
 Cluster sample 发现 master 数据集明显倾斜时，独立 keyStats Probe 只深入最大的 master；显式启用时
-检查全部 master。keyStats 采用 `SCAN → TYPE → MEMORY USAGE → 类型长度命令`，仍受批次、pipeline、
+检查全部 master。keyStats 采用 `SCAN/RANDOMKEY → TYPE → MEMORY USAGE → 类型长度命令`，仍受批次、pipeline、
 速率和总量预算约束。只有完整扫描时，detector 才能用解释内存差值的最小 Top key 集合形成根因 Finding。
 overview、node 与 keyspace 虽是不同 Observation 类型，但来自同一次受限访问，不为目录对称拆成重复连接
 和扫描的多个 runtime Probe。

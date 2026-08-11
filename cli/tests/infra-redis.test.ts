@@ -50,6 +50,41 @@ test("Redis keyStats 对完整 keyspace pipeline 采集内存与类型长度", a
   ]);
 });
 
+test("Redis keyStats 对大 keyspace 使用有界 RANDOMKEY 抽样", async () => {
+  let randomDraws = 0;
+  const client: any = {
+    endpoint: { host: "redis-0", port: 6379 },
+    dbSize: async () => 1_000,
+    scan: async () => {
+      throw new Error("大 keyspace 抽样不应执行 SCAN");
+    },
+    pipeline: async (commands: string[][]) => {
+      if (commands.every((command) => command[0] === "RANDOMKEY")) {
+        randomDraws += commands.length;
+        return randomDraws === 3 ? ["a", "a", "b"] : ["c"];
+      }
+      if (commands.every((command) => command[0] === "TYPE")) return ["string", "stream", "hash"];
+      return [-1, 100, 3, -1, 200, 5, 1_000, 50, 2];
+    },
+  };
+
+  const result = await collectRedisKeyStats(client, {
+    maxKeys: 3,
+    maxKeysPerSecond: 100_000,
+    scanCount: 100,
+    pipelineKeys: 3,
+    memorySamples: 5,
+  });
+
+  expect(result).toMatchObject({
+    totalKeys: 1_000,
+    visitedKeys: 4,
+    inspectedKeys: 3,
+    scanComplete: false,
+  });
+  expect(result.keys.map((row) => row.key)).toEqual(["a", "b", "c"]);
+});
+
 test("Redis INFO wire 文本在 infra 层转换为结构化值", () => {
   expect(parseRedisInfo([
     "# Memory",
@@ -129,7 +164,7 @@ test("Redis command deadline 淘汰无响应连接，且不使用 idle socket ti
   expect(options.socket.reconnectStrategy(1)).toBe(200);
   expect(options.socket.reconnectStrategy(2)).toBeFalse();
   await expect(connection.ping()).rejects.toThrow(
-    "Redis command timed out after 20ms (redis.example.test:6379)",
+    "Redis PING timed out after 20ms (redis.example.test:6379)",
   );
   expect(destroyed).toBe(1);
   connection.close();
