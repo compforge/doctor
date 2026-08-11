@@ -28,6 +28,11 @@ export interface RedisGroup {
   no_ttl_memory_bytes: number;
 }
 
+export interface RedisCountGroup {
+  name: string;
+  count: number;
+}
+
 export interface RedisKey {
   key: string;
   type: string;
@@ -46,6 +51,7 @@ export interface RedisScan {
   average_sampled_bytes_per_key: number;
   types: RedisGroup[];
   prefixes: RedisGroup[];
+  top_prefixes_by_key_count: RedisCountGroup[];
   ttl_buckets: Record<string, number>;
   top_slots: Array<{ slot: number; count: number; memory_bytes: number }>;
   top_keys: RedisKey[];

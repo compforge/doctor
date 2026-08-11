@@ -520,3 +520,44 @@ export function buildRedisTtlPieCharts(diagnosis: RedisDiagnosis): HtmlPieChart[
     };
   });
 }
+
+export function buildRedisPrefixKeyPieCharts(diagnosis: RedisDiagnosis): HtmlPieChart[] {
+  return redisScans(diagnosis.evidence).map((scan) => {
+    const topPrefixKeyCount = scan.top_prefixes_by_key_count
+      .reduce((total, prefix) => total + prefix.count, 0);
+    const otherKeyCount = Math.max(0, scan.scanned_keys - topPrefixKeyCount);
+    return {
+      title: `${scan.node.host}:${scan.node.port} / db${scan.database}`,
+      description: `按本次检查的 ${scan.scanned_keys} 个 Key 统计；前缀取第一个冒号前的内容，未进入 Top-N 的 Key 汇总为其他前缀。`,
+      slices: [
+        ...scan.top_prefixes_by_key_count.map((prefix) => ({
+          label: prefix.name,
+          value: prefix.count,
+        })),
+        ...(otherKeyCount > 0 ? [{ label: "其他前缀", value: otherKeyCount }] : []),
+      ],
+    };
+  });
+}
+
+export function buildRedisPrefixMemoryPieCharts(diagnosis: RedisDiagnosis): HtmlPieChart[] {
+  return redisScans(diagnosis.evidence).map((scan) => {
+    const topPrefixMemory = scan.prefixes
+      .reduce((total, prefix) => total + prefix.memory_bytes, 0);
+    const otherMemory = Math.max(0, scan.sampled_memory_bytes - topPrefixMemory);
+    return {
+      title: `${scan.node.host}:${scan.node.port} / db${scan.database}`,
+      description: `按本次检查 Key 的 ${formatBytes(scan.sampled_memory_bytes)} 内存统计；未进入内存 Top-N 的 Key 汇总为其他前缀。`,
+      slices: [
+        ...scan.prefixes.map((prefix) => ({
+          label: prefix.name,
+          value: prefix.memory_bytes,
+          valueLabel: formatBytes(prefix.memory_bytes),
+        })),
+        ...(otherMemory > 0
+          ? [{ label: "其他前缀", value: otherMemory, valueLabel: formatBytes(otherMemory) }]
+          : []),
+      ],
+    };
+  });
+}

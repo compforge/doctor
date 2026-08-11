@@ -284,6 +284,7 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
         average_sampled_bytes_per_key: 10,
         types: [],
         prefixes: [],
+        top_prefixes_by_key_count: [],
         ttl_buckets: {},
         top_slots: [],
         top_keys: [],
