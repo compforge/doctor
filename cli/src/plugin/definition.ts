@@ -50,6 +50,44 @@ function nonEmptyStrings(value: unknown, label: string): void {
   }
 }
 
+interface CaseFacetVocabulary {
+  values?: ReadonlySet<string>;
+  open: boolean;
+}
+
+function caseFacetVocabulary(value: unknown, label: string): Map<string, CaseFacetVocabulary> {
+  if (value === undefined) return new Map();
+  const result = new Map<string, CaseFacetVocabulary>();
+  for (const [rawName, rawSpec] of Object.entries(record(value, label))) {
+    const name = nonEmptyString(rawName, `${label} key`);
+    const spec = record(rawSpec, `${label}.${name}`);
+    const open = spec.open ?? false;
+    const ordered = spec.ordered ?? false;
+    if (typeof open !== "boolean") throw new Error(`${label}.${name}.open must be a boolean`);
+    if (typeof ordered !== "boolean") throw new Error(`${label}.${name}.ordered must be a boolean`);
+
+    let values: Set<string> | undefined;
+    if (spec.values !== undefined) {
+      values = new Set<string>();
+      for (const [index, rawValue] of nonEmptyArray(spec.values, `${label}.${name}.values`).entries()) {
+        const facetValue = nonEmptyString(rawValue, `${label}.${name}.values[${index}]`);
+        if (values.has(facetValue)) {
+          throw new Error(`${label}.${name}.values contains duplicate value '${facetValue}'`);
+        }
+        values.add(facetValue);
+      }
+    }
+    if (!values && !open) {
+      throw new Error(`${label}.${name} must declare non-empty values or open: true`);
+    }
+    if (ordered && !values) {
+      throw new Error(`${label}.${name}.ordered requires values`);
+    }
+    result.set(name, { values, open });
+  }
+  return result;
+}
+
 function validateService(value: unknown, index: number): ServiceDefinition {
   const service = record(value, `Plugin Service[${index}]`);
   nonEmptyString(service.name, `Plugin Service[${index}].name`);
@@ -78,11 +116,24 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     caseSets = uniqueIdRecords(caseCapability.caseSets, `${service.name}.case.caseSets`);
     for (const [caseSetId, caseSet] of caseSets) {
       nonEmptyString(caseSet.title, `${service.name}.case.caseSets.${caseSetId}.title`);
+      const facetLabel = `${service.name}.case.caseSets.${caseSetId}.facets`;
+      const facets = caseFacetVocabulary(caseSet.facets, facetLabel);
       const cases = uniqueIdRecords(caseSet.cases, `${service.name}.case.caseSets.${caseSetId}.cases`);
       for (const [caseId, caseAsset] of cases) {
         record(caseAsset.input, `${service.name}.case.caseSets.${caseSetId}.cases.${caseId}.input`);
         if (caseAsset.facets !== undefined) {
-          record(caseAsset.facets, `${service.name}.case.caseSets.${caseSetId}.cases.${caseId}.facets`);
+          const caseFacetLabel = `${service.name}.case.caseSets.${caseSetId}.cases.${caseId}.facets`;
+          for (const [rawName, rawValue] of Object.entries(record(caseAsset.facets, caseFacetLabel))) {
+            const name = nonEmptyString(rawName, `${caseFacetLabel} key`);
+            const facetValue = nonEmptyString(rawValue, `${caseFacetLabel}.${name}`);
+            const vocabulary = facets.get(name);
+            if (!vocabulary) {
+              throw new Error(`${caseFacetLabel}.${name} references an undeclared facet`);
+            }
+            if (vocabulary.values && !vocabulary.open && !vocabulary.values.has(facetValue)) {
+              throw new Error(`${caseFacetLabel}.${name} has unknown value '${facetValue}'`);
+            }
+          }
         }
       }
     }

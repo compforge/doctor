@@ -106,10 +106,18 @@ export interface ServiceCaseAsset {
   facets?: Readonly<Record<string, string>>;
 }
 
+/** Controlled vocabulary for one canonical Case facet. */
+export interface ServiceCaseFacetSpec {
+  values?: readonly string[];
+  ordered?: boolean;
+  open?: boolean;
+}
+
 export interface ServiceCaseSet {
   id: string;
   title: string;
   description?: string;
+  facets?: Readonly<Record<string, ServiceCaseFacetSpec>>;
   cases: readonly ServiceCaseAsset[];
 }
 

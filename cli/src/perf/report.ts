@@ -34,6 +34,17 @@ function sampleRow(sample: PerfEvidenceSample): string {
     + `<td>${sample.logCode === 0 ? link(sample.logPath, "log") : `log(${sample.logCode})`}</td></tr>`;
 }
 
+function orderedFacetValues(result: PerfResult, facet: string, values: string[]): string[] {
+  const declared = result.caseFacets?.[facet];
+  if (!declared?.ordered || !declared.values) return values.sort();
+  const order = new Map(declared.values.map((value, index) => [value, index]));
+  return values.sort((left, right) => {
+    const leftOrder = order.get(left) ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = order.get(right) ?? Number.MAX_SAFE_INTEGER;
+    return leftOrder - rightOrder || left.localeCompare(right);
+  });
+}
+
 export function writePerfReport(result: PerfResult): string {
   const evidenceStatus = perfEvidenceStatus(result);
   const trialRows = result.run.trials.map((trial) => {
@@ -59,6 +70,21 @@ export function writePerfReport(result: PerfResult): string {
         + `<td>${escapeHtml(firstToken?.p99.toFixed(0) ?? "-")}</td></tr>`;
     });
   }).join("\n") || "<tr><td colspan=\"8\">没有带 Case ID 的请求结果</td></tr>";
+  const facetRows = result.run.trials.flatMap((trial) => {
+    const window = trial.windows.find((candidate) => candidate.id === "measurement");
+    return Object.entries(window?.by_facet ?? {}).sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([facet, values]) => orderedFacetValues(result, facet, Object.keys(values)).map((value) => {
+        const stats = values[value]!;
+        const firstToken = stats.metrics.first_token_ms;
+        return `<tr><td>${escapeHtml(trial.id)}</td><td>${escapeHtml(facet)}</td>`
+          + `<td>${escapeHtml(value)}</td><td>${escapeHtml(stats.n)}</td>`
+          + `<td>${escapeHtml(stats.throughput_rps.toFixed(2))}</td>`
+          + `<td>${escapeHtml(`${(stats.error_rate * 100).toFixed(1)}%`)}</td>`
+          + `<td>${escapeHtml(firstToken?.p50.toFixed(0) ?? "-")}</td>`
+          + `<td>${escapeHtml(firstToken?.p95.toFixed(0) ?? "-")}</td>`
+          + `<td>${escapeHtml(firstToken?.p99.toFixed(0) ?? "-")}</td></tr>`;
+      }));
+  }).join("\n") || "<tr><td colspan=\"9\">没有带 Facet 的请求结果</td></tr>";
   const samples = result.samples.map(sampleRow).join("\n")
     || "<tr><td colspan=\"9\">未取得 Plugin 声明的可关联业务 ID</td></tr>";
   const metric = result.metricCode === 0
@@ -70,6 +96,7 @@ export function writePerfReport(result: PerfResult): string {
 <p>${metric}</p>
 <h2>负载结果</h2><table><thead><tr><th>Trial</th><th>并发</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th><th>停止原因</th></tr></thead><tbody>${trialRows}</tbody></table>
 <h2>按 Case</h2><table><thead><tr><th>Trial</th><th>Case</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${caseRows}</tbody></table>
+<h2>按 Facet</h2><table><thead><tr><th>Trial</th><th>Facet</th><th>值</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${facetRows}</tbody></table>
 <h2>代表请求的 Trace / Log</h2><table><thead><tr><th>Trial</th><th>Case</th><th>关联键</th><th>业务 ID</th><th>首 token ms</th><th>总耗时 ms</th><th>错误</th><th>Trace</th><th>Log</th></tr></thead><tbody>${samples}</tbody></table>
 <p>原始契约产物：${link(join(result.outputDir, "run.json"), "run.json")} · ${link(join(result.outputDir, "outcomes.jsonl"), "outcomes.jsonl")} · ${link(join(result.outputDir, "verdict.json"), "verdict.json")}</p>
 </body></html>\n`;
