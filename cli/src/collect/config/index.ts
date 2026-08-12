@@ -27,6 +27,7 @@ import {
   resolveConfigCollectConfig,
   resolveConfigDependencySelection,
   resolveConfigDeploymentSelection,
+  resolveConfigNamespaceSelection,
   resolveConfigServiceSelection,
   resolveConfigTenantSelection,
 } from "./config";
@@ -65,17 +66,28 @@ export async function runCollectConfig(
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
-  const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
+  let executor = injectedExecutor ?? new KubectlExecutor(config.kube);
   if (!injectedExecutor) {
     await requireKubernetesChannel({
       executor,
       profileName: config.profileName,
       kubeconfigSource: config.kube.kubeconfig ? "resolved" : "kubectl-default",
-      namespace: config.namespace,
       commandContext,
     });
   }
+  const namespaceAuthorization = resolveKubernetesCommandContext(executor, commandContext).access;
+  const namespaceConfig = await resolveConfigNamespaceSelection({
+    config,
+    executor,
+    access: namespaceAuthorization,
+  });
+  if (!namespaceConfig) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
+  }
+  config = namespaceConfig;
+  terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
+  if (!injectedExecutor) executor = new KubectlExecutor(config.kube);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(authorization, {
     command: "doctor config",

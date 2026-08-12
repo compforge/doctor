@@ -7,6 +7,7 @@ import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
+import type { ResolvedNamespace } from "../../infra/k8s/context";
 import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-config";
 import type { EvidenceBundle } from "../evidence";
 
@@ -34,7 +35,7 @@ export interface CollectConfigCliOpts {
 
 export interface ConfigCollectConfig {
   namespace: string;
-  namespaceSource: string;
+  namespaceSource: ResolvedNamespace["source"];
   services: string[];
   servicesExplicit: boolean;
   includeDeploymentConfig: boolean;

@@ -7,6 +7,7 @@ import { examplePlugin } from "../../plugins/example/src";
 import {
   resolveConfigDeploymentSelection,
   resolveConfigDependencySelection,
+  resolveConfigNamespaceSelection,
   runCollectConfig,
   type ConfigCollectConfig,
 } from "../src/collect/config";
@@ -23,6 +24,45 @@ function result(stdout = ""): ExecResult {
     command: ["kubectl"],
   };
 }
+
+test("config 在缺省 Namespace 时复用交互选择", async () => {
+  const config: ConfigCollectConfig = {
+    namespace: "default",
+    namespaceSource: "default",
+    services: [],
+    servicesExplicit: false,
+    includeDeploymentConfig: false,
+    includeDependencies: false,
+    format: "html",
+    reportName: "doctor-config-test",
+    profileName: "default",
+    kube: { namespace: "default", kubeconfig: "/tmp/kubeconfig" },
+  };
+  const executor: Executor = {
+    run: async () => result(JSON.stringify({
+      items: [
+        { metadata: { name: "default" }, status: { phase: "Active" } },
+        { metadata: { name: "vke-system" }, status: { phase: "Active" } },
+      ],
+    })),
+    exec: async () => { throw new Error("unexpected exec"); },
+  };
+  expect(await resolveConfigNamespaceSelection({
+    config,
+    executor,
+    interactive: true,
+    prompt: async ({ choices, defaultNamespace, selection }) => {
+      expect(choices.map((choice) => choice.name)).toEqual(["default", "vke-system"]);
+      expect(defaultNamespace).toBe("default");
+      expect(selection.purpose).toBe("确定配置采集范围");
+      return "vke-system";
+    },
+  })).toMatchObject({
+    namespace: "vke-system",
+    namespaceSource: "prompt",
+    kube: { namespace: "vke-system" },
+  });
+});
 
 test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () => {
   const config: ConfigCollectConfig = {

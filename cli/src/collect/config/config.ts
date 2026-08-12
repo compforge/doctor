@@ -9,7 +9,12 @@ import type {
   TenantSummary,
 } from "@compforge/doctor-plugin";
 import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
+import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { Executor } from "../../infra/k8s/executor";
+import {
+  resolvePodNamespace,
+  type PodNamespaceSelection,
+} from "../../infra/k8s/namespace-selection";
 import {
   listServiceChoices,
   rankRecentServiceChoices,
@@ -162,6 +167,40 @@ export function resolveConfigCollectConfig(
       kubeconfig: kubeconfig.kubeconfig,
       context: opts.context,
     },
+  };
+}
+
+export interface ConfigNamespaceSelectionInput {
+  config: ConfigCollectConfig;
+  executor: Executor;
+  interactive?: boolean;
+  prompt?: PodNamespaceSelection["prompt"];
+  access?: KubernetesAccessContext;
+}
+
+/** Config 与其它 Kubernetes 命令共用 Namespace 选择；flag/profile 仍是显式配置。 */
+export async function resolveConfigNamespaceSelection(
+  input: ConfigNamespaceSelectionInput,
+): Promise<ConfigCollectConfig | undefined> {
+  const selected = await resolvePodNamespace({
+    resolved: {
+      namespace: input.config.namespace,
+      source: input.config.namespaceSource,
+    },
+    kubeconfig: input.config.kube.kubeconfig,
+    context: input.config.kube.context,
+    executor: input.executor,
+    interactive: input.interactive,
+    prompt: input.prompt,
+    access: input.access,
+    selection: { purpose: "确定配置采集范围" },
+  });
+  if (!selected) return undefined;
+  return {
+    ...input.config,
+    namespace: selected.namespace,
+    namespaceSource: selected.source,
+    kube: { ...input.config.kube, namespace: selected.namespace },
   };
 }
 
