@@ -9,20 +9,26 @@ Metric capability 中声明 `/metrics` endpoint、所需 metric family、图表 
 Metric capability 是潜在能力，查询结果才是本次运行事实。查询没有数据时报告保留缺口，不把“未观察到”
 解释为“指标正常”。Detector 只消费已取得的 PromQL 结果，不访问外部资源。
 
+选中 Service 声明的 Redis 与 MySQL Store 也属于 Metric 范围。Doctor 优先使用现场 exporter；exporter 缺失、
+不可达或未连上目标 Store 时，回退到同期只读采样。回退只读取 Redis `INFO` 与 MySQL 全局运行状态，不扫描
+Redis key 或业务表，并使用 exporter 兼容的指标口径进入同一个查询窗口。
+
 ## 流程
 
 1. 从 Service Catalog 选择本次参与的 Metric Service，并确认 watch 窗口。
-2. preparation 选择统一 `MetricQuerySource`：profile 或 `--prometheus` 提供地址时使用 remote source；
+2. preparation 选择统一 `MetricQuerySource`：profile 或 `--prometheus` 提供地址时优先查询 remote source；
    否则通过 Service selector 找出全部 Running Pod，逐 Pod 建立临时 port-forward，并创建 embedded Prombed source。
-3. Inspect 固化本轮 source Fact；`metric-window` Probe 对 embedded source 按窗口抓取 `/metrics`，remote
-   source 则直接封口所选历史窗口。到此两种来源都表现为同一份可查询 source。
+   embedded source 同时从已选 Service 的 Store capability 发现 Redis/MySQL exporter 和直采目标，并按实际连接目标去重。
+3. Inspect 固化本轮 source Fact；`metric-window` Probe 对 embedded source 按窗口抓取 `/metrics`，并在相同采样点
+   获取 Store 指标。存在 remote source 时，业务 Service 查询继续使用远端数据，Store 查询使用同期 embedded 数据。
 4. 每个 Service 的 query Probe 通过统一契约执行其声明的 PromQL，产出带成功、空数据或失败状态的
    Observation；Evidence 形成后，纯 Detector 与 Coverage 复用这些结果，不再访问 source。
 5. Renderer 只消费 Diagnosis，把查询结果、采集缺口、Finding 和图表写入不依赖外部资源的 HTML。
 
 `watch=0` 读取进程启动至今的累计快照；`1m`、`2m`、`5m`、`10m` 表示区间查询。没有外部
-Prometheus 时 Doctor 会真实等待并抓取该窗口；使用外部 Prometheus 时直接读取最近窗口。交互模式还可选择
-`Ctrl+C` 持续采集，用户中断后再封口报告。
+Prometheus 时 Doctor 会真实等待并抓取该窗口，使 Store 曲线与 Perf trial 对齐。使用外部 Prometheus 且所选
+Service 没有 Store 时直接读取最近窗口；存在 Store 时仍等待同期 Store 采样窗口。交互模式还可选择 `Ctrl+C`
+持续采集，用户中断后再封口报告。
 
 ## 关键设计
 

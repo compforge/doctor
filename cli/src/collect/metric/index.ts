@@ -29,6 +29,7 @@ import type {
 import { prepareMetricSource, type MetricSourcePreparation } from "./preparation";
 import { makeMetricProbes } from "./probe";
 import { buildMetricSections, buildMetricSummary } from "./render";
+import { selectedMetricStoreKinds } from "./store/collector";
 
 export * from "./config";
 export * from "./detector";
@@ -70,11 +71,17 @@ export async function runCollectMetric(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-metric-"));
   const staging = join(stagingRoot, config.reportName);
+  const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);
   const bundle = new EvidenceBundle(staging, [
     { id: "metric-window", title: "Metric 采集窗口", risk: "observe" },
     ...config.services.map((service) => ({
       id: `metric-query-${service}`,
       title: `${service} PromQL 查询`,
+      risk: "observe" as const,
+    })),
+    ...storeKinds.map((kind) => ({
+      id: `metric-query-${kind}-store`,
+      title: `${kind} Store PromQL 查询`,
       risk: "observe" as const,
     })),
   ]);
@@ -93,16 +100,25 @@ export async function runCollectMetric(
     preparation = await prepareMetricSource(config, plugin, commandContext, injectedExecutor);
     terminalStdout.write(preparation.sourceKind === "remote"
       ? `[collect] metric source: remote Prometheus ${config.prometheus!.url}\n`
+      : preparation.sourceKind === "hybrid"
+        ? `[collect] metric source: remote Prometheus + embedded Store sampling（interval=${config.intervalMs}ms）\n`
       : `[collect] metric source: embedded Prombed（interval=${config.intervalMs}ms）\n`);
+    if (preparation.exporterStoreTargets || preparation.directStoreTargets) {
+      terminalStdout.write(
+        `[collect] store metrics: exporter=${preparation.exporterStoreTargets}，direct-fallback=${preparation.directStoreTargets}\n`,
+      );
+    }
     if (config.watch.mode === "until-interrupt") {
       terminalStdout.write("[collect] 正在监听；按 Ctrl+C 停止并生成报告。\n");
-    } else if (preparation.sourceKind === "embedded" && config.watch.mode === "duration") {
+    } else if (preparation.embeddedSource && config.watch.mode === "duration") {
       terminalStdout.write(`[collect] watch ${config.watch.label}；Ctrl+C 可提前结束并生成报告。\n`);
     }
     const ctx: MetricCollectContext = {
       source: preparation.source,
+      storeSource: preparation.storeSource,
       sourceKind: preparation.sourceKind,
       embeddedSource: preparation.embeddedSource,
+      collectSupplement: preparation.collectSupplement,
       signal: controller.signal,
       onWindowStart: control?.onWindowStart,
       bundle,
@@ -124,7 +140,7 @@ export async function runCollectMetric(
   } finally {
     process.removeListener("SIGINT", onInterrupt);
     control?.signal?.removeEventListener("abort", onExternalAbort);
-    preparation?.close();
+    await preparation?.close();
   }
 
   if (failure || !diagnosis || !facts) {

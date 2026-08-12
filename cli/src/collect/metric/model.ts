@@ -50,7 +50,7 @@ export interface MetricSeries {
   points: Array<{ timestamp: number; value: number }>;
 }
 
-export type MetricSourceKind = "remote" | "embedded";
+export type MetricSourceKind = "remote" | "embedded" | "hybrid";
 
 export interface MetricInspectionFacts {
   source: Fact<{
@@ -108,8 +108,10 @@ export interface MetricQueryPlan {
 
 export interface MetricCollectContext {
   source: MetricQuerySource;
+  storeSource?: MetricQuerySource;
   sourceKind: MetricSourceKind;
   embeddedSource?: EmbeddedMetricSource;
+  collectSupplement?: (source: EmbeddedMetricSource) => Promise<string[]>;
   signal: AbortSignal;
   onWindowStart?: () => void;
   bundle: EvidenceBundle;

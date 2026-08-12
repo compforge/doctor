@@ -10,7 +10,11 @@ export function makeMetricSourceInspect(
       const source = {
         status: "collected" as const,
         kind: ctx.sourceKind,
-        backend: ctx.sourceKind === "remote" ? "Prometheus-compatible API" : "Prombed",
+        backend: ctx.sourceKind === "remote"
+          ? "Prometheus-compatible API"
+          : ctx.sourceKind === "hybrid"
+            ? "Prometheus-compatible API + Prombed Store sampling"
+            : "Prombed",
         targetCount,
       };
       ctx.bundle.addStep({
