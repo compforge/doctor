@@ -35,6 +35,7 @@ import {
   type CgroupMemoryFacts,
 } from "../fact/cgroup-memory";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
+import { pyHeapMemoryRiskLines } from "./capture-risk";
 import { resolveEmbeddedPyHeapTool } from "./embedded-pyheap";
 import {
   compressFileCmd,
@@ -540,6 +541,11 @@ export async function captureMemoryHeap(
     `[collect] 采集路径：${execution.strategy === "debug-container" ? "已有 debug container" : "目标容器临时 dumper"}`
     + `（${execution.label}）`,
   );
+  const targetRssMb = processScan.rows.find((row) => row.pid === pid)?.rssMb;
+  for (const line of pyHeapMemoryRiskLines({
+    cgroupMemory: params.cgroupMemory,
+    targetRssMb,
+  })) log(line);
 
   const uvicornSupervisorPid = processScan.uvicorn?.mode === "multiprocess"
     && processScan.uvicorn.workerPids.includes(pid)

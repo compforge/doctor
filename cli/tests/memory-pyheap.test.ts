@@ -33,6 +33,7 @@ import {
   cgroupOomKillCount,
   parseCgroupMemoryFacts,
 } from "../src/collect/fact/cgroup-memory";
+import { pyHeapMemoryRiskLines } from "../src/collect/memory/capture-risk";
 
 function analysis(source: {
   sha256: string;
@@ -227,6 +228,22 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(parseCgroupMemoryFacts("memory cgroup files unavailable")).toBeUndefined();
   });
 
+  test("warns when PyHeap has little cgroup headroom", () => {
+    const lines = pyHeapMemoryRiskLines({
+      cgroupMemory: {
+        version: 1,
+        currentBytes: String(7 * 1024 ** 3),
+        limitBytes: String(8 * 1024 ** 3),
+        events: {},
+      },
+      targetRssMb: 2048,
+    });
+
+    expect(lines.some((line) => line.includes("目标 container 内存和 page cache"))).toBe(true);
+    expect(lines.some((line) => line.includes("7.00 GiB / 8.00 GiB"))).toBe(true);
+    expect(lines.some((line) => line.includes("高风险") && line.includes("SIGKILL"))).toBe(true);
+  });
+
   test("只有远端 metadata 验证通过才报告 heap 文件保留", () => {
     expect(confirmedRemoteHeapPath("/tmp/heap.pyheap", execResult("", false))).toBeUndefined();
     expect(confirmedRemoteHeapPath(
@@ -367,6 +384,7 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(result.code).toBe(130);
     expect(result.strategy).toBe("target-container");
     expect(uploadAttempted).toBe(false);
+    expect(logs.some((line) => line.includes("内存风险：PyHeap"))).toBe(true);
     expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
