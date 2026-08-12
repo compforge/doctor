@@ -37,6 +37,9 @@ Service 下的运行目标和证据来源。CLI 负责确定性采集、证据�
    外部访问应声明超时、容量与权限，有副作用的操作必须在执行前展示并确认。
 5. **Agent 共用，宿主分离**：CLI 与 server 通过各自的 interface、凭据和执行环境使用同一
    `packages/agent`；Skill 跟随 Doctor Host 当前加载的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
+6. **Core 内容与版本同步演进**：Doctor Core 的代码或用户可见内容发生变化时，必须在同一 PR 运行
+   `make -C cli bump-version` 提升 patch version；`cli/src/app/version.ts` 是唯一版本事实源，运行时、
+   构建产物命名与 Release 都读取该值，不在其它文件重复维护版本号。
 
 ## References
 

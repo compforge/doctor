@@ -1,7 +1,7 @@
 import type { PluginIdentity } from "@compforge/doctor-plugin";
 
-// 单一运行时版本号来源；使用 `make bump-version` 与 package.json 同步更新。
-export const DOCTOR_CLI_VERSION = "0.1.6";
+// Doctor Core 的唯一版本事实源；运行时和构建流程都读取这里。
+export const DOCTOR_CLI_VERSION = "0.1.7";
 
 export function formatDoctorVersion(plugin?: PluginIdentity): string {
   return [
