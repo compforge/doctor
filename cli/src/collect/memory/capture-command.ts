@@ -30,6 +30,13 @@ import {
   type PyHeapDetail,
 } from "./capture";
 import { cleanupPyheapCmd, PYHEAP_TOOL_DIR, PYHEAP_VERSION } from "./pyheap-tool";
+import { runInspects } from "../inspect-engine";
+import {
+  makeCgroupMemoryInspect,
+  type CommonTargetFacts,
+  type CommonTargetInspectContext,
+} from "../fact/inspect";
+import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
 
 export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   pod?: string;
@@ -153,8 +160,23 @@ export async function runCollectMemory(
   };
 
   let result: CaptureResult;
+  let cgroupMemory: CgroupMemoryFacts | undefined;
   try {
     const rawPod = JSON.parse(podJsonResult.stdout) as { metadata?: { uid?: string } };
+    const facts = await runInspects<CommonTargetFacts, CommonTargetInspectContext>([
+      makeCgroupMemoryInspect("mem-cgroup"),
+    ], {
+      exec: executor,
+      target: { pod: target.pod, container: selected.value.name },
+      podName: target.pod,
+      container: selected.value,
+      bundle,
+      podJson: podJsonResult.stdout,
+    }, log);
+    cgroupMemory = facts.cgroupMemory;
+    log(cgroupMemory
+      ? `[collect] 检测到目标容器使用 cgroup v${cgroupMemory.version}`
+      : "[collect] 未能识别目标容器的 cgroup 版本；继续执行 heap dump");
     result = await captureMemoryHeap(
       executor,
       {
@@ -171,6 +193,7 @@ export async function runCollectMemory(
         output: opts.output,
         invokedAt,
         confirmed: !!opts.yes,
+        cgroupMemory,
       },
       { bundle, progress: (update) => progressLine.update(update) },
       log,
@@ -232,7 +255,7 @@ export async function runCollectMemory(
       container: selected.value.name,
       pid: result.pid,
     },
-    inspectionFacts: {},
+    inspectionFacts: cgroupMemory ? { cgroupMemory } : {},
     params: {
       command: "mem",
       detail,

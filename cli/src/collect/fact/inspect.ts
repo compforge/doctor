@@ -16,6 +16,11 @@ import { parsePlatformFacts, platformFactsCmd, type ContainerPlatformFacts } fro
 import { inspectK8sAccess } from "../../infra/k8s/access";
 import { infra } from "../../infra";
 import type { DebugEnvironmentFacts } from "../../infra/target/debug";
+import {
+  cgroupMemoryCmd,
+  parseCgroupMemoryFacts,
+  type CgroupMemoryFacts,
+} from "./cgroup-memory";
 
 export interface CommonTargetFacts {
   kubernetes: { podsExec: boolean; podsEphemeralContainers: boolean };
@@ -28,6 +33,34 @@ export interface CommonTargetFacts {
   processScan?: ProcScan;
   pickedPid?: number;
   debug?: DebugEnvironmentFacts;
+  cgroupMemory?: CgroupMemoryFacts;
+}
+
+export function makeCgroupMemoryInspect(
+  stepId = "cgroup-memory-facts",
+): Inspect<CommonTargetFacts, CommonTargetInspectContext> {
+  return {
+    id: "cgroup-memory",
+    run: async (ctx) => {
+      const result = await ctx.exec.exec(ctx.target, cgroupMemoryCmd(), { timeoutMs: 10_000 });
+      const cgroupMemory = result.ok ? parseCgroupMemoryFacts(result.stdout) : undefined;
+      ctx.bundle.addStep({
+        id: stepId,
+        title: "cgroup 内存事实",
+        risk: "observe",
+        status: cgroupMemory ? "ok" : "failed",
+        reason: cgroupMemory
+          ? undefined
+          : result.ok ? "无法解析目标容器的 cgroup 内存事实" : failReason(result),
+        command: result.command,
+        exitCode: result.exitCode,
+        durationMs: result.durationMs,
+        output: result.stdout,
+        stderr: result.stderr,
+      });
+      return cgroupMemory ? { cgroupMemory } : {};
+    },
+  };
 }
 
 export function makePlatformInspect(): Inspect<

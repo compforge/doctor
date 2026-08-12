@@ -28,7 +28,12 @@ import { EvidenceBundle, type StepRisk } from "../evidence";
 import { failReason } from "../../infra/k8s/result";
 import { parseProcscan, pickPid, PROCESS_SCAN_SOURCE, processScanCmd } from "../fact/process";
 import { parsePtraceFacts, podDeclaresSysPtrace, ptraceFactsCmd } from "../fact/ptrace";
-import { cgroupMemoryCmd, parseCgroupOomKillCount } from "./capture-facts";
+import {
+  cgroupMemoryCmd,
+  cgroupOomKillCount,
+  parseCgroupMemoryFacts,
+  type CgroupMemoryFacts,
+} from "../fact/cgroup-memory";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
 import { resolveEmbeddedPyHeapTool } from "./embedded-pyheap";
 import {
@@ -449,6 +454,7 @@ interface CaptureParams {
   output?: string;
   invokedAt: Date;
   confirmed: boolean;
+  cgroupMemory?: CgroupMemoryFacts;
 }
 
 export interface CaptureResult {
@@ -576,8 +582,6 @@ export async function captureMemoryHeap(
     }
   }
 
-  const cgroup = await executor.exec(execTarget, cgroupMemoryCmd(), { timeoutMs: 10_000 });
-  recordStep(ctx.bundle, "mem-cgroup", "采集 cgroup 内存事实", cgroup);
   const processStatus = await executor.exec(
     execution.target,
     ["sh", "-c", `cat /proc/${pid}/status; printf '\\nstart_time='; python3 -c 'import sys; print(open(sys.argv[1]).read().rsplit(\")\", 1)[1].split()[19])' /proc/${pid}/stat`],
@@ -652,9 +656,15 @@ export async function captureMemoryHeap(
       "heap dump 失败后复查 cgroup 内存事实",
       cgroupAfter,
     );
-    const oomKillsBefore = cgroup.ok ? parseCgroupOomKillCount(cgroup.stdout) : undefined;
-    const oomKillsAfter = cgroupAfter.ok
-      ? parseCgroupOomKillCount(cgroupAfter.stdout)
+    const cgroupMemoryAfter = cgroupAfter.ok
+      ? parseCgroupMemoryFacts(cgroupAfter.stdout)
+      : undefined;
+    const sameCgroupVersion = params.cgroupMemory?.version === cgroupMemoryAfter?.version;
+    const oomKillsBefore = sameCgroupVersion
+      ? cgroupOomKillCount(params.cgroupMemory)
+      : undefined;
+    const oomKillsAfter = sameCgroupVersion
+      ? cgroupOomKillCount(cgroupMemoryAfter)
       : undefined;
     let dumpFailureReason = pyheapDumpFailureReason(dump);
     if (
@@ -801,7 +811,7 @@ export async function captureMemoryHeap(
       },
       facts: {
         process_scan: processScan,
-        cgroup_memory: cgroup.ok ? cgroup.stdout : undefined,
+        cgroup_memory: params.cgroupMemory,
         process_status: processStatus.ok ? processStatus.stdout : undefined,
       },
     };
