@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
 import { parsePerfLevels, parsePerfOutputFormat, resolvePerfConfig } from "../src/perf/config";
 import {
+  formatPerfCaseMix,
   resolvePerfRequestIdentity,
   resolveUserSearchPromptAction,
   deliverPerfBundle,
@@ -63,6 +64,30 @@ test("Perf bundle archives the complete linked report directory", async () => {
     rmSync(parent, { recursive: true, force: true });
     if (output.temporaryRoot) rmSync(output.temporaryRoot, { recursive: true, force: true });
   }
+});
+
+test("perf trial output describes the active Case mix and Facets", () => {
+  expect(formatPerfCaseMix([
+    {
+      case: {
+        id: "ordinary_chat",
+        input: { query: "你好" },
+        facets: { difficulty: "simple", task_type: "greeting" },
+      },
+      weight: 1,
+    },
+    {
+      case: {
+        id: "python_addition",
+        input: { query: "请调用 Python 工具计算 1+1，并返回结果" },
+        facets: { difficulty: "medium", task_type: "tool_execution" },
+      },
+      weight: 2,
+    },
+  ])).toBe(
+    "[perf]   case=ordinary_chat weight=1 facets=difficulty=simple, task_type=greeting\n"
+      + "[perf]   case=python_addition weight=2 facets=difficulty=medium, task_type=tool_execution\n",
+  );
 });
 
 test("Service Case runner maps one trigger into one shared Outcome", async () => {
