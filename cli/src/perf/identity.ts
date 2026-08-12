@@ -1,74 +1,124 @@
+import { createInterface } from "node:readline/promises";
 import type {
   ServiceRequestIdentity,
   TenantDirectory,
   TenantSummary,
+  UserDirectorySearch,
+  UserDirectorySearchResult,
   UserSummary,
 } from "@compforge/doctor-plugin";
-import {
-  printNumberedChoices,
-  promptSearchableChoice,
-  type SearchableChoiceResolution,
-} from "../terminal/selection";
+import { prepareTerminalInput } from "../terminal/input";
+import { terminalStdout } from "../terminal/output";
+import { printNumberedChoices } from "../terminal/selection";
 import { promptTenantChoice } from "../terminal/tenant-selection";
 
-const USER_PREVIEW_LIMIT = 10;
+const USER_PAGE_SIZE = 10;
+
+type UserSearchRequest = Omit<UserDirectorySearch, "tenantId">;
+type UserSearch = (input: UserSearchRequest) => Promise<UserDirectorySearchResult>;
+
+export type UserSearchPromptAction =
+  | { kind: "selected"; user: UserSummary }
+  | { kind: "search"; query: string }
+  | { kind: "next" }
+  | { kind: "previous" }
+  | { kind: "cancelled" }
+  | { kind: "invalid-number" }
+  | { kind: "empty" };
 
 function normalized(value: string | undefined): string | undefined {
   const result = value?.trim();
   return result || undefined;
 }
 
-function userSearchKeys(user: UserSummary): string[] {
-  return [user.name, user.displayName, user.id].map((value) => value.toLowerCase());
-}
-
-export function resolveUserPromptChoice(
+export function resolveUserSearchPromptAction(
   users: readonly UserSummary[],
   answer: string,
-  numberedUsers: readonly UserSummary[],
-): SearchableChoiceResolution<UserSummary, UserSummary> {
-  const query = answer.trim().toLowerCase();
-  if (/^\d+$/.test(query)) {
-    const selected = numberedUsers[Number(query) - 1];
-    return selected ? { kind: "selected", value: selected } : { kind: "invalid-number" };
+): UserSearchPromptAction {
+  const value = answer.trim();
+  if (/^(q|quit)$/i.test(value)) return { kind: "cancelled" };
+  if (/^(n|next)$/i.test(value)) return { kind: "next" };
+  if (/^(p|prev|previous)$/i.test(value)) return { kind: "previous" };
+  if (/^\d+$/.test(value)) {
+    const user = users[Number(value) - 1];
+    return user ? { kind: "selected", user } : { kind: "invalid-number" };
   }
-  const exact = users.filter((user) => userSearchKeys(user).includes(query));
-  if (exact.length === 1) return { kind: "selected", value: exact[0]! };
-  if (exact.length > 1) return { kind: "ambiguous", matches: exact };
-  const matches = users.filter((user) => userSearchKeys(user).some((key) => key.includes(query)));
-  if (matches.length === 1) return { kind: "selected", value: matches[0]! };
-  if (matches.length > 1) return { kind: "ambiguous", matches };
-  return { kind: "not-found" };
+  if (value) return { kind: "search", query: value };
+  return { kind: "empty" };
 }
 
-async function promptUserChoice(users: readonly UserSummary[]): Promise<UserSummary | undefined> {
-  const printUsers = (items: readonly UserSummary[], title: string): void => printNumberedChoices(
-    items,
-    title,
-    (user) => `${user.name}（${user.displayName}，${user.id}）`,
-  );
-  const preview = users.length <= USER_PREVIEW_LIMIT ? users : [];
-  if (preview.length) printUsers(preview, "[perf] 当前租户的启用用户：");
-  return promptSearchableChoice({
-    choices: users,
-    numberedChoices: preview,
-    question: (listed) => users.length > USER_PREVIEW_LIMIT
-      ? `当前用户候选 ${users.length} 个，请输入用户关键词（用户名、展示名或 ID）${listed ? "或列表序号" : ""}（q 取消）：`
-      : "请选择用户（序号、用户名、展示名或 ID，q 取消）：",
-    resolve: (answer, numberedChoices) => resolveUserPromptChoice(users, answer, numberedChoices),
-    printChoices: printUsers,
-    ambiguousTitle: (answer) => `[perf] 匹配 '${answer}' 的用户：`,
-    notFoundMessage: (answer) => `未找到匹配 '${answer}' 的用户。`,
-    invalidNumberMessage: "输入的序号不在当前候选中。",
-    emptyMessage: "请输入用户关键词或列表序号。",
-  });
+async function promptUserChoice(search: UserSearch): Promise<UserSummary | undefined> {
+  prepareTerminalInput();
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    let query: string | undefined;
+    while (true) {
+      if (query === undefined) {
+        const answer = (await readline.question(
+          "请输入用户关键词（用户名或展示名，直接回车查看最近用户，q 取消）：",
+        )).trim();
+        if (/^(q|quit)$/i.test(answer)) return undefined;
+        query = answer || "";
+      }
+
+      let page = 1;
+      while (true) {
+        terminalStdout.info(`[perf] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户…\n`);
+        const result = await search({
+          query: query || undefined,
+          page,
+          pageSize: USER_PAGE_SIZE,
+        });
+        if (!result.users.length) {
+          terminalStdout.warning(query
+            ? `未找到匹配 '${query}' 的启用用户。\n`
+            : "当前租户没有启用用户。\n");
+          query = undefined;
+          break;
+        }
+
+        const pageCount = Math.max(1, Math.ceil(result.total / USER_PAGE_SIZE));
+        printNumberedChoices(
+          result.users,
+          `[perf] 用户候选：第 ${page}/${pageCount} 页，共 ${result.total} 个`,
+          (user) => `${user.name}（${user.displayName}，${user.id}）`,
+        );
+        const answer = await readline.question(
+          "请选择用户（序号；n 下一页；p 上一页；输入新关键词重新搜索；q 取消）：",
+        );
+        const action = resolveUserSearchPromptAction(result.users, answer);
+        if (action.kind === "selected") return action.user;
+        if (action.kind === "cancelled") return undefined;
+        if (action.kind === "search") {
+          query = action.query;
+          page = 1;
+          continue;
+        }
+        if (action.kind === "next") {
+          if (page < pageCount) page += 1;
+          else terminalStdout.warning("已经是最后一页。\n");
+          continue;
+        }
+        if (action.kind === "previous") {
+          if (page > 1) page -= 1;
+          else terminalStdout.warning("已经是第一页。\n");
+          continue;
+        }
+        terminalStdout.warning(action.kind === "invalid-number"
+          ? "输入的序号不在当前页候选中。\n"
+          : "请输入用户序号、翻页命令或新的搜索关键词。\n");
+      }
+    }
+  } finally {
+    readline.close();
+  }
 }
 
 export async function resolvePerfRequestIdentity(input: {
   configured: Partial<ServiceRequestIdentity>;
   directory: TenantDirectory;
   promptTenant?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
-  promptUser?: (users: readonly UserSummary[]) => Promise<UserSummary | undefined>;
+  promptUser?: (input: { search: UserSearch }) => Promise<UserSummary | undefined>;
 }): Promise<ServiceRequestIdentity | undefined> {
   let tenantId = normalized(input.configured.tenantId);
   let userId = normalized(input.configured.userId);
@@ -83,12 +133,14 @@ export async function resolvePerfRequestIdentity(input: {
     tenantId = tenant.id;
   }
   if (!userId) {
-    if (!input.directory.listActiveUsers) {
-      throw new Error("Perf Case 需要选择用户，但 tenantDirectory 未提供 listActiveUsers");
+    if (!input.directory.searchActiveUsers) {
+      throw new Error("Perf Case 需要选择用户，但 tenantDirectory 未提供 searchActiveUsers");
     }
-    const users = await input.directory.listActiveUsers(tenantId);
-    if (!users.length) throw new Error(`租户 ${tenantId} 没有启用用户`);
-    const user = await (input.promptUser ?? promptUserChoice)(users);
+    const search: UserSearch = (request) => input.directory.searchActiveUsers!({
+      tenantId,
+      ...request,
+    });
+    const user = await (input.promptUser ?? ((selection) => promptUserChoice(selection.search)))({ search });
     if (!user) return undefined;
     userId = user.id;
   }

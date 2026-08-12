@@ -23,11 +23,23 @@ export interface UserSummary {
   displayName: string;
 }
 
+export interface UserDirectorySearch {
+  tenantId: string;
+  query?: string;
+  page: number;
+  pageSize: number;
+}
+
+export interface UserDirectorySearchResult {
+  users: UserSummary[];
+  total: number;
+}
+
 export interface TenantDirectory {
   listActive(): Promise<TenantSummary[]>;
   getByName(name: string): Promise<TenantSummary>;
   /** Optional because tenant-only directory providers do not need to expose users. */
-  listActiveUsers?(tenantId: string): Promise<UserSummary[]>;
+  searchActiveUsers?(input: UserDirectorySearch): Promise<UserDirectorySearchResult>;
 }
 
 export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {

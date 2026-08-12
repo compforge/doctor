@@ -3,7 +3,7 @@ import type { Run, TrialContext } from "@compforge/perf-harness";
 import { parsePerfLevels, resolvePerfConfig } from "../src/perf/config";
 import {
   resolvePerfRequestIdentity,
-  resolveUserPromptChoice,
+  resolveUserSearchPromptAction,
   selectPerfSamples,
   workloadFromCaseRunner,
 } from "../src/perf";
@@ -68,26 +68,37 @@ test("Service Case runner maps one trigger into one shared Outcome", async () =>
 test("Perf fills missing tenant and user identity from the declared directory", async () => {
   const tenants = [{ id: "tenant-1", name: "alpha", displayName: "Alpha" }];
   const users = [{ id: "user-1", name: "alice", displayName: "Alice" }];
-  const listedTenants: string[] = [];
+  const searches: unknown[] = [];
   expect(await resolvePerfRequestIdentity({
     configured: {},
     directory: {
       listActive: async () => tenants,
       getByName: async () => tenants[0]!,
-      listActiveUsers: async (tenantId) => {
-        listedTenants.push(tenantId);
-        return users;
+      searchActiveUsers: async (input) => {
+        searches.push(input);
+        return { users, total: 1 };
       },
     },
     promptTenant: async (choices) => choices[0],
-    promptUser: async (choices) => choices[0],
+    promptUser: async ({ search }) => (await search({
+      query: "alice",
+      page: 1,
+      pageSize: 10,
+    })).users[0],
   })).toEqual({ tenantId: "tenant-1", userId: "user-1" });
-  expect(listedTenants).toEqual(["tenant-1"]);
+  expect(searches).toEqual([{
+    tenantId: "tenant-1",
+    query: "alice",
+    page: 1,
+    pageSize: 10,
+  }]);
 
-  expect(resolveUserPromptChoice(users, "alice", [])).toEqual({
+  expect(resolveUserSearchPromptAction(users, "1")).toEqual({
     kind: "selected",
-    value: users[0],
+    user: users[0],
   });
+  expect(resolveUserSearchPromptAction(users, "next")).toEqual({ kind: "next" });
+  expect(resolveUserSearchPromptAction(users, "bob")).toEqual({ kind: "search", query: "bob" });
 });
 
 test("Perf preserves configured identity and only queries missing user", async () => {
@@ -98,16 +109,19 @@ test("Perf preserves configured identity and only queries missing user", async (
       return [];
     },
     getByName: async (name: string) => ({ id: name, name, displayName: name }),
-    listActiveUsers: async (tenantId: string) => [{
-      id: `${tenantId}-user`,
-      name: "user",
-      displayName: "User",
-    }],
+    searchActiveUsers: async ({ tenantId }: { tenantId: string }) => ({
+      users: [{
+        id: `${tenantId}-user`,
+        name: "user",
+        displayName: "User",
+      }],
+      total: 1,
+    }),
   };
   expect(await resolvePerfRequestIdentity({
     configured: { tenantId: "tenant-1" },
     directory,
-    promptUser: async (choices) => choices[0],
+    promptUser: async ({ search }) => (await search({ page: 1, pageSize: 10 })).users[0],
   })).toEqual({ tenantId: "tenant-1", userId: "tenant-1-user" });
   expect(listedTenants).toBe(0);
 });
