@@ -55,6 +55,7 @@ export async function resolvePodHttpExecution(
     selectContainer: true,
     interactive: input.interactive,
     access,
+    commandContext,
     selection: {
       candidateRole: "目标",
       purpose: "执行 HTTP 场景请求",

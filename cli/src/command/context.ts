@@ -32,10 +32,12 @@ export interface CommandProfile {
 
 /**
  * Shared execution state created once after CLI/profile resolution and before domain dispatch.
- * Collect and Provision consume the same immutable startup facts and command-scoped RBAC cache.
+ * Collect and Provision consume the same immutable startup facts, command-scoped RBAC cache,
+ * and user selections resolved for one semantic purpose.
  */
 export class CommandContext {
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
+  readonly #selections = new Map<string, Promise<unknown>>();
 
   constructor(
     readonly inspection: CommandInspection,
@@ -54,6 +56,19 @@ export class CommandContext {
       this.#kubernetes.set(executor, context);
     }
     return context;
+  }
+
+  /** 同一命令内，同一目的的选择只向用户解析一次；失败允许后续阶段重试。 */
+  resolveSelection<T>(key: string, resolve: () => Promise<T>): Promise<T> {
+    const existing = this.#selections.get(key);
+    if (existing) return existing as Promise<T>;
+
+    const pending = Promise.resolve().then(resolve);
+    this.#selections.set(key, pending);
+    void pending.catch(() => {
+      if (this.#selections.get(key) === pending) this.#selections.delete(key);
+    });
+    return pending;
   }
 }
 

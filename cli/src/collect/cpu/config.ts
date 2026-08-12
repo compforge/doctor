@@ -71,6 +71,7 @@ export async function resolveCpuConfig(
     container: input.container,
     selectContainer: true,
     access,
+    commandContext,
     selection: {
       candidateRole: "目标",
       purpose: "采集 CPU 诊断数据",
