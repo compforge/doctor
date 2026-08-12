@@ -20,6 +20,18 @@ Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证�
 每格只填一次；完整取得记为 `ok`，部分取得记为 `partial`，访问失败、前置不可用和已证明无需取得分别
 记为 `failed / unavailable / unnecessary`。收尾仍未填的格子必须 settle 为明确缺失原因。
 
+### Trace、Log、Metric 是三个基本可观测数据面
+
+Doctor Collect 把 OpenTelemetry 的三类基本信号作为正交证据面：Trace 解释一次请求跨 Service 的因果与
+耗时分布，Log 保留离散业务事件和错误上下文，Metric 描述一段时间内的总体趋势与资源/业务指标。三者
+可以通过 `trace_id` 和时间窗口对齐，但不能互相代替；CPU 不高也不能据此推断首 token 延迟正常。
+
+`doctor perf` 不另造采集协议。它负责产生刺激、封口压测窗口，并从请求 Outcome 中保留 Plugin 声明的
+`trace_id` / `message_id` 等关联键；窗口内调用现有 `doctor metric`，结束后把代表请求的业务 ID 交给
+既有 `traceId` resolver，再调用现有 `doctor trace` 和 `doctor log`。
+某个数据面因权限、保留期或现场部署缺失时，已取得的其它证据仍应交付，并把整体 Coverage 标为
+partial，而不是把缺数据解释为系统健康。
+
 ## 流程
 
 1. 配置确认合并 CLI、profile 与交互输入，确定目标身份，但不创建临时访问资源。
@@ -82,7 +94,7 @@ Partial 报告沿用用户请求的 HTML、Markdown 或 Bundle 格式，并必�
 |---|---|
 | `observe` | 不主动改变业务进程或 Pod 状态 |
 | `overhead` | 允许 profiler、handler 等受控诊断负担 |
-| `disrupt` | 允许安装、注入、临时容器或 rollout 等显式变更 |
+| `disrupt` | 允许安装、注入、临时容器、rollout 或产生持久业务数据的主动负载等显式影响 |
 
 mode 是副作用上限，不是 blanket approval。Operation 描述 `risk / target / impact / steps`，具体执行与
 清理由 Probe 或 Provision 工作流拥有。授权发生在动作真正需要执行时；用户拒绝只终止依赖该 Operation

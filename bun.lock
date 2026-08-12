@@ -10,11 +10,12 @@
     },
     "cli": {
       "name": "doctor-cli",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "dependencies": {
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
+        "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.1/compforge-perf-harness-0.0.1.tgz",
         "@compforge/prombed": "0.0.2",
         "@compforge/trace-harness": "https://github.com/compforge/case-harness/releases/download/trace-harness-v0.0.3/compforge-trace-harness-0.0.3.tgz",
         "@earendil-works/pi-agent-core": "0.84.0",
@@ -62,7 +63,7 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.7",
+      "version": "0.0.8",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
       },
@@ -148,6 +149,8 @@
     "@compforge/doctor-plugin": ["@compforge/doctor-plugin@workspace:packages/plugin"],
 
     "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
+
+    "@compforge/perf-harness": ["@compforge/perf-harness@https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.1/compforge-perf-harness-0.0.1.tgz", {}, "sha512-+vJRTgKqzgVkJJeDUEbVg2Xe3aoUsFbYhFJySbnGoUrJMgjvasf9gi6HffCpkVYwEXt72GiR/YdHKxoTB/83Dw=="],
 
     "@compforge/prombed": ["@compforge/prombed@0.0.2", "", {}, "sha512-HeQyJeAuwNPI7RtLeS8dCApvHJFZYlyUq2EatMQxVaaywszwKCTfdY851JEDIGrW7Sh92h9AXc2ITYz3VwoVcA=="],
 

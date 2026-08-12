@@ -24,6 +24,7 @@ import type {
   MetricDiagnosis,
   MetricInspectionFacts,
   MetricWindowObservation,
+  MetricRunControl,
 } from "./model";
 import { prepareMetricSource, type MetricSourcePreparation } from "./preparation";
 import { makeMetricProbes } from "./probe";
@@ -43,6 +44,7 @@ export async function runCollectMetric(
   plugin: PluginDefinition,
   commandContext?: CommandContext,
   injectedExecutor?: Executor,
+  control?: MetricRunControl,
 ): Promise<number> {
   let config = await resolveMetricConfig(
     opts,
@@ -78,7 +80,10 @@ export async function runCollectMetric(
   ]);
   const controller = new AbortController();
   const onInterrupt = () => controller.abort();
+  const onExternalAbort = () => controller.abort(control?.signal?.reason);
   process.once("SIGINT", onInterrupt);
+  if (control?.signal?.aborted) onExternalAbort();
+  else control?.signal?.addEventListener("abort", onExternalAbort, { once: true });
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   let preparation: MetricSourcePreparation | undefined;
   let facts: MetricInspectionFacts | undefined;
@@ -99,6 +104,7 @@ export async function runCollectMetric(
       sourceKind: preparation.sourceKind,
       embeddedSource: preparation.embeddedSource,
       signal: controller.signal,
+      onWindowStart: control?.onWindowStart,
       bundle,
     };
     facts = await runInspects([makeMetricSourceInspect(preparation.targetCount)], ctx, log);
@@ -117,6 +123,7 @@ export async function runCollectMetric(
     failure = error instanceof Error ? error.message : String(error);
   } finally {
     process.removeListener("SIGINT", onInterrupt);
+    control?.signal?.removeEventListener("abort", onExternalAbort);
     preparation?.close();
   }
 

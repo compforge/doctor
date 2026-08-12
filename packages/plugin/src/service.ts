@@ -79,6 +79,97 @@ export interface ServiceMetricCapability {
   detectors?: readonly ServiceMetricDetector[];
 }
 
+/** Runtime projection of a canonical spec-case Case asset; this interface does not own its schema. */
+export interface ServiceCaseAsset {
+  id: string;
+  input: Readonly<Record<string, unknown>>;
+  facets?: Readonly<Record<string, string>>;
+}
+
+export interface ServiceCaseSet {
+  id: string;
+  title: string;
+  description?: string;
+  cases: readonly ServiceCaseAsset[];
+}
+
+/** Protocol facts returned by one Case trigger; Doctor maps them to the shared Perf Outcome IR. */
+export interface ServiceCaseObservation {
+  status: number | null;
+  durationMs: number;
+  events?: number;
+  nbytes?: number;
+  metrics?: Readonly<Record<string, number>>;
+  meta?: Readonly<Record<string, unknown>>;
+  errorKind?: string;
+}
+
+export interface ServiceCaseVerdict {
+  ok: boolean;
+  errorKind?: string;
+}
+
+export interface ServiceCaseTrialContext {
+  runId: string;
+  signal: AbortSignal;
+}
+
+/**
+ * Service protocol adapter invoked concurrently by Core at Harness-owned dispatch points.
+ * A runner must not create an independent load loop: request budgets, timing and cancellation
+ * belong to Core so every Outcome remains attributable to one Trial and Window.
+ */
+export interface ServiceCaseRunner {
+  setup?(context: ServiceCaseTrialContext): Promise<void>;
+  trigger(input: {
+    case: ServiceCaseAsset;
+    runId: string;
+    signal: AbortSignal;
+  }): Promise<ServiceCaseObservation>;
+  /** Pure per-request protocol classification; aggregate Case/Perf judgment stays outside the runner. */
+  classify(observation: ServiceCaseObservation): ServiceCaseVerdict;
+  /** Stop accepting new protocol work after Core has stopped dispatching this Trial. */
+  deactivate?(context: ServiceCaseTrialContext): Promise<void>;
+  /** Release per-Trial protocol resources; Core attempts this even when setup/trigger fails. */
+  cleanup?(context: ServiceCaseTrialContext): Promise<void>;
+}
+
+/** Service-owned single-Case trigger consumed by Case Harness and Perf Harness callers. */
+export interface ServiceCaseCapability extends CapabilityWithAccess {
+  endpoint: ServiceEndpoint;
+  caseSets: readonly ServiceCaseSet[];
+  createRunner(
+    context: PluginContext,
+    input: { caseSetId: string; timeoutMs: number },
+  ): Promise<ServiceCaseRunner>;
+}
+
+export interface ServicePerfObservability {
+  metricServices: readonly string[];
+  logServices: readonly string[];
+  /** Ordered Outcome.meta keys accepted by the Service traceId resolver. */
+  correlationKeys: readonly string[];
+}
+
+export interface ServicePerfCaseSelection {
+  caseId: string;
+  weight?: number;
+}
+
+export interface ServicePerfScenario {
+  id: string;
+  title: string;
+  description: string;
+  caseSetId: string;
+  cases: readonly ServicePerfCaseSelection[];
+  observability: ServicePerfObservability;
+}
+
+/** Service-owned Perf presets; Core owns scheduling and the Case capability owns request protocol. */
+export interface ServicePerfCapability {
+  scenarios: readonly ServicePerfScenario[];
+}
+
 export interface ServiceDataResult {
   kind: string;
   service: string;
@@ -287,6 +378,8 @@ export interface ServiceCapabilities {
   tenantDirectory?: ServiceTenantDirectoryCapability;
   modelCatalog?: ServiceModelCatalogCapability;
   inference?: ServiceInferenceCapability;
+  case?: ServiceCaseCapability;
+  perf?: ServicePerfCapability;
   metric?: ServiceMetricCapability;
   mcp?: ServiceMcpCapability;
 }

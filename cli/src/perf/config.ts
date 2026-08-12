@@ -1,0 +1,55 @@
+import { join } from "node:path";
+import type { PerfCliOpts, PerfConfig } from "./model";
+
+function integer(value: string | undefined, fallback: number, label: string, minimum: number): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isInteger(parsed) || parsed < minimum) {
+    throw new Error(`${label} 必须是 >= ${minimum} 的整数`);
+  }
+  return parsed;
+}
+
+function seconds(value: string | undefined, fallback: number, label: string): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error(`${label} 必须是 >= 0 的秒数`);
+  return parsed;
+}
+
+function fraction(value: string | undefined, fallback: number, label: string): number {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    throw new Error(`${label} 必须在 (0, 1] 范围内`);
+  }
+  return parsed;
+}
+
+export function parsePerfLevels(raw = "5,10,15,20"): number[] {
+  const levels = [...new Set(raw.split(",").map((item) => Number(item.trim())))];
+  if (!levels.length || levels.some((level) => !Number.isInteger(level) || level < 1)) {
+    throw new Error("--levels 必须是逗号分隔的正整数，例如 5,10,15,20");
+  }
+  return levels;
+}
+
+export function perfRunName(now = new Date()): string {
+  const pad = (value: number): string => String(value).padStart(2, "0");
+  return `doctor-perf-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+    + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConfig {
+  return {
+    service: opts.service?.trim() || undefined,
+    scenario: opts.scenario?.trim() || undefined,
+    levels: parsePerfLevels(opts.levels),
+    rampSeconds: seconds(opts.ramp, 10, "--ramp"),
+    holdSeconds: seconds(opts.hold, 60, "--hold"),
+    maxRequests: integer(opts.maxRequests, 100, "--max-requests", 1),
+    abortErrorRate: fraction(opts.abortErrorRate, 0.1, "--abort-error-rate"),
+    breakerMinN: integer(opts.breakerMinN, 10, "--breaker-min-n", 1),
+    gracefulStopSeconds: seconds(opts.gracefulStop, 60, "--graceful-stop"),
+    requestTimeoutMs: integer(opts.requestTimeout, 180, "--request-timeout", 1) * 1000,
+    traceSamples: integer(opts.traceSamples, 2, "--trace-samples", 0),
+    outputDir: opts.output?.trim() || join(".", perfRunName(now)),
+  };
+}

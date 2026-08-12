@@ -2,14 +2,15 @@
 
 ## 理念 / 概念
 
-CLI kernel 定义 Provision、Collect 和 Chat 三条并列主路径的稳定边界。它们共用底层能力，
+CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的稳定边界。它们共用底层能力，
 但不共享业务流程：
 
 - `app` 是 composition root，解析用户输入并注入 Plugin 与基础设施能力；
-- `command` 持有三条主路径共用的启动事实、目标解析和 access/审批契约；
+- `command` 持有四条主路径共用的启动事实、目标解析和 access/审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
 - `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和交付；
-- `packages/agent → chat/Session → chat/Controller → chat-tui` 是第三条独立问答链路，不依赖
+- `perf` 使用共享 Perf Harness 产生受控业务负载，并以时间窗口和 Plugin 声明的关联 ID 复用 Collect 证据面；
+- `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立问答链路，不依赖
   provision 或 collect；
 - `model` 准备模型发现与 inference 访问，由 Chat 和 Model Collect 共用，不归属任一主路径；
 - `packages/plugin` 定义 Plugin、Service 与 capability 公共协议，`plugins/<plugin>` 持有访问实现与固定业务查询；
@@ -66,6 +67,7 @@ cli/src/
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
 ├── command/             启动检查、Kubernetes 目标解析、执行上下文与 access/审批契约
 ├── provision/           image、debug environment 与目标工具准备
+├── perf/                主动负载、Perf Harness 适配和可观测证据编排
 ├── protocol/            CLI ↔ doctor-server 协议与 SSE client
 ├── terminal/            命令共用的选择、输入、确认与输出边界
 ├── collect/
@@ -191,11 +193,19 @@ Collect 仍遵循 Config → Facts → Observations → Evidence → Findings/Co
 Provision 不使用统一 engine。image、debug、install 的结果和生命周期不同，因此各自拥有检查、授权、
 执行和验证流程，只共享 `CommandContext`、terminal 交互和 infra 原语。
 
+### Perf 为什么单列
+
+Perf 的主要动作是主动产生业务请求，结果是负载曲线与其对应的可观测证据。它既不是为后续诊断准备
+环境的 Provision，也不是只观察既有现场的 Collect。`doctor perf` 因而与 `doctor chat` 一样保留顶层
+入口：Core 负责共享负载契约、安全边界、窗口和报告；Plugin 的 Case capability 负责具体 Service 的
+单次请求协议与协议判定，Perf capability 只声明 Case 组合和关联范围。Metric、Trace、Log 的采集仍调用
+现有 Collect 实现，不在 Perf 下复制第四套采集器。
+
 ### 依赖方向与领域所有权
 
-`app` 可以组装 Plugin、`provision`、`collect`、`chat` 和 `infra`；`provision`、`collect` 与 `chat`
-互不依赖。共同启动
-上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
+`app` 可以组装 Plugin、`provision`、`collect`、`perf`、`chat` 和 `infra`。Provision、Collect 与 Chat
+保持互不依赖；Perf 是编排层，会有意调用 Collect 稳定的 Metric、Trace、Log 入口，但不能复制其采集
+实现。共同启动上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
 `packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 实现
 Plugin 公共包定义的 access port，但不知道业务
 Service、表关系和诊断结论。Plugin loader 把当前精确 Plugin 版本的 Skills 解析后交给本地 Agent，Agent
@@ -246,6 +256,7 @@ Node SEA；无法证明目标满足 modern 基线时保守选择兼容产物。�
 | MCP | [`commands/mcp-diagnosis.md`](commands/mcp-diagnosis.md) |
 | Memory | [`commands/memory-diagnosis.md`](commands/memory-diagnosis.md) |
 | Metric | [`commands/metric-diagnosis.md`](commands/metric-diagnosis.md) |
+| Perf | [`commands/perf.md`](commands/perf.md) |
 | Model | [`commands/model-diagnosis.md`](commands/model-diagnosis.md) |
 | Network | [`commands/network-diagnosis.md`](commands/network-diagnosis.md) |
 | Store（DB/VDB/S3/Redis） | [`commands/store-diagnosis.md`](commands/store-diagnosis.md) |

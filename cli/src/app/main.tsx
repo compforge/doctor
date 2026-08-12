@@ -16,6 +16,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
 //   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
 //   doctor metric            → 基于 Prometheus 或内嵌 Prombed 采集并可视化 Service metrics
+//   doctor perf              → 发起受控业务压测，并在同一窗口采集 metric、trace、log
 //   doctor install           → 向选定 Pod container 安装 GDB
 //   doctor init              → 首次初始化 local profile
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
@@ -41,6 +42,7 @@ import {
 import { runCollectMcp } from "../collect/mcp";
 import { runCollectModel } from "../collect/model";
 import { runCollectMetric } from "../collect/metric";
+import { runPerf } from "../perf";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
 import { runInstall, validateInstallOptions } from "../provision/install";
@@ -336,6 +338,29 @@ function withMetricOptions(cmd: CommandT): CommandT {
     .option("--profile <name>", "从 profile 取 Prometheus 或 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "单文件 HTML 报告输出路径");
+}
+
+function withPerfOptions(cmd: CommandT): CommandT {
+  return withApprovalOptions(cmd)
+    .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
+    .option("--scenario <id>", "Plugin 声明的业务压测场景；默认第一个")
+    .option("--levels <numbers>", "逗号分隔的并发档位", "5,10,15,20")
+    .option("--ramp <seconds>", "每档升压时间（秒）", "10")
+    .option("--hold <seconds>", "每档稳态时间（秒）", "60")
+    .option("--max-requests <n>", "每档最多产生的业务请求数", "100")
+    .option("--abort-error-rate <ratio>", "当前档错误率熔断阈值 (0,1]", "0.1")
+    .option("--breaker-min-n <n>", "启用错误率熔断前的最少请求数", "10")
+    .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")
+    .option("--request-timeout <seconds>", "单请求超时", "180")
+    .option("--trace-samples <n>", "压测后采集的代表 trace/log 数量", "2")
+    .option("--interval <duration>", "内嵌 Prombed 的 metric 抓取间隔", "5s")
+    .option("--prometheus <url>", "Prometheus 地址；缺省使用内嵌 Prombed")
+    .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
+    .option("--kubeconfig <path>", "kubeconfig 路径")
+    .option("--context <name>", "kubeconfig context")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
+    .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
+    .option("-o, --output <dir>", "一条龙产物目录（默认 ./doctor-perf-<时间戳>）");
 }
 
 async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
@@ -672,6 +697,20 @@ export async function main(plugin?: PluginDefinition) {
       opts,
       plugin,
       (activePlugin, context) => runCollectMetric(opts, activePlugin, context),
+    );
+  });
+  withPerfOptions(
+    program.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      {
+        name: "doctor perf",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.perf,
+      },
+      opts,
+      plugin,
+      (activePlugin, context) => runPerf(opts, activePlugin, context),
     );
   });
 

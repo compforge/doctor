@@ -61,6 +61,16 @@ performance 和 Evidence；诊断是 Core command 行为，不是 Plugin capabil
 检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
 
+Case Capability 是 Service 的稳定请求资产与触发协议。它暴露一个或多个 CaseSet，以及并发安全的
+单次 Case runner；Case 的 canonical schema 归 spec-case，Doctor Plugin SDK 只消费运行所需的
+`id/input/facets` 投影。环境地址、身份和凭据由 runner 从 Plugin context 取得，不写入 Case。
+
+Perf Capability 是其上的场景预设，只选择 CaseSet 中的一个或多个 Case、声明本次权重、业务关联键
+优先级和 Metric/Log Service。权重属于本次 Experiment，不属于 Case。并发模型、dispatch、
+Stage/Window、请求预算、熔断、Outcome IR、`by_case` 统计和报告编排由 Core 与共享 Perf Harness 拥有。
+Core 在每个调度点调用一次 runner，Plugin 决定这次调用如何变成真实 HTTP/SSE 请求，可以持有 Trial 级
+setup/deactivate/cleanup，但不得另起不可记账的发压循环。这样 runner 还能被单 Case 调试等入口复用。
+
 持久化模型只包含两个事实：
 
 1. Doctor Host 已安装哪些 `plugin@version`；

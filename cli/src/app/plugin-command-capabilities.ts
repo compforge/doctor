@@ -83,4 +83,28 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "定位指标端点并提供业务指标语义",
     }],
   },
+  perf: {
+    command: "doctor perf",
+    needs: [{
+      requirement: "required",
+      capability: { scope: "service", name: "perf" },
+      purpose: "提供 Case 组合与可观测性预设",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "case" },
+      purpose: "提供稳定 Case 资产以及单次请求触发和协议判定",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "metric" },
+      purpose: "压测窗口内复用 doctor metric 采集指标",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "traceId" },
+      purpose: "复用 doctor trace/log 收集代表请求的链路证据",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "log" },
+      purpose: "复用 doctor log 收集代表请求的日志证据",
+    }],
+  },
 } as const satisfies Record<string, PluginCapabilityContract>;

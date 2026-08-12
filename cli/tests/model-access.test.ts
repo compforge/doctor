@@ -123,3 +123,68 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
     },
   }, manifest)).toThrow("trace.source.store references unknown Store 'trace-store/missing'");
 });
+
+test("Plugin perf scenarios select Cases from the Service case capability", () => {
+  const base = {
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{
+      name: "chat",
+      capabilities: {
+        case: {
+          endpoint: { port: 8000 },
+          access: {},
+          caseSets: [{
+            id: "chat",
+            title: "Chat Cases",
+            cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
+          }],
+          createRunner: async () => { throw new Error("factory must not run"); },
+        },
+        perf: {
+          scenarios: [{
+            id: "ordinary-chat",
+            title: "普通 Chat",
+            description: "SSE Chat",
+            caseSetId: "chat",
+            cases: [{ caseId: "ordinary_chat", weight: 1 }],
+            observability: {
+              metricServices: ["chat"],
+              logServices: ["chat"],
+              correlationKeys: ["message_id"],
+            },
+          }],
+        },
+      },
+    }] },
+  };
+  expect(validatePluginDefinition(base, manifest).services.find("chat")?.capabilities.perf)
+    .toBeDefined();
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: { services: [{
+      name: "chat",
+      capabilities: {
+        case: base.services.services[0].capabilities.case,
+        perf: { ...base.services.services[0].capabilities.perf, scenarios: [] },
+      },
+    }] },
+  }, manifest)).toThrow("chat.perf.scenarios must be a non-empty array");
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: { services: [{
+      name: "chat",
+      capabilities: {
+        ...base.services.services[0].capabilities,
+        perf: {
+          scenarios: [{
+            ...base.services.services[0].capabilities.perf.scenarios[0],
+            cases: [{ caseId: "missing" }],
+          }],
+        },
+      },
+    }] },
+  }, manifest)).toThrow("references unknown Case 'missing'");
+});

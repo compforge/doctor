@@ -52,6 +52,7 @@ async function collectEmbeddedWindow(
     }
   };
   await scrape();
+  ctx.onWindowStart?.();
   if (config.watch.mode === "snapshot") return errors;
   const deadline = config.watch.mode === "duration"
     ? Date.now() + config.watch.durationMs
@@ -86,6 +87,7 @@ export function makeMetricWindowProbe(): Probe<
       if (ctx.sourceKind === "remote") {
         if (config.watch.mode === "until-interrupt") {
           startedAt = Date.now();
+          ctx.onWindowStart?.();
           await waitForAbort(ctx.signal);
           finishedAt = Date.now();
         } else {

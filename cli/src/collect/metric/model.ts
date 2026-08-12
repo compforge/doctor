@@ -111,5 +111,11 @@ export interface MetricCollectContext {
   sourceKind: MetricSourceKind;
   embeddedSource?: EmbeddedMetricSource;
   signal: AbortSignal;
+  onWindowStart?: () => void;
   bundle: EvidenceBundle;
+}
+
+export interface MetricRunControl {
+  signal?: AbortSignal;
+  onWindowStart?: () => void;
 }
