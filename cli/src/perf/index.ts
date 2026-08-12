@@ -11,6 +11,7 @@ import {
 } from "@compforge/perf-harness";
 import type {
   PluginDefinition,
+  ServiceCaseAsset,
   ServiceCaseObservation,
   ServiceCaseRunner,
   ServiceDefinition,
@@ -43,6 +44,17 @@ type PerfProvider = ServiceDefinition & {
   capabilities: ServiceDefinition["capabilities"]
     & Required<Pick<ServiceDefinition["capabilities"], "case" | "perf">>;
 };
+
+export function formatPerfCaseMix(
+  caseMix: readonly { case: ServiceCaseAsset; weight: number }[],
+): string {
+  return caseMix.map(({ case: selectedCase, weight }) => {
+    const facets = Object.entries(selectedCase.facets ?? {})
+      .map(([name, value]) => `${name}=${value}`)
+      .join(", ");
+    return `[perf]   case=${selectedCase.id} weight=${weight}${facets ? ` facets=${facets}` : ""}\n`;
+  }).join("");
+}
 
 function selectProvider(plugin: PluginDefinition, requested: string | undefined): PerfProvider {
   if (requested) {
@@ -446,7 +458,7 @@ export async function runPerf(
       })),
       signal: loadController.signal,
       onTrialStart: (context) => {
-        terminalStdout.write(`[perf] trial ${context.arm.id}\n`);
+        terminalStdout.write(`[perf] trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseMix)}`);
       },
     }).run();
   } catch (error) {

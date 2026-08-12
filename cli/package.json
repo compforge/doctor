@@ -1,6 +1,6 @@
 {
   "name": "doctor-cli",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "description": "AI-driven diagnostic CLI for private Kubernetes environments",
   "type": "module",
