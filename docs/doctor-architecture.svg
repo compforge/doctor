@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
   <title id="title">Doctor architecture</title>
-  <desc id="desc">Doctor exposes Provision, Collect, and Chat workflows over shared Core access. Versioned Plugins contribute Services, capabilities, models, and Skills. Both Core and Plugins operate on scoped Kubernetes application infrastructure.</desc>
+  <desc id="desc">Doctor exposes Provision, Collect, Perf, and Chat workflows over shared Core access. Versioned Plugins contribute Services, capabilities, models, and Skills. Both Core and Plugins operate on scoped Kubernetes application infrastructure.</desc>
 
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
@@ -32,34 +32,42 @@
   <text class="text label muted" x="66" y="105">COMMAND WORKFLOWS</text>
 
   <g filter="url(#shadow)">
-    <rect x="66" y="126" width="310" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
-    <rect x="445" y="126" width="310" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
-    <rect x="824" y="126" width="310" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <rect x="66" y="126" width="250" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <rect x="338" y="126" width="250" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <rect x="610" y="126" width="250" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+    <rect x="882" y="126" width="250" height="154" rx="18" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
   </g>
 
   <text class="text heading" x="90" y="165">Provision</text>
-  <text class="text body muted" x="90" y="193">Prepare explicit diagnostic capability</text>
+  <text class="text body muted" x="90" y="193">Prepare diagnostic capability</text>
   <rect x="90" y="218" width="114" height="34" rx="17" fill="#ede9fe"/>
   <text class="text chip" x="112" y="240">Host / Target</text>
 
-  <text class="text heading" x="469" y="165">Collect</text>
-  <text class="text body muted" x="469" y="193">Turn observations into auditable results</text>
-  <rect x="469" y="218" width="106" height="34" rx="17" fill="#ede9fe"/>
-  <text class="text chip" x="493" y="240">Evidence</text>
-  <rect x="585" y="218" width="126" height="34" rx="17" fill="#ede9fe"/>
-  <text class="text chip" x="607" y="240">Findings / report</text>
+  <text class="text heading" x="362" y="165">Collect</text>
+  <text class="text body muted" x="362" y="193">Create auditable observations</text>
+  <rect x="362" y="218" width="106" height="34" rx="17" fill="#ede9fe"/>
+  <text class="text chip" x="386" y="240">Evidence</text>
+  <rect x="478" y="218" width="72" height="34" rx="17" fill="#ede9fe"/>
+  <text class="text chip" x="495" y="240">Report</text>
 
-  <text class="text heading" x="848" y="165">Chat</text>
-  <text class="text body muted" x="848" y="193">Investigate with application knowledge</text>
-  <rect x="848" y="218" width="88" height="34" rx="17" fill="#fef3c7"/>
-  <text class="text chip" x="870" y="240">Agent</text>
-  <rect x="946" y="218" width="112" height="34" rx="17" fill="#fef3c7"/>
-  <text class="text chip" x="968" y="240">Sandbox</text>
+  <text class="text heading" x="634" y="165">Perf</text>
+  <text class="text body muted" x="634" y="193">Apply bounded business load</text>
+  <rect x="634" y="218" width="82" height="34" rx="17" fill="#ede9fe"/>
+  <text class="text chip" x="656" y="240">Load</text>
+  <rect x="726" y="218" width="96" height="34" rx="17" fill="#ede9fe"/>
+  <text class="text chip" x="746" y="240">OTel data</text>
+
+  <text class="text heading" x="906" y="165">Chat</text>
+  <text class="text body muted" x="906" y="193">Investigate with application Skills</text>
+  <rect x="906" y="218" width="88" height="34" rx="17" fill="#fef3c7"/>
+  <text class="text chip" x="928" y="240">Agent</text>
+  <rect x="1004" y="218" width="104" height="34" rx="17" fill="#fef3c7"/>
+  <text class="text chip" x="1022" y="240">Sandbox</text>
 
   <path d="M177 340 L177 282" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
-  <path d="M368 340 C430 318 500 300 542 282" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
-  <path d="M612 340 C700 310 824 293 884 281" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
-  <path d="M824 340 C770 318 711 298 670 282" fill="none" stroke="#059669" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-green)"/>
+  <path d="M368 340 C400 316 430 300 463 282" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M612 340 C650 315 690 299 735 282" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M824 340 C790 315 760 299 735 282" fill="none" stroke="#059669" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-green)"/>
   <path d="M1040 340 L1008 282" fill="none" stroke="#059669" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#arrow-green)"/>
 
   <g filter="url(#shadow)">

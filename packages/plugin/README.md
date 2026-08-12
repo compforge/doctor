@@ -27,6 +27,10 @@ kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
 使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
 凭据和外部访问仍在进入 Trace Harness 前完成。
 
+`case` 是 Service 的稳定 CaseSet 与单次请求 runner；runner 实现 HTTP/SSE、鉴权和协议分类，但不拥有
+加压循环。`perf` 只在 CaseSet 上声明本次 Case mix 与可观测性预设，调度、预算、熔断和统计由 Core 的
+Perf Harness 统一完成。
+
 `PluginSkill` 是 runtime 视图，不规定归档或磁盘布局。Plugin loader 或定制发行入口负责读取
 `SKILL.md`，并把内容及可由宿主 `ExecutionEnv` 访问的绝对路径注入对应 `PluginDefinition`。Skill 因此
 跟随 Plugin 安装、选择、信任与升级，同时不让 Plugin SDK 依赖具体 agent framework。

@@ -9,9 +9,10 @@ conversations. It complements `kubectl` with application-aware diagnostics: Core
 reach and safely operate a selected target, while a Plugin teaches Doctor which services make up an
 application and what their business data means.
 
-Doctor has three peer workflows: Provision prepares diagnostic capabilities, Collect produces
-auditable Evidence and reports, and Chat runs an Agent with application Skills and host-provided tools. All
-three share the same profile, target, access and authorization context.
+Doctor has four peer workflows: Provision prepares diagnostic capabilities, Collect produces auditable
+Evidence and reports, Perf creates bounded business load with correlated observability, and Chat runs an
+Agent with application Skills and host-provided tools. All four share the same profile, target, access and
+authorization context.
 
 ![Doctor architecture](docs/doctor-architecture.svg)
 
@@ -21,11 +22,17 @@ three share the same profile, target, access and authorization context.
 |---|---|---|
 | Provision | Explicitly prepare a Host or Target capability such as an image, debug environment or diagnostic tool | A ready capability or visible state change |
 | Collect | Inspect a target, run bounded probes and apply deterministic detectors | Evidence, coverage, findings and an offline report |
+| Perf | Run an approved load profile and correlate request latency with metrics, traces and logs | Perf IR plus a linked offline report |
 | Chat | Combine a model, Plugin Skills and scoped tools for open-ended investigation | An interactive diagnostic conversation |
 
-Provision, Collect and Chat are independent command workflows rather than modes of one engine.
-They reuse Core access and infrastructure primitives, while each owns its result and lifecycle.
+Provision, Collect, Perf and Chat are distinct top-level command workflows rather than modes of one engine.
+Each owns its result and lifecycle; Perf intentionally composes the existing Collect signal entry points.
 Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
+
+`doctor perf` is intentionally top-level because it produces real business requests rather than merely
+observing a target or preparing a tool. A Service Plugin exposes stable Cases and a single-request protocol
+through its Case capability, then selects one or more Cases in a Perf scenario. Core owns load generation,
+safety limits and one-stop correlation through the existing metric, trace and log collectors.
 
 Doctor runs from a deployment host with scoped Kubernetes access. It can use explicitly authorized
 debug containers for in-cluster diagnostics, then return raw artifacts and offline reports to the

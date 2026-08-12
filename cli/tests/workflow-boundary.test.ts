@@ -21,8 +21,19 @@ test("CLI 的 provision、collect 与 chat 三条主路径互不依赖", () => {
   }
 });
 
+test("perf 只编排 collect 的稳定信号入口，不依赖 provision 或 chat", () => {
+  const sources = sourceFiles(join(import.meta.dir, "../src/perf"))
+    .map((path) => readFileSync(path, "utf-8"))
+    .join("\n");
+
+  expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|chat)(?:\/[^"']*)?["']/);
+  expect(sources).toContain('from "../collect/metric"');
+  expect(sources).toContain('from "../collect/trace"');
+  expect(sources).toContain('from "../collect/log"');
+});
+
 test("共享 model 能力不依赖任何主路径", () => {
-  const workflowImport = /\bfrom\s+["'][^"']*\/(?:provision|collect|chat)(?:\/[^"']*)?["']/;
+  const workflowImport = /\bfrom\s+["'][^"']*\/(?:provision|collect|perf|chat)(?:\/[^"']*)?["']/;
   for (const path of sourceFiles(join(import.meta.dir, "../src/model"))) {
     expect(readFileSync(path, "utf-8")).not.toMatch(workflowImport);
   }

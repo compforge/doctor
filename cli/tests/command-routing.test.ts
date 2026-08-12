@@ -51,6 +51,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("data [options]");
     expect(result.stdout).toContain("store [options]");
     expect(result.stdout).toContain("model [options]");
+    expect(result.stdout).toContain("perf [options]");
   });
 
   test("core entry explains a missing Plugin before K8s access", () => {
@@ -122,6 +123,17 @@ describe("CLI command routing", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor chat [options]");
     expect(result.stdout).toContain("--server");
+  });
+
+  test("perf is a top-level bounded load command", () => {
+    const result = runCoreCli("perf", "--help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: doctor perf [options]");
+    expect(result.stdout).toContain("--levels <numbers>");
+    expect(result.stdout).toContain('(default: "5,10,15,20")');
+    expect(result.stdout).toContain("--max-requests <n>");
+    expect(result.stdout).toContain("--trace-samples <n>");
+    expect(result.stdout).toContain("-y, --yes");
   });
 
   test("log exposes HTML-by-default and full Evidence Bundle output", () => {

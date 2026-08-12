@@ -74,6 +74,16 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
+test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
+    { scope: "service", name: "perf" },
+    { scope: "service", name: "case" },
+    { scope: "service", name: "metric" },
+    { scope: "service", name: "traceId" },
+    { scope: "service", name: "log" },
+  ]);
+});
+
 test("traceId capability 以 Service provider 为单位发现", () => {
   const tracePlugin = {
     id: "trace-sample",

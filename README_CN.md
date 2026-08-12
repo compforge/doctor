@@ -8,8 +8,9 @@ Doctor 是一个本地优先的 CLI，用于采集可复现的诊断证据并开
 `kubectl`：Core 知道如何访问并安全操作用户选择的目标，Plugin 则告诉 Doctor 一个应用包含哪些
 Service，以及这些 Service 的业务数据代表什么。
 
-Doctor 提供三条平级工作流：Provision 准备诊断能力，Collect 生成可审计的 Evidence 和报告，Chat
-让 Agent 结合应用 Skill 和宿主提供的工具开展诊断。三者共享同一套 profile、目标、访问与授权上下文。
+Doctor 提供四条平级工作流：Provision 准备诊断能力，Collect 生成可审计的 Evidence 和报告，Perf
+产生受控业务负载并关联可观测数据，Chat 让 Agent 结合应用 Skill 和宿主工具开展诊断。四者共享同一套
+profile、目标、访问与授权上下文。
 
 ![Doctor 架构](docs/doctor-architecture.svg)
 
@@ -19,11 +20,16 @@ Doctor 提供三条平级工作流：Provision 准备诊断能力，Collect 生�
 |---|---|---|
 | Provision | 显式准备 Doctor Host 或 Target 所需的 image、debug environment、诊断工具等能力 | 已就绪的能力或可见的状态变更 |
 | Collect | 检查目标、执行受限 Probe，并运行确定性 Detector | Evidence、Coverage、Finding 与离线报告 |
+| Perf | 执行经过确认的负载，并把请求延迟与 Metric、Trace、Log 对齐 | Perf 原始契约产物与关联离线报告 |
 | Chat | 组合模型、Plugin Skill 和受控工具开展开放式诊断 | 交互式诊断对话 |
 
-Provision、Collect 和 Chat 是相互独立的命令工作流，而不是同一引擎的不同模式。它们复用 Core
-提供的访问和基础设施原语，但各自拥有独立的结果与生命周期。内置 Collector 覆盖 CPU、内存、
+Provision、Collect、Perf 和 Chat 是四个顶层命令工作流，而不是同一引擎的不同模式。它们各自拥有
+结果与生命周期；Perf 会有意编排复用 Collect 已有的信号采集入口。内置 Collector 覆盖 CPU、内存、
 网络、HTTP、Trace、Metric、Model 和 Store 等领域。
+
+`doctor perf` 保持顶层入口，因为它会产生真实业务请求，而不是只观察现场或准备工具。Service Plugin
+通过 Case capability 提供稳定 Case 和单次请求触发协议，通过 Perf capability 选择一个或多个 Case；
+Core 统一负责加压、安全边界，并复用既有 Metric、Trace、Log Collector 完成一条龙关联。
 
 Doctor 在部署机上运行，通过受限的 Kubernetes access 进入现场。它可以使用经过明确授权的 debug
 container 执行集群内诊断，再把原始产物和离线报告交付回 Doctor Host。
