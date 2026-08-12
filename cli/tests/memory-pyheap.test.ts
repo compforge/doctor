@@ -29,7 +29,10 @@ import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
 import { resolveEmbeddedPyHeapTool } from "../src/collect/memory/embedded-pyheap";
 import { parsePyheapPrereqs } from "../src/collect/memory/pyheap-tool";
-import { parseCgroupOomKillCount } from "../src/collect/memory/capture-facts";
+import {
+  cgroupOomKillCount,
+  parseCgroupMemoryFacts,
+} from "../src/collect/fact/cgroup-memory";
 
 function analysis(source: {
   sha256: string;
@@ -201,13 +204,27 @@ describe("doctor mem PyHeap capture contract", () => {
     );
   });
 
-  test("only reads the cgroup v2 oom_kill counter used for dump-time deltas", () => {
-    expect(parseCgroupOomKillCount([
+  test("reads cgroup v1 and v2 oom_kill counters used for dump-time deltas", () => {
+    const v2 = [
       "version=2",
       "event_oom=7",
       "event_oom_kill=3",
-    ].join("\n"))).toBe(3);
-    expect(parseCgroupOomKillCount("version=1\nevent_fail_count=3\n")).toBeUndefined();
+    ].join("\n");
+    const v1 = [
+      "version=1",
+      "event_fail_count=3",
+      "event_oom_kill_disable=0",
+      "event_under_oom=0",
+      "event_oom_kill=4",
+    ].join("\n");
+
+    const v2Facts = parseCgroupMemoryFacts(v2);
+    const v1Facts = parseCgroupMemoryFacts(v1);
+    expect(v2Facts?.version).toBe(2);
+    expect(cgroupOomKillCount(v2Facts)).toBe(3);
+    expect(v1Facts?.version).toBe(1);
+    expect(cgroupOomKillCount(v1Facts)).toBe(4);
+    expect(parseCgroupMemoryFacts("memory cgroup files unavailable")).toBeUndefined();
   });
 
   test("只有远端 metadata 验证通过才报告 heap 文件保留", () => {

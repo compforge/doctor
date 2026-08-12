@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
+import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
 
 export const MEMORY_CAPTURE_SCHEMA = "doctor.memory-capture/v1";
 
@@ -31,7 +32,7 @@ export interface MemoryCaptureArtifact {
   };
   facts: {
     process_scan?: unknown;
-    cgroup_memory?: string;
+    cgroup_memory?: string | CgroupMemoryFacts;
     process_status?: string;
   };
 }
