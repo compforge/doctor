@@ -37,6 +37,7 @@ export async function resolveDebugTarget(
     container: opts.container,
     selectContainer: true,
     access,
+    commandContext,
     selection: {
       candidateRole: "目标",
       purpose: "准备 debug environment",

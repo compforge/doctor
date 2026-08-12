@@ -34,6 +34,7 @@ import {
 } from "../infra/recent";
 import {
   selectionCandidateLabel,
+  selectionPurposeKey,
   type SelectionContext,
 } from "../terminal/selection-context";
 
@@ -126,6 +127,7 @@ export async function resolvePodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
+  commandContext?: CommandContext;
   selection: SelectionContext;
 }): Promise<PodTarget | undefined> {
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
@@ -216,12 +218,23 @@ export async function resolvePodTarget(input: {
     if (recentPods.length) {
       printPodChoices(recentPods, "[recent] 最近常用 Pod：");
     }
-    const pod = await promptPod(matches, {
+    const selectPod = () => promptPod(matches, {
       selection: input.selection,
       listedChoices: keyword ? true : recentPods,
     });
+    const pod = input.commandContext
+      ? await input.commandContext.resolveSelection(
+          selectionPurposeKey(input.selection, "Pod", [namespace]),
+          selectPod,
+        )
+      : await selectPod();
     if (!pod) return undefined;
     selected = choices.find((choice) => choice.name === pod);
+    if (!selected) {
+      throw new Error(
+        `${selectionCandidateLabel(input.selection, "Pod")} pod/${pod} 已不在当前候选中`,
+      );
+    }
     selectedInteractively = true;
   }
 
@@ -265,7 +278,13 @@ export async function resolvePodTarget(input: {
     );
   }
   printContainerChoices(containers, pod, input.selection);
-  const container = await promptContainer(containers, input.selection);
+  const selectContainer = () => promptContainer(containers, input.selection);
+  const container = input.commandContext
+    ? await input.commandContext.resolveSelection(
+        selectionPurposeKey(input.selection, "Container", [namespace, pod]),
+        selectContainer,
+      )
+    : await selectContainer();
   return container ? record({ pod, container }, true) : undefined;
 }
 
@@ -279,6 +298,7 @@ async function resolveExplicitPodTarget(input: {
   interactive?: boolean;
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
+  commandContext?: CommandContext;
   selection: SelectionContext;
 },
 recent = recentSelectionsForInteractive(input.interactive, input.recent),
@@ -291,7 +311,13 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
     if (!interactive) {
       throw new Error("无 list pods 权限；非交互环境请显式指定精确的 --pod <pod>");
     }
-    pod = await promptPod([], { selection: input.selection });
+    const selectPod = () => promptPod([], { selection: input.selection });
+    pod = input.commandContext
+      ? await input.commandContext.resolveSelection(
+          selectionPurposeKey(input.selection, "Pod", [input.config.kubernetes.namespace]),
+          selectPod,
+        )
+      : await selectPod();
     if (!pod) return undefined;
     selectedInteractively = true;
   }
@@ -370,6 +396,12 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
     );
   }
   printContainerChoices(containers, pod, input.selection);
-  const container = await promptContainer(containers, input.selection);
+  const selectContainer = () => promptContainer(containers, input.selection);
+  const container = input.commandContext
+    ? await input.commandContext.resolveSelection(
+        selectionPurposeKey(input.selection, "Container", [input.config.kubernetes.namespace, pod]),
+        selectContainer,
+      )
+    : await selectContainer();
   return container ? record({ pod, container }, true) : undefined;
 }

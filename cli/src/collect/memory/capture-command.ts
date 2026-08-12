@@ -110,6 +110,7 @@ export async function runCollectMemory(
       container: opts.container,
       selectContainer: true,
       access,
+      commandContext,
       selection: {
         candidateRole: "目标",
         purpose: "采集 Python 内存堆",

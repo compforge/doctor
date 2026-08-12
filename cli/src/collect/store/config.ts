@@ -31,6 +31,7 @@ import {
 import { terminalStdout } from "../../terminal/output";
 import {
   selectionCandidateLabel,
+  selectionPurposeKey,
   type SelectionContext,
 } from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
@@ -225,6 +226,7 @@ async function resolveServicePod(input: {
   executor: Executor;
   namespace: string;
   interactive: boolean;
+  commandContext?: CommandContext;
   selection: SelectionContext;
 }): Promise<string | undefined> {
   const access = new KubectlPodLogAccess(input.executor, input.namespace);
@@ -250,7 +252,13 @@ async function resolveServicePod(input: {
     return choices[0]!.name;
   }
   if (!input.interactive) throw new Error(`Service '${input.service}' 有多个 Running Pod；请用 --pod <pod> 指定`);
-  return promptPod(choices, { selection: input.selection });
+  const selectPod = () => promptPod(choices, { selection: input.selection });
+  return input.commandContext
+    ? input.commandContext.resolveSelection(
+        selectionPurposeKey(input.selection, "Pod", [input.namespace]),
+        selectPod,
+      )
+    : selectPod();
 }
 
 export async function resolveStoreConfig(
@@ -309,6 +317,7 @@ export async function resolveStoreProviderConfig(
     executor,
     namespace,
     interactive,
+    commandContext,
     selection,
   });
   if (!pod) return undefined;
@@ -320,6 +329,7 @@ export async function resolveStoreProviderConfig(
     selectContainer: true,
     interactive,
     access,
+    commandContext,
     selection,
   });
   if (!target) return undefined;

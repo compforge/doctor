@@ -5,6 +5,15 @@ export interface SelectionContext {
   effect?: string;
 }
 
+/** purpose 定义选择目的，候选类型与现场作用域避免不同目标之间误复用。 */
+export function selectionPurposeKey(
+  context: SelectionContext,
+  candidateType: string,
+  scope: readonly string[],
+): string {
+  return JSON.stringify([context.purpose, candidateType, ...scope]);
+}
+
 export function selectionCandidateLabel(
   context: SelectionContext,
   candidateType: string,

@@ -278,6 +278,7 @@ export async function resolveRedisConfig(
     container: input.container,
     selectContainer: true,
     access,
+    commandContext,
     selection: {
       candidateRole: "配置来源",
       purpose: "读取 Redis 运行时配置",
