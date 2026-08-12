@@ -352,7 +352,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--breaker-min-n <n>", "启用错误率熔断前的最少请求数", "10")
     .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")
     .option("--request-timeout <seconds>", "单请求超时", "180")
-    .option("--trace-samples <n>", "压测后采集的代表 trace/log 数量", "2")
+    .option("--trace-samples <n>", "压测后采集的代表 trace/log 数量", "10")
     .option("--interval <duration>", "内嵌 Prombed 的 metric 抓取间隔", "5s")
     .option("--prometheus <url>", "Prometheus 地址；缺省使用内嵌 Prombed")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
@@ -360,7 +360,8 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-o, --output <dir>", "一条龙产物目录（默认 ./doctor-perf-<时间戳>）");
+    .option("--format <format>", "输出格式：html 或 bundle", "html")
+    .option("-o, --output <path>", "HTML 产物目录或 Bundle 路径（默认 ./doctor-perf-<时间戳>）");
 }
 
 async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {

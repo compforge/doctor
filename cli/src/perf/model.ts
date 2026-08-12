@@ -20,9 +20,12 @@ export interface PerfCliOpts {
   context?: string;
   profile?: string;
   config?: string;
+  format?: string;
   output?: string;
   yes?: boolean;
 }
+
+export type PerfOutputFormat = "html" | "bundle";
 
 export interface PerfConfig {
   service?: string;
@@ -36,6 +39,8 @@ export interface PerfConfig {
   gracefulStopSeconds: number;
   requestTimeoutMs: number;
   traceSamples: number;
+  outputFormat: PerfOutputFormat;
+  bundleName: string;
   outputDir: string;
 }
 

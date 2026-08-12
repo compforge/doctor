@@ -1,5 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import {
   Engine,
   rampHold,
@@ -32,11 +31,13 @@ import { terminalStderr, terminalStdout } from "../terminal/output";
 import { resolvePerfConfig } from "./config";
 import { resolvePerfRequestIdentity } from "./identity";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
+import { deliverPerfBundle, preparePerfOutput } from "./output";
 import { writePerfReport } from "./report";
 
 export * from "./config";
 export * from "./identity";
 export * from "./model";
+export * from "./output";
 export * from "./report";
 
 type PerfProvider = ServiceDefinition & {
@@ -383,12 +384,14 @@ export async function runPerf(
     await managed.dispose();
     throw new Error("Service perf scenario 必须选择 Case 并提供 Metric/Log Service 和 correlation keys");
   }
-  const outputDir = resolve(config.outputDir);
-  if (existsSync(outputDir)) {
+  let output: ReturnType<typeof preparePerfOutput>;
+  try {
+    output = preparePerfOutput(config);
+  } catch (error) {
     await managed.dispose();
-    throw new Error(`--output 已存在，为避免覆盖请换一个目录：${outputDir}`);
+    throw error;
   }
-  mkdirSync(outputDir, { recursive: true });
+  const { outputDir, archivePath } = output;
 
   const metricController = new AbortController();
   let markMetricStarted!: () => void;
@@ -482,6 +485,19 @@ export async function runPerf(
     caseFacets: caseSet.facets,
   };
   const reportPath = writePerfReport(result);
-  terminalStdout.result(run.passed && metricCode === 0, `[perf] report: ${reportPath}\n`);
-  return run.passed && metricCode === 0 ? 0 : 1;
+  const passed = run.passed && metricCode === 0;
+  if (archivePath) {
+    const packed = await deliverPerfBundle(output);
+    if (!packed) throw new Error("Perf Bundle 输出状态不完整");
+    if (!packed.ok) {
+      terminalStderr.error(
+        `[perf] Bundle 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}；原始产物保留在 ${outputDir}\n`,
+      );
+      return 1;
+    }
+    terminalStdout.result(passed, `[perf] bundle: ${archivePath}\n`);
+    return passed ? 0 : 1;
+  }
+  terminalStdout.result(passed, `[perf] report: ${reportPath}\n`);
+  return passed ? 0 : 1;
 }
