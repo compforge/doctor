@@ -188,3 +188,48 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     }] },
   }, manifest)).toThrow("references unknown Case 'missing'");
 });
+
+test("Plugin Case request identity references a tenant directory provider", () => {
+  const caseService = {
+    name: "chat",
+    capabilities: {
+      case: {
+        endpoint: { port: 8000 },
+        access: {},
+        caseSets: [{
+          id: "chat",
+          title: "Chat Cases",
+          cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
+        }],
+        requestIdentity: {
+          directoryService: "iam",
+          configured: () => ({}),
+        },
+        createRunner: async () => { throw new Error("factory must not run"); },
+      },
+    },
+  };
+  expect(() => validatePluginDefinition({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [caseService] },
+  }, manifest)).toThrow("references unknown Service 'iam'");
+
+  expect(validatePluginDefinition({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [caseService, {
+      name: "iam",
+      capabilities: {
+        tenantDirectory: {
+          endpoint: { port: 8001 },
+          access: {},
+          create: () => ({
+            listActive: async () => [],
+            getByName: async (name: string) => ({ id: name, name, displayName: name }),
+          }),
+        },
+      },
+    }] },
+  }, manifest).services.find("chat")?.capabilities.case?.requestIdentity?.directoryService).toBe("iam");
+});

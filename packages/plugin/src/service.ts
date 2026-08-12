@@ -17,9 +17,17 @@ export interface TenantSummary {
   displayName: string;
 }
 
+export interface UserSummary {
+  id: string;
+  name: string;
+  displayName: string;
+}
+
 export interface TenantDirectory {
   listActive(): Promise<TenantSummary[]>;
   getByName(name: string): Promise<TenantSummary>;
+  /** Optional because tenant-only directory providers do not need to expose users. */
+  listActiveUsers?(tenantId: string): Promise<UserSummary[]>;
 }
 
 export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {
@@ -114,6 +122,20 @@ export interface ServiceCaseTrialContext {
   signal: AbortSignal;
 }
 
+export interface ServiceRequestIdentity {
+  tenantId: string;
+  userId: string;
+}
+
+/**
+ * Declares that a Case needs tenant/user identity from a tenant directory.
+ * The Plugin owns its profile schema; Core only fills missing identity interactively.
+ */
+export interface ServiceCaseIdentityRequirement {
+  directoryService: string;
+  configured(config: Readonly<Record<string, unknown>>): Partial<ServiceRequestIdentity>;
+}
+
 /**
  * Service protocol adapter invoked concurrently by Core at Harness-owned dispatch points.
  * A runner must not create an independent load loop: request budgets, timing and cancellation
@@ -138,9 +160,10 @@ export interface ServiceCaseRunner {
 export interface ServiceCaseCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
   caseSets: readonly ServiceCaseSet[];
+  requestIdentity?: ServiceCaseIdentityRequirement;
   createRunner(
     context: PluginContext,
-    input: { caseSetId: string; timeoutMs: number },
+    input: { caseSetId: string; timeoutMs: number; requestIdentity?: ServiceRequestIdentity },
   ): Promise<ServiceCaseRunner>;
 }
 

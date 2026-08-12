@@ -14,6 +14,7 @@ import type {
   ServiceCaseObservation,
   ServiceCaseRunner,
   ServiceDefinition,
+  ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 import {
@@ -29,10 +30,12 @@ import { approvalDeniedReason } from "../command/approval";
 import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
 import { resolvePerfConfig } from "./config";
+import { resolvePerfRequestIdentity } from "./identity";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
 import { writePerfReport } from "./report";
 
 export * from "./config";
+export * from "./identity";
 export * from "./model";
 export * from "./report";
 
@@ -261,6 +264,62 @@ export async function runPerf(
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!kube) return 130;
 
+  const executor = createKubernetesExecutor(kube);
+  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
+  let requestIdentity: ServiceRequestIdentity | undefined;
+  const identityRequirement = provider.capabilities.case.requestIdentity;
+  if (identityRequirement) {
+    const configured = identityRequirement.configured(commandContext.profile.pluginConfig);
+    const tenantId = configured.tenantId?.trim();
+    const userId = configured.userId?.trim();
+    if (tenantId && userId) {
+      requestIdentity = { tenantId, userId };
+    } else {
+      if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+        throw new Error("非交互环境的 Perf Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
+      }
+      const directoryService = plugin.services.findWith(
+        identityRequirement.directoryService,
+        "tenantDirectory",
+      );
+      if (!directoryService) {
+        throw new Error(
+          `Service '${identityRequirement.directoryService}' 未声明 tenantDirectory capability`,
+        );
+      }
+      const directoryContext = await openPluginContext(executor, {
+        namespace: kube.kubernetes.namespace,
+        kubeconfig: kube.kubernetes.kubeconfig,
+        context: kube.kubernetes.context,
+      }, {
+        env: kube.profileName,
+        config: commandContext.profile.pluginConfig,
+        service: {
+          name: directoryService.name,
+          port: directoryService.capabilities.tenantDirectory.endpoint.port,
+        },
+        capability: directoryService.capabilities.tenantDirectory,
+        command: "doctor perf identity",
+        authorization,
+      });
+      try {
+        requestIdentity = await resolvePerfRequestIdentity({
+          configured: { tenantId, userId },
+          directory: directoryService.capabilities.tenantDirectory.create(directoryContext),
+        });
+      } finally {
+        await directoryContext.dispose();
+      }
+      if (!requestIdentity) {
+        terminalStderr.warning("[perf] 已取消身份选择\n");
+        return 130;
+      }
+    }
+    terminalStdout.write(
+      `[perf] identity: tenant=${requestIdentity.tenantId} user=${requestIdentity.userId}\n`,
+    );
+  }
+
   const decision = await resolveApprovalGate(opts)({
     id: "perf-load",
     risk: "disrupt",
@@ -280,7 +339,6 @@ export async function runPerf(
     return 130;
   }
 
-  const executor = createKubernetesExecutor(kube);
   const managed = await openPluginContext(executor, {
     namespace: kube.kubernetes.namespace,
     kubeconfig: kube.kubernetes.kubeconfig,
@@ -291,13 +349,14 @@ export async function runPerf(
     service: { name: provider.name, port: provider.capabilities.case.endpoint.port },
     capability: provider.capabilities.case,
     command: "doctor perf",
-    authorization: resolveKubernetesCommandContext(executor, commandContext).access,
+    authorization,
   });
   let runner: ServiceCaseRunner;
   try {
     runner = await provider.capabilities.case.createRunner(managed, {
       caseSetId: caseSet.id,
       timeoutMs: config.requestTimeoutMs,
+      requestIdentity,
     });
   } catch (error) {
     await managed.dispose();
