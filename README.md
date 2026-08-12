@@ -4,41 +4,42 @@
 
 > Extensible diagnostics for Kubernetes applications.
 
-Doctor is a local-first CLI for collecting reproducible diagnostic evidence and running diagnostic
-conversations. It complements `kubectl` with application-aware diagnostics: Core understands how to
-reach and safely operate a selected target, while a Plugin teaches Doctor which services make up an
-application and what their business data means.
+Doctor is a local CLI for diagnosing Kubernetes applications. It helps engineers select a service or
+runtime target, collect reproducible evidence, generate offline reports, run bounded performance
+investigations, and continue with an application-aware diagnostic conversation.
 
-Doctor has four peer workflows: Provision prepares diagnostic capabilities, Collect produces auditable
-Evidence and reports, Perf creates bounded business load with correlated observability, and Chat runs an
-Agent with application Skills and host-provided tools. All four share the same profile, target, access and
-authorization context.
+It complements `kubectl` by organizing diagnosis around applications and services rather than raw
+Kubernetes objects. Doctor runs on an ordinary Linux machine in the customer environment, uses scoped
+Kubernetes access, and returns raw artifacts and offline reports to the same machine.
 
-![Doctor architecture](docs/doctor-architecture.svg)
+![Doctor running from a customer-site Linux machine](docs/doctor-usage.svg)
 
-## How Doctor works
+## What Doctor does
 
 | Workflow | Purpose | Result |
 |---|---|---|
-| Provision | Explicitly prepare a Host or Target capability such as an image, debug environment or diagnostic tool | A ready capability or visible state change |
+| Provision | Prepare a required image, debug environment or diagnostic tool | A ready diagnostic capability or visible state change |
 | Collect | Inspect a target, run bounded probes and apply deterministic detectors | Evidence, coverage, findings and an offline report |
 | Perf | Run an approved load profile and correlate request latency with metrics, traces and logs | Perf IR plus a linked offline report |
-| Chat | Combine a model, Plugin Skills and scoped tools for open-ended investigation | An interactive diagnostic conversation |
+| Chat | Combine a model, application knowledge and scoped tools for open-ended investigation | An interactive diagnostic conversation |
+
+Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
+
+## How Doctor works
+
+Doctor has four peer workflows. They share the same profile, target, access and authorization context,
+while each owns its result and lifecycle. Generic target access, evidence collection and reporting live
+in Core; versioned Plugins add application services, business data semantics and diagnostic Skills.
+
+![Doctor architecture](docs/doctor-architecture.svg)
 
 Provision, Collect, Perf and Chat are distinct top-level command workflows rather than modes of one engine.
 Each owns its result and lifecycle; Perf intentionally composes the existing Collect signal entry points.
-Built-in collectors cover CPU, memory, network, HTTP, traces, metrics, models and stores.
 
 `doctor perf` is intentionally top-level because it produces real business requests rather than merely
 observing a target or preparing a tool. A Service Plugin exposes stable Cases and a single-request protocol
 through its Case capability, then selects one or more Cases in a Perf scenario. Core owns load generation,
 safety limits and one-stop correlation through the existing metric, trace and log collectors.
-
-Doctor runs from a deployment host with scoped Kubernetes access. It can use explicitly authorized
-debug containers for in-cluster diagnostics, then return raw artifacts and offline reports to the
-Host.
-
-![How Doctor runs onsite](docs/doctor-usage.svg)
 
 ## Core and Plugin
 

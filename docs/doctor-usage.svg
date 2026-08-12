@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
-  <title id="title">Run Doctor on a host outside the Kubernetes cluster</title>
-  <desc id="desc">The Doctor CLI runs as a local process on a host machine outside the Kubernetes cluster. It uses that host's kubeconfig and network to make RBAC-scoped Kubernetes API requests, then writes artifacts and reports back to the host filesystem.</desc>
+  <title id="title">Run Doctor on a Linux machine in the customer environment</title>
+  <desc id="desc">The Doctor CLI runs as a local process on a Linux machine in the customer environment. It uses that machine's kubeconfig and network to make RBAC-scoped Kubernetes API requests, then writes artifacts and reports back to its local filesystem.</desc>
 
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
@@ -27,12 +27,12 @@
 
   <rect width="1200" height="760" rx="24" fill="#ffffff"/>
 
-  <text class="text heading" x="42" y="45">Run Doctor on a host outside the cluster</text>
+  <text class="text heading" x="42" y="45">Run Doctor on a customer-site Linux machine</text>
   <text class="text body muted" x="650" y="45">Local process · scoped access · local results</text>
 
   <rect x="42" y="82" width="350" height="118" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text label" x="66" y="112" fill="#1d4ed8">LOCAL INPUT · HOST FILESYSTEM</text>
-  <text class="text subheading" x="66" y="154">Host kubeconfig</text>
+  <text class="text label" x="66" y="112" fill="#1d4ed8">LOCAL INPUT · LINUX FILESYSTEM</text>
+  <text class="text subheading" x="66" y="154">Kubeconfig</text>
   <rect x="214" y="130" width="154" height="34" rx="17" fill="#fef3c7"/>
   <text class="text mono" x="228" y="152">~/.kube/config</text>
   <text class="text small muted" x="66" y="186">Context and RBAC bound every request</text>
@@ -43,7 +43,7 @@
   <g filter="url(#shadow)">
     <rect x="42" y="230" width="350" height="200" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
   </g>
-  <text class="text label" x="66" y="260" fill="#1d4ed8">DOCTOR HOST · OUTSIDE THE CLUSTER</text>
+  <text class="text label" x="66" y="260" fill="#1d4ed8">CUSTOMER-SITE LINUX MACHINE</text>
   <rect x="66" y="280" width="302" height="126" rx="16" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
   <text class="text label" x="88" y="310" fill="#6d28d9">DOCTOR CLI PROCESS</text>
   <text class="text body muted" x="88" y="335">Runs on this machine as the local user</text>
@@ -51,7 +51,7 @@
   <text class="text mono" x="104" y="374" style="fill: #ffffff">$ doctor &lt;command&gt;</text>
 
   <rect x="42" y="462" width="350" height="176" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text label" x="66" y="491" fill="#047857">LOCAL OUTPUT · HOST FILESYSTEM</text>
+  <text class="text label" x="66" y="491" fill="#047857">LOCAL OUTPUT · LINUX FILESYSTEM</text>
   <text class="text subheading" x="66" y="523">Collected data and reports</text>
   <text class="text body muted" x="66" y="550">Written back to the same machine</text>
   <rect x="66" y="566" width="74" height="30" rx="15" fill="#dbeafe"/>
@@ -66,7 +66,7 @@
   <text class="text chip" x="197" y="622">Evidence bundle</text>
 
   <text class="text label" x="446" y="260" fill="#1d4ed8">KUBERNETES API REQUESTS</text>
-  <text class="text subheading" x="446" y="288">Authenticated from this host</text>
+  <text class="text subheading" x="446" y="288">Uses local credentials</text>
   <text class="text small muted" x="446" y="310">Scope = kubeconfig context + RBAC</text>
   <path d="M368 343 L690 343" fill="none" stroke="#2563eb" stroke-width="2.5"/>
   <text class="text body muted" x="474" y="371">inspect · exec · port-forward</text>
@@ -109,5 +109,5 @@
   <path d="M1024 582 L1024 690 L217 690 L217 640" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#arrow-green)"/>
   <text class="text body" x="557" y="715" fill="#047857">artifacts: .pyheap · .pcap · logs · metrics</text>
 
-  <text class="text small muted" x="42" y="744">Blue: Kubernetes API requests from the Host · Green: evidence returned to the Host · Debug containers are temporary and explicitly authorized</text>
+  <text class="text small muted" x="42" y="744">Blue: API requests from the Linux machine · Green: evidence returned to the Linux machine · Debug containers are temporary and explicitly authorized</text>
 </svg>
