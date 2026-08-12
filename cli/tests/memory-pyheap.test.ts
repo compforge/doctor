@@ -29,6 +29,7 @@ import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
 import { resolveEmbeddedPyHeapTool } from "../src/collect/memory/embedded-pyheap";
 import { parsePyheapPrereqs } from "../src/collect/memory/pyheap-tool";
+import { parseCgroupOomKillCount } from "../src/collect/memory/capture-facts";
 
 function analysis(source: {
   sha256: string;
@@ -187,6 +188,28 @@ describe("doctor mem PyHeap capture contract", () => {
     );
   });
 
+  test("heap dump 摘要优先报告目标进程被 SIGKILL", () => {
+    const failed = {
+      ...execResult("", false),
+      stderr: [
+        "Program terminated with signal SIGKILL, Killed.",
+        "gdb.error: You can't do that without a process to debug.",
+      ].join("\n"),
+    };
+    expect(pyheapDumpFailureReason(failed)).toBe(
+      "目标进程在 dump 期间被 SIGKILL",
+    );
+  });
+
+  test("only reads the cgroup v2 oom_kill counter used for dump-time deltas", () => {
+    expect(parseCgroupOomKillCount([
+      "version=2",
+      "event_oom=7",
+      "event_oom_kill=3",
+    ].join("\n"))).toBe(3);
+    expect(parseCgroupOomKillCount("version=1\nevent_fail_count=3\n")).toBeUndefined();
+  });
+
   test("只有远端 metadata 验证通过才报告 heap 文件保留", () => {
     expect(confirmedRemoteHeapPath("/tmp/heap.pyheap", execResult("", false))).toBeUndefined();
     expect(confirmedRemoteHeapPath(
@@ -264,12 +287,18 @@ describe("doctor mem PyHeap capture contract", () => {
 
   test("asks for confirmation before uploading a dumper into a capable target container", async () => {
     let uploadAttempted = false;
+    const logs: string[] = [];
     const executor: Executor = {
       run: async () => execResult(),
       exec: async (_target, command, options?: RunOptions) => {
         if (options?.stdin instanceof Uint8Array) uploadAttempted = true;
         if (command[0] === "python3" && command[1] === "-") {
-          return execResult("    12 python              64        8     10\npython workers (threads>4): 12\n");
+          return execResult([
+            "    12 uvicorn             64        8     10",
+            "python processes: 12",
+            "python workers (threads>4): 12",
+            "uvicorn topology: mode=standalone workers=12",
+          ].join("\n"));
         }
         if (command.includes("--version")) return execResult("GNU gdb 16.3\n");
         if (command.some((part) => part.includes("DOCTOR_GDB_PYTHON_OK"))) {
@@ -305,16 +334,23 @@ describe("doctor mem PyHeap capture contract", () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-memory-confirm-first-"));
     const result = await captureMemoryHeap(
       executor,
-      captureParams(),
+      {
+        ...captureParams(),
+        container: {
+          ...captureParams().container,
+          livenessProbe: { httpGet: { path: "/health", port: 8080 } },
+        },
+      },
       {
         bundle: new EvidenceBundle(directory),
         confirm: async () => false,
       },
-      () => {},
+      (line) => logs.push(line),
     );
     expect(result.code).toBe(130);
     expect(result.strategy).toBe("target-container");
     expect(uploadAttempted).toBe(false);
+    expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
   test("rejects an XSAVE-incompatible debug-container GDB before ptrace and confirmation", async () => {

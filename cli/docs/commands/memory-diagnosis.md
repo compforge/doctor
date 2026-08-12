@@ -75,12 +75,17 @@ GDB、不退回短窗口采样。需要补齐 debug environment 时由用户另�
 
 ### Uvicorn 保护
 
-procscan 明确识别到目标 PID 是 Uvicorn worker 时，dump 前先暂停 master，避免 master 因 worker
-暂时无法回应健康检查而替换它。GDB detach 后先给 worker 留出恢复时间，再恢复 master；独立
-watchdog 会在 Doctor 或 kubectl 意外中断后兜底恢复同一生命周期的 master。
+procscan 通过 Python executable、父子关系和启动参数区分单进程与多进程 Uvicorn，不依赖可能被
+setproctitle 改写的进程名。多进程模式下，dump 前先暂停 supervisor，避免它因 worker 暂时无法回应
+内部健康检查而替换目标。GDB detach 后先给 worker 留出恢复时间，再恢复 supervisor；独立 watchdog
+会在 Doctor 或 kubectl 意外中断后兜底恢复同一生命周期的 supervisor。
 
-暂停 master 不会暂停兄弟 worker，但 master 暂停期间不处理信号或 worker 管理，目标 worker
-上的已有请求和新请求仍可能超时。
+dump 失败后 Doctor 会再次读取 cgroup v2 `memory.events`，只有 `oom_kill` 相比 dump 前增长时才把
+本次失败归因为 cgroup OOM；supervisor 的暂停、恢复与两次 cgroup 事实都会写入 evidence。
+
+单进程模式没有独立 supervisor 或兄弟 worker，attach 会同时暂停业务请求与该进程承载的 HTTP
+liveness。目标 Container 配置 liveness 时 Doctor 会明确警告；长时间 dump 仍可能触发 Kubernetes
+重启，现场需要为诊断准备多 worker 或放宽健康检查窗口。
 
 ### Artifact 交付
 
