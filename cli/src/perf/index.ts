@@ -473,7 +473,14 @@ export async function runPerf(
     plugin,
     commandContext,
   });
-  const result: PerfResult = { run, outputDir, metricPath, metricCode, samples };
+  const result: PerfResult = {
+    run,
+    outputDir,
+    metricPath,
+    metricCode,
+    samples,
+    caseFacets: caseSet.facets,
+  };
   const reportPath = writePerfReport(result);
   terminalStdout.result(run.passed && metricCode === 0, `[perf] report: ${reportPath}\n`);
   return run.passed && metricCode === 0 ? 0 : 1;

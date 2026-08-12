@@ -137,7 +137,14 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
           caseSets: [{
             id: "chat",
             title: "Chat Cases",
-            cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
+            facets: {
+              difficulty: { values: ["simple", "complex"], ordered: true },
+            },
+            cases: [{
+              id: "ordinary_chat",
+              input: { query: "hello" },
+              facets: { difficulty: "simple" },
+            }],
           }],
           createRunner: async () => { throw new Error("factory must not run"); },
         },
@@ -160,6 +167,42 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   };
   expect(validatePluginDefinition(base, manifest).services.find("chat")?.capabilities.perf)
     .toBeDefined();
+
+  const caseCapability = base.services.services[0].capabilities.case;
+  const caseSet = caseCapability.caseSets[0];
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: { services: [{
+      name: "chat",
+      capabilities: {
+        ...base.services.services[0].capabilities,
+        case: {
+          ...caseCapability,
+          caseSets: [{ ...caseSet, facets: undefined }],
+        },
+      },
+    }] },
+  }, manifest)).toThrow("references an undeclared facet");
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: { services: [{
+      name: "chat",
+      capabilities: {
+        ...base.services.services[0].capabilities,
+        case: {
+          ...caseCapability,
+          caseSets: [{
+            ...caseSet,
+            cases: [{
+              ...caseSet.cases[0],
+              facets: { difficulty: "medium" },
+            }],
+          }],
+        },
+      },
+    }] },
+  }, manifest)).toThrow("has unknown value 'medium'");
 
   expect(() => validatePluginDefinition({
     ...base,

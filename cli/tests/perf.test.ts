@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
 import { parsePerfLevels, resolvePerfConfig } from "../src/perf/config";
 import {
@@ -7,7 +10,7 @@ import {
   selectPerfSamples,
   workloadFromCaseRunner,
 } from "../src/perf";
-import { perfEvidenceStatus } from "../src/perf/report";
+import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
 
 test("perf defaults scan concurrency 5 through 20 with bounded requests", () => {
   const config = resolvePerfConfig({}, new Date("2026-01-02T03:04:05"));
@@ -168,4 +171,79 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
       logCode: 1,
     }],
   })).toBe("partial");
+});
+
+test("perf report renders Facet values in their declared order", () => {
+  const stats = {
+    n: 1,
+    n_ok: 1,
+    throughput_rps: 1,
+    p50_ms: 10,
+    p95_ms: 10,
+    p99_ms: 10,
+    mean_ms: 10,
+    error_rate: 0,
+    error_breakdown: {},
+    n_dropped: 0,
+    caveats: [],
+    metrics: {},
+  };
+  const run = {
+    schema: 3,
+    run_id: "run",
+    experiment: "perf",
+    created_at: "",
+    subject: "chat",
+    passed: true,
+    n_trials: 1,
+    trials: [{
+      id: "closed/5c",
+      subject: "chat",
+      arm: {
+        id: "closed/5c",
+        resources: {},
+        load: { model: "closed", schedule: { start_level: 0, stages: [] } },
+      },
+      started_at: "",
+      finished_at: "",
+      windows: [{
+        id: "measurement",
+        name: "measurement",
+        kind: "measurement",
+        start_s: 0,
+        end_s: 1,
+        complete: true,
+        request: stats,
+        by_case: {},
+        by_facet: {
+          difficulty: { complex: stats, simple: stats, medium: stats },
+        },
+        probe_metrics: {},
+      }],
+      stop: { reason: "deadline", inflight_at_stop: 0, interrupted: 0, force_cancelled: false },
+      slo: [],
+      registry: {},
+      probe_errors: {},
+      outcomes: [],
+    }],
+  } satisfies Run;
+  const outputDir = mkdtempSync(join(tmpdir(), "doctor-perf-report-"));
+  try {
+    const report = writePerfReport({
+      run,
+      outputDir,
+      metricPath: join(outputDir, "metric.html"),
+      metricCode: 0,
+      samples: [],
+      caseFacets: {
+        difficulty: { values: ["simple", "medium", "complex"], ordered: true },
+      },
+    });
+    const html = readFileSync(report, "utf-8");
+    expect(html).toContain("按 Facet");
+    expect(html.indexOf("<td>simple</td>")).toBeLessThan(html.indexOf("<td>medium</td>"));
+    expect(html.indexOf("<td>medium</td>")).toBeLessThan(html.indexOf("<td>complex</td>"));
+  } finally {
+    rmSync(outputDir, { recursive: true, force: true });
+  }
 });

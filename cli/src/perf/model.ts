@@ -1,4 +1,5 @@
 import type { Run } from "@compforge/perf-harness";
+import type { ServiceCaseFacetSpec } from "@compforge/doctor-plugin";
 
 export interface PerfCliOpts {
   service?: string;
@@ -58,4 +59,5 @@ export interface PerfResult {
   metricPath: string;
   metricCode: number;
   samples: PerfEvidenceSample[];
+  caseFacets?: Readonly<Record<string, ServiceCaseFacetSpec>>;
 }

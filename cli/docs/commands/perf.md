@@ -18,6 +18,8 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
 - Service `case` capability 提供 canonical CaseSet 的运行时投影，以及并发安全的单请求 runner；
   `perf` capability 只选择一个或多个 Case、声明本次权重、关联键优先级和可观测 Service 清单。Case
   不携带环境、凭据、并发度或权重。
+- CaseSet 用受控 Facet 词表声明 `difficulty`、`task_type` 等分类轴；Case 只选择每个轴上的值。Core
+  校验词表并按 Facet 归约性能数据，避免用自由字符串形成不可维护的报告维度。
 - HTTP/SSE 私有字段、鉴权、连接复用和首 token 语义留在 Plugin runner，Core 不认识某个产品的 Chat
   body、身份 header 或业务 ID 语义。
 - Case 需要租户/用户身份时，由 Plugin 声明目录 Service 并读取自身 profile 配置；Core 复用
@@ -35,8 +37,8 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
 2. 按需从 Plugin 声明的目录选择租户及该租户下的用户，再展示并确认并发档位、每档最大请求数、
    错误率熔断和持久数据影响；非交互运行必须由 Plugin profile 提供身份。
 3. 先启动 Metric watch，确认窗口已经开始后再依次执行各并发 Trial。
-4. 每次请求记录 Case ID、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到阈值时
-   停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
+4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
+   阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
 5. 负载结束后封口 Metric 报告，从各 Trial 选择慢请求/错误请求的关联 ID，复用 Trace 与 Log 采集。
 6. 在一个目录交付 `perf.html`、`metric.html`、代表请求报告、`run.json`、`outcomes.jsonl` 和
    `verdict.json`。
