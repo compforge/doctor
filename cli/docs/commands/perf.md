@@ -20,6 +20,8 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
   不携带环境、凭据、并发度或权重。
 - HTTP/SSE 私有字段、鉴权、连接复用和首 token 语义留在 Plugin runner，Core 不认识某个产品的 Chat
   body、身份 header 或业务 ID 语义。
+- Case 需要租户/用户身份时，由 Plugin 声明目录 Service 并读取自身 profile 配置；Core 复用
+  `tenantDirectory` 补齐缺失的租户和用户选择，再把规范身份交给 runner。IAM 等私有查询协议仍留在 Plugin。
 - “如何加压”分成两个所有者：Core 决定何时 dispatch、并发多少、何时停止；每个 dispatch 如何变成一笔
   真实业务请求由 Plugin runner 决定。Runner 可以在 Trial 生命周期内 setup/cleanup，但不能自行启动隐藏
   的请求循环，否则 Core 无法执行预算、熔断和 Window 归属。
@@ -30,7 +32,8 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
 
 1. 校验 Plugin 同时提供 Case、Perf、Metric、Trace ID 和 Log capability，选择 Service 与 scenario，并
    从其 CaseSet 解析 Case mix。
-2. 展示并确认并发档位、每档最大请求数、错误率熔断和持久数据影响。
+2. 按需从 Plugin 声明的目录选择租户及该租户下的用户，再展示并确认并发档位、每档最大请求数、
+   错误率熔断和持久数据影响；非交互运行必须由 Plugin profile 提供身份。
 3. 先启动 Metric watch，确认窗口已经开始后再依次执行各并发 Trial。
 4. 每次请求记录 Case ID、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到阈值时
    停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。

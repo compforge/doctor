@@ -68,6 +68,13 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     if (typeof caseCapability.createRunner !== "function") {
       throw new Error(`${service.name}.case.createRunner must be a function`);
     }
+    if (caseCapability.requestIdentity !== undefined) {
+      const identity = record(caseCapability.requestIdentity, `${service.name}.case.requestIdentity`);
+      nonEmptyString(identity.directoryService, `${service.name}.case.requestIdentity.directoryService`);
+      if (typeof identity.configured !== "function") {
+        throw new Error(`${service.name}.case.requestIdentity.configured must be a function`);
+      }
+    }
     caseSets = uniqueIdRecords(caseCapability.caseSets, `${service.name}.case.caseSets`);
     for (const [caseSetId, caseSet] of caseSets) {
       nonEmptyString(caseSet.title, `${service.name}.case.caseSets.${caseSetId}.title`);
@@ -171,6 +178,18 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (!Array.isArray(sourceCatalog.services)) throw new Error("Plugin services.services must be an array");
   const services = sourceCatalog.services.map(validateService);
   const catalog = createServiceCatalog(services);
+
+  for (const service of services) {
+    const requirement = service.capabilities.case?.requestIdentity;
+    if (requirement) {
+      requireProvider(
+        services,
+        requirement.directoryService,
+        "tenantDirectory",
+        `${service.name}.case.requestIdentity.directoryService`,
+      );
+    }
+  }
 
   if (definition.model !== undefined) {
     const model = record(definition.model, "Plugin model capability");

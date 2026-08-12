@@ -1,7 +1,12 @@
 import { expect, test } from "bun:test";
 import type { Run, TrialContext } from "@compforge/perf-harness";
 import { parsePerfLevels, resolvePerfConfig } from "../src/perf/config";
-import { selectPerfSamples, workloadFromCaseRunner } from "../src/perf";
+import {
+  resolvePerfRequestIdentity,
+  resolveUserPromptChoice,
+  selectPerfSamples,
+  workloadFromCaseRunner,
+} from "../src/perf";
 import { perfEvidenceStatus } from "../src/perf/report";
 
 test("perf defaults scan concurrency 5 through 20 with bounded requests", () => {
@@ -58,6 +63,53 @@ test("Service Case runner maps one trigger into one shared Outcome", async () =>
   });
   expect(workload.judge?.(outcome)).toEqual({ ok: true, error_kind: undefined });
   expect(lifecycle).toEqual(["setup", "deactivate", "cleanup"]);
+});
+
+test("Perf fills missing tenant and user identity from the declared directory", async () => {
+  const tenants = [{ id: "tenant-1", name: "alpha", displayName: "Alpha" }];
+  const users = [{ id: "user-1", name: "alice", displayName: "Alice" }];
+  const listedTenants: string[] = [];
+  expect(await resolvePerfRequestIdentity({
+    configured: {},
+    directory: {
+      listActive: async () => tenants,
+      getByName: async () => tenants[0]!,
+      listActiveUsers: async (tenantId) => {
+        listedTenants.push(tenantId);
+        return users;
+      },
+    },
+    promptTenant: async (choices) => choices[0],
+    promptUser: async (choices) => choices[0],
+  })).toEqual({ tenantId: "tenant-1", userId: "user-1" });
+  expect(listedTenants).toEqual(["tenant-1"]);
+
+  expect(resolveUserPromptChoice(users, "alice", [])).toEqual({
+    kind: "selected",
+    value: users[0],
+  });
+});
+
+test("Perf preserves configured identity and only queries missing user", async () => {
+  let listedTenants = 0;
+  const directory = {
+    listActive: async () => {
+      listedTenants += 1;
+      return [];
+    },
+    getByName: async (name: string) => ({ id: name, name, displayName: name }),
+    listActiveUsers: async (tenantId: string) => [{
+      id: `${tenantId}-user`,
+      name: "user",
+      displayName: "User",
+    }],
+  };
+  expect(await resolvePerfRequestIdentity({
+    configured: { tenantId: "tenant-1" },
+    directory,
+    promptUser: async (choices) => choices[0],
+  })).toEqual({ tenantId: "tenant-1", userId: "tenant-1-user" });
+  expect(listedTenants).toBe(0);
 });
 
 test("representative evidence selects slow correlation IDs and deduplicates", () => {
