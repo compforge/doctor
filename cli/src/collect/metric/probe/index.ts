@@ -19,6 +19,8 @@ import {
   instantMetricSeries,
   matrixMetricSeries,
 } from "../query";
+import { STORE_METRIC_CAPABILITIES } from "../store/contract";
+import { selectedMetricStoreKinds } from "../store/collector";
 
 const WINDOW_PROBE_ID = "metric-window";
 
@@ -47,7 +49,13 @@ async function collectEmbeddedWindow(
   if (!ctx.embeddedSource) throw new Error("embedded metric source 未准备");
   const errors: string[] = [];
   const scrape = async () => {
-    for (const error of await ctx.embeddedSource!.scrapeOnce()) {
+    const collected = await Promise.all([
+      ctx.embeddedSource!.scrapeOnce(),
+      ctx.collectSupplement?.(ctx.embeddedSource!).catch((error) => [
+        `Store metric 采样失败：${error instanceof Error ? error.message : String(error)}`,
+      ]) ?? Promise.resolve([]),
+    ]);
+    for (const error of collected.flat()) {
       if (!errors.includes(error)) errors.push(error);
     }
   };
@@ -65,8 +73,8 @@ async function collectEmbeddedWindow(
 }
 
 /**
- * 封口统一查询窗口：embedded 在这里把 /metrics 抓入 Prombed，remote 的历史数据已在外部 TSDB。
- * 下游 query Probe 因而只依赖 MetricQuerySource，不再分辨数据来自哪里。
+ * 封口统一查询窗口：embedded 在这里把 /metrics 与 Store 样本抓入 Prombed，remote 历史数据已在外部 TSDB。
+ * hybrid 仍等待同期 Store 窗口；下游按 Service/Store query plan 选择对应 source。
  */
 export function makeMetricWindowProbe(): Probe<
   MetricObservation,
@@ -84,7 +92,7 @@ export function makeMetricWindowProbe(): Probe<
       let startedAt: number;
       let finishedAt: number;
       let scrapeErrors: string[] = [];
-      if (ctx.sourceKind === "remote") {
+      if (!ctx.embeddedSource) {
         if (config.watch.mode === "until-interrupt") {
           startedAt = Date.now();
           ctx.onWindowStart?.();
@@ -135,6 +143,7 @@ function serviceProbeId(service: string): string {
 function makeMetricServiceProbe(
   service: string,
   capability: ServiceMetricCapability,
+  sourceKind: "service" | "store" = "service",
 ): Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCollectContext> {
   const id = serviceProbeId(service);
   return {
@@ -157,15 +166,16 @@ function makeMetricServiceProbe(
       });
       const observations = await Promise.all(plans.map(async (plan): Promise<MetricQueryObservation> => {
         try {
+          const source = sourceKind === "store" ? ctx.storeSource ?? ctx.source : ctx.source;
           const series = plan.queryKind === "range"
-            ? matrixMetricSeries((await ctx.source.queryRange(
+            ? matrixMetricSeries((await source.queryRange(
                 plan.expression,
                 window.startedAt,
                 window.finishedAt,
                 config.intervalMs,
               )).data.result)
             : instantMetricSeries(
-                (await ctx.source.query(plan.expression, window.finishedAt)).data,
+                (await source.query(plan.expression, window.finishedAt)).data,
                 window.finishedAt,
               );
           return {
@@ -211,5 +221,8 @@ export function makeMetricProbes(
       if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 metric capability`);
       return makeMetricServiceProbe(service, declared.capabilities.metric);
     }),
+    ...selectedMetricStoreKinds(catalog, services).map((kind) => (
+      makeMetricServiceProbe(`${kind}-store`, STORE_METRIC_CAPABILITIES[kind], "store")
+    )),
   ];
 }

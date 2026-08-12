@@ -80,12 +80,18 @@ export async function resolveMetricConfig(
   const reportName = metricReportName(new Date());
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
-  // An external Prometheus is a complete data channel; do not require this profile to also own kube credentials.
-  const kubeconfig = prometheusUrl
+  const services = parseMetricServices(opts.services, catalog);
+  const hasStoreMetrics = services.some((service) => (
+    catalog.findWith(service, "stores")?.capabilities.stores.some((store) => (
+      store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
+    ))
+  ));
+  // Store sampling still needs live workload access when Service metrics use remote Prometheus.
+  const kubeconfig = prometheusUrl && !hasStoreMetrics
     ? undefined
     : resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
   return {
-    services: parseMetricServices(opts.services, catalog),
+    services,
     servicesExplicit: opts.services !== undefined,
     watch,
     intervalMs: parseMetricInterval(opts.interval),

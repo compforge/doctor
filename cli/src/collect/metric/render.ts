@@ -110,7 +110,10 @@ watch: ${escapeHtml(chart.definition.query.range)}</code></pre></details>`).join
 }
 
 function seriesLabel(series: MetricSeries, preferred?: string): string {
-  if (preferred && series.labels[preferred]) return series.labels[preferred]!;
+  if (preferred && series.labels[preferred]) {
+    const source = series.labels.doctor_metric_source;
+    return `${series.labels[preferred]}${source ? ` · ${source}` : ""}`;
+  }
   const labels = Object.entries(series.labels)
     .filter(([name]) => !["__name__", "instance", "job", "doctor_service"].includes(name));
   return labels.length ? labels.map(([name, value]) => `${name}=${value}`).join(", ") : "overall";
