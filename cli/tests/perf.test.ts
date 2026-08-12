@@ -1,12 +1,14 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
-import { parsePerfLevels, resolvePerfConfig } from "../src/perf/config";
+import { parsePerfLevels, parsePerfOutputFormat, resolvePerfConfig } from "../src/perf/config";
 import {
   resolvePerfRequestIdentity,
   resolveUserSearchPromptAction,
+  deliverPerfBundle,
+  preparePerfOutput,
   selectUserFromSearch,
   selectPerfSamples,
   workloadFromCaseRunner,
@@ -23,9 +25,44 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
     abortErrorRate: 0.1,
     breakerMinN: 10,
     requestTimeoutMs: 180_000,
-    traceSamples: 2,
+    traceSamples: 10,
+    outputFormat: "html",
+    bundleName: "doctor-perf-20260102-030405",
   });
   expect(() => parsePerfLevels("5,0,20")).toThrow("--levels");
+  expect(parsePerfOutputFormat("bundle")).toBe("bundle");
+  expect(() => parsePerfOutputFormat("json")).toThrow("html 或 bundle");
+  expect(resolvePerfConfig({ format: "bundle", output: "perf-result" }, new Date("2026-01-02T03:04:05")))
+    .toMatchObject({ outputFormat: "bundle", outputDir: "perf-result", traceSamples: 10 });
+  expect(() => resolvePerfConfig({ format: "html", output: "perf.tar.gz" })).toThrow("不能使用");
+  expect(() => resolvePerfConfig({ format: "bundle", output: "perf.html" })).toThrow("不能使用");
+});
+
+test("Perf bundle archives the complete linked report directory", async () => {
+  const parent = mkdtempSync(join(tmpdir(), "doctor-perf-output-test-"));
+  const archive = join(parent, "perf.tar.gz");
+  const output = preparePerfOutput(resolvePerfConfig({
+    format: "bundle",
+    output: archive,
+  }, new Date("2026-01-02T03:04:05")));
+  try {
+    writeFileSync(join(output.outputDir, "perf.html"), "perf");
+    writeFileSync(join(output.outputDir, "metric.html"), "metric");
+    writeFileSync(join(output.outputDir, "sample-01-trace.html"), "trace");
+    writeFileSync(join(output.outputDir, "sample-01-log.html"), "log");
+    const packed = await deliverPerfBundle(output);
+    expect(packed?.ok).toBe(true);
+    expect(existsSync(archive)).toBe(true);
+    const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
+    expect(listing).toContain("doctor-perf-20260102-030405/perf.html");
+    expect(listing).toContain("doctor-perf-20260102-030405/metric.html");
+    expect(listing).toContain("doctor-perf-20260102-030405/sample-01-trace.html");
+    expect(listing).toContain("doctor-perf-20260102-030405/sample-01-log.html");
+    expect(output.temporaryRoot && existsSync(output.temporaryRoot)).toBe(false);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+    if (output.temporaryRoot) rmSync(output.temporaryRoot, { recursive: true, force: true });
+  }
 });
 
 test("Service Case runner maps one trigger into one shared Outcome", async () => {

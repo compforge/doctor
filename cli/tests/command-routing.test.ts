@@ -133,6 +133,9 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain('(default: "5,10,15,20")');
     expect(result.stdout).toContain("--max-requests <n>");
     expect(result.stdout).toContain("--trace-samples <n>");
+    expect(result.stdout).toContain('(default: "10")');
+    expect(result.stdout).toContain("--format <format>");
+    expect(result.stdout).toContain("html 或 bundle");
     expect(result.stdout).toContain("-y, --yes");
   });
 

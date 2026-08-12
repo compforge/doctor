@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { PerfCliOpts, PerfConfig } from "./model";
+import type { PerfCliOpts, PerfConfig, PerfOutputFormat } from "./model";
 
 function integer(value: string | undefined, fallback: number, label: string, minimum: number): number {
   const parsed = Number(value ?? fallback);
@@ -37,7 +37,24 @@ export function perfRunName(now = new Date()): string {
     + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
+export function parsePerfOutputFormat(value: string | undefined): PerfOutputFormat {
+  const format = value?.trim() || "html";
+  if (format !== "html" && format !== "bundle") {
+    throw new Error(`--format 只支持 html 或 bundle: '${format}'`);
+  }
+  return format;
+}
+
 export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConfig {
+  const outputFormat = parsePerfOutputFormat(opts.format);
+  const bundleName = perfRunName(now);
+  const outputDir = opts.output?.trim() || join(".", bundleName);
+  if (outputFormat === "html" && /\.(?:tar\.gz|tgz)$/i.test(outputDir)) {
+    throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz 后缀");
+  }
+  if (outputFormat === "bundle" && /\.html$/i.test(outputDir)) {
+    throw new Error("--format bundle 的输出路径不能使用 .html 后缀");
+  }
   return {
     service: opts.service?.trim() || undefined,
     scenario: opts.scenario?.trim() || undefined,
@@ -49,7 +66,9 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     breakerMinN: integer(opts.breakerMinN, 10, "--breaker-min-n", 1),
     gracefulStopSeconds: seconds(opts.gracefulStop, 60, "--graceful-stop"),
     requestTimeoutMs: integer(opts.requestTimeout, 180, "--request-timeout", 1) * 1000,
-    traceSamples: integer(opts.traceSamples, 2, "--trace-samples", 0),
-    outputDir: opts.output?.trim() || join(".", perfRunName(now)),
+    traceSamples: integer(opts.traceSamples, 10, "--trace-samples", 0),
+    outputFormat,
+    bundleName,
+    outputDir,
   };
 }
