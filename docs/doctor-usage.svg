@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
-  <title id="title">How Doctor runs in a customer environment</title>
-  <desc id="desc">Doctor runs on a deployment host, uses a scoped kubeconfig to access Kubernetes, runs diagnostic tools in optional debug containers, and pulls artifacts back to the host for evidence and report generation.</desc>
+  <title id="title">How to use Doctor from a deployment machine</title>
+  <desc id="desc">An operator runs the Doctor CLI on a deployment machine. Doctor uses that machine's scoped kubeconfig to access Kubernetes, runs explicitly authorized diagnostics, and returns artifacts and reports to the same machine.</desc>
 
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
@@ -27,36 +27,32 @@
 
   <rect width="1200" height="760" rx="24" fill="#ffffff"/>
 
-  <text class="text heading" x="42" y="45">How Doctor runs onsite</text>
-  <text class="text body muted" x="330" y="45">Local-first access, in-cluster collection, evidence delivered back to the Host</text>
+  <text class="text heading" x="42" y="45">Use Doctor from a deployment machine</text>
+  <text class="text body muted" x="570" y="45">Run locally · access the cluster · bring results back</text>
 
   <g filter="url(#shadow)">
     <rect x="42" y="82" width="350" height="580" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
   </g>
-  <text class="text label" x="66" y="115" fill="#1d4ed8">DOCTOR HOST</text>
-  <text class="text small muted" x="190" y="115">deployment machine</text>
+  <text class="text label" x="66" y="115" fill="#1d4ed8">DEPLOYMENT MACHINE · DOCTOR HOST</text>
 
-  <rect x="66" y="140" width="302" height="82" rx="14" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text subheading" x="88" y="172">Kubeconfig</text>
-  <rect x="206" y="151" width="138" height="34" rx="17" fill="#fef3c7"/>
-  <text class="text mono" x="220" y="173">~/.kube/config</text>
-  <text class="text small muted" x="88" y="204">Context and RBAC define the access boundary</text>
+  <rect x="66" y="140" width="302" height="98" rx="16" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text class="text subheading" x="88" y="172">Run Doctor here</text>
+  <rect x="88" y="186" width="256" height="34" rx="9" fill="#172033"/>
+  <text class="text mono" x="104" y="208" style="fill: #ffffff">$ doctor &lt;command&gt;</text>
 
-  <path d="M217 222 L217 254" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M217 238 L217 266" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
 
-  <rect x="66" y="256" width="302" height="118" rx="16" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
-  <text class="text heading" x="88" y="295">doctor CLI</text>
-  <text class="text body muted" x="88" y="322">Select target · check access · collect</text>
-  <rect x="88" y="337" width="98" height="26" rx="13" fill="#ede9fe"/>
-  <text class="text small" x="108" y="355">interactive</text>
-  <rect x="196" y="337" width="124" height="26" rx="13" fill="#ede9fe"/>
-  <text class="text small" x="216" y="355">evidence-first</text>
+  <rect x="66" y="268" width="302" height="112" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
+  <text class="text subheading" x="88" y="300">Use local Kubernetes access</text>
+  <rect x="88" y="316" width="138" height="34" rx="17" fill="#fef3c7"/>
+  <text class="text mono" x="102" y="338">~/.kube/config</text>
+  <text class="text small muted" x="88" y="367">Context and RBAC limit what Doctor can do</text>
 
-  <path d="M217 374 L217 442" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
+  <path d="M217 380 L217 430" fill="none" stroke="#2563eb" stroke-width="2" marker-end="url(#arrow-blue)"/>
 
-  <rect x="66" y="444" width="302" height="176" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text subheading" x="88" y="478">Evidence delivered locally</text>
-  <text class="text body muted" x="88" y="505">Raw artifacts and reports stay onsite</text>
+  <rect x="66" y="432" width="302" height="188" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
+  <text class="text subheading" x="88" y="466">Get results back here</text>
+  <text class="text body muted" x="88" y="493">Reports and raw artifacts stay onsite</text>
   <rect x="88" y="530" width="74" height="30" rx="15" fill="#dbeafe"/>
   <text class="text chip" x="105" y="550">pyheap</text>
   <rect x="170" y="530" width="66" height="30" rx="15" fill="#dbeafe"/>
@@ -75,7 +71,7 @@
   <text class="text subheading" x="484" y="326">Scoped access</text>
   <text class="text body muted" x="484" y="353">inspect · exec · forward</text>
 
-  <path d="M368 315 L456 315" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <path d="M368 324 L456 324" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
   <text class="text small muted" x="377" y="299">authenticated</text>
 
   <g filter="url(#shadow)">
