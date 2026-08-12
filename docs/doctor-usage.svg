@@ -30,45 +30,46 @@
   <text class="text heading" x="42" y="45">Run Doctor on a host outside the cluster</text>
   <text class="text body muted" x="650" y="45">Local process · scoped access · local results</text>
 
+  <rect x="42" y="82" width="350" height="118" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
+  <text class="text label" x="66" y="112" fill="#1d4ed8">LOCAL INPUT · HOST FILESYSTEM</text>
+  <text class="text subheading" x="66" y="154">Host kubeconfig</text>
+  <rect x="214" y="130" width="154" height="34" rx="17" fill="#fef3c7"/>
+  <text class="text mono" x="228" y="152">~/.kube/config</text>
+  <text class="text small muted" x="66" y="186">Context and RBAC bound every request</text>
+
+  <path d="M217 200 L217 228" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="5 5" marker-end="url(#arrow-blue)"/>
+  <text class="text small muted" x="228" y="220">reads</text>
+
   <g filter="url(#shadow)">
-    <rect x="42" y="82" width="350" height="580" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
+    <rect x="42" y="230" width="350" height="200" rx="20" fill="#eff6ff" stroke="#2563eb" stroke-width="2"/>
   </g>
-  <text class="text label" x="66" y="115" fill="#1d4ed8">HOST MACHINE · OUTSIDE THE CLUSTER</text>
+  <text class="text label" x="66" y="260" fill="#1d4ed8">DOCTOR HOST · OUTSIDE THE CLUSTER</text>
+  <rect x="66" y="280" width="302" height="126" rx="16" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
+  <text class="text label" x="88" y="310" fill="#6d28d9">DOCTOR CLI PROCESS</text>
+  <text class="text body muted" x="88" y="335">Runs on this machine as the local user</text>
+  <rect x="88" y="351" width="256" height="36" rx="9" fill="#172033"/>
+  <text class="text mono" x="104" y="374" style="fill: #ffffff">$ doctor &lt;command&gt;</text>
 
-  <rect x="66" y="140" width="302" height="126" rx="16" fill="#f5f3ff" stroke="#7c3aed" stroke-width="2"/>
-  <text class="text label" x="88" y="170" fill="#6d28d9">DOCTOR CLI PROCESS</text>
-  <text class="text body muted" x="88" y="195">Runs here as the local user</text>
-  <rect x="88" y="211" width="256" height="36" rx="9" fill="#172033"/>
-  <text class="text mono" x="104" y="234" style="fill: #ffffff">$ doctor &lt;command&gt;</text>
+  <rect x="42" y="462" width="350" height="176" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
+  <text class="text label" x="66" y="491" fill="#047857">LOCAL OUTPUT · HOST FILESYSTEM</text>
+  <text class="text subheading" x="66" y="523">Collected data and reports</text>
+  <text class="text body muted" x="66" y="550">Written back to the same machine</text>
+  <rect x="66" y="566" width="74" height="30" rx="15" fill="#dbeafe"/>
+  <text class="text chip" x="83" y="586">pyheap</text>
+  <rect x="148" y="566" width="66" height="30" rx="15" fill="#dbeafe"/>
+  <text class="text chip" x="165" y="586">pcap</text>
+  <rect x="222" y="566" width="76" height="30" rx="15" fill="#dbeafe"/>
+  <text class="text chip" x="240" y="586">logs</text>
+  <rect x="66" y="602" width="100" height="30" rx="15" fill="#dbeafe"/>
+  <text class="text chip" x="87" y="622">HTML report</text>
+  <rect x="176" y="602" width="122" height="30" rx="15" fill="#dbeafe"/>
+  <text class="text chip" x="197" y="622">Evidence bundle</text>
 
-  <path d="M217 266 L217 292" fill="none" stroke="#2563eb" stroke-width="2" stroke-dasharray="5 5"/>
-  <text class="text small muted" x="228" y="284">reads</text>
-
-  <rect x="66" y="294" width="302" height="108" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text subheading" x="88" y="326">Host Kubernetes credentials</text>
-  <rect x="88" y="341" width="138" height="34" rx="17" fill="#fef3c7"/>
-  <text class="text mono" x="102" y="363">~/.kube/config</text>
-  <text class="text small muted" x="88" y="391">Context and RBAC bound every request</text>
-
-  <rect x="66" y="432" width="302" height="188" rx="16" fill="#ffffff" stroke="#bfdbfe"/>
-  <text class="text subheading" x="88" y="466">Get results back here</text>
-  <text class="text body muted" x="88" y="493">Reports and raw artifacts stay onsite</text>
-  <rect x="88" y="530" width="74" height="30" rx="15" fill="#dbeafe"/>
-  <text class="text chip" x="105" y="550">pyheap</text>
-  <rect x="170" y="530" width="66" height="30" rx="15" fill="#dbeafe"/>
-  <text class="text chip" x="187" y="550">pcap</text>
-  <rect x="244" y="530" width="76" height="30" rx="15" fill="#dbeafe"/>
-  <text class="text chip" x="262" y="550">logs</text>
-  <rect x="88" y="570" width="100" height="30" rx="15" fill="#dbeafe"/>
-  <text class="text chip" x="109" y="590">HTML report</text>
-  <rect x="198" y="570" width="122" height="30" rx="15" fill="#dbeafe"/>
-  <text class="text chip" x="219" y="590">Evidence bundle</text>
-
-  <text class="text label" x="446" y="170" fill="#1d4ed8">KUBERNETES API REQUESTS</text>
-  <text class="text subheading" x="446" y="198">Authenticated from this host</text>
-  <text class="text small muted" x="446" y="220">Scope = kubeconfig context + RBAC</text>
-  <path d="M368 205 C408 205 414 244 456 244 L690 244 L690 482" fill="none" stroke="#2563eb" stroke-width="2.5"/>
-  <text class="text body muted" x="474" y="270">inspect · exec · port-forward</text>
+  <text class="text label" x="446" y="260" fill="#1d4ed8">KUBERNETES API REQUESTS</text>
+  <text class="text subheading" x="446" y="288">Authenticated from this host</text>
+  <text class="text small muted" x="446" y="310">Scope = kubeconfig context + RBAC</text>
+  <path d="M368 343 L690 343" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+  <text class="text body muted" x="474" y="371">inspect · exec · port-forward</text>
 
   <g filter="url(#shadow)">
     <rect x="720" y="82" width="438" height="580" rx="20" fill="#f8fafc" stroke="#64748b" stroke-width="2"/>
@@ -100,12 +101,12 @@
   <text class="text body muted" x="958" y="488">tcpdump · network</text>
   <text class="text body muted" x="958" y="514">temporary tools</text>
 
-  <path d="M690 246 L742 246" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
-  <path d="M690 482 L742 482" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
-  <text class="text small muted" x="604" y="299">select / inspect</text>
+  <path d="M690 343 L690 246 L742 246" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <path d="M690 343 L690 482 L742 482" fill="none" stroke="#2563eb" stroke-width="2.5" marker-end="url(#arrow-blue)"/>
+  <text class="text small muted" x="604" y="238">select / inspect</text>
   <text class="text small muted" x="636" y="466">collect</text>
 
-  <path d="M1024 582 L1024 690 L217 690 L217 622" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#arrow-green)"/>
+  <path d="M1024 582 L1024 690 L217 690 L217 640" fill="none" stroke="#059669" stroke-width="2.5" marker-end="url(#arrow-green)"/>
   <text class="text body" x="557" y="715" fill="#047857">artifacts: .pyheap · .pcap · logs · metrics</text>
 
   <text class="text small muted" x="42" y="744">Blue: Kubernetes API requests from the Host · Green: evidence returned to the Host · Debug containers are temporary and explicitly authorized</text>
