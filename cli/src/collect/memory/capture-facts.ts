@@ -24,3 +24,11 @@ fi
 export function cgroupMemoryCmd(): string[] {
   return ["sh", "-c", CGROUP_MEMORY_SCRIPT];
 }
+
+/** cgroup v2 的 oom_kill 是累计计数；仅在 dump 前后差值增加时才能归因本次 OOM。 */
+export function parseCgroupOomKillCount(output: string): number | undefined {
+  const value = output.match(/^event_oom_kill=(\d+)$/m)?.[1];
+  if (value === undefined) return undefined;
+  const count = Number(value);
+  return Number.isSafeInteger(count) ? count : undefined;
+}

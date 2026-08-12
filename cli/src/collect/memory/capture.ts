@@ -28,7 +28,7 @@ import { EvidenceBundle, type StepRisk } from "../evidence";
 import { failReason } from "../../infra/k8s/result";
 import { parseProcscan, pickPid, PROCESS_SCAN_SOURCE, processScanCmd } from "../fact/process";
 import { parsePtraceFacts, podDeclaresSysPtrace, ptraceFactsCmd } from "../fact/ptrace";
-import { cgroupMemoryCmd } from "./capture-facts";
+import { cgroupMemoryCmd, parseCgroupOomKillCount } from "./capture-facts";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
 import { resolveEmbeddedPyHeapTool } from "./embedded-pyheap";
 import {
@@ -176,6 +176,9 @@ export function pyheapDumpFailureReason(result: ExecResult): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
+  if (lines.some((line) => /Program terminated with signal SIGKILL/i.test(line))) {
+    return "目标进程在 dump 期间被 SIGKILL";
+  }
   const gdbError = lines
     .slice()
     .reverse()
@@ -400,7 +403,6 @@ export interface HeapCaptureConfirmation {
   target: string;
   pid: number;
   strategy: CaptureStrategy;
-  uvicornMasterPid?: number;
   strReprLen: number;
 }
 
@@ -412,11 +414,6 @@ export async function confirmHeapCapture(input: HeapCaptureConfirmation): Promis
   );
   terminalStdout.write("[collect] - attach 期间 Python 进程会暂停，通常数秒，大堆可能持续数分钟\n");
   terminalStdout.write("[collect] - 暂停期间请求可能超时；异常中断也可能影响目标进程稳定性\n");
-  if (input.uvicornMasterPid !== undefined) {
-    terminalStdout.write(
-      `[collect] - 检测到 Uvicorn master pid=${input.uvicornMasterPid}，采集期间会临时暂停并由 watchdog 兜底恢复\n`,
-    );
-  }
   terminalStdout.write("[collect] - 完成后会把 .pyheap 文件传回 Doctor 本机\n");
   if (input.strReprLen !== -1) {
     terminalStdout.write("[collect] - heap 会包含对象字符串表示，可能带入业务数据\n");
@@ -538,14 +535,29 @@ export async function captureMemoryHeap(
     + `（${execution.label}）`,
   );
 
-  const uvicornMasterPid = processScan.uvicorn?.workerPids.includes(pid)
-    ? processScan.uvicorn.masterPid
+  const uvicornSupervisorPid = processScan.uvicorn?.mode === "multiprocess"
+    && processScan.uvicorn.workerPids.includes(pid)
+    ? processScan.uvicorn.supervisorPid
     : undefined;
+  const standaloneUvicornWithLiveness = processScan.uvicorn?.mode === "standalone"
+    && processScan.uvicorn.workerPids.includes(pid)
+    && params.container.livenessProbe !== undefined;
+  if (standaloneUvicornWithLiveness) {
+    log(
+      `[collect] 警告：单进程 Uvicorn pid=${pid} 同时承载业务与 liveness；`
+      + "attach 会暂停健康检查，长时间 dump 可能触发 Container 重启",
+    );
+  }
+  if (uvicornSupervisorPid !== undefined) {
+    log(
+      `[collect] 检测到 Uvicorn multiprocess：supervisor pid=${uvicornSupervisorPid}，`
+      + `目标 worker pid=${pid}；dump 期间会暂停 supervisor，并由 watchdog 兜底恢复`,
+    );
+  }
   const approved = params.confirmed || await (ctx.confirm ?? confirmHeapCapture)({
     target: `${params.namespace}/${params.pod}/${params.container.name}`,
     pid,
     strategy: execution.strategy,
-    uvicornMasterPid,
     strReprLen: params.strReprLen,
   });
   ctx.bundle.addStep({
@@ -576,22 +588,23 @@ export async function captureMemoryHeap(
 
   const heapFile = `${PYHEAP_TOOL_DIR}/heap-${pid}-${params.invokedAt.getTime().toString(36)}.pyheap`;
   let guard: UvicornSupervisorGuard | undefined;
-  if (uvicornMasterPid !== undefined) {
+  if (uvicornSupervisorPid !== undefined) {
     const suspend = await executor.exec(
       execution.target,
-      suspendUvicornSupervisorCmd(uvicornMasterPid, pid, SUPERVISOR_AUTO_RESUME_SECONDS),
+      suspendUvicornSupervisorCmd(uvicornSupervisorPid, pid, SUPERVISOR_AUTO_RESUME_SECONDS),
       { timeoutMs: 10_000 },
     );
-    recordStep(ctx.bundle, "mem-supervisor-suspend", "暂停 Uvicorn master", suspend, "disrupt");
+    recordStep(ctx.bundle, "mem-supervisor-suspend", "暂停 Uvicorn supervisor", suspend, "disrupt");
     guard = suspend.ok ? parseUvicornSupervisorGuard(suspend.stdout) : undefined;
     if (!guard) {
       return {
         code: 1,
         pid,
         strategy: execution.strategy,
-        reason: `无法安全暂停 Uvicorn master pid=${uvicornMasterPid}，未执行 heap dump`,
+        reason: `无法安全暂停 Uvicorn supervisor pid=${uvicornSupervisorPid}，未执行 heap dump`,
       };
     }
+    log(`[collect] Uvicorn supervisor pid=${uvicornSupervisorPid} 已暂停`);
   }
 
   let dump: ExecResult;
@@ -622,14 +635,40 @@ export async function captureMemoryHeap(
         resumeUvicornSupervisorCmd(guard),
         { timeoutMs: 10_000 },
       );
-      recordStep(ctx.bundle, "mem-supervisor-resume", "恢复 Uvicorn master", resume, "disrupt");
+      recordStep(ctx.bundle, "mem-supervisor-resume", "恢复 Uvicorn supervisor", resume, "disrupt");
       if (!resume.ok) {
         supervisorResumeFailed = true;
-        log(`[collect] Uvicorn master 恢复未确认；watchdog 会继续尝试恢复`);
+        log(`[collect] Uvicorn supervisor 恢复未确认；watchdog 会继续尝试恢复`);
+      } else {
+        log(`[collect] Uvicorn supervisor pid=${guard.masterPid} 已恢复`);
       }
     }
   }
   if (!dump.ok) {
+    const cgroupAfter = await executor.exec(execTarget, cgroupMemoryCmd(), { timeoutMs: 10_000 });
+    recordStep(
+      ctx.bundle,
+      "mem-cgroup-after-failure",
+      "heap dump 失败后复查 cgroup 内存事实",
+      cgroupAfter,
+    );
+    const oomKillsBefore = cgroup.ok ? parseCgroupOomKillCount(cgroup.stdout) : undefined;
+    const oomKillsAfter = cgroupAfter.ok
+      ? parseCgroupOomKillCount(cgroupAfter.stdout)
+      : undefined;
+    let dumpFailureReason = pyheapDumpFailureReason(dump);
+    if (
+      oomKillsBefore !== undefined
+      && oomKillsAfter !== undefined
+      && oomKillsAfter > oomKillsBefore
+    ) {
+      dumpFailureReason = `目标进程在 dump 期间触发 cgroup OOM kill`
+        + `（oom_kill: ${oomKillsBefore} -> ${oomKillsAfter}）`;
+    } else if (dumpFailureReason.includes("SIGKILL") && guard) {
+      dumpFailureReason += oomKillsBefore !== undefined && oomKillsAfter !== undefined
+        ? "；Uvicorn supervisor 已暂停，且 cgroup oom_kill 未增长"
+        : "；Uvicorn supervisor 已暂停，但当前 cgroup 未提供可比较的 oom_kill 计数";
+    }
     const failedMetadataResult = await executor.exec(
       execution.target,
       fileMetadataCmd(heapFile),
@@ -646,7 +685,7 @@ export async function captureMemoryHeap(
       pid,
       strategy: execution.strategy,
       remoteHeapPath: confirmedRemoteHeapPath(heapFile, failedMetadataResult),
-      reason: `heap dump 失败：${pyheapDumpFailureReason(dump)}`,
+      reason: `heap dump 失败：${dumpFailureReason}`,
     };
   }
 
@@ -666,7 +705,7 @@ export async function captureMemoryHeap(
       pid,
       strategy: execution.strategy,
       remoteHeapPath: heapFile,
-      reason: "heap 已生成，但 Uvicorn master 恢复未确认；远端 watchdog 会继续尝试恢复",
+      reason: "heap 已生成，但 Uvicorn supervisor 恢复未确认；远端 watchdog 会继续尝试恢复",
     };
   }
   if (metadata.bytes > MAX_FETCH_RAW_BYTES) {

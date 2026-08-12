@@ -10,6 +10,7 @@ export interface ContainerInfo {
   ready?: boolean;
   limits?: Record<string, string>;
   requests?: Record<string, string>;
+  livenessProbe?: Record<string, unknown>;
 }
 
 export interface TargetPod {
@@ -39,6 +40,7 @@ export function parsePodJson(raw: string): TargetPod {
       ready: st?.ready,
       limits: c.resources?.limits,
       requests: c.resources?.requests,
+      livenessProbe: c.livenessProbe,
     };
   });
   return {

@@ -17,7 +17,12 @@ const POD_JSON = JSON.stringify({
   spec: {
     nodeName: "node-a",
     containers: [
-      { name: "app", image: "repo/app:1.2", resources: { limits: { memory: "2Gi" }, requests: { memory: "1Gi" } } },
+      {
+        name: "app",
+        image: "repo/app:1.2",
+        resources: { limits: { memory: "2Gi" }, requests: { memory: "1Gi" } },
+        livenessProbe: { httpGet: { path: "/health", port: 8080 } },
+      },
       { name: "sidecar", image: "repo/sc:1" },
     ],
   },
@@ -66,6 +71,7 @@ describe("parsePodJson", () => {
       imageId: "docker-pullable://registry.example.com/app@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       restartCount: 2,
       limits: { memory: "2Gi" },
+      livenessProbe: { httpGet: { path: "/health", port: 8080 } },
     });
   });
 });
@@ -302,6 +308,7 @@ describe("parseProcscan / pickPid", () => {
     expect(scan.rows).toHaveLength(3);
     expect(scan.rows[0]).toMatchObject({ pid: 11, comm: "python3", rssMb: 1843, threads: 12, fds: 210 });
     expect(scan.workers).toEqual([11, 23]);
+    expect(scan.pythonPids).toEqual([11, 23]);
   });
 
   test("--pid flag wins", () => {
@@ -320,11 +327,63 @@ describe("parseProcscan / pickPid", () => {
   });
 
   test("Uvicorn topology keeps all business workers and excludes resource_tracker", () => {
-    const scan = parseProcscan(`${PROCSCAN_OUT}uvicorn topology: master=8 workers=10 11\n`);
-    expect(scan.uvicorn).toEqual({ masterPid: 8, workerPids: [10, 11] });
-    expect(scan.workers).toEqual([10, 11]);
+    const out = `   PID COMM              RSS_MB  THREADS    FDS
+     7 uvicorn              130        1     25
+ 77666 python3              480       28     45
+ 77693 python3              512       31     48
+ 77724 python3              495       29     44
+ 77750 python3              470       27     43
+     8 python3                6        1      4
+
+python processes: 7 77666 77693 77724 77750
+python workers (threads>4): 77666 77693 77724 77750
+uvicorn topology: mode=multiprocess supervisor=7 workers=77666 77693 77724 77750
+`;
+    const scan = parseProcscan(out);
+    expect(scan.uvicorn).toEqual({
+      mode: "multiprocess",
+      supervisorPid: 7,
+      workerPids: [77666, 77693, 77724, 77750],
+    });
+    expect(scan.pythonPids).not.toContain(8);
+    expect(scan.workers).toEqual([77666, 77693, 77724, 77750]);
+    expect(pickPid(scan)).toEqual({
+      ok: true,
+      value: 77693,
+      note: "worker 多于一个（77666, 77693, 77724, 77750），自动选 RSS 最大的 pid=77693；可用 --pid 覆盖",
+    });
     const selected = diagnosticPids(scan);
-    expect(selected).toEqual({ ok: true, value: [10, 11] });
+    expect(selected).toEqual({ ok: true, value: [77666, 77693, 77724, 77750] });
+  });
+
+  test("standalone Uvicorn is the business worker, not a supervisor", () => {
+    const out = `   PID COMM              RSS_MB  THREADS    FDS
+     8 uvicorn              520       32     43
+     1 tini                   1        1      3
+
+python processes: 8
+python workers (threads>4): 8
+uvicorn topology: mode=standalone workers=8
+`;
+    const scan = parseProcscan(out);
+    expect(scan.uvicorn).toEqual({ mode: "standalone", workerPids: [8] });
+    expect(pickPid(scan)).toEqual({ ok: true, value: 8, note: undefined });
+    expect(diagnosticPids(scan)).toEqual({ ok: true, value: [8] });
+  });
+
+  test("Python executable remains selectable when process title is rewritten", () => {
+    const out = `   PID COMM              RSS_MB  THREADS    FDS
+     7 custom-worker         300        2     10
+
+python processes: 7
+python workers (threads>4): (none)
+`;
+    expect(pickPid(parseProcscan(out))).toEqual({ ok: true, value: 7, note: undefined });
+  });
+
+  test("legacy Uvicorn output without children maps to standalone", () => {
+    const scan = parseProcscan(`${PROCSCAN_OUT}uvicorn topology: master=8 workers=(none)\n`);
+    expect(scan.uvicorn).toEqual({ mode: "standalone", workerPids: [8] });
   });
 
   test("no workers: falls back to python rows", () => {
