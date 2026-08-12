@@ -130,7 +130,7 @@ describe("CLI command routing", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor perf [options]");
     expect(result.stdout).toContain("--levels <numbers>");
-    expect(result.stdout).toContain('(default: "5,10,15,20")');
+    expect(result.stdout).toContain("最大 50；指定后跳过最高并发询问");
     expect(result.stdout).toContain("--max-requests <n>");
     expect(result.stdout).toContain("--trace-samples <n>");
     expect(result.stdout).toContain('(default: "10")');

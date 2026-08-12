@@ -344,7 +344,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
   return withApprovalOptions(cmd)
     .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
     .option("--scenario <id>", "Plugin 声明的业务压测场景；默认第一个")
-    .option("--levels <numbers>", "逗号分隔的并发档位", "5,10,15,20")
+    .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
     .option("--ramp <seconds>", "每档升压时间（秒）", "10")
     .option("--hold <seconds>", "每档稳态时间（秒）", "60")
     .option("--max-requests <n>", "每档最多产生的业务请求数", "100")

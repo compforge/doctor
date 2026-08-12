@@ -1,6 +1,9 @@
 import { join } from "node:path";
 import type { PerfCliOpts, PerfConfig, PerfOutputFormat } from "./model";
 
+export const PERF_MAX_CONCURRENCY_OPTIONS = [1, 5, 10, 20, 50] as const;
+export const MAX_PERF_CONCURRENCY = 50;
+
 function integer(value: string | undefined, fallback: number, label: string, minimum: number): number {
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed < minimum) {
@@ -25,10 +28,23 @@ function fraction(value: string | undefined, fallback: number, label: string): n
 
 export function parsePerfLevels(raw = "5,10,15,20"): number[] {
   const levels = [...new Set(raw.split(",").map((item) => Number(item.trim())))];
-  if (!levels.length || levels.some((level) => !Number.isInteger(level) || level < 1)) {
-    throw new Error("--levels 必须是逗号分隔的正整数，例如 5,10,15,20");
+  if (
+    !levels.length
+    || levels.some((level) => !Number.isInteger(level) || level < 1 || level > MAX_PERF_CONCURRENCY)
+  ) {
+    throw new Error(`--levels 必须是逗号分隔的 1-${MAX_PERF_CONCURRENCY} 整数，例如 5,10,15,20`);
   }
   return levels;
+}
+
+export function perfLevelsThrough(maxConcurrency: number): number[] {
+  if (!PERF_MAX_CONCURRENCY_OPTIONS.includes(
+    maxConcurrency as (typeof PERF_MAX_CONCURRENCY_OPTIONS)[number],
+  )) {
+    throw new Error(`最高并发只支持 ${PERF_MAX_CONCURRENCY_OPTIONS.join("、")}`);
+  }
+  if (maxConcurrency === 1) return [1];
+  return Array.from({ length: maxConcurrency / 5 }, (_, index) => (index + 1) * 5);
 }
 
 export function perfRunName(now = new Date()): string {

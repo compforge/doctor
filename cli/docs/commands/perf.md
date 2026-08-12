@@ -2,7 +2,8 @@
 
 ## 理念 / 概念
 
-`doctor perf` 回答“从并发 5 提升到 20 时，普通业务请求在哪一档开始变慢，慢在哪里”。Perf 本身是
+`doctor perf` 回答“逐档提升并发时，普通业务请求从哪一档开始变慢，慢在哪里”。交互运行会让用户从
+1、5、10、20、50 中选择最高并发，默认 20；自动化运行可通过 `--levels` 显式指定不超过 50 的档位。Perf 本身是
 触发器，但诊断不能只有触发：一次运行必须把请求侧首 token/总耗时与同窗口 Metric、代表请求的 Trace
 和 Log 一起交付。
 
@@ -35,8 +36,9 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
 
 1. 校验 Plugin 同时提供 Case、Perf、Metric、Trace ID 和 Log capability，选择 Service 与 scenario，并
    从其 CaseSet 解析 Case mix。
-2. 按需从 Plugin 声明的目录选择租户，再通过服务端关键词搜索和分页选择用户；随后展示并确认并发
-   档位、每档最大请求数、错误率熔断和持久数据影响。非交互运行必须由 Plugin profile 提供身份。
+2. 交互运行选择最高并发；按需从 Plugin 声明的目录选择租户，再通过服务端关键词搜索和分页选择用户；
+   随后展示并确认并发档位、每档最大请求数、错误率熔断和持久数据影响。非交互运行默认使用
+   5、10、15、20 四档，并必须由 Plugin profile 提供身份。
 3. 先启动 Metric watch，确认窗口已经开始后再依次执行各并发 Trial。
 4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
    阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。

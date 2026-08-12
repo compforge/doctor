@@ -29,7 +29,12 @@ import { resolveKubernetesCommandContext } from "../command";
 import { approvalDeniedReason } from "../command/approval";
 import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
-import { resolvePerfConfig } from "./config";
+import { promptListedChoice } from "../terminal/selection";
+import {
+  PERF_MAX_CONCURRENCY_OPTIONS,
+  perfLevelsThrough,
+  resolvePerfConfig,
+} from "./config";
 import { resolvePerfRequestIdentity } from "./identity";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
 import { deliverPerfBundle, preparePerfOutput } from "./output";
@@ -273,6 +278,25 @@ export async function runPerf(
     }
     return { case: selectedCase, weight: selection.weight ?? 1 };
   });
+
+  if (!opts.levels?.trim() && process.stdin.isTTY && process.stdout.isTTY) {
+    terminalStdout.info(
+      `[perf] 可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）\n`,
+    );
+    const maxConcurrency = await promptListedChoice({
+      question: "请选择最高并发（输入并发值，直接回车使用 20，q 取消）：",
+      match: (answer) => {
+        const value = Number(answer.trim());
+        return PERF_MAX_CONCURRENCY_OPTIONS.includes(
+          value as (typeof PERF_MAX_CONCURRENCY_OPTIONS)[number],
+        ) ? value : undefined;
+      },
+      invalidMessage: `最高并发只支持 ${PERF_MAX_CONCURRENCY_OPTIONS.join("、")}`,
+      emptyValue: 20,
+    });
+    if (maxConcurrency === undefined) return 130;
+    config.levels = perfLevelsThrough(maxConcurrency);
+  }
 
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!kube) return 130;

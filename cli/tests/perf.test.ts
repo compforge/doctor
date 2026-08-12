@@ -3,7 +3,12 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
-import { parsePerfLevels, parsePerfOutputFormat, resolvePerfConfig } from "../src/perf/config";
+import {
+  parsePerfLevels,
+  parsePerfOutputFormat,
+  perfLevelsThrough,
+  resolvePerfConfig,
+} from "../src/perf/config";
 import {
   formatPerfCaseMix,
   resolvePerfRequestIdentity,
@@ -31,6 +36,11 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
     bundleName: "doctor-perf-20260102-030405",
   });
   expect(() => parsePerfLevels("5,0,20")).toThrow("--levels");
+  expect(() => parsePerfLevels("5,55")).toThrow("1-50");
+  expect(perfLevelsThrough(1)).toEqual([1]);
+  expect(perfLevelsThrough(20)).toEqual([5, 10, 15, 20]);
+  expect(perfLevelsThrough(50)).toEqual([5, 10, 15, 20, 25, 30, 35, 40, 45, 50]);
+  expect(() => perfLevelsThrough(15)).toThrow("只支持");
   expect(parsePerfOutputFormat("bundle")).toBe("bundle");
   expect(() => parsePerfOutputFormat("json")).toThrow("html 或 bundle");
   expect(resolvePerfConfig({ format: "bundle", output: "perf-result" }, new Date("2026-01-02T03:04:05")))
