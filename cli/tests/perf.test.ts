@@ -7,6 +7,7 @@ import { parsePerfLevels, resolvePerfConfig } from "../src/perf/config";
 import {
   resolvePerfRequestIdentity,
   resolveUserSearchPromptAction,
+  selectUserFromSearch,
   selectPerfSamples,
   workloadFromCaseRunner,
 } from "../src/perf";
@@ -102,6 +103,21 @@ test("Perf fills missing tenant and user identity from the declared directory", 
   });
   expect(resolveUserSearchPromptAction(users, "next")).toEqual({ kind: "next" });
   expect(resolveUserSearchPromptAction(users, "bob")).toEqual({ kind: "search", query: "bob" });
+});
+
+test("Perf user selection keeps page state across next and previous commands", async () => {
+  const searches: Array<{ query?: string; page: number; pageSize: number }> = [];
+  const answers = ["test", "n", "p", "1"];
+  const selected = await selectUserFromSearch(async (input) => {
+    searches.push(input);
+    return {
+      users: [{ id: `user-${input.page}`, name: `user-${input.page}`, displayName: `User ${input.page}` }],
+      total: 21,
+    };
+  }, async () => answers.shift() ?? "q");
+
+  expect(selected?.id).toBe("user-1");
+  expect(searches.map(({ page }) => page)).toEqual([1, 2, 1]);
 });
 
 test("Perf preserves configured identity and only queries missing user", async () => {

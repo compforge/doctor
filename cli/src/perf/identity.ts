@@ -16,6 +16,7 @@ const USER_PAGE_SIZE = 10;
 
 type UserSearchRequest = Omit<UserDirectorySearch, "tenantId">;
 type UserSearch = (input: UserSearchRequest) => Promise<UserDirectorySearchResult>;
+type Ask = (question: string) => Promise<string>;
 
 export type UserSearchPromptAction =
   | { kind: "selected"; user: UserSummary }
@@ -47,68 +48,75 @@ export function resolveUserSearchPromptAction(
   return { kind: "empty" };
 }
 
+export async function selectUserFromSearch(
+  search: UserSearch,
+  ask: Ask,
+): Promise<UserSummary | undefined> {
+  let query: string | undefined;
+  let page = 1;
+  while (true) {
+    if (query === undefined) {
+      const answer = (await ask(
+        "请输入用户关键词（用户名或展示名，直接回车查看最近用户，q 取消）：",
+      )).trim();
+      if (/^(q|quit)$/i.test(answer)) return undefined;
+      query = answer || "";
+      page = 1;
+    }
+
+    terminalStdout.info(`[perf] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户（第 ${page} 页）…\n`);
+    const result = await search({
+      query: query || undefined,
+      page,
+      pageSize: USER_PAGE_SIZE,
+    });
+    const users = result.users;
+    if (!users.length) {
+      terminalStdout.warning(query
+        ? `未找到匹配 '${query}' 的启用用户。\n`
+        : "当前租户没有启用用户。\n");
+      query = undefined;
+      continue;
+    }
+
+    const pageCount = Math.max(1, Math.ceil(result.total / USER_PAGE_SIZE));
+    printNumberedChoices(
+      users,
+      `[perf] 用户候选：第 ${page}/${pageCount} 页，共 ${result.total} 个匹配用户`,
+      (user) => `${user.name}（${user.displayName}，${user.id}）`,
+    );
+    const answer = await ask(
+      "请选择用户（输入序号或 n/p 后回车；输入新关键词重新搜索；q 取消）：",
+    );
+    const action = resolveUserSearchPromptAction(users, answer);
+    if (action.kind === "selected") return action.user;
+    if (action.kind === "cancelled") return undefined;
+    if (action.kind === "search") {
+      query = action.query;
+      page = 1;
+      continue;
+    }
+    if (action.kind === "next") {
+      if (page < pageCount) page += 1;
+      else terminalStdout.warning("已经是最后一页。\n");
+      continue;
+    }
+    if (action.kind === "previous") {
+      if (page > 1) page -= 1;
+      else terminalStdout.warning("已经是第一页。\n");
+      continue;
+    }
+    terminalStdout.warning(action.kind === "invalid-number"
+      ? "输入的序号不在当前页候选中。\n"
+      : "请输入用户序号、翻页命令或新的搜索关键词。\n");
+  }
+}
+
 async function promptUserChoice(search: UserSearch): Promise<UserSummary | undefined> {
   prepareTerminalInput();
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    let query: string | undefined;
-    while (true) {
-      if (query === undefined) {
-        const answer = (await readline.question(
-          "请输入用户关键词（用户名或展示名，直接回车查看最近用户，q 取消）：",
-        )).trim();
-        if (/^(q|quit)$/i.test(answer)) return undefined;
-        query = answer || "";
-      }
-
-      let page = 1;
-      while (true) {
-        terminalStdout.info(`[perf] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户…\n`);
-        const result = await search({
-          query: query || undefined,
-          page,
-          pageSize: USER_PAGE_SIZE,
-        });
-        if (!result.users.length) {
-          terminalStdout.warning(query
-            ? `未找到匹配 '${query}' 的启用用户。\n`
-            : "当前租户没有启用用户。\n");
-          query = undefined;
-          break;
-        }
-
-        const pageCount = Math.max(1, Math.ceil(result.total / USER_PAGE_SIZE));
-        printNumberedChoices(
-          result.users,
-          `[perf] 用户候选：第 ${page}/${pageCount} 页，共 ${result.total} 个`,
-          (user) => `${user.name}（${user.displayName}，${user.id}）`,
-        );
-        const answer = await readline.question(
-          "请选择用户（序号；n 下一页；p 上一页；输入新关键词重新搜索；q 取消）：",
-        );
-        const action = resolveUserSearchPromptAction(result.users, answer);
-        if (action.kind === "selected") return action.user;
-        if (action.kind === "cancelled") return undefined;
-        if (action.kind === "search") {
-          query = action.query;
-          page = 1;
-          continue;
-        }
-        if (action.kind === "next") {
-          if (page < pageCount) page += 1;
-          else terminalStdout.warning("已经是最后一页。\n");
-          continue;
-        }
-        if (action.kind === "previous") {
-          if (page > 1) page -= 1;
-          else terminalStdout.warning("已经是第一页。\n");
-          continue;
-        }
-        terminalStdout.warning(action.kind === "invalid-number"
-          ? "输入的序号不在当前页候选中。\n"
-          : "请输入用户序号、翻页命令或新的搜索关键词。\n");
-      }
-    }
+    return await selectUserFromSearch(search, (question) => readline.question(question));
   } finally {
     readline.close();
   }
