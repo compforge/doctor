@@ -41,17 +41,7 @@ import {
 } from "./selection";
 import { reuseReadyDebugEnvironment } from "./verify";
 import { resolveDebugCapabilities } from "./capabilities";
-import type { DebugCapability } from "../../infra/target/debug";
-
-type DebugCapabilityResolver = () => Promise<readonly DebugCapability[] | undefined>;
-
-function createDebugCapabilityResolver(): DebugCapabilityResolver {
-  let resolved: Promise<readonly DebugCapability[] | undefined> | undefined;
-  return () => {
-    resolved ??= resolveDebugCapabilities();
-    return resolved;
-  };
-}
+import { offerDebugInstall } from "./install-follow-up";
 
 async function runDebugTargets(
   opts: DebugCliOpts,
@@ -63,13 +53,11 @@ async function runDebugTargets(
   let failed = failedBeforeRun;
   const resolvedOpts = resolveDebugBatchOptions(opts, config);
   const imageCache = new Map<string, Promise<PreparedDebugImage>>();
-  const capabilityResolver = createDebugCapabilityResolver();
   for (const [pod, container] of targets) {
     const code = await runDebugTarget(
       { ...resolvedOpts, services: undefined, pod, container },
       commandContext,
       imageCache,
-      capabilityResolver,
     );
     if (code === 130) return 130;
     if (code !== 0) failed = true;
@@ -257,11 +245,10 @@ async function runDebugTarget(
   opts: DebugCliOpts,
   commandContext: CommandContext,
   imageCache?: Map<string, Promise<PreparedDebugImage>>,
-  capabilityResolver: DebugCapabilityResolver = createDebugCapabilityResolver(),
 ): Promise<number> {
   const target = await resolveDebugTarget(opts, commandContext);
   if (!target) return 130;
-  const capabilities = await capabilityResolver();
+  const capabilities = await resolveDebugCapabilities(commandContext);
   if (!capabilities) return 130;
   // A ready debug environment fully satisfies `doctor debug`; image resolution, registry
   // access, and preparation belong only to the missing-environment path.
@@ -310,7 +297,19 @@ async function runDebugTarget(
       `[debug] image: ${resolved.prepared.image}（同平台已验证，批量复用）\n`,
     );
   }
-  return deployDebugEnvironment(target, resolved.prepared, capabilities, opts, true);
+  const deployed = await deployDebugEnvironment(
+    target,
+    resolved.prepared,
+    capabilities,
+    opts,
+    true,
+  );
+  if (deployed !== 0) return deployed;
+  return offerDebugInstall(
+    target,
+    opts,
+    commandContext,
+  );
 }
 
 /** Select target → reuse, otherwise deploy a prepared registry image or reuse the target image. */

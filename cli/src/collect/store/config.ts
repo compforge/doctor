@@ -30,8 +30,8 @@ import {
 } from "../../terminal/selection";
 import { terminalStdout } from "../../terminal/output";
 import {
+  resolveUserSelection,
   selectionCandidateLabel,
-  selectionPurposeKey,
   type SelectionContext,
 } from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
@@ -254,8 +254,11 @@ async function resolveServicePod(input: {
   if (!input.interactive) throw new Error(`Service '${input.service}' 有多个 Running Pod；请用 --pod <pod> 指定`);
   const selectPod = () => promptPod(choices, { selection: input.selection });
   return input.commandContext
-    ? input.commandContext.resolveSelection(
-        selectionPurposeKey(input.selection, "Pod", [input.namespace]),
+    ? resolveUserSelection(
+        input.commandContext,
+        input.selection,
+        "Pod",
+        [input.namespace],
         selectPod,
       )
     : selectPod();

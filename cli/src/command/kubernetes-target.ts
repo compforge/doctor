@@ -33,8 +33,8 @@ import {
   type RecentSelections,
 } from "../infra/recent";
 import {
+  resolveUserSelection,
   selectionCandidateLabel,
-  selectionPurposeKey,
   type SelectionContext,
 } from "../terminal/selection-context";
 
@@ -223,8 +223,11 @@ export async function resolvePodTarget(input: {
       listedChoices: keyword ? true : recentPods,
     });
     const pod = input.commandContext
-      ? await input.commandContext.resolveSelection(
-          selectionPurposeKey(input.selection, "Pod", [namespace]),
+      ? await resolveUserSelection(
+          input.commandContext,
+          input.selection,
+          "Pod",
+          [namespace],
           selectPod,
         )
       : await selectPod();
@@ -280,8 +283,11 @@ export async function resolvePodTarget(input: {
   printContainerChoices(containers, pod, input.selection);
   const selectContainer = () => promptContainer(containers, input.selection);
   const container = input.commandContext
-    ? await input.commandContext.resolveSelection(
-        selectionPurposeKey(input.selection, "Container", [namespace, pod]),
+    ? await resolveUserSelection(
+        input.commandContext,
+        input.selection,
+        "Container",
+        [namespace, pod],
         selectContainer,
       )
     : await selectContainer();
@@ -313,8 +319,11 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
     }
     const selectPod = () => promptPod([], { selection: input.selection });
     pod = input.commandContext
-      ? await input.commandContext.resolveSelection(
-          selectionPurposeKey(input.selection, "Pod", [input.config.kubernetes.namespace]),
+      ? await resolveUserSelection(
+          input.commandContext,
+          input.selection,
+          "Pod",
+          [input.config.kubernetes.namespace],
           selectPod,
         )
       : await selectPod();
@@ -398,8 +407,11 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
   printContainerChoices(containers, pod, input.selection);
   const selectContainer = () => promptContainer(containers, input.selection);
   const container = input.commandContext
-    ? await input.commandContext.resolveSelection(
-        selectionPurposeKey(input.selection, "Container", [input.config.kubernetes.namespace, pod]),
+    ? await resolveUserSelection(
+        input.commandContext,
+        input.selection,
+        "Container",
+        [input.config.kubernetes.namespace, pod],
         selectContainer,
       )
     : await selectContainer();

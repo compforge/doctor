@@ -8,7 +8,8 @@ Ephemeral Container；命令不替用户判断应该修改哪一个。安装会�
 重建后结果消失，因此执行前必须展示目标和影响并取得确认。
 
 APT、APK、DNF、microdnf 和 YUM 是 `infra/target/package-install` 中的实现适配器，不进入命令名称。
-`doctor debug` 只管理 debug Ephemeral Container，不再承担软件安装。
+`doctor debug` 只管理 debug Ephemeral Container，不承担软件安装；新建容器后发现当前目录存在有效 package tar
+时，可以把这个精确目标交给独立的 `doctor install` 流程。
 
 ## 流程
 
@@ -32,9 +33,10 @@ APT、APK、DNF、microdnf 和 YUM 是 `infra/target/package-install` 中的实�
 
 ### 安装目标由用户显式选择
 
-Doctor 不把 debug container 设为隐式目标，也不从业务 container 自动跳转到某个临时容器。终端始终打印
-`pod/<pod> container/<container>`，避免用户授权对象和实际修改对象不一致。只读 root filesystem、非 root
-身份或包管理器不可用时，安装自然失败并报告原始原因，不尝试 rollout 或替换工作负载。
+独立执行 `doctor install` 时，目标始终由用户选择。`doctor debug` 创建新容器后的后续入口只传递刚创建的
+精确目标，不复用其它临时容器；终端仍打印 `pod/<pod> container/<container>`，并在实际写入前单独确认，
+避免用户授权对象和实际修改对象不一致。只读 root filesystem、非 root 身份或包管理器不可用时，安装自然
+失败并报告原始原因，不尝试 rollout 或替换工作负载。
 
 ### 单文件分发，variant 运行期选择
 

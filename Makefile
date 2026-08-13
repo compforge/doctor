@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := build
 
-.PHONY: deps build-deps check-plugin-version bump-plugin-version build build-local install clean
+.PHONY: deps build-deps check-plugin-version bump-plugin-version lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local install clean
 
 ROOT_DIR := $(abspath .)
 DIST_DIR := $(ROOT_DIR)/dist
@@ -9,6 +9,7 @@ PLUGIN ?= example
 PLUGIN_ROOT := $(ROOT_DIR)/plugins/$(PLUGIN)
 PLUGIN_VERSION_TOOL := $(ROOT_DIR)/packages/plugin/scripts/version.ts
 PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION),)
+CHECK_JOBS ?= 4
 
 deps:
 	bun install --frozen-lockfile
@@ -25,6 +26,38 @@ check-plugin-version:
 
 bump-plugin-version:
 	bun $(PLUGIN_VERSION_TOOL) bump $(PLUGIN_ROOT) $(PLUGIN_VERSION_ARGS)
+
+lint:
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec check-plugin-version
+
+lint-ci: lint
+
+lint-cli:
+	bun run typecheck:cli
+
+lint-agent:
+	bun run typecheck:agent
+
+lint-plugin-sdk:
+	bun run typecheck:plugin-sdk
+
+lint-example-plugin:
+	bun run typecheck:example-plugin
+
+lint-spec:
+	bun run specgen:check
+
+test:
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) test-cli test-agent test-plugin-sdk
+
+test-cli:
+	bun run test:cli
+
+test-agent:
+	bun run test:agent
+
+test-plugin-sdk:
+	bun run test:plugin-sdk
 
 build: build-deps check-plugin-version
 	rm -rf $(DIST_DIR)

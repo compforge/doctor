@@ -39,6 +39,7 @@ import {
 } from "../src/infra/k8s/platform";
 import type { Executor } from "../src/infra/k8s/executor";
 import { RecentSelections } from "../src/infra/recent";
+import { CommandContext } from "../src/command";
 
 function writeMetadataTar(path: string, files: Record<string, string>): void {
   const blocks: Buffer[] = [];
@@ -188,11 +189,12 @@ test("doctor image 可独立或同时准备 Registry 与 Doctor Host", async () 
     config: "/does/not/exist",
   };
   const target = "registry.example.com/dev/service-a:1";
+  const commandContext = new CommandContext({});
   try {
     expect(await runDoctorImage(
       undefined,
       { ...common, host: true },
-      undefined as never,
+      commandContext,
     )).toBe(0);
     expect({ registryImports, hostPreparations }).toEqual({
       registryImports: 0,
@@ -202,7 +204,7 @@ test("doctor image 可独立或同时准备 Registry 与 Doctor Host", async () 
     expect(await runDoctorImage(
       target,
       { ...common, registry: true },
-      undefined as never,
+      commandContext,
     )).toBe(0);
     expect({ registryImports, hostPreparations }).toEqual({
       registryImports: 1,
@@ -212,7 +214,7 @@ test("doctor image 可独立或同时准备 Registry 与 Doctor Host", async () 
     expect(await runDoctorImage(
       target,
       { ...common, registry: true, host: true },
-      undefined as never,
+      commandContext,
     )).toBe(0);
     expect({ registryImports, hostPreparations }).toEqual({
       registryImports: 2,
@@ -223,7 +225,7 @@ test("doctor image 可独立或同时准备 Registry 与 Doctor Host", async () 
     expect(await runDoctorImage(
       target,
       { ...common, registry: true, host: true },
-      undefined as never,
+      commandContext,
     )).toBe(1);
     expect({ registryImports, hostPreparations }).toEqual({
       registryImports: 3,
