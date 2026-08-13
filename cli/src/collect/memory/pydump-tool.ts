@@ -5,6 +5,7 @@ export const PYDUMP_VERSION = "0.1.0";
 /** Collector、Agent 与 heap 的执行容器落点；仅在用户明确授权时整目录删除。 */
 export const PYDUMP_TOOL_DIR = "/tmp/doctor-pydump";
 export const PYDUMP_COLLECTOR_PATH = "/opt/doctor/bin/pydump";
+export const PYDUMP_INJECTOR_PATH = "/opt/doctor/bin/pydump-injector";
 export const PYDUMP_AGENT_DIR = "/opt/doctor/lib/pydump";
 export const PYDUMP_AGENT_MIN_GLIBC_VERSIONS = ["2.17"] as const;
 
@@ -88,7 +89,7 @@ fields = open(f"/proc/{master_pid}/stat").read().rsplit(")", 1)[1].split()
 if fields[19] != expected_start_time:
     raise SystemExit(f"Uvicorn master pid={master_pid} 已发生复用，拒绝发送 SIGCONT")
 
-# GDB detach 后先让 worker 的 pong 线程恢复，再唤醒可能停在 health-check 中的 master。
+# Agent dump 结束后先让 worker 的 pong 线程恢复，再唤醒可能停在 health-check 中的 master。
 time.sleep(settle_seconds)
 os.kill(master_pid, signal.SIGCONT)
 try:
@@ -152,25 +153,29 @@ export function resumeUvicornSupervisorCmd(
 }
 
 /** 探测执行容器是否具备运行 dumper 的完整前置。 */
-export function pydumpPrereqCmd(collectorPath = PYDUMP_COLLECTOR_PATH): string[] {
+export function pydumpPrereqCmd(
+  collectorPath = PYDUMP_COLLECTOR_PATH,
+  injectorPath = PYDUMP_INJECTOR_PATH,
+): string[] {
   // 输出固定 key=value 行，避免 PATH 差异下解析歧义。
   return [
     "sh",
     "-c",
-    `python="$(command -v python3 || true)"; gdb="$(command -v gdb || true)"; `
+    `python="$(command -v python3 || true)"; `
     + `if { [ -d ${PYDUMP_TOOL_DIR} ] && [ -w ${PYDUMP_TOOL_DIR} ]; } `
     + `|| { [ ! -e ${PYDUMP_TOOL_DIR} ] && [ -w /tmp ]; }; then writable=yes; else writable=no; fi; `
-    + `printf "python3=%s\\ngdb=%s\\nwritable=%s\\ncollector=%s\\n" `
-    + `"${"$"}{python:-missing}" "${"$"}{gdb:-missing}" "$writable" `
-    + `"$([ -x ${collectorPath} ] && echo ${collectorPath} || echo missing)"`,
+    + `printf "python3=%s\\nwritable=%s\\ncollector=%s\\ninjector=%s\\n" `
+    + `"${"$"}{python:-missing}" "$writable" `
+    + `"$([ -x ${collectorPath} ] && echo ${collectorPath} || echo missing)" `
+    + `"$([ -x ${injectorPath} ] && echo ${injectorPath} || echo missing)"`,
   ];
 }
 
 export interface PydumpPrereqs {
   python3: boolean;
-  gdb: boolean;
   writable: boolean;
   collector: boolean;
+  injector: boolean;
 }
 
 export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
@@ -185,22 +190,22 @@ export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
       }),
   );
   const python3 = entries.get("python3");
-  const gdb = entries.get("gdb");
   const writable = entries.get("writable");
   const collector = entries.get("collector");
+  const injector = entries.get("injector");
   if (
     python3 === undefined
-    || gdb === undefined
     || writable === undefined
     || collector === undefined
+    || injector === undefined
   ) {
     return undefined;
   }
   return {
     python3: python3 !== "missing" && python3 !== "",
-    gdb: gdb !== "missing" && gdb !== "",
     writable: writable === "yes",
     collector: collector !== "missing" && collector !== "",
+    injector: injector !== "missing" && injector !== "",
   };
 }
 
@@ -343,6 +348,7 @@ export function runPydumpDumpCmd(
   heapFile: string,
   strReprLen: number,
   agentPath: string,
+  injectorPath: string,
   noAttribute = false,
   collectorPath = PYDUMP_COLLECTOR_PATH,
 ): string[] {
@@ -350,7 +356,8 @@ export function runPydumpDumpCmd(
     "sh",
     "-c",
     `mkdir -p ${PYDUMP_TOOL_DIR} && TMPDIR=${PYDUMP_TOOL_DIR} `
-    + `${collectorPath} --pid ${pid} --file ${heapFile} --agent ${agentPath} --str-repr-len ${strReprLen}`
+    + `${collectorPath} --pid ${pid} --file ${heapFile} --agent ${agentPath} `
+    + `--injector ${injectorPath} --str-repr-len ${strReprLen}`
     + (noAttribute ? " --no-attribute" : ""),
   ];
 }

@@ -10,8 +10,8 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 make build
 ```
 
-Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、Pydump 等诊断工具。它们与 debug image、GDB 离线包统一由
-根目录 `toolkit/` 独立版本和构建：
+Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、Pydump 等诊断工具。Pydump Injector、GDB 等可选组件与
+debug image 统一由根目录 `toolkit/` 独立版本和构建；具体命令只准备自己选择的采集路线所需组件：
 
 ```bash
 make -C ../toolkit build OS=linux ARCH=arm64

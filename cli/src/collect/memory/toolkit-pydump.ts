@@ -23,10 +23,11 @@ export function resolveHostPydumpAnalyzer(): string {
 
 export interface KubernetesPydumpCaptureTools {
   collector: string;
+  injector: string;
   agent: string;
 }
 
-/** Resolve the Collector and runtime-compatible Agent for the execution container. */
+/** Resolve the Collector, architecture-specific Injector and runtime-compatible Agent. */
 export function resolveKubernetesPydumpCaptureTools(input: {
   pod: string;
   container: string;
@@ -37,15 +38,17 @@ export function resolveKubernetesPydumpCaptureTools(input: {
   const channel = kubernetesToolkitChannel(input);
   if (!channel) throw new Error(`Target architecture 不支持：${input.architecture}`);
   const collector = resolveTool(channel, "pydump-collector");
+  const injector = resolveTool(channel, "pydump-injector");
   const agent = resolveTool(
     channel,
     `pydump-agent-${input.pythonMinor}-min-glibc-${input.minGlibcVersion}`,
   );
-  if (!collector || !agent) {
+  if (!collector || !injector || !agent) {
     throw new Error(
       `Doctor Toolkit 缺少 ${channel.platform.os}/${channel.platform.architecture} `
-      + `Pydump Collector 或 CPython ${input.pythonMinor} / 最低 glibc ${input.minGlibcVersion} Agent`,
+      + `Pydump Collector、Injector 或 CPython ${input.pythonMinor} / `
+      + `最低 glibc ${input.minGlibcVersion} Agent`,
     );
   }
-  return { collector, agent };
+  return { collector, injector, agent };
 }

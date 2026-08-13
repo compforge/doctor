@@ -22,6 +22,7 @@ const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
   pydump: "pydump-collector",
+  "pydump-injector": "pydump-injector",
   pydump_analyzer: "pydump-analyzer",
   "py-spy": "py-spy",
 };

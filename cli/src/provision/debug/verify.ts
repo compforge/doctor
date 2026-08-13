@@ -18,7 +18,7 @@ async function ensureGdb(
     return gdb;
   }
   if (gdb.available) {
-    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；无法用于 Pydump dump\n`);
+    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；GDB 调试不可用，但不影响 Pydump Injector\n`);
     return gdb;
   }
 
@@ -38,9 +38,7 @@ export async function reportDebugCapabilities(
     `[debug] container ready: ${target.pod}/${container}`
     + `（PID namespace=${target.container}，capabilities=${capabilities.join(",")}）\n`,
   );
-  const gdb = capabilities.includes("SYS_PTRACE")
-    ? await ensureGdb(target, container)
-    : undefined;
+  if (capabilities.includes("SYS_PTRACE")) await ensureGdb(target, container);
   const manifest = await infra.target.debugEngine.inspectReadiness(
     target.executor,
     target.pod,
@@ -49,11 +47,9 @@ export async function reportDebugCapabilities(
   if (manifest.ok) {
     terminalStdout.write(`[debug] tools: doctor-debug image manifest ready\n${manifest.stdout}`);
   } else if (capabilities.includes("SYS_PTRACE")) {
-    if (gdb?.available && gdb.inferiorCall) {
-      terminalStdout.write("[debug] Pydump: GDB 前置已就绪；doctor mem 将按需上传 Collector 与 Agent\n");
-    } else {
-      terminalStdout.warning("[debug] Pydump: unavailable（GDB inferior call 验收未通过）\n");
-    }
+    terminalStdout.write(
+      "[debug] Pydump: ptrace capability 已就绪；doctor mem 将按需上传 Collector、Injector 与 Agent\n",
+    );
   }
 }
 

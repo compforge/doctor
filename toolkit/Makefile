@@ -46,6 +46,7 @@ stage-tools:
 	@if [ "$(OS)" = linux ]; then \
 		case "$(ARCH)" in amd64) py_spy=x86_64 ;; arm64) py_spy=aarch64 ;; esac; \
 		gzip -dc assets/pydump/pydump-0.1.0.pyz.gz > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump"; \
+		gzip -dc "assets/pydump/pydump-injector-0.1.0-linux-$(ARCH).gz" > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump-injector"; \
 		for minor in 3.10 3.11 3.12 3.13 3.14; do \
 			gzip -dc "assets/pydump/pydump-agent-$$minor-min-glibc-2.17-$$py_spy.so.gz" > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump-agent-$$minor-min-glibc-2.17-$$py_spy.so"; \
 		done; \

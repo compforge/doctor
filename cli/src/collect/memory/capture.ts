@@ -49,6 +49,7 @@ import {
   pydumpPrereqCmd,
   PYDUMP_TOOL_DIR,
   PYDUMP_COLLECTOR_PATH,
+  PYDUMP_INJECTOR_PATH,
   PYDUMP_VERSION,
   pydumpUploadedAgentPath,
   resumeUvicornSupervisorCmd,
@@ -72,6 +73,7 @@ export type CapturePreference = "auto" | "debug-container" | "target-container";
 export type CaptureStrategy = Exclude<CapturePreference, "auto">;
 
 const TARGET_COLLECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump`;
+const TARGET_INJECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump-injector`;
 const DUMP_TIMEOUT_MS = 15 * 60_000;
 const SUPERVISOR_AUTO_RESUME_SECONDS = DUMP_TIMEOUT_MS / 1000 + 60;
 const MAX_FETCH_RAW_BYTES = 2 * 1024 * 1024 * 1024;
@@ -199,17 +201,6 @@ export function pydumpDumpFailureReason(result: ExecResult): string {
   if (lines.some((line) => /Program terminated with signal SIGKILL/i.test(line))) {
     return "目标进程在 dump 期间被 SIGKILL";
   }
-  const gdbError = lines
-    .slice()
-    .reverse()
-    .find((line) => line.includes("gdb.error:"))
-    ?.split("gdb.error:", 2)[1]
-    ?.trim();
-  if (gdbError) {
-    return /Couldn't write extended state status/i.test(gdbError)
-      ? `GDB 无法调用目标进程函数：${gdbError}`
-      : `GDB 执行失败：${gdbError}`;
-  }
   const specificError = lines.slice().reverse().find(
     (line) => !line.toLowerCase().startsWith("warning:")
       && /\b(error|failed|failure|exception)\b/i.test(line)
@@ -229,35 +220,8 @@ function prereqDeficiencies(prereqs: ReturnType<typeof parsePydumpPrereqs>): str
   if (!prereqs) return ["前置探测输出无法解析"];
   const missing: string[] = [];
   if (!prereqs.python3) missing.push("python3");
-  if (!prereqs.gdb) missing.push("gdb");
   if (!prereqs.writable) missing.push(`可写目录 ${PYDUMP_TOOL_DIR}`);
   return missing;
-}
-
-async function verifyGdbReadiness(input: {
-  executor: Executor;
-  target: { pod: string; container: string };
-  bundle: EvidenceBundle;
-  stepId: string;
-  title: string;
-}): Promise<string | undefined> {
-  const gdb = await infra.target.debugEngine.inspectGdb(
-    input.executor,
-    input.target.pod,
-    input.target.container,
-  );
-  const ready = gdb.available && gdb.inferiorCall;
-  input.bundle.addStep({
-    id: input.stepId,
-    title: input.title,
-    risk: "observe",
-    status: ready ? "ok" : "failed",
-    reason: ready ? undefined : gdb.reason ?? "Pydump 所需 GDB 能力验收未通过",
-    output: `${JSON.stringify(gdb, null, 2)}\n`,
-  });
-  if (ready) return undefined;
-  return `GDB ${gdb.version ?? "version unknown"} 不满足 Pydump attach 前置：`
-    + `${gdb.reason ?? "inferior call 验收未通过"}`;
 }
 
 interface CaptureExecution {
@@ -266,6 +230,7 @@ interface CaptureExecution {
   container: string;
   label: string;
   collectorPath: string;
+  injectorPath: string;
 }
 
 async function verifyPtrace(input: {
@@ -311,26 +276,13 @@ async function prepareDebugExecution(input: {
       reason: `debug environment ${input.debug.executionContainer}（image=${input.debug.image}）缺少：${missing.join("、")}`,
     };
   }
-  const gdbReason = await verifyGdbReadiness({
-    executor: input.executor,
-    target,
-    bundle: input.bundle,
-    stepId: "mem-debug-gdb",
-    title: "验证 debug container 的 GDB attach 能力",
-  });
-  if (gdbReason) {
-    return {
-      reason: `debug environment ${input.debug.executionContainer}（image=${input.debug.image}）的 `
-        + `${gdbReason}；请更换包含兼容 GDB 的 doctor debug image，`
-        + "或对该 debug container 执行 doctor install gdb",
-    };
-  }
   const execution: CaptureExecution = {
     strategy: "debug-container",
     target,
     container: input.debug.executionContainer,
     label: `${input.pod}/${input.debug.executionContainer}`,
     collectorPath: prereqs?.collector ? PYDUMP_COLLECTOR_PATH : TARGET_COLLECTOR_PATH,
+    injectorPath: prereqs?.injector ? PYDUMP_INJECTOR_PATH : TARGET_INJECTOR_PATH,
   };
   const ptraceReason = await verifyPtrace({ ...input, execution });
   return ptraceReason ? { reason: `debug container 无法 attach：${ptraceReason}` } : { execution };
@@ -347,7 +299,7 @@ async function prepareTargetExecution(input: {
   const target = { pod: input.pod, container: input.container.name };
   const prereqResult = await input.executor.exec(
     target,
-    pydumpPrereqCmd(TARGET_COLLECTOR_PATH),
+    pydumpPrereqCmd(TARGET_COLLECTOR_PATH, TARGET_INJECTOR_PATH),
     { timeoutMs: 20_000 },
   );
   recordStep(input.bundle, "mem-target-prereq", "确认目标容器的 Pydump attach 前置", prereqResult);
@@ -356,25 +308,13 @@ async function prepareTargetExecution(input: {
   if (missing.length) {
     return { reason: `目标容器 ${input.container.name} 缺少：${missing.join("、")}` };
   }
-  const gdbReason = await verifyGdbReadiness({
-    executor: input.executor,
-    target,
-    bundle: input.bundle,
-    stepId: "mem-target-gdb",
-    title: "验证目标容器的 GDB attach 能力",
-  });
-  if (gdbReason) {
-    return {
-      reason: `目标容器 ${input.container.name} 的 ${gdbReason}；`
-        + "请先对该容器执行 doctor install gdb",
-    };
-  }
   const execution: CaptureExecution = {
     strategy: "target-container",
     target,
     container: input.container.name,
     label: `${input.pod}/${input.container.name}`,
     collectorPath: TARGET_COLLECTOR_PATH,
+    injectorPath: TARGET_INJECTOR_PATH,
   };
   const ptraceReason = await verifyPtrace({ ...input, execution });
   if (ptraceReason) return { reason: `目标容器无法 attach：${ptraceReason}` };
@@ -446,7 +386,7 @@ async function prepareExecutionTools(input: {
   execution: CaptureExecution;
   runtime: PydumpRuntimeSelection;
   bundle: EvidenceBundle;
-}): Promise<{ collectorPath: string; agentPath: string } | { reason: string }> {
+}): Promise<{ collectorPath: string; injectorPath: string; agentPath: string } | { reason: string }> {
   const { pythonMinor, architecture, agentMinGlibc } = input.runtime;
   const imageAgentPath = pydumpImageAgentPath(
     pythonMinor,
@@ -459,9 +399,14 @@ async function prepareExecutionTools(input: {
     { timeoutMs: 10_000 },
   );
   const needCollector = input.execution.collectorPath === TARGET_COLLECTOR_PATH;
+  const needInjector = input.execution.injectorPath === TARGET_INJECTOR_PATH;
   const needAgent = !bundledAgent.ok;
-  if (!needCollector && !needAgent) {
-    return { collectorPath: input.execution.collectorPath, agentPath: imageAgentPath };
+  if (!needCollector && !needInjector && !needAgent) {
+    return {
+      collectorPath: input.execution.collectorPath,
+      injectorPath: input.execution.injectorPath,
+      agentPath: imageAgentPath,
+    };
   }
 
   let tools: ReturnType<typeof resolveKubernetesPydumpCaptureTools>;
@@ -486,6 +431,16 @@ async function prepareExecutionTools(input: {
     recordStep(input.bundle, "mem-upload-collector", "临时上传 Pydump Collector", upload, "overhead");
     if (!upload.ok) return { reason: `Pydump Collector 上传失败：${failReason(upload)}` };
   }
+  if (needInjector) {
+    const upload = await infra.fileTransfer.uploadToTarget({
+      executor: input.executor,
+      target: input.execution.target,
+      hostPath: tools.injector,
+      targetPath: TARGET_INJECTOR_PATH,
+    });
+    recordStep(input.bundle, "mem-upload-injector", "临时上传 Pydump Injector", upload, "overhead");
+    if (!upload.ok) return { reason: `Pydump Injector 上传失败：${failReason(upload)}` };
+  }
   const agentPath = needAgent
     ? pydumpUploadedAgentPath(pythonMinor, architecture, agentMinGlibc)
     : imageAgentPath;
@@ -506,15 +461,16 @@ async function prepareExecutionTools(input: {
     if (!upload.ok) return { reason: `Pydump Agent 上传失败：${failReason(upload)}` };
   }
   const collectorPath = needCollector ? TARGET_COLLECTOR_PATH : input.execution.collectorPath;
+  const injectorPath = needInjector ? TARGET_INJECTOR_PATH : input.execution.injectorPath;
   const verify = await input.executor.exec(
     input.execution.target,
-    ["sh", "-c", `test -x ${collectorPath} && test -r ${agentPath}`],
+    ["sh", "-c", `test -x ${collectorPath} && test -x ${injectorPath} && test -r ${agentPath}`],
     { timeoutMs: 10_000 },
   );
-  recordStep(input.bundle, "mem-pydump-tools", "确认 Pydump Collector 与 Agent", verify);
+  recordStep(input.bundle, "mem-pydump-tools", "确认 Pydump Collector、Injector 与 Agent", verify);
   return verify.ok
-    ? { collectorPath, agentPath }
-    : { reason: "Pydump Collector 或 Agent 上传后不可用" };
+    ? { collectorPath, injectorPath, agentPath }
+    : { reason: "Pydump Collector、Injector 或 Agent 上传后不可用" };
 }
 
 export interface HeapCaptureConfirmation {
@@ -798,6 +754,7 @@ export async function captureMemoryHeap(
         heapFile,
         params.strReprLen,
         preparedTools.agentPath,
+        preparedTools.injectorPath,
         params.detail === "lite",
         preparedTools.collectorPath,
       ),
