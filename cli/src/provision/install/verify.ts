@@ -19,5 +19,5 @@ export function verifyGdbCapability(
 }
 
 export function gdbReady(verification: GdbCapabilityVerification): boolean {
-  return verification.pythonScripting && verification.inferiorCall;
+  return verification.available && verification.inferiorCall;
 }

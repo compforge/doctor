@@ -1,14 +1,18 @@
-// PyHeap dumper 既可来自 doctor debug image，也可由 doctor CLI 临时上传到已经具备
-// Python、GDB Python scripting、ptrace 与可写临时目录的目标容器。
-//
-// dumper 经 GDB attach 后向目标解释器注入 dump 代码——对象遍历与 dump 写入发生在
-// 业务进程内（此期间持有 GIL），这是 debugger-attach 级副作用，调用方必须先取得用户确认。
-export const PYHEAP_VERSION = "0.7.0+doctor.2";
+// Collector 持有随堆规模增长的队列和去重索引；目标 Python 进程仅加载有界 C Agent。
+// attach 与持有 GIL 仍会暂停业务进程，所以调用方必须先取得用户确认。
+export const PYDUMP_VERSION = "0.1.0";
 
-/** dumper、PEX/analyzer cache 与 heap/JSON 的执行容器落点；仅在用户明确授权时整目录删除。 */
-export const PYHEAP_TOOL_DIR = "/tmp/doctor-pyheap";
-export const PYHEAP_DUMP_PEX_PATH = "/opt/doctor/bin/pyheap_dump";
-export const PYHEAP_ANALYZER_PEX_PATH = "/opt/doctor/bin/pyheap_analyzer";
+/** Collector、Agent 与 heap 的执行容器落点；仅在用户明确授权时整目录删除。 */
+export const PYDUMP_TOOL_DIR = "/tmp/doctor-pydump";
+export const PYDUMP_COLLECTOR_PATH = "/opt/doctor/bin/pydump";
+export const PYDUMP_AGENT_DIR = "/opt/doctor/lib/pydump";
+export const PYDUMP_AGENT_MIN_GLIBC_VERSIONS = ["2.17"] as const;
+
+export interface PydumpTargetLibc {
+  family: "glibc" | "musl" | "unknown";
+  version?: string;
+  raw?: string;
+}
 
 export interface UvicornSupervisorGuard {
   masterPid: number;
@@ -148,30 +152,28 @@ export function resumeUvicornSupervisorCmd(
 }
 
 /** 探测执行容器是否具备运行 dumper 的完整前置。 */
-export function pyheapPrereqCmd(dumpPath = PYHEAP_DUMP_PEX_PATH): string[] {
+export function pydumpPrereqCmd(collectorPath = PYDUMP_COLLECTOR_PATH): string[] {
   // 输出固定 key=value 行，避免 PATH 差异下解析歧义。
   return [
     "sh",
     "-c",
     `python="$(command -v python3 || true)"; gdb="$(command -v gdb || true)"; `
-    + `if [ -n "$gdb" ] && "$gdb" -nx -batch -ex 'python import sys' -ex quit >/dev/null 2>&1; then gdb_python=yes; else gdb_python=no; fi; `
-    + `if { [ -d ${PYHEAP_TOOL_DIR} ] && [ -w ${PYHEAP_TOOL_DIR} ]; } `
-    + `|| { [ ! -e ${PYHEAP_TOOL_DIR} ] && [ -w /tmp ]; }; then writable=yes; else writable=no; fi; `
-    + `printf "python3=%s\\ngdb=%s\\ngdb_python=%s\\nwritable=%s\\npyheap=%s\\n" `
-    + `"${"$"}{python:-missing}" "${"$"}{gdb:-missing}" "$gdb_python" "$writable" `
-    + `"$([ -x ${dumpPath} ] && echo ${dumpPath} || echo missing)"`,
+    + `if { [ -d ${PYDUMP_TOOL_DIR} ] && [ -w ${PYDUMP_TOOL_DIR} ]; } `
+    + `|| { [ ! -e ${PYDUMP_TOOL_DIR} ] && [ -w /tmp ]; }; then writable=yes; else writable=no; fi; `
+    + `printf "python3=%s\\ngdb=%s\\nwritable=%s\\ncollector=%s\\n" `
+    + `"${"$"}{python:-missing}" "${"$"}{gdb:-missing}" "$writable" `
+    + `"$([ -x ${collectorPath} ] && echo ${collectorPath} || echo missing)"`,
   ];
 }
 
-export interface PyheapPrereqs {
+export interface PydumpPrereqs {
   python3: boolean;
   gdb: boolean;
-  gdbPython: boolean;
   writable: boolean;
-  pyheap: boolean;
+  collector: boolean;
 }
 
-export function parsePyheapPrereqs(output: string): PyheapPrereqs | undefined {
+export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
   const entries = new Map(
     output
       .split("\n")
@@ -184,68 +186,182 @@ export function parsePyheapPrereqs(output: string): PyheapPrereqs | undefined {
   );
   const python3 = entries.get("python3");
   const gdb = entries.get("gdb");
-  const gdbPython = entries.get("gdb_python");
   const writable = entries.get("writable");
-  const pyheap = entries.get("pyheap");
+  const collector = entries.get("collector");
   if (
     python3 === undefined
     || gdb === undefined
-    || gdbPython === undefined
     || writable === undefined
-    || pyheap === undefined
+    || collector === undefined
   ) {
     return undefined;
   }
   return {
     python3: python3 !== "missing" && python3 !== "",
     gdb: gdb !== "missing" && gdb !== "",
-    gdbPython: gdbPython === "yes",
     writable: writable === "yes",
-    pyheap: pyheap !== "missing" && pyheap !== "",
+    collector: collector !== "missing" && collector !== "",
   };
 }
 
+const TARGET_PYTHON_MINOR_SCRIPT = String.raw`
+import os
+import re
+import sys
+
+pid = int(sys.argv[1])
+library = re.compile(r"libpython(?P<version>3\.[0-9]+).*\.so(?:\.|$)")
+executable = re.compile(r"python(?P<version>3\.[0-9]+)(?:$|[^0-9])")
+candidates = [os.readlink(f"/proc/{pid}/exe")]
+with open(f"/proc/{pid}/maps", encoding="utf-8") as maps:
+    candidates.extend(line.split(maxsplit=5)[-1].strip() for line in maps if "/" in line)
+versions = set()
+for candidate in candidates:
+    match = library.search(candidate) or executable.search(os.path.basename(candidate))
+    if match:
+        versions.add(match.group("version"))
+if len(versions) != 1:
+    raise SystemExit("cannot uniquely detect target CPython minor: " + ", ".join(sorted(versions)))
+version = versions.pop()
+if version not in {"3.10", "3.11", "3.12", "3.13", "3.14"}:
+    raise SystemExit(f"unsupported target CPython {version}; pydump supports 3.10-3.14")
+print(version)
+`;
+
+export function targetPythonMinorCmd(pid: number): string[] {
+  return ["python3", "-c", TARGET_PYTHON_MINOR_SCRIPT, String(pid)];
+}
+
+export function parseTargetPythonMinor(output: string): string | undefined {
+  const minor = output.trim().split("\n").at(-1)?.trim();
+  return minor && /^3\.(?:10|11|12|13|14)$/.test(minor) ? minor : undefined;
+}
+
+const TARGET_LIBC_SCRIPT = String.raw`
+import json
+import os
+import re
+import sys
+
+pid = int(sys.argv[1])
+raw = ""
+try:
+    raw = os.confstr("CS_GNU_LIBC_VERSION") or ""
+except (OSError, ValueError):
+    pass
+match = re.search(r"\bglibc\s+([0-9]+(?:\.[0-9]+)+)", raw, re.IGNORECASE)
+if match:
+    result = {"family": "glibc", "version": match.group(1), "raw": raw}
+else:
+    with open(f"/proc/{pid}/maps", encoding="utf-8") as maps:
+        mapped = maps.read().lower()
+    family = "musl" if "musl" in mapped else "unknown"
+    result = {"family": family, "raw": raw or None}
+print(json.dumps(result, separators=(",", ":")))
+`;
+
+/** Probe the libc actually used by the target Python binary, inside its own container root. */
+export function targetLibcCmd(pid: number): string[] {
+  return [
+    `/proc/${pid}/exe`,
+    "-I",
+    "-S",
+    "-c",
+    TARGET_LIBC_SCRIPT,
+    String(pid),
+  ];
+}
+
+export function parsePydumpTargetLibc(output: string): PydumpTargetLibc | undefined {
+  try {
+    const parsed = JSON.parse(output.trim().split("\n").at(-1) ?? "") as {
+      family?: unknown;
+      version?: unknown;
+      raw?: unknown;
+    };
+    if (
+      parsed.family !== "glibc"
+      && parsed.family !== "musl"
+      && parsed.family !== "unknown"
+    ) {
+      return undefined;
+    }
+    return {
+      family: parsed.family,
+      version: typeof parsed.version === "string" ? parsed.version : undefined,
+      raw: typeof parsed.raw === "string" ? parsed.raw : undefined,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function versionParts(version: string): number[] | undefined {
+  const match = /^(\d+(?:\.\d+)+)/.exec(version.trim());
+  return match?.[1]?.split(".").map(Number);
+}
+
+export function compareRuntimeVersions(left: string, right: string): number | undefined {
+  const leftParts = versionParts(left);
+  const rightParts = versionParts(right);
+  if (!leftParts || !rightParts) return undefined;
+  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
+    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (difference !== 0) return difference;
+  }
+  return 0;
+}
+
+/** Select the newest packaged Agent whose minimum glibc is satisfied by the target. */
+export function selectPydumpAgentMinGlibc(targetVersion: string): string | undefined {
+  return PYDUMP_AGENT_MIN_GLIBC_VERSIONS
+    .filter((minimum) => (compareRuntimeVersions(targetVersion, minimum) ?? -1) >= 0)
+    .at(-1);
+}
+
+export function pydumpImageAgentPath(
+  pythonMinor: string,
+  architecture: string,
+  minGlibcVersion: string,
+): string {
+  return `${PYDUMP_AGENT_DIR}/pydump-agent-${pythonMinor}-min-glibc-${minGlibcVersion}-${architecture}.so`;
+}
+
+export function pydumpUploadedAgentPath(
+  pythonMinor: string,
+  architecture: string,
+  minGlibcVersion: string,
+): string {
+  return `${PYDUMP_TOOL_DIR}/pydump-agent-${pythonMinor}-min-glibc-${minGlibcVersion}-${architecture}.so`;
+}
+
 /**
- * 在目标容器内执行 heap dump。PEX_ROOT 必须指向可写目录：PEX 启动时自解压到该处，
- * 容器内 HOME 常不可写，缺省值会直接 bootstrap 失败。
+ * Collector 在执行容器内保留 O(N) 的图遍历状态，Agent 仅在目标进程中保留有界状态。
  */
-export function runPyheapDumpCmd(
+export function runPydumpDumpCmd(
   pid: number,
   heapFile: string,
   strReprLen: number,
+  agentPath: string,
   noAttribute = false,
-  dumpPath = PYHEAP_DUMP_PEX_PATH,
+  collectorPath = PYDUMP_COLLECTOR_PATH,
 ): string[] {
   return [
     "sh",
     "-c",
-    `mkdir -p ${PYHEAP_TOOL_DIR} && PEX_ROOT=${PYHEAP_TOOL_DIR}/pex TMPDIR=${PYHEAP_TOOL_DIR} `
-    + `python3 ${dumpPath} --pid ${pid} --file ${heapFile} --str-repr-len ${strReprLen}`
+    `mkdir -p ${PYDUMP_TOOL_DIR} && TMPDIR=${PYDUMP_TOOL_DIR} `
+    + `${collectorPath} --pid ${pid} --file ${heapFile} --agent ${agentPath} --str-repr-len ${strReprLen}`
     + (noAttribute ? " --no-attribute" : ""),
   ];
 }
 
-/** dump 完成且目标进程恢复后，在 debug container 内生成低内存占用的 summary JSON。 */
-export function runPyheapSummaryCmd(
-  heapFile: string,
-  analysisFile: string,
-): string[] {
-  return [
-    "sh",
-    "-c",
-    `PEX_ROOT=${PYHEAP_TOOL_DIR}/pex PYHEAP_CACHE_DIR=${PYHEAP_TOOL_DIR}/cache `
-    + `python3 ${PYHEAP_ANALYZER_PEX_PATH} summary --file ${heapFile} > ${analysisFile}`,
-  ];
-}
-
 /** heap 与 analyzer 都已回传本机后，执行完整 retained-heap 分析。 */
-export function localPyheapRetainedArgv(
+export function localPydumpRetainedArgv(
   analyzerFile: string,
   heapFile: string,
   topN = 100,
 ): string[] {
   return [
-    "python3",
     analyzerFile,
     "retained-heap",
     "--file",
@@ -314,6 +430,6 @@ export function compressFileCmd(src: string, dst: string): string[] {
   return ["python3", "-c", COMPRESS_FILE_SCRIPT, src, dst];
 }
 
-export function cleanupPyheapCmd(): string[] {
-  return ["sh", "-c", `rm -rf ${PYHEAP_TOOL_DIR}`];
+export function cleanupPydumpCmd(): string[] {
+  return ["sh", "-c", `rm -rf ${PYDUMP_TOOL_DIR}`];
 }

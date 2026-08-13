@@ -37,20 +37,20 @@ import {
   readMemoryCaptureArtifact,
   resolveCaptureHeapPath,
 } from "./capture-artifact";
-import { diagnosePyHeapAnalysis } from "./detector/pyheap";
-import { resolveHostPyHeapTool } from "./toolkit-pyheap";
+import { diagnosePydumpAnalysis } from "./detector/pydump";
+import { resolveHostPydumpAnalyzer } from "./toolkit-pydump";
 import {
   findLocalDoctorDebugImages,
-  localContainerPyHeapAnalyzerArgv,
-  supportsPyHeapAnalyzer,
+  localContainerPydumpAnalyzerArgv,
+  supportsPydumpAnalyzer,
 } from "./local-container-analyzer";
 import {
-  PYHEAP_ANALYSIS_SCHEMA,
-  readPyHeapAnalysis,
-  type PyHeapAnalysis,
-} from "./pyheap-analysis";
-import { buildPyHeapAnalysisHtml, buildPyHeapPieCharts } from "./pyheap-render";
-import { localPyheapRetainedArgv, PYHEAP_VERSION } from "./pyheap-tool";
+  PYDUMP_ANALYSIS_SCHEMA,
+  readPydumpAnalysis,
+  type PydumpAnalysis,
+} from "./pydump-analysis";
+import { buildPydumpAnalysisHtml, buildPydumpPieCharts } from "./pydump-render";
+import { localPydumpRetainedArgv, PYDUMP_VERSION } from "./pydump-tool";
 
 export interface MemoryAnalysisOptions {
   inputs?: string[];
@@ -62,7 +62,7 @@ interface ResolvedAnalysis {
   inputPath: string;
   heapPath?: string;
   analysisPath: string;
-  analysis: PyHeapAnalysis;
+  analysis: PydumpAnalysis;
   reused: boolean;
 }
 
@@ -84,7 +84,7 @@ function artifactSchema(path: string): string | undefined {
 }
 
 function analysisPathForHeap(heapPath: string): string {
-  return heapPath.replace(/\.pyheap$/i, ".pyheap-analysis.json");
+  return heapPath.replace(/\.pyheap$/i, ".pydump-analysis.json");
 }
 
 export function findMemoryAnalysisInputs(directory: string): string[] {
@@ -97,12 +97,12 @@ export function findMemoryAnalysisInputs(directory: string): string[] {
     .map((name) => join(directory, name))
     .filter((path) => artifactSchema(path) === MEMORY_CAPTURE_SCHEMA);
   if (captures.length) return captures;
-  const analyses = files.filter((name) => /\.pyheap-analysis\.json$/i.test(name));
+  const analyses = files.filter((name) => /\.pydump-analysis\.json$/i.test(name));
   if (analyses.length) return analyses.map((name) => join(directory, name));
   return files.filter((name) => /\.pyheap$/i.test(name)).map((name) => join(directory, name));
 }
 
-type PyHeapAnalyzerBackend =
+type PydumpAnalyzerBackend =
   | { kind: "native"; analyzer: string }
   | { kind: "container"; engine: LocalContainerEngine; image: string };
 
@@ -120,13 +120,13 @@ function localFailure(result: {
     || `exit=${result.exitCode ?? "unknown"}`;
 }
 
-async function resolvePyHeapAnalyzerBackend(): Promise<PyHeapAnalyzerBackend> {
+async function resolvePydumpAnalyzerBackend(): Promise<PydumpAnalyzerBackend> {
   let containerReason = "未发现可用的 Docker、Podman 或 nerdctl";
   const execution = await infra.host.resolveExecution({
     container: async (engine) => {
       const images = await findLocalDoctorDebugImages(engine);
       for (const image of images) {
-        if (await supportsPyHeapAnalyzer(engine, image)) return { image };
+        if (await supportsPydumpAnalyzer(engine, image)) return { image };
       }
       containerReason = `${engine.name} 中没有携带兼容 analyzer 的 doctor-debug image`;
       return undefined;
@@ -137,33 +137,21 @@ async function resolvePyHeapAnalyzerBackend(): Promise<PyHeapAnalyzerBackend> {
       );
       let analyzer: string;
       try {
-        analyzer = resolveHostPyHeapTool("analyzer");
+        analyzer = resolveHostPydumpAnalyzer();
       } catch (error) {
         throw new Error(
           `${containerReason}；${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const probeRoot = mkdtempSync(join(tmpdir(), "doctor-mema-probe-"));
-      try {
-        const native = await runLocalCommand(
-          ["python3", analyzer, "retained-heap", "--help"],
-          {
-            env: {
-              ...process.env,
-              PEX_ROOT: join(probeRoot, "pex"),
-              PYHEAP_CACHE_DIR: join(probeRoot, "cache"),
-            },
-            timeoutMs: 60_000,
-          },
-        );
-        if (native.ok) return { analyzer };
-        throw new Error(
-          `Doctor Host container 不可用（${containerReason}），本机 PyHeap analyzer 也不可用（${localFailure(native)}）；`
-          + "请准备 doctor-debug image 或安装兼容 Python",
-        );
-      } finally {
-        rmSync(probeRoot, { recursive: true, force: true });
-      }
+      const native = await runLocalCommand(
+        [analyzer, "retained-heap", "--help"],
+        { timeoutMs: 60_000 },
+      );
+      if (native.ok) return { analyzer };
+      throw new Error(
+        `Doctor Host container 不可用（${containerReason}），本机 Pydump analyzer 也不可用（${localFailure(native)}）；`
+        + "请准备包含 Pydump analyzer 的 doctor-debug image 或 Doctor Toolkit",
+      );
     },
   });
   if (execution.kind === "host-container") {
@@ -179,11 +167,11 @@ async function resolvePyHeapAnalyzerBackend(): Promise<PyHeapAnalyzerBackend> {
   return { kind: "native", analyzer: execution.value.analyzer };
 }
 
-class PyHeapAnalyzerRunner {
-  private backend?: Promise<PyHeapAnalyzerBackend>;
+class PydumpAnalyzerRunner {
+  private backend?: Promise<PydumpAnalyzerBackend>;
 
-  private resolveBackend(): Promise<PyHeapAnalyzerBackend> {
-    this.backend ??= resolvePyHeapAnalyzerBackend();
+  private resolveBackend(): Promise<PydumpAnalyzerBackend> {
+    this.backend ??= resolvePydumpAnalyzerBackend();
     return this.backend;
   }
 
@@ -194,25 +182,21 @@ class PyHeapAnalyzerRunner {
 }
 
 async function runAnalyzer(
-  backend: PyHeapAnalyzerBackend,
+  backend: PydumpAnalyzerBackend,
   heapPath: string,
   analysisPath: string,
 ): Promise<void> {
-  const workDir = mkdtempSync(join(tmpdir(), "doctor-mema-"));
-  const pexRoot = join(workDir, "pex");
-  const cacheDirectory = join(workDir, "cache");
-  mkdirSync(pexRoot, { recursive: true, mode: 0o700 });
-  mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 });
   const outputPart = `${analysisPath}.part-${process.pid}-${Date.now()}`;
+  const workDir = mkdtempSync(join(tmpdir(), "doctor-mema-"));
+  const cacheDirectory = join(workDir, "cache");
+  mkdirSync(cacheDirectory, { recursive: true, mode: 0o700 });
   const argv = backend.kind === "native"
-    ? localPyheapRetainedArgv(backend.analyzer, heapPath)
-    : localContainerPyHeapAnalyzerArgv(backend.engine, backend.image, heapPath);
+    ? localPydumpRetainedArgv(backend.analyzer, heapPath)
+    : localContainerPydumpAnalyzerArgv(backend.engine, backend.image, heapPath);
   const child = spawnProcess(argv, {
-    env: backend.kind === "native" ? {
-      ...process.env,
-      PEX_ROOT: pexRoot,
-      PYHEAP_CACHE_DIR: cacheDirectory,
-    } : process.env,
+    env: backend.kind === "native"
+      ? { ...process.env, PYHEAP_CACHE_DIR: cacheDirectory }
+      : process.env,
   });
   const stderrPromise = new Response(child.stderr).text();
   const stdoutPromise = pipeline(
@@ -227,7 +211,7 @@ async function runAnalyzer(
       stdoutPromise,
     ]).then(([code, error]) => [code, error] as const);
     if (exitCode !== 0) {
-      throw new Error(`PyHeap analyzer 失败（exit=${exitCode}）：${stderr.trim() || "无错误输出"}`);
+      throw new Error(`Pydump analyzer 失败（exit=${exitCode}）：${stderr.trim() || "无错误输出"}`);
     }
     renameSync(outputPart, analysisPath);
   } finally {
@@ -239,7 +223,7 @@ async function runAnalyzer(
 
 async function resolveHeapAnalysis(
   inputPath: string,
-  analyzer: PyHeapAnalyzerRunner,
+  analyzer: PydumpAnalyzerRunner,
 ): Promise<ResolvedAnalysis> {
   if (!existsSync(inputPath)) throw new Error(`输入文件不存在: '${inputPath}'`);
   if (!/\.pyheap$/i.test(inputPath)) throw new Error(`不是 .pyheap 文件: '${inputPath}'`);
@@ -248,7 +232,7 @@ async function resolveHeapAnalysis(
   const analysisPath = analysisPathForHeap(inputPath);
   if (existsSync(analysisPath)) {
     try {
-      const cached = readPyHeapAnalysis(analysisPath);
+      const cached = readPydumpAnalysis(analysisPath);
       if (cached.source.size_bytes === heapBytes && cached.source.sha256 === heapSha256) {
         return { inputPath, heapPath: inputPath, analysisPath, analysis: cached, reused: true };
       }
@@ -262,7 +246,7 @@ async function resolveHeapAnalysis(
     `[collect] 正在解析 ${basename(inputPath)}；retained-heap 可能占用较多本机内存…\n`,
   );
   await analyzer.run(inputPath, analysisPath);
-  const analysis = readPyHeapAnalysis(analysisPath);
+  const analysis = readPydumpAnalysis(analysisPath);
   if (analysis.source.size_bytes !== heapBytes || analysis.source.sha256 !== heapSha256) {
     throw new Error(`analyzer 输出的 source 与 heap 不一致: '${analysisPath}'`);
   }
@@ -271,7 +255,7 @@ async function resolveHeapAnalysis(
 
 async function resolveAnalysisInput(
   input: string,
-  analyzer: PyHeapAnalyzerRunner,
+  analyzer: PydumpAnalyzerRunner,
 ): Promise<ResolvedAnalysis> {
   const inputPath = resolve(input);
   if (/\.pyheap$/i.test(inputPath)) return resolveHeapAnalysis(inputPath, analyzer);
@@ -284,16 +268,16 @@ async function resolveAnalysisInput(
     const resolved = await resolveHeapAnalysis(heapPath, analyzer);
     return { ...resolved, inputPath };
   }
-  if (schema === PYHEAP_ANALYSIS_SCHEMA) {
+  if (schema === PYDUMP_ANALYSIS_SCHEMA) {
     return {
       inputPath,
       analysisPath: inputPath,
-      analysis: readPyHeapAnalysis(inputPath),
+      analysis: readPydumpAnalysis(inputPath),
       reused: true,
     };
   }
   throw new Error(
-    `不支持的内存分析输入: '${inputPath}'；需要 .pyheap、${MEMORY_CAPTURE_SCHEMA} 或 ${PYHEAP_ANALYSIS_SCHEMA}`,
+    `不支持的内存分析输入: '${inputPath}'；需要 .pyheap、${MEMORY_CAPTURE_SCHEMA} 或 ${PYDUMP_ANALYSIS_SCHEMA}`,
   );
 }
 
@@ -304,7 +288,7 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function aggregateTypes(analysis: PyHeapAnalysis): Map<string, { count: number; bytes: number }> {
+function aggregateTypes(analysis: PydumpAnalysis): Map<string, { count: number; bytes: number }> {
   const result = new Map<string, { count: number; bytes: number }>();
   for (const item of analysis.types) {
     const previous = result.get(item.type_name) ?? { count: 0, bytes: 0 };
@@ -362,7 +346,7 @@ function timestamp(date: Date): string {
 
 function defaultReportPath(items: readonly ResolvedAnalysis[], now: Date): string {
   if (items.length === 1) {
-    return items[0]!.analysisPath.replace(/\.pyheap-analysis\.json$/i, ".html");
+    return items[0]!.analysisPath.replace(/\.pydump-analysis\.json$/i, ".html");
   }
   return resolve(`doctor-mema-${timestamp(now)}.html`);
 }
@@ -386,7 +370,7 @@ function writeAnalysisReport(
       inspection_facts: {},
       params: {
         command: "mema",
-        pyheap_version: PYHEAP_VERSION,
+        pydump_version: PYDUMP_VERSION,
         inputs: items.map((item) => basename(item.inputPath)),
         analyses: items.map((item) => basename(item.analysisPath)),
       },
@@ -398,7 +382,7 @@ function writeAnalysisReport(
       htmlHeading(1, items.length === 1
         ? "对象堆分析"
         : `对象堆 ${index + 1}：${basename(item.inputPath)}`),
-      buildPyHeapAnalysisHtml(item.analysis, diagnosePyHeapAnalysis(item.analysis)),
+      buildPydumpAnalysisHtml(item.analysis, diagnosePydumpAnalysis(item.analysis)),
     ].join("")).join("");
     writeHtmlReport(staging, outputPath, {
       title: items.length === 1 ? "doctor Python 对象堆诊断报告" : "doctor Python 对象堆对比报告",
@@ -406,7 +390,7 @@ function writeAnalysisReport(
       summaryHtml: `${buildComparisonHtml(items)}${details}`,
       sections: [htmlPieChartSection(
         "最近一次对象堆构成",
-        buildPyHeapPieCharts(items.at(-1)!.analysis),
+        buildPydumpPieCharts(items.at(-1)!.analysis),
       )],
     });
   } finally {
@@ -420,11 +404,11 @@ export async function runMemoryAnalysis(opts: MemoryAnalysisOptions): Promise<nu
     const inputs = opts.inputs?.filter((input) => input.trim()) ?? [];
     const candidates = inputs.length ? inputs : findMemoryAnalysisInputs(resolve(process.cwd()));
     if (!candidates.length) {
-      throw new Error("当前目录没有 .pyheap、capture JSON 或 PyHeap analysis JSON");
+      throw new Error("当前目录没有 .pyheap、capture JSON 或 Pydump analysis JSON");
     }
     const resolved: ResolvedAnalysis[] = [];
     const seen = new Set<string>();
-    const analyzer = new PyHeapAnalyzerRunner();
+    const analyzer = new PydumpAnalyzerRunner();
     for (const input of candidates) {
       const item = await resolveAnalysisInput(input, analyzer);
       if (seen.has(item.analysis.source.sha256)) continue;

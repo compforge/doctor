@@ -63,7 +63,7 @@ RUN architecture="$(dpkg --print-architecture)" \
       'Depends: libc6, libexpat1, libgmp10, libmpfr6, libncursesw6, libpython3.11, libreadline8, libstdc++6, zlib1g' \
       'Section: devel' \
       'Priority: optional' \
-      'Description: GNU Debugger built by Doctor for Debian 12 PyHeap capture' \
+      'Description: GNU Debugger built by Doctor for Debian 12 Pydump capture' \
       > /package/DEBIAN/control \
     && dpkg-deb --root-owner-group --build /package \
       "/out/gdb_${GDB_VERSION}-doctor1_${architecture}.deb"
@@ -111,8 +111,7 @@ RUN mkdir -p /tmp/apt-empty /tmp/apt-lists/partial \
       -o Dir::Etc::SourceParts=/tmp/apt-empty \
       -o Dir::State::Lists=/tmp/apt-lists \
       install -y --no-install-recommends gdb \
-    && gdb --version \
-    && gdb -nx -batch -ex "python import sys" -ex quit
+    && gdb --version
 
 FROM scratch
 COPY --from=verify /out /out

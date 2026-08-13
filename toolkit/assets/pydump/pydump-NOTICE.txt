@@ -1,0 +1,6 @@
+Pydump
+Copyright 2026 CompForge
+
+This product includes interfaces, artifact-format compatibility work, and modified heap reader and
+retained-heap analysis code derived from PyHeap, Copyright 2022 Ivan Yurchenko, licensed under the
+Apache License, Version 2.0.

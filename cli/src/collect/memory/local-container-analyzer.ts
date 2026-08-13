@@ -5,7 +5,7 @@ import {
 } from "../../infra/host/container-engine";
 
 const DOCTOR_DEBUG_IMAGE_LABEL = "org.opencontainers.image.title=doctor debug image";
-const PYHEAP_ANALYZER_PATH = "/opt/doctor/bin/pyheap_analyzer";
+const PYDUMP_ANALYZER_PATH = "/opt/doctor/bin/pydump_analyzer";
 
 function hostArchitecture(): string {
   return process.arch === "x64" ? "amd64" : process.arch;
@@ -29,7 +29,7 @@ export async function findLocalDoctorDebugImages(
   });
 }
 
-export async function supportsPyHeapAnalyzer(
+export async function supportsPydumpAnalyzer(
   engine: LocalContainerEngine,
   image: string,
 ): Promise<boolean> {
@@ -39,15 +39,14 @@ export async function supportsPyHeapAnalyzer(
     "--network",
     "none",
     image,
-    "python3",
-    PYHEAP_ANALYZER_PATH,
+    PYDUMP_ANALYZER_PATH,
     "retained-heap",
     "--help",
   ], { timeoutMs: 60_000 });
   return result.ok;
 }
 
-export function localContainerPyHeapAnalyzerArgv(
+export function localContainerPydumpAnalyzerArgv(
   engine: LocalContainerEngine,
   image: string,
   heapPath: string,
@@ -64,12 +63,9 @@ export function localContainerPyHeapAnalyzerArgv(
     "--volume",
     `${absoluteHeap}:${containerHeap}:ro`,
     "--env",
-    "PEX_ROOT=/tmp/doctor-pyheap/pex",
-    "--env",
-    "PYHEAP_CACHE_DIR=/tmp/doctor-pyheap/cache",
+    "PYHEAP_CACHE_DIR=/tmp/doctor-pydump/cache",
     image,
-    "python3",
-    PYHEAP_ANALYZER_PATH,
+    PYDUMP_ANALYZER_PATH,
     "retained-heap",
     "--file",
     containerHeap,

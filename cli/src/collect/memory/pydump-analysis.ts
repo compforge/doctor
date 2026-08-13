@@ -1,15 +1,15 @@
 import { readFileSync } from "node:fs";
 
-export const PYHEAP_ANALYSIS_SCHEMA = "pyheap.analysis/v1";
+export const PYDUMP_ANALYSIS_SCHEMA = "pydump.analysis/v1";
 
-export interface PyHeapTypeSummary {
+export interface PydumpTypeSummary {
   type_address: string;
   type_name: string;
   object_count: number;
   shallow_size_bytes: number;
 }
 
-export interface PyHeapFrameSummary {
+export interface PydumpFrameSummary {
   file_name: string;
   line_number: number;
   function_name: string;
@@ -20,15 +20,15 @@ export interface PyHeapFrameSummary {
   }>;
 }
 
-export interface PyHeapThreadSummary {
+export interface PydumpThreadSummary {
   name: string;
   is_alive: boolean;
   is_daemon: boolean;
   retained_size_bytes: number | null;
-  frames: PyHeapFrameSummary[];
+  frames: PydumpFrameSummary[];
 }
 
-export interface PyHeapRetainedObject {
+export interface PydumpRetainedObject {
   object_address: string;
   type_name: string;
   shallow_size_bytes: number;
@@ -36,25 +36,25 @@ export interface PyHeapRetainedObject {
   string_representation: string | null;
   container_profile?: {
     item_count: number;
-    key_types?: PyHeapTypeCount[];
-    value_types?: PyHeapTypeCount[];
-    element_types?: PyHeapTypeCount[];
+    key_types?: PydumpTypeCount[];
+    value_types?: PydumpTypeCount[];
+    element_types?: PydumpTypeCount[];
   } | null;
-  inbound_reference_paths?: PyHeapInboundReference[][];
+  inbound_reference_paths?: PydumpInboundReference[][];
 }
 
-export interface PyHeapTypeCount {
+export interface PydumpTypeCount {
   type_name: string;
   object_count: number;
 }
 
-export interface PyHeapInboundReference {
+export interface PydumpInboundReference {
   object_address: string;
   type_name: string;
 }
 
-export interface PyHeapAnalysis {
-  schema: typeof PYHEAP_ANALYSIS_SCHEMA;
+export interface PydumpAnalysis {
+  schema: typeof PYDUMP_ANALYSIS_SCHEMA;
   source: {
     sha256: string;
     size_bytes: number;
@@ -69,12 +69,12 @@ export interface PyHeapAnalysis {
     referent_count: number;
     shallow_size_bytes: number;
   };
-  types: PyHeapTypeSummary[];
-  threads: PyHeapThreadSummary[];
+  types: PydumpTypeSummary[];
+  threads: PydumpThreadSummary[];
   retained_heap: {
     status: "not_computed" | "complete";
     top_n: number;
-    top_objects: PyHeapRetainedObject[];
+    top_objects: PydumpRetainedObject[];
   };
 }
 
@@ -87,10 +87,10 @@ function isFiniteNonNegative(value: unknown): value is number {
 }
 
 /** JSON reader 是外部协议适配边界；detector 只接收已经验证过的领域对象。 */
-export function readPyHeapAnalysis(path: string): PyHeapAnalysis {
+export function readPydumpAnalysis(path: string): PydumpAnalysis {
   const value = JSON.parse(readFileSync(path, "utf-8")) as unknown;
-  if (!isRecord(value) || value.schema !== PYHEAP_ANALYSIS_SCHEMA) {
-    throw new Error(`不是受支持的 ${PYHEAP_ANALYSIS_SCHEMA} 文件: '${path}'`);
+  if (!isRecord(value) || value.schema !== PYDUMP_ANALYSIS_SCHEMA) {
+    throw new Error(`不是受支持的 ${PYDUMP_ANALYSIS_SCHEMA} 文件: '${path}'`);
   }
   const source = value.source;
   const heap = value.heap;
@@ -99,7 +99,7 @@ export function readPyHeapAnalysis(path: string): PyHeapAnalysis {
     || typeof source.sha256 !== "string"
     || !isFiniteNonNegative(source.size_bytes)
     || typeof source.created_at !== "string") {
-    throw new Error(`PyHeap analysis 缺少有效 source: '${path}'`);
+    throw new Error(`Pydump analysis 缺少有效 source: '${path}'`);
   }
   if (!isRecord(heap)
     || !isFiniteNonNegative(heap.object_count)
@@ -107,15 +107,15 @@ export function readPyHeapAnalysis(path: string): PyHeapAnalysis {
     || !isFiniteNonNegative(heap.thread_count)
     || !isFiniteNonNegative(heap.referent_count)
     || !isFiniteNonNegative(heap.shallow_size_bytes)) {
-    throw new Error(`PyHeap analysis 缺少有效 heap summary: '${path}'`);
+    throw new Error(`Pydump analysis 缺少有效 heap summary: '${path}'`);
   }
   if (!Array.isArray(value.types) || !Array.isArray(value.threads)) {
-    throw new Error(`PyHeap analysis 缺少 types 或 threads: '${path}'`);
+    throw new Error(`Pydump analysis 缺少 types 或 threads: '${path}'`);
   }
   if (!isRecord(retained)
     || (retained.status !== "complete" && retained.status !== "not_computed")
     || !Array.isArray(retained.top_objects)) {
-    throw new Error(`PyHeap analysis 缺少有效 retained_heap: '${path}'`);
+    throw new Error(`Pydump analysis 缺少有效 retained_heap: '${path}'`);
   }
-  return value as unknown as PyHeapAnalysis;
+  return value as unknown as PydumpAnalysis;
 }

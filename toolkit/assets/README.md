@@ -5,6 +5,9 @@ the materialized resources in `doctor-toolkit/manifest.json`; upstream licenses 
 corresponding assets.
 
 - `regctl`: regclient 0.11.5 for Darwin/Linux and AMD64/ARM64.
-- `pyheap`: Doctor PyHeap 0.7.0+doctor.2 dumper and analyzer PEX files.
+- `pydump`: Pydump 0.1.0 Collector, standalone Go analyzers, and Linux CPython 3.10–3.14
+  native Agents. Agent filenames and Toolkit IDs include the minimum target glibc (`min-glibc-2.17`).
+  `REVISION` pins the source commit; regenerate with
+  `scripts/refresh-pydump-assets.sh <pydump-source-root>`.
 - `py-spy`: py-spy 0.4.2 Linux executables for AMD64/ARM64, used by the debug image and Linux slices.
 - `doctor-pcap`: built from `toolkit/doctor-pcap` with `CGO_ENABLED=0` for each supported platform.

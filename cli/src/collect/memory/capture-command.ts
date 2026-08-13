@@ -22,14 +22,14 @@ import { deliverFailureBundle } from "../output/failure-bundle";
 import {
   captureMemoryHeap,
   parseCapturePreference,
-  parsePyHeapDetail,
+  parsePydumpDetail,
   parseStrReprLen,
   parseTransferChunkBytes,
   type CaptureResult,
   type CapturePreference,
-  type PyHeapDetail,
+  type PydumpDetail,
 } from "./capture";
-import { cleanupPyheapCmd, PYHEAP_TOOL_DIR, PYHEAP_VERSION } from "./pyheap-tool";
+import { cleanupPydumpCmd, PYDUMP_TOOL_DIR, PYDUMP_VERSION } from "./pydump-tool";
 import { runInspects } from "../inspect-engine";
 import {
   makeCgroupMemoryInspect,
@@ -75,12 +75,12 @@ export async function runCollectMemory(
   commandContext?: CommandContext,
 ): Promise<number> {
   const invokedAt = new Date();
-  let detail: PyHeapDetail;
+  let detail: PydumpDetail;
   let preference: CapturePreference;
   let strReprLen: number;
   let transferChunkBytes: number;
   try {
-    detail = parsePyHeapDetail(opts.detail);
+    detail = parsePydumpDetail(opts.detail);
     preference = parseCapturePreference(opts.captureVia);
     strReprLen = parseStrReprLen(opts.strReprLen, detail === "lite" ? -1 : 1000);
     transferChunkBytes = parseTransferChunkBytes(opts.transferChunkSize);
@@ -105,7 +105,7 @@ export async function runCollectMemory(
     needs: [{
       requirement: "required",
       rule: { verb: "create", resource: "pods/exec" },
-      purpose: "探测 Python 进程、attach 并回传 PyHeap",
+      purpose: "探测 Python 进程、attach 并回传 Pydump",
     }],
   });
   let target;
@@ -214,14 +214,14 @@ export async function runCollectMemory(
       if (executionContainer) {
         const cleanup = await executor.exec(
           { pod: target.pod, container: executionContainer },
-          cleanupPyheapCmd(),
+          cleanupPydumpCmd(),
           { timeoutMs: 30_000 },
         );
-        if (!cleanup.ok) log(`[collect] 容器内 ${PYHEAP_TOOL_DIR} 清理失败，可稍后手工删除`);
+        if (!cleanup.ok) log(`[collect] 容器内 ${PYDUMP_TOOL_DIR} 清理失败，可稍后手工删除`);
       }
     }
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(`[collect] PyHeap 文件：${result.heapPath}\n`);
+    terminalStdout.success(`[collect] Pydump 文件：${result.heapPath}\n`);
     terminalStdout.write(`[collect] 采集索引：${result.capturePath}\n`);
     terminalStdout.write(`[collect] 下一步：doctor mema ${result.capturePath}\n`);
     return 0;
@@ -234,7 +234,7 @@ export async function runCollectMemory(
 
   const reasons = result.reasons?.length
     ? result.reasons
-    : [result.reason ?? "PyHeap 采集失败"];
+    : [result.reason ?? "Pydump 采集失败"];
   for (const reason of reasons) {
     terminalStderr.error(`[collect] ${reason}\n`);
   }
@@ -261,7 +261,7 @@ export async function runCollectMemory(
       detail,
       str_repr_len: strReprLen,
       capture_via: preference,
-      pyheap_version: PYHEAP_VERSION,
+      pydump_version: PYDUMP_VERSION,
     },
     startedAt: invokedAt.toISOString(),
     finishedAt: new Date().toISOString(),

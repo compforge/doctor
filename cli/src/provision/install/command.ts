@@ -138,14 +138,14 @@ export async function runInstall(
   if (gdbReady(existingGdb)) {
     terminalStdout.success(
       `[install] GDB ${existingGdb.version ?? "version unknown"} ready`
-      + "（Python scripting 与 inferior call 验收通过）\n",
+      + "（inferior call 验收通过）\n",
     );
-    return finish(0, "ready", "preflight", "现有 GDB 已满足 PyHeap 能力契约");
+    return finish(0, "ready", "preflight", "现有 GDB 已满足 Pydump 能力契约");
   }
   if (existingGdb.available) {
     terminalStdout.warning(
       `[install] 已有 GDB ${existingGdb.version ?? ""}，但 `
-      + `${existingGdb.reason ?? "PyHeap 所需能力验收未通过"}；`
+      + `${existingGdb.reason ?? "Pydump 所需能力验收未通过"}；`
       + `尝试通过 ${target.manager.kind} 补齐\n`,
     );
   }
@@ -192,7 +192,7 @@ export async function runInstall(
     impact: [
       "直接修改该 Container 的可写层；Pod 重建后安装结果会丢失",
       installPlanImpact(plan),
-      "安装后用 Doctor 自建 Python 进程验收 GDB Python scripting 和 inferior call；"
+      "安装后用 Doctor 自建 Python 进程验收 GDB inferior call；"
       + "不会 attach 业务进程",
       "安装过程会产生网络、磁盘和 CPU 开销",
     ],
@@ -264,7 +264,7 @@ export async function runInstall(
   }
   if (!gdbReady(gdb)) {
     terminalStderr.error(
-      `[install] GDB ${gdb.version ?? ""} 已安装，但 PyHeap 所需能力验收失败：`
+      `[install] GDB ${gdb.version ?? ""} 已安装，但 Pydump 所需能力验收失败：`
       + `${gdb.reason ?? "原因未知"}\n`,
     );
     if (!opts.tar && !bundle && target.manager.kind === "apt-get") {
@@ -274,13 +274,13 @@ export async function runInstall(
       1,
       "failed",
       "gdb-capability",
-      gdb.reason ?? "GDB 已安装，但 PyHeap 所需能力验收失败",
+      gdb.reason ?? "GDB 已安装，但 Pydump 所需能力验收失败",
     );
   }
   terminalStdout.success(
     `[install] 安装完成：pod/${selected.pod} container/${selected.container}：`
     + `GDB ${gdb.version ?? "version unknown"} ready`
-    + "（Python scripting 与 inferior call 验收通过）\n",
+    + "（inferior call 验收通过）\n",
   );
-  return finish(0, "ready", "gdb-capability", "GDB Python scripting 与 inferior call 验收通过");
+  return finish(0, "ready", "gdb-capability", "GDB inferior call 验收通过");
 }

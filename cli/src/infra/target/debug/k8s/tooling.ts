@@ -30,7 +30,8 @@ trap cleanup EXIT
 trap 'exit 1' HUP INT TERM
 gdb -q -nx -batch \
   -ex "attach $inferior_pid" \
-  -ex 'python value = gdb.parse_and_eval("(int)getpid()"); print("${GDB_INFERIOR_CALL_READY_MARKER}=" + str(value))' \
+  -ex 'set $doctor_pid = (int)getpid()' \
+  -ex 'printf "${GDB_INFERIOR_CALL_READY_MARKER}=%d\n", $doctor_pid' \
   -ex detach
 `;
 
@@ -123,15 +124,7 @@ export async function inspectDebugGdb(
     ],
     { timeoutMs: 20_000 },
   );
-  if (!python.ok || !python.stdout.includes(GDB_PYTHON_READY_MARKER)) {
-    return {
-      available: true,
-      pythonScripting: false,
-      inferiorCall: false,
-      version,
-      reason: "gdb 不支持 Python scripting",
-    };
-  }
+  const pythonScripting = python.ok && python.stdout.includes(GDB_PYTHON_READY_MARKER);
   const inferiorCall = await exec.exec(
     target,
     ["sh", "-c", GDB_ATTACH_CALL_PROBE],
@@ -153,7 +146,7 @@ export async function inspectDebugGdb(
       .find((line) => line && !line.toLowerCase().startsWith("warning:"));
     return {
       available: true,
-      pythonScripting: true,
+      pythonScripting,
       inferiorCall: false,
       version,
       reason: `gdb 无法调用调试进程函数${error ? `：${error}` : ""}`,
@@ -161,7 +154,7 @@ export async function inspectDebugGdb(
   }
   return {
     available: true,
-    pythonScripting: true,
+    pythonScripting,
     inferiorCall: true,
     version,
   };

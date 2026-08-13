@@ -399,7 +399,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--output <path>");
   });
 
-  test("mem exposes PyHeap capture options without historical modes", () => {
+  test("mem exposes Pydump capture options without historical modes", () => {
     const result = runCli("mem", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("-p, --pod <pod>");

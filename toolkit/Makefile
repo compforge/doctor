@@ -41,13 +41,16 @@ stage-tools:
 	@mkdir -p "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin"
 	cp "assets/regctl/regctl-$(OS)-$(ARCH)" "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/regctl"
 	env CGO_ENABLED=0 GOOS="$(OS)" GOARCH="$(ARCH)" go -C doctor-pcap build -trimpath -ldflags='-s -w' -o "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/doctor-pcap" ./cmd/doctor-pcap
-	gzip -dc assets/pyheap/pyheap_dump-0.7.0+doctor.2.gz > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pyheap_dump"
-	gzip -dc assets/pyheap/pyheap_analyzer-0.7.0+doctor.2.gz > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pyheap_analyzer"
+	gzip -dc "assets/pydump/pydump_analyzer-0.1.0-$(OS)-$(ARCH).gz" > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump_analyzer"
 	chmod 755 "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/"*
 	@if [ "$(OS)" = linux ]; then \
 		case "$(ARCH)" in amd64) py_spy=x86_64 ;; arm64) py_spy=aarch64 ;; esac; \
+		gzip -dc assets/pydump/pydump-0.1.0.pyz.gz > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump"; \
+		for minor in 3.10 3.11 3.12 3.13 3.14; do \
+			gzip -dc "assets/pydump/pydump-agent-$$minor-min-glibc-2.17-$$py_spy.so.gz" > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/pydump-agent-$$minor-min-glibc-2.17-$$py_spy.so"; \
+		done; \
 		gzip -dc "assets/py-spy/py-spy-0.4.2-$$py_spy.gz" > "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/py-spy"; \
-		chmod 755 "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/py-spy"; \
+		chmod 755 "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/bin/"*; \
 	fi
 
 stage-debug-image:

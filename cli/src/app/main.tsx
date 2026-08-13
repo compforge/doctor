@@ -3,8 +3,8 @@ import { terminalStdout } from "../terminal/output";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
 //   doctor chat              → 默认本地 Agent；--server 显式选择远端 Agent（app/repl.tsx）
-//   doctor mem               → attach Python 进程并回传 PyHeap dump（collect/）
-//   doctor mema              → 在本机解析并诊断一个或多个 PyHeap dump（collect/）
+//   doctor mem               → attach Python 进程并回传 Pydump dump（collect/）
+//   doctor mema              → 在本机解析并诊断一个或多个 Pydump dump（collect/）
 //   doctor cpu               → 无 server 直连采集：pod Python CPU 线程栈证据包（collect/）
 //   doctor trace             → 无 server 直连采集：OpenSearch 下载 trace 全量 span（collect/）
 //   doctor store             → 从 Service Pod 提取 Store 配置并诊断 DB/VDB/S3/Redis（collect/）
@@ -512,7 +512,7 @@ export async function main(plugin?: PluginDefinition) {
     });
 
   withMemOptions(
-    program.command("mem").description("attach 目标 Python 进程并把 PyHeap 文件回传到本机"),
+    program.command("mem").description("attach 目标 Python 进程并把 Pydump 文件回传到本机"),
   ).action(async (opts) => {
     await runCommand(
       { name: "doctor mem", environment: { kubernetes: true } },
@@ -521,7 +521,7 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withMemaOptions(
-    program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 PyHeap 文件"),
+    program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 Pydump 文件"),
   ).action(async (inputs, opts) => {
     await runCommand(
       { name: "doctor mema" },

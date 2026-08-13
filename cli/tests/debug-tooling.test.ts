@@ -55,7 +55,7 @@ test("没有 shell/sleep 时使用目标镜像 Python 常驻，不运行业务 e
   });
 });
 
-test("GDB 探测区分缺失与缺少 Python scripting", async () => {
+test("GDB 探测在缺少 Python scripting 时仍验证 inferior call", async () => {
   let calls = 0;
   const executor: Executor = {
     run: async () => result(),
@@ -69,11 +69,11 @@ test("GDB 探测区分缺失与缺少 Python scripting", async () => {
     pythonScripting: false,
     inferiorCall: false,
     version: "15.1",
-    reason: "gdb 不支持 Python scripting",
+    reason: "gdb 无法调用调试进程函数：failed",
   });
 });
 
-test("GDB readiness 同时验证 Python scripting 和 inferior call", async () => {
+test("GDB readiness 独立验证 Python scripting 和 inferior call", async () => {
   let attachProbe = "";
   const executor: Executor = {
     run: async () => result(),
@@ -93,8 +93,28 @@ test("GDB readiness 同时验证 Python scripting 和 inferior call", async () =
     version: "16.3",
   });
   expect(attachProbe).toContain("attach $inferior_pid");
-  expect(attachProbe).toContain("gdb.parse_and_eval");
+  expect(attachProbe).toContain("(int)getpid()");
+  expect(attachProbe).not.toContain("gdb.parse_and_eval");
   expect(attachProbe).not.toContain("-ex \"start\"");
+});
+
+test("GDB 缺少 Python scripting 但 inferior call 可用时仍然 ready", async () => {
+  const executor: Executor = {
+    run: async () => result(),
+    exec: async (_target, command) => {
+      if (command.includes("--version")) return result("GNU gdb 16.3\n");
+      if (command.some((part) => part.includes("DOCTOR_GDB_PYTHON_OK"))) {
+        return result("", false);
+      }
+      return result("DOCTOR_GDB_INFERIOR_CALL_OK\n");
+    },
+  };
+  expect(await inspectDebugGdb(executor, "app-0", "debug")).toEqual({
+    available: true,
+    pythonScripting: false,
+    inferiorCall: true,
+    version: "16.3",
+  });
 });
 
 test("GDB attach inferior call 失败时保留真实错误", async () => {

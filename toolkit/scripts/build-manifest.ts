@@ -21,10 +21,17 @@ const output = resolve(outputArg);
 const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
-  pyheap_dump: "pyheap-dumper",
-  pyheap_analyzer: "pyheap-analyzer",
+  pydump: "pydump-collector",
+  pydump_analyzer: "pydump-analyzer",
   "py-spy": "py-spy",
 };
+
+function toolId(name: string): string | undefined {
+  const fixed = toolIds[name];
+  if (fixed) return fixed;
+  const agent = /^pydump-agent-(3\.(?:10|11|12|13|14))-min-glibc-(2\.17)-(?:x86_64|aarch64)\.so$/.exec(name);
+  return agent ? `pydump-agent-${agent[1]}-min-glibc-${agent[2]}` : undefined;
+}
 
 async function sha256(path: string): Promise<string> {
   const hash = createHash("sha256");
@@ -65,7 +72,7 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
   const tools = [];
   for (const item of readdirSync(binRoot, { withFileTypes: true })) {
     if (!item.isFile()) continue;
-    const id = toolIds[item.name];
+    const id = toolId(item.name);
     if (!id) throw new Error(`unknown toolkit tool: ${item.name}`);
     const path = join(binRoot, item.name);
     chmodSync(path, 0o755);

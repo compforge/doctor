@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   findLocalDoctorDebugImages,
-  localContainerPyHeapAnalyzerArgv,
+  localContainerPydumpAnalyzerArgv,
 } from "../src/collect/memory/local-container-analyzer";
 import type {
   LocalCommandResult,
@@ -18,7 +18,7 @@ function result(stdout: string): LocalCommandResult {
   };
 }
 
-test("PyHeap 适配按 debug image 版本排序，分析容器禁网并只读挂载单个 heap", async () => {
+test("Pydump 适配按 debug image 版本排序，分析容器禁网并只读挂载单个 heap", async () => {
   const engine: LocalContainerEngine = {
     name: "nerdctl",
     run: async () => result(
@@ -30,7 +30,7 @@ test("PyHeap 适配按 debug image 版本排序，分析容器禁网并只读挂
     "doctor-debug:old-linux-amd64",
   ]);
 
-  const argv = localContainerPyHeapAnalyzerArgv(
+  const argv = localContainerPydumpAnalyzerArgv(
     engine,
     "doctor-debug:current-linux-amd64",
     "/tmp/captures/app.pyheap",
@@ -38,5 +38,5 @@ test("PyHeap 适配按 debug image 版本排序，分析容器禁网并只读挂
   expect(argv.slice(0, 5)).toEqual(["nerdctl", "run", "--rm", "--network", "none"]);
   expect(argv).toContain("/tmp/captures/app.pyheap:/doctor-input/input.pyheap:ro");
   expect(argv).toContain("/doctor-input/input.pyheap");
-  expect(argv).toContain("/opt/doctor/bin/pyheap_analyzer");
+  expect(argv).toContain("/opt/doctor/bin/pydump_analyzer");
 });
