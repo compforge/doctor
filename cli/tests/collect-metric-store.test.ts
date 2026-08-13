@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createServiceCatalog } from "@compforge/doctor-plugin";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import {
   discoverStoreExporterServices,
   exporterHealthy,
@@ -7,6 +11,8 @@ import {
   redisInfoExposition,
   selectedMetricStoreKinds,
 } from "../src/collect/metric/store/collector";
+import { resolveMetricConfig } from "../src/collect/metric/config";
+import { prepareMetricSource } from "../src/collect/metric/preparation";
 import { parseExposition, parsePromQL } from "@compforge/prombed";
 import { STORE_METRIC_CAPABILITIES } from "../src/collect/metric/store/contract";
 
@@ -134,6 +140,52 @@ describe("metric Store observability", () => {
         expect(() => parsePromQL(chart.query.instant)).not.toThrow();
         expect(() => parsePromQL(chart.query.range.replaceAll("{{window}}", "10s"))).not.toThrow();
       }
+    }
+  });
+
+  test("keeps remote Service and Store queries usable when the selected profile has no kubeconfig", async () => {
+    const services = createServiceCatalog([{
+      name: "app",
+      capabilities: {
+        stores: [{
+          id: "redis",
+          kind: "redis" as const,
+          backend: "redis" as const,
+          environment: { address: "REDIS_HOST" },
+        }],
+        metric: {
+          endpoint: { port: 8080, path: "/metrics" },
+          metricNames: ["requests_total"],
+          charts: [],
+        },
+      },
+    }]);
+    const plugin = { id: "example", version: "0.0.1", services } as PluginDefinition;
+    const directory = mkdtempSync(join(tmpdir(), "doctor-metric-remote-store-"));
+    const configPath = join(directory, "config.yaml");
+    writeFileSync(configPath, [
+      "profiles:",
+      "  prometheus-only:",
+      "    readonly: true",
+      "    prometheus:",
+      "      url: http://prometheus.example",
+      "default_profile: prometheus-only",
+      "",
+    ].join("\n"));
+    try {
+      const config = await resolveMetricConfig({
+        config: configPath,
+        profile: "prometheus-only",
+        services: "app",
+      }, services, false);
+      expect(config?.storeSupplementUnavailableReason).toContain("未配置 kube.kubeconfig_path");
+      const preparation = await prepareMetricSource(config!, plugin);
+      expect(preparation.sourceKind).toBe("remote");
+      expect(preparation.storeFallbackReason).toContain("未配置 kube.kubeconfig_path");
+      expect(preparation.storeSource).toBeUndefined();
+      await preparation.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

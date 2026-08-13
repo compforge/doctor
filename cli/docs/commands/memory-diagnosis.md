@@ -90,8 +90,15 @@ dump 失败后 Doctor 会再次读取 OOM 计数，只有 `oom_kill` 相比 dump
 本次失败归因为 cgroup OOM；supervisor 的暂停、恢复与两次 cgroup 事实都会写入 evidence。
 
 单进程模式没有独立 supervisor 或兄弟 worker，attach 会同时暂停业务请求与该进程承载的 HTTP
-liveness。目标 Container 配置 liveness 时 Doctor 会明确警告；长时间 dump 仍可能触发 Kubernetes
-重启，现场需要为诊断准备多 worker 或放宽健康检查窗口。
+liveness。Service 可通过 Plugin liveness capability 显式声明 `/health` 契约，并选择是否允许 heap dump
+期间的临时响应。Doctor 只有在 Pod 实际 HTTP probe 与声明完全一致、Pod 不使用 hostNetwork，且已有
+debug container 显式具备 `NET_ADMIN` 时才接管：仅匹配该 path 与 kube-probe User-Agent 的请求返回
+Plugin 声明的成功响应，普通请求继续转发给业务端口。dump 结束后立即撤销网络规则；独立 watchdog
+在 Doctor 意外退出时按超时兜底清理。
+
+该能力不隐式扩大 debug 权限。默认 debug container 不申请 `NET_ADMIN`；需要代理时由用户交互选择
+“memory+liveness”，或执行 `doctor debug --capabilities SYS_PTRACE,NET_ADMIN`。HTTPS、hostNetwork、
+自定义空 User-Agent、运行态 probe 与 Plugin 声明不一致等场景保持原有警告，不伪装健康。
 
 ### Artifact 交付
 

@@ -26,7 +26,24 @@ export interface MetricSourcePreparation {
   targetCount: number;
   exporterStoreTargets: number;
   directStoreTargets: number;
+  storeFallbackReason?: string;
   close(): Promise<void> | void;
+}
+
+function remoteMetricSourcePreparation(
+  prometheus: NonNullable<MetricConfig["prometheus"]>,
+  serviceCount: number,
+  storeFallbackReason?: string,
+): MetricSourcePreparation {
+  return {
+    source: new RemoteMetricSource(prometheus),
+    sourceKind: "remote",
+    targetCount: serviceCount,
+    exporterStoreTargets: 0,
+    directStoreTargets: 0,
+    storeFallbackReason,
+    close: () => {},
+  };
 }
 
 export async function prepareMetricSource(
@@ -37,60 +54,62 @@ export async function prepareMetricSource(
 ): Promise<MetricSourcePreparation> {
   const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);
   if (config.prometheus && storeKinds.length === 0) {
-    return {
-      source: new RemoteMetricSource(config.prometheus),
-      sourceKind: "remote",
-      targetCount: config.services.length,
-      exporterStoreTargets: 0,
-      directStoreTargets: 0,
-      close: () => {},
-    };
+    return remoteMetricSourcePreparation(config.prometheus, config.services.length);
+  }
+  if (config.prometheus && config.storeSupplementUnavailableReason) {
+    return remoteMetricSourcePreparation(
+      config.prometheus,
+      config.services.length,
+      config.storeSupplementUnavailableReason,
+    );
   }
 
-  const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
-  if (!injectedExecutor) {
-    await requireKubernetesChannel({
-      executor,
-      profileName: config.profileName,
-      kubeconfigSource: config.kube.kubeconfig ? "resolved" : "kubectl-default",
-      namespace: config.namespace,
-      commandContext,
-    });
-  }
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
-    command: "doctor metric",
-    needs: [{
-      requirement: "required",
-      rule: { verb: "list", resource: "services" },
-      purpose: "解析注册了 metric capability 的 Service",
-    }, {
-      requirement: "required",
-      rule: { verb: "list", resource: "pods" },
-      purpose: "解析 Service 的 metrics endpoint",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "从 Doctor Host 抓取 Service /metrics",
-    }, {
-      requirement: "preferred",
-      rule: { verb: "get", resource: "configmaps" },
-      purpose: "解析 Redis/DB 声明配置",
-      fallback: "回退读取 Container 运行时 env",
-    }, {
-      requirement: "preferred",
-      rule: { verb: "get", resource: "secrets" },
-      purpose: "解析 Redis/DB 声明凭据",
-      fallback: "回退读取 Container 运行时 env",
-    }, {
-      requirement: "preferred",
-      rule: { verb: "create", resource: "pods/exec" },
-      purpose: "声明配置不足时读取 Redis/DB 运行时 env",
-      fallback: "对应 Store 标记为不可用",
-    }],
-  });
-
-  const forwarder = await ServicePortForwarder.create(executor, config.kube);
+  let forwarder: ServicePortForwarder | undefined;
+  let storeCollection: StoreMetricCollection | undefined;
   try {
+    const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
+    if (!injectedExecutor) {
+      await requireKubernetesChannel({
+        executor,
+        profileName: config.profileName,
+        kubeconfigSource: config.kube.kubeconfig ? "resolved" : "kubectl-default",
+        namespace: config.namespace,
+        commandContext,
+      });
+    }
+    await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+      command: "doctor metric",
+      needs: [{
+        requirement: "required",
+        rule: { verb: "list", resource: "services" },
+        purpose: "解析注册了 metric capability 的 Service",
+      }, {
+        requirement: "required",
+        rule: { verb: "list", resource: "pods" },
+        purpose: "解析 Service 的 metrics endpoint",
+      }, {
+        requirement: "required",
+        rule: { verb: "create", resource: "pods/portforward" },
+        purpose: "从 Doctor Host 抓取 Service /metrics",
+      }, {
+        requirement: "preferred",
+        rule: { verb: "get", resource: "configmaps" },
+        purpose: "解析 Redis/DB 声明配置",
+        fallback: "回退读取 Container 运行时 env",
+      }, {
+        requirement: "preferred",
+        rule: { verb: "get", resource: "secrets" },
+        purpose: "解析 Redis/DB 声明凭据",
+        fallback: "回退读取 Container 运行时 env",
+      }, {
+        requirement: "preferred",
+        rule: { verb: "create", resource: "pods/exec" },
+        purpose: "声明配置不足时读取 Redis/DB 运行时 env",
+        fallback: "对应 Store 标记为不可用",
+      }],
+    });
+
+    forwarder = await ServicePortForwarder.create(executor, config.kube);
     const targets: EmbeddedMetricTarget[] = [];
     if (!config.prometheus) {
       for (const serviceName of config.services) {
@@ -123,7 +142,6 @@ export async function prepareMetricSource(
       retentionMs,
       sampleIntervalMs: config.intervalMs,
     });
-    let storeCollection: StoreMetricCollection | undefined;
     if (storeKinds.length) {
       storeCollection = await prepareStoreMetricCollection({
         plugin,
@@ -147,11 +165,19 @@ export async function prepareMetricSource(
       directStoreTargets: storeCollection?.directCount ?? 0,
       close: async () => {
         await storeCollection?.close();
-        forwarder.stop();
+        forwarder?.stop();
       },
     };
   } catch (error) {
-    forwarder.stop();
+    await storeCollection?.close().catch(() => undefined);
+    forwarder?.stop();
+    if (config.prometheus) {
+      return remoteMetricSourcePreparation(
+        config.prometheus,
+        config.services.length,
+        error instanceof Error ? error.message : String(error),
+      );
+    }
     throw error;
   }
 }

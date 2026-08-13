@@ -21,6 +21,7 @@ RUN apk add --no-cache \
       curl \
       gdb \
       iproute2 \
+      iptables \
       iputils \
       jq \
       mtr \
@@ -53,9 +54,9 @@ RUN case "$TARGETARCH" in \
     && chmod 755 /opt/doctor/lib/pydump/*.so \
     && chmod 755 /opt/doctor/bin/net-capture \
     && rm -rf /tmp/py-spy /tmp/pydump \
-    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
+    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
       "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
-    && for command in curl dig host ip jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
+    && for command in curl dig host ip iptables jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
     && python3 --version \
     && gdb --version \
     && /opt/doctor/bin/austin --version \

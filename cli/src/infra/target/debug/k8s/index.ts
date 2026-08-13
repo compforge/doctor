@@ -32,7 +32,9 @@ function inspectDebugEnvironments(
     )
     .map((item) => {
       const hasDiagnosticCapability = item.capabilities.some(
-        (capability) => capability === "SYS_PTRACE" || capability === "NET_RAW",
+        (capability) => capability === "SYS_PTRACE"
+          || capability === "NET_RAW"
+          || capability === "NET_ADMIN",
       );
       const compatible = item.state === "running" && hasDiagnosticCapability;
       return {
@@ -47,7 +49,7 @@ function inspectDebugEnvironments(
           ? undefined
           : item.state !== "running"
             ? `container state=${item.state}`
-            : "未声明 SYS_PTRACE 或 NET_RAW capability",
+            : "未声明 SYS_PTRACE、NET_RAW 或 NET_ADMIN capability",
       };
     });
 }

@@ -38,6 +38,8 @@ export interface MetricConfig {
   intervalMs: number;
   profileName: string;
   prometheus?: RemoteMetricSourceOptions;
+  /** Remote Service metrics remain usable when optional Kubernetes Store sampling cannot be prepared. */
+  storeSupplementUnavailableReason?: string;
   namespace: string;
   namespaceSource: string;
   kube: { namespace: string; kubeconfig?: string; context?: string };

@@ -86,10 +86,19 @@ export async function resolveMetricConfig(
       store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
     ))
   ));
-  // Store sampling still needs live workload access when Service metrics use remote Prometheus.
-  const kubeconfig = prometheusUrl && !hasStoreMetrics
-    ? undefined
-    : resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
+  let kubeconfig: string | undefined;
+  let storeSupplementUnavailableReason: string | undefined;
+  if (!prometheusUrl) {
+    kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
+  } else if (hasStoreMetrics) {
+    try {
+      kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
+    } catch (error) {
+      // Remote Prometheus is the primary source. A missing Kubernetes channel only disables
+      // the optional live Store supplement; Store probes can still query exporter metrics remotely.
+      storeSupplementUnavailableReason = error instanceof Error ? error.message : String(error);
+    }
+  }
   return {
     services,
     servicesExplicit: opts.services !== undefined,
@@ -103,6 +112,7 @@ export async function resolveMetricConfig(
       timeoutMs: configuredPrometheus?.timeout_ms ?? 10_000,
       maxResponseBytes: configuredPrometheus?.max_response_bytes ?? 4 * 1024 * 1024,
     } : undefined,
+    storeSupplementUnavailableReason,
     namespace: namespace.namespace,
     namespaceSource: namespace.source,
     kube: { namespace: namespace.namespace, kubeconfig, context: opts.context },

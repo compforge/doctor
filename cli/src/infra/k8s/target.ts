@@ -10,7 +10,18 @@ export interface ContainerInfo {
   ready?: boolean;
   limits?: Record<string, string>;
   requests?: Record<string, string>;
-  livenessProbe?: Record<string, unknown>;
+  ports?: Array<{ name?: string; containerPort: number }>;
+  livenessProbe?: {
+    httpGet?: {
+      path?: string;
+      port?: string | number;
+      scheme?: string;
+      host?: string;
+      httpHeaders?: Array<{ name?: string; value?: string }>;
+    };
+    periodSeconds?: number;
+    failureThreshold?: number;
+  };
 }
 
 export interface TargetPod {
@@ -18,6 +29,9 @@ export interface TargetPod {
   namespace: string;
   phase: string;
   nodeName?: string;
+  podIP?: string;
+  hostNetwork: boolean;
+  labels: Record<string, string>;
   startTime?: string;
   containers: ContainerInfo[];
 }
@@ -40,6 +54,9 @@ export function parsePodJson(raw: string): TargetPod {
       ready: st?.ready,
       limits: c.resources?.limits,
       requests: c.resources?.requests,
+      ports: (c.ports ?? []).flatMap((port: any) => Number.isInteger(port.containerPort)
+        ? [{ name: typeof port.name === "string" ? port.name : undefined, containerPort: port.containerPort }]
+        : []),
       livenessProbe: c.livenessProbe,
     };
   });
@@ -48,6 +65,9 @@ export function parsePodJson(raw: string): TargetPod {
     namespace: meta.namespace ?? "",
     phase: status.phase ?? "Unknown",
     nodeName: spec.nodeName,
+    podIP: status.podIP,
+    hostNetwork: spec.hostNetwork === true,
+    labels: meta.labels ?? {},
     startTime: status.startTime,
     containers,
   };
