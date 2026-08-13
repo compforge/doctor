@@ -64,7 +64,8 @@ commands; Model and Skills also extend Chat.
 
 | Path | Purpose |
 |---|---|
-| `cli/` | Self-contained Doctor CLI, collectors, evidence model and offline reports |
+| `cli/` | Doctor Core CLI, collectors, evidence model and offline reports |
+| `toolkit/` | Independently versioned diagnostic tools, debug images and offline system packages |
 | `server/` | Host boundary for an optional Doctor server |
 | `packages/agent/` | Host-neutral Agent runtime shared by local chat and server hosts |
 | `packages/plugin/` | `@compforge/doctor-plugin` contracts and shared Plugin utilities |
@@ -96,6 +97,18 @@ Build only the local macOS binary:
 ```bash
 make build-local
 ```
+
+Build a Toolkit slice for one execution platform, all slices separately, or one combined archive:
+
+```bash
+make -C toolkit build OS=linux ARCH=arm64
+make -C toolkit build-matrix
+make -C toolkit build-all
+```
+
+Core does not embed Toolkit executables. Copy a matching `doctor-toolkit-*.tar` beside Doctor or
+into the working directory; a combined archive may serve a Host and Kubernetes Targets with
+different platforms.
 
 The resulting Core CLI contains only generic access and diagnostic capabilities. Plugin commands
 remain visible and explain which capability is missing when the active profile does not select a

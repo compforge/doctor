@@ -72,7 +72,7 @@ FROM debian:${DEBIAN_VERSION}-slim AS bundle
 ARG DEBIAN_VERSION
 ARG TARGETARCH
 ARG PACKAGE_NAMES=gdb
-ARG DOCTOR_PACKAGE_BUNDLE_VERSION=dev
+ARG DOCTOR_TOOLKIT_VERSION=dev
 ARG DOCTOR_KERNEL_MIN_INCLUSIVE
 ARG DOCTOR_KERNEL_MAX_EXCLUSIVE
 ENV DEBIAN_FRONTEND=noninteractive
@@ -85,13 +85,13 @@ RUN cd /opt/doctor-gdb-repo \
     && gzip -9n -c Packages > Packages.gz \
     && printf 'deb [trusted=yes] file:/opt/doctor-gdb-repo ./\n' \
       > /etc/apt/sources.list.d/doctor-gdb.list
-COPY package-bundles/debian/build-bundle.sh /usr/local/bin/build-debian-bundle
+COPY packages/debian/build-bundle.sh /usr/local/bin/build-debian-bundle
 RUN DOCTOR_KERNEL_MIN_INCLUSIVE="$DOCTOR_KERNEL_MIN_INCLUSIVE" \
     DOCTOR_KERNEL_MAX_EXCLUSIVE="$DOCTOR_KERNEL_MAX_EXCLUSIVE" \
     bash /usr/local/bin/build-debian-bundle \
       "$TARGETARCH" \
       "$DEBIAN_VERSION" \
-      "$DOCTOR_PACKAGE_BUNDLE_VERSION" \
+      "$DOCTOR_TOOLKIT_VERSION" \
       $PACKAGE_NAMES
 
 # A fresh slim root proves the bundle can resolve and install without consulting a network source.

@@ -6,6 +6,7 @@ import {
   type LocalCommandResult,
   type LocalContainerEngine,
 } from "../src/infra/host/container-engine";
+import { resolveHostExecution } from "../src/infra/host/execution";
 
 function result(ok: boolean, stdout = "", stderr = ""): LocalCommandResult {
   return {
@@ -36,6 +37,42 @@ test("本地 container engine 按 Docker、Podman、nerdctl 顺序探测并隐�
     "inspect",
     "doctor-debug:1",
   ]);
+});
+
+test("Host 执行优先使用已可用 container，不能使用时回退本机进程", async () => {
+  const engine: LocalContainerEngine = {
+    name: "docker",
+    run: async () => result(true),
+  };
+  const order: string[] = [];
+  const container = await resolveHostExecution({
+    discoverContainerEngine: async () => engine,
+    container: async () => {
+      order.push("container");
+      return "ready";
+    },
+    process: async () => {
+      order.push("process");
+      return "fallback";
+    },
+  });
+  expect(container.kind).toBe("host-container");
+  expect(order).toEqual(["container"]);
+
+  order.length = 0;
+  const process = await resolveHostExecution({
+    discoverContainerEngine: async () => engine,
+    container: async () => {
+      order.push("container");
+      return undefined;
+    },
+    process: async () => {
+      order.push("process");
+      return "fallback";
+    },
+  });
+  expect(process).toEqual({ kind: "host-process", value: "fallback" });
+  expect(order).toEqual(["container", "process"]);
 });
 
 test("本地 image 准备只在 image 缺失时执行 load 并再次确认", async () => {

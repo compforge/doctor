@@ -26,8 +26,6 @@ bun build "$DOCTOR_ENTRY" \
   --format=esm \
   --outdir="$WORK_DIR/core" \
   --entry-naming=doctor-core.mjs \
-  --asset-naming='[name]-[hash].[ext]' \
-  --loader .gz:file \
   --define 'import.meta.url="file:///__doctor_sea__/doctor-core.mjs"'
 
 cat > "$WORK_DIR/bootstrap.cjs" <<'EOF'
@@ -49,11 +47,7 @@ cat > "$WORK_DIR/sea-config.json" <<EOF
   "useSnapshot": false,
   "useCodeCache": false,
   "assets": {
-    "doctor-core.mjs": "$WORK_DIR/core/doctor-core.mjs",
-    "doctor-regctl": "$ROOT_DIR/assets/regctl/regctl-linux-amd64",
-    "doctor-pcap": "$ROOT_DIR/assets/gopacket/doctor-pcap-linux-amd64",
-    "doctor-pyheap-dumper": "$ROOT_DIR/assets/pyheap/pyheap_dump-0.7.0+doctor.2.gz",
-    "doctor-pyheap-analyzer": "$ROOT_DIR/assets/pyheap/pyheap_analyzer-0.7.0+doctor.2.gz"
+    "doctor-core.mjs": "$WORK_DIR/core/doctor-core.mjs"
   }
 }
 EOF

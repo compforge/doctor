@@ -3,7 +3,7 @@ import type {
   RegistryCredentials,
   RegistryTagListResult,
 } from "../infra/image";
-import debugImageVersion from "../../docker/debug/VERSION" with { type: "text" };
+import toolkitVersion from "../../../toolkit/VERSION" with { type: "text" };
 import { resolveCollectDebugImage } from "../infra/k8s/context";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 import { listRegistryTagsWithAuth } from "./registry-auth";
@@ -12,7 +12,7 @@ import type { CommandProfile } from "../command";
 // Debug image repository 的单一来源；Makefile 构建默认值也从本常量读取。
 export const DOCTOR_DEBUG_IMAGE = "doctor-debug";
 // VERSION 同时驱动镜像构建 tag 与 CLI 默认选择，避免 CLI/image 发布节奏被迫绑定。
-export const DOCTOR_DEBUG_IMAGE_VERSION = debugImageVersion.trim();
+export const DOCTOR_DEBUG_IMAGE_VERSION = toolkitVersion.trim();
 
 export interface ResolvedDebugImage {
   image: string;

@@ -28,7 +28,7 @@ PyHeap dump 会通过 GDB/ptrace 暂停目标 Python 进程，并在目标解释
   ├─ 可用：在 debug container 内运行 PyHeap dumper
   └─ 不可用：检查目标 container 是否已具备完整 attach 前置
                  ↓
-              临时上传 Doctor 内嵌的 dumper
+              按目标平台从 Doctor Toolkit 临时上传 dumper
   ↓
 展示影响并取得确认
   ↓
@@ -64,8 +64,8 @@ doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
 
 没有可用 debug container 时，Doctor 才检查目标业务容器。目标容器必须已经具备 Python 3、
 通过同一能力验收的 GDB、可写临时目录和 ptrace；Python 环境本身不够。inferior call smoke test
-只 attach Doctor 自建的短生命周期进程，不 attach 业务 PID。全部前置满足后，Doctor 把内嵌
-dumper 临时上传到 `/tmp/doctor-pyheap/pyheap_dump` 再 attach。
+只 attach Doctor 自建的短生命周期进程，不 attach 业务 PID。全部前置满足后，Doctor 按实际执行
+Container 的 OS/架构从 Toolkit 选择 dumper，临时上传到 `/tmp/doctor-pyheap/pyheap_dump` 再 attach。
 
 如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
 GDB、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
@@ -105,10 +105,10 @@ heap，并告诉用户远端文件位置。
 - 已解析的 `pyheap.analysis/v1` JSON。
 
 输入 `.pyheap` 时，分析 JSON 使用同 basename 的 `.pyheap-analysis.json`。Doctor 先核对 JSON
-中的 source size 和 SHA-256；匹配则复用，不匹配或损坏才重新运行内嵌 analyzer。Doctor 先验证
-本机 `python3` 能否启动 analyzer；不可用或不兼容时，改用本地 Docker、Podman 或 nerdctl 中
-已经 load 且携带兼容 analyzer 的 doctor-debug image。container 分析关闭网络，并只读挂载 heap
-文件。retained-heap 可能显著消耗 Doctor Host 内存，因此不再支持 Pod 内分析。
+中的 source size 和 SHA-256；匹配则复用，不匹配或损坏才重新运行 Toolkit analyzer。Doctor 优先探测
+本地 Docker、Podman 或 nerdctl 中已经 load 且携带兼容 analyzer 的 doctor-debug image；没有可用
+container backend 时才回退本机 `python3` 进程。探测不会隐式 load image。container 分析关闭网络，
+并只读挂载 heap 文件。retained-heap 可能显著消耗 Doctor Host 内存，因此不再支持 Pod 内分析。
 
 未给输入时，Doctor 扫描当前目录：优先跟踪 `doctor.memory-capture/v1` 采集索引；没有索引时
 才使用分析 JSON，最后兼容裸 `.pyheap`。这样一次采集只有一个默认入口，不会因派生产物重复发现。

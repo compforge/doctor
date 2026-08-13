@@ -38,7 +38,7 @@ import {
   resolveCaptureHeapPath,
 } from "./capture-artifact";
 import { diagnosePyHeapAnalysis } from "./detector/pyheap";
-import { resolveEmbeddedPyHeapTool } from "./embedded-pyheap";
+import { resolveHostPyHeapTool } from "./toolkit-pyheap";
 import {
   findLocalDoctorDebugImages,
   localContainerPyHeapAnalyzerArgv,
@@ -121,48 +121,62 @@ function localFailure(result: {
 }
 
 async function resolvePyHeapAnalyzerBackend(): Promise<PyHeapAnalyzerBackend> {
-  const analyzer = resolveEmbeddedPyHeapTool("analyzer");
-  const probeRoot = mkdtempSync(join(tmpdir(), "doctor-mema-probe-"));
-  let nativeReason = "未知错误";
-  try {
-    const native = await runLocalCommand(
-      ["python3", analyzer, "retained-heap", "--help"],
-      {
-        env: {
-          ...process.env,
-          PEX_ROOT: join(probeRoot, "pex"),
-          PYHEAP_CACHE_DIR: join(probeRoot, "cache"),
-        },
-        timeoutMs: 60_000,
-      },
+  let containerReason = "未发现可用的 Docker、Podman 或 nerdctl";
+  const execution = await infra.host.resolveExecution({
+    container: async (engine) => {
+      const images = await findLocalDoctorDebugImages(engine);
+      for (const image of images) {
+        if (await supportsPyHeapAnalyzer(engine, image)) return { image };
+      }
+      containerReason = `${engine.name} 中没有携带兼容 analyzer 的 doctor-debug image`;
+      return undefined;
+    },
+    process: async () => {
+      terminalStdout.write(
+        `[collect] Doctor Host container 不可用（${containerReason}），回退本机进程…\n`,
+      );
+      let analyzer: string;
+      try {
+        analyzer = resolveHostPyHeapTool("analyzer");
+      } catch (error) {
+        throw new Error(
+          `${containerReason}；${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      const probeRoot = mkdtempSync(join(tmpdir(), "doctor-mema-probe-"));
+      try {
+        const native = await runLocalCommand(
+          ["python3", analyzer, "retained-heap", "--help"],
+          {
+            env: {
+              ...process.env,
+              PEX_ROOT: join(probeRoot, "pex"),
+              PYHEAP_CACHE_DIR: join(probeRoot, "cache"),
+            },
+            timeoutMs: 60_000,
+          },
+        );
+        if (native.ok) return { analyzer };
+        throw new Error(
+          `Doctor Host container 不可用（${containerReason}），本机 PyHeap analyzer 也不可用（${localFailure(native)}）；`
+          + "请准备 doctor-debug image 或安装兼容 Python",
+        );
+      } finally {
+        rmSync(probeRoot, { recursive: true, force: true });
+      }
+    },
+  });
+  if (execution.kind === "host-container") {
+    terminalStdout.write(
+      `[collect] 使用本地 ${execution.engine.name} image 分析：${execution.value.image}\n`,
     );
-    if (native.ok) return { kind: "native", analyzer };
-    nativeReason = localFailure(native);
-  } finally {
-    rmSync(probeRoot, { recursive: true, force: true });
+    return {
+      kind: "container",
+      engine: execution.engine,
+      image: execution.value.image,
+    };
   }
-
-  terminalStdout.write(
-    `[collect] 本机 Python 无法直接运行 PyHeap analyzer（${nativeReason}），尝试本地 doctor-debug image…\n`,
-  );
-  const engine = await infra.host.containerEngine();
-  if (!engine) {
-    throw new Error(
-      `本机 PyHeap analyzer 不可用（${nativeReason}），且没有可用的 Docker、Podman 或 nerdctl；`
-      + "请先安装兼容 Python，或执行 doctor image --tar <doctor-debug.tar> 准备本地 image",
-    );
-  }
-  const images = await findLocalDoctorDebugImages(engine);
-  for (const image of images) {
-    if (await supportsPyHeapAnalyzer(engine, image)) {
-      terminalStdout.write(`[collect] 使用本地 ${engine.name} image 分析：${image}\n`);
-      return { kind: "container", engine, image };
-    }
-  }
-  throw new Error(
-    `本机 PyHeap analyzer 不可用（${nativeReason}），${engine.name} 中也没有携带兼容 analyzer 的 `
-    + "doctor-debug image；请先执行 doctor image --tar <doctor-debug.tar>",
-  );
+  return { kind: "native", analyzer: execution.value.analyzer };
 }
 
 class PyHeapAnalyzerRunner {

@@ -78,8 +78,8 @@ kernel 范围是 package bundle 的已验证兼容性声明，不由 Doctor 根�
 构建已验证的专用 bundle 时可设置 `DOCTOR_KERNEL_MIN_INCLUSIVE` 与
 `DOCTOR_KERNEL_MAX_EXCLUSIVE`；没有声明范围的历史 bundle 仍可读取，但不会覆盖更具体的候选。
 
-Package bundles 的版本单一来源是 `package-bundles/VERSION`，独立于 Doctor CLI 和 doctor debug image；
-变更记录维护在同目录的 `RELEASE.md`。构建时可用 `DOCTOR_PACKAGE_BUNDLE_VERSION=<version>` 覆盖。
+离线 package 是 Doctor Toolkit 的平台资源，与 debug image 和诊断 executable 共享 `toolkit/VERSION`，
+独立于 Doctor CLI。Toolkit manifest 负责记录每项资源的平台、路径、大小与 SHA-256。
 
 ### 包文件从哪里来
 
@@ -103,16 +103,13 @@ Debian 12 bundle 在 Debian 12 构建环境中从官方源码编译 GDB 17.2，�
 可分别通过 `DOCTOR_GDB_VERSION`、`DOCTOR_GDB_SHA256` 显式覆盖。通过以下命令构建：
 
 ```bash
-make build-gdb-package-bundles
+make -C toolkit build OS=linux ARCH=amd64
+make -C toolkit build OS=linux ARCH=arm64
 ```
 
 构建过程使用 Docker 或 Podman 分别运行目标架构的 Debian 12，并在全新的 slim root 中只使用生成的
 本地 source 安装和验证 GDB Python scripting。构建过程同时把发行版实际解析到的 GDB 包版本写入
-内层 manifest，再聚合为单个对外交付文件：
-
-```text
-doctor-packages-<version>-debian12.tar
-```
+内层 manifest，再作为对应 Linux/arch Toolkit slice 的 package 资源交付。
 
 可用 `DOCTOR_CONTAINER_ENGINE=podman` 或 `DOCTOR_CONTAINER_ENGINE=docker` 显式选择构建引擎。
 

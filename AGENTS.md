@@ -16,6 +16,7 @@ Service 下的运行目标和证据来源。CLI 负责确定性采集、证据�
 | 目录 | 角色 |
 |---|---|
 | `cli/` | Doctor CLI：命令入口、诊断编排、通用 infra、Evidence 与报告 |
+| `toolkit/` | 独立版本的诊断工具、debug image 与离线系统包；按执行位置的 OS/arch 分发 |
 | `server/` | 可选 Doctor server 的宿主边界 |
 | `packages/agent/` | `@compforge/doctor-agent`：供 CLI 与 server 宿主共用的 agent loop、Skill 输入和 AgentUE 输出 |
 | `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog 与 capability 公共协议 |
@@ -40,6 +41,9 @@ Service 下的运行目标和证据来源。CLI 负责确定性采集、证据�
 6. **Core 内容与版本同步演进**：Doctor Core 的代码或用户可见内容发生变化时，必须在同一 PR 运行
    `make -C cli bump-version` 提升 patch version；`cli/src/app/version.ts` 是唯一版本事实源，运行时、
    构建产物命名与 Release 都读取该值，不在其它文件重复维护版本号。
+7. **Toolkit 独立演进**：工具、debug image、离线系统包与兼容性 manifest 归 `toolkit/`，不进入 CLI
+   executable；任一交付内容变化都必须提升 `toolkit/VERSION`。平台按资源实际执行位置解析，不能用
+   Doctor Host 平台替代 Kubernetes Target 平台。
 
 ## References
 

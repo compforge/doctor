@@ -208,7 +208,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
   })).toBe(1);
 });
 
-test("PCAP decoder 在 tshark 不可用时回退到内置 gopacket helper", async () => {
+test("PCAP decoder 在 tshark 不可用时回退到 Toolkit doctor-pcap", async () => {
   const commands: string[][] = [];
   const runner = async (argv: string[]) => {
     commands.push(argv);

@@ -1,9 +1,15 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import {
   inspectImageArchive,
   type ImageArchiveInfo,
 } from "../../infra/image";
+import {
+  hostContainerToolkitChannel,
+  inspectToolkitArchive,
+  materializeToolkitResource,
+  resolveToolkitResource,
+} from "../../infra/toolkit";
 import { terminalStdout } from "../../terminal/output";
 import {
   matchListedChoice,
@@ -31,7 +37,8 @@ export function imageTarMissingMessage(path?: string): string {
   return `${missing}。\n`
     + "[image] image tar 是已经构建或导出的容器镜像离线归档；doctor image 可把它发布到 "
     + "Target Registry、load 到 Doctor Host，或同时准备到两处，不负责现场构建镜像。\n"
-    + "[image] doctor-debug 可在 Doctor CLI 源码目录运行 `make build-debug-images` 生成；"
+    + "[image] doctor-debug 由 Doctor Toolkit 交付，可在源码根目录运行 "
+    + "`make -C toolkit build OS=linux ARCH=<amd64|arm64>` 生成；"
     + "其它镜像可用 `docker save` / `podman save` 导出。"
     + "请把产物复制到 Doctor Host 当前目录，或用 `--tar <path>` 指定。";
 }
@@ -47,7 +54,9 @@ export function listImageArchives(
   }
   return entries
     .filter((entry) =>
-      entry.isFile() && entry.name.toLowerCase().endsWith(".tar")
+      entry.isFile()
+      && entry.name.toLowerCase().endsWith(".tar")
+      && !entry.name.startsWith("doctor-toolkit-")
     )
     .map((entry) => {
       const path = resolve(join(directory, entry.name));
@@ -137,20 +146,47 @@ export async function resolveImageArchives(
   explicit: string | string[] | undefined,
   options: ResolveImageArchiveOptions = {},
 ): Promise<string[] | undefined> {
-  const paths = (
+  const requestedPaths = (
     Array.isArray(explicit)
       ? explicit
       : explicit
         ? [explicit]
         : []
   ).map((path) => resolve(path));
-  if (paths.length === 0) {
+  if (requestedPaths.length === 0) {
+    const toolkitImages = (["amd64", "arm64"] as const).flatMap((architecture) => {
+      const channel = hostContainerToolkitChannel(architecture);
+      const image = channel
+        ? resolveToolkitResource(channel, "image", "doctor-debug")
+        : undefined;
+      return image ? [image.path] : [];
+    });
+    if (toolkitImages.length > 0) {
+      terminalStdout.info(
+        `[image] 使用 Doctor Toolkit 中的 debug image：${toolkitImages.join("、")}\n`,
+      );
+      return toolkitImages;
+    }
     const selected = await resolveImageArchive(undefined, options);
     return selected ? [selected] : undefined;
   }
-  for (const path of paths) {
+  const paths: string[] = [];
+  for (const path of requestedPaths) {
     if (!existsSync(path)) throw new Error(imageTarMissingMessage(path));
-    terminalStdout.info(`[image] tar: ${path}（--tar）\n`);
+    try {
+      const toolkit = inspectToolkitArchive(path);
+      const images = toolkit.manifest.platforms.flatMap((platform) =>
+        platform.images.map((resource) => materializeToolkitResource(toolkit, resource)));
+      if (images.length === 0) throw new Error(`Doctor Toolkit 不包含 image：${path}`);
+      paths.push(...images);
+      terminalStdout.info(`[image] Toolkit: ${path}（--tar，${images.length} 个 image）\n`);
+    } catch (error) {
+      if (basename(path).startsWith("doctor-toolkit-") || /Doctor Toolkit 不包含 image/.test(String(error))) {
+        throw error;
+      }
+      paths.push(path);
+      terminalStdout.info(`[image] tar: ${path}（--tar）\n`);
+    }
   }
   return [...new Set(paths)];
 }

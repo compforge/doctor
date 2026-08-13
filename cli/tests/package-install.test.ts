@@ -109,7 +109,7 @@ test("doctor install 缺少 bundle 时说明它不是 image tar 或现场生成�
   expect(message).toContain("离线软件仓");
   expect(message).toContain("它不是 image tar");
   expect(message).toContain("不是在客户 Pod 内现场生成");
-  expect(message).toContain("make build-gdb-package-bundles");
+  expect(message).toContain("make -C toolkit build");
   expect(message).toContain("kernel=5.15.0-100-generic");
 });
 

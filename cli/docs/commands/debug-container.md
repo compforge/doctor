@@ -47,9 +47,9 @@ Debug Environment Fact 只说明候选环境是否 Ready、是否能进入目标
 
 ### mutation 统一经过 K8s 原语
 
-RBAC 检查、server-side dry-run 与真实 mutation 使用同一份资源描述，减少预检与执行漂移。镜像版本由
-`docker/debug/VERSION` 独立维护，变更记录归 `docker/debug/RELEASE.md`；具体 tag、工具版本和 readiness
-字段属于代码事实，不写进本设计文档。
+RBAC 检查、server-side dry-run 与真实 mutation 使用同一份资源描述，减少预检与执行漂移。镜像属于
+Doctor Toolkit，与其它诊断工具共享独立版本；具体 tag、工具版本和 readiness 字段属于代码事实，
+不写进本设计文档。
 
 Debug container 按用户选择具备进程 attach、网络抓包或两类 capability；已有容器按其实际能力被对应诊断复用。
 Network 还必须额外验证抓包 capability、tcpdump 和控制器。容器 spec 中声明 capability 只是 Fact，真正能否
@@ -70,5 +70,5 @@ Debug image repository 名由代码中的单一常量同时约束构建和运行
 复制或安装 GDB、PyHeap 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
 PID namespace 的 Ephemeral Container，并申请诊断所需 capability；若集群拒绝 `pods/ephemeralcontainers` 或
 admission 拒绝 capability，命令在 mutation 前置检查处停止。目标业务镜像 fallback 显式覆盖 ENTRYPOINT/CMD；
-`doctor debug` 不实现安装动作，只在新建容器后按本地 package tar 提供 `doctor install` 后续入口。在线和离线安装
+`doctor debug` 不实现安装动作，只在新建容器后按本地 Toolkit/package tar 提供 `doctor install` 后续入口。在线和离线安装
 统一由 [`install.md`](install.md) 描述的 `doctor install` 完成；离线程序包也不属于 doctor-debug image/tar。

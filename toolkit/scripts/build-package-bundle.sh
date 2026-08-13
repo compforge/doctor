@@ -5,7 +5,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 architecture="${1:?usage: build-package-bundle.sh <amd64|arm64> [output-dir]}"
 output_dir="${2:-$root_dir/dist}"
 engine="${DOCTOR_CONTAINER_ENGINE:-}"
-bundle_version="${DOCTOR_PACKAGE_BUNDLE_VERSION:-$(tr -d '[:space:]' < "$root_dir/package-bundles/VERSION")}"
+bundle_version="${DOCTOR_TOOLKIT_VERSION:-$(tr -d '[:space:]' < "$root_dir/VERSION")}"
 gdb_version="${DOCTOR_GDB_VERSION:-17.2}"
 gdb_sha256="${DOCTOR_GDB_SHA256:-1c036c0d72e4b3d1fb5c94c88632add6f9d76f4d7c4d2ea793c12a9f19a3228c}"
 gdb_build_jobs="${DOCTOR_GDB_BUILD_JOBS:-8}"
@@ -29,12 +29,12 @@ if [[ ! "$architecture" =~ ^(amd64|arm64)$ ]]; then
   exit 1
 fi
 if [[ ! "$bundle_version" =~ ^[0-9A-Za-z][0-9A-Za-z.+-]*$ ]]; then
-  echo "invalid DOCTOR_PACKAGE_BUNDLE_VERSION: $bundle_version" >&2
+  echo "invalid DOCTOR_TOOLKIT_VERSION: $bundle_version" >&2
   exit 1
 fi
 
 mkdir -p "$output_dir"
-tag="doctor-package-bundle:$bundle_version-gdb-debian12-$architecture"
+tag="doctor-toolkit-package:$bundle_version-gdb-debian12-$architecture"
 container_id=""
 copy_archive=""
 cleanup() {
@@ -56,7 +56,7 @@ build_args=(
   --build-arg "GDB_SHA256=$gdb_sha256"
   --build-arg "GDB_BUILD_JOBS=$gdb_build_jobs"
   --build-arg "PACKAGE_NAMES=gdb"
-  --build-arg "DOCTOR_PACKAGE_BUNDLE_VERSION=$bundle_version"
+  --build-arg "DOCTOR_TOOLKIT_VERSION=$bundle_version"
   --build-arg "DOCTOR_KERNEL_MIN_INCLUSIVE=${DOCTOR_KERNEL_MIN_INCLUSIVE:-}"
   --build-arg "DOCTOR_KERNEL_MAX_EXCLUSIVE=${DOCTOR_KERNEL_MAX_EXCLUSIVE:-}"
 )
@@ -68,7 +68,7 @@ for proxy_name in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROX
 done
 build_args+=(
   --tag "$tag"
-  -f package-bundles/debian/Dockerfile
+  -f packages/debian/Dockerfile
   .
 )
 if [[ "$engine" == "docker" ]]; then

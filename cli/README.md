@@ -10,30 +10,20 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 make build
 ```
 
-通用临时诊断镜像在带 Docker Buildx 的 Linux/devbox 上单独构建。聚合 target 同时构建
-`linux/amd64` 和 `linux/arm64`，一个架构对应一个 image tar：
+Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、PyHeap 等诊断工具。它们与 debug image、GDB 离线包统一由
+根目录 `toolkit/` 独立版本和构建：
 
 ```bash
-make build-debug-images
-# 指定 tar 内 doctor-debug 镜像的 tag；默认读取 docker/debug/VERSION
-make build-debug-images DOCTOR_DEBUG_TAG=0.0.10
+make -C ../toolkit build OS=linux ARCH=arm64
+make -C ../toolkit build-matrix
+make -C ../toolkit build-all
 ```
 
-产物为 `dist/doctor-debug-<version>-linux-amd64.tar` 和 `dist/doctor-debug-<version>-linux-arm64.tar`，与 doctor binary 一起交付但不纳入 Git、不嵌入 executable。`make build` 产出的每个平台 Doctor 单文件只内嵌匹配 OS/arch 的 regctl，客户不需要额外分发 regctl，也不强制要求本机 container engine。`doctor image [registry/namespace/image:tag]` 是 image tar 的唯一准备入口：从当前目录选择 tar，可用 `--registry` 发布到指定 registry/namespace、用 `--host` load 到 Doctor Host，或同时准备到两处。`doctor debug` 只消费已发布的 doctor-debug image，或在其不可用时复用目标 Pod 已有的业务镜像，不处理 tar 和镜像发布。
-
-Debian 12 的 GDB 离线安装包同样独立构建：
-
-```bash
-make build-gdb-package-bundles
-# 默认读取 package-bundles/VERSION，也可显式覆盖
-make build-gdb-package-bundles DOCTOR_PACKAGE_BUNDLE_VERSION=0.0.1
-```
-
-对外交付产物为单个版本化文件
-`dist/doctor-packages-<version>-debian12.tar`。它聚合不同架构、包版本和 Target kernel
-兼容范围的内部 variant；版本独立于 Doctor CLI 和 debug image。`doctor install` 在运行期只提取并
-上传与 Target 匹配的 variant。单架构 v1 variant 仍可通过
-`make build-gdb-package-linux-amd64` / `make build-gdb-package-linux-arm64` 独立构建验证。
+`doctor-toolkit-<version>-<os>-<arch>.tar` 是单平台切片，`doctor-toolkit-<version>-all.tar` 同时包含全部
+平台。平台表示资源的实际执行位置：同一次命令可以为 Doctor Host 选择 Darwin/ARM64 工具，同时为 Pod
+选择 Linux/AMD64 工具。把 Toolkit tar 放在 Doctor 可执行文件旁或当前目录即可；也可用
+`DOCTOR_TOOLKIT=<path>` 显式指定。`doctor image` 从 Toolkit 取得 debug image，`doctor install` 从中取得
+匹配 Target 发行版和架构的离线包。
 
 ## 命令
 

@@ -234,12 +234,20 @@ Command 同时服务交互用户和自动化调用：domain 只提供候选与�
 `terminal`。chat-tui 只依赖 `Controller` 提供的 view state 与 intent；`Session` 只接收 AgentUE patch，
 不直接解释 pi 或 server wire 字段。doctor-server wire schema 由 `ServerAgent` 收口。
 
-### Runtime 与分发
+### CLI 与 Toolkit 分发
 
-CLI core 只依赖 Node-compatible API，从同一个入口构建各平台单文件。runtime 差异留在 `infra/host`
-和构建脚本，collect domain 不直接调用 `Bun.*`。Linux x64 同时提供 modern Bun 与 glibc 2.17-compatible
-Node SEA；无法证明目标满足 modern 基线时保守选择兼容产物。具体版本、文件名、校验和与发布矩阵
-以 Makefile、构建脚本和 CI gate 为事实源，不在设计文档复制。
+CLI core 只依赖 Node-compatible API，从同一个入口构建各平台单文件。诊断 executable、debug image 与
+离线系统包归独立版本的 Doctor Toolkit，不进入 CLI 单文件。`infra/toolkit` 先根据 Host process、Host
+container 或 Kubernetes container 的实际 OS/arch 选择并校验资源，再交给对应 `infra/host`、container
+engine 或 Kubernetes adapter 执行；Doctor Host 平台不能替代 Target 平台。
+
+Host 上同一能力同时具有 container 和 process backend 时，由 `infra/host` 自动探测：优先复用已经可用的
+本地 container engine 与工具 image，不能满足能力要求时再回退本机进程。这里只观察已有能力，不会为了
+命中优先通道而隐式 load image；需要准备 image 时仍由 Provision 明确完成。
+
+Linux x64 CLI 同时提供 modern Bun 与 glibc 2.17-compatible Node SEA；无法证明 Host 满足 modern 基线时
+保守选择兼容产物。具体版本、文件名、校验和与发布矩阵以各自 Makefile、manifest 和 CI gate 为事实源，
+不在设计文档复制。
 
 ## Command 文档约定
 
