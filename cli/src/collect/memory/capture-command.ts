@@ -30,6 +30,7 @@ import {
   type PydumpDetail,
 } from "./capture";
 import { cleanupPydumpCmd, PYDUMP_TOOL_DIR, PYDUMP_VERSION } from "./pydump-tool";
+import { cleanupPyheapCmd, PYHEAP_TOOL_DIR, PYHEAP_VERSION } from "./pyheap-tool";
 import { runInspects } from "../inspect-engine";
 import {
   makeCgroupMemoryInspect,
@@ -40,6 +41,11 @@ import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { parseServices } from "../../infra/k8s/service";
 import { resolveLivenessProxyIntent, type LivenessProxyIntent } from "./liveness-proxy";
+import {
+  parseMemoryBackend,
+  resolveMemoryBackend,
+  type MemoryCaptureBackend,
+} from "./backend-selection";
 
 export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   pod?: string;
@@ -49,6 +55,7 @@ export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   output?: string;
   detail?: string;
   strReprLen?: string;
+  backend?: string;
   captureVia?: string;
   transferChunkSize?: string;
   cleanupRemote?: boolean;
@@ -83,11 +90,13 @@ export async function runCollectMemory(
   let preference: CapturePreference;
   let strReprLen: number;
   let transferChunkBytes: number;
+  let backend: MemoryCaptureBackend | undefined;
   try {
     detail = parsePydumpDetail(opts.detail);
     preference = parseCapturePreference(opts.captureVia);
     strReprLen = parseStrReprLen(opts.strReprLen, detail === "lite" ? -1 : 1000);
     transferChunkBytes = parseTransferChunkBytes(opts.transferChunkSize);
+    backend = parseMemoryBackend(opts.backend);
   } catch (error) {
     terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -109,7 +118,7 @@ export async function runCollectMemory(
     needs: [{
       requirement: "required",
       rule: { verb: "create", resource: "pods/exec" },
-      purpose: "探测 Python 进程、attach 并回传 Pydump",
+      purpose: "探测 Python 进程、attach 并回传对象堆",
     }, {
       requirement: "preferred",
       rule: { verb: "list", resource: "services" },
@@ -208,6 +217,12 @@ export async function runCollectMemory(
     log(cgroupMemory
       ? `[collect] 检测到目标容器使用 cgroup v${cgroupMemory.version}`
       : "[collect] 未能识别目标容器的 cgroup 版本；继续执行 heap dump");
+    backend ??= await resolveMemoryBackend({ cgroupMemory });
+    if (!backend) {
+      rmSync(stagingRoot, { recursive: true, force: true });
+      return process.stdin.isTTY && process.stdout.isTTY ? 130 : 2;
+    }
+    log(`[collect] heap 采集后端：${backend}`);
     result = await captureMemoryHeap(
       executor,
       {
@@ -217,6 +232,7 @@ export async function runCollectMemory(
         podJson: podJsonResult.stdout,
         container: selected.value,
         pidFlag: opts.pid,
+        backend,
         detail,
         strReprLen,
         preference,
@@ -244,16 +260,17 @@ export async function runCollectMemory(
             selected.value.name,
           ).selected?.executionContainer;
       if (executionContainer) {
+        const cleanupDir = backend === "pyheap" ? PYHEAP_TOOL_DIR : PYDUMP_TOOL_DIR;
         const cleanup = await executor.exec(
           { pod: target.pod, container: executionContainer },
-          cleanupPydumpCmd(),
+          backend === "pyheap" ? cleanupPyheapCmd() : cleanupPydumpCmd(),
           { timeoutMs: 30_000 },
         );
-        if (!cleanup.ok) log(`[collect] 容器内 ${PYDUMP_TOOL_DIR} 清理失败，可稍后手工删除`);
+        if (!cleanup.ok) log(`[collect] 容器内 ${cleanupDir} 清理失败，可稍后手工删除`);
       }
     }
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(`[collect] Pydump 文件：${result.heapPath}\n`);
+    terminalStdout.success(`[collect] ${backend === "pyheap" ? "PyHeap" : "Pydump"} 文件：${result.heapPath}\n`);
     terminalStdout.write(`[collect] 采集索引：${result.capturePath}\n`);
     terminalStdout.write(`[collect] 下一步：doctor mema ${result.capturePath}\n`);
     return 0;
@@ -266,7 +283,7 @@ export async function runCollectMemory(
 
   const reasons = result.reasons?.length
     ? result.reasons
-    : [result.reason ?? "Pydump 采集失败"];
+    : [result.reason ?? `${backend === "pyheap" ? "PyHeap" : "Pydump"} 采集失败`];
   for (const reason of reasons) {
     terminalStderr.error(`[collect] ${reason}\n`);
   }
@@ -290,10 +307,13 @@ export async function runCollectMemory(
     inspectionFacts: cgroupMemory ? { cgroupMemory } : {},
     params: {
       command: "mem",
+      backend,
       detail,
       str_repr_len: strReprLen,
       capture_via: preference,
-      pydump_version: PYDUMP_VERSION,
+      ...(backend === "pyheap"
+        ? { pyheap_version: PYHEAP_VERSION }
+        : { pydump_version: PYDUMP_VERSION }),
     },
     startedAt: invokedAt.toISOString(),
     finishedAt: new Date().toISOString(),

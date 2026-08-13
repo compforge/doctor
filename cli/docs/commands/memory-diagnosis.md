@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-Doctor 的 Python 内存诊断以 Pydump artifact 为中心，只保留两个命令：
+Doctor 的 Python 内存诊断以语言中立的 `.pyheap` artifact 为中心，只保留两个命令：
 
 - `doctor mem` 负责在线采集：attach 一个 Python 进程、生成 `.pyheap`、校验并回传本机。
 - `doctor mema` 负责离线分析：在 Doctor 本机把 `.pyheap` 解析为
@@ -10,10 +10,16 @@ Doctor 的 Python 内存诊断以 Pydump artifact 为中心，只保留两个命
 
 旧的短窗口采样和三档 mode 已经删除。读取 Kubernetes、cgroup 与 `/proc` 的低成本事实会随
 capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路线；没有对象堆时，Doctor 不会用
-这些有限事实替代 Pydump 结论。
+这些有限事实替代对象堆结论。
 
-Pydump 会通过静态 ptrace Injector 把有界 C Agent 加载到目标解释器，由执行容器内的 Collector
-保留随堆规模增长的队列、索引和输出文件。Agent 持有 GIL 期间 Python 业务仍会暂停，
+`doctor mem` 在 attach 前让用户手动选择后端，不根据 cgroup 余量自动决定：
+
+- Pydump 通过静态 ptrace Injector 把有界 C Agent 加载到目标解释器，由执行容器内的 Collector
+  保留随堆规模增长的队列、索引和输出文件，尽量降低目标 Python 进程的额外内存。
+- PyHeap 选项使用 Doctor 维护的 fork-pyheap，由 GDB 在目标解释器内执行对象遍历。操作方式与原
+  PyHeap 一致，但随对象规模增长的索引和 heap 写入内存主要归属目标进程及其 cgroup。
+
+两条路线都会在 Agent 或注入代码持有 GIL 期间暂停 Python 业务，
 大堆可能持续数分钟，期间请求可能超时，异常中断也可能影响进程稳定性。因此
 `doctor mem` 在真正 attach 前展示目标、执行位置、暂停影响、Uvicorn 保护和回传行为，并要求
 用户确认；非交互调用必须显式传 `-y`。
@@ -25,17 +31,19 @@ Pydump 会通过静态 ptrace Injector 把有界 C Agent 加载到目标解释�
 ```text
 选择 Pod / container / Python PID
   ↓
+探测 cgroup 用量与 limit，展示余量；用户选择 Pydump 或 PyHeap
+  ↓
 探测已有 doctor debug container
-  ├─ 可用：在 debug container 内运行 Pydump Collector
+  ├─ 可用：在 debug container 内运行所选后端
   └─ 不可用：检查目标 container 是否已具备完整 attach 前置
                  ↓
-              按目标平台和 CPython minor 从 Doctor Toolkit 临时上传 Collector、Injector 与 Agent
+              从 Doctor Toolkit 准备所选后端的可选组件
   ↓
 展示影响并取得确认
   ↓
 必要时暂停 Uvicorn master（watchdog 兜底恢复）
   ↓
-Injector attach/load/detach → Agent 持有 GIL 并流式生成 .pyheap → 恢复 master
+所选后端 attach 并流式生成 .pyheap → 恢复 master
   ↓
 压缩、分片回传、双端 SHA-256 校验、原子落盘
   ↓
@@ -50,18 +58,21 @@ doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
 ```
 
 采集索引使用 `doctor.memory-capture/v1`，记录目标 Pod/container/PID、镜像与重启次数、
-采集策略、heap 大小和 SHA-256，以及顺手取得的进程扫描、cgroup、目标 libc、实际选择的
-Pydump Agent 和 `/proc/<pid>/status` 事实。sidecar 中 heap 路径使用相对路径，便于两个文件一起移动。
+采集后端与策略、heap 大小和 SHA-256，以及顺手取得的进程扫描、cgroup 和
+`/proc/<pid>/status` 事实。Pydump 还记录目标 libc 与实际 Agent。sidecar 中 heap 路径使用相对路径，
+便于两个文件一起移动。
 
 ### 两条 attach 路径
 
-`auto` 默认先尝试已有且兼容的 doctor debug container。该容器必须正在运行，并同时具备：
+`--capture-via auto` 默认先尝试已有且兼容的 doctor debug container。该容器必须正在运行，并具备
+Python 3、所选后端的可写临时目录和实际可用的 ptrace 条件。此外：
 
-- Python 3；
-- Pydump Collector、匹配执行架构的 Injector，以及匹配目标 CPython minor、架构与最低 glibc
-  兼容版本的 Agent（缺少时可从 Toolkit 上传）；
-- 可写的 `/tmp/doctor-pydump`；
-- 对目标 PID 实际可用的 ptrace 条件。
+- Pydump 需要 Collector、匹配执行架构的 Injector，以及匹配目标 CPython minor、架构与最低 glibc
+  兼容版本的 Agent；
+- fork-pyheap 需要支持 Python scripting 和 inferior call 的 GDB，以及 fork-pyheap dumper。
+
+所选后端缺少的自带组件会从 Toolkit 临时上传。GDB 不由 heap dumper 替代；如果 PyHeap 路径缺少
+兼容 GDB，需要使用带 GDB 的 debug image 或先执行 `doctor install gdb`。
 
 没有可用 debug container 时，Doctor 才检查目标业务容器。目标容器必须已经具备 Python 3、
 可写临时目录和 ptrace；Python 环境本身不够。全部前置满足后，Doctor 按实际执行
@@ -69,7 +80,9 @@ Container 的 OS/架构与目标 CPython 3.10–3.14 minor 选择 Collector。Do
 container 内使用目标 PID 对应的 Python executable 探测实际 libc：当前只接受 glibc，并从 Toolkit
 选择最低 glibc 要求不高于目标版本的最新 Agent；musl、版本未知或低于全部已打包最低版本时在 ptrace 前
 停止。当前 Agent 的最低兼容版本是 glibc 2.17，可运行于 glibc 2.17 及以上环境。匹配完成后，缺少的工具临时上传到
-`/tmp/doctor-pydump` 再 attach。GDB 是 PyHeap 等其它采集路线的可选组件，不是 Pydump 前置。
+`/tmp/doctor-pydump` 再 attach。fork-pyheap dumper 对应 Toolkit resource
+`fork-pyheap-dumper`，通常安装到 `/opt/doctor/bin/pyheap_dump`；GDB 只属于 PyHeap 路线，不是
+Pydump 前置。
 
 如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
 对应工具、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
@@ -84,7 +97,8 @@ setproctitle 改写的进程名。多进程模式下，dump 前先暂停 supervi
 内部健康检查而替换目标。Agent dump 结束后先给 worker 留出恢复时间，再恢复 supervisor；独立 watchdog
 会在 Doctor 或 kubectl 意外中断后兜底恢复同一生命周期的 supervisor。
 
-Doctor 仍在 dump 前记录 cgroup v1/v2 内存 limit 与用量，但不根据余量做启发式“内存不足”警告。
+Doctor 在后端选择和 dump 确认前展示 cgroup v1/v2 内存 limit、用量与余量，但只作为提示，
+不自动选择后端，也不阻断用户明确选择的路线。
 dump 失败后 Doctor 会再次读取 OOM 计数，只有 `oom_kill` 相比 dump 前增长时才把
 本次失败归因为 cgroup OOM；supervisor 的暂停、恢复与两次 cgroup 事实都会写入 evidence。
 
@@ -106,7 +120,7 @@ Plugin 声明的成功响应，普通请求继续转发给业务端口。Doctor 
 压缩文件与解压后的 heap 都通过容器端元数据校验，成功后才原子改名。失败时不交付半份本地
 heap，并告诉用户远端文件位置。
 
-远端 `/tmp/doctor-pydump` 默认保留，便于回传失败后人工恢复；显式传
+远端 `/tmp/doctor-pydump` 或 `/tmp/doctor-pyheap` 默认保留，便于回传失败后人工恢复；显式传
 `--cleanup-remote` 才会在本地交付成功后删除。
 
 ### `doctor mema`

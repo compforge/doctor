@@ -36,6 +36,7 @@ RUN apk add --no-cache \
 COPY --from=austin-builder /out/austin /opt/doctor/bin/austin
 COPY image/net-capture.py /opt/doctor/bin/net-capture
 COPY assets/py-spy/*.gz /tmp/py-spy/
+COPY assets/fork-pyheap/ /tmp/fork-pyheap/
 COPY assets/pydump/ /tmp/pydump/
 RUN case "$TARGETARCH" in \
       amd64) machine=x86_64 ;; \
@@ -43,6 +44,7 @@ RUN case "$TARGETARCH" in \
       *) echo "unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac \
     && gzip -dc "/tmp/py-spy/py-spy-0.4.2-$machine.gz" > /opt/doctor/bin/py-spy \
+    && gzip -dc /tmp/fork-pyheap/pyheap_dump-0.7.0+doctor.2.gz > /opt/doctor/bin/pyheap_dump \
     && gzip -dc /tmp/pydump/pydump-0.1.0.pyz.gz > /opt/doctor/bin/pydump \
     && gzip -dc "/tmp/pydump/pydump-injector-0.1.0-linux-$TARGETARCH.gz" > /opt/doctor/bin/pydump-injector \
     && gzip -dc "/tmp/pydump/pydump_analyzer-0.1.0-linux-$TARGETARCH.gz" > /opt/doctor/bin/pydump_analyzer \
@@ -50,19 +52,21 @@ RUN case "$TARGETARCH" in \
       gzip -dc "/tmp/pydump/pydump-agent-$minor-min-glibc-2.17-$machine.so.gz" > "/opt/doctor/lib/pydump/pydump-agent-$minor-min-glibc-2.17-$machine.so"; \
     done \
     && chmod 755 /opt/doctor/bin/py-spy \
+    && chmod 755 /opt/doctor/bin/pyheap_dump \
     && chmod 755 /opt/doctor/bin/pydump \
     && chmod 755 /opt/doctor/bin/pydump-injector \
     && chmod 755 /opt/doctor/bin/pydump_analyzer \
     && chmod 755 /opt/doctor/lib/pydump/*.so \
     && chmod 755 /opt/doctor/bin/net-capture \
-    && rm -rf /tmp/py-spy /tmp/pydump \
-    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_injector":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
+    && rm -rf /tmp/py-spy /tmp/fork-pyheap /tmp/pydump \
+    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"fork_pyheap":"0.7.0+doctor.2","gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_injector":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
       "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
     && for command in curl dig host ip iptables jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
     && python3 --version \
     && gdb --version \
     && /opt/doctor/bin/austin --version \
     && /opt/doctor/bin/py-spy --version \
+    && python3 /opt/doctor/bin/pyheap_dump --help >/dev/null \
     && /opt/doctor/bin/pydump --help >/dev/null \
     && /opt/doctor/bin/pydump-injector --help >/dev/null \
     && /opt/doctor/bin/pydump_analyzer retained-heap --help >/dev/null \

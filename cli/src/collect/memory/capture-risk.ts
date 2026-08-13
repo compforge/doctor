@@ -2,6 +2,11 @@ import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
 
 const MIB = 1024 ** 2;
 
+export interface PyHeapMemoryRiskInput {
+  cgroupMemory?: CgroupMemoryFacts;
+  targetRssMb?: number;
+}
+
 export interface PydumpMemoryRiskInput {
   cgroupMemory?: CgroupMemoryFacts;
   strategy: "debug-container" | "target-container";
@@ -48,6 +53,30 @@ export function pydumpMemoryRiskLines(input: PydumpMemoryRiskInput): string[] {
     `[collect] 当前目标 cgroup v${cgroupVersion} 内存：`
       + `${formatBytes(currentBytes)} / ${formatBytes(limitBytes)}`
       + `（${(ratio * 100).toFixed(1)}%，剩余 ${formatBytes(remainingBytes)}）`,
+  );
+  return lines;
+}
+
+/**
+ * fork-pyheap 的峰值取决于对象数量与引用图；cgroup 数值仅提示风险，不自动选择后端或阻断采集。
+ */
+export function pyHeapMemoryRiskLines(input: PyHeapMemoryRiskInput): string[] {
+  const lines = [
+    "[collect] 内存风险：fork-pyheap 会在目标 Python 进程内创建随对象数增长的索引并写入 heap 文件；"
+      + "即使通过 debug container 执行，目标 container 内存和 page cache 仍可能显著上升",
+  ];
+  const currentBytes = parseByteCount(input.cgroupMemory?.currentBytes);
+  const limitBytes = parseByteCount(input.cgroupMemory?.limitBytes);
+  if (input.cgroupMemory?.version === undefined || currentBytes === undefined || limitBytes === undefined || limitBytes <= 0) {
+    return lines;
+  }
+  const remainingBytes = Math.max(0, limitBytes - currentBytes);
+  const targetRssBytes = input.targetRssMb === undefined ? undefined : input.targetRssMb * MIB;
+  lines.push(
+    `[collect] 当前目标 cgroup v${input.cgroupMemory.version} 内存：`
+      + `${formatBytes(currentBytes)} / ${formatBytes(limitBytes)}`
+      + `（${(currentBytes / limitBytes * 100).toFixed(1)}%，剩余 ${formatBytes(remainingBytes)}）`
+      + (targetRssBytes === undefined ? "" : `；目标 worker RSS：${formatBytes(targetRssBytes)}`),
   );
   return lines;
 }

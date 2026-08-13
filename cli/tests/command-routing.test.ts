@@ -399,11 +399,12 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--output <path>");
   });
 
-  test("mem exposes Pydump capture options without historical modes", () => {
+  test("mem exposes selectable heap backends without historical modes", () => {
     const result = runCli("mem", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("-p, --pod <pod>");
     expect(result.stdout).toContain("--detail <detail>");
+    expect(result.stdout).toContain("--backend <backend>");
     expect(result.stdout).toContain("--capture-via <strategy>");
     expect(result.stdout).toContain("debug-container 或");
     expect(result.stdout).toContain("target-container");
