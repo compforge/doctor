@@ -174,7 +174,10 @@ export async function resolvePodTarget(input: {
       ? recent.rankPods(recentScope, input.config.kubernetes.namespace, parsed)
       : parsed;
   } catch (error) {
-    throw new Error(`解析 Pod 列表失败：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `解析 Pod 列表失败：${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
   const namespace = input.config.kubernetes.namespace;
   const keyword = input.pod?.trim();
@@ -363,7 +366,10 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
       includeEphemeralContainers: input.includeEphemeralContainers,
     });
   } catch (error) {
-    throw new Error(`解析 pod/${pod} 失败：${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `解析 pod/${pod} 失败：${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
   const selected = choices[0];
   if (!selected) throw new Error(`pod/${pod} 缺少可选择的信息`);

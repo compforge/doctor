@@ -16,6 +16,7 @@ export function createModelInferenceFetch(inference: ModelInference): LlmFetch {
     } catch (error) {
       throw new Error(
         `Doctor chat inference request is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
     const response = await inference.invokeStream("/chat/completions", body, request.signal);

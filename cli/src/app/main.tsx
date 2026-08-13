@@ -381,7 +381,8 @@ export async function main(plugin?: PluginDefinition) {
       "面向应用与基础设施的本地诊断工具。",
       "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
     ].join("\n"))
-    .version(version);
+    .version(version)
+    .option("--debug", "错误时将完整技术详情同时输出到 stderr", false);
 
   withReplOptions(
     program.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
@@ -723,8 +724,30 @@ export async function main(plugin?: PluginDefinition) {
 }
 
 export function startDoctor(plugin?: PluginDefinition): void {
+  const pluginIdentity = plugin ? `${plugin.id}@${plugin.version}` : undefined;
+  process.once("uncaughtException", (error) => {
+    reportError(error, {
+      context: "doctor runtime/uncaughtException",
+      summary: "fatal",
+      plugin: pluginIdentity,
+    });
+    process.exit(1);
+  });
+  process.once("unhandledRejection", (reason) => {
+    reportError(reason, {
+      context: "doctor runtime/unhandledRejection",
+      summary: "fatal",
+      plugin: pluginIdentity,
+    });
+    process.exit(1);
+  });
   main(plugin).catch((err) => {
-    reportError(err, { context: "doctor main", summary: "fatal", displayMessage: mapErrorMessage(err) });
+    reportError(err, {
+      context: "doctor main",
+      summary: "fatal",
+      displayMessage: mapErrorMessage(err),
+      plugin: pluginIdentity,
+    });
     process.exit(1);
   });
 }

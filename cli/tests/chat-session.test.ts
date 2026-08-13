@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentSource, RunContext } from "@compforge/doctor-agent";
 import type { PatchEvent } from "@compforge/agentue/ui";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { createDoctorModel } from "../src/chat/model";
 import { Session } from "../src/chat/session";
@@ -53,6 +56,15 @@ class BlockingAgent implements AgentSource {
   async dispose(): Promise<void> {}
 }
 
+class FailingAgent implements AgentSource {
+  async *run(): AsyncIterable<PatchEvent> {
+    throw new Error("model connection reset");
+  }
+
+  abort(): void {}
+  async dispose(): Promise<void> {}
+}
+
 describe("Session", () => {
   test("owns turn state while agents only produce AgentUE patches", async () => {
     const agent = new EchoAgent();
@@ -81,6 +93,26 @@ describe("Session", () => {
     expect(agent.runs).toEqual(["first"]);
     expect(session.getModel().meta.queued).toEqual([]);
     await expect(session.submit("after-dispose")).rejects.toThrow("disposed");
+  });
+
+  test("agent turn failure is visible in the UI and persisted with its stack", async () => {
+    const original = process.env.DOCTOR_ERROR_LOG;
+    const errorLog = join(mkdtempSync(join(tmpdir(), "doctor-chat-error-")), "error.log");
+    process.env.DOCTOR_ERROR_LOG = errorLog;
+    try {
+      const session = new Session(createModel(), new FailingAgent(), "test@0.0.1");
+
+      await session.submit("hello");
+
+      expect(session.getModel().meta.error?.message).toContain("model connection reset");
+      expect(session.getModel().meta.error?.message).toContain(`技术详情: ${errorLog}`);
+      expect(readFileSync(errorLog, "utf-8")).toContain("context: doctor chat/turn");
+      expect(readFileSync(errorLog, "utf-8")).toContain("plugin: test@0.0.1");
+      expect(readFileSync(errorLog, "utf-8")).toContain("Error: model connection reset");
+    } finally {
+      if (original === undefined) delete process.env.DOCTOR_ERROR_LOG;
+      else process.env.DOCTOR_ERROR_LOG = original;
+    }
   });
 });
 

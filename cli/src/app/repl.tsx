@@ -31,12 +31,17 @@ export async function runRepl(
       context: "doctor chat/startup",
       summary: "启动失败",
       displayMessage: mapErrorMessage(error),
+      plugin: plugin ? `${plugin.id}@${plugin.version}` : undefined,
     });
     process.exitCode = 1;
     return;
   }
 
-  const session = new Session(boot.model, boot.agent);
+  const session = new Session(
+    boot.model,
+    boot.agent,
+    plugin ? `${plugin.id}@${plugin.version}` : undefined,
+  );
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     targetFps: 30,

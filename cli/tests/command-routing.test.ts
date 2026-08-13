@@ -53,6 +53,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("store [options]");
     expect(result.stdout).toContain("model [options]");
     expect(result.stdout).toContain("perf [options]");
+    expect(result.stdout).toContain("--debug");
   });
 
   test("core entry explains a missing Plugin before K8s access", () => {
@@ -79,6 +80,7 @@ describe("CLI command routing", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("service.data");
     expect(result.stderr).toContain("Plugin 'test'");
+    expect(result.stderr).toContain("Plugin test@0.0.1");
     expect(result.stderr).not.toContain("Kubernetes");
   });
 

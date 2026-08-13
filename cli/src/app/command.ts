@@ -81,10 +81,13 @@ export async function runPluginCommand(
     profileName: string,
   ) => Promise<number | void>,
 ): Promise<void> {
+  let pluginIdentity: string | undefined;
   try {
     const prepared = await prepareCommand(spec, opts, true, async (profile) => {
+      const selectedPlugin = embeddedPlugin ?? await loadActivePlugin();
+      if (selectedPlugin) pluginIdentity = `${selectedPlugin.id}@${selectedPlugin.version}`;
       const activePlugin = requirePluginCapabilities(
-        embeddedPlugin ?? await loadActivePlugin(),
+        selectedPlugin,
         spec.plugin,
       );
       activePlugin.validateConfig?.(profile.pluginConfig);
@@ -97,7 +100,7 @@ export async function runPluginCommand(
     );
     if (typeof code === "number") process.exitCode = code;
   } catch (err) {
-    reportError(err, { context: spec.name, summary: "fatal" });
+    reportError(err, { context: spec.name, summary: "fatal", plugin: pluginIdentity });
     process.exitCode = 1;
   }
 }
