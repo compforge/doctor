@@ -736,8 +736,8 @@ export async function captureMemoryHeap(
     const proxyEnvironment = infra.target.debugEngine.resolveEnvironment(environments, ["NET_ADMIN"]);
     if (!proxyEnvironment.ok) {
       log(
-        "[collect] liveness 代理不可用：需要已就绪且显式具备 NET_ADMIN 的 doctor debug container；"
-        + "可先执行 doctor debug --capabilities SYS_PTRACE,NET_ADMIN",
+        "[collect] 当前没有可用且具备 NET_ADMIN 的 debug container；"
+        + "已自动降级，不启用 liveness 代理，也不伪装 health",
       );
     } else {
       const started = await startTemporaryLivenessProxy({
