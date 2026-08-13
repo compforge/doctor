@@ -1,5 +1,9 @@
 import type { DebugCapability } from "../../infra/target/debug";
 import {
+  defineCommandDecision,
+  type CommandContext,
+} from "../../command";
+import {
   matchListedChoice,
   printNumberedChoices,
   promptListedChoice,
@@ -34,7 +38,11 @@ const DEBUG_CAPABILITY_CHOICES: readonly DebugCapabilityChoice[] = [
   },
 ];
 
-export async function resolveDebugCapabilities(): Promise<readonly DebugCapability[] | undefined> {
+const debugCapabilities = defineCommandDecision<readonly DebugCapability[] | undefined>(
+  "debug.capabilities",
+);
+
+async function promptDebugCapabilities(): Promise<readonly DebugCapability[] | undefined> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) return DEFAULT_DEBUG_CAPABILITIES;
 
   printNumberedChoices(
@@ -54,4 +62,10 @@ export async function resolveDebugCapabilities(): Promise<readonly DebugCapabili
     invalidMessage: "未找到 capability，可选：SYS_PTRACE、NET_RAW、both",
     emptyValue: DEFAULT_DEBUG_CAPABILITIES,
   });
+}
+
+export function resolveDebugCapabilities(
+  commandContext: CommandContext,
+): Promise<readonly DebugCapability[] | undefined> {
+  return commandContext.decide(debugCapabilities, [], promptDebugCapabilities);
 }

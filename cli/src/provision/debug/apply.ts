@@ -4,11 +4,16 @@ import { approvalDeniedReason } from "../../command/approval";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { terminalStderr } from "../../terminal/output";
 import type { DebugCapability } from "../../infra/target/debug";
-import type { DebugCliOpts, DebugTarget, PreparedDebugImage } from "./model";
+import type {
+  DebugCliOpts,
+  DebugTarget,
+  PreparedDebugImage,
+} from "./model";
 import {
   reportDebugCapabilities,
   reuseReadyDebugEnvironment,
 } from "./verify";
+import { recordCreatedDebugEnvironment } from "./runtime";
 
 export async function deployDebugEnvironment(
   target: DebugTarget,
@@ -73,6 +78,13 @@ export async function deployDebugEnvironment(
     terminalStderr.error(`[debug] 容器未就绪：${failReason(running)}\n`);
     return 1;
   }
+  recordCreatedDebugEnvironment(target.context, {
+    namespace: target.namespace,
+    pod: target.pod,
+    targetContainer: target.container,
+    executionContainer: containerName,
+    capabilities,
+  });
   await reportDebugCapabilities(target, containerName, capabilities);
   return 0;
 }

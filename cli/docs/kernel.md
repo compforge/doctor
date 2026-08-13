@@ -49,6 +49,9 @@ validated Profile snapshot + command options
 ```
 
 Profile 在单次命令内只解析和校验一次，后续 target、infra 与 Plugin context 均消费这份不可变快照。
+`CommandContext` 是单次顶层命令的运行作用域：Decision 复用用户或命令意图作出的决策，Discovery 复用
+执行期间的只读发现，ExecutionRecord 追加保存步骤已经产生、且会影响后续 action 的中间结果。三者都按
+类型和语义作用域隔离；ExecutionRecord 不持久化，也不等同于 Collect Facts、Observations 或 Evidence。
 Command 声明需要的 Host/Kubernetes 环境和最窄 Plugin capability；目标选择完成后，再把 Core 自身需求与
 本次实际选中的 capability access 合成阶段性 access plan。配置、capability、通道或 required access
 任一不满足时，命令不得进入实际采集、变更或 Agent loop。

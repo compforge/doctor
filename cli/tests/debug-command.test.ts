@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
+import { CommandContext } from "../src/command";
 import {
   formatExistingDebugContainers,
+  recordCreatedDebugEnvironment,
+  resolveDebugInstallFollowUp,
   resolveBatchDebugImage,
   resolveDebugBatchOptions,
   resolveSelectedDebugPods,
@@ -138,6 +141,126 @@ test("doctor debug 再次执行时打印 Pod 中已有的 debug 临时容器", (
   expect(output).toContain("doctor-debug-new");
   expect(output).toContain("← 优先候选");
   expect(output).toContain("不支持原地删除或替换");
+});
+
+test("doctor debug 新建容器后把本地 package tar 交给精确 install 目标", () => {
+  const commandContext = new CommandContext({});
+  recordCreatedDebugEnvironment(commandContext, {
+    namespace: "planit",
+    pod: "planit-server-0",
+    targetContainer: "planit-server",
+    executionContainer: "doctor-debug-new",
+    capabilities: ["SYS_PTRACE"],
+  });
+  const followUp = resolveDebugInstallFollowUp({
+    interactive: true,
+    bundles: [{
+      path: "/work/doctor-packages-0.0.4-debian12.tar",
+      manifest: {
+        schema: "doctor-packages/v1",
+        bundleVersion: "0.0.4",
+        packageManager: "apt-get",
+        osId: "debian",
+        osVersionId: "12",
+        architecture: "arm64",
+        packages: ["gdb"],
+      },
+    }],
+    opts: {
+      profile: "customer",
+      kubeconfig: "/work/kubeconfig",
+      context: "prod",
+      yes: true,
+    },
+    commandContext,
+    target: {
+      namespace: "planit",
+      pod: "planit-server-0",
+      container: "planit-server",
+    },
+  });
+
+  expect(followUp).toEqual({
+    packageTars: ["/work/doctor-packages-0.0.4-debian12.tar"],
+    install: {
+      profile: "customer",
+      config: undefined,
+      namespace: "planit",
+      kubeconfig: "/work/kubeconfig",
+      context: "prod",
+      pod: "planit-server-0",
+      container: "doctor-debug-new",
+      program: "gdb",
+    },
+  });
+  expect(followUp?.install.yes).toBeUndefined();
+});
+
+test("doctor debug 不在无 package tar 或非交互环境触发安装", () => {
+  const commandContext = new CommandContext({});
+  recordCreatedDebugEnvironment(commandContext, {
+    namespace: "default",
+    pod: "app-0",
+    targetContainer: "app",
+    executionContainer: "doctor-debug-new",
+    capabilities: ["SYS_PTRACE"],
+  });
+  const input = {
+    opts: {},
+    commandContext,
+    target: { namespace: "default", pod: "app-0", container: "app" },
+  };
+  expect(resolveDebugInstallFollowUp({
+    ...input,
+    interactive: true,
+    bundles: [],
+  })).toBeUndefined();
+  expect(resolveDebugInstallFollowUp({
+    ...input,
+    interactive: false,
+    bundles: [{
+      path: "/work/doctor-packages.tar",
+      manifest: {
+        schema: "doctor-packages/v1",
+        bundleVersion: "1",
+        packageManager: "apt-get",
+        osId: "debian",
+        osVersionId: "12",
+        architecture: "amd64",
+        packages: ["gdb"],
+      },
+    }],
+  })).toBeUndefined();
+});
+
+test("doctor debug 不为仅抓包的新容器进入 GDB 安装", () => {
+  const commandContext = new CommandContext({});
+  recordCreatedDebugEnvironment(commandContext, {
+    namespace: "default",
+    pod: "app-0",
+    targetContainer: "app",
+    executionContainer: "doctor-debug-net",
+    capabilities: ["NET_RAW"],
+  });
+
+  expect(resolveDebugInstallFollowUp({
+    interactive: true,
+    bundles: [{
+      path: "/work/doctor-packages.tar",
+      manifest: {
+        schema: "doctor-packages/v1",
+        bundleVersion: "1",
+        packageManager: "apt-get",
+        osId: "debian",
+        osVersionId: "12",
+        architecture: "amd64",
+        packages: ["gdb"],
+      },
+    }],
+    opts: {},
+    commandContext,
+    target: { namespace: "default", pod: "app-0", container: "app" },
+  })).toBeUndefined();
 });
 
 test("缺少 debug environment 时可把既有 Service 或 Pod 选择渲染为 debug 命令", () => {

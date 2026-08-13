@@ -19,8 +19,9 @@ Debug Environment Fact 与 Preparation，不依赖具体准备路线。
    镜像；不读取本地 tar，也不执行 load、push 或其它镜像准备。
 3. 用户选择复用业务镜像，或 doctor-debug image 不可用时自动回退，均使用 `Never` 复用目标 Node 已缓存的 image。
    Doctor 从已 Ready 的业务容器探测安全的 `sleep` 或 Python keepalive，并显式覆盖 ENTRYPOINT/CMD；没有安全
-   常驻命令时停止，不启动第二份业务进程。临时容器 Running 后只报告 GDB 等工具能力；需要补齐时由用户
-   通过 `doctor install` 明确选择并修改目标 Container。
+   常驻命令时停止，不启动第二份业务进程。临时容器 Running 后报告 GDB 等工具能力；若当前目录存在有效的
+   `doctor-packages-*.tar`，交互执行会以这个具备 `SYS_PTRACE` 的新建容器为明确目标进入
+   `doctor install gdb`。现有 GDB 满足能力契约时直接返回，确需写入时仍单独展示安装方案并取得确认。
 4. Inspect 根据容器状态、PID namespace、工具和 capability 形成 Debug Environment Fact。`doctor mem` 使用 environment 前再次验证
    实际 ptrace attach 条件与 GDB Python scripting，并在缺少 PyHeap dumper 时取得 attach 授权后按需上传。
 5. Ephemeral Container 不能原地删除或替换，debug container 保留到 Pod 被替换；CPU/Memory/Network 各自验证
@@ -69,5 +70,5 @@ Debug image repository 名由代码中的单一常量同时约束构建和运行
 复制或安装 GDB、PyHeap 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
 PID namespace 的 Ephemeral Container，并申请诊断所需 capability；若集群拒绝 `pods/ephemeralcontainers` 或
 admission 拒绝 capability，命令在 mutation 前置检查处停止。目标业务镜像 fallback 显式覆盖 ENTRYPOINT/CMD；
-`doctor debug` 不安装任何程序。在线和离线安装统一由 [`install.md`](install.md) 描述的 `doctor install`
-完成，用户可明确选择业务或临时 Container；离线程序包也不属于 doctor-debug image/tar。
+`doctor debug` 不实现安装动作，只在新建容器后按本地 package tar 提供 `doctor install` 后续入口。在线和离线安装
+统一由 [`install.md`](install.md) 描述的 `doctor install` 完成；离线程序包也不属于 doctor-debug image/tar。
