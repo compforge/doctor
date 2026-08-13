@@ -65,7 +65,7 @@ function parseJson<T>(label: string, output: string): T {
     return JSON.parse(output) as T;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} 返回了无效 JSON：${detail}`);
+    throw new Error(`${label} 返回了无效 JSON：${detail}`, { cause: error });
   }
 }
 

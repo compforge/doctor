@@ -5,6 +5,7 @@ import {
   type PatchEvent,
 } from "@compforge/agentue/ui";
 
+import { writeErrorLog } from "../app/error-log";
 import { mapErrorMessage } from "../protocol";
 import type { DoctorModel, QueuedPrompt } from "./model";
 
@@ -20,6 +21,7 @@ export class Session {
   constructor(
     initialModel: DoctorModel,
     private readonly agent: AgentSource,
+    private readonly pluginIdentity?: string,
   ) {
     this.model = initialModel;
   }
@@ -101,7 +103,9 @@ export class Session {
         this.accept(event);
       }
     } catch (error) {
-      this.accept(this.emitter.error("agent_error", mapErrorMessage(error)));
+      const errorLog = writeErrorLog(error, "doctor chat/turn", this.pluginIdentity);
+      const detail = errorLog ? `（技术详情: ${errorLog}）` : "（错误日志写入失败）";
+      this.accept(this.emitter.error("agent_error", `${mapErrorMessage(error)}${detail}`));
     } finally {
       this.busy = false;
       this.accept(this.emitter.metaSet("meta.busy", { busy: false }));

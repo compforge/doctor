@@ -49,6 +49,9 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
    Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。
    同一 Host 能力同时支持 container 与 process 时，先探测已有且可用的本地 container；不可用才回退
    本机进程。探测本身不隐式 load image 或改变 Host 状态。
+8. **可观测性按读者分层**：终端错误通过 stderr 提供面向现场用户的原因、版本、命令、失败阶段和
+   技术日志路径；完整异常链与运行上下文进入 Doctor Host 当前目录的 error log，`--debug` 仅在显式启用时
+   向 stderr 展开技术详情。诊断记录不得直接写入完整 argv、环境变量或未经脱敏的凭据与协议正文。
 
 ## References
 
