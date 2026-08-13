@@ -1,4 +1,4 @@
-.PHONY: dev build build-all build-mac build-darwin-arm64 build-darwin-x64 prepare-dist bump-version build-linux build-linux-x64 build-linux-x64-modern build-linux-x64-legacy build-linux-arm64 build-kylin build-kylin-arm64 build-kylin-x86-64 build-gopacket-assets build-gopacket-darwin-arm64 build-gopacket-darwin-amd64 build-gopacket-linux-amd64 build-gopacket-linux-arm64 build-debug-images build-debug-linux-amd64 build-debug-linux-arm64 build-gdb-package-bundles build-gdb-package-linux-amd64 build-gdb-package-linux-arm64 test typecheck deps install clean
+.PHONY: dev build build-all build-mac build-darwin-arm64 build-darwin-x64 prepare-dist bump-version build-linux build-linux-x64 build-linux-x64-modern build-linux-x64-legacy build-linux-arm64 build-kylin build-kylin-arm64 build-kylin-x86-64 build-gopacket-assets build-gopacket-darwin-arm64 build-gopacket-darwin-amd64 build-gopacket-linux-amd64 build-gopacket-linux-arm64 build-debug-images build-debug-linux-amd64 build-debug-linux-arm64 build-gdb-package-bundles build-gdb-package-linux-amd64 build-gdb-package-linux-arm64 lint lint-ci test typecheck deps install clean
 
 # 安装目录默认 ~/.local/bin（用户可写、常在 PATH）；可用 BIN_DIR 覆盖，如 make install BIN_DIR=/opt/homebrew/bin
 BIN_DIR ?= $(HOME)/.local/bin
@@ -9,6 +9,7 @@ DOCTOR_DEBUG_TAG ?= $(shell tr -d '[:space:]' < docker/debug/VERSION)
 DOCTOR_PACKAGE_BUNDLE_VERSION ?= $(shell tr -d '[:space:]' < package-bundles/VERSION)
 DOCTOR_CLI_VERSION ?= $(shell sed -n 's/^export const DOCTOR_CLI_VERSION = "\([^"]*\)";/\1/p' src/app/version.ts)
 DOCTOR_ARTIFACT_PREFIX := doctor-$(DOCTOR_CLI_VERSION)
+TEST_FILES ?=
 DOCTOR_DEBUG_BASE_IMAGE ?= alpine:3.22.5
 GOPACKET_DIR := src/infra/host/network-analysis/gopacket
 GOPACKET_ASSET_DIR := $(abspath assets/gopacket)
@@ -129,10 +130,14 @@ build-gdb-package-linux-arm64:
 	DOCTOR_PACKAGE_BUNDLE_VERSION=$(DOCTOR_PACKAGE_BUNDLE_VERSION) bash scripts/build-package-bundle.sh arm64
 
 test:
-	bun test
+	bun test $(TEST_FILES)
 
 typecheck:
 	bunx tsc --noEmit
+
+lint: typecheck
+
+lint-ci: lint
 
 clean:
 	rm -rf $(DIST_DIR) node_modules
