@@ -63,7 +63,7 @@ RUN architecture="$(dpkg --print-architecture)" \
       'Depends: libc6, libexpat1, libgmp10, libmpfr6, libncursesw6, libpython3.11, libreadline8, libstdc++6, zlib1g' \
       'Section: devel' \
       'Priority: optional' \
-      'Description: GNU Debugger built by Doctor for Debian 12 Pydump capture' \
+      'Description: GNU Debugger built by Doctor for Debian 12 process debugging' \
       > /package/DEBIAN/control \
     && dpkg-deb --root-owner-group --build /package \
       "/out/gdb_${GDB_VERSION}-doctor1_${architecture}.deb"

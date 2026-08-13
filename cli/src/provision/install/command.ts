@@ -140,12 +140,12 @@ export async function runInstall(
       `[install] GDB ${existingGdb.version ?? "version unknown"} ready`
       + "（inferior call 验收通过）\n",
     );
-    return finish(0, "ready", "preflight", "现有 GDB 已满足 Pydump 能力契约");
+    return finish(0, "ready", "preflight", "现有 GDB 已满足 inferior call 能力契约");
   }
   if (existingGdb.available) {
     terminalStdout.warning(
       `[install] 已有 GDB ${existingGdb.version ?? ""}，但 `
-      + `${existingGdb.reason ?? "Pydump 所需能力验收未通过"}；`
+      + `${existingGdb.reason ?? "inferior call 能力验收未通过"}；`
       + `尝试通过 ${target.manager.kind} 补齐\n`,
     );
   }
@@ -264,7 +264,7 @@ export async function runInstall(
   }
   if (!gdbReady(gdb)) {
     terminalStderr.error(
-      `[install] GDB ${gdb.version ?? ""} 已安装，但 Pydump 所需能力验收失败：`
+      `[install] GDB ${gdb.version ?? ""} 已安装，但 inferior call 能力验收失败：`
       + `${gdb.reason ?? "原因未知"}\n`,
     );
     if (!opts.tar && !bundle && target.manager.kind === "apt-get") {
@@ -274,7 +274,7 @@ export async function runInstall(
       1,
       "failed",
       "gdb-capability",
-      gdb.reason ?? "GDB 已安装，但 Pydump 所需能力验收失败",
+      gdb.reason ?? "GDB 已安装，但 inferior call 能力验收失败",
     );
   }
   terminalStdout.success(

@@ -64,6 +64,12 @@ for platform in linux/amd64 linux/arm64; do
     amd64) machine=x86_64 ;;
     arm64) machine=aarch64 ;;
   esac
+  injector="$temporary/pydump-injector-$arch"
+  env CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go \
+    -C "$source_root/capture/injector" build -trimpath -ldflags='-s -w' \
+    -o "$injector" ./cmd/pydump-injector
+  gzip -n -9 -c "$injector" \
+    > "$asset_root/pydump-injector-$version-linux-$arch.gz"
   for minor in 3.10 3.11 3.12 3.13 3.14; do
     output="$temporary/agent-$minor-$arch"
     mkdir -p "$output"

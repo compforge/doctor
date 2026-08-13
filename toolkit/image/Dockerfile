@@ -44,24 +44,27 @@ RUN case "$TARGETARCH" in \
     esac \
     && gzip -dc "/tmp/py-spy/py-spy-0.4.2-$machine.gz" > /opt/doctor/bin/py-spy \
     && gzip -dc /tmp/pydump/pydump-0.1.0.pyz.gz > /opt/doctor/bin/pydump \
+    && gzip -dc "/tmp/pydump/pydump-injector-0.1.0-linux-$TARGETARCH.gz" > /opt/doctor/bin/pydump-injector \
     && gzip -dc "/tmp/pydump/pydump_analyzer-0.1.0-linux-$TARGETARCH.gz" > /opt/doctor/bin/pydump_analyzer \
     && for minor in 3.10 3.11 3.12 3.13 3.14; do \
       gzip -dc "/tmp/pydump/pydump-agent-$minor-min-glibc-2.17-$machine.so.gz" > "/opt/doctor/lib/pydump/pydump-agent-$minor-min-glibc-2.17-$machine.so"; \
     done \
     && chmod 755 /opt/doctor/bin/py-spy \
     && chmod 755 /opt/doctor/bin/pydump \
+    && chmod 755 /opt/doctor/bin/pydump-injector \
     && chmod 755 /opt/doctor/bin/pydump_analyzer \
     && chmod 755 /opt/doctor/lib/pydump/*.so \
     && chmod 755 /opt/doctor/bin/net-capture \
     && rm -rf /tmp/py-spy /tmp/pydump \
-    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
-      "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
+    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_injector":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
+      "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
     && for command in curl dig host ip iptables jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
     && python3 --version \
     && gdb --version \
     && /opt/doctor/bin/austin --version \
     && /opt/doctor/bin/py-spy --version \
     && /opt/doctor/bin/pydump --help >/dev/null \
+    && /opt/doctor/bin/pydump-injector --help >/dev/null \
     && /opt/doctor/bin/pydump_analyzer retained-heap --help >/dev/null \
     && /opt/doctor/bin/net-capture --help >/dev/null \
     && tcpdump --version

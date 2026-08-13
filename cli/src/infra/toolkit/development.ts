@@ -42,6 +42,14 @@ function pydumpAsset(
   if (id === "pydump-collector") {
     return join(root, "assets", "pydump", "pydump-0.1.0.pyz.gz");
   }
+  if (id === "pydump-injector") {
+    return join(
+      root,
+      "assets",
+      "pydump",
+      `pydump-injector-0.1.0-linux-${architecture}.gz`,
+    );
+  }
   const agent = /^pydump-agent-(3\.(?:10|11|12|13|14))-min-glibc-(2\.17)$/.exec(id);
   if (!agent) return undefined;
   const machine = architecture === "amd64" ? "x86_64" : "aarch64";

@@ -27,10 +27,14 @@ import {
 } from "../src/collect/memory/capture";
 import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
-import { resolveHostPydumpAnalyzer } from "../src/collect/memory/toolkit-pydump";
+import {
+  resolveHostPydumpAnalyzer,
+  resolveKubernetesPydumpCaptureTools,
+} from "../src/collect/memory/toolkit-pydump";
 import {
   parsePydumpPrereqs,
   parsePydumpTargetLibc,
+  runPydumpDumpCmd,
   selectPydumpAgentMinGlibc,
 } from "../src/collect/memory/pydump-tool";
 import {
@@ -150,17 +154,17 @@ describe("doctor mem Pydump capture contract", () => {
     expect(() => parseCapturePreference("observe")).toThrow("--capture-via");
   });
 
-  test("requires Python, GDB and a writable tool directory", () => {
+  test("requires Python and a writable tool directory while discovering bundled tools", () => {
     expect(parsePydumpPrereqs([
       "python3=/usr/bin/python3",
-      "gdb=/usr/bin/gdb",
       "writable=yes",
       "collector=missing",
+      "injector=/opt/doctor/bin/pydump-injector",
     ].join("\n"))).toEqual({
       python3: true,
-      gdb: true,
       writable: true,
       collector: false,
+      injector: true,
     });
   });
 
@@ -172,8 +176,31 @@ describe("doctor mem Pydump capture contract", () => {
     expect(selectPydumpAgentMinGlibc("2.16")).toBeUndefined();
   });
 
+  test("passes the prepared Injector explicitly to Pydump", () => {
+    expect(runPydumpDumpCmd(
+      12,
+      "/tmp/doctor-pydump/heap.pyheap",
+      -1,
+      "/tmp/doctor-pydump/agent.so",
+      "/tmp/doctor-pydump/pydump-injector",
+    ).at(-1)).toContain("--injector /tmp/doctor-pydump/pydump-injector");
+  });
+
   test("materializes the standalone Toolkit analyzer", () => {
     expect(existsSync(resolveHostPydumpAnalyzer())).toBe(true);
+  });
+
+  test("materializes the optional Pydump capture components", () => {
+    const tools = resolveKubernetesPydumpCaptureTools({
+      pod: "app-0",
+      container: "app",
+      architecture: "amd64",
+      pythonMinor: "3.11",
+      minGlibcVersion: "2.17",
+    });
+    expect(existsSync(tools.collector)).toBe(true);
+    expect(existsSync(tools.injector)).toBe(true);
+    expect(existsSync(tools.agent)).toBe(true);
   });
 
   test("writes a stable heap and capture sidecar basename", () => {
@@ -187,17 +214,13 @@ describe("doctor mem Pydump capture contract", () => {
     expect(paths.capturePath).toEndWith("/capture.json");
   });
 
-  test("heap dump 摘要跳过 auto-load warning 并报告真实 GDB 错误", () => {
+  test("heap dump 摘要报告 ptrace Injector 错误", () => {
     const failed = {
       ...execResult("", false),
-      stderr: [
-        "warning: File python-gdb.py auto-loading has been declined",
-        "Traceback (most recent call last):",
-        "gdb.error: Couldn't write extended state status: Bad address.",
-      ].join("\n"),
+      stderr: "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
     };
     expect(pydumpDumpFailureReason(failed)).toBe(
-      "GDB 无法调用目标进程函数：Couldn't write extended state status: Bad address.",
+      "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
     );
   });
 
@@ -206,7 +229,7 @@ describe("doctor mem Pydump capture contract", () => {
       ...execResult("", false),
       stderr: [
         "Program terminated with signal SIGKILL, Killed.",
-        "gdb.error: You can't do that without a process to debug.",
+        "pydump failed: target disconnected",
       ].join("\n"),
     };
     expect(pydumpDumpFailureReason(failed)).toBe(
@@ -289,7 +312,7 @@ describe("doctor mem Pydump capture contract", () => {
     expect(resolveCaptureHeapPath(artifactPath, artifact)).toBe(join(directory, "capture.pyheap"));
   });
 
-  test("stops with explicit deficiencies when debug is absent and target GDB is inadequate", async () => {
+  test("stops with explicit deficiencies when the target cannot run the Collector", async () => {
     const executor: Executor = {
       run: async () => execResult(),
       exec: async (_target, command) => {
@@ -297,14 +320,14 @@ describe("doctor mem Pydump capture contract", () => {
           return execResult("    12 python              64        8     10\npython workers (threads>4): 12\n");
         }
         return execResult([
-          "python3=/usr/bin/python3",
-          "gdb=missing",
+          "python3=missing",
           "writable=yes",
           "collector=missing",
+          "injector=missing",
         ].join("\n"));
       },
     };
-    const directory = mkdtempSync(join(tmpdir(), "doctor-memory-no-gdb-"));
+    const directory = mkdtempSync(join(tmpdir(), "doctor-memory-no-python-"));
     let confirmationAsked = false;
     const result = await captureMemoryHeap(
       executor,
@@ -321,7 +344,7 @@ describe("doctor mem Pydump capture contract", () => {
     expect(result.code).toBe(1);
     expect(result.reasons).toEqual([
       "debug container 不可用：目标 Pod 中没有已就绪且具备 SYS_PTRACE 的 doctor debug 临时容器；请先执行 doctor debug",
-      "目标容器 app 缺少：gdb",
+      "目标容器 app 缺少：python3",
       "未执行 attach，也未生成 heap 文件",
     ]);
     expect(confirmationAsked).toBe(false);
@@ -342,13 +365,6 @@ describe("doctor mem Pydump capture contract", () => {
             "python workers (threads>4): 12",
             "uvicorn topology: mode=standalone workers=12",
           ].join("\n"));
-        }
-        if (command.includes("--version")) return execResult("GNU gdb 16.3\n");
-        if (command.some((part) => part.includes("DOCTOR_GDB_PYTHON_OK"))) {
-          return execResult("DOCTOR_GDB_PYTHON_OK\n");
-        }
-        if (command.some((part) => part.includes("DOCTOR_GDB_INFERIOR_CALL_OK"))) {
-          return execResult("DOCTOR_GDB_INFERIOR_CALL_OK\n");
         }
         if (command.includes("/proc/sys/kernel/yama/ptrace_scope")) {
           return execResult();
@@ -379,9 +395,9 @@ describe("doctor mem Pydump capture contract", () => {
         if (command[0] === "uname") return execResult("x86_64\n");
         return execResult([
           "python3=/usr/bin/python3",
-          "gdb=/usr/bin/gdb",
           "writable=yes",
           "collector=missing",
+          "injector=missing",
         ].join("\n"));
       },
     };
@@ -411,37 +427,47 @@ describe("doctor mem Pydump capture contract", () => {
     expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
-  test("rejects an XSAVE-incompatible debug-container GDB before ptrace and confirmation", async () => {
+  test("uses a ptrace-capable debug container without inspecting GDB", async () => {
     let ptraceAttempted = false;
+    let gdbAttempted = false;
     let confirmationAsked = false;
     const executor: Executor = {
       run: async () => execResult(),
       exec: async (_target, command) => {
+        if (command.some((part) => /gdb|DOCTOR_GDB/i.test(part))) gdbAttempted = true;
         if (command[0] === "python3" && command[1] === "-") {
           return execResult("    12 python              64        8     10\npython workers (threads>4): 12\n");
         }
-        if (command.includes("--version")) return execResult("GNU gdb 13.1\n");
-        if (command.some((part) => part.includes("DOCTOR_GDB_PYTHON_OK"))) {
-          return execResult("DOCTOR_GDB_PYTHON_OK\n");
-        }
-        if (command.some((part) => part.includes("DOCTOR_GDB_INFERIOR_CALL_OK"))) {
-          return {
-            ...execResult("", false),
-            stderr: "Couldn't write extended state status: Bad address.\n",
-          };
-        }
-        if (command.includes("/proc/sys/kernel/yama/ptrace_scope")) {
+        if (command[0] === "python3" && command[1] === "-c" && command[2]?.includes("cap_eff")) {
           ptraceAttempted = true;
+          return execResult(JSON.stringify({
+            cap_eff_hex: "80000",
+            sys_ptrace_effective: true,
+            ptrace_scope: 1,
+            caller_uid: 0,
+            target_uid: 1000,
+            same_uid: false,
+            seccomp_mode: 0,
+            no_new_privs: false,
+          }));
         }
+        if (command[0] === "/proc/12/exe") {
+          return execResult('{"family":"glibc","version":"2.31","raw":"glibc 2.31"}\n');
+        }
+        if (command[0] === "python3" && command[1] === "-c"
+          && command[2]?.includes("cannot uniquely detect target CPython minor")) {
+          return execResult("3.12\n");
+        }
+        if (command[0] === "uname") return execResult("x86_64\n");
         return execResult([
           "python3=/usr/bin/python3",
-          "gdb=/usr/bin/gdb",
           "writable=yes",
-          "collector=missing",
+          "collector=/opt/doctor/bin/pydump",
+          "injector=/opt/doctor/bin/pydump-injector",
         ].join("\n"));
       },
     };
-    const directory = mkdtempSync(join(tmpdir(), "doctor-memory-incompatible-gdb-"));
+    const directory = mkdtempSync(join(tmpdir(), "doctor-memory-ptrace-debug-"));
     const result = await captureMemoryHeap(
       executor,
       {
@@ -453,22 +479,15 @@ describe("doctor mem Pydump capture contract", () => {
         bundle: new EvidenceBundle(directory),
         confirm: async () => {
           confirmationAsked = true;
-          return true;
+          return false;
         },
       },
       () => {},
     );
-    expect(result.code).toBe(1);
-    expect(result.reasons).toEqual([
-      "debug environment doctor-debug-broken（image=repo/doctor-debug:broken）的 "
-        + "GDB 13.1 不满足 Pydump attach 前置："
-        + "gdb 无法调用调试进程函数：Couldn't write extended state status: Bad address.；"
-        + "请更换包含兼容 GDB 的 doctor debug image，"
-        + "或对该 debug container 执行 doctor install gdb",
-      "未执行 attach，也未生成 heap 文件",
-    ]);
-    expect(ptraceAttempted).toBe(false);
-    expect(confirmationAsked).toBe(false);
+    expect(result.code).toBe(130);
+    expect(ptraceAttempted).toBe(true);
+    expect(gdbAttempted).toBe(false);
+    expect(confirmationAsked).toBe(true);
   });
 });
 
