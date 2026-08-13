@@ -10,6 +10,7 @@ PLUGIN_ROOT := $(ROOT_DIR)/plugins/$(PLUGIN)
 PLUGIN_VERSION_TOOL := $(ROOT_DIR)/packages/plugin/scripts/version.ts
 PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION),)
 CHECK_JOBS ?= 4
+TEST_FILES ?=
 
 deps:
 	bun install --frozen-lockfile
@@ -47,8 +48,13 @@ lint-example-plugin:
 lint-spec:
 	bun run specgen:check
 
+ifneq ($(strip $(TEST_FILES)),)
+test:
+	bun test $(TEST_FILES)
+else
 test:
 	$(MAKE) --no-print-directory -j$(CHECK_JOBS) test-cli test-agent test-plugin-sdk
+endif
 
 test-cli:
 	bun run test:cli
