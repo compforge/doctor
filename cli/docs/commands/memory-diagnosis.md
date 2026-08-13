@@ -93,7 +93,8 @@ dump 失败后 Doctor 会再次读取 OOM 计数，只有 `oom_kill` 相比 dump
 liveness。Service 可通过 Plugin liveness capability 显式声明 `/health` 契约，并选择是否允许 heap dump
 期间的临时响应。Doctor 只有在 Pod 实际 HTTP probe 与声明完全一致、Pod 不使用 hostNetwork，且已有
 debug container 显式具备 `NET_ADMIN` 时才接管：仅匹配该 path 与 kube-probe User-Agent 的请求返回
-Plugin 声明的成功响应，普通请求继续转发给业务端口。dump 结束后立即撤销网络规则；独立 watchdog
+Plugin 声明的成功响应，普通请求继续转发给业务端口。Doctor mem 不负责授予该 capability；现场已有则
+直接使用，未授予时提示并自动降级，不尝试伪装 health。dump 结束后立即撤销网络规则；独立 watchdog
 在 Doctor 意外退出时按超时兜底清理。
 
 该能力不隐式扩大 debug 权限。默认 debug container 不申请 `NET_ADMIN`；需要代理时由用户交互选择
