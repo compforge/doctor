@@ -19,15 +19,15 @@ APT、APK、DNF、microdnf 和 YUM 是 `infra/target/package-install` 中的实�
 
 1. 选择 Namespace、Pod 和目标 Container；非交互环境通过参数明确提供。
 2. 交互选择待安装程序；非交互环境要求 `--program`，首版仅接受 GDB。
-3. 探测目标 OS、架构、Linux kernel 和包管理器；现有 GDB 只有同时通过 Python scripting 与
-   inferior function call 验收才直接返回，不产生写操作。
+3. 探测目标 OS、架构、Linux kernel 和包管理器；现有 GDB 通过 inferior function call 验收后
+   直接返回，不产生写操作。Python scripting 能力只作为兼容性事实记录，不是 Pydump 的前置条件。
 4. 展示将修改的 Container、软件源访问和资源影响，取得用户确认。
 5. 从 `--tar` 或当前目录的 `doctor-packages-*.tar` 中读取 package set，按发行版、架构、Target
    kernel 兼容范围和 GDB 版本选择内部 variant。显式指定或带 kernel 兼容声明的 variant 直接使用；
    否则优先使用 Container 已配置的软件源，在线安装失败或能力验收不通过时再使用匹配 variant。
 6. 上传离线包到目标 Container 的临时目录，通过独立的本地 APT source 安装，完成后删除上传的 tar。
-   在线或离线安装完成后先使用发行版包数据库确认安装结果，再运行不 attach 业务进程的 GDB Python
-   scripting 与 inferior call smoke test；两者都通过才算安装成功。
+   在线或离线安装完成后先使用发行版包数据库确认安装结果，再运行不 attach 业务进程的 GDB
+   inferior call smoke test；通过后才算安装成功。
 
 ## 关键设计
 
@@ -108,7 +108,7 @@ make -C toolkit build OS=linux ARCH=arm64
 ```
 
 构建过程使用 Docker 或 Podman 分别运行目标架构的 Debian 12，并在全新的 slim root 中只使用生成的
-本地 source 安装和验证 GDB Python scripting。构建过程同时把发行版实际解析到的 GDB 包版本写入
+本地 source 安装并验证 GDB 可执行。构建过程同时把发行版实际解析到的 GDB 包版本写入
 内层 manifest，再作为对应 Linux/arch Toolkit slice 的 package 资源交付。
 
 可用 `DOCTOR_CONTAINER_ENGINE=podman` 或 `DOCTOR_CONTAINER_ENGINE=docker` 显式选择构建引擎。
@@ -120,11 +120,12 @@ bundle 必须包含目标程序及其所需依赖；不匹配或依赖不全时�
 
 ### 安装成功按能力验收
 
-GDB 包存在、能运行内嵌 Python，都不等于 PyHeap 所需能力可用。`doctor install --program gdb` 还会由 GDB
+GDB 包存在不等于 Pydump 所需能力可用。`doctor install --program gdb` 还会由 GDB
 attach Doctor 自建的短生命周期 Python 进程并调用一个 inferior function；这能覆盖 GDB 启动新进程
 无法暴露、只在 attach 后出现的 Target kernel 寄存器状态兼容问题。smoke test 不选择业务 PID。
 目标 Container 的
-PyHeap dumper、可写目录和实际业务 PID ptrace 条件仍由 `doctor mem` 在采集前联合探测。
+Pydump Collector、minor-specific Agent、可写目录和实际业务 PID ptrace 条件仍由
+`doctor mem` 在采集前联合探测。
 
 客户环境中的 GDB 或 Doctor package bundle 不匹配时，可把兼容性现场保存为 Markdown 或 JSON：
 
@@ -138,6 +139,6 @@ doctor install \
 ```
 
 报告 schema 为 `doctor.install-compatibility/v1`，记录 Target 的发行版、架构、kernel、glibc、Python、
-CPU flags/features、容器 CapEff/Seccomp/Yama ptrace 状态，安装前后的 GDB Python scripting /
+CPU flags/features、容器 CapEff/Seccomp/Yama ptrace 状态，安装前后的 GDB Python scripting 事实和
 inferior call 验收结果，以及当前目录或显式 package set 中全部 candidate manifest。失败报告保留
 attach-call 原始错误和可直接搜索的组合关键词；JSON 适合自动化收集，Markdown 适合人工流转。

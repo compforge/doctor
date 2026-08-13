@@ -10,7 +10,7 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 make build
 ```
 
-Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、PyHeap 等诊断工具。它们与 debug image、GDB 离线包统一由
+Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、Pydump 等诊断工具。它们与 debug image、GDB 离线包统一由
 根目录 `toolkit/` 独立版本和构建：
 
 ```bash
@@ -31,8 +31,8 @@ make -C ../toolkit build-all
 |---|---|
 | `doctor chat` | 进入交互式 AI 问诊 |
 | `doctor cpu` | 对目标 Pod 做 Python CPU、卡顿与线程栈取证 |
-| `doctor mem` | attach 目标 Python 进程，通过已有 debug container 或已具备 GDB 前置的业务容器生成并回传 PyHeap |
-| `doctor mema [inputs...]` | 在 Doctor Host 解析、缓存并诊断 PyHeap；本机 Python 不兼容时用已加载的 doctor-debug container |
+| `doctor mem` | 探测目标 CPython/libc，选择兼容 Pydump Agent，attach 后生成并回传对象堆 |
+| `doctor mema [inputs...]` | 在 Doctor Host 用独立 Go analyzer 解析、缓存并诊断 Pydump artifact |
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |

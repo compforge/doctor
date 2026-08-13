@@ -1,37 +1,37 @@
 import type { DiagnosisCoverage, FindingMeta } from "../../protocol";
-import type { PyHeapAnalysis, PyHeapRetainedObject, PyHeapTypeSummary } from "../pyheap-analysis";
+import type { PydumpAnalysis, PydumpRetainedObject, PydumpTypeSummary } from "../pydump-analysis";
 
-export type PyHeapDiagnosisGoal = "heap-composition" | "retained-ownership" | "leak-confirmation";
+export type PydumpDiagnosisGoal = "heap-composition" | "retained-ownership" | "leak-confirmation";
 
-export type PyHeapFinding =
-  | (FindingMeta<"memory.pyheap-type-concentration"> & {
-      dominantTypes: Array<PyHeapTypeSummary & { heap_share: number }>;
+export type PydumpFinding =
+  | (FindingMeta<"memory.pydump-type-concentration"> & {
+      dominantTypes: Array<PydumpTypeSummary & { heap_share: number }>;
       combinedHeapShare: number;
     })
-  | (FindingMeta<"memory.pyheap-retained-owners"> & {
-      owners: Array<PyHeapRetainedObject & { heap_share: number }>;
+  | (FindingMeta<"memory.pydump-retained-owners"> & {
+      owners: Array<PydumpRetainedObject & { heap_share: number }>;
     })
-  | (FindingMeta<"memory.pyheap-retained-distributed"> & {
-      largestOwner: PyHeapRetainedObject & { heap_share: number };
+  | (FindingMeta<"memory.pydump-retained-distributed"> & {
+      largestOwner: PydumpRetainedObject & { heap_share: number };
     })
-  | (FindingMeta<"memory.pyheap-known-runtime-owner"> & {
+  | (FindingMeta<"memory.pydump-known-runtime-owner"> & {
       runtimeOwner: "sys.path_importer_cache";
-      owner: PyHeapRetainedObject;
+      owner: PydumpRetainedObject;
     });
 
-export interface PyHeapDiagnosis {
-  findings: PyHeapFinding[];
-  coverage: DiagnosisCoverage<PyHeapDiagnosisGoal>[];
+export interface PydumpDiagnosis {
+  findings: PydumpFinding[];
+  coverage: DiagnosisCoverage<PydumpDiagnosisGoal>[];
 }
 
 const CONCENTRATED_TYPE_SHARE = 0.1;
 const RETAINED_OWNER_SHARE = 0.05;
 
-function typeCount(owner: PyHeapRetainedObject, side: "key_types" | "value_types", typeName: string): number {
+function typeCount(owner: PydumpRetainedObject, side: "key_types" | "value_types", typeName: string): number {
   return owner.container_profile?.[side]?.find((item) => item.type_name === typeName)?.object_count ?? 0;
 }
 
-function looksLikePathImporterCache(owner: PyHeapRetainedObject): boolean {
+function looksLikePathImporterCache(owner: PydumpRetainedObject): boolean {
   const itemCount = owner.container_profile?.item_count ?? 0;
   const fileFinders = typeCount(owner, "value_types", "FileFinder");
   const isModuleOwned = owner.inbound_reference_paths?.some(
@@ -44,20 +44,20 @@ function looksLikePathImporterCache(owner: PyHeapRetainedObject): boolean {
     && isModuleOwned;
 }
 
-export function diagnosePyHeapAnalysis(analysis: PyHeapAnalysis): PyHeapDiagnosis {
+export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosis {
   const total = analysis.heap.shallow_size_bytes;
   const dominantTypes = analysis.types
     .map((type) => ({ ...type, heap_share: total > 0 ? type.shallow_size_bytes / total : 0 }))
     .filter((type) => type.heap_share >= CONCENTRATED_TYPE_SHARE)
     .slice(0, 5);
-  const findings: PyHeapFinding[] = [];
+  const findings: PydumpFinding[] = [];
   if (dominantTypes.length > 0) {
     findings.push({
-      id: "memory.pyheap-type-concentration",
-      kind: "memory.pyheap-type-concentration",
+      id: "memory.pydump-type-concentration",
+      kind: "memory.pydump-type-concentration",
       severity: "info",
       confidence: "high",
-      evidence: [{ observationId: "pyheap-analysis", role: "supporting" }],
+      evidence: [{ observationId: "pydump-analysis", role: "supporting" }],
       dominantTypes,
       combinedHeapShare: dominantTypes.reduce((sum, type) => sum + type.heap_share, 0),
     });
@@ -66,11 +66,11 @@ export function diagnosePyHeapAnalysis(analysis: PyHeapAnalysis): PyHeapDiagnosi
   const pathImporterCache = analysis.retained_heap.top_objects.find(looksLikePathImporterCache);
   if (pathImporterCache) {
     findings.push({
-      id: "memory.pyheap-known-runtime-owner",
-      kind: "memory.pyheap-known-runtime-owner",
+      id: "memory.pydump-known-runtime-owner",
+      kind: "memory.pydump-known-runtime-owner",
       severity: "info",
       confidence: "medium",
-      evidence: [{ observationId: "pyheap-analysis", role: "supporting" }],
+      evidence: [{ observationId: "pydump-analysis", role: "supporting" }],
       runtimeOwner: "sys.path_importer_cache",
       owner: pathImporterCache,
     });
@@ -83,21 +83,21 @@ export function diagnosePyHeapAnalysis(analysis: PyHeapAnalysis): PyHeapDiagnosi
       .slice(0, 10);
     if (owners.length > 0) {
       findings.push({
-        id: "memory.pyheap-retained-owners",
-        kind: "memory.pyheap-retained-owners",
+        id: "memory.pydump-retained-owners",
+        kind: "memory.pydump-retained-owners",
         severity: "warning",
         confidence: "high",
-        evidence: [{ observationId: "pyheap-analysis", role: "supporting" }],
+        evidence: [{ observationId: "pydump-analysis", role: "supporting" }],
         owners,
       });
     } else if (analysis.retained_heap.top_objects[0]) {
       const largest = analysis.retained_heap.top_objects[0];
       findings.push({
-        id: "memory.pyheap-retained-distributed",
-        kind: "memory.pyheap-retained-distributed",
+        id: "memory.pydump-retained-distributed",
+        kind: "memory.pydump-retained-distributed",
         severity: "info",
         confidence: "high",
-        evidence: [{ observationId: "pyheap-analysis", role: "supporting" }],
+        evidence: [{ observationId: "pydump-analysis", role: "supporting" }],
         largestOwner: {
           ...largest,
           heap_share: total > 0 ? largest.retained_size_bytes / total : 0,

@@ -7,7 +7,7 @@ export const MEMORY_CAPTURE_SCHEMA = "doctor.memory-capture/v1";
 export interface MemoryCaptureArtifact {
   schema: typeof MEMORY_CAPTURE_SCHEMA;
   captured_at: string;
-  pyheap_version: string;
+  pydump_version: string;
   target: {
     namespace: string;
     pod: string;
@@ -34,6 +34,16 @@ export interface MemoryCaptureArtifact {
     process_scan?: unknown;
     cgroup_memory?: string | CgroupMemoryFacts;
     process_status?: string;
+    target_libc?: {
+      family: "glibc" | "musl" | "unknown";
+      version?: string;
+      raw?: string;
+    };
+    pydump_agent?: {
+      python_minor: string;
+      architecture: string;
+      glibc_min: string;
+    };
   };
 }
 

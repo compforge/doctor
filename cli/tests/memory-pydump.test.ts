@@ -20,20 +20,24 @@ import {
   captureMemoryHeap,
   confirmedRemoteHeapPath,
   parseCapturePreference,
-  parsePyHeapDetail,
+  parsePydumpDetail,
   parseStrReprLen,
   resolveMemoryCapturePaths,
-  pyheapDumpFailureReason,
+  pydumpDumpFailureReason,
 } from "../src/collect/memory/capture";
 import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
-import { resolveHostPyHeapTool } from "../src/collect/memory/toolkit-pyheap";
-import { parsePyheapPrereqs } from "../src/collect/memory/pyheap-tool";
+import { resolveHostPydumpAnalyzer } from "../src/collect/memory/toolkit-pydump";
+import {
+  parsePydumpPrereqs,
+  parsePydumpTargetLibc,
+  selectPydumpAgentMinGlibc,
+} from "../src/collect/memory/pydump-tool";
 import {
   cgroupOomKillCount,
   parseCgroupMemoryFacts,
 } from "../src/collect/fact/cgroup-memory";
-import { pyHeapMemoryRiskLines } from "../src/collect/memory/capture-risk";
+import { pydumpMemoryRiskLines } from "../src/collect/memory/capture-risk";
 
 function analysis(source: {
   sha256: string;
@@ -43,7 +47,7 @@ function analysis(source: {
   dictBytes?: number;
 }) {
   return {
-    schema: "pyheap.analysis/v1",
+    schema: "pydump.analysis/v1",
     source: {
       sha256: source.sha256,
       size_bytes: source.size,
@@ -136,35 +140,40 @@ function captureParams() {
   };
 }
 
-describe("doctor mem PyHeap capture contract", () => {
+describe("doctor mem Pydump capture contract", () => {
   test("parses capture options without a side-effect mode", () => {
-    expect(parsePyHeapDetail(undefined)).toBe("lite");
-    expect(parsePyHeapDetail("full")).toBe("full");
+    expect(parsePydumpDetail(undefined)).toBe("lite");
+    expect(parsePydumpDetail("full")).toBe("full");
     expect(parseCapturePreference(undefined)).toBe("auto");
     expect(parseCapturePreference("target-container")).toBe("target-container");
     expect(parseStrReprLen("-1")).toBe(-1);
     expect(() => parseCapturePreference("observe")).toThrow("--capture-via");
   });
 
-  test("requires GDB Python scripting and a writable tool directory", () => {
-    expect(parsePyheapPrereqs([
+  test("requires Python, GDB and a writable tool directory", () => {
+    expect(parsePydumpPrereqs([
       "python3=/usr/bin/python3",
       "gdb=/usr/bin/gdb",
-      "gdb_python=yes",
       "writable=yes",
-      "pyheap=missing",
+      "collector=missing",
     ].join("\n"))).toEqual({
       python3: true,
       gdb: true,
-      gdbPython: true,
       writable: true,
-      pyheap: false,
+      collector: false,
     });
   });
 
-  test("materializes Toolkit dumper and analyzer PEX files", () => {
-    expect(readFileSync(resolveHostPyHeapTool("dumper"), "utf-8")).toStartWith("#!");
-    expect(readFileSync(resolveHostPyHeapTool("analyzer"), "utf-8")).toStartWith("#!");
+  test("selects an Agent only when the target satisfies its minimum glibc", () => {
+    expect(parsePydumpTargetLibc('{"family":"glibc","version":"2.31","raw":"glibc 2.31"}\n'))
+      .toEqual({ family: "glibc", version: "2.31", raw: "glibc 2.31" });
+    expect(selectPydumpAgentMinGlibc("2.31-13+deb11u14")).toBe("2.17");
+    expect(selectPydumpAgentMinGlibc("2.17")).toBe("2.17");
+    expect(selectPydumpAgentMinGlibc("2.16")).toBeUndefined();
+  });
+
+  test("materializes the standalone Toolkit analyzer", () => {
+    expect(existsSync(resolveHostPydumpAnalyzer())).toBe(true);
   });
 
   test("writes a stable heap and capture sidecar basename", () => {
@@ -187,7 +196,7 @@ describe("doctor mem PyHeap capture contract", () => {
         "gdb.error: Couldn't write extended state status: Bad address.",
       ].join("\n"),
     };
-    expect(pyheapDumpFailureReason(failed)).toBe(
+    expect(pydumpDumpFailureReason(failed)).toBe(
       "GDB 无法调用目标进程函数：Couldn't write extended state status: Bad address.",
     );
   });
@@ -200,7 +209,7 @@ describe("doctor mem PyHeap capture contract", () => {
         "gdb.error: You can't do that without a process to debug.",
       ].join("\n"),
     };
-    expect(pyheapDumpFailureReason(failed)).toBe(
+    expect(pydumpDumpFailureReason(failed)).toBe(
       "目标进程在 dump 期间被 SIGKILL",
     );
   });
@@ -228,20 +237,20 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(parseCgroupMemoryFacts("memory cgroup files unavailable")).toBeUndefined();
   });
 
-  test("warns when PyHeap has little cgroup headroom", () => {
-    const lines = pyHeapMemoryRiskLines({
+  test("reports cgroup memory facts without a headroom warning", () => {
+    const lines = pydumpMemoryRiskLines({
       cgroupMemory: {
         version: 1,
         currentBytes: String(7 * 1024 ** 3),
         limitBytes: String(8 * 1024 ** 3),
         events: {},
       },
-      targetRssMb: 2048,
+      strategy: "debug-container",
     });
 
-    expect(lines.some((line) => line.includes("目标 container 内存和 page cache"))).toBe(true);
+    expect(lines.some((line) => line.includes("Collector 的图遍历状态") && line.includes("debug container"))).toBe(true);
     expect(lines.some((line) => line.includes("7.00 GiB / 8.00 GiB"))).toBe(true);
-    expect(lines.some((line) => line.includes("高风险") && line.includes("SIGKILL"))).toBe(true);
+    expect(lines.some((line) => line.includes("高风险"))).toBe(false);
   });
 
   test("只有远端 metadata 验证通过才报告 heap 文件保留", () => {
@@ -258,7 +267,7 @@ describe("doctor mem PyHeap capture contract", () => {
     writeFileSync(artifactPath, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pyheap_version: "0.7.0+doctor.2",
+      pydump_version: "0.1.0",
       target: {
         namespace: "ns",
         pod: "app-0",
@@ -290,9 +299,8 @@ describe("doctor mem PyHeap capture contract", () => {
         return execResult([
           "python3=/usr/bin/python3",
           "gdb=missing",
-          "gdb_python=no",
           "writable=yes",
-          "pyheap=missing",
+          "collector=missing",
         ].join("\n"));
       },
     };
@@ -319,12 +327,13 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(confirmationAsked).toBe(false);
   });
 
-  test("asks for confirmation before uploading a dumper into a capable target container", async () => {
+  test("asks for confirmation before uploading Pydump tools into a capable target container", async () => {
     let uploadAttempted = false;
+    let libcProbeContainer: string | undefined;
     const logs: string[] = [];
     const executor: Executor = {
       run: async () => execResult(),
-      exec: async (_target, command, options?: RunOptions) => {
+      exec: async (target, command, options?: RunOptions) => {
         if (options?.stdin instanceof Uint8Array) uploadAttempted = true;
         if (command[0] === "python3" && command[1] === "-") {
           return execResult([
@@ -344,6 +353,13 @@ describe("doctor mem PyHeap capture contract", () => {
         if (command.includes("/proc/sys/kernel/yama/ptrace_scope")) {
           return execResult();
         }
+        if (
+          command[0] === "python3"
+          && command[1] === "-c"
+          && command[2]?.includes("cannot uniquely detect target CPython minor")
+        ) {
+          return execResult("3.12\n");
+        }
         if (command[0] === "python3" && command[1] === "-c" && command.at(-1) === "12") {
           return execResult(JSON.stringify({
             cap_eff_hex: "80000",
@@ -356,12 +372,16 @@ describe("doctor mem PyHeap capture contract", () => {
             no_new_privs: false,
           }));
         }
+        if (command[0] === "/proc/12/exe") {
+          libcProbeContainer = target.container;
+          return execResult('{"family":"glibc","version":"2.31","raw":"glibc 2.31"}\n');
+        }
+        if (command[0] === "uname") return execResult("x86_64\n");
         return execResult([
           "python3=/usr/bin/python3",
           "gdb=/usr/bin/gdb",
-          "gdb_python=yes",
           "writable=yes",
-          "pyheap=missing",
+          "collector=missing",
         ].join("\n"));
       },
     };
@@ -384,7 +404,10 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(result.code).toBe(130);
     expect(result.strategy).toBe("target-container");
     expect(uploadAttempted).toBe(false);
-    expect(logs.some((line) => line.includes("内存风险：PyHeap"))).toBe(true);
+    expect(libcProbeContainer).toBe("app");
+    expect(logs.some((line) => line.includes("目标 glibc 2.31") && line.includes("最低 glibc 2.17")))
+      .toBe(true);
+    expect(logs.some((line) => line.includes("内存风险：") && line.includes("Collector"))).toBe(true);
     expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
@@ -413,9 +436,8 @@ describe("doctor mem PyHeap capture contract", () => {
         return execResult([
           "python3=/usr/bin/python3",
           "gdb=/usr/bin/gdb",
-          "gdb_python=yes",
           "writable=yes",
-          "pyheap=missing",
+          "collector=missing",
         ].join("\n"));
       },
     };
@@ -439,7 +461,7 @@ describe("doctor mem PyHeap capture contract", () => {
     expect(result.code).toBe(1);
     expect(result.reasons).toEqual([
       "debug environment doctor-debug-broken（image=repo/doctor-debug:broken）的 "
-        + "GDB 13.1 不满足 PyHeap attach 前置："
+        + "GDB 13.1 不满足 Pydump attach 前置："
         + "gdb 无法调用调试进程函数：Couldn't write extended state status: Bad address.；"
         + "请更换包含兼容 GDB 的 doctor debug image，"
         + "或对该 debug container 执行 doctor install gdb",
@@ -461,7 +483,7 @@ describe("doctor mema local analysis", () => {
     writeFileSync(capturePath, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pyheap_version: "0.7.0+doctor.2",
+      pydump_version: "0.1.0",
       target: {
         namespace: "ns",
         pod: "app-0",
@@ -480,7 +502,7 @@ describe("doctor mema local analysis", () => {
       facts: {},
     }));
     writeFileSync(
-      join(directory, "capture.pyheap-analysis.json"),
+      join(directory, "capture.pydump-analysis.json"),
       JSON.stringify(analysis({
         sha256,
         size: Buffer.byteLength(body),
@@ -526,7 +548,7 @@ printf '%s\\n' '${analyzerOutput}'
     try {
       expect(await runMemoryAnalysis({ inputs: [heapPath], output })).toBe(0);
       expect(existsSync(output)).toBe(true);
-      expect(existsSync(join(directory, "capture.pyheap-analysis.json"))).toBe(true);
+      expect(existsSync(join(directory, "capture.pydump-analysis.json"))).toBe(true);
     } finally {
       process.env.PATH = previousPath;
     }
@@ -534,8 +556,8 @@ printf '%s\\n' '${analyzerOutput}'
 
   test("compares multiple analysis JSON files by type deltas", async () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-mema-compare-"));
-    const first = join(directory, "first.pyheap-analysis.json");
-    const second = join(directory, "second.pyheap-analysis.json");
+    const first = join(directory, "first.pydump-analysis.json");
+    const second = join(directory, "second.pydump-analysis.json");
     writeFileSync(first, JSON.stringify(analysis({
       sha256: "a".repeat(64),
       size: 100,
@@ -562,12 +584,12 @@ printf '%s\\n' '${analyzerOutput}'
   test("discovers capture indexes before derived analysis and raw heap files", () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-mema-discovery-"));
     writeFileSync(join(directory, "capture.pyheap"), "heap");
-    writeFileSync(join(directory, "capture.pyheap-analysis.json"), "{}");
+    writeFileSync(join(directory, "capture.pydump-analysis.json"), "{}");
     const captureIndex = join(directory, "doctor-mem-app-0-pid12-20260727-080000.json");
     writeFileSync(captureIndex, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pyheap_version: "0.7.0+doctor.2",
+      pydump_version: "0.1.0",
       target: {
         namespace: "ns",
         pod: "app-0",

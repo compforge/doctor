@@ -4,7 +4,7 @@
 
 Debug container 为 CPU、Memory、Network 等诊断提供目标容器当前不具备的权限和工具。交互执行时由用户按诊断
 目的选择 `SYS_PTRACE`、`NET_RAW` 或两者；非交互执行保持同时申请两者。Ephemeral Container 必须已运行、进入
-目标容器 PID namespace，并具备本次选择的 capability。GDB、PyHeap、py-spy 和网络工具是建立在基础 container
+目标容器 PID namespace，并具备本次选择的 capability。GDB、Pydump、py-spy 和网络工具是建立在基础 container
 上的能力，不再决定 `doctor debug` 本身是否成功。
 
 `infra/target/debug` 定义目标侧 `DebugEngine`；Kubernetes Ephemeral Container 是当前的准备路线，
@@ -23,7 +23,8 @@ Debug Environment Fact 与 Preparation，不依赖具体准备路线。
    `doctor-packages-*.tar`，交互执行会以这个具备 `SYS_PTRACE` 的新建容器为明确目标进入
    `doctor install gdb`。现有 GDB 满足能力契约时直接返回，确需写入时仍单独展示安装方案并取得确认。
 4. Inspect 根据容器状态、PID namespace、工具和 capability 形成 Debug Environment Fact。`doctor mem` 使用 environment 前再次验证
-   实际 ptrace attach 条件与 GDB Python scripting，并在缺少 PyHeap dumper 时取得 attach 授权后按需上传。
+   实际 ptrace attach 条件与 GDB inferior call，并在缺少 Pydump Collector 或 Agent 时取得
+   attach 授权后按需上传。
 5. Ephemeral Container 不能原地删除或替换，debug container 保留到 Pod 被替换；CPU/Memory/Network 各自验证
    所需能力，不把 ptrace-only container 误报为完整工具环境。
 
@@ -36,7 +37,8 @@ Network 同样只消费已就绪 Fact：debug container 启动后不自动抓包
 ### 准备能力与采集证据分开
 
 镜像发布、临时容器 mutation 和 container capability 准备属于诊断准备；线程栈、内存 dump 等才是领域证据。
-Probe 不在执行途中发布镜像或部署 debug container。PyHeap dumper 是单个领域工具，由 `doctor mem` 在 attach
+Probe 不在执行途中发布镜像或部署 debug container。Pydump Collector 与 Agent 是单个领域工具，
+由 `doctor mem` 在 attach
 授权后按需上传；GDB 及其动态依赖由独立的 `doctor install` 补齐，避免 debug 生命周期或 memory Probe
 自行修改系统包。
 
@@ -67,7 +69,7 @@ Debug image repository 名由代码中的单一常量同时约束构建和运行
 
 ### 无 registry 路线仍依赖临时容器授权
 
-复制或安装 GDB、PyHeap 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
+复制或安装 GDB、Pydump 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
 PID namespace 的 Ephemeral Container，并申请诊断所需 capability；若集群拒绝 `pods/ephemeralcontainers` 或
 admission 拒绝 capability，命令在 mutation 前置检查处停止。目标业务镜像 fallback 显式覆盖 ENTRYPOINT/CMD；
 `doctor debug` 不实现安装动作，只在新建容器后按本地 Toolkit/package tar 提供 `doctor install` 后续入口。在线和离线安装

@@ -13,12 +13,12 @@ async function ensureGdb(
     target.pod,
     container,
   );
-  if (gdb.pythonScripting) {
-    terminalStdout.success("[debug] gdb: ready（支持 Python scripting）\n");
+  if (gdb.available && gdb.inferiorCall) {
+    terminalStdout.success("[debug] gdb: ready（inferior call 验收通过）\n");
     return gdb;
   }
   if (gdb.available) {
-    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；无法用于 PyHeap dump\n`);
+    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；无法用于 Pydump dump\n`);
     return gdb;
   }
 
@@ -49,10 +49,10 @@ export async function reportDebugCapabilities(
   if (manifest.ok) {
     terminalStdout.write(`[debug] tools: doctor-debug image manifest ready\n${manifest.stdout}`);
   } else if (capabilities.includes("SYS_PTRACE")) {
-    if (gdb?.pythonScripting) {
-      terminalStdout.write("[debug] PyHeap: GDB 前置已就绪；doctor mem 将按需上传 PyHeap dumper\n");
+    if (gdb?.available && gdb.inferiorCall) {
+      terminalStdout.write("[debug] Pydump: GDB 前置已就绪；doctor mem 将按需上传 Collector 与 Agent\n");
     } else {
-      terminalStdout.warning("[debug] PyHeap: unavailable（缺少支持 Python scripting 的 GDB）\n");
+      terminalStdout.warning("[debug] Pydump: unavailable（GDB inferior call 验收未通过）\n");
     }
   }
 }

@@ -6,8 +6,8 @@ import {
   htmlTableCell,
   type HtmlPieChart,
 } from "../output/html";
-import type { PyHeapDiagnosis, PyHeapFinding } from "./detector/pyheap";
-import type { PyHeapAnalysis } from "./pyheap-analysis";
+import type { PydumpDiagnosis, PydumpFinding } from "./detector/pydump";
+import type { PydumpAnalysis } from "./pydump-analysis";
 
 function formatBytes(bytes: number): string {
   if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GiB`;
@@ -20,19 +20,19 @@ function formatShare(share: number): string {
   return `${(share * 100).toFixed(1)}%`;
 }
 
-function renderFinding(finding: PyHeapFinding): string {
-  if (finding.kind === "memory.pyheap-type-concentration") {
+function renderFinding(finding: PydumpFinding): string {
+  if (finding.kind === "memory.pydump-type-concentration") {
     const names = finding.dominantTypes.map((type) => type.type_name).join("、");
     return `对象堆 shallow size 集中在 ${names}，合计 ${formatShare(finding.combinedHeapShare)}；`
       + "这是排查优先级，不等于这些类型发生泄漏。";
   }
-  if (finding.kind === "memory.pyheap-retained-distributed") {
+  if (finding.kind === "memory.pydump-retained-distributed") {
     const owner = finding.largestOwner;
     return `没有单个对象保留超过对象堆 5%；最大 owner ${owner.type_name}@${owner.object_address} `
       + `保留 ${formatBytes(owner.retained_size_bytes)}（${formatShare(owner.heap_share)}）。`
       + "当前对象图更像分散持有，不能仅凭单个 owner 定位泄漏。";
   }
-  if (finding.kind === "memory.pyheap-known-runtime-owner") {
+  if (finding.kind === "memory.pydump-known-runtime-owner") {
     return `${finding.owner.type_name}@${finding.owner.object_address} 的容器构成和入向引用`
       + `与 ${finding.runtimeOwner} 高度一致；这是 Python import 路径查找器缓存，`
       + "单次快照中的存在或大小不等于泄漏。";
@@ -47,7 +47,7 @@ function formatTypeCounts(counts: Array<{ type_name: string; object_count: numbe
   return counts?.map((item) => `${item.type_name} × ${item.object_count.toLocaleString("en-US")}`).join("、") || "-";
 }
 
-function formatContainerProfile(owner: PyHeapAnalysis["retained_heap"]["top_objects"][number]): string {
+function formatContainerProfile(owner: PydumpAnalysis["retained_heap"]["top_objects"][number]): string {
   const profile = owner.container_profile;
   if (!profile) return "-";
   const parts = [`${profile.item_count.toLocaleString("en-US")} 项`];
@@ -57,13 +57,13 @@ function formatContainerProfile(owner: PyHeapAnalysis["retained_heap"]["top_obje
   return parts.join("；");
 }
 
-function formatInboundPaths(owner: PyHeapAnalysis["retained_heap"]["top_objects"][number]): string {
+function formatInboundPaths(owner: PydumpAnalysis["retained_heap"]["top_objects"][number]): string {
   return owner.inbound_reference_paths
     ?.map((path) => path.map((node) => node.type_name).join(" → "))
     .join("；") || "-";
 }
 
-export function buildPyHeapPieCharts(analysis: PyHeapAnalysis): HtmlPieChart[] {
+export function buildPydumpPieCharts(analysis: PydumpAnalysis): HtmlPieChart[] {
   const top = analysis.types.slice(0, 8);
   const topBytes = top.reduce((sum, type) => sum + type.shallow_size_bytes, 0);
   const otherBytes = Math.max(0, analysis.heap.shallow_size_bytes - topBytes);
@@ -76,9 +76,9 @@ export function buildPyHeapPieCharts(analysis: PyHeapAnalysis): HtmlPieChart[] {
   }];
 }
 
-export function buildPyHeapAnalysisHtml(
-  analysis: PyHeapAnalysis,
-  diagnosis: PyHeapDiagnosis,
+export function buildPydumpAnalysisHtml(
+  analysis: PydumpAnalysis,
+  diagnosis: PydumpDiagnosis,
 ): string {
   const retainedComplete = analysis.retained_heap.status === "complete";
   const parts = [

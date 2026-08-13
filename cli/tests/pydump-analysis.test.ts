@@ -2,17 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { diagnosePyHeapAnalysis } from "../src/collect/memory/detector/pyheap";
+import { diagnosePydumpAnalysis } from "../src/collect/memory/detector/pydump";
 import {
-  PYHEAP_ANALYSIS_SCHEMA,
-  readPyHeapAnalysis,
-  type PyHeapAnalysis,
-} from "../src/collect/memory/pyheap-analysis";
-import { buildPyHeapAnalysisHtml } from "../src/collect/memory/pyheap-render";
+  PYDUMP_ANALYSIS_SCHEMA,
+  readPydumpAnalysis,
+  type PydumpAnalysis,
+} from "../src/collect/memory/pydump-analysis";
+import { buildPydumpAnalysisHtml } from "../src/collect/memory/pydump-render";
 
-function analysis(retainedBytes = 2_000_000): PyHeapAnalysis {
+function analysis(retainedBytes = 2_000_000): PydumpAnalysis {
   return {
-    schema: PYHEAP_ANALYSIS_SCHEMA,
+    schema: PYDUMP_ANALYSIS_SCHEMA,
     source: {
       sha256: "a".repeat(64),
       size_bytes: 100_000_000,
@@ -54,22 +54,22 @@ function analysis(retainedBytes = 2_000_000): PyHeapAnalysis {
   };
 }
 
-describe("PyHeap analysis detector", () => {
-  test("协议 reader 只接受 pyheap.analysis/v1", () => {
-    const dir = mkdtempSync(join(tmpdir(), "doctor-pyheap-analysis-"));
+describe("Pydump analysis detector", () => {
+  test("协议 reader 只接受 pydump.analysis/v1", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-pydump-analysis-"));
     const valid = join(dir, "valid.json");
     const invalid = join(dir, "invalid.json");
     writeFileSync(valid, JSON.stringify(analysis()));
-    writeFileSync(invalid, JSON.stringify({ schema: "pyheap.analysis/v2" }));
-    expect(readPyHeapAnalysis(valid).heap.object_count).toBe(1_000_000);
-    expect(() => readPyHeapAnalysis(invalid)).toThrow(PYHEAP_ANALYSIS_SCHEMA);
+    writeFileSync(invalid, JSON.stringify({ schema: "pyheap.analysis/v1" }));
+    expect(readPydumpAnalysis(valid).heap.object_count).toBe(1_000_000);
+    expect(() => readPydumpAnalysis(invalid)).toThrow(PYDUMP_ANALYSIS_SCHEMA);
   });
 
   test("区分类型集中与单一 retained owner，不把单快照说成已确认泄漏", () => {
-    const diagnosis = diagnosePyHeapAnalysis(analysis(60_000_000));
+    const diagnosis = diagnosePydumpAnalysis(analysis(60_000_000));
     expect(diagnosis.findings.map((finding) => finding.kind)).toEqual([
-      "memory.pyheap-type-concentration",
-      "memory.pyheap-retained-owners",
+      "memory.pydump-type-concentration",
+      "memory.pydump-retained-owners",
     ]);
     expect(diagnosis.coverage.find((item) => item.goal === "retained-ownership")?.status)
       .toBe("sufficient");
@@ -79,9 +79,9 @@ describe("PyHeap analysis detector", () => {
 
   test("没有大 owner 时明确报告持有分散，并渲染人类可读说明", () => {
     const input = analysis();
-    const diagnosis = diagnosePyHeapAnalysis(input);
-    expect(diagnosis.findings.at(-1)?.kind).toBe("memory.pyheap-retained-distributed");
-    const html = buildPyHeapAnalysisHtml(input, diagnosis);
+    const diagnosis = diagnosePydumpAnalysis(input);
+    expect(diagnosis.findings.at(-1)?.kind).toBe("memory.pydump-retained-distributed");
+    const html = buildPydumpAnalysisHtml(input, diagnosis);
     expect(html).toContain("没有单个对象保留超过对象堆 5%");
     expect(html).toContain("单次快照不能单独证明内存泄漏");
     expect(html).toContain("Retained owner Top-N");
@@ -102,12 +102,12 @@ describe("PyHeap analysis detector", () => {
       { object_address: "0x5", type_name: "module" },
     ]];
 
-    const diagnosis = diagnosePyHeapAnalysis(input);
+    const diagnosis = diagnosePydumpAnalysis(input);
     expect(diagnosis.findings.some((finding) => (
-      finding.kind === "memory.pyheap-known-runtime-owner"
+      finding.kind === "memory.pydump-known-runtime-owner"
       && finding.runtimeOwner === "sys.path_importer_cache"
     ))).toBe(true);
-    const html = buildPyHeapAnalysisHtml(input, diagnosis);
+    const html = buildPydumpAnalysisHtml(input, diagnosis);
     expect(html).toContain("sys.path_importer_cache");
     expect(html).toContain("FileFinder × 711");
     expect(html).toContain("dict → module");

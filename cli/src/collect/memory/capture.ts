@@ -35,29 +35,37 @@ import {
   type CgroupMemoryFacts,
 } from "../fact/cgroup-memory";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
-import { pyHeapMemoryRiskLines } from "./capture-risk";
-import { resolveKubernetesPyHeapDumper } from "./toolkit-pyheap";
+import { pydumpMemoryRiskLines } from "./capture-risk";
+import { resolveKubernetesPydumpCaptureTools } from "./toolkit-pydump";
 import {
   compressFileCmd,
   fileMetadataCmd,
   parseFileMetadata,
-  parsePyheapPrereqs,
+  parsePydumpPrereqs,
+  parsePydumpTargetLibc,
+  parseTargetPythonMinor,
   parseUvicornSupervisorGuard,
-  PYHEAP_DUMP_PEX_PATH,
-  pyheapPrereqCmd,
-  PYHEAP_TOOL_DIR,
-  PYHEAP_VERSION,
+  pydumpImageAgentPath,
+  pydumpPrereqCmd,
+  PYDUMP_TOOL_DIR,
+  PYDUMP_COLLECTOR_PATH,
+  PYDUMP_VERSION,
+  pydumpUploadedAgentPath,
   resumeUvicornSupervisorCmd,
-  runPyheapDumpCmd,
+  runPydumpDumpCmd,
+  selectPydumpAgentMinGlibc,
   suspendUvicornSupervisorCmd,
+  targetLibcCmd,
+  targetPythonMinorCmd,
+  type PydumpTargetLibc,
   type UvicornSupervisorGuard,
-} from "./pyheap-tool";
+} from "./pydump-tool";
 
-export type PyHeapDetail = "lite" | "full";
+export type PydumpDetail = "lite" | "full";
 export type CapturePreference = "auto" | "debug-container" | "target-container";
 export type CaptureStrategy = Exclude<CapturePreference, "auto">;
 
-const TARGET_DUMPER_PATH = `${PYHEAP_TOOL_DIR}/pyheap_dump`;
+const TARGET_COLLECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump`;
 const DUMP_TIMEOUT_MS = 15 * 60_000;
 const SUPERVISOR_AUTO_RESUME_SECONDS = DUMP_TIMEOUT_MS / 1000 + 60;
 const MAX_FETCH_RAW_BYTES = 2 * 1024 * 1024 * 1024;
@@ -66,7 +74,7 @@ function timestamp(date: Date): string {
   return date.toISOString().replaceAll(/[:-]/g, "").replace("T", "-").slice(0, 15);
 }
 
-export function parsePyHeapDetail(value: string | undefined): PyHeapDetail {
+export function parsePydumpDetail(value: string | undefined): PydumpDetail {
   const normalized = value?.trim().toLowerCase() || "lite";
   if (normalized === "lite" || normalized === "full") return normalized;
   throw new Error(`--detail 仅支持 lite 或 full: '${value}'`);
@@ -177,7 +185,7 @@ function recordStep(
   });
 }
 
-export function pyheapDumpFailureReason(result: ExecResult): string {
+export function pydumpDumpFailureReason(result: ExecResult): string {
   const lines = `${result.stderr}\n${result.stdout}`
     .split("\n")
     .map((line) => line.trim())
@@ -211,17 +219,12 @@ export function confirmedRemoteHeapPath(
   return metadataResult.ok && parseFileMetadata(metadataResult.stdout) ? path : undefined;
 }
 
-function prereqDeficiencies(
-  prereqs: ReturnType<typeof parsePyheapPrereqs>,
-  requireDumper: boolean,
-): string[] {
+function prereqDeficiencies(prereqs: ReturnType<typeof parsePydumpPrereqs>): string[] {
   if (!prereqs) return ["前置探测输出无法解析"];
   const missing: string[] = [];
   if (!prereqs.python3) missing.push("python3");
   if (!prereqs.gdb) missing.push("gdb");
-  else if (!prereqs.gdbPython) missing.push("支持 Python scripting 的 gdb");
-  if (!prereqs.writable) missing.push(`可写目录 ${PYHEAP_TOOL_DIR}`);
-  if (requireDumper && !prereqs.pyheap) missing.push("PyHeap dumper");
+  if (!prereqs.writable) missing.push(`可写目录 ${PYDUMP_TOOL_DIR}`);
   return missing;
 }
 
@@ -237,18 +240,18 @@ async function verifyGdbReadiness(input: {
     input.target.pod,
     input.target.container,
   );
-  const ready = gdb.pythonScripting && gdb.inferiorCall;
+  const ready = gdb.available && gdb.inferiorCall;
   input.bundle.addStep({
     id: input.stepId,
     title: input.title,
     risk: "observe",
     status: ready ? "ok" : "failed",
-    reason: ready ? undefined : gdb.reason ?? "PyHeap 所需 GDB 能力验收未通过",
+    reason: ready ? undefined : gdb.reason ?? "Pydump 所需 GDB 能力验收未通过",
     output: `${JSON.stringify(gdb, null, 2)}\n`,
   });
   if (ready) return undefined;
-  return `GDB ${gdb.version ?? "version unknown"} 不满足 PyHeap attach 前置：`
-    + `${gdb.reason ?? "Python scripting 或 inferior call 验收未通过"}`;
+  return `GDB ${gdb.version ?? "version unknown"} 不满足 Pydump attach 前置：`
+    + `${gdb.reason ?? "inferior call 验收未通过"}`;
 }
 
 interface CaptureExecution {
@@ -256,7 +259,7 @@ interface CaptureExecution {
   target: ExecTarget;
   container: string;
   label: string;
-  dumpPath: string;
+  collectorPath: string;
 }
 
 async function verifyPtrace(input: {
@@ -293,13 +296,10 @@ async function prepareDebugExecution(input: {
   bundle: EvidenceBundle;
 }): Promise<{ execution?: CaptureExecution; reason?: string }> {
   const target = { pod: input.pod, container: input.debug.executionContainer };
-  const prereqResult = await input.executor.exec(target, pyheapPrereqCmd(), { timeoutMs: 20_000 });
-  recordStep(input.bundle, "mem-debug-prereq", "确认 debug container 的 PyHeap 前置", prereqResult);
-  const prereqs = prereqResult.ok ? parsePyheapPrereqs(prereqResult.stdout) : undefined;
-  const missing = prereqDeficiencies(
-    prereqs,
-    false,
-  );
+  const prereqResult = await input.executor.exec(target, pydumpPrereqCmd(), { timeoutMs: 20_000 });
+  recordStep(input.bundle, "mem-debug-prereq", "确认 debug container 的 Pydump 前置", prereqResult);
+  const prereqs = prereqResult.ok ? parsePydumpPrereqs(prereqResult.stdout) : undefined;
+  const missing = prereqDeficiencies(prereqs);
   if (missing.length) {
     return {
       reason: `debug environment ${input.debug.executionContainer}（image=${input.debug.image}）缺少：${missing.join("、")}`,
@@ -324,7 +324,7 @@ async function prepareDebugExecution(input: {
     target,
     container: input.debug.executionContainer,
     label: `${input.pod}/${input.debug.executionContainer}`,
-    dumpPath: prereqs?.pyheap ? PYHEAP_DUMP_PEX_PATH : TARGET_DUMPER_PATH,
+    collectorPath: prereqs?.collector ? PYDUMP_COLLECTOR_PATH : TARGET_COLLECTOR_PATH,
   };
   const ptraceReason = await verifyPtrace({ ...input, execution });
   return ptraceReason ? { reason: `debug container 无法 attach：${ptraceReason}` } : { execution };
@@ -341,12 +341,12 @@ async function prepareTargetExecution(input: {
   const target = { pod: input.pod, container: input.container.name };
   const prereqResult = await input.executor.exec(
     target,
-    pyheapPrereqCmd(TARGET_DUMPER_PATH),
+    pydumpPrereqCmd(TARGET_COLLECTOR_PATH),
     { timeoutMs: 20_000 },
   );
-  recordStep(input.bundle, "mem-target-prereq", "确认目标容器的 PyHeap attach 前置", prereqResult);
-  const prereqs = prereqResult.ok ? parsePyheapPrereqs(prereqResult.stdout) : undefined;
-  const missing = prereqDeficiencies(prereqs, false);
+  recordStep(input.bundle, "mem-target-prereq", "确认目标容器的 Pydump attach 前置", prereqResult);
+  const prereqs = prereqResult.ok ? parsePydumpPrereqs(prereqResult.stdout) : undefined;
+  const missing = prereqDeficiencies(prereqs);
   if (missing.length) {
     return { reason: `目标容器 ${input.container.name} 缺少：${missing.join("、")}` };
   }
@@ -368,18 +368,60 @@ async function prepareTargetExecution(input: {
     target,
     container: input.container.name,
     label: `${input.pod}/${input.container.name}`,
-    dumpPath: TARGET_DUMPER_PATH,
+    collectorPath: TARGET_COLLECTOR_PATH,
   };
   const ptraceReason = await verifyPtrace({ ...input, execution });
   if (ptraceReason) return { reason: `目标容器无法 attach：${ptraceReason}` };
   return { execution };
 }
 
-async function installExecutionDumper(input: {
+interface PydumpRuntimeSelection {
+  pythonMinor: string;
+  architecture: string;
+  targetLibc: PydumpTargetLibc;
+  agentMinGlibc: string;
+}
+
+async function inspectPydumpRuntime(input: {
   executor: Executor;
   execution: CaptureExecution;
+  targetContainer: string;
+  pid: number;
   bundle: EvidenceBundle;
-}): Promise<string | undefined> {
+}): Promise<PydumpRuntimeSelection | { reason: string }> {
+  const libc = await input.executor.exec(
+    { pod: input.execution.target.pod, container: input.targetContainer },
+    targetLibcCmd(input.pid),
+    { timeoutMs: 10_000 },
+  );
+  recordStep(input.bundle, "mem-target-libc", "识别目标 Python 进程的 libc", libc);
+  const targetLibc = libc.ok ? parsePydumpTargetLibc(libc.stdout) : undefined;
+  if (!targetLibc) {
+    return { reason: `无法识别目标 Python 进程的 libc：${failReason(libc)}` };
+  }
+  if (targetLibc.family !== "glibc" || !targetLibc.version) {
+    return {
+      reason: targetLibc.family === "musl"
+        ? "目标 Python 使用 musl；Pydump Agent 当前只支持 glibc"
+        : `无法确认目标 Python 使用的 glibc 版本：${targetLibc.raw ?? "unknown"}`,
+    };
+  }
+  const agentMinGlibc = selectPydumpAgentMinGlibc(targetLibc.version);
+  if (!agentMinGlibc) {
+    return {
+      reason: `目标 glibc ${targetLibc.version} 低于 Doctor Toolkit 中全部 Pydump Agent 的兼容门槛`,
+    };
+  }
+  const python = await input.executor.exec(
+    input.execution.target,
+    targetPythonMinorCmd(input.pid),
+    { timeoutMs: 10_000 },
+  );
+  recordStep(input.bundle, "mem-python-minor", "识别目标 CPython minor", python);
+  const pythonMinor = python.ok ? parseTargetPythonMinor(python.stdout) : undefined;
+  if (!pythonMinor) {
+    return { reason: `无法识别目标 CPython minor：${failReason(python)}` };
+  }
   const platform = await input.executor.exec(
     input.execution.target,
     ["uname", "-m"],
@@ -387,35 +429,86 @@ async function installExecutionDumper(input: {
   );
   recordStep(input.bundle, "mem-toolkit-platform", "识别 Toolkit 执行平台", platform);
   if (!platform.ok || !platform.stdout.trim()) {
-    return `无法识别 ${input.execution.label} 的 architecture：${failReason(platform)}`;
+    return { reason: `无法识别 ${input.execution.label} 的 architecture：${failReason(platform)}` };
   }
-  let dumper: string;
+  const architecture = platform.stdout.trim();
+  return { pythonMinor, architecture, targetLibc, agentMinGlibc };
+}
+
+async function prepareExecutionTools(input: {
+  executor: Executor;
+  execution: CaptureExecution;
+  runtime: PydumpRuntimeSelection;
+  bundle: EvidenceBundle;
+}): Promise<{ collectorPath: string; agentPath: string } | { reason: string }> {
+  const { pythonMinor, architecture, agentMinGlibc } = input.runtime;
+  const imageAgentPath = pydumpImageAgentPath(
+    pythonMinor,
+    architecture,
+    agentMinGlibc,
+  );
+  const bundledAgent = await input.executor.exec(
+    input.execution.target,
+    ["test", "-r", imageAgentPath],
+    { timeoutMs: 10_000 },
+  );
+  const needCollector = input.execution.collectorPath === TARGET_COLLECTOR_PATH;
+  const needAgent = !bundledAgent.ok;
+  if (!needCollector && !needAgent) {
+    return { collectorPath: input.execution.collectorPath, agentPath: imageAgentPath };
+  }
+
+  let tools: ReturnType<typeof resolveKubernetesPydumpCaptureTools>;
   try {
-    dumper = resolveKubernetesPyHeapDumper({
+    tools = resolveKubernetesPydumpCaptureTools({
       pod: input.execution.target.pod,
       container: input.execution.container,
-      architecture: platform.stdout.trim(),
+      architecture,
+      pythonMinor,
+      minGlibcVersion: agentMinGlibc,
     });
   } catch (error) {
-    return error instanceof Error ? error.message : String(error);
+    return { reason: error instanceof Error ? error.message : String(error) };
   }
-  const upload = await infra.fileTransfer.uploadToTarget({
-    executor: input.executor,
-    target: input.execution.target,
-    hostPath: dumper,
-    targetPath: TARGET_DUMPER_PATH,
-  });
-  recordStep(input.bundle, "mem-upload-dumper", "临时上传 PyHeap dumper", upload, "overhead");
-  if (!upload.ok) return `PyHeap dumper 上传失败：${failReason(upload)}`;
-
+  if (needCollector) {
+    const upload = await infra.fileTransfer.uploadToTarget({
+      executor: input.executor,
+      target: input.execution.target,
+      hostPath: tools.collector,
+      targetPath: TARGET_COLLECTOR_PATH,
+    });
+    recordStep(input.bundle, "mem-upload-collector", "临时上传 Pydump Collector", upload, "overhead");
+    if (!upload.ok) return { reason: `Pydump Collector 上传失败：${failReason(upload)}` };
+  }
+  const agentPath = needAgent
+    ? pydumpUploadedAgentPath(pythonMinor, architecture, agentMinGlibc)
+    : imageAgentPath;
+  if (needAgent) {
+    const upload = await infra.fileTransfer.uploadToTarget({
+      executor: input.executor,
+      target: input.execution.target,
+      hostPath: tools.agent,
+      targetPath: agentPath,
+    });
+    recordStep(
+      input.bundle,
+      "mem-upload-agent",
+      `临时上传 CPython ${pythonMinor} / 最低 glibc ${agentMinGlibc} Agent`,
+      upload,
+      "overhead",
+    );
+    if (!upload.ok) return { reason: `Pydump Agent 上传失败：${failReason(upload)}` };
+  }
+  const collectorPath = needCollector ? TARGET_COLLECTOR_PATH : input.execution.collectorPath;
   const verify = await input.executor.exec(
     input.execution.target,
-    pyheapPrereqCmd(TARGET_DUMPER_PATH),
-    { timeoutMs: 20_000 },
+    ["sh", "-c", `test -x ${collectorPath} && test -r ${agentPath}`],
+    { timeoutMs: 10_000 },
   );
-  recordStep(input.bundle, "mem-dumper", "确认上传的 PyHeap dumper", verify);
-  const verified = verify.ok ? parsePyheapPrereqs(verify.stdout) : undefined;
-  return verified?.pyheap ? undefined : "PyHeap dumper 上传后不可执行";
+  recordStep(input.bundle, "mem-pydump-tools", "确认 Pydump Collector 与 Agent", verify);
+  return verify.ok
+    ? { collectorPath, agentPath }
+    : { reason: "Pydump Collector 或 Agent 上传后不可用" };
 }
 
 export interface HeapCaptureConfirmation {
@@ -461,7 +554,7 @@ interface CaptureParams {
   podJson: string;
   container: ContainerInfo;
   pidFlag?: string;
-  detail: PyHeapDetail;
+  detail: PydumpDetail;
   strReprLen: number;
   preference: CapturePreference;
   transferChunkBytes: number;
@@ -554,11 +647,25 @@ export async function captureMemoryHeap(
     `[collect] 采集路径：${execution.strategy === "debug-container" ? "已有 debug container" : "目标容器临时 dumper"}`
     + `（${execution.label}）`,
   );
-  const targetRssMb = processScan.rows.find((row) => row.pid === pid)?.rssMb;
-  for (const line of pyHeapMemoryRiskLines({
+  for (const line of pydumpMemoryRiskLines({
     cgroupMemory: params.cgroupMemory,
-    targetRssMb,
+    strategy: execution.strategy,
   })) log(line);
+
+  const runtime = await inspectPydumpRuntime({
+    executor,
+    execution,
+    targetContainer: params.container.name,
+    pid,
+    bundle: ctx.bundle,
+  });
+  if ("reason" in runtime) {
+    return { code: 1, pid, strategy: execution.strategy, reason: runtime.reason };
+  }
+  log(
+    `[collect] Pydump Agent：CPython ${runtime.pythonMinor} / ${runtime.architecture}，`
+    + `目标 glibc ${runtime.targetLibc.version}，匹配最低 glibc ${runtime.agentMinGlibc} 的 Agent`,
+  );
 
   const uvicornSupervisorPid = processScan.uvicorn?.mode === "multiprocess"
     && processScan.uvicorn.workerPids.includes(pid)
@@ -594,11 +701,14 @@ export async function captureMemoryHeap(
   });
   if (!approved) return { code: 130, pid, strategy: execution.strategy };
 
-  if (execution.dumpPath === TARGET_DUMPER_PATH) {
-    const installReason = await installExecutionDumper({ executor, execution, bundle: ctx.bundle });
-    if (installReason) {
-      return { code: 1, pid, strategy: execution.strategy, reason: installReason };
-    }
+  const preparedTools = await prepareExecutionTools({
+    executor,
+    execution,
+    runtime,
+    bundle: ctx.bundle,
+  });
+  if ("reason" in preparedTools) {
+    return { code: 1, pid, strategy: execution.strategy, reason: preparedTools.reason };
   }
 
   const processStatus = await executor.exec(
@@ -609,7 +719,7 @@ export async function captureMemoryHeap(
   recordStep(ctx.bundle, "mem-process-status", "采集目标进程状态", processStatus);
   const processStartTime = processStatus.stdout.match(/^start_time=(.+)$/m)?.[1]?.trim();
 
-  const heapFile = `${PYHEAP_TOOL_DIR}/heap-${pid}-${params.invokedAt.getTime().toString(36)}.pyheap`;
+  const heapFile = `${PYDUMP_TOOL_DIR}/heap-${pid}-${params.invokedAt.getTime().toString(36)}.pyheap`;
   let guard: UvicornSupervisorGuard | undefined;
   if (uvicornSupervisorPid !== undefined) {
     const suspend = await executor.exec(
@@ -633,24 +743,25 @@ export async function captureMemoryHeap(
   let dump: ExecResult;
   let supervisorResumeFailed = false;
   try {
-    log("[collect] 开始 PyHeap dump；目标进程现在可能出现卡顿…");
+    log("[collect] 开始 Pydump dump；目标进程现在可能出现卡顿…");
     dump = await executor.exec(
       execution.target,
-      runPyheapDumpCmd(
+      runPydumpDumpCmd(
         pid,
         heapFile,
         params.strReprLen,
+        preparedTools.agentPath,
         params.detail === "lite",
-        execution.dumpPath,
+        preparedTools.collectorPath,
       ),
       {
         timeoutMs: DUMP_TIMEOUT_MS,
         onStdout: (chunk) => {
-          for (const line of chunk.split("\n")) if (line.trim()) log(`[pyheap] ${line}`);
+          for (const line of chunk.split("\n")) if (line.trim()) log(`[pydump] ${line}`);
         },
       },
     );
-    recordStep(ctx.bundle, "mem-pyheap-dump", "attach 并生成 PyHeap 文件", dump, "disrupt");
+    recordStep(ctx.bundle, "mem-pydump", "attach 并生成 Pydump 文件", dump, "disrupt");
   } finally {
     if (guard) {
       const resume = await executor.exec(
@@ -685,7 +796,7 @@ export async function captureMemoryHeap(
     const oomKillsAfter = sameCgroupVersion
       ? cgroupOomKillCount(cgroupMemoryAfter)
       : undefined;
-    let dumpFailureReason = pyheapDumpFailureReason(dump);
+    let dumpFailureReason = pydumpDumpFailureReason(dump);
     if (
       oomKillsBefore !== undefined
       && oomKillsAfter !== undefined
@@ -706,7 +817,7 @@ export async function captureMemoryHeap(
     recordStep(
       ctx.bundle,
       "mem-failed-heap-metadata",
-      "检查失败后是否留下 PyHeap 文件",
+      "检查失败后是否留下 Pydump 文件",
       failedMetadataResult,
     );
     return {
@@ -805,7 +916,7 @@ export async function captureMemoryHeap(
     const capture: MemoryCaptureArtifact = {
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: params.invokedAt.toISOString(),
-      pyheap_version: PYHEAP_VERSION,
+      pydump_version: PYDUMP_VERSION,
       target: {
         namespace: params.namespace,
         pod: params.pod,
@@ -832,6 +943,12 @@ export async function captureMemoryHeap(
         process_scan: processScan,
         cgroup_memory: params.cgroupMemory,
         process_status: processStatus.ok ? processStatus.stdout : undefined,
+        target_libc: runtime.targetLibc,
+        pydump_agent: {
+          python_minor: runtime.pythonMinor,
+          architecture: runtime.architecture,
+          glibc_min: runtime.agentMinGlibc,
+        },
       },
     };
     writeFileSync(outputs.capturePath, `${JSON.stringify(capture, null, 2)}\n`, { mode: 0o600 });
