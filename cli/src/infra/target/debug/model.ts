@@ -2,7 +2,8 @@ import type { ExecResult, Executor } from "../../k8s/executor";
 
 export const DOCTOR_DEBUG_CONTAINER_PREFIX = "doctor-debug-";
 export const DOCTOR_DEBUG_MANIFEST = "/opt/doctor/manifest.json";
-export const DEBUG_CAPABILITIES = ["SYS_PTRACE", "NET_RAW"] as const;
+/** Supported capabilities; deployment defaults remain the narrower set in provision/debug/capabilities. */
+export const DEBUG_CAPABILITIES = ["SYS_PTRACE", "NET_RAW", "NET_ADMIN"] as const;
 export type DebugCapability = typeof DEBUG_CAPABILITIES[number];
 
 export interface EphemeralDebugEnvironmentFact {

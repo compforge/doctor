@@ -60,6 +60,12 @@ import {
   type PydumpTargetLibc,
   type UvicornSupervisorGuard,
 } from "./pydump-tool";
+import {
+  startTemporaryLivenessProxy,
+  stopLivenessProxyCmd,
+  type ActiveLivenessProxy,
+  type LivenessProxyIntent,
+} from "./liveness-proxy";
 
 export type PydumpDetail = "lite" | "full";
 export type CapturePreference = "auto" | "debug-container" | "target-container";
@@ -562,6 +568,7 @@ interface CaptureParams {
   invokedAt: Date;
   confirmed: boolean;
   cgroupMemory?: CgroupMemoryFacts;
+  livenessProxyIntent?: LivenessProxyIntent;
 }
 
 export interface CaptureResult {
@@ -720,29 +727,69 @@ export async function captureMemoryHeap(
   const processStartTime = processStatus.stdout.match(/^start_time=(.+)$/m)?.[1]?.trim();
 
   const heapFile = `${PYDUMP_TOOL_DIR}/heap-${pid}-${params.invokedAt.getTime().toString(36)}.pyheap`;
-  let guard: UvicornSupervisorGuard | undefined;
-  if (uvicornSupervisorPid !== undefined) {
-    const suspend = await executor.exec(
-      execution.target,
-      suspendUvicornSupervisorCmd(uvicornSupervisorPid, pid, SUPERVISOR_AUTO_RESUME_SECONDS),
-      { timeoutMs: 10_000 },
+  let livenessProxy: ActiveLivenessProxy | undefined;
+  if (params.livenessProxyIntent) {
+    const environments = infra.target.debugEngine.inspectEnvironments(
+      params.podJson,
+      params.container.name,
     );
-    recordStep(ctx.bundle, "mem-supervisor-suspend", "暂停 Uvicorn supervisor", suspend, "disrupt");
-    guard = suspend.ok ? parseUvicornSupervisorGuard(suspend.stdout) : undefined;
-    if (!guard) {
-      return {
-        code: 1,
-        pid,
-        strategy: execution.strategy,
-        reason: `无法安全暂停 Uvicorn supervisor pid=${uvicornSupervisorPid}，未执行 heap dump`,
-      };
+    const proxyEnvironment = infra.target.debugEngine.resolveEnvironment(environments, ["NET_ADMIN"]);
+    if (!proxyEnvironment.ok) {
+      log(
+        "[collect] liveness 代理不可用：需要已就绪且显式具备 NET_ADMIN 的 doctor debug container；"
+        + "可先执行 doctor debug --capabilities SYS_PTRACE,NET_ADMIN",
+      );
+    } else {
+      const started = await startTemporaryLivenessProxy({
+        executor,
+        target: { pod: params.pod, container: proxyEnvironment.value.executionContainer },
+        intent: params.livenessProxyIntent,
+        token: `${pid}-${params.invokedAt.getTime().toString(36)}`,
+        ttlSeconds: DUMP_TIMEOUT_MS / 1000 + 60,
+      });
+      started.results.forEach((result, index) => recordStep(
+        ctx.bundle,
+        `mem-liveness-proxy-${index + 1}`,
+        ["检查 liveness 代理前置", "启动 liveness 代理", "确认 liveness 代理就绪"][index]
+          ?? "准备 liveness 代理",
+        result,
+        "disrupt",
+      ));
+      livenessProxy = started.proxy;
+      if (livenessProxy) {
+        log(
+          `[collect] 已临时接管 ${params.livenessProxyIntent.service} `
+          + `${params.livenessProxyIntent.path} liveness；普通请求继续转发到业务进程`,
+        );
+      } else {
+        log(`[collect] liveness 代理启动失败：${started.reason ?? "原因未知"}；继续执行已确认的 dump`);
+      }
     }
-    log(`[collect] Uvicorn supervisor pid=${uvicornSupervisorPid} 已暂停`);
   }
 
+  let guard: UvicornSupervisorGuard | undefined;
   let dump: ExecResult;
   let supervisorResumeFailed = false;
   try {
+    if (uvicornSupervisorPid !== undefined) {
+      const suspend = await executor.exec(
+        execution.target,
+        suspendUvicornSupervisorCmd(uvicornSupervisorPid, pid, SUPERVISOR_AUTO_RESUME_SECONDS),
+        { timeoutMs: 10_000 },
+      );
+      recordStep(ctx.bundle, "mem-supervisor-suspend", "暂停 Uvicorn supervisor", suspend, "disrupt");
+      guard = suspend.ok ? parseUvicornSupervisorGuard(suspend.stdout) : undefined;
+      if (!guard) {
+        return {
+          code: 1,
+          pid,
+          strategy: execution.strategy,
+          reason: `无法安全暂停 Uvicorn supervisor pid=${uvicornSupervisorPid}，未执行 heap dump`,
+        };
+      }
+      log(`[collect] Uvicorn supervisor pid=${uvicornSupervisorPid} 已暂停`);
+    }
+
     log("[collect] 开始 Pydump dump；目标进程现在可能出现卡顿…");
     dump = await executor.exec(
       execution.target,
@@ -775,6 +822,19 @@ export async function captureMemoryHeap(
         log(`[collect] Uvicorn supervisor 恢复未确认；watchdog 会继续尝试恢复`);
       } else {
         log(`[collect] Uvicorn supervisor pid=${guard.masterPid} 已恢复`);
+      }
+    }
+    if (livenessProxy) {
+      const stopped = await executor.exec(
+        livenessProxy.target,
+        stopLivenessProxyCmd(livenessProxy),
+        { timeoutMs: 10_000 },
+      );
+      recordStep(ctx.bundle, "mem-liveness-proxy-stop", "撤销 liveness 代理", stopped, "disrupt");
+      if (stopped.ok) {
+        log(`[collect] ${livenessProxy.service} liveness 代理已撤销`);
+      } else {
+        log("[collect] liveness 代理撤销未确认；远端 watchdog 会在超时后清理网络规则");
       }
     }
   }

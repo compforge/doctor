@@ -53,9 +53,13 @@ RBAC 检查、server-side dry-run 与真实 mutation 使用同一份资源描述
 Doctor Toolkit，与其它诊断工具共享独立版本；具体 tag、工具版本和 readiness 字段属于代码事实，
 不写进本设计文档。
 
-Debug container 按用户选择具备进程 attach、网络抓包或两类 capability；已有容器按其实际能力被对应诊断复用。
+Debug container 按用户选择具备进程 attach、网络抓包或临时 Pod 网络规则能力；已有容器按其实际能力被对应诊断复用。
 Network 还必须额外验证抓包 capability、tcpdump 和控制器。容器 spec 中声明 capability 只是 Fact，真正能否
 打开抓包 socket 仍由 `doctor net` 的 ARM 结果确认。
+
+`NET_ADMIN` 仅用于 Service 显式允许的 heap-dump liveness 代理，不属于默认 capability。用户必须通过
+交互项或 `--capabilities SYS_PTRACE,NET_ADMIN` 明确申请；Doctor mem 还会在写入临时 iptables 规则前
+验证 debug container 工具与运行态权限，失败时不修改网络。
 
 ### 镜像发布与容器部署分离
 

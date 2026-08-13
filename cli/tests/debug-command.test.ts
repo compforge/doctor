@@ -7,6 +7,7 @@ import {
   resolveBatchDebugImage,
   resolveDebugBatchOptions,
   resolveSelectedDebugPods,
+  parseDebugCapabilities,
 } from "../src/provision/debug";
 import type { PodChoice } from "../src/infra/k8s/pod-selection";
 import { formatDoctorDebugCommand } from "../src/terminal/debug-recommendation";
@@ -30,6 +31,11 @@ const pods: PodChoice[] = [
     ],
   },
 ];
+
+test("doctor debug 仅在显式指定时增加 NET_ADMIN", () => {
+  expect(parseDebugCapabilities("SYS_PTRACE,NET_ADMIN")).toEqual(["SYS_PTRACE", "NET_ADMIN"]);
+  expect(() => parseDebugCapabilities("SYS_ADMIN")).toThrow("不支持");
+});
 
 test("doctor debug 将交互多选的 Pod 解析成批量准备目标", () => {
   const resolved = resolveSelectedDebugPods(

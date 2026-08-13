@@ -103,6 +103,12 @@ export async function runCollectMetric(
       : preparation.sourceKind === "hybrid"
         ? `[collect] metric source: remote Prometheus + embedded Store sampling（interval=${config.intervalMs}ms）\n`
       : `[collect] metric source: embedded Prombed（interval=${config.intervalMs}ms）\n`);
+    if (preparation.storeFallbackReason) {
+      terminalStdout.warning(
+        `[collect] Store 实时补充采样不可用：${preparation.storeFallbackReason}；`
+        + "继续从远端 Prometheus 查询 Store exporter 指标\n",
+      );
+    }
     if (preparation.exporterStoreTargets || preparation.directStoreTargets) {
       terminalStdout.write(
         `[collect] store metrics: exporter=${preparation.exporterStoreTargets}，direct-fallback=${preparation.directStoreTargets}\n`,

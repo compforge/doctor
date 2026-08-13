@@ -136,6 +136,11 @@ Service Catalog 还可声明 Toolchain，表达源码语言与稳定构建方式
 Plugin 知识而非 Target Fact：当前 runtime、镜像和实际依赖必须在 collect 阶段重新观察；Plugin 不通过
 Toolchain 下发任意命令。
 
+Service liveness capability 声明业务认可的 HTTP probe 契约。`heapDumpProxy` 是显式 opt-in：它只告诉
+Core 在目标进程因 heap dump 暂停时可返回什么成功响应，不授权 Plugin 修改 Pod 或网络。Core 必须用
+Pod 运行态 probe 反向校验 path/port，并独占临时代理的权限检查、流量边界、watchdog 和清理生命周期；
+声明缺失或不一致时不代理。
+
 ### 构建归档
 
 ```bash

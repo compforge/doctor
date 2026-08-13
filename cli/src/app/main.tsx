@@ -470,6 +470,10 @@ export async function main(plugin?: PluginDefinition) {
     .option("--services <names>", "逗号分隔的 Service；为其全部 Running Pod 准备 debug container")
     .option("-c, --container <name>", "目标业务容器")
     .option("--image <image>", "已发布且集群可拉取的 debug image")
+    .option(
+      "--capabilities <names>",
+      "逗号分隔的显式权限：SYS_PTRACE、NET_RAW、NET_ADMIN；liveness 代理需要 SYS_PTRACE,NET_ADMIN",
+    )
     .option("--kubeconfig <path>", "kubeconfig 路径")
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace、kubeconfig 或 kube.debug_image")
@@ -517,7 +521,7 @@ export async function main(plugin?: PluginDefinition) {
     await runCommand(
       { name: "doctor mem", environment: { kubernetes: true } },
       opts,
-      (context) => runCollectMemory(opts, context),
+      async (context) => runCollectMemory(opts, context, plugin ?? await loadActivePlugin()),
     );
   });
   withMemaOptions(

@@ -298,7 +298,7 @@ test("registry tag list 解析候选并保留 registry 错误语义", () => {
 
 test("从业务镜像推断同 registry/namespace 的 doctor-debug", () => {
   expect(DOCTOR_DEBUG_IMAGE).toBe("doctor-debug");
-  expect(DOCTOR_DEBUG_IMAGE_VERSION).toBe("0.2.0");
+  expect(DOCTOR_DEBUG_IMAGE_VERSION).toBe("0.2.1");
   expect(inferDebugImageRepository("registry:5000/team/app:1"))
     .toBe("registry:5000/team/doctor-debug");
   expect(inferDebugImage("registry:5000/team/app:1", "0.0.8"))
@@ -325,7 +325,7 @@ default_profile: prod
     source: "profile:prod",
   });
   expect(await resolveDebugImage(target, { config: "/does/not/exist" }, { interactive: false })).toEqual({
-    image: "registry.example.com/dev/doctor-debug:0.2.0",
+    image: "registry.example.com/dev/doctor-debug:0.2.1",
     source: "inferred",
   });
 });

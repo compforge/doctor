@@ -10,6 +10,7 @@ export interface DebugCliOpts extends KubernetesCommandInput {
   container?: string;
   image?: string;
   services?: string;
+  capabilities?: string;
   yes?: boolean;
 }
 

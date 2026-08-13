@@ -32,11 +32,24 @@ const DEBUG_CAPABILITY_CHOICES: readonly DebugCapabilityChoice[] = [
     capabilities: ["NET_RAW"],
   },
   {
+    name: "memory+liveness",
+    description: "GDB、内存诊断，以及显式允许的临时 liveness 代理",
+    capabilities: ["SYS_PTRACE", "NET_ADMIN"],
+  },
+  {
     name: "both",
     description: "同时准备进程与网络诊断能力",
     capabilities: DEFAULT_DEBUG_CAPABILITIES,
   },
 ];
+
+export function parseDebugCapabilities(raw: string): readonly DebugCapability[] {
+  const values = [...new Set(raw.split(",").map((value) => value.trim().toUpperCase()).filter(Boolean))];
+  if (!values.length) throw new Error("--capabilities 未解析出任何 capability");
+  const invalid = values.filter((value) => !["SYS_PTRACE", "NET_RAW", "NET_ADMIN"].includes(value));
+  if (invalid.length) throw new Error(`--capabilities 不支持：${invalid.join(", ")}`);
+  return values as DebugCapability[];
+}
 
 const debugCapabilities = defineCommandDecision<readonly DebugCapability[] | undefined>(
   "debug.capabilities",
@@ -59,13 +72,15 @@ async function promptDebugCapabilities(): Promise<readonly DebugCapability[] | u
       (choice) => choice.name,
       (choice) => choice.capabilities,
     ),
-    invalidMessage: "未找到 capability，可选：SYS_PTRACE、NET_RAW、both",
+    invalidMessage: "未找到 capability，可选：SYS_PTRACE、NET_RAW、memory+liveness、both",
     emptyValue: DEFAULT_DEBUG_CAPABILITIES,
   });
 }
 
 export function resolveDebugCapabilities(
   commandContext: CommandContext,
+  raw?: string,
 ): Promise<readonly DebugCapability[] | undefined> {
+  if (raw?.trim()) return Promise.resolve(parseDebugCapabilities(raw));
   return commandContext.decide(debugCapabilities, [], promptDebugCapabilities);
 }

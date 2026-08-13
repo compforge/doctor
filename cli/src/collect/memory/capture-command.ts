@@ -37,6 +37,9 @@ import {
   type CommonTargetInspectContext,
 } from "../fact/inspect";
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { parseServices } from "../../infra/k8s/service";
+import { resolveLivenessProxyIntent, type LivenessProxyIntent } from "./liveness-proxy";
 
 export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   pod?: string;
@@ -73,6 +76,7 @@ function recordPodStep(bundle: EvidenceBundle, result: ExecResult): void {
 export async function runCollectMemory(
   opts: CollectMemoryCliOptions,
   commandContext?: CommandContext,
+  plugin?: PluginDefinition,
 ): Promise<number> {
   const invokedAt = new Date();
   let detail: PydumpDetail;
@@ -106,6 +110,11 @@ export async function runCollectMemory(
       requirement: "required",
       rule: { verb: "create", resource: "pods/exec" },
       purpose: "探测 Python 进程、attach 并回传 Pydump",
+    }, {
+      requirement: "preferred",
+      rule: { verb: "list", resource: "services" },
+      purpose: "把目标 Pod 匹配到 Plugin Service 的 liveness 契约",
+      fallback: "不启用临时 liveness 代理",
     }],
   });
   let target;
@@ -141,6 +150,28 @@ export async function runCollectMemory(
   if (!selected.ok) {
     terminalStderr.error(`[collect] ${selected.reason}\n`);
     return 2;
+  }
+
+  let livenessProxyIntent: LivenessProxyIntent | undefined;
+  if (plugin?.services.servicesWith("liveness").some((service) => (
+    service.capabilities.liveness.heapDumpProxy !== undefined
+  ))) {
+    const serviceResult = await executor.run(["get", "services", "-o", "json"], { timeoutMs: 20_000 });
+    if (serviceResult.ok) {
+      const resolution = resolveLivenessProxyIntent({
+        plugin,
+        services: parseServices(serviceResult.stdout, collect.kubernetes.namespace),
+        pod,
+        container: selected.value,
+      });
+      livenessProxyIntent = resolution.intent;
+      terminalStdout.write(resolution.intent
+        ? `[collect] liveness 代理契约：Service ${resolution.intent.service} `
+          + `${resolution.intent.path}:${resolution.intent.port}（仅 heap dump 窗口）\n`
+        : `[collect] liveness 代理未启用：${resolution.reason}\n`);
+    } else {
+      terminalStdout.write("[collect] liveness 代理未启用：无法读取 Service selector\n");
+    }
   }
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-mem-"));
@@ -194,6 +225,7 @@ export async function runCollectMemory(
         invokedAt,
         confirmed: !!opts.yes,
         cgroupMemory,
+        livenessProxyIntent,
       },
       { bundle, progress: (update) => progressLine.update(update) },
       log,

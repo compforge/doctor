@@ -248,7 +248,7 @@ async function runDebugTarget(
 ): Promise<number> {
   const target = await resolveDebugTarget(opts, commandContext);
   if (!target) return 130;
-  const capabilities = await resolveDebugCapabilities(commandContext);
+  const capabilities = await resolveDebugCapabilities(commandContext, opts.capabilities);
   if (!capabilities) return 130;
   // A ready debug environment fully satisfies `doctor debug`; image resolution, registry
   // access, and preparation belong only to the missing-environment path.
