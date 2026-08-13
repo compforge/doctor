@@ -2,7 +2,8 @@
 
 ## 理念 / 概念
 
-`doctor image` 是 Doctor 的 image tar 分发入口。它负责把 Doctor 当前目录中的 tar 按需准备到两个彼此独立的
+`doctor image` 是 Doctor 的 image tar 分发入口。它负责把显式/当前目录 image tar，或 Doctor Toolkit
+中的 debug image 资源，按需准备到两个彼此独立的
 位置，可只选一个，也可同时选择：
 
 - **Target Registry**：供 Kubernetes Node 拉取并启动 doctor-debug 等镜像。
@@ -17,7 +18,8 @@ Node 已有的业务镜像。这样 image 分发、Kubernetes mutation 和诊断
 
 ## 流程
 
-1. 从 Doctor 当前目录选择 image tar；唯一候选自动采用，多个候选交互选择，自动化调用可显式指定路径。
+1. 优先使用显式 image tar；否则使用已发现 Toolkit 中的 debug image，最后从当前目录选择普通 image tar。
+   唯一候选自动采用，多个候选交互选择，自动化调用可显式指定路径。
    选择单架构 tar 后，如果同目录存在同一 image/tag 的另一架构 tar，则自动配对；自动化调用可重复传入
    `--tar` 明确提供 amd64、arm64 两份材料。
 2. 读取 Docker/OCI archive 的 image config 或 descriptor，确定 source image 及真实平台；tar 包含多个 image

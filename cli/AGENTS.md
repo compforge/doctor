@@ -45,6 +45,10 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
    是否可用。
 6. **Case 触发与加压分开**：Plugin case runner 每次只触发一个 Case；Perf/Core 独占并发调度、预算、
    熔断和 Window 归约。
+7. **工具与执行通道分开**：根目录 `toolkit/` 只分发版本化资源；CLI `infra/toolkit` 按 Host process、
+   Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。
+   同一 Host 能力同时支持 container 与 process 时，先探测已有且可用的本地 container；不可用才回退
+   本机进程。探测本身不隐式 load image 或改变 Host 状态。
 
 ## References
 

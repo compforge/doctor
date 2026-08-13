@@ -97,7 +97,7 @@ test("doctor image 缺少 tar 时说明文件来源与 Doctor Host 落点", () =
   const message = imageTarMissingMessage();
   expect(message).toContain("容器镜像离线归档");
   expect(message).toContain("不负责现场构建镜像");
-  expect(message).toContain("make build-debug-images");
+  expect(message).toContain("make -C toolkit build");
   expect(message).toContain("Doctor Host 当前目录");
   expect(imageTarMissingMessage("/delivery/debug.tar")).toContain(
     "指定的 image tar 不存在：/delivery/debug.tar",
@@ -298,7 +298,7 @@ test("registry tag list 解析候选并保留 registry 错误语义", () => {
 
 test("从业务镜像推断同 registry/namespace 的 doctor-debug", () => {
   expect(DOCTOR_DEBUG_IMAGE).toBe("doctor-debug");
-  expect(DOCTOR_DEBUG_IMAGE_VERSION).toBe("0.0.12");
+  expect(DOCTOR_DEBUG_IMAGE_VERSION).toBe("0.1.0");
   expect(inferDebugImageRepository("registry:5000/team/app:1"))
     .toBe("registry:5000/team/doctor-debug");
   expect(inferDebugImage("registry:5000/team/app:1", "0.0.8"))
@@ -325,7 +325,7 @@ default_profile: prod
     source: "profile:prod",
   });
   expect(await resolveDebugImage(target, { config: "/does/not/exist" }, { interactive: false })).toEqual({
-    image: "registry.example.com/dev/doctor-debug:0.0.12",
+    image: "registry.example.com/dev/doctor-debug:0.1.0",
     source: "inferred",
   });
 });

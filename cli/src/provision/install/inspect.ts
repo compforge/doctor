@@ -24,15 +24,15 @@ export function packageBundleMissingMessage(
 ): string {
   const missing = explicitPath
     ? `指定的 Doctor package bundle 不存在：${explicitPath}`
-    : "当前目录没有匹配的 doctor-packages-*.tar";
+    : "当前目录与 Doctor Toolkit 中没有匹配的离线 package";
   return `${missing}。\n`
     + "[install] 该 tar 是 Doctor 独立构建、独立版本的离线软件仓，"
     + "包含匹配 Target 发行版/架构的 GDB、依赖包和兼容性 manifest；"
     + "它不是 image tar，也不是在客户 Pod 内现场生成的文件。\n"
     + `[install] 当前 Target：${targetDescription(target)}。`
-    + "请从 Doctor package-bundles 交付物中取得匹配版本，"
-    + "或在 Doctor CLI 源码目录运行 `make build-gdb-package-bundles` 构建；"
-    + "然后复制到 Doctor Host 当前目录，或用 `--tar <path>` 指定。";
+    + "请取得包含匹配平台的 Doctor Toolkit，"
+    + "或在源码根目录运行 `make -C toolkit build OS=linux ARCH=<amd64|arm64>` 构建；"
+    + "然后复制到 Doctor Host 当前目录，也可用 `--tar <toolkit-or-package.tar>` 指定。";
 }
 
 export function inspectInstallTarget(

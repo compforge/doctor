@@ -36,7 +36,7 @@ import {
 } from "../fact/cgroup-memory";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
 import { pyHeapMemoryRiskLines } from "./capture-risk";
-import { resolveEmbeddedPyHeapTool } from "./embedded-pyheap";
+import { resolveKubernetesPyHeapDumper } from "./toolkit-pyheap";
 import {
   compressFileCmd,
   fileMetadataCmd,
@@ -380,9 +380,22 @@ async function installExecutionDumper(input: {
   execution: CaptureExecution;
   bundle: EvidenceBundle;
 }): Promise<string | undefined> {
+  const platform = await input.executor.exec(
+    input.execution.target,
+    ["uname", "-m"],
+    { timeoutMs: 10_000 },
+  );
+  recordStep(input.bundle, "mem-toolkit-platform", "识别 Toolkit 执行平台", platform);
+  if (!platform.ok || !platform.stdout.trim()) {
+    return `无法识别 ${input.execution.label} 的 architecture：${failReason(platform)}`;
+  }
   let dumper: string;
   try {
-    dumper = resolveEmbeddedPyHeapTool("dumper");
+    dumper = resolveKubernetesPyHeapDumper({
+      pod: input.execution.target.pod,
+      container: input.execution.container,
+      architecture: platform.stdout.trim(),
+    });
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }

@@ -27,7 +27,7 @@ import {
 } from "../src/collect/memory/capture";
 import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
-import { resolveEmbeddedPyHeapTool } from "../src/collect/memory/embedded-pyheap";
+import { resolveHostPyHeapTool } from "../src/collect/memory/toolkit-pyheap";
 import { parsePyheapPrereqs } from "../src/collect/memory/pyheap-tool";
 import {
   cgroupOomKillCount,
@@ -162,9 +162,9 @@ describe("doctor mem PyHeap capture contract", () => {
     });
   });
 
-  test("materializes bundled dumper and analyzer PEX files", () => {
-    expect(readFileSync(resolveEmbeddedPyHeapTool("dumper"), "utf-8")).toStartWith("#!");
-    expect(readFileSync(resolveEmbeddedPyHeapTool("analyzer"), "utf-8")).toStartWith("#!");
+  test("materializes Toolkit dumper and analyzer PEX files", () => {
+    expect(readFileSync(resolveHostPyHeapTool("dumper"), "utf-8")).toStartWith("#!");
+    expect(readFileSync(resolveHostPyHeapTool("analyzer"), "utf-8")).toStartWith("#!");
   });
 
   test("writes a stable heap and capture sidecar basename", () => {
@@ -493,7 +493,7 @@ describe("doctor mema local analysis", () => {
     expect(existsSync(output)).toBe(true);
   });
 
-  test("falls back to a locally loaded doctor-debug image when host Python is unavailable", async () => {
+  test("prefers a locally loaded doctor-debug image for Host analysis", async () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-mema-container-fallback-"));
     const binDirectory = join(directory, "bin");
     const heapPath = join(directory, "capture.pyheap");

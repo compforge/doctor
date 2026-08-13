@@ -1,6 +1,5 @@
 node_modules/
 dist/
 assets/memd-debug/*.tar
-assets/gopacket/doctor-pcap-*
 .DS_Store
 *.log

@@ -8,15 +8,14 @@ RUN apk add --no-cache argp-standalone autoconf automake build-base curl linux-h
     && install -Dm755 src/austin /out/austin
 
 FROM ${DOCTOR_DEBUG_BASE_IMAGE}
-ARG DOCTOR_DEBUG_VERSION=dev
-ARG DOCTOR_CLI_VERSION=dev
+ARG DOCTOR_TOOLKIT_VERSION=dev
 ARG TARGETARCH
 ARG AUSTIN_VERSION=4.0.0
 ARG PY_SPY_VERSION=0.4.2
 ARG PYHEAP_VERSION=0.7.0+doctor.2
 LABEL org.opencontainers.image.title="doctor debug image" \
-      org.opencontainers.image.version="${DOCTOR_DEBUG_VERSION}" \
-      org.opencontainers.image.description="Reusable ephemeral diagnostics runtime"
+      org.opencontainers.image.version="${DOCTOR_TOOLKIT_VERSION}" \
+      org.opencontainers.image.description="Reusable ephemeral diagnostics toolkit"
 RUN apk add --no-cache \
       bind-tools \
       curl \
@@ -34,7 +33,7 @@ RUN apk add --no-cache \
       tcptraceroute \
     && mkdir -p /opt/doctor/bin
 COPY --from=austin-builder /out/austin /opt/doctor/bin/austin
-COPY docker/debug/net-capture.py /opt/doctor/bin/net-capture
+COPY image/net-capture.py /opt/doctor/bin/net-capture
 COPY assets/py-spy/*.gz /tmp/py-spy/
 COPY assets/pyheap/pyheap_dump-0.7.0+doctor.2.gz /tmp/pyheap_dump.gz
 COPY assets/pyheap/pyheap_analyzer-0.7.0+doctor.2.gz /tmp/pyheap_analyzer.gz
@@ -51,8 +50,8 @@ RUN case "$TARGETARCH" in \
     && chmod 755 /opt/doctor/bin/pyheap_analyzer \
     && chmod 755 /opt/doctor/bin/net-capture \
     && rm -rf /tmp/py-spy /tmp/pyheap_dump.gz /tmp/pyheap_analyzer.gz \
-    && printf '{"schema":"doctor.debug.image","version":1,"debug_image_version":"%s","doctor_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pyheap":"%s","pyheap_analyzer":"%s","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
-      "$DOCTOR_DEBUG_VERSION" "$DOCTOR_CLI_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYHEAP_VERSION" "$PYHEAP_VERSION" > /opt/doctor/manifest.json \
+    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"gdb":true,"iproute2":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pyheap":"%s","pyheap_analyzer":"%s","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
+      "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYHEAP_VERSION" "$PYHEAP_VERSION" > /opt/doctor/manifest.json \
     && for command in curl dig host ip jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
     && python3 --version \
     && gdb --batch --quiet -ex "python import sys; print(sys.version)" -ex quit \

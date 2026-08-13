@@ -150,8 +150,8 @@ net-<session>/
 输出是有分支的调用图，而不是强行压成单链表。无法可靠关联的流量保留为候选边，并展示关联依据和置信度。
 
 离线协议解析由 `infra/host/network-analysis` 提供统一事件契约，并按固定优先级选择 backend：分析机存在 `tshark`
-时使用 Wireshark dissector，以取得 HTTP/2 等更完整的协议覆盖；否则使用 Doctor 单文件内嵌的 gopacket helper，
-不要求客户另装系统包。内置 backend 当前保证 PCAP、IPv4/IPv6、TCP 重组、明文 HTTP/1 Header/status、
+时使用 Wireshark dissector，以取得 HTTP/2 等更完整的协议覆盖；否则使用匹配 Doctor Host 平台的 Toolkit
+`doctor-pcap`，不要求客户另装系统包。该 backend 当前保证 PCAP、IPv4/IPv6、TCP 重组、明文 HTTP/1 Header/status、
 FIN/RST 与 TLS record 时间线；HTTP/2、TLS 正文和更深的应用协议解析属于 tshark 增强覆盖。实际 backend 写入
 版本化分析 JSON，Markdown 与单文件 HTML 只消费同一份 Diagnosis，避免不同机器、不同 renderer 的覆盖或结论
 差异不可见。HTML 总控保持左侧目录与中间展示两栏；从调用泳道或时间瀑布选中一次调用后，打开可拖动位置和

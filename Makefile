@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := build
 
-.PHONY: deps build-deps check-plugin-version bump-plugin-version lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local install clean
+.PHONY: deps build-deps check-plugin-version bump-plugin-version lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local toolkit toolkit-all toolkit-matrix install clean
 
 ROOT_DIR := $(abspath .)
 DIST_DIR := $(ROOT_DIR)/dist
@@ -68,6 +68,15 @@ build-local: deps check-plugin-version
 	rm -rf $(DIST_DIR)
 	@mkdir -p $(DIST_DIR)
 	$(MAKE) -C cli build-mac DIST_DIR=$(DIST_DIR)
+
+toolkit:
+	$(MAKE) -C toolkit build $(if $(OS),OS=$(OS)) $(if $(ARCH),ARCH=$(ARCH)) DIST_DIR=$(DIST_DIR)
+
+toolkit-all:
+	$(MAKE) -C toolkit build-all DIST_DIR=$(DIST_DIR)
+
+toolkit-matrix:
+	$(MAKE) -C toolkit build-matrix DIST_DIR=$(DIST_DIR)
 
 install: build-local
 	@mkdir -p $(BIN_DIR)

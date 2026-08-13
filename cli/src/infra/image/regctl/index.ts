@@ -2,6 +2,11 @@ import { terminalStdout, terminalStderr } from "../../../terminal/output";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  hostProcessToolkitChannel,
+  resolveDevelopmentToolkitTool,
+  resolveToolkitResource,
+} from "../../toolkit";
 import type {
   ImagePlatform,
   ImageRegistry,
@@ -9,7 +14,6 @@ import type {
   RegistryImageState,
   RegistryTagListResult,
 } from "../registry";
-import { resolveEmbeddedRegctlCommand } from "./embedded";
 
 export interface RegistryCommandResult {
   ok: boolean;
@@ -27,10 +31,15 @@ function sourceAssetName(): string {
   return `regctl-${process.platform}-${arch}`;
 }
 
-/** Release binaries embed regctl; filesystem candidates and PATH are development fallbacks. */
+/** Prefer the independently versioned Toolkit; adjacent binaries and PATH remain operator fallbacks. */
 export function resolveRegctlCommand(): string {
-  const embedded = resolveEmbeddedRegctlCommand();
-  if (embedded) return embedded;
+  const channel = hostProcessToolkitChannel();
+  if (channel) {
+    const packaged = resolveToolkitResource(channel, "tool", "regctl");
+    if (packaged) return packaged.path;
+    const development = resolveDevelopmentToolkitTool("regctl", channel.platform);
+    if (development) return development;
+  }
   const executableDir = dirname(process.execPath);
   const entryDir = dirname(process.argv[1] ?? process.execPath);
   const candidates = [
@@ -38,8 +47,7 @@ export function resolveRegctlCommand(): string {
     join(executableDir, platformAssetName()),
     join(entryDir, "doctor-regctl"),
     join(entryDir, platformAssetName()),
-    join(process.cwd(), "assets", "regctl", sourceAssetName()),
-    join(process.cwd(), "cli", "assets", "regctl", sourceAssetName()),
+    join(process.cwd(), "toolkit", "assets", "regctl", sourceAssetName()),
   ];
   return candidates.find(existsSync) ?? "regctl";
 }

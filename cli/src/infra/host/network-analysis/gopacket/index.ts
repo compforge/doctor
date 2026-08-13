@@ -1,22 +1,28 @@
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  hostProcessToolkitChannel,
+  resolveToolkitResource,
+} from "../../../toolkit";
 import type {
   CommandRunner,
   NetworkFrameSummary,
   PacketAnalysisBackend,
   PacketDecodeInput,
 } from "..";
-import { resolveEmbeddedGopacketCommand } from "./embedded";
 
 function assetName(): string {
   const arch = process.arch === "x64" ? "amd64" : process.arch;
   return `doctor-pcap-${process.platform}-${arch}`;
 }
 
-/** Release binaries embed the helper; adjacent/source assets are development fallbacks. */
+/** Resolve the Host-process decoder from Toolkit, then adjacent files or PATH. */
 export function resolveGopacketCommand(): string {
-  const embedded = resolveEmbeddedGopacketCommand();
-  if (embedded) return embedded;
+  const channel = hostProcessToolkitChannel();
+  const packaged = channel
+    ? resolveToolkitResource(channel, "tool", "doctor-pcap")
+    : undefined;
+  if (packaged) return packaged.path;
   const executableDir = dirname(process.execPath);
   const entryDir = dirname(process.argv[1] ?? process.execPath);
   const candidates = [
@@ -24,8 +30,7 @@ export function resolveGopacketCommand(): string {
     join(executableDir, assetName()),
     join(entryDir, "doctor-pcap"),
     join(entryDir, assetName()),
-    join(process.cwd(), "assets", "gopacket", assetName()),
-    join(process.cwd(), "cli", "assets", "gopacket", assetName()),
+    join(process.cwd(), "toolkit", "dist", assetName()),
   ];
   return candidates.find(existsSync) ?? "doctor-pcap";
 }
@@ -63,7 +68,7 @@ export function createGopacketBackend(runner: CommandRunner): PacketAnalysisBack
     async inspect() {
       const result = await runner([command, "--version"], { timeoutMs: 20_000 });
       return result.ok ? { available: true }
-        : { available: false, reason: result.stderr.trim() || "内置 doctor-pcap helper 不可用" };
+        : { available: false, reason: result.stderr.trim() || "Toolkit doctor-pcap 不可用" };
     },
     async decode(input: PacketDecodeInput) {
       const argv = [command, "decode", "--input", input.pcap, "--pod", input.pod];

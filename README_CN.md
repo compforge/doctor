@@ -57,7 +57,8 @@ Core。
 
 | 路径 | 用途 |
 |---|---|
-| `cli/` | 自包含的 Doctor CLI、Collector、Evidence 模型与离线报告 |
+| `cli/` | Doctor Core CLI、Collector、Evidence 模型与离线报告 |
+| `toolkit/` | 独立版本的诊断工具、debug image 与离线系统软件包 |
 | `server/` | 可选 Doctor server 的宿主边界 |
 | `packages/agent/` | 本地 Chat 与 server host 共用的宿主中立 Agent runtime |
 | `packages/plugin/` | `@compforge/doctor-plugin` 公共契约与 Plugin 工具 |
@@ -89,6 +90,17 @@ make build
 ```bash
 make build-local
 ```
+
+按单个平台、平台矩阵或大一统归档构建 Toolkit：
+
+```bash
+make -C toolkit build OS=linux ARCH=arm64
+make -C toolkit build-matrix
+make -C toolkit build-all
+```
+
+Core 不再内嵌 Toolkit 可执行文件。把匹配的 `doctor-toolkit-*.tar` 放在 Doctor 同目录或当前工作目录；
+大一统归档可同时服务平台不同的 Doctor Host 与 Kubernetes Target。
 
 生成的 Core CLI 只包含通用访问和诊断能力。Plugin 命令始终可见；当前 profile 未选择兼容 Plugin
 时，命令会明确提示缺少哪项 Capability。
