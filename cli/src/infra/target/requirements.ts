@@ -83,15 +83,46 @@ export function requiredTargetProbes(
 }
 
 export function compareTargetVersions(left: string, right: string): number {
-  const parse = (value: string) => value
-    .split(/[._+-]/)
-    .map((part) => Number.parseInt(part, 10))
-    .map((part) => Number.isFinite(part) ? part : 0);
+  type Token = number | string;
+  const prereleaseOrder = new Map([
+    ["alpha", 0],
+    ["beta", 1],
+    ["pre", 2],
+    ["preview", 2],
+    ["rc", 3],
+  ]);
+  const parse = (value: string): Token[] => (value.toLowerCase().match(/\d+|[a-z]+/g) ?? [])
+    .map((part) => /^\d+$/.test(part) ? Number.parseInt(part, 10) : part);
+  const remainingOrder = (tokens: readonly Token[], start: number): number => {
+    const remaining = tokens.slice(start);
+    while (remaining[0] === 0) remaining.shift();
+    if (remaining.length === 0) return 0;
+    const first = remaining[0]!;
+    return typeof first === "string" && prereleaseOrder.has(first) ? -1 : 1;
+  };
   const leftParts = parse(left);
   const rightParts = parse(right);
   for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-    if (difference !== 0) return difference < 0 ? -1 : 1;
+    const leftPart = leftParts[index];
+    const rightPart = rightParts[index];
+    if (leftPart === undefined) return -remainingOrder(rightParts, index);
+    if (rightPart === undefined) return remainingOrder(leftParts, index);
+    if (leftPart === rightPart) continue;
+    if (typeof leftPart === "number" && typeof rightPart === "number") {
+      return leftPart < rightPart ? -1 : 1;
+    }
+    if (typeof leftPart === "number") return 1;
+    if (typeof rightPart === "number") return -1;
+    const leftPrerelease = prereleaseOrder.get(leftPart);
+    const rightPrerelease = prereleaseOrder.get(rightPart);
+    if (leftPrerelease !== undefined || rightPrerelease !== undefined) {
+      if (leftPrerelease === undefined) return 1;
+      if (rightPrerelease === undefined) return -1;
+      if (leftPrerelease !== rightPrerelease) {
+        return leftPrerelease < rightPrerelease ? -1 : 1;
+      }
+    }
+    return leftPart < rightPart ? -1 : 1;
   }
   return 0;
 }
