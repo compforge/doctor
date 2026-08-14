@@ -5,8 +5,11 @@ import {
   parseMemoryBackend,
   resolveMemoryBackend,
 } from "../src/collect/memory/backend-selection";
-import { parsePyheapPrereqs, runPyheapDumpCmd } from "../src/collect/memory/pyheap-tool";
-import { resolveKubernetesPyHeapDumper } from "../src/collect/memory/toolkit-pyheap";
+import {
+  parsePyheapPrereqs,
+  resolveKubernetesPyHeapDumper,
+  runPyheapDumpCmd,
+} from "../src/infra/dump";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

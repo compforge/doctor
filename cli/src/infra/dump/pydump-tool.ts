@@ -7,151 +7,12 @@ export const PYDUMP_TOOL_DIR = "/tmp/doctor-pydump";
 export const PYDUMP_COLLECTOR_PATH = "/opt/doctor/bin/pydump";
 export const PYDUMP_INJECTOR_PATH = "/opt/doctor/bin/pydump-injector";
 export const PYDUMP_AGENT_DIR = "/opt/doctor/lib/pydump";
-export const PYDUMP_AGENT_MIN_GLIBC_VERSIONS = ["2.17"] as const;
 
 export interface PydumpTargetLibc {
   family: "glibc" | "musl" | "unknown";
   version?: string;
   raw?: string;
 }
-
-export interface UvicornSupervisorGuard {
-  masterPid: number;
-  workerPid: number;
-  masterStartTime: string;
-  watchdogPid: number;
-}
-
-const SUSPEND_UVICORN_SUPERVISOR_SCRIPT = String.raw`
-import os
-import signal
-import subprocess
-import sys
-
-master_pid, worker_pid, resume_after = map(int, sys.argv[1:])
-
-def proc_start_time(pid):
-    # /proc/<pid>/stat 的 comm 可含空格，必须从最后一个 ')' 后再按字段拆分。
-    fields = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()
-    return fields[19]
-
-worker_status = open(f"/proc/{worker_pid}/status").read().splitlines()
-worker_ppid = next(int(line.split(":", 1)[1]) for line in worker_status if line.startswith("PPid:"))
-if worker_ppid != master_pid:
-    raise SystemExit(f"worker pid={worker_pid} 的 PPid={worker_ppid}，不再属于 Uvicorn master pid={master_pid}")
-
-master_start_time = proc_start_time(master_pid)
-watchdog_script = r'''
-import os
-import signal
-import sys
-import time
-
-pid, expected_start_time, delay = int(sys.argv[1]), sys.argv[2], int(sys.argv[3])
-time.sleep(delay)
-try:
-    fields = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()
-    if fields[19] == expected_start_time:
-        os.kill(pid, signal.SIGCONT)
-except (FileNotFoundError, ProcessLookupError, PermissionError):
-    pass
-'''
-watchdog = subprocess.Popen(
-    [sys.executable, "-c", watchdog_script, str(master_pid), master_start_time, str(resume_after)],
-    stdin=subprocess.DEVNULL,
-    stdout=subprocess.DEVNULL,
-    stderr=subprocess.DEVNULL,
-    close_fds=True,
-    start_new_session=True,
-)
-try:
-    os.kill(master_pid, signal.SIGSTOP)
-except BaseException:
-    watchdog.terminate()
-    raise
-
-print(f"master_pid={master_pid}")
-print(f"worker_pid={worker_pid}")
-print(f"master_start_time={master_start_time}")
-print(f"watchdog_pid={watchdog.pid}")
-`;
-
-const RESUME_UVICORN_SUPERVISOR_SCRIPT = String.raw`
-import os
-import signal
-import sys
-import time
-
-master_pid, expected_start_time, watchdog_pid, settle_seconds = (
-    int(sys.argv[1]), sys.argv[2], int(sys.argv[3]), float(sys.argv[4])
-)
-fields = open(f"/proc/{master_pid}/stat").read().rsplit(")", 1)[1].split()
-if fields[19] != expected_start_time:
-    raise SystemExit(f"Uvicorn master pid={master_pid} 已发生复用，拒绝发送 SIGCONT")
-
-# Agent dump 结束后先让 worker 的 pong 线程恢复，再唤醒可能停在 health-check 中的 master。
-time.sleep(settle_seconds)
-os.kill(master_pid, signal.SIGCONT)
-try:
-    os.kill(watchdog_pid, signal.SIGTERM)
-except ProcessLookupError:
-    pass
-print(f"master_pid={master_pid} resumed=true")
-`;
-
-/** 暂停 Uvicorn master，并启动与 doctor exec 生命周期解耦的超时恢复 watchdog。 */
-export function suspendUvicornSupervisorCmd(
-  masterPid: number,
-  workerPid: number,
-  resumeAfterSeconds: number,
-): string[] {
-  return [
-    "python3",
-    "-c",
-    SUSPEND_UVICORN_SUPERVISOR_SCRIPT,
-    String(masterPid),
-    String(workerPid),
-    String(resumeAfterSeconds),
-  ];
-}
-
-export function parseUvicornSupervisorGuard(output: string): UvicornSupervisorGuard | undefined {
-  const values = new Map(
-    output
-      .split("\n")
-      .map((line) => line.trim().split("=", 2))
-      .filter((parts) => parts.length === 2)
-      .map(([key, value]) => [key, value] as const),
-  );
-  const masterPid = Number(values.get("master_pid"));
-  const workerPid = Number(values.get("worker_pid"));
-  const watchdogPid = Number(values.get("watchdog_pid"));
-  const masterStartTime = values.get("master_start_time");
-  if (
-    !Number.isInteger(masterPid)
-    || !Number.isInteger(workerPid)
-    || !Number.isInteger(watchdogPid)
-    || !masterStartTime
-  ) return undefined;
-  return { masterPid, workerPid, masterStartTime, watchdogPid };
-}
-
-/** 恢复同一生命周期的 Uvicorn master；成功后取消远端 watchdog。 */
-export function resumeUvicornSupervisorCmd(
-  guard: UvicornSupervisorGuard,
-  settleSeconds = 2,
-): string[] {
-  return [
-    "python3",
-    "-c",
-    RESUME_UVICORN_SUPERVISOR_SCRIPT,
-    String(guard.masterPid),
-    guard.masterStartTime,
-    String(guard.watchdogPid),
-    String(settleSeconds),
-  ];
-}
-
 /** 探测执行容器是否具备运行 dumper 的完整前置。 */
 export function pydumpPrereqCmd(
   collectorPath = PYDUMP_COLLECTOR_PATH,
@@ -228,8 +89,9 @@ for candidate in candidates:
 if len(versions) != 1:
     raise SystemExit("cannot uniquely detect target CPython minor: " + ", ".join(sorted(versions)))
 version = versions.pop()
-if version not in {"3.10", "3.11", "3.12", "3.13", "3.14"}:
-    raise SystemExit(f"unsupported target CPython {version}; pydump supports 3.10-3.14")
+major, minor = map(int, version.split(".", 1))
+if major != 3 or minor < 10:
+    raise SystemExit(f"unsupported target CPython {version}; pydump requires CPython 3.10+")
 print(version)
 `;
 
@@ -239,7 +101,8 @@ export function targetPythonMinorCmd(pid: number): string[] {
 
 export function parseTargetPythonMinor(output: string): string | undefined {
   const minor = output.trim().split("\n").at(-1)?.trim();
-  return minor && /^3\.(?:10|11|12|13|14)$/.test(minor) ? minor : undefined;
+  const match = /^3\.(\d+)$/.exec(minor ?? "");
+  return match && Number(match[1]) >= 10 ? minor : undefined;
 }
 
 const TARGET_LIBC_SCRIPT = String.raw`
@@ -317,13 +180,6 @@ export function compareRuntimeVersions(left: string, right: string): number | un
   return 0;
 }
 
-/** Select the newest packaged Agent whose minimum glibc is satisfied by the target. */
-export function selectPydumpAgentMinGlibc(targetVersion: string): string | undefined {
-  return PYDUMP_AGENT_MIN_GLIBC_VERSIONS
-    .filter((minimum) => (compareRuntimeVersions(targetVersion, minimum) ?? -1) >= 0)
-    .at(-1);
-}
-
 export function pydumpImageAgentPath(
   pythonMinor: string,
   architecture: string,
@@ -338,6 +194,41 @@ export function pydumpUploadedAgentPath(
   minGlibcVersion: string,
 ): string {
   return `${PYDUMP_TOOL_DIR}/pydump-agent-${pythonMinor}-min-glibc-${minGlibcVersion}-${architecture}.so`;
+}
+
+export function pydumpAgentInventoryCmd(
+  pythonMinor: string,
+  architecture: string,
+): string[] {
+  return [
+    "sh",
+    "-c",
+    `for path in ${PYDUMP_AGENT_DIR}/pydump-agent-${pythonMinor}-min-glibc-*-${architecture}.so; do `
+      + `[ -r "$path" ] && printf '%s\n' "$path"; done; true`,
+  ];
+}
+
+export function selectPydumpAgentFromInventory(
+  output: string,
+  pythonMinor: string,
+  architecture: string,
+  targetGlibcVersion: string,
+): { path: string; minimumGlibcVersion: string } | undefined {
+  return output
+    .split("\n")
+    .map((path) => path.trim())
+    .flatMap((path) => {
+      const match = /pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)-([A-Za-z0-9_]+)\.so$/.exec(path);
+      return match?.[1] === pythonMinor && match[3] === architecture
+        ? [{ path, minimumGlibcVersion: match[2]! }]
+        : [];
+    })
+    .filter((item) => (
+      compareRuntimeVersions(targetGlibcVersion, item.minimumGlibcVersion) ?? -1
+    ) >= 0)
+    .sort((left, right) => (
+      compareRuntimeVersions(right.minimumGlibcVersion, left.minimumGlibcVersion) ?? 0
+    ))[0];
 }
 
 /**

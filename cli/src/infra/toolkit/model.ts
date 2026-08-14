@@ -13,14 +13,43 @@ export interface ToolkitResource {
   readonly size: number;
 }
 
+export type ToolkitResourceKind = "tool" | "image" | "package";
+
+export interface ToolkitBundleComponent {
+  readonly role: string;
+  readonly kind: ToolkitResourceKind;
+  readonly resourceId: string;
+}
+
+export interface ToolkitBundleCompatibility {
+  readonly runtime?: {
+    readonly name: string;
+    readonly version: string;
+  };
+  readonly libc?: {
+    readonly family: string;
+    readonly minimumVersion: string;
+  };
+}
+
+/** A coherent set of resources that must be selected from one Toolkit release. */
+export interface ToolkitBundle {
+  readonly id: string;
+  readonly protocol: string;
+  readonly version: string;
+  readonly compatibility?: ToolkitBundleCompatibility;
+  readonly components: readonly ToolkitBundleComponent[];
+}
+
 export interface ToolkitPlatformManifest extends ToolkitPlatform {
   readonly tools: readonly ToolkitResource[];
   readonly images: readonly ToolkitResource[];
   readonly packages: readonly ToolkitResource[];
+  readonly bundles: readonly ToolkitBundle[];
 }
 
 export interface ToolkitManifest {
-  readonly schema: "doctor.toolkit/v1";
+  readonly schema: "doctor.toolkit/v1" | "doctor.toolkit/v2";
   readonly version: string;
   readonly platforms: readonly ToolkitPlatformManifest[];
 }
@@ -30,14 +59,32 @@ export interface ToolkitArchive {
   readonly manifest: ToolkitManifest;
 }
 
-export type ToolkitResourceKind = "tool" | "image" | "package";
-
 export interface ResolvedToolkitResource {
   readonly archive: ToolkitArchive;
   readonly platform: ToolkitPlatform;
   readonly kind: ToolkitResourceKind;
   readonly resource: ToolkitResource;
   readonly path: string;
+}
+
+export interface ToolkitBundleRequest {
+  readonly id: string;
+  readonly protocol: string;
+  readonly runtime?: {
+    readonly name: string;
+    readonly version: string;
+  };
+  readonly libc?: {
+    readonly family: string;
+    readonly version: string;
+  };
+}
+
+export interface ResolvedToolkitBundle {
+  readonly archive: ToolkitArchive;
+  readonly platform: ToolkitPlatform;
+  readonly bundle: ToolkitBundle;
+  readonly components: Readonly<Record<string, ResolvedToolkitResource>>;
 }
 
 export type ToolkitChannel =

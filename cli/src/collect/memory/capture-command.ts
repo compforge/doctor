@@ -29,8 +29,7 @@ import {
   type CapturePreference,
   type PydumpDetail,
 } from "./capture";
-import { cleanupPydumpCmd, PYDUMP_TOOL_DIR, PYDUMP_VERSION } from "./pydump-tool";
-import { cleanupPyheapCmd, PYHEAP_TOOL_DIR, PYHEAP_VERSION } from "./pyheap-tool";
+import { heapDumpBackendMetadata } from "../../infra/dump";
 import { runInspects } from "../inspect-engine";
 import {
   makeCgroupMemoryInspect,
@@ -252,6 +251,10 @@ export async function runCollectMemory(
   progressLine.interrupt();
 
   if (result.code === 0) {
+    if (!backend) {
+      terminalStderr.error("[collect] heap 已生成，但采集后端状态丢失\n");
+      return 1;
+    }
     if (opts.cleanupRemote && result.strategy && result.pid) {
       const executionContainer = result.strategy === "target-container"
         ? selected.value.name
@@ -260,17 +263,19 @@ export async function runCollectMemory(
             selected.value.name,
           ).selected?.executionContainer;
       if (executionContainer) {
-        const cleanupDir = backend === "pyheap" ? PYHEAP_TOOL_DIR : PYDUMP_TOOL_DIR;
+        const backendMetadata = heapDumpBackendMetadata(backend);
         const cleanup = await executor.exec(
           { pod: target.pod, container: executionContainer },
-          backend === "pyheap" ? cleanupPyheapCmd() : cleanupPydumpCmd(),
+          backendMetadata.cleanupCommand(),
           { timeoutMs: 30_000 },
         );
-        if (!cleanup.ok) log(`[collect] 容器内 ${cleanupDir} 清理失败，可稍后手工删除`);
+        if (!cleanup.ok) log(`[collect] 容器内 ${backendMetadata.toolDir} 清理失败，可稍后手工删除`);
       }
     }
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(`[collect] ${backend === "pyheap" ? "PyHeap" : "Pydump"} 文件：${result.heapPath}\n`);
+    terminalStdout.success(
+      `[collect] ${heapDumpBackendMetadata(backend).displayName} 文件：${result.heapPath}\n`,
+    );
     terminalStdout.write(`[collect] 采集索引：${result.capturePath}\n`);
     terminalStdout.write(`[collect] 下一步：doctor mema ${result.capturePath}\n`);
     return 0;
@@ -283,7 +288,7 @@ export async function runCollectMemory(
 
   const reasons = result.reasons?.length
     ? result.reasons
-    : [result.reason ?? `${backend === "pyheap" ? "PyHeap" : "Pydump"} 采集失败`];
+    : [result.reason ?? `${backend ? heapDumpBackendMetadata(backend).displayName : "heap"} 采集失败`];
   for (const reason of reasons) {
     terminalStderr.error(`[collect] ${reason}\n`);
   }
@@ -311,9 +316,9 @@ export async function runCollectMemory(
       detail,
       str_repr_len: strReprLen,
       capture_via: preference,
-      ...(backend === "pyheap"
-        ? { pyheap_version: PYHEAP_VERSION }
-        : { pydump_version: PYDUMP_VERSION }),
+      ...(backend
+        ? { [`${backend}_version`]: heapDumpBackendMetadata(backend).version }
+        : {}),
     },
     startedAt: invokedAt.toISOString(),
     finishedAt: new Date().toISOString(),

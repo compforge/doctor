@@ -46,6 +46,13 @@ export interface MemoryCaptureArtifact {
       architecture: string;
       glibc_min: string;
     };
+    pydump_bundle?: {
+      protocol: string;
+      version: string;
+      toolkit_version?: string;
+      source?: "execution-image";
+    };
+    [key: string]: unknown;
   };
 }
 

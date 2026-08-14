@@ -82,6 +82,7 @@ cli/src/
 │   ├── output/          Bundle、Markdown、HTML 等交付
 │   └── <domain>/        领域 config/fact/probe/detector/render
 └── infra/               Host、Target、K8s 与各类外部资源 adapter
+    └── dump/            Target heap dumper backend 与 Toolkit bundle 适配
 
 packages/agent/          CLI 与 server 宿主共用的 Agent、Skill 输入与 AgentUE 输出
 packages/plugin/         Plugin、Service Catalog 与 capability 公共协议
@@ -238,8 +239,9 @@ Command 同时服务交互用户和自动化调用：domain 只提供候选与�
 
 CLI core 只依赖 Node-compatible API，从同一个入口构建各平台单文件。诊断 executable、debug image 与
 离线系统包归独立版本的 Doctor Toolkit，不进入 CLI 单文件。`infra/toolkit` 先根据 Host process、Host
-container 或 Kubernetes container 的实际 OS/arch 选择并校验资源，再交给对应 `infra/host`、container
-engine 或 Kubernetes adapter 执行；Doctor Host 平台不能替代 Target 平台。
+container 或 Kubernetes container 的实际 OS/arch 选择并校验资源；需要共同演进的组件还必须按协议与
+runtime compatibility 从同一个 archive 解析成完整 bundle，再交给对应 `infra/host`、`infra/dump`、
+container engine 或 Kubernetes adapter 执行。Doctor Host 平台不能替代 Target 平台。
 
 Host 上同一能力同时具有 container 和 process backend 时，由 `infra/host` 自动探测：优先复用已经可用的
 本地 container engine 与工具 image，不能满足能力要求时再回退本机进程。这里只观察已有能力，不会为了

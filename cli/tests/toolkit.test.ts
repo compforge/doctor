@@ -9,6 +9,7 @@ import {
   kubernetesToolkitChannel,
   materializeToolkitResource,
   normalizeToolkitArchitecture,
+  resolveToolkitBundle,
 } from "../src/infra/toolkit";
 
 function tar(path: string, files: Record<string, Buffer | string>): void {
@@ -82,7 +83,7 @@ test("Toolkit rejects an unsafe resource path before extraction", () => {
   const archivePath = join(directory, "doctor-toolkit-unsafe.tar");
   tar(archivePath, {
     "doctor-toolkit/manifest.json": JSON.stringify({
-      schema: "doctor.toolkit/v1",
+      schema: "doctor.toolkit/v2",
       version: "1.0.0",
       platforms: [{
         os: "linux",
@@ -95,6 +96,7 @@ test("Toolkit rejects an unsafe resource path before extraction", () => {
         }],
         images: [],
         packages: [],
+        bundles: [],
       }],
     }),
   });
@@ -106,7 +108,7 @@ test("Toolkit rejects a resource id that could escape the materialization direct
   const archivePath = join(directory, "doctor-toolkit-unsafe-id.tar");
   tar(archivePath, {
     "doctor-toolkit/manifest.json": JSON.stringify({
-      schema: "doctor.toolkit/v1",
+      schema: "doctor.toolkit/v2",
       version: "1.0.0",
       platforms: [{
         os: "linux",
@@ -119,8 +121,77 @@ test("Toolkit rejects a resource id that could escape the materialization direct
         }],
         images: [],
         packages: [],
+        bundles: [],
       }],
     }),
   });
   expect(() => inspectToolkitArchive(archivePath)).toThrow("resource id 无效");
+});
+
+test("Toolkit resolves every bundle component from one compatible archive", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-toolkit-bundle-"));
+  const makeArchive = (version: string, pythonMinor: string, marker: string) => {
+    const archivePath = join(directory, `doctor-toolkit-${version}-linux-amd64.tar`);
+    const resources = ["collector", "injector", "agent"].map((role) => {
+      const content = Buffer.from(`${marker}-${role}`);
+      return {
+        role,
+        content,
+        resource: {
+          id: `pydump-${role}`,
+          path: `doctor-toolkit/platforms/linux-amd64/bin/${role}`,
+          sha256: createHash("sha256").update(content).digest("hex"),
+          size: content.length,
+        },
+      };
+    });
+    const manifest = {
+      schema: "doctor.toolkit/v2",
+      version,
+      platforms: [{
+        os: "linux",
+        architecture: "amd64",
+        tools: resources.map((item) => item.resource),
+        images: [],
+        packages: [],
+        bundles: [{
+          id: "pydump-capture",
+          protocol: "pydump.capture/v1",
+          version,
+          compatibility: {
+            runtime: { name: "cpython", version: pythonMinor },
+            libc: { family: "glibc", minimumVersion: "2.17" },
+          },
+          components: resources.map((item) => ({
+            role: item.role,
+            kind: "tool",
+            resourceId: item.resource.id,
+          })),
+        }],
+      }],
+    };
+    tar(archivePath, {
+      "doctor-toolkit/manifest.json": JSON.stringify(manifest),
+      ...Object.fromEntries(resources.map((item) => [item.resource.path, item.content])),
+    });
+    return inspectToolkitArchive(archivePath);
+  };
+  const newer = makeArchive("2.0.0", "3.12", "new");
+  const compatible = makeArchive("1.0.0", "3.11", "compatible");
+  const resolved = resolveToolkitBundle({
+    kind: "kubernetes-container",
+    platform: { os: "linux", architecture: "amd64" },
+    pod: "app-0",
+    container: "app",
+  }, {
+    id: "pydump-capture",
+    protocol: "pydump.capture/v1",
+    runtime: { name: "cpython", version: "3.11" },
+    libc: { family: "glibc", version: "2.31" },
+  }, [newer, compatible]);
+
+  expect(resolved?.archive.path).toBe(compatible.path);
+  expect(Object.values(resolved?.components ?? {}).map((item) => (
+    readFileSync(item.path, "utf8")
+  ))).toEqual(["compatible-collector", "compatible-injector", "compatible-agent"]);
 });

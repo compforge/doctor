@@ -16,10 +16,14 @@ import { dirname, join, resolve } from "node:path";
 import type {
   ToolkitArchive,
   ToolkitArchitecture,
+  ToolkitBundle,
+  ToolkitBundleComponent,
+  ToolkitBundleCompatibility,
   ToolkitManifest,
   ToolkitOs,
   ToolkitPlatformManifest,
   ToolkitResource,
+  ToolkitResourceKind,
 } from "./model";
 
 const TAR_BLOCK_SIZE = 512;
@@ -124,7 +128,97 @@ function parseResource(value: unknown, platform: string): ToolkitResource {
   return resource as unknown as ToolkitResource;
 }
 
-function parsePlatform(value: unknown): ToolkitPlatformManifest {
+function parseCompatibility(value: unknown, bundle: string): ToolkitBundleCompatibility | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Toolkit bundle ${bundle} compatibility 无效`);
+  }
+  const compatibility = value as Record<string, unknown>;
+  let runtime: ToolkitBundleCompatibility["runtime"];
+  if (compatibility.runtime !== undefined) {
+    if (
+      !compatibility.runtime
+      || typeof compatibility.runtime !== "object"
+      || Array.isArray(compatibility.runtime)
+    ) throw new Error(`Toolkit bundle ${bundle} runtime compatibility 无效`);
+    const raw = compatibility.runtime as Record<string, unknown>;
+    if (typeof raw.name !== "string" || !raw.name || typeof raw.version !== "string" || !raw.version) {
+      throw new Error(`Toolkit bundle ${bundle} runtime compatibility 无效`);
+    }
+    runtime = { name: raw.name, version: raw.version };
+  }
+  let libc: ToolkitBundleCompatibility["libc"];
+  if (compatibility.libc !== undefined) {
+    if (
+      !compatibility.libc
+      || typeof compatibility.libc !== "object"
+      || Array.isArray(compatibility.libc)
+    ) throw new Error(`Toolkit bundle ${bundle} libc compatibility 无效`);
+    const raw = compatibility.libc as Record<string, unknown>;
+    if (
+      typeof raw.family !== "string"
+      || !raw.family
+      || typeof raw.minimumVersion !== "string"
+      || !/^\d+(?:\.\d+)+$/.test(raw.minimumVersion)
+    ) throw new Error(`Toolkit bundle ${bundle} libc compatibility 无效`);
+    libc = { family: raw.family, minimumVersion: raw.minimumVersion };
+  }
+  return { runtime, libc };
+}
+
+function parseBundleComponent(value: unknown, bundle: string): ToolkitBundleComponent {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Toolkit bundle ${bundle} component 无效`);
+  }
+  const component = value as Record<string, unknown>;
+  if (typeof component.role !== "string" || !/^[a-z][a-z0-9-]*$/.test(component.role)) {
+    throw new Error(`Toolkit bundle ${bundle} component role 无效`);
+  }
+  if (!(component.kind === "tool" || component.kind === "image" || component.kind === "package")) {
+    throw new Error(`Toolkit bundle ${bundle} component kind 无效`);
+  }
+  if (
+    typeof component.resourceId !== "string"
+    || !/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(component.resourceId)
+  ) throw new Error(`Toolkit bundle ${bundle} component resourceId 无效`);
+  return {
+    role: component.role,
+    kind: component.kind as ToolkitResourceKind,
+    resourceId: component.resourceId,
+  };
+}
+
+function parseBundle(value: unknown, platform: string): ToolkitBundle {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Toolkit ${platform} bundle 无效`);
+  }
+  const bundle = value as Record<string, unknown>;
+  if (typeof bundle.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(bundle.id)) {
+    throw new Error(`Toolkit ${platform} bundle id 无效`);
+  }
+  if (typeof bundle.protocol !== "string" || !/^[A-Za-z0-9._+-]+\/v\d+$/.test(bundle.protocol)) {
+    throw new Error(`Toolkit bundle ${String(bundle.id)} protocol 无效`);
+  }
+  if (typeof bundle.version !== "string" || !bundle.version.trim()) {
+    throw new Error(`Toolkit bundle ${String(bundle.id)} version 无效`);
+  }
+  if (!Array.isArray(bundle.components) || bundle.components.length === 0) {
+    throw new Error(`Toolkit bundle ${bundle.id} components 无效`);
+  }
+  const components = bundle.components.map((item) => parseBundleComponent(item, bundle.id as string));
+  if (new Set(components.map((item) => item.role)).size !== components.length) {
+    throw new Error(`Toolkit bundle ${bundle.id} component role 重复`);
+  }
+  return {
+    id: bundle.id,
+    protocol: bundle.protocol,
+    version: bundle.version,
+    compatibility: parseCompatibility(bundle.compatibility, bundle.id),
+    components,
+  };
+}
+
+function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatformManifest {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Toolkit platform 无效");
   }
@@ -147,18 +241,51 @@ function parsePlatform(value: unknown): ToolkitPlatformManifest {
     }
     return resources;
   };
+  const tools = parseResources("tools");
+  const images = parseResources("images");
+  const packages = parseResources("packages");
+  if (bundlesRequired && !Array.isArray(platform.bundles)) {
+    throw new Error(`Toolkit ${platformId}.bundles 无效`);
+  }
+  const bundles = Array.isArray(platform.bundles)
+    ? platform.bundles.map((item) => parseBundle(item, platformId))
+    : [];
+  const resourcesByKind: Record<ToolkitResourceKind, readonly ToolkitResource[]> = {
+    tool: tools,
+    image: images,
+    package: packages,
+  };
+  for (const bundle of bundles) {
+    for (const component of bundle.components) {
+      if (!resourcesByKind[component.kind].some((item) => item.id === component.resourceId)) {
+        throw new Error(
+          `Toolkit bundle ${bundle.id} 引用了不存在的 ${component.kind} ${component.resourceId}`,
+        );
+      }
+    }
+  }
+  const bundleKeys = bundles.map((bundle) => JSON.stringify([
+    bundle.id,
+    bundle.protocol,
+    bundle.version,
+    bundle.compatibility ?? null,
+  ]));
+  if (new Set(bundleKeys).size !== bundleKeys.length) {
+    throw new Error(`Toolkit ${platformId} bundle compatibility 重复`);
+  }
   return {
     os,
     architecture,
-    tools: parseResources("tools"),
-    images: parseResources("images"),
-    packages: parseResources("packages"),
+    tools,
+    images,
+    packages,
+    bundles,
   };
 }
 
 export function parseToolkitManifest(raw: string): ToolkitManifest {
   const value = JSON.parse(raw) as Record<string, unknown>;
-  if (value.schema !== "doctor.toolkit/v1") {
+  if (value.schema !== "doctor.toolkit/v1" && value.schema !== "doctor.toolkit/v2") {
     throw new Error(`不支持的 Toolkit schema：${String(value.schema)}`);
   }
   if (typeof value.version !== "string" || !value.version.trim()) {
@@ -167,10 +294,14 @@ export function parseToolkitManifest(raw: string): ToolkitManifest {
   if (!Array.isArray(value.platforms) || value.platforms.length === 0) {
     throw new Error("Toolkit manifest platforms 无效");
   }
-  const platforms = value.platforms.map(parsePlatform);
+  const schema = value.schema;
+  const platforms = value.platforms.map((platform) => parsePlatform(
+    platform,
+    schema === "doctor.toolkit/v2",
+  ));
   const ids = platforms.map((item) => `${item.os}/${item.architecture}`);
   if (new Set(ids).size !== ids.length) throw new Error("Toolkit platform 重复");
-  return { schema: "doctor.toolkit/v1", version: value.version, platforms };
+  return { schema, version: value.version, platforms };
 }
 
 export function inspectToolkitArchive(path: string): ToolkitArchive {
