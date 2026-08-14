@@ -22,14 +22,14 @@ import { deliverFailureBundle } from "../output/failure-bundle";
 import {
   captureMemoryHeap,
   parseCapturePreference,
-  parsePydumpDetail,
+  parseHeapDumpDetail,
   parseStrReprLen,
   parseTransferChunkBytes,
   type CaptureResult,
   type CapturePreference,
-  type PydumpDetail,
+  type HeapDumpDetail,
 } from "./capture";
-import { heapDumpBackendMetadata } from "../../infra/dump";
+import { heapDumpBackendMetadata, pyheapBackend } from "../../infra/dump";
 import { runInspects } from "../inspect-engine";
 import {
   makeCgroupMemoryInspect,
@@ -37,14 +37,7 @@ import {
   type CommonTargetInspectContext,
 } from "../fact/inspect";
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { parseServices } from "../../infra/k8s/service";
-import { resolveLivenessProxyIntent, type LivenessProxyIntent } from "./liveness-proxy";
-import {
-  parseMemoryBackend,
-  resolveMemoryBackend,
-  type MemoryCaptureBackend,
-} from "./backend-selection";
+import { cgroupMemoryHint } from "./capture-risk";
 
 export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   pod?: string;
@@ -54,7 +47,6 @@ export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   output?: string;
   detail?: string;
   strReprLen?: string;
-  backend?: string;
   captureVia?: string;
   transferChunkSize?: string;
   cleanupRemote?: boolean;
@@ -82,20 +74,17 @@ function recordPodStep(bundle: EvidenceBundle, result: ExecResult): void {
 export async function runCollectMemory(
   opts: CollectMemoryCliOptions,
   commandContext?: CommandContext,
-  plugin?: PluginDefinition,
 ): Promise<number> {
   const invokedAt = new Date();
-  let detail: PydumpDetail;
+  let detail: HeapDumpDetail;
   let preference: CapturePreference;
   let strReprLen: number;
   let transferChunkBytes: number;
-  let backend: MemoryCaptureBackend | undefined;
   try {
-    detail = parsePydumpDetail(opts.detail);
+    detail = parseHeapDumpDetail(opts.detail);
     preference = parseCapturePreference(opts.captureVia);
     strReprLen = parseStrReprLen(opts.strReprLen, detail === "lite" ? -1 : 1000);
     transferChunkBytes = parseTransferChunkBytes(opts.transferChunkSize);
-    backend = parseMemoryBackend(opts.backend);
   } catch (error) {
     terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -118,11 +107,6 @@ export async function runCollectMemory(
       requirement: "required",
       rule: { verb: "create", resource: "pods/exec" },
       purpose: "探测 Python 进程、attach 并回传对象堆",
-    }, {
-      requirement: "preferred",
-      rule: { verb: "list", resource: "services" },
-      purpose: "把目标 Pod 匹配到 Plugin Service 的 liveness 契约",
-      fallback: "不启用临时 liveness 代理",
     }],
   });
   let target;
@@ -160,28 +144,6 @@ export async function runCollectMemory(
     return 2;
   }
 
-  let livenessProxyIntent: LivenessProxyIntent | undefined;
-  if (plugin?.services.servicesWith("liveness").some((service) => (
-    service.capabilities.liveness.heapDumpProxy !== undefined
-  ))) {
-    const serviceResult = await executor.run(["get", "services", "-o", "json"], { timeoutMs: 20_000 });
-    if (serviceResult.ok) {
-      const resolution = resolveLivenessProxyIntent({
-        plugin,
-        services: parseServices(serviceResult.stdout, collect.kubernetes.namespace),
-        pod,
-        container: selected.value,
-      });
-      livenessProxyIntent = resolution.intent;
-      terminalStdout.write(resolution.intent
-        ? `[collect] liveness 代理契约：Service ${resolution.intent.service} `
-          + `${resolution.intent.path}:${resolution.intent.port}（仅 heap dump 窗口）\n`
-        : `[collect] liveness 代理未启用：${resolution.reason}\n`);
-    } else {
-      terminalStdout.write("[collect] liveness 代理未启用：无法读取 Service selector\n");
-    }
-  }
-
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-mem-"));
   const staging = join(stagingRoot, `doctor-mem-${target.pod}-${timestamp(invokedAt)}-evidence`);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
@@ -216,12 +178,8 @@ export async function runCollectMemory(
     log(cgroupMemory
       ? `[collect] 检测到目标容器使用 cgroup v${cgroupMemory.version}`
       : "[collect] 未能识别目标容器的 cgroup 版本；继续执行 heap dump");
-    backend ??= await resolveMemoryBackend({ cgroupMemory });
-    if (!backend) {
-      rmSync(stagingRoot, { recursive: true, force: true });
-      return process.stdin.isTTY && process.stdout.isTTY ? 130 : 2;
-    }
-    log(`[collect] heap 采集后端：${backend}`);
+    log(`[collect] ${cgroupMemoryHint(cgroupMemory)}`);
+    log(`[collect] heap 采集后端：${pyheapBackend.displayName}`);
     result = await captureMemoryHeap(
       executor,
       {
@@ -231,7 +189,6 @@ export async function runCollectMemory(
         podJson: podJsonResult.stdout,
         container: selected.value,
         pidFlag: opts.pid,
-        backend,
         detail,
         strReprLen,
         preference,
@@ -240,7 +197,6 @@ export async function runCollectMemory(
         invokedAt,
         confirmed: !!opts.yes,
         cgroupMemory,
-        livenessProxyIntent,
       },
       { bundle, progress: (update) => progressLine.update(update) },
       log,
@@ -251,10 +207,6 @@ export async function runCollectMemory(
   progressLine.interrupt();
 
   if (result.code === 0) {
-    if (!backend) {
-      terminalStderr.error("[collect] heap 已生成，但采集后端状态丢失\n");
-      return 1;
-    }
     if (opts.cleanupRemote && result.strategy && result.pid) {
       const executionContainer = result.strategy === "target-container"
         ? selected.value.name
@@ -263,7 +215,7 @@ export async function runCollectMemory(
             selected.value.name,
           ).selected?.executionContainer;
       if (executionContainer) {
-        const backendMetadata = heapDumpBackendMetadata(backend);
+        const backendMetadata = heapDumpBackendMetadata();
         const cleanup = await executor.exec(
           { pod: target.pod, container: executionContainer },
           backendMetadata.cleanupCommand(),
@@ -274,7 +226,7 @@ export async function runCollectMemory(
     }
     rmSync(stagingRoot, { recursive: true, force: true });
     terminalStdout.success(
-      `[collect] ${heapDumpBackendMetadata(backend).displayName} 文件：${result.heapPath}\n`,
+      `[collect] ${pyheapBackend.displayName} 文件：${result.heapPath}\n`,
     );
     terminalStdout.write(`[collect] 采集索引：${result.capturePath}\n`);
     terminalStdout.write(`[collect] 下一步：doctor mema ${result.capturePath}\n`);
@@ -288,7 +240,7 @@ export async function runCollectMemory(
 
   const reasons = result.reasons?.length
     ? result.reasons
-    : [result.reason ?? `${backend ? heapDumpBackendMetadata(backend).displayName : "heap"} 采集失败`];
+    : [result.reason ?? `${pyheapBackend.displayName} 采集失败`];
   for (const reason of reasons) {
     terminalStderr.error(`[collect] ${reason}\n`);
   }
@@ -312,13 +264,11 @@ export async function runCollectMemory(
     inspectionFacts: cgroupMemory ? { cgroupMemory } : {},
     params: {
       command: "mem",
-      backend,
+      backend: "pyheap",
       detail,
       str_repr_len: strReprLen,
       capture_via: preference,
-      ...(backend
-        ? { [`${backend}_version`]: heapDumpBackendMetadata(backend).version }
-        : {}),
+      pyheap_version: pyheapBackend.version,
     },
     startedAt: invokedAt.toISOString(),
     finishedAt: new Date().toISOString(),

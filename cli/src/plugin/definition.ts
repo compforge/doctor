@@ -99,31 +99,6 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
   }
-  if (capabilities.liveness !== undefined) {
-    const liveness = record(capabilities.liveness, `${service.name}.liveness`);
-    const httpGet = record(liveness.httpGet, `${service.name}.liveness.httpGet`);
-    if (!Number.isInteger(httpGet.port) || Number(httpGet.port) < 1 || Number(httpGet.port) > 65_535) {
-      throw new Error(`${service.name}.liveness.httpGet.port must be an integer in 1..65535`);
-    }
-    const path = nonEmptyString(httpGet.path, `${service.name}.liveness.httpGet.path`);
-    if (!path.startsWith("/")) throw new Error(`${service.name}.liveness.httpGet.path must start with '/'`);
-    if (liveness.heapDumpProxy !== undefined) {
-      const proxy = record(liveness.heapDumpProxy, `${service.name}.liveness.heapDumpProxy`);
-      if (
-        !Number.isInteger(proxy.statusCode)
-        || Number(proxy.statusCode) < 200
-        || Number(proxy.statusCode) >= 400
-      ) {
-        throw new Error(`${service.name}.liveness.heapDumpProxy.statusCode must be an integer in 200..399`);
-      }
-      if (proxy.body !== undefined && typeof proxy.body !== "string") {
-        throw new Error(`${service.name}.liveness.heapDumpProxy.body must be a string`);
-      }
-      if (typeof proxy.body === "string" && Buffer.byteLength(proxy.body) > 1024) {
-        throw new Error(`${service.name}.liveness.heapDumpProxy.body must not exceed 1024 bytes`);
-      }
-    }
-  }
   const serviceCase = capabilities.case;
   let caseSets = new Map<string, Record<string, unknown>>();
   if (serviceCase !== undefined) {

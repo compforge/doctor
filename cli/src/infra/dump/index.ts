@@ -1,28 +1,15 @@
-export {
-  choosePydumpLoader,
-  pydumpBackend,
-  resolveHostPydumpAnalyzer,
-  resolveKubernetesPydumpCaptureTools,
-} from "./pydump";
 export { pyheapBackend, resolveKubernetesPyHeapDumper } from "./pyheap";
 export {
   compressFileCmd,
   fileMetadataCmd,
-  localPydumpRetainedArgv,
   parseFileMetadata,
-  parsePydumpPrereqs,
-  parsePydumpTargetLibc,
-  parseTargetPythonMinor,
-  pydumpAgentInventoryCmd,
-  pydumpPrereqCmd,
-  runPydumpDumpCmd,
-  selectPydumpAgentFromInventory,
-  targetLibcCmd,
-  targetPythonMinorCmd,
   type FileMetadata,
-  type PydumpPrereqs,
-  type PydumpTargetLibc,
-} from "./pydump-tool";
+} from "./file";
+export {
+  localPydumpRetainedArgv,
+  PYDUMP_ANALYSIS_VERSION,
+  resolveHostPydumpAnalyzer,
+} from "./analysis-tool";
 export {
   parsePyheapPrereqs,
   pyheapPrereqCmd,
@@ -41,20 +28,17 @@ export type {
   PreparedHeapDump,
 } from "./model";
 
-import { pydumpBackend } from "./pydump";
 import { pyheapBackend } from "./pyheap";
-import type { HeapDumpBackendKind } from "./model";
-
 export interface HeapDumpBackendMetadata {
-  readonly kind: HeapDumpBackendKind;
+  readonly kind: "pyheap";
   readonly displayName: string;
   readonly toolDir: string;
   readonly version: string;
   readonly cleanupCommand: () => string[];
 }
 
-export function heapDumpBackendMetadata(kind: HeapDumpBackendKind): HeapDumpBackendMetadata {
-  const backend = kind === "pydump" ? pydumpBackend : pyheapBackend;
+export function heapDumpBackendMetadata(): HeapDumpBackendMetadata {
+  const backend = pyheapBackend;
   return {
     kind: backend.kind,
     displayName: backend.displayName,

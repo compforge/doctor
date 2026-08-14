@@ -32,8 +32,9 @@ const pods: PodChoice[] = [
   },
 ];
 
-test("doctor debug 仅在显式指定时增加 NET_ADMIN", () => {
-  expect(parseDebugCapabilities("SYS_PTRACE,NET_ADMIN")).toEqual(["SYS_PTRACE", "NET_ADMIN"]);
+test("doctor debug 只接受进程与抓包诊断 capability", () => {
+  expect(parseDebugCapabilities("SYS_PTRACE,NET_RAW")).toEqual(["SYS_PTRACE", "NET_RAW"]);
+  expect(() => parseDebugCapabilities("NET_ADMIN")).toThrow("不支持");
   expect(() => parseDebugCapabilities("SYS_ADMIN")).toThrow("不支持");
 });
 

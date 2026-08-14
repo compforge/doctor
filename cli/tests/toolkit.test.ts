@@ -137,13 +137,13 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
   const directory = mkdtempSync(join(tmpdir(), "doctor-toolkit-bundle-"));
   const makeArchive = (version: string, pythonMinor: string, marker: string) => {
     const archivePath = join(directory, `doctor-toolkit-${version}-linux-amd64.tar`);
-    const resources = ["collector", "loader", "agent"].map((role) => {
+    const resources = ["runtime", "bridge", "helper"].map((role) => {
       const content = Buffer.from(`${marker}-${role}`);
       return {
         role,
         content,
         resource: {
-          id: `pydump-${role}`,
+          id: `example-${role}`,
           path: `doctor-toolkit/platforms/linux-amd64/bin/${role}`,
           sha256: createHash("sha256").update(content).digest("hex"),
           size: content.length,
@@ -160,8 +160,8 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
         images: [],
         packages: [],
         bundles: [{
-          id: "pydump-capture",
-          protocol: "pydump.capture/v1",
+          id: "example-capture",
+          protocol: "example.capture/v1",
           version,
           compatibility: {
             runtime: { name: "cpython", version: pythonMinor },
@@ -189,8 +189,8 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
     pod: "app-0",
     container: "app",
   }, {
-    id: "pydump-capture",
-    protocol: "pydump.capture/v1",
+    id: "example-capture",
+    protocol: "example.capture/v1",
     runtime: { name: "cpython", version: "3.11" },
     libc: { family: "glibc", version: "2.31" },
   }, [newer, compatible]);
@@ -198,7 +198,7 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
   expect(resolved?.archive.path).toBe(compatible.path);
   expect(Object.values(resolved?.components ?? {}).map((item) => (
     readFileSync(item.path, "utf8")
-  ))).toEqual(["compatible-collector", "compatible-loader", "compatible-agent"]);
+  ))).toEqual(["compatible-runtime", "compatible-bridge", "compatible-helper"]);
 });
 
 test("Toolkit v3 requires versioned dependency declarations and exact bundle variants", () => {

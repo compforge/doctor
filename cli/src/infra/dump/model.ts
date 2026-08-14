@@ -2,7 +2,7 @@ import type { ExecResult, ExecTarget, Executor } from "../k8s/executor";
 import type { ContainerInfo } from "../k8s/target";
 import type { DebugEnvironmentFact } from "../target/debug";
 
-export type HeapDumpBackendKind = "pydump" | "pyheap";
+export type HeapDumpBackendKind = "pyheap";
 export type HeapDumpStrategy = "debug-container" | "target-container";
 
 export interface HeapDumpExecution {

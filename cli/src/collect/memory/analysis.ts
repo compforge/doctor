@@ -40,7 +40,7 @@ import {
 import { diagnosePydumpAnalysis } from "./detector/pydump";
 import {
   localPydumpRetainedArgv,
-  pydumpBackend,
+  PYDUMP_ANALYSIS_VERSION,
   resolveHostPydumpAnalyzer,
 } from "../../infra/dump";
 import {
@@ -373,7 +373,7 @@ function writeAnalysisReport(
       inspection_facts: {},
       params: {
         command: "mema",
-        pydump_version: pydumpBackend.version,
+        analyzer_version: PYDUMP_ANALYSIS_VERSION,
         inputs: items.map((item) => basename(item.inputPath)),
         analyses: items.map((item) => basename(item.analysisPath)),
       },

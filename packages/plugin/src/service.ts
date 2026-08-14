@@ -99,19 +99,6 @@ export interface ServiceMetricCapability {
   detectors?: readonly ServiceMetricDetector[];
 }
 
-/** Service-owned contract for temporarily answering its Kubernetes liveness probe during a heap dump. */
-export interface ServiceLivenessCapability {
-  httpGet: {
-    path: string;
-    port: number;
-  };
-  heapDumpProxy?: {
-    /** Kubernetes treats any 2xx or 3xx response as a successful HTTP probe. */
-    statusCode: number;
-    body?: string;
-  };
-}
-
 /** Runtime projection of a canonical spec-case Case asset; this interface does not own its schema. */
 export interface ServiceCaseAsset {
   id: string;
@@ -437,7 +424,6 @@ export interface ServiceCapabilities {
   case?: ServiceCaseCapability;
   perf?: ServicePerfCapability;
   metric?: ServiceMetricCapability;
-  liveness?: ServiceLivenessCapability;
   mcp?: ServiceMcpCapability;
 }
 
