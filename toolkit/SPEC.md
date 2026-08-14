@@ -45,6 +45,19 @@ The GDB package set therefore carries both 13.1 and 17.2. Neither is labelled ‚Ä
 kernel‚Äù without evidence. Doctor records kernel, glibc, and CPU identity from their declarations and
 uses an inferior-call probe before attaching to a business process.
 
+## Build provenance and reuse
+
+`doctor-toolkit/build-manifest.json` records input-addressed build groups separately from the runtime
+resource catalog. A `doctor.toolkit.build-group/v1` key is the SHA-256 of canonical build inputs:
+platform, source identities, package identities, compatibility parameters, and recipe file digests.
+The runtime manifest retains the output SHA-256 and size. The Toolkit version is intentionally
+excluded from the input key because an unchanged payload may be wrapped by a later Toolkit manifest.
+
+Builders may reuse a previous Release payload only when the group key matches and every reused
+archive passes the existing size and SHA-256 checks. An asset without build provenance is not a
+cache candidate. A forced clean build remains the authority for dependency refresh and
+reproducibility checks.
+
 ## Images
 
 Images are ordinary versioned resources with requirements, not universal compatibility envelopes.

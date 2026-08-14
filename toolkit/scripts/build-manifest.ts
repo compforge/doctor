@@ -3,6 +3,7 @@ import {
   chmodSync,
   createReadStream,
   mkdirSync,
+  readFileSync,
   readdirSync,
   statSync,
   writeFileSync,
@@ -220,10 +221,48 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
 platforms.sort((left, right) =>
   `${left.os}/${left.architecture}`.localeCompare(`${right.os}/${right.architecture}`));
 
+const buildGroups = [];
+try {
+  for (const entry of readdirSync(join(stage, ".build-inputs"), { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const group = JSON.parse(readFileSync(join(stage, ".build-inputs", entry.name), "utf8"));
+    if (
+      group?.schema !== "doctor.toolkit.build-group/v1"
+      || typeof group.kind !== "string"
+      || typeof group.key !== "string"
+      || !/^sha256:[0-9a-f]{64}$/.test(group.key)
+      || typeof group.platform?.os !== "string"
+      || typeof group.platform?.architecture !== "string"
+    ) throw new Error(`invalid Toolkit build input: ${entry.name}`);
+    buildGroups.push(group);
+  }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+buildGroups.sort((left, right) => JSON.stringify([
+  left.kind,
+  left.platform.os,
+  left.platform.architecture,
+]).localeCompare(JSON.stringify([
+  right.kind,
+  right.platform.os,
+  right.platform.architecture,
+])));
+const buildGroupIds = buildGroups.map((group) =>
+  `${group.kind}/${group.platform.os}/${group.platform.architecture}`);
+if (new Set(buildGroupIds).size !== buildGroupIds.length) {
+  throw new Error("duplicate Toolkit build input group");
+}
+
 writeFileSync(join(root, "manifest.json"), `${JSON.stringify({
   schema: "doctor.toolkit/v3",
   version,
   platforms,
+}, null, 2)}\n`);
+writeFileSync(join(root, "build-manifest.json"), `${JSON.stringify({
+  schema: "doctor.toolkit.build/v1",
+  version,
+  groups: buildGroups,
 }, null, 2)}\n`);
 mkdirSync(dirname(output), { recursive: true });
 const archived = Bun.spawnSync({
