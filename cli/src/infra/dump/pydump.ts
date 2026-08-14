@@ -168,7 +168,8 @@ export function resolveKubernetesPydumpCaptureTools(input: {
   }
   throw new Error(
     `Doctor Toolkit 缺少 ${channel.platform.os}/${channel.platform.architecture} `
-    + `CPython ${input.pythonMinor} / glibc ${input.targetGlibcVersion} 兼容的 Pydump bundle`,
+    + `CPython ${input.pythonMinor} / glibc ${input.targetGlibcVersion} 兼容的 Pydump bundle；`
+    + "请将 doctor-toolkit-*.tar 放在 Doctor 同目录，或通过 DOCTOR_TOOLKIT 指定",
   );
 }
 

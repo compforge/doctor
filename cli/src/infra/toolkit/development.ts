@@ -76,6 +76,7 @@ export function discoverDevelopmentPydumpAgents(
   if (platform.os !== "linux") return [];
   const machine = platform.architecture === "amd64" ? "x86_64" : "aarch64";
   const directory = join(root, "assets", "pydump");
+  if (!existsSync(directory)) return [];
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (!entry.isFile()) return [];
     const match = new RegExp(
