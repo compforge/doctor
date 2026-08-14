@@ -14,7 +14,8 @@ capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路
 
 `doctor mem` 在 attach 前让用户手动选择后端，不根据 cgroup 余量自动决定：
 
-- Pydump Collector 自动选择可用的 GDB 或 `pydump-loader`，把有界 C Agent 加载到目标解释器；
+- Pydump Collector 先用临时 Python 进程验证 GDB inferior call，验收通过才使用 GDB；否则在触碰目标进程前
+  选择 `pydump-loader`，并提示匹配目标环境的 GDB package 版本；
   Collector 在执行容器内保留随堆规模增长的队列、索引和输出文件，尽量降低目标 Python 进程的额外内存。
 - PyHeap 选项使用 Doctor 维护的 fork-pyheap，由 GDB 在目标解释器内执行对象遍历。操作方式与原
   PyHeap 一致，但随对象规模增长的索引和 heap 写入内存主要归属目标进程及其 cgroup。
@@ -82,8 +83,9 @@ container 内使用目标 PID 对应的 Python executable 探测 libc；当前 P
 停止。已有 debug image 内的完整组件可以直接复用；需要从 Toolkit 补齐时，Collector、`pydump-loader` 与 Agent
 必须来自同一个 `pydump.capture/v1` bundle 和同一 archive，不能分别从不同版本拼装。匹配完成后，缺少
 的组件临时上传到 `/tmp/doctor-pydump` 再 attach。
-fork-pyheap 使用 `fork-pyheap.capture/v1` bundle。Pydump 自动优先探测 GDB，不可用时使用同一 bundle
-中的 `pydump-loader`；Doctor 不要求用户预先选择 Loader。
+fork-pyheap 使用 `fork-pyheap.capture/v1` bundle。Pydump 先对 disposable inferior 验证 GDB 的函数调用能力，
+通过后显式使用 GDB；否则在 attach 目标 PID 前显式选择同一 bundle 中的 `pydump-loader`，并从匹配当前
+容器 OS、架构与 kernel 的 package bundle 推荐 GDB 版本。Doctor 不要求用户预先选择 Loader。
 
 如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
 对应工具、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
