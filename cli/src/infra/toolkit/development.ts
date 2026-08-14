@@ -61,6 +61,14 @@ function pydumpAsset(
   );
 }
 
+function forkPyheapAsset(
+  id: string,
+  platform: { os: ToolkitOs; architecture: ToolkitArchitecture },
+): string | undefined {
+  if (id !== "fork-pyheap-dumper" || platform.os !== "linux") return undefined;
+  return join(root, "assets", "fork-pyheap", "pyheap_dump-0.7.0+doctor.2.gz");
+}
+
 /** Source-checkout fallback for development; release binaries never contain these files. */
 export function resolveDevelopmentToolkitTool(
   id: string,
@@ -72,6 +80,7 @@ export function resolveDevelopmentToolkitTool(
     : undefined;
   if (direct && existsSync(direct)) return direct;
   const compressed = pydumpAsset(id, platform)
+    ?? forkPyheapAsset(id, platform)
     ?? (id === "py-spy" && platform.os === "linux"
         ? join(
           root,

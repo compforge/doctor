@@ -5,6 +5,8 @@ the materialized resources in `doctor-toolkit/manifest.json`; upstream licenses 
 corresponding assets.
 
 - `regctl`: regclient 0.11.5 for Darwin/Linux and AMD64/ARM64.
+- `fork-pyheap`: Doctor-maintained fork-pyheap 0.7.0+doctor.2 dumper PEX for the optional GDB-backed
+  capture route.
 - `pydump`: Pydump 0.1.0 Collector, static Linux Injectors, standalone Go analyzers, and Linux
   CPython 3.10–3.14 native Agents. Agent filenames and Toolkit IDs include the minimum target glibc
   (`min-glibc-2.17`).

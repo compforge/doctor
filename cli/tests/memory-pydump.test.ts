@@ -135,6 +135,7 @@ function captureParams() {
       imageId: "sha256:image",
       restartCount: 0,
     },
+    backend: "pydump" as const,
     detail: "lite" as const,
     strReprLen: -1,
     preference: "auto" as const,

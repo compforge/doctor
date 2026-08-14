@@ -3,8 +3,8 @@ import { terminalStdout } from "../terminal/output";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
 //   doctor chat              → 默认本地 Agent；--server 显式选择远端 Agent（app/repl.tsx）
-//   doctor mem               → attach Python 进程并回传 Pydump dump（collect/）
-//   doctor mema              → 在本机解析并诊断一个或多个 Pydump dump（collect/）
+//   doctor mem               → 选择后端、attach Python 进程并回传对象堆（collect/）
+//   doctor mema              → 在本机解析并诊断一个或多个对象堆（collect/）
 //   doctor cpu               → 无 server 直连采集：pod Python CPU 线程栈证据包（collect/）
 //   doctor trace             → 无 server 直连采集：OpenSearch 下载 trace 全量 span（collect/）
 //   doctor store             → 从 Service Pod 提取 Store 配置并诊断 DB/VDB/S3/Redis（collect/）
@@ -106,6 +106,7 @@ function withMemOptions(cmd: CommandT): CommandT {
       .option("-p, --pod <pod>", "目标 pod 名或关键词（缺省时列出候选）")
       .option("-c, --container <name>", "多容器 pod 时指定容器")
       .option("--pid <pid>", "目标进程 pid（缺省从 procscan 自动选）")
+      .option("--backend <backend>", "heap 采集后端：pydump 或 pyheap（缺省时交互选择）")
       .option("--detail <detail>", "heap 内容：lite（精简）或 full（完整）", "lite")
       .option("--str-repr-len <n>", "覆盖策略中的对象字符串表示长度；-1 不采集")
       .option(
@@ -516,7 +517,7 @@ export async function main(plugin?: PluginDefinition) {
     });
 
   withMemOptions(
-    program.command("mem").description("attach 目标 Python 进程并把 Pydump 文件回传到本机"),
+    program.command("mem").description("选择 Pydump 或 fork-pyheap，attach Python 进程并回传对象堆"),
   ).action(async (opts) => {
     await runCommand(
       { name: "doctor mem", environment: { kubernetes: true } },
@@ -525,7 +526,7 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withMemaOptions(
-    program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 Pydump 文件"),
+    program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
   ).action(async (inputs, opts) => {
     await runCommand(
       { name: "doctor mema" },

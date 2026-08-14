@@ -7,7 +7,8 @@ export const MEMORY_CAPTURE_SCHEMA = "doctor.memory-capture/v1";
 export interface MemoryCaptureArtifact {
   schema: typeof MEMORY_CAPTURE_SCHEMA;
   captured_at: string;
-  pydump_version: string;
+  pydump_version?: string;
+  pyheap_version?: string;
   target: {
     namespace: string;
     pod: string;
@@ -20,6 +21,7 @@ export interface MemoryCaptureArtifact {
     process_start_time?: string;
   };
   capture: {
+    backend?: "pydump" | "pyheap";
     strategy: "debug-container" | "target-container";
     execution_container: string;
     detail: "lite" | "full";

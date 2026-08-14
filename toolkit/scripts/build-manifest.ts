@@ -21,6 +21,7 @@ const output = resolve(outputArg);
 const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
+  pyheap_dump: "fork-pyheap-dumper",
   pydump: "pydump-collector",
   "pydump-injector": "pydump-injector",
   pydump_analyzer: "pydump-analyzer",
