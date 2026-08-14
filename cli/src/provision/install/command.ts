@@ -4,6 +4,11 @@ import {
   resolvePodTarget,
 } from "../../command/kubernetes-target";
 import { infra } from "../../infra";
+import {
+  bundlePlatformMatches,
+  matchingPackageBundles,
+  packageBundleRequirements,
+} from "../../infra/target/package-install";
 import { approvalDeniedReason } from "../../command/approval";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
@@ -92,14 +97,15 @@ export async function runInstall(
   if (!program) return 130;
   const packages = [program];
 
-  const target = await inspectInstallTarget(executor, selected.pod, selected.container);
-  if (!target) {
+  const inspectedTarget = await inspectInstallTarget(executor, selected.pod, selected.container);
+  if (!inspectedTarget) {
     terminalStderr.error(
       `[install] pod/${selected.pod} container/${selected.container} 中未发现`
       + " apt-get、apk、dnf、microdnf 或 yum\n",
     );
     return 1;
   }
+  let target = inspectedTarget;
   terminalStdout.write(
     `[install] target: pod/${selected.pod} container/${selected.container}`
     + `（${targetDescription(target)}）\n`,
@@ -108,6 +114,7 @@ export async function runInstall(
   const existingGdb = await verifyGdbCapability(executor, selected.pod, selected.container);
   let finalGdb = existingGdb;
   let bundleCandidates = [] as ReturnType<typeof inspectInstallBundleCandidates>;
+  let compatibleBundles = [] as ReturnType<typeof inspectInstallBundleCandidates>;
   let selectedBundle: ReturnType<typeof inspectInstallBundle> = undefined;
   const finish = (
     code: number,
@@ -153,7 +160,18 @@ export async function runInstall(
   let bundle;
   try {
     bundleCandidates = inspectInstallBundleCandidates(opts.tar, target);
+    const requirements = bundleCandidates
+      .filter((candidate) => bundlePlatformMatches(candidate, target!, packages))
+      .map(packageBundleRequirements);
+    target = await infra.target.packageInstaller.inspect(
+      executor,
+      selected.pod,
+      selected.container,
+      requirements,
+      { transfer: true },
+    ) ?? target;
     bundle = inspectInstallBundle(opts.tar, target, packages, bundleCandidates);
+    compatibleBundles = matchingPackageBundles(bundleCandidates, target, packages);
     selectedBundle = bundle;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
@@ -207,29 +225,51 @@ export async function runInstall(
     pod: selected.pod,
     container: selected.container,
   };
+  const attemptedBundles = new Set<string>();
+  const bundleKey = (candidate: NonNullable<typeof bundle>) =>
+    `${candidate.path}\0${candidate.variant?.id ?? "bundle"}`;
   let { installed, fromBundle: installedFromBundle } = await applyInstallPlan(plan, context);
   const fallbackBundle = plan.kind === "online" ? plan.fallbackBundle : undefined;
+  if (plan.kind === "offline") attemptedBundles.add(bundleKey(plan.bundle));
   if (!installed) {
-    if (plan.kind === "offline") {
-      return finish(1, "failed", "offline-install", "离线 GDB 安装失败");
+    if (fallbackBundle) {
+      attemptedBundles.add(bundleKey(fallbackBundle));
+      installed = await applyBundleInstall({
+        ...context,
+        target,
+        packages,
+        bundle: fallbackBundle,
+      });
+      installedFromBundle = installed;
+      if (installed) selectedBundle = fallbackBundle;
     }
-    if (!fallbackBundle) {
+    for (const alternative of compatibleBundles) {
+      if (installed || attemptedBundles.has(bundleKey(alternative))) continue;
+      terminalStdout.warning(
+        `[install] ${bundleDescription(selectedBundle ?? alternative)} 安装失败；`
+        + `继续尝试 ${bundleDescription(alternative)}\n`,
+      );
+      attemptedBundles.add(bundleKey(alternative));
+      installed = await applyBundleInstall({
+        ...context,
+        target,
+        packages,
+        bundle: alternative,
+      });
+      installedFromBundle = installed;
+      if (installed) selectedBundle = alternative;
+    }
+  }
+  if (!installed) {
+    if (compatibleBundles.length === 0) {
       terminalStderr.error(
         target.manager.kind !== "apt-get"
           ? `[install] ${target.manager.kind} 离线包安装尚未支持；在线安装已经失败\n`
           : `[install] ${packageBundleMissingMessage(target)}\n`,
       );
-      return finish(1, "failed", "online-install", "在线安装失败且没有匹配的离线 bundle");
     }
-    installed = await applyBundleInstall({
-      ...context,
-      target,
-      packages,
-      bundle: fallbackBundle,
-    });
-    installedFromBundle = installed;
+    return finish(1, "failed", "package-install", "所有 GDB 安装候选均失败");
   }
-  if (!installed) return finish(1, "failed", "fallback-install", "离线 GDB fallback 安装失败");
 
   const verified = await infra.target.packageInstaller.installed(
     executor,
@@ -245,6 +285,7 @@ export async function runInstall(
 
   let gdb = await verifyGdbCapability(executor, selected.pod, selected.container);
   finalGdb = gdb;
+  if (installedFromBundle && selectedBundle) attemptedBundles.add(bundleKey(selectedBundle));
   if (!gdbReady(gdb) && fallbackBundle && !installedFromBundle) {
     terminalStdout.warning(
       `[install] 在线 GDB ${gdb.version ?? ""} 与 Target kernel `
@@ -257,10 +298,29 @@ export async function runInstall(
       packages,
       bundle: fallbackBundle,
     });
+    attemptedBundles.add(bundleKey(fallbackBundle));
     if (installedFromBundle) {
       gdb = await verifyGdbCapability(executor, selected.pod, selected.container);
       finalGdb = gdb;
     }
+  }
+  for (const alternative of compatibleBundles) {
+    if (gdbReady(gdb) || attemptedBundles.has(bundleKey(alternative))) continue;
+    terminalStdout.warning(
+      `[install] GDB ${gdb.version ?? ""} inferior call 验收失败；`
+      + `继续尝试 ${bundleDescription(alternative)}\n`,
+    );
+    attemptedBundles.add(bundleKey(alternative));
+    const alternativeInstalled = await applyBundleInstall({
+      ...context,
+      target,
+      packages,
+      bundle: alternative,
+    });
+    if (!alternativeInstalled) continue;
+    selectedBundle = alternative;
+    gdb = await verifyGdbCapability(executor, selected.pod, selected.container);
+    finalGdb = gdb;
   }
   if (!gdbReady(gdb)) {
     terminalStderr.error(

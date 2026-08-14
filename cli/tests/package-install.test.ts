@@ -53,6 +53,9 @@ const aptTarget: PackageTargetFact = {
   osVersionId: "12",
   architecture: "amd64",
   kernelVersion: "5.15.0-100-generic",
+  libc: { family: "glibc", version: "2.36" },
+  libraries: { libc: { family: "glibc", version: "2.36" } },
+  cpu: { vendor: "GenuineIntel", family: "6", modelId: "85", model: "Intel Xeon" },
   pythonAvailable: true,
   tarAvailable: true,
 };
@@ -61,15 +64,13 @@ function createFixtureBundle(input: {
   root: string;
   name: string;
   version: string;
-  minInclusive?: string;
-  maxExclusive?: string;
 }): string {
   const fixtureRoot = join(input.root, input.name);
   const bundleRoot = join(fixtureRoot, "doctor-packages");
   const repo = join(bundleRoot, "repo");
   mkdirSync(repo, { recursive: true });
   writeFileSync(join(bundleRoot, "manifest.json"), JSON.stringify({
-    schema: "doctor-packages/v1",
+    schema: "doctor-packages/v2",
     bundleVersion: "0.0.3",
     packageManager: "apt-get",
     osId: "debian",
@@ -77,11 +78,12 @@ function createFixtureBundle(input: {
     architecture: "amd64",
     packages: ["gdb"],
     packageVersions: { gdb: input.version },
-    compatibility: {
-      kernel: {
-        minInclusive: input.minInclusive,
-        maxExclusive: input.maxExclusive,
+    requirements: {
+      software: {
+        kernel: {},
+        libraries: [{ name: "libc", family: "glibc", version: { minInclusive: "2.36" } }],
       },
+      hardware: { cpu: {} },
     },
   }));
   writeFileSync(join(repo, "Packages"), "Package: gdb\n");
@@ -215,19 +217,17 @@ test("APT package epoch 优先于无 epoch 的较大首段数字", () => {
   expect(selected?.path).toBe("/gdb-17.tar");
 });
 
-test("单个 package set 按 Target kernel 选择并临时提取 GDB variant", () => {
+test("单个 package set 保留多个 GDB variant 并临时提取匹配候选", () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-package-set-"));
   const legacy = createFixtureBundle({
     root,
     name: "gdb-13",
     version: "13.1-3",
-    maxExclusive: "6.0",
   });
   const modern = createFixtureBundle({
     root,
     name: "gdb-17",
     version: "1:17.2-doctor1",
-    minInclusive: "6.0",
   });
   const setRoot = join(root, "set", "doctor-package-set");
   const variantsRoot = join(setRoot, "variants");
@@ -260,11 +260,11 @@ test("单个 package set 按 Target kernel 选择并临时提取 GDB variant", (
 
   const bundles = inspectPackageBundles(setPath);
   expect(bundles).toHaveLength(2);
-  const selectedLegacy = selectPackageBundle(bundles, aptTarget, ["gdb"]);
-  expect(selectedLegacy?.variant?.id).toBe("gdb-13");
+  expect(bundles.map((bundle) => bundle.manifest.packageVersions?.gdb).sort())
+    .toEqual(["13.1-3", "1:17.2-doctor1"]);
   const selectedModern = selectPackageBundle(
     bundles,
-    { ...aptTarget, kernelVersion: "6.12.0" },
+    aptTarget,
     ["gdb"],
   );
   expect(selectedModern?.variant?.id).toBe("gdb-17");
@@ -337,12 +337,64 @@ test("安装前探测 Target kernel，而不是使用 Doctor Host kernel", async
       return result();
     },
   };
-  const target = await kubernetesPackageInstaller.inspect(executor, "app-0", "app");
+  const target = await kubernetesPackageInstaller.inspect(
+    executor,
+    "app-0",
+    "app",
+    [{ software: { kernel: {} } }],
+  );
   expect(target).toMatchObject({
     osId: "debian",
     osVersionId: "12",
     architecture: "amd64",
     kernelVersion: "5.15.0-100-generic",
+  });
+});
+
+test("Target 默认只探测 OS/arch，并按 Toolkit 声明追加 libc 与 CPU 探测", async () => {
+  const calls: string[][] = [];
+  const executor: Executor = {
+    run: async () => result(),
+    exec: async (_target, command) => {
+      calls.push(command);
+      if (command[0] === "/usr/bin/apt-get") return result("apt 2.6");
+      if (command.includes("/etc/os-release")) return result("ID=debian\nVERSION_ID=12\n");
+      if (command.includes("--print-architecture")) return result("amd64\n");
+      if (command.includes("GNU_LIBC_VERSION")) return result("glibc 2.36\n");
+      if (command.join(" ").includes("lscpu; else")) {
+        return result([
+          "Vendor ID: GenuineIntel",
+          "CPU family: 6",
+          "Model: 85",
+          "Model name: Intel Xeon",
+          "Flags: xsave avx2",
+        ].join("\n"));
+      }
+      return result();
+    },
+  };
+  const base = await kubernetesPackageInstaller.inspect(executor, "app-0", "app");
+  expect(base).toMatchObject({ osId: "debian", architecture: "amd64" });
+  expect(calls.some((command) => command.includes("GNU_LIBC_VERSION"))).toBe(false);
+  expect(calls.some((command) => command.join(" ").includes("lscpu; else"))).toBe(false);
+
+  calls.length = 0;
+  const detailed = await kubernetesPackageInstaller.inspect(
+    executor,
+    "app-0",
+    "app",
+    [{
+      software: { libraries: [{ name: "libc", family: "glibc" }] },
+      hardware: { cpu: {} },
+    }],
+  );
+  expect(detailed?.libraries?.libc).toMatchObject({ family: "glibc", version: "2.36" });
+  expect(detailed?.cpu).toMatchObject({
+    vendor: "GenuineIntel",
+    family: "6",
+    modelId: "85",
+    model: "Intel Xeon",
+    flags: ["xsave", "avx2"],
   });
 });
 

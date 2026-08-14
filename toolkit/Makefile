@@ -7,7 +7,7 @@ DIST_DIR ?= dist
 STAGE_ROOT ?=
 DOCTOR_DEBUG_IMAGE ?= doctor-debug
 DOCTOR_DEBUG_BASE_IMAGE ?= alpine:3.22.5
-DOCTOR_GDB_VERSION ?= 17.2
+INCLUDE_DEBUG_IMAGE ?= false
 DOCTOR_GDB_BUILD_JOBS ?= 8
 
 SUPPORTED_PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
@@ -31,7 +31,9 @@ bump-version:
 
 stage-platform: stage-tools
 	@if [ "$(OS)" = linux ]; then \
-		$(MAKE) --no-print-directory stage-debug-image OS="$(OS)" ARCH="$(ARCH)" STAGE_ROOT="$(STAGE_ROOT)"; \
+		if [ "$(INCLUDE_DEBUG_IMAGE)" = true ]; then \
+			$(MAKE) --no-print-directory stage-debug-image OS="$(OS)" ARCH="$(ARCH)" STAGE_ROOT="$(STAGE_ROOT)"; \
+		fi; \
 		$(MAKE) --no-print-directory stage-packages OS="$(OS)" ARCH="$(ARCH)" STAGE_ROOT="$(STAGE_ROOT)"; \
 	fi
 
@@ -68,9 +70,9 @@ stage-debug-image:
 stage-packages:
 	@test "$(OS)" = linux || { echo "offline packages only support linux" >&2; exit 1; }
 	@mkdir -p "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/packages"
-	DOCTOR_TOOLKIT_VERSION="$(TOOLKIT_VERSION)" DOCTOR_GDB_VERSION="$(DOCTOR_GDB_VERSION)" \
+	DOCTOR_TOOLKIT_VERSION="$(TOOLKIT_VERSION)" \
 		DOCTOR_GDB_BUILD_JOBS="$(DOCTOR_GDB_BUILD_JOBS)" \
-		bash scripts/build-package-bundle.sh "$(ARCH)" "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/packages"
+		bash scripts/build-package-set.sh "$(ARCH)" "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/packages"
 
 clean:
 	rm -rf "$(DIST_DIR)"

@@ -8,6 +8,7 @@ shift 3
 packages=("$@")
 kernel_min="${DOCTOR_KERNEL_MIN_INCLUSIVE:-}"
 kernel_max="${DOCTOR_KERNEL_MAX_EXCLUSIVE:-}"
+glibc_min="${DOCTOR_GLIBC_MIN_INCLUSIVE:-2.36}"
 
 if [[ ! "$architecture" =~ ^(amd64|arm64)$ ]]; then
   echo "unsupported Debian bundle architecture: $architecture" >&2
@@ -61,7 +62,7 @@ mkdir -p /work/doctor-packages/repo /out
 )
 
 {
-  printf '{"schema":"doctor-packages/v1","bundleVersion":"%s","packageManager":"apt-get"' \
+  printf '{"schema":"doctor-packages/v2","bundleVersion":"%s","packageManager":"apt-get"' \
     "$bundle_version"
   printf ',"osId":"debian","osVersionId":"%s","architecture":"%s","packages":[' \
     "$debian_version" "$architecture"
@@ -86,18 +87,19 @@ mkdir -p /work/doctor-packages/repo /out
     separator=","
   done
   printf '}'
-  if [[ -n "$kernel_min" || -n "$kernel_max" ]]; then
-    printf ',"compatibility":{"kernel":{'
-    separator=""
-    if [[ -n "$kernel_min" ]]; then
-      printf '"minInclusive":"%s"' "$kernel_min"
-      separator=","
-    fi
-    if [[ -n "$kernel_max" ]]; then
-      printf '%s"maxExclusive":"%s"' "$separator" "$kernel_max"
-    fi
-    printf '}}'
+  printf ',"requirements":{"software":{"os":{"ids":["debian"]},"kernel":{'
+  separator=""
+  if [[ -n "$kernel_min" ]]; then
+    printf '"minInclusive":"%s"' "$kernel_min"
+    separator=","
   fi
+  if [[ -n "$kernel_max" ]]; then
+    printf '%s"maxExclusive":"%s"' "$separator" "$kernel_max"
+  fi
+  printf '},"libraries":[{"name":"libc","family":"glibc","version":{"minInclusive":"%s"}}]}' \
+    "$glibc_min"
+  # CPU identity is part of compatibility evidence even before a release has a static model gate.
+  printf ',"hardware":{"cpu":{}}}'
   printf '}\n'
 } > /work/doctor-packages/manifest.json
 

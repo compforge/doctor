@@ -1,5 +1,6 @@
 import {
   onlineInstallCommands,
+  packageBundleRequirements,
   type PackageBundle,
   type PackageTargetFact,
 } from "../../infra/target/package-install";
@@ -28,7 +29,7 @@ export function buildInstallPlan(input: {
       reason: "已指定 --tar，但没有解析到匹配 Target 的离线包",
     };
   }
-  if (input.bundle && (input.explicitBundle || input.bundle.manifest.compatibility?.kernel)) {
+  if (input.bundle && (input.explicitBundle || packageBundleRequirements(input.bundle)?.software?.kernel)) {
     return {
       kind: "offline",
       target: input.target,

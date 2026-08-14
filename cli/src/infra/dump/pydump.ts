@@ -1,9 +1,11 @@
 import { hostTargetFileTransfer } from "../file-transfer";
 import { failReason } from "../k8s/result";
 import {
+  bundlePlatformMatches,
   discoverPackageBundles,
+  matchingPackageBundles,
+  packageBundleRequirements,
   packageInstaller,
-  selectPackageBundle,
 } from "../target/package-install";
 import { debugEngine } from "../target/debug";
 import {
@@ -159,17 +161,26 @@ async function selectPydumpLoader(
   let recommendedGdbVersion: string | undefined;
   if (!gdb.available || !gdb.inferiorCall) {
     try {
-      const target = await packageInstaller.inspect(
+      const candidates = discoverPackageBundles(process.cwd());
+      let target = await packageInstaller.inspect(
         context.executor,
         execution.target.pod,
         execution.container,
       );
       if (target) {
-        recommendedGdbVersion = selectPackageBundle(
-          discoverPackageBundles(process.cwd()),
-          target,
-          ["gdb"],
-        )?.manifest.packageVersions?.gdb;
+        const requirements = candidates
+          .filter((candidate) => bundlePlatformMatches(candidate, target!, ["gdb"]))
+          .map(packageBundleRequirements);
+        target = await packageInstaller.inspect(
+          context.executor,
+          execution.target.pod,
+          execution.container,
+          requirements,
+        ) ?? target;
+        const current = /\d+(?:\.\d+)+/.exec(gdb.version ?? "")?.[0];
+        recommendedGdbVersion = matchingPackageBundles(candidates, target, ["gdb"])
+          .map((bundle) => bundle.manifest.packageVersions?.gdb)
+          .find((version) => !current || !version?.includes(current));
       }
     } catch {
       // GDB recommendation is advisory; loader selection must still fall back safely.
@@ -214,6 +225,12 @@ export function resolveKubernetesPydumpCaptureTools(input: {
     protocol: "pydump.capture/v1",
     runtime: { name: "cpython", version: input.pythonMinor },
     libc: { family: "glibc", version: input.targetGlibcVersion },
+    target: {
+      architecture: channel.platform.architecture,
+      libraries: {
+        libc: { family: "glibc", version: input.targetGlibcVersion },
+      },
+    },
   });
   if (resolved) {
     const minimum = resolved.bundle.compatibility?.libc?.minimumVersion;

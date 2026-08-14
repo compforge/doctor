@@ -11,10 +11,14 @@ import type {
   PackageManagerKind,
   PackageTargetFact,
 } from "./model";
+import {
+  targetRequirementsMatch,
+  type TargetRequirements,
+} from "../requirements";
 
 const TAR_BLOCK_SIZE = 512;
 const MAX_MANIFEST_BYTES = 1024 * 1024;
-const BUNDLE_SCHEMA = "doctor-packages/v1";
+const BUNDLE_SCHEMAS = new Set(["doctor-packages/v1", "doctor-packages/v2"]);
 const MANIFEST_PATH = "doctor-packages/manifest.json";
 const PACKAGE_MANAGERS = new Set<PackageManagerKind>([
   "apk",
@@ -23,6 +27,88 @@ const PACKAGE_MANAGERS = new Set<PackageManagerKind>([
   "microdnf",
   "yum",
 ]);
+
+function validateKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) throw new Error(`${label} 包含未知字段：${unknown.join(", ")}`);
+}
+
+function validateRange(value: unknown, label: string): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} 无效`);
+  }
+  const range = value as Record<string, unknown>;
+  validateKeys(range, ["minInclusive", "maxExclusive"], label);
+  const valid = ["minInclusive", "maxExclusive"].every((field) => {
+    const item = range[field];
+    return item === undefined || (typeof item === "string" && Boolean(item));
+  });
+  if (!valid) {
+    throw new Error(`${label} 无效`);
+  }
+}
+
+function validateRequirements(value: Record<string, unknown>): void {
+  validateKeys(value, ["software", "hardware"], "bundle manifest requirements");
+  const software = value.software as Record<string, unknown> | undefined;
+  const hardware = value.hardware as Record<string, unknown> | undefined;
+  if (software !== undefined) {
+    if (!software || typeof software !== "object" || Array.isArray(software)) {
+      throw new Error("bundle manifest requirements.software 无效");
+    }
+    validateKeys(software, ["os", "kernel", "libraries"], "bundle manifest requirements.software");
+    if (software.os !== undefined) {
+      if (!software.os || typeof software.os !== "object" || Array.isArray(software.os)) {
+        throw new Error("bundle manifest requirements.software.os 无效");
+      }
+      const os = software.os as Record<string, unknown>;
+      validateKeys(os, ["ids", "version"], "bundle manifest requirements.software.os");
+      if (os.version !== undefined) validateRange(os.version, "bundle manifest OS version");
+      if (os.ids !== undefined && (!Array.isArray(os.ids)
+        || !os.ids.every((item) => typeof item === "string" && item.trim()))) {
+        throw new Error("bundle manifest requirements.software.os.ids 无效");
+      }
+    }
+    if (software.kernel !== undefined) validateRange(software.kernel, "bundle manifest kernel");
+    if (software.libraries !== undefined && (!Array.isArray(software.libraries)
+      || !software.libraries.every((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+        const library = item as Record<string, unknown>;
+        validateKeys(library, ["name", "family", "version"], "bundle manifest library");
+        if (library.version !== undefined) validateRange(library.version, "bundle manifest library version");
+        return typeof library.name === "string" && Boolean(library.name.trim())
+          && (library.family === undefined
+            || (typeof library.family === "string" && Boolean(library.family.trim())));
+      }))) {
+      throw new Error("bundle manifest requirements.software.libraries 无效");
+    }
+  }
+  if (hardware !== undefined) {
+    if (!hardware || typeof hardware !== "object" || Array.isArray(hardware)) {
+      throw new Error("bundle manifest requirements.hardware 无效");
+    }
+    validateKeys(hardware, ["cpu"], "bundle manifest requirements.hardware");
+    if (hardware.cpu !== undefined) {
+      if (!hardware.cpu || typeof hardware.cpu !== "object" || Array.isArray(hardware.cpu)) {
+        throw new Error("bundle manifest requirements.hardware.cpu 无效");
+      }
+      const cpu = hardware.cpu as Record<string, unknown>;
+      validateKeys(cpu, ["vendors", "families", "models", "features"], "bundle manifest cpu");
+      const valid = ["vendors", "families", "models", "features"].every((field) => {
+        const items = cpu[field];
+        return items === undefined || (Array.isArray(items)
+          && items.every((item) => typeof item === "string" && Boolean(item.trim())));
+      });
+      if (!valid) {
+        throw new Error("bundle manifest requirements.hardware.cpu 无效");
+      }
+    }
+  }
+}
 
 function tarString(buffer: Buffer, start: number, length: number): string {
   const end = buffer.indexOf(0, start);
@@ -87,7 +173,7 @@ function readBundleManifest(path: string): string {
 
 export function parsePackageBundleManifest(raw: string): PackageBundleManifest {
   const parsed = JSON.parse(raw) as Record<string, unknown>;
-  if (parsed.schema !== BUNDLE_SCHEMA) {
+  if (!BUNDLE_SCHEMAS.has(parsed.schema as string)) {
     throw new Error(`不支持的 bundle schema：${String(parsed.schema)}`);
   }
   if (!PACKAGE_MANAGERS.has(parsed.packageManager as PackageManagerKind)) {
@@ -139,6 +225,13 @@ export function parsePackageBundleManifest(raw: string): PackageBundleManifest {
   ) {
     throw new Error("bundle manifest compatibility.kernel 无效");
   }
+  if (parsed.schema === "doctor-packages/v2") {
+    if (!parsed.requirements || typeof parsed.requirements !== "object"
+      || Array.isArray(parsed.requirements)) {
+      throw new Error("bundle manifest 缺少 requirements");
+    }
+    validateRequirements(parsed.requirements as Record<string, unknown>);
+  }
   return parsed as unknown as PackageBundleManifest;
 }
 
@@ -159,36 +252,25 @@ function versionMatches(expected: string, actual: string | undefined): boolean {
   return expected === actual || expected.split(".")[0] === actual.split(".")[0];
 }
 
-function compareLinuxVersions(left: string, right: string): number {
-  const parse = (value: string) => value
-    .split(/[.-]/)
-    .map((part) => Number.parseInt(part, 10))
-    .map((part) => Number.isFinite(part) ? part : 0);
-  const leftParts = parse(left);
-  const rightParts = parse(right);
-  for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
-    const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
-    if (difference !== 0) return difference < 0 ? -1 : 1;
-  }
-  return 0;
-}
-
-function kernelMatches(bundle: PackageBundle, target: PackageTargetFact): boolean {
-  const range = bundle.manifest.compatibility?.kernel;
-  if (!range) return true;
-  if (!target.kernelVersion) return false;
-  if (
-    range.minInclusive
-    && compareLinuxVersions(target.kernelVersion, range.minInclusive) < 0
-  ) return false;
-  if (
-    range.maxExclusive
-    && compareLinuxVersions(target.kernelVersion, range.maxExclusive) >= 0
-  ) return false;
-  return true;
+export function packageBundleRequirements(bundle: PackageBundle): TargetRequirements | undefined {
+  if (bundle.manifest.requirements) return bundle.manifest.requirements;
+  const kernel = bundle.manifest.compatibility?.kernel;
+  return kernel ? { software: { kernel } } : undefined;
 }
 
 export function bundleMatches(
+  bundle: PackageBundle,
+  target: PackageTargetFact,
+  packages: readonly string[],
+): boolean {
+  return bundlePlatformMatches(bundle, target, packages)
+    && targetRequirementsMatch(packageBundleRequirements(bundle), {
+      ...target,
+      cpu: target.cpu ? { ...target.cpu, features: target.cpu.flags } : undefined,
+    });
+}
+
+export function bundlePlatformMatches(
   bundle: PackageBundle,
   target: PackageTargetFact,
   packages: readonly string[],
@@ -198,8 +280,7 @@ export function bundleMatches(
     && manifest.osId === target.osId
     && versionMatches(manifest.osVersionId, target.osVersionId)
     && manifest.architecture === target.architecture
-    && packages.every((name) => manifest.packages.includes(name))
-    && kernelMatches(bundle, target);
+    && packages.every((name) => manifest.packages.includes(name));
 }
 
 function comparePackageVersions(left: string | undefined, right: string | undefined): number {
@@ -224,13 +305,21 @@ export function selectPackageBundle(
   packages: readonly string[],
 ): PackageBundle | undefined {
   // Platform/kernel compatibility is a hard gate; versions only rank surviving candidates.
+  return matchingPackageBundles(bundles, target, packages)[0];
+}
+
+export function matchingPackageBundles(
+  bundles: readonly PackageBundle[],
+  target: PackageTargetFact,
+  packages: readonly string[],
+): PackageBundle[] {
   return bundles
     .filter((bundle) => bundleMatches(bundle, target, packages))
     .sort((left, right) => {
-      const leftKernelSpecific = left.manifest.compatibility?.kernel ? 1 : 0;
-      const rightKernelSpecific = right.manifest.compatibility?.kernel ? 1 : 0;
-      if (leftKernelSpecific !== rightKernelSpecific) {
-        return rightKernelSpecific - leftKernelSpecific;
+      const leftSpecific = packageBundleRequirements(left) ? 1 : 0;
+      const rightSpecific = packageBundleRequirements(right) ? 1 : 0;
+      if (leftSpecific !== rightSpecific) {
+        return rightSpecific - leftSpecific;
       }
       for (const name of packages) {
         const difference = comparePackageVersions(
@@ -243,5 +332,5 @@ export function selectPackageBundle(
         right.manifest.bundleVersion,
         left.manifest.bundleVersion,
       );
-    })[0];
+    });
 }

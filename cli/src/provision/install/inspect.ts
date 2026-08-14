@@ -5,6 +5,7 @@ import type { Executor } from "../../infra/k8s/executor";
 import {
   discoverPackageBundles,
   inspectPackageBundles,
+  packageBundleRequirements,
   selectPackageBundle,
   type PackageBundle,
   type PackageTargetFact,
@@ -76,7 +77,7 @@ export function inspectInstallBundleCandidates(
 
 export function bundleDescription(bundle: PackageBundle): string {
   const version = bundle.manifest.packageVersions?.gdb;
-  const kernel = bundle.manifest.compatibility?.kernel;
+  const kernel = packageBundleRequirements(bundle)?.software?.kernel;
   const range = kernel
     ? [
         kernel.minInclusive ? `>=${kernel.minInclusive}` : undefined,

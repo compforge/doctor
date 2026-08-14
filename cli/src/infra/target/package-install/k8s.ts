@@ -9,6 +9,10 @@ import type {
   TargetPythonFact,
   TargetSecurityFact,
 } from "./model";
+import {
+  requiredTargetProbes,
+  type TargetRequirements,
+} from "../requirements";
 
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
 const MANAGERS: Array<{ kind: PackageManagerKind; paths: string[] }> = [
@@ -145,6 +149,9 @@ async function inspectCpu(
   }
   const flags = values.get("flags") ?? values.get("features");
   return {
+    vendor: values.get("vendor id") ?? values.get("cpu implementer"),
+    family: values.get("cpu family") ?? values.get("cpu architecture"),
+    modelId: values.get("model"),
     model: values.get("model name")
       ?? values.get("model")
       ?? values.get("hardware")
@@ -187,33 +194,31 @@ async function inspectTarget(
   executor: Executor,
   pod: string,
   container: string,
+  requirements: readonly (TargetRequirements | undefined)[] = [],
+  options: { transfer?: boolean; diagnostics?: boolean } = {},
 ): Promise<PackageTargetFact | undefined> {
   const target = { pod, container };
   const manager = await detectManager(executor, target);
   if (!manager) return undefined;
-  const [
-    os,
-    architecture,
-    kernelVersion,
-    kernelMachine,
-    kernelBuild,
-    libc,
-    python,
-    cpu,
-    security,
-    tarAvailable,
-  ] = await Promise.all([
+  const probes = requiredTargetProbes(requirements);
+  const [os, architecture] = await Promise.all([
     readOsRelease(executor, target),
     inspectArchitecture(executor, target, manager),
-    inspectKernelVersion(executor, target),
-    inspectCommandValue(executor, target, ["uname", "-m"]),
-    inspectCommandValue(executor, target, ["uname", "-v"]),
-    inspectLibc(executor, target),
-    inspectPython(executor, target),
-    inspectCpu(executor, target),
-    inspectSecurity(executor, target),
-    commandAvailable(executor, target, ["/bin/tar", "--version"]),
   ]);
+  const needsLibc = probes.libraries.includes("libc");
+  const [kernelVersion, kernelMachine, kernelBuild, libc, python, cpu, security, tarAvailable] =
+    await Promise.all([
+      probes.kernel || options.diagnostics ? inspectKernelVersion(executor, target) : undefined,
+      options.diagnostics ? inspectCommandValue(executor, target, ["uname", "-m"]) : undefined,
+      options.diagnostics ? inspectCommandValue(executor, target, ["uname", "-v"]) : undefined,
+      needsLibc || options.diagnostics ? inspectLibc(executor, target) : undefined,
+      options.transfer || options.diagnostics ? inspectPython(executor, target) : undefined,
+      probes.cpu || options.diagnostics ? inspectCpu(executor, target) : undefined,
+      options.diagnostics ? inspectSecurity(executor, target) : undefined,
+      options.transfer
+        ? commandAvailable(executor, target, ["/bin/tar", "--version"])
+        : false,
+    ]);
   return {
     manager,
     osId: os.id,
@@ -224,6 +229,7 @@ async function inspectTarget(
     kernelMachine,
     kernelBuild,
     libc,
+    libraries: libc ? { libc } : undefined,
     python,
     cpu,
     security,

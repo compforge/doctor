@@ -21,6 +21,8 @@ const output = resolve(outputArg);
 const PYDUMP_CAPTURE_VERSION = "0.2.0";
 const PYDUMP_ANALYSIS_VERSION = "0.1.0";
 const FORK_PYHEAP_VERSION = "0.7.0+doctor.2";
+const REGCTL_VERSION = "0.11.5";
+const PY_SPY_VERSION = "0.4.2";
 const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
@@ -44,16 +46,77 @@ async function sha256(path: string): Promise<string> {
   return hash.digest("hex");
 }
 
-async function resource(path: string, id: string) {
+interface ResourceDeclaration {
+  id: string;
+  version: string;
+  requirements: {
+    software?: {
+      os?: {
+        ids?: string[];
+        version?: { minInclusive?: string; maxExclusive?: string };
+      };
+      kernel?: { minInclusive?: string; maxExclusive?: string };
+      libraries?: Array<{
+        name: string;
+        family?: string;
+        version?: { minInclusive?: string; maxExclusive?: string };
+      }>;
+    };
+    hardware?: {
+      cpu?: {
+        vendors?: string[];
+        families?: string[];
+        models?: string[];
+        features?: string[];
+      };
+    };
+  };
+}
+
+function toolDeclaration(name: string): ResourceDeclaration | undefined {
+  const id = toolId(name);
+  if (!id) return undefined;
+  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(id);
+  if (agent) {
+    return {
+      id,
+      version: PYDUMP_CAPTURE_VERSION,
+      requirements: {
+        software: {
+          libraries: [{
+            name: "libc",
+            family: "glibc",
+            version: { minInclusive: agent[2] },
+          }],
+        },
+      },
+    };
+  }
+  const versions: Record<string, string> = {
+    regctl: REGCTL_VERSION,
+    "doctor-pcap": version,
+    "fork-pyheap-dumper": FORK_PYHEAP_VERSION,
+    "pydump-collector": PYDUMP_CAPTURE_VERSION,
+    "pydump-loader": PYDUMP_CAPTURE_VERSION,
+    "pydump-analyzer": PYDUMP_ANALYSIS_VERSION,
+    "py-spy": PY_SPY_VERSION,
+  };
+  return { id, version: versions[id]!, requirements: {} };
+}
+
+async function resource(path: string, declaration: ResourceDeclaration) {
   return {
-    id,
+    ...declaration,
     path: relative(stage, path).replaceAll("\\", "/"),
     sha256: await sha256(path),
     size: statSync(path).size,
   };
 }
 
-async function listResources(directory: string, ids: Record<string, string>) {
+async function listResources(
+  directory: string,
+  declaration: (name: string) => ResourceDeclaration,
+) {
   let entries;
   try {
     entries = readdirSync(directory, { withFileTypes: true });
@@ -62,7 +125,7 @@ async function listResources(directory: string, ids: Record<string, string>) {
   }
   const resources = [];
   for (const item of entries.filter((entry) => entry.isFile())) {
-    resources.push(await resource(join(directory, item.name), ids[item.name] ?? item.name));
+    resources.push(await resource(join(directory, item.name), declaration(item.name)));
   }
   return resources.sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -77,20 +140,26 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
   const tools = [];
   for (const item of readdirSync(binRoot, { withFileTypes: true })) {
     if (!item.isFile()) continue;
-    const id = toolId(item.name);
-    if (!id) throw new Error(`unknown toolkit tool: ${item.name}`);
+    const declaration = toolDeclaration(item.name);
+    if (!declaration) throw new Error(`unknown toolkit tool: ${item.name}`);
     const path = join(binRoot, item.name);
     chmodSync(path, 0o755);
-    tools.push(await resource(path, id));
+    tools.push(await resource(path, declaration));
   }
   const toolIds = new Set(tools.map((tool) => tool.id));
+  const component = (role: string, resourceId: string) => ({
+    role,
+    kind: "tool",
+    resourceId,
+    resourceVersion: tools.find((tool) => tool.id === resourceId)!.version,
+  });
   const bundles = [];
   if (toolIds.has("pydump-analyzer")) {
     bundles.push({
       id: "pydump-analysis",
       protocol: "pydump.analysis/v1",
       version: PYDUMP_ANALYSIS_VERSION,
-      components: [{ role: "analyzer", kind: "tool", resourceId: "pydump-analyzer" }],
+      components: [component("analyzer", "pydump-analyzer")],
     });
   }
   if (toolIds.has("fork-pyheap-dumper")) {
@@ -98,7 +167,7 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
       id: "pyheap-capture",
       protocol: "fork-pyheap.capture/v1",
       version: FORK_PYHEAP_VERSION,
-      components: [{ role: "dumper", kind: "tool", resourceId: "fork-pyheap-dumper" }],
+      components: [component("dumper", "fork-pyheap-dumper")],
     });
   }
   for (const tool of tools) {
@@ -116,9 +185,9 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
         libc: { family: "glibc", minimumVersion: agent[2] },
       },
       components: [
-        { role: "collector", kind: "tool", resourceId: "pydump-collector" },
-        { role: "loader", kind: "tool", resourceId: "pydump-loader" },
-        { role: "agent", kind: "tool", resourceId: tool.id },
+        component("collector", "pydump-collector"),
+        component("loader", "pydump-loader"),
+        component("agent", tool.id),
       ],
     });
   }
@@ -135,10 +204,16 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
     os: match[1],
     architecture: match[2],
     tools: tools.sort((left, right) => left.id.localeCompare(right.id)),
-    images: await listResources(join(platformRoot, "images"), {
-      "doctor-debug.tar": "doctor-debug",
+    images: await listResources(join(platformRoot, "images"), (name) => {
+      if (name !== "doctor-debug.tar") throw new Error(`unknown toolkit image: ${name}`);
+      return { id: "doctor-debug", version, requirements: {} };
     }),
-    packages: await listResources(join(platformRoot, "packages"), {}),
+    packages: await listResources(join(platformRoot, "packages"), (name) => ({
+      id: name,
+      version,
+      // Package-set variants carry their own execution requirements.
+      requirements: {},
+    })),
     bundles,
   });
 }
@@ -146,7 +221,7 @@ platforms.sort((left, right) =>
   `${left.os}/${left.architecture}`.localeCompare(`${right.os}/${right.architecture}`));
 
 writeFileSync(join(root, "manifest.json"), `${JSON.stringify({
-  schema: "doctor.toolkit/v2",
+  schema: "doctor.toolkit/v3",
   version,
   platforms,
 }, null, 2)}\n`);
