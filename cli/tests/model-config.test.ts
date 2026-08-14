@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
   buildModelTestRequest,
   makeModelInferenceProbe,
-  validateModelTestResponse,
 } from "../src/collect/model";
 import {
   isMultimodalModel,
@@ -49,26 +48,6 @@ describe("doctor model multimodal inference", () => {
       }],
       stream: false,
     });
-  });
-
-  test("verifies that a successful response actually recognized the image", () => {
-    const response = {
-      ok: true,
-      statusCode: 200,
-      statusText: "OK",
-      headers: { "content-type": "application/json" },
-      text: '{"choices":[{"message":{"content":"RED"}}]}',
-      durationMs: 10,
-    };
-    expect(validateModelTestResponse(imageModel, response)).toBeUndefined();
-    expect(validateModelTestResponse(imageModel, {
-      ...response,
-      text: '{"choices":[{"message":{"content":"I cannot see an image"}}]}',
-    })).toContain("未正确识别红色方块");
-    expect(validateModelTestResponse(textModel, {
-      ...response,
-      text: "not json",
-    })).toBeUndefined();
   });
 
   test("keeps the existing text-only connectivity request", () => {

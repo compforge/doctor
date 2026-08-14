@@ -1,5 +1,4 @@
 import type { ModelType } from "@compforge/doctor-plugin";
-import type { ServiceHttpResponse } from "../../infra/http";
 import type { SelectedInferenceModel } from "../../model";
 import { promptListedChoice } from "../../terminal/selection";
 import type { ModelTestRequest } from "./model";
@@ -82,7 +81,7 @@ export function buildModelTestRequest(model: SelectedInferenceModel): ModelTestR
           content: model.inputModalities?.includes("image")
             ? [{
                 type: "text",
-                text: "What color is the square in this image? Reply with exactly RED.",
+                text: "What color is the square in this image? Reply with the color only.",
               }, {
                 type: "image_url",
                 image_url: { url: MODEL_IMAGE_TEST_DATA_URL },
@@ -111,28 +110,4 @@ export function buildModelTestRequest(model: SelectedInferenceModel): ModelTestR
     };
   }
   throw new Error("doctor model 暂不支持 audio inference");
-}
-
-export function validateModelTestResponse(
-  model: SelectedInferenceModel,
-  response: ServiceHttpResponse,
-): string | undefined {
-  if (!model.inputModalities?.includes("image") || !response.ok) return undefined;
-  let content: unknown;
-  try {
-    const payload = JSON.parse(response.text) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
-    };
-    content = payload.choices?.[0]?.message?.content;
-  } catch {
-    return "内置图片测试响应不是有效的 OpenAI chat completions JSON";
-  }
-  if (typeof content !== "string") {
-    return "内置图片测试响应缺少 choices[0].message.content";
-  }
-  if (content.trim().toUpperCase() !== "RED") {
-    const summary = content.trim().replaceAll(/\s+/g, " ").slice(0, 80) || "empty";
-    return `内置图片测试未正确识别红色方块：模型返回 '${summary}'`;
-  }
-  return undefined;
 }

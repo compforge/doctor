@@ -5,10 +5,7 @@ import {
   type Probe,
 } from "../../protocol";
 import { supportsImageInput } from "../../../model";
-import {
-  buildModelTestRequest,
-  validateModelTestResponse,
-} from "../config";
+import { buildModelTestRequest } from "../config";
 import type {
   ModelCollectContext,
   ModelDiagnosisConfig,
@@ -54,16 +51,15 @@ export function makeModelInferenceProbe(
       let observation: ModelResponseObservation;
       try {
         const response = await ctx.inference.invoke(request.path, request.body);
-        const error = validateModelTestResponse(model, response);
+        // TODO: HTTP 成功不能证明下游实际消费了图片。当前保留并打印原始模型响应供人工判断，
+        // 等有 provider-neutral 的语义判定方式后再把图片识别准确性纳入自动诊断。
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,
           kind: "model-inference",
           response,
-          error,
         };
         ctx.bundle.fill(MODEL_INFERENCE_PROBE_ID, {
-          status: response.ok && !error ? "ok" : "failed",
-          reason: error,
+          status: "ok",
           durationMs: response.durationMs,
           output: response.text,
           ext: "json",

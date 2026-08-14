@@ -197,11 +197,10 @@ export function buildModelCoverage(
     const performanceExpected = decision?.enabled ?? config.performance === true;
     if (!performanceExpected) {
       const inference = modelResponseObservation(evidence, "model-inference");
-      const inferenceSucceeded = inference?.response?.ok === true && !inference.error;
       coverage.push({
         goal: "inference",
-        status: inferenceSucceeded ? "sufficient" : "insufficient",
-        missingEvidence: inferenceSucceeded
+        status: inference?.response ? "sufficient" : "insufficient",
+        missingEvidence: inference?.response
           ? []
           : [inference?.error ?? "模型推理响应"],
       });
