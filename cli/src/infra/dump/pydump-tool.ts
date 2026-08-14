@@ -39,6 +39,8 @@ export interface PydumpPrereqs {
   loader: boolean;
 }
 
+export type PydumpLoaderKind = "gdb" | "ptrace";
+
 export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
   const entries = new Map(
     output
@@ -240,6 +242,7 @@ export function runPydumpDumpCmd(
   strReprLen: number,
   agentPath: string,
   loaderPath: string,
+  loaderKind: PydumpLoaderKind,
   noAttribute = false,
   collectorPath = PYDUMP_COLLECTOR_PATH,
 ): string[] {
@@ -248,7 +251,7 @@ export function runPydumpDumpCmd(
     "-c",
     `mkdir -p ${PYDUMP_TOOL_DIR} && TMPDIR=${PYDUMP_TOOL_DIR} `
     + `${collectorPath} --pid ${pid} --file ${heapFile} --agent ${agentPath} `
-    + `--loader auto --pydump-loader ${loaderPath} --str-repr-len ${strReprLen}`
+    + `--loader ${loaderKind} --pydump-loader ${loaderPath} --str-repr-len ${strReprLen}`
     + (noAttribute ? " --no-attribute" : ""),
   ];
 }

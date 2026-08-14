@@ -1,4 +1,9 @@
-export { pydumpBackend, resolveHostPydumpAnalyzer, resolveKubernetesPydumpCaptureTools } from "./pydump";
+export {
+  choosePydumpLoader,
+  pydumpBackend,
+  resolveHostPydumpAnalyzer,
+  resolveKubernetesPydumpCaptureTools,
+} from "./pydump";
 export { pyheapBackend, resolveKubernetesPyHeapDumper } from "./pyheap";
 export {
   compressFileCmd,

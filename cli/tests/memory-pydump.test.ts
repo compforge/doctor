@@ -29,6 +29,7 @@ import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor
 import {
   parsePydumpPrereqs,
   parsePydumpTargetLibc,
+  choosePydumpLoader,
   pydumpBackend,
   resolveHostPydumpAnalyzer,
   resolveKubernetesPydumpCaptureTools,
@@ -186,16 +187,97 @@ describe("doctor mem Pydump capture contract", () => {
     )).toBeUndefined();
   });
 
-  test("lets Pydump auto-select GDB or the prepared pydump-loader", () => {
+  test("passes the preselected loader to Pydump", () => {
     expect(runPydumpDumpCmd(
       12,
       "/tmp/doctor-pydump/heap.pyheap",
       -1,
       "/tmp/doctor-pydump/agent.so",
       "/tmp/doctor-pydump/pydump-loader",
+      "ptrace",
     ).at(-1)).toContain(
-      "--loader auto --pydump-loader /tmp/doctor-pydump/pydump-loader",
+      "--loader ptrace --pydump-loader /tmp/doctor-pydump/pydump-loader",
     );
+    expect(runPydumpDumpCmd(
+      12,
+      "/tmp/doctor-pydump/heap.pyheap",
+      -1,
+      "/tmp/doctor-pydump/agent.so",
+      "/tmp/doctor-pydump/pydump-loader",
+      "gdb",
+    ).at(-1)).toContain("--loader gdb");
+  });
+
+  test("uses GDB only after its disposable inferior call passes", () => {
+    expect(choosePydumpLoader({
+      available: true,
+      pythonScripting: false,
+      inferiorCall: true,
+      version: "16.3",
+    })).toMatchObject({ kind: "gdb" });
+    const fallback = choosePydumpLoader({
+      available: true,
+      pythonScripting: false,
+      inferiorCall: false,
+      version: "13.1",
+      reason: "gdb 无法调用调试进程函数：Couldn't write extended state status: Bad address.",
+    }, "1:17.2-doctor1");
+    expect(fallback).toMatchObject({
+      kind: "ptrace",
+      recommendedGdbVersion: "1:17.2-doctor1",
+    });
+    expect(fallback.summary).toContain("GDB 13.1");
+    expect(fallback.summary).toContain("推荐安装 GDB 1:17.2-doctor1");
+    expect(fallback.summary).toContain("本次使用 pydump-loader");
+  });
+
+  test("preselects pydump-loader before the production dump when GDB probing fails", async () => {
+    const observations: Array<{ id: string; output?: string }> = [];
+    const executor: Executor = {
+      run: async () => execResult(),
+      exec: async (_target, command) => {
+        if (command[0] === "gdb" && command[1] === "--version") {
+          return execResult("GNU gdb 13.1\n");
+        }
+        if (command[0] === "gdb") return execResult("DOCTOR_GDB_PYTHON_OK\n");
+        if (command[0] === "sh" && command[2]?.includes("inferior_pid")) {
+          return {
+            ...execResult("", false),
+            stderr: "Couldn't write extended state status: Bad address.\n",
+          };
+        }
+        return execResult("", false);
+      },
+    };
+    const prepared = await pydumpBackend.prepare({
+      executor,
+      pod: "app-0",
+      podJson,
+      targetContainer: captureParams().container,
+      pid: 12,
+      observe: (observation) => observations.push(observation),
+      verifyPtrace: async () => undefined,
+    }, {
+      strategy: "debug-container",
+      target: { pod: "app-0", container: "doctor-debug" },
+      container: "doctor-debug",
+      label: "app-0/doctor-debug",
+      collectorPath: "/opt/doctor/bin/pydump",
+      loaderPath: "/opt/doctor/bin/pydump-loader",
+    }, {
+      source: "execution-image",
+      pythonMinor: "3.12",
+      architecture: "x86_64",
+      targetLibc: { family: "glibc", version: "2.31" },
+      existingAgent: {
+        path: "/opt/doctor/lib/pydump/agent.so",
+        minimumGlibcVersion: "2.17",
+      },
+    });
+    expect("value" in prepared && prepared.value.state.loaderKind).toBe("ptrace");
+    expect("value" in prepared && prepared.value.summary?.at(-1)).toContain("GDB 13.1");
+    expect(observations.find((item) => item.id === "mem-pydump-loader-selection")?.output)
+      .toContain('"selected": "ptrace"');
   });
 
   test("materializes the standalone Toolkit analyzer", () => {
@@ -440,7 +522,7 @@ describe("doctor mem Pydump capture contract", () => {
     expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
-  test("delegates loader selection to Pydump after verifying ptrace capability", async () => {
+  test("does not probe GDB before attach confirmation", async () => {
     let ptraceAttempted = false;
     let gdbAttempted = false;
     let confirmationAsked = false;

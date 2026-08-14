@@ -1,6 +1,12 @@
 import { hostTargetFileTransfer } from "../file-transfer";
 import { failReason } from "../k8s/result";
 import {
+  discoverPackageBundles,
+  packageInstaller,
+  selectPackageBundle,
+} from "../target/package-install";
+import { debugEngine } from "../target/debug";
+import {
   discoverDevelopmentPydumpAgents,
   hostProcessToolkitChannel,
   kubernetesToolkitChannel,
@@ -25,6 +31,7 @@ import {
   selectPydumpAgentFromInventory,
   targetLibcCmd,
   targetPythonMinorCmd,
+  type PydumpLoaderKind,
   type PydumpTargetLibc,
 } from "./pydump-tool";
 import type {
@@ -33,7 +40,7 @@ import type {
   HeapDumpBackendResult,
   HeapDumpExecution,
 } from "./model";
-import type { DebugEnvironmentFact } from "../target/debug";
+import type { DebugEnvironmentFact, DebugGdbFact } from "../target/debug";
 
 const TARGET_COLLECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump`;
 const TARGET_LOADER_PATH = `${PYDUMP_TOOL_DIR}/pydump-loader`;
@@ -71,8 +78,16 @@ interface ExistingPydumpAgent {
 export interface PreparedPydumpTools {
   readonly collectorPath: string;
   readonly loaderPath: string;
+  readonly loaderKind: PydumpLoaderKind;
   readonly agentPath: string;
   readonly agentMinimumGlibcVersion: string;
+}
+
+export interface PydumpLoaderSelection {
+  readonly kind: PydumpLoaderKind;
+  readonly gdb: DebugGdbFact;
+  readonly recommendedGdbVersion?: string;
+  readonly summary: string;
 }
 
 export interface KubernetesPydumpCaptureTools {
@@ -106,6 +121,73 @@ function pydumpFailureReason(result: Parameters<typeof failReason>[0]): string {
       && line !== "Dumping finished with error",
   );
   return specificError ?? failReason(result);
+}
+
+export function choosePydumpLoader(
+  gdb: DebugGdbFact,
+  recommendedGdbVersion?: string,
+): PydumpLoaderSelection {
+  const label = gdb.available ? `GDB ${gdb.version ?? "version unknown"}` : "GDB";
+  if (gdb.available && gdb.inferiorCall) {
+    return {
+      kind: "gdb",
+      gdb,
+      summary: `[collect] ${label} disposable inferior call 探测通过；Pydump 使用 GDB`,
+    };
+  }
+  const recommendation = recommendedGdbVersion
+    ? `推荐安装 GDB ${recommendedGdbVersion}（doctor install gdb）`
+    : "推荐执行 doctor install gdb 选择与该容器匹配的版本";
+  return {
+    kind: "ptrace",
+    gdb,
+    recommendedGdbVersion,
+    summary: `[collect] ${label} disposable inferior call 探测未通过：`
+      + `${gdb.reason ?? "inferior call 验收未通过"}；${recommendation}；本次使用 pydump-loader`,
+  };
+}
+
+async function selectPydumpLoader(
+  context: HeapDumpBackendContext,
+  execution: PydumpExecution,
+): Promise<PydumpLoaderSelection> {
+  const gdb = await debugEngine.inspectGdb(
+    context.executor,
+    execution.target.pod,
+    execution.container,
+  );
+  let recommendedGdbVersion: string | undefined;
+  if (!gdb.available || !gdb.inferiorCall) {
+    try {
+      const target = await packageInstaller.inspect(
+        context.executor,
+        execution.target.pod,
+        execution.container,
+      );
+      if (target) {
+        recommendedGdbVersion = selectPackageBundle(
+          discoverPackageBundles(process.cwd()),
+          target,
+          ["gdb"],
+        )?.manifest.packageVersions?.gdb;
+      }
+    } catch {
+      // GDB recommendation is advisory; loader selection must still fall back safely.
+    }
+  }
+  const selection = choosePydumpLoader(gdb, recommendedGdbVersion);
+  context.observe({
+    id: "mem-pydump-loader-selection",
+    title: "探测 GDB 并选择 Pydump loader",
+    status: "ok",
+    output: `${JSON.stringify({
+      selected: selection.kind,
+      gdb: selection.gdb,
+      recommended_gdb_version: selection.recommendedGdbVersion,
+    }, null, 2)}\n`,
+    effect: "overhead",
+  });
+  return selection;
 }
 
 function componentPath(
@@ -353,6 +435,9 @@ async function prepare(
   summary: readonly string[];
   facts: Readonly<Record<string, unknown>>;
 }>> {
+  // Probe a disposable inferior before touching the production PID. Pydump must not switch
+  // loaders after an attach starts because a failed GDB call may have partially loaded the Agent.
+  const loader = await selectPydumpLoader(context, execution);
   if (runtime.source === "execution-image") {
     return {
       value: {
@@ -360,12 +445,14 @@ async function prepare(
         state: {
           collectorPath: execution.collectorPath,
           loaderPath: execution.loaderPath,
+          loaderKind: loader.kind,
           agentPath: runtime.existingAgent.path,
           agentMinimumGlibcVersion: runtime.existingAgent.minimumGlibcVersion,
         },
         summary: [
           `[collect] Pydump bundle：复用执行容器已有组件，Agent 最低 glibc `
             + runtime.existingAgent.minimumGlibcVersion,
+          loader.summary,
         ],
         facts: {
           pydump_bundle: {
@@ -377,6 +464,11 @@ async function prepare(
             python_minor: runtime.pythonMinor,
             architecture: runtime.architecture,
             glibc_min: runtime.existingAgent.minimumGlibcVersion,
+          },
+          pydump_loader: {
+            selected: loader.kind,
+            gdb: loader.gdb,
+            recommended_gdb_version: loader.recommendedGdbVersion,
           },
         },
       },
@@ -460,12 +552,14 @@ async function prepare(
       state: {
         collectorPath,
         loaderPath,
+        loaderKind: loader.kind,
         agentPath,
         agentMinimumGlibcVersion: tools.agentMinimumGlibcVersion,
       },
       summary: [
         `[collect] Pydump bundle：pydump.capture/v1，Agent 最低 glibc `
           + tools.agentMinimumGlibcVersion,
+        loader.summary,
       ],
       facts: {
         pydump_bundle: {
@@ -477,6 +571,11 @@ async function prepare(
           python_minor: runtime.pythonMinor,
           architecture: runtime.architecture,
           glibc_min: tools.agentMinimumGlibcVersion,
+        },
+        pydump_loader: {
+          selected: loader.kind,
+          gdb: loader.gdb,
+          recommended_gdb_version: loader.recommendedGdbVersion,
         },
       },
     },
@@ -504,6 +603,7 @@ export const pydumpBackend: HeapDumpBackend<
     strReprLen,
     prepared.agentPath,
     prepared.loaderPath,
+    prepared.loaderKind,
     noAttribute,
     prepared.collectorPath,
   ),
