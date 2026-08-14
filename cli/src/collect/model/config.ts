@@ -5,6 +5,8 @@ import type { ModelTestRequest } from "./model";
 
 const MODEL_TYPES: readonly ModelType[] = ["llm", "embedding", "rerank", "audio"];
 const MODEL_PERFORMANCE_CASES = 4;
+const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
+  + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
 
 export function parseModelType(value: string | undefined): ModelType | undefined {
   const normalized = value?.trim().toLowerCase();
@@ -74,7 +76,18 @@ export function buildModelTestRequest(model: SelectedInferenceModel): ModelTestR
       path: "/chat/completions",
       body: {
         model: id,
-        messages: [{ role: "user", content: "Reply with OK only." }],
+        messages: [{
+          role: "user",
+          content: model.inputModalities?.includes("image")
+            ? [{
+                type: "text",
+                text: "What color is the square in this image? Reply with the color only.",
+              }, {
+                type: "image_url",
+                image_url: { url: MODEL_IMAGE_TEST_DATA_URL },
+              }]
+            : "Reply with OK only.",
+        }],
         stream: false,
       },
     };

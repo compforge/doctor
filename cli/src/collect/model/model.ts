@@ -51,6 +51,7 @@ export interface ModelTargetFact {
     provider: string;
     vendor?: string;
     version?: string;
+    inputModalities?: SelectedInferenceModel["inputModalities"];
     inference: ModelInferenceTarget;
   };
 }
