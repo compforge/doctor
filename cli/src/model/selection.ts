@@ -10,11 +10,13 @@ import {
   type SearchableChoiceResolution,
 } from "../terminal/selection";
 import { promptTenantChoice } from "../terminal/tenant-selection";
+import { terminalStdout, type TerminalTone } from "../terminal/output";
 import {
   recentSelectionsForInteractive,
   type RecentSelections,
 } from "../infra/recent";
 import type { SelectedInferenceModel } from "./types";
+import { isMultimodalModel } from "./types";
 
 export async function resolveModelTenant(input: {
   tenantId?: string;
@@ -85,9 +87,19 @@ export function resolveModelPromptChoice(
   return { kind: "not-found" };
 }
 
+export function modelChoiceTone(model: Model): TerminalTone {
+  if (isMultimodalModel(model)) return "magenta";
+  if (model.type === "embedding") return "blue";
+  if (model.type === "rerank") return "warning";
+  return "info";
+}
+
 function renderModelChoice(model: Model): string {
   const vendor = model.vendor ? `/${model.vendor}` : "";
-  return `${model.name}（${model.type}，${model.provider}${vendor}，${model.id}）`;
+  return terminalStdout.style(
+    `${model.name}（${model.type}，${model.provider}${vendor}，${model.id}）`,
+    modelChoiceTone(model),
+  );
 }
 
 async function promptModel(models: readonly Model[]): Promise<Model | undefined> {

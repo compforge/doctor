@@ -5,6 +5,7 @@ import {
 } from "../src/collect/model";
 import {
   isMultimodalModel,
+  modelChoiceTone,
   requireInferenceModel,
   supportsImageInput,
 } from "../src/model";
@@ -32,6 +33,13 @@ describe("doctor model multimodal inference", () => {
     expect(isMultimodalModel(imageModel)).toBe(true);
     expect(supportsImageInput(textModel)).toBe(false);
     expect(supportsImageInput(imageModel)).toBe(true);
+  });
+
+  test("assigns distinct terminal tones to model categories", () => {
+    expect(modelChoiceTone(textModel)).toBe("info");
+    expect(modelChoiceTone({ ...textModel, type: "embedding" })).toBe("blue");
+    expect(modelChoiceTone({ ...textModel, type: "rerank" })).toBe("warning");
+    expect(modelChoiceTone(imageModel)).toBe("magenta");
   });
 
   test("uses a built-in PNG for image-capable LLMs", () => {

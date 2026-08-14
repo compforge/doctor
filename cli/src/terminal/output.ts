@@ -1,7 +1,14 @@
 // 非 chat command 的统一终端输出边界：业务代码不要直接写 process.stdout/stderr。
 // 子进程、协议 body 等原始数据用 write 原样透传；面向人的状态使用语义方法，确保
 // 颜色策略、TTY/重定向判断与 NO_COLOR 支持始终只在这一层演进。
-type TerminalTone = "info" | "success" | "warning" | "error" | "muted";
+export type TerminalTone =
+  | "info"
+  | "success"
+  | "warning"
+  | "error"
+  | "muted"
+  | "blue"
+  | "magenta";
 
 interface TerminalWritable {
   isTTY?: boolean;
@@ -16,6 +23,8 @@ const ANSI: Record<TerminalTone, readonly [open: string, close: string]> = {
   warning: ["\u001B[33m", "\u001B[39m"],
   error: ["\u001B[1;31m", "\u001B[22;39m"],
   muted: ["\u001B[2m", "\u001B[22m"],
+  blue: ["\u001B[1;34m", "\u001B[22;39m"],
+  magenta: ["\u001B[1;35m", "\u001B[22;39m"],
 };
 
 export function supportsTerminalColor(
@@ -73,12 +82,16 @@ export class TerminalOutput {
     return this.writeStyled(text, "muted");
   }
 
-  private writeStyled(text: string, tone: TerminalTone): boolean {
-    return this.stream.write(styleTerminalText(
+  style(text: string, tone: TerminalTone): string {
+    return styleTerminalText(
       text,
       tone,
       supportsTerminalColor(this.stream, this.environment()),
-    ));
+    );
+  }
+
+  private writeStyled(text: string, tone: TerminalTone): boolean {
+    return this.stream.write(this.style(text, tone));
   }
 }
 

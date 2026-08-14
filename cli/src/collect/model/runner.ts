@@ -124,6 +124,9 @@ function printResponse(
     response.ok,
     `[model] ${label}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)\n`,
   );
+  // Validation bodies are backend metadata already preserved in Evidence; printing them here
+  // leaves users with context-free payloads such as { "parameters": null }.
+  if (kind === "model-validation") return;
   const trimmed = response.text.trim();
   if (!trimmed) {
     terminalStdout.write("(empty response body)\n");
