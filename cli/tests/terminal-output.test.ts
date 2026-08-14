@@ -44,6 +44,27 @@ describe("terminal output", () => {
     expect(chunks).toEqual(["raw response\n"]);
   });
 
+  test("styles reusable choice fragments only when color is enabled", () => {
+    const interactive = new TerminalOutput({
+      isTTY: true,
+      write() {
+        return true;
+      },
+    }, () => ({}));
+    const redirected = new TerminalOutput({
+      isTTY: false,
+      write() {
+        return true;
+      },
+    }, () => ({}));
+
+    expect(interactive.style("Embedding", "blue"))
+      .toBe("\u001B[1;34mEmbedding\u001B[22;39m");
+    expect(interactive.style("Multimodal", "magenta"))
+      .toBe("\u001B[1;35mMultimodal\u001B[22;39m");
+    expect(redirected.style("Embedding", "blue")).toBe("Embedding");
+  });
+
   test("non-chat commands do not bypass the terminal output boundary", () => {
     const sourceRoot = join(import.meta.dir, "..", "src");
     const offenders = typescriptFiles(sourceRoot)
