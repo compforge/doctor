@@ -13,6 +13,7 @@ import type {
   ToolkitPlatformManifest,
   ToolkitResourceKind,
 } from "./model";
+import { targetRequirementsMatch } from "../target/requirements";
 
 let archiveCache: ToolkitArchive[] | undefined;
 
@@ -127,7 +128,7 @@ export function resolveToolkitBundle(
   request: ToolkitBundleRequest,
   archives: readonly ToolkitArchive[] = discoverToolkitArchives(),
 ): ResolvedToolkitBundle | undefined {
-  for (const archive of archives) {
+  archiveLoop: for (const archive of archives) {
     const platform = platformFor(archive, channel.platform);
     const bundle = platform?.bundles
       .filter((item) => compatibleBundle(item, request))
@@ -140,9 +141,16 @@ export function resolveToolkitBundle(
         : component.kind === "image"
           ? platform.images
           : platform.packages
-      ).find((item) => item.id === component.resourceId);
+      ).find((item) => (
+        item.id === component.resourceId
+        && (component.resourceVersion === undefined || item.version === component.resourceVersion)
+      ));
       // Archive validation makes this unreachable; keep the resolver total for injected manifests.
       if (!resource) return undefined;
+      if (resource.requirements
+        && !targetRequirementsMatch(resource.requirements, request.target ?? {})) {
+        continue archiveLoop;
+      }
       components[component.role] = {
         archive,
         platform: channel.platform,
@@ -162,7 +170,12 @@ export function resolveToolkitResource(
   id: string,
 ): ResolvedToolkitResource | undefined {
   for (const archive of discoverToolkitArchives()) {
-    const resource = resourcesFor(archive, channel.platform, kind).find((item) => item.id === id);
+    const resource = resourcesFor(archive, channel.platform, kind)
+      .filter((item) => item.id === id)
+      .sort((left, right) => compareNumericVersions(
+        right.version ?? "",
+        left.version ?? "",
+      ) ?? right.version?.localeCompare(left.version ?? "", undefined, { numeric: true }) ?? 0)[0];
     if (!resource) continue;
     return {
       archive,

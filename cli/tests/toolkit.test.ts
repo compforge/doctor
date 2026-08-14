@@ -11,6 +11,10 @@ import {
   normalizeToolkitArchitecture,
   resolveToolkitBundle,
 } from "../src/infra/toolkit";
+import {
+  requiredTargetProbes,
+  targetRequirementsMatch,
+} from "../src/infra/target/requirements";
 
 function tar(path: string, files: Record<string, Buffer | string>): void {
   const blocks: Buffer[] = [];
@@ -194,4 +198,120 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
   expect(Object.values(resolved?.components ?? {}).map((item) => (
     readFileSync(item.path, "utf8")
   ))).toEqual(["compatible-collector", "compatible-loader", "compatible-agent"]);
+});
+
+test("Toolkit v3 requires versioned dependency declarations and exact bundle variants", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-toolkit-v3-"));
+  const archivePath = join(directory, "doctor-toolkit-v3.tar");
+  const oldTool = Buffer.from("gdb-13.1");
+  const newTool = Buffer.from("gdb-17.2");
+  const path13 = "doctor-toolkit/platforms/linux-amd64/bin/gdb-13.1";
+  const path17 = "doctor-toolkit/platforms/linux-amd64/bin/gdb-17.2";
+  const requirement = {
+    software: {
+      kernel: {},
+      libraries: [{
+        name: "libc",
+        family: "glibc",
+        version: { minInclusive: "2.36" },
+      }],
+    },
+    hardware: { cpu: {} },
+  };
+  const manifest = {
+    schema: "doctor.toolkit/v3",
+    version: "3.0.0",
+    platforms: [{
+      os: "linux",
+      architecture: "amd64",
+      tools: [
+        {
+          id: "gdb",
+          version: "13.1",
+          requirements: requirement,
+          path: path13,
+          sha256: createHash("sha256").update(oldTool).digest("hex"),
+          size: oldTool.length,
+        },
+        {
+          id: "gdb",
+          version: "17.2",
+          requirements: requirement,
+          path: path17,
+          sha256: createHash("sha256").update(newTool).digest("hex"),
+          size: newTool.length,
+        },
+      ],
+      images: [],
+      packages: [],
+      bundles: [{
+        id: "gdb-runtime",
+        protocol: "gdb.runtime/v1",
+        version: "13.1",
+        components: [{
+          role: "debugger",
+          kind: "tool",
+          resourceId: "gdb",
+          resourceVersion: "13.1",
+        }],
+      }],
+    }],
+  };
+  tar(archivePath, {
+    "doctor-toolkit/manifest.json": JSON.stringify(manifest),
+    [path13]: oldTool,
+    [path17]: newTool,
+  });
+  const archive = inspectToolkitArchive(archivePath);
+  const resolved = resolveToolkitBundle({
+    kind: "kubernetes-container",
+    platform: { os: "linux", architecture: "amd64" },
+    pod: "app-0",
+    container: "app",
+  }, {
+    id: "gdb-runtime",
+    protocol: "gdb.runtime/v1",
+    target: {
+      kernelVersion: "4.19.0",
+      libraries: { libc: { family: "glibc", version: "2.36" } },
+      cpu: { vendor: "GenuineIntel", family: "6", modelId: "85" },
+    },
+  }, [archive]);
+  expect(readFileSync(resolved!.components.debugger!.path, "utf8")).toBe("gdb-13.1");
+  expect(requiredTargetProbes([requirement])).toEqual({
+    kernel: true,
+    libraries: ["libc"],
+    cpu: true,
+  });
+  expect(targetRequirementsMatch(requirement, {
+    kernelVersion: "4.19.0",
+    libraries: { libc: { family: "glibc", version: "2.36" } },
+    cpu: { vendor: "GenuineIntel", family: "6", modelId: "85", features: ["xsave"] },
+  })).toBe(true);
+});
+
+test("Toolkit v3 rejects tools without a dependency declaration", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-toolkit-v3-missing-"));
+  const archivePath = join(directory, "doctor-toolkit-v3-missing.tar");
+  tar(archivePath, {
+    "doctor-toolkit/manifest.json": JSON.stringify({
+      schema: "doctor.toolkit/v3",
+      version: "3.0.0",
+      platforms: [{
+        os: "linux",
+        architecture: "amd64",
+        tools: [{
+          id: "gdb",
+          version: "17.2",
+          path: "doctor-toolkit/platforms/linux-amd64/bin/gdb",
+          sha256: "0".repeat(64),
+          size: 0,
+        }],
+        images: [],
+        packages: [],
+        bundles: [],
+      }],
+    }),
+  });
+  expect(() => inspectToolkitArchive(archivePath)).toThrow("缺少 requirements");
 });

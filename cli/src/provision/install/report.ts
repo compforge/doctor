@@ -3,6 +3,7 @@ import { basename } from "node:path";
 import type { DebugGdbFact } from "../../infra/target/debug";
 import {
   bundleMatches,
+  packageBundleRequirements,
   type PackageBundle,
   type PackageTargetFact,
 } from "../../infra/target/package-install";
@@ -101,6 +102,11 @@ export function renderInstallCompatibilityMarkdown(
       runtime.python?.executable,
     ].filter(Boolean).join(" "))} |`,
     `| Package manager | ${cell([runtime.manager.kind, runtime.manager.version].filter(Boolean).join(" "))} |`,
+    `| CPU identity | ${cell([
+      runtime.cpu?.vendor,
+      runtime.cpu?.family ? `family=${runtime.cpu.family}` : undefined,
+      runtime.cpu?.modelId ? `model=${runtime.cpu.modelId}` : undefined,
+    ].filter(Boolean).join(" "))} |`,
     `| CPU model | ${cell(runtime.cpu?.model)} |`,
     `| CPU flags/features | ${cell(runtime.cpu?.flags?.join(" "))} |`,
     `| CapEff | ${cell(runtime.security?.capEff)} |`,
@@ -124,7 +130,10 @@ export function renderInstallCompatibilityMarkdown(
       "|---|---|---|---|---|---|---|",
     );
     for (const bundle of report.packageBundles) {
-      const kernel = bundle.manifest.compatibility?.kernel;
+      const kernel = packageBundleRequirements({
+        path: bundle.file,
+        manifest: bundle.manifest,
+      })?.software?.kernel;
       lines.push(
         `| ${cell(bundle.file)} | ${bundle.compatible ? "yes" : "no"}`
         + ` | ${bundle.selected ? "yes" : "no"}`

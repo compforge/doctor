@@ -4,7 +4,10 @@ import type { PackageInstaller } from "./model";
 export { onlineInstallCommands } from "./k8s";
 export {
   bundleMatches,
+  bundlePlatformMatches,
   inspectPackageBundle,
+  matchingPackageBundles,
+  packageBundleRequirements,
   selectPackageBundle,
 } from "./archive";
 export {

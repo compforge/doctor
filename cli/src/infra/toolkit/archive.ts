@@ -25,6 +25,12 @@ import type {
   ToolkitResource,
   ToolkitResourceKind,
 } from "./model";
+import type {
+  TargetCpuRequirement,
+  TargetLibraryRequirement,
+  TargetRequirements,
+  TargetVersionRange,
+} from "../target/requirements";
 
 const TAR_BLOCK_SIZE = 512;
 const TOOLKIT_ROOT = "doctor-toolkit/";
@@ -37,6 +43,15 @@ interface TarEntry {
   readonly dataOffset: number;
   readonly size: number;
   readonly type: string;
+}
+
+function rejectUnknownKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  label: string,
+): void {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) throw new Error(`${label} 包含未知字段：${unknown.join(", ")}`);
 }
 
 function tarString(buffer: Buffer, start: number, length: number): string {
@@ -101,7 +116,129 @@ function readEntry(path: string, entry: TarEntry, maxBytes: number): Buffer {
   return data;
 }
 
-function parseResource(value: unknown, platform: string): ToolkitResource {
+function parseVersionRange(value: unknown, label: string): TargetVersionRange {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} version range 无效`);
+  }
+  const range = value as Record<string, unknown>;
+  rejectUnknownKeys(range, ["minInclusive", "maxExclusive"], label);
+  for (const field of ["minInclusive", "maxExclusive"] as const) {
+    if (range[field] !== undefined && (typeof range[field] !== "string" || !range[field])) {
+      throw new Error(`${label}.${field} 无效`);
+    }
+  }
+  return {
+    minInclusive: range.minInclusive as string | undefined,
+    maxExclusive: range.maxExclusive as string | undefined,
+  };
+}
+
+function parseStringList(value: unknown, label: string): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string" && item.trim())) {
+    throw new Error(`${label} 无效`);
+  }
+  return value as string[];
+}
+
+function parseRequirements(value: unknown, label: string): TargetRequirements {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} requirements 无效`);
+  }
+  const requirements = value as Record<string, unknown>;
+  rejectUnknownKeys(requirements, ["software", "hardware"], `${label} requirements`);
+  let software: TargetRequirements["software"];
+  if (requirements.software !== undefined) {
+    if (!requirements.software || typeof requirements.software !== "object"
+      || Array.isArray(requirements.software)) {
+      throw new Error(`${label} requirements.software 无效`);
+    }
+    const raw = requirements.software as Record<string, unknown>;
+    rejectUnknownKeys(raw, ["os", "kernel", "libraries"], `${label} requirements.software`);
+    let os: NonNullable<TargetRequirements["software"]>["os"];
+    if (raw.os !== undefined) {
+      if (!raw.os || typeof raw.os !== "object" || Array.isArray(raw.os)) {
+        throw new Error(`${label} requirements.software.os 无效`);
+      }
+      const value = raw.os as Record<string, unknown>;
+      rejectUnknownKeys(value, ["ids", "version"], `${label} requirements.software.os`);
+      os = {
+        ids: parseStringList(value.ids, `${label} os.ids`),
+        version: value.version === undefined
+          ? undefined
+          : parseVersionRange(value.version, `${label} os`),
+      };
+    }
+    let libraries: TargetLibraryRequirement[] | undefined;
+    if (raw.libraries !== undefined) {
+      if (!Array.isArray(raw.libraries)) {
+        throw new Error(`${label} requirements.software.libraries 无效`);
+      }
+      libraries = raw.libraries.map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          throw new Error(`${label} library requirement 无效`);
+        }
+        const library = item as Record<string, unknown>;
+        rejectUnknownKeys(library, ["name", "family", "version"], `${label} library`);
+        if (typeof library.name !== "string" || !/^[a-z][a-z0-9._+-]*$/.test(library.name)) {
+          throw new Error(`${label} library name 无效`);
+        }
+        if (library.family !== undefined
+          && (typeof library.family !== "string" || !library.family.trim())) {
+          throw new Error(`${label} library family 无效`);
+        }
+        return {
+          name: library.name,
+          family: library.family as string | undefined,
+          version: library.version === undefined
+            ? undefined
+            : parseVersionRange(library.version, `${label} library ${library.name}`),
+        };
+      });
+      if (new Set(libraries.map((library) => library.name)).size !== libraries.length) {
+        throw new Error(`${label} library requirement 重复`);
+      }
+    }
+    software = {
+      os,
+      kernel: raw.kernel === undefined
+        ? undefined
+        : parseVersionRange(raw.kernel, `${label} kernel`),
+      libraries,
+    };
+  }
+  let hardware: TargetRequirements["hardware"];
+  if (requirements.hardware !== undefined) {
+    if (!requirements.hardware || typeof requirements.hardware !== "object"
+      || Array.isArray(requirements.hardware)) {
+      throw new Error(`${label} requirements.hardware 无效`);
+    }
+    const raw = requirements.hardware as Record<string, unknown>;
+    rejectUnknownKeys(raw, ["cpu"], `${label} requirements.hardware`);
+    let cpu: TargetCpuRequirement | undefined;
+    if (raw.cpu !== undefined) {
+      if (!raw.cpu || typeof raw.cpu !== "object" || Array.isArray(raw.cpu)) {
+        throw new Error(`${label} requirements.hardware.cpu 无效`);
+      }
+      const value = raw.cpu as Record<string, unknown>;
+      rejectUnknownKeys(
+        value,
+        ["vendors", "families", "models", "features"],
+        `${label} requirements.hardware.cpu`,
+      );
+      cpu = {
+        vendors: parseStringList(value.vendors, `${label} cpu.vendors`),
+        families: parseStringList(value.families, `${label} cpu.families`),
+        models: parseStringList(value.models, `${label} cpu.models`),
+        features: parseStringList(value.features, `${label} cpu.features`),
+      };
+    }
+    hardware = { cpu };
+  }
+  return { software, hardware };
+}
+
+function parseResource(value: unknown, platform: string, requirementsRequired: boolean): ToolkitResource {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Toolkit ${platform} resource 无效`);
   }
@@ -125,7 +262,25 @@ function parseResource(value: unknown, platform: string): ToolkitResource {
   if (!Number.isSafeInteger(resource.size) || (resource.size as number) < 0) {
     throw new Error(`Toolkit resource size 无效：${resource.id}`);
   }
-  return resource as unknown as ToolkitResource;
+  if (requirementsRequired && (typeof resource.version !== "string" || !resource.version.trim())) {
+    throw new Error(`Toolkit ${platform} resource ${resource.id} 缺少 version`);
+  }
+  if (requirementsRequired && resource.requirements === undefined) {
+    throw new Error(`Toolkit ${platform} resource ${resource.id} 缺少 requirements`);
+  }
+  if (resource.version !== undefined && (typeof resource.version !== "string" || !resource.version.trim())) {
+    throw new Error(`Toolkit ${platform} resource ${resource.id} version 无效`);
+  }
+  return {
+    id: resource.id,
+    version: resource.version as string | undefined,
+    requirements: resource.requirements === undefined
+      ? undefined
+      : parseRequirements(resource.requirements, `Toolkit resource ${resource.id}`),
+    path: resource.path,
+    sha256: resource.sha256,
+    size: resource.size,
+  } as ToolkitResource;
 }
 
 function parseCompatibility(value: unknown, bundle: string): ToolkitBundleCompatibility | undefined {
@@ -166,7 +321,11 @@ function parseCompatibility(value: unknown, bundle: string): ToolkitBundleCompat
   return { runtime, libc };
 }
 
-function parseBundleComponent(value: unknown, bundle: string): ToolkitBundleComponent {
+function parseBundleComponent(
+  value: unknown,
+  bundle: string,
+  resourceVersionRequired: boolean,
+): ToolkitBundleComponent {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Toolkit bundle ${bundle} component 无效`);
   }
@@ -181,14 +340,27 @@ function parseBundleComponent(value: unknown, bundle: string): ToolkitBundleComp
     typeof component.resourceId !== "string"
     || !/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(component.resourceId)
   ) throw new Error(`Toolkit bundle ${bundle} component resourceId 无效`);
+  if (resourceVersionRequired
+    && (typeof component.resourceVersion !== "string" || !component.resourceVersion.trim())) {
+    throw new Error(`Toolkit bundle ${bundle} component 缺少 resourceVersion`);
+  }
+  if (component.resourceVersion !== undefined
+    && (typeof component.resourceVersion !== "string" || !component.resourceVersion.trim())) {
+    throw new Error(`Toolkit bundle ${bundle} component resourceVersion 无效`);
+  }
   return {
     role: component.role,
     kind: component.kind as ToolkitResourceKind,
     resourceId: component.resourceId,
+    resourceVersion: component.resourceVersion as string | undefined,
   };
 }
 
-function parseBundle(value: unknown, platform: string): ToolkitBundle {
+function parseBundle(
+  value: unknown,
+  platform: string,
+  resourceVersionRequired: boolean,
+): ToolkitBundle {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`Toolkit ${platform} bundle 无效`);
   }
@@ -205,7 +377,11 @@ function parseBundle(value: unknown, platform: string): ToolkitBundle {
   if (!Array.isArray(bundle.components) || bundle.components.length === 0) {
     throw new Error(`Toolkit bundle ${bundle.id} components 无效`);
   }
-  const components = bundle.components.map((item) => parseBundleComponent(item, bundle.id as string));
+  const components = bundle.components.map((item) => parseBundleComponent(
+    item,
+    bundle.id as string,
+    resourceVersionRequired,
+  ));
   if (new Set(components.map((item) => item.role)).size !== components.length) {
     throw new Error(`Toolkit bundle ${bundle.id} component role 重复`);
   }
@@ -218,7 +394,11 @@ function parseBundle(value: unknown, platform: string): ToolkitBundle {
   };
 }
 
-function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatformManifest {
+function parsePlatform(
+  value: unknown,
+  bundlesRequired: boolean,
+  requirementsRequired: boolean,
+): ToolkitPlatformManifest {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Toolkit platform 无效");
   }
@@ -235,8 +415,11 @@ function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatfor
   const parseResources = (field: "tools" | "images" | "packages") => {
     const raw = platform[field];
     if (!Array.isArray(raw)) throw new Error(`Toolkit ${platformId}.${field} 无效`);
-    const resources = raw.map((item) => parseResource(item, platformId));
-    if (new Set(resources.map((item) => item.id)).size !== resources.length) {
+    const resources = raw.map((item) => parseResource(item, platformId, requirementsRequired));
+    const keys = resources.map((item) => requirementsRequired
+      ? JSON.stringify([item.id, item.version, item.requirements])
+      : item.id);
+    if (new Set(keys).size !== resources.length) {
       throw new Error(`Toolkit ${platformId}.${field} id 重复`);
     }
     return resources;
@@ -248,7 +431,7 @@ function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatfor
     throw new Error(`Toolkit ${platformId}.bundles 无效`);
   }
   const bundles = Array.isArray(platform.bundles)
-    ? platform.bundles.map((item) => parseBundle(item, platformId))
+    ? platform.bundles.map((item) => parseBundle(item, platformId, requirementsRequired))
     : [];
   const resourcesByKind: Record<ToolkitResourceKind, readonly ToolkitResource[]> = {
     tool: tools,
@@ -257,7 +440,10 @@ function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatfor
   };
   for (const bundle of bundles) {
     for (const component of bundle.components) {
-      if (!resourcesByKind[component.kind].some((item) => item.id === component.resourceId)) {
+      if (!resourcesByKind[component.kind].some((item) => (
+        item.id === component.resourceId
+        && (component.resourceVersion === undefined || item.version === component.resourceVersion)
+      ))) {
         throw new Error(
           `Toolkit bundle ${bundle.id} 引用了不存在的 ${component.kind} ${component.resourceId}`,
         );
@@ -285,7 +471,9 @@ function parsePlatform(value: unknown, bundlesRequired: boolean): ToolkitPlatfor
 
 export function parseToolkitManifest(raw: string): ToolkitManifest {
   const value = JSON.parse(raw) as Record<string, unknown>;
-  if (value.schema !== "doctor.toolkit/v1" && value.schema !== "doctor.toolkit/v2") {
+  if (value.schema !== "doctor.toolkit/v1"
+    && value.schema !== "doctor.toolkit/v2"
+    && value.schema !== "doctor.toolkit/v3") {
     throw new Error(`不支持的 Toolkit schema：${String(value.schema)}`);
   }
   if (typeof value.version !== "string" || !value.version.trim()) {
@@ -297,7 +485,8 @@ export function parseToolkitManifest(raw: string): ToolkitManifest {
   const schema = value.schema;
   const platforms = value.platforms.map((platform) => parsePlatform(
     platform,
-    schema === "doctor.toolkit/v2",
+    schema !== "doctor.toolkit/v1",
+    schema === "doctor.toolkit/v3",
   ));
   const ids = platforms.map((item) => `${item.os}/${item.architecture}`);
   if (new Set(ids).size !== ids.length) throw new Error("Toolkit platform 重复");

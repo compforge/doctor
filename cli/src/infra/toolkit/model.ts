@@ -1,3 +1,8 @@
+import type {
+  TargetEnvironmentFact,
+  TargetRequirements,
+} from "../target/requirements";
+
 export type ToolkitOs = "darwin" | "linux";
 export type ToolkitArchitecture = "amd64" | "arm64";
 
@@ -8,6 +13,8 @@ export interface ToolkitPlatform {
 
 export interface ToolkitResource {
   readonly id: string;
+  readonly version?: string;
+  readonly requirements?: TargetRequirements;
   readonly path: string;
   readonly sha256: string;
   readonly size: number;
@@ -19,6 +26,7 @@ export interface ToolkitBundleComponent {
   readonly role: string;
   readonly kind: ToolkitResourceKind;
   readonly resourceId: string;
+  readonly resourceVersion?: string;
 }
 
 export interface ToolkitBundleCompatibility {
@@ -49,7 +57,7 @@ export interface ToolkitPlatformManifest extends ToolkitPlatform {
 }
 
 export interface ToolkitManifest {
-  readonly schema: "doctor.toolkit/v1" | "doctor.toolkit/v2";
+  readonly schema: "doctor.toolkit/v1" | "doctor.toolkit/v2" | "doctor.toolkit/v3";
   readonly version: string;
   readonly platforms: readonly ToolkitPlatformManifest[];
 }
@@ -78,6 +86,7 @@ export interface ToolkitBundleRequest {
     readonly family: string;
     readonly version: string;
   };
+  readonly target?: TargetEnvironmentFact;
 }
 
 export interface ResolvedToolkitBundle {

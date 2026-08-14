@@ -1,4 +1,5 @@
 import type { ExecResult, Executor } from "../../k8s/executor";
+import type { TargetRequirements } from "../requirements";
 
 export type PackageManagerKind = "apk" | "apt-get" | "dnf" | "microdnf" | "yum";
 
@@ -21,6 +22,9 @@ export interface TargetPythonFact {
 }
 
 export interface TargetCpuFact {
+  vendor?: string;
+  family?: string;
+  modelId?: string;
   model?: string;
   flags?: string[];
 }
@@ -42,6 +46,7 @@ export interface PackageTargetFact {
   kernelMachine?: string;
   kernelBuild?: string;
   libc?: TargetLibcFact;
+  libraries?: Record<string, TargetLibcFact>;
   python?: TargetPythonFact;
   cpu?: TargetCpuFact;
   security?: TargetSecurityFact;
@@ -55,7 +60,7 @@ export interface PackageKernelCompatibility {
 }
 
 export interface PackageBundleManifest {
-  schema: "doctor-packages/v1";
+  schema: "doctor-packages/v1" | "doctor-packages/v2";
   bundleVersion: string;
   packageManager: PackageManagerKind;
   osId: string;
@@ -66,6 +71,7 @@ export interface PackageBundleManifest {
   compatibility?: {
     kernel?: PackageKernelCompatibility;
   };
+  requirements?: TargetRequirements;
 }
 
 export interface PackageBundle {
@@ -89,6 +95,8 @@ export interface PackageInstaller {
     executor: Executor,
     pod: string,
     container: string,
+    requirements?: readonly (TargetRequirements | undefined)[],
+    options?: { transfer?: boolean; diagnostics?: boolean },
   ): Promise<PackageTargetFact | undefined>;
   installed(
     executor: Executor,
