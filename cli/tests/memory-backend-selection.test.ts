@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   cgroupMemoryHint,
   memoryBackendChoices,
@@ -43,11 +43,29 @@ describe("doctor mem backend selection", () => {
     expect(() => parseMemoryBackend("auto")).toThrow("--backend");
   });
 
-  test("shows cgroup headroom as the same hint for both manual choices", () => {
+  test("shows cgroup headroom once before the manual choices", async () => {
     expect(cgroupMemoryHint(cgroup)).toContain("剩余 1.00 GiB");
-    const choices = memoryBackendChoices(cgroup);
+    const writes: string[] = [];
+    const write = spyOn(process.stdout, "write").mockImplementation((chunk) => {
+      writes.push(String(chunk));
+      return true;
+    });
+    let choices = memoryBackendChoices();
+    try {
+      expect(await resolveMemoryBackend({
+        cgroupMemory: cgroup,
+        interactive: true,
+        prompt: async (available) => {
+          choices = available;
+          return "pydump";
+        },
+      })).toBe("pydump");
+    } finally {
+      write.mockRestore();
+    }
     expect(choices.map((choice) => choice.backend)).toEqual(["pydump", "pyheap"]);
-    expect(choices.every((choice) => choice.description.includes("剩余 1.00 GiB"))).toBe(true);
+    expect(choices.every((choice) => !choice.description.includes("剩余 1.00 GiB"))).toBe(true);
+    expect(writes.join("").match(/剩余 1\.00 GiB/g)).toHaveLength(1);
   });
 
   test("uses the user's choice without deriving a backend from cgroup headroom", async () => {

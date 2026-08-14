@@ -42,16 +42,15 @@ export function parseMemoryBackend(value: string | undefined): MemoryCaptureBack
   throw new Error(`--backend 仅支持 pydump 或 pyheap: '${value}'`);
 }
 
-export function memoryBackendChoices(cgroup?: CgroupMemoryFacts): readonly BackendChoice[] {
-  const hint = cgroupMemoryHint(cgroup);
+export function memoryBackendChoices(): readonly BackendChoice[] {
   return [
     {
       backend: "pydump",
-      description: `主要把图遍历内存放在 Collector；${hint}`,
+      description: "主要把图遍历内存放在 Collector",
     },
     {
       backend: "pyheap",
-      description: `在目标 Python 进程内遍历对象，可能显著增加目标 cgroup 内存；${hint}`,
+      description: "在目标 Python 进程内遍历对象，可能显著增加目标 cgroup 内存",
     },
   ];
 }
@@ -69,8 +68,11 @@ export async function resolveMemoryBackend(input: {
     terminalStderr.error("[collect] 非交互运行 doctor mem 时必须显式指定 --backend pydump 或 --backend pyheap\n");
     return undefined;
   }
-  const choices = memoryBackendChoices(input.cgroupMemory);
-  terminalStdout.info("[collect] 请选择 heap 采集后端（cgroup 余量仅作提示，不自动决策）：\n");
+  const choices = memoryBackendChoices();
+  terminalStdout.info(
+    `[collect] ${cgroupMemoryHint(input.cgroupMemory)}；余量仅作提示，不自动决策\n`,
+  );
+  terminalStdout.info("[collect] 请选择 heap 采集后端：\n");
   choices.forEach((choice, index) => {
     terminalStdout.write(`  ${index + 1}) ${choice.backend}  ${choice.description}\n`);
   });
