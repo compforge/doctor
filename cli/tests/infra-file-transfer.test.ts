@@ -58,7 +58,7 @@ describe("Doctor Host ↔ Target file transfer", () => {
   test("小型工具通过 stdin 原子上传，并受显式体积上限约束", async () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-file-upload-test-"));
     const source = join(directory, "tool");
-    const bytes = Buffer.from("pydump-tool");
+    const bytes = Buffer.from("diagnostic-tool");
     writeFileSync(source, bytes);
     let stdin: string | Uint8Array | undefined;
     let command: string[] = [];
@@ -75,17 +75,17 @@ describe("Doctor Host ↔ Target file transfer", () => {
         executor,
         target: { pod: "app-0", container: "app" },
         hostPath: source,
-        targetPath: "/tmp/doctor-pydump/pydump",
+        targetPath: "/tmp/doctor-tools/helper",
       })).toMatchObject({ ok: true });
       expect(Buffer.from(stdin as Uint8Array)).toEqual(bytes);
-      expect(command).toContain("/tmp/doctor-pydump/pydump");
+      expect(command).toContain("/tmp/doctor-tools/helper");
       expect(command.join(" ")).toContain("os.replace");
 
       expect(hostTargetFileTransfer.uploadToTarget({
         executor,
         target: { pod: "app-0", container: "app" },
         hostPath: source,
-        targetPath: "/tmp/doctor-pydump/pydump",
+        targetPath: "/tmp/doctor-tools/helper",
         maxBytes: 1,
       })).rejects.toThrow("超过上限");
     } finally {

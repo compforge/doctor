@@ -19,10 +19,8 @@ resource-version pins.
 Core selects every component of such a bundle from one archive, then verifies each SHA-256 before
 materializing it; it never combines components from different Toolkit releases.
 
-For example, a `pydump.capture/v1` bundle binds Collector, `pydump-loader`, and one Agent variant to the
-same release. Its compatibility describes the CPython minor and minimum libc version. Adding a new
-Agent variant therefore changes Toolkit metadata and assets without requiring a Doctor Core
-release.
+For example, the fork-pyheap capture bundle pins the dumper consumed by `doctor mem`, while the
+Python heap analysis bundle independently pins the Host-side analyzer consumed by `doctor mema`.
 
 Linux slices include matching multi-version offline system packages in addition to Host and Target
 executables. Debug images are opt-in (`INCLUDE_DEBUG_IMAGE=true`) because one image represents only

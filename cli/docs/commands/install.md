@@ -20,7 +20,7 @@ APT、APK、DNF、microdnf 和 YUM 是 `infra/target/package-install` 中的实�
 1. 选择 Namespace、Pod 和目标 Container；非交互环境通过参数明确提供。
 2. 交互选择待安装程序；非交互环境要求 `--program`，首版仅接受 GDB。
 3. 探测目标 OS、架构、Linux kernel 和包管理器；现有 GDB 通过 inferior function call 验收后
-   直接返回，不产生写操作。Python scripting 能力只作为兼容性事实记录，不是 Pydump 的前置条件。
+   直接返回，不产生写操作。Python scripting 与 inferior call 都是 fork-pyheap 的运行前置。
 4. 展示将修改的 Container、软件源访问和资源影响，取得用户确认。
 5. 从 `--tar` 或当前目录的 `doctor-packages-*.tar` 中读取 package set，按发行版、架构、Target
    kernel 兼容范围和 GDB 版本选择内部 variant。显式指定或带 kernel 兼容声明的 variant 直接使用；
@@ -123,8 +123,8 @@ bundle 必须包含目标程序及其所需依赖；不匹配或依赖不全时�
 GDB 包存在不等于 inferior call 能力可用。`doctor install --program gdb` 还会由 GDB
 attach Doctor 自建的短生命周期 Python 进程并调用一个 inferior function；这能覆盖 GDB 启动新进程
 无法暴露、只在 attach 后出现的 Target kernel 寄存器状态兼容问题。smoke test 不选择业务 PID。
-Pydump 自动探测 GDB，不可用时使用独立的 `pydump-loader`；其 Collector、`pydump-loader`、Agent、
-可写目录和实际业务 PID ptrace 条件由 `doctor mem` 在采集前联合探测。
+`doctor mem` 在采集前联合探测 GDB Python scripting、inferior call、可写目录和实际业务 PID 的
+ptrace 条件；任一前置不满足时不 attach 业务进程。
 
 客户环境中的 GDB 或 Doctor package bundle 不匹配时，可把兼容性现场保存为 Markdown 或 JSON：
 

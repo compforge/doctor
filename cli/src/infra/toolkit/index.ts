@@ -11,7 +11,6 @@ export {
   resolveToolkitResources,
 } from "./distribution";
 export {
-  discoverDevelopmentPydumpAgents,
   resolveDevelopmentToolkitTool,
 } from "./development";
 export {

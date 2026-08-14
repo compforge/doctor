@@ -21,7 +21,6 @@ import {
   compressFileCmd,
   fileMetadataCmd,
   parseFileMetadata,
-  pydumpBackend,
   pyheapBackend,
   type HeapDumpBackend,
   type HeapDumpBackendContext,
@@ -44,8 +43,7 @@ import {
   type CgroupMemoryFacts,
 } from "../fact/cgroup-memory";
 import { MEMORY_CAPTURE_SCHEMA, type MemoryCaptureArtifact } from "./capture-artifact";
-import { memoryBackendRiskLines } from "./capture-risk";
-import type { MemoryCaptureBackend } from "./backend-selection";
+import { cgroupMemoryHint, pyHeapMemoryRiskLines } from "./capture-risk";
 import {
   parseUvicornSupervisorGuard,
   resumeUvicornSupervisorCmd,
@@ -53,13 +51,12 @@ import {
   type UvicornSupervisorGuard,
 } from "./uvicorn-guard";
 import {
-  startTemporaryLivenessProxy,
-  stopLivenessProxyCmd,
-  type ActiveLivenessProxy,
-  type LivenessProxyIntent,
-} from "./liveness-proxy";
+  applyHeapDumpHeadroomPlanCmd,
+  resolveHeapDumpHeadroom,
+  type HeapDumpHeadroomPlan,
+} from "./heap-dump-headroom";
 
-export type PydumpDetail = "lite" | "full";
+export type HeapDumpDetail = "lite" | "full";
 export type CapturePreference = "auto" | "debug-container" | "target-container";
 export type CaptureStrategy = Exclude<CapturePreference, "auto">;
 
@@ -71,7 +68,7 @@ function timestamp(date: Date): string {
   return date.toISOString().replaceAll(/[:-]/g, "").replace("T", "-").slice(0, 15);
 }
 
-export function parsePydumpDetail(value: string | undefined): PydumpDetail {
+export function parseHeapDumpDetail(value: string | undefined): HeapDumpDetail {
   const normalized = value?.trim().toLowerCase() || "lite";
   if (normalized === "lite" || normalized === "full") return normalized;
   throw new Error(`--detail 仅支持 lite 或 full: '${value}'`);
@@ -255,21 +252,32 @@ export interface HeapCaptureConfirmation {
   pid: number;
   strategy: CaptureStrategy;
   strReprLen: number;
-  backend: MemoryCaptureBackend;
+  headroomPlan?: HeapDumpHeadroomPlan;
 }
 
 export async function confirmHeapCapture(input: HeapCaptureConfirmation): Promise<boolean> {
   terminalStdout.warning("\n[collect] 即将 attach Python 进程并采集对象堆\n");
   terminalStdout.write(`[collect] 目标：${input.target}，pid=${input.pid}\n`);
-  const backend = input.backend === "pyheap" ? pyheapBackend : pydumpBackend;
-  terminalStdout.write(`[collect] 后端：${backend.displayName}\n`);
+  terminalStdout.write(`[collect] 后端：${pyheapBackend.displayName}\n`);
   terminalStdout.write(
     `[collect] 执行位置：${input.strategy === "debug-container" ? "已有 debug container" : "目标业务容器"}\n`,
   );
   terminalStdout.write("[collect] - attach 期间 Python 进程会暂停，通常数秒，大堆可能持续数分钟\n");
   terminalStdout.write("[collect] - 暂停期间请求可能超时；异常中断也可能影响目标进程稳定性\n");
   terminalStdout.write("[collect] - 完成后会把 .pyheap 文件传回 Doctor 本机\n");
-  if (backend.confirmationWarning) terminalStdout.write(`[collect] - ${backend.confirmationWarning}\n`);
+  if (pyheapBackend.confirmationWarning) {
+    terminalStdout.write(`[collect] - ${pyheapBackend.confirmationWarning}\n`);
+  }
+  if (input.headroomPlan) {
+    terminalStdout.write(
+      `[collect] - Headroom：临时退出 worker ${input.headroomPlan.retiredWorkers.map((worker) => worker.pid).join(", ")}`
+      + `（预计释放 ${input.headroomPlan.estimatedReclaimMb.toFixed(0)} MiB）\n`,
+    );
+    terminalStdout.write(
+      `[collect] - 保留 worker ${input.headroomPlan.servingWorker.pid} 承载请求；`
+      + "缩容期间容量下降，相关在途请求可能失败\n",
+    );
+  }
   if (input.strReprLen !== -1) {
     terminalStdout.write("[collect] - heap 会包含对象字符串表示，可能带入业务数据\n");
   }
@@ -297,8 +305,7 @@ interface CaptureParams {
   podJson: string;
   container: ContainerInfo;
   pidFlag?: string;
-  backend: MemoryCaptureBackend;
-  detail: PydumpDetail;
+  detail: HeapDumpDetail;
   strReprLen: number;
   preference: CapturePreference;
   transferChunkBytes: number;
@@ -306,7 +313,6 @@ interface CaptureParams {
   invokedAt: Date;
   confirmed: boolean;
   cgroupMemory?: CgroupMemoryFacts;
-  livenessProxyIntent?: LivenessProxyIntent;
 }
 
 export interface CaptureResult {
@@ -330,9 +336,7 @@ export async function captureMemoryHeap(
   },
   log: (line: string) => void,
 ): Promise<CaptureResult> {
-  return params.backend === "pydump"
-    ? captureMemoryHeapWithBackend(pydumpBackend, executor, params, ctx, log)
-    : captureMemoryHeapWithBackend(pyheapBackend, executor, params, ctx, log);
+  return captureMemoryHeapWithBackend(pyheapBackend, executor, params, ctx, log);
 }
 
 async function captureMemoryHeapWithBackend<
@@ -400,9 +404,8 @@ async function captureMemoryHeapWithBackend<
     + `（${execution.label}）`,
   );
   const targetRssMb = processScan.rows.find((row) => row.pid === pid)?.rssMb;
-  const riskLines = memoryBackendRiskLines(backend.kind, {
+  const riskLines = pyHeapMemoryRiskLines({
     cgroupMemory: params.cgroupMemory,
-    strategy: execution.strategy,
     targetRssMb,
   });
   for (const line of riskLines) log(line);
@@ -418,6 +421,8 @@ async function captureMemoryHeapWithBackend<
     && processScan.uvicorn.workerPids.includes(pid)
     ? processScan.uvicorn.supervisorPid
     : undefined;
+  const headroom = resolveHeapDumpHeadroom(processScan, pid, params.cgroupMemory);
+  const headroomPlan = headroom.plan;
   const standaloneUvicornWithLiveness = processScan.uvicorn?.mode === "standalone"
     && processScan.uvicorn.workerPids.includes(pid)
     && params.container.livenessProbe !== undefined;
@@ -433,12 +438,28 @@ async function captureMemoryHeapWithBackend<
       + `目标 worker pid=${pid}；dump 期间会暂停 supervisor，并由 watchdog 兜底恢复`,
     );
   }
+  log(`[collect] Headroom：${headroom.reason}`);
+  if (headroomPlan) {
+    log(
+      `[collect] Headroom 计划：保留服务 worker pid=${headroomPlan.servingWorker.pid}，`
+      + `临时退出 worker ${headroomPlan.retiredWorkers.map((worker) => worker.pid).join(", ")}，`
+      + `预计释放 ${headroomPlan.estimatedReclaimMb.toFixed(0)} MiB`,
+    );
+  }
+  ctx.bundle.addStep({
+    id: "mem-headroom-plan",
+    title: "规划 heap dump 内存余量",
+    risk: "observe",
+    status: headroomPlan ? "ok" : "skipped",
+    reason: headroom.reason,
+    output: JSON.stringify(headroomPlan ?? { strategy: "none" }, null, 2),
+  });
   const approved = params.confirmed || await (ctx.confirm ?? confirmHeapCapture)({
     target: `${params.namespace}/${params.pod}/${params.container.name}`,
     pid,
     strategy: execution.strategy,
     strReprLen: params.strReprLen,
-    backend: params.backend,
+    headroomPlan,
   });
   ctx.bundle.addStep({
     id: "mem-attach-confirmation",
@@ -464,49 +485,12 @@ async function captureMemoryHeapWithBackend<
   const processStartTime = processStatus.stdout.match(/^start_time=(.+)$/m)?.[1]?.trim();
 
   const heapFile = `${backend.toolDir}/heap-${pid}-${params.invokedAt.getTime().toString(36)}.pyheap`;
-  let livenessProxy: ActiveLivenessProxy | undefined;
-  if (params.livenessProxyIntent) {
-    const environments = infra.target.debugEngine.inspectEnvironments(
-      params.podJson,
-      params.container.name,
-    );
-    const proxyEnvironment = infra.target.debugEngine.resolveEnvironment(environments, ["NET_ADMIN"]);
-    if (!proxyEnvironment.ok) {
-      log(
-        "[collect] 当前没有可用且具备 NET_ADMIN 的 debug container；"
-        + "已自动降级，不启用 liveness 代理，也不伪装 health",
-      );
-    } else {
-      const started = await startTemporaryLivenessProxy({
-        executor,
-        target: { pod: params.pod, container: proxyEnvironment.value.executionContainer },
-        intent: params.livenessProxyIntent,
-        token: `${pid}-${params.invokedAt.getTime().toString(36)}`,
-        ttlSeconds: DUMP_TIMEOUT_MS / 1000 + 60,
-      });
-      started.results.forEach((result, index) => recordStep(
-        ctx.bundle,
-        `mem-liveness-proxy-${index + 1}`,
-        ["检查 liveness 代理前置", "启动 liveness 代理", "确认 liveness 代理就绪"][index]
-          ?? "准备 liveness 代理",
-        result,
-        "disrupt",
-      ));
-      livenessProxy = started.proxy;
-      if (livenessProxy) {
-        log(
-          `[collect] 已临时接管 ${params.livenessProxyIntent.service} `
-          + `${params.livenessProxyIntent.path} liveness；普通请求继续转发到业务进程`,
-        );
-      } else {
-        log(`[collect] liveness 代理启动失败：${started.reason ?? "原因未知"}；继续执行已确认的 dump`);
-      }
-    }
-  }
 
   let guard: UvicornSupervisorGuard | undefined;
   let dump: ExecResult;
   let supervisorResumeFailed = false;
+  let headroomApplied = false;
+  let cgroupMemoryAfterHeadroom: CgroupMemoryFacts | undefined;
   try {
     if (uvicornSupervisorPid !== undefined) {
       const suspend = await executor.exec(
@@ -525,6 +509,49 @@ async function captureMemoryHeapWithBackend<
         };
       }
       log(`[collect] Uvicorn supervisor pid=${uvicornSupervisorPid} 已暂停`);
+    }
+
+    if (guard && headroomPlan) {
+      const applyHeadroom = await executor.exec(
+        execution.target,
+        applyHeapDumpHeadroomPlanCmd(guard, headroomPlan),
+        { timeoutMs: 25_000 },
+      );
+      recordStep(
+        ctx.bundle,
+        "mem-headroom-apply",
+        "为 heap dump 准备内存余量",
+        applyHeadroom,
+        "disrupt",
+      );
+      if (!applyHeadroom.ok) {
+        return {
+          code: 1,
+          pid,
+          strategy: execution.strategy,
+          reason: `Headroom 准备失败，未执行 heap dump：${failReason(applyHeadroom)}`,
+        };
+      }
+      headroomApplied = true;
+      log(
+        `[collect] Headroom 已准备：保留 worker pid=${headroomPlan.servingWorker.pid}，`
+        + `已退出 ${headroomPlan.retiredWorkers.length} 个 sibling worker`,
+      );
+      const cgroupAfterHeadroom = await executor.exec(
+        execTarget,
+        cgroupMemoryCmd(),
+        { timeoutMs: 10_000 },
+      );
+      recordStep(
+        ctx.bundle,
+        "mem-headroom-after",
+        "复查 Headroom 后的 cgroup 内存事实",
+        cgroupAfterHeadroom,
+      );
+      cgroupMemoryAfterHeadroom = cgroupAfterHeadroom.ok
+        ? parseCgroupMemoryFacts(cgroupAfterHeadroom.stdout)
+        : undefined;
+      log(`[collect] Headroom 后 ${cgroupMemoryHint(cgroupMemoryAfterHeadroom)}`);
     }
 
     log(`[collect] 开始 ${backend.displayName} dump；目标进程现在可能出现卡顿…`);
@@ -559,28 +586,22 @@ async function captureMemoryHeapWithBackend<
     if (guard) {
       const resume = await executor.exec(
         execution.target,
-        resumeUvicornSupervisorCmd(guard),
-        { timeoutMs: 10_000 },
+        resumeUvicornSupervisorCmd(
+          guard,
+          2,
+          headroomApplied ? headroomPlan?.originalWorkerCount : undefined,
+        ),
+        { timeoutMs: headroomApplied ? 30_000 : 10_000 },
       );
       recordStep(ctx.bundle, "mem-supervisor-resume", "恢复 Uvicorn supervisor", resume, "disrupt");
       if (!resume.ok) {
         supervisorResumeFailed = true;
         log(`[collect] Uvicorn supervisor 恢复未确认；watchdog 会继续尝试恢复`);
       } else {
-        log(`[collect] Uvicorn supervisor pid=${guard.masterPid} 已恢复`);
-      }
-    }
-    if (livenessProxy) {
-      const stopped = await executor.exec(
-        livenessProxy.target,
-        stopLivenessProxyCmd(livenessProxy),
-        { timeoutMs: 10_000 },
-      );
-      recordStep(ctx.bundle, "mem-liveness-proxy-stop", "撤销 liveness 代理", stopped, "disrupt");
-      if (stopped.ok) {
-        log(`[collect] ${livenessProxy.service} liveness 代理已撤销`);
-      } else {
-        log("[collect] liveness 代理撤销未确认；远端 watchdog 会在超时后清理网络规则");
+        log(
+          `[collect] Uvicorn supervisor pid=${guard.masterPid} 已恢复`
+          + (headroomApplied ? "，worker 数量已补齐" : ""),
+        );
       }
     }
   }
@@ -749,6 +770,7 @@ async function captureMemoryHeapWithBackend<
       facts: {
         process_scan: processScan,
         cgroup_memory: params.cgroupMemory,
+        cgroup_memory_after_headroom: cgroupMemoryAfterHeadroom,
         process_status: processStatus.ok ? processStatus.stdout : undefined,
         ...runtime.facts,
         ...prepared.value.facts,

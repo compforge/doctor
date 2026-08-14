@@ -3,7 +3,6 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
-  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -26,7 +25,7 @@ function platformAssetArchitecture(architecture: ToolkitArchitecture): string {
   return architecture;
 }
 
-function pydumpAsset(
+function pydumpAnalysisAsset(
   id: string,
   platform: { os: ToolkitOs; architecture: ToolkitArchitecture },
 ): string | undefined {
@@ -39,59 +38,7 @@ function pydumpAsset(
       `pydump_analyzer-0.1.0-${platform.os}-${architecture}.gz`,
     );
   }
-  if (platform.os !== "linux") return undefined;
-  if (id === "pydump-collector") {
-    return join(root, "assets", "pydump", "pydump-0.2.0.pyz.gz");
-  }
-  if (id === "pydump-loader") {
-    return join(
-      root,
-      "assets",
-      "pydump",
-      `pydump-loader-0.2.0-linux-${architecture}.gz`,
-    );
-  }
-  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(id);
-  if (!agent) return undefined;
-  const machine = architecture === "amd64" ? "x86_64" : "aarch64";
-  return join(
-    root,
-    "assets",
-    "pydump",
-    `pydump-agent-${agent[1]}-min-glibc-${agent[2]}-${machine}.so.gz`,
-  );
-}
-
-export interface DevelopmentPydumpAgent {
-  readonly pythonMinor: string;
-  readonly minimumGlibcVersion: string;
-  readonly id: string;
-  readonly path: string;
-}
-
-/** Discover source-checkout Agent variants without duplicating the release compatibility matrix. */
-export function discoverDevelopmentPydumpAgents(
-  platform: { os: ToolkitOs; architecture: ToolkitArchitecture },
-): readonly DevelopmentPydumpAgent[] {
-  if (platform.os !== "linux") return [];
-  const machine = platform.architecture === "amd64" ? "x86_64" : "aarch64";
-  const directory = join(root, "assets", "pydump");
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    if (!entry.isFile()) return [];
-    const match = new RegExp(
-      `^pydump-agent-(3\\.\\d+)-min-glibc-(\\d+(?:\\.\\d+)+)-${machine}\\.so\\.gz$`,
-    ).exec(entry.name);
-    if (!match) return [];
-    const id = `pydump-agent-${match[1]}-min-glibc-${match[2]}`;
-    const path = resolveDevelopmentToolkitTool(id, platform);
-    return path ? [{
-      pythonMinor: match[1]!,
-      minimumGlibcVersion: match[2]!,
-      id,
-      path,
-    }] : [];
-  });
+  return undefined;
 }
 
 function forkPyheapAsset(
@@ -112,7 +59,7 @@ export function resolveDevelopmentToolkitTool(
     ? join(root, "assets", "regctl", `regctl-${platform.os}-${architecture}`)
     : undefined;
   if (direct && existsSync(direct)) return direct;
-  const compressed = pydumpAsset(id, platform)
+  const compressed = pydumpAnalysisAsset(id, platform)
     ?? forkPyheapAsset(id, platform)
     ?? (id === "py-spy" && platform.os === "linux"
         ? join(
@@ -125,12 +72,7 @@ export function resolveDevelopmentToolkitTool(
   if (!compressed || !existsSync(compressed)) return undefined;
   const previous = extracted.get(compressed);
   if (previous) return previous;
-  const output = join(
-    extractionRoot(),
-    id.startsWith("pydump-agent-")
-      ? `${id}-${platform.architecture === "amd64" ? "x86_64" : "aarch64"}.so`
-      : id,
-  );
+  const output = join(extractionRoot(), id);
   writeFileSync(output, gunzipSync(readFileSync(compressed)), { mode: 0o700 });
   chmodSync(output, 0o700);
   extracted.set(compressed, output);

@@ -4,7 +4,7 @@
 
 Debug container 为 CPU、Memory、Network 等诊断提供目标容器当前不具备的权限和工具。交互执行时由用户按诊断
 目的选择 `SYS_PTRACE`、`NET_RAW` 或两者；非交互执行保持同时申请两者。Ephemeral Container 必须已运行、进入
-目标容器 PID namespace，并具备本次选择的 capability。GDB、Pydump、py-spy 和网络工具是建立在基础 container
+目标容器 PID namespace，并具备本次选择的 capability。GDB、fork-pyheap、py-spy 和网络工具是建立在基础 container
 上的能力，不再决定 `doctor debug` 本身是否成功。
 
 `infra/target/debug` 定义目标侧 `DebugEngine`；Kubernetes Ephemeral Container 是当前的准备路线，
@@ -22,9 +22,9 @@ Debug Environment Fact 与 Preparation，不依赖具体准备路线。
    常驻命令时停止，不启动第二份业务进程。临时容器 Running 后报告 GDB 等工具能力；若当前目录存在有效的
    `doctor-packages-*.tar`，交互执行会以这个具备 `SYS_PTRACE` 的新建容器为明确目标进入
    `doctor install gdb`。现有 GDB 满足能力契约时直接返回，确需写入时仍单独展示安装方案并取得确认。
-4. Inspect 根据容器状态、PID namespace、工具和 capability 形成 Debug Environment Fact。`doctor mem` 使用 environment 前再次验证
-   实际 ptrace attach 条件，并在缺少 Pydump Collector、`pydump-loader` 或 Agent 时取得
-   attach 授权后按需上传。
+4. Inspect 根据容器状态、PID namespace、工具和 capability 形成 Debug Environment Fact。`doctor mem`
+   使用 environment 前再次验证实际 ptrace attach 条件，并在缺少 fork-pyheap dumper 时取得 attach
+   授权后按需上传。
 5. Ephemeral Container 不能原地删除或替换，debug container 保留到 Pod 被替换；CPU/Memory/Network 各自验证
    所需能力，不把 ptrace-only container 误报为完整工具环境。
 
@@ -37,10 +37,9 @@ Network 同样只消费已就绪 Fact：debug container 启动后不自动抓包
 ### 准备能力与采集证据分开
 
 镜像发布、临时容器 mutation 和 container capability 准备属于诊断准备；线程栈、内存 dump 等才是领域证据。
-Probe 不在执行途中发布镜像或部署 debug container。Pydump Collector、`pydump-loader` 与 Agent 是单个领域工具，
-由 `doctor mem` 在 attach
-授权后按需上传；GDB 及其动态依赖由独立的 `doctor install` 补齐，避免 debug 生命周期或 memory Probe
-自行修改系统包。
+Probe 不在执行途中发布镜像或部署 debug container。fork-pyheap dumper 由 `doctor mem` 在 attach 授权后
+按需上传；GDB 及其动态依赖由独立的 `doctor install` 补齐，避免 debug 生命周期或 memory Probe 自行
+修改系统包。
 
 ### Fact 描述现实，不携带待执行动作
 
@@ -53,13 +52,9 @@ RBAC 检查、server-side dry-run 与真实 mutation 使用同一份资源描述
 Doctor Toolkit，与其它诊断工具共享独立版本；具体 tag、工具版本和 readiness 字段属于代码事实，
 不写进本设计文档。
 
-Debug container 按用户选择具备进程 attach、网络抓包或临时 Pod 网络规则能力；已有容器按其实际能力被对应诊断复用。
+Debug container 按用户选择具备进程 attach 或网络抓包能力；已有容器按其实际能力被对应诊断复用。
 Network 还必须额外验证抓包 capability、tcpdump 和控制器。容器 spec 中声明 capability 只是 Fact，真正能否
 打开抓包 socket 仍由 `doctor net` 的 ARM 结果确认。
-
-`NET_ADMIN` 仅用于 Service 显式允许的 heap-dump liveness 代理，不属于默认 capability。用户必须通过
-交互项或 `--capabilities SYS_PTRACE,NET_ADMIN` 明确申请；Doctor mem 还会在写入临时 iptables 规则前
-验证 debug container 工具与运行态权限，失败时不修改网络。
 
 ### 镜像发布与容器部署分离
 
@@ -73,7 +68,7 @@ Debug image repository 名由代码中的单一常量同时约束构建和运行
 
 ### 无 registry 路线仍依赖临时容器授权
 
-复制或安装 GDB、Pydump 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
+复制 fork-pyheap dumper 或安装 GDB 只能补齐工具，不能为原业务容器补出 `SYS_PTRACE`。无 registry 路线仍创建进入目标
 PID namespace 的 Ephemeral Container，并申请诊断所需 capability；若集群拒绝 `pods/ephemeralcontainers` 或
 admission 拒绝 capability，命令在 mutation 前置检查处停止。目标业务镜像 fallback 显式覆盖 ENTRYPOINT/CMD；
 `doctor debug` 不实现安装动作，只在新建容器后按本地 Toolkit/package tar 提供 `doctor install` 后续入口。在线和离线安装

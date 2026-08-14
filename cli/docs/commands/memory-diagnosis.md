@@ -2,28 +2,18 @@
 
 ## 理念 / 概念
 
-Doctor 的 Python 内存诊断以语言中立的 `.pyheap` artifact 为中心，只保留两个命令：
+Doctor 的 Python 内存诊断以语言中立的 `.pyheap` artifact 为中心：
 
-- `doctor mem` 负责在线采集：attach 一个 Python 进程、生成 `.pyheap`、校验并回传本机。
-- `doctor mema` 负责离线分析：在 Doctor 本机把 `.pyheap` 解析为
-  `pydump.analysis/v1` JSON，再运行 detector 和报告；已有匹配 JSON 时直接复用。
+- `doctor mem` 在线采集对象堆，固定使用 Doctor 维护的 fork-pyheap。
+- `doctor mema` 在 Doctor Host 离线分析 `.pyheap`，生成 detector 结论和报告。
 
-旧的短窗口采样和三档 mode 已经删除。读取 Kubernetes、cgroup 与 `/proc` 的低成本事实会随
-capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路线；没有对象堆时，Doctor 不会用
-这些有限事实替代对象堆结论。
+fork-pyheap 由 GDB 在目标解释器中遍历对象。它的索引、临时引用和 heap 写入会增加目标 Python
+进程及其 cgroup 的内存压力，而现场通常正是在内存接近 limit 时才需要 dump。Doctor 因此在 attach
+前探测 cgroup 与进程拓扑，并在确有必要且可以安全恢复时通过 Headroom 为 dump 准备内存余量。
 
-`doctor mem` 在 attach 前让用户手动选择后端，不根据 cgroup 余量自动决定：
-
-- Pydump Collector 先用临时 Python 进程验证 GDB inferior call，验收通过才使用 GDB；否则在触碰目标进程前
-  选择 `pydump-loader`，并提示匹配目标环境的 GDB package 版本；
-  Collector 在执行容器内保留随堆规模增长的队列、索引和输出文件，尽量降低目标 Python 进程的额外内存。
-- PyHeap 选项使用 Doctor 维护的 fork-pyheap，由 GDB 在目标解释器内执行对象遍历。操作方式与原
-  PyHeap 一致，但随对象规模增长的索引和 heap 写入内存主要归属目标进程及其 cgroup。
-
-两条路线都会在 Agent 或注入代码持有 GIL 期间暂停 Python 业务，
-大堆可能持续数分钟，期间请求可能超时，异常中断也可能影响进程稳定性。因此
-`doctor mem` 在真正 attach 前展示目标、执行位置、暂停影响、Uvicorn 保护和回传行为，并要求
-用户确认；非交互调用必须显式传 `-y`。
+Headroom 是 dump 前后的通用编排，不属于 PyHeap backend。它只能采用 Doctor 已明确理解的进程模型，
+不能根据进程名或 RSS 猜测性结束进程。当前支持 Uvicorn multiprocess：暂停 supervisor、保留目标
+worker 和一个服务 worker、临时退出其余 sibling workers，dump 后恢复 supervisor 并确认 worker 数量补齐。
 
 ## 流程
 
@@ -32,23 +22,24 @@ capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路
 ```text
 选择 Pod / container / Python PID
   ↓
-探测 cgroup 用量与 limit，展示余量；用户选择 Pydump 或 PyHeap
+Inspect cgroup 与 process-topology Facts
   ↓
-探测已有 doctor debug container
-  ├─ 可用：在 debug container 内运行所选后端
-  └─ 不可用：检查目标 container 是否已具备完整 attach 前置
-                 ↓
-              从 Doctor Toolkit 准备所选后端的可选组件
+准备已有 debug container 或目标 container 中的 PyHeap attach 环境
   ↓
-展示影响并取得确认
+计算 Headroom
+  ├─ cgroup 剩余内存 >= 目标 worker RSS × 2：跳过
+  ├─ 余量不足且命中安全策略：展示临时缩容计划
+  └─ 事实不足或拓扑不支持：跳过，不结束任何进程
   ↓
-必要时暂停 Uvicorn master（watchdog 兜底恢复）
+展示 attach、Headroom 和容量下降风险，取得用户确认
   ↓
-所选后端 attach 并流式生成 .pyheap → 恢复 master
+必要时暂停 supervisor → 退出冗余 sibling workers → 复查 cgroup
+  ↓
+fork-pyheap attach 并流式生成 .pyheap
+  ↓
+恢复 supervisor，确认 worker 数量补齐
   ↓
 压缩、分片回传、双端 SHA-256 校验、原子落盘
-  ↓
-写入同 basename 的 .json 采集索引，并提示 doctor mema
 ```
 
 默认输出：
@@ -58,123 +49,71 @@ doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.pyheap
 doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
 ```
 
-采集索引使用 `doctor.memory-capture/v1`，记录目标 Pod/container/PID、镜像与重启次数、
-采集后端与策略、heap 大小和 SHA-256，以及顺手取得的进程扫描、cgroup 和
-`/proc/<pid>/status` 事实。Pydump 还记录目标 libc 与实际 Agent。sidecar 中 heap 路径使用相对路径，
-便于两个文件一起移动。
+采集索引使用 `doctor.memory-capture/v1`，记录目标、PyHeap 版本、执行位置、heap 元数据，以及进程扫描、
+cgroup、目标进程状态和 Headroom 前后的事实。原始 `.pyheap` 是事实来源；分析 JSON 和 HTML 均可重建。
 
-### 两条 attach 路径
+### 执行位置
 
-`--capture-via auto` 默认先尝试已有且兼容的 doctor debug container。该容器必须正在运行，并具备
-Python 3、所选后端的可写临时目录和实际可用的 ptrace 条件。此外：
+`--capture-via auto` 优先使用已有且兼容的 doctor debug container；没有时检查目标业务容器。执行环境
+必须能进入目标 PID namespace、具备实际可用的 ptrace、Python 3、支持 Python scripting 和 inferior call
+的 GDB，以及可写临时目录。fork-pyheap dumper 缺失时从 Toolkit 临时上传；GDB 缺失或不兼容时使用
+带 GDB 的 debug image，或先执行 `doctor install gdb`。
 
-- Pydump 需要 Collector、匹配执行架构的 `pydump-loader`，以及匹配目标 CPython minor、架构与最低 glibc
-  兼容版本的 Agent；
-- fork-pyheap 需要支持 Python scripting 和 inferior call 的 GDB，以及 fork-pyheap dumper。
+可用 `--capture-via debug-container` 或 `--capture-via target-container` 强制指定执行位置。指定位置不满足
+前置时直接失败，不创建 debug container、不安装系统包，也不退回其它采集器。
 
-所选后端缺少的自带组件会从 Toolkit 临时上传。GDB 不由 heap dumper 替代；如果 PyHeap 路径缺少
-兼容 GDB，需要使用带 GDB 的 debug image 或先执行 `doctor install gdb`。
+### Headroom
 
-没有可用 debug container 时，Doctor 才检查目标业务容器。目标容器必须已经具备 Python 3、
-可写临时目录和 ptrace；Python 环境本身不够。全部前置满足后，Doctor 按实际执行
-Container 的 OS/架构、目标 CPython 3.10+ minor 与实际 libc 选择 Toolkit bundle。Doctor 在目标业务
-container 内使用目标 PID 对应的 Python executable 探测 libc；当前 Pydump bundle 只接受 glibc，并选择
-最低 glibc 要求不高于目标版本的最新 Agent variant。musl、版本未知或没有匹配 bundle 时在 ptrace 前
-停止。已有 debug image 内的完整组件可以直接复用；需要从 Toolkit 补齐时，Collector、`pydump-loader` 与 Agent
-必须来自同一个 `pydump.capture/v1` bundle 和同一 archive，不能分别从不同版本拼装。匹配完成后，缺少
-的组件临时上传到 `/tmp/doctor-pydump` 再 attach。
-fork-pyheap 使用 `fork-pyheap.capture/v1` bundle。Pydump 先对 disposable inferior 验证 GDB 的函数调用能力，
-通过后显式使用 GDB；否则在 attach 目标 PID 前显式选择同一 bundle 中的 `pydump-loader`，并从匹配当前
-容器 OS、架构与 kernel 的 package bundle 推荐 GDB 版本。Doctor 不要求用户预先选择 Loader。
+Headroom 仅在 cgroup limit、当前用量、目标 worker RSS 和受支持进程拓扑均可确认时启用。目标 cgroup
+剩余内存达到目标 worker RSS 两倍时无需腾出进程内存。余量不足时，当前 Uvicorn 策略还要求：
 
-如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
-对应工具、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
+- 目标 PID 是 multiprocess supervisor 的直属 worker；
+- 至少存在两个 sibling workers，确保缩容后仍保留一个服务 worker；
+- 所有计划中的 PID 在执行前仍属于同一生命周期的 supervisor。
 
-可用 `--capture-via debug-container` 或 `--capture-via target-container` 强制指定路径；
-指定路径不满足前置时直接失败，不跨路径兜底。
+Doctor 保留 RSS 最小的 sibling worker 服务请求，优先退出其余高 RSS sibling workers。退出先发送
+`SIGTERM` 并等待有界宽限期，超时才发送 `SIGKILL`。supervisor 在缩容前暂停，避免立即补进程；独立
+watchdog 在 Doctor 或 kubectl 意外中断时兜底恢复同一生命周期的 supervisor。dump 完成后 supervisor
+恢复并补齐原 worker 数量，Doctor 对恢复结果做有界验证。
 
-### Uvicorn 保护
-
-procscan 通过 Python executable、父子关系和启动参数区分单进程与多进程 Uvicorn，不依赖可能被
-setproctitle 改写的进程名。多进程模式下，dump 前先暂停 supervisor，避免它因 worker 暂时无法回应
-内部健康检查而替换目标。Agent dump 结束后先给 worker 留出恢复时间，再恢复 supervisor；独立 watchdog
-会在 Doctor 或 kubectl 意外中断后兜底恢复同一生命周期的 supervisor。
-
-Doctor 在后端选择和 dump 确认前展示 cgroup v1/v2 内存 limit、用量与余量，但只作为提示，
-不自动选择后端，也不阻断用户明确选择的路线。
-dump 失败后 Doctor 会再次读取 OOM 计数，只有 `oom_kill` 相比 dump 前增长时才把
-本次失败归因为 cgroup OOM；supervisor 的暂停、恢复与两次 cgroup 事实都会写入 evidence。
-
-单进程模式没有独立 supervisor 或兄弟 worker，attach 会同时暂停业务请求与该进程承载的 HTTP
-liveness。Service 可通过 Plugin liveness capability 显式声明 `/health` 契约，并选择是否允许 heap dump
-期间的临时响应。Doctor 只有在 Pod 实际 HTTP probe 与声明完全一致、Pod 不使用 hostNetwork，且已有
-debug container 显式具备 `NET_ADMIN` 时才接管：仅匹配该 path 与 kube-probe User-Agent 的请求返回
-Plugin 声明的成功响应，普通请求继续转发给业务端口。Doctor mem 不负责授予该 capability；现场已有则
-直接使用，未授予时提示并自动降级，不尝试伪装 health。dump 结束后立即撤销网络规则；独立 watchdog
-在 Doctor 意外退出时按超时兜底清理。
-
-该能力不隐式扩大 debug 权限。默认 debug container 不申请 `NET_ADMIN`；需要代理时由用户交互选择
-“memory+liveness”，或执行 `doctor debug --capabilities SYS_PTRACE,NET_ADMIN`。HTTPS、hostNetwork、
-自定义空 User-Agent、运行态 probe 与 Plugin 声明不一致等场景保持原有警告，不伪装健康。
+Headroom 会降低服务并发容量，退出 worker 上的在途请求也可能失败，所以计划必须在 attach 前随风险
+一起展示并取得确认。单进程、双 worker、未知 supervisor、事实不完整以及其它尚未支持的进程模型均跳过。
 
 ### Artifact 交付
 
-远端 heap 先压缩，再通过多个有界分片回传。每片失败可从同一 offset 重试；本机先写临时文件，
-压缩文件与解压后的 heap 都通过容器端元数据校验，成功后才原子改名。失败时不交付半份本地
-heap，并告诉用户远端文件位置。
-
-远端 `/tmp/doctor-pydump` 或 `/tmp/doctor-pyheap` 默认保留，便于回传失败后人工恢复；显式传
-`--cleanup-remote` 才会在本地交付成功后删除。
+远端 heap 先压缩，再通过有界分片回传；每片可从同一 offset 重试。本机先写临时文件，压缩文件与
+解压后的 heap 都通过容器端元数据校验，成功后才原子改名。失败时不交付半份本地 heap，并报告远端
+文件位置。远端 `/tmp/doctor-pyheap` 默认保留；显式传 `--cleanup-remote` 才在本地交付成功后删除。
 
 ### `doctor mema`
 
-`doctor mema [inputs...]` 完全在 Doctor Host 运行，不连接 Kubernetes。输入支持：
+`doctor mema [inputs...]` 完全在 Doctor Host 运行，不连接 Kubernetes。它接受 `.pyheap`、
+`doctor.memory-capture/v1` sidecar 或已解析的 `pydump.analysis/v1` JSON。分析协议是语言中立的独立契约，
+不代表在线采集使用 Pydump。
 
-- 一个或多个 `.pyheap`；
-- `doctor.memory-capture/v1` sidecar；
-- 已解析的 `pydump.analysis/v1` JSON。
-
-输入 `.pyheap` 时，分析 JSON 使用同 basename 的 `.pydump-analysis.json`。Doctor 先核对 JSON
-中的 source size 和 SHA-256；匹配则复用，不匹配或损坏才重新运行 Toolkit analyzer。Doctor 优先探测
-本地 Docker、Podman 或 nerdctl 中已经 load 且携带兼容 analyzer 的 doctor-debug image；没有可用
-container backend 时才回退 Toolkit 中与 Host OS/架构匹配的独立 Go analyzer。探测不会隐式
-load image。container 分析关闭网络，
-并只读挂载 heap 文件。retained-heap 可能显著消耗 Doctor Host 内存，因此不再支持 Pod 内分析。
-
-未给输入时，Doctor 扫描当前目录：优先跟踪 `doctor.memory-capture/v1` 采集索引；没有索引时
-才使用分析 JSON，最后兼容裸 `.pyheap`。这样一次采集只有一个默认入口，不会因派生产物重复发现。
-
-多个 heap 会按 dump 时间排序，报告除逐份 detector 结论外，还给出首次到末次的 type 级对象数
-与 shallow size 变化。对象地址跨进程和时点不稳定，因此 retained owner 地址不直接做差。单次
-或多次存量快照都不能单独证明泄漏；确认持续泄漏仍需要结合时间趋势、请求负载和分配历史。
+Doctor 优先复用与 heap 大小和 SHA-256 匹配的分析 JSON；否则运行 Toolkit analyzer。它先探测已加载且
+带兼容 analyzer 的 doctor-debug image，没有可用 container backend 时才回退到 Host 平台对应的独立
+analyzer。retained-heap 分析只在 Doctor Host 进行，避免再次占用目标 Pod 内存。
 
 ## 关键设计
 
-### Capture 与 analysis 生命周期分离
+### 进程拓扑是运行态 Fact
 
-在线 attach 的首要目标是尽快恢复业务进程并可靠交付原始 artifact；retained-heap 分析可能非常
-吃内存，放在 Pod 内会与业务争抢资源。两者拆开后，同一 heap 可以在更合适的机器上重复分析，
-分析规则升级也不需要重新触碰客户进程。
+进程布局由 Core 从目标容器 `/proc` 观察，不由 Plugin Service 声明。Plugin 不可能可靠知道某次运行的
+PID、worker 数、父子关系和生命周期；Headroom planner 只消费本次 Inspect 得到的事实。
 
-### 采集编排与 dumper backend 分离
+### dump 原语与 Headroom 编排分离
 
-Memory collect 拥有 PID 选择、风险确认、liveness/Uvicorn guard、Evidence 和 artifact 交付；
-`infra/dump` 拥有 Pydump 与 PyHeap 各自的前置探测、runtime 匹配、工具准备、dump command 和失败解释。
-两种 backend 遵循同一生命周期，因此 collect 不需要理解 Collector/`pydump-loader`/Agent 或 GDB/dumper 的内部
-组件。新增 backend 时实现该边界，不在 capture coordinator 中继续增加分支。
+`infra/dump` 拥有 PyHeap 的环境探测、工具准备、dump command、失败解释和文件操作。`collect/memory`
+拥有 PID 选择、Headroom、风险确认、supervisor guard、Evidence 和 artifact 交付。进程模型不会渗入
+dump backend，新的 Headroom 策略也不需要修改 PyHeap。
 
-### 不把工具存在等同于 attach 可用
+### 不伪装 liveness
 
-`pydump-loader` 可执行文件存在不代表容器运行态允许 attach；容器声明 `SYS_PTRACE` 同样不代表运行态
-attach 一定可行。Doctor 在上传和确认前分别验证 Python、临时目录与实际 ptrace 条件，任一缺失都停止。
+Doctor 不修改 Pod 网络规则，也不申请 `NET_ADMIN` 来代答健康检查。多 worker 场景通过保留一个服务
+worker 降低 liveness 中断风险；单进程场景明确提示 attach 会暂停业务与健康检查，由用户决定是否继续。
 
-### 原始 heap 是事实来源
+### 失败归因基于事实变化
 
-analysis JSON 和 HTML 都是可重建派生物；`.pyheap` 才是对象图的稳定事实来源。缓存命中绑定
-heap 大小与 SHA-256，避免同 basename 被替换后误用旧结论。
-
-### 目标端与 Doctor Host 能力分开
-
-`doctor mem` 所需 Python、`pydump-loader` 和 ptrace 属于诊断目标；`doctor mema` 所需 Go analyzer 或本地
-container engine 属于 Doctor Host。两边独立探测、独立报错，不能把“目标容器有 Python”
-误当成本机能够分析。通用 Host/Target 能力边界见 `kernel.md`。
+dump 失败后 Doctor 再次读取 cgroup OOM 计数，只有 `oom_kill` 相比 dump 前增长时才归因为 cgroup OOM。
+supervisor 暂停恢复、Headroom 计划与执行、Headroom 后 cgroup 事实和最终恢复验证都进入 Evidence。

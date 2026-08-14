@@ -10,9 +10,8 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 make build
 ```
 
-Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、Pydump、fork-pyheap 等诊断工具。`pydump-loader`、
-fork-pyheap dumper、GDB 等可选组件与
-debug image 统一由根目录 `toolkit/` 独立版本和构建；具体命令只准备自己选择的采集路线所需组件：
+Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、fork-pyheap 等诊断工具。fork-pyheap dumper、GDB 等
+可选组件与 debug image 统一由根目录 `toolkit/` 独立版本和构建；具体命令只准备本次诊断所需组件：
 
 ```bash
 make -C ../toolkit build OS=linux ARCH=arm64
@@ -32,8 +31,8 @@ make -C ../toolkit build-all
 |---|---|
 | `doctor chat` | 进入交互式 AI 问诊 |
 | `doctor cpu` | 对目标 Pod 做 Python CPU、卡顿与线程栈取证 |
-| `doctor mem` | 显示 cgroup 余量并由用户选择 Pydump 或 fork-pyheap，attach 后生成并回传对象堆 |
-| `doctor mema [inputs...]` | 在 Doctor Host 用独立 Go analyzer 解析、缓存并诊断 Pydump artifact |
+| `doctor mem` | 使用 fork-pyheap attach 并回传对象堆；余量不足时按安全进程拓扑准备 Headroom |
+| `doctor mema [inputs...]` | 在 Doctor Host 用独立 Go analyzer 解析、缓存并诊断 `.pyheap` artifact |
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |

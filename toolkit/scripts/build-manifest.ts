@@ -19,7 +19,6 @@ const stage = resolve(stageArg);
 const root = join(stage, "doctor-toolkit");
 const platformsRoot = join(root, "platforms");
 const output = resolve(outputArg);
-const PYDUMP_CAPTURE_VERSION = "0.2.0";
 const PYDUMP_ANALYSIS_VERSION = "0.1.0";
 const FORK_PYHEAP_VERSION = "0.7.0+doctor.2";
 const REGCTL_VERSION = "0.11.5";
@@ -28,8 +27,6 @@ const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
   pyheap_dump: "fork-pyheap-dumper",
-  pydump: "pydump-collector",
-  "pydump-loader": "pydump-loader",
   pydump_analyzer: "pydump-analyzer",
   "py-spy": "py-spy",
 };
@@ -37,8 +34,7 @@ const toolIds: Record<string, string> = {
 function toolId(name: string): string | undefined {
   const fixed = toolIds[name];
   if (fixed) return fixed;
-  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)-(?:x86_64|aarch64)\.so$/.exec(name);
-  return agent ? `pydump-agent-${agent[1]}-min-glibc-${agent[2]}` : undefined;
+  return undefined;
 }
 
 async function sha256(path: string): Promise<string> {
@@ -77,28 +73,10 @@ interface ResourceDeclaration {
 function toolDeclaration(name: string): ResourceDeclaration | undefined {
   const id = toolId(name);
   if (!id) return undefined;
-  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(id);
-  if (agent) {
-    return {
-      id,
-      version: PYDUMP_CAPTURE_VERSION,
-      requirements: {
-        software: {
-          libraries: [{
-            name: "libc",
-            family: "glibc",
-            version: { minInclusive: agent[2] },
-          }],
-        },
-      },
-    };
-  }
   const versions: Record<string, string> = {
     regctl: REGCTL_VERSION,
     "doctor-pcap": version,
     "fork-pyheap-dumper": FORK_PYHEAP_VERSION,
-    "pydump-collector": PYDUMP_CAPTURE_VERSION,
-    "pydump-loader": PYDUMP_CAPTURE_VERSION,
     "pydump-analyzer": PYDUMP_ANALYSIS_VERSION,
     "py-spy": PY_SPY_VERSION,
   };
@@ -169,27 +147,6 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
       protocol: "fork-pyheap.capture/v1",
       version: FORK_PYHEAP_VERSION,
       components: [component("dumper", "fork-pyheap-dumper")],
-    });
-  }
-  for (const tool of tools) {
-    const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(tool.id);
-    if (!agent) continue;
-    if (!toolIds.has("pydump-collector") || !toolIds.has("pydump-loader")) {
-      throw new Error(`pydump Agent 缺少同平台 Collector 或 pydump-loader: ${entry.name}/${tool.id}`);
-    }
-    bundles.push({
-      id: "pydump-capture",
-      protocol: "pydump.capture/v1",
-      version: PYDUMP_CAPTURE_VERSION,
-      compatibility: {
-        runtime: { name: "cpython", version: agent[1] },
-        libc: { family: "glibc", minimumVersion: agent[2] },
-      },
-      components: [
-        component("collector", "pydump-collector"),
-        component("loader", "pydump-loader"),
-        component("agent", tool.id),
-      ],
     });
   }
   bundles.sort((left, right) => JSON.stringify([

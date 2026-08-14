@@ -106,7 +106,6 @@ function withMemOptions(cmd: CommandT): CommandT {
       .option("-p, --pod <pod>", "目标 pod 名或关键词（缺省时列出候选）")
       .option("-c, --container <name>", "多容器 pod 时指定容器")
       .option("--pid <pid>", "目标进程 pid（缺省从 procscan 自动选）")
-      .option("--backend <backend>", "heap 采集后端：pydump 或 pyheap（缺省时交互选择）")
       .option("--detail <detail>", "heap 内容：lite（精简）或 full（完整）", "lite")
       .option("--str-repr-len <n>", "覆盖策略中的对象字符串表示长度；-1 不采集")
       .option(
@@ -473,7 +472,7 @@ export async function main(plugin?: PluginDefinition) {
     .option("--image <image>", "已发布且集群可拉取的 debug image")
     .option(
       "--capabilities <names>",
-      "逗号分隔的显式权限：SYS_PTRACE、NET_RAW、NET_ADMIN；liveness 代理需要 SYS_PTRACE,NET_ADMIN",
+      "逗号分隔的显式权限：SYS_PTRACE、NET_RAW",
     )
     .option("--kubeconfig <path>", "kubeconfig 路径")
     .option("--context <name>", "kubeconfig context")
@@ -517,12 +516,12 @@ export async function main(plugin?: PluginDefinition) {
     });
 
   withMemOptions(
-    program.command("mem").description("选择 Pydump 或 fork-pyheap，attach Python 进程并回传对象堆"),
+    program.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
   ).action(async (opts) => {
     await runCommand(
       { name: "doctor mem", environment: { kubernetes: true } },
       opts,
-      async (context) => runCollectMemory(opts, context, plugin ?? await loadActivePlugin()),
+      async (context) => runCollectMemory(opts, context),
     );
   });
   withMemaOptions(

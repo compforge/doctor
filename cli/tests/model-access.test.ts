@@ -84,36 +84,6 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
 });
 
-test("Plugin liveness capability explicitly opts into a bounded heap-dump response", () => {
-  const valid = {
-    id: "test",
-    version: "0.0.1",
-    services: { services: [{
-      name: "api",
-      capabilities: {
-        liveness: {
-          httpGet: { path: "/health", port: 8080 },
-          heapDumpProxy: { statusCode: 200, body: '{"status":"ok"}' },
-        },
-      },
-    }] },
-  };
-  expect(validatePluginDefinition(valid, manifest).services.findWith("api", "liveness"))
-    .toBeDefined();
-  expect(() => validatePluginDefinition({
-    ...valid,
-    services: { services: [{
-      name: "api",
-      capabilities: {
-        liveness: {
-          httpGet: { path: "health", port: 8080 },
-          heapDumpProxy: { statusCode: 500 },
-        },
-      },
-    }] },
-  }, manifest)).toThrow("api.liveness.httpGet.path must start with '/'");
-});
-
 test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
   const base = {
     id: "test",
