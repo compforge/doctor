@@ -4,7 +4,7 @@ set -euo pipefail
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 architecture="${1:?usage: build-package-set.sh <amd64|arm64> [output-dir]}"
 output_dir="${2:-$root_dir/dist}"
-bundle_version="${DOCTOR_TOOLKIT_VERSION:-$(tr -d '[:space:]' < "$root_dir/VERSION')}"
+bundle_version="${DOCTOR_TOOLKIT_VERSION:-$(tr -d '[:space:]' < "$root_dir/VERSION")}"
 temporary_root="$(mktemp -d)"
 cleanup() {
   rm -rf "$temporary_root"
