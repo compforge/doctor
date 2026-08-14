@@ -158,12 +158,12 @@ describe("doctor mem Pydump capture contract", () => {
       "python3=/usr/bin/python3",
       "writable=yes",
       "collector=missing",
-      "injector=/opt/doctor/bin/pydump-injector",
+      "loader=/opt/doctor/bin/pydump-loader",
     ].join("\n"))).toEqual({
       python3: true,
       writable: true,
       collector: false,
-      injector: true,
+      loader: true,
     });
   });
 
@@ -186,14 +186,16 @@ describe("doctor mem Pydump capture contract", () => {
     )).toBeUndefined();
   });
 
-  test("passes the prepared Injector explicitly to Pydump", () => {
+  test("lets Pydump auto-select GDB or the prepared pydump-loader", () => {
     expect(runPydumpDumpCmd(
       12,
       "/tmp/doctor-pydump/heap.pyheap",
       -1,
       "/tmp/doctor-pydump/agent.so",
-      "/tmp/doctor-pydump/pydump-injector",
-    ).at(-1)).toContain("--injector /tmp/doctor-pydump/pydump-injector");
+      "/tmp/doctor-pydump/pydump-loader",
+    ).at(-1)).toContain(
+      "--loader auto --pydump-loader /tmp/doctor-pydump/pydump-loader",
+    );
   });
 
   test("materializes the standalone Toolkit analyzer", () => {
@@ -209,7 +211,7 @@ describe("doctor mem Pydump capture contract", () => {
       targetGlibcVersion: "2.31",
     });
     expect(existsSync(tools.collector)).toBe(true);
-    expect(existsSync(tools.injector)).toBe(true);
+    expect(existsSync(tools.loader)).toBe(true);
     expect(existsSync(tools.agent)).toBe(true);
     expect(tools.agentMinimumGlibcVersion).toBe("2.17");
   });
@@ -225,13 +227,13 @@ describe("doctor mem Pydump capture contract", () => {
     expect(paths.capturePath).toEndWith("/capture.json");
   });
 
-  test("heap dump 摘要报告 ptrace Injector 错误", () => {
+  test("heap dump 摘要报告 pydump-loader 错误", () => {
     const failed = {
       ...execResult("", false),
-      stderr: "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
+      stderr: "pydump failed: pydump-loader failed for PID 12: attach PID 12: operation not permitted",
     };
     expect(pydumpBackend.failureReason(failed)).toBe(
-      "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
+      "pydump failed: pydump-loader failed for PID 12: attach PID 12: operation not permitted",
     );
   });
 
@@ -301,7 +303,7 @@ describe("doctor mem Pydump capture contract", () => {
     writeFileSync(artifactPath, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pydump_version: "0.1.0",
+      pydump_version: "0.2.0",
       target: {
         namespace: "ns",
         pod: "app-0",
@@ -334,7 +336,7 @@ describe("doctor mem Pydump capture contract", () => {
           "python3=missing",
           "writable=yes",
           "collector=missing",
-          "injector=missing",
+          "loader=missing",
         ].join("\n"));
       },
     };
@@ -408,7 +410,7 @@ describe("doctor mem Pydump capture contract", () => {
           "python3=/usr/bin/python3",
           "writable=yes",
           "collector=missing",
-          "injector=missing",
+          "loader=missing",
         ].join("\n"));
       },
     };
@@ -438,7 +440,7 @@ describe("doctor mem Pydump capture contract", () => {
     expect(logs.some((line) => line.includes("单进程 Uvicorn") && line.includes("liveness"))).toBe(true);
   });
 
-  test("uses a ptrace-capable debug container without inspecting GDB", async () => {
+  test("delegates loader selection to Pydump after verifying ptrace capability", async () => {
     let ptraceAttempted = false;
     let gdbAttempted = false;
     let confirmationAsked = false;
@@ -474,7 +476,7 @@ describe("doctor mem Pydump capture contract", () => {
           "python3=/usr/bin/python3",
           "writable=yes",
           "collector=/opt/doctor/bin/pydump",
-          "injector=/opt/doctor/bin/pydump-injector",
+          "loader=/opt/doctor/bin/pydump-loader",
         ].join("\n"));
       },
     };
@@ -513,7 +515,7 @@ describe("doctor mema local analysis", () => {
     writeFileSync(capturePath, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pydump_version: "0.1.0",
+      pydump_version: "0.2.0",
       target: {
         namespace: "ns",
         pod: "app-0",
@@ -619,7 +621,7 @@ printf '%s\\n' '${analyzerOutput}'
     writeFileSync(captureIndex, JSON.stringify({
       schema: MEMORY_CAPTURE_SCHEMA,
       captured_at: "2026-07-27T08:00:00Z",
-      pydump_version: "0.1.0",
+      pydump_version: "0.2.0",
       target: {
         namespace: "ns",
         pod: "app-0",

@@ -14,8 +14,8 @@ capture 顺手保存，但它们不是一条可以独立宣称诊断成功的路
 
 `doctor mem` 在 attach 前让用户手动选择后端，不根据 cgroup 余量自动决定：
 
-- Pydump 通过静态 ptrace Injector 把有界 C Agent 加载到目标解释器，由执行容器内的 Collector
-  保留随堆规模增长的队列、索引和输出文件，尽量降低目标 Python 进程的额外内存。
+- Pydump Collector 自动选择可用的 GDB 或 `pydump-loader`，把有界 C Agent 加载到目标解释器；
+  Collector 在执行容器内保留随堆规模增长的队列、索引和输出文件，尽量降低目标 Python 进程的额外内存。
 - PyHeap 选项使用 Doctor 维护的 fork-pyheap，由 GDB 在目标解释器内执行对象遍历。操作方式与原
   PyHeap 一致，但随对象规模增长的索引和 heap 写入内存主要归属目标进程及其 cgroup。
 
@@ -67,7 +67,7 @@ doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
 `--capture-via auto` 默认先尝试已有且兼容的 doctor debug container。该容器必须正在运行，并具备
 Python 3、所选后端的可写临时目录和实际可用的 ptrace 条件。此外：
 
-- Pydump 需要 Collector、匹配执行架构的 Injector，以及匹配目标 CPython minor、架构与最低 glibc
+- Pydump 需要 Collector、匹配执行架构的 `pydump-loader`，以及匹配目标 CPython minor、架构与最低 glibc
   兼容版本的 Agent；
 - fork-pyheap 需要支持 Python scripting 和 inferior call 的 GDB，以及 fork-pyheap dumper。
 
@@ -79,10 +79,11 @@ Python 3、所选后端的可写临时目录和实际可用的 ptrace 条件。�
 Container 的 OS/架构、目标 CPython 3.10+ minor 与实际 libc 选择 Toolkit bundle。Doctor 在目标业务
 container 内使用目标 PID 对应的 Python executable 探测 libc；当前 Pydump bundle 只接受 glibc，并选择
 最低 glibc 要求不高于目标版本的最新 Agent variant。musl、版本未知或没有匹配 bundle 时在 ptrace 前
-停止。已有 debug image 内的完整组件可以直接复用；需要从 Toolkit 补齐时，Collector、Injector 与 Agent
+停止。已有 debug image 内的完整组件可以直接复用；需要从 Toolkit 补齐时，Collector、`pydump-loader` 与 Agent
 必须来自同一个 `pydump.capture/v1` bundle 和同一 archive，不能分别从不同版本拼装。匹配完成后，缺少
 的组件临时上传到 `/tmp/doctor-pydump` 再 attach。
-fork-pyheap 使用 `fork-pyheap.capture/v1` bundle；GDB 只属于 PyHeap 路线，不是 Pydump 前置。
+fork-pyheap 使用 `fork-pyheap.capture/v1` bundle。Pydump 自动优先探测 GDB，不可用时使用同一 bundle
+中的 `pydump-loader`；Doctor 不要求用户预先选择 Loader。
 
 如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
 对应工具、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
@@ -157,12 +158,12 @@ load image。container 分析关闭网络，
 
 Memory collect 拥有 PID 选择、风险确认、liveness/Uvicorn guard、Evidence 和 artifact 交付；
 `infra/dump` 拥有 Pydump 与 PyHeap 各自的前置探测、runtime 匹配、工具准备、dump command 和失败解释。
-两种 backend 遵循同一生命周期，因此 collect 不需要理解 Collector/Injector/Agent 或 GDB/dumper 的内部
+两种 backend 遵循同一生命周期，因此 collect 不需要理解 Collector/`pydump-loader`/Agent 或 GDB/dumper 的内部
 组件。新增 backend 时实现该边界，不在 capture coordinator 中继续增加分支。
 
 ### 不把工具存在等同于 attach 可用
 
-Injector 可执行文件存在不代表容器运行态允许 attach；容器声明 `SYS_PTRACE` 同样不代表运行态
+`pydump-loader` 可执行文件存在不代表容器运行态允许 attach；容器声明 `SYS_PTRACE` 同样不代表运行态
 attach 一定可行。Doctor 在上传和确认前分别验证 Python、临时目录与实际 ptrace 条件，任一缺失都停止。
 
 ### 原始 heap 是事实来源
@@ -172,6 +173,6 @@ heap 大小与 SHA-256，避免同 basename 被替换后误用旧结论。
 
 ### 目标端与 Doctor Host 能力分开
 
-`doctor mem` 所需 Python、Injector 和 ptrace 属于诊断目标；`doctor mema` 所需 Go analyzer 或本地
+`doctor mem` 所需 Python、`pydump-loader` 和 ptrace 属于诊断目标；`doctor mema` 所需 Go analyzer 或本地
 container engine 属于 Doctor Host。两边独立探测、独立报错，不能把“目标容器有 Python”
 误当成本机能够分析。通用 Host/Target 能力边界见 `kernel.md`。

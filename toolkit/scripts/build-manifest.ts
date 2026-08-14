@@ -18,14 +18,15 @@ const stage = resolve(stageArg);
 const root = join(stage, "doctor-toolkit");
 const platformsRoot = join(root, "platforms");
 const output = resolve(outputArg);
-const PYDUMP_VERSION = "0.1.0";
+const PYDUMP_CAPTURE_VERSION = "0.2.0";
+const PYDUMP_ANALYSIS_VERSION = "0.1.0";
 const FORK_PYHEAP_VERSION = "0.7.0+doctor.2";
 const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
   pyheap_dump: "fork-pyheap-dumper",
   pydump: "pydump-collector",
-  "pydump-injector": "pydump-injector",
+  "pydump-loader": "pydump-loader",
   pydump_analyzer: "pydump-analyzer",
   "py-spy": "py-spy",
 };
@@ -88,7 +89,7 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
     bundles.push({
       id: "pydump-analysis",
       protocol: "pydump.analysis/v1",
-      version: PYDUMP_VERSION,
+      version: PYDUMP_ANALYSIS_VERSION,
       components: [{ role: "analyzer", kind: "tool", resourceId: "pydump-analyzer" }],
     });
   }
@@ -103,20 +104,20 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
   for (const tool of tools) {
     const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(tool.id);
     if (!agent) continue;
-    if (!toolIds.has("pydump-collector") || !toolIds.has("pydump-injector")) {
-      throw new Error(`pydump Agent 缺少同平台 Collector 或 Injector: ${entry.name}/${tool.id}`);
+    if (!toolIds.has("pydump-collector") || !toolIds.has("pydump-loader")) {
+      throw new Error(`pydump Agent 缺少同平台 Collector 或 pydump-loader: ${entry.name}/${tool.id}`);
     }
     bundles.push({
       id: "pydump-capture",
       protocol: "pydump.capture/v1",
-      version: PYDUMP_VERSION,
+      version: PYDUMP_CAPTURE_VERSION,
       compatibility: {
         runtime: { name: "cpython", version: agent[1] },
         libc: { family: "glibc", minimumVersion: agent[2] },
       },
       components: [
         { role: "collector", kind: "tool", resourceId: "pydump-collector" },
-        { role: "injector", kind: "tool", resourceId: "pydump-injector" },
+        { role: "loader", kind: "tool", resourceId: "pydump-loader" },
         { role: "agent", kind: "tool", resourceId: tool.id },
       ],
     });

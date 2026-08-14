@@ -23,7 +23,7 @@ Debug Environment Fact 与 Preparation，不依赖具体准备路线。
    `doctor-packages-*.tar`，交互执行会以这个具备 `SYS_PTRACE` 的新建容器为明确目标进入
    `doctor install gdb`。现有 GDB 满足能力契约时直接返回，确需写入时仍单独展示安装方案并取得确认。
 4. Inspect 根据容器状态、PID namespace、工具和 capability 形成 Debug Environment Fact。`doctor mem` 使用 environment 前再次验证
-   实际 ptrace attach 条件，并在缺少 Pydump Collector、Injector 或 Agent 时取得
+   实际 ptrace attach 条件，并在缺少 Pydump Collector、`pydump-loader` 或 Agent 时取得
    attach 授权后按需上传。
 5. Ephemeral Container 不能原地删除或替换，debug container 保留到 Pod 被替换；CPU/Memory/Network 各自验证
    所需能力，不把 ptrace-only container 误报为完整工具环境。
@@ -37,7 +37,7 @@ Network 同样只消费已就绪 Fact：debug container 启动后不自动抓包
 ### 准备能力与采集证据分开
 
 镜像发布、临时容器 mutation 和 container capability 准备属于诊断准备；线程栈、内存 dump 等才是领域证据。
-Probe 不在执行途中发布镜像或部署 debug container。Pydump Collector、Injector 与 Agent 是单个领域工具，
+Probe 不在执行途中发布镜像或部署 debug container。Pydump Collector、`pydump-loader` 与 Agent 是单个领域工具，
 由 `doctor mem` 在 attach
 授权后按需上传；GDB 及其动态依赖由独立的 `doctor install` 补齐，避免 debug 生命周期或 memory Probe
 自行修改系统包。

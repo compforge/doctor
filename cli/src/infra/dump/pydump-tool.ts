@@ -1,11 +1,11 @@
 // Collector 持有随堆规模增长的队列和去重索引；目标 Python 进程仅加载有界 C Agent。
 // attach 与持有 GIL 仍会暂停业务进程，所以调用方必须先取得用户确认。
-export const PYDUMP_VERSION = "0.1.0";
+export const PYDUMP_VERSION = "0.2.0";
 
 /** Collector、Agent 与 heap 的执行容器落点；仅在用户明确授权时整目录删除。 */
 export const PYDUMP_TOOL_DIR = "/tmp/doctor-pydump";
 export const PYDUMP_COLLECTOR_PATH = "/opt/doctor/bin/pydump";
-export const PYDUMP_INJECTOR_PATH = "/opt/doctor/bin/pydump-injector";
+export const PYDUMP_LOADER_PATH = "/opt/doctor/bin/pydump-loader";
 export const PYDUMP_AGENT_DIR = "/opt/doctor/lib/pydump";
 
 export interface PydumpTargetLibc {
@@ -16,7 +16,7 @@ export interface PydumpTargetLibc {
 /** 探测执行容器是否具备运行 dumper 的完整前置。 */
 export function pydumpPrereqCmd(
   collectorPath = PYDUMP_COLLECTOR_PATH,
-  injectorPath = PYDUMP_INJECTOR_PATH,
+  loaderPath = PYDUMP_LOADER_PATH,
 ): string[] {
   // 输出固定 key=value 行，避免 PATH 差异下解析歧义。
   return [
@@ -25,10 +25,10 @@ export function pydumpPrereqCmd(
     `python="$(command -v python3 || true)"; `
     + `if { [ -d ${PYDUMP_TOOL_DIR} ] && [ -w ${PYDUMP_TOOL_DIR} ]; } `
     + `|| { [ ! -e ${PYDUMP_TOOL_DIR} ] && [ -w /tmp ]; }; then writable=yes; else writable=no; fi; `
-    + `printf "python3=%s\\nwritable=%s\\ncollector=%s\\ninjector=%s\\n" `
+    + `printf "python3=%s\\nwritable=%s\\ncollector=%s\\nloader=%s\\n" `
     + `"${"$"}{python:-missing}" "$writable" `
     + `"$([ -x ${collectorPath} ] && echo ${collectorPath} || echo missing)" `
-    + `"$([ -x ${injectorPath} ] && echo ${injectorPath} || echo missing)"`,
+    + `"$([ -x ${loaderPath} ] && echo ${loaderPath} || echo missing)"`,
   ];
 }
 
@@ -36,7 +36,7 @@ export interface PydumpPrereqs {
   python3: boolean;
   writable: boolean;
   collector: boolean;
-  injector: boolean;
+  loader: boolean;
 }
 
 export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
@@ -53,12 +53,12 @@ export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
   const python3 = entries.get("python3");
   const writable = entries.get("writable");
   const collector = entries.get("collector");
-  const injector = entries.get("injector");
+  const loader = entries.get("loader");
   if (
     python3 === undefined
     || writable === undefined
     || collector === undefined
-    || injector === undefined
+    || loader === undefined
   ) {
     return undefined;
   }
@@ -66,7 +66,7 @@ export function parsePydumpPrereqs(output: string): PydumpPrereqs | undefined {
     python3: python3 !== "missing" && python3 !== "",
     writable: writable === "yes",
     collector: collector !== "missing" && collector !== "",
-    injector: injector !== "missing" && injector !== "",
+    loader: loader !== "missing" && loader !== "",
   };
 }
 
@@ -239,7 +239,7 @@ export function runPydumpDumpCmd(
   heapFile: string,
   strReprLen: number,
   agentPath: string,
-  injectorPath: string,
+  loaderPath: string,
   noAttribute = false,
   collectorPath = PYDUMP_COLLECTOR_PATH,
 ): string[] {
@@ -248,7 +248,7 @@ export function runPydumpDumpCmd(
     "-c",
     `mkdir -p ${PYDUMP_TOOL_DIR} && TMPDIR=${PYDUMP_TOOL_DIR} `
     + `${collectorPath} --pid ${pid} --file ${heapFile} --agent ${agentPath} `
-    + `--injector ${injectorPath} --str-repr-len ${strReprLen}`
+    + `--loader auto --pydump-loader ${loaderPath} --str-repr-len ${strReprLen}`
     + (noAttribute ? " --no-attribute" : ""),
   ];
 }

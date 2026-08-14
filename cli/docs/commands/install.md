@@ -123,8 +123,8 @@ bundle 必须包含目标程序及其所需依赖；不匹配或依赖不全时�
 GDB 包存在不等于 inferior call 能力可用。`doctor install --program gdb` 还会由 GDB
 attach Doctor 自建的短生命周期 Python 进程并调用一个 inferior function；这能覆盖 GDB 启动新进程
 无法暴露、只在 attach 后出现的 Target kernel 寄存器状态兼容问题。smoke test 不选择业务 PID。
-Pydump 使用独立的静态 Injector，不消费这项 GDB 验收结果；其 Collector、Injector、Agent、可写目录
-和实际业务 PID ptrace 条件由 `doctor mem` 在采集前联合探测。
+Pydump 自动探测 GDB，不可用时使用独立的 `pydump-loader`；其 Collector、`pydump-loader`、Agent、
+可写目录和实际业务 PID ptrace 条件由 `doctor mem` 在采集前联合探测。
 
 客户环境中的 GDB 或 Doctor package bundle 不匹配时，可把兼容性现场保存为 Markdown 或 JSON：
 
