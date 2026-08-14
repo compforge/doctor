@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -50,7 +51,7 @@ function pydumpAsset(
       `pydump-injector-0.1.0-linux-${architecture}.gz`,
     );
   }
-  const agent = /^pydump-agent-(3\.(?:10|11|12|13|14))-min-glibc-(2\.17)$/.exec(id);
+  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(id);
   if (!agent) return undefined;
   const machine = architecture === "amd64" ? "x86_64" : "aarch64";
   return join(
@@ -59,6 +60,37 @@ function pydumpAsset(
     "pydump",
     `pydump-agent-${agent[1]}-min-glibc-${agent[2]}-${machine}.so.gz`,
   );
+}
+
+export interface DevelopmentPydumpAgent {
+  readonly pythonMinor: string;
+  readonly minimumGlibcVersion: string;
+  readonly id: string;
+  readonly path: string;
+}
+
+/** Discover source-checkout Agent variants without duplicating the release compatibility matrix. */
+export function discoverDevelopmentPydumpAgents(
+  platform: { os: ToolkitOs; architecture: ToolkitArchitecture },
+): readonly DevelopmentPydumpAgent[] {
+  if (platform.os !== "linux") return [];
+  const machine = platform.architecture === "amd64" ? "x86_64" : "aarch64";
+  const directory = join(root, "assets", "pydump");
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (!entry.isFile()) return [];
+    const match = new RegExp(
+      `^pydump-agent-(3\\.\\d+)-min-glibc-(\\d+(?:\\.\\d+)+)-${machine}\\.so\\.gz$`,
+    ).exec(entry.name);
+    if (!match) return [];
+    const id = `pydump-agent-${match[1]}-min-glibc-${match[2]}`;
+    const path = resolveDevelopmentToolkitTool(id, platform);
+    return path ? [{
+      pythonMinor: match[1]!,
+      minimumGlibcVersion: match[2]!,
+      id,
+      path,
+    }] : [];
+  });
 }
 
 function forkPyheapAsset(

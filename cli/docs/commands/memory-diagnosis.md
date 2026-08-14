@@ -76,13 +76,13 @@ Python 3、所选后端的可写临时目录和实际可用的 ptrace 条件。�
 
 没有可用 debug container 时，Doctor 才检查目标业务容器。目标容器必须已经具备 Python 3、
 可写临时目录和 ptrace；Python 环境本身不够。全部前置满足后，Doctor 按实际执行
-Container 的 OS/架构与目标 CPython 3.10–3.14 minor 选择 Collector。Doctor 还会在目标业务
-container 内使用目标 PID 对应的 Python executable 探测实际 libc：当前只接受 glibc，并从 Toolkit
-选择最低 glibc 要求不高于目标版本的最新 Agent；musl、版本未知或低于全部已打包最低版本时在 ptrace 前
-停止。当前 Agent 的最低兼容版本是 glibc 2.17，可运行于 glibc 2.17 及以上环境。匹配完成后，缺少的工具临时上传到
-`/tmp/doctor-pydump` 再 attach。fork-pyheap dumper 对应 Toolkit resource
-`fork-pyheap-dumper`，通常安装到 `/opt/doctor/bin/pyheap_dump`；GDB 只属于 PyHeap 路线，不是
-Pydump 前置。
+Container 的 OS/架构、目标 CPython 3.10+ minor 与实际 libc 选择 Toolkit bundle。Doctor 在目标业务
+container 内使用目标 PID 对应的 Python executable 探测 libc；当前 Pydump bundle 只接受 glibc，并选择
+最低 glibc 要求不高于目标版本的最新 Agent variant。musl、版本未知或没有匹配 bundle 时在 ptrace 前
+停止。已有 debug image 内的完整组件可以直接复用；需要从 Toolkit 补齐时，Collector、Injector 与 Agent
+必须来自同一个 `pydump.capture/v1` bundle 和同一 archive，不能分别从不同版本拼装。匹配完成后，缺少
+的组件临时上传到 `/tmp/doctor-pydump` 再 attach。
+fork-pyheap 使用 `fork-pyheap.capture/v1` bundle；GDB 只属于 PyHeap 路线，不是 Pydump 前置。
 
 如果两条路线都不满足，Doctor 列出每条路线的具体缺项并停止，不创建 debug container、不复制
 对应工具、不退回短窗口采样。需要补齐 debug environment 时由用户另行执行 `doctor debug`。
@@ -152,6 +152,13 @@ load image。container 分析关闭网络，
 在线 attach 的首要目标是尽快恢复业务进程并可靠交付原始 artifact；retained-heap 分析可能非常
 吃内存，放在 Pod 内会与业务争抢资源。两者拆开后，同一 heap 可以在更合适的机器上重复分析，
 分析规则升级也不需要重新触碰客户进程。
+
+### 采集编排与 dumper backend 分离
+
+Memory collect 拥有 PID 选择、风险确认、liveness/Uvicorn guard、Evidence 和 artifact 交付；
+`infra/dump` 拥有 Pydump 与 PyHeap 各自的前置探测、runtime 匹配、工具准备、dump command 和失败解释。
+两种 backend 遵循同一生命周期，因此 collect 不需要理解 Collector/Injector/Agent 或 GDB/dumper 的内部
+组件。新增 backend 时实现该边界，不在 capture coordinator 中继续增加分支。
 
 ### 不把工具存在等同于 attach 可用
 

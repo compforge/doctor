@@ -23,20 +23,18 @@ import {
   parsePydumpDetail,
   parseStrReprLen,
   resolveMemoryCapturePaths,
-  pydumpDumpFailureReason,
 } from "../src/collect/memory/capture";
 import { EvidenceBundle } from "../src/collect/evidence";
 import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
 import {
-  resolveHostPydumpAnalyzer,
-  resolveKubernetesPydumpCaptureTools,
-} from "../src/collect/memory/toolkit-pydump";
-import {
   parsePydumpPrereqs,
   parsePydumpTargetLibc,
+  pydumpBackend,
+  resolveHostPydumpAnalyzer,
+  resolveKubernetesPydumpCaptureTools,
   runPydumpDumpCmd,
-  selectPydumpAgentMinGlibc,
-} from "../src/collect/memory/pydump-tool";
+  selectPydumpAgentFromInventory,
+} from "../src/infra/dump";
 import {
   cgroupOomKillCount,
   parseCgroupMemoryFacts,
@@ -169,12 +167,23 @@ describe("doctor mem Pydump capture contract", () => {
     });
   });
 
-  test("selects an Agent only when the target satisfies its minimum glibc", () => {
+  test("reads the target libc used for Toolkit bundle selection", () => {
     expect(parsePydumpTargetLibc('{"family":"glibc","version":"2.31","raw":"glibc 2.31"}\n'))
       .toEqual({ family: "glibc", version: "2.31", raw: "glibc 2.31" });
-    expect(selectPydumpAgentMinGlibc("2.31-13+deb11u14")).toBe("2.17");
-    expect(selectPydumpAgentMinGlibc("2.17")).toBe("2.17");
-    expect(selectPydumpAgentMinGlibc("2.16")).toBeUndefined();
+  });
+
+  test("reuses the newest compatible Agent already present in a debug container", () => {
+    const selected = selectPydumpAgentFromInventory([
+      "/opt/doctor/lib/pydump/pydump-agent-3.11-min-glibc-2.17-x86_64.so",
+      "/opt/doctor/lib/pydump/pydump-agent-3.11-min-glibc-2.28-x86_64.so",
+    ].join("\n"), "3.11", "x86_64", "2.31");
+    expect(selected?.minimumGlibcVersion).toBe("2.28");
+    expect(selectPydumpAgentFromInventory(
+      selected?.path ?? "",
+      "3.11",
+      "x86_64",
+      "2.17",
+    )).toBeUndefined();
   });
 
   test("passes the prepared Injector explicitly to Pydump", () => {
@@ -197,11 +206,12 @@ describe("doctor mem Pydump capture contract", () => {
       container: "app",
       architecture: "amd64",
       pythonMinor: "3.11",
-      minGlibcVersion: "2.17",
+      targetGlibcVersion: "2.31",
     });
     expect(existsSync(tools.collector)).toBe(true);
     expect(existsSync(tools.injector)).toBe(true);
     expect(existsSync(tools.agent)).toBe(true);
+    expect(tools.agentMinimumGlibcVersion).toBe("2.17");
   });
 
   test("writes a stable heap and capture sidecar basename", () => {
@@ -220,7 +230,7 @@ describe("doctor mem Pydump capture contract", () => {
       ...execResult("", false),
       stderr: "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
     };
-    expect(pydumpDumpFailureReason(failed)).toBe(
+    expect(pydumpBackend.failureReason(failed)).toBe(
       "pydump failed: ptrace injector failed for PID 12: attach PID 12: operation not permitted",
     );
   });
@@ -233,7 +243,7 @@ describe("doctor mem Pydump capture contract", () => {
         "pydump failed: target disconnected",
       ].join("\n"),
     };
-    expect(pydumpDumpFailureReason(failed)).toBe(
+    expect(pydumpBackend.failureReason(failed)).toBe(
       "目标进程在 dump 期间被 SIGKILL",
     );
   });

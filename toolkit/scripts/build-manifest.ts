@@ -18,6 +18,8 @@ const stage = resolve(stageArg);
 const root = join(stage, "doctor-toolkit");
 const platformsRoot = join(root, "platforms");
 const output = resolve(outputArg);
+const PYDUMP_VERSION = "0.1.0";
+const FORK_PYHEAP_VERSION = "0.7.0+doctor.2";
 const toolIds: Record<string, string> = {
   regctl: "regctl",
   "doctor-pcap": "doctor-pcap",
@@ -31,7 +33,7 @@ const toolIds: Record<string, string> = {
 function toolId(name: string): string | undefined {
   const fixed = toolIds[name];
   if (fixed) return fixed;
-  const agent = /^pydump-agent-(3\.(?:10|11|12|13|14))-min-glibc-(2\.17)-(?:x86_64|aarch64)\.so$/.exec(name);
+  const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)-(?:x86_64|aarch64)\.so$/.exec(name);
   return agent ? `pydump-agent-${agent[1]}-min-glibc-${agent[2]}` : undefined;
 }
 
@@ -80,6 +82,54 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
     chmodSync(path, 0o755);
     tools.push(await resource(path, id));
   }
+  const toolIds = new Set(tools.map((tool) => tool.id));
+  const bundles = [];
+  if (toolIds.has("pydump-analyzer")) {
+    bundles.push({
+      id: "pydump-analysis",
+      protocol: "pydump.analysis/v1",
+      version: PYDUMP_VERSION,
+      components: [{ role: "analyzer", kind: "tool", resourceId: "pydump-analyzer" }],
+    });
+  }
+  if (toolIds.has("fork-pyheap-dumper")) {
+    bundles.push({
+      id: "pyheap-capture",
+      protocol: "fork-pyheap.capture/v1",
+      version: FORK_PYHEAP_VERSION,
+      components: [{ role: "dumper", kind: "tool", resourceId: "fork-pyheap-dumper" }],
+    });
+  }
+  for (const tool of tools) {
+    const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(tool.id);
+    if (!agent) continue;
+    if (!toolIds.has("pydump-collector") || !toolIds.has("pydump-injector")) {
+      throw new Error(`pydump Agent 缺少同平台 Collector 或 Injector: ${entry.name}/${tool.id}`);
+    }
+    bundles.push({
+      id: "pydump-capture",
+      protocol: "pydump.capture/v1",
+      version: PYDUMP_VERSION,
+      compatibility: {
+        runtime: { name: "cpython", version: agent[1] },
+        libc: { family: "glibc", minimumVersion: agent[2] },
+      },
+      components: [
+        { role: "collector", kind: "tool", resourceId: "pydump-collector" },
+        { role: "injector", kind: "tool", resourceId: "pydump-injector" },
+        { role: "agent", kind: "tool", resourceId: tool.id },
+      ],
+    });
+  }
+  bundles.sort((left, right) => JSON.stringify([
+    left.id,
+    left.protocol,
+    left.compatibility ?? null,
+  ]).localeCompare(JSON.stringify([
+    right.id,
+    right.protocol,
+    right.compatibility ?? null,
+  ])));
   platforms.push({
     os: match[1],
     architecture: match[2],
@@ -88,13 +138,14 @@ for (const entry of readdirSync(platformsRoot, { withFileTypes: true })) {
       "doctor-debug.tar": "doctor-debug",
     }),
     packages: await listResources(join(platformRoot, "packages"), {}),
+    bundles,
   });
 }
 platforms.sort((left, right) =>
   `${left.os}/${left.architecture}`.localeCompare(`${right.os}/${right.architecture}`));
 
 writeFileSync(join(root, "manifest.json"), `${JSON.stringify({
-  schema: "doctor.toolkit/v1",
+  schema: "doctor.toolkit/v2",
   version,
   platforms,
 }, null, 2)}\n`);

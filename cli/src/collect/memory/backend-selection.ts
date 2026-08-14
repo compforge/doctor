@@ -1,8 +1,9 @@
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { matchListedChoice, promptListedChoice } from "../../terminal/selection";
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
+import type { HeapDumpBackendKind } from "../../infra/dump";
 
-export type MemoryCaptureBackend = "pydump" | "pyheap";
+export type MemoryCaptureBackend = HeapDumpBackendKind;
 
 export interface BackendChoice {
   backend: MemoryCaptureBackend;

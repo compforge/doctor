@@ -1,4 +1,5 @@
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
+import type { HeapDumpBackendKind, HeapDumpStrategy } from "../../infra/dump";
 
 const MIB = 1024 ** 2;
 
@@ -79,4 +80,17 @@ export function pyHeapMemoryRiskLines(input: PyHeapMemoryRiskInput): string[] {
       + (targetRssBytes === undefined ? "" : `；目标 worker RSS：${formatBytes(targetRssBytes)}`),
   );
   return lines;
+}
+
+export function memoryBackendRiskLines(
+  backend: HeapDumpBackendKind,
+  input: {
+    cgroupMemory?: CgroupMemoryFacts;
+    strategy: HeapDumpStrategy;
+    targetRssMb?: number;
+  },
+): string[] {
+  return backend === "pyheap"
+    ? pyHeapMemoryRiskLines(input)
+    : pydumpMemoryRiskLines(input);
 }

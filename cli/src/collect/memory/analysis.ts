@@ -38,7 +38,11 @@ import {
   resolveCaptureHeapPath,
 } from "./capture-artifact";
 import { diagnosePydumpAnalysis } from "./detector/pydump";
-import { resolveHostPydumpAnalyzer } from "./toolkit-pydump";
+import {
+  localPydumpRetainedArgv,
+  pydumpBackend,
+  resolveHostPydumpAnalyzer,
+} from "../../infra/dump";
 import {
   findLocalDoctorDebugImages,
   localContainerPydumpAnalyzerArgv,
@@ -50,7 +54,6 @@ import {
   type PydumpAnalysis,
 } from "./pydump-analysis";
 import { buildPydumpAnalysisHtml, buildPydumpPieCharts } from "./pydump-render";
-import { localPydumpRetainedArgv, PYDUMP_VERSION } from "./pydump-tool";
 
 export interface MemoryAnalysisOptions {
   inputs?: string[];
@@ -370,7 +373,7 @@ function writeAnalysisReport(
       inspection_facts: {},
       params: {
         command: "mema",
-        pydump_version: PYDUMP_VERSION,
+        pydump_version: pydumpBackend.version,
         inputs: items.map((item) => basename(item.inputPath)),
         analyses: items.map((item) => basename(item.analysisPath)),
       },
