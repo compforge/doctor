@@ -27,6 +27,7 @@ export function makeModelInspect(
           provider: model.provider,
           vendor: model.vendor,
           version: model.version,
+          inputModalities: model.inputModalities,
           inference: model.inference,
         },
       };

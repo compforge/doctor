@@ -1,6 +1,7 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import {
+  isMultimodalModel,
   openModelAccess,
   requireInferenceModel,
   resolveModelTenant,
@@ -85,7 +86,8 @@ export async function runCollectModel(
       throw new Error("doctor model 当前支持 llm、embedding、rerank，暂不支持 audio inference");
     }
     terminalStdout.write(
-      `[model] model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}）\n`,
+      `[model] model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}, `
+      + `multimodal=${isMultimodalModel(model) ? "yes" : "no"}）\n`,
     );
     terminalStdout.write(`[model] inference endpoint: ${model.inference.baseUrl}\n`);
 

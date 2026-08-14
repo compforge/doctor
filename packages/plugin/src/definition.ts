@@ -27,6 +27,7 @@ export interface TenantConfigReader {
 }
 
 export type ModelType = "llm" | "embedding" | "rerank" | "audio";
+export type ModelInputModality = "text" | "image" | "audio";
 
 export interface ModelInferenceTarget {
   baseUrl: string;
@@ -40,6 +41,8 @@ export interface Model {
   provider: string;
   vendor?: string;
   version?: string;
+  /** Catalog-declared input modalities; consumers must not infer them from names or vendors. */
+  inputModalities?: readonly ModelInputModality[];
   inference?: Partial<ModelInferenceTarget>;
 }
 

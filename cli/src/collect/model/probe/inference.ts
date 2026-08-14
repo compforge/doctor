@@ -4,6 +4,7 @@ import {
   probeUnnecessary,
   type Probe,
 } from "../../protocol";
+import { supportsImageInput } from "../../../model";
 import { buildModelTestRequest } from "../config";
 import type {
   ModelCollectContext,
@@ -30,7 +31,7 @@ export function makeModelInferenceProbe(
           item.kind === "model-performance-decision",
       );
       if (!decision) return probeUnavailable("未取得性能测试选择");
-      if (decision.enabled) {
+      if (decision.enabled && !supportsImageInput(model)) {
         return probeUnnecessary("性能测试已覆盖 LLM inference");
       }
       return PROBE_RUNNABLE;
@@ -43,10 +44,15 @@ export function makeModelInferenceProbe(
     },
     run: async (ctx) => {
       const request = buildModelTestRequest(model);
-      ctx.log(`[model] POST ${model.inference.baseUrl}${request.path}`);
+      ctx.log(
+        `[model] POST ${model.inference.baseUrl}${request.path}`
+        + (supportsImageInput(model) ? "（内置图片测试）" : ""),
+      );
       let observation: ModelResponseObservation;
       try {
         const response = await ctx.inference.invoke(request.path, request.body);
+        // TODO: HTTP 成功不能证明下游实际消费了图片。当前保留并打印原始模型响应供人工判断，
+        // 等有 provider-neutral 的语义判定方式后再把图片识别准确性纳入自动诊断。
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,
           kind: "model-inference",
