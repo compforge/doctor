@@ -5,7 +5,10 @@ import {
   type Probe,
 } from "../../protocol";
 import { supportsImageInput } from "../../../model";
-import { buildModelTestRequest } from "../config";
+import {
+  buildModelTestRequest,
+  validateModelTestResponse,
+} from "../config";
 import type {
   ModelCollectContext,
   ModelDiagnosisConfig,
@@ -51,13 +54,16 @@ export function makeModelInferenceProbe(
       let observation: ModelResponseObservation;
       try {
         const response = await ctx.inference.invoke(request.path, request.body);
+        const error = validateModelTestResponse(model, response);
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,
           kind: "model-inference",
           response,
+          error,
         };
         ctx.bundle.fill(MODEL_INFERENCE_PROBE_ID, {
-          status: "ok",
+          status: response.ok && !error ? "ok" : "failed",
+          reason: error,
           durationMs: response.durationMs,
           output: response.text,
           ext: "json",
