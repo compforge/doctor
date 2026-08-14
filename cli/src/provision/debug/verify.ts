@@ -18,7 +18,7 @@ async function ensureGdb(
     return gdb;
   }
   if (gdb.available) {
-    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；GDB 调试不可用，但不影响 Pydump Injector\n`);
+    terminalStdout.warning(`[debug] gdb: ${gdb.reason}；Pydump 将继续探测 pydump-loader\n`);
     return gdb;
   }
 
@@ -48,7 +48,7 @@ export async function reportDebugCapabilities(
     terminalStdout.write(`[debug] tools: doctor-debug image manifest ready\n${manifest.stdout}`);
   } else if (capabilities.includes("SYS_PTRACE")) {
     terminalStdout.write(
-      "[debug] Pydump: ptrace capability 已就绪；doctor mem 将按需上传 Collector、Injector 与 Agent\n",
+      "[debug] Pydump: ptrace capability 已就绪；doctor mem 将按需上传 Collector、pydump-loader 与 Agent\n",
     );
   }
 }

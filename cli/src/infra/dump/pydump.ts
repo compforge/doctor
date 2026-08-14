@@ -17,7 +17,7 @@ import {
   pydumpImageAgentPath,
   pydumpPrereqCmd,
   PYDUMP_COLLECTOR_PATH,
-  PYDUMP_INJECTOR_PATH,
+  PYDUMP_LOADER_PATH,
   PYDUMP_TOOL_DIR,
   PYDUMP_VERSION,
   pydumpUploadedAgentPath,
@@ -36,11 +36,11 @@ import type {
 import type { DebugEnvironmentFact } from "../target/debug";
 
 const TARGET_COLLECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump`;
-const TARGET_INJECTOR_PATH = `${PYDUMP_TOOL_DIR}/pydump-injector`;
+const TARGET_LOADER_PATH = `${PYDUMP_TOOL_DIR}/pydump-loader`;
 
 export interface PydumpExecution extends HeapDumpExecution {
   readonly collectorPath: string;
-  readonly injectorPath: string;
+  readonly loaderPath: string;
 }
 
 interface PydumpRuntimeBase {
@@ -70,14 +70,14 @@ interface ExistingPydumpAgent {
 
 export interface PreparedPydumpTools {
   readonly collectorPath: string;
-  readonly injectorPath: string;
+  readonly loaderPath: string;
   readonly agentPath: string;
   readonly agentMinimumGlibcVersion: string;
 }
 
 export interface KubernetesPydumpCaptureTools {
   readonly collector: string;
-  readonly injector: string;
+  readonly loader: string;
   readonly agent: string;
   readonly agentMinimumGlibcVersion: string;
   readonly toolkitVersion?: string;
@@ -117,7 +117,7 @@ function componentPath(
   return path;
 }
 
-/** Resolve one protocol-compatible Collector/Injector/Agent set from one Toolkit archive. */
+/** Resolve one protocol-compatible Collector/pydump-loader/Agent set from one Toolkit archive. */
 export function resolveKubernetesPydumpCaptureTools(input: {
   pod: string;
   container: string;
@@ -138,7 +138,7 @@ export function resolveKubernetesPydumpCaptureTools(input: {
     if (!minimum) throw new Error("Pydump Toolkit bundle 缺少 libc compatibility");
     return {
       collector: componentPath(resolved.components, "collector"),
-      injector: componentPath(resolved.components, "injector"),
+      loader: componentPath(resolved.components, "loader"),
       agent: componentPath(resolved.components, "agent"),
       agentMinimumGlibcVersion: minimum,
       toolkitVersion: resolved.archive.manifest.version,
@@ -156,11 +156,11 @@ export function resolveKubernetesPydumpCaptureTools(input: {
       compareRuntimeVersions(right.minimumGlibcVersion, left.minimumGlibcVersion) ?? 0
     ))[0];
   const collector = resolveDevelopmentToolkitTool("pydump-collector", channel.platform);
-  const injector = resolveDevelopmentToolkitTool("pydump-injector", channel.platform);
-  if (agent && collector && injector) {
+  const loader = resolveDevelopmentToolkitTool("pydump-loader", channel.platform);
+  if (agent && collector && loader) {
     return {
       collector,
-      injector,
+      loader,
       agent: agent.path,
       agentMinimumGlibcVersion: agent.minimumGlibcVersion,
       bundleVersion: PYDUMP_VERSION,
@@ -205,7 +205,7 @@ async function prepareDebugExecution(
     container: debug.executionContainer,
     label: `${context.pod}/${debug.executionContainer}`,
     collectorPath: prereqs?.collector ? PYDUMP_COLLECTOR_PATH : TARGET_COLLECTOR_PATH,
-    injectorPath: prereqs?.injector ? PYDUMP_INJECTOR_PATH : TARGET_INJECTOR_PATH,
+    loaderPath: prereqs?.loader ? PYDUMP_LOADER_PATH : TARGET_LOADER_PATH,
   };
   const ptraceReason = await context.verifyPtrace(execution);
   return ptraceReason ? { reason: `debug container 无法 attach：${ptraceReason}` } : { value: execution };
@@ -217,7 +217,7 @@ async function prepareTargetExecution(
   const target = { pod: context.pod, container: context.targetContainer.name };
   const result = await context.executor.exec(
     target,
-    pydumpPrereqCmd(TARGET_COLLECTOR_PATH, TARGET_INJECTOR_PATH),
+    pydumpPrereqCmd(TARGET_COLLECTOR_PATH, TARGET_LOADER_PATH),
     { timeoutMs: 20_000 },
   );
   context.observe({ id: "mem-target-prereq", title: "确认目标容器的 Pydump attach 前置", result });
@@ -232,7 +232,7 @@ async function prepareTargetExecution(
     container: context.targetContainer.name,
     label: `${context.pod}/${context.targetContainer.name}`,
     collectorPath: TARGET_COLLECTOR_PATH,
-    injectorPath: TARGET_INJECTOR_PATH,
+    loaderPath: TARGET_LOADER_PATH,
   };
   const ptraceReason = await context.verifyPtrace(execution);
   return ptraceReason ? { reason: `目标容器无法 attach：${ptraceReason}` } : { value: execution };
@@ -275,7 +275,7 @@ async function inspectRuntime(
   let existingAgent: ExistingPydumpAgent | undefined;
   if (
     execution.collectorPath !== TARGET_COLLECTOR_PATH
-    && execution.injectorPath !== TARGET_INJECTOR_PATH
+    && execution.loaderPath !== TARGET_LOADER_PATH
   ) {
     const inventory = await context.executor.exec(
       execution.target,
@@ -358,7 +358,7 @@ async function prepare(
         version: PYDUMP_VERSION,
         state: {
           collectorPath: execution.collectorPath,
-          injectorPath: execution.injectorPath,
+          loaderPath: execution.loaderPath,
           agentPath: runtime.existingAgent.path,
           agentMinimumGlibcVersion: runtime.existingAgent.minimumGlibcVersion,
         },
@@ -391,7 +391,7 @@ async function prepare(
     timeoutMs: 10_000,
   });
   const needCollector = execution.collectorPath === TARGET_COLLECTOR_PATH;
-  const needInjector = execution.injectorPath === TARGET_INJECTOR_PATH;
+  const needLoader = execution.loaderPath === TARGET_LOADER_PATH;
   const needAgent = !bundledAgent.ok;
   if (needCollector) {
     const result = await hostTargetFileTransfer.uploadToTarget({
@@ -403,15 +403,20 @@ async function prepare(
     context.observe({ id: "mem-upload-collector", title: "临时上传 Pydump Collector", result, effect: "overhead" });
     if (!result.ok) return { reason: `Pydump Collector 上传失败：${failReason(result)}` };
   }
-  if (needInjector) {
+  if (needLoader) {
     const result = await hostTargetFileTransfer.uploadToTarget({
       executor: context.executor,
       target: execution.target,
-      hostPath: tools.injector,
-      targetPath: TARGET_INJECTOR_PATH,
+      hostPath: tools.loader,
+      targetPath: TARGET_LOADER_PATH,
     });
-    context.observe({ id: "mem-upload-injector", title: "临时上传 Pydump Injector", result, effect: "overhead" });
-    if (!result.ok) return { reason: `Pydump Injector 上传失败：${failReason(result)}` };
+    context.observe({
+      id: "mem-upload-pydump-loader",
+      title: "临时上传 pydump-loader",
+      result,
+      effect: "overhead",
+    });
+    if (!result.ok) return { reason: `pydump-loader 上传失败：${failReason(result)}` };
   }
   const agentPath = needAgent
     ? pydumpUploadedAgentPath(
@@ -436,20 +441,24 @@ async function prepare(
     if (!result.ok) return { reason: `Pydump Agent 上传失败：${failReason(result)}` };
   }
   const collectorPath = needCollector ? TARGET_COLLECTOR_PATH : execution.collectorPath;
-  const injectorPath = needInjector ? TARGET_INJECTOR_PATH : execution.injectorPath;
+  const loaderPath = needLoader ? TARGET_LOADER_PATH : execution.loaderPath;
   const verify = await context.executor.exec(
     execution.target,
-    ["sh", "-c", `test -x ${collectorPath} && test -x ${injectorPath} && test -r ${agentPath}`],
+    ["sh", "-c", `test -x ${collectorPath} && test -x ${loaderPath} && test -r ${agentPath}`],
     { timeoutMs: 10_000 },
   );
-  context.observe({ id: "mem-pydump-tools", title: "确认 Pydump Collector、Injector 与 Agent", result: verify });
-  if (!verify.ok) return { reason: "Pydump Collector、Injector 或 Agent 上传后不可用" };
+  context.observe({
+    id: "mem-pydump-tools",
+    title: "确认 Pydump Collector、pydump-loader 与 Agent",
+    result: verify,
+  });
+  if (!verify.ok) return { reason: "Pydump Collector、pydump-loader 或 Agent 上传后不可用" };
   return {
     value: {
       version: tools.bundleVersion,
       state: {
         collectorPath,
-        injectorPath,
+        loaderPath,
         agentPath,
         agentMinimumGlibcVersion: tools.agentMinimumGlibcVersion,
       },
@@ -493,7 +502,7 @@ export const pydumpBackend: HeapDumpBackend<
     heapFile,
     strReprLen,
     prepared.agentPath,
-    prepared.injectorPath,
+    prepared.loaderPath,
     noAttribute,
     prepared.collectorPath,
   ),

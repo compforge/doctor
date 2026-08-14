@@ -132,7 +132,7 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
   const directory = mkdtempSync(join(tmpdir(), "doctor-toolkit-bundle-"));
   const makeArchive = (version: string, pythonMinor: string, marker: string) => {
     const archivePath = join(directory, `doctor-toolkit-${version}-linux-amd64.tar`);
-    const resources = ["collector", "injector", "agent"].map((role) => {
+    const resources = ["collector", "loader", "agent"].map((role) => {
       const content = Buffer.from(`${marker}-${role}`);
       return {
         role,
@@ -193,5 +193,5 @@ test("Toolkit resolves every bundle component from one compatible archive", () =
   expect(resolved?.archive.path).toBe(compatible.path);
   expect(Object.values(resolved?.components ?? {}).map((item) => (
     readFileSync(item.path, "utf8")
-  ))).toEqual(["compatible-collector", "compatible-injector", "compatible-agent"]);
+  ))).toEqual(["compatible-collector", "compatible-loader", "compatible-agent"]);
 });

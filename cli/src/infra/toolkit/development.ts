@@ -41,14 +41,14 @@ function pydumpAsset(
   }
   if (platform.os !== "linux") return undefined;
   if (id === "pydump-collector") {
-    return join(root, "assets", "pydump", "pydump-0.1.0.pyz.gz");
+    return join(root, "assets", "pydump", "pydump-0.2.0.pyz.gz");
   }
-  if (id === "pydump-injector") {
+  if (id === "pydump-loader") {
     return join(
       root,
       "assets",
       "pydump",
-      `pydump-injector-0.1.0-linux-${architecture}.gz`,
+      `pydump-loader-0.2.0-linux-${architecture}.gz`,
     );
   }
   const agent = /^pydump-agent-(3\.\d+)-min-glibc-(\d+(?:\.\d+)+)$/.exec(id);

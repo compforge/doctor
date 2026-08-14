@@ -13,7 +13,7 @@ together are declared as a versioned bundle with a protocol and runtime compatib
 Core selects every component of such a bundle from one archive, then verifies each SHA-256 before
 materializing it; it never combines components from different Toolkit releases.
 
-For example, a `pydump.capture/v1` bundle binds Collector, Injector, and one Agent variant to the
+For example, a `pydump.capture/v1` bundle binds Collector, `pydump-loader`, and one Agent variant to the
 same release. Its compatibility describes the CPython minor and minimum libc version. Adding a new
 Agent variant therefore changes Toolkit metadata and assets without requiring a Doctor Core
 release.
