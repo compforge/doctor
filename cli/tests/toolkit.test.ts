@@ -12,6 +12,7 @@ import {
   resolveToolkitBundle,
 } from "../src/infra/toolkit";
 import {
+  compareTargetVersions,
   requiredTargetProbes,
   targetRequirementsMatch,
 } from "../src/infra/target/requirements";
@@ -314,4 +315,30 @@ test("Toolkit v3 rejects tools without a dependency declaration", () => {
     }),
   });
   expect(() => inspectToolkitArchive(archivePath)).toThrow("缺少 requirements");
+});
+
+test("Toolkit requirement versions order prereleases before releases", () => {
+  expect(compareTargetVersions("2.36-alpha", "2.36-beta")).toBeLessThan(0);
+  expect(compareTargetVersions("2.36-pre", "2.36-preview"))
+    .toBe(-compareTargetVersions("2.36-preview", "2.36-pre"));
+  expect(compareTargetVersions("2.36-rc2", "2.36-rc10")).toBeLessThan(0);
+  expect(compareTargetVersions("2.36-rc1", "2.36")).toBeLessThan(0);
+  expect(compareTargetVersions("2.36-9+deb12u1", "2.36")).toBeGreaterThan(0);
+  expect(compareTargetVersions("5.15.0-100-generic", "5.15.0")).toBeGreaterThan(0);
+  expect(targetRequirementsMatch({
+    software: { libraries: [{
+      name: "libc",
+      version: { minInclusive: "2.36" },
+    }] },
+  }, {
+    libraries: { libc: { version: "2.36-rc1" } },
+  })).toBe(false);
+  expect(targetRequirementsMatch({
+    software: { libraries: [{
+      name: "libc",
+      version: { maxExclusive: "2.36" },
+    }] },
+  }, {
+    libraries: { libc: { version: "2.36-rc1" } },
+  })).toBe(true);
 });
