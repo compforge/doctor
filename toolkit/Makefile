@@ -9,6 +9,9 @@ DOCTOR_DEBUG_IMAGE ?= doctor-debug
 DOCTOR_DEBUG_BASE_IMAGE ?= alpine:3.22.5
 INCLUDE_DEBUG_IMAGE ?= false
 DOCTOR_GDB_BUILD_JOBS ?= 8
+REUSE_RELEASE_ASSETS ?= true
+DOCTOR_TOOLKIT_RELEASE_REPOSITORY ?= compforge/doctor
+DOCTOR_TOOLKIT_CACHE_DIR ?=
 
 SUPPORTED_PLATFORMS := darwin/amd64 darwin/arm64 linux/amd64 linux/arm64
 empty :=
@@ -70,7 +73,11 @@ stage-debug-image:
 stage-packages:
 	@test "$(OS)" = linux || { echo "offline packages only support linux" >&2; exit 1; }
 	@mkdir -p "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/packages"
-	DOCTOR_TOOLKIT_VERSION="$(TOOLKIT_VERSION)" \
+	REUSE_RELEASE_ASSETS="$(REUSE_RELEASE_ASSETS)" \
+		DOCTOR_TOOLKIT_RELEASE_REPOSITORY="$(DOCTOR_TOOLKIT_RELEASE_REPOSITORY)" \
+		DOCTOR_TOOLKIT_CACHE_DIR="$(DOCTOR_TOOLKIT_CACHE_DIR)" \
+		DOCTOR_TOOLKIT_BUILD_INPUTS_DIR="$(STAGE_ROOT)/.build-inputs" \
+		DOCTOR_TOOLKIT_VERSION="$(TOOLKIT_VERSION)" \
 		DOCTOR_GDB_BUILD_JOBS="$(DOCTOR_GDB_BUILD_JOBS)" \
 		bash scripts/build-package-set.sh "$(ARCH)" "$(STAGE_ROOT)/doctor-toolkit/platforms/$(OS)-$(ARCH)/packages"
 

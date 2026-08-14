@@ -7,7 +7,8 @@ Platform means the place where a resource executes, not the platform of the Doct
 running on Darwin/ARM64 may therefore use the Darwin/ARM64 slice for Host processes and the
 Linux/AMD64 slice for a Kubernetes Target in the same command.
 
-Each archive contains a `doctor.toolkit/v3` manifest and one or more platform directories. A
+Each archive contains a runtime `doctor.toolkit/v3` manifest, an input-addressed
+`doctor.toolkit.build/v1` build manifest, and one or more platform directories. A
 standalone resource is selected by `os`, `architecture`, kind, id, version, and declared execution
 requirements. OS/architecture are common probes; kernel, libraries, and CPU identity/features are
 probed only when platform-compatible candidates declare them. The normative contract and resource
