@@ -1,16 +1,7 @@
 ARG DOCTOR_DEBUG_BASE_IMAGE=alpine:3.22.5
-FROM ${DOCTOR_DEBUG_BASE_IMAGE} AS austin-builder
-ARG AUSTIN_VERSION=4.0.0
-RUN apk add --no-cache argp-standalone autoconf automake build-base curl linux-headers tar \
-    && curl -fsSL "https://github.com/P403n1x87/austin/archive/refs/tags/v${AUSTIN_VERSION}.tar.gz" | tar -xz -C /tmp \
-    && cd "/tmp/austin-${AUSTIN_VERSION}" \
-    && autoreconf -i && LIBS=-largp ./configure --disable-debug && make -j2 \
-    && install -Dm755 src/austin /out/austin
-
 FROM ${DOCTOR_DEBUG_BASE_IMAGE}
 ARG DOCTOR_TOOLKIT_VERSION=dev
 ARG TARGETARCH
-ARG AUSTIN_VERSION=4.0.0
 ARG PY_SPY_VERSION=0.4.2
 ARG PYDUMP_VERSION=0.1.0
 LABEL org.opencontainers.image.title="doctor debug image" \
@@ -33,7 +24,6 @@ RUN apk add --no-cache \
       tcpdump \
       tcptraceroute \
     && mkdir -p /opt/doctor/bin /opt/doctor/lib/pydump
-COPY --from=austin-builder /out/austin /opt/doctor/bin/austin
 COPY image/net-capture.py /opt/doctor/bin/net-capture
 COPY assets/py-spy/*.gz /tmp/py-spy/
 COPY assets/fork-pyheap/ /tmp/fork-pyheap/
@@ -59,12 +49,11 @@ RUN case "$TARGETARCH" in \
     && chmod 755 /opt/doctor/lib/pydump/*.so \
     && chmod 755 /opt/doctor/bin/net-capture \
     && rm -rf /tmp/py-spy /tmp/fork-pyheap /tmp/pydump \
-    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"austin":"%s","curl":true,"dns":true,"fork_pyheap":"0.7.0+doctor.2","gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_injector":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
-      "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$AUSTIN_VERSION" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
+    && printf '{"schema":"doctor.debug.image","version":1,"toolkit_version":"%s","platform":"linux/%s","tools":{"curl":true,"dns":true,"fork_pyheap":"0.7.0+doctor.2","gdb":true,"iproute2":true,"iptables":true,"iputils":true,"jq":true,"mtr":true,"net_capture":true,"netcat":true,"openssl":true,"python3":true,"py_spy":"%s","pydump":"%s","pydump_injector":"%s","pydump_analyzer":"%s","pydump_agents":"3.10-3.14/min-glibc-2.17","socat":true,"strace":true,"tcpdump":true,"tcptraceroute":true}}\n' \
+      "$DOCTOR_TOOLKIT_VERSION" "$TARGETARCH" "$PY_SPY_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" "$PYDUMP_VERSION" > /opt/doctor/manifest.json \
     && for command in curl dig host ip iptables jq mtr nc nslookup openssl ping socat ss strace tcpdump tcptraceroute; do command -v "$command" >/dev/null; done \
     && python3 --version \
     && gdb --version \
-    && /opt/doctor/bin/austin --version \
     && /opt/doctor/bin/py-spy --version \
     && python3 /opt/doctor/bin/pyheap_dump --help >/dev/null \
     && /opt/doctor/bin/pydump --help >/dev/null \
