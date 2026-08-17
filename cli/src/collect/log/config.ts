@@ -49,9 +49,10 @@ export interface TraceLineCollector {
 
 /** 匹配异常首行后继续接收常见 Python/JavaScript/Java/Go 堆栈续行。 */
 export function createTraceLineCollector(
-  traceId: string,
+  traceIds: string | readonly string[],
   pattern?: RegExp,
 ): TraceLineCollector {
+  const ids = typeof traceIds === "string" ? [traceIds] : traceIds;
   const lines: string[] = [];
   const events: string[] = [];
   let collectingStack = false;
@@ -64,7 +65,7 @@ export function createTraceLineCollector(
         events[events.length - 1] += `\n${line}`;
         return;
       }
-      const selected = line.includes(traceId) && (!pattern || pattern.test(line));
+      const selected = ids.some((traceId) => line.includes(traceId)) && (!pattern || pattern.test(line));
       if (selected) {
         lines.push(line);
         events.push(line);
@@ -154,8 +155,8 @@ export function resolveLogTimeWindow(input: {
   return { sinceTime: new Date(timestampMs - UUID_V7_LEAD_MS).toISOString() };
 }
 
-export function filterTraceLines(stdout: string, traceId: string, pattern?: RegExp): string[] {
-  const collector = createTraceLineCollector(traceId, pattern);
+export function filterTraceLines(stdout: string, traceIds: string | readonly string[], pattern?: RegExp): string[] {
+  const collector = createTraceLineCollector(traceIds, pattern);
   const lines = stdout.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
   for (const line of lines) collector.push(line);

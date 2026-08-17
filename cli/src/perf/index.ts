@@ -218,7 +218,7 @@ async function collectCorrelatedEvidence(input: {
     const tracePath = join(input.outputDir, `${prefix}-trace.html`);
     const logPath = join(input.outputDir, `${prefix}-log.html`);
     const traceCode = await runCollectTrace({
-      bizId: selected.correlationId,
+      bizIds: [selected.correlationId],
       namespace: input.namespace,
       kubeconfig: input.kubeconfig,
       context: input.context,
@@ -228,7 +228,7 @@ async function collectCorrelatedEvidence(input: {
       output: tracePath,
     }, input.plugin, input.commandContext);
     const logCode = await runCollectLog({
-      bizId: selected.correlationId,
+      bizIds: [selected.correlationId],
       namespace: input.namespace,
       kubeconfig: input.kubeconfig,
       context: input.context,

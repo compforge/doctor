@@ -2,8 +2,9 @@
 
 ## 理念 / 概念
 
-`doctor trace` 从 SearchEngine 下载一条 trace 的完整 span 证据，并在 Doctor Host 本地生成可交互
-HTML。命令接收业务 ID，先调用 Plugin `traceId` capability 解析为规范 trace_id；领域层负责确认、计数、
+`doctor trace` 从 SearchEngine 下载 trace 的完整 span 证据，并在 Doctor Host 本地生成可交互
+HTML。命令接收一个或多个业务 ID，先调用 Plugin `traceId` capability；每个 ID 可解析为一条或多条规范
+trace_id。领域层负责确认、计数、
 分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
@@ -14,8 +15,8 @@ HTML。命令接收业务 ID，先调用 Plugin `traceId` capability 解析为�
 ## 流程
 
 1. app 在访问环境前确认当前 Plugin 至少声明一个 `service.traceId` provider；Core 注入当前选择的
-   Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并从 `--biz-id`
-   返回规范 trace_id 与解析语义。
+   Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并为每个 positional ID 或
+   重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
    未提供时复用 `PluginDefinition.trace.source.store` 引用的业务 Service Store 运行时配置，并从 endpoint
    解析 backend Service 和 namespace；配置不可用时才带 warning 跨 namespace 自动发现。
@@ -24,8 +25,9 @@ HTML。命令接收业务 ID，先调用 Plugin `traceId` capability 解析为�
 5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
 6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合
    `PluginDefinition.trace.analysis` 显式提供的 specs / features / detectors / facets 生成交互式 HTML。
-7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；`--format bundle` 将全部证据
-   归档，默认 `--format html` 只复制最终报告。
+7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；批量 HTML 按 biz-id 分顶层
+   tab，同一 biz-id 的多条 trace 再按来源 message/trace 分子 tab。各组只共享交付壳，不混合 span、
+   Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
 8. 交付结束后关闭 SearchEngine、回收 forward；下载中断时保留已经落盘的 span 和失败上下文。
 
 ## 关键设计

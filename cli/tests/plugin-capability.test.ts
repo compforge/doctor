@@ -9,7 +9,7 @@ import {
   type PluginCapabilityContract,
 } from "../src/command/plugin-capability";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../src/app/plugin-command-capabilities";
-import { resolvePluginTraceId } from "../src/plugin/trace-id";
+import { resolvePluginTraceId, resolvePluginTraceIds } from "../src/plugin/trace-id";
 
 const plugin = {
   id: "sample",
@@ -161,4 +161,60 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     service: "trace-api",
     resolvedAs: "request_id",
   });
+});
+
+test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace", async () => {
+  const tracePlugin = {
+    id: "trace-batch",
+    version: "0.0.1",
+    services: createServiceCatalog([{
+      name: "trace-api",
+      capabilities: {
+        traceId: {
+          endpoint: { port: 8080 },
+          access: {},
+          resolve: async (_context: PluginContext, { bizId }: { bizId: string }) => (
+            bizId === "conversation"
+              ? [
+                  { traceId: "trace-1", resolvedAs: "conversation_id", sourceId: "message-1" },
+                  { traceId: "trace-2", resolvedAs: "conversation_id", sourceId: "message-2" },
+                ]
+              : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId }
+          ),
+        },
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  expect(await resolvePluginTraceIds({
+    bizIds: ["conversation", "message-3"],
+    namespace: "default",
+    profileName: "test",
+    command: "doctor trace",
+  }, tracePlugin, {
+    run: async () => { throw new Error("unexpected Kubernetes access"); },
+    exec: async () => { throw new Error("unexpected Kubernetes access"); },
+  })).toEqual([
+    {
+      bizId: "conversation",
+      traceId: "trace-1",
+      service: "trace-api",
+      resolvedAs: "conversation_id",
+      sourceId: "message-1",
+    },
+    {
+      bizId: "conversation",
+      traceId: "trace-2",
+      service: "trace-api",
+      resolvedAs: "conversation_id",
+      sourceId: "message-2",
+    },
+    {
+      bizId: "message-3",
+      traceId: "trace-message-3",
+      service: "trace-api",
+      resolvedAs: "message_id",
+      sourceId: "message-3",
+    },
+  ]);
 });

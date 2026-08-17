@@ -14,8 +14,9 @@ Plugin 是 Service 与 Skill 的打包和分发单位。`PluginDefinition` 是�
 Service Catalog 可包含组成同一应用的多个 Service，每个 Service 各自声明 capability 及所需 access；
 同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
-例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明，`trace`/`log` 只消费其
-约定结果，不通过通用 data 查询或 span tag 猜测业务关系。
+例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明：一个业务 ID 可返回一条
+或多条 trace resolution，并可携带直接承载 trace 的来源 ID。`trace`/`log` 只消费其约定结果，不通过
+通用 data 查询或 span tag 猜测业务关系；命令批量输入的调度和按 ID 分组交付仍由 Core 负责。
 
 monorepo 中的源码按依赖方向分为三层：
 

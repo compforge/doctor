@@ -269,15 +269,21 @@ export interface ServiceTraceIdInput {
 export interface ServiceTraceIdResolution {
   traceId: string;
   resolvedAs: string;
+  /** Optional business record that directly carried this trace_id (for example a message ID). */
+  sourceId?: string;
 }
 
-/** 把 Plugin 认识的业务 ID 解析为 Doctor trace/log 消费的规范 trace_id。 */
+export type ServiceTraceIdResolutionResult =
+  | ServiceTraceIdResolution
+  | readonly ServiceTraceIdResolution[];
+
+/** 把一个 Plugin 业务 ID 解析为 Doctor trace/log 消费的一条或多条规范 trace_id。 */
 export interface ServiceTraceIdCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
   resolve(
     context: PluginContext,
     input: ServiceTraceIdInput,
-  ): Promise<ServiceTraceIdResolution | undefined>;
+  ): Promise<ServiceTraceIdResolutionResult | undefined>;
 }
 
 export type ServiceStoreKind = "db" | "vdb" | "s3" | "redis";

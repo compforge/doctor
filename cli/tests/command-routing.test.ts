@@ -146,6 +146,7 @@ describe("CLI command routing", () => {
     const result = runCli("log", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("--biz-id <id>");
+    expect(result.stdout).toContain("[biz-ids...]");
     expect(result.stdout).not.toContain("--id <id>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("html 或 bundle");
@@ -157,6 +158,7 @@ describe("CLI command routing", () => {
     const result = runCli("trace", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("--biz-id <id>");
+    expect(result.stdout).toContain("[biz-ids...]");
     expect(result.stdout).not.toContain("--id <id>");
     expect(result.stdout).toContain("业务 Service 所在 namespace");
     expect(result.stdout).toContain("OpenSearch backend service 覆盖值");
@@ -544,19 +546,19 @@ describe("CLI command routing", () => {
     expect(database.stderr).toContain("--database 需要 >= 0 的整数");
   }, 10_000);
 
-  test("data requires one --biz-id and exposes JSON and HTML", () => {
+  test("data accepts positional or repeated biz-id and exposes JSON and HTML", () => {
     const result = runCli("data", "--help");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Usage: doctor data [options]");
+    expect(result.stdout).toContain("Usage: doctor data [options] [biz-ids...]");
     expect(result.stdout).toContain("--biz-id <id>");
-    expect(result.stdout).not.toContain("<ids...>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("json（stdout）或 html");
     expect(result.stdout).toContain("--output <path>");
 
     const positional = runCli("data", "biz-1");
     expect(positional.exitCode).not.toBe(0);
-    expect(positional.stderr).toContain("required option '--biz-id <id>' not specified");
+    expect(positional.stderr).not.toContain("required option '--biz-id <id>' not specified");
+    expect(positional.stderr).toContain("service.data");
   });
 
   test("standalone db and redis commands have been removed", () => {
