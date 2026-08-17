@@ -24,7 +24,7 @@
 5. Validation Probe 调用 backend handle 的 validation 行为并形成 Observation；Core 不解释 provider 私有字段或拼接 validation payload。
 6. validation 成功后，Performance Decision Probe 处理显式参数或交互选择；选择性能测试时 Inference Probe 标记为 unnecessary，否则执行最小 inference。
 7. Performance Probe 串行执行短、中、长输入和持续生成场景，每次真实响应形成独立 Observation；它不产生并发或目标 RPS。
-8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 再交付 HTML 报告。embedding / rerank 保持非流式最小请求。
+8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 在终端交付持续生成 TPS 及业务输出耗时粗估口径，并产生 HTML 报告。embedding / rerank 保持非流式最小请求。
 
 ## 关键设计
 
@@ -51,6 +51,7 @@ Prompt 长度主要影响 prefill 和 TTFT，输出长度主要影响 decode 吞
 - TTFT 从请求开始算到首个非空语义 delta；推理模型另记首个非 reasoning 可见输出 TTFO。
 - ICL 是相邻非空语义 SSE event 的到达间隔，用于观察网络抖动、buffering 和用户感知卡顿。
 - 平均 TPOT 使用首尾有效输出到达间隔除以 `completion_tokens - 1`；单用户 output TPS 是 TPOT 的倒数。usage 缺失、实际输出不足两个 token 或没有有效生成区间时不输出 token 指标。
+- 业务耗时可用“首个可见输出延迟 + 输出 token 数 / output TPS”粗估。字符与 token 比例受语言和 tokenizer 影响，终端的 chars/s 只用本次样本文本折算，不作为模型固定参数。
 - `max_completion_tokens` 只是输出上限，报告必须同时展示实际 `completion_tokens` 与 `finish_reason`，不能把过早停止的短输出当成持续 decode 样本。
 
 当前串行采样保持小范围：各场景先执行一次不计入结果的 warmup，重复轮次使用可复现但不同的 prompt 以避免意外命中 prefix cache，并明确记录实际 ISL/OSL。少量样本只展示逐次值、中位数和范围，用来发现明显回归；不把它包装成负载下的 p95/p99 或容量结论。

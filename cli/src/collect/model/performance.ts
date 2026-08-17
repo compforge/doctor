@@ -65,6 +65,7 @@ export interface ModelPerformanceSummary {
   tpotP50Ms?: number;
   tpotMaxMs?: number;
   outputTokensPerSecondP50?: number;
+  outputCharactersPerSecondP50?: number;
   maxInterChunkLatencyMs?: number;
 }
 
@@ -348,6 +349,7 @@ export function summarizeModelPerformance(
     const duration = metric((value) => value.durationMs);
     const tpot = metric((value) => value.tpotMs);
     const throughput = metric((value) => value.outputTokensPerSecond);
+    const characterThroughput = metric((value) => value.outputCharactersPerSecond);
     const maxIcl = metric((value) => value.maxInterChunkLatencyMs);
     return {
       caseId: first.caseId,
@@ -373,6 +375,7 @@ export function summarizeModelPerformance(
       tpotP50Ms: percentile(tpot, 0.5),
       tpotMaxMs: maximum(tpot),
       outputTokensPerSecondP50: percentile(throughput, 0.5),
+      outputCharactersPerSecondP50: percentile(characterThroughput, 0.5),
       maxInterChunkLatencyMs: maximum(maxIcl),
     };
   });
