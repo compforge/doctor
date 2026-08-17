@@ -27,10 +27,10 @@ import { mapErrorMessage } from "../protocol";
 import { runRepl } from "./repl";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectCpu } from "../collect/cpu";
-import { runCollectTrace } from "../collect/trace";
+import { runCollectTrace, type CollectTraceCliOpts } from "../collect/trace";
 import { runCollectStore } from "../collect/store";
-import { runCollectLog } from "../collect/log";
-import { runCollectData } from "../collect/data";
+import { runCollectLog, type CollectLogCliOpts } from "../collect/log";
+import { runCollectData, type CollectDataCliOpts } from "../collect/data";
 import { runCollectConfig } from "../collect/config/index";
 import { REDIS_DEFAULTS } from "../collect/redis";
 import { runCollectHttp } from "../collect/http";
@@ -54,7 +54,9 @@ import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 import { loadActivePlugin } from "../plugin";
 import { runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
-import { normalizeBizIds, withBizIdInputs } from "./biz-id-input";
+import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
+
+type RawBizIdOptions<T> = Omit<T, "bizIds" | "bizId"> & { bizId?: string[] };
 
 // REPL 选项只属于 chat 子命令，root 保持为中性的能力索引。
 function withReplOptions(cmd: CommandT): CommandT {
@@ -542,8 +544,8 @@ export async function main(plugin?: PluginDefinition) {
   });
   withTraceOptions(
     program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
-  ).action(async (positionalBizIds, opts) => {
-    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>) => {
+    const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runPluginCommand(
       {
         name: "doctor trace",
@@ -572,8 +574,8 @@ export async function main(plugin?: PluginDefinition) {
   withLogOptions(
     program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
     "",
-  ).action(async (positionalBizIds, opts) => {
-    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>) => {
+    const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runPluginCommand(
       {
         name: "doctor log",
@@ -588,8 +590,8 @@ export async function main(plugin?: PluginDefinition) {
   withDataOptions(
     program.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
     [],
-  ).action(async (positionalBizIds, opts) => {
-    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>) => {
+    const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runPluginCommand(
       {
         name: "doctor data",

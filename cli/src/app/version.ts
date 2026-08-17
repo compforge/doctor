@@ -1,7 +1,7 @@
 import type { PluginIdentity } from "@compforge/doctor-plugin";
 
 // Doctor Core 的唯一版本事实源；运行时和构建流程都读取这里。
-export const DOCTOR_CLI_VERSION = "0.1.28";
+export const DOCTOR_CLI_VERSION = "0.1.29";
 
 export function formatDoctorVersion(plugin?: PluginIdentity): string {
   return [

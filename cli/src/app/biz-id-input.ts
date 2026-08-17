@@ -16,3 +16,14 @@ export function normalizeBizIds(positional: readonly string[], opts: Record<stri
     .map((value) => String(value).trim())
     .filter(Boolean))];
 }
+
+export function normalizeBizIdOptions<T extends Record<string, unknown>>(
+  positional: readonly string[],
+  opts: T,
+): Omit<T, "bizId"> & { bizIds: string[] } {
+  const { bizId, ...other } = opts;
+  return {
+    ...other,
+    bizIds: normalizeBizIds(positional, { bizId }),
+  };
+}
