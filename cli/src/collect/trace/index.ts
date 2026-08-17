@@ -31,13 +31,15 @@ import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
 import { resolvePluginTraceIds } from "../../plugin/trace-id";
-import { resolveStoreProviderConfig } from "../store/config";
-import { confirmVdbTarget } from "../store/vdb/configuration";
 import {
   confirmOpenSearchConnection,
   prepareOpenSearchAccess,
   type OpenSearchAccessPreparation,
 } from "../shared/opensearch-access";
+import {
+  ServiceDependencyRuntime,
+  type PreparedServiceStoreDependency,
+} from "../shared/service-dependency";
 import { buildIndexExpr } from "./opensearch";
 import { probeTrace } from "./probe";
 import { buildTraceSummary } from "./render";
@@ -195,7 +197,11 @@ export async function runCollectTrace(
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
   let runtime: TraceKubernetesRuntime | undefined;
   try {
-    runtime = await prepareTraceKubernetes(opts, commandContext, !endpoint);
+    runtime = await prepareTraceKubernetes(
+      opts,
+      commandContext,
+      !endpoint && !plugin.trace?.source?.store,
+    );
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
@@ -205,6 +211,25 @@ export async function runCollectTrace(
     return 130;
   }
 
+  const index = buildIndexExpr(opts.index, opts.indexDate);
+  const dependencyRuntime = new ServiceDependencyRuntime({
+    plugin,
+    collect: runtime.collect,
+    executor: runtime.executor,
+    command: "doctor trace",
+    commandContext,
+    index,
+    endpoint,
+    serviceName: opts.service,
+    username: opts.username,
+    password: opts.password,
+    log: (line, tone) => {
+      if (tone === "warning") terminalStdout.warning(`${line}\n`);
+      else terminalStdout.write(`${line}\n`);
+    },
+  });
+
+  try {
   let traces;
   try {
     traces = await resolvePluginTraceIds({
@@ -215,6 +240,7 @@ export async function runCollectTrace(
       profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
       command: "doctor trace",
       commandContext,
+      resolveDependencies: (service) => dependencyRuntime.resolve(service),
     }, plugin, runtime.executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -228,53 +254,14 @@ export async function runCollectTrace(
     );
   }
 
-  let configuredEndpoint: string | undefined;
-  let configuredAuth: OpenSearchAuth = {};
   const traceStore = plugin.trace?.source?.store;
-  if (!endpoint && traceStore) {
+  let preparedStore: PreparedServiceStoreDependency | undefined;
+  if (traceStore) {
     try {
-      const resolvedStore = await resolveStoreProviderConfig({
-        type: "vdb",
-        service: traceStore.service,
-        store: traceStore.store,
-      }, plugin, runtime.collect, runtime.executor, commandContext);
-      if (!resolvedStore) {
-        terminalStderr.warning("[collect] 已取消\n");
-        return 130;
-      }
-      if (resolvedStore.config.capability.kind !== "vdb") {
-        throw new Error("Trace OpenSearch Store capability 类型不匹配");
-      }
-      const confirmed = await confirmVdbTarget(
-        runtime.executor,
-        resolvedStore.config.target,
-        resolvedStore.config.capability,
-      );
-      if (confirmed.connection?.type === "opensearch") {
-        configuredEndpoint = confirmed.connection.endpoint;
-        if (confirmed.connection.username && confirmed.connection.password) {
-          configuredAuth = {
-            username: confirmed.connection.username,
-            password: confirmed.connection.password,
-          };
-        }
-        if (configuredEndpoint) {
-          terminalStdout.write(
-            `[collect] OpenSearch 配置: ${safeOpenSearchEndpoint(configuredEndpoint)}`
-            + `（${traceStore.service}/${traceStore.store}）\n`,
-          );
-        }
-      }
-      if (!configuredEndpoint) {
-        terminalStdout.warning(
-          `[collect] ${confirmed.reason ?? "业务 Service 未提供 OpenSearch endpoint"}；将跨 namespace 自动发现\n`,
-        );
-      }
-    } catch (err) {
-      terminalStdout.warning(
-        `[collect] OpenSearch 运行时配置读取失败：${err instanceof Error ? err.message : String(err)}`
-        + "；将跨 namespace 自动发现\n",
-      );
+      preparedStore = await dependencyRuntime.prepareStore(traceStore.service, traceStore.store);
+    } catch (error) {
+      terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+      return 2;
     }
   }
 
@@ -300,8 +287,7 @@ export async function runCollectTrace(
     ? {
         kubeconfig: runtime.collect.kubernetes.kubeconfig,
         context: runtime.collect.kubernetes.context,
-        // 配置里的短 Service DNS 以业务 namespace 为默认值；无配置时留空以跨 namespace 发现。
-        namespace: configuredEndpoint ? runtime.collect.kubernetes.namespace : undefined,
+        namespace: runtime.collect.kubernetes.namespace,
       }
     : undefined;
   const contributions = plugin.trace
@@ -323,15 +309,16 @@ export async function runCollectTrace(
           {
             traceId: trace.traceId,
             bizId,
-            index: buildIndexExpr(opts.index, opts.indexDate),
-            auth: explicitAuth.username ? explicitAuth : configuredAuth,
+            index,
+            auth: preparedStore?.auth ?? explicitAuth,
             endpoint,
-            configuredEndpoint,
+            configuredEndpoint: preparedStore?.configuredEndpoint,
             service: opts.service,
             kube,
             pageSize,
             outputDir,
             contributions,
+            preparedStore,
             traceIdResolution: {
               service: trace.service,
               resolvedAs: trace.resolvedAs,
@@ -400,6 +387,15 @@ export async function runCollectTrace(
   rmSync(stagingRoot, { recursive: true, force: true });
   terminalStdout.result(exitCode === 0, `[collect] Trace 证据包: ${outputPath}\n`);
   return exitCode;
+  } finally {
+    try {
+      await dependencyRuntime.close();
+    } catch (error) {
+      terminalStdout.warning(
+        `[collect] Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
+  }
 }
 
 export interface TraceCollectOptions {
@@ -422,6 +418,8 @@ export interface TraceCollectOptions {
   pageSize: number;
   outputDir: string;
   contributions?: TraceContributions;
+  /** Shared dependency access owned by the outer batch command. */
+  preparedStore?: PreparedServiceStoreDependency;
 }
 
 /**
@@ -450,13 +448,14 @@ export async function collectTrace(
   const startedAt = new Date().toISOString();
   const bundle = new EvidenceBundle(opts.outputDir, TRACE_OUTCOMES);
   let preparation: OpenSearchAccessPreparation | undefined;
+  let ownsPreparation = false;
   let search: SearchEngine | undefined;
   let channel = "";
   let confirmedTarget: Record<string, unknown> = {};
   const traceId = opts.traceId;
 
   const finish = async (code: number, target: Record<string, unknown> = {}) => {
-    await preparation?.close();
+    if (ownsPreparation) await preparation?.close();
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: { input_id: opts.bizId, trace_id: traceId, index: opts.index, ...target },
@@ -500,26 +499,33 @@ export async function collectTrace(
     log("[collect] 未提供 OpenSearch 凭据（--username/--password 或 DOCTOR_OPENSEARCH_USERNAME/PASSWORD），按匿名访问尝试");
   }
 
-  const confirmation = await confirmOpenSearchConnection({
-    endpoint: opts.endpoint,
-    configuredEndpoint: opts.configuredEndpoint,
-    serviceName: opts.service,
-    kube: opts.kube,
-  }, log);
-  for (const step of confirmation.steps) bundle.addStep(step);
-  confirmedTarget = confirmation.evidenceTarget ?? {};
-  if (confirmation.failure) {
-    failSummary(confirmation.failure.title, confirmation.failure.reason);
-    return finish(1, confirmedTarget);
-  }
+  if (opts.preparedStore) {
+    preparation = opts.preparedStore.preparation;
+    confirmedTarget = opts.preparedStore.evidenceTarget;
+    for (const step of opts.preparedStore.steps) bundle.addStep(step);
+  } else {
+    const confirmation = await confirmOpenSearchConnection({
+      endpoint: opts.endpoint,
+      configuredEndpoint: opts.configuredEndpoint,
+      serviceName: opts.service,
+      kube: opts.kube,
+    }, log);
+    for (const step of confirmation.steps) bundle.addStep(step);
+    confirmedTarget = confirmation.evidenceTarget ?? {};
+    if (confirmation.failure) {
+      failSummary(confirmation.failure.title, confirmation.failure.reason);
+      return finish(1, confirmedTarget);
+    }
 
-  // 网络准备统一拥有 Search client 与 port-forward，主链从此只消费准备好的 SearchEngine。
-  preparation = await prepareOpenSearchAccess({
-    connection: confirmation.connection,
-    kube: opts.kube,
-    auth: opts.auth,
-  }, log, injectedSearch);
-  for (const step of preparation.steps) bundle.addStep(step);
+    // 网络准备统一拥有 Search client 与 port-forward，主链从此只消费准备好的 SearchEngine。
+    preparation = await prepareOpenSearchAccess({
+      connection: confirmation.connection,
+      kube: opts.kube,
+      auth: opts.auth,
+    }, log, injectedSearch);
+    ownsPreparation = true;
+    for (const step of preparation.steps) bundle.addStep(step);
+  }
   if (preparation.failure || !preparation.search || !preparation.baseUrl || !preparation.channel) {
     const failure = preparation.failure ?? { title: "OpenSearch 准备失败", reason: "访问通道不完整" };
     log(`[collect] ${failure.reason}`);

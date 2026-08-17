@@ -1,4 +1,9 @@
-import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
+import type {
+  PluginContext,
+  PluginDefinition,
+  ResolvedServiceCapabilityDependency,
+  ServiceDefinition,
+} from "@compforge/doctor-plugin";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
 import type { Executor, KubectlOptions } from "../infra/k8s/executor";
 import { terminalStdout } from "../terminal/output";
@@ -14,6 +19,9 @@ export interface ResolvePluginTraceIdOptions {
   profileName: string;
   command: "doctor trace" | "doctor log";
   commandContext?: CommandContext;
+  resolveDependencies?: (
+    service: ServiceDefinition,
+  ) => Promise<Readonly<Record<string, ResolvedServiceCapabilityDependency>>>;
 }
 
 export interface ResolvedPluginTraceId {
@@ -58,6 +66,19 @@ export async function resolvePluginTraceIds(
     let context = injectedContexts?.[provider.name];
     let managed: ManagedPluginContext | undefined;
     if (!context) {
+      let dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>> = {};
+      if (provider.dependencies?.length) {
+        if (!opts.resolveDependencies) {
+          throw new Error(`Service '${provider.name}' 声明了 capability 依赖，但 Core 未提供依赖解析器`);
+        }
+        dependencies = await opts.resolveDependencies(provider);
+        const missing = provider.dependencies.filter((dependency) => !dependencies[dependency.id]);
+        if (missing.length) {
+          throw new Error(
+            `Service '${provider.name}' capability 依赖未解析：${missing.map((item) => item.id).join(", ")}`,
+          );
+        }
+      }
       managed = await openPluginContext(executor, kube, {
         env: opts.profileName,
         config: opts.commandContext?.profile.pluginConfig,
@@ -67,6 +88,7 @@ export async function resolvePluginTraceIds(
         },
         command: opts.command,
         capability: provider.capabilities.traceId,
+        dependencies,
         authorization: resolveKubernetesCommandContext(executor, opts.commandContext).access,
       });
       context = managed;

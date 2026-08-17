@@ -11,7 +11,8 @@ Plugin 通过版本化、自包含、可离线交付的归档分发这些业务�
 
 Plugin 是 Service 与 Skill 的打包和分发单位。`PluginDefinition` 是唯一运行时入口，`id@version`
 构成其精确身份，其中
-Service Catalog 可包含组成同一应用的多个 Service，每个 Service 各自声明 capability 及所需 access；
+Service Catalog 可包含组成同一应用的多个 Service，每个 Service 各自声明 capability、所需 access
+以及对其它 Service capability 的运行时依赖；
 同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
 例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明：一个业务 ID 可返回一条
@@ -38,18 +39,25 @@ Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访�
 当操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
 Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
-capability 是 Core 发现、准备和调用 Plugin 能力的中心。下面四类契约只服务于 capability，不各自形成
+capability 是 Core 发现、准备和调用 Plugin 能力的中心。下面五类契约只服务于 capability，不各自形成
 Plugin 扩展点或生命周期：
 
 | 协议面 | 方向 | 所有权 |
 |---|---|---|
 | access | Plugin capability → Core | Plugin 声明最小需求，Core 合并、预检并执行策略 |
+| dependencies | Service → Core | Service 引用同一 Plugin 中其它 Service 的 capability，Core 验证并准备运行时 handle |
 | data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
 | infra | Core → Plugin context | 当前 Target 的 Kubernetes access、取消与资源生命周期等运行便利 |
 | config | profile/Core → Plugin context | Core 不透明保存和透传，schema、校验和解释归 Plugin |
 
-这四类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
+这五类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
+
+Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
+Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
+capability。依赖因此挂在消费方 Service，而不是塞进某个 capability 实现或复制一份连接配置。
+Core 在调用 capability 前解析依赖，只向 `PluginContext` 注入受限的操作 handle；凭据、
+port-forward 和清理仍归 Core 拥有。
 
 Trace Capability 把采集定位和纯分析明确分开：`trace.source.store` 引用 Service Catalog 中的静态 Store，
 供 Core 在运行时解析实际 OpenSearch target；`trace.analysis` 直接采用 trace-harness 的

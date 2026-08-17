@@ -433,9 +433,28 @@ export interface ServiceCapabilities {
   mcp?: ServiceMcpCapability;
 }
 
+export type ServiceCapabilityName = keyof ServiceCapabilities;
+
+/** A Service-level dependency on one Store capability exposed by another Service. */
+export interface ServiceStoreCapabilityDependency {
+  /** Stable local name used by this Service to consume the resolved dependency. */
+  id: string;
+  service: string;
+  capability: "stores";
+  store: string;
+}
+
+/** Extend this union when another capability gains a concrete runtime dependency contract. */
+export type ServiceCapabilityDependency = ServiceStoreCapabilityDependency;
+
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
   toolchain?: Toolchain;
+  /**
+   * Runtime capabilities this Service requires from other Services in the same Plugin.
+   * This stays Service-scoped because capability ownership and connection-config ownership may differ.
+   */
+  dependencies?: readonly ServiceCapabilityDependency[];
   capabilities: ServiceCapabilities;
 }

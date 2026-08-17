@@ -218,3 +218,62 @@ test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace"
     },
   ]);
 });
+
+test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginContext", async () => {
+  const dependency = {
+    id: "trace-store",
+    service: "kb-server",
+    capability: "stores" as const,
+    store: "vdb",
+  };
+  const search = { search: async () => ({ hits: { hits: [] } }) };
+  const tracePlugin = {
+    id: "trace-dependency",
+    version: "0.0.1",
+    services: createServiceCatalog([{
+      name: "kb-server",
+      capabilities: {
+        stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+      },
+    }, {
+      name: "opensearch",
+      dependencies: [dependency],
+      capabilities: {
+        traceId: {
+          endpoint: { port: 9200 },
+          access: {},
+          resolve: async (context: PluginContext) => {
+            expect(context.dependencies["trace-store"]).toEqual({
+              ...dependency,
+              access: { kind: "opensearch", search },
+            });
+            return { traceId: "trace-from-version", resolvedAs: "skill_version_id" };
+          },
+        },
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  expect(await resolvePluginTraceId({
+    bizId: "version-1",
+    namespace: "default",
+    profileName: "test",
+    command: "doctor trace",
+    resolveDependencies: async (service) => {
+      expect(service.name).toBe("opensearch");
+      return {
+        "trace-store": {
+          ...dependency,
+          access: { kind: "opensearch", search },
+        },
+      };
+    },
+  }, tracePlugin, {
+    run: async () => { throw new Error("unexpected Kubernetes access"); },
+    exec: async () => { throw new Error("unexpected Kubernetes access"); },
+  })).toMatchObject({
+    traceId: "trace-from-version",
+    service: "opensearch",
+    resolvedAs: "skill_version_id",
+  });
+});

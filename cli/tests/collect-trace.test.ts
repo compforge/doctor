@@ -235,6 +235,33 @@ describe("collectTrace 记账", () => {
     expect(byId.get("download")).toMatchObject({ status: "unavailable" });
   });
 
+  test("批次共享的 Service Store 连接不由单个 trace 关闭", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
+    const search = fakeSearch({ count: 0 });
+    let closeCount = 0;
+    const preparation = {
+      search,
+      channel: "shared OpenSearch",
+      baseUrl: "https://os.example:9200",
+      steps: [],
+      close: async () => { closeCount += 1; },
+    };
+    const code = await collectTrace({
+      ...traceOpts(dir),
+      preparedStore: {
+        search,
+        preparation,
+        steps: [],
+        evidenceTarget: { endpoint: "https://os.example:9200" },
+        configuredEndpoint: "https://os.example:9200",
+        auth: { username: "u", password: "p" },
+      },
+    }, () => {});
+
+    expect(code).toBe(1);
+    expect(closeCount).toBe(0);
+  });
+
   test("成功路径：三格齐全，且没有用到 writeManifest 的兜底文案", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
     const code = await collectTrace(
