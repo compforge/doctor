@@ -40,6 +40,34 @@ function rangeCell(
       );
 }
 
+export function buildModelPerformanceTerminalSummary(
+  summaries: readonly ModelPerformanceSummary[],
+): string[] {
+  const decode = summaries.find((summary) => summary.kind === "decode");
+  if (!decode) return [];
+  const samples = `${decode.successful}/${decode.total} 次成功`;
+  const tokensPerSecond = decode.outputTokensPerSecondP50;
+  if (tokensPerSecond === undefined) {
+    return [`[model] 当前单请求持续生成：output TPS 不可用（${samples}）\n`];
+  }
+
+  const charactersPerSecond = decode.outputCharactersPerSecondP50;
+  const throughput = `[model] 当前单请求持续生成：${tokensPerSecond.toFixed(2)} tokens/s`
+    + (charactersPerSecond === undefined
+      ? ""
+      : `；本次样本文本约 ${charactersPerSecond.toFixed(2)} chars/s`)
+    + `（P50，${samples}）\n`;
+  const firstOutput = decode.ttfoP50Ms === undefined
+    ? ""
+    : `首个可见输出约 ${(decode.ttfoP50Ms / 1_000).toFixed(2)}s + `;
+  const estimate = `[model] 业务输出耗时粗估：${firstOutput}输出 token 数 / ${tokensPerSecond.toFixed(2)} tokens/s`
+    + (charactersPerSecond === undefined
+      ? "；字符数需先按业务文本 tokenizer 换算"
+      : `；与本次样本相近的文本也可按 ${firstOutput}字符数 / ${charactersPerSecond.toFixed(2)} chars/s 估算`)
+    + "（仅代表当前单请求）\n";
+  return [throughput, estimate];
+}
+
 export function buildModelMarkdown(
   diagnosis: ModelDiagnosis,
   summaries: readonly ModelPerformanceSummary[],
@@ -78,6 +106,8 @@ export function buildModelMarkdown(
           summary.tpotP50Ms ?? "n/a"
         }, output_tokens_per_second_p50=${
           summary.outputTokensPerSecondP50 ?? "n/a"
+        }, output_characters_per_second_p50=${
+          summary.outputCharactersPerSecondP50 ?? "n/a"
         }`,
       ),
     );
@@ -166,6 +196,7 @@ export function buildModelDiagnosisHtml(
         "总耗时 P50（min–max）",
         "TPOT P50（min–max）",
         "output TPS P50",
+        "chars/s P50",
         "ICL max",
       ],
       summaries.map((summary) => [
@@ -189,6 +220,7 @@ export function buildModelDiagnosisHtml(
         ),
         rangeCell(summary.tpotMinMs, summary.tpotP50Ms, summary.tpotMaxMs, milliseconds),
         numberCell(summary.outputTokensPerSecondP50, (value) => rate(value, "tokens/s")),
+        numberCell(summary.outputCharactersPerSecondP50, (value) => rate(value, "chars/s")),
         numberCell(summary.maxInterChunkLatencyMs, milliseconds),
       ]),
     ),

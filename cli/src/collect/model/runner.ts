@@ -44,7 +44,11 @@ import {
   MODEL_INFERENCE_PROBE_ID,
   MODEL_VALIDATION_PROBE_ID,
 } from "./probe";
-import { buildModelDiagnosisHtml, buildModelMarkdown } from "./render";
+import {
+  buildModelDiagnosisHtml,
+  buildModelMarkdown,
+  buildModelPerformanceTerminalSummary,
+} from "./render";
 
 export interface RunModelDiagnosisInput {
   tenant: TenantSummary;
@@ -251,6 +255,9 @@ export async function runModelDiagnosis(
 
     printResponse("validation", diagnosis, "model-validation");
     printResponse("inference", diagnosis, "model-inference");
+    for (const line of buildModelPerformanceTerminalSummary(summaries)) {
+      terminalStdout.info(line);
+    }
     printFindings(diagnosis.findings);
     const outcome = evaluateCollectOutcome(
       diagnosis.coverage.map((item) => item.status === "sufficient"),
