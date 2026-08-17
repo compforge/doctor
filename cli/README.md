@@ -38,8 +38,8 @@ make -C ../toolkit build-all
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor trace` | 从 OpenSearch 下载 trace 并生成逻辑节点树 / 火焰图 HTML；bundle 模式保留原始 span |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
-| `doctor log --biz-id <id>` | 通过 Plugin traceId capability 解析 trace ID，再聚合服务日志 |
-| `doctor data --biz-id <id>` | 先扩展业务 ID，再按 Service Catalog 汇集各服务声明的数据 |
+| `doctor log [id...]` | 通过 Plugin traceId capability 解析 trace ID，再按业务 ID 分组聚合服务日志 |
+| `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
 | `doctor config` | 展示 Service Pod、Toolchain 和配置对照，并可选采集 Deployment 配置与应用依赖 |
 | `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
@@ -48,6 +48,10 @@ make -C ../toolkit build-all
 | `doctor neta [input]` | 纯离线分析 NetBundle，生成业务调用 Diagnosis 的 Markdown、泳道/瀑布 HTML 与结构化 JSON |
 | `doctor version` | 显示 Doctor、当前平台及嵌入 Plugin 的精确版本 |
 | `doctor help` | 显示命令帮助 |
+
+`trace`、`log`、`data` 的业务 ID 既可直接写成 positional（如 `doctor trace <id>`），也可重复传入
+`--biz-id`（如 `--biz-id=1 --biz-id=2`）。批量 HTML 按原始 ID 分 tab；每个 ID 的证据、Finding 和
+Coverage 独立，只有采集批次和交付页面共享。
 
 ## 详细文档
 

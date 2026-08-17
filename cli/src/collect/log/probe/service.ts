@@ -31,7 +31,7 @@ async function capturePodLog(
 ): Promise<{ result: ExecResult; events: string[]; rawFilePath: string }> {
   const suffix = input.previous ? `-${input.container}-previous` : "";
   const rawFilePath = join(ctx.bundle.dir, `.capture-${input.service}-${input.pod}${suffix}.log`);
-  const collector = createTraceLineCollector(config.traceId, config.linePattern);
+  const collector = createTraceLineCollector(config.traceIds, config.linePattern);
   const result = await ctx.access.collectPodLogs({
     pod: input.pod,
     container: input.container,

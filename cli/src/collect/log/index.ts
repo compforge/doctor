@@ -1,7 +1,7 @@
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
 // Kubernetes 的 Pod 枚举和日志读取由 infra/k8s 提供；本目录只保留业务选择和证据语义。
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -35,7 +35,8 @@ import { renderLogResult, renderTimelineJsonl } from "./render";
 import { parseLogOutputFormat, resolveLogOutputPath } from "./output";
 import type { LogOutputFormat } from "./output";
 import { writeLogHtmlReport } from "./html";
-import { resolvePluginTraceId } from "../../plugin/trace-id";
+import { resolvePluginTraceIds } from "../../plugin/trace-id";
+import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
 
 export * from "./config";
 export * from "./html";
@@ -44,7 +45,9 @@ export * from "./output";
 export * from "./probe/service";
 export * from "./render";
 export interface CollectLogCliOpts {
-  bizId: string;
+  bizIds?: string[];
+  /** @deprecated Use bizIds. */
+  bizId?: string;
   namespace?: string;
   services?: string;
   since?: string;
@@ -65,7 +68,13 @@ export function defaultLogBundleName(traceId: string, now: Date): string {
   return `doctor-log-${traceId.slice(0, 12)}-${ts}`;
 }
 
-export async function runCollectLog(
+export function defaultLogBatchName(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return `doctor-log-batch-${ts}`;
+}
+
+async function runCollectLogSingle(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
   commandContext?: CommandContext,
@@ -138,8 +147,8 @@ export async function runCollectLog(
   });
   let trace;
   try {
-    trace = await resolvePluginTraceId({
-      bizId: opts.bizId,
+    trace = await resolvePluginTraceIds({
+      bizIds: opts.bizIds,
       namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig,
       context: opts.context,
@@ -155,9 +164,14 @@ export async function runCollectLog(
     terminalStderr.warning("[collect] 已取消\n");
     return 130;
   }
+  const selected = trace[0];
+  if (!selected) {
+    terminalStderr.error("doctor log 需要至少一个 biz-id\n");
+    return 2;
+  }
   terminalStdout.write(
-    `[collect] biz-id: ${opts.bizId} → trace-id: ${trace.traceId}`
-    + `（${trace.service} 按 ${trace.resolvedAs} 解析）\n`,
+    `[collect] biz-id: ${selected.bizId} → trace-id: ${trace.map((item) => item.traceId).join(", ")}`
+    + `（${selected.service} 按 ${selected.resolvedAs} 解析）\n`,
   );
   let services: string[] | undefined;
   try {
@@ -180,7 +194,7 @@ export async function runCollectLog(
   terminalStdout.write(`[collect] services: ${services.join(", ")}\n`);
 
   const timeWindow = resolveLogTimeWindow({
-    id: opts.bizId,
+    id: selected.bizId,
     since: opts.since,
     sinceTime: opts.sinceTime,
   });
@@ -188,7 +202,7 @@ export async function runCollectLog(
     terminalStdout.write(`[collect] 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}\n`);
   }
 
-  const bundleName = defaultLogBundleName(trace.traceId, new Date());
+  const bundleName = defaultLogBundleName(selected.traceId, new Date());
   let outputPath: string;
   try {
     outputPath = resolveLogOutputPath(opts.output, bundleName, format);
@@ -199,8 +213,8 @@ export async function runCollectLog(
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
   const code = await collectLog(
     {
-      bizId: opts.bizId,
-      traceId: trace.traceId,
+      bizId: selected.bizId,
+      traceIds: trace.map((item) => item.traceId),
       namespace: resolvedNamespace.namespace,
       services,
       since: timeWindow.since,
@@ -255,6 +269,87 @@ export async function runCollectLog(
   return code;
 }
 
+/** Batch wrapper: each biz-id keeps its own log evidence and only the delivery shell is shared. */
+export async function runCollectLog(
+  opts: CollectLogCliOpts,
+  plugin: PluginDefinition,
+  commandContext?: CommandContext,
+): Promise<number> {
+  const ids = [...new Set([
+    ...(opts.bizIds ?? []),
+    ...(opts.bizId ? [opts.bizId] : []),
+  ].map((item) => item.trim()).filter(Boolean))];
+  if (!ids.length) {
+    terminalStderr.error("doctor log 需要至少一个 biz-id\n");
+    return 2;
+  }
+  if (ids.length === 1) {
+    return runCollectLogSingle({ ...opts, bizIds: ids }, plugin, commandContext);
+  }
+
+  let format;
+  try {
+    format = parseLogOutputFormat(opts.format);
+  } catch (error) {
+    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  const batchName = defaultLogBatchName(new Date());
+  let outputPath;
+  try {
+    outputPath = resolveLogOutputPath(opts.output, batchName, format);
+  } catch (error) {
+    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  const staging = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
+  const tabs = [];
+  let exitCode = 0;
+  for (const [index, bizId] of ids.entries()) {
+    const prefix = join(staging, `biz-${index + 1}`);
+    const code = await runCollectLogSingle(
+      { ...opts, bizIds: [bizId], output: prefix },
+      plugin,
+      commandContext,
+    );
+    if (code === 130) {
+      rmSync(staging, { recursive: true, force: true });
+      return code;
+    }
+    if (format === "html") {
+      const htmlPath = `${prefix}.html`;
+      tabs.push({
+        key: `biz-${index + 1}`,
+        label: bizId,
+        status: code === 0 && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
+        html: code === 0 && existsSync(htmlPath)
+          ? readFileSync(htmlPath, "utf8")
+          : failedReportHtml(`Log 诊断失败：${bizId}`, `采集退出码 ${code}`),
+      });
+    }
+    exitCode = Math.max(exitCode, code);
+  }
+
+  if (format === "html") {
+    writeTabbedReport(outputPath, {
+      title: "doctor Log 日志报告",
+      description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
+      ariaLabel: "Biz ID 日志诊断结果",
+      tabs,
+    });
+  } else {
+    const packed = await packBundle(staging, outputPath);
+    if (!packed.ok) {
+      terminalStderr.error(`[collect] Log 批次打包失败：${packed.stderr.trim().split("\n")[0]}\n`);
+      return 1;
+    }
+  }
+  if (exitCode === 0 || format === "bundle") rmSync(staging, { recursive: true, force: true });
+  else terminalStderr.warning(`[collect] 失败 Log 证据保留在目录: ${staging}\n`);
+  terminalStdout.result(exitCode === 0, `[collect] Log ${format === "html" ? "HTML 报告" : "证据包"}: ${outputPath}\n`);
+  return exitCode;
+}
+
 export async function collectLog(
   opts: LogCollectOptions,
   executor: Executor,
@@ -263,7 +358,12 @@ export async function collectLog(
 ): Promise<number> {
   const startedAt = new Date().toISOString();
   const bundle = new EvidenceBundle(opts.outputDir);
-  const config: LogProbeConfig = { ...opts, linePattern };
+  const traceIds = [...new Set([
+    ...(opts.traceIds ?? []),
+    ...(opts.traceId ? [opts.traceId] : []),
+  ].map((item) => item.trim()).filter(Boolean))];
+  if (!traceIds.length) throw new Error("collectLog 需要至少一个 trace_id");
+  const config: LogProbeConfig = { ...opts, traceIds, linePattern };
   const ctx = {
     access: new KubectlPodLogAccess(executor, opts.namespace),
     bundle,
@@ -293,8 +393,9 @@ export async function collectLog(
     kubectlVersion,
     target: {
       namespace: opts.namespace,
-      biz_id: opts.bizId ?? opts.traceId,
-      trace_id: opts.traceId,
+      biz_id: opts.bizId ?? traceIds[0],
+      trace_id: traceIds.length === 1 ? traceIds[0] : undefined,
+      trace_ids: traceIds,
       services: opts.services,
     },
     inspectionFacts: facts,

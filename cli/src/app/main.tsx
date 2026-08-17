@@ -54,6 +54,7 @@ import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 import { loadActivePlugin } from "../plugin";
 import { runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
+import { normalizeBizIds, withBizIdInputs } from "./biz-id-input";
 
 // REPL 选项只属于 chat 子命令，root 保持为中性的能力索引。
 function withReplOptions(cmd: CommandT): CommandT {
@@ -134,8 +135,7 @@ function withCpuOptions(cmd: CommandT): CommandT {
 }
 
 function withTraceOptions(cmd: CommandT): CommandT {
-  return cmd
-    .requiredOption("--biz-id <id>", "业务 ID；Plugin traceId capability 先解析为 trace_id")
+  return withBizIdInputs(cmd, "业务 ID；可重复传入，Plugin traceId capability 先解析为 trace_id")
     .option("-n, --namespace <ns>", "业务 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("--service <name>", "OpenSearch backend service 覆盖值")
     .option("--endpoint <url>", "Doctor Host 直连 OpenSearch 的地址；缺省也读 DOCTOR_OPENSEARCH_URL")
@@ -184,8 +184,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
 
 function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
   const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
-  return cmd
-    .requiredOption("--biz-id <id>", "用于解析 trace_id 的业务 ID（trace_id / message_id / conversation_id 等）")
+  return withBizIdInputs(cmd, "用于解析 trace_id 的业务 ID；可重复传入（trace_id / message_id / conversation_id 等）")
     .option("-n, --namespace <ns>", "目标服务所在 namespace（缺省时按 profile 或交互选择，非交互默认 default）")
     .option(
       "--services <names>",
@@ -207,8 +206,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
   const defaultDescription = defaultServiceNames.length
     ? defaultServiceNames.join(",")
     : "当前 Plugin 声明的 data provider";
-  return cmd
-    .requiredOption("--biz-id <id>", "需要汇集关联数据的业务 ID")
+  return withBizIdInputs(cmd, "需要汇集关联数据的业务 ID；可重复传入")
     .option(
       "--services <names>",
       `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
@@ -544,16 +542,17 @@ export async function main(plugin?: PluginDefinition) {
   });
   withTraceOptions(
     program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
-  ).action(async (opts) => {
+  ).action(async (positionalBizIds, opts) => {
+    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
     await runPluginCommand(
       {
         name: "doctor trace",
         environment: { kubernetes: true },
         plugin: PLUGIN_COMMAND_CAPABILITIES.trace,
       },
-      opts,
+      commandOpts,
       plugin,
-      (activePlugin, context) => runCollectTrace(opts, activePlugin, context),
+      (activePlugin, context) => runCollectTrace(commandOpts, activePlugin, context),
     );
   });
   withStoreOptions(
@@ -573,32 +572,34 @@ export async function main(plugin?: PluginDefinition) {
   withLogOptions(
     program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
     "",
-  ).action(async (opts) => {
+  ).action(async (positionalBizIds, opts) => {
+    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
     await runPluginCommand(
       {
         name: "doctor log",
         environment: { kubernetes: true },
         plugin: PLUGIN_COMMAND_CAPABILITIES.log,
       },
-      opts,
+      commandOpts,
       plugin,
-      (activePlugin, context) => runCollectLog(opts, activePlugin, context),
+      (activePlugin, context) => runCollectLog(commandOpts, activePlugin, context),
     );
   });
   withDataOptions(
     program.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
     [],
-  ).action(async (opts) => {
+  ).action(async (positionalBizIds, opts) => {
+    const commandOpts = { ...opts, bizIds: normalizeBizIds(positionalBizIds, opts) };
     await runPluginCommand(
       {
         name: "doctor data",
         environment: { kubernetes: true },
         plugin: PLUGIN_COMMAND_CAPABILITIES.data,
       },
-      opts,
+      commandOpts,
       plugin,
       (activePlugin, context) => runCollectData(
-        opts,
+        commandOpts,
         activePlugin,
         undefined,
         undefined,

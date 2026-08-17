@@ -98,13 +98,14 @@ export function renderTimelineJsonl(records: readonly LogTimelineRecord[]): stri
 }
 
 export function renderServiceLogs(
-  traceId: string,
+  traceIdsInput: string | readonly string[],
   namespace: string,
   services: readonly string[],
   records: readonly LogTimelineRecord[],
 ): string {
+  const traceIds = typeof traceIdsInput === "string" ? [traceIdsInput] : traceIdsInput;
   const lines = [
-    `trace_id=${traceId}`,
+    `trace_ids=${traceIds.join(",")}`,
     `namespace=${namespace}`,
     `services=${services.join(",")}`,
     "",
@@ -160,7 +161,7 @@ export function renderLogResult(
   }, { podCount: 0, matchedEventCount: 0, previousContainerCount: 0, failedCount: 0 });
   const timeline = buildLogTimeline(observations);
   const serviceLogs = renderServiceLogs(
-    config.traceId,
+    config.traceIds,
     config.namespace,
     config.services,
     timeline,
@@ -169,7 +170,7 @@ export function renderLogResult(
   if (failed) return { timeline, serviceLogs, summary: failed, stats };
 
   const lines = [
-    `# log 采集摘要：${config.traceId}`,
+    `# log 采集摘要：${config.traceIds.join(", ")}`,
     "",
     `- namespace: \`${config.namespace}\``,
     `- services: ${config.services.map((service) => `\`${service}\``).join(", ")}`,

@@ -13,7 +13,9 @@ export type DataOutputFormat = "json" | "html";
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts {
-  bizId: string;
+  bizIds?: string[];
+  /** @deprecated Use bizIds. */
+  bizId?: string;
   namespace?: string;
   kubeconfig?: string;
   context?: string;
@@ -22,6 +24,8 @@ export interface CollectDataCliOpts {
   format?: string;
   output?: string;
   services?: string;
+  /** Internal batch label used to keep per-ID failure bundles distinct. */
+  reportName?: string;
 }
 
 export interface DataConfig {

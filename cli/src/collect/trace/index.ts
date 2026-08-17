@@ -25,12 +25,12 @@ import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { packBundle, resolveArchivePath } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { failedReportHtml, renderTabbedReport, writeTabbedReport } from "../output/tabbed-report";
 import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
-import { resolvePluginTraceId } from "../../plugin/trace-id";
+import { resolvePluginTraceIds } from "../../plugin/trace-id";
 import { resolveStoreProviderConfig } from "../store/config";
 import { confirmVdbTarget } from "../store/vdb/configuration";
 import {
@@ -46,8 +46,10 @@ export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
 
 export interface CollectTraceCliOpts {
-  /** 由 Plugin traceId capability 解析为 trace_id 的业务 ID。 */
-  bizId: string;
+  /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
+  bizIds?: string[];
+  /** @deprecated Use bizIds. */
+  bizId?: string;
   namespace?: string;
   service?: string;
   endpoint?: string;
@@ -133,6 +135,12 @@ export function defaultTraceBundleName(traceId: string, now: Date): string {
   return `doctor-trace-${traceId.slice(0, 12)}-${ts}`;
 }
 
+export function defaultTraceBatchName(now: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`;
+  return `doctor-trace-batch-${ts}`;
+}
+
 export type TraceOutputFormat = "html" | "bundle";
 
 export function parseTraceOutputFormat(value: string | undefined): TraceOutputFormat {
@@ -164,6 +172,14 @@ export async function runCollectTrace(
   plugin: PluginDefinition,
   commandContext?: CommandContext,
 ): Promise<number> {
+  const bizIds = [...new Set([
+    ...(opts.bizIds ?? []),
+    ...(opts.bizId ? [opts.bizId] : []),
+  ].map((item) => item.trim()).filter(Boolean))];
+  if (!bizIds.length) {
+    terminalStderr.error("doctor trace 需要至少一个 biz-id\n");
+    return 2;
+  }
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
     terminalStderr.error(`--page-size 需要正整数: '${opts.pageSize}'\n`);
@@ -189,10 +205,10 @@ export async function runCollectTrace(
     return 130;
   }
 
-  let trace;
+  let traces;
   try {
-    trace = await resolvePluginTraceId({
-      bizId: opts.bizId,
+    traces = await resolvePluginTraceIds({
+      bizIds,
       namespace: runtime.collect.kubernetes.namespace,
       kubeconfig: runtime.collect.kubernetes.kubeconfig,
       context: runtime.collect.kubernetes.context,
@@ -204,15 +220,13 @@ export async function runCollectTrace(
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
   }
-  if (!trace) {
-    terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+  for (const trace of traces) {
+    terminalStdout.write(
+      `[collect] biz-id: ${trace.bizId} → trace-id: ${trace.traceId}`
+      + `（${trace.service} 按 ${trace.resolvedAs} 解析`
+      + `${trace.sourceId ? `，source=${trace.sourceId}` : ""}）\n`,
+    );
   }
-  const traceId = trace.traceId;
-  terminalStdout.write(
-    `[collect] biz-id: ${opts.bizId} → trace-id: ${traceId}`
-    + `（${trace.service} 按 ${trace.resolvedAs} 解析）\n`,
-  );
 
   let configuredEndpoint: string | undefined;
   let configuredAuth: OpenSearchAuth = {};
@@ -264,7 +278,10 @@ export async function runCollectTrace(
     }
   }
 
-  const bundleName = defaultTraceBundleName(traceId, new Date());
+  const singleTrace = bizIds.length === 1 && traces.length === 1;
+  const bundleName = singleTrace
+    ? defaultTraceBundleName(traces[0]!.traceId, new Date())
+    : defaultTraceBatchName(new Date());
   let outputPath: string;
   try {
     outputPath = format === "html"
@@ -276,7 +293,8 @@ export async function runCollectTrace(
   }
   // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
   const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
-  const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
+  const staging = join(stagingRoot, bundleName);
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
@@ -286,60 +304,102 @@ export async function runCollectTrace(
         namespace: configuredEndpoint ? runtime.collect.kubernetes.namespace : undefined,
       }
     : undefined;
-  const code = await collectTrace(
-    {
-      traceId,
-      bizId: opts.bizId,
-      index: buildIndexExpr(opts.index, opts.indexDate),
-      auth: explicitAuth.username ? explicitAuth : configuredAuth,
-      endpoint,
-      configuredEndpoint,
-      service: opts.service,
-      kube,
-      pageSize,
-      outputDir: staging,
-      contributions: plugin.trace
-        ? mergeTraceContributions(
-            plugin.trace.analysis,
-            { specs: genAiSpecs() },
-          )
-        : { specs: genAiSpecs() },
-      traceIdResolution: {
-        service: trace.service,
-        resolvedAs: trace.resolvedAs,
-      },
-    },
-    (line, tone) => {
-      if (tone === "warning") terminalStdout.warning(`${line}\n`);
-      else terminalStdout.write(`${line}\n`);
-    },
-  );
-  if (code === 0 && format === "html") {
-    copyFileSync(join(staging, "trace.html"), resolve(outputPath));
-    rmSync(join(staging, ".."), { recursive: true, force: true });
-    terminalStdout.result(true, `[collect] HTML 报告: ${outputPath}\n`);
-    return 0;
-  }
-  const delivery = code === 0
-    ? { path: outputPath, packed: await packBundle(staging, outputPath) }
-    : await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: opts.output,
-        collectCode: code,
+  const contributions = plugin.trace
+    ? mergeTraceContributions(plugin.trace.analysis, { specs: genAiSpecs() })
+    : { specs: genAiSpecs() };
+  const groups = [];
+  let exitCode = 0;
+  for (const [bizIndex, bizId] of bizIds.entries()) {
+    const groupTraces = traces.filter((trace) => trace.bizId === bizId);
+    const traceTabs = [];
+    let groupCode = 0;
+    for (const [traceIndex, trace] of groupTraces.entries()) {
+      const outputDir = singleTrace
+        ? staging
+        : join(staging, `biz-${bizIndex + 1}`, `trace-${traceIndex + 1}-${trace.traceId.slice(0, 12)}`);
+      let code;
+      try {
+        code = await collectTrace(
+          {
+            traceId: trace.traceId,
+            bizId,
+            index: buildIndexExpr(opts.index, opts.indexDate),
+            auth: explicitAuth.username ? explicitAuth : configuredAuth,
+            endpoint,
+            configuredEndpoint,
+            service: opts.service,
+            kube,
+            pageSize,
+            outputDir,
+            contributions,
+            traceIdResolution: {
+              service: trace.service,
+              resolvedAs: trace.resolvedAs,
+              sourceId: trace.sourceId,
+            },
+          },
+          (line, tone) => {
+            if (tone === "warning") terminalStdout.warning(`${line}\n`);
+            else terminalStdout.write(`${line}\n`);
+          },
+        );
+      } catch (error) {
+        code = 1;
+        terminalStderr.error(
+          `[collect] trace ${trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
+      traceTabs.push({
+        key: `trace-${traceIndex + 1}`,
+        label: trace.sourceId ? `${trace.sourceId} · ${trace.traceId}` : trace.traceId,
+        status: code === 0 ? "delivered" as const : "failed" as const,
+        html: code === 0
+          ? readFileSync(join(outputDir, "trace.html"), "utf8")
+          : failedReportHtml(`Trace 采集失败：${trace.traceId}`, `Biz ID ${bizId}，退出码 ${code}`),
       });
-  const { packed } = delivery;
-  if (packed.ok) {
-    rmSync(join(staging, ".."), { recursive: true, force: true });
-    terminalStdout.result(
-      code === 0,
-      `[collect] ${code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}\n`,
-    );
-  } else {
+      groupCode = Math.max(groupCode, code);
+    }
+    const groupHtml = traceTabs.length === 1
+      ? traceTabs[0]!.html
+      : renderTabbedReport({
+          title: `Trace 诊断：${bizId}`,
+          description: "同一 Biz ID 解析出的多轮 Trace",
+          ariaLabel: `${bizId} Trace 结果`,
+          tabs: traceTabs,
+        });
+    groups.push({
+      key: `biz-${bizIndex + 1}`,
+      label: bizId,
+      status: groupCode === 0 ? "delivered" as const : "failed" as const,
+      html: groupHtml,
+    });
+    exitCode = Math.max(exitCode, groupCode);
+  }
+
+  if (format === "html") {
+    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), resolve(outputPath));
+    else {
+      writeTabbedReport(outputPath, {
+        title: "doctor Trace 诊断报告",
+        description: "同一批次采集，每个 Biz ID 独立分组",
+        ariaLabel: "Biz ID Trace 诊断结果",
+        tabs: groups,
+      });
+    }
+    if (exitCode === 0) rmSync(stagingRoot, { recursive: true, force: true });
+    else terminalStderr.warning(`[collect] 失败 Trace 证据保留在目录: ${staging}\n`);
+    terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPath}\n`);
+    return exitCode;
+  }
+
+  const packed = await packBundle(staging, outputPath);
+  if (!packed.ok) {
     terminalStderr.error(`[collect] 打包失败（${packed.stderr.trim().split("\n")[0]}），证据保留在目录: ${staging}\n`);
     return 1;
   }
-  return code;
+  rmSync(stagingRoot, { recursive: true, force: true });
+  terminalStdout.result(exitCode === 0, `[collect] Trace 证据包: ${outputPath}\n`);
+  return exitCode;
 }
 
 export interface TraceCollectOptions {
@@ -349,6 +409,7 @@ export interface TraceCollectOptions {
   traceIdResolution: {
     service: string;
     resolvedAs: string;
+    sourceId?: string;
   };
   index: string;
   auth: OpenSearchAuth;
@@ -430,6 +491,7 @@ export async function collectTrace(
       trace_id: traceId,
       service: opts.traceIdResolution.service,
       resolved_as: opts.traceIdResolution.resolvedAs,
+      source_id: opts.traceIdResolution.sourceId,
     }),
     ext: "json",
   });

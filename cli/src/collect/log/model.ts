@@ -4,7 +4,9 @@ import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
 
 export interface LogCollectOptions {
   bizId?: string;
-  traceId: string;
+  traceIds?: readonly string[];
+  /** @deprecated Use traceIds. */
+  traceId?: string;
   namespace: string;
   services: string[];
   since?: string;
@@ -14,7 +16,8 @@ export interface LogCollectOptions {
   outputDir: string;
 }
 
-export interface LogProbeConfig extends LogCollectOptions {
+export interface LogProbeConfig extends Omit<LogCollectOptions, "traceIds"> {
+  traceIds: readonly string[];
   linePattern?: RegExp;
 }
 

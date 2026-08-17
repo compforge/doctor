@@ -2,7 +2,8 @@
 
 ## 理念 / 概念
 
-`doctor data --biz-id <id>` 汇集一个业务 ID 在当前 Plugin 中的关联数据。它不是通用 SQL 控制台，也不在
+`doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
+`--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
 `data` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
 
@@ -20,15 +21,16 @@ data capability 的两个角色彼此独立：
 
 ## 流程
 
-1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。
+1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。多个 ID 进入同一采集批次，
+   但每个 ID 独立执行后续 expansion、provide、Detector 与 Coverage。
 2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
    按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 按 Catalog 顺序串行执行全部带 `expands` 的 capability。第一个接收原始 ID；后续 expander 同时接收
    此前解析出的 ID，因此可逐层扩展。扩展时取得的数据结果同时作为该 Service 的 provider 贡献。
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
    阶段已经查过的 ID 直接复用，只补查后续 expander 新增的 ID。
-5. Detector 只根据结构化 Observation 形成 Finding；Render 汇总每条输入的解析方式、规范 ID、服务数据、
-   Finding 和 Coverage。
+5. Detector 只根据当前 ID 的结构化 Observation 形成 Finding；Render 汇总其解析方式、规范 ID、服务数据、
+   Finding 和 Coverage。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 用 `groups` 按原始 ID 分组。
 6. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
 ## 关键设计

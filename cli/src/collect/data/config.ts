@@ -91,11 +91,14 @@ export function resolveDataConfig(
   catalog: ServiceCatalog,
   commandContext?: CommandContext,
 ): DataConfig {
-  const bizId = opts.bizId.trim();
-  if (!bizId) throw new Error("doctor data 需要非空 --biz-id");
+  const ids = [...new Set([
+    ...(opts.bizIds ?? []),
+    ...(opts.bizId ? [opts.bizId] : []),
+  ].map((bizId) => bizId.trim()).filter(Boolean))];
+  if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
   const format = parseDataOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 时可用");
-  const reportName = dataReportName(new Date());
+  const reportName = opts.reportName ?? dataReportName(new Date());
   const outputPath = format === "html" ? resolveDataHtmlOutputPath(opts.output, reportName) : undefined;
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   const resolvedProfile = commandContext
@@ -109,7 +112,7 @@ export function resolveDataConfig(
   const namespace = resolveCollectNamespace(opts, commandContext?.profile);
   const services = parseDataServices(opts.services, catalog);
   return {
-    ids: [bizId],
+    ids,
     format,
     outputPath,
     reportName,

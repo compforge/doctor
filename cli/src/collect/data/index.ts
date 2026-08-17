@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -14,7 +14,14 @@ import { evaluateCollectOutcome } from "../outcome";
 import { requireKubernetesChannel } from "../../terminal/kubernetes-access";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
-import { resolveDataConfig, resolveDataServiceSelection } from "./config";
+import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
+import {
+  dataReportName,
+  parseDataOutputFormat,
+  resolveDataConfig,
+  resolveDataHtmlOutputPath,
+  resolveDataServiceSelection,
+} from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataInspect } from "./fact/inspect";
 import type {
@@ -51,12 +58,18 @@ function dataOutcomes(services: readonly string[], plugin: PluginDefinition): Ou
 }
 
 /** commander 入口只编排 Service 选择、Inspect、Probe、Detector 与最终交付。 */
-export async function runCollectData(
+interface DataSingleRunHooks {
+  onDiagnosis?: (diagnosis: DataDiagnosis) => void;
+  suppressJson?: boolean;
+}
+
+async function runCollectDataSingle(
   opts: CollectDataCliOpts,
   plugin: PluginDefinition,
   injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
   commandContext?: CommandContext,
+  hooks: DataSingleRunHooks = {},
 ): Promise<number> {
   const startedAt = new Date().toISOString();
   let config;
@@ -202,7 +215,8 @@ export async function runCollectData(
   bundle.writeSummary(buildDataSummary(diagnosis));
   writeManifest();
   if (config.format === "json") {
-    terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
+    hooks.onDiagnosis?.(diagnosis);
+    if (!hooks.suppressJson) terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
     rmSync(stagingRoot, { recursive: true, force: true });
     return 0;
   }
@@ -219,4 +233,117 @@ export async function runCollectData(
   rmSync(stagingRoot, { recursive: true, force: true });
   terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
   return 0;
+}
+
+/** Batch wrapper: each biz-id runs an independent diagnosis; only the final delivery is grouped. */
+export async function runCollectData(
+  opts: CollectDataCliOpts,
+  plugin: PluginDefinition,
+  injectedExecutor?: Executor,
+  injectedContexts?: Readonly<Record<string, PluginContext>>,
+  commandContext?: CommandContext,
+): Promise<number> {
+  const ids = [...new Set([
+    ...(opts.bizIds ?? []),
+    ...(opts.bizId ? [opts.bizId] : []),
+  ].map((item) => item.trim()).filter(Boolean))];
+  if (!ids.length) {
+    terminalStderr.error("doctor data 需要至少一个 biz-id\n");
+    return 2;
+  }
+  if (ids.length === 1) {
+    return runCollectDataSingle(
+      { ...opts, bizIds: ids },
+      plugin,
+      injectedExecutor,
+      injectedContexts,
+      commandContext,
+    );
+  }
+
+  let format;
+  try {
+    format = parseDataOutputFormat(opts.format);
+  } catch (error) {
+    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  if (format === "json" && opts.output) {
+    terminalStderr.error("--output 仅在 --format html 时可用\n");
+    return 2;
+  }
+
+  const batchName = dataReportName(new Date());
+  if (format === "json") {
+    const groups: Record<string, DataDiagnosis | { error: string }> = {};
+    let exitCode = 0;
+    for (const [index, bizId] of ids.entries()) {
+      let captured: DataDiagnosis | undefined;
+      const code = await runCollectDataSingle(
+        {
+          ...opts,
+          bizIds: [bizId],
+          format: "json",
+          output: undefined,
+          reportName: `${batchName}-biz-${index + 1}`,
+        },
+        plugin,
+        injectedExecutor,
+        injectedContexts,
+        commandContext,
+        { onDiagnosis: (diagnosis) => { captured = diagnosis; }, suppressJson: true },
+      );
+      groups[bizId] = captured ?? { error: `采集失败（exitCode=${code}）` };
+      exitCode = Math.max(exitCode, code);
+    }
+    terminalStdout.write(`${JSON.stringify({ groups }, null, 2)}\n`);
+    return exitCode;
+  }
+
+  let outputPath;
+  try {
+    outputPath = resolveDataHtmlOutputPath(opts.output, batchName);
+  } catch (error) {
+    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    return 2;
+  }
+  const staging = mkdtempSync(join(tmpdir(), "doctor-data-tabs-"));
+  const tabs = [];
+  let exitCode = 0;
+  for (const [index, bizId] of ids.entries()) {
+    const prefix = join(staging, `biz-${index + 1}`);
+    const code = await runCollectDataSingle(
+      {
+        ...opts,
+        bizIds: [bizId],
+        format: "html",
+        output: prefix,
+        reportName: `${batchName}-biz-${index + 1}`,
+      },
+      plugin,
+      injectedExecutor,
+      injectedContexts,
+      commandContext,
+    );
+    const htmlPath = `${prefix}.html`;
+    tabs.push({
+      key: `biz-${index + 1}`,
+      label: bizId,
+      status: code === 0 && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
+      html: code === 0 && existsSync(htmlPath)
+        ? readFileSync(htmlPath, "utf8")
+        : failedReportHtml(`Data 诊断失败：${bizId}`, `采集退出码 ${code}`),
+    });
+    exitCode = Math.max(exitCode, code);
+  }
+  writeTabbedReport(outputPath, {
+    title: "doctor Data 业务数据汇集报告",
+    description: "同一批次采集，每个 Biz ID 独立诊断",
+    ariaLabel: "Biz ID 数据诊断结果",
+    tabs,
+  });
+  if (exitCode === 0) rmSync(staging, { recursive: true, force: true });
+  else terminalStderr.warning(`[collect] 失败 Data 证据保留在目录: ${staging}\n`);
+  terminalStdout.result(exitCode === 0, `[collect] Data HTML 报告: ${outputPath}\n`);
+  return exitCode;
 }

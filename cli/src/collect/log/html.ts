@@ -73,7 +73,7 @@ function buildLogSummary(manifest: BundleManifest, records: readonly LogTimeline
     <ul>
       <li>Namespace：<code>${escapeHtml(target.namespace ?? "")}</code></li>
       <li>Biz ID：<code>${escapeHtml(target.biz_id ?? "")}</code></li>
-      <li>Trace ID：<code>${escapeHtml(target.trace_id ?? "")}</code></li>
+      <li>Trace IDs：<code>${escapeHtml(Array.isArray(target.trace_ids) ? target.trace_ids.join(", ") : target.trace_id ?? "")}</code></li>
       <li>Services：${escapeHtml(services)}</li>
       <li>时间窗口：<code>${escapeHtml(timeWindow)}</code></li>
       <li>日志事件：${logCount} 条；采集失败：${errorCount} 项</li>
