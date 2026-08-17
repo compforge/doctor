@@ -37,6 +37,8 @@ import type { LogOutputFormat } from "./output";
 import { writeLogHtmlReport } from "./html";
 import { resolvePluginTraceIds } from "../../plugin/trace-id";
 import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
+import { ServiceDependencyRuntime } from "../shared/service-dependency";
+import { buildIndexExpr } from "../trace/opensearch";
 
 export * from "./config";
 export * from "./html";
@@ -145,6 +147,28 @@ async function runCollectLogSingle(
       purpose: "读取 current/previous Container 日志",
     }],
   });
+  const dependencyRuntime = new ServiceDependencyRuntime({
+    plugin,
+    collect: {
+      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
+      kubernetes: {
+        kubeconfig: resolved.kubeconfig,
+        kubeconfigSource: resolved.source,
+        context: opts.context,
+        namespace: resolvedNamespace.namespace,
+        namespaceSource: resolvedNamespace.source,
+      },
+    },
+    executor,
+    command: "doctor log",
+    commandContext,
+    index: buildIndexExpr(),
+    endpoint: process.env.DOCTOR_OPENSEARCH_URL?.trim(),
+    log: (line, tone) => {
+      if (tone === "warning") terminalStdout.warning(`${line}\n`);
+      else terminalStdout.write(`${line}\n`);
+    },
+  });
   let trace;
   try {
     trace = await resolvePluginTraceIds({
@@ -155,10 +179,19 @@ async function runCollectLogSingle(
       profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
       command: "doctor log",
       commandContext,
+      resolveDependencies: (service) => dependencyRuntime.resolve(service),
     }, plugin, executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
+  } finally {
+    try {
+      await dependencyRuntime.close();
+    } catch (error) {
+      terminalStdout.warning(
+        `[collect] Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}\n`,
+      );
+    }
   }
   if (!trace) {
     terminalStderr.warning("[collect] 已取消\n");

@@ -1,9 +1,8 @@
 import type {
+  ServiceCapabilityName,
   ServiceCapabilities,
   ServiceDefinition,
 } from "./service";
-
-export type ServiceCapabilityName = keyof ServiceCapabilities;
 
 export type ServiceWithCapability<
   T extends ServiceDefinition,

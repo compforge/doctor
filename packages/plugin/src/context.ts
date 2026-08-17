@@ -1,5 +1,20 @@
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
+import type { ServiceStoreCapabilityDependency } from "./service";
+
+export interface PluginSearchAccess {
+  /** The host binds the index and owns connection/auth/cleanup. */
+  search(body: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>>;
+}
+
+export interface ResolvedServiceStoreDependency extends ServiceStoreCapabilityDependency {
+  access: {
+    kind: "opensearch";
+    search: PluginSearchAccess;
+  };
+}
+
+export type ResolvedServiceCapabilityDependency = ResolvedServiceStoreDependency;
 
 /**
  * Doctor 在一次 capability 调用中确认的运行态事实。
@@ -26,6 +41,8 @@ export interface PluginContext {
   target: PluginTarget;
   /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
   config: Readonly<Record<string, unknown>>;
+  /** Service-declared dependencies resolved and lifetime-managed by Doctor Core. */
+  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
   infra: PluginInfra;
   signal: AbortSignal;
   onDispose(disposer: () => void | Promise<void>): void;

@@ -16,11 +16,13 @@ trace_id。领域层负责确认、计数、
 
 1. app 在访问环境前确认当前 Plugin 至少声明一个 `service.traceId` provider；Core 注入当前选择的
    Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并为每个 positional ID 或
-   重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。
+   重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。provider Service
+   声明 capability 依赖时，Core 在调用前将其解析为受限运行时 handle。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
    未提供时复用 `PluginDefinition.trace.source.store` 引用的业务 Service Store 运行时配置，并从 endpoint
    解析 backend Service 和 namespace；配置不可用时才带 warning 跨 namespace 自动发现。
-3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期。
+3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期；
+   ID 解析与 span 下载命中同一 Store 时复用同一连接。
 4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不再用任意 span tag 猜测业务 ID 关系。
 5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
 6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合

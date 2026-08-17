@@ -124,6 +124,77 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
   }, manifest)).toThrow("trace.source.store references unknown Store 'trace-store/missing'");
 });
 
+test("Service capability dependency 必须引用另一 Service 已声明的 Store", () => {
+  const dependency = {
+    id: "trace-store",
+    service: "kb-server",
+    capability: "stores",
+    store: "vdb",
+  } as const;
+  const base = {
+    id: "test",
+    version: "0.0.1",
+    services: {
+      services: [{
+        name: "kb-server",
+        capabilities: {
+          stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+        },
+      }, {
+        name: "opensearch",
+        dependencies: [dependency],
+        capabilities: {},
+      }],
+    },
+  };
+
+  expect(validatePluginDefinition(base, manifest).services.find("opensearch")?.dependencies)
+    .toEqual([dependency]);
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: {
+      services: [base.services.services[0], {
+        ...base.services.services[1],
+        dependencies: [{
+          id: "trace-store",
+          service: "kb-server",
+          capability: "stores",
+          store: "missing",
+        }],
+      }],
+    },
+  }, manifest)).toThrow("references unknown Store 'kb-server/missing'");
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: {
+      services: [base.services.services[0], {
+        ...base.services.services[1],
+        dependencies: [
+          dependency,
+          dependency,
+        ],
+      }],
+    },
+  }, manifest)).toThrow("contains duplicate id 'trace-store'");
+
+  expect(() => validatePluginDefinition({
+    ...base,
+    services: {
+      services: [{
+        name: "kb-server",
+        capabilities: {
+          stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
+        },
+      }, {
+        ...base.services.services[1],
+        dependencies: [{ ...dependency, store: "database" }],
+      }],
+    },
+  }, manifest)).toThrow("当前只支持 OpenSearch VDB");
+});
+
 test("Plugin perf scenarios select Cases from the Service case capability", () => {
   const base = {
     id: "test",

@@ -3,6 +3,7 @@ import type {
   DatabaseIdentity,
   KubernetesAccess,
   PluginContext,
+  ResolvedServiceCapabilityDependency,
 } from "@compforge/doctor-plugin";
 import type {
   KubernetesAccessContext,
@@ -131,6 +132,7 @@ interface PluginContextOptions {
   databaseIdentity?: DatabaseIdentity;
   service: PluginContext["target"]["service"];
   capability: CapabilityWithAccess;
+  dependencies?: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
 }
 
 export function createPluginContext(
@@ -152,6 +154,7 @@ export function createPluginContext(
       service: options.service,
     },
     config: options.config ?? {},
+    dependencies: options.dependencies ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
       kubernetes: createKubernetesAccess(

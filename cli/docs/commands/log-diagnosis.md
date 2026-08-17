@@ -15,7 +15,7 @@
 
 ## 流程
 
-1. 配置确认先确定 Namespace，并由 `service.traceId` provider 分别解析每个 biz-id，输出 provider 与本次映射。非交互使用 Catalog 的默认日志主链；交互候选是统一 Catalog 与当前 Namespace 实际 Service 的交集。时间范围优先采用显式参数；未指定时，近期 UUIDv7 业务 ID 会提供带少量前置余量的日志起点，其他 ID 回退默认回看窗口。
+1. 配置确认先确定 Namespace，并由 `service.traceId` provider 分别解析每个 biz-id，输出 provider 与本次映射。provider Service 声明 capability 依赖时，Core 只在调用该 provider 时准备 handle，解析完成后统一回收。非交互使用 Catalog 的默认日志主链；交互候选是统一 Catalog 与当前 Namespace 实际 Service 的交集。时间范围优先采用显式参数；未指定时，近期 UUIDv7 业务 ID 会提供带少量前置余量的日志起点，其他 ID 回退默认回看窗口。
 2. Inspect 通过 `KubernetesPodLogAccess` 读取 Service、Pod 和 Container status，按 selector 建立 Service → Running Pod 关系，并确认哪些容器存在可读取的上一次终止实例。
 3. 每个 Service 独立运行一个 Probe；Probe 对其 Pod 采集同一时间范围内的 current 日志，并对发生过重启且存在 `lastState.terminated` 的容器 best-effort 补采 previous 日志。原始字节流分别直接落盘，同时按业务标识和可选错误模式生成 Observation。
 4. Render 合并全部 Service Observation，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。

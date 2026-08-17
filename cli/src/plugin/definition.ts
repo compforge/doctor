@@ -94,6 +94,21 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   if (service.toolchain !== undefined && !isToolchain(service.toolchain)) {
     throw new Error(`Plugin Service '${String(service.name)}'.toolchain is invalid`);
   }
+  if (service.dependencies !== undefined) {
+    for (const [dependencyIndex, value] of nonEmptyArray(
+      service.dependencies,
+      `Plugin Service '${String(service.name)}'.dependencies`,
+    ).entries()) {
+      const dependency = record(
+        value,
+        `Plugin Service '${String(service.name)}'.dependencies[${dependencyIndex}]`,
+      );
+      nonEmptyString(dependency.id, `${service.name}.dependencies[${dependencyIndex}].id`);
+      nonEmptyString(dependency.service, `${service.name}.dependencies[${dependencyIndex}].service`);
+      nonEmptyString(dependency.capability, `${service.name}.dependencies[${dependencyIndex}].capability`);
+      nonEmptyString(dependency.store, `${service.name}.dependencies[${dependencyIndex}].store`);
+    }
+  }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case"] as const) {
     const capability = capabilities[name];
@@ -231,6 +246,42 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   const catalog = createServiceCatalog(services);
 
   for (const service of services) {
+    const dependencies = service.dependencies ?? [];
+    const dependencyIds = new Set<string>();
+    for (const dependency of dependencies) {
+      const id = nonEmptyString(dependency.id, `${service.name}.dependencies.id`);
+      if (dependencyIds.has(id)) {
+        throw new Error(`${service.name}.dependencies contains duplicate id '${id}'`);
+      }
+      dependencyIds.add(id);
+      if (dependency.capability !== "stores") {
+        throw new Error(`${service.name}.dependencies '${id}' uses unsupported capability '${String(dependency.capability)}'`);
+      }
+      const providerName = nonEmptyString(
+        dependency.service,
+        `${service.name}.dependencies.${id}.service`,
+      );
+      const provider = services.find((candidate) => candidate.name === providerName);
+      if (!provider) {
+        throw new Error(`${service.name}.dependencies '${id}' references unknown Service '${providerName}'`);
+      }
+      const storeId = nonEmptyString(
+        dependency.store,
+        `${service.name}.dependencies.${id}.store`,
+      );
+      const store = provider.capabilities.stores?.find((candidate) => candidate.id === storeId);
+      if (!store) {
+        throw new Error(
+          `${service.name}.dependencies '${id}' references unknown Store '${providerName}/${storeId}'`,
+        );
+      }
+      if (store.kind !== "vdb" || store.backend !== "opensearch") {
+        throw new Error(
+          `${service.name}.dependencies '${id}' references unsupported Store '${providerName}/${storeId}'`
+          + "；当前只支持 OpenSearch VDB",
+        );
+      }
+    }
     const requirement = service.capabilities.case?.requestIdentity;
     if (requirement) {
       requireProvider(
