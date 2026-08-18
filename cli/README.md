@@ -36,6 +36,7 @@ make -C ../toolkit build-all
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
+| `doctor collect [id...]` | 集合选择并汇总 Data、Trace、Log、Metric；自身不实现具体采集 |
 | `doctor trace` | 从 OpenSearch 下载 trace 并生成逻辑节点树 / 火焰图 HTML；bundle 模式保留原始 span |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log [id...]` | 通过 Plugin traceId capability 解析 trace ID，再按业务 ID 分组聚合服务日志 |
@@ -56,6 +57,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 ## 详细文档
 
 - [CLI Kernel 与 Collect 共享协议](docs/kernel.md)
+- [Collect 集合采集](docs/commands/collect.md)
 - [Config 诊断](docs/commands/config-diagnosis.md)
 - [Metric 诊断](docs/commands/metric-diagnosis.md)
 - [Memory 诊断](docs/commands/memory-diagnosis.md)
