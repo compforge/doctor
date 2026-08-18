@@ -33,7 +33,7 @@
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.1/compforge-perf-harness-0.0.1.tgz",
     "@compforge/prombed": "0.0.2",
-    "@compforge/trace-harness": "0.0.5",
+    "@compforge/trace-harness": "0.0.6",
     "@earendil-works/pi-agent-core": "0.84.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentui/core": "0.4.5",
