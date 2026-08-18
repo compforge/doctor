@@ -1,10 +1,8 @@
-import { createCliRenderer } from "@opentui/core";
-import { createRoot } from "@opentui/react";
-import { ChatShell } from "chat-tui";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 
-import { CHAT_COMMANDS, Controller, Session } from "../chat";
+import { runPlainRepl } from "../chat/plain-repl";
+import { Session } from "../chat/session";
 import type { CliFlags } from "../protocol";
 import { mapErrorMessage } from "../protocol";
 import { bootstrap } from "./bootstrap";
@@ -42,6 +40,28 @@ export async function runRepl(
     boot.agent,
     plugin ? `${plugin.id}@${plugin.version}` : undefined,
   );
+  if (!process.versions.bun) {
+    // Kylin 使用 Node SEA 兼容旧内核；OpenTUI 依赖 Bun FFI，因此在该运行时降级为行式交互。
+    await runPlainRepl(session);
+    return;
+  }
+
+  await runFullscreenRepl(session);
+}
+
+async function runFullscreenRepl(session: Session): Promise<void> {
+  const [core, opentuiReact, chatTui, react, chat] = await Promise.all([
+    import("@opentui/core"),
+    import("@opentui/react"),
+    import("chat-tui"),
+    import("react"),
+    import("../chat/controller"),
+  ]);
+  const { createCliRenderer } = core;
+  const { createRoot } = opentuiReact;
+  const { ChatShell } = chatTui;
+  const { createElement } = react;
+  const { CHAT_COMMANDS, Controller } = chat;
   const renderer = await createCliRenderer({
     exitOnCtrlC: false,
     targetFps: 30,
@@ -52,7 +72,7 @@ export async function runRepl(
   let finished = false;
   let resolveExit!: () => void;
   const exited = new Promise<void>((resolve) => { resolveExit = resolve; });
-  let controller: Controller;
+  let controller: InstanceType<typeof Controller>;
   const cleanup = async () => {
     if (finished) return;
     finished = true;
@@ -72,7 +92,7 @@ export async function runRepl(
   const onSignal = () => { void cleanup(); };
   process.once("SIGTERM", onSignal);
   process.once("SIGINT", onSignal);
-  root.render(<ChatShell protocol={controller} commands={CHAT_COMMANDS} />);
+  root.render(createElement(ChatShell, { protocol: controller, commands: CHAT_COMMANDS }));
 
   await exited;
   process.off("SIGTERM", onSignal);
