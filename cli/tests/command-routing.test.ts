@@ -552,8 +552,10 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("Usage: doctor data [options] [biz-ids...]");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("json（stdout）或 html");
+    expect(result.stdout).toContain("输出格式：json 或 html");
     expect(result.stdout).toContain("--output <path>");
+    expect(result.stdout).toContain("doctor-data-<时间戳>.<format>");
+    expect(result.stdout).toContain("自动补全）");
 
     const positional = runCli("data", "biz-1");
     expect(positional.exitCode).not.toBe(0);

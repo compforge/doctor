@@ -31,7 +31,7 @@ export interface CollectDataCliOpts {
 export interface DataConfig {
   ids: string[];
   format: DataOutputFormat;
-  outputPath?: string;
+  outputPath: string;
   reportName: string;
   profileName: string;
   fallbackIdentity?: DatabaseIdentity;

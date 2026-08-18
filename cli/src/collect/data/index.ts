@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -20,6 +20,7 @@ import {
   parseDataOutputFormat,
   resolveDataConfig,
   resolveDataHtmlOutputPath,
+  resolveDataJsonOutputPath,
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
@@ -216,12 +217,20 @@ async function runCollectDataSingle(
   writeManifest();
   if (config.format === "json") {
     hooks.onDiagnosis?.(diagnosis);
-    if (!hooks.suppressJson) terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
+    if (!hooks.suppressJson) {
+      try {
+        writeFileSync(config.outputPath, `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
+      } catch (error) {
+        reportError(error, { context: "doctor data/json-report", summary: "JSON 报告生成失败" });
+        return await fail(error instanceof Error ? error.message : String(error));
+      }
+    }
     rmSync(stagingRoot, { recursive: true, force: true });
+    if (!hooks.suppressJson) terminalStdout.success(`[collect] Data JSON: ${config.outputPath}\n`);
     return 0;
   }
   try {
-    writeHtmlReport(staging, config.outputPath!, {
+    writeHtmlReport(staging, config.outputPath, {
       title: "doctor Data 业务数据汇集报告",
       profileName: config.profileName,
       summaryHtml: buildDataHtml(diagnosis),
@@ -268,11 +277,6 @@ export async function runCollectData(
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  if (format === "json" && opts.output) {
-    terminalStderr.error("--output 仅在 --format html 时可用\n");
-    return 2;
-  }
-
   const batchName = dataReportName(new Date());
   if (format === "json") {
     const groups: Record<string, DataDiagnosis | { error: string }> = {};
@@ -296,7 +300,15 @@ export async function runCollectData(
       groups[bizId] = captured ?? { error: `采集失败（exitCode=${code}）` };
       exitCode = Math.max(exitCode, code);
     }
-    terminalStdout.write(`${JSON.stringify({ groups }, null, 2)}\n`);
+    const outputPath = resolveDataJsonOutputPath(opts.output, batchName);
+    try {
+      writeFileSync(outputPath, `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
+    } catch (error) {
+      reportError(error, { context: "doctor data/json-report", summary: "JSON 报告生成失败" });
+      terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+      return 1;
+    }
+    terminalStdout.result(exitCode === 0, `[collect] Data JSON: ${outputPath}\n`);
     return exitCode;
   }
 
