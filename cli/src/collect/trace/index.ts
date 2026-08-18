@@ -25,7 +25,12 @@ import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { packBundle, resolveArchivePath } from "../output/archive";
-import { failedReportHtml, renderTabbedReport, writeTabbedReport } from "../output/tabbed-report";
+import {
+  failedReportHtml,
+  type ReportLeafTab,
+  type ReportTab,
+  writeTabbedReport,
+} from "../output/tabbed-report";
 import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
@@ -293,11 +298,12 @@ export async function runCollectTrace(
   const contributions = plugin.trace
     ? mergeTraceContributions(plugin.trace.analysis, { specs: genAiSpecs() })
     : { specs: genAiSpecs() };
-  const groups = [];
+  const groups: ReportTab[] = [];
   let exitCode = 0;
   for (const [bizIndex, bizId] of bizIds.entries()) {
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
-    const traceTabs = [];
+    const groupKey = `biz-${bizIndex + 1}`;
+    const traceTabs: ReportLeafTab[] = [];
     let groupCode = 0;
     for (const [traceIndex, trace] of groupTraces.entries()) {
       const outputDir = singleTrace
@@ -337,7 +343,7 @@ export async function runCollectTrace(
         );
       }
       traceTabs.push({
-        key: `trace-${traceIndex + 1}`,
+        key: `${groupKey}-trace-${traceIndex + 1}`,
         label: trace.sourceId ? `${trace.sourceId} · ${trace.traceId}` : trace.traceId,
         status: code === 0 ? "delivered" as const : "failed" as const,
         html: code === 0
@@ -346,20 +352,15 @@ export async function runCollectTrace(
       });
       groupCode = Math.max(groupCode, code);
     }
-    const groupHtml = traceTabs.length === 1
-      ? traceTabs[0]!.html
-      : renderTabbedReport({
-          title: `Trace 诊断：${bizId}`,
-          description: "同一 Biz ID 解析出的多轮 Trace",
-          ariaLabel: `${bizId} Trace 结果`,
-          tabs: traceTabs,
-        });
-    groups.push({
-      key: `biz-${bizIndex + 1}`,
+    const group = {
+      key: groupKey,
       label: bizId,
       status: groupCode === 0 ? "delivered" as const : "failed" as const,
-      html: groupHtml,
-    });
+    };
+    // 保留 Biz -> Trace 的导航数据，由最外层报告统一渲染；这里嵌套报告壳会重复标题、页签和 iframe。
+    groups.push(traceTabs.length === 1
+      ? { ...group, html: traceTabs[0]!.html }
+      : { ...group, tabs: traceTabs });
     exitCode = Math.max(exitCode, groupCode);
   }
 
