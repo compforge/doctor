@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   buildModelTestRequest,
   makeModelInferenceProbe,
+  parseModelOutputFormat,
+  resolveModelDiagnosisOutput,
 } from "../src/collect/model";
 import {
   isMultimodalModel,
@@ -28,6 +30,17 @@ const imageModel = requireInferenceModel({
 });
 
 describe("doctor model multimodal inference", () => {
+  test("writes model diagnosis as JSON by default and supports HTML", () => {
+    expect(parseModelOutputFormat(undefined)).toBe("json");
+    expect(parseModelOutputFormat("html")).toBe("html");
+    expect(() => parseModelOutputFormat("terminal")).toThrow("--format 只支持 json 或 html");
+
+    const now = new Date(2026, 7, 18, 9, 8, 7);
+    expect(resolveModelDiagnosisOutput(undefined, "json", now))
+      .toMatch(/doctor-model-20260818090807\.json$/);
+    expect(resolveModelDiagnosisOutput("model-report", "html", now)).toMatch(/model-report\.html$/);
+  });
+
   test("derives multimodal and image support from catalog modalities", () => {
     expect(isMultimodalModel(textModel)).toBe(false);
     expect(isMultimodalModel(imageModel)).toBe(true);

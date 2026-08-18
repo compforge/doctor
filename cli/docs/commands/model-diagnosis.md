@@ -24,7 +24,7 @@
 5. Validation Probe 调用 backend handle 的 validation 行为并形成 Observation；Core 不解释 provider 私有字段或拼接 validation payload。
 6. validation 成功后，Performance Decision Probe 处理显式参数或交互选择；选择性能测试时 Inference Probe 标记为 unnecessary，否则执行最小 inference。
 7. Performance Probe 串行执行短、中、长输入和持续生成场景，每次真实响应形成独立 Observation；它不产生并发或目标 RPS。
-8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 在终端交付持续生成 TPS 及业务输出耗时粗估口径，并产生 HTML 报告。embedding / rerank 保持非流式最小请求。
+8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 在终端交付持续生成 TPS 及业务输出耗时粗估口径，并产生 JSON 或 HTML 报告。embedding / rerank 保持非流式最小请求。
 
 ## 关键设计
 

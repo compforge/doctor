@@ -1,12 +1,20 @@
 import type { ModelType } from "@compforge/doctor-plugin";
 import type { SelectedInferenceModel } from "../../model";
 import { promptListedChoice } from "../../terminal/selection";
-import type { ModelTestRequest } from "./model";
+import type { ModelOutputFormat, ModelTestRequest } from "./model";
 
 const MODEL_TYPES: readonly ModelType[] = ["llm", "embedding", "rerank", "audio"];
 const MODEL_PERFORMANCE_CASES = 4;
 const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
   + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
+
+export function parseModelOutputFormat(value: string | undefined): ModelOutputFormat {
+  const format = value?.trim() || "json";
+  if (format !== "json" && format !== "html") {
+    throw new Error(`--format 只支持 json 或 html: '${format}'`);
+  }
+  return format;
+}
 
 export function parseModelType(value: string | undefined): ModelType | undefined {
   const normalized = value?.trim().toLowerCase();

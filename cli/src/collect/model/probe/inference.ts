@@ -51,7 +51,7 @@ export function makeModelInferenceProbe(
       let observation: ModelResponseObservation;
       try {
         const response = await ctx.inference.invoke(request.path, request.body);
-        // TODO: HTTP 成功不能证明下游实际消费了图片。当前保留并打印原始模型响应供人工判断，
+        // TODO: HTTP 成功不能证明下游实际消费了图片。当前在诊断报告中保留原始模型响应供人工判断，
         // 等有 provider-neutral 的语义判定方式后再把图片识别准确性纳入自动诊断。
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,

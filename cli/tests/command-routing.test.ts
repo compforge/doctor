@@ -410,7 +410,10 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--no-performance");
     expect(result.stdout).toContain("--repeat <n>");
     expect(result.stdout).toContain("--max-output-tokens <n>");
+    expect(result.stdout).toContain("-f, --format <format>");
+    expect(result.stdout).toContain('(default: "json")');
     expect(result.stdout).toContain("--output <path>");
+    expect(result.stdout).toContain("--format 自动补全");
   });
 
   test("mem uses PyHeap without exposing backend selection or historical modes", () => {
