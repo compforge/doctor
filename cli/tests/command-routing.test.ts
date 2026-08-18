@@ -142,6 +142,18 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("-y, --yes");
   });
 
+  test("collect is an aggregate command rather than another collector", () => {
+    const result = runCoreCli("collect", "--help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: doctor collect [options] [biz-ids...]");
+    expect(result.stdout).toContain("集合命令");
+    expect(result.stdout).toContain("本身不实现具体采集");
+    expect(result.stdout).toContain("--include <kinds>");
+    expect(result.stdout).toContain("data、trace、log、metric");
+    expect(result.stdout).toContain("--biz-id <id>");
+    expect(result.stdout).toContain("--watch <duration>");
+  });
+
   test("log exposes HTML-by-default and full Evidence Bundle output", () => {
     const result = runCli("log", "--help");
     expect(result.exitCode).toBe(0);

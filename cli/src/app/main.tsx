@@ -10,6 +10,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor store             → 从 Service Pod 提取 Store 配置并诊断 DB/VDB/S3/Redis（collect/）
 //   doctor log               → 无 server 直连采集：按 biz ID 解析 trace 并聚合服务 pod 日志（collect/）
 //   doctor data              → 先扩展业务 ID，再汇集各 Service 声明的数据（collect/）
+//   doctor collect           → 集合命令：选择并编排 data/trace/log/metric，自身不实现具体采集
 //   doctor config            → 采集 Service 的部署声明配置与可选租户配置（collect/）
 //   doctor http              → 从 YAML 重放多轮 HTTP 请求并分析响应（collect/）
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
@@ -42,6 +43,11 @@ import {
 import { runCollectMcp } from "../collect/mcp";
 import { runCollectModel } from "../collect/model";
 import { runCollectMetric } from "../collect/metric";
+import {
+  runCollect,
+  resolveCollectKinds,
+  type CollectCliOpts,
+} from "../collect/composite";
 import { runPerf } from "../perf";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
@@ -50,7 +56,7 @@ import type { CliFlags } from "../protocol";
 import { reportError } from "./error-log";
 import { runInit } from "./init";
 import { runProfile } from "./profile";
-import { PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
+import { collectPluginCapabilities, PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 import { loadActivePlugin } from "../plugin";
 import { runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
@@ -223,6 +229,22 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       "-o, --output <path>",
       "报告输出路径（默认 ./doctor-data-<时间戳>.<format>；后缀按 --format 自动补全）",
     );
+}
+
+function withCollectOptions(cmd: CommandT): CommandT {
+  return withBizIdInputs(cmd, "需要联合采集的业务 ID；可重复传入")
+    .option("--include <kinds>", "要编排的命令：data、trace、log、metric；逗号分隔，交互模式缺省时多选")
+    .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
+    .option("--since <duration>", "传给 doctor log 的日志回看窗口")
+    .option("--since-time <timestamp>", "传给 doctor log 的日志起始时间，优先于 --since")
+    .option("--watch <duration>", "传给 doctor metric 的采集窗口；默认 0")
+    .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
+    .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
+    .option("--kubeconfig <path>", "kubeconfig 路径")
+    .option("--context <name>", "kubeconfig context")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Prometheus")
+    .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
+    .option("-o, --output <path>", "集合 HTML 报告输出路径");
 }
 
 function withConfigOptions(cmd: CommandT): CommandT {
@@ -543,6 +565,31 @@ export async function main(plugin?: PluginDefinition) {
       { name: "doctor cpu", environment: { kubernetes: true } },
       opts,
       (context) => runCollectCpu(opts, context),
+    );
+  });
+  withCollectOptions(
+    program.command("collect").description(
+      "集合命令：选择、编排并汇总 data/trace/log/metric；本身不实现具体采集",
+    ),
+  ).action(async (
+    positionalBizIds,
+    opts: Omit<CollectCliOpts, "bizIds" | "kinds"> & { bizId?: string[]; include?: string },
+  ) => {
+    const kinds = await resolveCollectKinds(opts.include);
+    if (!kinds) {
+      process.exitCode = 130;
+      return;
+    }
+    const commandOpts = { ...normalizeBizIdOptions(positionalBizIds, opts), kinds };
+    await runPluginCommand(
+      {
+        name: "doctor collect",
+        environment: { kubernetes: kinds.some((kind) => kind !== "metric") },
+        plugin: collectPluginCapabilities(kinds),
+      },
+      commandOpts,
+      plugin,
+      (activePlugin, context) => runCollect(commandOpts, activePlugin, context),
     );
   });
   withTraceOptions(

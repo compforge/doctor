@@ -258,6 +258,7 @@ Linux x64 CLI 同时提供 modern Bun 与 glibc 2.17-compatible Node SEA；无�
 
 | Command | 文档 |
 |---|---|
+| Collect（集合命令） | [`commands/collect.md`](commands/collect.md) |
 | Config | [`commands/config-diagnosis.md`](commands/config-diagnosis.md) |
 | CPU | [`commands/cpu-diagnosis.md`](commands/cpu-diagnosis.md) |
 | Data | [`commands/data-diagnosis.md`](commands/data-diagnosis.md) |

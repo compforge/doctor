@@ -1,4 +1,5 @@
-import type { PluginCapabilityContract } from "../command";
+import type { PluginCapabilityContract, PluginCapabilityNeed } from "../command";
+import type { CollectKind } from "../collect/composite";
 
 /** Plugin command 在接触环境前声明的静态业务能力；依赖 flags 的条件能力由对应 command 延迟检查。 */
 export const PLUGIN_COMMAND_CAPABILITIES = {
@@ -108,3 +109,21 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     }],
   },
 } as const satisfies Record<string, PluginCapabilityContract>;
+
+/** collect 只组合所选具体命令的 capability contract，不拥有新的业务能力。 */
+export function collectPluginCapabilities(kinds: readonly CollectKind[]): PluginCapabilityContract {
+  const needs: PluginCapabilityNeed[] = [];
+  for (const kind of kinds) {
+    for (const need of PLUGIN_COMMAND_CAPABILITIES[kind].needs) {
+      if (needs.some((candidate) => (
+        candidate.capability.scope === need.capability.scope
+        && candidate.capability.name === need.capability.name
+      ))) continue;
+      needs.push(need);
+    }
+  }
+  return {
+    command: "doctor collect",
+    needs,
+  };
+}
