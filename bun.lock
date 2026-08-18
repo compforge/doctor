@@ -16,7 +16,7 @@
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.1/compforge-perf-harness-0.0.1.tgz",
         "@compforge/prombed": "0.0.2",
-        "@compforge/trace-harness": "0.0.6",
+        "@compforge/trace-harness": "0.0.8",
         "@earendil-works/pi-agent-core": "0.84.0",
         "@modelcontextprotocol/sdk": "1.29.0",
         "@opensearch-project/opensearch": "3.6.0",
@@ -67,7 +67,7 @@
         "doctor-plugin-version": "./scripts/version.ts",
       },
       "dependencies": {
-        "@compforge/trace-harness": "0.0.6",
+        "@compforge/trace-harness": "0.0.8",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -155,7 +155,7 @@
 
     "@compforge/spec-case": ["@compforge/spec-case@0.0.1", "", { "dependencies": { "typescript": ">=6.0.3 <7" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-c8yJSndC10rwRRraJsOvj+I2CB+1HTCERY1z9C2QaP5VKB8IsmkMFRi4DX4U9jjUXpb+GTB7jVdfEqD+BjhiHA=="],
 
-    "@compforge/trace-harness": ["@compforge/trace-harness@0.0.6", "", {}, "sha512-ul/4xWaNhZl2YXrrdEFZLJfdMTvJHk+zq8+vbSAauryE0nJJ4osubxSAOK1aBgZT/cCs4Jj6GJL/BL6f/42FzQ=="],
+    "@compforge/trace-harness": ["@compforge/trace-harness@0.0.8", "", {}, "sha512-lH/PclDc4USvphUkd1RyAlCjhbN1N0pS79K62RhHuW6g+3pfMtqgfaC2pwlAKTD6P/IFGO/GJPwdMnuOTZtKzA=="],
 
     "@earendil-works/pi-agent-core": ["@earendil-works/pi-agent-core@0.84.0", "", { "dependencies": { "@earendil-works/pi-ai": "^0.84.0", "@earendil-works/pi-telemetry": "^0.84.0", "diff": "8.0.4", "ignore": "7.0.5", "typebox": "1.3.7", "yaml": "2.9.0" } }, "sha512-L1lw0lwR5LXCzGEeHD9XNEruU2bg0H8clOA8ySdGMHvxutp8GC+yZL6MZp4tqQRnLKP3gHmY7TrWzQ3YnFdJYQ=="],
 
