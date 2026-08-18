@@ -32,6 +32,11 @@ export function resolveDataHtmlOutputPath(output: string | undefined, reportName
   return output.toLowerCase().endsWith(".html") ? output : `${output}.html`;
 }
 
+export function resolveDataJsonOutputPath(output: string | undefined, reportName: string): string {
+  if (!output) return join(".", `${reportName}.json`);
+  return output.toLowerCase().endsWith(".json") ? output : `${output}.json`;
+}
+
 export function dataReportName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
@@ -97,9 +102,10 @@ export function resolveDataConfig(
   ].map((bizId) => bizId.trim()).filter(Boolean))];
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
   const format = parseDataOutputFormat(opts.format);
-  if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 时可用");
   const reportName = opts.reportName ?? dataReportName(new Date());
-  const outputPath = format === "html" ? resolveDataHtmlOutputPath(opts.output, reportName) : undefined;
+  const outputPath = format === "html"
+    ? resolveDataHtmlOutputPath(opts.output, reportName)
+    : resolveDataJsonOutputPath(opts.output, reportName);
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   const resolvedProfile = commandContext
     ? { name: commandContext.profile.name, profile: commandContext.profile.value }

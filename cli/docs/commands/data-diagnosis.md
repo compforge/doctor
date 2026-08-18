@@ -30,7 +30,8 @@ data capability 的两个角色彼此独立：
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
    阶段已经查过的 ID 直接复用，只补查后续 expander 新增的 ID。
 5. Detector 只根据当前 ID 的结构化 Observation 形成 Finding；Render 汇总其解析方式、规范 ID、服务数据、
-   Finding 和 Coverage。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 用 `groups` 按原始 ID 分组。
+   Finding 和 Coverage。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 写入本地文件，并用 `groups`
+   按原始 ID 分组。
 6. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
 ## 关键设计

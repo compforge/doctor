@@ -214,12 +214,15 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
-    .option("-f, --format <format>", "输出格式：json（stdout）或 html", "json")
+    .option("-f, --format <format>", "输出格式：json 或 html", "json")
     .option("--kubeconfig <path>", "kubeconfig 路径")
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 kubeconfig；数据源身份仅作服务运行时配置的兜底")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-o, --output <path>", "HTML 报告输出路径（后缀自动补全）");
+    .option(
+      "-o, --output <path>",
+      "报告输出路径（默认 ./doctor-data-<时间戳>.<format>；后缀按 --format 自动补全）",
+    );
 }
 
 function withConfigOptions(cmd: CommandT): CommandT {
