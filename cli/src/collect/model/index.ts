@@ -11,6 +11,7 @@ import {
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   parseModelMaxOutputTokens,
+  parseModelOutputFormat,
   parseModelPerformanceRepeat,
   parseModelTimeout,
   parseModelType,
@@ -35,11 +36,13 @@ export async function runCollectModel(
   let timeoutMs;
   let performanceRepeat;
   let maxOutputTokens;
+  let format;
   try {
     type = parseModelType(opts.type);
     timeoutMs = parseModelTimeout(opts.timeout);
     performanceRepeat = parseModelPerformanceRepeat(opts.repeat);
     maxOutputTokens = parseModelMaxOutputTokens(opts.maxOutputTokens);
+    format = parseModelOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -104,6 +107,7 @@ export async function runCollectModel(
       repeat: performanceRepeat,
       timeoutMs,
       maxOutputTokens,
+      format,
       output: opts.output,
       profileName: opts.profileName ?? opts.profile ?? "default",
     });

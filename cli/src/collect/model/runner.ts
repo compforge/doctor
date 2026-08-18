@@ -34,6 +34,7 @@ import type {
   ModelDiagnosisConfig,
   ModelFinding,
   ModelInspectionFacts,
+  ModelOutputFormat,
   SelectedInferenceModel,
 } from "./model";
 import type { ModelPerformanceAttempt } from "./performance";
@@ -59,6 +60,7 @@ export interface RunModelDiagnosisInput {
   repeat: number;
   timeoutMs: number;
   maxOutputTokens: number;
+  format: ModelOutputFormat;
   output?: string;
   profileName: string;
 }
@@ -84,10 +86,12 @@ function timestamp(now: Date): string {
 
 export function resolveModelDiagnosisOutput(
   output: string | undefined,
+  format: ModelOutputFormat,
   now = new Date(),
 ): string {
-  const candidate = output?.trim() || `doctor-model-${timestamp(now)}.html`;
-  return resolve(candidate.toLowerCase().endsWith(".html") ? candidate : `${candidate}.html`);
+  const suffix = `.${format}`;
+  const candidate = output?.trim() || `doctor-model-${timestamp(now)}${suffix}`;
+  return resolve(candidate.toLowerCase().endsWith(suffix) ? candidate : `${candidate}${suffix}`);
 }
 
 function modelOutcomes(): OutcomeDecl[] {
@@ -112,11 +116,12 @@ function serializeFindings(findings: readonly ModelFinding[]) {
   }));
 }
 
-function printResponse(
+function printResponseStatus(
   label: string,
   diagnosis: ModelDiagnosis,
   kind: "model-validation" | "model-inference",
 ): void {
+  // Response bodies stay in Diagnosis reports; the terminal only shows request status.
   const observation = modelResponseObservation(diagnosis.evidence, kind);
   if (!observation) return;
   if (observation.error) {
@@ -128,19 +133,6 @@ function printResponse(
     response.ok,
     `[model] ${label}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)\n`,
   );
-  // Validation bodies are backend metadata already preserved in Evidence; printing them here
-  // leaves users with context-free payloads such as { "parameters": null }.
-  if (kind === "model-validation") return;
-  const trimmed = response.text.trim();
-  if (!trimmed) {
-    terminalStdout.write("(empty response body)\n");
-    return;
-  }
-  try {
-    terminalStdout.write(`${JSON.stringify(JSON.parse(trimmed), null, 2)}\n`);
-  } catch {
-    terminalStdout.write(`${trimmed}\n`);
-  }
 }
 
 function printFindings(findings: readonly ModelFinding[]): void {
@@ -236,10 +228,8 @@ export async function runModelDiagnosis(
       finishedAt: new Date().toISOString(),
     });
 
-    const outputPath = performanceEnabled || input.performance === true || input.output
-      ? resolveModelDiagnosisOutput(input.output, startedAt)
-      : undefined;
-    if (outputPath) {
+    const outputPath = resolveModelDiagnosisOutput(input.output, input.format, startedAt);
+    if (input.format === "html") {
       writeHtmlReport(staging, outputPath, {
         title: "doctor model 诊断报告",
         profileName: input.profileName,
@@ -249,12 +239,14 @@ export async function runModelDiagnosis(
           attempts,
         ),
       });
-      chmodSync(outputPath, 0o600);
-      terminalStdout.success(`[model] 诊断报告：${outputPath}\n`);
+    } else {
+      writeFileSync(outputPath, `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
     }
+    chmodSync(outputPath, 0o600);
+    terminalStdout.success(`[model] 诊断 ${input.format.toUpperCase()}：${outputPath}\n`);
 
-    printResponse("validation", diagnosis, "model-validation");
-    printResponse("inference", diagnosis, "model-inference");
+    printResponseStatus("validation", diagnosis, "model-validation");
+    printResponseStatus("inference", diagnosis, "model-inference");
     for (const line of buildModelPerformanceTerminalSummary(summaries)) {
       terminalStdout.info(line);
     }

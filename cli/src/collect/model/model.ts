@@ -20,6 +20,8 @@ import type { HttpCapture } from "../shared/http/capture";
 
 export type { SelectedInferenceModel } from "../../model";
 
+export type ModelOutputFormat = "json" | "html";
+
 export interface CollectModelCliOptions extends KubernetesCommandInput {
   tenantId?: string;
   tenantName?: string;
@@ -33,6 +35,7 @@ export interface CollectModelCliOptions extends KubernetesCommandInput {
   performance?: boolean;
   repeat?: string;
   maxOutputTokens?: string;
+  format?: string;
   output?: string;
   profileName?: string;
 }

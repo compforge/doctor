@@ -348,7 +348,11 @@ function withModelOptions(cmd: CommandT): CommandT {
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-o, --output <path>", "模型性能 HTML 报告路径");
+    .option("-f, --format <format>", "输出格式：json 或 html", "json")
+    .option(
+      "-o, --output <path>",
+      "输出路径（默认 ./doctor-model-YYYYMMDDHHmmss.json；后缀按 --format 自动补全）",
+    );
 }
 
 function withMetricOptions(cmd: CommandT): CommandT {
