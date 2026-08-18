@@ -167,7 +167,7 @@ export class ServiceDependencyRuntime {
       }
       if (configuredEndpoint) {
         terminalStdout.write(
-          `[collect] OpenSearch 配置: ${safeEndpoint(configuredEndpoint)}（${service}/${store}）\n`,
+          `[collect] Service ${service}（Store ${store}）提供配置：OpenSearch endpoint=${safeEndpoint(configuredEndpoint)}\n`,
         );
       } else {
         this.options.log(
