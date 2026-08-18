@@ -28,27 +28,16 @@ bun build "$DOCTOR_ENTRY" \
   --entry-naming=doctor-core.mjs \
   --define 'import.meta.url="file:///__doctor_sea__/doctor-core.mjs"'
 
-cat > "$WORK_DIR/bootstrap.cjs" <<'EOF'
-const { getAsset } = require("node:sea");
-
-const source = getAsset("doctor-core.mjs", "utf8");
-const url = `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
-import(url).catch((error) => {
-  console.error(error?.stack ?? error);
-  process.exitCode = 1;
-});
-EOF
-
+# Node 22.20+ can execute an ESM SEA main directly. Keeping the bundle as the main module
+# avoids data-URL stack traces that dump the entire Base64-encoded CLI on startup errors.
 cat > "$WORK_DIR/sea-config.json" <<EOF
 {
-  "main": "$WORK_DIR/bootstrap.cjs",
+  "main": "$WORK_DIR/core/doctor-core.mjs",
+  "mainFormat": "module",
   "output": "$WORK_DIR/doctor.blob",
   "disableExperimentalSEAWarning": true,
   "useSnapshot": false,
-  "useCodeCache": false,
-  "assets": {
-    "doctor-core.mjs": "$WORK_DIR/core/doctor-core.mjs"
-  }
+  "useCodeCache": false
 }
 EOF
 
