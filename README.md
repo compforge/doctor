@@ -2,50 +2,74 @@
 
 [English](README.md) | [简体中文](README_CN.md)
 
-> Application-aware diagnostics for Kubernetes services.
+> Application-aware diagnostics for Kubernetes applications.
 
 Doctor is an enhanced `kubectl` for diagnosing applications. `kubectl` understands Kubernetes objects;
-Doctor also understands the services that make up an application, the diagnostic data each service can
-provide, and the access required to obtain it.
+Doctor understands a Kubernetes application as a set of Services. A Service is Doctor's basic diagnostic
+unit, while Pods, containers and processes are its runtime targets and evidence sources.
 
-Doctor runs as a local CLI in the target environment. It uses scoped Kubernetes and application access,
-then returns raw evidence and offline reports to the same machine.
+Doctor runs as a local CLI on a Doctor Host with scoped access to the target Kubernetes environment and
+application. It returns raw evidence and offline reports to the same machine.
 
 ![Doctor running from a customer-site Linux machine](docs/doctor-usage.svg)
 
-## What Doctor can diagnose
+## How Doctor diagnoses an application
 
-Doctor follows a problem from standard infrastructure signals into application-specific behavior:
+Doctor starts from the Services that make up an application, then moves from broad service facts to the
+evidence needed for a specific problem:
 
-| Area | What Doctor investigates |
-|---|---|
-| Observability | Traces, metrics and logs across the selected service |
-| Runtime | CPU, memory and network behavior of Pods, containers and processes |
-| Business data | Application data, configuration and stores exposed by a Service capability |
-| Active probes | Controlled HTTP requests and other actions needed to reproduce a problem |
-| Performance | Problems that appear only under load, with requests correlated to traces, metrics and logs |
-| Agent applications | Model and MCP configuration, connectivity, calls and service-side evidence |
+| Diagnostic surface | Commands | What Doctor investigates |
+|---|---|---|
+| Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
+| Business data | `doctor tenant`, `doctor data` | Tenant-scoped configuration and model catalogs, plus business-ID-linked data contributed by Services |
+| Observability | `doctor trace`, `doctor log`, `doctor metric` | A request's path, related service logs and metrics over the diagnostic window |
+| Runtime forensics | `doctor cpu`, `doctor mem`, `doctor net` | Thread stacks, heap captures and packet captures for a specific Service runtime |
+| Agent applications | `doctor model`, `doctor mcp` | Model and MCP configuration, connectivity, calls and service-side evidence |
+
+`doctor inspect` reports observed workload facts rather than reducing them to a single healthy/unhealthy
+flag. Resource values shown there are Kubernetes requests and limits; actual usage belongs to metric and
+runtime diagnostics.
+
+Business data is organized by lookup scope:
+
+- **Tenant**: `doctor tenant` gathers configuration and model catalogs shared within a tenant.
+- **User**: user-linked data; a general user-scoped collector is not yet available.
+- **Business ID**: `doctor data` gathers records contributed by Services and correlates them from a
+  conversation, request or other business identifier.
+
+## Workflows across evidence
+
+- `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their
+  reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
+  collectors; Collect does not infer relationships between scopes, create load or change individual
+  command semantics.
+- `doctor http` executes a controlled request when reproducing the problem requires an active probe.
+- `doctor perf` generates bounded application load, records request outcomes and correlates the load
+  window with Metric plus representative Trace and Log evidence. Because it creates real traffic and may
+  have business or model cost, it is always an explicit, confirmed workflow.
+- `doctor chat` handles open-ended questions with a model, scoped tools and the selected Plugin's Skills,
+  using the same application knowledge as deterministic commands.
 
 Some investigations need tools or permissions that are not already present in the application container.
 `doctor image`, `doctor debug` and `doctor install` explicitly prepare a diagnostic image, temporary debug
-environment or tool before collection. Doctor shows and confirms operations that can change the target.
+environment or tool. Doctor shows and confirms operations that can change the target; preparation is not
+hidden inside a read-only collection.
 
-## How Doctor understands an application
+## Core and Plugins
 
-An application is described as a set of Services. Each Service can expose Capabilities: typed contracts
-for data, metrics, logs, HTTP cases, models, MCP servers or other application-specific diagnostics. A
-Capability also declares the target data and access Doctor needs before it can run.
+Doctor Core is business-neutral. It owns Kubernetes access, common collectors and runtime tools, evidence
+orchestration, analysis and delivery. It contains no application-specific Service names, private protocols
+or schemas.
 
-Generic Kubernetes access, collectors, evidence and reports live in Doctor Core. A versioned Plugin adds
-the Service catalog and business-specific Capabilities without putting private protocols or schemas into
-the open-source CLI.
+A versioned Plugin describes the application's Service catalog. Each Service can expose Capabilities:
+typed contracts for data, metrics, logs, HTTP cases, models, MCP servers or other application-specific
+diagnostics. A Capability contributes the business semantics and declares the target data and access
+Doctor must prepare before it runs. Plugins provide the semantics for each business-data scope; Core only
+understands the declared scope and neutral results.
 
-This supports two kinds of investigation:
-
-- Deterministic commands collect evidence, run repeatable checks and produce offline reports. Reusable
-  diagnostics stay in Core; application-specific knowledge stays in the Plugin.
-- `doctor chat` handles open-ended questions with a model, scoped tools and the selected Plugin's Skills,
-  so the conversation can use the same application knowledge as deterministic commands.
+For a typical investigation, start with `doctor inspect`, use `doctor collect` to gather the relevant
+tenant, business and observability evidence, then run a targeted runtime or Agent command if the combined
+evidence points to a specific Service or protocol.
 
 ## Repository layout
 

@@ -5,43 +5,62 @@
 > 懂业务的 Kubernetes 应用诊断工具。
 
 Doctor 可以理解为一个增强版 `kubectl`。`kubectl` 理解 Kubernetes 对象；Doctor 还理解一个应用由
-哪些 Service 组成、每个 Service 能提供哪些诊断数据，以及取得这些数据需要什么访问权限。
+哪些 Service 组成。Service 是 Doctor 的基本诊断单元，Pod、Container 和 Process 则是 Service 下的
+运行目标与证据来源。
 
-Doctor 以本地 CLI 运行在目标环境中，通过受限的 Kubernetes 和业务访问能力进入现场，再把原始证据
-和离线报告交付回本机。
+Doctor 以本地 CLI 运行在 Doctor Host，通过受限的 Kubernetes 和业务访问能力进入目标环境，再把原始
+证据和离线报告交付回本机。
 
 ![Doctor 现场使用方式](docs/doctor-usage.svg)
 
-## Doctor 能诊断什么
+## Doctor 如何诊断一个应用
 
-Doctor 从通用基础设施信号逐步深入到业务行为：
+Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐步深入到具体问题所需的证据：
 
-| 领域 | Doctor 关注的问题 |
-|---|---|
-| 可观测性 | 所选 Service 的 Trace、Metric 和 Log |
-| 运行时 | Pod、Container 和 Process 的 CPU、内存与网络行为 |
-| 业务数据 | Service Capability 暴露的业务数据、配置和存储 |
-| 主动探测 | 为复现问题而受控触发的 HTTP 请求或其它业务动作 |
-| 性能 | 只在一定压力下出现的问题，并把请求与 Trace、Metric、Log 关联起来 |
-| Agent 应用 | Model 和 MCP 的配置、连通性、调用结果与服务端证据 |
+| 诊断面 | 命令 | Doctor 关注的问题 |
+|---|---|---|
+| Service 状态 | `doctor inspect` | 匹配的 Pod 与 Container、镜像、Ready、重启、终止状态、CPU/内存 requests 与 limits，以及按需取得的配置 |
+| 业务数据 | `doctor tenant`、`doctor data` | 租户维度的配置与模型目录，以及 Service 贡献的 biz-id 关联数据 |
+| 可观测性 | `doctor trace`、`doctor log`、`doctor metric` | 一次请求经过的链路、相关 Service 日志和诊断窗口内的指标 |
+| 运行时取证 | `doctor cpu`、`doctor mem`、`doctor net` | 具体 Service 运行实例的线程栈、堆内存与网络包 |
+| Agent 应用 | `doctor model`、`doctor mcp` | Model 和 MCP 的配置、连通性、调用结果与服务端证据 |
+
+`doctor inspect` 展示观察到的 workload 事实，而不是把它们压缩成一个简单的“健康/不健康”结论。其中
+的资源数据是 Kubernetes requests 与 limits；实际使用量归 Metric 与运行时诊断所有。
+
+业务数据按查询维度组织：
+
+- **Tenant**：`doctor tenant` 汇集租户内共享的配置与模型目录。
+- **User**：与用户关联的数据；通用的 user 维度采集尚未支持。
+- **Biz ID**：`doctor data` 汇集各 Service 围绕 conversation、request 或其它业务标识贡献并关联的数据。
+
+## 跨证据面工作流
+
+- `doctor collect` 调用选中的 Inspect、Tenant、Data、Trace、Log 和 Metric Collector，并把各自报告组合为
+  一份离线交付。tenant 与 biz-id 仍由对应 Collector 独立解释；Collect 不推导不同 scope 间的关系、
+  不产生负载，也不改变任何单项命令的采集语义。
+- `doctor http` 在需要主动复现问题时执行受控请求。
+- `doctor perf` 产生有界的真实业务负载，记录请求结果，并把压测窗口与 Metric、代表请求的 Trace 和
+  Log 关联起来。它可能产生业务数据或模型费用，因此始终由用户显式触发并确认。
+- `doctor chat` 组合模型、受限工具和当前 Plugin 的 Skill，使用与确定性命令相同的应用知识回答开放式
+  排查问题。
 
 有些诊断需要的工具或权限并不存在于业务容器中。`doctor image`、`doctor debug` 和 `doctor install`
-可以显式准备诊断镜像、临时调试环境或工具，再开始采集；任何可能改变目标环境的操作都会先展示并确认。
+会显式准备诊断镜像、临时调试环境或工具。任何可能改变目标环境的操作都会先展示并确认；只读采集不会
+隐藏这些准备动作。
 
-## Doctor 如何理解业务
+## Core 与 Plugin
 
-一个应用由一组 Service 组成。每个 Service 可以通过 Capability 声明自己能提供的数据、Metric、Log、
-HTTP Case、Model、MCP Server 或其它业务诊断能力，同时声明运行这些能力前需要准备的目标数据和访问权限。
+Doctor Core 与具体业务无关，负责 Kubernetes 访问、通用 Collector 与运行时工具、证据编排、分析和
+交付，不包含特定应用的 Service 名称、私有协议或 Schema。
 
-通用的 Kubernetes 访问、采集、证据和报告能力沉淀在 Doctor Core；版本化 Plugin 则提供 Service
-Catalog 和业务 Capability，让私有协议与 Schema 留在业务侧，而不是进入开源 CLI。
+版本化 Plugin 描述一个应用的 Service Catalog。每个 Service 可以通过 Capability 声明自己能提供的
+数据、Metric、Log、HTTP Case、Model、MCP Server 或其它业务诊断能力；Capability 同时贡献业务语义，
+并声明执行前需要准备的目标数据和访问权限。各业务数据维度的语义由 Plugin 提供，Core 只理解声明的
+scope 与中性结果。
 
-Doctor 由此支持两类问题：
-
-- 对于确定性问题，领域命令采集证据、执行可重复检查并生成离线报告。可复用能力沉淀到 Core，业务
-  特有能力沉淀到 Plugin。
-- 对于开放式问题，`doctor chat` 组合模型、受限工具和当前 Plugin 的 Skill，让诊断对话使用同一份
-  业务知识继续排查。
+一次典型排查从 `doctor inspect` 开始，再用 `doctor collect` 汇集所需的 tenant、业务与可观测证据；当
+组合证据已经指向具体 Service 或协议后，再进入相应的运行时或 Agent 专项命令。
 
 ## 仓库结构
 
