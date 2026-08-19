@@ -49,17 +49,36 @@ describe("OpenSearch config", () => {
   test("scheme 探测把鉴权错误视为 endpoint 已可达", async () => {
     const visited: string[] = [];
     const closed: string[] = [];
-    const node = await probeOpenSearchUrl("os:9200", {}, (url) => ({
-      ping: async () => {
-        visited.push(url);
-        if (url.startsWith("http://")) throw { meta: { statusCode: 503 } };
-        throw { meta: { statusCode: 401 } };
-      },
-      close: async () => { closed.push(url); },
-    }));
+    const node = await probeOpenSearchUrl("os:9200", {}, {
+      createEngine: (url) => ({
+        ping: async () => {
+          visited.push(url);
+          if (url.startsWith("http://")) throw { meta: { statusCode: 503 } };
+          throw { meta: { statusCode: 401 } };
+        },
+        close: async () => { closed.push(url); },
+      }),
+    });
     expect(node).toBe("https://os:9200");
     expect(visited).toEqual(["http://os:9200", "https://os:9200"]);
     expect(closed).toEqual(visited);
+  });
+
+  test("优先配置的 scheme 不可用时尝试另一个协议", async () => {
+    const visited: string[] = [];
+    const node = await probeOpenSearchUrl("os:9200", {}, {
+      preferredScheme: "https",
+      createEngine: (url) => ({
+        ping: async () => {
+          visited.push(url);
+          if (url.startsWith("https://")) throw new Error("socket closed");
+          throw { meta: { statusCode: 401 } };
+        },
+      }),
+    });
+
+    expect(node).toBe("http://os:9200");
+    expect(visited).toEqual(["https://os:9200", "http://os:9200"]);
   });
 });
 

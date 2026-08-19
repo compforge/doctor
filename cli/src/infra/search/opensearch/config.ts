@@ -29,16 +29,25 @@ function statusCode(error: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
+export interface OpenSearchProbeOptions {
+  preferredScheme?: "http" | "https";
+  createEngine?: (
+    node: string,
+  ) => Pick<OpenSearchEngine, "ping"> & Partial<Pick<OpenSearchEngine, "close">>;
+}
+
 /** Probe HTTP/HTTPS with the official client; auth errors still prove the node is reachable. */
 export async function probeOpenSearchUrl(
   hostPort: string,
   auth: OpenSearchAuth,
-  createEngine: (
-    node: string,
-  ) => Pick<OpenSearchEngine, "ping"> & Partial<Pick<OpenSearchEngine, "close">> = (node) =>
-    new OpenSearchEngine({ node, auth, requestTimeoutMs: 5_000 }),
+  options: OpenSearchProbeOptions = {},
 ): Promise<string> {
-  for (const scheme of ["http", "https"]) {
+  const schemes: Array<"http" | "https"> = options.preferredScheme === "https"
+    ? ["https", "http"]
+    : ["http", "https"];
+  const createEngine = options.createEngine
+    ?? ((node: string) => new OpenSearchEngine({ node, auth, requestTimeoutMs: 5_000 }));
+  for (const scheme of schemes) {
     const node = `${scheme}://${hostPort}`;
     const engine = createEngine(node);
     try {
