@@ -2,11 +2,10 @@ import type {
   PluginContext,
   ServiceCatalog,
 } from "@compforge/doctor-plugin";
-import type { Executor } from "../../infra/k8s/executor";
-import { resolveKubernetesCommandContext, type CommandContext } from "../../command";
+import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
+import type { PreparedDataCommand } from "./context";
 import type {
-  DataConfig,
   DataServiceSelection,
   DataTargetFact,
   SupportedDataService,
@@ -34,13 +33,12 @@ export interface DataAccessPreparation {
 
 /** Doctor 只注入当前环境与 Service 身份；运行态定位和数据源访问由 Plugin 持有。 */
 export async function prepareDataAccess(
-  executor: Executor,
-  config: DataConfig,
+  dataCommand: PreparedDataCommand,
   selections: readonly DataServiceSelection[],
   catalog: ServiceCatalog,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
-  commandContext?: CommandContext,
 ): Promise<DataAccessPreparation> {
+  const { command, config, executor } = dataCommand;
   const confirmed: ConfirmedDataServiceTarget[] = [];
   const managedContexts: ManagedPluginContext[] = [];
 
@@ -61,12 +59,12 @@ export async function prepareDataAccess(
     if (!context) {
       managed = await openPluginContext(executor, config.kube, {
         env: config.profileName,
-        config: commandContext?.profile.pluginConfig,
+        config: command.profile.pluginConfig,
         databaseIdentity: config.fallbackIdentity,
         service: { name: selection.service },
         command: "doctor data",
         capability: declared.capabilities.data,
-        authorization: resolveKubernetesCommandContext(executor, commandContext).access,
+        authorization: resolveKubernetesCommandContext(executor, command).access,
       });
       context = managed;
     }

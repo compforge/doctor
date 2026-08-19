@@ -52,6 +52,15 @@ Profile 在单次命令内只解析和校验一次，后续 target、infra 与 P
 `CommandContext` 是单次顶层命令的运行作用域：Decision 复用用户或命令意图作出的决策，Discovery 复用
 执行期间的只读发现，ExecutionRecord 追加保存步骤已经产生、且会影响后续 action 的中间结果。三者都按
 类型和语义作用域隔离；ExecutionRecord 不持久化，也不等同于 Collect Facts、Observations 或 Evidence。
+所有消费 profile、Target 或交互决策的领域 command 入口都必须显式接收 `CommandContext`：独立执行由
+`app` 创建新实例，组合命令把自己的同一实例传给下游 command。测试依赖应放在它之后注入，不能通过把
+`CommandContext` 声明为可选来绕过命令作用域。
+
+当领域 command 需要把最终 Config 和 executor、访问句柄等运行态资源继续交给多层编排时，由该领域定义
+`XxxCommandContext` 并聚合原始 `CommandContext`，不建立 `ConcreteCommandContext` 一类空泛基类。
+command 完成准备后，把同一个 `XxxCommandContext` 直接传给 Inspect/Probe，不再为执行阶段复制一套
+`XxxCollectContext`、`XxxInspectContext` 或 `XxxProbeContext`。这样新增 command 只需定义自己的最终运行
+上下文；无论独立执行还是被 collect 驱动，差别都只在顶层 `CommandContext` 由谁创建。
 Command 声明需要的 Host/Kubernetes 环境和最窄 Plugin capability；目标选择完成后，再把 Core 自身需求与
 本次实际选中的 capability access 合成阶段性 access plan。配置、capability、通道或 required access
 任一不满足时，命令不得进入实际采集、变更或 Agent loop。

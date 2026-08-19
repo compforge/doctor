@@ -25,8 +25,11 @@ import {
   type HttpTransportResponse,
   type InspectHttpEndpoint,
 } from "../src/infra/http";
+import { CommandContext } from "../src/command";
 
 const encoder = new TextEncoder();
+
+const createCommandContext = () => new CommandContext({});
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
   reachable: true,
@@ -619,7 +622,7 @@ requests:
     interval: "0",
     format: "html",
     output,
-  }, async () => {
+  }, createCommandContext(), async () => {
     call += 1;
     return response(call === 1 ? 200 : 500, "application/json", "{}");
   }, reachableEndpoint);
@@ -656,7 +659,7 @@ requests:
     interval: "0",
     format: "html",
     output,
-  }, async (plan) => {
+  }, createCommandContext(), async (plan) => {
     requestedUrls.push(plan.url);
     return response(200, "application/json", "{}");
   }, reachableEndpoint);
@@ -692,7 +695,7 @@ requests:
     interval: "0",
     format: "html",
     output,
-  }, async () => {
+  }, createCommandContext(), async () => {
     call += 1;
     return call === 1
       ? response(500, "application/json", '{"error":"proxy failed"}')
@@ -722,7 +725,7 @@ requests:
     interval: "0",
     format: "html",
     output,
-  }, async () => {
+  }, createCommandContext(), async () => {
     calls += 1;
     return response(200, "application/json", "{}");
   }, async () => ({
@@ -756,7 +759,7 @@ requests:
     interval: "0",
     format: "bundle",
     output,
-  }, async () => response(200, "application/json", "{}"), reachableEndpoint);
+  }, createCommandContext(), async () => response(200, "application/json", "{}"), reachableEndpoint);
 
   expect(code).toBe(0);
   const archive = `${output}.tar.gz`;
@@ -797,7 +800,7 @@ requests:
     interval: "0",
     format: "md",
     output,
-  }, async () => response(400, "application/json", '{"error":"invalid request"}'), reachableEndpoint);
+  }, createCommandContext(), async () => response(400, "application/json", '{"error":"invalid request"}'), reachableEndpoint);
 
   expect(code).toBe(0);
   const markdown = readFileSync(`${output}.md`, "utf-8");

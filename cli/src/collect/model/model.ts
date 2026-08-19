@@ -6,6 +6,7 @@ import type {
   TenantSummary,
 } from "@compforge/doctor-plugin";
 import type { KubernetesCommandInput } from "../../command/kubernetes-target";
+import type { CommandContext } from "../../command";
 import type { ServiceHttpResponse } from "../../infra/http";
 import type { SelectedInferenceModel } from "../../model";
 import type { EvidenceBundle } from "../evidence";
@@ -37,7 +38,6 @@ export interface CollectModelCliOptions extends KubernetesCommandInput {
   maxOutputTokens?: string;
   format?: string;
   output?: string;
-  profileName?: string;
 }
 
 export interface ModelTestRequest {
@@ -80,12 +80,11 @@ export interface ModelDiagnosisConfig {
   timeoutMs: number;
 }
 
-export interface ModelInspectContext {
+export interface ModelCommandContext {
+  command: CommandContext;
+  config: ModelDiagnosisConfig;
   catalog: ModelCatalog;
   backend?: ModelBackendHandle;
-}
-
-export interface ModelCollectContext extends ModelInspectContext {
   inference: ModelInference;
   bundle: EvidenceBundle;
   staging: string;

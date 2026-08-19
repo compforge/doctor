@@ -101,7 +101,7 @@ test("Plugin Kubernetes access normalizes command failures", async () => {
   });
 
   await expect(context.infra.kubernetes.get("secrets", "sample"))
-    .rejects.toThrow("kubectl get secrets sample -o json 失败：forbidden");
+    .rejects.toThrow("kubectl -n default get secrets sample -o json 失败：forbidden");
   await context.dispose();
 });
 

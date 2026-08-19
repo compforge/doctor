@@ -1,20 +1,13 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type {
   TenantDirectory,
   TenantSummary,
 } from "@compforge/doctor-plugin";
-import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
-import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { Executor } from "../../infra/k8s/executor";
-import {
-  resolvePodNamespace,
-  type PodNamespaceSelection,
-} from "../../infra/k8s/namespace-selection";
+import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import {
   listServiceChoices,
   rankRecentServiceChoices,
@@ -91,11 +84,12 @@ export function resolveInspectMarkdownOutputPath(output: string | undefined, rep
   return output.toLowerCase().endsWith(".md") ? output : `${output}.md`;
 }
 
-export function resolveInspectConfig(
+export async function resolveInspectConfig(
   opts: CollectInspectCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
-): InspectConfig {
+  commandContext: CommandContext,
+  executor?: Executor,
+): Promise<InspectConfig | undefined> {
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
   const reportName = inspectReportName(new Date());
@@ -104,16 +98,16 @@ export function resolveInspectConfig(
     : format === "md"
       ? resolveInspectMarkdownOutputPath(opts.output, reportName)
       : undefined;
-  const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = commandContext
-    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
-    : resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = {
+    name: commandContext.profile.name,
+    profile: commandContext.profile.value,
+  };
   const profile = resolvedProfile.profile;
   const fallbackIdentity = profile.db?.user && profile.db.password
     ? { user: profile.db.user, password: profile.db.password }
     : undefined;
-  const kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile);
-  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
+  const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
+  if (!collect) return undefined;
   const tenantId = opts.tenantId?.trim() || undefined;
   const tenantName = opts.tenantName?.trim() || undefined;
   if (tenantId && tenantName) throw new Error("--tenant-id 与 --tenant-name 不能同时使用");
@@ -148,8 +142,8 @@ export function resolveInspectConfig(
     databaseService: opts.tenantConfigService?.trim() || tenantCapability.databaseService,
   } : undefined;
   return {
-    namespace: namespace.namespace,
-    namespaceSource: namespace.source,
+    namespace: collect.kubernetes.namespace,
+    namespaceSource: collect.kubernetes.namespaceSource,
     services: opts.services === undefined ? [] : parseInspectServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
     includeDeploymentConfig: opts.deploymentConfig === true,
@@ -161,46 +155,12 @@ export function resolveInspectConfig(
     format,
     outputPath,
     reportName,
-    profileName: resolvedProfile.name,
+    profileName: collect.profileName,
     kube: {
-      namespace: namespace.namespace,
-      kubeconfig: kubeconfig.kubeconfig,
-      context: opts.context,
+      namespace: collect.kubernetes.namespace,
+      kubeconfig: collect.kubernetes.kubeconfig,
+      context: collect.kubernetes.context,
     },
-  };
-}
-
-export interface InspectNamespaceSelectionInput {
-  config: InspectConfig;
-  executor: Executor;
-  interactive?: boolean;
-  prompt?: PodNamespaceSelection["prompt"];
-  access?: KubernetesAccessContext;
-}
-
-/** Inspect 与其它 Kubernetes 命令共用 Namespace 选择；flag/profile 仍是显式配置。 */
-export async function resolveInspectNamespaceSelection(
-  input: InspectNamespaceSelectionInput,
-): Promise<InspectConfig | undefined> {
-  const selected = await resolvePodNamespace({
-    resolved: {
-      namespace: input.config.namespace,
-      source: input.config.namespaceSource,
-    },
-    kubeconfig: input.config.kube.kubeconfig,
-    context: input.config.kube.context,
-    executor: input.executor,
-    interactive: input.interactive,
-    prompt: input.prompt,
-    access: input.access,
-    selection: { purpose: "确定 Service Inspect 范围" },
-  });
-  if (!selected) return undefined;
-  return {
-    ...input.config,
-    namespace: selected.namespace,
-    namespaceSource: selected.source,
-    kube: { ...input.config.kube, namespace: selected.namespace },
   };
 }
 

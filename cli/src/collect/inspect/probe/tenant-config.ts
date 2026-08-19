@@ -1,6 +1,6 @@
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
 import type {
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectFacts,
   InspectObservation,
@@ -22,7 +22,7 @@ function jsonValue(value: unknown): JsonValue {
 
 export function makeTenantConfigProbe(
   scope: TenantConfigScope,
-): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext> {
+): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   const id = `config-tenant-${scope}`;
   return {
     id,

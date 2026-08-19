@@ -1,4 +1,5 @@
 import type { ServiceMetricChart, ServiceMetricDetector } from "@compforge/doctor-plugin";
+import type { CommandContext } from "../../command";
 import type {
   EmbeddedMetricSource,
   MetricQuerySource,
@@ -108,7 +109,9 @@ export interface MetricQueryPlan {
   consumers: MetricQueryConsumer[];
 }
 
-export interface MetricCollectContext {
+export interface MetricCommandContext {
+  command: CommandContext;
+  config: MetricConfig;
   source: MetricQuerySource;
   storeSource?: MetricQuerySource;
   sourceKind: MetricSourceKind;

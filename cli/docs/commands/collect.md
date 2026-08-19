@@ -24,6 +24,13 @@ collector 并汇总交付，不拥有新的 Fact、Probe、Detector 或业务 ca
 Data、Trace、Log 和 Metric 是独立证据面，集合命令不能为了统一入口复制它们的配置、访问或判定逻辑。
 新增或修正具体采集行为时只修改对应 collector；`doctor collect` 只维护选择、调用和组合交付。
 
+每个具体 command 既能独立执行，也能被 `doctor collect` 以同一入口驱动。独立执行时，command 自行完成
+必要的用户交互并把结果形成领域 Config；组合执行时，集合命令为所有 collector 传入同一个
+`CommandContext`，kubeconfig/context 等启动事实与 namespace 等同语义用户决策可直接复用，避免下游
+重复探测或询问。每个 collector 仍将最终决策写入自己的 Config，并独立拥有后续的 preparation、
+`XxxCommandContext` 和 Evidence 生命周期。
+不同诊断目的的 Service、Pod 或采集范围不因候选值相同而自动复用，只有语义作用域一致的决策才共享。
+
 ### Metric 保持时间窗口语义
 
 业务 ID 传给 Data、Trace 和 Log。Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、

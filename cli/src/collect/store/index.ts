@@ -20,7 +20,7 @@ import { runStoreVdb } from "./vdb";
 export async function runCollectStore(
   opts: CollectStoreCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
   let kinds;
@@ -69,7 +69,7 @@ export async function runCollectStore(
         maxKeys: kindOpts.maxKeys ?? String(REDIS_DEFAULTS.maxKeys),
         maxKeysPerSecond: kindOpts.maxKeysPerSecond ?? String(REDIS_DEFAULTS.maxKeysPerSecond),
         top: kindOpts.top ?? String(REDIS_DEFAULTS.top),
-      }, undefined, undefined, commandContext, plugin.services);
+      }, commandContext, undefined, undefined, plugin.services);
     } else {
       let resolved;
       try {
@@ -86,9 +86,9 @@ export async function runCollectStore(
         return 130;
       }
       const { config, executor } = resolved;
-      if (config.capability.kind === "db") code = await runStoreDb(config, executor);
-      else if (config.capability.kind === "vdb") code = await runStoreVdb(config, executor);
-      else code = await runStoreS3(config, executor);
+      if (config.capability.kind === "db") code = await runStoreDb(config, commandContext, executor);
+      else if (config.capability.kind === "vdb") code = await runStoreVdb(config, commandContext, executor);
+      else code = await runStoreS3(config, commandContext, executor);
     }
     if (code === 130) {
       if (tabbedStaging) rmSync(tabbedStaging, { recursive: true, force: true });

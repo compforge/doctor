@@ -3,14 +3,14 @@ import { serializeMcpTranscript } from "../../../infra/mcp";
 import { terminalStdout } from "../../../terminal/output";
 import type {
   McpCallObservation,
-  McpCollectContext,
+  McpCommandContext,
   McpDiagnosisConfig,
   McpFacts,
   McpObservation,
 } from "../model";
 import { approveProbeCall } from "./approval";
 
-export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCollectContext> = {
+export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCommandContext> = {
   id: "mcp-call",
   evaluate: () => ({ runnable: true }),
   async run(ctx, facts, config) {

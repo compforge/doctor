@@ -1,5 +1,6 @@
 import type { ServiceDatabaseStoreCapability } from "@compforge/doctor-plugin";
 import type { Executor } from "../../../infra/k8s/executor";
+import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
 import { runDiagnosis } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
@@ -7,7 +8,7 @@ import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
 import { createStoreBundle, deliverStoreBundle } from "../delivery";
-import type { DbCollectContext } from "./context";
+import type { DbCommandContext } from "./context";
 import { buildDbCoverage, dbDetectors } from "./detector";
 import { makeDbAccessInspect, makeDbConfigurationInspect } from "./fact";
 import type { DbInspectionFacts } from "./fact/model";
@@ -26,11 +27,22 @@ const DB_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "findings", title: "DB 健康、容量与负载判读", risk: "observe" },
 ];
 
-export async function runStoreDb(config: StoreConfig, executor: Executor): Promise<number> {
+export async function runStoreDb(
+  config: StoreConfig,
+  commandContext: CommandContext,
+  executor: Executor,
+): Promise<number> {
   const capability = config.capability as ServiceDatabaseStoreCapability;
   const state = createStoreBundle("db", config.output, config.outputFormat, DB_OUTCOMES);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
-  const ctx: DbCollectContext = { executor, config, capability, bundle: state.bundle, log };
+  const ctx: DbCommandContext = {
+    command: commandContext,
+    executor,
+    config,
+    capability,
+    bundle: state.bundle,
+    log,
+  };
   let facts: DbInspectionFacts | undefined;
   let diagnosis: DbDiagnosis | undefined;
 

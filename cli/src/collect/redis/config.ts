@@ -1,7 +1,4 @@
 import { terminalStdout } from "../../terminal/output";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { RedisProfileConfig } from "../../app/config/model";
 import type { Executor } from "../../infra/k8s/executor";
 import {
@@ -217,8 +214,8 @@ export async function selectRedisDatabaseScope(
 
 export async function resolveRedisConfig(
   input: RedisConfigInput,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
-  commandContext?: CommandContext,
   catalog?: ServiceCatalog,
 ): Promise<{ config: RedisConfig; executor: Executor } | undefined> {
   const maxKeys = parseIntegerFlag("--max-keys", input.maxKeys, 1);
@@ -229,12 +226,10 @@ export async function resolveRedisConfig(
     : parseIntegerFlag("--database", input.database, 0);
   const outputFormat = parseRedisOutputFormat(input.format);
 
-  const configPath = input.config
-    ?? process.env.DOCTOR_CONFIG
-    ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = commandContext
-    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
-    : resolveProfile(loadConfig(configPath), input.profile);
+  const resolvedProfile = {
+    name: commandContext.profile.name,
+    profile: commandContext.profile.value,
+  };
   const redisProfile = resolvedProfile.profile.redis;
   let podKeyword = input.pod?.trim()
     || (!catalog ? redisProfile?.pod?.trim() || redisProfile?.deployment?.trim() : undefined);

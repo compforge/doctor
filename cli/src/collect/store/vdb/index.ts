@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../../app/version";
 import type { Executor } from "../../../infra/k8s/executor";
+import type { CommandContext } from "../../../command";
 import type { SearchEngine } from "../../../infra/search";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 import { terminalStderr, terminalStdout } from "../../../terminal/output";
@@ -13,7 +14,7 @@ import { evaluateCollectOutcome } from "../../outcome";
 import { resolveStoreOutputPath, type StoreConfig } from "../config";
 import { deliverStoreArtifacts } from "../delivery";
 import { vdbConfigFromStore } from "./config";
-import type { VdbCollectContext } from "./context";
+import type { VdbCommandContext } from "./context";
 import { buildVdbCoverage, vdbCapacityConclusion, vdbDetectors } from "./detector";
 import { makeVdbAccessInspect, makeVdbConfigurationInspect } from "./fact";
 import type { VdbInspectionFacts } from "./fact/model";
@@ -50,6 +51,7 @@ function safeEndpoint(value: string | undefined): string | undefined {
 
 export async function runStoreVdb(
   storeConfig: StoreConfig,
+  commandContext: CommandContext,
   executor: Executor,
   injectedSearch?: SearchEngine,
 ): Promise<number> {
@@ -73,7 +75,9 @@ export async function runStoreVdb(
     container: config.target.container,
   };
   const log = (line: string) => terminalStdout.write(`${line}\n`);
-  const ctx: VdbCollectContext = {
+  const ctx: VdbCommandContext = {
+    command: commandContext,
+    config,
     executor,
     execTarget: config.target,
     kube,

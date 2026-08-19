@@ -15,7 +15,8 @@ import {
   type VdbObservations,
 } from "../src/collect/store/vdb";
 import type { VdbConfig } from "../src/collect/store/vdb/config";
-import type { VdbCollectContext } from "../src/collect/store/vdb/context";
+import type { VdbCommandContext } from "../src/collect/store/vdb/context";
+import { CommandContext } from "../src/command";
 import type { VdbInspectionFacts } from "../src/collect/store/vdb/fact";
 import {
   buildDbCoverage,
@@ -954,6 +955,8 @@ describe("OpenSearch VDB probe", () => {
       access: { status: "collected", backend: "opensearch", channel: "direct" },
     };
     const ctx = {
+      command: new CommandContext({}),
+      config: {} as VdbConfig,
       executor: {
         run: async () => { throw new Error("not used"); },
         exec: async () => { throw new Error("not used"); },
@@ -963,7 +966,7 @@ describe("OpenSearch VDB probe", () => {
       bundle,
       search,
       log: () => {},
-    } satisfies VdbCollectContext;
+    } satisfies VdbCommandContext;
     const collected = await runProbes(
       makeVdbProbes(),
       ctx,

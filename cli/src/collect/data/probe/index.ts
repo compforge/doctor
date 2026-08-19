@@ -6,8 +6,8 @@ import {
   type Probe,
   type UpstreamProbeResult,
 } from "../../protocol";
+import type { DataCommandContext } from "../context";
 import type {
-  DataCollectContext,
   DataConfig,
   DataInspectionFacts,
   DataObservation,
@@ -84,7 +84,7 @@ async function inspectIds(input: {
   declared: ServiceWithCapability<ServiceDefinition, "data">;
   stage: DataStage;
   ids: readonly string[];
-  ctx: DataCollectContext;
+  ctx: DataCommandContext;
   results: ReadonlyMap<string, readonly ServiceDataResult[]>;
 }): Promise<{ observations: DataObservation[]; failures: string[] }> {
   const { declared, stage, ids, ctx, results } = input;
@@ -111,7 +111,7 @@ function makeExpansionProbe(
   declared: ServiceWithCapability<ServiceDefinition, "data">,
   priorExpanders: readonly string[],
   catalog: ServiceCatalog,
-): Probe<DataObservation, DataInspectionFacts, DataConfig, DataCollectContext> {
+): Probe<DataObservation, DataInspectionFacts, DataConfig, DataCommandContext> {
   const service = declared.name;
   const id = dataProbeId("expand", service);
   return {
@@ -148,7 +148,7 @@ function makeProviderProbe(
   declared: ServiceWithCapability<ServiceDefinition, "data">,
   expanders: readonly string[],
   catalog: ServiceCatalog,
-): Probe<DataObservation, DataInspectionFacts, DataConfig, DataCollectContext> {
+): Probe<DataObservation, DataInspectionFacts, DataConfig, DataCommandContext> {
   const service = declared.name;
   const id = dataProbeId("provide", service);
   return {
@@ -196,11 +196,11 @@ function makeProviderProbe(
 export function makeDataServiceProbes(
   selections: readonly DataServiceSelection[],
   catalog: ServiceCatalog,
-): Array<Probe<DataObservation, DataInspectionFacts, DataConfig, DataCollectContext>> {
+): Array<Probe<DataObservation, DataInspectionFacts, DataConfig, DataCommandContext>> {
   const expanders = selections
     .filter(({ service }) => !!catalog.findWith(service, "data")?.capabilities.data.expands?.length)
     .map(({ service }) => service);
-  const probes: Array<Probe<DataObservation, DataInspectionFacts, DataConfig, DataCollectContext>> = [];
+  const probes: Array<Probe<DataObservation, DataInspectionFacts, DataConfig, DataCommandContext>> = [];
   for (const { service } of selections) {
     const declared = catalog.findWith(service, "data");
     if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的数据贡献能力`);

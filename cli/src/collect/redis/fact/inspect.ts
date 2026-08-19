@@ -1,5 +1,5 @@
 import type { Inspect } from "../../inspection";
-import type { RedisCollectContext } from "../context";
+import type { RedisCommandContext } from "../context";
 import type { RedisConfig } from "../config";
 import type { ConfirmedRedisTarget } from "../preparation";
 import {
@@ -53,13 +53,12 @@ export function sanitizeRedisTarget(
 }
 
 export function makeRedisInspect(
-  ctx: RedisCollectContext,
-  config: RedisConfig,
   confirmed: ConfirmedRedisTarget,
-): Inspect<RedisInspectionFacts> {
+): Inspect<RedisInspectionFacts, RedisCommandContext> {
   return {
     id: "redis-target",
-    run: async () => {
+    run: async (ctx) => {
+      const { config } = ctx;
       const execution = buildRedisExecutionFact({
         namespace: config.collect.kubernetes.namespace,
         pod: config.target.pod,

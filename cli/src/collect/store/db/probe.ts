@@ -7,11 +7,11 @@ import {
   collectMysqlServerInfo,
 } from "../mysql-diagnosis";
 import type { StoreConfig } from "../config";
-import type { DbCollectContext } from "./context";
+import type { DbCommandContext } from "./context";
 import type { DbInspectionFacts } from "./fact/model";
 import type { DbObservation, DbServerInfoObservation } from "./model";
 
-type DbProbe = Probe<DbObservation, DbInspectionFacts, StoreConfig, DbCollectContext>;
+type DbProbe = Probe<DbObservation, DbInspectionFacts, StoreConfig, DbCommandContext>;
 
 function accessEvaluation(facts: DbInspectionFacts) {
   return facts.access.status === "collected"
@@ -20,7 +20,7 @@ function accessEvaluation(facts: DbInspectionFacts) {
 }
 
 function unavailable(outcome: string) {
-  return (ctx: DbCollectContext, reason: string) => ctx.bundle.fill(outcome, { status: "unavailable", reason });
+  return (ctx: DbCommandContext, reason: string) => ctx.bundle.fill(outcome, { status: "unavailable", reason });
 }
 
 function reason(prefix: string, error: unknown): string {

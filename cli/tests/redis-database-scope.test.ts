@@ -4,7 +4,8 @@ import {
   selectRedisDatabaseScope,
   type RedisConfig,
 } from "../src/collect/redis/config";
-import type { RedisCollectContext } from "../src/collect/redis/context";
+import type { RedisCommandContext } from "../src/collect/redis/context";
+import { CommandContext } from "../src/command";
 import { confirmRedisTarget } from "../src/collect/redis/preparation";
 import { collectRedisRuntime, discoverRedisDatabases } from "../src/collect/redis/probe/collector";
 import type { RedisAccessApi, RedisConnectionApi } from "../src/infra/redis";
@@ -32,7 +33,7 @@ test("Service 配置中的 database 只作为连接默认值，不覆盖用户�
         exitCode: 0,
         command: ["kubectl", "exec"],
       }),
-    } as unknown as RedisCollectContext["exec"],
+    } as unknown as RedisCommandContext["exec"],
     { pod: "app-0", container: "app" },
     { requestedDatabase: 3 } as RedisConfig,
   );
@@ -68,7 +69,9 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
     close: async () => undefined,
   };
   const context = {
-    exec: {} as RedisCollectContext["exec"],
+    command: new CommandContext({}),
+    config: {} as RedisConfig,
+    exec: {} as RedisCommandContext["exec"],
     execTarget: { pod: "app-0" },
     redisAccess: access,
     redisTarget: {
@@ -85,7 +88,7 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
     redisDatabaseScope: { mode: "all", databases: [0, 7] },
     bundle: {} as EvidenceBundle,
     log: () => undefined,
-  } satisfies RedisCollectContext;
+  } satisfies RedisCommandContext;
 
   expect(await discoverRedisDatabases(context)).toEqual({
     clusterType: "single",

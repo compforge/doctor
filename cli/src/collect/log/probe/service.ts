@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
 import type { ExecResult } from "../../../infra/k8s/executor";
 import type {
-  LogCollectContext,
+  LogCommandContext,
   LogInspectionFacts,
   LogProbeConfig,
   PreviousContainerLogObservation,
@@ -20,7 +20,7 @@ function failureReason(result: ExecResult): string {
 }
 
 async function capturePodLog(
-  ctx: LogCollectContext,
+  ctx: LogCommandContext,
   config: LogProbeConfig,
   input: {
     service: string;
@@ -47,7 +47,7 @@ async function capturePodLog(
 }
 
 function recordPodLog(
-  ctx: LogCollectContext,
+  ctx: LogCommandContext,
   input: {
     pod: string;
     container?: string;
@@ -76,7 +76,7 @@ function recordPodLog(
 
 export function makeServiceLogProbe(
   service: string,
-): Probe<ServiceLogObservation, LogInspectionFacts, LogProbeConfig, LogCollectContext> {
+): Probe<ServiceLogObservation, LogInspectionFacts, LogProbeConfig, LogCommandContext> {
   return {
     id: `service-log-${service}`,
     evaluate: (facts) => facts.servicePods.status === "collected"

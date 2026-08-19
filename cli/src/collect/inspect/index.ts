@@ -27,7 +27,6 @@ import {
   resolveInspectConfig,
   resolveInspectDependencySelection,
   resolveInspectDeploymentSelection,
-  resolveInspectNamespaceSelection,
   resolveInspectServiceSelection,
   resolveInspectTenantSelection,
 } from "./options";
@@ -35,7 +34,7 @@ import { buildInspectCoverage, buildInspectEvidence, inspectDetectors } from "./
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectDiagnosis,
   InspectFacts,
@@ -53,20 +52,24 @@ export * from "./render";
 export async function runCollectInspect(
   opts: CollectInspectCliOpts,
   plugin: PluginDefinition,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
   injectedTenantConfigReader?: TenantConfigReader,
   injectedTenantDirectory?: TenantDirectory,
-  commandContext?: CommandContext,
 ): Promise<number> {
   const startedAt = new Date().toISOString();
   let config;
   try {
-    config = resolveInspectConfig(opts, plugin, commandContext);
+    config = await resolveInspectConfig(opts, plugin, commandContext, injectedExecutor);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  let executor = injectedExecutor ?? new KubectlExecutor(config.kube);
+  if (!config) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
+  }
+  const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
   if (!injectedExecutor) {
     await requireKubernetesChannel({
       executor,
@@ -75,19 +78,7 @@ export async function runCollectInspect(
       commandContext,
     });
   }
-  const namespaceAuthorization = resolveKubernetesCommandContext(executor, commandContext).access;
-  const namespaceConfig = await resolveInspectNamespaceSelection({
-    config,
-    executor,
-    access: namespaceAuthorization,
-  });
-  if (!namespaceConfig) {
-    terminalStderr.warning("[collect] 已取消\n");
-    return 130;
-  }
-  config = namespaceConfig;
   terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
-  if (!injectedExecutor) executor = new KubectlExecutor(config.kube);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(authorization, {
     command: "doctor inspect",
@@ -228,10 +219,12 @@ export async function runCollectInspect(
   let facts: InspectFacts | undefined;
   let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
-  const ctx: InspectCollectContext = {
+  const ctx: InspectCommandContext = {
+    command: commandContext,
+    config,
     executor,
     authorization,
-    pluginConfig: commandContext?.profile.pluginConfig ?? {},
+    pluginConfig: commandContext.profile.pluginConfig,
     bundle,
     tenantConfigReader: injectedTenantConfigReader,
     log,

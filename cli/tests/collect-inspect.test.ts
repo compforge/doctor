@@ -7,12 +7,12 @@ import { examplePlugin } from "../../plugins/example/src";
 import {
   resolveInspectDeploymentSelection,
   resolveInspectDependencySelection,
-  resolveInspectNamespaceSelection,
   runCollectInspect,
   type InspectConfig,
 } from "../src/collect/inspect";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
+import { CommandContext } from "../src/command";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -26,6 +26,8 @@ function result(stdout = ""): ExecResult {
   };
 }
 
+const createCommandContext = () => new CommandContext({});
+
 test("terminated state 只投影 Inspect Fact 声明的字段", () => {
   const state = inspectContainerStateFact({
     kind: "terminated",
@@ -36,45 +38,6 @@ test("terminated state 只投影 Inspect Fact 声明的字段", () => {
 
   expect(state).toMatchObject({ kind: "terminated", reason: "OOMKilled", exitCode: 137 });
   expect(state).not.toHaveProperty("containerId");
-});
-
-test("inspect 在缺省 Namespace 时复用交互选择", async () => {
-  const config: InspectConfig = {
-    namespace: "default",
-    namespaceSource: "default",
-    services: [],
-    servicesExplicit: false,
-    includeDeploymentConfig: false,
-    includeDependencies: false,
-    format: "html",
-    reportName: "doctor-inspect-test",
-    profileName: "default",
-    kube: { namespace: "default", kubeconfig: "/tmp/kubeconfig" },
-  };
-  const executor: Executor = {
-    run: async () => result(JSON.stringify({
-      items: [
-        { metadata: { name: "default" }, status: { phase: "Active" } },
-        { metadata: { name: "vke-system" }, status: { phase: "Active" } },
-      ],
-    })),
-    exec: async () => { throw new Error("unexpected exec"); },
-  };
-  expect(await resolveInspectNamespaceSelection({
-    config,
-    executor,
-    interactive: true,
-    prompt: async ({ choices, defaultNamespace, selection }) => {
-      expect(choices.map((choice) => choice.name)).toEqual(["default", "vke-system"]);
-      expect(defaultNamespace).toBe("default");
-      expect(selection.purpose).toBe("确定 Service Inspect 范围");
-      return "vke-system";
-    },
-  })).toMatchObject({
-    namespace: "vke-system",
-    namespaceSource: "prompt",
-    kube: { namespace: "vke-system" },
-  });
 });
 
 test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () => {
@@ -199,7 +162,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: completeOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, examplePlugin, createCommandContext(), executor)).toBe(0);
     const complete = readFileSync(completeOutput, "utf-8");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
@@ -220,7 +183,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: partialOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, examplePlugin, createCommandContext(), executor)).toBe(0);
     expect(queriedResources).not.toContain("deployments");
     expect(queriedResources).not.toContain("configmaps");
     const partial = readFileSync(partialOutput, "utf-8");
@@ -237,7 +200,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: dependenciesOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, examplePlugin, createCommandContext(), executor)).toBe(0);
     expect(dependencyCommands).toHaveLength(1);
     expect(dependencyCommands[0]?.slice(0, 2)).toEqual(["node", "-e"]);
     const dependencies = readFileSync(dependenciesOutput, "utf-8");
@@ -269,7 +232,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: unavailableOutput,
-    }, pluginWithoutToolchain, executor)).toBe(0);
+    }, pluginWithoutToolchain, createCommandContext(), executor)).toBe(0);
     expect(dependencyCommands).toHaveLength(commandsBeforeUnavailable);
     const unavailable = readFileSync(unavailableOutput, "utf-8");
     expect(unavailable).toContain("Plugin 未声明 Toolchain");

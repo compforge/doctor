@@ -1,8 +1,14 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import {
+  resolveKubernetesCommandConfig,
   resolvePodTarget,
   type KubernetesCommandConfig,
 } from "../src/command/kubernetes-target";
+import {
+  CommandContext,
+  type CommandDecision,
+  type CommandScope,
+} from "../src/command";
 import { diagnosticPids, parseProcscan, pickPid } from "../src/collect/fact/process";
 import type { Executor } from "../src/infra/k8s/executor";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
@@ -43,6 +49,49 @@ const PROCSCAN_OUT = `   PID COMM              RSS_MB  THREADS    FDS
 
 python workers (threads>4): 11 23
 `;
+
+test("standalone commands isolate decisions while collect reuses one namespace decision", async () => {
+  class RecordingCommandContext extends CommandContext {
+    resolutionCount = 0;
+
+    override decide<Value>(
+      type: CommandDecision<Value>,
+      scope: CommandScope,
+      decide: () => Value | Promise<Value>,
+    ): Promise<Value> {
+      return super.decide(type, scope, () => {
+        this.resolutionCount += 1;
+        return decide();
+      });
+    }
+  }
+  const createContext = () => new RecordingCommandContext({}, {
+    name: "test",
+    configPath: "",
+    value: { readonly: true },
+    pluginConfig: {},
+  });
+  const collectContext = createContext();
+  const standaloneContext = createContext();
+  const executor: Executor = {
+    run: async () => { throw new Error("explicit namespace must not query Kubernetes"); },
+    exec: async () => { throw new Error("unexpected exec"); },
+  };
+  const input = { namespace: "vke-system" };
+
+  const first = await resolveKubernetesCommandConfig(input, executor, collectContext);
+  const second = await resolveKubernetesCommandConfig(input, executor, collectContext);
+  const standalone = await resolveKubernetesCommandConfig(input, executor, standaloneContext);
+
+  expect(collectContext.resolutionCount).toBe(1);
+  expect(standaloneContext.resolutionCount).toBe(1);
+  expect(first).not.toBe(second);
+  expect(standalone).not.toBe(first);
+  expect(second?.kubernetes).toMatchObject({
+    namespace: "vke-system",
+    namespaceSource: "flag",
+  });
+});
 
 test("Pod 候选较少且尚未展示时先打印列表", () => {
   const pods: PodChoice[] = Array.from({ length: 10 }, (_, index) => ({

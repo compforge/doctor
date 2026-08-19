@@ -11,7 +11,8 @@ import {
   isHighContainerResourceUsage,
 } from "../../fact/resource-usage";
 import type { CpuDiagnosisFacts } from "../fact/model";
-import type { CpuObservation, CpuProbeContext } from "../model";
+import type { CpuObservation } from "../model";
+import type { CpuCommandContext } from "../context";
 import type { CpuConfig } from "../config";
 import { collectPySpy } from "../py-spy";
 import { parseCpuPySpyDump } from "../py-spy-dump";
@@ -45,7 +46,7 @@ function shouldRunResourcePreflight(facts: CpuDiagnosisFacts, mode: CpuConfig["m
 
 export function makePySpyProbe(
   options: PySpyProbeOptions,
-): Probe<CpuObservation, CpuDiagnosisFacts, CpuConfig, CpuProbeContext> {
+): Probe<CpuObservation, CpuDiagnosisFacts, CpuConfig, CpuCommandContext> {
   return {
     id: "py-spy",
     evaluate: (facts, config) => {
@@ -91,9 +92,8 @@ export function makePySpyProbe(
       }
       let pySpyOutput = "";
       await collectPySpy({
+        ...ctx,
         mode: config.mode,
-        exec: ctx.exec,
-        bundle: ctx.bundle,
         podJson: options.podJson,
         podName: options.podName,
         container: options.container,
@@ -101,13 +101,9 @@ export function makePySpyProbe(
         capabilityFacts: facts.pythonProcess,
         ptraceFacts: facts.ptrace,
         debug: facts.debug,
-        approvalGate: ctx.approvalGate,
-        approvals: ctx.approvals,
         onPySpyDump: (output) => {
           pySpyOutput = output;
         },
-        log: ctx.log,
-        notes: ctx.notes,
       });
       const observation = parseCpuPySpyDump(pySpyOutput);
       return observation ? [observation] : [];

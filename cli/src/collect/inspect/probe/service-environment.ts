@@ -3,7 +3,7 @@ import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import { resolveContainerEnvironment } from "../../../infra/k8s/workload-config";
 import type {
   EnvironmentConfigObservation,
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectDeploymentTarget,
   InspectFacts,
@@ -22,7 +22,7 @@ function targetFromFacts(
 
 export function makeServiceConfigProbe(
   target: InspectDeploymentTarget,
-): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext> {
+): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   const id = `config-environment-${target.service}-${target.deployment}`;
   return {
     id,

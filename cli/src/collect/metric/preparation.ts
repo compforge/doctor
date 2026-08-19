@@ -49,7 +49,7 @@ function remoteMetricSourcePreparation(
 export async function prepareMetricSource(
   config: MetricConfig,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
 ): Promise<MetricSourcePreparation> {
   const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);

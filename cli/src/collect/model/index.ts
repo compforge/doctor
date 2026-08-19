@@ -30,7 +30,7 @@ export * from "./runner";
 export async function runCollectModel(
   opts: CollectModelCliOptions,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   let type;
   let timeoutMs;
@@ -99,6 +99,7 @@ export async function runCollectModel(
       throw new Error("--performance 当前只支持 llm 模型");
     }
     const result = await runModelDiagnosis({
+      command: commandContext,
       tenant,
       model,
       catalog: access.catalog,
@@ -109,7 +110,7 @@ export async function runCollectModel(
       maxOutputTokens,
       format,
       output: opts.output,
-      profileName: opts.profileName ?? opts.profile ?? "default",
+      profileName: commandContext.profile.name,
     });
     if (result.exitCode === 0 && !result.diagnosis.findings.some(
       (finding) => finding.severity === "critical",

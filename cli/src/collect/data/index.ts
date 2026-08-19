@@ -4,30 +4,28 @@ import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
+import type { Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runDiagnosis } from "../engine";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
-import { requireKubernetesChannel } from "../../terminal/kubernetes-access";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
 import {
   dataReportName,
   parseDataOutputFormat,
-  resolveDataConfig,
   resolveDataHtmlOutputPath,
   resolveDataJsonOutputPath,
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
+import { prepareDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   CollectDataCliOpts,
-  DataCollectContext,
   DataDiagnosis,
   DataInspectionFacts,
 } from "./model";
@@ -36,6 +34,7 @@ import { makeDataServiceProbes } from "./probe";
 import { buildDataHtml, buildDataSummary } from "./render";
 
 export * from "./config";
+export * from "./context";
 export * from "./detector";
 export * from "./model";
 export * from "./probe";
@@ -67,30 +66,30 @@ interface DataSingleRunHooks {
 async function runCollectDataSingle(
   opts: CollectDataCliOpts,
   plugin: PluginDefinition,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
-  commandContext?: CommandContext,
   hooks: DataSingleRunHooks = {},
 ): Promise<number> {
   const startedAt = new Date().toISOString();
-  let config;
+  let dataCommand;
   try {
-    config = resolveDataConfig(opts, plugin.services, commandContext);
+    dataCommand = await prepareDataCommand(
+      opts,
+      plugin.services,
+      commandContext,
+      injectedExecutor,
+    );
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
-  const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
-  if (!injectedExecutor) {
-    await requireKubernetesChannel({
-      executor,
-      profileName: config.profileName,
-      kubeconfigSource: config.kube.kubeconfig ? "resolved" : "kubectl-default",
-      namespace: config.namespace,
-      commandContext,
-    });
+  if (!dataCommand) {
+    terminalStderr.warning("[collect] 已取消\n");
+    return 130;
   }
+  const { config } = dataCommand;
+  terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
   let selections;
   try {
     selections = await resolveDataServiceSelection({ config, catalog: plugin.services });
@@ -167,17 +166,15 @@ async function runCollectDataSingle(
 
   try {
     access = await prepareDataAccess(
-      executor,
-      config,
+      dataCommand,
       selections,
       plugin.services,
       injectedContexts,
-      commandContext,
     );
     const pluginContexts = Object.fromEntries(
       access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),
     );
-    const ctx: DataCollectContext = { pluginContexts, bundle, log };
+    const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
     facts = await runInspects([makeDataInspect(access)], ctx, log);
     diagnosis = await runDiagnosis({
       ctx,
@@ -248,9 +245,9 @@ async function runCollectDataSingle(
 export async function runCollectData(
   opts: CollectDataCliOpts,
   plugin: PluginDefinition,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
-  commandContext?: CommandContext,
 ): Promise<number> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
@@ -264,9 +261,9 @@ export async function runCollectData(
     return runCollectDataSingle(
       { ...opts, bizIds: ids },
       plugin,
+      commandContext,
       injectedExecutor,
       injectedContexts,
-      commandContext,
     );
   }
 
@@ -292,9 +289,9 @@ export async function runCollectData(
           reportName: `${batchName}-biz-${index + 1}`,
         },
         plugin,
+        commandContext,
         injectedExecutor,
         injectedContexts,
-        commandContext,
         { onDiagnosis: (diagnosis) => { captured = diagnosis; }, suppressJson: true },
       );
       groups[bizId] = captured ?? { error: `采集失败（exitCode=${code}）` };
@@ -333,9 +330,9 @@ export async function runCollectData(
         reportName: `${batchName}-biz-${index + 1}`,
       },
       plugin,
+      commandContext,
       injectedExecutor,
       injectedContexts,
-      commandContext,
     );
     const htmlPath = `${prefix}.html`;
     tabs.push({

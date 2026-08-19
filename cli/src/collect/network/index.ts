@@ -990,7 +990,7 @@ export async function collectNetwork(
 
 export async function runCollectNetwork(
   opts: CollectNetworkCliOpts,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   let timeoutSeconds: number;
   let drainSeconds: number;

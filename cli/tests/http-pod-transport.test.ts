@@ -13,6 +13,7 @@ import {
   createPodHttpSender,
   supportsPodCurlDiagnostics,
 } from "../src/infra/http/pod";
+import { CommandContext } from "../src/command";
 
 const encoder = new TextEncoder();
 
@@ -233,7 +234,7 @@ describe("Pod HTTP transport", () => {
       namespace: "default",
       pod: "chat-0",
       interactive: false,
-    }, executor);
+    }, new CommandContext({}), executor);
 
     expect(execution?.target).toEqual({
       kind: "pod",

@@ -3,15 +3,10 @@ import type { Inspect } from "../../inspection";
 import type {
   HttpEndpointConnectivityFact,
   HttpEndpointTarget,
-  HttpExecutionTarget,
   HttpInspectionFacts,
   HttpScenario,
 } from "../../shared/http/model";
-
-export interface HttpInspectContext {
-  target: HttpExecutionTarget;
-  inspectEndpoint: InspectHttpEndpoint;
-}
+import type { HttpCommandContext } from "../context";
 
 function endpointForUrl(rawUrl: string): HttpEndpointTarget {
   const url = new URL(rawUrl);
@@ -84,7 +79,7 @@ async function inspectAllEndpoints(
 export function makeHttpEndpointInspect(
   scenario: HttpScenario,
   timeoutMs: number,
-): Inspect<HttpInspectionFacts, HttpInspectContext> {
+): Inspect<HttpInspectionFacts, HttpCommandContext> {
   return {
     id: "http-endpoint-connectivity",
     run: async (ctx) => ({

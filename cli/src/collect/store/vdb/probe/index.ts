@@ -1,6 +1,6 @@
 import type { Probe } from "../../../protocol";
 import type { VdbConfig } from "../config";
-import type { VdbCollectContext } from "../context";
+import type { VdbCommandContext } from "../context";
 import type { VdbInspectionFacts } from "../fact/model";
 import type { VdbObservation } from "../model";
 import {
@@ -16,7 +16,7 @@ import {
 import { makeOpenSearchProbe } from "./opensearch";
 
 export function makeVdbProbes(): Array<
-  Probe<VdbObservation, VdbInspectionFacts, VdbConfig, VdbCollectContext>
+  Probe<VdbObservation, VdbInspectionFacts, VdbConfig, VdbCommandContext>
 > {
   return [
     CLUSTER_HEALTH_PROBE,

@@ -1,6 +1,6 @@
 import type { Probe } from "../../protocol";
 import type {
-  ModelCollectContext,
+  ModelCommandContext,
   ModelDiagnosisConfig,
   ModelInspectionFacts,
   ModelObservation,
@@ -22,7 +22,7 @@ export function makeModelProbes(
   ModelObservation,
   ModelInspectionFacts,
   ModelDiagnosisConfig,
-  ModelCollectContext
+  ModelCommandContext
 >[] {
   return [
     modelValidationProbe,

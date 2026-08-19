@@ -4,14 +4,14 @@ import { ServicePortForwarder } from "../../../../infra/k8s/service-port-forward
 import { inspectS3Provider, type S3Target } from "../../../../infra/object-store";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
-import type { S3CollectContext } from "../context";
+import type { S3CommandContext } from "../context";
 import type { S3InspectionFacts } from "./model";
 
 function captureReason(capture: ExecResult): string | undefined {
   return capture.ok ? undefined : capture.stderr.trim().split("\n")[0] || `exit=${capture.exitCode}`;
 }
 
-export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3CollectContext> {
+export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3CommandContext> {
   return {
     id: "s3-configuration",
     run: async (ctx) => {
@@ -83,7 +83,7 @@ export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3Colle
   };
 }
 
-export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CollectContext> {
+export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandContext> {
   return {
     id: "s3-access",
     dependsOn: ["s3-configuration"],
@@ -138,7 +138,7 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CollectConte
   };
 }
 
-export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CollectContext> {
+export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandContext> {
   return {
     id: "s3-provider",
     dependsOn: ["s3-access"],

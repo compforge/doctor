@@ -43,8 +43,8 @@ import {
   httpAttemptId,
   makeHttpRequestProbe,
   serializeHttpAttempt,
-  type HttpProbeContext,
 } from "./probe/request";
+import type { HttpCommandContext } from "./context";
 import { buildHttpHtml, buildHttpMarkdown } from "./render";
 import { resolveHttpScenarioFile, resolveHttpScenarioRequests, writeHttpScenarioExample } from "./scenario-file";
 
@@ -84,7 +84,6 @@ export interface CollectHttpCliOpts extends KubernetesCommandInput {
   maxSize?: string;
   format?: string;
   output?: string;
-  profileName?: string;
 }
 
 function executionTargetLabel(target: HttpExecutionTarget): string {
@@ -205,9 +204,9 @@ async function deliverHttpOutput(
 
 export async function runCollectHttp(
   opts: CollectHttpCliOpts,
+  commandContext: CommandContext,
   sendHttp?: SendHttp,
   inspectEndpoint?: InspectHttpEndpoint,
-  commandContext?: CommandContext,
 ): Promise<number> {
   if (opts.example !== undefined) {
     if (opts.file) {
@@ -227,7 +226,7 @@ export async function runCollectHttp(
   let executionTarget: HttpExecutionTarget;
   let activeSendHttp = sendHttp;
   let activeInspectEndpoint = inspectEndpoint;
-  let reportProfileName = opts.profileName ?? "default";
+  let reportProfileName = commandContext.profile.name;
   try {
     const location = await resolveHttpExecutionLocation({
       location: opts.location,
@@ -241,7 +240,7 @@ export async function runCollectHttp(
       activeInspectEndpoint ??= inspectLocalHttpEndpoint;
       terminalStdout.write("[http] 请求执行位置：local（Doctor 本机）\n");
     } else {
-      const execution = await resolvePodHttpExecution(opts, undefined, commandContext);
+      const execution = await resolvePodHttpExecution(opts, commandContext);
       if (!execution) return 130;
       executionTarget = execution.target;
       activeSendHttp ??= execution.sendHttp;
@@ -314,13 +313,24 @@ export async function runCollectHttp(
     { id: "http-findings", title: "HTTP Detector Findings", risk: "observe" },
   ];
   const bundle = new EvidenceBundle(staging, outcomes);
+  const ctx: HttpCommandContext = {
+    command: commandContext,
+    config: { intervalMs: intervalSeconds * 1000 },
+    target: executionTarget,
+    inspectEndpoint: activeInspectEndpoint!,
+    staging,
+    bundle,
+    sendHttp: activeSendHttp!,
+    lastRound: 0,
+    log: (line) => terminalStderr.info(`${line}\n`),
+  };
   let facts!: HttpInspectionFacts;
   let diagnosis!: HttpDiagnosis;
   try {
     terminalStdout.write("[collect] 采集 HTTP Facts…\n");
     facts = await runInspects(
       [makeHttpEndpointInspect(scenario, inspectTimeoutSeconds * 1000)],
-      { target: executionTarget, inspectEndpoint: activeInspectEndpoint! },
+      ctx,
       (line) => terminalStdout.write(`${line}\n`),
     );
     bundle.fill("http-endpoint-connectivity", {
@@ -335,17 +345,10 @@ export async function runCollectHttp(
       { mode: 0o600 },
     );
 
-    const probeContext: HttpProbeContext = {
-      staging,
-      bundle,
-      sendHttp: activeSendHttp!,
-      lastRound: 0,
-      log: (line) => terminalStderr.info(`${line}\n`),
-    };
     const engineDiagnosis = await runDiagnosis({
-      ctx: probeContext,
+      ctx,
       facts,
-      config: { intervalMs: intervalSeconds * 1000 },
+      config: ctx.config,
       probes: attempts.map(({ request, round }) => makeHttpRequestProbe(request, round)),
       log: (line) => terminalStdout.write(`${line}\n`),
       buildEvidence: buildHttpEvidence(scenario.requests, repeat),

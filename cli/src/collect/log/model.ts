@@ -1,6 +1,7 @@
 import type { Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
+import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {
   bizId?: string;
@@ -60,7 +61,9 @@ export interface LogTimelineRecord {
   sequence: number;
 }
 
-export interface LogCollectContext {
+export interface LogCommandContext {
+  command: CommandContext;
+  config: LogProbeConfig;
   access: KubernetesPodLogAccess;
   bundle: EvidenceBundle;
   log: (line: string) => void;

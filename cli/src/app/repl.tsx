@@ -10,8 +10,8 @@ import { reportError } from "./error-log";
 
 export async function runRepl(
   flags: CliFlags,
-  plugin?: PluginDefinition,
-  commandContext?: CommandContext,
+  plugin: PluginDefinition | undefined,
+  commandContext: CommandContext,
 ): Promise<void> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     process.stderr.write(

@@ -4,7 +4,7 @@ import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {
   DependencyInventoryObservation,
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectDependencyTarget,
   InspectFacts,
@@ -213,7 +213,7 @@ function targetFromFacts(
 
 export function makeDependencyInventoryProbe(
   target: InspectDependencyTarget,
-): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext> {
+): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   return {
     id: target.id,
     evaluate: (facts) => targetFromFacts(facts, target)

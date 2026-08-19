@@ -1,9 +1,9 @@
 import type { Inspect } from "../../inspection";
-import type { MetricCollectContext, MetricInspectionFacts } from "../model";
+import type { MetricCommandContext, MetricInspectionFacts } from "../model";
 
 export function makeMetricSourceInspect(
   targetCount: number,
-): Inspect<MetricInspectionFacts, MetricCollectContext> {
+): Inspect<MetricInspectionFacts, MetricCommandContext> {
   return {
     id: "metric-source",
     run: async (ctx) => {

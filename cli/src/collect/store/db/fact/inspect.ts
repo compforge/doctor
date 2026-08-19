@@ -3,7 +3,7 @@ import type { ExecResult } from "../../../../infra/k8s/executor";
 import { ServicePortForwarder } from "../../../../infra/k8s/service-port-forward";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
-import type { DbCollectContext } from "../context";
+import type { DbCommandContext } from "../context";
 import type { DbInspectionFacts } from "./model";
 
 function environmentText(environment: Map<string, string>): string {
@@ -14,7 +14,7 @@ function captureReason(capture: ExecResult): string | undefined {
   return capture.ok ? undefined : capture.stderr.trim().split("\n")[0] || `exit=${capture.exitCode}`;
 }
 
-export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbCollectContext> {
+export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbCommandContext> {
   return {
     id: "db-configuration",
     run: async (ctx) => {
@@ -66,7 +66,7 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbColle
   };
 }
 
-export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCollectContext> {
+export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandContext> {
   return {
     id: "db-access",
     dependsOn: ["db-configuration"],

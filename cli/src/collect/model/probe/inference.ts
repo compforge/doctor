@@ -7,7 +7,7 @@ import {
 import { supportsImageInput } from "../../../model";
 import { buildModelTestRequest } from "../config";
 import type {
-  ModelCollectContext,
+  ModelCommandContext,
   ModelDiagnosisConfig,
   ModelInspectionFacts,
   ModelObservation,
@@ -21,7 +21,7 @@ export const MODEL_INFERENCE_PROBE_ID = "model-inference";
 
 export function makeModelInferenceProbe(
   model: SelectedInferenceModel,
-): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCollectContext> {
+): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCommandContext> {
   return {
     id: MODEL_INFERENCE_PROBE_ID,
     dependsOn: [MODEL_PERFORMANCE_DECISION_PROBE_ID],

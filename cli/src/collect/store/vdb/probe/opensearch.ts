@@ -1,7 +1,7 @@
 import { probeUnavailable, type Probe } from "../../../protocol";
 import { isOpenSearchReadApi } from "../../../../infra/search/opensearch";
 import type { VdbConfig } from "../config";
-import type { VdbCollectContext } from "../context";
+import type { VdbCommandContext } from "../context";
 import type { VdbInspectionFacts } from "../fact/model";
 import type { VdbObservation } from "../model";
 
@@ -15,7 +15,7 @@ export interface VdbOpenSearchProbeSpec {
 
 export function makeOpenSearchProbe(
   spec: VdbOpenSearchProbeSpec,
-): Probe<VdbObservation, VdbInspectionFacts, VdbConfig, VdbCollectContext> {
+): Probe<VdbObservation, VdbInspectionFacts, VdbConfig, VdbCommandContext> {
   return {
     id: spec.id,
     evaluate: (facts) => facts.access.status === "collected"

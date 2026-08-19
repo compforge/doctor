@@ -9,6 +9,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import { runModelDiagnosis } from "../src/collect/model";
 import { requireInferenceModel } from "../src/model";
+import { CommandContext } from "../src/command";
 
 const response = (text: string): ServiceHttpResponse => ({
   ok: true,
@@ -50,6 +51,7 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
 
   try {
     const result = await runModelDiagnosis({
+      command: new CommandContext({}),
       tenant: { id: "tenant-1", name: "tenant-1", displayName: "Tenant 1" },
       model,
       catalog,

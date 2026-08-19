@@ -1,8 +1,9 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
+import {
+  resolveKubernetesCommandConfig,
+} from "../../command/kubernetes-target";
+import type { Executor } from "../../infra/k8s/executor";
 import type { ServiceChoice } from "../../infra/k8s/service-selection";
 import {
   promptNamedChoices,
@@ -91,11 +92,12 @@ export async function resolveDataServiceSelection(
   return services.map((service) => ({ service }));
 }
 
-export function resolveDataConfig(
+export async function resolveDataConfig(
   opts: CollectDataCliOpts,
   catalog: ServiceCatalog,
-  commandContext?: CommandContext,
-): DataConfig {
+  commandContext: CommandContext,
+  executor?: Executor,
+): Promise<DataConfig | undefined> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
@@ -106,32 +108,32 @@ export function resolveDataConfig(
   const outputPath = format === "html"
     ? resolveDataHtmlOutputPath(opts.output, reportName)
     : resolveDataJsonOutputPath(opts.output, reportName);
-  const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = commandContext
-    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
-    : resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = {
+    name: commandContext.profile.name,
+    profile: commandContext.profile.value,
+  };
   const profile = resolvedProfile.profile;
   const fallbackIdentity = profile.db?.user && profile.db.password
     ? { user: profile.db.user, password: profile.db.password }
     : undefined;
-  const kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile);
-  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
+  const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
+  if (!collect) return undefined;
   const services = parseDataServices(opts.services, catalog);
   return {
     ids,
     format,
     outputPath,
     reportName,
-    profileName: resolvedProfile.name,
+    profileName: collect.profileName,
     fallbackIdentity,
-    namespace: namespace.namespace,
-    namespaceSource: namespace.source,
+    namespace: collect.kubernetes.namespace,
+    namespaceSource: collect.kubernetes.namespaceSource,
     services,
     servicesExplicit: opts.services !== undefined,
     kube: {
-      namespace: namespace.namespace,
-      kubeconfig: kubeconfig.kubeconfig,
-      context: opts.context,
+      namespace: collect.kubernetes.namespace,
+      kubeconfig: collect.kubernetes.kubeconfig,
+      context: collect.kubernetes.context,
     },
   };
 }

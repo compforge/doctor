@@ -54,11 +54,11 @@ import {
   type PydumpAnalysis,
 } from "./pydump-analysis";
 import { buildPydumpAnalysisHtml, buildPydumpPieCharts } from "./pydump-render";
+import type { CommandContext } from "../../command";
 
 export interface MemoryAnalysisOptions {
   inputs?: string[];
   output?: string;
-  profileName?: string;
 }
 
 interface ResolvedAnalysis {
@@ -402,7 +402,10 @@ function writeAnalysisReport(
 }
 
 /** 纯本地分析入口：只读取本机 artifact，不连接 Kubernetes，也不在 Pod 内运行 analyzer。 */
-export async function runMemoryAnalysis(opts: MemoryAnalysisOptions): Promise<number> {
+export async function runMemoryAnalysis(
+  opts: MemoryAnalysisOptions,
+  commandContext: CommandContext,
+): Promise<number> {
   try {
     const inputs = opts.inputs?.filter((input) => input.trim()) ?? [];
     const candidates = inputs.length ? inputs : findMemoryAnalysisInputs(resolve(process.cwd()));
@@ -424,7 +427,7 @@ export async function runMemoryAnalysis(opts: MemoryAnalysisOptions): Promise<nu
     resolved.sort((left, right) =>
       left.analysis.source.created_at.localeCompare(right.analysis.source.created_at));
     const outputPath = reportPath(opts.output, defaultReportPath(resolved, new Date()));
-    writeAnalysisReport(resolved, outputPath, opts.profileName ?? "default");
+    writeAnalysisReport(resolved, outputPath, commandContext.profile.name);
     terminalStdout.success(`[collect] Memory 分析报告：${outputPath}\n`);
     if (resolved.length > 1) {
       terminalStdout.write(`[collect] 已对比 ${resolved.length} 份 heap 的 type 对象数与 shallow size 变化\n`);

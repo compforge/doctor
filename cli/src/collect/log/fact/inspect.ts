@@ -1,13 +1,13 @@
 import type { ExecResult } from "../../../infra/k8s/executor";
 import type { Inspect } from "../../inspection";
-import type { LogCollectContext, LogInspectionFacts } from "../model";
+import type { LogCommandContext, LogInspectionFacts } from "../model";
 
 function failureReason(result: ExecResult): string {
   return result.stderr.trim().split("\n")[0] || `exit=${result.exitCode}`;
 }
 
 function record(
-  ctx: LogCollectContext,
+  ctx: LogCommandContext,
   id: string,
   title: string,
   result: ExecResult,
@@ -27,12 +27,11 @@ function record(
 }
 
 export function makeLogInspect(
-  ctx: LogCollectContext,
   services: readonly string[],
-): Inspect<LogInspectionFacts> {
+): Inspect<LogInspectionFacts, LogCommandContext> {
   return {
     id: "log-target",
-    run: async () => {
+    run: async (ctx) => {
       ctx.log("[collect] 预检 kubectl…");
       const version = await ctx.access.clientVersion();
       record(ctx, "kubectl-version", "kubectl 客户端版本", version);
