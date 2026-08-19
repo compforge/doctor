@@ -4,13 +4,13 @@ import { terminalStdout } from "../../../terminal/output";
 import { collectGatewayLogs } from "../http";
 import type {
   GatewayLogsObservation,
-  McpCollectContext,
+  McpCommandContext,
   McpDiagnosisConfig,
   McpFacts,
   McpObservation,
 } from "../model";
 
-export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCollectContext> = {
+export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCommandContext> = {
   id: "gateway-logs",
   dependsOn: ["mcp-call", "http-call"],
   evaluate: (facts) => facts.gatewayPods.length

@@ -6,7 +6,7 @@ import {
   type RedisEndpoint,
   type RedisTopologyConfig,
 } from "../../../infra/redis";
-import type { RedisCollectContext } from "../context";
+import type { RedisCommandContext } from "../context";
 import type { RedisGroup, RedisKey, RedisNode, RedisScan } from "../model";
 import type { RedisPressureProbeOutput, RedisRuntimeProbeOutput } from "./runtime";
 import { sleep } from "../../../infra/host/process";
@@ -38,7 +38,7 @@ const INFO_FIELDS = [
   "rdb_last_save_time", "rdb_last_bgsave_status", "loading", "cluster_enabled",
 ] as const;
 
-function topologyConfig(ctx: RedisCollectContext): RedisTopologyConfig {
+function topologyConfig(ctx: RedisCommandContext): RedisTopologyConfig {
   const target = ctx.redisTarget;
   if (!target) throw new Error("Redis Probe 在执行态目标未就绪时被调用");
   return {
@@ -72,7 +72,7 @@ function databases(info: Record<string, unknown>) {
 }
 
 export async function discoverRedisDatabases(
-  ctx: RedisCollectContext,
+  ctx: RedisCommandContext,
 ): Promise<{ clusterType: "single" | "sentinel" | "cluster"; databases: number[] }> {
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
@@ -242,7 +242,7 @@ async function scanMaster(
 }
 
 export async function collectRedisRuntime(
-  ctx: RedisCollectContext,
+  ctx: RedisCommandContext,
   options: ScanOptions,
 ): Promise<RedisRuntimeProbeOutput> {
   const access = ctx.redisAccess;
@@ -322,7 +322,7 @@ export async function collectRedisRuntime(
 }
 
 export async function collectRedisMasterKeyStats(
-  ctx: RedisCollectContext,
+  ctx: RedisCommandContext,
   node: RedisEndpoint,
   database: number,
   options: ScanOptions,
@@ -348,7 +348,7 @@ export async function collectRedisMasterKeyStats(
 }
 
 export async function collectRedisPressure(
-  ctx: RedisCollectContext,
+  ctx: RedisCommandContext,
   seconds: 1 | 10,
 ): Promise<RedisPressureProbeOutput> {
   const access = ctx.redisAccess;

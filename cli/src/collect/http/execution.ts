@@ -25,8 +25,8 @@ export interface PodHttpExecutionInput extends KubernetesCommandInput {
 
 export async function resolvePodHttpExecution(
   input: PodHttpExecutionInput,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
-  commandContext?: CommandContext,
 ) {
   const collect = await resolveKubernetesCommandConfig(
     input,

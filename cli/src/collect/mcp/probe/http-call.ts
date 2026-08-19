@@ -3,14 +3,14 @@ import { terminalStdout } from "../../../terminal/output";
 import { executeHttpFromGatewayPod } from "../http";
 import type {
   HttpCallObservation,
-  McpCollectContext,
+  McpCommandContext,
   McpDiagnosisConfig,
   McpFacts,
   McpObservation,
 } from "../model";
 import { approveProbeCall } from "./approval";
 
-export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCollectContext> = {
+export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCommandContext> = {
   id: "http-call",
   evaluate: (facts) => facts.httpPlan
     ? { runnable: true }

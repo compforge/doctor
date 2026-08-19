@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { runProbes } from "../src/collect/probe-engine";
 import type { RedisConfig } from "../src/collect/redis/config";
-import type { RedisCollectContext } from "../src/collect/redis/context";
+import type { RedisCommandContext } from "../src/collect/redis/context";
+import { CommandContext } from "../src/command";
 import { buildRedisCoverage, redisDetectors } from "../src/collect/redis/detector";
 import { buildRedisInspectionFacts } from "../src/collect/redis/fact/model";
 import { buildRedisEvidence } from "../src/collect/redis/model";
@@ -43,7 +44,9 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
       risk: "observe",
     }]);
     const context = {
-      exec: {} as RedisCollectContext["exec"],
+      command: new CommandContext({}),
+      config: {} as RedisConfig,
+      exec: {} as RedisCommandContext["exec"],
       execTarget: { pod: "app-0" },
       redisAccess: access,
       redisTarget: {
@@ -59,7 +62,7 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
       },
       bundle,
       log: () => undefined,
-    } satisfies RedisCollectContext;
+    } satisfies RedisCommandContext;
     const facts = buildRedisInspectionFacts({
       endpoints: [[endpoint.host, endpoint.port]],
       database: 7,
@@ -143,7 +146,9 @@ test("Redis replica 读取失败进入 partial 原因", async () => {
       close: async () => undefined,
     };
     const context = {
-      exec: {} as RedisCollectContext["exec"],
+      command: new CommandContext({}),
+      config: {} as RedisConfig,
+      exec: {} as RedisCommandContext["exec"],
       execTarget: { pod: "app-0" },
       redisAccess: access,
       redisTarget: {
@@ -159,7 +164,7 @@ test("Redis replica 读取失败进入 partial 原因", async () => {
       },
       bundle: new EvidenceBundle(root),
       log: () => undefined,
-    } satisfies RedisCollectContext;
+    } satisfies RedisCommandContext;
 
     const output = await collectRedisRuntime(context, {
       mode: "quick",
@@ -188,7 +193,9 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
       risk: "observe",
     }]);
     const context = {
-      exec: {} as RedisCollectContext["exec"],
+      command: new CommandContext({}),
+      config: {} as RedisConfig,
+      exec: {} as RedisCommandContext["exec"],
       execTarget: { pod: "app-0" },
       redisAccess: {
         connection: async () => { throw new Error("connect timed out"); },
@@ -207,7 +214,7 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
       },
       bundle,
       log: () => undefined,
-    } satisfies RedisCollectContext;
+    } satisfies RedisCommandContext;
     const facts = buildRedisInspectionFacts({
       endpoints: [[endpoint.host, endpoint.port]],
       database: 7,

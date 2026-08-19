@@ -19,7 +19,7 @@ import { buildMetricCoverage, buildMetricEvidence, metricDetectors } from "./det
 import { makeMetricSourceInspect } from "./fact/inspect";
 import type {
   CollectMetricCliOpts,
-  MetricCollectContext,
+  MetricCommandContext,
   MetricConfig,
   MetricDiagnosis,
   MetricInspectionFacts,
@@ -43,15 +43,15 @@ export * from "./render";
 export async function runCollectMetric(
   opts: CollectMetricCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
   control?: MetricRunControl,
 ): Promise<number> {
   let config = await resolveMetricConfig(
     opts,
     plugin.services,
-    !!(process.stdin.isTTY && process.stdout.isTTY),
     commandContext,
+    !!(process.stdin.isTTY && process.stdout.isTTY),
   );
   if (!config) return 130;
   if (!config.servicesExplicit && process.stdin.isTTY && process.stdout.isTTY) {
@@ -119,7 +119,9 @@ export async function runCollectMetric(
     } else if (preparation.embeddedSource && config.watch.mode === "duration") {
       terminalStdout.write(`[collect] watch ${config.watch.label}；Ctrl+C 可提前结束并生成报告。\n`);
     }
-    const ctx: MetricCollectContext = {
+    const ctx: MetricCommandContext = {
+      command: commandContext,
+      config,
       source: preparation.source,
       storeSource: preparation.storeSource,
       sourceKind: preparation.sourceKind,

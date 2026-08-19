@@ -15,7 +15,7 @@ import {
   type ModelPerformanceCase,
 } from "../performance";
 import type {
-  ModelCollectContext,
+  ModelCommandContext,
   ModelDiagnosisConfig,
   ModelInspectionFacts,
   ModelObservation,
@@ -71,7 +71,7 @@ function workload(testCase: ModelPerformanceCase): ModelPerformanceWorkload {
 
 export function makeModelPerformanceProbe(
   model: SelectedInferenceModel,
-): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCollectContext> {
+): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCommandContext> {
   return {
     id: MODEL_PERFORMANCE_PROBE_ID,
     dependsOn: [MODEL_PERFORMANCE_DECISION_PROBE_ID],

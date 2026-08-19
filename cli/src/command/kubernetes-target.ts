@@ -24,6 +24,7 @@ import {
   requireKubernetesChannel,
 } from "../terminal/kubernetes-access";
 import {
+  defineCommandDecision,
   resolveKubernetesCommandContext,
   type CommandContext,
 } from "./context";
@@ -58,49 +59,73 @@ export interface KubernetesCommandConfig {
   };
 }
 
+/** Composite commands reuse one namespace decision; each collector still owns its domain Config. */
+const kubernetesNamespaceDecision = defineCommandDecision<ResolvedNamespace | undefined>(
+  "kubernetes.namespace",
+);
+
 export interface PodTarget {
   pod: string;
   container?: string;
 }
 
+/**
+ * Standalone and composed commands use the same resolver. A fresh CommandContext resolves the
+ * interaction locally; a composition-provided CommandContext reuses the same scoped decision.
+ */
 export async function resolveKubernetesCommandConfig(
   input: KubernetesCommandInput,
   executor?: Executor,
   commandContext?: CommandContext,
 ): Promise<KubernetesCommandConfig | undefined> {
-  const kube = resolveCollectKubeconfig(input, commandContext?.profile);
+  const inspected = commandContext?.inspection.kubernetes;
+  const kube = inspected?.kubeconfig
+    ?? resolveCollectKubeconfig(input, commandContext?.profile);
+  const kubeContext = inspected?.context ?? input.context;
   const profileName = commandContext?.profile.name ?? resolveWorkingProfileName(input);
   const configuredNamespace = resolveCollectNamespace(input, commandContext?.profile);
-  const channelExecutor = executor ?? new KubectlExecutor({
-    kubeconfig: kube.kubeconfig,
-    context: input.context,
-  });
-  const kubernetes = resolveKubernetesCommandContext(
-    channelExecutor,
-    commandContext,
-  );
-  if (!executor) {
-    await requireKubernetesChannel({
-      executor: channelExecutor,
-      profileName,
-      kubeconfigSource: kube.source,
-      commandContext,
+  const resolveNamespace = async (): Promise<ResolvedNamespace | undefined> => {
+    const channelExecutor = executor ?? new KubectlExecutor({
+      kubeconfig: kube.kubeconfig,
+      context: kubeContext,
     });
-  }
-  const namespace = await resolvePodNamespace({
-    resolved: configuredNamespace,
-    kubeconfig: kube.kubeconfig,
-    context: input.context,
-    executor: channelExecutor,
-    access: kubernetes.access,
-  });
+    const kubernetes = resolveKubernetesCommandContext(
+      channelExecutor,
+      commandContext,
+    );
+    if (!executor) {
+      await requireKubernetesChannel({
+        executor: channelExecutor,
+        profileName,
+        kubeconfigSource: kube.source,
+        commandContext,
+      });
+    }
+    const namespace = await resolvePodNamespace({
+      resolved: configuredNamespace,
+      kubeconfig: kube.kubeconfig,
+      context: kubeContext,
+      executor: channelExecutor,
+      access: kubernetes.access,
+    });
+    return namespace;
+  };
+  const namespace = commandContext
+    ? await commandContext.decide(kubernetesNamespaceDecision, [
+        profileName,
+        kube.kubeconfig ?? "",
+        kubeContext ?? "",
+        configuredNamespace.namespace,
+        configuredNamespace.source,
+      ], resolveNamespace)
+    : await resolveNamespace();
   if (!namespace) return undefined;
   return {
     profileName,
     kubernetes: {
       kubeconfig: kube.kubeconfig,
       kubeconfigSource: kube.source,
-      context: input.context,
+      context: kubeContext,
       namespace: namespace.namespace,
       namespaceSource: namespace.source,
     },

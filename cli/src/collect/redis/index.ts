@@ -15,7 +15,7 @@ import { packBundle, resolveArchivePath } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
-import type { RedisCollectContext } from "./context";
+import type { RedisCommandContext } from "./context";
 import { buildRedisCoverage, redisDetectors } from "./detector";
 import { makeRedisInspect, sanitizeRedisTarget } from "./fact/inspect";
 import type { RedisInspectionFacts } from "./fact/model";
@@ -138,14 +138,14 @@ const REDIS_OUTCOMES: readonly OutcomeDecl[] = [
  */
 export async function runCollectRedis(
   opts: CollectRedisCliOpts,
+  commandContext: CommandContext,
   injectedExecutor?: Executor,
   injectedAccess?: RedisAccessApi,
-  commandContext?: CommandContext,
   catalog?: ServiceCatalog,
 ): Promise<number> {
   let resolved;
   try {
-    resolved = await resolveRedisConfig(opts, injectedExecutor, commandContext, catalog);
+    resolved = await resolveRedisConfig(opts, commandContext, injectedExecutor, catalog);
   } catch (err) {
     terminalStderr.error(`[collect] ${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
@@ -180,7 +180,9 @@ export async function runCollectRedis(
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-redis-")), bundleName);
   const bundle = new EvidenceBundle(staging, REDIS_OUTCOMES);
   const startedAt = new Date().toISOString();
-  const collectContext: RedisCollectContext = {
+  const ctx: RedisCommandContext = {
+    command: commandContext,
+    config,
     exec: executor,
     execTarget: { pod, container },
     bundle,
@@ -195,8 +197,8 @@ export async function runCollectRedis(
   const inspectionFacts: Record<string, unknown> = {};
 
   const finish = async (target: Record<string, unknown>, code: number) => {
-    const closePreparation = collectContext.closePreparation;
-    collectContext.closePreparation = undefined;
+    const closePreparation = ctx.closePreparation;
+    ctx.closePreparation = undefined;
     await closePreparation?.();
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
@@ -217,11 +219,11 @@ export async function runCollectRedis(
         top,
         show_key_names: config.scan.showKeyNames,
         key_stats: config.scan.keyStats,
-        connection_database: collectContext.redisTarget?.database ?? null,
-        database_scope: collectContext.redisDatabaseScope?.mode ?? null,
-        databases: collectContext.redisDatabaseScope?.databases ?? [],
-        database: collectContext.redisDatabaseScope?.mode === "single"
-          ? collectContext.redisDatabaseScope.databases[0] ?? null
+        connection_database: ctx.redisTarget?.database ?? null,
+        database_scope: ctx.redisDatabaseScope?.mode ?? null,
+        databases: ctx.redisDatabaseScope?.databases ?? [],
+        database: ctx.redisDatabaseScope?.mode === "single"
+          ? ctx.redisDatabaseScope.databases[0] ?? null
           : null,
         output_format: format,
       },
@@ -309,23 +311,23 @@ export async function runCollectRedis(
     return delivered ? code : 1;
   };
 
-  collectContext.log(
+  ctx.log(
     `[collect] 从 pod/${config.target.pod}`
     + `${config.target.container ? ` container/${config.target.container}` : ""} 确认 Redis 配置…`,
   );
-  const confirmed = await confirmRedisTarget(executor, collectContext.execTarget, config);
+  const confirmed = await confirmRedisTarget(executor, ctx.execTarget, config);
   if (confirmed.target) {
-    collectContext.redisTarget = confirmed.target;
+    ctx.redisTarget = confirmed.target;
     const sanitized = sanitizeRedisTarget(config, confirmed.targetFact);
-    collectContext.log(`[collect] Redis endpoint: ${sanitized.endpoint}（${confirmed.target.endpointSource}）`);
+    ctx.log(`[collect] Redis endpoint: ${sanitized.endpoint}（${confirmed.target.endpointSource}）`);
     bundle.fill("resolve-target", {
       status: "ok",
       output: `${JSON.stringify(sanitized, null, 2)}\n`,
       ext: "json",
     });
     const prepared = await prepareRedisAccess(executor, config, confirmed.target, injectedAccess);
-    collectContext.redisAccess = prepared.access;
-    collectContext.closePreparation = prepared.close;
+    ctx.redisAccess = prepared.access;
+    ctx.closePreparation = prepared.close;
     bundle.fill("access-preparation", prepared.access
       ? {
           status: "ok",
@@ -347,14 +349,14 @@ export async function runCollectRedis(
     });
   }
 
-  const inspectRedis = makeRedisInspect(collectContext, config, confirmed);
+  const inspectRedis = makeRedisInspect(confirmed);
 
   let facts: RedisInspectionFacts;
   try {
-    collectContext.log("[collect] 采集 Facts…");
-    facts = await runInspects([inspectRedis], undefined, collectContext.log);
+    ctx.log("[collect] 采集 Facts…");
+    facts = await runInspects([inspectRedis], ctx, ctx.log);
     Object.assign(inspectionFacts, facts);
-    collectContext.log("[collect] Facts 采集完成。");
+    ctx.log("[collect] Facts 采集完成。");
   } catch (err) {
     writeErrorLog(err, "doctor store/redis/inspect");
     const reason = err instanceof Error ? err.message : String(err);
@@ -367,20 +369,20 @@ export async function runCollectRedis(
 
   const sanitizedTarget = sanitizeRedisTarget(config, facts.target);
 
-  if (collectContext.redisAccess && facts.capabilities.status === "collected") {
+  if (ctx.redisAccess && facts.capabilities.status === "collected") {
     if (mode === "sample") {
       try {
-        collectContext.log("[collect] 正在发现 Redis database…");
-        const discovered = await discoverRedisDatabases(collectContext);
+        ctx.log("[collect] 正在发现 Redis database…");
+        const discovered = await discoverRedisDatabases(ctx);
         const scope = await selectRedisDatabaseScope(
           discovered.databases,
           discovered.clusterType,
           config.requestedDatabase,
         );
         if (!scope) return finish(sanitizedTarget, 130);
-        collectContext.redisDatabaseScope = scope;
+        ctx.redisDatabaseScope = scope;
         const databases = scope.databases.map((database) => `db${database}`).join("、") || "无数据 DB";
-        collectContext.log(`[collect] Redis database scope: ${scope.mode === "all" ? `所有有数据的 DB（${databases}）` : databases}`);
+        ctx.log(`[collect] Redis database scope: ${scope.mode === "all" ? `所有有数据的 DB（${databases}）` : databases}`);
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
         bundle.settle(`Redis database 范围确认失败：${reason}`);
@@ -388,7 +390,7 @@ export async function runCollectRedis(
         return finish(sanitizedTarget, 1);
       }
     } else {
-      collectContext.redisDatabaseScope = config.requestedDatabase === undefined
+      ctx.redisDatabaseScope = config.requestedDatabase === undefined
         ? { mode: "all", databases: [] }
         : { mode: "single", databases: [config.requestedDatabase] };
     }
@@ -403,10 +405,10 @@ export async function runCollectRedis(
     const probeRedisPressure1s = makeRedisPressureProbe(1);
     const probeRedisPressure10s = makeRedisPressureProbe(10);
     const diagnosis: RedisDiagnosis = await runDiagnosis({
-      ctx: collectContext,
+      ctx: ctx,
       facts,
       config,
-      log: collectContext.log,
+      log: ctx.log,
       probes: [probeRedis, probeRedisPressure1s, probeRedisPressure10s, probeRedisKeyStats],
       buildEvidence: buildRedisEvidence,
       detectors: redisDetectors,

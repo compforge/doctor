@@ -1,7 +1,7 @@
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
 import { resolveModelPerformanceEnabled } from "../config";
 import type {
-  ModelCollectContext,
+  ModelCommandContext,
   ModelDiagnosisConfig,
   ModelInspectionFacts,
   ModelObservation,
@@ -15,7 +15,7 @@ export const MODEL_PERFORMANCE_DECISION_PROBE_ID = "model-performance-decision";
 
 export function makeModelPerformanceDecisionProbe(
   model: SelectedInferenceModel,
-): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCollectContext> {
+): Probe<ModelObservation, ModelInspectionFacts, ModelDiagnosisConfig, ModelCommandContext> {
   return {
     id: MODEL_PERFORMANCE_DECISION_PROBE_ID,
     dependsOn: [MODEL_VALIDATION_PROBE_ID],

@@ -7,6 +7,7 @@ import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
+import type { CommandContext } from "../../command";
 import type { ResolvedNamespace } from "../../infra/k8s/context";
 import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-config";
 import type { EvidenceBundle } from "../evidence";
@@ -199,7 +200,9 @@ export type InspectDiagnosisGoal =
   | "tenant-config";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
 
-export interface InspectCollectContext {
+export interface InspectCommandContext {
+  command: CommandContext;
+  config: InspectConfig;
   executor: Executor;
   authorization: KubernetesAccessContext;
   pluginConfig: Readonly<Record<string, unknown>>;

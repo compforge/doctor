@@ -41,8 +41,8 @@ import {
   type CpuDiagnosis,
   type CpuEvidence,
   type CpuFinding,
-  type CpuProbeContext,
 } from "./model";
+import type { CpuCommandContext } from "./context";
 import { buildCpuMarkdown } from "./render";
 import type { CommandContext } from "../../command";
 
@@ -75,7 +75,7 @@ const CPU_DETECTORS: readonly Detector<CpuEvidence, CpuFinding>[] = [];
 
 export async function runCollectCpu(
   opts: CollectCpuCliOpts,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   let resolved;
   try {
@@ -96,7 +96,7 @@ export async function runCollectCpu(
     config,
     outputDir: staging,
     approvalGate: resolveApprovalGate(opts),
-  }, executor, (line) => terminalStdout.write(`${line}\n`));
+  }, commandContext, executor, (line) => terminalStdout.write(`${line}\n`));
   if (result.code === 130) {
     rmSync(join(staging, ".."), { recursive: true, force: true });
     return 130;
@@ -124,6 +124,7 @@ export async function runCollectCpu(
 
 export async function collectCpu(
   opts: CpuCheckOptions,
+  commandContext: CommandContext,
   exec: Executor,
   log: (line: string) => void,
 ): Promise<CpuCollectResult> {
@@ -204,6 +205,21 @@ export async function collectCpu(
   resolvedContainer = container.name;
   inspection.target = { pod, container };
   const target = { pod: podName, container: container.name };
+  const ctx: CpuCommandContext = {
+    command: commandContext,
+    config: opts.config,
+    exec,
+    target,
+    podJson: podJson.stdout,
+    podName,
+    container,
+    mode,
+    bundle,
+    approvalGate: opts.approvalGate,
+    approvals,
+    log,
+    notes,
+  };
 
   const commonFacts = await runInspects<CommonTargetFacts, CommonTargetInspectContext>([
     makeResourceUsageInspect(),
@@ -211,14 +227,7 @@ export async function collectCpu(
     makeDebugInspect(),
     makePlatformInspect(),
     makeProcessInspect("process-scan", { requireProc: true, pidFlag }),
-  ], {
-    exec,
-    target,
-    podName,
-    container,
-    bundle,
-    podJson: podJson.stdout,
-  }, log);
+  ], ctx, log);
   const { canExec, hasPython, hasProc } = commonFacts;
   inspection.resourceUsage = commonFacts.resourceUsage;
   inspection.kubernetes = commonFacts.kubernetes;
@@ -284,15 +293,7 @@ export async function collectCpu(
     container,
   });
   const diagnosis = await runDiagnosis({
-    ctx: {
-      exec,
-      target,
-      bundle,
-      approvalGate: opts.approvalGate,
-      approvals,
-      log,
-      notes,
-    } satisfies CpuProbeContext,
+    ctx,
     facts,
     config: opts.config,
     probes: [pySpyProbe],

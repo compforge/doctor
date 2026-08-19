@@ -147,8 +147,8 @@ export function probeUnnecessary(reason: string): ProbeEvaluation {
  * - **`progress` 是直接依赖的执行结果**。来源由 `dependsOn` 显式声明；没有依赖
  *   就是空数组。它不包含其它已执行 probe，更不会把证据镜像进 ctx。
  *
- * `Ctx` 不受约束、协议层原样透传——**没有空基类**。TS 是结构类型：`type CollectContext = {}`
- * 之后 `Ctx extends CollectContext` 连 `string` 都满足，约束不了任何东西。那是名义类型
+ * `Ctx` 不受约束、协议层原样透传——**没有空基类**。TS 是结构类型：`type BaseContext = {}`
+ * 之后 `Ctx extends BaseContext` 连 `string` 都满足，约束不了任何东西。那是名义类型
  * 语言（Java / C#）的习惯，translate 不过来。等协议层真要拿 ctx 干事（比如 runProbes
  * 自动给每个 probe 记一笔账），再谈约束不迟。
  *

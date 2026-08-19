@@ -7,7 +7,7 @@ import type { VdbConfig } from "../config";
 import {
   confirmVdbTarget,
 } from "../configuration";
-import type { VdbCollectContext } from "../context";
+import type { VdbCommandContext } from "../context";
 import type { VdbConfigurationFact, VdbInspectionFacts } from "./model";
 
 function captureReason(ok: boolean, stderr: string, exitCode: number | null): string | undefined {
@@ -16,7 +16,7 @@ function captureReason(ok: boolean, stderr: string, exitCode: number | null): st
 
 export function makeVdbConfigurationInspect(
   config: VdbConfig,
-): Inspect<VdbInspectionFacts, VdbCollectContext> {
+): Inspect<VdbInspectionFacts, VdbCommandContext> {
   return {
     id: "vdb-configuration",
     run: async (ctx) => {
@@ -77,7 +77,7 @@ export function makeVdbConfigurationInspect(
 
 export function makeVdbAccessInspect(
   config: VdbConfig,
-): Inspect<VdbInspectionFacts, VdbCollectContext> {
+): Inspect<VdbInspectionFacts, VdbCommandContext> {
   return {
     id: "vdb-access",
     dependsOn: ["vdb-configuration"],

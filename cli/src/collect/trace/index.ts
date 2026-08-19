@@ -8,7 +8,6 @@ import { join, resolve } from "node:path";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { TraceContributions } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import { resolveWorkingProfileName } from "../../app/profile";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -89,7 +88,7 @@ interface TraceKubernetesRuntime {
 
 async function prepareTraceKubernetes(
   opts: CollectTraceCliOpts,
-  commandContext: CommandContext | undefined,
+  commandContext: CommandContext,
   needsOpenSearchKubernetes: boolean,
 ): Promise<TraceKubernetesRuntime | undefined> {
   const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
@@ -184,7 +183,7 @@ function safeOpenSearchEndpoint(value: string | undefined): string | undefined {
 export async function runCollectTrace(
   opts: CollectTraceCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
@@ -249,7 +248,7 @@ export async function runCollectTrace(
       namespace: runtime.collect.kubernetes.namespace,
       kubeconfig: runtime.collect.kubernetes.kubeconfig,
       context: runtime.collect.kubernetes.context,
-      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
+      profileName: commandContext.profile.name,
       command: "doctor trace",
       commandContext,
       resolveDependencies: (service) => dependencyRuntime.resolve(service),

@@ -1,7 +1,7 @@
-import type { McpCollectContext } from "../model";
+import type { McpCommandContext } from "../model";
 
 export async function approveProbeCall(
-  ctx: McpCollectContext,
+  ctx: McpCommandContext,
   id: string,
   title: string,
   target: string,

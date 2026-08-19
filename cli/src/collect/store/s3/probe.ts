@@ -12,11 +12,11 @@ import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type { StoreConfig } from "../config";
 import { scanS3Objects } from "../s3-inventory";
-import type { S3CollectContext } from "./context";
+import type { S3CommandContext } from "./context";
 import type { S3InspectionFacts } from "./fact/model";
 import type { S3Observation } from "./model";
 
-type S3Probe = Probe<S3Observation, S3InspectionFacts, StoreConfig, S3CollectContext>;
+type S3Probe = Probe<S3Observation, S3InspectionFacts, StoreConfig, S3CommandContext>;
 
 function accessEvaluation(facts: S3InspectionFacts) {
   return facts.access.status === "collected" ? PROBE_RUNNABLE : probeUnavailable(facts.access.reason);
@@ -32,14 +32,14 @@ function capabilityEvaluation(capability: "health" | "bucketUsage" | "physicalCa
 }
 
 function unavailable(outcome: string) {
-  return (ctx: S3CollectContext, reason: string) => ctx.bundle.fill(outcome, { status: "unavailable", reason });
+  return (ctx: S3CommandContext, reason: string) => ctx.bundle.fill(outcome, { status: "unavailable", reason });
 }
 
 function errorReason(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function recordCapacityCaptures(ctx: S3CollectContext, captures: readonly ExecResult[]): void {
+function recordCapacityCaptures(ctx: S3CommandContext, captures: readonly ExecResult[]): void {
   for (const [index, capture] of captures.entries()) {
     ctx.bundle.addStep({
       id: `s3-capacity-source-${index + 1}`,

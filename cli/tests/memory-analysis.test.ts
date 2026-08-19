@@ -10,6 +10,9 @@ import {
   resolveCaptureHeapPath,
 } from "../src/collect/memory/capture-artifact";
 import { resolveHostPydumpAnalyzer } from "../src/infra/dump";
+import { CommandContext } from "../src/command";
+
+const createCommandContext = () => new CommandContext({});
 
 function analysis(source: {
   sha256: string;
@@ -63,7 +66,7 @@ describe("doctor mema local analysis", () => {
     })));
     const output = join(directory, "report.html");
 
-    expect(await runMemoryAnalysis({ inputs: [heapPath], output })).toBe(0);
+    expect(await runMemoryAnalysis({ inputs: [heapPath], output }, createCommandContext())).toBe(0);
     expect(existsSync(output)).toBe(true);
   });
 
@@ -81,7 +84,7 @@ describe("doctor mema local analysis", () => {
     })));
     const output = join(directory, "comparison.html");
 
-    expect(await runMemoryAnalysis({ inputs: [second, first], output })).toBe(0);
+    expect(await runMemoryAnalysis({ inputs: [second, first], output }, createCommandContext())).toBe(0);
     expect(readFileSync(output, "utf-8")).toContain("+15");
   });
 

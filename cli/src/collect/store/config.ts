@@ -226,7 +226,7 @@ async function resolveServicePod(input: {
   executor: Executor;
   namespace: string;
   interactive: boolean;
-  commandContext?: CommandContext;
+  commandContext: CommandContext;
   selection: SelectionContext;
 }): Promise<string | undefined> {
   const access = new KubectlPodLogAccess(input.executor, input.namespace);
@@ -253,21 +253,19 @@ async function resolveServicePod(input: {
   }
   if (!input.interactive) throw new Error(`Service '${input.service}' 有多个 Running Pod；请用 --pod <pod> 指定`);
   const selectPod = () => promptPod(choices, { selection: input.selection });
-  return input.commandContext
-    ? resolveUserSelection(
-        input.commandContext,
-        input.selection,
-        "Pod",
-        [input.namespace],
-        selectPod,
-      )
-    : selectPod();
+  return resolveUserSelection(
+    input.commandContext,
+    input.selection,
+    "Pod",
+    [input.namespace],
+    selectPod,
+  );
 }
 
 export async function resolveStoreConfig(
   opts: CollectStoreCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<ResolvedStoreConfig | undefined> {
   const outputFormat = parseStoreOutputFormat(opts.format);
   // 在访问现场前校验显式输出后缀，避免完成采集后才发现产物路径不可用。
@@ -295,7 +293,7 @@ export async function resolveStoreProviderConfig(
   plugin: PluginDefinition,
   collect: KubernetesCommandConfig,
   executor: Executor,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
   resolvedOutputFormat?: StoreOutputFormat,
 ): Promise<ResolvedStoreConfig | undefined> {
   const outputFormat = resolvedOutputFormat ?? parseStoreOutputFormat(opts.format);

@@ -1,7 +1,7 @@
 import type { TenantSummary } from "@compforge/doctor-plugin";
 import type { Inspect } from "../../inspection";
 import type {
-  ModelInspectContext,
+  ModelCommandContext,
   ModelInspectionFacts,
   SelectedInferenceModel,
 } from "../model";
@@ -9,7 +9,7 @@ import type {
 export function makeModelInspect(
   tenant: TenantSummary,
   model: SelectedInferenceModel,
-): Inspect<ModelInspectionFacts, ModelInspectContext> {
+): Inspect<ModelInspectionFacts, ModelCommandContext> {
   return {
     id: "model-target",
     run: async (ctx) => {

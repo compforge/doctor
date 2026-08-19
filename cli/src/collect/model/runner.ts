@@ -11,6 +11,7 @@ import type {
   ModelCatalog,
   ModelInference,
 } from "@compforge/doctor-plugin";
+import type { CommandContext } from "../../command";
 import type { TenantSummary } from "@compforge/doctor-plugin";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
@@ -32,6 +33,7 @@ import { makeModelInspect } from "./fact/inspect";
 import type {
   ModelDiagnosis,
   ModelDiagnosisConfig,
+  ModelCommandContext,
   ModelFinding,
   ModelInspectionFacts,
   ModelOutputFormat,
@@ -52,6 +54,7 @@ import {
 } from "./render";
 
 export interface RunModelDiagnosisInput {
+  command: CommandContext;
   tenant: TenantSummary;
   model: SelectedInferenceModel;
   catalog: ModelCatalog;
@@ -158,7 +161,9 @@ export async function runModelDiagnosis(
   const staging = join(stagingRoot, "evidence");
   mkdirSync(staging, { recursive: true, mode: 0o700 });
   const bundle = new EvidenceBundle(staging, modelOutcomes());
-  const ctx = {
+  const ctx: ModelCommandContext = {
+    command: input.command,
+    config,
     catalog: input.catalog,
     inference: input.inference,
     bundle,

@@ -18,7 +18,7 @@ import type {
 } from "../../../infra/k8s/pod";
 import type { Inspect } from "../../inspection";
 import type {
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectContainerTerminationFact,
   InspectFacts,
@@ -122,7 +122,7 @@ export function makeServiceTargetsInspect(
   config: InspectConfig,
   catalog: ServiceCatalog,
   tenantCapability?: TenantConfigurationCapability,
-): Inspect<InspectFacts, InspectCollectContext> {
+): Inspect<InspectFacts, InspectCommandContext> {
   return {
     id: "service-targets",
     run: async (ctx) => {

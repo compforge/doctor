@@ -32,7 +32,7 @@ export interface CpuConfigInput extends KubernetesCommandInput {
 
 export async function resolveCpuConfig(
   input: CpuConfigInput,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<{ config: CpuConfig; executor: Executor } | undefined> {
   let mode = input.mode?.trim() ? parseInspectionMode(input.mode) : undefined;
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);

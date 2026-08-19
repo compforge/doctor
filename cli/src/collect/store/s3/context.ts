@@ -4,8 +4,10 @@ import type { ServicePortForwarder } from "../../../infra/k8s/service-port-forwa
 import type { S3BucketUsage, S3Target } from "../../../infra/object-store";
 import type { EvidenceBundle } from "../../evidence";
 import type { StoreConfig } from "../config";
+import type { CommandContext } from "../../../command";
 
-export interface S3CollectContext {
+export interface S3CommandContext {
+  command: CommandContext;
   executor: Executor;
   config: StoreConfig;
   capability: ServiceS3StoreCapability;

@@ -130,7 +130,7 @@ function collectDelegate(
           services: providerNames(plugin, "data"),
           format: "html",
           output: outputPath,
-        }, plugin, undefined, undefined, commandContext);
+        }, plugin, commandContext);
       case "trace":
         return runCollectTrace({
           ...common,

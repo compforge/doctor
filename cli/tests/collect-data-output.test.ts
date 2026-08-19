@@ -7,7 +7,8 @@ import {
   type PluginContext,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
-import { runCollectData } from "../src/collect/data";
+import { prepareDataCommand, runCollectData } from "../src/collect/data";
+import { CommandContext } from "../src/command";
 import type { Executor } from "../src/infra/k8s/executor";
 
 const service = "sample-api";
@@ -47,6 +48,20 @@ const executor: Executor = {
 };
 const contexts = { [service]: {} as PluginContext };
 
+test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
+  const command = new CommandContext({});
+  const context = await prepareDataCommand({
+    bizIds: ["biz-1"],
+    services: service,
+    namespace: "vke-system",
+    format: "json",
+  }, plugin.services, command, executor);
+
+  expect(context?.command).toBe(command);
+  expect(context?.executor).toBe(executor);
+  expect(context?.config.namespace).toBe("vke-system");
+});
+
 test("doctor data JSON 写入文件，stdout 只报告文件路径", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-json-output-"));
   const requestedOutput = join(root, "result");
@@ -59,7 +74,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: requestedOutput,
-    }, plugin, executor, contexts)).toBe(0);
+    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
 
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
       evidence: {
@@ -89,7 +104,7 @@ test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: outputPath,
-    }, plugin, executor, contexts)).toBe(0);
+    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
     expect(Object.keys(report.groups)).toEqual(["biz-1", "biz-2"]);

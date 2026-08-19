@@ -3,6 +3,7 @@ import type { McpJsonRpcMessage } from "../../infra/mcp";
 import type { McpClient } from "../../infra/mcp";
 import type { Executor } from "../../infra/k8s/executor";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
+import type { CommandContext } from "../../command";
 import type { ApprovalGate } from "../../command/approval";
 import type { EvidenceBundle } from "../evidence";
 import type {
@@ -42,7 +43,9 @@ export interface McpDiagnosisConfig {
   args: Record<string, unknown>;
 }
 
-export interface McpCollectContext {
+export interface McpCommandContext {
+  command: CommandContext;
+  config: McpDiagnosisConfig;
   executor: Executor;
   podLogs: KubernetesPodLogAccess;
   bundle: EvidenceBundle;

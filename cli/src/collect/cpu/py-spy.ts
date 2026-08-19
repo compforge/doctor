@@ -1,7 +1,7 @@
 import { writeErrorLog } from "../../app/error-log";
 import type { DebugEnvironmentFacts } from "../../infra/target/debug";
 import type { ExecResult, ExecTarget } from "../../infra/k8s/executor";
-import type { CpuCollectContext } from "./context";
+import type { CpuCommandContext } from "./context";
 import type { CpuPythonFacts } from "./fact/python";
 import {
   parsePtraceFacts,
@@ -17,7 +17,7 @@ import {
   pySpyPrereqCmd,
 } from "./probes";
 
-interface PySpyCollectInput extends CpuCollectContext {
+interface PySpyCollectInput extends CpuCommandContext {
   pid: number;
   capabilityFacts?: CpuPythonFacts;
   ptraceFacts?: PtraceFacts;

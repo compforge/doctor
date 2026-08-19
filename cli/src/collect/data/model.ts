@@ -1,13 +1,11 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta, ObservationMeta } from "../protocol";
 import type {
-  PluginContext,
   ServiceDataFinding,
   ServiceDataResult,
   ServiceDataSummary,
 } from "@compforge/doctor-plugin";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { KubectlOptions } from "../../infra/k8s/executor";
-import type { EvidenceBundle } from "../evidence";
 
 export type DataOutputFormat = "json" | "html";
 export type SupportedDataService = string;
@@ -76,9 +74,3 @@ export type DataFinding = FindingMeta<string> & ServiceDataFinding & { service: 
 
 export type DataDiagnosisGoal = "business-data-relations";
 export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding, DataDiagnosisGoal>;
-
-export interface DataCollectContext {
-  pluginContexts: Readonly<Record<string, PluginContext>>;
-  bundle: EvidenceBundle;
-  log: (line: string) => void;
-}

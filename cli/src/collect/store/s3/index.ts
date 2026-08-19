@@ -1,5 +1,6 @@
 import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
 import type { Executor } from "../../../infra/k8s/executor";
+import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
 import { runDiagnosis } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
@@ -7,7 +8,7 @@ import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
 import { createStoreBundle, deliverStoreBundle, type StoreHtmlReportOptions } from "../delivery";
-import type { S3CollectContext } from "./context";
+import type { S3CommandContext } from "./context";
 import { buildS3Coverage, s3Detectors } from "./detector";
 import { makeS3AccessInspect, makeS3ConfigurationInspect, makeS3ProviderInspect } from "./fact";
 import type { S3InspectionFacts } from "./fact/model";
@@ -27,11 +28,22 @@ const S3_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "findings", title: "S3 健康与容量判读", risk: "observe" },
 ];
 
-export async function runStoreS3(config: StoreConfig, executor: Executor): Promise<number> {
+export async function runStoreS3(
+  config: StoreConfig,
+  commandContext: CommandContext,
+  executor: Executor,
+): Promise<number> {
   const capability = config.capability as ServiceS3StoreCapability;
   const state = createStoreBundle("s3", config.output, config.outputFormat, S3_OUTCOMES);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
-  const ctx: S3CollectContext = { executor, config, capability, bundle: state.bundle, log };
+  const ctx: S3CommandContext = {
+    command: commandContext,
+    executor,
+    config,
+    capability,
+    bundle: state.bundle,
+    log,
+  };
   let facts: S3InspectionFacts | undefined;
   let diagnosis: S3Diagnosis | undefined;
 

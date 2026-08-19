@@ -5,8 +5,10 @@ import type { Executor } from "../../../infra/k8s/executor";
 import type { ServicePortForwarder } from "../../../infra/k8s/service-port-forward";
 import type { EvidenceBundle } from "../../evidence";
 import type { StoreConfig } from "../config";
+import type { CommandContext } from "../../../command";
 
-export interface DbCollectContext {
+export interface DbCommandContext {
+  command: CommandContext;
   executor: Executor;
   config: StoreConfig;
   capability: ServiceDatabaseStoreCapability;

@@ -7,7 +7,7 @@ import {
   type UpstreamProbeResult,
 } from "../../protocol";
 import type {
-  MetricCollectContext,
+  MetricCommandContext,
   MetricConfig,
   MetricInspectionFacts,
   MetricObservation,
@@ -43,7 +43,7 @@ function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 async function collectEmbeddedWindow(
-  ctx: MetricCollectContext,
+  ctx: MetricCommandContext,
   config: MetricConfig,
 ): Promise<string[]> {
   if (!ctx.embeddedSource) throw new Error("embedded metric source 未准备");
@@ -80,7 +80,7 @@ export function makeMetricWindowProbe(): Probe<
   MetricObservation,
   MetricInspectionFacts,
   MetricConfig,
-  MetricCollectContext
+  MetricCommandContext
 > {
   return {
     id: WINDOW_PROBE_ID,
@@ -144,7 +144,7 @@ function makeMetricServiceProbe(
   service: string,
   capability: ServiceMetricCapability,
   sourceKind: "service" | "store" = "service",
-): Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCollectContext> {
+): Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCommandContext> {
   const id = serviceProbeId(service);
   return {
     id,
@@ -213,7 +213,7 @@ function makeMetricServiceProbe(
 export function makeMetricProbes(
   services: readonly string[],
   catalog: ServiceCatalog,
-): Array<Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCollectContext>> {
+): Array<Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCommandContext>> {
   return [
     makeMetricWindowProbe(),
     ...services.map((service) => {

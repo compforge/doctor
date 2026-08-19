@@ -72,6 +72,7 @@ function parseJson<T>(label: string, output: string): T {
 
 function createKubernetesAccess(
   executor: Executor,
+  namespace: string,
   signal: AbortSignal,
   capability: CapabilityWithAccess,
   portForward: PluginContext["infra"]["kubernetes"]["portForward"],
@@ -86,8 +87,11 @@ function createKubernetesAccess(
       throw new Error(`Plugin capability 未声明 Kubernetes access: ${verb} ${resource}`);
     }
   };
+  const commandLabel = (command: readonly string[]): string => (
+    `kubectl -n ${namespace} ${command.join(" ")}`
+  );
   const run = async (command: readonly string[]): Promise<string> => checkedOutput(
-    `kubectl ${command.join(" ")}`,
+    commandLabel(command),
     await executor.run([...command], { signal, timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS }),
   );
   return {
@@ -109,7 +113,7 @@ function createKubernetesAccess(
     exec: async (target, command) => {
       assertDeclared("create", "pods/exec", target.pod);
       return checkedOutput(
-        `kubectl exec ${target.pod} -- ${command.join(" ")}`,
+        commandLabel(["exec", target.pod, "--", ...command]),
         await executor.exec(target, [...command], {
           signal,
           timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS,
@@ -159,6 +163,7 @@ export function createPluginContext(
       databaseIdentity: options.databaseIdentity,
       kubernetes: createKubernetesAccess(
         executor,
+        kube.namespace,
         controller.signal,
         options.capability,
         portForward,

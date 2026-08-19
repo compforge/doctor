@@ -1,6 +1,6 @@
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
 import type {
-  ModelCollectContext,
+  ModelCommandContext,
   ModelDiagnosisConfig,
   ModelInspectionFacts,
   ModelObservation,
@@ -13,7 +13,7 @@ export const modelValidationProbe: Probe<
   ModelObservation,
   ModelInspectionFacts,
   ModelDiagnosisConfig,
-  ModelCollectContext
+  ModelCommandContext
 > = {
   id: MODEL_VALIDATION_PROBE_ID,
   evaluate: (facts) => facts.backend.status === "collected"

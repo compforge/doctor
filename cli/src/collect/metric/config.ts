@@ -1,8 +1,7 @@
-import { homedir } from "node:os";
 import { join } from "node:path";
-import { loadConfig, resolveProfile } from "../../app/config/config";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
+import { resolveCollectNamespace } from "../../infra/k8s/context";
+import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../../terminal/selection";
 import type { CollectMetricCliOpts, MetricConfig, MetricWatch } from "./model";
 import type { CommandContext } from "../../command";
@@ -67,16 +66,16 @@ export function parseMetricServices(raw: string | undefined, catalog: ServiceCat
 export async function resolveMetricConfig(
   opts: CollectMetricCliOpts,
   catalog: ServiceCatalog,
+  commandContext: CommandContext,
   interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
-  commandContext?: CommandContext,
 ): Promise<MetricConfig | undefined> {
-  const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const resolvedProfile = commandContext
-    ? { name: commandContext.profile.name, profile: commandContext.profile.value }
-    : resolveProfile(loadConfig(configPath), opts.profile);
+  const resolvedProfile = {
+    name: commandContext.profile.name,
+    profile: commandContext.profile.value,
+  };
   const watch = await resolveMetricWatch(opts.watch, interactive);
   if (!watch) return undefined;
-  const namespace = resolveCollectNamespace(opts, commandContext?.profile);
+  let namespace = resolveCollectNamespace(opts, commandContext.profile);
   const reportName = metricReportName(new Date());
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
@@ -87,13 +86,26 @@ export async function resolveMetricConfig(
     ))
   ));
   let kubeconfig: string | undefined;
+  let kubeContext = opts.context;
+  let profileName = resolvedProfile.name;
   let storeSupplementUnavailableReason: string | undefined;
-  if (!prometheusUrl) {
-    kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
-  } else if (hasStoreMetrics) {
+  if (!prometheusUrl || hasStoreMetrics) {
     try {
-      kubeconfig = resolveCollectKubeconfig(opts, commandContext?.profile).kubeconfig;
+      const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
+      if (!collect) {
+        if (!prometheusUrl) return undefined;
+        storeSupplementUnavailableReason = "Kubernetes target selection cancelled";
+      } else {
+        profileName = collect.profileName;
+        namespace = {
+          namespace: collect.kubernetes.namespace,
+          source: collect.kubernetes.namespaceSource,
+        };
+        kubeconfig = collect.kubernetes.kubeconfig;
+        kubeContext = collect.kubernetes.context;
+      }
     } catch (error) {
+      if (!prometheusUrl) throw error;
       // Remote Prometheus is the primary source. A missing Kubernetes channel only disables
       // the optional live Store supplement; Store probes can still query exporter metrics remotely.
       storeSupplementUnavailableReason = error instanceof Error ? error.message : String(error);
@@ -104,7 +116,7 @@ export async function resolveMetricConfig(
     servicesExplicit: opts.services !== undefined,
     watch,
     intervalMs: parseMetricInterval(opts.interval),
-    profileName: resolvedProfile.name,
+    profileName,
     prometheus: prometheusUrl ? {
       url: prometheusUrl,
       username: configuredPrometheus?.username,
@@ -115,7 +127,11 @@ export async function resolveMetricConfig(
     storeSupplementUnavailableReason,
     namespace: namespace.namespace,
     namespaceSource: namespace.source,
-    kube: { namespace: namespace.namespace, kubeconfig, context: opts.context },
+    kube: {
+      namespace: namespace.namespace,
+      kubeconfig,
+      context: kubeContext,
+    },
     reportName,
     outputPath: resolveMetricOutputPath(opts.output, reportName),
   };

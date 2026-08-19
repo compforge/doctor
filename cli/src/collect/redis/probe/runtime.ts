@@ -4,7 +4,7 @@ import {
   probeUnnecessary,
   type Probe,
 } from "../../protocol";
-import type { RedisCollectContext } from "../context";
+import type { RedisCommandContext } from "../context";
 import type { RedisConfig } from "../config";
 import type { RedisInspectionFacts } from "../fact/model";
 import { redisMasterMemorySkew, redisMemoryCapacity } from "../model";
@@ -115,7 +115,7 @@ function redisCounter(value: unknown): number {
 }
 
 function needsTenSecondPressureObservation(
-  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCollectContext>["evaluate"]>[2],
+  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCommandContext>["evaluate"]>[2],
 ): boolean {
   const observations = progress.flatMap((result) => result.observations);
   const nodes = observations
@@ -134,7 +134,7 @@ function needsTenSecondPressureObservation(
 }
 
 function failedUpstream(
-  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCollectContext>["evaluate"]>[2],
+  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCommandContext>["evaluate"]>[2],
 ): string | undefined {
   const failed = progress.find((item) => item.status === "failed" || item.status === "unavailable");
   return failed ? `${failed.probeId} ${failed.status}：${failed.reason ?? "未取得上游证据"}` : undefined;
@@ -145,7 +145,7 @@ export function makeRedisRuntimeProbe(): Probe<
   RedisObservation,
   RedisInspectionFacts,
   RedisConfig,
-  RedisCollectContext
+  RedisCommandContext
 > {
   return {
     id: "redis-probe",
@@ -176,7 +176,7 @@ export function makeRedisRuntimeProbe(): Probe<
 }
 
 function keyStatsTargets(
-  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCollectContext>["evaluate"]>[2],
+  progress: Parameters<Probe<RedisObservation, RedisInspectionFacts, RedisConfig, RedisCommandContext>["evaluate"]>[2],
   forced: boolean,
 ): Array<{
   node: RedisNode;
@@ -219,7 +219,7 @@ export function makeRedisKeyStatsProbe(): Probe<
   RedisObservation,
   RedisInspectionFacts,
   RedisConfig,
-  RedisCollectContext
+  RedisCommandContext
 > {
   const id = "redis-key-stats";
   return {
@@ -279,7 +279,7 @@ export function makeRedisPressureProbe(seconds: 1 | 10): Probe<
   RedisObservation,
   RedisInspectionFacts,
   RedisConfig,
-  RedisCollectContext
+  RedisCommandContext
 > {
   const window = `${seconds}s` as "1s" | "10s";
   const id = `redis-pressure-${window}`;

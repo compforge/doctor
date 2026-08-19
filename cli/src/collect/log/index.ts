@@ -5,23 +5,24 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import { resolveWorkingProfileName } from "../../app/profile";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { resolveCollectKubeconfig, resolveCollectNamespace } from "../../infra/k8s/context";
-import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
-import { resolvePodNamespace } from "../../infra/k8s/namespace-selection";
+import type { Executor } from "../../infra/k8s/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
 import { runInspects } from "../inspect-engine";
 import { runProbes } from "../probe-engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
+import {
+  createKubernetesExecutor,
+  resolveKubernetesCommandConfig,
+  type KubernetesCommandConfig,
+} from "../../command/kubernetes-target";
 import { EvidenceBundle } from "../evidence";
 import { packBundle } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
-  requireKubernetesChannel,
 } from "../../terminal/kubernetes-access";
 import {
   buildLogPattern,
@@ -29,7 +30,12 @@ import {
   resolveLogServiceSelection,
 } from "./config";
 import { makeLogInspect } from "./fact/inspect";
-import type { LogCollectOptions, LogInspectionFacts, LogProbeConfig } from "./model";
+import type {
+  LogCollectOptions,
+  LogCommandContext,
+  LogInspectionFacts,
+  LogProbeConfig,
+} from "./model";
 import { makeServiceLogProbe } from "./probe/service";
 import { renderLogResult, renderTimelineJsonl } from "./render";
 import { parseLogOutputFormat, resolveLogOutputPath } from "./output";
@@ -79,7 +85,7 @@ export function defaultLogBatchName(now: Date): string {
 async function runCollectLogSingle(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   let pattern: RegExp | undefined;
   let format: LogOutputFormat;
@@ -90,47 +96,31 @@ async function runCollectLogSingle(
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
   }
-  let resolved;
-  let configuredNamespace;
+  let collect: KubernetesCommandConfig | undefined;
   try {
-    resolved = resolveCollectKubeconfig(opts, commandContext?.profile);
-    configuredNamespace = resolveCollectNamespace(opts, commandContext?.profile);
+    collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
   }
-  if (resolved.source.startsWith("profile:")) {
-    terminalStdout.write(`[collect] kubeconfig 来自 ${resolved.source}（${resolved.kubeconfig}）\n`);
-  }
-  const channelExecutor = new KubectlExecutor({
-    kubeconfig: resolved.kubeconfig,
-    context: opts.context,
-  });
-  const bootstrapKubernetes = resolveKubernetesCommandContext(channelExecutor, commandContext);
-  await requireKubernetesChannel({
-    executor: channelExecutor,
-    profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
-    kubeconfigSource: resolved.source,
-    commandContext,
-  });
-  const resolvedNamespace = await resolvePodNamespace({
-    resolved: configuredNamespace,
-    kubeconfig: resolved.kubeconfig,
-    context: opts.context,
-    executor: channelExecutor,
-    access: bootstrapKubernetes.access,
-  });
-  if (!resolvedNamespace) {
+  if (!collect) {
     terminalStderr.warning("[collect] 已取消\n");
     return 130;
   }
+  const resolved = {
+    kubeconfig: collect.kubernetes.kubeconfig,
+    source: collect.kubernetes.kubeconfigSource,
+  };
+  const resolvedNamespace = {
+    namespace: collect.kubernetes.namespace,
+    source: collect.kubernetes.namespaceSource,
+  };
+  if (resolved.source.startsWith("profile:")) {
+    terminalStdout.write(`[collect] kubeconfig 来自 ${resolved.source}（${resolved.kubeconfig}）\n`);
+  }
   terminalStdout.write(`[collect] namespace: ${resolvedNamespace.namespace}（${resolvedNamespace.source}）\n`);
 
-  const executor = new KubectlExecutor({
-    namespace: resolvedNamespace.namespace,
-    kubeconfig: resolved.kubeconfig,
-    context: opts.context,
-  });
+  const executor = createKubernetesExecutor(collect);
   await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor log",
     needs: [{
@@ -149,16 +139,7 @@ async function runCollectLogSingle(
   });
   const dependencyRuntime = new ServiceDependencyRuntime({
     plugin,
-    collect: {
-      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
-      kubernetes: {
-        kubeconfig: resolved.kubeconfig,
-        kubeconfigSource: resolved.source,
-        context: opts.context,
-        namespace: resolvedNamespace.namespace,
-        namespaceSource: resolvedNamespace.source,
-      },
-    },
+    collect,
     executor,
     command: "doctor log",
     commandContext,
@@ -175,8 +156,8 @@ async function runCollectLogSingle(
       bizIds: opts.bizIds,
       namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig,
-      context: opts.context,
-      profileName: commandContext?.profile.name ?? resolveWorkingProfileName(opts),
+      context: collect.kubernetes.context,
+      profileName: collect.profileName,
       command: "doctor log",
       commandContext,
       resolveDependencies: (service) => dependencyRuntime.resolve(service),
@@ -214,7 +195,7 @@ async function runCollectLogSingle(
       catalog: plugin.services,
       executor,
       kubeconfig: resolved.kubeconfig,
-      context: opts.context,
+      context: collect.kubernetes.context,
     });
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -256,6 +237,7 @@ async function runCollectLogSingle(
       pattern: opts.pattern,
       outputDir: staging,
     },
+    commandContext,
     executor,
     (line) => terminalStdout.write(`${line}\n`),
     pattern,
@@ -268,7 +250,7 @@ async function runCollectLogSingle(
     writeLogHtmlReport(
       staging,
       reportPath,
-      commandContext?.profile.name ?? resolveWorkingProfileName(opts),
+      collect.profileName,
     );
   } catch (error) {
     reportError = error instanceof Error ? error.message : String(error);
@@ -306,7 +288,7 @@ async function runCollectLogSingle(
 export async function runCollectLog(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
@@ -385,6 +367,7 @@ export async function runCollectLog(
 
 export async function collectLog(
   opts: LogCollectOptions,
+  commandContext: CommandContext,
   executor: Executor,
   log: (line: string) => void,
   linePattern: RegExp | undefined = buildLogPattern(opts.errorsOnly, opts.pattern),
@@ -397,15 +380,17 @@ export async function collectLog(
   ].map((item) => item.trim()).filter(Boolean))];
   if (!traceIds.length) throw new Error("collectLog 需要至少一个 trace_id");
   const config: LogProbeConfig = { ...opts, traceIds, linePattern };
-  const ctx = {
+  const ctx: LogCommandContext = {
+    command: commandContext,
+    config,
     access: new KubectlPodLogAccess(executor, opts.namespace),
     bundle,
     log,
   };
 
-  const facts = await runInspects<LogInspectionFacts>([
-    makeLogInspect(ctx, opts.services),
-  ], undefined, log);
+  const facts = await runInspects<LogInspectionFacts, LogCommandContext>([
+    makeLogInspect(opts.services),
+  ], ctx, log);
   const observations = await runProbes(
     opts.services.map(makeServiceLogProbe),
     ctx,

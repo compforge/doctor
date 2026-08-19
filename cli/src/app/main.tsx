@@ -559,7 +559,7 @@ export async function main(plugin?: PluginDefinition) {
     await runCommand(
       { name: "doctor mema" },
       opts,
-      (_context, profileName) => runCollectMemoryAnalysis({ ...opts, inputs, profileName }),
+      (context) => runCollectMemoryAnalysis({ ...opts, inputs }, context),
     );
   });
   withCpuOptions(
@@ -657,8 +657,6 @@ export async function main(plugin?: PluginDefinition) {
       (activePlugin, context) => runCollectData(
         commandOpts,
         activePlugin,
-        undefined,
-        undefined,
         context,
       ),
     );
@@ -677,10 +675,10 @@ export async function main(plugin?: PluginDefinition) {
       (activePlugin, context) => runCollectInspect(
         opts,
         activePlugin,
-        undefined,
-        undefined,
-        undefined,
         context,
+        undefined,
+        undefined,
+        undefined,
       ),
     );
   });
@@ -690,11 +688,11 @@ export async function main(plugin?: PluginDefinition) {
     await runCommand(
       { name: "doctor http" },
       opts,
-      (context, profileName) => runCollectHttp(
-        { ...opts, profileName },
-        undefined,
-        undefined,
+      (context) => runCollectHttp(
+        opts,
         context,
+        undefined,
+        undefined,
       ),
       opts.example === undefined,
     );
@@ -742,8 +740,8 @@ export async function main(plugin?: PluginDefinition) {
       },
       opts,
       plugin,
-      (activePlugin, context, profileName) => runCollectModel(
-        { ...opts, profileName },
+      (activePlugin, context) => runCollectModel(
+        opts,
         activePlugin,
         context,
       ),

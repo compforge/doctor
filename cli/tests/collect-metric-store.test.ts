@@ -15,6 +15,7 @@ import { resolveMetricConfig } from "../src/collect/metric/config";
 import { prepareMetricSource } from "../src/collect/metric/preparation";
 import { parseExposition, parsePromQL } from "@compforge/prombed";
 import { STORE_METRIC_CAPABILITIES } from "../src/collect/metric/store/contract";
+import { CommandContext } from "../src/command";
 
 describe("metric Store observability", () => {
   test("discovers Redis and MySQL exporter Services by identity and conventional ports", () => {
@@ -173,13 +174,22 @@ describe("metric Store observability", () => {
       "",
     ].join("\n"));
     try {
+      const commandContext = new CommandContext({}, {
+        name: "prometheus-only",
+        configPath,
+        value: {
+          readonly: true,
+          prometheus: { url: "http://prometheus.example" },
+        },
+        pluginConfig: {},
+      });
       const config = await resolveMetricConfig({
         config: configPath,
         profile: "prometheus-only",
         services: "app",
-      }, services, false);
+      }, services, commandContext, false);
       expect(config?.storeSupplementUnavailableReason).toContain("未配置 kube.kubeconfig_path");
-      const preparation = await prepareMetricSource(config!, plugin);
+      const preparation = await prepareMetricSource(config!, plugin, commandContext);
       expect(preparation.sourceKind).toBe("remote");
       expect(preparation.storeFallbackReason).toContain("未配置 kube.kubeconfig_path");
       expect(preparation.storeSource).toBeUndefined();

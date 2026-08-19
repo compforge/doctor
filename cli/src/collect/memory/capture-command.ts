@@ -73,7 +73,7 @@ function recordPodStep(bundle: EvidenceBundle, result: ExecResult): void {
 
 export async function runCollectMemory(
   opts: CollectMemoryCliOptions,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   const invokedAt = new Date();
   let detail: HeapDumpDetail;

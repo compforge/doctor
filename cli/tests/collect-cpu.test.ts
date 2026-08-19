@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { collectCpu, defaultCpuBundleName } from "../src/collect/cpu";
 import { parsePtraceFacts, podDeclaresSysPtrace } from "../src/collect/fact/ptrace";
 import type { ApprovalRequest } from "../src/command/approval";
+import { CommandContext } from "../src/command";
 import type {
   ExecResult,
   ExecTarget,
@@ -207,7 +208,7 @@ describe("collectCpu", () => {
       },
       outputDir: dir,
       approvalGate: async () => ({ approved: true, source: "prompt" }),
-    }, exec, (line) => logs.push(line));
+    }, new CommandContext({}), exec, (line) => logs.push(line));
 
     expect(diagnosis.code).toBe(0);
     expect(diagnosis.diagnosis!.evidence.observations[0]).toMatchObject({
@@ -251,7 +252,7 @@ describe("collectCpu", () => {
         approvals.push(request);
         return { approved: false, source: "prompt" };
       },
-    }, exec, (line) => logs.push(line));
+    }, new CommandContext({}), exec, (line) => logs.push(line));
 
     expect(diagnosis.code).toBe(0);
     expect(approvals.map((approval) => approval.id)).toEqual(["py-spy-high-resource-usage"]);
@@ -274,7 +275,7 @@ describe("collectCpu", () => {
       },
       outputDir: outputDir(),
       approvalGate: async () => ({ approved: true, source: "prompt" }),
-    }, exec, (line) => logs.push(line));
+    }, new CommandContext({}), exec, (line) => logs.push(line));
 
     expect(diagnosis.code).toBe(0);
     expect(diagnosis.diagnosis!.evidence.observations).toEqual([]);
@@ -293,7 +294,7 @@ describe("collectCpu", () => {
       },
       outputDir: outputDir(),
       approvalGate: async () => ({ approved: true, source: "prompt" }),
-    }, exec, (line) => logs.push(line));
+    }, new CommandContext({}), exec, (line) => logs.push(line));
 
     expect(diagnosis.code).toBe(0);
     expect(diagnosis.diagnosis!.evidence.observations).toEqual([]);
@@ -313,7 +314,7 @@ describe("collectCpu", () => {
       },
       outputDir: dir,
       approvalGate: async () => ({ approved: true, source: "prompt" }),
-    }, exec, () => {});
+    }, new CommandContext({}), exec, () => {});
 
     expect(diagnosis.code).toBe(0);
     expect(diagnosis.diagnosis!.evidence.observations[0]).toMatchObject({ kind: "py-spy" });

@@ -24,7 +24,12 @@ import { resolveApprovalGate } from "../../terminal/approval";
 import { openPluginContext } from "../../plugin/context";
 import { resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
-import { buildMcpEvidence, type McpDiagnosis, type McpFacts } from "./model";
+import {
+  buildMcpEvidence,
+  type McpCommandContext,
+  type McpDiagnosis,
+  type McpFacts,
+} from "./model";
 import { parseMcpOutputFormat, resolveMcpOutputPath } from "./output";
 import { mcpProbes } from "./probe";
 import { buildMcpReportHtml, renderMcpSummary } from "./render";
@@ -91,7 +96,7 @@ function failedSummary(traceId: string, reason: string): string {
 export async function runCollectMcp(
   opts: CollectMcpCliOptions,
   plugin: PluginDefinition,
-  commandContext?: CommandContext,
+  commandContext: CommandContext,
 ): Promise<number> {
   const timeoutMs = parseTimeout(opts.timeout);
   const format = parseMcpOutputFormat(opts.format);
@@ -293,18 +298,21 @@ export async function runCollectMcp(
     if (!resolved) return await finish(130);
     ({ configSourceKind, facts, client } = resolved);
 
+    const ctx: McpCommandContext = {
+      command: commandContext,
+      config: resolved.config,
+      executor,
+      podLogs,
+      bundle,
+      client,
+      approve: resolveApprovalGate(opts),
+      startedAt,
+      traceId: trace.traceId,
+      requiredEvidence,
+      writeArtifact,
+    };
     diagnosis = await runDiagnosis({
-      ctx: {
-        executor,
-        podLogs,
-        bundle,
-        client,
-        approve: resolveApprovalGate(opts),
-        startedAt,
-        traceId: trace.traceId,
-        requiredEvidence,
-        writeArtifact,
-      },
+      ctx,
       facts,
       config: resolved.config,
       probes: mcpProbes,

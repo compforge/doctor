@@ -1,6 +1,6 @@
 import type { Probe } from "../../protocol";
 import type {
-  InspectCollectContext,
+  InspectCommandContext,
   InspectConfig,
   InspectFacts,
   InspectObservation,
@@ -12,7 +12,7 @@ import { makeDependencyInventoryProbe } from "./dependencies";
 export function makeInspectProbes(
   facts: InspectFacts,
   config: InspectConfig,
-): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext>> {
+): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> {
   const probes = facts.serviceTargets.status === "collected"
     ? Object.values(facts.serviceTargets.services).flatMap((service) =>
         service.deployments.map((target) => makeServiceConfigProbe(target))

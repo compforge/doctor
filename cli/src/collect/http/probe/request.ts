@@ -1,9 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Probe } from "../../protocol";
-import type { SendHttp } from "../../../infra/http";
 import { sleep } from "../../../infra/host/process";
-import type { EvidenceBundle } from "../../evidence";
 import { probeUnavailable, PROBE_RUNNABLE } from "../../protocol";
 import { captureHttpResponse } from "../../shared/http/capture";
 import { endpointKeyForUrl } from "../fact/inspect";
@@ -13,18 +11,7 @@ import type {
   HttpRequestPlan,
   SseResponseObservation,
 } from "../../shared/http/model";
-
-export interface HttpProbeConfig {
-  intervalMs: number;
-}
-
-export interface HttpProbeContext {
-  staging: string;
-  bundle: EvidenceBundle;
-  sendHttp: SendHttp;
-  lastRound: number;
-  log: (line: string) => void;
-}
+import type { HttpCommandConfig, HttpCommandContext } from "../context";
 
 export function httpAttemptId(request: HttpRequestPlan, round: number): string {
   return `http:${request.requestId}:${request.entrypointId}:${round}`;
@@ -70,7 +57,7 @@ export function serializeHttpAttempt(observation: HttpAttemptObservation): Recor
   };
 }
 
-async function enterRound(ctx: HttpProbeContext, round: number, intervalMs: number): Promise<void> {
+async function enterRound(ctx: HttpCommandContext, round: number, intervalMs: number): Promise<void> {
   if (round <= ctx.lastRound) return;
   if (ctx.lastRound > 0 && intervalMs > 0) await sleep(intervalMs);
   ctx.lastRound = round;
@@ -79,7 +66,7 @@ async function enterRound(ctx: HttpProbeContext, round: number, intervalMs: numb
 export function makeHttpRequestProbe(
   request: HttpRequestPlan,
   round: number,
-): Probe<HttpAttemptObservation, HttpInspectionFacts, HttpProbeConfig, HttpProbeContext> {
+): Probe<HttpAttemptObservation, HttpInspectionFacts, HttpCommandConfig, HttpCommandContext> {
   const id = httpAttemptId(request, round);
   return {
     id,

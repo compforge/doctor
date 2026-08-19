@@ -82,7 +82,7 @@ export interface ServiceDependencyRuntimeOptions {
   collect: KubernetesCommandConfig;
   executor: Executor;
   command: "doctor trace" | "doctor log";
-  commandContext?: CommandContext;
+  commandContext: CommandContext;
   index: string;
   endpoint?: string;
   serviceName?: string;
