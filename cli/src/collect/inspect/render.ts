@@ -220,7 +220,6 @@ function toolchainRows(diagnosis: InspectDiagnosis): string[][] {
 
 const DEPENDENCY_TABLE_HEADERS = [
   "Service",
-  "Image",
   "Runtime version",
   "Dependency",
   "Version",
@@ -230,7 +229,6 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
   return dependencyObservations(diagnosis).flatMap((observation) => {
     const prefix = [
       observation.services.join(", "),
-      observation.imageId || observation.image || "—",
       observation.runtimeVersion ?? "—",
     ];
     if (observation.status !== "collected") {
@@ -329,7 +327,7 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
       html: htmlTable(
         DEPENDENCY_TABLE_HEADERS,
         dependencyRows(diagnosis),
-        { search: { column: 3, placeholder: "按依赖名检索" } },
+        { search: { column: 2, placeholder: "按依赖名检索" } },
       ),
     },
     {
