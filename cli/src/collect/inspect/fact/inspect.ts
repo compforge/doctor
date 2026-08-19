@@ -1,9 +1,7 @@
 import type {
   ServiceCatalog,
-  TenantConfigurationCapability,
   Toolchain,
 } from "@compforge/doctor-plugin";
-import { openPluginContext, type ManagedPluginContext } from "../../../plugin/context";
 import {
   captureKubernetesWorkloadConfig,
   deploymentsForService,
@@ -121,7 +119,6 @@ function dependencyTargets(
 export function makeServiceTargetsInspect(
   config: InspectConfig,
   catalog: ServiceCatalog,
-  tenantCapability?: TenantConfigurationCapability,
 ): Inspect<InspectFacts, InspectCommandContext> {
   return {
     id: "service-targets",
@@ -205,15 +202,6 @@ export function makeServiceTargetsInspect(
           dependencyTargets: config.includeDependencies
             ? { status: "failed", reason }
             : { status: "unavailable", reason: DEPENDENCIES_SKIPPED_REASON },
-          tenantDatabaseTarget: { status: "failed", reason },
-          tenantRequest: config.tenantId && config.tenantConfiguration
-            ? {
-                status: "collected",
-                tenantId: config.tenantId,
-                tenantName: config.tenantName,
-                scopes: config.tenantConfiguration.scopes,
-              }
-            : { status: "unavailable", reason: "未指定 --tenant-id" },
         };
       }
       ctx.workloadConfig = snapshot;
@@ -298,70 +286,11 @@ export function makeServiceTargetsInspect(
               },
         };
       }
-
-      const tenantRequest = config.tenantId && config.tenantConfiguration
-        ? {
-            status: "collected" as const,
-            tenantId: config.tenantId,
-            tenantName: config.tenantName,
-            scopes: config.tenantConfiguration.scopes,
-          }
-        : { status: "unavailable" as const, reason: "未指定 --tenant-id" };
-      if (!config.tenantId || !config.tenantConfiguration || !tenantCapability) {
-        return {
-          serviceTargets: { status: "collected", services },
-          deploymentConfiguration,
-          dependencyTargets: resolvedDependencyTargets,
-          tenantDatabaseTarget: { status: "unavailable", reason: "未指定 --tenant-id" },
-          tenantRequest,
-        };
-      }
-
-      let pluginContext: ManagedPluginContext | undefined;
-      try {
-        if (!ctx.tenantConfigReader) {
-          pluginContext = await openPluginContext(ctx.executor, config.kube, {
-            env: config.profileName,
-            config: ctx.pluginConfig,
-            databaseIdentity: config.fallbackIdentity,
-            service: {
-              name: config.tenantConfiguration.databaseService,
-            },
-            command: "doctor inspect",
-            capability: tenantCapability,
-            authorization: ctx.authorization,
-          });
-          ctx.tenantConfigReader = await tenantCapability.createReader(pluginContext);
-          ctx.closeTenantAccess = () => pluginContext!.dispose();
-        }
-        const target = ctx.tenantConfigReader.target;
-        return {
-          serviceTargets: { status: "collected", services },
-          deploymentConfiguration,
-          dependencyTargets: resolvedDependencyTargets,
-          tenantDatabaseTarget: {
-            status: "collected",
-            service: config.tenantConfiguration.databaseService,
-            endpoint: target.endpoint,
-            database: target.database,
-            username: target.username,
-            credentialSource: target.credentialSource,
-          },
-          tenantRequest,
-        };
-      } catch (error) {
-        await pluginContext?.dispose();
-        return {
-          serviceTargets: { status: "collected", services },
-          deploymentConfiguration,
-          dependencyTargets: resolvedDependencyTargets,
-          tenantDatabaseTarget: {
-            status: "failed",
-            reason: error instanceof Error ? error.message : String(error),
-          },
-          tenantRequest,
-        };
-      }
+      return {
+        serviceTargets: { status: "collected", services },
+        deploymentConfiguration,
+        dependencyTargets: resolvedDependencyTargets,
+      };
     },
   };
 }

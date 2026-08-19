@@ -1,10 +1,5 @@
-import type {
-  TenantConfigReader,
-  TenantConfigTarget,
-  Toolchain,
-} from "@compforge/doctor-plugin";
+import type { Toolchain } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
-import type { DatabaseIdentity } from "../../infra/database";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { CommandContext } from "../../command";
@@ -14,18 +9,12 @@ import type { EvidenceBundle } from "../evidence";
 
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-export type TenantConfigScope = string;
 
 export interface CollectInspectCliOpts {
   namespace?: string;
   services?: string;
   deploymentConfig?: boolean;
   dependencies?: boolean;
-  tenantId?: string;
-  tenantName?: string;
-  tenantConfigService?: string;
-  tenantDirectoryService?: string;
-  tenantDirectoryPort?: string;
   kubeconfig?: string;
   context?: string;
   profile?: string;
@@ -41,14 +30,6 @@ export interface InspectConfig {
   servicesExplicit: boolean;
   includeDeploymentConfig: boolean;
   includeDependencies: boolean;
-  tenantId?: string;
-  tenantName?: string;
-  fallbackIdentity?: DatabaseIdentity;
-  tenantConfiguration?: {
-    scopes: string[];
-    directoryTarget: TenantConfigTarget;
-    databaseService: string;
-  };
   format: InspectOutputFormat;
   outputPath?: string;
   reportName: string;
@@ -122,20 +103,10 @@ export interface InspectDependencyTarget {
   toolchain: Toolchain;
 }
 
-export interface InspectTenantDatabaseTargetFact {
-  service: string;
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
-}
-
 export interface InspectFacts {
   serviceTargets: Fact<{ services: Record<string, InspectServiceTargetFact> }>;
   deploymentConfiguration: Fact<{ requested: true }>;
   dependencyTargets: Fact<{ targets: InspectDependencyTarget[]; missing: string[] }>;
-  tenantDatabaseTarget: Fact<InspectTenantDatabaseTargetFact>;
-  tenantRequest: Fact<{ tenantId: string; tenantName?: string; scopes: string[] }>;
 }
 
 export interface EnvironmentConfigObservation extends ObservationMeta {
@@ -143,14 +114,6 @@ export interface EnvironmentConfigObservation extends ObservationMeta {
   service: string;
   deployment: string;
   container: string;
-  values: Record<string, JsonValue>;
-}
-
-export interface TenantConfigObservation extends ObservationMeta {
-  kind: "tenant-config";
-  tenantId: string;
-  tenantName?: string;
-  scope: TenantConfigScope;
   values: Record<string, JsonValue>;
 }
 
@@ -176,16 +139,11 @@ export interface DependencyInventoryObservation extends ObservationMeta {
 
 export type InspectObservation =
   | EnvironmentConfigObservation
-  | TenantConfigObservation
   | DependencyInventoryObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;
   env?: JsonValue;
-  tenantConfig?: {
-    value: JsonValue;
-    scope: TenantConfigScope;
-  };
 }
 
 export interface InspectEvidence extends Evidence<InspectObservation, InspectFacts> {
@@ -196,8 +154,7 @@ export type InspectFinding = never;
 export type InspectDiagnosisGoal =
   | "environment-config"
   | "workload-runtime"
-  | "runtime-dependencies"
-  | "tenant-config";
+  | "runtime-dependencies";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
 
 export interface InspectCommandContext {
@@ -205,10 +162,7 @@ export interface InspectCommandContext {
   config: InspectConfig;
   executor: Executor;
   authorization: KubernetesAccessContext;
-  pluginConfig: Readonly<Record<string, unknown>>;
   bundle: EvidenceBundle;
   workloadConfig?: KubernetesWorkloadConfigSnapshot;
-  tenantConfigReader?: TenantConfigReader;
-  closeTenantAccess?: () => Promise<void>;
   log: (line: string) => void;
 }

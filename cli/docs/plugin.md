@@ -65,11 +65,17 @@ Core 在运行时解析实际 OpenSearch target，并在首选项不可用时尝
 `TraceContributions`，只对已标准化的 Trace IR/Facts 做确定性 feature、detect 与 render 扩展。它不读取
 profile config，不持有 infra，也不访问外部资源；诊断流程和 TraceHarness 实例生命周期仍由 Core 拥有。
 
-Model Capability 是 Plugin 对模型供给的聚合声明，它把 tenant directory、model catalog 与 inference
-Service 组成一项可消费能力。Chat 用它选择并调用 LLM，Model Collect 在同一能力上增加 validation、
-performance 和 Evidence；诊断是 Core command 行为，不是 Plugin capability 的身份。Core 在调用前
+Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 model catalog 构成所有消费者共用的
+发现能力，`inferenceService` 只在 Plugin 支持主动模型调用时声明。`doctor tenant` 用它汇总租户可用模型与
+capacities，Chat 用它选择并调用 LLM，`doctor model` 在同一数据契约上执行 validation、performance 和
+Evidence 编排。Model Capability 只描述通用供给，不拥有任何 command 的诊断流程；Tenant/Model command
+也不调用或复用彼此实现。Core 在调用前
 检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
+
+公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
+信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射
+公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。
 
 Case Capability 是 Service 的稳定请求资产与触发协议。它暴露一个或多个 CaseSet，以及并发安全的
 单次 Case runner；Case 的 canonical schema 归 spec-case，Doctor Plugin SDK 只消费运行所需的

@@ -2,7 +2,6 @@ import type {
   ModelBackendHandle,
   ModelCatalog,
   ModelInference,
-  ModelInferenceTarget,
   TenantSummary,
 } from "@compforge/doctor-plugin";
 import type { KubernetesCommandInput } from "../../command/kubernetes-target";
@@ -47,16 +46,7 @@ export interface ModelTestRequest {
 
 export interface ModelTargetFact {
   tenant: Pick<TenantSummary, "id" | "name" | "displayName">;
-  model: {
-    id: string;
-    name: string;
-    type: SelectedInferenceModel["type"];
-    provider: string;
-    vendor?: string;
-    version?: string;
-    inputModalities?: SelectedInferenceModel["inputModalities"];
-    inference: ModelInferenceTarget;
-  };
+  model: SelectedInferenceModel;
 }
 
 export interface ModelBackendFact {

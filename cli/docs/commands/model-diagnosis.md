@@ -2,11 +2,12 @@
 
 ## 理念 / 概念
 
-`doctor model` 消费 Chat 也会使用的 Model Capability，再用一条确定性链路检查模型目录配置
+`doctor model` 消费 Tenant/Chat 也会使用的通用 Model Capability，再用自己独立的确定性链路检查模型目录配置
 并发起真实 inference，帮助区分“租户看不到模型”“backend 数据不完整”“validation 失败”和
 “validation 通过但推理协议失败”。模型诊断是 Core command 行为，不是 Plugin capability 的身份。
 
-- **可用模型**：从 Plugin 声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型。
+- **可用模型**：从 Plugin 声明的 `modelCatalog` capability 按租户读取，代表该租户当前能选择的模型；
+  同一目录也由 `doctor tenant` 汇总为租户级 Facts。
 - **Backend handle**：由模型目录返回，向 Core 暴露规范化身份和 validation 行为；原始路由、provider 参数与凭据只由 Plugin 实现持有。
 - **Inference 模型**：使用可用模型返回的规范化 `baseUrl` 与 `model` 目标，向 Plugin 声明的 `inference` capability 发出最小请求。
 - **轻量性能采样**：LLM validation 通过后可选执行的串行流式真实请求；从短、中、长输入观察 prefill/TTFT，再用持续生成场景观察 decode。它用于低成本发现明显异常，不模拟并发负载，也不代表模型容量。
@@ -32,9 +33,17 @@
 
 模型 validation 只证明 backend 配置能被 inference service 接受，不能证明租户实际拿到的 `baseUrl + model` 能完成推理。两步分开输出，故障边界更清楚。
 
+Model Capability 的 tenant directory 与 model catalog 是只读发现基座；`inferenceService` 是主动消费者
+才需要的可选声明。`doctor model` 不复用 `doctor tenant` 的 Inspect、Evidence 或 Render，只消费同一份
+通用 capability 与 Model 数据契约。
+
 ### 模型目录是配置事实源
 
-Doctor 不自行拼接凭据或 provider 参数。可用模型与 backend 都从 `modelCatalog` capability 读取；Core 只持有脱敏 backend 身份和可调用 handle，凭据始终留在 Plugin 实现内，不进入公共 SDK 数据结构、终端或落盘证据。
+Doctor 不自行拼接凭据或 provider 参数。可用模型与 backend 都从 `modelCatalog` capability 读取；Model Facts
+只按公共白名单保存模型身份、可用性、规格、能力、计费摘要与时间信息。凭据、额外请求头和厂商私有原始
+配置始终留在 Plugin 实现内，不进入公共 SDK 数据结构、终端或落盘证据。Core 会重新投影 Plugin 返回的
+Model runtime 对象，不能依赖 TypeScript 的结构类型检查来完成脱敏。
+目录声明的 capacities 会进入 Tenant/Model Facts；它们描述模型功能，不等同于并发承载能力或性能压测结果。
 
 ### Inspect、Probe 与 Detector 保持硬边界
 

@@ -41,11 +41,27 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   },
   inspect: {
     command: "doctor inspect",
+    needs: [],
+  },
+  tenant: {
+    command: "doctor tenant",
     needs: [{
+      requirement: "required",
+      capability: { scope: "plugin", name: "model" },
+      purpose: "声明租户目录与模型目录",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "tenantDirectory" },
+      purpose: "解析要 Inspect 的租户",
+    }, {
+      requirement: "required",
+      capability: { scope: "service", name: "modelCatalog" },
+      purpose: "汇总租户可用模型与 capacities",
+    }, {
       requirement: "preferred",
       capability: { scope: "plugin", name: "tenantConfiguration" },
-      purpose: "读取 Plugin 声明的租户配置",
-      fallback: "只交付 Kubernetes 部署配置",
+      purpose: "汇总 Plugin 声明的租户配置",
+      fallback: "仍交付租户身份和模型目录",
     }],
   },
   mcp: {

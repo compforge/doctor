@@ -3,12 +3,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  Model,
   ModelCatalog,
   ModelInference,
   ServiceHttpResponse,
 } from "@compforge/doctor-plugin";
 import { runModelDiagnosis } from "../src/collect/model";
-import { requireInferenceModel } from "../src/model";
+import { modelSnapshot, requireInferenceModel } from "../src/model";
 import { CommandContext } from "../src/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";
 
@@ -21,6 +22,31 @@ const response = (text: string): ServiceHttpResponse => ({
   durationMs: 10,
 });
 
+test("model Evidence snapshot keeps public inventory fields and drops Plugin-private data", () => {
+  const model = {
+    id: "model-1",
+    name: "Model 1",
+    type: "embedding",
+    provider: "test",
+    description: "Embedding model",
+    available: true,
+    dimension: 1024,
+    capacities: ["embedding_vision"],
+    apiKey: "must-not-leak",
+    extraHeaders: { Authorization: "must-not-leak" },
+  } satisfies Model & { apiKey: string; extraHeaders: Record<string, string> };
+
+  expect(modelSnapshot(model)).toMatchObject({
+    id: "model-1",
+    description: "Embedding model",
+    available: true,
+    dimension: 1024,
+    capacities: ["embedding_vision"],
+  });
+  expect(modelSnapshot(model)).not.toHaveProperty("apiKey");
+  expect(modelSnapshot(model)).not.toHaveProperty("extraHeaders");
+});
+
 test("doctor model JSON writes the diagnosis to a file without printing the response body", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-model-json-output-"));
   const requestedOutput = join(root, "diagnosis");
@@ -31,6 +57,7 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     name: "Model 1",
     type: "llm",
     provider: "test",
+    capacities: ["reason", "tool_use"],
     inference: { baseUrl: "http://inference.invalid/v1", model: "model-1" },
   });
   const catalog: ModelCatalog = {
@@ -76,6 +103,9 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     )).toBe(true);
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
       evidence: {
+        facts: {
+          target: { model: { capacities: ["reason", "tool_use"] } },
+        },
         observations: [{ kind: "model-validation" }, {
           kind: "model-performance-decision",
           enabled: false,

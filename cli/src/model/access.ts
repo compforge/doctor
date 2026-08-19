@@ -30,12 +30,15 @@ export interface OpenModelAccessOptions extends KubernetesCommandInput {
   tenantDirectoryPort?: string;
 }
 
-export interface ModelAccess {
+export interface ModelDiscoveryAccess {
   config: KubernetesCommandConfig;
   directory: TenantDirectory;
   catalog: ModelCatalog;
-  createInference(target: ModelInferenceTarget, timeoutMs: number): Promise<ModelInference>;
   dispose(): Promise<void>;
+}
+
+export interface ModelAccess extends ModelDiscoveryAccess {
+  createInference(target: ModelInferenceTarget, timeoutMs: number): Promise<ModelInference>;
 }
 
 function requireService<C extends "tenantDirectory" | "modelCatalog" | "inference">(
@@ -50,16 +53,50 @@ function requireService<C extends "tenantDirectory" | "modelCatalog" | "inferenc
   return service;
 }
 
-export async function openModelAccess(options: OpenModelAccessOptions): Promise<ModelAccess | undefined> {
-  const declaration = options.plugin.model;
-  if (!declaration) throw new Error(`Plugin '${options.plugin.id}' 未提供模型能力`);
-  const tenantService = requireService(
-    options.plugin,
-    declaration.tenantDirectoryService,
-    "tenantDirectory",
-  );
-  const catalogService = requireService(options.plugin, declaration.catalogService, "modelCatalog");
-  const inferenceService = requireService(options.plugin, declaration.inferenceService, "inference");
+interface ModelProviders {
+  directory: ServiceWithCapability<ServiceDefinition, "tenantDirectory">;
+  catalog: ServiceWithCapability<ServiceDefinition, "modelCatalog">;
+  inferenceService?: string;
+}
+
+interface PreparedModelDiscovery {
+  access: ModelDiscoveryAccess;
+  contextFor(
+    service: ServiceDefinition,
+    capability: CapabilityWithAccess,
+    name?: string,
+    port?: number,
+  ): Promise<ManagedPluginContext>;
+}
+
+function resolveModelProviders(plugin: PluginDefinition): ModelProviders {
+  const declaration = plugin.model;
+  if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 model capability`);
+  return {
+    directory: requireService(plugin, declaration.tenantDirectoryService, "tenantDirectory"),
+    catalog: requireService(plugin, declaration.catalogService, "modelCatalog"),
+    inferenceService: declaration.inferenceService?.trim() || undefined,
+  };
+}
+
+function requireInferenceProvider(
+  plugin: PluginDefinition,
+  providers: ModelProviders,
+): ServiceWithCapability<ServiceDefinition, "inference"> {
+  if (!providers.inferenceService) {
+    throw new Error(
+      `Plugin '${plugin.id}' 的 model capability 未声明 inferenceService；主动模型调用需要 inference 能力`,
+    );
+  }
+  return requireService(plugin, providers.inferenceService, "inference");
+}
+
+async function prepareModelDiscovery(
+  options: OpenModelAccessOptions,
+  providers: ModelProviders,
+): Promise<PreparedModelDiscovery | undefined> {
+  const tenantService = providers.directory;
+  const catalogService = providers.catalog;
   const tenantPort = parseModelPort(
     options.tenantDirectoryPort,
     tenantService.capabilities.tenantDirectory.endpoint.port,
@@ -79,7 +116,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
     needs: [{
       requirement: "required",
       rule: { verb: "list", resource: "services" },
-      purpose: "解析租户目录、模型目录与推理 Service",
+      purpose: "解析租户目录与模型目录 Service",
     }, {
       requirement: "required",
       rule: { verb: "list", resource: "pods" },
@@ -87,7 +124,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
     }, {
       requirement: "required",
       rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "从 Doctor Host 调用租户目录、模型目录与推理 endpoint",
+      purpose: "从 Doctor Host 调用模型域相关 endpoint",
     }],
   });
   const kube = {
@@ -130,26 +167,48 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
       options.modelCatalogService?.trim() || catalogService.name,
       catalogPort,
     ));
-    return {
+    const access: ModelDiscoveryAccess = {
       config,
       directory,
       catalog,
-      createInference: async (target, timeoutMs) => await inferenceService.capabilities.inference.create(
-        await contextFor(
-          inferenceService,
-          inferenceService.capabilities.inference,
-          inferenceService.name,
-          inferenceService.capabilities.inference.endpoint.port,
-        ),
-        target,
-        timeoutMs,
-      ),
       dispose,
     };
+    return { access, contextFor };
   } catch (error) {
     await dispose();
     throw error;
   }
+}
+
+/**
+ * @spec Model discovery 只打开 tenant directory 与 model catalog，不能创建 inference 流量
+ * @see {@link ../../docs/commands/model-diagnosis.md}
+ */
+export async function openModelDiscoveryAccess(
+  options: OpenModelAccessOptions,
+): Promise<ModelDiscoveryAccess | undefined> {
+  const providers = resolveModelProviders(options.plugin);
+  return (await prepareModelDiscovery(options, providers))?.access;
+}
+
+export async function openModelAccess(options: OpenModelAccessOptions): Promise<ModelAccess | undefined> {
+  const providers = resolveModelProviders(options.plugin);
+  const inference = requireInferenceProvider(options.plugin, providers);
+  const prepared = await prepareModelDiscovery(options, providers);
+  if (!prepared) return undefined;
+  return {
+    ...prepared.access,
+    createInference: async (target, timeoutMs) => await inference.capabilities.inference.create(
+      await prepared.contextFor(
+        inference,
+        inference.capabilities.inference,
+        inference.name,
+        inference.capabilities.inference.endpoint.port,
+      ),
+      target,
+      timeoutMs,
+    ),
+  };
 }
 
 function parseModelPort(value: string | undefined, fallback: number, flag: string): number {

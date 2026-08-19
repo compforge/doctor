@@ -71,6 +71,8 @@ export async function runCollectModel(
       tenantName: opts.tenantName,
       profileName: access.config.profileName,
       directory: access.directory,
+      commandContext,
+      promptTitle: "[model] 当前启用租户：",
     });
     if (!tenant) {
       terminalStderr.warning("[model] 已取消\n");

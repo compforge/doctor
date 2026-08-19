@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   COLLECT_KINDS,
+  collectReportName,
   parseCollectKinds,
   runCollect,
   runCollectDelegates,
@@ -15,15 +16,33 @@ import { deliverCommandArtifacts } from "../src/app/delivery";
 
 test("collect include accepts comma or pipe separated command names", () => {
   expect(parseCollectKinds(undefined)).toEqual([...COLLECT_KINDS]);
-  expect(parseCollectKinds("trace,log|data trace")).toEqual(["trace", "log", "data"]);
+  expect(parseCollectKinds("trace,log|tenant trace")).toEqual(["trace", "log", "tenant"]);
   expect(() => parseCollectKinds("trace,cpu")).toThrow("--include 仅支持");
 });
 
+test("collect report name keeps a single safe biz-id and uses batch otherwise", () => {
+  const now = new Date(2026, 7, 19, 15, 4, 5);
+  expect(collectReportName(["biz/team:1"], now))
+    .toBe("doctor-collect-biz-team-1-20260819-150405");
+  expect(collectReportName(["biz-1", "biz-2"], now))
+    .toBe("doctor-collect-batch-20260819-150405");
+  expect(collectReportName([], now))
+    .toBe("doctor-collect-batch-20260819-150405");
+});
+
 test("collect capability contract is the union of selected concrete commands", () => {
-  const contract = collectPluginCapabilities(["inspect", "data", "trace", "log"]);
+  const contract = collectPluginCapabilities(["inspect", "tenant", "data", "trace", "log"]);
   expect(contract.command).toBe("doctor collect");
   expect(contract.needs.map((need) => `${need.capability.scope}.${need.capability.name}`))
-    .toEqual(["plugin.tenantConfiguration", "service.data", "service.traceId", "service.log"]);
+    .toEqual([
+      "plugin.model",
+      "service.tenantDirectory",
+      "service.modelCatalog",
+      "plugin.tenantConfiguration",
+      "service.data",
+      "service.traceId",
+      "service.log",
+    ]);
 });
 
 test("collect delegates concrete work and continues after one command fails", async () => {
@@ -42,6 +61,26 @@ test("collect delegates concrete work and continues after one command fails", as
     ["log", 0],
   ]);
   expect(results[2]?.error).toBe("trace unavailable");
+});
+
+test("collect can run a tenant-scoped command without biz-id", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-collect-tenant-only-test-"));
+  const plugin = {
+    id: "test",
+    version: "0.0.1",
+    services: createServiceCatalog([]),
+  } satisfies PluginDefinition;
+  try {
+    expect(await runCollect({
+      bizIds: [],
+      kinds: ["tenant"],
+      tenantId: "tenant-1",
+      format: "html",
+      output: join(root, "tenant.html"),
+    }, plugin, new CommandContext({}), async () => 0)).toBe(0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("collect default delivery contains combined HTML and child full bundles", async () => {

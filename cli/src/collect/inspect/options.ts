@@ -2,10 +2,6 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type {
-  TenantDirectory,
-  TenantSummary,
-} from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
 import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import {
@@ -14,20 +10,13 @@ import {
   recordRecentServiceTargets,
   type ServiceChoice,
 } from "../../infra/k8s/service-selection";
-import {
-  recentSelectionsForInteractive,
-  type RecentSelections,
-} from "../../infra/recent";
+import type { RecentSelections } from "../../infra/recent";
 import {
   promptNamedChoices,
   type NamedChoiceSelectionInput,
 } from "../../terminal/service-selection";
 import { prepareTerminalInput } from "../../terminal/input";
 import { terminalStdout } from "../../terminal/output";
-import {
-  promptTenantChoice,
-  type TenantPromptChoice,
-} from "../../terminal/tenant-selection";
 import type {
   CollectInspectCliOpts,
   InspectConfig,
@@ -35,8 +24,6 @@ import type {
 } from "./model";
 import type { CommandContext } from "../../command";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
-
-export { resolveTenantPromptChoice } from "../../terminal/tenant-selection";
 
 export function parseInspectServices(raw: string, catalog: ServiceCatalog): string[] {
   const services = [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))];
@@ -54,13 +41,6 @@ export function parseInspectOutputFormat(value: string | undefined): InspectOutp
     throw new Error(`--format 只支持 bundle、json、html 或 md: '${format}'`);
   }
   return format;
-}
-
-function parsePort(value: string | undefined, fallback: number, flag: string): number {
-  if (value === undefined) return fallback;
-  const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error(`${flag} 必须是 1..65535 的整数`);
-  return port;
 }
 
 export function inspectReportName(now: Date): string {
@@ -103,49 +83,8 @@ export async function resolveInspectConfig(
         : format === "bundle"
           ? resolveArchivePath(opts.output, reportName)
           : undefined;
-  const resolvedProfile = {
-    name: commandContext.profile.name,
-    profile: commandContext.profile.value,
-  };
-  const profile = resolvedProfile.profile;
-  const fallbackIdentity = profile.db?.user && profile.db.password
-    ? { user: profile.db.user, password: profile.db.password }
-    : undefined;
   const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
   if (!collect) return undefined;
-  const tenantId = opts.tenantId?.trim() || undefined;
-  const tenantName = opts.tenantName?.trim() || undefined;
-  if (tenantId && tenantName) throw new Error("--tenant-id 与 --tenant-name 不能同时使用");
-  const tenantCapability = plugin.tenantConfiguration;
-  const tenantOptionsProvided = tenantId
-    || tenantName
-    || opts.tenantConfigService
-    || opts.tenantDirectoryService
-    || opts.tenantDirectoryPort;
-  if (tenantOptionsProvided && !tenantCapability) {
-    throw new Error(`Plugin '${plugin.id}' 未提供租户配置能力`);
-  }
-  const tenantDirectoryService = tenantCapability
-    ? plugin.services.findWith(tenantCapability.directoryService, "tenantDirectory")
-    : undefined;
-  if (tenantCapability && !tenantDirectoryService) {
-    throw new Error(
-      `Plugin '${plugin.id}' 的 Service '${tenantCapability.directoryService}' 未声明 tenantDirectory 能力`,
-    );
-  }
-  const tenantDirectoryPort = tenantDirectoryService?.capabilities.tenantDirectory.endpoint.port;
-  const tenantConfiguration = tenantCapability && tenantDirectoryService && tenantDirectoryPort !== undefined ? {
-    scopes: [...tenantCapability.scopes],
-    directoryTarget: {
-      service: opts.tenantDirectoryService?.trim() || tenantDirectoryService.name,
-      port: parsePort(
-        opts.tenantDirectoryPort,
-        tenantDirectoryPort,
-        "tenant directory port",
-      ),
-    },
-    databaseService: opts.tenantConfigService?.trim() || tenantCapability.databaseService,
-  } : undefined;
   return {
     namespace: collect.kubernetes.namespace,
     namespaceSource: collect.kubernetes.namespaceSource,
@@ -153,10 +92,6 @@ export async function resolveInspectConfig(
     servicesExplicit: opts.services !== undefined,
     includeDeploymentConfig: opts.deploymentConfig === true,
     includeDependencies: opts.dependencies === true,
-    tenantId,
-    tenantName,
-    fallbackIdentity,
-    tenantConfiguration,
     format,
     outputPath,
     reportName,
@@ -274,67 +209,4 @@ export async function resolveInspectServiceSelection(
   });
   if (selected) recordRecentServiceTargets(selected, recentInput);
   return selected;
-}
-
-async function promptTenant(
-  tenants: readonly TenantSummary[],
-  recentChoices: readonly TenantSummary[],
-): Promise<TenantPromptChoice | undefined> {
-  const choices: TenantPromptChoice[] = [
-    { name: "仅部署配置", displayName: "不读取租户配置" },
-    ...tenants,
-  ];
-  return promptTenantChoice({
-    choices,
-    title: "[collect] 当前启用租户：",
-    recentChoices,
-  });
-}
-
-export interface InspectTenantSelectionInput {
-  config: InspectConfig;
-  directory: TenantDirectory;
-  interactive?: boolean;
-  recent?: RecentSelections;
-  prompt?: (tenants: readonly TenantSummary[]) => Promise<TenantPromptChoice | undefined>;
-  log?: (line: string) => void;
-}
-
-/** tenant-id 直接采用，tenant-name 走 GetTenant；交互缺省时通过 ListTenant 选择当前启用租户。 */
-export async function resolveInspectTenantSelection(
-  input: InspectTenantSelectionInput,
-): Promise<InspectConfig | undefined> {
-  if (input.config.tenantId) return input.config;
-  if (input.config.tenantName) {
-    const tenant = await input.directory.getByName(input.config.tenantName);
-    input.log?.(`[collect] tenant: ${tenant.name}（${tenant.id}，--tenant-name）`);
-    return { ...input.config, tenantId: tenant.id, tenantName: tenant.name };
-  }
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
-  if (!interactive) return input.config;
-
-  let tenants: TenantSummary[];
-  try {
-    tenants = await input.directory.listActive();
-  } catch (error) {
-    input.log?.(`[collect] 无法从租户目录列出当前租户，继续仅统计部署配置：${error instanceof Error ? error.message : String(error)}`);
-    return input.config;
-  }
-  if (!tenants.length) {
-    input.log?.("[collect] 租户目录未返回启用租户，继续仅统计部署配置");
-    return input.config;
-  }
-  const recent = recentSelectionsForInteractive(input.interactive, input.recent);
-  const recentChoices = recent?.recentChoices(
-    "tenant",
-    input.config.profileName,
-    tenants,
-    (tenant) => tenant.id,
-  ) ?? [];
-  const selected = await (input.prompt ?? ((choices) => promptTenant(choices, recentChoices)))(tenants);
-  if (!selected) return undefined;
-  if (!selected.id) return { ...input.config, tenantName: undefined };
-  recent?.recordChoice("tenant", input.config.profileName, selected.id);
-  input.log?.(`[collect] tenant: ${selected.name}（${selected.id}）`);
-  return { ...input.config, tenantId: selected.id, tenantName: selected.name };
 }

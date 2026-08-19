@@ -13,7 +13,8 @@ CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的�
   因而不是只做转发的纯 composite；
 - `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立问答链路，不依赖
   provision 或 collect；
-- `model` 准备模型发现与 inference 访问，由 Chat 和 Model Collect 共用，不归属任一主路径；
+- `model` 准备通用模型发现与 inference 访问，由 Tenant Collect、Model Collect 和 Chat 消费，不归属任一
+  command 实现；
 - `packages/plugin` 定义 Plugin、Service 与 capability 公共协议，`plugins/<plugin>` 持有访问实现与固定业务查询；
   `infra` 只提供 Doctor 的外部资源访问能力。
 
@@ -66,7 +67,8 @@ validated Profile snapshot + command options
 Profile 在单次命令内只解析和校验一次，后续 target、infra 与 Plugin context 均消费这份不可变快照。
 `CommandContext` 是单次顶层命令从 prepare 到 finalize 的运行作用域：Decision 复用用户或命令意图作出的
 决策，Discovery 复用执行期间的只读发现，ExecutionRecord 追加保存步骤已经产生、且会影响后续 action 的
-中间结果，Artifacts 保存 execute 阶段准备并交给 finalize 处理的产物路径。四者都按
+中间结果，Artifacts 保存 execute 阶段准备并交给 finalize 处理的产物路径，以及领域可选提供的聚合
+basename；路径解析、覆盖保护、格式选择、复制、压缩与清理仍只属于 finalize。四者都按
 类型和语义作用域隔离；ExecutionRecord 不持久化，也不等同于 Collect Facts、Observations 或 Evidence。
 所有消费 profile、Target 或交互决策的领域 command 入口都必须显式接收 `CommandContext`：独立执行由
 `app` 创建新实例，组合命令把自己的同一实例传给下游 command。测试依赖应放在它之后注入，不能通过把
@@ -187,7 +189,7 @@ Collect command 按诊断算法和数据语义的所有者分为三类。这个�
 |---|---|---|---|
 | 业务型 | `data` | 定位业务 Service，经 Core access 取得运行态事实，执行固定 HTTP/DB 查询并返回约定结果 | 提供 Target-scoped access，触发 capability，编排 Evidence、Detector/Coverage 和展示 |
 | 基础设施型 | `store`、`mem`、`net` | 按需贡献目标身份、连接配置或默认选择，不实现通用基础设施诊断 | 执行标准探测与分析，控制风险、资源生命周期和证据交付 |
-| 混合型 | `trace`、`log`、`config`、`model`、`mcp` | 处理业务入口、私有 schema 和目标投影 | 消费规范目标后执行通用采集、协议分析和报告 |
+| 混合型 | `trace`、`log`、`tenant`、`model`、`mcp` | 处理业务入口、私有 schema 和目标投影 | 消费规范目标后执行通用采集、协议分析和报告 |
 
 Kubernetes 的分工遵循同一所有权：Core 解析当前 profile 的 kubeconfig/context，但只向 Plugin 注入
 namespace、Service 身份和 Target-scoped Kubernetes access，并统一托管超时、输出上限、取消与
@@ -197,8 +199,19 @@ selector、Pod、container 或 env 再回传给 Plugin，Plugin 也不持有 kub
 负责定位和操作对应 Target，并声明实际需要的 access contract。
 
 混合型命令按阶段保持边界。例如 `trace` 先由 Plugin 把业务 ID 解析为规范 `trace_id` 并贡献
-OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`config` 的 Deployment env 由 Core
-采集，租户配置等业务数据由 Plugin 取得。`collect` 不因上述分类拆成 `biz/infra` 两套框架。
+OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`inspect` 的 Deployment env 由 Core
+采集，`tenant` 的租户配置由 Plugin 取得。`collect` 不因上述分类拆成 `biz/infra` 两套框架。
+
+### Application 数据按作用域拆分
+
+Application 数据不是一个单一粒度的数据面，而是由各自拥有稳定查询边界的作用域组成：租户级数据由
+`tenant` 汇总，例如 Model Catalog 与租户配置；业务对象级数据由 `data` 按 biz-id 汇总。后续若出现用户级
+数据，应由独立的 user scope command 拥有它的 Config、Facts 与 Evidence，而不是继续扩张 `data` 或让
+`collect` 理解 identifier 之间的私有关联。
+
+这些作用域 command 可以复用同一个 `CommandContext` 中已经确认的 profile、namespace 和同语义决策，
+但不能相互推导未声明的 identifier。`collect` 只组合被选择的数据面和产物，因此增加新的 Application
+作用域时，不需要把该作用域的数据模型并入集合层。
 
 ## Collect 共享协议
 
@@ -285,6 +298,7 @@ Linux x64 CLI 同时提供 modern Bun 与 glibc 2.17-compatible Node SEA；无�
 |---|---|
 | Collect（集合命令） | [`commands/collect.md`](commands/collect.md) |
 | Inspect | [`commands/inspect.md`](commands/inspect.md) |
+| Tenant | [`commands/tenant.md`](commands/tenant.md) |
 | CPU | [`commands/cpu-diagnosis.md`](commands/cpu-diagnosis.md) |
 | Data | [`commands/data-diagnosis.md`](commands/data-diagnosis.md) |
 | Debug | [`commands/debug-container.md`](commands/debug-container.md) |

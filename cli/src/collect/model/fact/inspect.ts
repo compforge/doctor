@@ -1,4 +1,5 @@
 import type { TenantSummary } from "@compforge/doctor-plugin";
+import { modelSnapshot } from "../../../model";
 import type { Inspect } from "../../inspection";
 import type {
   ModelCommandContext,
@@ -21,13 +22,7 @@ export function makeModelInspect(
           displayName: tenant.displayName,
         },
         model: {
-          id: model.id,
-          name: model.name,
-          type: model.type,
-          provider: model.provider,
-          vendor: model.vendor,
-          version: model.version,
-          inputModalities: model.inputModalities,
+          ...modelSnapshot(model),
           inference: model.inference,
         },
       };
