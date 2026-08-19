@@ -1,6 +1,7 @@
 import {
   accessLabel,
   inspectKubernetesChannel,
+  kubernetesResultDetail,
   type KubernetesAccessContract,
   type KubernetesAccessEvaluation,
   type KubernetesAccessContext,
@@ -34,17 +35,20 @@ export async function enforceKubernetesAccess(
   const evaluation = await context.evaluate(contract);
   for (const fact of evaluation.facts) {
     const label = accessLabel(fact.need.rule);
+    const scope = contract.namespace ? `，namespace=${contract.namespace}` : "";
     if (fact.status === "allowed") {
       terminalStdout.success(
-        `[k8s] ${fact.need.requirement}: ${label} ✓（${fact.need.purpose}）\n`,
+        `[k8s] ${fact.need.requirement}: ${label} ✓（${fact.need.purpose}${scope}）\n`,
       );
       continue;
     }
     const fallback = fact.status === "denied" && fact.need.fallback ? `；${fact.need.fallback}` : "";
-    const next = fact.status === "unknown" ? "；探测未得出结论，继续尝试实际操作" : fallback;
+    const next = fact.status === "unknown"
+      ? `；预检原因：${kubernetesResultDetail(fact.result)}；继续尝试实际操作`
+      : fallback;
     terminalStdout.warning(
       `[k8s] ${fact.need.requirement}: ${label} ${fact.status}`
-      + `（${fact.need.purpose}）${next}\n`,
+      + `（${fact.need.purpose}${scope}）${next}\n`,
     );
   }
   if (!evaluation.runnable) {

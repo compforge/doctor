@@ -219,6 +219,7 @@ export async function openPluginContext(
 ): Promise<ManagedPluginContext> {
   await enforceKubernetesAccess(options.authorization, {
     command: `${options.command} · ${options.service.name}`,
+    namespace: kube.namespace,
     needs: capabilityAccessNeeds(options.capability),
   });
   return createPluginContext(executor, kube, options);
