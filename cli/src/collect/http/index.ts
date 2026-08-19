@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -14,8 +14,8 @@ import { runDiagnosis } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import type { SendHttp } from "../shared/http/capture";
 import { HTTP_DEFAULTS, loadHttpScenario } from "../shared/http/config";
@@ -178,32 +178,18 @@ function serializeFinding(finding: HttpFinding): Record<string, unknown> {
   return { ...finding };
 }
 
-async function deliverHttpOutput(
+function writeHttpArtifact(
   staging: string,
-  outputPath: string,
-  format: HttpOutputFormat,
   profileName: string,
   summaryHtml: string,
-  requestedOutput: string | undefined,
-  bundleName: string,
-): Promise<boolean> {
+): boolean {
   try {
-    if (format === "md") {
-      copyFileSync(join(staging, "summary.md"), outputPath);
-      return true;
-    }
-    const reportPath = format === "html" ? outputPath : join(staging, "report.html");
-    writeHtmlReport(staging, reportPath, {
+    writeHtmlReport(staging, join(staging, "report.html"), {
       title: "doctor http 诊断报告",
       profileName,
       summaryHtml,
     });
-    if (format === "html") return true;
-    const paths = format === "default"
-      ? resolveDefaultReportPaths(requestedOutput, bundleName)
-      : { html: reportPath, bundle: outputPath };
-    if (format === "default") copyFileSync(reportPath, paths.html);
-    return (await packReportBundle(staging, paths.bundle)).ok;
+    return true;
   } catch (error) {
     terminalStderr.error(`[http] 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
     return false;
@@ -294,9 +280,8 @@ export async function runCollectHttp(
   }
 
   const bundleName = defaultHttpBundleName(new Date());
-  let outputPath: string;
   try {
-    outputPath = resolveHttpOutputPath(opts.output, bundleName, format);
+    resolveHttpOutputPath(opts.output, bundleName, format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -305,6 +290,7 @@ export async function runCollectHttp(
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-http-"));
   const staging = join(stagingRoot, bundleName);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
+  commandContext.artifacts.add("http", staging);
   const startedAt = new Date();
   const entrypointCount = scenario.requests.reduce((count, group) => count + group.entrypoints.length, 0);
   terminalStderr.info(`[http] 场景 ${scenario.name}：${scenario.requests.length} 个逻辑请求、${entrypointCount} 个入口 × ${repeat} 轮\n`);
@@ -395,21 +381,7 @@ export async function runCollectHttp(
       startedAt: startedAt.toISOString(),
       finishedAt: new Date().toISOString(),
     });
-    const failure = await deliverFailureBundle({
-      bundleDir: staging,
-      bundleName,
-      requestedOutput: format === "default"
-        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
-        : opts.output,
-      collectCode: 1,
-      reason,
-    });
-    if (failure.packed.ok) {
-      rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStderr.error(`[http] 诊断流程失败，Evidence Bundle: ${failure.path}\n`);
-    } else {
-      terminalStderr.error(`[http] 失败 Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
-    }
+    recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
     return 1;
   }
   const finishedAt = new Date();
@@ -455,51 +427,22 @@ export async function runCollectHttp(
     )),
   );
 
-  const delivered = await deliverHttpOutput(
+  const generated = format === "md" || writeHttpArtifact(
     staging,
-    outputPath,
-    format,
     reportProfileName,
     buildHttpHtml(diagnosis, scenario.requests, staging, executionTargetLabel(executionTarget)),
-    opts.output,
-    bundleName,
   );
-  if (!delivered) {
-    const failure = await deliverFailureBundle({
-      bundleDir: staging,
-      bundleName,
-      requestedOutput: format === "default"
-        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
-        : opts.output,
-      collectCode: 1,
-      reason: "HTTP 诊断产物生成失败",
-    });
-    if (failure.packed.ok) {
-      rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStderr.error(`[http] 失败 Bundle: ${failure.path}\n`);
-    } else {
-      terminalStderr.error(`[http] 原始数据保留在目录: ${staging}\n`);
-    }
+  if (!generated) {
+    recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "HTTP 诊断产物生成失败" });
     return 1;
   }
-
-  const defaultPaths = format === "default" ? resolveDefaultReportPaths(opts.output, bundleName) : undefined;
-  if (defaultPaths) {
-    chmodSync(defaultPaths.html, 0o600);
-    chmodSync(defaultPaths.bundle, 0o600);
-  } else {
-    chmodSync(outputPath, 0o600);
-  }
-  rmSync(stagingRoot, { recursive: true, force: true });
-  const deliveredPath = defaultPaths
-    ? `${defaultPaths.html} + ${defaultPaths.bundle}`
-    : outputPath;
   if (evidenceOutcome.exitCode !== 0) {
-    terminalStderr.error(`[http] 证据不完整：${deliveredPath}\n`);
+    recordFailureBundle({ bundleDir: staging, collectCode: evidenceOutcome.exitCode, reason: "HTTP 证据不完整" });
+    terminalStderr.error("[http] 证据不完整\n");
   } else if (hasFindings) {
-    terminalStderr.warning(`[http] 发现异常：${deliveredPath}\n`);
+    terminalStderr.warning("[http] 发现异常\n");
   } else {
-    terminalStderr.success(`[http] 诊断完成：${deliveredPath}\n`);
+    terminalStderr.success("[http] 诊断完成\n");
   }
   return evidenceOutcome.exitCode;
 }

@@ -54,7 +54,7 @@ import {
   parseStoreOutputFormat,
   resolveStoreOutputPath,
 } from "../src/collect/store";
-import { deliverStoreArtifacts } from "../src/collect/store/delivery";
+import { writeStoreArtifacts } from "../src/collect/store/artifacts";
 import { writeTabbedStoreReport } from "../src/collect/store/tabs";
 import { writeHtmlReport } from "../src/collect/output/html";
 
@@ -88,7 +88,7 @@ describe("Store output", () => {
       finishedAt: "2026-08-03T00:00:01.000Z",
     });
     const outputPath = join(root, "report.html");
-    const delivered = await deliverStoreArtifacts({
+    const prepared = await writeStoreArtifacts({
       staging,
       bundleName: "bundle",
       outputPath,
@@ -98,8 +98,8 @@ describe("Store output", () => {
       profileName: "test",
       summary,
     });
-    const html = readFileSync(outputPath, "utf8");
-    expect(delivered).toMatchObject({ ok: true, path: outputPath, label: "Store HTML 报告" });
+    const html = readFileSync(join(staging, "report.html"), "utf8");
+    expect(prepared).toMatchObject({ ok: true, path: staging, label: "Store 诊断产物" });
     expect(html).toContain(">DB Store 诊断摘要</h1>");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("<script>alert(2)</script>");

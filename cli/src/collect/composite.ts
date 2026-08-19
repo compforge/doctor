@@ -1,16 +1,11 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 import type { CommandContext } from "../command";
-import { terminalStderr, terminalStdout } from "../terminal/output";
+import { terminalStderr } from "../terminal/output";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { runCollectData } from "./data";
 import { runCollectInspect } from "./inspect";
 import { runCollectLog } from "./log";
 import { runCollectMetric } from "./metric";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "./output/archive";
-import { failedReportHtml, writeTabbedReport } from "./output/tabbed-report";
 import { runCollectTrace } from "./trace";
 
 export const COLLECT_KINDS = ["inspect", "data", "trace", "log", "metric"] as const;
@@ -47,11 +42,10 @@ export interface CollectCliOpts {
 export interface CollectDelegateResult {
   kind: CollectKind;
   code: number;
-  outputPath: string;
   error?: string;
 }
 
-export type CollectDelegate = (kind: CollectKind, outputPath: string) => Promise<number>;
+export type CollectDelegate = (kind: CollectKind) => Promise<number>;
 
 export function parseCollectKinds(raw: string | undefined): CollectKind[] {
   if (!raw?.trim()) return [...COLLECT_KINDS];
@@ -78,27 +72,6 @@ export async function resolveCollectKinds(
   return selected as CollectKind[] | undefined;
 }
 
-export function safeCollectBizId(bizId: string): string {
-  const normalized = bizId
-    .normalize("NFKC")
-    .trim()
-    .replace(/[^\p{Letter}\p{Number}._-]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  return Array.from(normalized || "biz").slice(0, 64).join("");
-}
-
-export function collectReportName(bizIds: readonly string[], now = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const target = bizIds.length === 1 ? safeCollectBizId(bizIds[0]!) : "batch";
-  return `doctor-collect-${target}-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-    + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
-export function resolveCollectOutputPath(output: string | undefined, reportName: string): string {
-  if (!output) return resolve(`${reportName}.html`);
-  return resolve(output.toLowerCase().endsWith(".html") ? output : `${output}.html`);
-}
-
 export function parseCollectOutputFormat(raw: string | undefined): CollectOutputFormat {
   const format = raw?.trim() || "default";
   if (format !== "default" && format !== "bundle" && format !== "html") {
@@ -110,19 +83,16 @@ export function parseCollectOutputFormat(raw: string | undefined): CollectOutput
 /** 只执行所选具体命令，不在集合层增加另一套采集实现。 */
 export async function runCollectDelegates(
   kinds: readonly CollectKind[],
-  stagingDir: string,
   delegate: CollectDelegate,
 ): Promise<CollectDelegateResult[]> {
   const results: CollectDelegateResult[] = [];
   for (const kind of kinds) {
-    const outputPath = join(stagingDir, `${kind}.html`);
     try {
-      results.push({ kind, code: await delegate(kind, outputPath), outputPath });
+      results.push({ kind, code: await delegate(kind) });
     } catch (error) {
       results.push({
         kind,
         code: 1,
-        outputPath,
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -143,7 +113,6 @@ function collectDelegate(
   opts: CollectCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-  fullBundle: boolean,
 ): CollectDelegate {
   const common = {
     namespace: opts.namespace,
@@ -152,59 +121,67 @@ function collectDelegate(
     profile: commandContext.profile.name,
     config: opts.config,
   };
-  return async (kind, outputPath) => {
+  return async (kind) => {
+    const format = parseCollectOutputFormat(opts.format);
+    let code: number;
     switch (kind) {
       case "inspect":
-        return runCollectInspect({
+        code = await runCollectInspect({
           ...common,
           services: inspectServiceNames(plugin),
           deploymentConfig: opts.deploymentConfig,
           dependencies: opts.dependencies,
-          format: fullBundle ? undefined : "html",
-          output: outputPath,
+          format,
+          output: undefined,
         }, plugin, commandContext);
+        break;
       case "data":
-        return runCollectData({
+        code = await runCollectData({
           ...common,
           bizIds: opts.bizIds,
           services: providerNames(plugin, "data"),
-          format: fullBundle ? undefined : "html",
-          output: outputPath,
+          format,
+          output: undefined,
         }, plugin, commandContext);
+        break;
       case "trace":
-        return runCollectTrace({
+        code = await runCollectTrace({
           ...common,
           bizIds: opts.bizIds,
           pageSize: "1000",
-          format: fullBundle ? undefined : "html",
-          output: outputPath,
+          format,
+          output: undefined,
         }, plugin, commandContext);
+        break;
       case "log":
-        return runCollectLog({
+        code = await runCollectLog({
           ...common,
           bizIds: opts.bizIds,
           services: providerNames(plugin, "log"),
           since: opts.since,
           sinceTime: opts.sinceTime,
-          format: fullBundle ? undefined : "html",
-          output: outputPath,
+          format,
+          output: undefined,
         }, plugin, commandContext);
+        break;
       case "metric":
-        return runCollectMetric({
+        code = await runCollectMetric({
           ...common,
           services: providerNames(plugin, "metric"),
           watch: opts.watch ?? "0",
           interval: opts.interval,
           prometheus: opts.prometheus,
-          format: fullBundle ? undefined : "html",
-          output: outputPath,
+          format,
+          output: undefined,
         }, plugin, commandContext);
+        break;
     }
+    return code;
   };
 }
 
 /**
- * Collection command: it owns selection, delegation and combined delivery only.
+ * Collection command owns selection and delegation only; global finalize owns delivery.
  * Inspect, Data, Trace, Log and Metric remain the sole owners of concrete collection work.
  */
 export async function runCollect(
@@ -217,76 +194,10 @@ export async function runCollect(
     terminalStderr.error("doctor collect 需要至少一个 biz-id\n");
     return 2;
   }
-  const reportName = collectReportName(opts.bizIds);
-  const format = parseCollectOutputFormat(opts.format);
-  const paths = format === "default"
-    ? resolveDefaultReportPaths(opts.output, reportName)
-    : {
-        html: format === "html" ? resolveCollectOutputPath(opts.output, reportName) : "",
-        bundle: format === "bundle" ? resolveArchivePath(opts.output, reportName) : "",
-      };
-  for (const outputPath of [paths.html, paths.bundle].filter(Boolean)) {
-    if (existsSync(outputPath)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${outputPath}`);
-  }
-
-  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
-  const stagingDir = join(stagingRoot, reportName);
-  mkdirSync(stagingDir, { recursive: true });
-  let cleanupStaging = true;
-  try {
-    const results = await runCollectDelegates(
-      opts.kinds,
-      stagingDir,
-      injectedDelegate ?? collectDelegate(opts, plugin, commandContext, format !== "html"),
-    );
-    const tabs = results.map((result) => {
-      const delivered = result.code === 0 && existsSync(result.outputPath);
-      return {
-        key: result.kind,
-        label: COLLECT_LABELS[result.kind],
-        status: delivered ? "delivered" as const : "failed" as const,
-        html: existsSync(result.outputPath)
-          ? readFileSync(result.outputPath, "utf8")
-          : failedReportHtml(
-            `${COLLECT_LABELS[result.kind]} 采集失败`,
-            result.error ?? `collector exit ${result.code}，未形成 HTML 报告`,
-          ),
-      };
-    });
-    const reportPath = format === "html" ? paths.html : join(stagingDir, "report.html");
-    writeTabbedReport(reportPath, {
-      title: "doctor collect",
-      description: `biz-id: ${opts.bizIds.join(", ")} · 集合命令仅编排并汇总已有 collector`,
-      ariaLabel: "采集结果",
-      tabs,
-    });
-    const delivered = tabs.filter((tab) => tab.status === "delivered").length;
-    let deliveryFailed = false;
-    if (format === "default") {
-      try {
-        copyFileSync(reportPath, paths.html);
-        terminalStdout.result(delivered > 0, `[collect] 集合 HTML: ${paths.html}\n`);
-      } catch (error) {
-        cleanupStaging = false;
-        deliveryFailed = true;
-        terminalStderr.error(
-          `[collect] 集合 HTML 交付失败，证据保留在目录: ${stagingDir}（${error instanceof Error ? error.message : String(error)}）\n`,
-        );
-      }
-    }
-    if (format !== "html") {
-      const packed = await packReportBundle(stagingDir, paths.bundle);
-      if (!packed.ok) {
-        cleanupStaging = false;
-        terminalStderr.error(`[collect] 集合 Bundle 打包失败，证据保留在目录: ${stagingDir}\n`);
-        return 1;
-      }
-      terminalStdout.result(delivered > 0, `[collect] 集合 Bundle: ${paths.bundle}\n`);
-    } else {
-      terminalStdout.result(delivered > 0, `[collect] 集合报告: ${paths.html}（${delivered}/${tabs.length} 已交付）\n`);
-    }
-    return delivered > 0 && !deliveryFailed ? 0 : 1;
-  } finally {
-    if (cleanupStaging) rmSync(stagingRoot, { recursive: true, force: true });
-  }
+  parseCollectOutputFormat(opts.format);
+  const results = await runCollectDelegates(
+    opts.kinds,
+    injectedDelegate ?? collectDelegate(opts, plugin, commandContext),
+  );
+  return results.some((result) => result.code === 0) ? 0 : 1;
 }

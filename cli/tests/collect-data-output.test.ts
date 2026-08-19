@@ -10,6 +10,7 @@ import {
 import { prepareDataCommand, runCollectData } from "../src/collect/data";
 import { CommandContext } from "../src/command";
 import type { Executor } from "../src/infra/k8s/executor";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 const service = "sample-api";
 const plugin = {
@@ -68,13 +69,17 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
   const outputPath = `${requestedOutput}.json`;
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
-    expect(await runCollectData({
+    const context = new CommandContext({});
+    const code = await runCollectData({
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: requestedOutput,
-    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
+    }, plugin, context, executor, contexts);
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, code, "doctor data"))
+      .toBe(true);
 
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
       evidence: {
@@ -85,7 +90,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       },
     });
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stdout).toContain(`[collect] Data JSON: ${outputPath}`);
+    expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
     expect(stdout).not.toContain('"evidence"');
   } finally {
     write.mockRestore();
@@ -98,18 +103,22 @@ test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
   const outputPath = join(root, "batch.json");
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
-    expect(await runCollectData({
+    const context = new CommandContext({});
+    const code = await runCollectData({
       bizIds: ["biz-1", "biz-2"],
       services: service,
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: outputPath,
-    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
+    }, plugin, context, executor, contexts);
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, code, "doctor data"))
+      .toBe(true);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
     expect(Object.keys(report.groups)).toEqual(["biz-1", "biz-2"]);
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stdout).toContain(`[collect] Data JSON: ${outputPath}`);
+    expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
     expect(stdout).not.toContain('"groups"');
   } finally {
     write.mockRestore();
@@ -124,12 +133,15 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
   const bundlePath = join(root, "report.tar.gz");
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
-    expect(await runCollectData({
+    const context = new CommandContext({});
+    const code = await runCollectData({
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
       output,
-    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
+    }, plugin, context, executor, contexts);
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(context, { output }, code, "doctor data")).toBe(true);
 
     expect(existsSync(htmlPath)).toBe(true);
     expect(existsSync(bundlePath)).toBe(true);

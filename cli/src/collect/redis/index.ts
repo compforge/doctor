@@ -1,7 +1,7 @@
 import { terminalStdout, terminalStderr } from "../../terminal/output";
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { reportError, writeErrorLog } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { runDiagnosis } from "../engine";
@@ -11,8 +11,8 @@ import type { Executor } from "../../infra/k8s/executor";
 import type { RedisAccessApi } from "../../infra/redis";
 import type { CommandContext } from "../../command";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
 import type { RedisCommandContext } from "./context";
@@ -71,13 +71,6 @@ export interface CollectRedisCliOpts {
   config?: string;
   output?: string;
 }
-
-const REDIS_OUTPUT_LABELS: Record<RedisOutputFormat, string> = {
-  default: "HTML + 证据包",
-  bundle: "证据包",
-  html: "HTML 报告",
-  md: "Markdown 报告",
-};
 
 function redisBundleName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -163,12 +156,8 @@ export async function runCollectRedis(
   const { mode, maxKeys, maxKeysPerSecond, top, keyStats } = config.scan;
   const format = config.outputFormat;
   const bundleName = redisBundleName(new Date());
-  const defaultPaths = format === "default"
-    ? resolveDefaultReportPaths(config.output, bundleName)
-    : undefined;
-  let outputPath: string;
   try {
-    outputPath = resolveRedisOutputPath(config.output, bundleName, format);
+    resolveRedisOutputPath(config.output, bundleName, format);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
     return 2;
@@ -183,6 +172,7 @@ export async function runCollectRedis(
   }
   if (keyStats) terminalStdout.write("[collect] Redis keyStats: 强制检查所有 master\n");
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-redis-")), bundleName);
+  commandContext.artifacts.add("redis", staging);
   const bundle = new EvidenceBundle(staging, REDIS_OUTCOMES);
   const startedAt = new Date().toISOString();
   const ctx: RedisCommandContext = {
@@ -236,27 +226,11 @@ export async function runCollectRedis(
       finishedAt: new Date().toISOString(),
     });
     if (code === 130) {
-      rmSync(join(staging, ".."), { recursive: true, force: true });
       return 130;
     }
     if (code !== 0) {
-      const failure = await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: format === "default"
-          ? resolveDefaultReportPaths(config.output, bundleName).bundle
-          : config.output,
-        collectCode: code,
-      });
-      if (failure.packed.ok) {
-        rmSync(join(staging, ".."), { recursive: true, force: true });
-        if (!config.deferDelivery) {
-          terminalStderr.error(`[collect] Redis 采集失败，Evidence Bundle: ${failure.path}\n`);
-        }
-        return code;
-      }
-      terminalStderr.error(`[collect] 失败 Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
-      return 1;
+      recordFailureBundle({ bundleDir: staging, collectCode: code });
+      return code;
     }
     let delivered = false;
     const writeReport = (path: string) => {
@@ -277,60 +251,12 @@ export async function runCollectRedis(
         ],
       });
     };
-    if (format === "bundle" || format === "default") {
-      try {
-        const reportPath = join(staging, "report.html");
-        writeReport(reportPath);
-        const paths = defaultPaths
-          ? defaultPaths
-          : { html: reportPath, bundle: outputPath };
-        if (format === "default") copyFileSync(reportPath, paths.html);
-        const packed = await packReportBundle(staging, paths.bundle);
-        delivered = packed.ok;
-        if (!packed.ok) terminalStderr.error(`[collect] 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
-      } catch (err) {
-        reportError(err, { context: "doctor store/redis/bundle-report", summary: "[collect] Bundle 报告生成失败" });
-      }
-    } else if (format === "html") {
-      try {
-        writeReport(outputPath);
-        delivered = true;
-      } catch (err) {
-        reportError(err, { context: "doctor store/redis/html-report", summary: "[collect] HTML 报告生成失败" });
-      }
-    } else {
-      try {
-        copyFileSync(join(staging, "summary.md"), resolve(outputPath));
-        delivered = true;
-      } catch (err) {
-        reportError(err, { context: "doctor store/redis/markdown-report", summary: "[collect] Markdown 报告生成失败" });
-      }
-    }
-    if (delivered) {
-      rmSync(join(staging, ".."), { recursive: true, force: true });
-      if (!config.deferDelivery) {
-        terminalStdout.success(
-          `[collect] ${REDIS_OUTPUT_LABELS[format]}: ${defaultPaths ? `${defaultPaths.html} + ${defaultPaths.bundle}` : outputPath}\n`,
-        );
-      }
-    } else {
-      const failure = await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: format === "default"
-          ? resolveDefaultReportPaths(config.output, bundleName).bundle
-          : config.output,
-        collectCode: 1,
-        reason: "成功产物生成失败",
-      });
-      if (failure.packed.ok) {
-        rmSync(join(staging, ".."), { recursive: true, force: true });
-        if (!config.deferDelivery) {
-          terminalStderr.error(`[collect] 成功产物生成失败，Evidence Bundle: ${failure.path}\n`);
-        }
-      } else {
-        terminalStderr.error(`[collect] 原始证据保留在目录: ${staging}\n`);
-      }
+    try {
+      if (format !== "md") writeReport(join(staging, "report.html"));
+      delivered = true;
+    } catch (err) {
+      reportError(err, { context: "doctor store/redis/report", summary: "[collect] 报告生成失败" });
+      recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "成功产物生成失败" });
     }
     return delivered ? code : 1;
   };

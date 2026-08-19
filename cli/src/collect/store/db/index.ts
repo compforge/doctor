@@ -7,7 +7,7 @@ import type { OutcomeDecl } from "../../evidence";
 import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
-import { createStoreBundle, deliverStoreBundle } from "../delivery";
+import { createStoreBundle, finishStoreBundle } from "../artifacts";
 import type { DbCommandContext } from "./context";
 import { buildDbCoverage, dbDetectors } from "./detector";
 import { makeDbAccessInspect, makeDbConfigurationInspect } from "./fact";
@@ -33,7 +33,7 @@ export async function runStoreDb(
   executor: Executor,
 ): Promise<number> {
   const capability = config.capability as ServiceDatabaseStoreCapability;
-  const state = createStoreBundle("db", config.output, config.outputFormat, DB_OUTCOMES);
+  const state = createStoreBundle("db", config.output, config.outputFormat, DB_OUTCOMES, commandContext);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   const ctx: DbCommandContext = {
     command: commandContext,
@@ -49,7 +49,7 @@ export async function runStoreDb(
   const finish = async (code: number, summary: string) => {
     await ctx.database?.close();
     ctx.forwarder?.stop();
-    return deliverStoreBundle({
+    return finishStoreBundle({
       state,
       config,
       code,

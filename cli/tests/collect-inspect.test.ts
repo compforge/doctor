@@ -13,6 +13,7 @@ import {
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 import { CommandContext } from "../src/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -27,6 +28,17 @@ function result(stdout = ""): ExecResult {
 }
 
 const createCommandContext = () => new CommandContext({});
+
+async function runInspectWithDelivery(
+  opts: Parameters<typeof runCollectInspect>[0],
+  plugin: PluginDefinition,
+  executor: Executor,
+): Promise<number> {
+  const context = createCommandContext();
+  const code = await runCollectInspect(opts, plugin, context, executor);
+  expect(await deliverCommandArtifacts(context, opts, code, "doctor inspect")).toBe(true);
+  return code;
+}
 
 test("terminated state 只投影 Inspect Fact 声明的字段", () => {
   const state = inspectContainerStateFact({
@@ -155,14 +167,14 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     const configPath = join(dir, "config.yaml");
     writeFileSync(configPath, "");
     const completeOutput = join(dir, "complete.md");
-    expect(await runCollectInspect({
+    expect(await runInspectWithDelivery({
       namespace: "demo",
       services: "example-api",
       deploymentConfig: true,
       config: configPath,
       format: "md",
       output: completeOutput,
-    }, examplePlugin, createCommandContext(), executor)).toBe(0);
+    }, examplePlugin, executor)).toBe(0);
     const complete = readFileSync(completeOutput, "utf-8");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
@@ -176,25 +188,25 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(complete).toContain("workload-runtime：sufficient");
 
     const defaultOutput = join(dir, "default.tar.gz");
-    expect(await runCollectInspect({
+    expect(await runInspectWithDelivery({
       namespace: "demo",
       services: "example-api",
       deploymentConfig: true,
       config: configPath,
       output: defaultOutput,
-    }, examplePlugin, createCommandContext(), executor)).toBe(0);
+    }, examplePlugin, executor)).toBe(0);
     expect(existsSync(join(dir, "default.html"))).toBe(true);
     expect(existsSync(defaultOutput)).toBe(true);
 
     queriedResources.length = 0;
     const partialOutput = join(dir, "partial.md");
-    expect(await runCollectInspect({
+    expect(await runInspectWithDelivery({
       namespace: "demo",
       services: "example-api",
       config: configPath,
       format: "md",
       output: partialOutput,
-    }, examplePlugin, createCommandContext(), executor)).toBe(0);
+    }, examplePlugin, executor)).toBe(0);
     expect(queriedResources).not.toContain("deployments");
     expect(queriedResources).not.toContain("configmaps");
     const partial = readFileSync(partialOutput, "utf-8");
@@ -204,14 +216,14 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(partial).toContain("用户未确认采集 Deployment Env/ConfigMap");
 
     const dependenciesOutput = join(dir, "dependencies.md");
-    expect(await runCollectInspect({
+    expect(await runInspectWithDelivery({
       namespace: "demo",
       services: "example-api",
       dependencies: true,
       config: configPath,
       format: "md",
       output: dependenciesOutput,
-    }, examplePlugin, createCommandContext(), executor)).toBe(0);
+    }, examplePlugin, executor)).toBe(0);
     expect(dependencyCommands).toHaveLength(1);
     expect(dependencyCommands[0]?.slice(0, 2)).toEqual(["node", "-e"]);
     const dependencies = readFileSync(dependenciesOutput, "utf-8");
@@ -236,14 +248,14 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     } satisfies PluginDefinition;
     const unavailableOutput = join(dir, "dependencies-without-toolchain.md");
     const commandsBeforeUnavailable = dependencyCommands.length;
-    expect(await runCollectInspect({
+    expect(await runInspectWithDelivery({
       namespace: "demo",
       services: "example-api",
       dependencies: true,
       config: configPath,
       format: "md",
       output: unavailableOutput,
-    }, pluginWithoutToolchain, createCommandContext(), executor)).toBe(0);
+    }, pluginWithoutToolchain, executor)).toBe(0);
     expect(dependencyCommands).toHaveLength(commandsBeforeUnavailable);
     const unavailable = readFileSync(unavailableOutput, "utf-8");
     expect(unavailable).toContain("Plugin 未声明 Toolchain");

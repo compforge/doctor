@@ -3,9 +3,9 @@
 ## 理念 / 概念
 
 `doctor perf` 回答“逐档提升并发时，普通业务请求从哪一档开始变慢，慢在哪里”。交互运行会让用户从
-1、5、10、20、50 中选择最高并发，默认 20；自动化运行可通过 `--levels` 显式指定不超过 50 的档位。Perf 本身是
-触发器，但诊断不能只有触发：一次运行必须把请求侧首 token/总耗时与同窗口 Metric、代表请求的 Trace
-和 Log 一起交付。
+1、5、10、20、50 中选择最高并发，默认 20；自动化运行可通过 `--levels` 显式指定不超过 50 的档位。
+Perf 是带自身加压动作的组合工作流：它拥有负载执行和 Perf Artifact，同时触发 Metric、代表请求的 Trace
+和 Log；这些产物最终由统一 Delivery 一起交付。
 
 Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生真实业务数据、Trace 和可能的模型费用，
 因此执行前必须展示最大请求量、并发档位、熔断条件和影响并取得确认。
@@ -43,8 +43,9 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
 4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
    阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
 5. 负载结束后封口 Metric 报告，从各 Trial 选择慢请求/错误请求的关联 ID，复用 Trace 与 Log 采集。
-6. 在一个目录交付 `perf.html`、`metric.html`、代表请求报告、`run.json`、`outcomes.jsonl` 和
-   `verdict.json`。
+6. Perf 与它触发的 Metric/Trace/Log 分别向共享 Context 注册 Artifacts；统一 Delivery 汇总 HTML，并在
+   `--format bundle` 时把完整目录一次性压成 `.tar.gz`。Perf 目录保留 `run.json`、`outcomes.jsonl` 和
+   `verdict.json` 等 Harness 契约产物。
 
 Trace/Log 的部分采集失败不会抹掉负载与 Metric 事实；综合报告必须显示具体缺口。Metric 窗口无法开始时
 则不发起业务负载，避免得到无法解释的压测数据。

@@ -54,7 +54,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
    向 stderr 展开技术详情。诊断记录不得直接写入完整 argv、环境变量或未经脱敏的凭据与协议正文。
 9. **默认交付兼顾阅读与完整取证**：诊断命令未指定 `--format` 时，同时交付外置 HTML 和完整
    `tar.gz`；成功 Bundle 的根目录必须包含 `report.html`，并保留领域 JSON、原始 Evidence 与附件。
-   显式指定已有 format 时只交付该格式，不改变其既有语义。
+   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 command 只准备并向共享
+   `CommandContext` 注册 Artifacts；统一 finalize 阶段负责 Delivery，组合命令不自行复制或压缩子产物。
 
 ## References
 

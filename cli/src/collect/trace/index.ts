@@ -2,9 +2,9 @@ import { terminalStdout, terminalStderr } from "../../terminal/output";
 // trace 采集编排：通道解析（--endpoint 直连 / DOCTOR_OPENSEARCH_URL / kubectl 发现 svc +
 // port-forward）→ _count 验证 → search_after 全量下载 → spans.jsonl → HTML / 证据包。
 // 采集全程确定性只读；下载协议语义在 opensearch.ts，本文件只做编排、统计、渲染与交付。
-import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { TraceContributions } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -23,7 +23,6 @@ import {
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import {
   failedReportHtml,
   type ReportLeafTab,
@@ -282,22 +281,11 @@ export async function runCollectTrace(
   const bundleName = singleTrace
     ? defaultTraceBundleName(traces[0]!.traceId, new Date())
     : defaultTraceBatchName(new Date());
-  let outputPaths: { html: string; bundle: string };
-  try {
-    outputPaths = format === "default"
-      ? resolveDefaultReportPaths(opts.output, bundleName)
-      : {
-          html: format === "html" ? resolveTraceHtmlPath(opts.output, bundleName) : "",
-          bundle: format === "bundle" ? resolveArchivePath(opts.output, bundleName) : "",
-        };
-  } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
-  }
   // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
   const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
   const staging = join(stagingRoot, bundleName);
+  commandContext.artifacts.add("trace", staging);
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
@@ -376,18 +364,15 @@ export async function runCollectTrace(
   }
 
   if (format === "html") {
-    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), resolve(outputPaths.html));
+    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), join(staging, "report.html"));
     else {
-      writeTabbedReport(outputPaths.html, {
+      writeTabbedReport(join(staging, "report.html"), {
         title: "doctor Trace 诊断报告",
         description: "同一批次采集，每个 Biz ID 独立分组",
         ariaLabel: "Biz ID Trace 诊断结果",
         tabs: groups,
       });
     }
-    if (exitCode === 0) rmSync(stagingRoot, { recursive: true, force: true });
-    else terminalStderr.warning(`[collect] 失败 Trace 证据保留在目录: ${staging}\n`);
-    terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPaths.html}\n`);
     return exitCode;
   }
 
@@ -401,15 +386,6 @@ export async function runCollectTrace(
       tabs: groups,
     });
   }
-  if (format === "default") copyFileSync(reportPath, outputPaths.html);
-  const packed = await packReportBundle(staging, outputPaths.bundle);
-  if (!packed.ok) {
-    terminalStderr.error(`[collect] 打包失败（${packed.stderr.trim().split("\n")[0]}），证据保留在目录: ${staging}\n`);
-    return 1;
-  }
-  rmSync(stagingRoot, { recursive: true, force: true });
-  if (format === "default") terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPaths.html}\n`);
-  terminalStdout.result(exitCode === 0, `[collect] Trace 证据包: ${outputPaths.bundle}\n`);
   return exitCode;
   } finally {
     try {

@@ -1,12 +1,12 @@
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { marked, Renderer } from "marked";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import type { CommandContext } from "../../command";
+import { terminalStderr } from "../../terminal/output";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { escapeHtml, writeHtmlReport, type HtmlReportOptions } from "../output/html";
 import { resolveStoreOutputPath, type StoreConfig, type StoreOutputFormat } from "./config";
 
@@ -33,19 +33,22 @@ export function createStoreBundle(
   output: string | undefined,
   format: StoreOutputFormat,
   outcomes: readonly OutcomeDecl[],
+  commandContext: CommandContext,
 ): StoreBundle {
   const bundleName = `doctor-store-${kind}-${timestamp(new Date())}`;
   const staging = join(mkdtempSync(join(tmpdir(), `doctor-store-${kind}-`)), bundleName);
-  return {
+  const state = {
     bundle: new EvidenceBundle(staging, outcomes),
     bundleName,
     staging,
     outputPath: resolveStoreOutputPath(output, bundleName, format),
     startedAt: new Date().toISOString(),
   };
+  commandContext.artifacts.add(kind, staging);
+  return state;
 }
 
-export async function deliverStoreArtifacts(input: {
+export async function writeStoreArtifacts(input: {
   staging: string;
   bundleName: string;
   outputPath: string;
@@ -58,15 +61,8 @@ export async function deliverStoreArtifacts(input: {
   htmlReport?: StoreHtmlReportOptions;
 }): Promise<{ ok: boolean; path: string; label: string }> {
   if (input.code !== 0) {
-    const failure = await deliverFailureBundle({
-      bundleDir: input.staging,
-      bundleName: input.bundleName,
-      requestedOutput: input.format === "default"
-        ? resolveDefaultReportPaths(input.requestedOutput, input.bundleName).bundle
-        : input.requestedOutput,
-      collectCode: input.code,
-    });
-    return { ok: failure.packed.ok, path: failure.path, label: "失败 Evidence Bundle" };
+    recordFailureBundle({ bundleDir: input.staging, collectCode: input.code });
+    return { ok: true, path: input.staging, label: "失败诊断产物" };
   }
   try {
     const writeReport = (path: string) => {
@@ -80,33 +76,15 @@ export async function deliverStoreArtifacts(input: {
         summaryHtml: marked.parse(input.summary, { async: false, renderer }) as string,
       });
     };
-    if (input.format === "html") {
-      writeReport(input.outputPath);
-      return { ok: true, path: input.outputPath, label: "Store HTML 报告" };
-    }
-    if (input.format === "bundle" || input.format === "default") {
-      const reportPath = join(input.staging, "report.html");
-      writeReport(reportPath);
-      const paths = input.format === "default"
-        ? resolveDefaultReportPaths(input.requestedOutput, input.bundleName)
-        : { html: reportPath, bundle: input.outputPath };
-      if (input.format === "default") copyFileSync(reportPath, paths.html);
-      const packed = await packReportBundle(input.staging, paths.bundle);
-      return {
-        ok: packed.ok,
-        path: input.format === "default" ? `${paths.html} + ${paths.bundle}` : paths.bundle,
-        label: input.format === "default" ? "Store HTML + 证据包" : "Store 证据包",
-      };
-    }
-    copyFileSync(join(input.staging, "summary.md"), input.outputPath);
-    return { ok: true, path: input.outputPath, label: "Store Markdown 报告" };
+    if (input.format !== "md") writeReport(join(input.staging, "report.html"));
+    return { ok: true, path: input.staging, label: "Store 诊断产物" };
   } catch (error) {
     terminalStderr.error(`[collect] Store 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
     return { ok: false, path: input.outputPath, label: "Store 产物" };
   }
 }
 
-export async function deliverStoreBundle(input: {
+export async function finishStoreBundle(input: {
   state: StoreBundle;
   config: StoreConfig;
   code: number;
@@ -137,7 +115,7 @@ export async function deliverStoreBundle(input: {
     startedAt: state.startedAt,
     finishedAt: new Date().toISOString(),
   });
-  const delivery = await deliverStoreArtifacts({
+  const artifact = await writeStoreArtifacts({
     staging: state.staging,
     bundleName: state.bundleName,
     outputPath: state.outputPath,
@@ -149,15 +127,9 @@ export async function deliverStoreBundle(input: {
     summary: input.summary,
     htmlReport: input.htmlReport,
   });
-  if (!delivery.ok) {
+  if (!artifact.ok) {
     terminalStderr.error(`[collect] 交付失败，证据保留在目录: ${state.staging}\n`);
     return 1;
-  }
-  rmSync(join(state.staging, ".."), { recursive: true, force: true });
-  if (!config.deferDelivery) {
-    const message = `[collect] ${delivery.label}: ${delivery.path}\n`;
-    if (input.code === 0) terminalStdout.success(message);
-    else terminalStderr.error(message);
   }
   return input.code;
 }

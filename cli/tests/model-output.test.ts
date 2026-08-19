@@ -10,6 +10,7 @@ import type {
 import { runModelDiagnosis } from "../src/collect/model";
 import { requireInferenceModel } from "../src/model";
 import { CommandContext } from "../src/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 const response = (text: string): ServiceHttpResponse => ({
   ok: true,
@@ -50,8 +51,9 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
 
   try {
+    const jsonContext = new CommandContext({});
     const result = await runModelDiagnosis({
-      command: new CommandContext({}),
+      command: jsonContext,
       tenant: { id: "tenant-1", name: "tenant-1", displayName: "Tenant 1" },
       model,
       catalog,
@@ -66,7 +68,12 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     });
 
     expect(result.exitCode).toBe(0);
-    expect(result.outputPath).toBe(outputPath);
+    expect(await deliverCommandArtifacts(
+      jsonContext,
+      { format: "json", output: requestedOutput },
+      result.exitCode,
+      "doctor model",
+    )).toBe(true);
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
       evidence: {
         observations: [{ kind: "model-validation" }, {
@@ -79,12 +86,13 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
       },
     });
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stdout).toContain(`[model] 诊断 JSON：${outputPath}`);
+    expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
     expect(stdout).not.toContain("MODEL_RESPONSE_BODY");
 
     const defaultOutput = join(root, "bundle.tar.gz");
+    const defaultContext = new CommandContext({});
     const defaultResult = await runModelDiagnosis({
-      command: new CommandContext({}),
+      command: defaultContext,
       tenant: { id: "tenant-1", name: "tenant-1", displayName: "Tenant 1" },
       model,
       catalog,
@@ -98,6 +106,12 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
       profileName: "test",
     });
     expect(defaultResult.exitCode).toBe(0);
+    expect(await deliverCommandArtifacts(
+      defaultContext,
+      { output: defaultOutput },
+      defaultResult.exitCode,
+      "doctor model",
+    )).toBe(true);
     expect(existsSync(defaultOutput)).toBe(true);
     expect(statSync(defaultOutput).mode & 0o777).toBe(0o600);
   } finally {

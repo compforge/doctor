@@ -261,7 +261,7 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
-    .option("-f, --format <format>", "输出格式：bundle、json（stdout）、html 或 md；未指定时输出 HTML + Bundle")
+    .option("-f, --format <format>", "输出格式：bundle、json、html 或 md；未指定时输出 HTML + Bundle")
     .option("--kubeconfig <path>", "kubeconfig 路径")
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig；DB 身份仅作租户配置兜底")
@@ -393,7 +393,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 目录和完整 Bundle")
+    .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
     .option("-o, --output <path>", "HTML 产物目录或 Bundle 路径（默认 ./doctor-perf-<时间戳>）");
 }
 

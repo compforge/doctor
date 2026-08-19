@@ -7,7 +7,7 @@ import type { OutcomeDecl } from "../../evidence";
 import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
-import { createStoreBundle, deliverStoreBundle, type StoreHtmlReportOptions } from "../delivery";
+import { createStoreBundle, finishStoreBundle, type StoreHtmlReportOptions } from "../artifacts";
 import type { S3CommandContext } from "./context";
 import { buildS3Coverage, s3Detectors } from "./detector";
 import { makeS3AccessInspect, makeS3ConfigurationInspect, makeS3ProviderInspect } from "./fact";
@@ -34,7 +34,7 @@ export async function runStoreS3(
   executor: Executor,
 ): Promise<number> {
   const capability = config.capability as ServiceS3StoreCapability;
-  const state = createStoreBundle("s3", config.output, config.outputFormat, S3_OUTCOMES);
+  const state = createStoreBundle("s3", config.output, config.outputFormat, S3_OUTCOMES, commandContext);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   const ctx: S3CommandContext = {
     command: commandContext,
@@ -49,7 +49,7 @@ export async function runStoreS3(
 
   const finish = async (code: number, summary: string, htmlReport?: StoreHtmlReportOptions) => {
     ctx.forwarder?.stop();
-    return deliverStoreBundle({
+    return finishStoreBundle({
       state,
       config,
       code,

@@ -1,11 +1,4 @@
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type {
@@ -21,7 +14,7 @@ import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
+import { recordFailureBundle } from "../output/failure-bundle";
 import {
   buildModelCoverage,
   buildModelEvidence,
@@ -72,7 +65,6 @@ export interface RunModelDiagnosisInput {
 
 export interface RunModelDiagnosisResult {
   exitCode: number;
-  outputPath?: string;
   diagnosis: ModelDiagnosis;
   attempts: readonly ModelPerformanceAttempt[];
 }
@@ -160,8 +152,9 @@ export async function runModelDiagnosis(
     timeoutMs: input.timeoutMs,
   };
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-model-diagnosis-"));
-  const staging = join(stagingRoot, "evidence");
+  const staging = join(stagingRoot, `doctor-model-${timestamp(startedAt)}`);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
+  input.command.artifacts.add("model", staging);
   const bundle = new EvidenceBundle(staging, modelOutcomes());
   const ctx: ModelCommandContext = {
     command: input.command,
@@ -230,50 +223,12 @@ export async function runModelDiagnosis(
     });
 
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
-    const reportName = `doctor-model-${timestamp(startedAt)}`;
-    const paths = input.format === "default"
-      ? resolveDefaultReportPaths(input.output, reportName)
-      : {
-          html: input.format === "html"
-            ? resolveModelDiagnosisOutput(input.output, "html", startedAt)
-            : join(staging, "report.html"),
-          bundle: input.format === "bundle"
-            ? resolveArchivePath(input.output, reportName)
-            : "",
-        };
-    const reportPath = input.format === "html" ? paths.html : join(staging, "report.html");
     if (input.format !== "json") {
-      writeHtmlReport(staging, reportPath, {
+      writeHtmlReport(staging, join(staging, "report.html"), {
         title: "doctor model 诊断报告",
         profileName: input.profileName,
-        summaryHtml: buildModelDiagnosisHtml(
-          diagnosis,
-          summaries,
-          attempts,
-        ),
+        summaryHtml: buildModelDiagnosisHtml(diagnosis, summaries, attempts),
       });
-    }
-    let outputPath: string;
-    if (input.format === "json") {
-      outputPath = resolveModelDiagnosisOutput(input.output, "json", startedAt);
-      copyFileSync(join(staging, "diagnosis.json"), outputPath);
-      chmodSync(outputPath, 0o600);
-      terminalStdout.success(`[model] 诊断 JSON：${outputPath}\n`);
-    } else if (input.format === "html") {
-      outputPath = paths.html;
-      chmodSync(outputPath, 0o600);
-      terminalStdout.success(`[model] 诊断 HTML：${outputPath}\n`);
-    } else {
-      if (input.format === "default") {
-        copyFileSync(reportPath, paths.html);
-        chmodSync(paths.html, 0o600);
-        terminalStdout.success(`[model] 诊断 HTML：${paths.html}\n`);
-      }
-      const packed = await packReportBundle(staging, paths.bundle);
-      if (!packed.ok) throw new Error(`Model Bundle 打包失败：${packed.stderr}`);
-      chmodSync(paths.bundle, 0o600);
-      outputPath = paths.bundle;
-      terminalStdout.success(`[model] 诊断 Bundle：${paths.bundle}\n`);
     }
 
     printResponseStatus("validation", diagnosis, "model-validation");
@@ -285,16 +240,18 @@ export async function runModelDiagnosis(
     const outcome = evaluateCollectOutcome(
       diagnosis.coverage.map((item) => item.status === "sufficient"),
     );
-    rmSync(stagingRoot, { recursive: true, force: true });
+    if (outcome.exitCode !== 0) {
+      recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode });
+    }
     return {
       exitCode: outcome.exitCode,
-      outputPath,
       diagnosis,
       attempts,
     };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.settle(reason);
+    recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
     terminalStderr.error(`[model] 诊断流程失败：${reason}；原始数据保留在 ${staging}\n`);
     throw error;
   }

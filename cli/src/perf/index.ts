@@ -38,7 +38,7 @@ import {
 } from "./config";
 import { resolvePerfRequestIdentity } from "./identity";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
-import { deliverPerfBundle, preparePerfOutput } from "./output";
+import { createPerfArtifact } from "./output";
 import { writePerfReport } from "./report";
 
 export * from "./config";
@@ -199,7 +199,6 @@ export function selectPerfSamples(run: Run, limit: number, correlationKeys: read
 async function collectCorrelatedEvidence(input: {
   run: Run;
   limit: number;
-  outputDir: string;
   namespace: string;
   kubeconfig?: string;
   context?: string;
@@ -210,14 +209,11 @@ async function collectCorrelatedEvidence(input: {
   commandContext: CommandContext;
 }): Promise<PerfEvidenceSample[]> {
   const samples: PerfEvidenceSample[] = [];
-  for (const [index, selected] of selectPerfSamples(
+  for (const selected of selectPerfSamples(
     input.run,
     input.limit,
     input.correlationKeys,
-  ).entries()) {
-    const prefix = `sample-${String(index + 1).padStart(2, "0")}-${selected.correlationId.slice(0, 12)}`;
-    const tracePath = join(input.outputDir, `${prefix}-trace.html`);
-    const logPath = join(input.outputDir, `${prefix}-log.html`);
+  )) {
     const traceCode = await runCollectTrace({
       bizIds: [selected.correlationId],
       namespace: input.namespace,
@@ -226,7 +222,6 @@ async function collectCorrelatedEvidence(input: {
       profile: input.profileName,
       pageSize: "1000",
       format: "html",
-      output: tracePath,
     }, input.plugin, input.commandContext);
     const logCode = await runCollectLog({
       bizIds: [selected.correlationId],
@@ -237,7 +232,6 @@ async function collectCorrelatedEvidence(input: {
       services: input.services.join(","),
       sinceTime: input.run.trials.find((trial) => trial.id === selected.trialId)?.started_at,
       format: "html",
-      output: logPath,
     }, input.plugin, input.commandContext);
     samples.push({
       trialId: selected.trialId,
@@ -247,9 +241,7 @@ async function collectCorrelatedEvidence(input: {
       firstTokenMs: firstToken(selected.outcome),
       durationMs: selected.outcome.duration_ms,
       errorKind: selected.outcome.error_kind,
-      tracePath,
       traceCode,
-      logPath,
       logCode,
     });
   }
@@ -421,14 +413,15 @@ export async function runPerf(
     await managed.dispose();
     throw new Error("Service perf scenario 必须选择 Case 并提供 Metric/Log Service 和 correlation keys");
   }
-  let output: ReturnType<typeof preparePerfOutput>;
+  let artifact: ReturnType<typeof createPerfArtifact>;
   try {
-    output = preparePerfOutput(config);
+    artifact = createPerfArtifact(config);
   } catch (error) {
     await managed.dispose();
     throw error;
   }
-  const { outputDir, archivePath } = output;
+  const outputDir = artifact.path;
+  commandContext.artifacts.add("perf", outputDir);
 
   const metricController = new AbortController();
   let markMetricStarted!: () => void;
@@ -441,7 +434,6 @@ export async function runPerf(
     };
     rejectMetricStart = rejectReady;
   });
-  const metricPath = join(outputDir, "metric.html");
   const metricPromise = runCollectMetric({
     services: declaredScenario.observability.metricServices.join(","),
     watch: "until-interrupt",
@@ -451,7 +443,6 @@ export async function runPerf(
     kubeconfig: kube.kubernetes.kubeconfig,
     context: kube.kubernetes.context,
     profile: kube.profileName,
-    output: metricPath,
   }, plugin, commandContext, executor, {
     signal: metricController.signal,
     onWindowStart: markMetricStarted,
@@ -503,7 +494,6 @@ export async function runPerf(
   const samples = await collectCorrelatedEvidence({
     run,
     limit: config.traceSamples,
-    outputDir,
     namespace: kube.kubernetes.namespace,
     kubeconfig: kube.kubernetes.kubeconfig,
     context: kube.kubernetes.context,
@@ -516,7 +506,6 @@ export async function runPerf(
   const result: PerfResult = {
     run,
     outputDir,
-    metricPath,
     metricCode,
     samples,
     caseFacets: caseSet.facets,
@@ -524,19 +513,5 @@ export async function runPerf(
   const reportPath = writePerfReport(result);
   copyFileSync(reportPath, join(outputDir, "report.html"));
   const passed = run.passed && metricCode === 0;
-  if (archivePath) {
-    const packed = await deliverPerfBundle(output);
-    if (!packed) throw new Error("Perf Bundle 输出状态不完整");
-    if (!packed.ok) {
-      terminalStderr.error(
-        `[perf] Bundle 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}；原始产物保留在 ${outputDir}\n`,
-      );
-      return 1;
-    }
-    terminalStdout.result(passed, `[perf] bundle: ${archivePath}\n`);
-    if (config.outputFormat === "default") terminalStdout.result(passed, `[perf] report: ${reportPath}\n`);
-    return passed ? 0 : 1;
-  }
-  terminalStdout.result(passed, `[perf] report: ${reportPath}\n`);
   return passed ? 0 : 1;
 }

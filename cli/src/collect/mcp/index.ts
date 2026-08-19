@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -16,8 +16,7 @@ import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { runDiagnosis } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveApprovalGate } from "../../terminal/approval";
@@ -145,9 +144,10 @@ export async function runCollectMcp(
   const podLogs = new KubectlPodLogAccess(executor, collect.kubernetes.namespace);
   const startedAt = new Date().toISOString();
   const bundleName = defaultMcpBundleName(new Date());
-  const outputPath = resolveMcpOutputPath(opts.output, bundleName, format);
+  resolveMcpOutputPath(opts.output, bundleName, format);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-mcp-"));
   const staging = join(stagingRoot, bundleName);
+  commandContext.artifacts.add("mcp", staging);
   const bundle = new EvidenceBundle(staging, MCP_OUTCOMES);
   const trace = traceContext();
   const requiredEvidence = new Set(["mcp-config", "mcp-tools", "gateway-logs"]);
@@ -222,90 +222,30 @@ export async function runCollectMcp(
       )
     )).exitCode;
     if (collectCode === 130) {
-      rmSync(stagingRoot, { recursive: true, force: true });
       return 130;
     }
     if (collectCode !== 0) {
-      const failure = await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: format === "default"
-          ? resolveDefaultReportPaths(opts.output, bundleName).bundle
-          : opts.output,
-        collectCode,
-      });
-      if (failure.packed.ok) {
-        rmSync(stagingRoot, { recursive: true, force: true });
-        terminalStderr.error(`[mcp] 采集失败，Evidence Bundle: ${failure.path}\n`);
-        return collectCode;
-      }
-      terminalStderr.error(`[mcp] 失败 Bundle 打包失败，原始证据保留在: ${staging}\n`);
-      return 1;
+      recordFailureBundle({ bundleDir: staging, collectCode });
+      return collectCode;
     }
 
-    let delivered = false;
-    const paths = format === "default"
-      ? resolveDefaultReportPaths(opts.output, bundleName)
-      : { html: format === "html" ? outputPath : join(staging, "report.html"), bundle: outputPath };
-    if (format === "html" && diagnosis) {
-      try {
-        writeHtmlReport(staging, outputPath, {
-          title: "doctor MCP 诊断报告",
-          profileName: collect.profileName,
-          summaryHtml: buildMcpReportHtml(diagnosis),
-        });
-        delivered = true;
-      } catch (error) {
-        terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
-      }
-    } else if ((format === "bundle" || format === "default") && diagnosis) {
-      let htmlDelivered = false;
-      try {
-        const reportPath = join(staging, "report.html");
-        writeHtmlReport(staging, reportPath, {
-          title: "doctor MCP 诊断报告",
-          profileName: collect.profileName,
-          summaryHtml: buildMcpReportHtml(diagnosis),
-        });
-        if (format === "default") copyFileSync(reportPath, paths.html);
-        htmlDelivered = true;
-      } catch (error) {
-        terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
-      }
-      const packed = await packReportBundle(staging, paths.bundle);
-      delivered = packed.ok && htmlDelivered;
-      if (!packed.ok) {
-        terminalStderr.error(`[mcp] Bundle 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
-      }
+    if (!diagnosis) {
+      recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "成功产物生成失败" });
+      return 1;
     }
-    if (delivered) {
-      if (format === "default") {
-        chmodSync(paths.html, 0o600);
-        chmodSync(paths.bundle, 0o600);
-      } else {
-        chmodSync(outputPath, 0o600);
-      }
-      rmSync(stagingRoot, { recursive: true, force: true });
-      if (format === "default") terminalStdout.success(`[mcp] HTML 报告: ${paths.html}\n`);
-      terminalStdout.success(`[mcp] ${format === "html" ? "HTML 报告" : "Evidence Bundle"}: ${format === "default" ? paths.bundle : outputPath}\n`);
+    try {
+      writeHtmlReport(staging, join(staging, "report.html"), {
+        title: "doctor MCP 诊断报告",
+        profileName: collect.profileName,
+        summaryHtml: buildMcpReportHtml(diagnosis),
+      });
       return 0;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      terminalStderr.error(`[mcp] HTML 生成失败：${reason}\n`);
+      recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
+      return 1;
     }
-    const failure = await deliverFailureBundle({
-      bundleDir: staging,
-      bundleName,
-      requestedOutput: format === "default"
-        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
-        : opts.output,
-      collectCode: 1,
-      reason: "成功产物生成失败",
-    });
-    if (failure.packed.ok) {
-      rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStderr.error(`[mcp] 成功产物生成失败，Evidence Bundle: ${failure.path}\n`);
-    } else {
-      terminalStderr.error(`[mcp] 交付文件生成不完整，原始证据保留在: ${staging}\n`);
-    }
-    return 1;
   };
 
   try {

@@ -32,8 +32,41 @@ export function resolveDefaultReportPaths(
  * 用系统 tar：macOS / Linux 运维机都自带，免引第三方依赖进单二进制。
  */
 export async function packBundle(bundleDir: string, archivePath: string): Promise<ExecResult> {
+  return packArtifacts([bundleDir], archivePath);
+}
+
+function failedPack(stderr: string): ExecResult {
+  return {
+    ok: false,
+    exitCode: 1,
+    stdout: "",
+    stderr,
+    durationMs: 0,
+    timedOut: false,
+    command: ["tar"],
+  };
+}
+
+/** 把本次 CommandContext 显式登记的产物一次性压进同一个归档。 */
+export async function packArtifacts(
+  artifactPaths: readonly string[],
+  archivePath: string,
+): Promise<ExecResult> {
+  if (!artifactPaths.length) return failedPack("命令没有登记可交付产物");
+  const resolvedPaths = artifactPaths.map((path) => resolve(path));
+  const missing = resolvedPaths.find((path) => !existsSync(path));
+  if (missing) return failedPack(`命令登记的产物不存在: ${missing}`);
+  const names = resolvedPaths.map((path) => basename(path));
+  if (new Set(names).size !== names.length) {
+    return failedPack(`命令登记的产物存在同名项: ${names.join(", ")}`);
+  }
   return runArgv(
-    ["tar", "-czf", resolve(archivePath), "-C", dirname(resolve(bundleDir)), basename(bundleDir)],
+    [
+      "tar",
+      "-czf",
+      resolve(archivePath),
+      ...resolvedPaths.flatMap((path) => ["-C", dirname(path), basename(path)]),
+    ],
     { timeoutMs: 60_000 },
   );
 }
@@ -43,15 +76,18 @@ export async function packBundle(bundleDir: string, archivePath: string): Promis
  */
 export async function packReportBundle(bundleDir: string, archivePath: string): Promise<ExecResult> {
   if (!existsSync(join(bundleDir, "report.html"))) {
-    return {
-      ok: false,
-      exitCode: 1,
-      stdout: "",
-      stderr: "诊断 Bundle 缺少根目录 report.html",
-      durationMs: 0,
-      timedOut: false,
-      command: ["tar"],
-    };
+    return failedPack("诊断 Bundle 缺少根目录 report.html");
   }
   return packBundle(bundleDir, archivePath);
+}
+
+export async function packReportArtifacts(
+  artifactPaths: readonly string[],
+  archivePath: string,
+): Promise<ExecResult> {
+  const root = artifactPaths[0];
+  if (!root || !existsSync(join(root, "report.html"))) {
+    return failedPack("诊断 Bundle 缺少根目录 report.html");
+  }
+  return packArtifacts(artifactPaths, archivePath);
 }
