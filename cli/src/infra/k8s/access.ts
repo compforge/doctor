@@ -17,6 +17,7 @@ export type K8sAccessRule = KubernetesAccessRule;
 
 export interface KubernetesAccessContract {
   command: string;
+  namespace?: string;
   needs: readonly KubernetesAccessNeed[];
 }
 
@@ -43,7 +44,7 @@ function accessKey(rule: K8sAccessRule): string {
   return `${rule.verb}:${rule.resource}:${rule.resourceName ?? ""}:${rule.allNamespaces ? "all" : ""}`;
 }
 
-function detail(result: ExecResult): string {
+export function kubernetesResultDetail(result: ExecResult): string {
   return result.stderr.trim().split("\n")[0]
     || result.stdout.trim().split("\n")[0]
     || `exit=${result.exitCode ?? "unknown"}`;
@@ -149,7 +150,11 @@ export function createKubernetesCommandContext(executor: Executor): KubernetesCo
 export async function inspectKubernetesChannel(executor: Executor): Promise<KubernetesChannelFact> {
   const client = await executor.run(["version", "--client", "-o", "json"], { timeoutMs: 15_000 });
   if (!client.ok) {
-    return { available: false, client, reason: `kubectl client 不可用：${detail(client)}` };
+    return {
+      available: false,
+      client,
+      reason: `kubectl client 不可用：${kubernetesResultDetail(client)}`,
+    };
   }
   const server = await executor.run(["get", "--raw=/version"], { timeoutMs: 15_000 });
   if (server.ok || /\bforbidden\b/i.test(server.stderr)) {
@@ -159,6 +164,6 @@ export async function inspectKubernetesChannel(executor: Executor): Promise<Kube
     available: false,
     client,
     server,
-    reason: `无法通过当前 kubeconfig 访问 Kubernetes API Server：${detail(server)}`,
+    reason: `无法通过当前 kubeconfig 访问 Kubernetes API Server：${kubernetesResultDetail(server)}`,
   };
 }

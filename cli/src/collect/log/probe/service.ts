@@ -10,7 +10,7 @@ import type {
 } from "../model";
 import { createTraceLineCollector } from "../config";
 
-const LOG_CAPTURE_CONCURRENCY = 4;
+const LOG_CAPTURE_CONCURRENCY = 8;
 
 interface LogCaptureInput {
   service: string;

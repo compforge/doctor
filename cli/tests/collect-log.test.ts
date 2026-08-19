@@ -41,7 +41,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
   const config: LogProbeConfig = {
     traceIds: ["trace-1"],
     namespace: "default",
-    services: ["service-a", "service-b", "service-c"],
+    services: ["service-a", "service-b", "service-c", "service-d", "service-e"],
     errorsOnly: false,
     outputDir: root,
   };
@@ -61,11 +61,15 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
         "service-a": ["pod-a"],
         "service-b": ["pod-b"],
         "service-c": ["pod-c"],
+        "service-d": ["pod-d"],
+        "service-e": ["pod-e"],
       },
       previousContainersByPod: {
         "pod-a": ["app"],
         "pod-b": ["app"],
         "pod-c": ["app"],
+        "pod-d": ["app"],
+        "pod-e": ["app"],
       },
     },
   };
@@ -74,11 +78,13 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
     const probe = makeLogProbe(config.services);
     const observations = await probe.run(context, facts, config, []);
 
-    expect(maxActive).toBe(4);
+    expect(maxActive).toBe(8);
     expect(observations.map((observation) => observation.service)).toEqual([
       "service-a",
       "service-b",
       "service-c",
+      "service-d",
+      "service-e",
     ]);
     expect(bundle.getSteps().map((step) => step.id)).toEqual([
       "logs-pod-a",
@@ -87,6 +93,10 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       "logs-pod-b-app-previous",
       "logs-pod-c",
       "logs-pod-c-app-previous",
+      "logs-pod-d",
+      "logs-pod-d-app-previous",
+      "logs-pod-e",
+      "logs-pod-e-app-previous",
     ]);
   } finally {
     rmSync(root, { recursive: true, force: true });

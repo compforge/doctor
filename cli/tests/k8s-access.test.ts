@@ -1,11 +1,14 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import {
   KubernetesAccessContext,
   type KubernetesAccessContract,
 } from "../src/infra/k8s/access";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { CommandContext } from "../src/command";
-import { requireKubernetesChannel } from "../src/terminal/kubernetes-access";
+import {
+  enforceKubernetesAccess,
+  requireKubernetesChannel,
+} from "../src/terminal/kubernetes-access";
 
 function result(stdout: string, ok = true): ExecResult {
   return {
@@ -84,6 +87,37 @@ test("required 只有明确 denied 才阻止命令，unknown 交给实际操作�
 
   expect((await denied.evaluate(contract)).runnable).toBe(false);
   expect((await new KubernetesAccessContext(executor).evaluate(contract)).runnable).toBe(true);
+});
+
+test("unknown 权限预检提示 namespace 和实际失败原因", async () => {
+  const executor: Executor = {
+    run: async () => ({
+      ...result("", false),
+      stderr: "selfsubjectaccessreviews.authorization.k8s.io is forbidden\nignored detail",
+    }),
+    exec: async () => result(""),
+  };
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    await enforceKubernetesAccess(new KubernetesAccessContext(executor), {
+      command: "doctor data",
+      namespace: "vke-system",
+      needs: [{
+        requirement: "required",
+        rule: { verb: "get", resource: "services", resourceName: "chat-server" },
+        purpose: "读取 chat-server 的 Pod selector",
+      }],
+    });
+
+    expect(write).toHaveBeenCalledWith(
+      "[k8s] required: get services/chat-server unknown"
+      + "（读取 chat-server 的 Pod selector，namespace=vke-system）"
+      + "；预检原因：selfsubjectaccessreviews.authorization.k8s.io is forbidden"
+      + "；继续尝试实际操作\n",
+    );
+  } finally {
+    write.mockRestore();
+  }
 });
 
 test("resourceName 权限探测使用精确资源名", async () => {
