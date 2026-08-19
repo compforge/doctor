@@ -9,7 +9,6 @@ import type {
   InspectFinding,
   InspectObservation,
   JsonValue,
-  TenantConfigObservation,
 } from "./model";
 
 function normalizeName(name: string): string {
@@ -31,10 +30,6 @@ function environmentObservations(
   return observations.filter((item): item is EnvironmentConfigObservation => item.kind === "environment-config");
 }
 
-function tenantObservations(observations: readonly InspectObservation[]): TenantConfigObservation[] {
-  return observations.filter((item): item is TenantConfigObservation => item.kind === "tenant-config");
-}
-
 function dependencyObservations(
   observations: readonly InspectObservation[],
 ): DependencyInventoryObservation[] {
@@ -50,7 +45,6 @@ export function buildInspectEvidence(
   const rows = new Map<string, {
     displayName: string;
     environment: Array<{ source: string; value: JsonValue }>;
-    tenantConfig?: { value: JsonValue; scope: string };
   }>();
   const ensure = (name: string) => {
     const normalized = normalizeName(name);
@@ -69,11 +63,6 @@ export function buildInspectEvidence(
       });
     }
   }
-  for (const observation of tenantObservations(observations)) {
-    for (const [name, value] of Object.entries(observation.values)) {
-      ensure(name).tenantConfig = { value, scope: observation.scope };
-    }
-  }
   const comparisonRows: ConfigurationComparisonRow[] = [...rows.values()].map((row) => {
     const distinctValues = new Set(row.environment.map((item) => stable(item.value)));
     const env = row.environment.length === 0
@@ -81,7 +70,7 @@ export function buildInspectEvidence(
       : distinctValues.size === 1
         ? row.environment[0]!.value
         : Object.fromEntries(row.environment.map((item) => [item.source, item.value]));
-    return { name: row.displayName, env, tenantConfig: row.tenantConfig };
+    return { name: row.displayName, env };
   }).sort((left, right) => left.name.localeCompare(right.name));
   return { observations, facts, rows: comparisonRows };
 }
@@ -179,18 +168,5 @@ export function buildInspectCoverage(
       : collectedDependencies > 0 ? "partial" : "insufficient",
     missingEvidence: dependencyMissing,
   });
-
-  if (evidence.facts.tenantRequest.status === "collected") {
-    const tenantRequest = evidence.facts.tenantRequest;
-    const collectedScopes = new Set(tenantObservations(evidence.observations).map((item) => item.scope));
-    const missing = tenantRequest.scopes
-      .filter((scope) => !collectedScopes.has(scope))
-      .map((scope) => `tenant=${tenantRequest.tenantId} scope=${scope} 配置未取得`);
-    coverage.push({
-      goal: "tenant-config",
-      status: missing.length === 0 ? "sufficient" : collectedScopes.size > 0 ? "partial" : "insufficient",
-      missingEvidence: missing,
-    });
-  }
   return coverage;
 }

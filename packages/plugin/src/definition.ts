@@ -34,6 +34,14 @@ export interface ModelInferenceTarget {
   model: string;
 }
 
+export interface ModelPricing {
+  input: number;
+  output: number;
+  unit: string;
+  currency: string;
+  type: string;
+}
+
 export interface Model {
   id: string;
   name: string;
@@ -41,8 +49,21 @@ export interface Model {
   provider: string;
   vendor?: string;
   version?: string;
+  description?: string;
+  available?: boolean;
+  preset?: boolean;
+  billing?: boolean;
+  sourceModelId?: string;
+  contextLength?: string;
+  dimension?: number;
   /** Catalog-declared input modalities; consumers must not infer them from names or vendors. */
   inputModalities?: readonly ModelInputModality[];
+  /** Catalog-declared model features/capacities, kept as opaque stable names for reporting. */
+  capacities?: readonly string[];
+  features?: readonly string[];
+  pricing?: ModelPricing;
+  createdAt?: string;
+  updatedAt?: string;
   inference?: Partial<ModelInferenceTarget>;
 }
 
@@ -71,11 +92,18 @@ export interface ModelInference {
   ): Promise<HttpTransportResponse>;
 }
 
-/** Services that together provide model discovery and OpenAI-compatible inference. */
+/**
+ * Plugin-level model domain binding shared by inventory and active model consumers.
+ * Tenant/model discovery only needs the directory and catalog; active inference is optional.
+ *
+ * @spec doctor tenant 与 doctor model 只共享 Model Capability 和 Model 数据契约，各自拥有独立的 command 实现与 Evidence 生命周期
+ * @see {@link cli/docs/commands/tenant.md}
+ * @see {@link cli/docs/commands/model-diagnosis.md}
+ */
 export interface ModelCapability {
   tenantDirectoryService: string;
   catalogService: string;
-  inferenceService: string;
+  inferenceService?: string;
 }
 
 export interface TraceCapability {

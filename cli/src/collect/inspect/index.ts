@@ -3,12 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type {
-  PluginDefinition,
-  TenantConfigReader,
-} from "@compforge/doctor-plugin";
-import type { TenantDirectory } from "@compforge/doctor-plugin";
-import { openPluginContext } from "../../plugin/context";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runDiagnosis } from "../engine";
@@ -28,7 +23,6 @@ import {
   resolveInspectDependencySelection,
   resolveInspectDeploymentSelection,
   resolveInspectServiceSelection,
-  resolveInspectTenantSelection,
 } from "./options";
 import { buildInspectCoverage, buildInspectEvidence, inspectDetectors } from "./detector";
 import { makeServiceTargetsInspect } from "./fact/inspect";
@@ -54,8 +48,6 @@ export async function runCollectInspect(
   plugin: PluginDefinition,
   commandContext: CommandContext,
   injectedExecutor?: Executor,
-  injectedTenantConfigReader?: TenantConfigReader,
-  injectedTenantDirectory?: TenantDirectory,
 ): Promise<number> {
   const startedAt = new Date().toISOString();
   let config;
@@ -126,18 +118,18 @@ export async function runCollectInspect(
     requirement: "preferred" as const,
     rule: { verb: "list" as const, resource: "deployments.apps" },
     purpose: "读取 Deployment Container/env 声明",
-    fallback: "权限缺失时仍交付 Pod/Tenant 证据，Env 配置标记为缺失",
+    fallback: "权限缺失时仍交付 Pod 证据，Env 配置标记为缺失",
   }, {
     requirement: "preferred" as const,
     rule: { verb: "list" as const, resource: "configmaps" },
     purpose: "读取 Deployment 引用的 ConfigMap",
-    fallback: "权限缺失时仍交付 Pod/Tenant 证据，ConfigMap 配置标记为缺失",
+    fallback: "权限缺失时仍交付 Pod 证据，ConfigMap 配置标记为缺失",
   }] : [];
   const dependencyNeeds = includeDependencies ? [{
     requirement: "preferred" as const,
     rule: { verb: "create" as const, resource: "pods/exec" },
     purpose: "进入每个不同业务镜像的代表 Container 采集应用依赖及版本",
-    fallback: "权限缺失时仍交付 Pod、Env 与 Tenant 配置，依赖清单标记为缺失",
+    fallback: "权限缺失时仍交付 Pod 与 Env 配置，依赖清单标记为缺失",
   }] : [];
   await enforceKubernetesAccess(authorization, {
     command: "doctor inspect",
@@ -147,70 +139,11 @@ export async function runCollectInspect(
         requirement: "preferred",
         rule: { verb: "list", resource: "pods" },
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
-        fallback: "权限缺失时仍交付 Env/Tenant 配置，Pod 运行态标记为缺失",
+        fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
       },
       ...dependencyNeeds,
-      {
-        requirement: "preferred",
-        rule: { verb: "create", resource: "pods/portforward" },
-        purpose: "访问 Plugin 声明的服务以补充租户配置",
-        fallback: "权限缺失时仅交付已取得的 Kubernetes 配置",
-      },
     ],
   });
-  const tenantCapability = plugin.tenantConfiguration;
-  const tenantDirectoryService = tenantCapability
-    ? plugin.services.findWith(tenantCapability.directoryService, "tenantDirectory")
-    : undefined;
-  if (tenantCapability && !tenantDirectoryService) {
-    terminalStderr.error(
-      `Plugin '${plugin.id}' 的 Service '${tenantCapability.directoryService}' 未声明 tenantDirectory 能力\n`,
-    );
-    return 2;
-  }
-  const directoryContext = tenantDirectoryService && config.tenantConfiguration && !injectedTenantDirectory
-    ? await openPluginContext(executor, config.kube, {
-        env: config.profileName,
-        config: commandContext?.profile.pluginConfig,
-        databaseIdentity: config.fallbackIdentity,
-        service: {
-          name: config.tenantConfiguration.directoryTarget.service,
-          port: config.tenantConfiguration.directoryTarget.port,
-        },
-        command: "doctor inspect",
-        capability: tenantDirectoryService.capabilities.tenantDirectory,
-        authorization,
-      })
-    : undefined;
-  const tenantDirectory = injectedTenantDirectory ?? (
-    tenantDirectoryService && config.tenantConfiguration
-      ? tenantDirectoryService.capabilities.tenantDirectory.create(directoryContext!)
-      : undefined
-  );
-  let selectedConfig: InspectConfig | undefined = config;
-  let tenantSelectionFailure: string | undefined;
-  if (tenantDirectory) {
-    try {
-      selectedConfig = await resolveInspectTenantSelection({
-        config,
-        directory: tenantDirectory,
-        log: (line) => terminalStdout.write(`${line}\n`),
-      });
-    } catch (error) {
-      tenantSelectionFailure = error instanceof Error ? error.message : String(error);
-    } finally {
-      await directoryContext?.dispose();
-    }
-  }
-  if (tenantSelectionFailure) {
-    terminalStderr.error(`${tenantSelectionFailure}\n`);
-    return 2;
-  }
-  if (!selectedConfig) {
-    terminalStderr.warning("[collect] 已取消\n");
-    return 130;
-  }
-  config = selectedConfig;
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
   const staging = join(stagingRoot, config.reportName);
@@ -225,9 +158,7 @@ export async function runCollectInspect(
     config,
     executor,
     authorization,
-    pluginConfig: commandContext.profile.pluginConfig,
     bundle,
-    tenantConfigReader: injectedTenantConfigReader,
     log,
   };
 
@@ -236,24 +167,16 @@ export async function runCollectInspect(
     target: {
       namespace: config.namespace,
       services: config.services.join(","),
-      tenant_id: config.tenantId ?? "not-requested",
-      tenant_name: config.tenantName ?? "not-requested",
     },
     inspectionFacts: facts ? {
       serviceTargets: facts.serviceTargets,
       deploymentConfiguration: facts.deploymentConfiguration,
       dependencyTargets: facts.dependencyTargets,
-      tenantDatabaseTarget: facts.tenantDatabaseTarget,
-      tenantRequest: facts.tenantRequest,
     } : {},
     params: {
       services: config.services,
       deployment_config: config.includeDeploymentConfig,
       dependencies: config.includeDependencies,
-      tenant_id: config.tenantId ?? null,
-      tenant_name: config.tenantName ?? null,
-      tenant_config_service: config.tenantConfiguration?.databaseService ?? null,
-      tenant_directory_service: config.tenantConfiguration?.directoryTarget.service ?? null,
       output_format: config.format,
     },
     startedAt,
@@ -274,7 +197,7 @@ export async function runCollectInspect(
 
   try {
     facts = await runInspects(
-      [makeServiceTargetsInspect(config, plugin.services, tenantCapability)],
+      [makeServiceTargetsInspect(config, plugin.services)],
       ctx,
       log,
     ) as InspectFacts;
@@ -291,8 +214,6 @@ export async function runCollectInspect(
   } catch (error) {
     reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
-  } finally {
-    await ctx?.closeTenantAccess?.();
   }
   if (diagnosisFailure || !diagnosis) return await fail(diagnosisFailure ?? "配置诊断未形成结果");
 

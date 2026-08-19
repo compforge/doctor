@@ -89,9 +89,10 @@ export async function deliverCommandArtifacts(
 
   const commands = [...new Set(artifacts.map((artifact) => artifact.command))];
   const commandSlug = commandName?.replace(/^doctor\s+/, "").trim().replace(/\s+/g, "-");
-  const reportName = commandSlug && (commands.length > 1 || commands[0] !== commandSlug)
-    ? `doctor-${commandSlug}-${timestamp()}`
-    : basename(artifacts[0]!.path);
+  const reportName = commandContext.artifacts.reportName()
+    ?? (commandSlug && (commands.length > 1 || commands[0] !== commandSlug)
+      ? `doctor-${commandSlug}-${timestamp()}`
+      : basename(artifacts[0]!.path));
   const format = resolveDeliveryFormat(options.format);
   const defaultPaths = resolveDefaultReportPaths(options.output, reportName);
   const fileFormat = format === "json" || format === "md"

@@ -6,14 +6,16 @@ import { runCollectData } from "./data";
 import { runCollectInspect } from "./inspect";
 import { runCollectLog } from "./log";
 import { runCollectMetric } from "./metric";
+import { runCollectTenant } from "./tenant";
 import { runCollectTrace } from "./trace";
 
-export const COLLECT_KINDS = ["inspect", "data", "trace", "log", "metric"] as const;
+export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log", "metric"] as const;
 export type CollectKind = typeof COLLECT_KINDS[number];
 export type CollectOutputFormat = "default" | "bundle" | "html";
 
 const COLLECT_LABELS: Record<CollectKind, string> = {
   inspect: "Inspect · Service 运行态与配置",
+  tenant: "Tenant · 租户配置与模型目录",
   data: "Data · 业务关联数据",
   trace: "Trace · 调用链与耗时",
   log: "Log · 关联日志",
@@ -24,6 +26,8 @@ export interface CollectCliOpts {
   bizIds: string[];
   kinds: CollectKind[];
   namespace?: string;
+  tenantId?: string;
+  tenantName?: string;
   since?: string;
   sinceTime?: string;
   watch?: string;
@@ -70,6 +74,22 @@ export async function resolveCollectKinds(
     renderChoice: (choice) => COLLECT_LABELS[choice.name as CollectKind],
   });
   return selected as CollectKind[] | undefined;
+}
+
+export function safeCollectBizId(bizId: string): string {
+  const normalized = bizId
+    .normalize("NFKC")
+    .trim()
+    .replace(/[^\p{Letter}\p{Number}._-]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  return Array.from(normalized || "biz").slice(0, 64).join("");
+}
+
+export function collectReportName(bizIds: readonly string[], now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const target = bizIds.length === 1 ? safeCollectBizId(bizIds[0]!) : "batch";
+  return `doctor-collect-${target}-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
+    + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
 export function parseCollectOutputFormat(raw: string | undefined): CollectOutputFormat {
@@ -135,6 +155,15 @@ function collectDelegate(
           output: undefined,
         }, plugin, commandContext);
         break;
+      case "tenant":
+        code = await runCollectTenant({
+          ...common,
+          tenantId: opts.tenantId,
+          tenantName: opts.tenantName,
+          format,
+          output: undefined,
+        }, plugin, commandContext);
+        break;
       case "data":
         code = await runCollectData({
           ...common,
@@ -182,7 +211,7 @@ function collectDelegate(
 
 /**
  * Collection command owns selection and delegation only; global finalize owns delivery.
- * Inspect, Data, Trace, Log and Metric remain the sole owners of concrete collection work.
+ * Inspect, Tenant, Data, Trace, Log and Metric remain the sole owners of concrete collection work.
  */
 export async function runCollect(
   opts: CollectCliOpts,
@@ -190,11 +219,14 @@ export async function runCollect(
   commandContext: CommandContext,
   injectedDelegate?: CollectDelegate,
 ): Promise<number> {
-  if (!opts.bizIds.length) {
+  if (!opts.bizIds.length && opts.kinds.some((kind) => (
+    kind === "data" || kind === "trace" || kind === "log"
+  ))) {
     terminalStderr.error("doctor collect 需要至少一个 biz-id\n");
     return 2;
   }
   parseCollectOutputFormat(opts.format);
+  commandContext.artifacts.setReportName(collectReportName(opts.bizIds));
   const results = await runCollectDelegates(
     opts.kinds,
     injectedDelegate ?? collectDelegate(opts, plugin, commandContext),

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
+import { openModelAccess } from "../src/model";
 
 const manifest: PluginManifest = {
   manifestVersion: 1,
@@ -13,7 +14,7 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
-test("Plugin model capability requires an endpoint on each provider", () => {
+test("Plugin model capability requires an endpoint on each declared provider", () => {
   const plugin = {
     id: "test",
     version: "0.0.1",
@@ -61,6 +62,51 @@ test("Plugin model capability requires an endpoint on each provider", () => {
 
   expect(() => validatePluginDefinition(plugin, manifest)).toThrow(
     "inference.endpoint must be an object",
+  );
+});
+
+test("Plugin model capability supports discovery without inference", async () => {
+  const plugin = {
+    id: "test",
+    version: "0.0.1",
+    model: {
+      tenantDirectoryService: "tenant-directory",
+      catalogService: "model-catalog",
+    },
+    services: { services: [{
+      name: "tenant-directory",
+      capabilities: {
+        tenantDirectory: {
+          endpoint: { port: 8080 },
+          access: {},
+          create: () => ({
+            listActive: async () => [],
+            getByName: async (name: string) => ({ id: name, name, displayName: name }),
+          }),
+        },
+      },
+    }, {
+      name: "model-catalog",
+      capabilities: {
+        modelCatalog: {
+          endpoint: { port: 8081 },
+          access: {},
+          create: () => ({
+            listAvailable: async () => [],
+            getBackend: async () => undefined,
+          }),
+        },
+      },
+    }] },
+  };
+
+  const validated = validatePluginDefinition(plugin, manifest);
+  expect(validated.model).toEqual({
+    tenantDirectoryService: "tenant-directory",
+    catalogService: "model-catalog",
+  });
+  await expect(openModelAccess({ command: "doctor model", plugin: validated })).rejects.toThrow(
+    "model capability 未声明 inferenceService",
   );
 });
 

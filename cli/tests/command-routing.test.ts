@@ -51,6 +51,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("http [options]");
     expect(result.stdout).toContain("data [options]");
     expect(result.stdout).toContain("store [options]");
+    expect(result.stdout).toContain("tenant [options]");
     expect(result.stdout).toContain("model [options]");
     expect(result.stdout).toContain("perf [options]");
     expect(result.stdout).toContain("--debug");
@@ -149,7 +150,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("集合命令");
     expect(result.stdout).toContain("本身不实现具体采集");
     expect(result.stdout).toContain("--include <kinds>");
-    expect(result.stdout).toContain("inspect、data、trace、log、metric");
+    expect(result.stdout).toContain("inspect、tenant、data、trace、log、metric");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
@@ -179,7 +180,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("OpenSearch backend service 覆盖值");
   });
 
-  test("inspect exposes Service workload and optional configuration options", () => {
+  test("inspect exposes Service workload and Service configuration options", () => {
     const result = runCli("inspect", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor inspect [options]");
@@ -187,14 +188,24 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--services <names>");
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
-    expect(result.stdout).toContain("--tenant-id <id>");
-    expect(result.stdout).toContain("--tenant-name <name>");
-    expect(result.stdout).toContain("--tenant-directory-service <name>");
-    expect(result.stdout).toContain("--tenant-directory-port <port>");
-    expect(result.stdout).toContain("--tenant-config-service <name>");
+    expect(result.stdout).not.toContain("--tenant-id <id>");
+    expect(result.stdout).not.toContain("--tenant-config-service <name>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("bundle、json、html 或 md");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时输出 HTML + Bundle");
+  });
+
+  test("tenant owns tenant configuration and model catalog aggregation", () => {
+    const result = runCli("tenant", "--help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: doctor tenant [options]");
+    expect(result.stdout).toContain("租户配置、可用模型与模型 capacities");
+    expect(result.stdout).toContain("--tenant-id <id>");
+    expect(result.stdout).toContain("--tenant-name <name>");
+    expect(result.stdout).toContain("--tenant-config-service <name>");
+    expect(result.stdout).toContain("--model-catalog-service <name>");
+    expect(result.stdout).toContain("--tenant-directory-service <name>");
+    expect(result.stdout).toContain("--format <format>");
   });
 
   test("config command is removed without a compatibility alias", () => {

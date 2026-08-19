@@ -6,7 +6,6 @@ import {
   type HtmlReportSection,
 } from "../output/html";
 import type {
-  ConfigurationComparisonRow,
   DependencyInventoryObservation,
   InspectContainerTerminationFact,
   InspectDiagnosis,
@@ -18,12 +17,6 @@ import type {
 function displayValue(value: JsonValue | undefined): string {
   if (value === undefined) return "—";
   return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function displayTenantConfig(row: ConfigurationComparisonRow): string {
-  return row.tenantConfig
-    ? `${displayValue(row.tenantConfig.value)}\nscope: ${row.tenantConfig.scope}`
-    : "—";
 }
 
 function markdownCell(value: unknown): string {
@@ -48,7 +41,6 @@ function tableRows(diagnosis: InspectDiagnosis): string[][] {
   return diagnosis.evidence.rows.map((row) => [
     row.name,
     displayValue(row.env),
-    displayTenantConfig(row),
   ]);
 }
 
@@ -168,12 +160,6 @@ function podSummary(diagnosis: InspectDiagnosis): string {
     : String(pods.size);
 }
 
-function tenantLabel(diagnosis: InspectDiagnosis): string {
-  return diagnosis.evidence.facts.tenantRequest.status === "collected"
-    ? `${diagnosis.evidence.facts.tenantRequest.tenantName ?? "未命名"}（${diagnosis.evidence.facts.tenantRequest.tenantId}）`
-    : "未选择";
-}
-
 function deploymentConfigLabel(diagnosis: InspectDiagnosis): string {
   const fact = diagnosis.evidence.facts.deploymentConfiguration;
   if (fact.status === "collected") return "已采集";
@@ -255,8 +241,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     `- Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
     `- 应用依赖：${dependencyLabel(diagnosis)}`,
     `- 配置项：${diagnosis.evidence.rows.length}`,
-    `- 租户：${tenantLabel(diagnosis)}`,
-    "- Env 来源仅包含 ConfigMap 与 Deployment env；Tenant config 由 Plugin 的配置读取能力提供。",
+    "- Env 来源仅包含 ConfigMap 与 Deployment env。",
     "",
     "## Coverage",
     "",
@@ -283,7 +268,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     "",
     "### 配置对照",
     "",
-    ...markdownTable(["name", "Env（ConfigMap + Deployment env）", "Tenant config"], tableRows(diagnosis)),
+    ...markdownTable(["name", "Env（ConfigMap + Deployment env）"], tableRows(diagnosis)),
   ].join("\n");
 }
 
@@ -299,9 +284,8 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
       `Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
       `应用依赖：${dependencyLabel(diagnosis)}`,
       `配置项：${diagnosis.evidence.rows.length}`,
-      `租户：${tenantLabel(diagnosis)}`,
     ]),
-    htmlParagraph("同名配置合并为一行。Env 列来自 ConfigMap 与 Deployment env；Tenant config 列由 Plugin 提供，并在单元格内标明 scope。"),
+    htmlParagraph("同名配置合并为一行。Env 列来自 ConfigMap 与 Deployment env。"),
     htmlParagraph("显式 Deployment env 按 Kubernetes 语义覆盖同名 ConfigMap 值。"),
     htmlParagraph("Toolchain 来自 Plugin 声明；依赖清单与 runtime version 来自本次 Target 观测。"),
     htmlHeading(2, "Coverage"),
@@ -333,7 +317,7 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "配置 / 配置对照",
       html: htmlTable(
-        ["name", "Env（ConfigMap + Deployment env）", "Tenant config"],
+        ["name", "Env（ConfigMap + Deployment env）"],
         tableRows(diagnosis),
         { search: { column: 0, placeholder: "按配置名检索" } },
       ),

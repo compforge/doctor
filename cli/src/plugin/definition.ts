@@ -297,7 +297,9 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
     const model = record(definition.model, "Plugin model capability");
     requireProvider(services, model.tenantDirectoryService, "tenantDirectory", "model.tenantDirectoryService");
     requireProvider(services, model.catalogService, "modelCatalog", "model.catalogService");
-    requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
+    if (model.inferenceService !== undefined) {
+      requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
+    }
   }
   if (definition.tenantConfiguration !== undefined) {
     const tenant = record(definition.tenantConfiguration, "Plugin tenantConfiguration capability");

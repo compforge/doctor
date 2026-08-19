@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 function sourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -36,5 +36,21 @@ test("共享 model 能力不依赖任何主路径", () => {
   const workflowImport = /\bfrom\s+["'][^"']*\/(?:provision|collect|perf|chat)(?:\/[^"']*)?["']/;
   for (const path of sourceFiles(join(import.meta.dir, "../src/model"))) {
     expect(readFileSync(path, "utf-8")).not.toMatch(workflowImport);
+  }
+});
+
+test("doctor model 与 doctor tenant 不依赖彼此的 command 实现", () => {
+  const collectRoot = resolve(import.meta.dir, "../src/collect");
+  for (const [command, peer] of [["model", "tenant"], ["tenant", "model"]] as const) {
+    const peerRoot = join(collectRoot, peer);
+    for (const path of sourceFiles(join(collectRoot, command))) {
+      const source = readFileSync(path, "utf-8");
+      for (const match of source.matchAll(/\bfrom\s+["']([^"']+)["']/g)) {
+        const specifier = match[1];
+        if (!specifier?.startsWith(".")) continue;
+        const target = resolve(dirname(path), specifier);
+        expect(target === peerRoot || target.startsWith(`${peerRoot}/`)).toBe(false);
+      }
+    }
   }
 });

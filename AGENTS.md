@@ -57,6 +57,9 @@ Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Ski
 7. **Toolkit 独立演进**：工具、debug image、离线系统包与兼容性 manifest 归 `toolkit/`，不进入 CLI
    executable；任一交付内容变化都必须提升 `toolkit/VERSION`。平台按资源实际执行位置解析，不能用
    Doctor Host 平台替代 Kubernetes Target 平台。
+8. **Spec mark 与 Specgen 分离**：`@spec` 等 mark 是随代码维护的观念/设计意图结构化注释，按设计需要
+   正常新增或修改；这不意味着必须更新索引。`specgen` / `specgen:check` 及 `spec.json` 生成只在维护者
+   明确要求时执行，agent 不因普通代码、文档或 mark 变更主动触发。
 
 ## References
 

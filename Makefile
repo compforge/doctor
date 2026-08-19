@@ -29,7 +29,7 @@ bump-plugin-version:
 	bun $(PLUGIN_VERSION_TOOL) bump $(PLUGIN_ROOT) $(PLUGIN_VERSION_ARGS)
 
 lint:
-	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec check-plugin-version
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin check-plugin-version
 
 lint-ci: lint
 

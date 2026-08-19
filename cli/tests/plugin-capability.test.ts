@@ -74,6 +74,15 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
+test("tenant command 汇总目录和配置但不依赖 inference capability", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
+    { scope: "plugin", name: "model" },
+    { scope: "service", name: "tenantDirectory" },
+    { scope: "service", name: "modelCatalog" },
+    { scope: "plugin", name: "tenantConfiguration" },
+  ]);
+});
+
 test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
     { scope: "service", name: "perf" },

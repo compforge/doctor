@@ -6,7 +6,6 @@ import type {
   InspectObservation,
 } from "../model";
 import { makeServiceConfigProbe } from "./service-environment";
-import { makeTenantConfigProbe } from "./tenant-config";
 import { makeDependencyInventoryProbe } from "./dependencies";
 
 export function makeInspectProbes(
@@ -21,12 +20,8 @@ export function makeInspectProbes(
   if (facts.dependencyTargets.status === "collected") {
     probes.push(...facts.dependencyTargets.targets.map(makeDependencyInventoryProbe));
   }
-  if (config.tenantId && config.tenantConfiguration) {
-    probes.push(...config.tenantConfiguration.scopes.map(makeTenantConfigProbe));
-  }
   return probes;
 }
 
 export * from "./service-environment";
-export * from "./tenant-config";
 export * from "./dependencies";

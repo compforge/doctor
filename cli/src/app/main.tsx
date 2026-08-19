@@ -10,7 +10,8 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor store             → 从 Service Pod 提取 Store 配置并诊断 DB/VDB/S3/Redis（collect/）
 //   doctor log               → 无 server 直连采集：按 biz ID 解析 trace 并聚合服务 pod 日志（collect/）
 //   doctor data              → 先扩展业务 ID，再汇集各 Service 声明的数据（collect/）
-//   doctor collect           → 集合命令：选择并编排 data/trace/log/metric，自身不实现具体采集
+//   doctor tenant            → 汇总租户配置与可用模型目录（collect/）
+//   doctor collect           → 集合命令：选择并编排具体 collector，自身不实现具体采集
 //   doctor inspect           → 检查 Service 的 workload 与配置（collect/）
 //   doctor http              → 从 YAML 重放多轮 HTTP 请求并分析响应（collect/）
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
@@ -42,6 +43,7 @@ import {
 } from "../collect/network";
 import { runCollectMcp } from "../collect/mcp";
 import { runCollectModel } from "../collect/model";
+import { runCollectTenant, type CollectTenantCliOptions } from "../collect/tenant";
 import { runCollectMetric } from "../collect/metric";
 import {
   runCollect,
@@ -233,8 +235,10 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
 
 function withCollectOptions(cmd: CommandT): CommandT {
   return withBizIdInputs(cmd, "需要联合采集的业务 ID；可重复传入")
-    .option("--include <kinds>", "要编排的命令：inspect、data、trace、log、metric；逗号分隔，交互模式缺省时多选")
+    .option("--include <kinds>", "要编排的命令：inspect、tenant、data、trace、log、metric；逗号分隔，交互模式缺省时多选")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
+    .option("--tenant-id <id>", "传给 doctor tenant 的租户 ID")
+    .option("--tenant-name <name>", "传给 doctor tenant 的租户名")
     .option("--deployment-config", "传给 doctor inspect：确认采集 Deployment Env/ConfigMap")
     .option("--dependencies", "传给 doctor inspect：确认进入业务 Container 采集依赖及版本")
     .option("--since <duration>", "传给 doctor log 的日志回看窗口")
@@ -255,17 +259,30 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--services <names>", "逗号分隔的 Kubernetes Service；缺省时交互多选，非交互必须指定")
     .option("--deployment-config", "确认采集 Deployment Env/ConfigMap；交互模式缺省时询问")
     .option("--dependencies", "确认进入业务 Container 采集应用依赖；交互模式缺省时询问")
-    .option("--tenant-id <id>", "同时读取该租户的 Plugin 配置并按列对照")
-    .option("--tenant-name <name>", "通过租户目录精确解析租户名，并读取 Plugin 配置")
-    .option("--tenant-config-service <name>", "提供租户配置的 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("-f, --format <format>", "输出格式：bundle、json、html 或 md；未指定时输出 HTML + Bundle")
     .option("--kubeconfig <path>", "kubeconfig 路径")
     .option("--context <name>", "kubeconfig context")
-    .option("--profile <name>", "从 profile 取 namespace / kubeconfig；DB 身份仅作租户配置兜底")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
+    .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
+}
+
+function withTenantOptions(cmd: CommandT): CommandT {
+  return cmd
+    .option("-n, --namespace <ns>", "租户目录/模型目录所在 namespace（profile 兜底，默认 default）")
+    .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
+    .option("--tenant-name <name>", "通过租户目录精确解析租户名")
+    .option("--tenant-config-service <name>", "提供租户配置的 Kubernetes Service；缺省由 Plugin 声明")
+    .option("--model-catalog-service <name>", "模型目录 Kubernetes Service；缺省由 Plugin 声明")
+    .option("--model-catalog-port <port>", "模型目录 Service HTTP 端口；缺省由 Plugin 声明")
+    .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
+    .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
+    .option("--kubeconfig <path>", "kubeconfig 路径")
+    .option("--context <name>", "kubeconfig context")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
+    .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
+    .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
@@ -577,7 +594,7 @@ export async function main(plugin?: PluginDefinition) {
   });
   withCollectOptions(
     program.command("collect").description(
-      "集合命令：选择、编排并汇总 inspect/data/trace/log/metric；本身不实现具体采集",
+      "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
     ),
   ).action(async (
     positionalBizIds,
@@ -680,10 +697,21 @@ export async function main(plugin?: PluginDefinition) {
         opts,
         activePlugin,
         context,
-        undefined,
-        undefined,
-        undefined,
       ),
+    );
+  });
+  withTenantOptions(
+    program.command("tenant").description("汇总租户配置、可用模型与模型 capacities（只读）"),
+  ).action(async (opts: CollectTenantCliOptions) => {
+    await runPluginCommand(
+      {
+        name: "doctor tenant",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.tenant,
+      },
+      opts,
+      plugin,
+      (activePlugin, context) => runCollectTenant(opts, activePlugin, context),
     );
   });
   withHttpOptions(

@@ -245,6 +245,8 @@ async function resolveLocalModel(
     const tenant = await resolveModelTenant({
       directory: access.directory,
       profileName,
+      commandContext,
+      promptTitle: "[chat] 当前启用租户：",
     });
     if (!tenant) throw new Error("已取消租户选择");
     terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
