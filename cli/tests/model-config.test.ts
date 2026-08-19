@@ -30,10 +30,10 @@ const imageModel = requireInferenceModel({
 });
 
 describe("doctor model multimodal inference", () => {
-  test("writes model diagnosis as JSON by default and supports HTML", () => {
-    expect(parseModelOutputFormat(undefined)).toBe("json");
+  test("defaults to dual delivery and keeps explicit JSON/HTML", () => {
+    expect(parseModelOutputFormat(undefined)).toBe("default");
     expect(parseModelOutputFormat("html")).toBe("html");
-    expect(() => parseModelOutputFormat("terminal")).toThrow("--format 只支持 json 或 html");
+    expect(() => parseModelOutputFormat("terminal")).toThrow("--format 只支持 bundle、json 或 html");
 
     const now = new Date(2026, 7, 18, 9, 8, 7);
     expect(resolveModelDiagnosisOutput(undefined, "json", now))

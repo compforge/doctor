@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -22,6 +22,7 @@ import {
   requireKubernetesChannel,
 } from "../../terminal/kubernetes-access";
 import { deliverFailureBundle } from "../output/failure-bundle";
+import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
 import { writeHtmlReport } from "../output/html";
 import {
   resolveInspectConfig,
@@ -266,7 +267,9 @@ export async function runCollectInspect(
     const failure = await deliverFailureBundle({
       bundleDir: staging,
       bundleName: config.reportName,
-      requestedOutput: opts.output,
+      requestedOutput: config.format === "default"
+        ? resolveDefaultReportPaths(opts.output, config.reportName).bundle
+        : opts.output,
       collectCode: 1,
       reason,
     });
@@ -311,6 +314,7 @@ export async function runCollectInspect(
 
   bundle.writeSummary(buildInspectSummary(diagnosis));
   writeManifest();
+  writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (config.format === "json") {
     terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
     rmSync(stagingRoot, { recursive: true, force: true });
@@ -327,8 +331,9 @@ export async function runCollectInspect(
     terminalStdout.success(`[collect] Markdown 报告: ${config.outputPath}\n`);
     return 0;
   }
+  const reportPath = config.format === "html" ? config.outputPath! : join(staging, "report.html");
   try {
-    writeHtmlReport(staging, config.outputPath!, {
+    writeHtmlReport(staging, reportPath, {
       title: "doctor Service Inspect",
       profileName: config.profileName,
       summaryHtml: buildInspectHtml(diagnosis),
@@ -338,7 +343,22 @@ export async function runCollectInspect(
     reportError(error, { context: "doctor inspect/html-report", summary: "HTML 报告生成失败" });
     return await fail(error instanceof Error ? error.message : String(error));
   }
+  if (config.format === "html") {
+    rmSync(stagingRoot, { recursive: true, force: true });
+    terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
+    return 0;
+  }
+  const paths = config.format === "default"
+    ? resolveDefaultReportPaths(opts.output, config.reportName)
+    : { html: reportPath, bundle: config.outputPath! };
+  if (config.format === "default") copyFileSync(reportPath, paths.html);
+  const packed = await packReportBundle(staging, paths.bundle);
+  if (!packed.ok) {
+    terminalStderr.error(`[collect] Inspect Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
+    return 1;
+  }
   rmSync(stagingRoot, { recursive: true, force: true });
-  terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
+  if (config.format === "default") terminalStdout.success(`[collect] Inspect HTML: ${paths.html}\n`);
+  terminalStdout.success(`[collect] Inspect Bundle: ${paths.bundle}\n`);
   return 0;
 }

@@ -31,7 +31,7 @@ export const REDIS_DEFAULTS = {
   showKeyNames: true,
 } as const;
 
-export type RedisOutputFormat = "bundle" | "html" | "md";
+export type RedisOutputFormat = "default" | "bundle" | "html" | "md";
 
 export interface RedisDatabaseScope {
   mode: "all" | "single";
@@ -158,8 +158,8 @@ function parseIntegerFlag(name: string, value: string, minimum: number): number 
 }
 
 export function parseRedisOutputFormat(value: string | undefined): RedisOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "bundle" && format !== "html" && format !== "md") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html" && format !== "md") {
     throw new Error(`--format 只支持 bundle、html 或 md: '${format}'`);
   }
   return format;

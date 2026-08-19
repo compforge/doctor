@@ -9,9 +9,9 @@ const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
   + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
 
 export function parseModelOutputFormat(value: string | undefined): ModelOutputFormat {
-  const format = value?.trim() || "json";
-  if (format !== "json" && format !== "html") {
-    throw new Error(`--format 只支持 json 或 html: '${format}'`);
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html") {
+    throw new Error(`--format 只支持 bundle、json 或 html: '${format}'`);
   }
   return format;
 }

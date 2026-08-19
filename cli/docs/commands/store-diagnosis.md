@@ -28,9 +28,9 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
    各 Store Probe 通过 Doctor Host 到后端的只读通道产出健康、容量、负载或数据画像 Observations。
 6. Detector 只基于 Facts/Observations 生成 Findings，Coverage 独立说明本轮各诊断目标的证据是否充分；
    DB、VDB、S3、Redis 都走这条共享主链，规则与报告阶段不再访问现场。
-7. 成功诊断默认交付单文件 HTML。单选时直接输出该 Store 报告；多选时继续执行其余类型，并把
-   DB、VDB、S3、Redis 的自包含报告合并到同一个 Tab 页面。显式选择 bundle 或 Markdown 时仍按类型
-   分别交付，因此多选不接受单一 `--output`；HTML 多选只有一个总报告，可以指定统一输出路径。
+7. 成功诊断默认同时交付单文件 HTML 和完整 Bundle。单选时直接输出该 Store 报告；多选时继续执行
+   其余类型并按类型分别交付，保证每个 Store 的原始 Evidence 都被带走。显式选择 HTML 时把 DB、VDB、
+   S3、Redis 的自包含报告合并到同一个 Tab 页面；显式选择 bundle 或 Markdown 时仍按类型分别交付。
    Store 只取得部分证据时仍交付对应报告，并醒目标记 partial、缺失证据及结论边界；完全无法形成
    可用诊断或产物交付失败时，才降级交付失败 Evidence Bundle。
 

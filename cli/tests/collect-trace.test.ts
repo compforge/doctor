@@ -192,8 +192,8 @@ test("defaultTraceBundleName 截短 trace id", () => {
 });
 
 describe("trace 输出格式", () => {
-  test("默认 html，路径自动补后缀", () => {
-    expect(parseTraceOutputFormat(undefined)).toBe("html");
+  test("默认双交付，显式 HTML 路径自动补后缀", () => {
+    expect(parseTraceOutputFormat(undefined)).toBe("default");
     expect(resolveTraceHtmlPath(undefined, "doctor-trace-t1")).toBe("doctor-trace-t1.html");
     expect(resolveTraceHtmlPath("report", "ignored")).toBe("report.html");
   });

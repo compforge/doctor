@@ -19,8 +19,9 @@
 2. Inspect 通过 `KubernetesPodLogAccess` 读取 Service、Pod 和 Container status，按 selector 建立 Service → Running Pod 关系，并确认哪些容器存在可读取的上一次终止实例。
 3. 每个 Service 独立运行一个 Probe；Probe 对其 Pod 采集同一时间范围内的 current 日志，并对发生过重启且存在 `lastState.terminated` 的容器 best-effort 补采 previous 日志。原始字节流分别直接落盘，同时按业务标识和可选错误模式生成 Observation。
 4. Render 合并全部 Service Observation，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
-5. 命令默认交付单文件离线 HTML；批量输入时每个 biz-id 独立采集、过滤和判定，在交付页按 ID 分 tab。
-   `--format bundle` 按 ID 保存独立子证据包，各自包含 manifest、结构化时间线、聚合文本、HTML、摘要和 raw 日志。
+5. 命令默认同时交付单文件离线 HTML 和完整 Bundle；批量输入时每个 biz-id 独立采集、过滤和判定，在
+   交付页按 ID 分 tab。Bundle 按 ID 保存独立子证据包，各自包含 manifest、结构化时间线、聚合文本、
+   `report.html`、摘要和 raw 日志。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
    单 Pod 失败只降低对应 ID 的证据完整度。
 
 当前没有独立 Detector：命令负责定位和整理日志证据，不把日志文本模式直接解释成根因。

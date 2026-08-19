@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -13,6 +13,7 @@ import { EvidenceBundle } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { deliverFailureBundle } from "../output/failure-bundle";
+import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
 import { writeHtmlReport } from "../output/html";
 import { resolveMetricConfig } from "./config";
 import { buildMetricCoverage, buildMetricEvidence, metricDetectors } from "./detector";
@@ -159,7 +160,9 @@ export async function runCollectMetric(
     const delivered = await deliverFailureBundle({
       bundleDir: staging,
       bundleName: config.reportName,
-      requestedOutput: opts.output,
+      requestedOutput: config.format === "default"
+        ? resolveDefaultReportPaths(opts.output, config.reportName).bundle
+        : opts.output,
       collectCode: 1,
       reason,
     });
@@ -174,8 +177,10 @@ export async function runCollectMetric(
 
   bundle.writeSummary("# Metric diagnosis\n");
   writeMetricManifest(bundle, config, facts, diagnosis);
+  writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
+  const reportPath = config.format === "html" ? config.outputPath : join(staging, "report.html");
   try {
-    writeHtmlReport(bundle.dir, config.outputPath, {
+    writeHtmlReport(bundle.dir, reportPath, {
       title: "doctor Metric 诊断报告",
       profileName: config.profileName,
       summaryHtml: buildMetricSummary(diagnosis),
@@ -187,18 +192,36 @@ export async function runCollectMetric(
     const delivered = await deliverFailureBundle({
       bundleDir: staging,
       bundleName: config.reportName,
-      requestedOutput: opts.output,
+      requestedOutput: config.format === "default"
+        ? resolveDefaultReportPaths(opts.output, config.reportName).bundle
+        : opts.output,
       collectCode: 1,
       reason,
     });
     if (delivered.packed.ok) rmSync(stagingRoot, { recursive: true, force: true });
     return 1;
   }
-  rmSync(stagingRoot, { recursive: true, force: true });
-  terminalStdout.success(`[collect] Metric HTML 报告: ${config.outputPath}\n`);
-  return evaluateCollectOutcome(
+  const exitCode = evaluateCollectOutcome(
     diagnosis.coverage.map((item) => item.status === "sufficient"),
   ).exitCode;
+  if (config.format === "html") {
+    rmSync(stagingRoot, { recursive: true, force: true });
+    terminalStdout.success(`[collect] Metric HTML 报告: ${config.outputPath}\n`);
+    return exitCode;
+  }
+  const paths = config.format === "default"
+    ? resolveDefaultReportPaths(opts.output, config.reportName)
+    : { html: reportPath, bundle: config.outputPath };
+  if (config.format === "default") copyFileSync(reportPath, paths.html);
+  const packed = await packReportBundle(staging, paths.bundle);
+  if (!packed.ok) {
+    terminalStderr.error(`[collect] Metric Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
+    return 1;
+  }
+  rmSync(stagingRoot, { recursive: true, force: true });
+  if (config.format === "default") terminalStdout.result(exitCode === 0, `[collect] Metric HTML: ${paths.html}\n`);
+  terminalStdout.result(exitCode === 0, `[collect] Metric Bundle: ${paths.bundle}\n`);
+  return exitCode;
 }
 
 function metricWindow(diagnosis: MetricDiagnosis | undefined): MetricWindowObservation | undefined {

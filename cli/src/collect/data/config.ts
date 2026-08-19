@@ -16,11 +16,12 @@ import {
   type DataServiceSelection,
 } from "./model";
 import type { CommandContext } from "../../command";
+import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
 export function parseDataOutputFormat(value: string | undefined): DataOutputFormat {
-  const format = value?.trim() || "json";
-  if (format !== "json" && format !== "html") {
-    throw new Error(`--format 只支持 json 或 html: '${format}'`);
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html") {
+    throw new Error(`--format 只支持 bundle、json 或 html: '${format}'`);
   }
   return format;
 }
@@ -105,9 +106,13 @@ export async function resolveDataConfig(
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
   const format = parseDataOutputFormat(opts.format);
   const reportName = opts.reportName ?? dataReportName(new Date());
-  const outputPath = format === "html"
-    ? resolveDataHtmlOutputPath(opts.output, reportName)
-    : resolveDataJsonOutputPath(opts.output, reportName);
+  const outputPath = format === "default"
+    ? resolveDefaultReportPaths(opts.output, reportName).html
+    : format === "html"
+      ? resolveDataHtmlOutputPath(opts.output, reportName)
+      : format === "bundle"
+        ? resolveArchivePath(opts.output, reportName)
+        : resolveDataJsonOutputPath(opts.output, reportName);
   const resolvedProfile = {
     name: commandContext.profile.name,
     profile: commandContext.profile.value,

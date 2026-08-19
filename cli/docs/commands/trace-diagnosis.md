@@ -8,9 +8,9 @@ trace_id。领域层负责确认、计数、
 分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
-默认交付物是自包含 HTML，提供逻辑节点树、火焰图、节点摘要和物理 span 溯源。需要保留采集证据时
-可选择 bundle；bundle 同时包含 HTML、完整 `spans.jsonl`、摘要和 Evidence Worksheet，摘要不能替代
-原始 span。
+默认同时交付自包含 HTML 和完整 Bundle。HTML 提供逻辑节点树、火焰图、节点摘要和物理 span 溯源；
+Bundle 同时包含根 `report.html`、完整 `spans.jsonl`、摘要和 Evidence Worksheet，摘要不能替代原始
+span。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
 
 ## 流程
 

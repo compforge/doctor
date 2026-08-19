@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { resolveArchivePath } from "../output/archive";
 
-export type LogOutputFormat = "bundle" | "html";
+export type LogOutputFormat = "default" | "bundle" | "html";
 
 export function parseLogOutputFormat(value: string | undefined): LogOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "bundle" && format !== "html") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html") {
     throw new Error(`--format 只支持 bundle 或 html: '${format}'`);
   }
   return format;

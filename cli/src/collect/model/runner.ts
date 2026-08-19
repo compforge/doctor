@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   rmSync,
@@ -20,6 +21,7 @@ import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
+import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import {
   buildModelCoverage,
   buildModelEvidence,
@@ -208,12 +210,6 @@ export async function runModelDiagnosis(
     const attempts = modelPerformanceAttempts(diagnosis.evidence);
     const summaries = modelPerformanceSummaries(diagnosis.evidence);
     const performanceEnabled = modelPerformanceDecision(diagnosis.evidence)?.enabled ?? false;
-    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({
-      observations: diagnosis.evidence.observations,
-      summaries,
-      findings: serializeFindings(diagnosis.findings),
-      coverage: diagnosis.coverage,
-    }, null, 2)}\n`, { mode: 0o600 });
     bundle.writeSummary(buildModelMarkdown(diagnosis, summaries, attempts));
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
@@ -233,9 +229,21 @@ export async function runModelDiagnosis(
       finishedAt: new Date().toISOString(),
     });
 
-    const outputPath = resolveModelDiagnosisOutput(input.output, input.format, startedAt);
-    if (input.format === "html") {
-      writeHtmlReport(staging, outputPath, {
+    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
+    const reportName = `doctor-model-${timestamp(startedAt)}`;
+    const paths = input.format === "default"
+      ? resolveDefaultReportPaths(input.output, reportName)
+      : {
+          html: input.format === "html"
+            ? resolveModelDiagnosisOutput(input.output, "html", startedAt)
+            : join(staging, "report.html"),
+          bundle: input.format === "bundle"
+            ? resolveArchivePath(input.output, reportName)
+            : "",
+        };
+    const reportPath = input.format === "html" ? paths.html : join(staging, "report.html");
+    if (input.format !== "json") {
+      writeHtmlReport(staging, reportPath, {
         title: "doctor model 诊断报告",
         profileName: input.profileName,
         summaryHtml: buildModelDiagnosisHtml(
@@ -244,11 +252,29 @@ export async function runModelDiagnosis(
           attempts,
         ),
       });
-    } else {
-      writeFileSync(outputPath, `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
     }
-    chmodSync(outputPath, 0o600);
-    terminalStdout.success(`[model] 诊断 ${input.format.toUpperCase()}：${outputPath}\n`);
+    let outputPath: string;
+    if (input.format === "json") {
+      outputPath = resolveModelDiagnosisOutput(input.output, "json", startedAt);
+      copyFileSync(join(staging, "diagnosis.json"), outputPath);
+      chmodSync(outputPath, 0o600);
+      terminalStdout.success(`[model] 诊断 JSON：${outputPath}\n`);
+    } else if (input.format === "html") {
+      outputPath = paths.html;
+      chmodSync(outputPath, 0o600);
+      terminalStdout.success(`[model] 诊断 HTML：${outputPath}\n`);
+    } else {
+      if (input.format === "default") {
+        copyFileSync(reportPath, paths.html);
+        chmodSync(paths.html, 0o600);
+        terminalStdout.success(`[model] 诊断 HTML：${paths.html}\n`);
+      }
+      const packed = await packReportBundle(staging, paths.bundle);
+      if (!packed.ok) throw new Error(`Model Bundle 打包失败：${packed.stderr}`);
+      chmodSync(paths.bundle, 0o600);
+      outputPath = paths.bundle;
+      terminalStdout.success(`[model] 诊断 Bundle：${paths.bundle}\n`);
+    }
 
     printResponseStatus("validation", diagnosis, "model-validation");
     printResponseStatus("inference", diagnosis, "model-inference");

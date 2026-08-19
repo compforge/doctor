@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -81,6 +81,25 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[model] 诊断 JSON：${outputPath}`);
     expect(stdout).not.toContain("MODEL_RESPONSE_BODY");
+
+    const defaultOutput = join(root, "bundle.tar.gz");
+    const defaultResult = await runModelDiagnosis({
+      command: new CommandContext({}),
+      tenant: { id: "tenant-1", name: "tenant-1", displayName: "Tenant 1" },
+      model,
+      catalog,
+      inference,
+      performance: false,
+      repeat: 1,
+      timeoutMs: 1_000,
+      maxOutputTokens: 32,
+      format: "default",
+      output: defaultOutput,
+      profileName: "test",
+    });
+    expect(defaultResult.exitCode).toBe(0);
+    expect(existsSync(defaultOutput)).toBe(true);
+    expect(statSync(defaultOutput).mode & 0o777).toBe(0o600);
   } finally {
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });

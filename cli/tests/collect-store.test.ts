@@ -65,8 +65,8 @@ test("Store 类型支持一次选择多个并保持首次出现顺序", () => {
 });
 
 describe("Store output", () => {
-  test("所有 Store 默认输出 HTML，并按显式 format 补全后缀", () => {
-    expect(parseStoreOutputFormat(undefined)).toBe("html");
+  test("Store 默认双交付，并按显式 format 补全后缀", () => {
+    expect(parseStoreOutputFormat(undefined)).toBe("default");
     expect(resolveStoreOutputPath(undefined, "doctor-store-db-1", "html")).toBe("doctor-store-db-1.html");
     expect(resolveStoreOutputPath("report", "ignored", "md")).toBe("report.md");
     expect(resolveStoreOutputPath("report", "ignored", "bundle")).toBe("report.tar.gz");

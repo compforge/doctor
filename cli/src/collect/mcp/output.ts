@@ -1,11 +1,11 @@
 import { join } from "node:path";
-import { resolveArchivePath } from "../output/archive";
+import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
-export type McpOutputFormat = "bundle" | "html";
+export type McpOutputFormat = "default" | "bundle" | "html";
 
 export function parseMcpOutputFormat(value: string | undefined): McpOutputFormat {
-  const format = value?.trim() || "bundle";
-  if (format !== "bundle" && format !== "html") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html") {
     throw new Error(`--format 只支持 bundle 或 html: '${format}'`);
   }
   return format;
@@ -16,6 +16,7 @@ export function resolveMcpOutputPath(
   bundleName: string,
   format: McpOutputFormat,
 ): string {
+  if (format === "default") return resolveDefaultReportPaths(output, bundleName).html;
   if (format === "bundle") {
     if (/\.html$/i.test(output ?? "")) throw new Error("--format bundle 的输出路径不能使用 .html 后缀");
     return resolveArchivePath(output, bundleName);
