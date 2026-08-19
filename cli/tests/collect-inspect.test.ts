@@ -242,6 +242,10 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(dependencyCommands[0]?.slice(0, 2)).toEqual(["node", "-e"]);
     const dependencies = readFileSync(dependenciesOutput, "utf-8");
     expect(dependencies).toContain("typescript");
+    expect(dependencies).toContain("| Service | Runtime version | Dependency | Version |");
+    expect(dependencies).not.toContain("| Service | Image | Runtime version");
+    expect(dependencies).not.toContain("example.test/example-api@sha256:1234");
+    expect(dependencies).toContain("example.test/example-api:v1.2.3");
     expect(dependencies).toContain("v22.0.0");
     expect(dependencies).toContain("zod");
     expect(dependencies).toContain("4.4.3");
