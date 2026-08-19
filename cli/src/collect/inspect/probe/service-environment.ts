@@ -2,18 +2,18 @@ import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import { resolveContainerEnvironment } from "../../../infra/k8s/workload-config";
 import type {
-  ConfigCollectConfig,
-  ConfigCollectContext,
-  ConfigDeploymentTarget,
-  ConfigInspectionFacts,
-  ConfigObservation,
   EnvironmentConfigObservation,
+  InspectCollectContext,
+  InspectConfig,
+  InspectDeploymentTarget,
+  InspectFacts,
+  InspectObservation,
 } from "../model";
 
 function targetFromFacts(
-  facts: ConfigInspectionFacts,
-  target: ConfigDeploymentTarget,
-): ConfigDeploymentTarget | undefined {
+  facts: InspectFacts,
+  target: InspectDeploymentTarget,
+): InspectDeploymentTarget | undefined {
   if (facts.serviceTargets.status !== "collected") return undefined;
   return facts.serviceTargets.services[target.service]?.deployments.find(
     (item) => item.deployment === target.deployment && item.container === target.container,
@@ -21,8 +21,8 @@ function targetFromFacts(
 }
 
 export function makeServiceConfigProbe(
-  target: ConfigDeploymentTarget,
-): Probe<ConfigObservation, ConfigInspectionFacts, ConfigCollectConfig, ConfigCollectContext> {
+  target: InspectDeploymentTarget,
+): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext> {
   const id = `config-environment-${target.service}-${target.deployment}`;
   return {
     id,

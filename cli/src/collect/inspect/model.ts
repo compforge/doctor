@@ -11,11 +11,11 @@ import type { ResolvedNamespace } from "../../infra/k8s/context";
 import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-config";
 import type { EvidenceBundle } from "../evidence";
 
-export type ConfigOutputFormat = "json" | "html" | "md";
+export type InspectOutputFormat = "json" | "html" | "md";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type TenantConfigScope = string;
 
-export interface CollectConfigCliOpts {
+export interface CollectInspectCliOpts {
   namespace?: string;
   services?: string;
   deploymentConfig?: boolean;
@@ -33,7 +33,7 @@ export interface CollectConfigCliOpts {
   output?: string;
 }
 
-export interface ConfigCollectConfig {
+export interface InspectConfig {
   namespace: string;
   namespaceSource: ResolvedNamespace["source"];
   services: string[];
@@ -48,42 +48,70 @@ export interface ConfigCollectConfig {
     directoryTarget: TenantConfigTarget;
     databaseService: string;
   };
-  format: ConfigOutputFormat;
+  format: InspectOutputFormat;
   outputPath?: string;
   reportName: string;
   profileName: string;
   kube: KubectlOptions & { namespace: string };
 }
 
-export interface ConfigDeploymentTarget {
+export interface InspectDeploymentTarget {
   service: string;
   deployment: string;
   container: string;
 }
 
-export interface ConfigPodContainerFact {
+export interface InspectPodContainerFact {
   name: string;
   image: string;
   imageId?: string;
   requests: { cpu?: string; memory?: string };
   limits: { cpu?: string; memory?: string };
+  ready?: boolean;
+  restartCount: number;
+  state?:
+    | { kind: "waiting"; reason?: string; message?: string }
+    | { kind: "running"; startedAt?: string }
+    | ({ kind: "terminated" } & InspectContainerTerminationFact);
+  lastTermination?: InspectContainerTerminationFact;
 }
 
-export interface ConfigPodRuntimeFact {
+export interface InspectContainerTerminationFact {
+  exitCode?: number;
+  signal?: number;
+  reason?: string;
+  message?: string;
+  startedAt?: string;
+  finishedAt?: string;
+}
+
+export interface InspectPodConditionFact {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+}
+
+export interface InspectPodRuntimeFact {
   pod: string;
   phase: string;
-  containers: ConfigPodContainerFact[];
+  reason?: string;
+  message?: string;
+  conditions: InspectPodConditionFact[];
+  containers: InspectPodContainerFact[];
 }
 
-export interface ConfigServiceTargetFact {
+export interface InspectServiceTargetFact {
   service: string;
   toolchain?: Toolchain;
-  deployments: ConfigDeploymentTarget[];
+  configurationSupported: boolean;
+  deployments: InspectDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
-  podRuntime: Fact<{ pods: ConfigPodRuntimeFact[] }>;
+  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }>;
 }
 
-export interface ConfigDependencyTarget {
+export interface InspectDependencyTarget {
   id: string;
   services: string[];
   pod: string;
@@ -93,7 +121,7 @@ export interface ConfigDependencyTarget {
   toolchain: Toolchain;
 }
 
-export interface ConfigTenantDatabaseTargetFact {
+export interface InspectTenantDatabaseTargetFact {
   service: string;
   endpoint: string;
   database: string;
@@ -101,11 +129,11 @@ export interface ConfigTenantDatabaseTargetFact {
   credentialSource: string;
 }
 
-export interface ConfigInspectionFacts {
-  serviceTargets: Fact<{ services: Record<string, ConfigServiceTargetFact> }>;
+export interface InspectFacts {
+  serviceTargets: Fact<{ services: Record<string, InspectServiceTargetFact> }>;
   deploymentConfiguration: Fact<{ requested: true }>;
-  dependencyTargets: Fact<{ targets: ConfigDependencyTarget[]; missing: string[] }>;
-  tenantDatabaseTarget: Fact<ConfigTenantDatabaseTargetFact>;
+  dependencyTargets: Fact<{ targets: InspectDependencyTarget[]; missing: string[] }>;
+  tenantDatabaseTarget: Fact<InspectTenantDatabaseTargetFact>;
   tenantRequest: Fact<{ tenantId: string; tenantName?: string; scopes: string[] }>;
 }
 
@@ -145,12 +173,12 @@ export interface DependencyInventoryObservation extends ObservationMeta {
   reason?: string;
 }
 
-export type ConfigObservation =
+export type InspectObservation =
   | EnvironmentConfigObservation
   | TenantConfigObservation
   | DependencyInventoryObservation;
 
-export interface ConfigComparisonRow {
+export interface ConfigurationComparisonRow {
   name: string;
   env?: JsonValue;
   tenantConfig?: {
@@ -159,19 +187,19 @@ export interface ConfigComparisonRow {
   };
 }
 
-export interface ConfigEvidence extends Evidence<ConfigObservation, ConfigInspectionFacts> {
-  rows: ConfigComparisonRow[];
+export interface InspectEvidence extends Evidence<InspectObservation, InspectFacts> {
+  rows: ConfigurationComparisonRow[];
 }
 
-export type ConfigFinding = never;
-export type ConfigDiagnosisGoal =
+export type InspectFinding = never;
+export type InspectDiagnosisGoal =
   | "environment-config"
   | "workload-runtime"
   | "runtime-dependencies"
   | "tenant-config";
-export type ConfigDiagnosis = Diagnosis<ConfigEvidence, ConfigFinding, ConfigDiagnosisGoal>;
+export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
 
-export interface ConfigCollectContext {
+export interface InspectCollectContext {
   executor: Executor;
   authorization: KubernetesAccessContext;
   pluginConfig: Readonly<Record<string, unknown>>;

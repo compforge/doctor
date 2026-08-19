@@ -6,8 +6,34 @@ export interface KubernetesPod {
   name: string;
   ip?: string;
   phase: string;
+  reason?: string;
+  message?: string;
+  conditions: KubernetesPodCondition[];
   labels: Record<string, string>;
   containers: KubernetesPodContainer[];
+}
+
+export interface KubernetesPodCondition {
+  type: string;
+  status: string;
+  reason?: string;
+  message?: string;
+  lastTransitionTime?: string;
+}
+
+export type KubernetesContainerState =
+  | { kind: "waiting"; reason?: string; message?: string }
+  | { kind: "running"; startedAt?: string }
+  | ({ kind: "terminated" } & KubernetesContainerTermination);
+
+export interface KubernetesContainerTermination {
+  exitCode?: number;
+  signal?: number;
+  reason?: string;
+  message?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  containerId?: string;
 }
 
 export interface KubernetesPodContainer {
@@ -17,8 +43,36 @@ export interface KubernetesPodContainer {
   ports?: Array<{ name?: string; containerPort: number }>;
   requests: Record<string, string>;
   limits: Record<string, string>;
+  ready?: boolean;
+  started?: boolean;
   restartCount: number;
+  state?: KubernetesContainerState;
+  lastTermination?: KubernetesContainerTermination;
   hasPreviousTerminated: boolean;
+}
+
+interface RawContainerTermination {
+  exitCode?: number;
+  signal?: number;
+  reason?: string;
+  message?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  containerID?: string;
+}
+
+interface RawContainerStatus {
+  name?: string;
+  imageID?: string;
+  ready?: boolean;
+  started?: boolean;
+  restartCount?: number;
+  state?: {
+    waiting?: { reason?: string; message?: string };
+    running?: { startedAt?: string };
+    terminated?: RawContainerTermination;
+  };
+  lastState?: { terminated?: RawContainerTermination };
 }
 
 interface KubernetesPodList {
@@ -38,14 +92,40 @@ interface KubernetesPodList {
     status?: {
       podIP?: string;
       phase?: string;
-      containerStatuses?: Array<{
-        name?: string;
-        imageID?: string;
-        restartCount?: number;
-        lastState?: { terminated?: { containerID?: string } };
+      reason?: string;
+      message?: string;
+      conditions?: Array<{
+        type?: string;
+        status?: string;
+        reason?: string;
+        message?: string;
+        lastTransitionTime?: string;
       }>;
+      containerStatuses?: RawContainerStatus[];
     };
   }>;
+}
+
+function termination(raw: RawContainerTermination | undefined): KubernetesContainerTermination | undefined {
+  if (!raw) return undefined;
+  return {
+    exitCode: raw.exitCode,
+    signal: raw.signal,
+    reason: raw.reason,
+    message: raw.message,
+    startedAt: raw.startedAt,
+    finishedAt: raw.finishedAt,
+    containerId: raw.containerID,
+  };
+}
+
+function containerState(raw: RawContainerStatus["state"]): KubernetesContainerState | undefined {
+  if (raw?.waiting) {
+    return { kind: "waiting", reason: raw.waiting.reason, message: raw.waiting.message };
+  }
+  if (raw?.running) return { kind: "running", startedAt: raw.running.startedAt };
+  const terminated = termination(raw?.terminated);
+  return terminated ? { kind: "terminated", ...terminated } : undefined;
 }
 
 export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[] {
@@ -73,7 +153,11 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
         ...(ports.length ? { ports } : {}),
         requests: container.resources?.requests ?? {},
         limits: container.resources?.limits ?? {},
+        ready: status?.ready,
+        started: status?.started,
         restartCount: status?.restartCount ?? 0,
+        state: containerState(status?.state),
+        lastTermination: termination(status?.lastState?.terminated),
         hasPreviousTerminated: !!status?.lastState?.terminated?.containerID,
       }];
     });
@@ -83,6 +167,19 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
       name,
       ip: item.status?.podIP,
       phase: item.status?.phase ?? "Unknown",
+      reason: item.status?.reason,
+      message: item.status?.message,
+      conditions: (item.status?.conditions ?? []).flatMap((condition) =>
+        condition.type && condition.status
+          ? [{
+              type: condition.type,
+              status: condition.status,
+              reason: condition.reason,
+              message: condition.message,
+              lastTransitionTime: condition.lastTransitionTime,
+            }]
+          : []
+      ),
       labels: item.metadata?.labels ?? {},
       containers: declaredContainers.length > 0 ? declaredContainers : (item.status?.containerStatuses ?? []).flatMap((container) => {
         const containerName = container.name?.trim();
@@ -93,7 +190,11 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
           imageId: container.imageID?.trim() || undefined,
           requests: {},
           limits: {},
+          ready: container.ready,
+          started: container.started,
           restartCount: container.restartCount ?? 0,
+          state: containerState(container.state),
+          lastTermination: termination(container.lastState?.terminated),
           hasPreviousTerminated: !!container.lastState?.terminated?.containerID,
         }];
       }),

@@ -41,7 +41,7 @@ make -C ../toolkit build-all
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log [id...]` | 通过 Plugin traceId capability 解析 trace ID，再按业务 ID 分组聚合服务日志 |
 | `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
-| `doctor config` | 展示 Service Pod、Toolchain 和配置对照，并可选采集 Deployment 配置与应用依赖 |
+| `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
 | `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
 | `doctor metric` | 使用 profile 中的 Prometheus，或临时抓取 Service `/metrics`，执行业务 detector 并生成离线 HTML 图表 |
@@ -58,7 +58,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 
 - [CLI Kernel 与 Collect 共享协议](docs/kernel.md)
 - [Collect 集合采集](docs/commands/collect.md)
-- [Config 诊断](docs/commands/config-diagnosis.md)
+- [Service Inspect](docs/commands/inspect.md)
 - [Metric 诊断](docs/commands/metric-diagnosis.md)
 - [Memory 诊断](docs/commands/memory-diagnosis.md)
 - [CPU 诊断](docs/commands/cpu-diagnosis.md)

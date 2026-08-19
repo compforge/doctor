@@ -1,13 +1,13 @@
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
-  ConfigComparisonRow,
-  ConfigDiagnosisGoal,
-  ConfigEvidence,
-  ConfigFinding,
-  ConfigInspectionFacts,
-  ConfigObservation,
+  ConfigurationComparisonRow,
   DependencyInventoryObservation,
   EnvironmentConfigObservation,
+  InspectDiagnosisGoal,
+  InspectEvidence,
+  InspectFacts,
+  InspectFinding,
+  InspectObservation,
   JsonValue,
   TenantConfigObservation,
 } from "./model";
@@ -26,27 +26,27 @@ function stable(value: JsonValue): string {
 }
 
 function environmentObservations(
-  observations: readonly ConfigObservation[],
+  observations: readonly InspectObservation[],
 ): EnvironmentConfigObservation[] {
   return observations.filter((item): item is EnvironmentConfigObservation => item.kind === "environment-config");
 }
 
-function tenantObservations(observations: readonly ConfigObservation[]): TenantConfigObservation[] {
+function tenantObservations(observations: readonly InspectObservation[]): TenantConfigObservation[] {
   return observations.filter((item): item is TenantConfigObservation => item.kind === "tenant-config");
 }
 
 function dependencyObservations(
-  observations: readonly ConfigObservation[],
+  observations: readonly InspectObservation[],
 ): DependencyInventoryObservation[] {
   return observations.filter(
     (item): item is DependencyInventoryObservation => item.kind === "dependency-inventory",
   );
 }
 
-export function buildConfigEvidence(
-  observations: readonly ConfigObservation[],
-  facts: ConfigInspectionFacts,
-): ConfigEvidence {
+export function buildInspectEvidence(
+  observations: readonly InspectObservation[],
+  facts: InspectFacts,
+): InspectEvidence {
   const rows = new Map<string, {
     displayName: string;
     environment: Array<{ source: string; value: JsonValue }>;
@@ -74,7 +74,7 @@ export function buildConfigEvidence(
       ensure(name).tenantConfig = { value, scope: observation.scope };
     }
   }
-  const comparisonRows: ConfigComparisonRow[] = [...rows.values()].map((row) => {
+  const comparisonRows: ConfigurationComparisonRow[] = [...rows.values()].map((row) => {
     const distinctValues = new Set(row.environment.map((item) => stable(item.value)));
     const env = row.environment.length === 0
       ? undefined
@@ -86,11 +86,11 @@ export function buildConfigEvidence(
   return { observations, facts, rows: comparisonRows };
 }
 
-export const configDetectors: readonly Detector<ConfigEvidence, ConfigFinding>[] = [];
+export const inspectDetectors: readonly Detector<InspectEvidence, InspectFinding>[] = [];
 
-export function buildConfigCoverage(
-  evidence: ConfigEvidence,
-): DiagnosisCoverage<ConfigDiagnosisGoal>[] {
+export function buildInspectCoverage(
+  evidence: InspectEvidence,
+): DiagnosisCoverage<InspectDiagnosisGoal>[] {
   const environmentMissing: string[] = [];
   if (evidence.facts.deploymentConfiguration.status !== "collected") {
     environmentMissing.push(evidence.facts.deploymentConfiguration.reason);
@@ -99,6 +99,7 @@ export function buildConfigCoverage(
     environmentMissing.push(evidence.facts.serviceTargets.reason);
   } else if (evidence.facts.deploymentConfiguration.status !== "unavailable") {
     for (const [service, target] of Object.entries(evidence.facts.serviceTargets.services)) {
+      if (!target.configurationSupported) continue;
       if (!target.deployments.length) environmentMissing.push(`${service} 没有可采集的 Deployment/Container`);
       for (const deployment of target.unavailableDeployments) {
         environmentMissing.push(`${service}/${deployment.deployment}: ${deployment.reason}`);
@@ -113,7 +114,7 @@ export function buildConfigCoverage(
     }
   }
   const collectedEnvironment = environmentObservations(evidence.observations).length;
-  const coverage: DiagnosisCoverage<ConfigDiagnosisGoal>[] = [{
+  const coverage: DiagnosisCoverage<InspectDiagnosisGoal>[] = [{
     goal: "environment-config",
     status: environmentMissing.length === 0 && collectedEnvironment > 0
       ? "sufficient"

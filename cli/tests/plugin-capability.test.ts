@@ -22,7 +22,7 @@ const plugin = {
 
 test("Plugin command 没有当前 Plugin 时不可运行", () => {
   const evaluation = evaluatePluginCapabilities(undefined, {
-    command: "doctor config",
+    command: "doctor inspect",
     needs: [],
   });
 
@@ -52,7 +52,7 @@ test("required Plugin capability 缺失时阻止命令并保留 provider", () =>
 
 test("preferred Plugin capability 缺失时允许命令降级", () => {
   const evaluation = evaluatePluginCapabilities(plugin, {
-    command: "doctor config",
+    command: "doctor inspect",
     needs: [{
       requirement: "preferred",
       capability: { scope: "plugin", name: "tenantConfiguration" },

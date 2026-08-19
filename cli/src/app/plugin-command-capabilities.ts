@@ -39,8 +39,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "定位业务数据源并返回约定数据",
     }],
   },
-  config: {
-    command: "doctor config",
+  inspect: {
+    command: "doctor inspect",
     needs: [{
       requirement: "preferred",
       capability: { scope: "plugin", name: "tenantConfiguration" },

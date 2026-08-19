@@ -36,25 +36,25 @@ import {
   type TenantPromptChoice,
 } from "../../terminal/tenant-selection";
 import type {
-  CollectConfigCliOpts,
-  ConfigCollectConfig,
-  ConfigOutputFormat,
+  CollectInspectCliOpts,
+  InspectConfig,
+  InspectOutputFormat,
 } from "./model";
 import type { CommandContext } from "../../command";
 
 export { resolveTenantPromptChoice } from "../../terminal/tenant-selection";
 
-export function parseConfigServices(raw: string, catalog: ServiceCatalog): string[] {
+export function parseInspectServices(raw: string, catalog: ServiceCatalog): string[] {
   const services = [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))];
   if (!services.length) throw new Error("--services 未解析出任何 Service");
-  const unsupported = services.filter((service) => !catalog.findWith(service, "config"));
+  const unsupported = services.filter((service) => !catalog.find(service));
   if (unsupported.length) {
-    throw new Error(`Doctor 未注册以下 Service 的配置采集能力：${unsupported.join(", ")}`);
+    throw new Error(`Doctor Plugin 未注册以下 Service：${unsupported.join(", ")}`);
   }
   return services;
 }
 
-export function parseConfigOutputFormat(value: string | undefined): ConfigOutputFormat {
+export function parseInspectOutputFormat(value: string | undefined): InspectOutputFormat {
   const format = value?.trim() || "html";
   if (format !== "json" && format !== "html" && format !== "md") {
     throw new Error(`--format 只支持 json、html 或 md: '${format}'`);
@@ -69,13 +69,13 @@ function parsePort(value: string | undefined, fallback: number, flag: string): n
   return port;
 }
 
-export function configReportName(now: Date): string {
+export function inspectReportName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `doctor-config-${timestamp}`;
+  return `doctor-inspect-${timestamp}`;
 }
 
-export function resolveConfigHtmlOutputPath(output: string | undefined, reportName: string): string {
+export function resolveInspectHtmlOutputPath(output: string | undefined, reportName: string): string {
   if (!output) return join(".", `${reportName}.html`);
   if (/\.(?:tar\.gz|tgz)$/i.test(output)) {
     throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz 后缀");
@@ -83,7 +83,7 @@ export function resolveConfigHtmlOutputPath(output: string | undefined, reportNa
   return output.toLowerCase().endsWith(".html") ? output : `${output}.html`;
 }
 
-export function resolveConfigMarkdownOutputPath(output: string | undefined, reportName: string): string {
+export function resolveInspectMarkdownOutputPath(output: string | undefined, reportName: string): string {
   if (!output) return join(".", `${reportName}.md`);
   if (/\.(?:tar\.gz|tgz|html)$/i.test(output)) {
     throw new Error("--format md 的输出路径不能使用 .tar.gz/.tgz/.html 后缀");
@@ -91,18 +91,18 @@ export function resolveConfigMarkdownOutputPath(output: string | undefined, repo
   return output.toLowerCase().endsWith(".md") ? output : `${output}.md`;
 }
 
-export function resolveConfigCollectConfig(
-  opts: CollectConfigCliOpts,
+export function resolveInspectConfig(
+  opts: CollectInspectCliOpts,
   plugin: PluginDefinition,
   commandContext?: CommandContext,
-): ConfigCollectConfig {
-  const format = parseConfigOutputFormat(opts.format);
+): InspectConfig {
+  const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
-  const reportName = configReportName(new Date());
+  const reportName = inspectReportName(new Date());
   const outputPath = format === "html"
-    ? resolveConfigHtmlOutputPath(opts.output, reportName)
+    ? resolveInspectHtmlOutputPath(opts.output, reportName)
     : format === "md"
-      ? resolveConfigMarkdownOutputPath(opts.output, reportName)
+      ? resolveInspectMarkdownOutputPath(opts.output, reportName)
       : undefined;
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   const resolvedProfile = commandContext
@@ -150,7 +150,7 @@ export function resolveConfigCollectConfig(
   return {
     namespace: namespace.namespace,
     namespaceSource: namespace.source,
-    services: opts.services === undefined ? [] : parseConfigServices(opts.services, plugin.services),
+    services: opts.services === undefined ? [] : parseInspectServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
     includeDeploymentConfig: opts.deploymentConfig === true,
     includeDependencies: opts.dependencies === true,
@@ -170,18 +170,18 @@ export function resolveConfigCollectConfig(
   };
 }
 
-export interface ConfigNamespaceSelectionInput {
-  config: ConfigCollectConfig;
+export interface InspectNamespaceSelectionInput {
+  config: InspectConfig;
   executor: Executor;
   interactive?: boolean;
   prompt?: PodNamespaceSelection["prompt"];
   access?: KubernetesAccessContext;
 }
 
-/** Config 与其它 Kubernetes 命令共用 Namespace 选择；flag/profile 仍是显式配置。 */
-export async function resolveConfigNamespaceSelection(
-  input: ConfigNamespaceSelectionInput,
-): Promise<ConfigCollectConfig | undefined> {
+/** Inspect 与其它 Kubernetes 命令共用 Namespace 选择；flag/profile 仍是显式配置。 */
+export async function resolveInspectNamespaceSelection(
+  input: InspectNamespaceSelectionInput,
+): Promise<InspectConfig | undefined> {
   const selected = await resolvePodNamespace({
     resolved: {
       namespace: input.config.namespace,
@@ -193,7 +193,7 @@ export async function resolveConfigNamespaceSelection(
     interactive: input.interactive,
     prompt: input.prompt,
     access: input.access,
-    selection: { purpose: "确定配置采集范围" },
+    selection: { purpose: "确定 Service Inspect 范围" },
   });
   if (!selected) return undefined;
   return {
@@ -240,38 +240,38 @@ function promptDependencyCollection(): Promise<boolean | undefined> {
   });
 }
 
-export interface ConfigDeploymentSelectionInput {
-  config: ConfigCollectConfig;
+export interface InspectDeploymentSelectionInput {
+  config: InspectConfig;
   interactive?: boolean;
   prompt?: () => Promise<boolean | undefined>;
 }
 
 /** CLI flag 视为预先确认；交互终端在 Service 选择后询问，非交互缺省跳过敏感配置。 */
-export async function resolveConfigDeploymentSelection(
-  input: ConfigDeploymentSelectionInput,
+export async function resolveInspectDeploymentSelection(
+  input: InspectDeploymentSelectionInput,
 ): Promise<boolean | undefined> {
   if (input.config.includeDeploymentConfig) return true;
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   return interactive && await (input.prompt ?? promptDeploymentConfigCollection)();
 }
 
-export interface ConfigDependencySelectionInput {
-  config: ConfigCollectConfig;
+export interface InspectDependencySelectionInput {
+  config: InspectConfig;
   interactive?: boolean;
   prompt?: () => Promise<boolean | undefined>;
 }
 
 /** CLI flag 视为预先确认；非交互缺省不进入业务 Container。 */
-export async function resolveConfigDependencySelection(
-  input: ConfigDependencySelectionInput,
+export async function resolveInspectDependencySelection(
+  input: InspectDependencySelectionInput,
 ): Promise<boolean | undefined> {
   if (input.config.includeDependencies) return true;
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   return interactive && await (input.prompt ?? promptDependencyCollection)();
 }
 
-export interface ConfigServiceSelectionInput {
-  config: ConfigCollectConfig;
+export interface InspectServiceSelectionInput {
+  config: InspectConfig;
   catalog: ServiceCatalog;
   executor: Executor;
   interactive?: boolean;
@@ -280,8 +280,8 @@ export interface ConfigServiceSelectionInput {
 }
 
 /** 显式 flag 直接采用；交互终端从当前 namespace 多选；非交互必须声明目标。 */
-export async function resolveConfigServiceSelection(
-  input: ConfigServiceSelectionInput,
+export async function resolveInspectServiceSelection(
+  input: InspectServiceSelectionInput,
 ): Promise<string[] | undefined> {
   if (input.config.servicesExplicit) return input.config.services;
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
@@ -289,7 +289,7 @@ export async function resolveConfigServiceSelection(
     throw new Error("非交互环境必须通过 --services 显式指定要统计的 Service");
   }
   const listed = (await listServiceChoices(input.executor, input.config.namespace))
-    .filter((choice) => input.catalog.findWith(choice.name, "config"));
+    .filter((choice) => input.catalog.find(choice.name));
   const recentInput = {
     namespace: input.config.namespace,
     kubeconfig: input.config.kube.kubeconfig,
@@ -299,13 +299,13 @@ export async function resolveConfigServiceSelection(
   };
   const choices = rankRecentServiceChoices(listed, recentInput);
   if (!choices.length) {
-    throw new Error(`namespace '${input.config.namespace}' 中没有具备配置采集能力的 Service`);
+    throw new Error(`namespace '${input.config.namespace}' 中没有当前 Plugin 注册的 Service`);
   }
   const selected = await (input.prompt ?? promptNamedChoices)({
     choices,
     defaults: [],
     candidateType: "Service",
-    context: { purpose: "确定配置采集范围" },
+    context: { purpose: "确定 Service Inspect 范围" },
   });
   if (selected) recordRecentServiceTargets(selected, recentInput);
   return selected;
@@ -326,8 +326,8 @@ async function promptTenant(
   });
 }
 
-export interface ConfigTenantSelectionInput {
-  config: ConfigCollectConfig;
+export interface InspectTenantSelectionInput {
+  config: InspectConfig;
   directory: TenantDirectory;
   interactive?: boolean;
   recent?: RecentSelections;
@@ -336,9 +336,9 @@ export interface ConfigTenantSelectionInput {
 }
 
 /** tenant-id 直接采用，tenant-name 走 GetTenant；交互缺省时通过 ListTenant 选择当前启用租户。 */
-export async function resolveConfigTenantSelection(
-  input: ConfigTenantSelectionInput,
-): Promise<ConfigCollectConfig | undefined> {
+export async function resolveInspectTenantSelection(
+  input: InspectTenantSelectionInput,
+): Promise<InspectConfig | undefined> {
   if (input.config.tenantId) return input.config;
   if (input.config.tenantName) {
     const tenant = await input.directory.getByName(input.config.tenantName);
