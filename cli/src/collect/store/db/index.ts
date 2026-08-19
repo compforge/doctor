@@ -6,7 +6,7 @@ import { runDiagnosis } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
 import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
-import type { StoreConfig } from "../config";
+import type { PodStoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle } from "../artifacts";
 import type { DbCommandContext } from "./context";
 import { buildDbCoverage, dbDetectors } from "./detector";
@@ -28,7 +28,7 @@ const DB_OUTCOMES: readonly OutcomeDecl[] = [
 ];
 
 export async function runStoreDb(
-  config: StoreConfig,
+  config: PodStoreConfig,
   commandContext: CommandContext,
   executor: Executor,
 ): Promise<number> {

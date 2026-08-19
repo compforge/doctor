@@ -1,9 +1,10 @@
-import type { ServiceVdbStoreCapability } from "@compforge/doctor-plugin";
+import type { ServiceVdbStoreCapability, ServiceVdbTarget } from "@compforge/doctor-plugin";
 import type { StoreConfig } from "../config";
 
 export interface VdbConfig {
   collect: StoreConfig["collect"];
-  target: StoreConfig["target"];
+  target?: NonNullable<StoreConfig["target"]>;
+  inspectedTarget?: ServiceVdbTarget;
   capability: ServiceVdbStoreCapability;
   store?: string;
   service?: string;
@@ -16,6 +17,7 @@ export function vdbConfigFromStore(config: StoreConfig): VdbConfig {
   return {
     collect: config.collect,
     target: config.target,
+    inspectedTarget: config.vdbTarget,
     capability,
     store: capability.store,
     service: config.backendService,

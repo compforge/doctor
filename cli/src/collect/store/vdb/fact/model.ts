@@ -2,7 +2,7 @@ import type { Fact } from "../../../protocol";
 
 export interface VdbExecutionFact {
   namespace: string;
-  pod: string;
+  pod?: string;
   container?: string;
 }
 
@@ -10,7 +10,7 @@ export interface VdbConfigurationFact {
   type: "opensearch" | "unsupported";
   backend: string;
   store: string;
-  configSource: "kubernetes-config" | "container-runtime";
+  configSource: "kubernetes-config" | "container-runtime" | "plugin";
   configurationKind: string;
   configPath?: string;
   endpoint?: string;

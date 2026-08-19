@@ -100,8 +100,8 @@ export async function finishStoreBundle(input: {
     target: {
       namespace: config.collect.kubernetes.namespace,
       service: config.service,
-      pod: config.target.pod,
-      container: config.target.container,
+      pod: config.target?.pod,
+      container: config.target?.container,
       store: config.capability.id,
       store_kind: config.capability.kind,
     },

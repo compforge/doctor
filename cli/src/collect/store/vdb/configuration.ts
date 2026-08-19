@@ -9,9 +9,10 @@ import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 
 interface VdbConnectionBase {
   store: string;
-  configSource: "kubernetes-config" | "container-runtime";
+  configSource: "kubernetes-config" | "container-runtime" | "plugin";
   configurationKind: string;
   configPath?: string;
+  source?: ServiceVdbTarget["source"];
 }
 
 export interface OpenSearchVdbConnection extends VdbConnectionBase {
@@ -66,6 +67,7 @@ function connectionFromTarget(
     configSource,
     configurationKind: target.configurationKind,
     configPath: target.configPath,
+    source: target.source,
   };
   return target.backend === "opensearch"
     ? {
@@ -76,6 +78,13 @@ function connectionFromTarget(
         password: target.password,
       }
     : { ...common, type: "unsupported", backend: target.backend };
+}
+
+export function confirmInspectedVdbTarget(target: ServiceVdbTarget): VdbTargetConfirmation {
+  return {
+    connection: connectionFromTarget(target, "plugin"),
+    captures: [],
+  };
 }
 
 async function resolveVdbConnection(

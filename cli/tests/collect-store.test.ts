@@ -3,6 +3,8 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OpenSearchReadApi } from "../src/infra/search/opensearch";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { runProbes } from "../src/collect/probe-engine";
 import {
@@ -52,6 +54,7 @@ import {
 import {
   parseStoreKinds,
   parseStoreOutputFormat,
+  resolveStoreProviderConfig,
   resolveStoreOutputPath,
 } from "../src/collect/store";
 import { writeStoreArtifacts } from "../src/collect/store/artifacts";
@@ -62,6 +65,63 @@ test("Store 类型支持一次选择多个并保持首次出现顺序", () => {
   expect(parseStoreKinds("db,redis,s3,db")).toEqual(["db", "redis", "s3"]);
   expect(parseStoreKinds(undefined)).toEqual([]);
   expect(() => parseStoreKinds("db,k8s")).toThrow("只支持 db、vdb、s3、redis");
+});
+
+test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod 已部署", async () => {
+  const command = ["get", "services", "-o", "json"];
+  const result: ExecResult = {
+    ok: true,
+    exitCode: 0,
+    stdout: '{"items":[]}',
+    stderr: "",
+    durationMs: 1,
+    timedOut: false,
+    command,
+  };
+  const executor: Executor = {
+    run: async () => result,
+    exec: async () => { throw new Error("Core 不应读取配置来源 Pod"); },
+  };
+  const plugin = {
+    id: "test",
+    version: "0.0.1",
+    services: createServiceCatalog([{
+      name: "logical-opensearch-provider",
+      capabilities: {
+        stores: [{
+          id: "trace",
+          kind: "vdb",
+          backend: "opensearch",
+          access: {},
+          inspectTarget: async () => ({
+            backend: "opensearch",
+            store: "opensearch",
+            endpoint: "http://opensearch.storage:9200",
+            configurationKind: "plugin",
+          }),
+        }],
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  const resolved = await resolveStoreProviderConfig({
+    type: "vdb",
+    service: "logical-opensearch-provider",
+    store: "trace",
+  }, plugin, {
+    profileName: "test",
+    kubernetes: {
+      kubeconfigSource: "test",
+      namespace: "app",
+      namespaceSource: "flag",
+    },
+  }, executor, new CommandContext({}));
+
+  expect(resolved?.config.target).toBeUndefined();
+  expect(resolved?.config.vdbTarget).toMatchObject({
+    endpoint: "http://opensearch.storage:9200",
+    configurationKind: "plugin",
+  });
 });
 
 describe("Store output", () => {

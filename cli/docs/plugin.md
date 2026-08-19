@@ -250,6 +250,17 @@ Plugin 的准备边界，不通过裁剪 Skill、修改 Skill 文案或维护宿
 Core 不接收再回传 Plugin-owned 的 selector 等实现细节。profile 切换后，Doctor 在下一次调用中注入新的
 上下文，Plugin 不持有 kubeconfig 或旧环境选择。
 
+Service capability 的输入只由两部分组成：Core 已知且受控的 `PluginContext`，以及该
+capability 实际需要的业务输入。`PluginContext` 可以携带 profile 环境、当前 Target namespace、
+已选逻辑 Service、Plugin-owned config 和受 access 约束的 infra；Core 不应为了调用 Service，
+先猜测其部署 namespace、Pod 或业务数据位置，再把这些 Plugin-owned 事实回传给 Plugin。
+
+当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
+`forNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
+access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
+例如 VDB Store capability 可由 `inspectTarget(context)` 自行定位配置来源，再向 Core 返回统一的
+`ServiceVdbTarget`；Core 只消费这个结果完成标准 VDB 诊断。
+
 网络 endpoint 跟随实际消费它的 capability 声明，不放在 Service 根上假设一个全局端口。同一 Service
 可以分别为 tenant directory、model catalog、inference、MCP 或 metrics 提供不同 endpoint；命令只为
 本轮选中的 capability 建立对应连接。

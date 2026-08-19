@@ -37,6 +37,8 @@ export interface KubernetesListOptions {
 
 /** Target-scoped Kubernetes transport owned and policy-controlled by Doctor Core. */
 export interface KubernetesAccess {
+  /** 在同一 Target cluster 内切换 namespace；具体 namespace 由 Plugin 自己决定。 */
+  forNamespace(namespace: string): KubernetesAccess;
   get<T>(resource: string, name: string): Promise<T>;
   list<T>(resource: string, options?: KubernetesListOptions): Promise<T[]>;
   exec(target: KubernetesExecTarget, command: readonly string[]): Promise<string>;

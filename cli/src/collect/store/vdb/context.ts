@@ -10,7 +10,7 @@ export interface VdbCommandContext {
   command: CommandContext;
   config: VdbConfig;
   executor: Executor;
-  execTarget: ExecTarget;
+  execTarget?: ExecTarget;
   kube: KubectlOptions & { namespace: string };
   bundle: EvidenceBundle;
   connection?: VdbConnection;

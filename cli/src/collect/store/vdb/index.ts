@@ -70,10 +70,12 @@ export async function runStoreVdb(
   const startedAt = new Date().toISOString();
   let facts: VdbInspectionFacts | undefined;
   let diagnosis: VdbDiagnosis | undefined;
+  const source = config.inspectedTarget?.source;
   const target: Record<string, unknown> = {
-    namespace,
-    pod: config.target.pod,
-    container: config.target.container,
+    namespace: source?.namespace ?? namespace,
+    pod: source?.pod ?? config.target?.pod,
+    container: source?.container ?? config.target?.container,
+    service: storeConfig.service,
   };
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   const ctx: VdbCommandContext = {
@@ -97,8 +99,8 @@ export async function runStoreVdb(
       inspectionFacts: facts ? { ...facts } : {},
       params: {
         namespace,
-        pod: config.target.pod,
-        container: config.target.container,
+        pod: source?.pod ?? config.target?.pod,
+        container: source?.container ?? config.target?.container,
         store: config.store,
         service: config.service,
         endpoint: safeEndpoint(config.endpoint),
@@ -169,8 +171,9 @@ export async function runStoreVdb(
     ? facts.configuration
     : undefined;
   const summary = buildVdbSummary({
-    pod: config.target.pod,
-    container: config.target.container,
+    pod: source?.pod ?? config.target?.pod,
+    container: source?.container ?? config.target?.container,
+    providerService: storeConfig.service,
     store: configuration?.store ?? config.store ?? "unknown",
     source: configuration
       ? `${configuration.configSource}/${configuration.configurationKind}`

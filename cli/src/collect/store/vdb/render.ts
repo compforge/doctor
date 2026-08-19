@@ -15,8 +15,9 @@ function formatBytes(value: number | undefined): string {
 }
 
 export function buildVdbSummary(input: {
-  pod: string;
+  pod?: string;
   container?: string;
+  providerService: string;
   store: string;
   source: string;
   channel: string;
@@ -32,7 +33,9 @@ export function buildVdbSummary(input: {
   const lines = [
     "# VDB 诊断摘要",
     "",
-    `- 配置来源: \`pod/${input.pod}${input.container ? ` container/${input.container}` : ""}\`（${input.source}）`,
+    `- 配置来源: ${input.pod
+      ? `\`pod/${input.pod}${input.container ? ` container/${input.container}` : ""}\``
+      : `Service \`${input.providerService}\``}（${input.source}）`,
     `- VDB: \`${input.store}\``,
     `- 访问通道: ${input.channel}`,
     `- 容量结论: **${vdbCapacityConclusion(observations)}**`,
