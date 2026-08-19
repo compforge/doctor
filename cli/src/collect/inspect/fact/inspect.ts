@@ -12,11 +12,17 @@ import {
   selectServiceContainer,
 } from "../../../infra/k8s/workload-config";
 import type { KubernetesWorkloadConfigSnapshot } from "../../../infra/k8s/workload-config";
+import type {
+  KubernetesContainerState,
+  KubernetesContainerTermination,
+} from "../../../infra/k8s/pod";
 import type { Inspect } from "../../inspection";
 import type {
   InspectCollectContext,
   InspectConfig,
+  InspectContainerTerminationFact,
   InspectFacts,
+  InspectPodContainerFact,
   InspectServiceTargetFact,
 } from "../model";
 
@@ -29,6 +35,28 @@ const DEPENDENCIES_SKIPPED_REASON = "用户未确认进入业务 Container 采�
 
 function sameToolchain(left: Toolchain, right: Toolchain): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function terminationFact(termination: KubernetesContainerTermination): InspectContainerTerminationFact {
+  return {
+    exitCode: termination.exitCode,
+    signal: termination.signal,
+    reason: termination.reason,
+    message: termination.message,
+    startedAt: termination.startedAt,
+    finishedAt: termination.finishedAt,
+  };
+}
+
+export function inspectContainerStateFact(
+  state: KubernetesContainerState | undefined,
+): InspectPodContainerFact["state"] {
+  if (!state) return undefined;
+  if (state.kind === "waiting") {
+    return { kind: state.kind, reason: state.reason, message: state.message };
+  }
+  if (state.kind === "running") return { kind: state.kind, startedAt: state.startedAt };
+  return { kind: state.kind, ...terminationFact(state) };
 }
 
 function dependencyTargets(
@@ -261,16 +289,9 @@ export function makeServiceTargetsInspect(
                     },
                     ready: container.ready,
                     restartCount: container.restartCount,
-                    state: container.state ? { ...container.state } : undefined,
+                    state: inspectContainerStateFact(container.state),
                     lastTermination: container.lastTermination
-                      ? {
-                          exitCode: container.lastTermination.exitCode,
-                          signal: container.lastTermination.signal,
-                          reason: container.lastTermination.reason,
-                          message: container.lastTermination.message,
-                          startedAt: container.lastTermination.startedAt,
-                          finishedAt: container.lastTermination.finishedAt,
-                        }
+                      ? terminationFact(container.lastTermination)
                       : undefined,
                   })),
                 })),

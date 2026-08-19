@@ -12,6 +12,7 @@ import {
   type InspectConfig,
 } from "../src/collect/inspect";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -24,6 +25,18 @@ function result(stdout = ""): ExecResult {
     command: ["kubectl"],
   };
 }
+
+test("terminated state 只投影 Inspect Fact 声明的字段", () => {
+  const state = inspectContainerStateFact({
+    kind: "terminated",
+    reason: "OOMKilled",
+    exitCode: 137,
+    containerId: "containerd://runtime-only",
+  });
+
+  expect(state).toMatchObject({ kind: "terminated", reason: "OOMKilled", exitCode: 137 });
+  expect(state).not.toHaveProperty("containerId");
+});
 
 test("inspect 在缺省 Namespace 时复用交互选择", async () => {
   const config: InspectConfig = {
