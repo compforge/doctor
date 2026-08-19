@@ -104,7 +104,7 @@ function createKubernetesAccess(
       }),
     );
     return {
-      forNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
+      inNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
       get: async <T>(resource: string, name: string) => {
         assertDeclared("get", resource, name);
         return parseJson<T>(
