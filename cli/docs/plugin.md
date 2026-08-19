@@ -256,7 +256,7 @@ capability 实际需要的业务输入。`PluginContext` 可以携带 profile �
 先猜测其部署 namespace、Pod 或业务数据位置，再把这些 Plugin-owned 事实回传给 Plugin。
 
 当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
-`forNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
+`inNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
 access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
 例如 VDB Store capability 可由 `inspectTarget(context)` 自行定位配置来源，再向 Core 返回统一的
 `ServiceVdbTarget`；Core 只消费这个结果完成标准 VDB 诊断。
