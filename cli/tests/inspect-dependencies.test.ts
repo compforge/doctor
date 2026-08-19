@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import {
   parseDependencyPayload,
   parseGoDependencyOutput,
-} from "../src/collect/config";
+} from "../src/collect/inspect";
 
 test("依赖采集输出归一化、去重并稳定排序", () => {
   expect(parseDependencyPayload(JSON.stringify({

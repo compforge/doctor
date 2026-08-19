@@ -5,13 +5,14 @@ import { join } from "node:path";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { examplePlugin } from "../../plugins/example/src";
 import {
-  resolveConfigDeploymentSelection,
-  resolveConfigDependencySelection,
-  resolveConfigNamespaceSelection,
-  runCollectConfig,
-  type ConfigCollectConfig,
-} from "../src/collect/config";
+  resolveInspectDeploymentSelection,
+  resolveInspectDependencySelection,
+  resolveInspectNamespaceSelection,
+  runCollectInspect,
+  type InspectConfig,
+} from "../src/collect/inspect";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -25,8 +26,20 @@ function result(stdout = ""): ExecResult {
   };
 }
 
-test("config 在缺省 Namespace 时复用交互选择", async () => {
-  const config: ConfigCollectConfig = {
+test("terminated state 只投影 Inspect Fact 声明的字段", () => {
+  const state = inspectContainerStateFact({
+    kind: "terminated",
+    reason: "OOMKilled",
+    exitCode: 137,
+    containerId: "containerd://runtime-only",
+  });
+
+  expect(state).toMatchObject({ kind: "terminated", reason: "OOMKilled", exitCode: 137 });
+  expect(state).not.toHaveProperty("containerId");
+});
+
+test("inspect 在缺省 Namespace 时复用交互选择", async () => {
+  const config: InspectConfig = {
     namespace: "default",
     namespaceSource: "default",
     services: [],
@@ -34,7 +47,7 @@ test("config 在缺省 Namespace 时复用交互选择", async () => {
     includeDeploymentConfig: false,
     includeDependencies: false,
     format: "html",
-    reportName: "doctor-config-test",
+    reportName: "doctor-inspect-test",
     profileName: "default",
     kube: { namespace: "default", kubeconfig: "/tmp/kubeconfig" },
   };
@@ -47,14 +60,14 @@ test("config 在缺省 Namespace 时复用交互选择", async () => {
     })),
     exec: async () => { throw new Error("unexpected exec"); },
   };
-  expect(await resolveConfigNamespaceSelection({
+  expect(await resolveInspectNamespaceSelection({
     config,
     executor,
     interactive: true,
     prompt: async ({ choices, defaultNamespace, selection }) => {
       expect(choices.map((choice) => choice.name)).toEqual(["default", "vke-system"]);
       expect(defaultNamespace).toBe("default");
-      expect(selection.purpose).toBe("确定配置采集范围");
+      expect(selection.purpose).toBe("确定 Service Inspect 范围");
       return "vke-system";
     },
   })).toMatchObject({
@@ -65,7 +78,7 @@ test("config 在缺省 Namespace 时复用交互选择", async () => {
 });
 
 test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () => {
-  const config: ConfigCollectConfig = {
+  const config: InspectConfig = {
     namespace: "demo",
     namespaceSource: "default",
     services: ["example-api"],
@@ -73,33 +86,33 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
     includeDeploymentConfig: false,
     includeDependencies: false,
     format: "html",
-    reportName: "doctor-config-test",
+    reportName: "doctor-inspect-test",
     profileName: "default",
     kube: { namespace: "demo" },
   };
-  expect(await resolveConfigDeploymentSelection({ config, interactive: false })).toBe(false);
-  expect(await resolveConfigDeploymentSelection({
+  expect(await resolveInspectDeploymentSelection({ config, interactive: false })).toBe(false);
+  expect(await resolveInspectDeploymentSelection({
     config,
     interactive: true,
     prompt: async () => true,
   })).toBe(true);
-  expect(await resolveConfigDeploymentSelection({
+  expect(await resolveInspectDeploymentSelection({
     config: { ...config, includeDeploymentConfig: true },
     interactive: false,
   })).toBe(true);
-  expect(await resolveConfigDependencySelection({ config, interactive: false })).toBe(false);
-  expect(await resolveConfigDependencySelection({
+  expect(await resolveInspectDependencySelection({ config, interactive: false })).toBe(false);
+  expect(await resolveInspectDependencySelection({
     config,
     interactive: true,
     prompt: async () => true,
   })).toBe(true);
-  expect(await resolveConfigDependencySelection({
+  expect(await resolveInspectDependencySelection({
     config: { ...config, includeDependencies: true },
     interactive: false,
   })).toBe(true);
 });
 
-test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage", async () => {
+test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage", async () => {
   const resources = {
     services: JSON.stringify({ items: [{
       metadata: { name: "example-api", namespace: "demo" },
@@ -128,7 +141,33 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
           limits: { cpu: "1", memory: "1Gi" },
         },
       }] },
-      status: { phase: "Running" },
+      status: {
+        phase: "Running",
+        conditions: [{
+          type: "Ready",
+          status: "False",
+          reason: "ContainersNotReady",
+          message: "containers with unready status: [example-api]",
+        }],
+        containerStatuses: [{
+          name: "example-api",
+          imageID: "example.test/example-api@sha256:1234",
+          ready: false,
+          restartCount: 12,
+          state: {
+            waiting: {
+              reason: "CrashLoopBackOff",
+              message: "back-off restarting failed container example-api",
+            },
+          },
+          lastState: { terminated: {
+            containerID: "containerd://previous",
+            exitCode: 137,
+            reason: "OOMKilled",
+            finishedAt: "2026-08-19T02:00:00Z",
+          } },
+        }],
+      },
     }] }),
   };
   const queriedResources: string[] = [];
@@ -148,12 +187,12 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
       }));
     },
   };
-  const dir = mkdtempSync(join(tmpdir(), "doctor-config-test-"));
+  const dir = mkdtempSync(join(tmpdir(), "doctor-inspect-test-"));
   try {
     const configPath = join(dir, "config.yaml");
     writeFileSync(configPath, "");
     const completeOutput = join(dir, "complete.md");
-    expect(await runCollectConfig({
+    expect(await runCollectInspect({
       namespace: "demo",
       services: "example-api",
       deploymentConfig: true,
@@ -165,13 +204,17 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
     expect(complete).toContain("250m");
+    expect(complete).toContain("Ready=False: ContainersNotReady");
+    expect(complete).toContain("restarts=12");
+    expect(complete).toContain("waiting: CrashLoopBackOff");
+    expect(complete).toContain("last=terminated: OOMKilled, exit=137");
     expect(complete).toContain("REQUEST_TIMEOUT");
     expect(complete).toContain("environment-config：sufficient");
     expect(complete).toContain("workload-runtime：sufficient");
 
     queriedResources.length = 0;
     const partialOutput = join(dir, "partial.md");
-    expect(await runCollectConfig({
+    expect(await runCollectInspect({
       namespace: "demo",
       services: "example-api",
       config: configPath,
@@ -187,7 +230,7 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
     expect(partial).toContain("用户未确认采集 Deployment Env/ConfigMap");
 
     const dependenciesOutput = join(dir, "dependencies.md");
-    expect(await runCollectConfig({
+    expect(await runCollectInspect({
       namespace: "demo",
       services: "example-api",
       dependencies: true,
@@ -209,14 +252,13 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
       services: createServiceCatalog([{
         name: "example-api",
         capabilities: {
-          config: {},
           log: { default: true },
         },
       }]),
     } satisfies PluginDefinition;
     const unavailableOutput = join(dir, "dependencies-without-toolchain.md");
     const commandsBeforeUnavailable = dependencyCommands.length;
-    expect(await runCollectConfig({
+    expect(await runCollectInspect({
       namespace: "demo",
       services: "example-api",
       dependencies: true,
@@ -227,6 +269,7 @@ test("config 分别交付 Pod 运行态、可选部署配置和 partial Coverage
     expect(dependencyCommands).toHaveLength(commandsBeforeUnavailable);
     const unavailable = readFileSync(unavailableOutput, "utf-8");
     expect(unavailable).toContain("Plugin 未声明 Toolchain");
+    expect(unavailable).toContain("未声明");
     expect(unavailable).toContain("runtime-dependencies：insufficient");
   } finally {
     rmSync(dir, { recursive: true, force: true });

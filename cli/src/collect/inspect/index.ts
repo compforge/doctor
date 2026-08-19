@@ -24,34 +24,34 @@ import {
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import {
-  resolveConfigCollectConfig,
-  resolveConfigDependencySelection,
-  resolveConfigDeploymentSelection,
-  resolveConfigNamespaceSelection,
-  resolveConfigServiceSelection,
-  resolveConfigTenantSelection,
-} from "./config";
-import { buildConfigCoverage, buildConfigEvidence, configDetectors } from "./detector";
-import { makeConfigTargetsInspect } from "./fact/inspect";
+  resolveInspectConfig,
+  resolveInspectDependencySelection,
+  resolveInspectDeploymentSelection,
+  resolveInspectNamespaceSelection,
+  resolveInspectServiceSelection,
+  resolveInspectTenantSelection,
+} from "./options";
+import { buildInspectCoverage, buildInspectEvidence, inspectDetectors } from "./detector";
+import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
-  CollectConfigCliOpts,
-  ConfigCollectConfig,
-  ConfigCollectContext,
-  ConfigDiagnosis,
-  ConfigInspectionFacts,
+  CollectInspectCliOpts,
+  InspectCollectContext,
+  InspectConfig,
+  InspectDiagnosis,
+  InspectFacts,
 } from "./model";
-import { makeConfigProbes } from "./probe";
-import { buildConfigHtml, buildConfigHtmlSections, buildConfigSummary } from "./render";
+import { makeInspectProbes } from "./probe";
+import { buildInspectHtml, buildInspectHtmlSections, buildInspectSummary } from "./render";
 
-export * from "./config";
+export * from "./options";
 export * from "./detector";
 export * from "./model";
 export * from "./probe";
 export * from "./render";
 
 /** commander 入口只编排目标选择、Inspect、Probe、Evidence/Detector 与交付。 */
-export async function runCollectConfig(
-  opts: CollectConfigCliOpts,
+export async function runCollectInspect(
+  opts: CollectInspectCliOpts,
   plugin: PluginDefinition,
   injectedExecutor?: Executor,
   injectedTenantConfigReader?: TenantConfigReader,
@@ -61,7 +61,7 @@ export async function runCollectConfig(
   const startedAt = new Date().toISOString();
   let config;
   try {
-    config = resolveConfigCollectConfig(opts, plugin, commandContext);
+    config = resolveInspectConfig(opts, plugin, commandContext);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -76,7 +76,7 @@ export async function runCollectConfig(
     });
   }
   const namespaceAuthorization = resolveKubernetesCommandContext(executor, commandContext).access;
-  const namespaceConfig = await resolveConfigNamespaceSelection({
+  const namespaceConfig = await resolveInspectNamespaceSelection({
     config,
     executor,
     access: namespaceAuthorization,
@@ -90,16 +90,16 @@ export async function runCollectConfig(
   if (!injectedExecutor) executor = new KubectlExecutor(config.kube);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(authorization, {
-    command: "doctor config",
+    command: "doctor inspect",
     needs: [{
       requirement: "required",
       rule: { verb: "list", resource: "services" },
-      purpose: "解析要盘点配置的 Service",
+      purpose: "解析要 Inspect 的 Service",
     }],
   });
   let services;
   try {
-    services = await resolveConfigServiceSelection({ config, catalog: plugin.services, executor });
+    services = await resolveInspectServiceSelection({ config, catalog: plugin.services, executor });
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -109,7 +109,7 @@ export async function runCollectConfig(
     return 130;
   }
   config = { ...config, services };
-  const includeDeploymentConfig = await resolveConfigDeploymentSelection({ config });
+  const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
   if (includeDeploymentConfig === undefined) {
     terminalStderr.warning("[collect] 已取消\n");
     return 130;
@@ -120,7 +120,7 @@ export async function runCollectConfig(
       ? "[collect] Deployment Env/ConfigMap：已确认采集\n"
       : "[collect] Deployment Env/ConfigMap：已跳过（未确认采集）\n",
   );
-  const includeDependencies = await resolveConfigDependencySelection({ config });
+  const includeDependencies = await resolveInspectDependencySelection({ config });
   if (includeDependencies === undefined) {
     terminalStderr.warning("[collect] 已取消\n");
     return 130;
@@ -149,7 +149,7 @@ export async function runCollectConfig(
     fallback: "权限缺失时仍交付 Pod、Env 与 Tenant 配置，依赖清单标记为缺失",
   }] : [];
   await enforceKubernetesAccess(authorization, {
-    command: "doctor config",
+    command: "doctor inspect",
     needs: [
       ...deploymentNeeds,
       {
@@ -186,7 +186,7 @@ export async function runCollectConfig(
           name: config.tenantConfiguration.directoryTarget.service,
           port: config.tenantConfiguration.directoryTarget.port,
         },
-        command: "doctor config",
+        command: "doctor inspect",
         capability: tenantDirectoryService.capabilities.tenantDirectory,
         authorization,
       })
@@ -196,11 +196,11 @@ export async function runCollectConfig(
       ? tenantDirectoryService.capabilities.tenantDirectory.create(directoryContext!)
       : undefined
   );
-  let selectedConfig: ConfigCollectConfig | undefined = config;
+  let selectedConfig: InspectConfig | undefined = config;
   let tenantSelectionFailure: string | undefined;
   if (tenantDirectory) {
     try {
-      selectedConfig = await resolveConfigTenantSelection({
+      selectedConfig = await resolveInspectTenantSelection({
         config,
         directory: tenantDirectory,
         log: (line) => terminalStdout.write(`${line}\n`),
@@ -221,14 +221,14 @@ export async function runCollectConfig(
   }
   config = selectedConfig;
 
-  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-config-"));
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
   const staging = join(stagingRoot, config.reportName);
   const bundle = new EvidenceBundle(staging);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
-  let facts: ConfigInspectionFacts | undefined;
-  let diagnosis: ConfigDiagnosis | undefined;
+  let facts: InspectFacts | undefined;
+  let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
-  const ctx: ConfigCollectContext = {
+  const ctx: InspectCollectContext = {
     executor,
     authorization,
     pluginConfig: commandContext?.profile.pluginConfig ?? {},
@@ -268,7 +268,7 @@ export async function runCollectConfig(
 
   const fail = async (reason: string): Promise<number> => {
     bundle.settle(reason);
-    bundle.writeSummary(diagnosis ? buildConfigSummary(diagnosis) : `# Service 实际配置统计失败\n\n${reason}\n`);
+    bundle.writeSummary(diagnosis ? buildInspectSummary(diagnosis) : `# Service Inspect 失败\n\n${reason}\n`);
     writeManifest();
     const failure = await deliverFailureBundle({
       bundleDir: staging,
@@ -279,7 +279,7 @@ export async function runCollectConfig(
     });
     if (failure.packed.ok) {
       rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStderr.error(`[collect] 配置采集失败，Evidence Bundle: ${failure.path}\n`);
+      terminalStderr.error(`[collect] Service Inspect 失败，Evidence Bundle: ${failure.path}\n`);
     } else {
       terminalStderr.error(`[collect] 失败 Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
     }
@@ -288,22 +288,22 @@ export async function runCollectConfig(
 
   try {
     facts = await runInspects(
-      [makeConfigTargetsInspect(config, plugin.services, tenantCapability)],
+      [makeServiceTargetsInspect(config, plugin.services, tenantCapability)],
       ctx,
       log,
-    ) as ConfigInspectionFacts;
+    ) as InspectFacts;
     diagnosis = await runDiagnosis({
       ctx,
       facts,
       config,
-      probes: makeConfigProbes(facts, config),
+      probes: makeInspectProbes(facts, config),
       log,
-      buildEvidence: buildConfigEvidence,
-      detectors: configDetectors,
-      buildCoverage: buildConfigCoverage,
+      buildEvidence: buildInspectEvidence,
+      detectors: inspectDetectors,
+      buildCoverage: buildInspectCoverage,
     });
   } catch (error) {
-    reportError(error, { context: "doctor config/diagnosis", summary: "配置诊断失败" });
+    reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
   } finally {
     await ctx?.closeTenantAccess?.();
@@ -316,7 +316,7 @@ export async function runCollectConfig(
     return await fail(reason);
   }
 
-  bundle.writeSummary(buildConfigSummary(diagnosis));
+  bundle.writeSummary(buildInspectSummary(diagnosis));
   writeManifest();
   if (config.format === "json") {
     terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
@@ -327,7 +327,7 @@ export async function runCollectConfig(
     try {
       copyFileSync(join(staging, "summary.md"), config.outputPath!);
     } catch (error) {
-      reportError(error, { context: "doctor config/markdown-report", summary: "Markdown 报告生成失败" });
+      reportError(error, { context: "doctor inspect/markdown-report", summary: "Markdown 报告生成失败" });
       return await fail(error instanceof Error ? error.message : String(error));
     }
     rmSync(stagingRoot, { recursive: true, force: true });
@@ -336,13 +336,13 @@ export async function runCollectConfig(
   }
   try {
     writeHtmlReport(staging, config.outputPath!, {
-      title: "doctor Service 配置统计",
+      title: "doctor Service Inspect",
       profileName: config.profileName,
-      summaryHtml: buildConfigHtml(diagnosis),
-      sections: buildConfigHtmlSections(diagnosis),
+      summaryHtml: buildInspectHtml(diagnosis),
+      sections: buildInspectHtmlSections(diagnosis),
     });
   } catch (error) {
-    reportError(error, { context: "doctor config/html-report", summary: "HTML 报告生成失败" });
+    reportError(error, { context: "doctor inspect/html-report", summary: "HTML 报告生成失败" });
     return await fail(error instanceof Error ? error.message : String(error));
   }
   rmSync(stagingRoot, { recursive: true, force: true });

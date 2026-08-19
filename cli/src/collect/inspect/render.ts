@@ -6,9 +6,12 @@ import {
   type HtmlReportSection,
 } from "../output/html";
 import type {
-  ConfigComparisonRow,
-  ConfigDiagnosis,
+  ConfigurationComparisonRow,
   DependencyInventoryObservation,
+  InspectContainerTerminationFact,
+  InspectDiagnosis,
+  InspectPodContainerFact,
+  InspectPodRuntimeFact,
   JsonValue,
 } from "./model";
 
@@ -17,7 +20,7 @@ function displayValue(value: JsonValue | undefined): string {
   return typeof value === "string" ? value : JSON.stringify(value);
 }
 
-function displayTenantConfig(row: ConfigComparisonRow): string {
+function displayTenantConfig(row: ConfigurationComparisonRow): string {
   return row.tenantConfig
     ? `${displayValue(row.tenantConfig.value)}\nscope: ${row.tenantConfig.scope}`
     : "—";
@@ -41,7 +44,7 @@ function markdownTable(headers: readonly string[], rows: readonly (readonly stri
   ];
 }
 
-function tableRows(diagnosis: ConfigDiagnosis): string[][] {
+function tableRows(diagnosis: InspectDiagnosis): string[][] {
   return diagnosis.evidence.rows.map((row) => [
     row.name,
     displayValue(row.env),
@@ -53,8 +56,9 @@ const POD_TABLE_HEADERS = [
   "Service",
   "Pod 数量",
   "Pod",
-  "Phase",
+  "Pod 状态",
   "Container",
+  "Container 状态",
   "Image（含 tag/digest）",
   "CPU request",
   "CPU limit",
@@ -62,7 +66,53 @@ const POD_TABLE_HEADERS = [
   "Memory limit",
 ] as const;
 
-function podRows(diagnosis: ConfigDiagnosis): string[][] {
+function podStatus(pod: InspectPodRuntimeFact): string {
+  const conditions = pod.conditions
+    .filter((condition) => condition.type === "Ready" || condition.status !== "True")
+    .map((condition) => [
+      `${condition.type}=${condition.status}`,
+      condition.reason,
+      condition.message,
+    ].filter(Boolean).join(": "));
+  return [
+    `phase=${pod.phase}`,
+    pod.reason ? `reason=${pod.reason}` : undefined,
+    pod.message,
+    ...conditions,
+  ].filter((line): line is string => !!line).join("\n");
+}
+
+function terminationStatus(termination: InspectContainerTerminationFact): string {
+  const result = [
+    termination.reason,
+    termination.exitCode !== undefined ? `exit=${termination.exitCode}` : undefined,
+    termination.signal !== undefined ? `signal=${termination.signal}` : undefined,
+  ].filter(Boolean).join(", ");
+  return `terminated${result ? `: ${result}` : ""}`;
+}
+
+function containerStatus(container: InspectPodContainerFact): string {
+  const state = container.state?.kind === "waiting"
+    ? ["waiting", container.state.reason].filter(Boolean).join(": ")
+    : container.state?.kind === "running"
+      ? "running"
+      : container.state?.kind === "terminated"
+        ? terminationStatus(container.state)
+        : "unknown";
+  const stateMessage = container.state?.kind === "waiting" || container.state?.kind === "terminated"
+    ? container.state.message
+    : undefined;
+  return [
+    container.ready === undefined ? undefined : `ready=${container.ready}`,
+    `restarts=${container.restartCount}`,
+    state,
+    stateMessage,
+    container.lastTermination ? `last=${terminationStatus(container.lastTermination)}` : undefined,
+    container.lastTermination?.message,
+  ].filter((line): line is string => !!line).join("\n");
+}
+
+function podRows(diagnosis: InspectDiagnosis): string[][] {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
   return Object.values(diagnosis.evidence.facts.serviceTargets.services)
     .sort((left, right) => left.service.localeCompare(right.service))
@@ -79,22 +129,24 @@ function podRows(diagnosis: ConfigDiagnosis): string[][] {
           "—",
           "—",
           "—",
+          "—",
         ]];
       }
       const count = String(target.podRuntime.pods.length);
       if (!target.podRuntime.pods.length) {
-        return [[target.service, count, "—", "—", "—", "—", "—", "—", "—", "—"]];
+        return [[target.service, count, "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
       }
       return target.podRuntime.pods.flatMap((pod) => {
         if (!pod.containers.length) {
-          return [[target.service, count, pod.pod, pod.phase, "—", "—", "—", "—", "—", "—"]];
+          return [[target.service, count, pod.pod, podStatus(pod), "—", "—", "—", "—", "—", "—", "—"]];
         }
         return pod.containers.map((container) => [
           target.service,
           count,
           pod.pod,
-          pod.phase,
+          podStatus(pod),
           container.name,
+          containerStatus(container),
           container.image || "—",
           container.requests.cpu ?? "—",
           container.limits.cpu ?? "—",
@@ -105,7 +157,7 @@ function podRows(diagnosis: ConfigDiagnosis): string[][] {
     });
 }
 
-function podSummary(diagnosis: ConfigDiagnosis): string {
+function podSummary(diagnosis: InspectDiagnosis): string {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return "—";
   const targets = Object.values(diagnosis.evidence.facts.serviceTargets.services);
   const pods = new Set(targets.flatMap((target) => target.podRuntime.status === "collected"
@@ -116,25 +168,25 @@ function podSummary(diagnosis: ConfigDiagnosis): string {
     : String(pods.size);
 }
 
-function tenantLabel(diagnosis: ConfigDiagnosis): string {
+function tenantLabel(diagnosis: InspectDiagnosis): string {
   return diagnosis.evidence.facts.tenantRequest.status === "collected"
     ? `${diagnosis.evidence.facts.tenantRequest.tenantName ?? "未命名"}（${diagnosis.evidence.facts.tenantRequest.tenantId}）`
     : "未选择";
 }
 
-function deploymentConfigLabel(diagnosis: ConfigDiagnosis): string {
+function deploymentConfigLabel(diagnosis: InspectDiagnosis): string {
   const fact = diagnosis.evidence.facts.deploymentConfiguration;
   if (fact.status === "collected") return "已采集";
   return `${fact.status === "failed" ? "不完整" : "未采集"}（${fact.reason}）`;
 }
 
-function dependencyObservations(diagnosis: ConfigDiagnosis): DependencyInventoryObservation[] {
+function dependencyObservations(diagnosis: InspectDiagnosis): DependencyInventoryObservation[] {
   return diagnosis.evidence.observations.filter(
     (item): item is DependencyInventoryObservation => item.kind === "dependency-inventory",
   );
 }
 
-function dependencyLabel(diagnosis: ConfigDiagnosis): string {
+function dependencyLabel(diagnosis: InspectDiagnosis): string {
   const targets = diagnosis.evidence.facts.dependencyTargets;
   if (targets.status !== "collected") return `未采集（${targets.reason}）`;
   const observations = dependencyObservations(diagnosis);
@@ -149,9 +201,10 @@ const TOOLCHAIN_TABLE_HEADERS = [
   "Execution platform",
   "Dependency manager",
   "Build tool",
+  "Config capability",
 ] as const;
 
-function toolchainRows(diagnosis: ConfigDiagnosis): string[][] {
+function toolchainRows(diagnosis: InspectDiagnosis): string[][] {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
   return Object.values(diagnosis.evidence.facts.serviceTargets.services)
     .sort((left, right) => left.service.localeCompare(right.service))
@@ -161,6 +214,7 @@ function toolchainRows(diagnosis: ConfigDiagnosis): string[][] {
       target.toolchain?.executionPlatform ?? "—",
       target.toolchain?.dependencyManager ?? "—",
       target.toolchain?.buildTool ?? "—",
+      target.configurationSupported ? "支持" : "未声明",
     ]);
 }
 
@@ -172,7 +226,7 @@ const DEPENDENCY_TABLE_HEADERS = [
   "Version",
 ] as const;
 
-function dependencyRows(diagnosis: ConfigDiagnosis): string[][] {
+function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
   return dependencyObservations(diagnosis).flatMap((observation) => {
     const prefix = [
       observation.services.join(", "),
@@ -191,12 +245,12 @@ function dependencyRows(diagnosis: ConfigDiagnosis): string[][] {
   });
 }
 
-export function buildConfigSummary(diagnosis: ConfigDiagnosis): string {
+export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
     : 0;
   return [
-    "# Service 配置统计",
+    "# Service Inspect",
     "",
     `- Service：${services}`,
     `- Pod：${podSummary(diagnosis)}`,
@@ -213,30 +267,34 @@ export function buildConfigSummary(diagnosis: ConfigDiagnosis): string {
       ...item.missingEvidence.map((missing) => `  - 缺失：${missing}`),
     ]),
     "",
-    "## Pod 运行态",
+    "## Workload",
+    "",
+    "### Pod 运行态",
     "",
     ...markdownTable(POD_TABLE_HEADERS, podRows(diagnosis)),
     "",
-    "## Toolchain",
+    "### Toolchain",
     "",
     ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
     "",
-    "## 应用依赖",
+    "### 应用依赖",
     "",
     ...markdownTable(DEPENDENCY_TABLE_HEADERS, dependencyRows(diagnosis)),
     "",
-    "## 配置对照",
+    "## 配置",
+    "",
+    "### 配置对照",
     "",
     ...markdownTable(["name", "Env（ConfigMap + Deployment env）", "Tenant config"], tableRows(diagnosis)),
   ].join("\n");
 }
 
-export function buildConfigHtml(diagnosis: ConfigDiagnosis): string {
+export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
     : 0;
   return [
-    htmlHeading(1, "Service 配置统计"),
+    htmlHeading(1, "Service Inspect"),
     htmlList([
       `Service：${services}`,
       `Pod：${podSummary(diagnosis)}`,
@@ -256,18 +314,18 @@ export function buildConfigHtml(diagnosis: ConfigDiagnosis): string {
   ].join("\n");
 }
 
-export function buildConfigHtmlSections(diagnosis: ConfigDiagnosis): HtmlReportSection[] {
+export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlReportSection[] {
   return [
     {
-      title: "Pod 运行态",
+      title: "Workload / Pod 运行态",
       html: htmlTable(POD_TABLE_HEADERS, podRows(diagnosis)),
     },
     {
-      title: "Toolchain",
+      title: "Workload / Toolchain",
       html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
     },
     {
-      title: "应用依赖",
+      title: "Workload / 应用依赖",
       html: htmlTable(
         DEPENDENCY_TABLE_HEADERS,
         dependencyRows(diagnosis),
@@ -275,7 +333,7 @@ export function buildConfigHtmlSections(diagnosis: ConfigDiagnosis): HtmlReportS
       ),
     },
     {
-      title: "配置对照",
+      title: "配置 / 配置对照",
       html: htmlTable(
         ["name", "Env（ConfigMap + Deployment env）", "Tenant config"],
         tableRows(diagnosis),

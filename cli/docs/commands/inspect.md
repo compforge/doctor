@@ -1,10 +1,10 @@
-# Service 配置统计
+# Service Inspect
 
 ## 理念 / 概念
 
-`doctor config` 在用户选择 Service 后，同时展示工作负载现状、Plugin 声明的 Toolchain，以及彼此独立的配置与依赖事实来源：
+`doctor inspect` 以 Service 为检查对象，形成两类彼此独立的现场事实：Service 的运行载体（workload）与 Service 的配置。`config` capability 仍只声明 Service 是否支持配置检查，不限制基础 workload 检查。
 
-- **Workload runtime**：Service selector 当前匹配的 Pod 数量、Pod phase，以及每个普通 Container 的完整镜像引用和 CPU/Memory requests/limits。这里展示 Kubernetes 声明与当前对象清单，不把资源声明误写成实际使用量。
+- **Workload runtime**：Service selector 当前匹配的 Pod、Container、镜像、CPU/Memory requests/limits、就绪状态、重启次数和上一次终止原因。`OOMKilled`、exit code 与 `CrashLoopBackOff` 等状态作为现场事实展示，不把资源声明误写成实际使用量，也不把退避状态误写成根因。
 - **Toolchain**：Plugin 对 Service 的源码语言、执行平台、依赖管理器与构建工具声明。它用于选择通用采集器，不冒充当前 Pod 的现场事实。
 - **Env（可选）**：用户确认后，读取 Kubernetes Deployment 为业务 Container 声明的环境配置，包括 `envFrom.configMapRef`、`env[].valueFrom.configMapKeyRef` 与显式 `env`。通常 ConfigMap 承载普通配置，显式 Deployment env 承载密码、密钥等配置。不读取整个 Pod 的运行时 env，也不导入业务代码或 Pydantic Settings。
 - **Runtime dependencies（可选）**：用户确认后，由 Core 进入代表 Container，按 Toolchain 选择语言采集器并取得实际依赖与版本。依赖清单可能包含内部包名，因此与 Env 分开授权。
@@ -14,9 +14,9 @@
 
 ## 流程
 
-1. app 注入当前 `PluginDefinition`；配置确认从 Catalog 中具备 config capability 的 Service 与当前 Namespace 实际 Service 求交集。Service 选择完成后，交互分别询问是否采集 Deployment Env/ConfigMap 和应用依赖；非交互命令只有显式传入对应 flag 才采集。
-2. `config-targets` Inspect 始终读取 Namespace 中的 Service 和 Pod。只有用户确认后才读取 Deployment 和 ConfigMap；Service selector 既定位当前 Pod，也按需定位对应 Deployment。
-3. Inspect 将每个所选 Service 的 Pod 数量、phase、Container 镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 Coverage 中标明缺口。
+1. app 注入当前 `PluginDefinition`；Service 选择从 Plugin Catalog 与当前 Namespace 实际 Service 求交集。Service 选择完成后，交互分别询问是否采集 Deployment Env/ConfigMap 和应用依赖；非交互命令只有显式传入对应 flag 才采集。
+2. `service-targets` Inspect 始终读取 Namespace 中的 Service 和 Pod。只有用户确认后才读取 Deployment 和 ConfigMap；只有声明 `config` capability 的 Service 进入配置检查，Service selector 同时定位其当前 Pod 和对应 Deployment。
+3. Inspect 将每个所选 Service 的 Pod、Container 状态、重启/终止原因、镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 Coverage 中标明缺口。
 4. 用户确认时，Env Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。用户跳过时不发起这两类 Kubernetes 查询，并明确记录 skipped 步骤和不足的 Env Coverage。
 5. 用户确认依赖采集时，Inspect 用 Service selector 与 port 定位业务 Container，按实际 `imageID` 去重后每个镜像选择一个 Running Pod。Core 根据 Toolchain 执行有界只读采集，只保存归一化后的包名、版本和现场 runtime version；拒绝后不申请 `pods/exec` 权限。
 6. 指定租户时，Doctor 把当前 Kubernetes 环境和配置 Service 身份放进 `PluginContext`；Plugin 自行
@@ -28,7 +28,7 @@
 
 ### 为什么不读取 Pod env 或 Settings
 
-这个命令的目标是盘点部署声明与策略中心落表配置，而不是推断特定版本业务代码解析后的最终值。Pod env 会混入 Kubernetes 自动注入项和其它运行时来源；导入 Settings 又依赖各版本模块路径、默认值和框架实现。直接读取 Deployment 与 ConfigMap 能保持业务版本无关，也准确限定 Env 列的来源。
+配置子域的目标是盘点部署声明与策略中心落表配置，而不是推断特定版本业务代码解析后的最终值。Pod env 会混入 Kubernetes 自动注入项和其它运行时来源；导入 Settings 又依赖各版本模块路径、默认值和框架实现。直接读取 Deployment 与 ConfigMap 能保持业务版本无关，也准确限定 Env 列的来源。
 
 ### 为什么 Env/ConfigMap 需要单独确认
 

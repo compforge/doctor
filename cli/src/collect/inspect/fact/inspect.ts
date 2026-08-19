@@ -12,12 +12,18 @@ import {
   selectServiceContainer,
 } from "../../../infra/k8s/workload-config";
 import type { KubernetesWorkloadConfigSnapshot } from "../../../infra/k8s/workload-config";
+import type {
+  KubernetesContainerState,
+  KubernetesContainerTermination,
+} from "../../../infra/k8s/pod";
 import type { Inspect } from "../../inspection";
 import type {
-  ConfigCollectConfig,
-  ConfigCollectContext,
-  ConfigInspectionFacts,
-  ConfigServiceTargetFact,
+  InspectCollectContext,
+  InspectConfig,
+  InspectContainerTerminationFact,
+  InspectFacts,
+  InspectPodContainerFact,
+  InspectServiceTargetFact,
 } from "../model";
 
 function commandReason(ok: boolean, stderr: string): string | undefined {
@@ -31,12 +37,34 @@ function sameToolchain(left: Toolchain, right: Toolchain): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+function terminationFact(termination: KubernetesContainerTermination): InspectContainerTerminationFact {
+  return {
+    exitCode: termination.exitCode,
+    signal: termination.signal,
+    reason: termination.reason,
+    message: termination.message,
+    startedAt: termination.startedAt,
+    finishedAt: termination.finishedAt,
+  };
+}
+
+export function inspectContainerStateFact(
+  state: KubernetesContainerState | undefined,
+): InspectPodContainerFact["state"] {
+  if (!state) return undefined;
+  if (state.kind === "waiting") {
+    return { kind: state.kind, reason: state.reason, message: state.message };
+  }
+  if (state.kind === "running") return { kind: state.kind, startedAt: state.startedAt };
+  return { kind: state.kind, ...terminationFact(state) };
+}
+
 function dependencyTargets(
-  config: ConfigCollectConfig,
+  config: InspectConfig,
   snapshot: KubernetesWorkloadConfigSnapshot,
   catalog: ServiceCatalog,
-): Extract<ConfigInspectionFacts["dependencyTargets"], { status: "collected" }> {
-  const targets: Extract<ConfigInspectionFacts["dependencyTargets"], { status: "collected" }>["targets"] = [];
+): Extract<InspectFacts["dependencyTargets"], { status: "collected" }> {
+  const targets: Extract<InspectFacts["dependencyTargets"], { status: "collected" }>["targets"] = [];
   const missing: string[] = [];
   for (const serviceName of config.services) {
     const declared = catalog.find(serviceName)?.toolchain;
@@ -76,7 +104,7 @@ function dependencyTargets(
         continue;
       }
       targets.push({
-        id: `config-dependencies-${targets.length + 1}`,
+        id: `inspect-dependencies-${targets.length + 1}`,
         services: [serviceName],
         pod: pod.name,
         container: selected.container.name,
@@ -90,13 +118,13 @@ function dependencyTargets(
   return { status: "collected", targets, missing };
 }
 
-export function makeConfigTargetsInspect(
-  config: ConfigCollectConfig,
+export function makeServiceTargetsInspect(
+  config: InspectConfig,
   catalog: ServiceCatalog,
   tenantCapability?: TenantConfigurationCapability,
-): Inspect<ConfigInspectionFacts, ConfigCollectContext> {
+): Inspect<InspectFacts, InspectCollectContext> {
   return {
-    id: "config-targets",
+    id: "service-targets",
     run: async (ctx) => {
       const capture = await captureKubernetesWorkloadConfig(
         ctx.executor,
@@ -113,7 +141,7 @@ export function makeConfigTargetsInspect(
             ? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
             : "ConfigMap 未读取"),
       ].filter((reason): reason is string => !!reason) : [];
-      const deploymentConfiguration: ConfigInspectionFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
+      const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
         ? { status: "unavailable", reason: DEPLOYMENT_CONFIG_SKIPPED_REASON }
         : deploymentReasons.length
           ? { status: "failed", reason: deploymentReasons.join("；") }
@@ -121,16 +149,16 @@ export function makeConfigTargetsInspect(
       const dependencyTargetsFailure = capture.podParseError
         ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
       const steps = [
-        ["config-services", "Service 配置目标", capture.serviceCapture, undefined],
-        ["config-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
+        ["inspect-services", "Service 目标", capture.serviceCapture, undefined],
+        ["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
         ...(capture.deploymentCapture ? [[
-          "config-deployments",
+          "inspect-deployments",
           "Deployment env 配置",
           capture.deploymentCapture,
           capture.deploymentParseError,
         ] as const] : []),
         ...(capture.configMapCapture ? [[
-          "config-configmaps",
+          "inspect-configmaps",
           "ConfigMap 配置",
           capture.configMapCapture,
           capture.configMapParseError,
@@ -145,12 +173,12 @@ export function makeConfigTargetsInspect(
           reason: parseError ?? commandReason(result.ok, result.stderr),
           command: result.command,
           durationMs: result.durationMs,
-          // Deployment 与 ConfigMap 可能包含凭据，不把 kubectl 原始输出落盘。
+          // Pod spec、Deployment 与 ConfigMap 都可能包含凭据，只落解析后的脱敏 Fact。
         });
       }
       if (!config.includeDeploymentConfig) {
         ctx.bundle.addStep({
-          id: "config-deployment-environment",
+          id: "inspect-deployment-environment",
           title: "Deployment Env/ConfigMap",
           risk: "observe",
           status: "skipped",
@@ -159,7 +187,7 @@ export function makeConfigTargetsInspect(
       }
       if (!config.includeDependencies) {
         ctx.bundle.addStep({
-          id: "config-runtime-dependencies",
+          id: "inspect-runtime-dependencies",
           title: "应用依赖及版本",
           risk: "observe",
           status: "skipped",
@@ -189,17 +217,18 @@ export function makeConfigTargetsInspect(
         };
       }
       ctx.workloadConfig = snapshot;
-      const resolvedDependencyTargets: ConfigInspectionFacts["dependencyTargets"] = !config.includeDependencies
+      const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !config.includeDependencies
         ? { status: "unavailable", reason: DEPENDENCIES_SKIPPED_REASON }
         : dependencyTargetsFailure
           ? { status: "failed", reason: dependencyTargetsFailure }
           : dependencyTargets(config, snapshot, catalog);
 
-      const services: Record<string, ConfigServiceTargetFact> = {};
+      const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
+        const configurationSupported = !!catalog.findWith(serviceName, "config");
         const service = snapshot.services.find((item) => item.name === serviceName);
-        const deployments: ConfigServiceTargetFact["deployments"] = [];
-        const unavailableDeployments: ConfigServiceTargetFact["unavailableDeployments"] = [];
+        const deployments: InspectServiceTargetFact["deployments"] = [];
+        const unavailableDeployments: InspectServiceTargetFact["unavailableDeployments"] = [];
         if (!service) {
           if (config.includeDeploymentConfig) {
             unavailableDeployments.push({ deployment: "—", reason: "Service 不存在" });
@@ -207,22 +236,25 @@ export function makeConfigTargetsInspect(
           services[serviceName] = {
             service: serviceName,
             toolchain: catalog.find(serviceName)?.toolchain,
+            configurationSupported,
             deployments,
             unavailableDeployments,
             podRuntime: { status: "unavailable", reason: "Service 不存在" },
           };
           continue;
         }
-        for (const deployment of deploymentsForService(snapshot, serviceName)) {
-          const selected = selectServiceContainer(service, deployment);
-          if (selected.container) {
-            deployments.push({
-              service: serviceName,
-              deployment: deployment.name,
-              container: selected.container.name,
-            });
-          } else {
-            unavailableDeployments.push({ deployment: deployment.name, reason: selected.reason! });
+        if (configurationSupported) {
+          for (const deployment of deploymentsForService(snapshot, serviceName)) {
+            const selected = selectServiceContainer(service, deployment);
+            if (selected.container) {
+              deployments.push({
+                service: serviceName,
+                deployment: deployment.name,
+                container: selected.container.name,
+              });
+            } else {
+              unavailableDeployments.push({ deployment: deployment.name, reason: selected.reason! });
+            }
           }
         }
         const podFailure = capture.podParseError
@@ -230,6 +262,7 @@ export function makeConfigTargetsInspect(
         services[serviceName] = {
           service: serviceName,
           toolchain: catalog.find(serviceName)?.toolchain,
+          configurationSupported,
           deployments,
           unavailableDeployments,
           podRuntime: podFailure
@@ -239,6 +272,9 @@ export function makeConfigTargetsInspect(
                 pods: podsForService(snapshot, serviceName).map((pod) => ({
                   pod: pod.name,
                   phase: pod.phase,
+                  reason: pod.reason,
+                  message: pod.message,
+                  conditions: pod.conditions.map((condition) => ({ ...condition })),
                   containers: pod.containers.map((container) => ({
                     name: container.name,
                     image: container.image,
@@ -251,6 +287,12 @@ export function makeConfigTargetsInspect(
                       cpu: container.limits.cpu,
                       memory: container.limits.memory,
                     },
+                    ready: container.ready,
+                    restartCount: container.restartCount,
+                    state: inspectContainerStateFact(container.state),
+                    lastTermination: container.lastTermination
+                      ? terminationFact(container.lastTermination)
+                      : undefined,
                   })),
                 })),
               },
@@ -285,7 +327,7 @@ export function makeConfigTargetsInspect(
             service: {
               name: config.tenantConfiguration.databaseService,
             },
-            command: "doctor config",
+            command: "doctor inspect",
             capability: tenantCapability,
             authorization: ctx.authorization,
           });

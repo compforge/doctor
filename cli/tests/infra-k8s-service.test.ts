@@ -33,11 +33,31 @@ function serviceList(targetPort: string | number = 6379): string {
         },
         status: {
           podIP: "10.1.0.8",
+          phase: "Running",
+          conditions: [{
+            type: "Ready",
+            status: "False",
+            reason: "ContainersNotReady",
+            message: "containers with unready status: [redis]",
+          }],
           containerStatuses: [{
             name: "redis",
             imageID: "registry.example/redis@sha256:1234",
+            ready: false,
+            started: false,
             restartCount: 2,
-            lastState: { terminated: { containerID: "containerd://previous" } },
+            state: {
+              waiting: {
+                reason: "CrashLoopBackOff",
+                message: "back-off restarting failed container redis",
+              },
+            },
+            lastState: { terminated: {
+              containerID: "containerd://previous",
+              exitCode: 137,
+              reason: "OOMKilled",
+              finishedAt: "2026-08-19T02:00:00Z",
+            } },
           }],
         },
       },
@@ -84,13 +104,33 @@ test("K8s Pod endpoint 可按 Pod 名、FQDN 和 PodIP 解析", () => {
   expect(findPod(pods, { host: "10.1.0.8", port: 6379 }, "dev")?.name).toBe("redis");
   expect(findServicesForPod(parseServices(raw, "dev"), pods[0]!).map((service) => service.name))
     .toEqual(["redis"]);
-  expect(pods[0]!.containers).toEqual([{
+  expect(pods[0]!.conditions).toEqual([{
+    type: "Ready",
+    status: "False",
+    reason: "ContainersNotReady",
+    message: "containers with unready status: [redis]",
+    lastTransitionTime: undefined,
+  }]);
+  expect(pods[0]!.containers).toMatchObject([{
     name: "redis",
     image: "registry.example/redis:7.2",
     imageId: "registry.example/redis@sha256:1234",
     requests: { cpu: "250m", memory: "256Mi" },
     limits: { cpu: "1", memory: "1Gi" },
+    ready: false,
+    started: false,
     restartCount: 2,
+    state: {
+      kind: "waiting",
+      reason: "CrashLoopBackOff",
+      message: "back-off restarting failed container redis",
+    },
+    lastTermination: {
+      containerId: "containerd://previous",
+      exitCode: 137,
+      reason: "OOMKilled",
+      finishedAt: "2026-08-19T02:00:00Z",
+    },
     hasPreviousTerminated: true,
   }]);
 });

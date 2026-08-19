@@ -11,7 +11,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor log               → 无 server 直连采集：按 biz ID 解析 trace 并聚合服务 pod 日志（collect/）
 //   doctor data              → 先扩展业务 ID，再汇集各 Service 声明的数据（collect/）
 //   doctor collect           → 集合命令：选择并编排 data/trace/log/metric，自身不实现具体采集
-//   doctor config            → 采集 Service 的部署声明配置与可选租户配置（collect/）
+//   doctor inspect           → 检查 Service 的 workload 与配置（collect/）
 //   doctor http              → 从 YAML 重放多轮 HTTP 请求并分析响应（collect/）
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
@@ -32,7 +32,7 @@ import { runCollectTrace, type CollectTraceCliOpts } from "../collect/trace";
 import { runCollectStore } from "../collect/store";
 import { runCollectLog, type CollectLogCliOpts } from "../collect/log";
 import { runCollectData, type CollectDataCliOpts } from "../collect/data";
-import { runCollectConfig } from "../collect/config/index";
+import { runCollectInspect } from "../collect/inspect/index";
 import { REDIS_DEFAULTS } from "../collect/redis";
 import { runCollectHttp } from "../collect/http";
 import {
@@ -247,7 +247,7 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("-o, --output <path>", "集合 HTML 报告输出路径");
 }
 
-function withConfigOptions(cmd: CommandT): CommandT {
+function withInspectOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--services <names>", "逗号分隔的 Kubernetes Service；缺省时交互多选，非交互必须指定")
     .option("--deployment-config", "确认采集 Deployment Env/ConfigMap；交互模式缺省时询问")
@@ -663,18 +663,18 @@ export async function main(plugin?: PluginDefinition) {
       ),
     );
   });
-  withConfigOptions(
-    program.command("config").description("采集 Service 的 Pod 运行态、Toolchain、可选配置与应用依赖（只读）"),
+  withInspectOptions(
+    program.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
   ).action(async (opts) => {
     await runPluginCommand(
       {
-        name: "doctor config",
+        name: "doctor inspect",
         environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.config,
+        plugin: PLUGIN_COMMAND_CAPABILITIES.inspect,
       },
       opts,
       plugin,
-      (activePlugin, context) => runCollectConfig(
+      (activePlugin, context) => runCollectInspect(
         opts,
         activePlugin,
         undefined,

@@ -176,11 +176,11 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("OpenSearch backend service 覆盖值");
   });
 
-  test("config exposes Service runtime and optional tenant inspection options", () => {
-    const result = runCli("config", "--help");
+  test("inspect exposes Service workload and optional configuration options", () => {
+    const result = runCli("inspect", "--help");
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("Usage: doctor config [options]");
-    expect(result.stdout).toContain("采集 Service 的 Pod 运行态、Toolchain、可选配置与应用依赖（只读）");
+    expect(result.stdout).toContain("Usage: doctor inspect [options]");
+    expect(result.stdout).toContain("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）");
     expect(result.stdout).toContain("--services <names>");
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
@@ -192,6 +192,12 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("html 或 md");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('(default: "html")');
+  });
+
+  test("config command is removed without a compatibility alias", () => {
+    const result = runCli("config");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("unknown command 'config'");
   });
 
   test("store exposes Service capability selection and backend options", () => {

@@ -3,12 +3,12 @@ import type { ExecResult, Executor } from "../../../infra/k8s/executor";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {
-  ConfigCollectConfig,
-  ConfigCollectContext,
-  ConfigDependencyTarget,
-  ConfigInspectionFacts,
-  ConfigObservation,
   DependencyInventoryObservation,
+  InspectCollectContext,
+  InspectConfig,
+  InspectDependencyTarget,
+  InspectFacts,
+  InspectObservation,
   RuntimeDependency,
 } from "../model";
 
@@ -151,7 +151,7 @@ export function parseGoDependencyOutput(raw: string): DependencyPayload {
 
 async function runJsonCollector(
   executor: Executor,
-  target: ConfigDependencyTarget,
+  target: InspectDependencyTarget,
   command: string[],
 ): Promise<DependencyCapture> {
   const execution = await executor.exec(
@@ -176,7 +176,7 @@ async function runJsonCollector(
 
 async function collectDependencies(
   executor: Executor,
-  target: ConfigDependencyTarget,
+  target: InspectDependencyTarget,
   toolchain: Toolchain,
 ): Promise<DependencyCapture> {
   if (toolchain.executionPlatform === "python") {
@@ -204,16 +204,16 @@ async function collectDependencies(
 }
 
 function targetFromFacts(
-  facts: ConfigInspectionFacts,
-  target: ConfigDependencyTarget,
-): ConfigDependencyTarget | undefined {
+  facts: InspectFacts,
+  target: InspectDependencyTarget,
+): InspectDependencyTarget | undefined {
   if (facts.dependencyTargets.status !== "collected") return undefined;
   return facts.dependencyTargets.targets.find((item) => item.id === target.id);
 }
 
 export function makeDependencyInventoryProbe(
-  target: ConfigDependencyTarget,
-): Probe<ConfigObservation, ConfigInspectionFacts, ConfigCollectConfig, ConfigCollectContext> {
+  target: InspectDependencyTarget,
+): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCollectContext> {
   return {
     id: target.id,
     evaluate: (facts) => targetFromFacts(facts, target)
