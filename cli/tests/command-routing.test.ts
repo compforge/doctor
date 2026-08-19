@@ -195,8 +195,9 @@ describe("CLI command routing", () => {
   });
 
   test("config command is removed without a compatibility alias", () => {
-    const result = runCli("config", "--help");
+    const result = runCli("config");
     expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("unknown command 'config'");
   });
 
   test("store exposes Service capability selection and backend options", () => {
