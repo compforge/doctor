@@ -21,7 +21,7 @@ evidence needed for a specific problem:
 | Diagnostic surface | Commands | What Doctor investigates |
 |---|---|---|
 | Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
-| Business data | `doctor inspect`, `doctor data` | Tenant-scoped configuration and business-ID-linked data contributed by Services |
+| Business data | `doctor tenant`, `doctor data` | Tenant-scoped configuration and model catalogs, plus business-ID-linked data contributed by Services |
 | Observability | `doctor trace`, `doctor log`, `doctor metric` | A request's path, related service logs and metrics over the diagnostic window |
 | Runtime forensics | `doctor cpu`, `doctor mem`, `doctor net` | Thread stacks, heap captures and packet captures for a specific Service runtime |
 | Agent applications | `doctor model`, `doctor mcp` | Model and MCP configuration, connectivity, calls and service-side evidence |
@@ -32,16 +32,17 @@ runtime diagnostics.
 
 Business data is organized by lookup scope:
 
-- **Tenant**: configuration and catalogs shared within a tenant.
+- **Tenant**: `doctor tenant` gathers configuration and model catalogs shared within a tenant.
 - **User**: user-linked data; a general user-scoped collector is not yet available.
-- **Business ID**: records contributed by Services and correlated from a conversation, request or other
-  business identifier.
+- **Business ID**: `doctor data` gathers records contributed by Services and correlates them from a
+  conversation, request or other business identifier.
 
 ## Workflows across evidence
 
-- `doctor collect <biz-id>` gathers Data, Trace, Log and Metric through their existing collectors and
-  combines their reports into one offline delivery. It does not run Inspect, create load or change the
-  semantics of any individual command.
+- `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their
+  reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
+  collectors; Collect does not infer relationships between scopes, create load or change individual
+  command semantics.
 - `doctor http` executes a controlled request when reproducing the problem requires an active probe.
 - `doctor perf` generates bounded application load, records request outcomes and correlates the load
   window with Metric plus representative Trace and Log evidence. Because it creates real traffic and may
@@ -66,9 +67,9 @@ diagnostics. A Capability contributes the business semantics and declares the ta
 Doctor must prepare before it runs. Plugins provide the semantics for each business-data scope; Core only
 understands the declared scope and neutral results.
 
-For a typical investigation, start with `doctor inspect`, use `doctor collect <biz-id>` when the question
-starts from a business identifier, then run a targeted runtime or Agent command if the combined evidence
-points to a specific Service or protocol.
+For a typical investigation, start with `doctor inspect`, use `doctor collect` to gather the relevant
+tenant, business and observability evidence, then run a targeted runtime or Agent command if the combined
+evidence points to a specific Service or protocol.
 
 ## Repository layout
 

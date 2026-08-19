@@ -20,7 +20,7 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 | 诊断面 | 命令 | Doctor 关注的问题 |
 |---|---|---|
 | Service 状态 | `doctor inspect` | 匹配的 Pod 与 Container、镜像、Ready、重启、终止状态、CPU/内存 requests 与 limits，以及按需取得的配置 |
-| 业务数据 | `doctor inspect`、`doctor data` | Service 贡献的租户维度配置，以及与业务 ID 关联的数据 |
+| 业务数据 | `doctor tenant`、`doctor data` | 租户维度的配置与模型目录，以及 Service 贡献的 biz-id 关联数据 |
 | 可观测性 | `doctor trace`、`doctor log`、`doctor metric` | 一次请求经过的链路、相关 Service 日志和诊断窗口内的指标 |
 | 运行时取证 | `doctor cpu`、`doctor mem`、`doctor net` | 具体 Service 运行实例的线程栈、堆内存与网络包 |
 | Agent 应用 | `doctor model`、`doctor mcp` | Model 和 MCP 的配置、连通性、调用结果与服务端证据 |
@@ -30,14 +30,15 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 
 业务数据按查询维度组织：
 
-- **Tenant**：租户内共享的配置与目录。
+- **Tenant**：`doctor tenant` 汇集租户内共享的配置与模型目录。
 - **User**：与用户关联的数据；通用的 user 维度采集尚未支持。
-- **Biz ID**：各 Service 围绕 conversation、request 或其它业务标识贡献并关联的数据。
+- **Biz ID**：`doctor data` 汇集各 Service 围绕 conversation、request 或其它业务标识贡献并关联的数据。
 
 ## 跨证据面工作流
 
-- `doctor collect <biz-id>` 通过已有 Collector 一次汇集 Data、Trace、Log 和 Metric，并把各自报告组合为
-  一份离线交付。它不执行 Inspect、不产生负载，也不改变任何单项命令的采集语义。
+- `doctor collect` 调用选中的 Inspect、Tenant、Data、Trace、Log 和 Metric Collector，并把各自报告组合为
+  一份离线交付。tenant 与 biz-id 仍由对应 Collector 独立解释；Collect 不推导不同 scope 间的关系、
+  不产生负载，也不改变任何单项命令的采集语义。
 - `doctor http` 在需要主动复现问题时执行受控请求。
 - `doctor perf` 产生有界的真实业务负载，记录请求结果，并把压测窗口与 Metric、代表请求的 Trace 和
   Log 关联起来。它可能产生业务数据或模型费用，因此始终由用户显式触发并确认。
@@ -58,8 +59,8 @@ Doctor Core 与具体业务无关，负责 Kubernetes 访问、通用 Collector 
 并声明执行前需要准备的目标数据和访问权限。各业务数据维度的语义由 Plugin 提供，Core 只理解声明的
 scope 与中性结果。
 
-一次典型排查从 `doctor inspect` 开始；问题由业务 ID 驱动时使用 `doctor collect <biz-id>` 一次取得关联
-证据；当组合证据已经指向具体 Service 或协议后，再进入相应的运行时或 Agent 专项命令。
+一次典型排查从 `doctor inspect` 开始，再用 `doctor collect` 汇集所需的 tenant、业务与可观测证据；当
+组合证据已经指向具体 Service 或协议后，再进入相应的运行时或 Agent 专项命令。
 
 ## 仓库结构
 
