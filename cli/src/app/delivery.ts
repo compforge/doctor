@@ -17,6 +17,9 @@ export interface CommandDeliveryOptions {
 }
 
 type FileDeliveryFormat = "html" | "json" | "md";
+type DeliveryFormat = "default" | FileDeliveryFormat | "bundle";
+
+const DELIVERY_FORMATS: readonly DeliveryFormat[] = ["default", "html", "json", "md", "bundle"];
 
 const FORMAT_FILES: Record<FileDeliveryFormat, string> = {
   html: "report.html",
@@ -35,6 +38,14 @@ function resolveFileOutputPath(
 
 function assertOutputDoesNotExist(path: string): void {
   if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+}
+
+function resolveDeliveryFormat(value: string | undefined): DeliveryFormat {
+  const format = value?.trim();
+  if (!format) return "default";
+  if (DELIVERY_FORMATS.includes(format as DeliveryFormat)) return format as DeliveryFormat;
+  terminalStderr.warning(`[delivery] 未识别 format '${format}'，按 default 交付 HTML + Bundle\n`);
+  return "default";
 }
 
 function timestamp(now = new Date()): string {
@@ -81,7 +92,7 @@ export async function deliverCommandArtifacts(
   const reportName = commandSlug && (commands.length > 1 || commands[0] !== commandSlug)
     ? `doctor-${commandSlug}-${timestamp()}`
     : basename(artifacts[0]!.path);
-  const format = options.format?.trim() || "default";
+  const format = resolveDeliveryFormat(options.format);
   const defaultPaths = resolveDefaultReportPaths(options.output, reportName);
   const fileFormat = format === "json" || format === "md"
     ? format

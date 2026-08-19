@@ -81,6 +81,34 @@ test("collect default delivery contains combined HTML and child full bundles", a
   }
 });
 
+test("delivery treats an unknown format as default and prints a warning", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-delivery-unknown-format-test-"));
+  const artifact = join(root, "doctor-inspect");
+  const output = join(root, "case");
+  const context = new CommandContext({});
+  const write = spyOn(process.stderr, "write").mockImplementation(() => true);
+  try {
+    mkdirSync(artifact);
+    writeFileSync(join(artifact, "report.html"), "<html>inspect</html>");
+    writeFileSync(join(artifact, "evidence.txt"), "inspect evidence");
+    context.artifacts.add("inspect", artifact);
+
+    expect(await deliverCommandArtifacts(
+      context,
+      { format: "unknown", output },
+      0,
+      "doctor inspect",
+    )).toBe(true);
+    expect(existsSync(`${output}.html`)).toBe(true);
+    expect(existsSync(`${output}.tar.gz`)).toBe(true);
+    expect(write.mock.calls.map(([chunk]) => String(chunk)).join(""))
+      .toContain("未识别 format 'unknown'，按 default 交付 HTML + Bundle");
+  } finally {
+    write.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("delivery keeps repeated command reports under one command tab", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-collect-repeated-command-test-"));
   const output = join(root, "report.html");
