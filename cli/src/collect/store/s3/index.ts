@@ -6,7 +6,7 @@ import { runDiagnosis } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
 import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
-import type { StoreConfig } from "../config";
+import type { PodStoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle, type StoreHtmlReportOptions } from "../artifacts";
 import type { S3CommandContext } from "./context";
 import { buildS3Coverage, s3Detectors } from "./detector";
@@ -29,7 +29,7 @@ const S3_OUTCOMES: readonly OutcomeDecl[] = [
 ];
 
 export async function runStoreS3(
-  config: StoreConfig,
+  config: PodStoreConfig,
   commandContext: CommandContext,
   executor: Executor,
 ): Promise<number> {

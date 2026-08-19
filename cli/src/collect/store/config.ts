@@ -2,6 +2,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { serviceStores, servicesWithStore } from "@compforge/doctor-plugin";
 import type {
   ServiceStoreCapability,
+  ServiceVdbTarget,
 } from "@compforge/doctor-plugin";
 import {
   createKubernetesExecutor,
@@ -35,6 +36,7 @@ import {
   type SelectionContext,
 } from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
+import { openPluginContext } from "../../plugin/context";
 import { resolveArchivePath } from "../output/archive";
 import { join } from "node:path";
 
@@ -70,7 +72,8 @@ export interface StoreConfig {
   collect: KubernetesCommandConfig;
   service: string;
   capability: ServiceStoreCapability;
-  target: PodTarget;
+  target?: PodTarget;
+  vdbTarget?: ServiceVdbTarget;
   backendService?: string;
   endpoint?: string;
   s3Prefix?: string;
@@ -80,6 +83,8 @@ export interface StoreConfig {
   output?: string;
   deferDelivery?: boolean;
 }
+
+export type PodStoreConfig = StoreConfig & { target: PodTarget };
 
 export interface ResolvedStoreConfig {
   config: StoreConfig;
@@ -176,12 +181,22 @@ async function resolveService(
   namespace: string,
   interactive: boolean,
 ): Promise<string | undefined> {
+  const providers = servicesWithStore(plugin.services, kind);
+  const explicit = requested?.trim();
+  if (explicit && providers.some((service) => (
+    service.name === explicit
+    && serviceStores(plugin.services, service.name, kind).some(
+      (store) => store.kind === "vdb" && store.inspectTarget,
+    )
+  ))) return explicit;
+
   const deployed = new Set((await listServiceChoices(executor, namespace)).map((service) => service.name));
-  const choices = servicesWithStore(plugin.services, kind)
-    .filter((service) => deployed.has(service.name))
+  const choices = providers
+    .filter((service) => deployed.has(service.name) || serviceStores(plugin.services, service.name, kind).some(
+      (store) => store.kind === kind && store.kind === "vdb" && store.inspectTarget,
+    ))
     .map((service) => ({ name: service.name }));
   if (!choices.length) throw new Error(`namespace '${namespace}' 中没有声明且已部署的 ${kind} Store Service`);
-  const explicit = requested?.trim();
   if (explicit) {
     if (!choices.some((choice) => choice.name === explicit)) {
       throw new Error(`Service '${explicit}' 未部署或未声明 ${kind} Store capability`);
@@ -274,7 +289,14 @@ export async function resolveStoreConfig(
   if (!collect) return undefined;
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
-  await enforceKubernetesAccess(access, {
+  const [kind] = parseStoreKinds(opts.type);
+  const capabilityOwnsTarget = kind === "vdb" && !!opts.service?.trim()
+    && serviceStores(plugin.services, opts.service.trim(), kind).some((store) => (
+      (!opts.store?.trim() || store.id === opts.store.trim())
+      && store.kind === "vdb"
+      && !!store.inspectTarget
+    ));
+  if (!capabilityOwnsTarget) await enforceKubernetesAccess(access, {
     command: "doctor store",
     needs: [
       { requirement: "required", rule: { verb: "list", resource: "services" }, purpose: "选择 Store 配置来源 Service" },
@@ -307,39 +329,62 @@ export async function resolveStoreProviderConfig(
   if (!service) return undefined;
   const capability = await resolveCapability(service, kind, opts.store, plugin, interactive);
   if (!capability) return undefined;
-  const selection: SelectionContext = {
-    candidateRole: "配置来源",
-    purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
-    effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
-  };
-  const pod = await resolveServicePod({
-    service,
-    pod: opts.pod,
-    executor,
-    namespace,
-    interactive,
-    commandContext,
-    selection,
-  });
-  if (!pod) return undefined;
-  const target = await resolvePodTarget({
-    config: collect,
-    executor,
-    pod,
-    container: opts.container,
-    selectContainer: true,
-    interactive,
-    access,
-    commandContext,
-    selection,
-  });
-  if (!target) return undefined;
+  let target: PodTarget | undefined;
+  let vdbTarget: ServiceVdbTarget | undefined;
+  if (capability.kind === "vdb" && capability.inspectTarget) {
+    const context = await openPluginContext(executor, {
+      namespace,
+      kubeconfig: collect.kubernetes.kubeconfig,
+      context: collect.kubernetes.context,
+    }, {
+      env: collect.profileName,
+      config: commandContext.profile.pluginConfig,
+      service: { name: service },
+      command: "doctor store",
+      capability: { access: capability.access ?? {} },
+      authorization: access,
+    });
+    try {
+      vdbTarget = await capability.inspectTarget(context);
+    } finally {
+      await context.dispose();
+    }
+  } else {
+    const selection: SelectionContext = {
+      candidateRole: "配置来源",
+      purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
+      effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
+    };
+    const pod = await resolveServicePod({
+      service,
+      pod: opts.pod,
+      executor,
+      namespace,
+      interactive,
+      commandContext,
+      selection,
+    });
+    if (!pod) return undefined;
+    target = await resolvePodTarget({
+      config: collect,
+      executor,
+      pod,
+      container: opts.container,
+      selectContainer: true,
+      interactive,
+      access,
+      commandContext,
+      selection,
+    });
+    if (!target) return undefined;
+  }
   return {
     config: {
       collect,
       service,
       capability,
       target,
+      vdbTarget,
       backendService: opts.backendService?.trim() || undefined,
       endpoint: opts.endpoint?.trim() || undefined,
       s3Prefix: opts.s3Prefix,

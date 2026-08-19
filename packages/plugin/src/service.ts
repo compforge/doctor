@@ -307,6 +307,11 @@ export interface ServiceVdbTarget {
   password?: string;
   configurationKind: string;
   configPath?: string;
+  source?: {
+    namespace?: string;
+    pod?: string;
+    container?: string;
+  };
 }
 
 export interface ServiceVdbConfigurationInput {
@@ -332,6 +337,9 @@ export interface ServiceVdbStoreCapability extends ServiceStoreCapabilityBase {
   kind: "vdb";
   backend: "opensearch";
   store?: string;
+  /** Plugin 自行发现配置来源并投影出统一 VDB target；Core 只提供受控上下文。 */
+  inspectTarget?(context: PluginContext): Promise<ServiceVdbTarget>;
+  access?: CapabilityWithAccess["access"];
   /** 非标准 VDB 配置由 Plugin 投影为 Doctor 可消费的统一 target。 */
   configuration?: ServiceVdbConfiguration;
 }

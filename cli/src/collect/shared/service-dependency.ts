@@ -19,7 +19,7 @@ import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { terminalStdout } from "../../terminal/output";
 import type { StepInput } from "../evidence";
 import { resolveStoreProviderConfig } from "../store/config";
-import { confirmVdbTarget } from "../store/vdb/configuration";
+import { confirmInspectedVdbTarget, confirmVdbTarget } from "../store/vdb/configuration";
 import {
   confirmOpenSearchConnection,
   prepareOpenSearchAccess,
@@ -207,11 +207,15 @@ export class ServiceDependencyRuntime {
       if (resolved.config.capability.kind !== "vdb") {
         throw new Error(`Store capability '${service}/${store}' 不是 VDB`);
       }
-      const confirmed = await confirmVdbTarget(
-        this.options.executor,
-        resolved.config.target,
-        resolved.config.capability,
-      );
+      const confirmed = resolved.config.vdbTarget
+        ? confirmInspectedVdbTarget(resolved.config.vdbTarget)
+        : resolved.config.target
+          ? await confirmVdbTarget(
+              this.options.executor,
+              resolved.config.target,
+              resolved.config.capability,
+            )
+          : { captures: [], reason: `Store capability '${service}/${store}' 未提供 VDB target` };
       if (confirmed.connection?.type !== "opensearch") {
         throw new Error(
           confirmed.reason ?? `Store capability '${service}/${store}' 未提供 OpenSearch 连接`,

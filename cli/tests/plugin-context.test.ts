@@ -180,6 +180,8 @@ test("Plugin Kubernetes helper rejects undeclared operations", async () => {
 
   await expect(context.infra.kubernetes.get("secrets", "sample"))
     .rejects.toThrow("未声明 Kubernetes access: get secrets");
+  await expect(context.infra.kubernetes.forNamespace("other").get("secrets", "sample"))
+    .rejects.toThrow("未声明 Kubernetes access: get secrets");
   await context.dispose();
 });
 

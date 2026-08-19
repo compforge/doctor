@@ -5,6 +5,7 @@ import {
 } from "../../../shared/opensearch-access";
 import type { VdbConfig } from "../config";
 import {
+  confirmInspectedVdbTarget,
   confirmVdbTarget,
 } from "../configuration";
 import type { VdbCommandContext } from "../context";
@@ -20,7 +21,11 @@ export function makeVdbConfigurationInspect(
   return {
     id: "vdb-configuration",
     run: async (ctx) => {
-      const confirmed = await confirmVdbTarget(ctx.executor, ctx.execTarget, config.capability);
+      const confirmed = config.inspectedTarget
+        ? confirmInspectedVdbTarget(config.inspectedTarget)
+        : ctx.execTarget
+          ? await confirmVdbTarget(ctx.executor, ctx.execTarget, config.capability)
+          : { captures: [], reason: "VDB capability 未提供 target" };
       for (const [index, capture] of confirmed.captures.entries()) {
         ctx.bundle.addStep({
           id: `runtime-config-source-${index + 1}`,
@@ -35,9 +40,9 @@ export function makeVdbConfigurationInspect(
       }
       const execution = {
         status: "collected" as const,
-        namespace: ctx.kube.namespace,
-        pod: ctx.execTarget.pod,
-        container: ctx.execTarget.container,
+        namespace: confirmed.connection?.source?.namespace ?? ctx.kube.namespace,
+        pod: confirmed.connection?.source?.pod ?? ctx.execTarget?.pod,
+        container: confirmed.connection?.source?.container ?? ctx.execTarget?.container,
       };
       if (!confirmed.connection) {
         const reason = confirmed.reason ?? "Service 当前未提供有效 VDB 配置，VDB Store 未启用";
