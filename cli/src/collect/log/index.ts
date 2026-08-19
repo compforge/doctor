@@ -35,7 +35,7 @@ import type {
   LogInspectionFacts,
   LogProbeConfig,
 } from "./model";
-import { makeServiceLogProbe } from "./probe/service";
+import { makeLogProbe } from "./probe/service";
 import { renderLogResult, renderTimelineJsonl } from "./render";
 import { parseLogOutputFormat } from "./output";
 import type { LogOutputFormat } from "./output";
@@ -347,7 +347,7 @@ export async function collectLog(
     makeLogInspect(opts.services),
   ], ctx, log);
   const observations = await runProbes(
-    opts.services.map(makeServiceLogProbe),
+    [makeLogProbe(opts.services)],
     ctx,
     facts,
     config,
