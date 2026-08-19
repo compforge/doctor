@@ -207,7 +207,7 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
-    .option("-o, --output <path>", "输出路径（后缀按 --format 自动补全）");
+    .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
 function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]): CommandT {
@@ -288,7 +288,7 @@ function withHttpOptions(cmd: CommandT): CommandT {
     .option("--context <name>", "Pod 执行位置使用的 kubeconfig context")
     .option("--profile <name>", "Pod 执行位置从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-o, --output <path>", "输出路径（后缀按 --format 自动补全）");
+    .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
 function withNetworkOptions(cmd: CommandT): CommandT {

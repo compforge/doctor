@@ -166,6 +166,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("html 或 bundle");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时同时输出 HTML 和完整 Bundle");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("JSONL、raw");
+    expect(result.stdout).toContain("basename/路径");
   });
 
   test("trace accepts biz-id and treats namespace as the business namespace", () => {
@@ -325,6 +326,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("bundle（含 HTML 和原始响应）、html 或 md");
     expect(result.stdout).toContain("未指定时输出 HTML");
     expect(result.stdout).toContain("--output <path>");
+    expect(result.stdout).toContain("basename/路径");
   });
 
   test("http --example 在当前目录生成可编辑的 example.yaml", () => {

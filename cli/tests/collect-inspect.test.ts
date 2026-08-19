@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -174,6 +174,17 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(complete).toContain("REQUEST_TIMEOUT");
     expect(complete).toContain("environment-config：sufficient");
     expect(complete).toContain("workload-runtime：sufficient");
+
+    const defaultOutput = join(dir, "default.tar.gz");
+    expect(await runCollectInspect({
+      namespace: "demo",
+      services: "example-api",
+      deploymentConfig: true,
+      config: configPath,
+      output: defaultOutput,
+    }, examplePlugin, createCommandContext(), executor)).toBe(0);
+    expect(existsSync(join(dir, "default.html"))).toBe(true);
+    expect(existsSync(defaultOutput)).toBe(true);
 
     queriedResources.length = 0;
     const partialOutput = join(dir, "partial.md");

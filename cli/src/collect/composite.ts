@@ -261,9 +261,18 @@ export async function runCollect(
       tabs,
     });
     const delivered = tabs.filter((tab) => tab.status === "delivered").length;
+    let deliveryFailed = false;
     if (format === "default") {
-      copyFileSync(reportPath, paths.html);
-      terminalStdout.result(delivered > 0, `[collect] 集合 HTML: ${paths.html}\n`);
+      try {
+        copyFileSync(reportPath, paths.html);
+        terminalStdout.result(delivered > 0, `[collect] 集合 HTML: ${paths.html}\n`);
+      } catch (error) {
+        cleanupStaging = false;
+        deliveryFailed = true;
+        terminalStderr.error(
+          `[collect] 集合 HTML 交付失败，证据保留在目录: ${stagingDir}（${error instanceof Error ? error.message : String(error)}）\n`,
+        );
+      }
     }
     if (format !== "html") {
       const packed = await packReportBundle(stagingDir, paths.bundle);
@@ -276,7 +285,7 @@ export async function runCollect(
     } else {
       terminalStdout.result(delivered > 0, `[collect] 集合报告: ${paths.html}（${delivered}/${tabs.length} 已交付）\n`);
     }
-    return delivered > 0 ? 0 : 1;
+    return delivered > 0 && !deliveryFailed ? 0 : 1;
   } finally {
     if (cleanupStaging) rmSync(stagingRoot, { recursive: true, force: true });
   }

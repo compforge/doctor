@@ -259,6 +259,7 @@ export async function runCollectMcp(
         terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
       }
     } else if ((format === "bundle" || format === "default") && diagnosis) {
+      let htmlDelivered = false;
       try {
         const reportPath = join(staging, "report.html");
         writeHtmlReport(staging, reportPath, {
@@ -267,17 +268,23 @@ export async function runCollectMcp(
           summaryHtml: buildMcpReportHtml(diagnosis),
         });
         if (format === "default") copyFileSync(reportPath, paths.html);
+        htmlDelivered = true;
       } catch (error) {
         terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
       }
       const packed = await packReportBundle(staging, paths.bundle);
-      delivered = packed.ok;
+      delivered = packed.ok && htmlDelivered;
       if (!packed.ok) {
         terminalStderr.error(`[mcp] Bundle 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
       }
     }
     if (delivered) {
-      chmodSync(format === "default" ? paths.html : outputPath, 0o600);
+      if (format === "default") {
+        chmodSync(paths.html, 0o600);
+        chmodSync(paths.bundle, 0o600);
+      } else {
+        chmodSync(outputPath, 0o600);
+      }
       rmSync(stagingRoot, { recursive: true, force: true });
       if (format === "default") terminalStdout.success(`[mcp] HTML 报告: ${paths.html}\n`);
       terminalStdout.success(`[mcp] ${format === "html" ? "HTML 报告" : "Evidence Bundle"}: ${format === "default" ? paths.bundle : outputPath}\n`);

@@ -126,13 +126,14 @@ export function parseHttpOutputFormat(value: string | undefined): HttpOutputForm
 }
 
 export function resolveHttpOutputPath(output: string | undefined, name: string, format: HttpOutputFormat): string {
+  if (format === "default") return resolveDefaultReportPaths(output, name).html;
   if (format === "bundle") {
     if (/\.(?:html|md)$/i.test(output ?? "")) {
       throw new Error("--format bundle 的输出路径不能使用 .html/.md 后缀");
     }
     return resolveArchivePath(output, name);
   }
-  if (format === "html" || format === "default") {
+  if (format === "html") {
     if (!output) return join(".", `${name}.html`);
     if (/\.(?:tar\.gz|tgz|md)$/i.test(output)) {
       throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz/.md 后缀");
@@ -482,10 +483,16 @@ export async function runCollectHttp(
     return 1;
   }
 
-  chmodSync(outputPath, 0o600);
+  const defaultPaths = format === "default" ? resolveDefaultReportPaths(opts.output, bundleName) : undefined;
+  if (defaultPaths) {
+    chmodSync(defaultPaths.html, 0o600);
+    chmodSync(defaultPaths.bundle, 0o600);
+  } else {
+    chmodSync(outputPath, 0o600);
+  }
   rmSync(stagingRoot, { recursive: true, force: true });
-  const deliveredPath = format === "default"
-    ? `${outputPath} + ${resolveDefaultReportPaths(opts.output, bundleName).bundle}`
+  const deliveredPath = defaultPaths
+    ? `${defaultPaths.html} + ${defaultPaths.bundle}`
     : outputPath;
   if (evidenceOutcome.exitCode !== 0) {
     terminalStderr.error(`[http] 证据不完整：${deliveredPath}\n`);

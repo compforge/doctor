@@ -1,7 +1,7 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import {
   COLLECT_KINDS,
   collectReportName,
@@ -84,6 +84,38 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(listing).toContain("/inspect.tar.gz");
     expect(listing).toContain("/data.tar.gz");
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("collect preserves staged evidence when default delivery fails", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-collect-delivery-failure-test-"));
+  const output = join(root, "missing", "case");
+  const plugin = {
+    id: "test",
+    version: "0.0.1",
+    services: createServiceCatalog([]),
+  } satisfies PluginDefinition;
+  const write = spyOn(process.stderr, "write").mockImplementation(() => true);
+  let stagingDir: string | undefined;
+  try {
+    expect(await runCollect({
+      bizIds: ["biz-1"],
+      kinds: ["inspect"],
+      output,
+    }, plugin, new CommandContext({}), async (_kind, outputPath) => {
+      writeFileSync(outputPath, "<html>inspect</html>");
+      writeFileSync(outputPath.replace(/\.html$/, ".tar.gz"), "inspect evidence");
+      return 0;
+    })).toBe(1);
+
+    const stderr = write.mock.calls.map(([chunk]) => String(chunk)).join("");
+    stagingDir = stderr.match(/证据保留在目录: ([^（\n]+)/)?.[1];
+    expect(stagingDir).toBeDefined();
+    expect(existsSync(join(stagingDir!, "report.html"))).toBe(true);
+  } finally {
+    write.mockRestore();
+    if (stagingDir) rmSync(dirname(stagingDir), { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }
 });

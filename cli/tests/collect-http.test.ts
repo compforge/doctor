@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -785,6 +785,30 @@ requests:
   }));
 });
 
+test("HTTP 默认双交付接受 tar.gz 路径并收紧两个文件权限", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "doctor-http-default-output-"));
+  const file = join(dir, "requests.yaml");
+  const output = join(dir, "capture.tar.gz");
+  const htmlPath = join(dir, "capture.html");
+  writeFileSync(file, `schema: doctor-http/v1
+requests:
+  - id: health
+    url: https://example.test/health
+`);
+
+  expect(await runCollectHttp({
+    file,
+    repeat: "1",
+    interval: "0",
+    output,
+  }, createCommandContext(), async () => response(200, "application/json", "{}"), reachableEndpoint)).toBe(0);
+
+  expect(existsSync(htmlPath)).toBe(true);
+  expect(existsSync(output)).toBe(true);
+  expect(statSync(htmlPath).mode & 0o777).toBe(0o600);
+  expect(statSync(output).mode & 0o777).toBe(0o600);
+});
+
 test("Markdown format 交付实际 cURL 与异常 Response", async () => {
   const dir = mkdtempSync(join(tmpdir(), "doctor-http-markdown-"));
   const file = join(dir, "requests.yaml");
@@ -822,6 +846,7 @@ test("HTTP 默认双交付并保留显式格式", () => {
   expect(resolveHttpOutputPath(undefined, "doctor-http-1", "bundle")).toBe("doctor-http-1.tar.gz");
   expect(resolveHttpOutputPath(undefined, "doctor-http-1", "html")).toBe("doctor-http-1.html");
   expect(resolveHttpOutputPath("report", "doctor-http-1", "html")).toBe("report.html");
+  expect(resolveHttpOutputPath("report.tar.gz", "doctor-http-1", "default")).toBe("report.html");
   expect(resolveHttpOutputPath(undefined, "doctor-http-1", "md")).toBe("doctor-http-1.md");
   expect(resolveHttpOutputPath("report", "doctor-http-1", "md")).toBe("report.md");
   expect(() => resolveHttpOutputPath("report.html", "doctor-http-1", "md")).toThrow("输出路径");

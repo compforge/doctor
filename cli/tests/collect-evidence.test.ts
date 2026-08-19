@@ -8,6 +8,7 @@ import {
   packReportBundle,
   resolveDefaultReportPaths,
 } from "../src/collect/output/archive";
+import { resolveMcpOutputPath } from "../src/collect/mcp/output";
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "doctor-evidence-"));
@@ -116,6 +117,8 @@ describe("packBundle", () => {
       html: "out/report.html",
       bundle: "out/report.tar.gz",
     });
+    expect(resolveMcpOutputPath("out/report.tar.gz", "ignored", "default"))
+      .toBe("out/report.html");
   });
 
   test("successful report bundle requires root report.html", async () => {

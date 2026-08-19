@@ -34,7 +34,7 @@ import type {
   InspectOutputFormat,
 } from "./model";
 import type { CommandContext } from "../../command";
-import { resolveArchivePath } from "../output/archive";
+import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
 export { resolveTenantPromptChoice } from "../../terminal/tenant-selection";
 
@@ -94,13 +94,15 @@ export async function resolveInspectConfig(
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
   const reportName = inspectReportName(new Date());
-  const outputPath = format === "html" || format === "default"
-    ? resolveInspectHtmlOutputPath(opts.output, reportName)
-    : format === "md"
-      ? resolveInspectMarkdownOutputPath(opts.output, reportName)
-      : format === "bundle"
-        ? resolveArchivePath(opts.output, reportName)
-        : undefined;
+  const outputPath = format === "default"
+    ? resolveDefaultReportPaths(opts.output, reportName).html
+    : format === "html"
+      ? resolveInspectHtmlOutputPath(opts.output, reportName)
+      : format === "md"
+        ? resolveInspectMarkdownOutputPath(opts.output, reportName)
+        : format === "bundle"
+          ? resolveArchivePath(opts.output, reportName)
+          : undefined;
   const resolvedProfile = {
     name: commandContext.profile.name,
     profile: commandContext.profile.value,
