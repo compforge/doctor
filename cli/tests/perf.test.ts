@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
@@ -13,13 +13,14 @@ import {
   formatPerfCaseMix,
   resolvePerfRequestIdentity,
   resolveUserSearchPromptAction,
-  deliverPerfBundle,
-  preparePerfOutput,
+  createPerfArtifact,
   selectUserFromSearch,
   selectPerfSamples,
   workloadFromCaseRunner,
 } from "../src/perf";
 import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
+import { CommandContext } from "../src/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 test("perf defaults scan concurrency 5 through 20 with bounded requests", () => {
   const config = resolvePerfConfig({}, new Date("2026-01-02T03:04:05"));
@@ -44,7 +45,7 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
   expect(parsePerfOutputFormat("bundle")).toBe("bundle");
   expect(() => parsePerfOutputFormat("json")).toThrow("html 或 bundle");
   expect(resolvePerfConfig({ format: "bundle", output: "perf-result" }, new Date("2026-01-02T03:04:05")))
-    .toMatchObject({ outputFormat: "bundle", outputDir: "perf-result", traceSamples: 10 });
+    .toMatchObject({ outputFormat: "bundle", traceSamples: 10 });
   expect(() => resolvePerfConfig({ format: "html", output: "perf.tar.gz" })).toThrow("不能使用");
   expect(() => resolvePerfConfig({ format: "bundle", output: "perf.html" })).toThrow("不能使用");
 });
@@ -52,29 +53,38 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
 test("Perf bundle archives the complete linked report directory", async () => {
   const parent = mkdtempSync(join(tmpdir(), "doctor-perf-output-test-"));
   const archive = join(parent, "perf.tar.gz");
-  const output = preparePerfOutput(resolvePerfConfig({
+  const artifact = createPerfArtifact(resolvePerfConfig({
     format: "bundle",
     output: archive,
   }, new Date("2026-01-02T03:04:05")));
   try {
-    writeFileSync(join(output.outputDir, "perf.html"), "perf");
-    writeFileSync(join(output.outputDir, "report.html"), "perf");
-    writeFileSync(join(output.outputDir, "metric.html"), "metric");
-    writeFileSync(join(output.outputDir, "sample-01-trace.html"), "trace");
-    writeFileSync(join(output.outputDir, "sample-01-log.html"), "log");
-    const packed = await deliverPerfBundle(output);
-    expect(packed?.ok).toBe(true);
+    writeFileSync(join(artifact.path, "perf.html"), "perf");
+    writeFileSync(join(artifact.path, "report.html"), "perf");
+    const metricDir = join(artifact.temporaryRoot, "doctor-metric-test");
+    const traceDir = join(artifact.temporaryRoot, "doctor-trace-test");
+    const logDir = join(artifact.temporaryRoot, "doctor-log-test");
+    for (const [dir, report] of [[metricDir, "metric"], [traceDir, "trace"], [logDir, "log"]]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "report.html"), report);
+    }
+    const context = new CommandContext({});
+    context.artifacts.add("perf", artifact.path);
+    context.artifacts.add("metric", metricDir);
+    context.artifacts.add("trace", traceDir);
+    context.artifacts.add("log", logDir);
+    expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor perf"))
+      .toBe(true);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     expect(listing).toContain("doctor-perf-20260102-030405/perf.html");
     expect(listing).toContain("doctor-perf-20260102-030405/report.html");
-    expect(listing).toContain("doctor-perf-20260102-030405/metric.html");
-    expect(listing).toContain("doctor-perf-20260102-030405/sample-01-trace.html");
-    expect(listing).toContain("doctor-perf-20260102-030405/sample-01-log.html");
-    expect(output.temporaryRoot && existsSync(output.temporaryRoot)).toBe(false);
+    expect(listing).toContain("doctor-metric-test/report.html");
+    expect(listing).toContain("doctor-trace-test/report.html");
+    expect(listing).toContain("doctor-log-test/report.html");
+    expect(existsSync(artifact.temporaryRoot)).toBe(false);
   } finally {
     rmSync(parent, { recursive: true, force: true });
-    if (output.temporaryRoot) rmSync(output.temporaryRoot, { recursive: true, force: true });
+    rmSync(artifact.temporaryRoot, { recursive: true, force: true });
   }
 });
 
@@ -262,16 +272,13 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
   expect(perfEvidenceStatus({
     run,
     outputDir: ".",
-    metricPath: "metric.html",
     metricCode: 0,
     samples: [{
       trialId: "closed/5c",
       correlationKey: "trace_id",
       correlationId: "trace-1",
       durationMs: 5100,
-      tracePath: "trace.html",
       traceCode: 0,
-      logPath: "log.html",
       logCode: 1,
     }],
   })).toBe("partial");
@@ -336,7 +343,6 @@ test("perf report renders Facet values in their declared order", () => {
     const report = writePerfReport({
       run,
       outputDir,
-      metricPath: join(outputDir, "metric.html"),
       metricCode: 0,
       samples: [],
       caseFacets: {

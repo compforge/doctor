@@ -91,6 +91,5 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     traceSamples: integer(opts.traceSamples, 10, "--trace-samples", 0),
     outputFormat,
     bundleName,
-    outputDir,
   };
 }

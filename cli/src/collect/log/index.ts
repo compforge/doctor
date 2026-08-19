@@ -1,7 +1,7 @@
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
 // Kubernetes 的 Pod 枚举和日志读取由 infra/k8s 提供；本目录只保留业务选择和证据语义。
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -18,8 +18,7 @@ import {
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
 import { EvidenceBundle } from "../evidence";
-import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
@@ -38,7 +37,7 @@ import type {
 } from "./model";
 import { makeServiceLogProbe } from "./probe/service";
 import { renderLogResult, renderTimelineJsonl } from "./render";
-import { parseLogOutputFormat, resolveLogOutputPath } from "./output";
+import { parseLogOutputFormat } from "./output";
 import type { LogOutputFormat } from "./output";
 import { writeLogHtmlReport } from "./html";
 import { resolvePluginTraceIds } from "../../plugin/trace-id";
@@ -217,19 +216,8 @@ async function runCollectLogSingle(
   }
 
   const bundleName = defaultLogBundleName(selected.traceId, new Date());
-  let outputPaths: { html: string; bundle: string };
-  try {
-    outputPaths = format === "default"
-      ? resolveDefaultReportPaths(opts.output, bundleName)
-      : {
-          html: format === "html" ? resolveLogOutputPath(opts.output, bundleName, format) : "",
-          bundle: format === "bundle" ? resolveLogOutputPath(opts.output, bundleName, format) : "",
-        };
-  } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
-  }
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
+  commandContext.artifacts.add("log", staging);
   const code = await collectLog(
     {
       bizId: selected.bizId,
@@ -248,9 +236,7 @@ async function runCollectLogSingle(
     pattern,
   );
   let reportError: string | undefined;
-  const reportPath = format === "html" && code === 0
-    ? outputPaths.html
-    : join(staging, "report.html");
+  const reportPath = join(staging, "report.html");
   try {
     writeLogHtmlReport(
       staging,
@@ -262,35 +248,12 @@ async function runCollectLogSingle(
     terminalStderr.error(`[collect] Log HTML 生成失败：${reportError}\n`);
   }
   if (code === 0 && !reportError && format === "html") {
-    rmSync(join(staging, ".."), { recursive: true, force: true });
-    terminalStdout.success(`[collect] Log HTML 报告: ${outputPaths.html}\n`);
     return 0;
   }
-  if (code === 0 && !reportError && format === "default") copyFileSync(reportPath, outputPaths.html);
-  const delivery = code === 0 && !reportError
-    ? { path: outputPaths.bundle, packed: await packReportBundle(staging, outputPaths.bundle) }
-    : await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: format === "default"
-          ? resolveDefaultReportPaths(opts.output, bundleName).bundle
-          : opts.output,
-        collectCode: code || 1,
-        reason: reportError,
-      });
-  const { packed } = delivery;
-  if (packed.ok) {
-    rmSync(join(staging, ".."), { recursive: true, force: true });
-    terminalStdout.result(
-      code === 0,
-      `[collect] ${code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}\n`,
-    );
-    if (code === 0 && format === "default") terminalStdout.success(`[collect] Log HTML 报告: ${outputPaths.html}\n`);
-  } else {
-    terminalStderr.error(`[collect] 打包失败（${packed.stderr.trim().split("\n")[0]}），证据保留在目录: ${staging}\n`);
-    return 1;
+  if (reportError || code !== 0) {
+    recordFailureBundle({ bundleDir: staging, collectCode: code || 1, reason: reportError });
   }
-  return code;
+  return reportError ? 1 : code;
 }
 
 /** Batch wrapper: each biz-id keeps its own log evidence and only the delivery shell is shared. */
@@ -319,35 +282,24 @@ export async function runCollectLog(
     return 2;
   }
   const batchName = defaultLogBatchName(new Date());
-  let outputPaths: { html: string; bundle: string };
-  try {
-    outputPaths = format === "default"
-      ? resolveDefaultReportPaths(opts.output, batchName)
-      : {
-          html: format === "html" ? resolveLogOutputPath(opts.output, batchName, format) : "",
-          bundle: format === "bundle" ? resolveArchivePath(opts.output, batchName) : "",
-        };
-  } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
-  }
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
   const staging = join(stagingRoot, batchName);
   mkdirSync(staging, { recursive: true });
+  commandContext.artifacts.add("log", staging);
   const tabs = [];
   let exitCode = 0;
   for (const [index, bizId] of ids.entries()) {
-    const prefix = join(staging, `biz-${index + 1}`);
+    const artifactOffset = commandContext.artifacts.list().length;
     const code = await runCollectLogSingle(
-      { ...opts, bizIds: [bizId], format: format === "html" ? "html" : undefined, output: prefix },
+      { ...opts, bizIds: [bizId], format: "html", output: undefined },
       plugin,
       commandContext,
     );
     if (code === 130) {
-      rmSync(stagingRoot, { recursive: true, force: true });
       return code;
     }
-    const htmlPath = `${prefix}.html`;
+    const childArtifact = commandContext.artifacts.list()[artifactOffset];
+    const htmlPath = childArtifact ? join(childArtifact.path, "report.html") : "";
     tabs.push({
       key: `biz-${index + 1}`,
       label: bizId,
@@ -359,32 +311,12 @@ export async function runCollectLog(
     exitCode = Math.max(exitCode, code);
   }
 
-  if (format === "html") {
-    writeTabbedReport(outputPaths.html, {
-      title: "doctor Log 日志报告",
-      description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
-      ariaLabel: "Biz ID 日志诊断结果",
-      tabs,
-    });
-  } else {
-    const reportPath = join(staging, "report.html");
-    writeTabbedReport(reportPath, {
-      title: "doctor Log 日志报告",
-      description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
-      ariaLabel: "Biz ID 日志诊断结果",
-      tabs,
-    });
-    if (format === "default") copyFileSync(reportPath, outputPaths.html);
-    const packed = await packReportBundle(staging, outputPaths.bundle);
-    if (!packed.ok) {
-      terminalStderr.error(`[collect] Log 批次打包失败：${packed.stderr.trim().split("\n")[0]}\n`);
-      return 1;
-    }
-  }
-  if (exitCode === 0 || format === "bundle" || format === "default") rmSync(stagingRoot, { recursive: true, force: true });
-  else terminalStderr.warning(`[collect] 失败 Log 证据保留在目录: ${staging}\n`);
-  if (format === "default") terminalStdout.result(exitCode === 0, `[collect] Log HTML 报告: ${outputPaths.html}\n`);
-  terminalStdout.result(exitCode === 0, `[collect] Log ${format === "html" ? "HTML 报告" : "证据包"}: ${format === "html" ? outputPaths.html : outputPaths.bundle}\n`);
+  writeTabbedReport(join(staging, "report.html"), {
+    title: "doctor Log 日志报告",
+    description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
+    ariaLabel: "Biz ID 日志诊断结果",
+    tabs,
+  });
   return exitCode;
 }
 

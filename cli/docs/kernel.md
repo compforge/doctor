@@ -5,11 +5,12 @@
 CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的稳定边界。它们共用底层能力，
 但不共享业务流程：
 
-- `app` 是 composition root，解析用户输入并注入 Plugin 与基础设施能力；
+- `app` 是 composition root，编排 command 的 prepare、execute 与 finalize，并注入 Plugin 与基础设施能力；
 - `command` 持有四条主路径共用的启动事实、目标解析和 access/审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
-- `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和交付；
-- `perf` 使用共享 Perf Harness 产生受控业务负载，并以时间窗口和 Plugin 声明的关联 ID 复用 Collect 证据面；
+- `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和格式产物准备；
+- `perf` 使用共享 Perf Harness 产生受控业务负载，同时触发 Metric/Trace/Log；它拥有自身加压动作，
+  因而不是只做转发的纯 composite；
 - `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立问答链路，不依赖
   provision 或 collect；
 - `model` 准备模型发现与 inference 访问，由 Chat 和 Model Collect 共用，不归属任一主路径；
@@ -42,6 +43,13 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 `html`、`json`、`md` 或 `bundle` 时只输出所选格式，已有格式语义不变。失败流程仍优先保存已取得的
 Evidence，即使尚不足以形成成功报告。
 
+顶层命令统一遵循 `prepare → execute → finalize` 生命周期。`prepare` 解析并校验运行条件，`execute` 只负责
+领域动作并向共享 `CommandContext` 注册本轮 Artifacts，`finalize` 承担所有命令共用的收官工作。当前
+finalize 的主要职责是 Delivery：单命令直接交付；多个 command 共享同一 Context 时统一汇总其 Artifacts，
+多个 HTML 按 command 生成顶部 Tab；同一 command 注册多个 HTML 时在该 Tab 下继续分组。Bundle 则
+一次性压缩全部已注册目录。无论领域 command 独立执行还是
+被组合命令触发，都不得绕过这个阶段自行对外复制、压缩或清理产物。
+
 所有命令在进入上述领域流程前，都经过同一条准备链路：
 
 ```text
@@ -50,13 +58,15 @@ validated Profile snapshot + command options
   → declared Host / Kubernetes environment
   → selected Target + staged access plan
   → permission check
-  → PreparedCommand
+  → CommandContext + resolved profile/capabilities
   → Provision / Inspect+Probe / Chat
+  → Finalize（当前主要执行 Delivery）
 ```
 
 Profile 在单次命令内只解析和校验一次，后续 target、infra 与 Plugin context 均消费这份不可变快照。
-`CommandContext` 是单次顶层命令的运行作用域：Decision 复用用户或命令意图作出的决策，Discovery 复用
-执行期间的只读发现，ExecutionRecord 追加保存步骤已经产生、且会影响后续 action 的中间结果。三者都按
+`CommandContext` 是单次顶层命令从 prepare 到 finalize 的运行作用域：Decision 复用用户或命令意图作出的
+决策，Discovery 复用执行期间的只读发现，ExecutionRecord 追加保存步骤已经产生、且会影响后续 action 的
+中间结果，Artifacts 保存 execute 阶段准备并交给 finalize 处理的产物路径。四者都按
 类型和语义作用域隔离；ExecutionRecord 不持久化，也不等同于 Collect Facts、Observations 或 Evidence。
 所有消费 profile、Target 或交互决策的领域 command 入口都必须显式接收 `CommandContext`：独立执行由
 `app` 创建新实例，组合命令把自己的同一实例传给下游 command。测试依赖应放在它之后注入，不能通过把
@@ -79,7 +89,7 @@ need 声明；preferred discovery 被拒绝时可进入已声明的手工输入�
 
 ```text
 cli/src/
-├── app/                 命令入口、profile、会话流程与能力组装
+├── app/                 命令入口、prepare/execute/finalize 生命周期、profile 与能力组装
 ├── chat/                AgentUE model、Session/Controller 与 Server wire protocol adapter
 ├── model/               Chat 与 Model Collect 共用的模型发现、选择与 inference 访问
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
@@ -94,7 +104,7 @@ cli/src/
 │   ├── *-engine.ts      Inspect、Probe 与 Strategy 调度
 │   ├── evidence.ts      Worksheet 与 Evidence Bundle
 │   ├── operation.ts     副作用授权和审计
-│   ├── output/          Bundle、Markdown、HTML 等交付
+│   ├── output/          Bundle、Markdown、HTML 等领域产物的生成原语
 │   └── <domain>/        领域 config/fact/probe/detector/render
 └── infra/               Host、Target、K8s 与各类外部资源 adapter
     └── dump/            Target heap dumper backend 与 Toolkit bundle 适配

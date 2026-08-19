@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../../app/version";
@@ -12,7 +12,7 @@ import { EvidenceBundle, type OutcomeDecl } from "../../evidence";
 import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import { resolveStoreOutputPath, type StoreConfig } from "../config";
-import { deliverStoreArtifacts } from "../delivery";
+import { writeStoreArtifacts } from "../artifacts";
 import { vdbConfigFromStore } from "./config";
 import type { VdbCommandContext } from "./context";
 import { buildVdbCoverage, vdbCapacityConclusion, vdbDetectors } from "./detector";
@@ -65,6 +65,7 @@ export async function runStoreVdb(
   const bundleName = defaultStoreVdbBundleName(new Date());
   const outputPath = resolveStoreOutputPath(config.output, bundleName, storeConfig.outputFormat);
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-store-vdb-")), bundleName);
+  commandContext.artifacts.add("vdb", staging);
   const bundle = new EvidenceBundle(staging, VDB_OUTCOMES);
   const startedAt = new Date().toISOString();
   let facts: VdbInspectionFacts | undefined;
@@ -106,7 +107,7 @@ export async function runStoreVdb(
       startedAt,
       finishedAt: new Date().toISOString(),
     });
-    const delivery = await deliverStoreArtifacts({
+    const prepared = await writeStoreArtifacts({
       staging,
       bundleName,
       outputPath,
@@ -117,15 +118,9 @@ export async function runStoreVdb(
       profileName: config.collect.profileName,
       summary,
     });
-    if (!delivery.ok) {
+    if (!prepared.ok) {
       terminalStderr.error(`[collect] 交付失败，证据保留在目录: ${staging}\n`);
       return 1;
-    }
-    rmSync(join(staging, ".."), { recursive: true, force: true });
-    if (!storeConfig.deferDelivery) {
-      const message = `[collect] ${delivery.label}: ${delivery.path}\n`;
-      if (code === 0) terminalStdout.success(message);
-      else terminalStderr.error(message);
     }
     return code;
   };

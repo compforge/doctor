@@ -30,8 +30,8 @@ function sampleRow(sample: PerfEvidenceSample): string {
     + `<td>${sample.firstTokenMs === undefined ? "-" : escapeHtml(sample.firstTokenMs.toFixed(0))}</td>`
     + `<td>${escapeHtml(sample.durationMs.toFixed(0))}</td>`
     + `<td>${escapeHtml(sample.errorKind ?? "-")}</td>`
-    + `<td>${sample.traceCode === 0 ? link(sample.tracePath, "trace") : `trace(${sample.traceCode})`}</td>`
-    + `<td>${sample.logCode === 0 ? link(sample.logPath, "log") : `log(${sample.logCode})`}</td></tr>`;
+    + `<td>${sample.traceCode === 0 ? "见顶部 trace Tab" : `trace(${sample.traceCode})`}</td>`
+    + `<td>${sample.logCode === 0 ? "见顶部 log Tab" : `log(${sample.logCode})`}</td></tr>`;
 }
 
 function orderedFacetValues(result: PerfResult, facet: string, values: string[]): string[] {
@@ -88,7 +88,7 @@ export function writePerfReport(result: PerfResult): string {
   const samples = result.samples.map(sampleRow).join("\n")
     || "<tr><td colspan=\"9\">未取得 Plugin 声明的可关联业务 ID</td></tr>";
   const metric = result.metricCode === 0
-    ? link(result.metricPath, "打开压测窗口 Metric 报告")
+    ? "压测窗口 Metric 报告见顶部 metric Tab"
     : `Metric 采集未完成（exit ${result.metricCode}）`;
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>doctor perf</title>
 <style>body{font:14px system-ui;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;margin:16px 0 28px}th,td{border:1px solid #d9e0e6;padding:8px;text-align:left}th{background:#f4f7f9}code{font-size:12px}a{color:#075dcc}</style></head><body>

@@ -193,7 +193,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--tenant-directory-port <port>");
     expect(result.stdout).toContain("--tenant-config-service <name>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("json（stdout）、html 或 md");
+    expect(result.stdout).toContain("bundle、json、html 或 md");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时输出 HTML + Bundle");
   });
 

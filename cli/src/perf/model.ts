@@ -41,7 +41,6 @@ export interface PerfConfig {
   traceSamples: number;
   outputFormat: PerfOutputFormat;
   bundleName: string;
-  outputDir: string;
 }
 
 export interface PerfEvidenceSample {
@@ -52,16 +51,13 @@ export interface PerfEvidenceSample {
   firstTokenMs?: number;
   durationMs: number;
   errorKind?: string;
-  tracePath: string;
   traceCode: number;
-  logPath: string;
   logCode: number;
 }
 
 export interface PerfResult {
   run: Run;
   outputDir: string;
-  metricPath: string;
   metricCode: number;
   samples: PerfEvidenceSample[];
   caseFacets?: Readonly<Record<string, ServiceCaseFacetSpec>>;

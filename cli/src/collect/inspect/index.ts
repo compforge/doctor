@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -21,8 +21,7 @@ import {
   enforceKubernetesAccess,
   requireKubernetesChannel,
 } from "../../terminal/kubernetes-access";
-import { deliverFailureBundle } from "../output/failure-bundle";
-import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import {
   resolveInspectConfig,
@@ -215,6 +214,7 @@ export async function runCollectInspect(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
   const staging = join(stagingRoot, config.reportName);
+  commandContext.artifacts.add("inspect", staging);
   const bundle = new EvidenceBundle(staging);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   let facts: InspectFacts | undefined;
@@ -264,21 +264,11 @@ export async function runCollectInspect(
     bundle.settle(reason);
     bundle.writeSummary(diagnosis ? buildInspectSummary(diagnosis) : `# Service Inspect 失败\n\n${reason}\n`);
     writeManifest();
-    const failure = await deliverFailureBundle({
+    recordFailureBundle({
       bundleDir: staging,
-      bundleName: config.reportName,
-      requestedOutput: config.format === "default"
-        ? resolveDefaultReportPaths(opts.output, config.reportName).bundle
-        : opts.output,
       collectCode: 1,
       reason,
     });
-    if (failure.packed.ok) {
-      rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStderr.error(`[collect] Service Inspect 失败，Evidence Bundle: ${failure.path}\n`);
-    } else {
-      terminalStderr.error(`[collect] 失败 Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
-    }
     return 1;
   };
 
@@ -316,22 +306,12 @@ export async function runCollectInspect(
   writeManifest();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (config.format === "json") {
-    terminalStdout.write(`${JSON.stringify(diagnosis, null, 2)}\n`);
-    rmSync(stagingRoot, { recursive: true, force: true });
     return 0;
   }
   if (config.format === "md") {
-    try {
-      copyFileSync(join(staging, "summary.md"), config.outputPath!);
-    } catch (error) {
-      reportError(error, { context: "doctor inspect/markdown-report", summary: "Markdown 报告生成失败" });
-      return await fail(error instanceof Error ? error.message : String(error));
-    }
-    rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(`[collect] Markdown 报告: ${config.outputPath}\n`);
     return 0;
   }
-  const reportPath = config.format === "html" ? config.outputPath! : join(staging, "report.html");
+  const reportPath = join(staging, "report.html");
   try {
     writeHtmlReport(staging, reportPath, {
       title: "doctor Service Inspect",
@@ -344,21 +324,7 @@ export async function runCollectInspect(
     return await fail(error instanceof Error ? error.message : String(error));
   }
   if (config.format === "html") {
-    rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
     return 0;
   }
-  const paths = config.format === "default"
-    ? resolveDefaultReportPaths(opts.output, config.reportName)
-    : { html: reportPath, bundle: config.outputPath! };
-  if (config.format === "default") copyFileSync(reportPath, paths.html);
-  const packed = await packReportBundle(staging, paths.bundle);
-  if (!packed.ok) {
-    terminalStderr.error(`[collect] Inspect Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
-    return 1;
-  }
-  rmSync(stagingRoot, { recursive: true, force: true });
-  if (config.format === "default") terminalStdout.success(`[collect] Inspect HTML: ${paths.html}\n`);
-  terminalStdout.success(`[collect] Inspect Bundle: ${paths.bundle}\n`);
   return 0;
 }

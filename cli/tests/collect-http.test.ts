@@ -26,10 +26,19 @@ import {
   type InspectHttpEndpoint,
 } from "../src/infra/http";
 import { CommandContext } from "../src/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 const encoder = new TextEncoder();
 
 const createCommandContext = () => new CommandContext({});
+
+async function deliverHttp(
+  context: CommandContext,
+  options: { format?: string; output?: string },
+  code: number,
+): Promise<void> {
+  expect(await deliverCommandArtifacts(context, options, code, "doctor http")).toBe(true);
+}
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
   reachable: true,
@@ -616,16 +625,19 @@ requests:
     url: https://example.test/health
 `);
   let call = 0;
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "2",
     interval: "0",
     format: "html",
     output,
-  }, createCommandContext(), async () => {
+  };
+  const code = await runCollectHttp(options, context, async () => {
     call += 1;
     return response(call === 1 ? 200 : 500, "application/json", "{}");
   }, reachableEndpoint);
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(0);
   expect(call).toBe(2);
@@ -652,17 +664,20 @@ requests:
     url: https://example.test/v1/judge
 `);
   const requestedUrls: string[] = [];
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     request: "judge",
     repeat: "1",
     interval: "0",
     format: "html",
     output,
-  }, createCommandContext(), async (plan) => {
+  };
+  const code = await runCollectHttp(options, context, async (plan) => {
     requestedUrls.push(plan.url);
     return response(200, "application/json", "{}");
   }, reachableEndpoint);
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(0);
   expect(requestedUrls).toEqual(["https://example.test/v1/judge"]);
@@ -689,18 +704,21 @@ requests:
       body: exact
 `);
   let call = 0;
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "1",
     interval: "0",
     format: "html",
     output,
-  }, createCommandContext(), async () => {
+  };
+  const code = await runCollectHttp(options, context, async () => {
     call += 1;
     return call === 1
       ? response(500, "application/json", '{"error":"proxy failed"}')
       : response(200, "application/json", '{"ok":true}');
   }, reachableEndpoint);
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(0);
   expect(call).toBe(3);
@@ -719,13 +737,15 @@ requests:
     url: http://missing.example.test:8080/health
 `);
   let calls = 0;
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "1",
     interval: "0",
     format: "html",
     output,
-  }, createCommandContext(), async () => {
+  };
+  const code = await runCollectHttp(options, context, async () => {
     calls += 1;
     return response(200, "application/json", "{}");
   }, async () => ({
@@ -735,6 +755,7 @@ requests:
     durationMs: 2,
     reason: "ENOTFOUND missing.example.test",
   }));
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(1);
   expect(calls).toBe(0);
@@ -753,13 +774,16 @@ requests:
   - id: health
     url: https://example.test/health
 `);
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "1",
     interval: "0",
     format: "bundle",
     output,
-  }, createCommandContext(), async () => response(200, "application/json", "{}"), reachableEndpoint);
+  };
+  const code = await runCollectHttp(options, context, async () => response(200, "application/json", "{}"), reachableEndpoint);
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(0);
   const archive = `${output}.tar.gz`;
@@ -796,12 +820,16 @@ requests:
     url: https://example.test/health
 `);
 
-  expect(await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "1",
     interval: "0",
     output,
-  }, createCommandContext(), async () => response(200, "application/json", "{}"), reachableEndpoint)).toBe(0);
+  };
+  const code = await runCollectHttp(options, context, async () => response(200, "application/json", "{}"), reachableEndpoint);
+  expect(code).toBe(0);
+  await deliverHttp(context, options, code);
 
   expect(existsSync(htmlPath)).toBe(true);
   expect(existsSync(output)).toBe(true);
@@ -818,13 +846,16 @@ requests:
   - id: health
     url: https://example.test/health
 `);
-  const code = await runCollectHttp({
+  const context = createCommandContext();
+  const options = {
     file,
     repeat: "1",
     interval: "0",
     format: "md",
     output,
-  }, createCommandContext(), async () => response(400, "application/json", '{"error":"invalid request"}'), reachableEndpoint);
+  };
+  const code = await runCollectHttp(options, context, async () => response(400, "application/json", '{"error":"invalid request"}'), reachableEndpoint);
+  await deliverHttp(context, options, code);
 
   expect(code).toBe(0);
   const markdown = readFileSync(`${output}.md`, "utf-8");

@@ -50,6 +50,19 @@ function failureLog(bundleDir: string, collectCode: number, reason?: string): st
   return `${lines.join("\n")}\n`;
 }
 
+/** 失败命令只补齐可审计上下文；最终归档由顶层 Command Delivery 统一执行。 */
+export function recordFailureBundle(input: {
+  bundleDir: string;
+  collectCode: number;
+  reason?: string;
+}): void {
+  writeFileSync(
+    resolve(input.bundleDir, "error.log"),
+    failureLog(input.bundleDir, input.collectCode, input.reason),
+    { mode: 0o600 },
+  );
+}
+
 /** Collect 失败的统一交付入口：任何成功 format 都降级为可回传的 Evidence Bundle。 */
 export async function deliverFailureBundle(input: {
   bundleDir: string;
@@ -58,11 +71,7 @@ export async function deliverFailureBundle(input: {
   collectCode: number;
   reason?: string;
 }): Promise<FailureBundleDelivery> {
-  writeFileSync(
-    resolve(input.bundleDir, "error.log"),
-    failureLog(input.bundleDir, input.collectCode, input.reason),
-    { mode: 0o600 },
-  );
+  recordFailureBundle(input);
   const path = resolveFailureBundlePath(input.requestedOutput, input.bundleName);
   return { path, packed: await packBundle(input.bundleDir, path) };
 }

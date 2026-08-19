@@ -1,10 +1,9 @@
 import { expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import {
   COLLECT_KINDS,
-  collectReportName,
   parseCollectKinds,
   runCollect,
   runCollectDelegates,
@@ -12,19 +11,12 @@ import {
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { CommandContext } from "../src/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 
 test("collect include accepts comma or pipe separated command names", () => {
   expect(parseCollectKinds(undefined)).toEqual([...COLLECT_KINDS]);
   expect(parseCollectKinds("trace,log|data trace")).toEqual(["trace", "log", "data"]);
   expect(() => parseCollectKinds("trace,cpu")).toThrow("--include 仅支持");
-});
-
-test("collect output name includes one safe biz-id and uses batch for multiple IDs", () => {
-  const now = new Date(2026, 7, 19, 15, 4, 5);
-  expect(collectReportName(["conversation/abc:123"], now))
-    .toBe("doctor-collect-conversation-abc-123-20260819-150405");
-  expect(collectReportName(["biz-1", "biz-2"], now))
-    .toBe("doctor-collect-batch-20260819-150405");
 });
 
 test("collect capability contract is the union of selected concrete commands", () => {
@@ -35,27 +27,21 @@ test("collect capability contract is the union of selected concrete commands", (
 });
 
 test("collect delegates concrete work and continues after one command fails", async () => {
-  const staging = mkdtempSync(join(tmpdir(), "doctor-collect-test-"));
   const calls: string[] = [];
-  try {
-    const results = await runCollectDelegates(["inspect", "data", "trace", "log"], staging, async (kind, outputPath) => {
-      calls.push(kind);
-      if (kind === "trace") throw new Error("trace unavailable");
-      writeFileSync(outputPath, `<html>${kind}</html>`);
-      return 0;
-    });
+  const results = await runCollectDelegates(["inspect", "data", "trace", "log"], async (kind) => {
+    calls.push(kind);
+    if (kind === "trace") throw new Error("trace unavailable");
+    return 0;
+  });
 
-    expect(calls).toEqual(["inspect", "data", "trace", "log"]);
-    expect(results.map((result) => [result.kind, result.code])).toEqual([
-      ["inspect", 0],
-      ["data", 0],
-      ["trace", 1],
-      ["log", 0],
-    ]);
-    expect(results[2]?.error).toBe("trace unavailable");
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
+  expect(calls).toEqual(["inspect", "data", "trace", "log"]);
+  expect(results.map((result) => [result.kind, result.code])).toEqual([
+    ["inspect", 0],
+    ["data", 0],
+    ["trace", 1],
+    ["log", 0],
+  ]);
+  expect(results[2]?.error).toBe("trace unavailable");
 });
 
 test("collect default delivery contains combined HTML and child full bundles", async () => {
@@ -66,23 +52,53 @@ test("collect default delivery contains combined HTML and child full bundles", a
     version: "0.0.1",
     services: createServiceCatalog([]),
   } satisfies PluginDefinition;
+  const context = new CommandContext({});
   try {
-    expect(await runCollect({
+    const code = await runCollect({
       bizIds: ["biz-1"],
       kinds: ["inspect", "data"],
       output,
-    }, plugin, new CommandContext({}), async (kind, outputPath) => {
-      writeFileSync(outputPath, `<html>${kind}</html>`);
-      writeFileSync(outputPath.replace(/\.html$/, ".tar.gz"), `${kind} evidence`);
+    }, plugin, context, async (kind) => {
+      const artifact = join(root, `doctor-${kind}`);
+      mkdirSync(artifact);
+      writeFileSync(join(artifact, "report.html"), `<html>${kind}</html>`);
+      writeFileSync(join(artifact, "evidence.txt"), `${kind} evidence`);
+      context.artifacts.add(kind, artifact);
       return 0;
-    })).toBe(0);
+    });
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect")).toBe(true);
 
     expect(existsSync(`${output}.html`)).toBe(true);
     expect(existsSync(`${output}.tar.gz`)).toBe(true);
+    expect(readFileSync(`${output}.html`, "utf8")).toContain("inspect");
+    expect(readFileSync(`${output}.html`, "utf8")).toContain("data");
     const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
-    expect(listing).toContain("/report.html");
-    expect(listing).toContain("/inspect.tar.gz");
-    expect(listing).toContain("/data.tar.gz");
+    expect(listing).toContain("doctor-inspect/report.html");
+    expect(listing).toContain("doctor-data/report.html");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("delivery keeps repeated command reports under one command tab", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-collect-repeated-command-test-"));
+  const output = join(root, "report.html");
+  const context = new CommandContext({});
+  try {
+    for (const name of ["doctor-trace-1", "doctor-trace-2"]) {
+      const artifact = join(root, name);
+      mkdirSync(artifact);
+      writeFileSync(join(artifact, "report.html"), `<html>${name}</html>`);
+      context.artifacts.add("trace", artifact);
+    }
+
+    expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf"))
+      .toBe(true);
+    const html = readFileSync(output, "utf8");
+    expect(html).toContain("doctor-trace-1");
+    expect(html).toContain("doctor-trace-2");
+    expect(html).toContain("secondary-tabs");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -97,25 +113,28 @@ test("collect preserves staged evidence when default delivery fails", async () =
     services: createServiceCatalog([]),
   } satisfies PluginDefinition;
   const write = spyOn(process.stderr, "write").mockImplementation(() => true);
+  const context = new CommandContext({});
   let stagingDir: string | undefined;
   try {
-    expect(await runCollect({
+    const code = await runCollect({
       bizIds: ["biz-1"],
       kinds: ["inspect"],
       output,
-    }, plugin, new CommandContext({}), async (_kind, outputPath) => {
-      writeFileSync(outputPath, "<html>inspect</html>");
-      writeFileSync(outputPath.replace(/\.html$/, ".tar.gz"), "inspect evidence");
+    }, plugin, context, async (kind) => {
+      stagingDir = join(root, "doctor-inspect");
+      mkdirSync(stagingDir);
+      writeFileSync(join(stagingDir, "report.html"), "<html>inspect</html>");
+      context.artifacts.add(kind, stagingDir);
       return 0;
-    })).toBe(1);
+    });
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect")).toBe(false);
 
     const stderr = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    stagingDir = stderr.match(/证据保留在目录: ([^（\n]+)/)?.[1];
-    expect(stagingDir).toBeDefined();
+    expect(stderr).toContain("原始产物保留在");
     expect(existsSync(join(stagingDir!, "report.html"))).toBe(true);
   } finally {
     write.mockRestore();
-    if (stagingDir) rmSync(dirname(stagingDir), { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }
 });

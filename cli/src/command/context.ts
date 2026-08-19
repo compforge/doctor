@@ -12,6 +12,7 @@ import {
   type KubernetesInspection,
 } from "./inspect/kubernetes";
 import type { Profile } from "./profile";
+import { CommandArtifacts } from "./artifacts";
 
 export interface CommandInspection {
   readonly host?: DoctorHostInspection;
@@ -76,6 +77,7 @@ function commandScopeKey(scope: CommandScope): string {
  * memoized decisions/discoveries, and append-only execution records produced by later steps.
  */
 export class CommandContext {
+  readonly artifacts = new CommandArtifacts();
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
   readonly #decisions = new Map<object, Map<string, Promise<unknown>>>();
   readonly #discoveries = new Map<object, Map<string, Promise<unknown>>>();
