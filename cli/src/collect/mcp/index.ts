@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -16,7 +16,7 @@ import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { runDiagnosis } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { packBundle } from "../output/archive";
+import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
@@ -187,6 +187,7 @@ export async function runCollectMcp(
         ? renderMcpSummary(diagnosis)
         : failedSummary(trace.traceId, failureReason ?? "配置确认或诊断流程未完成"),
     );
+    if (diagnosis) writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: {
@@ -228,7 +229,9 @@ export async function runCollectMcp(
       const failure = await deliverFailureBundle({
         bundleDir: staging,
         bundleName,
-        requestedOutput: opts.output,
+        requestedOutput: format === "default"
+          ? resolveDefaultReportPaths(opts.output, bundleName).bundle
+          : opts.output,
         collectCode,
       });
       if (failure.packed.ok) {
@@ -241,6 +244,9 @@ export async function runCollectMcp(
     }
 
     let delivered = false;
+    const paths = format === "default"
+      ? resolveDefaultReportPaths(opts.output, bundleName)
+      : { html: format === "html" ? outputPath : join(staging, "report.html"), bundle: outputPath };
     if (format === "html" && diagnosis) {
       try {
         writeHtmlReport(staging, outputPath, {
@@ -252,23 +258,37 @@ export async function runCollectMcp(
       } catch (error) {
         terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
       }
-    } else if (format === "bundle") {
-      const packed = await packBundle(staging, outputPath);
+    } else if ((format === "bundle" || format === "default") && diagnosis) {
+      try {
+        const reportPath = join(staging, "report.html");
+        writeHtmlReport(staging, reportPath, {
+          title: "doctor MCP 诊断报告",
+          profileName: collect.profileName,
+          summaryHtml: buildMcpReportHtml(diagnosis),
+        });
+        if (format === "default") copyFileSync(reportPath, paths.html);
+      } catch (error) {
+        terminalStderr.error(`[mcp] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
+      }
+      const packed = await packReportBundle(staging, paths.bundle);
       delivered = packed.ok;
       if (!packed.ok) {
         terminalStderr.error(`[mcp] Bundle 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
       }
     }
     if (delivered) {
-      chmodSync(outputPath, 0o600);
+      chmodSync(format === "default" ? paths.html : outputPath, 0o600);
       rmSync(stagingRoot, { recursive: true, force: true });
-      terminalStdout.success(`[mcp] ${format === "html" ? "HTML 报告" : "Evidence Bundle"}: ${outputPath}\n`);
+      if (format === "default") terminalStdout.success(`[mcp] HTML 报告: ${paths.html}\n`);
+      terminalStdout.success(`[mcp] ${format === "html" ? "HTML 报告" : "Evidence Bundle"}: ${format === "default" ? paths.bundle : outputPath}\n`);
       return 0;
     }
     const failure = await deliverFailureBundle({
       bundleDir: staging,
       bundleName,
-      requestedOutput: opts.output,
+      requestedOutput: format === "default"
+        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
+        : opts.output,
       collectCode: 1,
       reason: "成功产物生成失败",
     });

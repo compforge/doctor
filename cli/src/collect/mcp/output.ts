@@ -1,11 +1,11 @@
 import { join } from "node:path";
 import { resolveArchivePath } from "../output/archive";
 
-export type McpOutputFormat = "bundle" | "html";
+export type McpOutputFormat = "default" | "bundle" | "html";
 
 export function parseMcpOutputFormat(value: string | undefined): McpOutputFormat {
-  const format = value?.trim() || "bundle";
-  if (format !== "bundle" && format !== "html") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html") {
     throw new Error(`--format 只支持 bundle 或 html: '${format}'`);
   }
   return format;

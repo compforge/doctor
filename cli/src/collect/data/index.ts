@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -12,6 +12,11 @@ import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { deliverFailureBundle } from "../output/failure-bundle";
+import {
+  packReportBundle,
+  resolveArchivePath,
+  resolveDefaultReportPaths,
+} from "../output/archive";
 import { writeHtmlReport } from "../output/html";
 import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
 import {
@@ -151,7 +156,9 @@ async function runCollectDataSingle(
     const failure = await deliverFailureBundle({
       bundleDir: staging,
       bundleName: config.reportName,
-      requestedOutput: opts.output,
+      requestedOutput: config.format === "default"
+        ? resolveDefaultReportPaths(opts.output, config.reportName).bundle
+        : opts.output,
       collectCode: 1,
       reason,
     });
@@ -212,8 +219,9 @@ async function runCollectDataSingle(
 
   bundle.writeSummary(buildDataSummary(diagnosis));
   writeManifest();
+  hooks.onDiagnosis?.(diagnosis);
+  writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (config.format === "json") {
-    hooks.onDiagnosis?.(diagnosis);
     if (!hooks.suppressJson) {
       try {
         writeFileSync(config.outputPath, `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
@@ -226,8 +234,9 @@ async function runCollectDataSingle(
     if (!hooks.suppressJson) terminalStdout.success(`[collect] Data JSON: ${config.outputPath}\n`);
     return 0;
   }
+  const reportPath = config.format === "html" ? config.outputPath : join(staging, "report.html");
   try {
-    writeHtmlReport(staging, config.outputPath, {
+    writeHtmlReport(staging, reportPath, {
       title: "doctor Data 业务数据汇集报告",
       profileName: config.profileName,
       summaryHtml: buildDataHtml(diagnosis),
@@ -236,8 +245,23 @@ async function runCollectDataSingle(
     reportError(error, { context: "doctor data/html-report", summary: "HTML 报告生成失败" });
     return await fail(error instanceof Error ? error.message : String(error));
   }
+  if (config.format === "html") {
+    rmSync(stagingRoot, { recursive: true, force: true });
+    terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
+    return 0;
+  }
+  const paths = config.format === "default"
+    ? resolveDefaultReportPaths(opts.output, config.reportName)
+    : { html: reportPath, bundle: config.outputPath };
+  if (config.format === "default") copyFileSync(reportPath, paths.html);
+  const packed = await packReportBundle(staging, paths.bundle);
+  if (!packed.ok) {
+    terminalStderr.error(`[collect] Data Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
+    return 1;
+  }
   rmSync(stagingRoot, { recursive: true, force: true });
-  terminalStdout.success(`[collect] HTML 报告: ${config.outputPath}\n`);
+  if (config.format === "default") terminalStdout.success(`[collect] Data HTML: ${paths.html}\n`);
+  terminalStdout.success(`[collect] Data Bundle: ${paths.bundle}\n`);
   return 0;
 }
 
@@ -306,6 +330,65 @@ export async function runCollectData(
       return 1;
     }
     terminalStdout.result(exitCode === 0, `[collect] Data JSON: ${outputPath}\n`);
+    return exitCode;
+  }
+
+  if (format === "bundle" || format === "default") {
+    const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-batch-"));
+    const staging = join(stagingRoot, batchName);
+    mkdirSync(staging, { recursive: true });
+    const tabs = [];
+    const groups: Record<string, DataDiagnosis | { error: string }> = {};
+    let exitCode = 0;
+    for (const [index, bizId] of ids.entries()) {
+      const prefix = join(staging, `biz-${index + 1}`);
+      let captured: DataDiagnosis | undefined;
+      const code = await runCollectDataSingle(
+        {
+          ...opts,
+          bizIds: [bizId],
+          format: undefined,
+          output: prefix,
+          reportName: `${batchName}-biz-${index + 1}`,
+        },
+        plugin,
+        commandContext,
+        injectedExecutor,
+        injectedContexts,
+        { onDiagnosis: (diagnosis) => { captured = diagnosis; } },
+      );
+      const htmlPath = `${prefix}.html`;
+      groups[bizId] = captured ?? { error: `采集失败（exitCode=${code}）` };
+      tabs.push({
+        key: `biz-${index + 1}`,
+        label: bizId,
+        status: code === 0 && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
+        html: existsSync(htmlPath)
+          ? readFileSync(htmlPath, "utf8")
+          : failedReportHtml(`Data 诊断失败：${bizId}`, `采集退出码 ${code}`),
+      });
+      exitCode = Math.max(exitCode, code);
+    }
+    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
+    const reportPath = join(staging, "report.html");
+    writeTabbedReport(reportPath, {
+      title: "doctor Data 业务数据汇集报告",
+      description: "同一批次采集，每个 Biz ID 独立诊断",
+      ariaLabel: "Biz ID 数据诊断结果",
+      tabs,
+    });
+    const paths = format === "default"
+      ? resolveDefaultReportPaths(opts.output, batchName)
+      : { html: reportPath, bundle: resolveArchivePath(opts.output, batchName) };
+    if (format === "default") copyFileSync(reportPath, paths.html);
+    const packed = await packReportBundle(staging, paths.bundle);
+    if (!packed.ok) {
+      terminalStderr.error(`[collect] Data Bundle 打包失败，原始证据保留在目录: ${staging}\n`);
+      return 1;
+    }
+    rmSync(stagingRoot, { recursive: true, force: true });
+    if (format === "default") terminalStdout.result(exitCode === 0, `[collect] Data HTML: ${paths.html}\n`);
+    terminalStdout.result(exitCode === 0, `[collect] Data Bundle: ${paths.bundle}\n`);
     return exitCode;
   }
 

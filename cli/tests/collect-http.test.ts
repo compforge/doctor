@@ -813,9 +813,9 @@ requests:
   expect(markdown).toContain('{"error":"invalid request"}');
 });
 
-test("HTTP 输出默认 HTML", () => {
+test("HTTP 默认双交付并保留显式格式", () => {
   expect(defaultHttpBundleName(new Date(2026, 6, 22, 15, 4, 5))).toBe("doctor-http-20260722-150405");
-  expect(parseHttpOutputFormat(undefined)).toBe("html");
+  expect(parseHttpOutputFormat(undefined)).toBe("default");
   expect(parseHttpOutputFormat("html")).toBe("html");
   expect(parseHttpOutputFormat("md")).toBe("md");
   expect(() => parseHttpOutputFormat("pdf")).toThrow("bundle、html 或 md");

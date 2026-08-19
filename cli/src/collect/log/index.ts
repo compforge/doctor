@@ -1,7 +1,7 @@
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
 // Kubernetes 的 Pod 枚举和日志读取由 infra/k8s 提供；本目录只保留业务选择和证据语义。
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -18,7 +18,7 @@ import {
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
 import { EvidenceBundle } from "../evidence";
-import { packBundle } from "../output/archive";
+import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import {
@@ -217,9 +217,14 @@ async function runCollectLogSingle(
   }
 
   const bundleName = defaultLogBundleName(selected.traceId, new Date());
-  let outputPath: string;
+  let outputPaths: { html: string; bundle: string };
   try {
-    outputPath = resolveLogOutputPath(opts.output, bundleName, format);
+    outputPaths = format === "default"
+      ? resolveDefaultReportPaths(opts.output, bundleName)
+      : {
+          html: format === "html" ? resolveLogOutputPath(opts.output, bundleName, format) : "",
+          bundle: format === "bundle" ? resolveLogOutputPath(opts.output, bundleName, format) : "",
+        };
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -244,7 +249,7 @@ async function runCollectLogSingle(
   );
   let reportError: string | undefined;
   const reportPath = format === "html" && code === 0
-    ? outputPath
+    ? outputPaths.html
     : join(staging, "report.html");
   try {
     writeLogHtmlReport(
@@ -258,15 +263,18 @@ async function runCollectLogSingle(
   }
   if (code === 0 && !reportError && format === "html") {
     rmSync(join(staging, ".."), { recursive: true, force: true });
-    terminalStdout.success(`[collect] Log HTML 报告: ${outputPath}\n`);
+    terminalStdout.success(`[collect] Log HTML 报告: ${outputPaths.html}\n`);
     return 0;
   }
+  if (code === 0 && !reportError && format === "default") copyFileSync(reportPath, outputPaths.html);
   const delivery = code === 0 && !reportError
-    ? { path: outputPath, packed: await packBundle(staging, outputPath) }
+    ? { path: outputPaths.bundle, packed: await packReportBundle(staging, outputPaths.bundle) }
     : await deliverFailureBundle({
         bundleDir: staging,
         bundleName,
-        requestedOutput: opts.output,
+        requestedOutput: format === "default"
+          ? resolveDefaultReportPaths(opts.output, bundleName).bundle
+          : opts.output,
         collectCode: code || 1,
         reason: reportError,
       });
@@ -277,6 +285,7 @@ async function runCollectLogSingle(
       code === 0,
       `[collect] ${code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}\n`,
     );
+    if (code === 0 && format === "default") terminalStdout.success(`[collect] Log HTML 报告: ${outputPaths.html}\n`);
   } else {
     terminalStderr.error(`[collect] 打包失败（${packed.stderr.trim().split("\n")[0]}），证据保留在目录: ${staging}\n`);
     return 1;
@@ -310,58 +319,72 @@ export async function runCollectLog(
     return 2;
   }
   const batchName = defaultLogBatchName(new Date());
-  let outputPath;
+  let outputPaths: { html: string; bundle: string };
   try {
-    outputPath = resolveLogOutputPath(opts.output, batchName, format);
+    outputPaths = format === "default"
+      ? resolveDefaultReportPaths(opts.output, batchName)
+      : {
+          html: format === "html" ? resolveLogOutputPath(opts.output, batchName, format) : "",
+          bundle: format === "bundle" ? resolveArchivePath(opts.output, batchName) : "",
+        };
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
   }
-  const staging = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
+  const staging = join(stagingRoot, batchName);
+  mkdirSync(staging, { recursive: true });
   const tabs = [];
   let exitCode = 0;
   for (const [index, bizId] of ids.entries()) {
     const prefix = join(staging, `biz-${index + 1}`);
     const code = await runCollectLogSingle(
-      { ...opts, bizIds: [bizId], output: prefix },
+      { ...opts, bizIds: [bizId], format: format === "html" ? "html" : undefined, output: prefix },
       plugin,
       commandContext,
     );
     if (code === 130) {
-      rmSync(staging, { recursive: true, force: true });
+      rmSync(stagingRoot, { recursive: true, force: true });
       return code;
     }
-    if (format === "html") {
-      const htmlPath = `${prefix}.html`;
-      tabs.push({
-        key: `biz-${index + 1}`,
-        label: bizId,
-        status: code === 0 && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
-        html: code === 0 && existsSync(htmlPath)
-          ? readFileSync(htmlPath, "utf8")
-          : failedReportHtml(`Log 诊断失败：${bizId}`, `采集退出码 ${code}`),
-      });
-    }
+    const htmlPath = `${prefix}.html`;
+    tabs.push({
+      key: `biz-${index + 1}`,
+      label: bizId,
+      status: code === 0 && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
+      html: code === 0 && existsSync(htmlPath)
+        ? readFileSync(htmlPath, "utf8")
+        : failedReportHtml(`Log 诊断失败：${bizId}`, `采集退出码 ${code}`),
+    });
     exitCode = Math.max(exitCode, code);
   }
 
   if (format === "html") {
-    writeTabbedReport(outputPath, {
+    writeTabbedReport(outputPaths.html, {
       title: "doctor Log 日志报告",
       description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
       ariaLabel: "Biz ID 日志诊断结果",
       tabs,
     });
   } else {
-    const packed = await packBundle(staging, outputPath);
+    const reportPath = join(staging, "report.html");
+    writeTabbedReport(reportPath, {
+      title: "doctor Log 日志报告",
+      description: "同一批次采集，每个 Biz ID 独立筛选与诊断",
+      ariaLabel: "Biz ID 日志诊断结果",
+      tabs,
+    });
+    if (format === "default") copyFileSync(reportPath, outputPaths.html);
+    const packed = await packReportBundle(staging, outputPaths.bundle);
     if (!packed.ok) {
       terminalStderr.error(`[collect] Log 批次打包失败：${packed.stderr.trim().split("\n")[0]}\n`);
       return 1;
     }
   }
-  if (exitCode === 0 || format === "bundle") rmSync(staging, { recursive: true, force: true });
+  if (exitCode === 0 || format === "bundle" || format === "default") rmSync(stagingRoot, { recursive: true, force: true });
   else terminalStderr.warning(`[collect] 失败 Log 证据保留在目录: ${staging}\n`);
-  terminalStdout.result(exitCode === 0, `[collect] Log ${format === "html" ? "HTML 报告" : "证据包"}: ${outputPath}\n`);
+  if (format === "default") terminalStdout.result(exitCode === 0, `[collect] Log HTML 报告: ${outputPaths.html}\n`);
+  terminalStdout.result(exitCode === 0, `[collect] Log ${format === "html" ? "HTML 报告" : "证据包"}: ${format === "html" ? outputPaths.html : outputPaths.bundle}\n`);
   return exitCode;
 }
 

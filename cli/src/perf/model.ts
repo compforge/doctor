@@ -25,7 +25,7 @@ export interface PerfCliOpts {
   yes?: boolean;
 }
 
-export type PerfOutputFormat = "html" | "bundle";
+export type PerfOutputFormat = "default" | "html" | "bundle";
 
 export interface PerfConfig {
   service?: string;

@@ -21,7 +21,7 @@ import type { HttpCapture } from "../shared/http/capture";
 
 export type { SelectedInferenceModel } from "../../model";
 
-export type ModelOutputFormat = "json" | "html";
+export type ModelOutputFormat = "default" | "bundle" | "json" | "html";
 
 export interface CollectModelCliOptions extends KubernetesCommandInput {
   tenantId?: string;

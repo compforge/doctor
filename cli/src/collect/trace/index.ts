@@ -23,7 +23,7 @@ import {
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
-import { packBundle, resolveArchivePath } from "../output/archive";
+import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import {
   failedReportHtml,
   type ReportLeafTab,
@@ -154,11 +154,11 @@ export function defaultTraceBatchName(now: Date): string {
   return `doctor-trace-batch-${ts}`;
 }
 
-export type TraceOutputFormat = "html" | "bundle";
+export type TraceOutputFormat = "default" | "html" | "bundle";
 
 export function parseTraceOutputFormat(value: string | undefined): TraceOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "html" && format !== "bundle") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "html" && format !== "bundle") {
     throw new Error(`--format 只支持 html 或 bundle: '${format}'`);
   }
   return format;
@@ -282,11 +282,14 @@ export async function runCollectTrace(
   const bundleName = singleTrace
     ? defaultTraceBundleName(traces[0]!.traceId, new Date())
     : defaultTraceBatchName(new Date());
-  let outputPath: string;
+  let outputPaths: { html: string; bundle: string };
   try {
-    outputPath = format === "html"
-      ? resolveTraceHtmlPath(opts.output, bundleName)
-      : resolveArchivePath(opts.output, bundleName);
+    outputPaths = format === "default"
+      ? resolveDefaultReportPaths(opts.output, bundleName)
+      : {
+          html: format === "html" ? resolveTraceHtmlPath(opts.output, bundleName) : "",
+          bundle: format === "bundle" ? resolveArchivePath(opts.output, bundleName) : "",
+        };
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return 2;
@@ -373,9 +376,9 @@ export async function runCollectTrace(
   }
 
   if (format === "html") {
-    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), resolve(outputPath));
+    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), resolve(outputPaths.html));
     else {
-      writeTabbedReport(outputPath, {
+      writeTabbedReport(outputPaths.html, {
         title: "doctor Trace 诊断报告",
         description: "同一批次采集，每个 Biz ID 独立分组",
         ariaLabel: "Biz ID Trace 诊断结果",
@@ -384,17 +387,29 @@ export async function runCollectTrace(
     }
     if (exitCode === 0) rmSync(stagingRoot, { recursive: true, force: true });
     else terminalStderr.warning(`[collect] 失败 Trace 证据保留在目录: ${staging}\n`);
-    terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPath}\n`);
+    terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPaths.html}\n`);
     return exitCode;
   }
 
-  const packed = await packBundle(staging, outputPath);
+  const reportPath = join(staging, "report.html");
+  if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), reportPath);
+  else {
+    writeTabbedReport(reportPath, {
+      title: "doctor Trace 诊断报告",
+      description: "同一批次采集，每个 Biz ID 独立分组",
+      ariaLabel: "Biz ID Trace 诊断结果",
+      tabs: groups,
+    });
+  }
+  if (format === "default") copyFileSync(reportPath, outputPaths.html);
+  const packed = await packReportBundle(staging, outputPaths.bundle);
   if (!packed.ok) {
     terminalStderr.error(`[collect] 打包失败（${packed.stderr.trim().split("\n")[0]}），证据保留在目录: ${staging}\n`);
     return 1;
   }
   rmSync(stagingRoot, { recursive: true, force: true });
-  terminalStdout.result(exitCode === 0, `[collect] Trace 证据包: ${outputPath}\n`);
+  if (format === "default") terminalStdout.result(exitCode === 0, `[collect] Trace HTML 报告: ${outputPaths.html}\n`);
+  terminalStdout.result(exitCode === 0, `[collect] Trace 证据包: ${outputPaths.bundle}\n`);
   return exitCode;
   } finally {
     try {

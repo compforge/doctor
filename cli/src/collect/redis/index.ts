@@ -1,5 +1,5 @@
 import { terminalStdout, terminalStderr } from "../../terminal/output";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { reportError, writeErrorLog } from "../../app/error-log";
@@ -11,7 +11,7 @@ import type { Executor } from "../../infra/k8s/executor";
 import type { RedisAccessApi } from "../../infra/redis";
 import type { CommandContext } from "../../command";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import { packBundle, resolveArchivePath } from "../output/archive";
+import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { evaluateCollectOutcome } from "../outcome";
 import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
@@ -73,6 +73,7 @@ export interface CollectRedisCliOpts {
 }
 
 const REDIS_OUTPUT_LABELS: Record<RedisOutputFormat, string> = {
+  default: "HTML + 证据包",
   bundle: "证据包",
   html: "HTML 报告",
   md: "Markdown 报告",
@@ -95,7 +96,7 @@ export function resolveRedisOutputPath(
     }
     return resolveArchivePath(output, bundleName);
   }
-  if (format === "html") {
+  if (format === "html" || format === "default") {
     if (!output) return join(".", `${bundleName}.html`);
     if (/\.(?:tar\.gz|tgz|md)$/i.test(output)) {
       throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz/.md 后缀");
@@ -161,6 +162,9 @@ export async function runCollectRedis(
   const { mode, maxKeys, maxKeysPerSecond, top, keyStats } = config.scan;
   const format = config.outputFormat;
   const bundleName = redisBundleName(new Date());
+  const defaultPaths = format === "default"
+    ? resolveDefaultReportPaths(config.output, bundleName)
+    : undefined;
   let outputPath: string;
   try {
     outputPath = resolveRedisOutputPath(config.output, bundleName, format);
@@ -238,7 +242,9 @@ export async function runCollectRedis(
       const failure = await deliverFailureBundle({
         bundleDir: staging,
         bundleName,
-        requestedOutput: config.output,
+        requestedOutput: format === "default"
+          ? resolveDefaultReportPaths(config.output, bundleName).bundle
+          : config.output,
         collectCode: code,
       });
       if (failure.packed.ok) {
@@ -252,28 +258,41 @@ export async function runCollectRedis(
       return 1;
     }
     let delivered = false;
-    if (format === "bundle") {
-      const packed = await packBundle(staging, outputPath);
-      delivered = packed.ok;
-      if (!packed.ok) terminalStderr.error(`[collect] 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
+    const writeReport = (path: string) => {
+      writeHtmlReport(staging, path, {
+        title: "doctor Redis 诊断报告",
+        profileName: config.profileName,
+        summaryHtml,
+        sections: [
+          ...(keyDistributionHtml ? [{ title: "Key 分布", html: keyDistributionHtml }] : []),
+          ...(keyStatsHtml ? [{ title: "keyStats", html: keyStatsHtml }] : []),
+          ...(prefixKeyPieCharts.length
+            ? [{ title: "前缀 Key 占比", html: htmlPieCharts(prefixKeyPieCharts) }]
+            : []),
+          ...(prefixMemoryPieCharts.length
+            ? [{ title: "前缀空间占比", html: htmlPieCharts(prefixMemoryPieCharts) }]
+            : []),
+          ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
+        ],
+      });
+    };
+    if (format === "bundle" || format === "default") {
+      try {
+        const reportPath = join(staging, "report.html");
+        writeReport(reportPath);
+        const paths = defaultPaths
+          ? defaultPaths
+          : { html: reportPath, bundle: outputPath };
+        if (format === "default") copyFileSync(reportPath, paths.html);
+        const packed = await packReportBundle(staging, paths.bundle);
+        delivered = packed.ok;
+        if (!packed.ok) terminalStderr.error(`[collect] 打包失败：${packed.stderr.trim() || `exit=${packed.exitCode}`}\n`);
+      } catch (err) {
+        reportError(err, { context: "doctor store/redis/bundle-report", summary: "[collect] Bundle 报告生成失败" });
+      }
     } else if (format === "html") {
       try {
-        writeHtmlReport(staging, outputPath, {
-          title: "doctor Redis 诊断报告",
-          profileName: config.profileName,
-          summaryHtml,
-          sections: [
-            ...(keyDistributionHtml ? [{ title: "Key 分布", html: keyDistributionHtml }] : []),
-            ...(keyStatsHtml ? [{ title: "keyStats", html: keyStatsHtml }] : []),
-            ...(prefixKeyPieCharts.length
-              ? [{ title: "前缀 Key 占比", html: htmlPieCharts(prefixKeyPieCharts) }]
-              : []),
-            ...(prefixMemoryPieCharts.length
-              ? [{ title: "前缀空间占比", html: htmlPieCharts(prefixMemoryPieCharts) }]
-              : []),
-            ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
-          ],
-        });
+        writeReport(outputPath);
         delivered = true;
       } catch (err) {
         reportError(err, { context: "doctor store/redis/html-report", summary: "[collect] HTML 报告生成失败" });
@@ -289,13 +308,17 @@ export async function runCollectRedis(
     if (delivered) {
       rmSync(join(staging, ".."), { recursive: true, force: true });
       if (!config.deferDelivery) {
-        terminalStdout.success(`[collect] ${REDIS_OUTPUT_LABELS[format]}: ${outputPath}\n`);
+        terminalStdout.success(
+          `[collect] ${REDIS_OUTPUT_LABELS[format]}: ${defaultPaths ? `${defaultPaths.html} + ${defaultPaths.bundle}` : outputPath}\n`,
+        );
       }
     } else {
       const failure = await deliverFailureBundle({
         bundleDir: staging,
         bundleName,
-        requestedOutput: config.output,
+        requestedOutput: format === "default"
+          ? resolveDefaultReportPaths(config.output, bundleName).bundle
+          : config.output,
         collectCode: 1,
         reason: "成功产物生成失败",
       });
@@ -419,6 +442,7 @@ export async function runCollectRedis(
       output: `${JSON.stringify(diagnosis.findings, null, 2)}\n`,
       ext: "json",
     });
+    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
     bundle.writeSummary(buildRedisMarkdown(sanitizedTarget, diagnosis));
     summaryHtml = buildRedisHtml(sanitizedTarget, diagnosis);
     keyDistributionHtml = buildRedisKeyDistributionHtml(diagnosis);

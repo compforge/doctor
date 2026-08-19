@@ -12,7 +12,7 @@ import type { ResolvedNamespace } from "../../infra/k8s/context";
 import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-config";
 import type { EvidenceBundle } from "../evidence";
 
-export type InspectOutputFormat = "json" | "html" | "md";
+export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 export type TenantConfigScope = string;
 

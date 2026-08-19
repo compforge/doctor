@@ -34,6 +34,7 @@ import type {
   InspectOutputFormat,
 } from "./model";
 import type { CommandContext } from "../../command";
+import { resolveArchivePath } from "../output/archive";
 
 export { resolveTenantPromptChoice } from "../../terminal/tenant-selection";
 
@@ -48,9 +49,9 @@ export function parseInspectServices(raw: string, catalog: ServiceCatalog): stri
 }
 
 export function parseInspectOutputFormat(value: string | undefined): InspectOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "json" && format !== "html" && format !== "md") {
-    throw new Error(`--format 只支持 json、html 或 md: '${format}'`);
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "md") {
+    throw new Error(`--format 只支持 bundle、json、html 或 md: '${format}'`);
   }
   return format;
 }
@@ -93,11 +94,13 @@ export async function resolveInspectConfig(
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
   const reportName = inspectReportName(new Date());
-  const outputPath = format === "html"
+  const outputPath = format === "html" || format === "default"
     ? resolveInspectHtmlOutputPath(opts.output, reportName)
     : format === "md"
       ? resolveInspectMarkdownOutputPath(opts.output, reportName)
-      : undefined;
+      : format === "bundle"
+        ? resolveArchivePath(opts.output, reportName)
+        : undefined;
   const resolvedProfile = {
     name: commandContext.profile.name,
     profile: commandContext.profile.value,

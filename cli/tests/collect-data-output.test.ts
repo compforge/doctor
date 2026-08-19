@@ -1,5 +1,5 @@
 import { expect, spyOn, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -111,6 +111,31 @@ test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[collect] Data JSON: ${outputPath}`);
     expect(stdout).not.toContain('"groups"');
+  } finally {
+    write.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-data-default-output-"));
+  const output = join(root, "report");
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    expect(await runCollectData({
+      bizIds: ["biz-1"],
+      services: service,
+      config: join(root, "missing-config.yaml"),
+      output,
+    }, plugin, new CommandContext({}), executor, contexts)).toBe(0);
+
+    expect(existsSync(`${output}.html`)).toBe(true);
+    expect(existsSync(`${output}.tar.gz`)).toBe(true);
+    const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
+    expect(listing).toContain("/report.html");
+    expect(listing).toContain("/diagnosis.json");
+    expect(listing).toContain("/manifest.json");
+    expect(listing).toContain("/raw/");
   } finally {
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });

@@ -7,7 +7,7 @@ import type {
 import type { DatabaseIdentity } from "../../infra/database";
 import type { KubectlOptions } from "../../infra/k8s/executor";
 
-export type DataOutputFormat = "json" | "html";
+export type DataOutputFormat = "default" | "bundle" | "json" | "html";
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts {

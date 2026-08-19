@@ -3,8 +3,17 @@ import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { resolveCollectNamespace } from "../../infra/k8s/context";
 import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../../terminal/selection";
-import type { CollectMetricCliOpts, MetricConfig, MetricWatch } from "./model";
+import type { CollectMetricCliOpts, MetricConfig, MetricOutputFormat, MetricWatch } from "./model";
 import type { CommandContext } from "../../command";
+import { resolveArchivePath } from "../output/archive";
+
+export function parseMetricOutputFormat(raw: string | undefined): MetricOutputFormat {
+  const format = raw?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html") {
+    throw new Error(`--format 只支持 bundle 或 html: '${format}'`);
+  }
+  return format;
+}
 
 const WATCH_CHOICES: readonly MetricWatch[] = [
   { mode: "snapshot", label: "0" },
@@ -77,6 +86,7 @@ export async function resolveMetricConfig(
   if (!watch) return undefined;
   let namespace = resolveCollectNamespace(opts, commandContext.profile);
   const reportName = metricReportName(new Date());
+  const format = parseMetricOutputFormat(opts.format);
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
   const services = parseMetricServices(opts.services, catalog);
@@ -133,7 +143,10 @@ export async function resolveMetricConfig(
       context: kubeContext,
     },
     reportName,
-    outputPath: resolveMetricOutputPath(opts.output, reportName),
+    format,
+    outputPath: format === "bundle"
+      ? resolveArchivePath(opts.output, reportName)
+      : resolveMetricOutputPath(opts.output, reportName),
   };
 }
 

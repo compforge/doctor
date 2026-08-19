@@ -25,7 +25,10 @@ export interface CollectMetricCliOpts {
   profile?: string;
   config?: string;
   output?: string;
+  format?: string;
 }
+
+export type MetricOutputFormat = "default" | "bundle" | "html";
 
 export type MetricWatch =
   | { mode: "snapshot"; label: "0" }
@@ -46,6 +49,7 @@ export interface MetricConfig {
   kube: { namespace: string; kubeconfig?: string; context?: string };
   reportName: string;
   outputPath: string;
+  format: MetricOutputFormat;
 }
 
 export interface MetricSeries {

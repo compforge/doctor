@@ -54,8 +54,8 @@ export function perfRunName(now = new Date()): string {
 }
 
 export function parsePerfOutputFormat(value: string | undefined): PerfOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "html" && format !== "bundle") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "html" && format !== "bundle") {
     throw new Error(`--format 只支持 html 或 bundle: '${format}'`);
   }
   return format;
@@ -64,7 +64,13 @@ export function parsePerfOutputFormat(value: string | undefined): PerfOutputForm
 export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConfig {
   const outputFormat = parsePerfOutputFormat(opts.format);
   const bundleName = perfRunName(now);
-  const outputDir = opts.output?.trim() || join(".", bundleName);
+  const outputCandidate = opts.output?.trim() || join(".", bundleName);
+  const outputDir = outputFormat === "default"
+    ? outputCandidate
+      .replace(/\.tar\.gz$/i, "")
+      .replace(/\.tgz$/i, "")
+      .replace(/\.html$/i, "")
+    : outputCandidate;
   if (outputFormat === "html" && /\.(?:tar\.gz|tgz)$/i.test(outputDir)) {
     throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz 后缀");
   }

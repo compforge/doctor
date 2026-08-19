@@ -14,7 +14,7 @@ import { runDiagnosis } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
-import { packBundle, resolveArchivePath } from "../output/archive";
+import { packReportBundle, resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import type { SendHttp } from "../shared/http/capture";
@@ -68,7 +68,7 @@ export {
 } from "./scenario-file";
 export type { HttpDiagnosis, HttpExecution, HttpExecutionTarget, HttpFinding, HttpScenario } from "../shared/http/model";
 
-export type HttpOutputFormat = "bundle" | "html" | "md";
+export type HttpOutputFormat = "default" | "bundle" | "html" | "md";
 
 export interface CollectHttpCliOpts extends KubernetesCommandInput {
   location?: string;
@@ -118,8 +118,8 @@ export function defaultHttpBundleName(now: Date): string {
 }
 
 export function parseHttpOutputFormat(value: string | undefined): HttpOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "bundle" && format !== "html" && format !== "md") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html" && format !== "md") {
     throw new Error(`--format 只支持 bundle、html 或 md: '${format}'`);
   }
   return format;
@@ -132,7 +132,7 @@ export function resolveHttpOutputPath(output: string | undefined, name: string, 
     }
     return resolveArchivePath(output, name);
   }
-  if (format === "html") {
+  if (format === "html" || format === "default") {
     if (!output) return join(".", `${name}.html`);
     if (/\.(?:tar\.gz|tgz|md)$/i.test(output)) {
       throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz/.md 后缀");
@@ -183,19 +183,26 @@ async function deliverHttpOutput(
   format: HttpOutputFormat,
   profileName: string,
   summaryHtml: string,
+  requestedOutput: string | undefined,
+  bundleName: string,
 ): Promise<boolean> {
   try {
     if (format === "md") {
       copyFileSync(join(staging, "summary.md"), outputPath);
       return true;
     }
-    writeHtmlReport(staging, format === "bundle" ? join(staging, "report.html") : outputPath, {
+    const reportPath = format === "html" ? outputPath : join(staging, "report.html");
+    writeHtmlReport(staging, reportPath, {
       title: "doctor http 诊断报告",
       profileName,
       summaryHtml,
     });
     if (format === "html") return true;
-    return (await packBundle(staging, outputPath)).ok;
+    const paths = format === "default"
+      ? resolveDefaultReportPaths(requestedOutput, bundleName)
+      : { html: reportPath, bundle: outputPath };
+    if (format === "default") copyFileSync(reportPath, paths.html);
+    return (await packReportBundle(staging, paths.bundle)).ok;
   } catch (error) {
     terminalStderr.error(`[http] 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
     return false;
@@ -390,7 +397,9 @@ export async function runCollectHttp(
     const failure = await deliverFailureBundle({
       bundleDir: staging,
       bundleName,
-      requestedOutput: opts.output,
+      requestedOutput: format === "default"
+        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
+        : opts.output,
       collectCode: 1,
       reason,
     });
@@ -451,12 +460,16 @@ export async function runCollectHttp(
     format,
     reportProfileName,
     buildHttpHtml(diagnosis, scenario.requests, staging, executionTargetLabel(executionTarget)),
+    opts.output,
+    bundleName,
   );
   if (!delivered) {
     const failure = await deliverFailureBundle({
       bundleDir: staging,
       bundleName,
-      requestedOutput: opts.output,
+      requestedOutput: format === "default"
+        ? resolveDefaultReportPaths(opts.output, bundleName).bundle
+        : opts.output,
       collectCode: 1,
       reason: "HTTP 诊断产物生成失败",
     });
@@ -471,12 +484,15 @@ export async function runCollectHttp(
 
   chmodSync(outputPath, 0o600);
   rmSync(stagingRoot, { recursive: true, force: true });
+  const deliveredPath = format === "default"
+    ? `${outputPath} + ${resolveDefaultReportPaths(opts.output, bundleName).bundle}`
+    : outputPath;
   if (evidenceOutcome.exitCode !== 0) {
-    terminalStderr.error(`[http] 证据不完整：${outputPath}\n`);
+    terminalStderr.error(`[http] 证据不完整：${deliveredPath}\n`);
   } else if (hasFindings) {
-    terminalStderr.warning(`[http] 发现异常：${outputPath}\n`);
+    terminalStderr.warning(`[http] 发现异常：${deliveredPath}\n`);
   } else {
-    terminalStderr.success(`[http] 诊断完成：${outputPath}\n`);
+    terminalStderr.success(`[http] 诊断完成：${deliveredPath}\n`);
   }
   return evidenceOutcome.exitCode;
 }

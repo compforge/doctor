@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { copyFileSync } from "node:fs";
 import {
   Engine,
   rampHold,
@@ -521,6 +522,7 @@ export async function runPerf(
     caseFacets: caseSet.facets,
   };
   const reportPath = writePerfReport(result);
+  copyFileSync(reportPath, join(outputDir, "report.html"));
   const passed = run.passed && metricCode === 0;
   if (archivePath) {
     const packed = await deliverPerfBundle(output);
@@ -532,6 +534,7 @@ export async function runPerf(
       return 1;
     }
     terminalStdout.result(passed, `[perf] bundle: ${archivePath}\n`);
+    if (config.outputFormat === "default") terminalStdout.result(passed, `[perf] report: ${reportPath}\n`);
     return passed ? 0 : 1;
   }
   terminalStdout.result(passed, `[perf] report: ${reportPath}\n`);

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { packBundle, resolveArchivePath } from "../collect/output/archive";
+import { packReportBundle, resolveArchivePath } from "../collect/output/archive";
 import type { ExecResult } from "../infra/k8s/executor";
 import type { PerfConfig } from "./model";
 
@@ -12,7 +12,7 @@ export interface PreparedPerfOutput {
 }
 
 export function preparePerfOutput(config: PerfConfig): PreparedPerfOutput {
-  const archivePath = config.outputFormat === "bundle"
+  const archivePath = config.outputFormat === "bundle" || config.outputFormat === "default"
     ? resolve(resolveArchivePath(config.outputDir, config.bundleName))
     : undefined;
   if (archivePath && existsSync(archivePath)) {
@@ -30,8 +30,8 @@ export function preparePerfOutput(config: PerfConfig): PreparedPerfOutput {
 }
 
 export async function deliverPerfBundle(output: PreparedPerfOutput): Promise<ExecResult | undefined> {
-  if (!output.archivePath || !output.temporaryRoot) return undefined;
-  const packed = await packBundle(output.outputDir, output.archivePath);
-  if (packed.ok) rmSync(output.temporaryRoot, { recursive: true, force: true });
+  if (!output.archivePath) return undefined;
+  const packed = await packReportBundle(output.outputDir, output.archivePath);
+  if (packed.ok && output.temporaryRoot) rmSync(output.temporaryRoot, { recursive: true, force: true });
   return packed;
 }

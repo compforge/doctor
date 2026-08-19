@@ -77,7 +77,7 @@ Request 必须声明基础 `url`。没有 `entrypoints` 时，doctor 将它归�
 8. 每条 Probe Observation 按 `round/request/entrypoint` 独立保存 `headers.txt`、`body.*`、可选 `error.txt` 和 `meta.json`；SSE 同时建立不含正文的 frame 索引，记录首末 frame、P95/最大间隔和 `[DONE]` 终态。
 9. Detector 校验 endpoint 可达性、单次传输、HTTP status、Content-Type、最大耗时和 SSE 事件，并按 Entrypoint 聚合成功率、状态分布、延迟分位数和偶现失败。Detector 不访问网络。
 10. 同轮比较按 Entrypoint 声明顺序逐对进行。若 `entry-a` 与 `entry-b` 不同、`entry-b` 与 `api` 相同，Finding 将差异区间收敛到 `entry-a → entry-b`，但不在缺少日志/trace 时武断断言具体根因。
-11. HTML 是默认产物，HTML 和 Markdown 都会交付最终 Request Plan 对应的可复现 cURL，并对未满足预期的执行展示有界的实际 Response；显式选择 Bundle 时会同时包含未截断的完整原始响应和离线 `report.html`。报告和 manifest 都记录实际执行位置、Inspection Facts、Observations、Findings 和 Coverage。
+11. 未指定 format 时同时交付 HTML 和 Bundle。HTML 和 Markdown 都会交付最终 Request Plan 对应的可复现 cURL，并对未满足预期的执行展示有界的实际 Response；Bundle 同时包含未截断的完整原始响应和离线 `report.html`。显式指定格式时只交付所选格式。报告和 manifest 都记录实际执行位置、Inspection Facts、Observations、Findings 和 Coverage。
 
 ## 关键设计
 

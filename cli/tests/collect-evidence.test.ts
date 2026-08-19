@@ -3,7 +3,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EvidenceBundle, OUTCOME_UNREACHED_REASON, truncateRaw } from "../src/collect/evidence";
-import { packBundle } from "../src/collect/output/archive";
+import {
+  packBundle,
+  packReportBundle,
+  resolveDefaultReportPaths,
+} from "../src/collect/output/archive";
 
 function tmp(): string {
   return mkdtempSync(join(tmpdir(), "doctor-evidence-"));
@@ -101,6 +105,32 @@ describe("packBundle", () => {
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     expect(listing).toContain("doctor-mem-p-1/summary.md");
     expect(listing).toContain("doctor-mem-p-1/raw/01-a.txt");
+  });
+
+  test("default delivery derives sibling HTML and tar.gz paths", () => {
+    expect(resolveDefaultReportPaths(undefined, "doctor-data-1")).toEqual({
+      html: "doctor-data-1.html",
+      bundle: "doctor-data-1.tar.gz",
+    });
+    expect(resolveDefaultReportPaths("out/report.html", "ignored")).toEqual({
+      html: "out/report.html",
+      bundle: "out/report.tar.gz",
+    });
+  });
+
+  test("successful report bundle requires root report.html", async () => {
+    const parent = tmp();
+    const dir = join(parent, "doctor-report");
+    const bundle = new EvidenceBundle(dir);
+    bundle.writeSummary("# hi");
+    const missing = await packReportBundle(dir, join(parent, "missing.tar.gz"));
+    expect(missing.ok).toBe(false);
+
+    writeFileSync(join(dir, "report.html"), "<html>report</html>");
+    const archive = join(parent, "report.tar.gz");
+    expect((await packReportBundle(dir, archive)).ok).toBe(true);
+    expect(Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString())
+      .toContain("doctor-report/report.html");
   });
 });
 

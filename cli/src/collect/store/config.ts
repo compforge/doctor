@@ -41,7 +41,7 @@ import { join } from "node:path";
 export const STORE_KINDS = ["db", "vdb", "s3", "redis"] as const;
 export type DiagnosableStoreKind = typeof STORE_KINDS[number];
 type NativeStoreKind = Exclude<DiagnosableStoreKind, "redis">;
-export type StoreOutputFormat = "bundle" | "html" | "md";
+export type StoreOutputFormat = "default" | "bundle" | "html" | "md";
 
 export interface CollectStoreCliOpts extends KubernetesCommandInput {
   type?: string;
@@ -97,8 +97,8 @@ export function parseStoreKinds(value: string | undefined): DiagnosableStoreKind
 }
 
 export function parseStoreOutputFormat(value: string | undefined): StoreOutputFormat {
-  const format = value?.trim() || "html";
-  if (format !== "bundle" && format !== "html" && format !== "md") {
+  const format = value?.trim() || "default";
+  if (format !== "default" && format !== "bundle" && format !== "html" && format !== "md") {
     throw new Error(`--format 只支持 bundle、html 或 md: '${format}'`);
   }
   return format;
@@ -115,7 +115,7 @@ export function resolveStoreOutputPath(
     }
     return resolveArchivePath(output, artifactName);
   }
-  if (format === "html") {
+  if (format === "html" || format === "default") {
     if (!output) return join(".", `${artifactName}.html`);
     if (/\.(?:tar\.gz|tgz|md)$/i.test(output)) {
       throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz/.md 后缀");

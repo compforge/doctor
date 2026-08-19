@@ -32,7 +32,7 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
     breakerMinN: 10,
     requestTimeoutMs: 180_000,
     traceSamples: 10,
-    outputFormat: "html",
+    outputFormat: "default",
     bundleName: "doctor-perf-20260102-030405",
   });
   expect(() => parsePerfLevels("5,0,20")).toThrow("--levels");
@@ -58,6 +58,7 @@ test("Perf bundle archives the complete linked report directory", async () => {
   }, new Date("2026-01-02T03:04:05")));
   try {
     writeFileSync(join(output.outputDir, "perf.html"), "perf");
+    writeFileSync(join(output.outputDir, "report.html"), "perf");
     writeFileSync(join(output.outputDir, "metric.html"), "metric");
     writeFileSync(join(output.outputDir, "sample-01-trace.html"), "trace");
     writeFileSync(join(output.outputDir, "sample-01-log.html"), "log");
@@ -66,6 +67,7 @@ test("Perf bundle archives the complete linked report directory", async () => {
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     expect(listing).toContain("doctor-perf-20260102-030405/perf.html");
+    expect(listing).toContain("doctor-perf-20260102-030405/report.html");
     expect(listing).toContain("doctor-perf-20260102-030405/metric.html");
     expect(listing).toContain("doctor-perf-20260102-030405/sample-01-trace.html");
     expect(listing).toContain("doctor-perf-20260102-030405/sample-01-log.html");

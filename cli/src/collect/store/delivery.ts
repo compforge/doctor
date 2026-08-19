@@ -5,7 +5,7 @@ import { marked, Renderer } from "marked";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { packBundle } from "../output/archive";
+import { packReportBundle, resolveDefaultReportPaths } from "../output/archive";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import { escapeHtml, writeHtmlReport, type HtmlReportOptions } from "../output/html";
 import { resolveStoreOutputPath, type StoreConfig, type StoreOutputFormat } from "./config";
@@ -61,27 +61,42 @@ export async function deliverStoreArtifacts(input: {
     const failure = await deliverFailureBundle({
       bundleDir: input.staging,
       bundleName: input.bundleName,
-      requestedOutput: input.requestedOutput,
+      requestedOutput: input.format === "default"
+        ? resolveDefaultReportPaths(input.requestedOutput, input.bundleName).bundle
+        : input.requestedOutput,
       collectCode: input.code,
     });
     return { ok: failure.packed.ok, path: failure.path, label: "失败 Evidence Bundle" };
   }
   try {
-    if (input.format === "bundle") {
-      const packed = await packBundle(input.staging, input.outputPath);
-      return { ok: packed.ok, path: input.outputPath, label: "Store 证据包" };
-    }
-    if (input.format === "html") {
+    const writeReport = (path: string) => {
       const renderer = new Renderer();
       renderer.html = ({ text }) => escapeHtml(text);
-      writeHtmlReport(input.staging, input.outputPath, {
+      writeHtmlReport(input.staging, path, {
         ...input.htmlReport,
         title: input.title,
         profileName: input.profileName,
         // Markdown inline/code 由 marked 自身转义；raw HTML 单独收口，避免现场文本注入报告。
         summaryHtml: marked.parse(input.summary, { async: false, renderer }) as string,
       });
+    };
+    if (input.format === "html") {
+      writeReport(input.outputPath);
       return { ok: true, path: input.outputPath, label: "Store HTML 报告" };
+    }
+    if (input.format === "bundle" || input.format === "default") {
+      const reportPath = join(input.staging, "report.html");
+      writeReport(reportPath);
+      const paths = input.format === "default"
+        ? resolveDefaultReportPaths(input.requestedOutput, input.bundleName)
+        : { html: reportPath, bundle: input.outputPath };
+      if (input.format === "default") copyFileSync(reportPath, paths.html);
+      const packed = await packReportBundle(input.staging, paths.bundle);
+      return {
+        ok: packed.ok,
+        path: input.format === "default" ? `${paths.html} + ${paths.bundle}` : paths.bundle,
+        label: input.format === "default" ? "Store HTML + 证据包" : "Store 证据包",
+      };
     }
     copyFileSync(join(input.staging, "summary.md"), input.outputPath);
     return { ok: true, path: input.outputPath, label: "Store Markdown 报告" };
