@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Detector } from "@compforge/trace-harness";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { OUTCOME_UNREACHED_REASON } from "../src/collect/evidence";
 import type { SearchEngine } from "../src/infra/search";
 import { pickOpenSearchService } from "../src/infra/search/opensearch";
@@ -19,7 +20,40 @@ import {
   newTraceStats,
   parseTraceOutputFormat,
   resolveTraceHtmlPath,
+  traceStoreCandidates,
 } from "../src/collect/trace";
+
+test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target", () => {
+  const plugin = {
+    id: "multi-vdb",
+    version: "0.0.1",
+    trace: {
+      analysis: {},
+      source: { store: { service: "jaeger-collector", store: "trace" } },
+    },
+    services: createServiceCatalog([{
+      name: "kb-server",
+      capabilities: {
+        stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+      },
+    }, {
+      name: "jaeger-collector",
+      capabilities: {
+        stores: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
+      },
+    }, {
+      name: "chat-server",
+      capabilities: {
+        stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  expect(traceStoreCandidates(plugin)).toEqual([
+    { service: "jaeger-collector", store: "trace" },
+    { service: "kb-server", store: "vdb" },
+  ]);
+});
 
 describe("buildIndexExpr", () => {
   test("默认通配", () => expect(buildIndexExpr()).toBe("jaeger-span-*"));

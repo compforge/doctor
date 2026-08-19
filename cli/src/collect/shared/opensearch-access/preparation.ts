@@ -29,7 +29,7 @@ export interface OpenSearchAccessOptions {
 /** 建立访问通道，并统一拥有 Search client 与 port-forward 的完整生命周期。 */
 export async function prepareOpenSearchAccess(
   opts: OpenSearchAccessOptions,
-  log: (line: string) => void,
+  log: (line: string, tone?: "info" | "warning") => void,
   injectedSearch?: SearchEngine,
 ): Promise<OpenSearchAccessPreparation> {
   const steps: StepInput[] = [];
@@ -50,6 +50,7 @@ export async function prepareOpenSearchAccess(
   let hostPort = "";
   let baseUrl = "";
   let channel = "";
+  let preferredScheme: "http" | "https" | undefined;
   let auth = opts.auth;
   if (connection.kind === "direct") {
     const normalized = normalizeOpenSearchHost(connection.endpoint);
@@ -81,7 +82,7 @@ export async function prepareOpenSearchAccess(
         command: active?.command,
       });
       hostPort = `${endpoint.host}:${endpoint.port}`;
-      baseUrl = connection.scheme ? `${connection.scheme}://${hostPort}` : "";
+      preferredScheme = connection.scheme;
       channel = `port-forward svc/${service.name}（${service.namespace}）`;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
@@ -99,13 +100,23 @@ export async function prepareOpenSearchAccess(
 
   if (!baseUrl) {
     try {
-      baseUrl = await probeOpenSearchUrl(hostPort, auth);
+      // 现场配置可能滞后于真实 Service TLS 状态；优先配置值，失败后再试另一种 scheme。
+      baseUrl = await probeOpenSearchUrl(hostPort, auth, { preferredScheme });
+      const selectedScheme = baseUrl.startsWith("https://") ? "https" : "http";
+      if (preferredScheme && selectedScheme !== preferredScheme) {
+        log(
+          `[collect] OpenSearch 配置 scheme=${preferredScheme} 不可用，已回退 ${selectedScheme}`,
+          "warning",
+        );
+      }
       steps.push({
         id: "probe-scheme",
         title: "OpenSearch 连通性探测",
         risk: "observe",
         status: "ok",
-        output: baseUrl,
+        output: preferredScheme
+          ? `configured=${preferredScheme} selected=${selectedScheme}`
+          : baseUrl,
       });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
