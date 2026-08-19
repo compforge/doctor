@@ -9,6 +9,11 @@ import { CommandContext } from "../src/command";
 import { confirmRedisTarget } from "../src/collect/redis/preparation";
 import { collectRedisRuntime, discoverRedisDatabases } from "../src/collect/redis/probe/collector";
 import type { RedisAccessApi, RedisConnectionApi } from "../src/infra/redis";
+import { resolveRedisOutputPath } from "../src/collect/redis";
+
+test("Redis 默认双交付接受 tar.gz 输出路径", () => {
+  expect(resolveRedisOutputPath("report.tar.gz", "ignored", "default")).toBe("report.html");
+});
 
 test("Redis database 范围默认覆盖所有有数据的 DB，显式参数只选单个 DB", async () => {
   await expect(selectRedisDatabaseScope([7, 0, 7], "single", undefined, false)).resolves.toEqual({

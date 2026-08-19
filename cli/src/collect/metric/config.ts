@@ -87,6 +87,9 @@ export async function resolveMetricConfig(
   let namespace = resolveCollectNamespace(opts, commandContext.profile);
   const reportName = metricReportName(new Date());
   const format = parseMetricOutputFormat(opts.format);
+  if (format === "bundle" && /\.(?:html|md)$/i.test(opts.output ?? "")) {
+    throw new Error("--format bundle 的输出路径不能使用 .html/.md 后缀");
+  }
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
   const services = parseMetricServices(opts.services, catalog);

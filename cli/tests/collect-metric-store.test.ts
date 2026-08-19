@@ -18,6 +18,27 @@ import { STORE_METRIC_CAPABILITIES } from "../src/collect/metric/store/contract"
 import { CommandContext } from "../src/command";
 
 describe("metric Store observability", () => {
+  test("bundle 输出拒绝 HTML/Markdown 后缀", async () => {
+    const services = createServiceCatalog([{
+      name: "app",
+      capabilities: {
+        metric: {
+          endpoint: { port: 8080, path: "/metrics" },
+          metricNames: ["requests_total"],
+          charts: [],
+        },
+      },
+    }]);
+    await expect(resolveMetricConfig({
+      services: "app",
+      prometheus: "http://prometheus.example",
+      format: "bundle",
+      output: "report.html",
+    }, services, new CommandContext({}), false)).rejects.toThrow(
+      "--format bundle 的输出路径不能使用 .html/.md 后缀",
+    );
+  });
+
   test("discovers Redis and MySQL exporter Services by identity and conventional ports", () => {
     const targets = discoverStoreExporterServices([
       {

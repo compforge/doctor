@@ -90,13 +90,14 @@ export function resolveRedisOutputPath(
   bundleName: string,
   format: RedisOutputFormat,
 ): string {
+  if (format === "default") return resolveDefaultReportPaths(output, bundleName).html;
   if (format === "bundle") {
     if (/\.(?:html|md)$/i.test(output ?? "")) {
       throw new Error("--format bundle 的输出路径不能使用 .html/.md 后缀");
     }
     return resolveArchivePath(output, bundleName);
   }
-  if (format === "html" || format === "default") {
+  if (format === "html") {
     if (!output) return join(".", `${bundleName}.html`);
     if (/\.(?:tar\.gz|tgz|md)$/i.test(output)) {
       throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz/.md 后缀");

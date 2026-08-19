@@ -271,6 +271,7 @@ export async function runModelDiagnosis(
       }
       const packed = await packReportBundle(staging, paths.bundle);
       if (!packed.ok) throw new Error(`Model Bundle 打包失败：${packed.stderr}`);
+      chmodSync(paths.bundle, 0o600);
       outputPath = paths.bundle;
       terminalStdout.success(`[model] 诊断 Bundle：${paths.bundle}\n`);
     }
