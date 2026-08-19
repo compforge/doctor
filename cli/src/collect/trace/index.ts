@@ -43,7 +43,9 @@ import {
 } from "../shared/opensearch-access";
 import {
   ServiceDependencyRuntime,
+  openSearchStoreCandidates,
   type PreparedServiceStoreDependency,
+  type ServiceStoreReference,
 } from "../shared/service-dependency";
 import { buildIndexExpr } from "./opensearch";
 import { probeTrace } from "./probe";
@@ -51,6 +53,11 @@ import { buildTraceSummary } from "./render";
 
 export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
+
+/** Plugin trace source is preferred; the remaining OpenSearch VDB capabilities are fallbacks. */
+export function traceStoreCandidates(plugin: PluginDefinition): ServiceStoreReference[] {
+  return openSearchStoreCandidates(plugin, plugin.trace?.source?.store);
+}
 
 export interface CollectTraceCliOpts {
   /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
@@ -259,11 +266,13 @@ export async function runCollectTrace(
     );
   }
 
-  const traceStore = plugin.trace?.source?.store;
+  const traceStores = traceStoreCandidates(plugin);
   let preparedStore: PreparedServiceStoreDependency | undefined;
-  if (traceStore) {
+  if (traceStores.length) {
     try {
-      preparedStore = await dependencyRuntime.prepareStore(traceStore.service, traceStore.store);
+      preparedStore = endpoint
+        ? await dependencyRuntime.prepareStore(traceStores[0]!.service, traceStores[0]!.store)
+        : await dependencyRuntime.prepareStoreCandidates(traceStores);
     } catch (error) {
       terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
       return 2;

@@ -4,6 +4,7 @@ import type {
   ServiceDefinition,
   ServiceStoreCapabilityDependency,
 } from "@compforge/doctor-plugin";
+import { serviceStores, servicesWithStore } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
@@ -32,6 +33,48 @@ export interface PreparedServiceStoreDependency {
   evidenceTarget: Record<string, unknown>;
   configuredEndpoint?: string;
   auth: OpenSearchAuth;
+}
+
+export interface ServiceStoreReference {
+  service: string;
+  store: string;
+}
+
+/** Declared Store is preferred; remaining Plugin OpenSearch VDB Stores are ordered fallbacks. */
+export function openSearchStoreCandidates(
+  plugin: PluginDefinition,
+  preferred?: ServiceStoreReference,
+): ServiceStoreReference[] {
+  const candidates: ServiceStoreReference[] = preferred ? [{ ...preferred }] : [];
+  const seen = new Set(candidates.map(({ service, store }) => `${service}\0${store}`));
+  for (const service of servicesWithStore(plugin.services, "vdb")) {
+    for (const store of serviceStores(plugin.services, service.name, "vdb")) {
+      if (store.kind !== "vdb" || store.backend !== "opensearch") continue;
+      const key = `${service.name}\0${store.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ service: service.name, store: store.id });
+    }
+  }
+  return candidates;
+}
+
+export async function prepareFirstAvailableStore<T>(
+  candidates: readonly ServiceStoreReference[],
+  prepare: (candidate: ServiceStoreReference) => Promise<T>,
+  onFailure: (candidate: ServiceStoreReference, reason: string) => void,
+): Promise<T> {
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      return await prepare(candidate);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      failures.push(`${candidate.service}/${candidate.store}: ${reason}`);
+      onFailure(candidate, reason);
+    }
+  }
+  throw new Error(`所有 OpenSearch Store target 均不可用：${failures.join("；")}`);
 }
 
 export interface ServiceDependencyRuntimeOptions {
@@ -86,6 +129,19 @@ export class ServiceDependencyRuntime {
     return prepared;
   }
 
+  async prepareStoreCandidates(
+    candidates: readonly ServiceStoreReference[],
+  ): Promise<PreparedServiceStoreDependency> {
+    return prepareFirstAvailableStore(
+      candidates,
+      ({ service, store }) => this.prepareStore(service, store),
+      ({ service, store }, reason) => this.options.log(
+        `[collect] OpenSearch Store ${service}/${store} 不可用，尝试下一个 target：${reason}`,
+        "warning",
+      ),
+    );
+  }
+
   async close(): Promise<void> {
     const stores = await Promise.allSettled(this.stores.values());
     const preparations = stores.flatMap((result) => (
@@ -99,7 +155,10 @@ export class ServiceDependencyRuntime {
   private async resolveStore(
     dependency: ServiceStoreCapabilityDependency,
   ): Promise<ResolvedServiceCapabilityDependency> {
-    const prepared = await this.prepareStore(dependency.service, dependency.store);
+    const prepared = await this.prepareStoreCandidates(openSearchStoreCandidates(
+      this.options.plugin,
+      { service: dependency.service, store: dependency.store },
+    ));
     return {
       ...dependency,
       access: {
