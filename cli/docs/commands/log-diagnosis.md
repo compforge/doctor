@@ -17,7 +17,7 @@
 
 1. 配置确认先确定 Namespace，并由 `service.traceId` provider 分别解析每个 biz-id，输出 provider 与本次映射。provider Service 声明 capability 依赖时，Core 只在调用该 provider 时准备 handle，解析完成后统一回收。非交互使用 Catalog 的默认日志主链；交互候选是统一 Catalog 与当前 Namespace 实际 Service 的交集。时间范围优先采用显式参数；未指定时，近期 UUIDv7 业务 ID 会提供带少量前置余量的日志起点，其他 ID 回退默认回看窗口。
 2. Inspect 通过 `KubernetesPodLogAccess` 读取 Service、Pod 和 Container status，按 selector 建立 Service → Running Pod 关系，并确认哪些容器存在可读取的上一次终止实例。
-3. 每个 Service 独立运行一个 Probe；Probe 对其 Pod 采集同一时间范围内的 current 日志，并对发生过重启且存在 `lastState.terminated` 的容器 best-effort 补采 previous 日志。原始字节流分别直接落盘，同时按业务标识和可选错误模式生成 Observation。
+3. Log Probe 为所选 Service 建立有序 capture plan，以最多 4 路并发采集各 Pod 同一时间范围内的 current 日志，并对发生过重启且存在 `lastState.terminated` 的容器 best-effort 补采 previous 日志。并发只覆盖互不依赖的 Kubernetes 读取；完成后仍按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。原始字节流分别直接落盘，同时按业务标识和可选错误模式过滤。
 4. Render 合并全部 Service Observation，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
 5. 命令默认同时交付单文件离线 HTML 和完整 Bundle；批量输入时每个 biz-id 独立采集、过滤和判定，在
    交付页按 ID 分 tab。Bundle 按 ID 保存独立子证据包，各自包含 manifest、结构化时间线、聚合文本、
@@ -34,11 +34,12 @@
 `collect/log` 不维护平行名单或按服务名分支。如何读取 Kubernetes Service、如何按 selector 找到 Pod、如何执行 `kubectl logs` 可被 MCP 等领域复用，因此属于
 `infra/k8s`。通用多选交互属于 `terminal/`，不进入 infra。
 
-### 一个 Service 一个 Probe
+### Service 是证据边界，capture plan 是调度边界
 
-Service 是用户理解日志来源和后续扩展采集规则的稳定边界。单 Service 失败时，其它 Service 仍可
-继续采集并进入时间线；Evidence 也能明确指出缺的是哪一段，而不是把一次多 Service 操作记成一个
-不可拆分步骤。
+Service 是用户理解日志来源和后续扩展采集规则的稳定边界，因此 Observation、Pod 失败状态和最终时间线
+仍按 Service 分组。Kubernetes 日志读取彼此独立，若把 Service 边界同时当成调度边界，会让多个 Service、
+Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建立跨 Service 的有序 capture plan，
+以固定上限并发读取，再按计划顺序落 Evidence；单 Service 失败仍不会抹掉其它 Service 的日志。
 
 ### raw 完整性优先，聚合结果保持精简
 
