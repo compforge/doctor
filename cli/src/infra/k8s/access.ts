@@ -62,8 +62,10 @@ export async function inspectK8sAccess(
   exec: Executor,
   access: K8sAccessRule,
 ): Promise<{ status: K8sAccessStatus; result: ExecResult }> {
-  const args = ["auth", "can-i", access.verb, access.resource];
-  if (access.resourceName) args.push(`--resource-name=${access.resourceName}`);
+  const resource = access.resourceName
+    ? `${access.resource}/${access.resourceName}`
+    : access.resource;
+  const args = ["auth", "can-i", access.verb, resource];
   if (access.allNamespaces) args.push("--all-namespaces");
   let result: ExecResult;
   try {

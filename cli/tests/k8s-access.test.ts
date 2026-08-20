@@ -140,8 +140,7 @@ test("resourceName 权限探测使用精确资源名", async () => {
     "auth",
     "can-i",
     "get",
-    "pods",
-    "--resource-name=app-0",
+    "pods/app-0",
   ]]);
 });
 
