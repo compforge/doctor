@@ -69,6 +69,9 @@ describe("CLI command routing", () => {
     expect(core.exitCode).toBe(0);
     expect(core.stdout).toContain(`doctor ${DOCTOR_CLI_VERSION}`);
     expect(core.stdout).toContain("plugin none");
+    expect(core.stdout).toContain(`os ${process.platform} `);
+    expect(core.stdout).toContain(`arch ${process.arch}`);
+    expect(core.stdout).toContain(`glibc ${process.platform === "linux" ? "" : "n/a"}`);
 
     const distribution = runCli("version");
     expect(distribution.exitCode).toBe(0);

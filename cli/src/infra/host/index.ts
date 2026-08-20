@@ -19,3 +19,4 @@ export const doctorHostInfra: DoctorHostInfra = {
 };
 
 export * from "./execution";
+export * from "./info";
