@@ -31,6 +31,11 @@ export interface CommandProfile {
   readonly pluginConfig: Readonly<Record<string, unknown>>;
 }
 
+export interface CommandPluginServices {
+  readonly name: string;
+  readonly services: readonly string[];
+}
+
 export type CommandScope = readonly (string | number | boolean | null)[];
 
 declare const commandDecisionValue: unique symbol;
@@ -78,6 +83,7 @@ function commandScopeKey(scope: CommandScope): string {
  */
 export class CommandContext {
   readonly artifacts = new CommandArtifacts();
+  readonly #pluginServices = new Map<string, readonly string[]>();
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
   readonly #decisions = new Map<object, Map<string, Promise<unknown>>>();
   readonly #discoveries = new Map<object, Map<string, Promise<unknown>>>();
@@ -100,6 +106,19 @@ export class CommandContext {
       this.#kubernetes.set(executor, context);
     }
     return context;
+  }
+
+  registerPluginServices(name: string, services: readonly string[]): void {
+    const existing = this.#pluginServices.get(name);
+    const normalized = [...new Set(services)].sort();
+    if (existing && JSON.stringify(existing) !== JSON.stringify(normalized)) {
+      throw new Error(`Plugin '${name}' 的 Service Catalog 已注册且内容不一致`);
+    }
+    this.#pluginServices.set(name, normalized);
+  }
+
+  pluginServices(): readonly CommandPluginServices[] {
+    return [...this.#pluginServices].map(([name, services]) => ({ name, services }));
   }
 
   /** 同一类型、同一作用域只决策一次；取消等正常结果也会被后续步骤复用。 */

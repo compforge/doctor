@@ -62,6 +62,10 @@ export async function runPluginCommand(
       activePlugin.validateConfig?.(profile.pluginConfig);
       return activePlugin;
     });
+    context.registerPluginServices(
+      capabilities.id,
+      capabilities.services.services.map((service) => service.name),
+    );
     const code = await action(
       capabilities,
       context,

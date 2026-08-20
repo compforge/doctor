@@ -36,11 +36,12 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 | Evidence | 交给 detector 的 Observations 与领域显式挑选的 Facts |
 | Finding / Coverage | 基于证据的确定性判断，以及诊断目标的证据充分度 |
 | Operation | 需要授权的副作用描述，本身不执行动作 |
-| Evidence Bundle | 根 `report.html`、manifest、领域 JSON、原始输出、附件和摘要组成的可审计产物 |
+| Evidence Bundle | 根 `report.html`、`AGENTS.md`、manifest、领域 JSON、原始输出、附件和摘要组成的可审计产物 |
 
 诊断命令未显式指定 `--format` 时采用双交付：同一 basename 下生成一份可直接打开的 `.html`，以及一份
 追求信息完整度的 `.tar.gz`。Bundle 不是压缩 HTML，而是以领域 Evidence 为主体，并额外包含根
-`report.html`；原先只有 JSON/HTML 的命令在 Bundle 中同时保留 `diagnosis.json` 和 HTML。显式指定
+`report.html`；finalize 生成的根 `AGENTS.md` 列出可直接用浏览器打开的 HTML 完整相对路径、结构化证据
+阅读顺序及不可信 raw 内容边界。原先只有 JSON/HTML 的命令在 Bundle 中同时保留 `diagnosis.json` 和 HTML。显式指定
 `html`、`json`、`md` 或 `bundle` 时只输出所选格式，已有格式语义不变。失败流程仍优先保存已取得的
 Evidence，即使尚不足以形成成功报告。
 

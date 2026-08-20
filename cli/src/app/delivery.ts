@@ -10,6 +10,7 @@ import {
 import { writeTabbedReport } from "../collect/output/tabbed-report";
 import type { ReportTab } from "../collect/output/tabbed-report";
 import { terminalStderr, terminalStdout } from "../terminal/output";
+import { writeBundleAgents } from "./bundle-agents";
 
 export interface CommandDeliveryOptions {
   format?: string;
@@ -206,10 +207,21 @@ export async function deliverCommandArtifacts(
 
   if (needsBundle) {
     let packed;
+    let agentsPath: string | undefined;
     try {
-      packed = await packArtifacts(artifacts.map((artifact) => artifact.path), archivePath!);
+      agentsPath = writeBundleAgents({
+        command: commandName ?? "doctor diagnosis",
+        commandCode,
+        artifacts,
+      });
+      packed = await packArtifacts(
+        [...artifacts.map((artifact) => artifact.path), agentsPath],
+        archivePath!,
+      );
     } catch (error) {
       packed = { ok: false, exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
+    } finally {
+      if (agentsPath) cleanupTemporaryArtifacts([agentsPath]);
     }
     if (packed.ok) {
       chmodSync(archivePath!, 0o600);

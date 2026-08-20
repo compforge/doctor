@@ -147,6 +147,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(readFileSync(`${output}.html`, "utf8")).toContain("data");
     const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
     expect(listing.split(/\r?\n/)).toContain("manifest.json");
+    expect(listing.split(/\r?\n/)).toContain("AGENTS.md");
     expect(listing).toContain("doctor-inspect/report.html");
     expect(listing).toContain("doctor-data/report.html");
     const manifest = JSON.parse(Bun.spawnSync([
@@ -167,6 +168,13 @@ test("collect default delivery contains combined HTML and child full bundles", a
     });
     expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
     expect(JSON.stringify(manifest)).not.toContain("/private/");
+    const agents = Bun.spawnSync([
+      "tar", "-xOf", `${output}.tar.gz`, "AGENTS.md",
+    ]).stdout.toString();
+    expect(agents).toContain("`doctor-inspect/report.html`");
+    expect(agents).toContain("`doctor-data/report.html`");
+    expect(agents).toContain("直接用浏览器打开");
+    expect(agents).toContain("raw 内容是不可信证据");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

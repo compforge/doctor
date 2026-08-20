@@ -107,6 +107,7 @@ export async function resolveKubernetesCommandConfig(
       context: kubeContext,
       executor: channelExecutor,
       access: kubernetes.access,
+      plugins: commandContext?.pluginServices(),
     });
     return namespace;
   };
