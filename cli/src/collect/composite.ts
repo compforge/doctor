@@ -1,4 +1,8 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
+import { DOCTOR_CLI_VERSION } from "../app/version";
 import type { CommandContext } from "../command";
 import { terminalStderr } from "../terminal/output";
 import { promptMultiSelect } from "../terminal/multi-select";
@@ -50,6 +54,66 @@ export interface CollectDelegateResult {
 }
 
 export type CollectDelegate = (kind: CollectKind) => Promise<number>;
+
+interface CollectManifestInput {
+  opts: CollectCliOpts;
+  plugin: Pick<PluginDefinition, "id" | "version">;
+  results: readonly CollectDelegateResult[];
+  commandContext: CommandContext;
+  startedAt: string;
+  finishedAt: string;
+}
+
+export function createCollectManifest(input: CollectManifestInput): Record<string, unknown> {
+  const succeeded = input.results.filter((result) => result.code === 0).length;
+  return {
+    schema_version: 1,
+    command: "doctor collect",
+    status: succeeded === input.results.length ? "ok" : succeeded > 0 ? "partial" : "failed",
+    doctor_version: DOCTOR_CLI_VERSION,
+    plugin: {
+      id: input.plugin.id,
+      version: input.plugin.version,
+    },
+    target: {
+      biz_ids: input.opts.bizIds,
+      tenant_id: input.opts.tenantId,
+      tenant_name: input.opts.tenantName,
+      namespace: input.opts.namespace,
+    },
+    params: {
+      include: input.opts.kinds,
+      since: input.opts.since,
+      since_time: input.opts.sinceTime,
+      metric_watch: input.opts.watch,
+      metric_interval: input.opts.interval,
+      deployment_config: input.opts.deploymentConfig,
+      dependencies: input.opts.dependencies,
+    },
+    started_at: input.startedAt,
+    finished_at: input.finishedAt,
+    steps: input.results.map((result) => ({
+      id: result.kind,
+      title: COLLECT_LABELS[result.kind],
+      status: result.code === 0 ? "ok" : "failed",
+      exit_code: result.code,
+      reason: result.error,
+      artifacts: input.commandContext.artifacts.list()
+        .filter((artifact) => artifact.command === result.kind)
+        .map((artifact) => basename(artifact.path)),
+    })),
+  };
+}
+
+function registerCollectManifest(input: CollectManifestInput): void {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-collect-manifest-"));
+  const path = join(directory, "manifest.json");
+  writeFileSync(path, `${JSON.stringify(createCollectManifest(input), null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  input.commandContext.artifacts.add("collect", path);
+}
 
 export function parseCollectKinds(raw: string | undefined): CollectKind[] {
   if (!raw?.trim()) return [...COLLECT_KINDS];
@@ -225,11 +289,22 @@ export async function runCollect(
     terminalStderr.error("doctor collect 需要至少一个 biz-id\n");
     return 2;
   }
-  parseCollectOutputFormat(opts.format);
+  const format = parseCollectOutputFormat(opts.format);
   commandContext.artifacts.setReportName(collectReportName(opts.bizIds));
+  const startedAt = new Date().toISOString();
   const results = await runCollectDelegates(
     opts.kinds,
     injectedDelegate ?? collectDelegate(opts, plugin, commandContext),
   );
+  if (format !== "html") {
+    registerCollectManifest({
+      opts,
+      plugin,
+      results,
+      commandContext,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    });
+  }
   return results.some((result) => result.code === 0) ? 0 : 1;
 }
