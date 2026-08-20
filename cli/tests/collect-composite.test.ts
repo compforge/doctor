@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
   COLLECT_KINDS,
   collectReportName,
+  createCollectManifest,
   parseCollectKinds,
   runCollect,
   runCollectDelegates,
@@ -63,6 +64,34 @@ test("collect delegates concrete work and continues after one command fails", as
   expect(results[2]?.error).toBe("trace unavailable");
 });
 
+test("collect manifest records partial coverage and failure reasons", () => {
+  const manifest = createCollectManifest({
+    opts: {
+      bizIds: ["conversation-1"],
+      kinds: ["data", "trace"],
+      sinceTime: "2026-08-18T04:00:00Z",
+    },
+    plugin: { id: "agentsphere", version: "1.2.3" },
+    results: [
+      { kind: "data", code: 0 },
+      { kind: "trace", code: 1, error: "trace unavailable" },
+    ],
+    commandContext: new CommandContext({}),
+    startedAt: "2026-08-20T01:00:00Z",
+    finishedAt: "2026-08-20T01:01:00Z",
+  });
+
+  expect(manifest).toMatchObject({
+    status: "partial",
+    target: { biz_ids: ["conversation-1"] },
+    params: { include: ["data", "trace"], since_time: "2026-08-18T04:00:00Z" },
+    steps: [
+      { id: "data", status: "ok", exit_code: 0 },
+      { id: "trace", status: "failed", exit_code: 1, reason: "trace unavailable" },
+    ],
+  });
+});
+
 test("collect can run a tenant-scoped command without biz-id", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-collect-tenant-only-test-"));
   const plugin = {
@@ -96,6 +125,10 @@ test("collect default delivery contains combined HTML and child full bundles", a
     const code = await runCollect({
       bizIds: ["biz-1"],
       kinds: ["inspect", "data"],
+      namespace: "doctor-system",
+      prometheus: "https://prometheus.example.internal",
+      kubeconfig: "/private/kubeconfig",
+      config: "/private/doctor.yaml",
       output,
     }, plugin, context, async (kind) => {
       const artifact = join(root, `doctor-${kind}`);
@@ -113,8 +146,27 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(readFileSync(`${output}.html`, "utf8")).toContain("inspect");
     expect(readFileSync(`${output}.html`, "utf8")).toContain("data");
     const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
+    expect(listing.split(/\r?\n/)).toContain("manifest.json");
     expect(listing).toContain("doctor-inspect/report.html");
     expect(listing).toContain("doctor-data/report.html");
+    const manifest = JSON.parse(Bun.spawnSync([
+      "tar", "-xOf", `${output}.tar.gz`, "manifest.json",
+    ]).stdout.toString());
+    expect(manifest).toMatchObject({
+      schema_version: 1,
+      command: "doctor collect",
+      status: "ok",
+      doctor_version: expect.any(String),
+      plugin: { id: "test", version: "0.0.1" },
+      target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
+      params: { include: ["inspect", "data"] },
+      steps: [
+        { id: "inspect", status: "ok", exit_code: 0, artifacts: ["doctor-inspect"] },
+        { id: "data", status: "ok", exit_code: 0, artifacts: ["doctor-data"] },
+      ],
+    });
+    expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
+    expect(JSON.stringify(manifest)).not.toContain("/private/");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

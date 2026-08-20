@@ -59,8 +59,10 @@ Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、
 
 只要至少一个所选 collector 形成报告，集合命令即可进入统一 Delivery；全部数据面都未形成报告时才返回
 失败。未指定 `--format` 时同时输出组合 HTML 和 `tar.gz`：HTML 的 Tab 由 Delivery 根据各 command 注册的
-报告生成，Bundle 直接包含 Inspect/Tenant/Data/Trace/Log/Metric 的完整 artifact 目录。每个 Tab 内的 Finding、
-Coverage 和完整度仍由原 collector 负责。
+报告生成，Bundle 根目录的 `manifest.json` 记录 Doctor/Plugin 版本、采集目标、安全参数、时间范围和各
+collector 的终态，Inspect/Tenant/Data/Trace/Log/Metric 的完整 artifact 目录则保留各自 Evidence。每个 Tab
+内的 Finding、Coverage 和完整度仍由原 collector 负责；集合 manifest 仅提供机器分析入口，不增加 HTML
+汇总页。
 
 单个 biz-id 的默认文件名为 `doctor-collect-<safe-biz-id>-<timestamp>.html/.tar.gz`；多个 biz-id 或不使用
 biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`。组合命令只向 Artifact 注册表
