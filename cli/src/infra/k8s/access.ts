@@ -1,4 +1,5 @@
 import type { ExecResult, Executor } from "./executor";
+import { parseKubernetesServerVersion } from "./version";
 import type {
   KubernetesAccessNeed,
   KubernetesAccessRule,
@@ -37,6 +38,7 @@ export interface KubernetesChannelFact {
   available: boolean;
   client: ExecResult;
   server?: ExecResult;
+  serverVersion?: string;
   reason?: string;
 }
 
@@ -158,7 +160,12 @@ export async function inspectKubernetesChannel(executor: Executor): Promise<Kube
   }
   const server = await executor.run(["get", "--raw=/version"], { timeoutMs: 15_000 });
   if (server.ok || /\bforbidden\b/i.test(server.stderr)) {
-    return { available: true, client, server };
+    return {
+      available: true,
+      client,
+      server,
+      serverVersion: server.ok ? parseKubernetesServerVersion(server.stdout) : undefined,
+    };
   }
   return {
     available: false,

@@ -16,12 +16,13 @@ function host(overrides: Partial<DoctorHostInfo> = {}): DoctorHostInfo {
 }
 
 test("doctor version 输出 Doctor Host 的 OS、arch 和 glibc", () => {
-  expect(formatDoctorVersion({ id: "test", version: "0.0.1" }, host())).toBe([
+  expect(formatDoctorVersion({ id: "test", version: "0.0.1" }, host(), "v1.32.3")).toBe([
     "doctor 0.1.45",
     "plugin test@0.0.1",
     "os linux 5.15.0-100",
     "arch x64",
     "glibc 2.31",
+    "kubernetes v1.32.3",
   ].join("\n"));
 });
 
@@ -32,4 +33,8 @@ test("非 Linux Doctor Host 明确标记 glibc 不适用", () => {
     kernelRelease: "25.6.0",
     glibcVersion: undefined,
   }))).toContain("os darwin 25.6.0\narch arm64\nglibc n/a");
+});
+
+test("Kubernetes Server 版本不可用时省略该行", () => {
+  expect(formatDoctorVersion(undefined, host())).not.toContain("kubernetes");
 });

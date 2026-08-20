@@ -64,6 +64,8 @@ import { runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
+import { getKubernetesServerVersion } from "../infra/k8s/version";
+import { KubectlExecutor } from "../infra/k8s/executor";
 
 type RawBizIdOptions<T> = Omit<T, "bizIds" | "bizId"> & { bizId?: string[] };
 
@@ -422,13 +424,21 @@ async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promi
     : undefined;
 }
 
+function resolveKubernetesVersion(): Promise<string | undefined> {
+  return getKubernetesServerVersion(new KubectlExecutor({}));
+}
+
 export async function main(plugin?: PluginDefinition) {
-  const versionPlugin = await resolveVersionPlugin(plugin);
-  const versionHost = process.argv.slice(2).some((argument) => argument === "--version" || argument === "-V")
-    ? getDoctorHostInfo()
-    : undefined;
+  const rootVersionRequested = process.argv.slice(2).some(
+    (argument) => argument === "--version" || argument === "-V",
+  );
+  const [versionPlugin, versionKubernetes] = await Promise.all([
+    resolveVersionPlugin(plugin),
+    rootVersionRequested ? resolveKubernetesVersion() : undefined,
+  ]);
+  const versionHost = rootVersionRequested ? getDoctorHostInfo() : undefined;
   const program = new Command();
-  const version = formatDoctorVersion(versionPlugin, versionHost);
+  const version = formatDoctorVersion(versionPlugin, versionHost, versionKubernetes);
   program
     .name("doctor")
     .description([
@@ -469,8 +479,13 @@ export async function main(plugin?: PluginDefinition) {
     .command("version")
     .description("显示版本信息")
     .action(async () => {
-      const activePlugin = plugin ?? await loadActivePlugin();
-      terminalStdout.info(`${formatDoctorVersion(activePlugin, getDoctorHostInfo())}\n`);
+      const [activePlugin, kubernetesVersion] = await Promise.all([
+        plugin ?? loadActivePlugin(),
+        resolveKubernetesVersion(),
+      ]);
+      terminalStdout.info(
+        `${formatDoctorVersion(activePlugin, getDoctorHostInfo(), kubernetesVersion)}\n`,
+      );
     });
 
   const pluginCommand = program.command("plugin").description("安装和卸载 Doctor Plugin");

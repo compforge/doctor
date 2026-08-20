@@ -7,6 +7,7 @@ export const DOCTOR_CLI_VERSION = "0.1.45";
 export function formatDoctorVersion(
   plugin: PluginIdentity | undefined,
   host?: DoctorHostInfo,
+  kubernetesVersion?: string,
 ): string {
   return [
     `doctor ${DOCTOR_CLI_VERSION}`,
@@ -16,5 +17,6 @@ export function formatDoctorVersion(
       `arch ${host.architecture}`,
       `glibc ${host.platform === "linux" ? host.glibcVersion ?? "unknown" : "n/a"}`,
     ] : []),
+    ...(kubernetesVersion ? [`kubernetes ${kubernetesVersion}`] : []),
   ].join("\n");
 }
