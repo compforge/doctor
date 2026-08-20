@@ -346,7 +346,7 @@ test("preferred list pods 被拒绝时用精确 Pod get 完成目标选择", asy
   })).resolves.toEqual({ pod: "app-0", container: "app" });
   expect(calls).toEqual([
     ["auth", "can-i", "list", "pods"],
-    ["auth", "can-i", "get", "pods", "--resource-name=app-0"],
+    ["auth", "can-i", "get", "pods/app-0"],
     ["get", "pod", "app-0", "-o", "json"],
   ]);
 });
