@@ -1,4 +1,16 @@
-import { existsSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  linkSync,
+  mkdirSync,
+  mkdtempSync,
+  readlinkSync,
+  readdirSync,
+  rmSync,
+  symlinkSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { runArgv, type ExecResult } from "../../infra/k8s/executor";
 
@@ -47,7 +59,39 @@ function failedPack(stderr: string): ExecResult {
   };
 }
 
-/** 把本次 CommandContext 显式登记的产物一次性压进同一个归档。 */
+function archiveRootName(archivePath: string): string {
+  return basename(archivePath)
+    .replace(/\.tar\.gz$/i, "")
+    .replace(/\.tgz$/i, "")
+    || "doctor-evidence";
+}
+
+function stagePath(source: string, destination: string): void {
+  const stats = lstatSync(source);
+  if (stats.isDirectory()) {
+    mkdirSync(destination);
+    for (const entry of readdirSync(source)) {
+      stagePath(join(source, entry), join(destination, entry));
+    }
+    return;
+  }
+  if (stats.isSymbolicLink()) {
+    symlinkSync(readlinkSync(source), destination);
+    return;
+  }
+  if (!stats.isFile()) throw new Error(`不支持归档特殊文件: ${source}`);
+  try {
+    linkSync(source, destination);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (!code || !["EACCES", "EMLINK", "EPERM", "EXDEV"].includes(code)) throw error;
+    copyFileSync(source, destination);
+  }
+}
+
+/**
+ * @rule 每个 tar.gz 解压后必须只产生一个顶层目录，避免多个产物和 AGENTS.md 散落到当前目录。
+ */
 export async function packArtifacts(
   artifactPaths: readonly string[],
   archivePath: string,
@@ -60,19 +104,42 @@ export async function packArtifacts(
   if (new Set(names).size !== names.length) {
     return failedPack(`命令登记的产物存在同名项: ${names.join(", ")}`);
   }
-  return runArgv(
-    [
-      "tar",
-      "-czf",
-      resolve(archivePath),
-      ...resolvedPaths.flatMap((path) => ["-C", dirname(path), basename(path)]),
-    ],
-    { timeoutMs: 60_000 },
-  );
+  if (resolvedPaths.length === 1 && lstatSync(resolvedPaths[0]!).isDirectory()) {
+    return runArgv(
+      ["tar", "-czf", resolve(archivePath), "-C", dirname(resolvedPaths[0]!), basename(resolvedPaths[0]!)],
+      { timeoutMs: 60_000 },
+    );
+  }
+
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-archive-"));
+  const rootName = archiveRootName(archivePath);
+  const archiveRoot = join(stagingRoot, rootName);
+  mkdirSync(archiveRoot);
+  try {
+    const directories = resolvedPaths.filter((path) => lstatSync(path).isDirectory());
+    const flattenedDirectory = directories.length === 1 ? directories[0] : undefined;
+    for (const path of resolvedPaths) {
+      if (path === flattenedDirectory) {
+        for (const entry of readdirSync(path)) {
+          stagePath(join(path, entry), join(archiveRoot, entry));
+        }
+      } else {
+        stagePath(path, join(archiveRoot, basename(path)));
+      }
+    }
+    return await runArgv(
+      ["tar", "-czf", resolve(archivePath), "-C", stagingRoot, rootName],
+      { timeoutMs: 60_000 },
+    );
+  } catch (error) {
+    return failedPack(`Bundle 暂存失败: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    rmSync(stagingRoot, { recursive: true, force: true });
+  }
 }
 
 /**
- * @rule 成功的诊断 Bundle 必须在根目录包含 report.html；领域原始 Evidence 仍由调用方保留。
+ * @rule 成功的诊断 artifact 在打包前必须包含 report.html；领域原始 Evidence 仍由调用方保留。
  */
 export async function packReportBundle(bundleDir: string, archivePath: string): Promise<ExecResult> {
   if (!existsSync(join(bundleDir, "report.html"))) {

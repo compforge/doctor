@@ -146,12 +146,14 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(readFileSync(`${output}.html`, "utf8")).toContain("inspect");
     expect(readFileSync(`${output}.html`, "utf8")).toContain("data");
     const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
-    expect(listing.split(/\r?\n/)).toContain("manifest.json");
-    expect(listing.split(/\r?\n/)).toContain("AGENTS.md");
-    expect(listing).toContain("doctor-inspect/report.html");
-    expect(listing).toContain("doctor-data/report.html");
+    const entries = listing.split(/\r?\n/).filter(Boolean);
+    expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["case"]);
+    expect(entries).toContain("case/manifest.json");
+    expect(entries).toContain("case/AGENTS.md");
+    expect(listing).toContain("case/doctor-inspect/report.html");
+    expect(listing).toContain("case/doctor-data/report.html");
     const manifest = JSON.parse(Bun.spawnSync([
-      "tar", "-xOf", `${output}.tar.gz`, "manifest.json",
+      "tar", "-xOf", `${output}.tar.gz`, "case/manifest.json",
     ]).stdout.toString());
     expect(manifest).toMatchObject({
       schema_version: 1,
@@ -169,7 +171,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
     expect(JSON.stringify(manifest)).not.toContain("/private/");
     const agents = Bun.spawnSync([
-      "tar", "-xOf", `${output}.tar.gz`, "AGENTS.md",
+      "tar", "-xOf", `${output}.tar.gz`, "case/AGENTS.md",
     ]).stdout.toString();
     expect(agents).toContain("`doctor-inspect/report.html`");
     expect(agents).toContain("`doctor-data/report.html`");
