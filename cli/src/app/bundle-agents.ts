@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { CommandArtifact } from "../command/artifacts";
@@ -12,10 +12,14 @@ export function renderBundleAgents(input: {
   commandCode: number;
   artifacts: readonly CommandArtifact[];
 }): string {
+  const directories = input.artifacts.filter((artifact) => (
+    existsSync(artifact.path) && statSync(artifact.path).isDirectory()
+  ));
+  const flattenedDirectory = directories.length === 1 ? directories[0]?.path : undefined;
   const reports = input.artifacts.flatMap((artifact) => {
     const report = join(artifact.path, "report.html");
     return existsSync(report)
-      ? [`${basename(artifact.path)}/report.html`]
+      ? [artifact.path === flattenedDirectory ? "report.html" : `${basename(artifact.path)}/report.html`]
       : [];
   });
   const reportGuide = reports.length
@@ -26,7 +30,9 @@ export function renderBundleAgents(input: {
       ].join("\n")
     : "本 Bundle 未包含 HTML；直接从各产物目录的 `manifest.json` 或 `summary.md` 开始。";
   const artifacts = input.artifacts
-    .map((artifact) => `- ${markdownCode(artifact.command)}：${markdownCode(basename(artifact.path))}`)
+    .map((artifact) => `- ${markdownCode(artifact.command)}：${markdownCode(
+      artifact.path === flattenedDirectory ? "." : basename(artifact.path),
+    )}`)
     .join("\n");
 
   return `# Doctor Evidence Bundle

@@ -146,10 +146,16 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     expect(existsSync(htmlPath)).toBe(true);
     expect(existsSync(bundlePath)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", bundlePath]).stdout.toString();
+    const entries = listing.split(/\r?\n/).filter(Boolean);
+    expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["report"]);
+    expect(entries).toContain("report/AGENTS.md");
+    expect(entries).toContain("report/report.html");
     expect(listing).toContain("/report.html");
     expect(listing).toContain("/diagnosis.json");
     expect(listing).toContain("/manifest.json");
     expect(listing).toContain("/raw/");
+    const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
+    expect(agents).toContain("`report.html`");
   } finally {
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });

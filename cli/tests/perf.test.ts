@@ -76,11 +76,13 @@ test("Perf bundle archives the complete linked report directory", async () => {
       .toBe(true);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
-    expect(listing).toContain("doctor-perf-20260102-030405/perf.html");
-    expect(listing).toContain("doctor-perf-20260102-030405/report.html");
-    expect(listing).toContain("doctor-metric-test/report.html");
-    expect(listing).toContain("doctor-trace-test/report.html");
-    expect(listing).toContain("doctor-log-test/report.html");
+    const entries = listing.split(/\r?\n/).filter(Boolean);
+    expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["perf"]);
+    expect(listing).toContain("perf/doctor-perf-20260102-030405/perf.html");
+    expect(listing).toContain("perf/doctor-perf-20260102-030405/report.html");
+    expect(listing).toContain("perf/doctor-metric-test/report.html");
+    expect(listing).toContain("perf/doctor-trace-test/report.html");
+    expect(listing).toContain("perf/doctor-log-test/report.html");
     expect(existsSync(artifact.temporaryRoot)).toBe(false);
   } finally {
     rmSync(parent, { recursive: true, force: true });
