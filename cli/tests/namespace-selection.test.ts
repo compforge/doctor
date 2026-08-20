@@ -3,9 +3,12 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import { RecentSelections } from "../src/infra/recent";
 import {
+  addNamespacePluginServiceCounts,
   matchNamespaceChoices,
+  namespaceChoiceLabel,
   parseNamespaceChoices,
   resolveNamespaceAnswer,
   resolvePodNamespace,
@@ -47,12 +50,37 @@ const NAMESPACES = JSON.stringify({
   ],
 });
 
+const SERVICES = JSON.stringify({
+  items: [
+    { metadata: { namespace: "app-system", name: "chat-server" } },
+    { metadata: { namespace: "app-system", name: "planit-server" } },
+    { metadata: { namespace: "default", name: "iam-server" } },
+    { metadata: { namespace: "default", name: "unrelated" } },
+  ],
+});
+
 describe("Namespace 选择", () => {
   test("解析时 Active 优先，并支持精确名称与关键词", () => {
     const choices = parseNamespaceChoices(NAMESPACES);
     expect(choices.map((choice) => choice.name)).toEqual(["app-system", "default", "z-terminating"]);
     expect(matchNamespaceChoices(choices, "DEFAULT").map((choice) => choice.name)).toEqual(["default"]);
     expect(matchNamespaceChoices(choices, "system").map((choice) => choice.name)).toEqual(["app-system"]);
+  });
+
+  test("Namespace 候选按 Plugin 名展示匹配 Service 数量", () => {
+    const choices = addNamespacePluginServiceCounts(
+      parseNamespaceChoices(NAMESPACES),
+      SERVICES,
+      [
+        { name: "agentsphere", services: ["chat-server", "planit-server"] },
+        { name: "platform", services: ["iam-server"] },
+      ],
+    );
+
+    expect(namespaceChoiceLabel(choices[0]!))
+      .toBe("app-system  Active  agentsphere 2/2 Services · platform 0/1 Services");
+    expect(namespaceChoiceLabel(choices[1]!))
+      .toBe("default  Active  agentsphere 0/2 Services · platform 1/1 Services");
   });
 
   test("回车使用默认 namespace，序号只对已展示候选生效", () => {
@@ -105,6 +133,84 @@ describe("Namespace 选择", () => {
     });
     expect(selected).toEqual({ namespace: "app-system", source: "prompt" });
     expect(executor.calls).toEqual([["get", "namespaces", "-o", "json"]]);
+  });
+
+  test("交互场景只查询一次集群 Service 列表并补充多个 Plugin 统计", async () => {
+    const executor = new class implements Executor {
+      readonly calls: string[][] = [];
+
+      async run(command: string[]): Promise<ExecResult> {
+        this.calls.push(command);
+        return result({
+          stdout: command.includes("services") ? SERVICES : NAMESPACES,
+          command,
+        });
+      }
+
+      async exec(): Promise<ExecResult> {
+        throw new Error("unexpected exec");
+      }
+    }();
+
+    const selected = await resolvePodNamespace({
+      resolved: { namespace: "default", source: "default" },
+      executor,
+      interactive: true,
+      plugins: [
+        { name: "agentsphere", services: ["chat-server", "planit-server"] },
+        { name: "platform", services: ["iam-server"] },
+      ],
+      prompt: async ({ choices }) => {
+        expect(choices[0]?.plugins).toEqual([
+          { name: "agentsphere", matched: 2, total: 2 },
+          { name: "platform", matched: 0, total: 1 },
+        ]);
+        return "app-system";
+      },
+    });
+
+    expect(selected).toEqual({ namespace: "app-system", source: "prompt" });
+    expect(executor.calls).toEqual([
+      ["get", "namespaces", "-o", "json"],
+      ["get", "services", "--all-namespaces", "-o", "json"],
+    ]);
+  });
+
+  test("无集群 Service list 权限时保留 Namespace 候选但不显示统计", async () => {
+    const executor = new class implements Executor {
+      readonly calls: string[][] = [];
+
+      async run(command: string[]): Promise<ExecResult> {
+        this.calls.push(command);
+        if (command[0] === "auth") {
+          return result({
+            stdout: command.includes("services") ? "no\n" : "yes\n",
+            command,
+          });
+        }
+        return result({ stdout: NAMESPACES, command });
+      }
+
+      async exec(): Promise<ExecResult> {
+        throw new Error("unexpected exec");
+      }
+    }();
+
+    await resolvePodNamespace({
+      resolved: { namespace: "default", source: "default" },
+      executor,
+      access: new KubernetesAccessContext(executor),
+      interactive: true,
+      plugins: [{ name: "agentsphere", services: ["chat-server"] }],
+      prompt: async ({ choices }) => {
+        expect(choices[0]?.plugins).toBeUndefined();
+        return "app-system";
+      },
+    });
+
+    expect(executor.calls).not.toContainEqual([
+      "get", "services", "--all-namespaces", "-o", "json",
+    ]);
   });
 
   test("同为 Active 时近期使用的 Namespace 排在前面", async () => {

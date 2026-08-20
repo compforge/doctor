@@ -22,11 +22,27 @@ import {
 export interface NamespaceChoice {
   name: string;
   phase: string;
+  plugins?: readonly NamespacePluginServiceCount[];
+}
+
+export interface NamespacePluginServices {
+  name: string;
+  services: readonly string[];
+}
+
+export interface NamespacePluginServiceCount {
+  name: string;
+  matched: number;
+  total: number;
 }
 
 interface NamespaceListItem {
   metadata?: { name?: string };
   status?: { phase?: string };
+}
+
+interface ServiceListItem {
+  metadata?: { name?: string; namespace?: string };
 }
 
 export function parseNamespaceChoices(raw: string): NamespaceChoice[] {
@@ -49,8 +65,49 @@ export function matchNamespaceChoices(
   return matchSearchableChoices(choices, keyword, (choice) => choice.name);
 }
 
+export function addNamespacePluginServiceCounts(
+  choices: readonly NamespaceChoice[],
+  raw: string,
+  plugins: readonly NamespacePluginServices[],
+): NamespaceChoice[] {
+  const parsed = JSON.parse(raw) as { items?: ServiceListItem[] };
+  if (!Array.isArray(parsed.items)) throw new Error("Service 列表响应缺少 items");
+  const normalizedPlugins = plugins.map((plugin) => ({
+    name: plugin.name,
+    services: new Set(plugin.services),
+  }));
+  const counts = new Map<string, Map<string, number>>();
+  for (const item of parsed.items) {
+    const namespace = item.metadata?.namespace?.trim();
+    const service = item.metadata?.name?.trim();
+    if (!namespace || !service) continue;
+    const namespaceCounts = counts.get(namespace) ?? new Map<string, number>();
+    for (const plugin of normalizedPlugins) {
+      if (plugin.services.has(service)) {
+        namespaceCounts.set(plugin.name, (namespaceCounts.get(plugin.name) ?? 0) + 1);
+      }
+    }
+    counts.set(namespace, namespaceCounts);
+  }
+  return choices.map((choice) => ({
+    ...choice,
+    plugins: normalizedPlugins.map((plugin) => ({
+      name: plugin.name,
+      matched: counts.get(choice.name)?.get(plugin.name) ?? 0,
+      total: plugin.services.size,
+    })),
+  }));
+}
+
+export function namespaceChoiceLabel(choice: NamespaceChoice): string {
+  const plugins = choice.plugins
+    ?.map((plugin) => `${plugin.name} ${plugin.matched}/${plugin.total} Services`)
+    .join(" · ");
+  return `${choice.name}  ${choice.phase}${plugins ? `  ${plugins}` : ""}`;
+}
+
 function printNamespaceChoices(choices: readonly NamespaceChoice[], title: string): void {
-  printNumberedChoices(choices, title, (choice) => `${choice.name}  ${choice.phase}`);
+  printNumberedChoices(choices, title, namespaceChoiceLabel);
 }
 
 export type NamespaceAnswerResolution =
@@ -124,6 +181,7 @@ export interface PodNamespaceSelection {
   access?: KubernetesAccessContext;
   recent?: RecentSelections;
   selection?: SelectionContext;
+  plugins?: readonly NamespacePluginServices[];
 }
 
 /** Pod 选择之前确定其 namespace 作用域；显式 flag/profile 不再重复询问。 */
@@ -143,18 +201,26 @@ export async function resolvePodNamespace(
   const evaluated = input.access
     ? await input.access.evaluate({
         command: "Namespace selection",
-        needs: [{
-          requirement: "preferred",
-          rule: { verb: "list", resource: "namespaces" },
-          purpose: "提供可搜索的 Namespace 候选",
-          fallback: "改为手动输入 Namespace",
-        }],
+        needs: [
+          {
+            requirement: "preferred",
+            rule: { verb: "list", resource: "namespaces" },
+            purpose: "提供可搜索的 Namespace 候选",
+            fallback: "改为手动输入 Namespace",
+          },
+          ...(input.plugins?.length ? [{
+            requirement: "preferred" as const,
+            rule: { verb: "list", resource: "services", allNamespaces: true },
+            purpose: "统计各 Namespace 中当前 Plugin 的 Service 数量",
+            fallback: "仍展示 Namespace 候选，但不显示 Plugin Service 数量",
+          }] : []),
+        ],
       })
     : undefined;
-  const permission = evaluated?.facts[0];
-  if (permission?.status === "denied") {
+  const namespacePermission = evaluated?.facts.find((fact) => fact.need.rule.resource === "namespaces");
+  if (namespacePermission?.status === "denied") {
     terminalStderr.warning(
-      `[k8s] preferred: list namespaces ${permission.status}`
+      `[k8s] preferred: list namespaces ${namespacePermission.status}`
       + "（Namespace 候选发现）；改为手动输入\n",
     );
     const selected = await (input.prompt ?? promptNamespace)({
@@ -178,6 +244,36 @@ export async function resolvePodNamespace(
   } else {
     terminalStderr.error(
       `[collect] 获取 Namespace 列表失败，改为手动输入：${listed.stderr.trim() || `exit=${listed.exitCode}`}\n`,
+    );
+  }
+
+  const servicePermission = evaluated?.facts.find((fact) => (
+    fact.need.rule.resource === "services" && fact.need.rule.allNamespaces === true
+  ));
+  if (choices.length && input.plugins?.length && servicePermission?.status !== "denied") {
+    const services = await executor.run(
+      ["get", "services", "--all-namespaces", "-o", "json"],
+      { timeoutMs: 20_000 },
+    );
+    if (services.ok) {
+      try {
+        choices = addNamespacePluginServiceCounts(choices, services.stdout, input.plugins);
+      } catch (error) {
+        terminalStderr.warning(
+          `[collect] 解析集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量：`
+          + `${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      }
+    } else {
+      terminalStderr.warning(
+        "[collect] 获取集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量："
+        + `${services.stderr.trim() || `exit=${services.exitCode}`}\n`,
+      );
+    }
+  } else if (servicePermission?.status === "denied") {
+    terminalStderr.warning(
+      "[k8s] preferred: list services denied (all namespaces)"
+      + "（Plugin Service 数量）；Namespace 候选不显示数量\n",
     );
   }
 
