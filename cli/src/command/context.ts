@@ -4,9 +4,9 @@ import {
 } from "../infra/k8s/access";
 import type { Executor } from "../infra/k8s/executor";
 import {
-  inspectDoctorHost,
-  type DoctorHostInspection,
-} from "./inspect/host";
+  getDoctorHostInfo,
+  type DoctorHostInfo,
+} from "../infra/host/info";
 import {
   inspectKubernetes,
   type KubernetesInspection,
@@ -15,7 +15,7 @@ import type { Profile } from "./profile";
 import { CommandArtifacts } from "./artifacts";
 
 export interface CommandInspection {
-  readonly host?: DoctorHostInspection;
+  readonly host?: DoctorHostInfo;
   readonly kubernetes?: KubernetesInspection;
 }
 
@@ -181,7 +181,7 @@ export async function prepareCommandContext(
   requirements: CommandEnvironmentRequirements,
 ): Promise<CommandContext> {
   const [host, kubernetes] = await Promise.all([
-    requirements.host ? inspectDoctorHost() : undefined,
+    requirements.host ? getDoctorHostInfo() : undefined,
     requirements.kubernetes ? inspectKubernetes(opts, profile) : undefined,
   ]);
   if (requirements.kubernetes && !kubernetes?.channel.available) {
