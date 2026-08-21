@@ -1,5 +1,10 @@
-import type { ServiceCatalog, ServiceWithCapability } from "@compforge/doctor-plugin";
-import type { ServiceDataResult, ServiceDefinition } from "@compforge/doctor-plugin";
+import type {
+  Identity,
+  ServiceCatalog,
+  ServiceDataResult,
+  ServiceDefinition,
+  ServiceWithCapability,
+} from "@compforge/doctor-plugin";
 import {
   PROBE_RUNNABLE,
   probeUnavailable,
@@ -34,23 +39,80 @@ function completedResults(
   return results;
 }
 
-function expandedInputIds(
+function identityKey(identity: Identity): string {
+  return `${identity.kind}\0${identity.value}`;
+}
+
+function normalizeIdentity(value: unknown, label: string): Identity {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const identity = value as Record<string, unknown>;
+  if (typeof identity.kind !== "string" || !identity.kind.trim()) {
+    throw new Error(`${label}.kind must be a non-empty string`);
+  }
+  if (typeof identity.value !== "string" || !identity.value.trim()) {
+    throw new Error(`${label}.value must be a non-empty string`);
+  }
+  return { kind: identity.kind.trim(), value: identity.value.trim() };
+}
+
+function relationTargets(
+  observation: DataObservation,
+  catalog: ServiceCatalog,
+): Identity[] {
+  const declared = catalog.findWith(observation.service, "data");
+  const expands = declared?.capabilities.data.expands ?? [];
+  if (!expands.length) return [];
+
+  if (observation.result.relations !== undefined) {
+    return observation.result.relations.map((relation, index) => {
+      const label = `${observation.service} relation[${index}]`;
+      if (!relation || typeof relation !== "object") throw new Error(`${label} must be an object`);
+      if (typeof relation.kind !== "string" || !relation.kind.trim()) {
+        throw new Error(`${label}.kind must be a non-empty string`);
+      }
+      normalizeIdentity(relation.from, `${label}.from`);
+      const target = normalizeIdentity(relation.to, `${label}.to`);
+      if (!expands.includes(target.kind)) {
+        throw new Error(
+          `${label}.to.kind '${target.kind}' is not declared by expands=[${expands.join(", ")}]`,
+        );
+      }
+      return target;
+    });
+  }
+
+  // Compatibility for Plugin API v1 implementations whose presentation summary also drove expansion.
+  return Object.entries(declared!.capabilities.data.summarize(observation.result).identifiers)
+    .filter(([kind, value]) => expands.includes(kind) && !!value?.trim())
+    .map(([kind, value]) => ({ kind, value: value!.trim() }));
+}
+
+/**
+ * @spec Data query expansion consumes capability Relations; presentation summaries never drive new implementations
+ * @see {@link ../../../../docs/kernel.md}
+ */
+function expandedIdentities(
   config: DataConfig,
   progress: readonly UpstreamProbeResult<DataObservation>[],
   catalog: ServiceCatalog,
-): string[] {
-  const ids = new Set(config.ids);
+): Identity[] {
+  const identities = new Map(
+    config.ids.map((value) => {
+      const identity = { kind: "biz_id", value };
+      return [identityKey(identity), identity] as const;
+    }),
+  );
   for (const item of progress) {
     for (const observation of item.observations) {
       if (observation.stage !== "expand") continue;
-      const declared = catalog.findWith(observation.service, "data");
-      if (!declared?.capabilities.data.expands?.length) continue;
-      for (const value of Object.values(declared.capabilities.data.summarize(observation.result).identifiers)) {
-        if (value?.trim()) ids.add(value.trim());
+      for (const identity of relationTargets(observation, catalog)) {
+        identities.set(identityKey(identity), identity);
       }
     }
   }
-  return [...ids];
+  return [...identities.values()];
 }
 
 function evaluateDataService(service: string, facts: DataInspectionFacts) {
@@ -67,14 +129,15 @@ function evaluateDataService(service: string, facts: DataInspectionFacts) {
 function makeObservation(
   declared: ServiceWithCapability<ServiceDefinition, "data">,
   stage: DataStage,
-  inputId: string,
+  identity: Identity,
   result: ServiceDataResult,
 ): DataObservation {
   return {
-    id: `data-records:${stage}:${declared.name}:${inputId}`,
+    id: `data-records:${stage}:${declared.name}:${identity.kind}:${identity.value}`,
     kind: "service-data-inspection",
     stage,
     service: declared.name,
+    identity,
     result,
     summary: declared.capabilities.data.summarize(result),
   };
@@ -83,25 +146,26 @@ function makeObservation(
 async function inspectIds(input: {
   declared: ServiceWithCapability<ServiceDefinition, "data">;
   stage: DataStage;
-  ids: readonly string[];
+  identities: readonly Identity[];
   ctx: DataCommandContext;
   results: ReadonlyMap<string, readonly ServiceDataResult[]>;
 }): Promise<{ observations: DataObservation[]; failures: string[] }> {
-  const { declared, stage, ids, ctx, results } = input;
+  const { declared, stage, identities, ctx, results } = input;
   const observations: DataObservation[] = [];
   const failures: string[] = [];
-  for (const inputId of ids) {
+  for (const identity of identities) {
     try {
       const result = await declared.capabilities.data.inspect(
         ctx.pluginContexts[declared.name]!,
         {
-        inputId,
-        results,
+          identities: [identity],
+          inputId: identity.value,
+          results,
         },
       );
-      observations.push(makeObservation(declared, stage, inputId, result));
+      observations.push(makeObservation(declared, stage, identity, result));
     } catch (error) {
-      failures.push(`${inputId}: ${error instanceof Error ? error.message : String(error)}`);
+      failures.push(`${identity.kind}:${identity.value}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return { observations, failures };
@@ -125,7 +189,7 @@ function makeExpansionProbe(
       const inspected = await inspectIds({
         declared,
         stage: "expand",
-        ids: expandedInputIds(config, progress, catalog),
+        identities: expandedIdentities(config, progress, catalog),
         ctx,
         results: completedResults(progress),
       });
@@ -159,18 +223,18 @@ function makeProviderProbe(
     run: async (ctx, facts, config, progress) => {
       const fact = facts.services[service]!;
       if (fact.target.status !== "collected" || !ctx.pluginContexts[service]) return [];
-      const ids = expandedInputIds(config, progress, catalog);
+      const identities = expandedIdentities(config, progress, catalog);
       const reusable = new Map(
         progress
           .flatMap((item) => item.observations)
           .filter((observation) => observation.service === service)
-          .map((observation) => [observation.result.resolution.inputId, observation]),
+          .map((observation) => [identityKey(observation.identity), observation]),
       );
-      const missingIds = ids.filter((inputId) => !reusable.has(inputId));
+      const missingIdentities = identities.filter((identity) => !reusable.has(identityKey(identity)));
       const inspected = await inspectIds({
         declared,
         stage: "provide",
-        ids: missingIds,
+        identities: missingIdentities,
         ctx,
         results: completedResults(progress),
       });
@@ -182,7 +246,7 @@ function makeProviderProbe(
       ctx.bundle.fill(id, {
         status: "ok",
         output: `${JSON.stringify({
-          reusedInputIds: [...reusable.keys()],
+          reusedIdentities: [...reusable.values()].map((observation) => observation.identity),
           observations: inspected.observations,
           failures: inspected.failures,
         }, null, 2)}\n`,

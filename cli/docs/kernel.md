@@ -13,10 +13,33 @@ CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的�
   因而不是只做转发的纯 composite；
 - `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立问答链路，不依赖
   provision 或 collect；
-- `model` 准备通用模型发现与 inference 访问，由 Tenant Collect、Model Collect 和 Chat 消费，不归属任一
-  command 实现；
+- `model` 准备通用模型发现与 inference 访问，由 Model Collect 和 Chat 消费；Tenant 的模型 Fact 复用
+  Plugin 的模型目录 capability 与领域实现，不依赖 Model Command；
 - `packages/plugin` 定义 Plugin、Service 与 capability 公共协议，`plugins/<plugin>` 持有访问实现与固定业务查询；
   `infra` 只提供 Doctor 的外部资源访问能力。
+
+### Query、Capability 与 Evidence
+
+Command 不拥有业务数据源。它把 Config 中与本次采集有关的输入收敛成 Query，按 Query 的 Identity 与
+Constraints 选择并调用最窄的 capability；capability 返回领域 Fact，或返回两个 Identity 之间已经由
+现场数据证明的 Relation。Capability 描述“能提供什么”，不绑定某个 command；例如同一模型目录可以被
+Tenant、Model 与 Chat 消费，同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
+
+```text
+Command(Config)
+  → Query(Identity + Constraints)
+  → Capability
+  → Fact / Relation
+  → Evidence
+```
+
+Relation 的目标 Identity 可以形成后续 Query，但只有 Command 能决定是否继续、选择哪些 capability，
+以及查询深度、数量、去重、失败隔离和停止条件。Plugin 负责 Identity、Fact 与 Relation 的业务语义和
+固定查询；Core 负责 Query 调度、access 生命周期和 Evidence 组织。Capability 的 summary、table 或其它
+展示投影不得反向参与 Query 调度。
+
+这条数据路径描述只读发现与业务事实采集。会产生流量或改变现场的能力仍由 Probe/Operation 表达，结果
+进入 Observation；不能为了统一形状把 inference、Case 或运行时取证伪装成 Fact。
 
 确定性诊断的核心不是“执行一组命令”，而是生成可复查的 Evidence：
 
@@ -31,7 +54,10 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 | 概念 | 稳定语义 |
 |---|---|
 | Config | flags/profile/交互输入形成的用户意图，不进入 Facts |
+| Query | Command 为一次 capability 调用形成的只读查询；由类型化 Identity 和 capability-specific Constraints 组成 |
+| Identity | Query 的类型化诊断对象标识；kind 与 value 的语义由提供它的领域拥有 |
 | Inspect / Facts | 行动前的只读现场快照；每个子 Fact 显式标记取得状态 |
+| Relation | Capability 从现场事实中确认的 Identity 关系；它本身不拥有后续调度权 |
 | Probe / Observation | 一次受限采集行动，以及它产生的结构化数据 |
 | Evidence | 交给 detector 的 Observations 与领域显式挑选的 Facts |
 | Finding / Coverage | 基于证据的确定性判断，以及诊断目标的证据充分度 |
@@ -211,8 +237,10 @@ Application 数据不是一个单一粒度的数据面，而是由各自拥有�
 新的 identifier 只有在查询流程、证据生命周期和用户心智均独立时才形成新的 scope command，不能仅因
 查询键不同就增加命令，也不能继续扩张 `data` 或让 `collect` 理解 identifier 之间的私有关联。
 
-Tenant Core 只编排通用 contribution：每个贡献独立声明 access，Plugin 拥有具体业务查询和字段
-投影。边界只允许 summary/table 报告 IR，不允许任意 HTML 或未约束嵌套数据穿透 Core。
+Tenant Core 只编排 tenant-scoped Query 和通用结果：每次 Service 采集独立声明 access，Plugin 拥有具体
+业务查询和字段投影。tenant contribution 是 capability 结果接入聚合器的协议适配，不形成独立数据
+源或生命周期；可被 Tenant、Model、MCP 或 Chat 共同消费的数据仍由领域 capability 拥有。Tenant 的中性
+结果只允许 summary/table 报告 IR，不允许任意 HTML 或未约束嵌套数据穿透 Core。
 
 这些作用域 command 可以复用同一个 `CommandContext` 中已经确认的 profile、namespace 和同语义决策，
 但不能相互推导未声明的 identifier。`collect` 只组合被选择的数据面和产物，因此增加新的 Application

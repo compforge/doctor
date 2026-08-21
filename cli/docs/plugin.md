@@ -53,6 +53,12 @@ Plugin 扩展点或生命周期：
 这五类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
+只读 capability 的 data 面遵循 `Query → Capability → Fact / Relation`：Query 由类型化 Identity 与该
+capability 的约束组成；Fact 是领域现场快照，Relation 是 Plugin 已从现场数据确认的 Identity 关系。
+Capability 不归属某个 command，同一份 Fact 或 Relation 可以被多个诊断入口消费；是否沿 Relation 继续
+查询、查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与
+Query 调度。主动 inference、Case 和运行时取证仍返回 Observation 或临时 handle，不伪装成 Fact。
+
 Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
 Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
 capability。依赖因此挂在消费方 Service，而不是塞进某个 capability 实现或复制一份连接配置。

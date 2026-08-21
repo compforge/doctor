@@ -1,5 +1,6 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta, ObservationMeta } from "../protocol";
 import type {
+  Identity,
   ServiceDataFinding,
   ServiceDataResult,
   ServiceDataSummary,
@@ -65,6 +66,7 @@ export interface DataObservation extends ObservationMeta {
   kind: "service-data-inspection";
   stage: "expand" | "provide";
   service: string;
+  identity: Identity;
   result: ServiceDataResult;
   summary: ServiceDataSummary;
 }

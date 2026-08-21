@@ -24,6 +24,7 @@ test("Data HTML 直接展示已解析的业务结果并安全转义 JSON", () =>
           kind: "service-data-inspection",
           stage: "provide",
           service: "example-service",
+          identity: { kind: "card_id", value: "card-1" },
           result: cardResult,
           summary: {
             resolvedAs: "card_id",
@@ -35,6 +36,7 @@ test("Data HTML 直接展示已解析的业务结果并安全转义 JSON", () =>
           kind: "service-data-inspection",
           stage: "provide",
           service: "other-service",
+          identity: { kind: "biz_id", value: "card-1" },
           result: unresolvedResult,
           summary: { resolvedAs: "unresolved", identifiers: {} },
         },
