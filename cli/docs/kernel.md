@@ -20,10 +20,14 @@ CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的�
 
 ### Query、Capability 与 Evidence
 
-Command 不拥有业务数据源。它把 Config 中与本次采集有关的输入收敛成 Query，按 Query 的 Identity 与
-Constraints 选择并调用最窄的 capability；capability 返回领域 Fact，或返回两个 Identity 之间已经由
-现场数据证明的 Relation。Capability 描述“能提供什么”，不绑定某个 command；例如同一模型目录可以被
-Tenant、Model 与 Chat 消费，同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
+Service 提供可复用的 capability；capability、Inspect/Probe 与 detector 共同构成 Command 可按诊断目标
+组合的工具箱。Command 是诊断视角与执行编排单元：它把 Config 中与本次采集有关的输入收敛成 Query，
+选择并驱动一个或多个 capability，同时编排 Inspect/Probe，将取得的 Fact、Relation 与 Observation 汇总
+为面向该诊断视角的 Evidence；随后按需装配纯 detector 分析 Evidence，产出 Finding 与 Coverage。
+
+Command 不拥有业务数据源。Capability 描述“能提供什么”，经 Query 调用后返回领域 Fact，或返回两个
+Identity 之间已经由现场数据证明的 Relation；例如同一模型目录可以被 Tenant、Model 与 Chat 消费，
+同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
 
 ```text
 Command(Config)
