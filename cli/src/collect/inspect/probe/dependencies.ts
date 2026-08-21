@@ -80,7 +80,7 @@ while (queue.length && packages.size < limit) {
 const dependencies = [...packages.entries()]
   .sort(([left], [right]) => left.localeCompare(right))
   .map(([name, version]) => ({ name, version }));
-process.stdout.write(JSON.stringify({
+console.log(JSON.stringify({
   runtimeVersion: process.version,
   dependencies,
   truncated: queue.length > 0,

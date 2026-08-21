@@ -19,6 +19,6 @@
     "typecheck:example-plugin": "bun run --cwd plugins/example typecheck"
   },
   "devDependencies": {
-    "@compforge/spec-case": "0.0.1"
+    "@compforge/spec-case": "0.0.4"
   }
 }

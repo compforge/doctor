@@ -91,23 +91,28 @@ test("Perf bundle archives the complete linked report directory", async () => {
 });
 
 test("perf trial output describes the active Case mix and Facets", () => {
-  expect(formatPerfCaseMix([
-    {
-      case: {
+  expect(formatPerfCaseMix({
+    caseset: "chat",
+    schema_version: 1,
+    facets: {
+      difficulty: { values: ["simple", "medium"] },
+      task_type: { open: true },
+    },
+    cases: [
+      {
         id: "ordinary_chat",
         input: { query: "你好" },
         facets: { difficulty: "simple", task_type: "greeting" },
       },
-      weight: 1,
-    },
-    {
-      case: {
+      {
         id: "python_addition",
         input: { query: "请调用 Python 工具计算 1+1，并返回结果" },
         facets: { difficulty: "medium", task_type: "tool_execution" },
       },
-      weight: 2,
-    },
+    ],
+  }, [
+    { id: "ordinary_chat", weight: 1 },
+    { id: "python_addition", weight: 2 },
   ])).toBe(
     "[perf]   case=ordinary_chat weight=1 facets=difficulty=simple, task_type=greeting\n"
       + "[perf]   case=python_addition weight=2 facets=difficulty=medium, task_type=tool_execution\n",

@@ -1,3 +1,4 @@
+import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
 import type { Identity, Query, Relation } from "./capability";
 import type {
@@ -100,28 +101,6 @@ export interface ServiceMetricCapability {
   detectors?: readonly ServiceMetricDetector[];
 }
 
-/** Runtime projection of a canonical spec-case Case asset; this interface does not own its schema. */
-export interface ServiceCaseAsset {
-  id: string;
-  input: Readonly<Record<string, unknown>>;
-  facets?: Readonly<Record<string, string>>;
-}
-
-/** Controlled vocabulary for one canonical Case facet. */
-export interface ServiceCaseFacetSpec {
-  values?: readonly string[];
-  ordered?: boolean;
-  open?: boolean;
-}
-
-export interface ServiceCaseSet {
-  id: string;
-  title: string;
-  description?: string;
-  facets?: Readonly<Record<string, ServiceCaseFacetSpec>>;
-  cases: readonly ServiceCaseAsset[];
-}
-
 /** Protocol facts returned by one Case trigger; Doctor maps them to the shared Perf Outcome IR. */
 export interface ServiceCaseObservation {
   status: number | null;
@@ -165,7 +144,7 @@ export interface ServiceCaseIdentityRequirement {
 export interface ServiceCaseRunner {
   setup?(context: ServiceCaseTrialContext): Promise<void>;
   trigger(input: {
-    case: ServiceCaseAsset;
+    case: Case;
     runId: string;
     signal: AbortSignal;
   }): Promise<ServiceCaseObservation>;
@@ -180,7 +159,8 @@ export interface ServiceCaseRunner {
 /** Service-owned single-Case trigger consumed by Case Harness and Perf Harness callers. */
 export interface ServiceCaseCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
-  caseSets: readonly ServiceCaseSet[];
+  /** Canonical assets owned and validated by spec-case; commands only select and execute them. */
+  caseSets: readonly CaseSet[];
   requestIdentity?: ServiceCaseIdentityRequirement;
   createRunner(
     context: PluginContext,

@@ -89,8 +89,9 @@ Tenant Capability 只绑定租户目录，不再定义 Command-specific contribu
 公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。
 
 Case Capability 是 Service 的稳定请求资产与触发协议。它暴露一个或多个 CaseSet，以及并发安全的
-单次 Case runner；Case 的 canonical schema 归 spec-case，Doctor Plugin SDK 只消费运行所需的
-`id/input/facets` 投影。环境地址、身份和凭据由 runner 从 Plugin context 取得，不写入 Case。
+单次 Case runner；Case 与 CaseSet 的 canonical schema、校验和类型均归 spec-case，Doctor Plugin SDK
+直接引用该资产模型，不复制子集或维护第二套 schema。环境地址、身份和凭据由 runner 从 Plugin context
+取得，不写入 Case。
 
 Perf Capability 是其上的场景预设，只选择 CaseSet 中的一个或多个 Case、声明本次权重、业务关联键
 优先级和 Metric/Log Service。权重属于本次 Experiment，不属于 Case。并发模型、dispatch、
@@ -145,7 +146,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 1,
+  "pluginApiVersion": 2,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
