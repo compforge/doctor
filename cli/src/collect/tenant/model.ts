@@ -1,6 +1,9 @@
 import type {
-  TenantContributionSnapshot,
+  Model,
+  ServiceDataResult,
+  ServiceDataSummary,
   TenantDirectory,
+  TenantIdentity,
   TenantSummary,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
@@ -29,20 +32,24 @@ export interface TenantConfig {
   profileName: string;
 }
 
-export interface TenantContributionIdentity {
+export interface TenantCapabilityIdentity {
   id: string;
-  title: string;
   service: string;
+  capability: "modelCatalog" | "data";
 }
 
-export type TenantContributionFact = TenantContributionIdentity & Fact<TenantContributionSnapshot>;
-export type CollectedTenantContributionFact = TenantContributionIdentity
+export type TenantCapabilityResult =
+  | { kind: "models"; models: readonly Model[] }
+  | { kind: "data"; result: ServiceDataResult; summary: ServiceDataSummary };
+
+export type TenantCapabilityFact = TenantCapabilityIdentity & Fact<TenantCapabilityResult>;
+export type CollectedTenantCapabilityFact = TenantCapabilityIdentity
   & { status: "collected" }
-  & TenantContributionSnapshot;
+  & TenantCapabilityResult;
 
 export interface TenantFacts {
   tenant: Fact<Pick<TenantSummary, "id" | "name" | "displayName">>;
-  contributions: Readonly<Record<string, TenantContributionFact>>;
+  capabilityFacts: readonly TenantCapabilityFact[];
 }
 
 export type TenantEvidence = Evidence<never, TenantFacts>;
@@ -50,18 +57,16 @@ export type TenantFinding = never;
 export type TenantDiagnosisGoal = string;
 export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDiagnosisGoal>;
 
-export interface TenantContributionCollector {
+export interface TenantCapabilityCollector extends TenantCapabilityIdentity {
   id: string;
-  title: string;
-  service: string;
-  collect(tenantId: string): Promise<TenantContributionSnapshot>;
+  query(identity: TenantIdentity): Promise<TenantCapabilityResult>;
 }
 
 export interface TenantCommandContext {
   command: CommandContext;
   config: TenantConfig;
   bundle: EvidenceBundle;
-  contributions: readonly TenantContributionCollector[];
+  capabilities: readonly TenantCapabilityCollector[];
 }
 
 export interface TenantAccess {
@@ -75,6 +80,6 @@ export interface TenantAccess {
     };
   };
   directory: TenantDirectory;
-  contributions: readonly TenantContributionCollector[];
+  capabilities: readonly TenantCapabilityCollector[];
   dispose(): Promise<void>;
 }

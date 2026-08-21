@@ -58,6 +58,8 @@ capability 的约束组成；Fact 是领域现场快照，Relation 是 Plugin �
 Capability 不归属某个 command，同一份 Fact 或 Relation 可以被多个诊断入口消费；是否沿 Relation 继续
 查询、查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与
 Query 调度。主动 inference、Case 和运行时取证仍返回 Observation 或临时 handle，不伪装成 Fact。
+Data Capability 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 Capability，不能通过
+试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
 
 Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
 Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
@@ -77,10 +79,10 @@ Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 m
 检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
 
-Tenant Capability 绑定租户目录；Service 的 `tenant` capability 提供一组 tenant contributions。每个贡献
-拥有独立 access 与采集生命周期，只能返回标量 summary、列式 table 和缺失证据说明。私有领域
-模型、存储查询、公开字段白名单和表格 schema 均属于 Plugin；Core 只负责运行时校验、Fact/Coverage、
-Evidence 与安全渲染。
+Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
+`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Data Capability；
+返回的 Model 或 ServiceDataResult 作为 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
+复用，Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
 信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射

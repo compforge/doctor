@@ -45,8 +45,34 @@ export function dataReportName(now: Date): string {
   return `doctor-data-${timestamp}`;
 }
 
+/** Providers reachable from a biz_id Query through declared Relation expansions. */
+export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
+  const reachable = new Set(["biz_id"]);
+  const selected = new Set<string>();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const service of catalog.servicesWith("data")) {
+      const capability = service.capabilities.data;
+      if (!capability.accepts.some((kind) => reachable.has(kind))) continue;
+      if (!selected.has(service.name)) {
+        selected.add(service.name);
+        changed = true;
+      }
+      for (const kind of capability.expands ?? []) {
+        if (reachable.has(kind)) continue;
+        reachable.add(kind);
+        changed = true;
+      }
+    }
+  }
+  return catalog.servicesWith("data")
+    .map((service) => service.name)
+    .filter((service) => selected.has(service));
+}
+
 export function parseDataServices(raw: string | undefined, catalog: ServiceCatalog): string[] {
-  const defaults = catalog.servicesWith("data").map((service) => service.name);
+  const defaults = dataServicesForBizQuery(catalog);
   const values = (raw ?? defaults.join(","))
     .split(",")
     .map((item) => item.trim())
@@ -74,10 +100,10 @@ export async function resolveDataServiceSelection(
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   let services = input.config.services;
   if (!input.config.services.length) {
-    services = input.catalog.servicesWith("data").map((service) => service.name);
+    services = dataServicesForBizQuery(input.catalog);
   }
   if (interactive && !input.config.servicesExplicit) {
-    const choices = input.catalog.servicesWith("data").map((service) => ({ name: service.name }));
+    const choices = dataServicesForBizQuery(input.catalog).map((name) => ({ name }));
     if (!choices.length) {
       throw new Error("当前 Plugin 未声明 data capability");
     }

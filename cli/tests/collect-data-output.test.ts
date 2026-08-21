@@ -7,7 +7,11 @@ import {
   type PluginContext,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
-import { prepareDataCommand, runCollectData } from "../src/collect/data";
+import {
+  dataServicesForBizQuery,
+  prepareDataCommand,
+  runCollectData,
+} from "../src/collect/data";
 import { CommandContext } from "../src/command";
 import type { Executor } from "../src/infra/k8s/executor";
 import { deliverCommandArtifacts } from "../src/app/delivery";
@@ -21,6 +25,7 @@ const plugin = {
     capabilities: {
       data: {
         access: {},
+        accepts: ["biz_id"],
         provides: ["sample-record"],
         resolveTarget: async () => ({
           endpoint: "http://sample-api",
@@ -31,7 +36,7 @@ const plugin = {
         query: async (_context, query) => ({
           kind: "sample-record",
           service,
-          resolution: { inputId: query.identities[0]!.value, resolvedAs: "sample_id" },
+          resolution: { inputId: query.identity.value, resolvedAs: "sample_id" },
         }),
         summarize: (result) => ({
           resolvedAs: result.resolution.resolvedAs,
@@ -54,6 +59,40 @@ const executor: Executor = {
   exec: async () => { throw new Error("unexpected Kubernetes access"); },
 };
 const contexts = { [service]: {} as PluginContext };
+
+test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
+  const tenantOnly = {
+    name: "tenant-api",
+    capabilities: {
+      data: {
+        access: {},
+        accepts: ["tenant_id"],
+        provides: ["tenant-record"],
+        resolveTarget: async () => ({
+          endpoint: "http://tenant-api",
+          database: "tenant",
+          username: "reader",
+          credentialSource: "test",
+        }),
+        query: async (_context, query) => ({
+          kind: "tenant-record",
+          service: "tenant-api",
+          resolution: { inputId: query.identity.value, resolvedAs: query.identity.kind },
+        }),
+        summarize: (result) => ({
+          resolvedAs: result.resolution.resolvedAs,
+          identifiers: {},
+        }),
+        detect: () => [],
+      },
+    },
+  } satisfies PluginDefinition["services"]["services"][number];
+
+  expect(dataServicesForBizQuery(createServiceCatalog([
+    ...plugin.services.services,
+    tenantOnly,
+  ]))).toEqual([service]);
+});
 
 test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   const command = new CommandContext({});
@@ -82,6 +121,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
       capabilities: {
         data: {
           access: {},
+          accepts: ["biz_id"],
           provides: ["resolution-record"],
           expands: ["message_id"],
           resolveTarget: async () => ({
@@ -91,7 +131,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
             credentialSource: "test",
           }),
           query: async (_context, query) => {
-            const identity = query.identities[0]!;
+            const identity = query.identity;
             return {
               kind: "resolution-record",
               service: resolver,
@@ -117,6 +157,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
       capabilities: {
         data: {
           access: {},
+          accepts: ["biz_id", "message_id"],
           provides: ["sample-record"],
           resolveTarget: async () => ({
             endpoint: "http://sample-records",
@@ -125,7 +166,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
             credentialSource: "test",
           }),
           query: async (_context, query) => {
-            const identity = query.identities[0]!;
+            const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
             return {
               kind: "sample-record",

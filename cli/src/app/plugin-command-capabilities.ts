@@ -54,9 +54,20 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       capability: { scope: "service", name: "tenantDirectory" },
       purpose: "解析要 Inspect 的租户",
     }, {
-      requirement: "required",
-      capability: { scope: "service", name: "tenant" },
-      purpose: "提供租户粒度的只读贡献",
+      requirement: "preferred",
+      capability: { scope: "plugin", name: "model" },
+      purpose: "声明可复用的模型目录",
+      fallback: "仅汇总接受 tenant_id 的业务数据",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "modelCatalog" },
+      purpose: "查询租户可用模型 Facts",
+      fallback: "跳过模型目录",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "data" },
+      purpose: "查询接受 tenant_id 的业务 Facts",
+      fallback: "仅汇总租户身份与模型目录",
     }],
   },
   mcp: {

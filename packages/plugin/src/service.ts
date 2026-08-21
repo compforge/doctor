@@ -53,42 +53,6 @@ export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
   create(context: PluginContext): ModelCatalog;
 }
 
-export type TenantReportCell = string | number | boolean | null;
-
-export interface TenantReportSummaryItem {
-  label: string;
-  value: TenantReportCell;
-}
-
-export interface TenantReportTable {
-  title: string;
-  columns: readonly string[];
-  rows: readonly (readonly TenantReportCell[])[];
-  search?: {
-    column: number;
-    placeholder?: string;
-  };
-}
-
-/** Safe, serializable report IR returned by one tenant contribution. */
-export interface TenantContributionSnapshot {
-  summary?: readonly TenantReportSummaryItem[];
-  tables?: readonly TenantReportTable[];
-  /** A collected snapshot may still be partial when some optional source reads failed. */
-  missingEvidence?: readonly string[];
-}
-
-export interface ServiceTenantContribution extends CapabilityWithAccess {
-  id: string;
-  title: string;
-  endpoint?: ServiceEndpoint;
-  collect(context: PluginContext, tenantId: string): Promise<TenantContributionSnapshot>;
-}
-
-export interface ServiceTenantCapability {
-  contributions: readonly ServiceTenantContribution[];
-}
-
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
   /** Resolve only after required connectivity, including any port-forward, is ready for use. */
@@ -260,6 +224,8 @@ export interface ServiceDataResult {
   };
   /** Relations proven while collecting this Fact. Commands own any follow-up scheduling. */
   relations?: readonly Relation[];
+  /** Optional sources that could not contribute to an otherwise collected Fact. */
+  missingEvidence?: readonly string[];
 }
 
 export interface ServiceDataSummary {
@@ -295,6 +261,8 @@ export type ServiceDataQueryHandler = (
 ) => Promise<ServiceDataResult>;
 
 export interface ServiceDataCapability extends CapabilityWithAccess {
+  /** Identity kinds accepted by this capability. Commands use this for capability selection. */
+  accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
   /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
@@ -479,7 +447,6 @@ export interface ServiceCapabilities {
   traceId?: ServiceTraceIdCapability;
   data?: ServiceDataCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
-  tenant?: ServiceTenantCapability;
   modelCatalog?: ServiceModelCatalogCapability;
   inference?: ServiceInferenceCapability;
   case?: ServiceCaseCapability;

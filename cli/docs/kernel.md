@@ -238,15 +238,17 @@ OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`in
 
 ### Application 数据按作用域拆分
 
-Application 数据不是一个单一粒度的数据面，而是由各自拥有稳定查询边界的作用域组成：租户快照由
-`tenant` 汇总 Plugin 声明的租户粒度贡献；业务实体关系由 `data` 按 biz-id 汇总。
+Application 数据不是一个单一粒度的数据面。`doctor tenant` 与 `doctor data` 都是数据采集 Command：
+前者以 tenant-id 为根 Identity，采集租户粒度 Fact / Relation；后者以 biz-id 为根 Identity，采集业务
+对象粒度 Fact / Relation。二者的差异是 Query 作用域和 Evidence 组织，不是是否采集数据。当前 Tenant
+尚无 Relation 的实际 case，但后续遍历仍由 Tenant Command 决定，不能下沉为 Capability 自递归。
 新的 identifier 只有在查询流程、证据生命周期和用户心智均独立时才形成新的 scope command，不能仅因
 查询键不同就增加命令，也不能继续扩张 `data` 或让 `collect` 理解 identifier 之间的私有关联。
 
-Tenant Core 只编排 tenant-scoped Query 和通用结果：每次 Service 采集独立声明 access，Plugin 拥有具体
-业务查询和字段投影。tenant contribution 是 capability 结果接入聚合器的协议适配，不形成独立数据
-源或生命周期；可被 Tenant、Model、MCP 或 Chat 共同消费的数据仍由领域 capability 拥有。Tenant 的中性
-结果只允许 summary/table 报告 IR，不允许任意 HTML 或未约束嵌套数据穿透 Core。
+Tenant Command 只生成单个 `tenant_id` Identity 的 Query，并选择声明接受该 Identity 的可复用
+Capability。模型清单直接来自 Model Catalog；其它租户事实来自 Service Data Capability。Plugin 拥有
+具体查询和 Fact/Relation 语义，Command 拥有结果选择、Evidence、Coverage 与展示，不再设置一层
+Command-specific tenant contribution 协议。
 
 这些作用域 command 可以复用同一个 `CommandContext` 中已经确认的 profile、namespace 和同语义决策，
 但不能相互推导未声明的 identifier。`collect` 只组合被选择的数据面和产物，因此增加新的 Application

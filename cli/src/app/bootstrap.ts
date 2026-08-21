@@ -250,7 +250,10 @@ async function resolveLocalModel(
     });
     if (!tenant) throw new Error("已取消租户选择");
     terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
-    const model = await selectChatModel(await access.catalog.listAvailable(tenant.id, "llm"));
+    const model = await selectChatModel(await access.catalog.query({
+      identity: { kind: "tenant_id", value: tenant.id },
+      constraints: { type: "llm" },
+    }));
     if (!model) throw new Error("已取消模型选择");
     const inference = await access.createInference(model.inference, 60_000);
     terminalStdout.write(

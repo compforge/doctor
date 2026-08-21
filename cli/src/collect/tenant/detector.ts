@@ -12,13 +12,13 @@ export function buildTenantEvidence(_observations: readonly never[], facts: Tena
 export function buildTenantCoverage(
   evidence: TenantEvidence,
 ): DiagnosisCoverage<TenantDiagnosisGoal>[] {
-  return Object.entries(evidence.facts.contributions).map(([id, fact]) => {
+  return evidence.facts.capabilityFacts.map((fact) => {
     if (fact.status !== "collected") {
-      return { goal: id, status: "insufficient", missingEvidence: [fact.reason] };
+      return { goal: fact.id, status: "insufficient", missingEvidence: [fact.reason] };
     }
-    const missingEvidence = fact.missingEvidence ?? [];
+    const missingEvidence = fact.kind === "data" ? fact.result.missingEvidence ?? [] : [];
     return {
-      goal: id,
+      goal: fact.id,
       status: missingEvidence.length ? "partial" : "sufficient",
       missingEvidence,
     };

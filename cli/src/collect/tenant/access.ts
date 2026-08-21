@@ -1,4 +1,5 @@
 import type {
+  ModelCatalog,
   PluginDefinition,
   ServiceDefinition,
   ServiceWithCapability,
@@ -13,7 +14,7 @@ import { openPluginContext } from "../../plugin/context";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
-  TenantContributionCollector,
+  TenantCapabilityCollector,
 } from "./model";
 
 function tenantDirectoryProvider(
@@ -39,7 +40,7 @@ function tenantDirectoryPort(value: string | undefined, fallback: number): numbe
   return port;
 }
 
-/** Prepare tenant identity access; each contribution owns and closes its own Plugin context. */
+/** Prepare tenant identity access; each reusable capability owns its short-lived Plugin context. */
 export async function openTenantAccess(input: {
   options: CollectTenantCliOptions;
   plugin: PluginDefinition;
@@ -82,36 +83,70 @@ export async function openTenantAccess(input: {
 
   try {
     const directory = directoryProvider.capabilities.tenantDirectory.create(directoryContext);
-    const contributions: TenantContributionCollector[] = plugin.services
-      .servicesWith("tenant")
-      .flatMap((service) => service.capabilities.tenant.contributions.map((contribution) => ({
-        id: contribution.id,
-        title: contribution.title,
+    const capabilities: TenantCapabilityCollector[] = plugin.services
+      .servicesWith("data")
+      .filter((service) => service.capabilities.data.accepts.includes("tenant_id"))
+      .map((service) => ({
+        id: `data:${service.name}`,
         service: service.name,
-        collect: async (tenantId: string) => {
+        capability: "data" as const,
+        query: async (identity) => {
+          const capability = service.capabilities.data;
           const context = await openPluginContext(executor, kube, {
             env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
             databaseIdentity,
             service: {
               name: service.name,
-              port: contribution.endpoint?.port,
             },
-            command: `doctor tenant · ${contribution.title}`,
-            capability: contribution,
+            command: `doctor tenant · ${service.name} data`,
+            capability,
             authorization,
           });
           try {
-            return await contribution.collect(context, tenantId);
+            const result = await capability.query(context, { identity, results: new Map() });
+            return { kind: "data" as const, result, summary: capability.summarize(result) };
           } finally {
             await context.dispose();
           }
         },
-      })));
+      }));
+    const model = plugin.model;
+    if (model) {
+      const service = plugin.services.findWith(model.catalogService, "modelCatalog");
+      if (!service) {
+        throw new Error(
+          `Plugin '${plugin.id}' 的 Service '${model.catalogService}' 未声明 modelCatalog 能力`,
+        );
+      }
+      capabilities.unshift({
+        id: "models",
+        service: service.name,
+        capability: "modelCatalog",
+        query: async (identity) => {
+          const capability = service.capabilities.modelCatalog;
+          const context = await openPluginContext(executor, kube, {
+            env: commandContext.profile.name,
+            config: commandContext.profile.pluginConfig,
+            databaseIdentity,
+            service: { name: service.name, port: capability.endpoint.port },
+            command: "doctor tenant · model catalog",
+            capability,
+            authorization,
+          });
+          try {
+            const catalog: ModelCatalog = capability.create(context);
+            return { kind: "models", models: await catalog.query({ identity }) };
+          } finally {
+            await context.dispose();
+          }
+        },
+      });
+    }
     return {
       config,
       directory,
-      contributions,
+      capabilities,
       dispose: () => directoryContext.dispose(),
     };
   } catch (error) {
