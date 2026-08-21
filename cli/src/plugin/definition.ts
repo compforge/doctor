@@ -50,6 +50,15 @@ function nonEmptyStrings(value: unknown, label: string): void {
   }
 }
 
+function uniqueNonEmptyStrings(value: unknown, label: string): void {
+  const seen = new Set<string>();
+  for (const [index, item] of nonEmptyArray(value, label).entries()) {
+    const text = nonEmptyString(item, `${label}[${index}]`);
+    if (seen.has(text)) throw new Error(`${label} contains duplicate value '${text}'`);
+    seen.add(text);
+  }
+}
+
 interface CaseFacetVocabulary {
   values?: ReadonlySet<string>;
   open: boolean;
@@ -112,7 +121,11 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
   if (capabilities.data !== undefined) {
     const data = record(capabilities.data, `${service.name}.data`);
-    nonEmptyStrings(data.accepts, `${service.name}.data.accepts`);
+    uniqueNonEmptyStrings(data.accepts, `${service.name}.data.accepts`);
+    uniqueNonEmptyStrings(data.provides, `${service.name}.data.provides`);
+    if (data.expands !== undefined) {
+      uniqueNonEmptyStrings(data.expands, `${service.name}.data.expands`);
+    }
     if (typeof data.resolveTarget !== "function") {
       throw new Error(`${service.name}.data.resolveTarget must be a function`);
     }

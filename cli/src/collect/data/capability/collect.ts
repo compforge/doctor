@@ -1,10 +1,11 @@
 import type {
   Identity,
   ServiceCatalog,
-  ServiceDataResult,
+  ServiceDataFact,
   ServiceDefinition,
   ServiceWithCapability,
 } from "@compforge/doctor-plugin";
+import { normalizeServiceDataFacts } from "../../../plugin/data";
 import type { DataCommandContext } from "../context";
 import type {
   CollectedDataCapabilityFact,
@@ -16,6 +17,9 @@ import type {
 
 type DataStage = DataCapabilityFact["stage"];
 
+export const MAX_DATA_RELATION_DEPTH = 8;
+export const MAX_DATA_IDENTITIES = 1_000;
+
 function dataOutcomeId(stage: DataStage, service: string): string {
   return `data-${stage}-${service}`;
 }
@@ -24,87 +28,25 @@ function identityKey(identity: Identity): string {
   return `${identity.kind}\0${identity.value}`;
 }
 
-function normalizeIdentity(value: unknown, label: string): Identity {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`);
-  }
-  const identity = value as Record<string, unknown>;
-  if (typeof identity.kind !== "string" || !identity.kind.trim()) {
-    throw new Error(`${label}.kind must be a non-empty string`);
-  }
-  if (typeof identity.value !== "string" || !identity.value.trim()) {
-    throw new Error(`${label}.value must be a non-empty string`);
-  }
-  return { kind: identity.kind.trim(), value: identity.value.trim() };
-}
-
 function isCollected(fact: DataCapabilityFact): fact is CollectedDataCapabilityFact {
   return fact.status === "collected";
 }
 
 function completedResults(
   facts: readonly DataCapabilityFact[],
-): ReadonlyMap<string, readonly ServiceDataResult[]> {
-  const results = new Map<string, ServiceDataResult[]>();
+): ReadonlyMap<string, readonly ServiceDataFact[]> {
+  const results = new Map<string, ServiceDataFact[]>();
   for (const fact of facts) {
     if (!isCollected(fact)) continue;
     const serviceResults = results.get(fact.service) ?? [];
-    serviceResults.push(fact.result);
+    serviceResults.push(fact.fact);
     results.set(fact.service, serviceResults);
   }
   return results;
 }
 
-function relationTargets(
-  fact: CollectedDataCapabilityFact,
-  catalog: ServiceCatalog,
-): Identity[] {
-  const declared = catalog.findWith(fact.service, "data");
-  const expands = declared?.capabilities.data.expands ?? [];
-  if (!expands.length) return [];
-
-  if (fact.result.relations !== undefined) {
-    return fact.result.relations.map((relation, index) => {
-      const label = `${fact.service} relation[${index}]`;
-      if (!relation || typeof relation !== "object") throw new Error(`${label} must be an object`);
-      if (typeof relation.kind !== "string" || !relation.kind.trim()) {
-        throw new Error(`${label}.kind must be a non-empty string`);
-      }
-      normalizeIdentity(relation.from, `${label}.from`);
-      const target = normalizeIdentity(relation.to, `${label}.to`);
-      if (!expands.includes(target.kind)) {
-        throw new Error(
-          `${label}.to.kind '${target.kind}' is not declared by expands=[${expands.join(", ")}]`,
-        );
-      }
-      return target;
-    });
-  }
-  return [];
-}
-
-/**
- * @spec Data query expansion consumes capability Relations; presentation summaries never drive new implementations
- * @see {@link ../../../../docs/kernel.md}
- */
-function expandedIdentities(
-  config: DataConfig,
-  facts: readonly DataCapabilityFact[],
-  catalog: ServiceCatalog,
-): Identity[] {
-  const identities = new Map(
-    config.ids.map((value) => {
-      const identity = { kind: "biz_id", value };
-      return [identityKey(identity), identity] as const;
-    }),
-  );
-  for (const fact of facts) {
-    if (!isCollected(fact) || fact.stage !== "expand") continue;
-    for (const identity of relationTargets(fact, catalog)) {
-      identities.set(identityKey(identity), identity);
-    }
-  }
-  return [...identities.values()];
+function relationTargets(fact: CollectedDataCapabilityFact): readonly Identity[] {
+  return fact.fact.relations?.map((relation) => relation.to) ?? [];
 }
 
 function dataServiceUnavailable(service: string, facts: DataInspectionFacts): string | undefined {
@@ -116,54 +58,48 @@ function dataServiceUnavailable(service: string, facts: DataInspectionFacts): st
   return undefined;
 }
 
-function factId(stage: DataStage, service: string, identity: Identity): string {
-  return `data-fact:${stage}:${service}:${identity.kind}:${identity.value}`;
+function factId(stage: DataStage, service: string, identity: Identity, kind?: string): string {
+  const suffix = kind ? `:${kind}` : "";
+  return `data-fact:${stage}:${service}:${identity.kind}:${identity.value}${suffix}`;
 }
 
-async function queryIdentities(input: {
+async function queryIdentity(input: {
   declared: ServiceWithCapability<ServiceDefinition, "data">;
   stage: DataStage;
-  identities: readonly Identity[];
+  identity: Identity;
   ctx: DataCommandContext;
-  results: ReadonlyMap<string, readonly ServiceDataResult[]>;
+  results: ReadonlyMap<string, readonly ServiceDataFact[]>;
 }): Promise<DataCapabilityFact[]> {
-  const { declared, stage, identities, ctx, results } = input;
+  const { declared, stage, identity, ctx, results } = input;
   const pluginContext = ctx.pluginContexts[declared.name];
   if (!pluginContext) throw new Error(`Service '${declared.name}' data capability 缺少 PluginContext`);
-  const facts: DataCapabilityFact[] = [];
-  for (const identity of identities.filter((identity) => (
-    declared.capabilities.data.accepts.includes(identity.kind)
-  ))) {
-    const id = factId(stage, declared.name, identity);
-    try {
-      const result = await declared.capabilities.data.query(
-        pluginContext,
-        {
-          identity,
-          results,
-        },
-      );
-      facts.push({
-        id,
-        status: "collected",
-        stage,
-        service: declared.name,
-        identity,
-        result,
-        summary: declared.capabilities.data.summarize(result),
-      });
-    } catch (error) {
-      facts.push({
-        id,
-        status: "failed",
-        stage,
-        service: declared.name,
-        identity,
-        reason: error instanceof Error ? error.message : String(error),
-      });
-    }
+  try {
+    const capability = declared.capabilities.data;
+    const serviceFacts = normalizeServiceDataFacts({
+      value: await capability.query(pluginContext, { identity, results }),
+      service: declared.name,
+      queryIdentity: identity,
+      capability,
+    });
+    return serviceFacts.map((fact) => ({
+      id: factId(stage, declared.name, identity, fact.kind),
+      status: "collected",
+      stage,
+      service: declared.name,
+      identity,
+      fact,
+      summary: capability.summarize(fact),
+    }));
+  } catch (error) {
+    return [{
+      id: factId(stage, declared.name, identity),
+      status: "failed",
+      stage,
+      service: declared.name,
+      identity,
+      reason: error instanceof Error ? error.message : String(error),
+    }];
   }
-  return facts;
 }
 
 function recordStage(
@@ -176,8 +112,16 @@ function recordStage(
   const collected = facts.filter(isCollected);
   const failures = facts.filter((fact) => fact.status === "failed");
   const hasEvidence = collected.length > 0 || reused.length > 0;
-  const status = !failures.length ? "ok" : hasEvidence ? "partial" : "failed";
-  const reason = failures.length
+  const status = !facts.length && !reused.length
+    ? "unavailable"
+    : !failures.length
+    ? "ok"
+    : hasEvidence
+    ? "partial"
+    : "failed";
+  const reason = !facts.length && !reused.length
+    ? `${service} 没有接受本轮已知 Identity`
+    : failures.length
     ? `${stage === "expand" ? "扩展" : "查询"} ${service} ${hasEvidence ? "部分" : ""}业务数据失败：`
       + failures.map((fact) => fact.status === "failed"
         ? `${fact.identity.kind}:${fact.identity.value}: ${fact.reason}`
@@ -189,6 +133,82 @@ function recordStage(
     output: `${JSON.stringify({ reused, facts }, null, 2)}\n`,
     ext: "json",
   });
+}
+
+interface QueuedIdentity {
+  identity: Identity;
+  depth: number;
+}
+
+/**
+ * Expand Relations to a bounded identity closure, independent of Service Catalog order.
+ *
+ * @spec Data Relation expansion uses a deduplicated work queue with explicit depth and identity budgets
+ * @see {@link ../../../../docs/kernel.md}
+ */
+async function collectExpansionFacts(input: {
+  expanders: readonly ServiceWithCapability<ServiceDefinition, "data">[];
+  inspectionFacts: DataInspectionFacts;
+  config: DataConfig;
+  ctx: DataCommandContext;
+}): Promise<{ facts: DataCapabilityFact[]; identities: Identity[] }> {
+  const { expanders, inspectionFacts, config, ctx } = input;
+  if (config.ids.length > MAX_DATA_IDENTITIES) {
+    throw new Error(`初始业务 Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
+  }
+  const queue: QueuedIdentity[] = config.ids.map((value) => ({
+    identity: { kind: "biz_id", value },
+    depth: 0,
+  }));
+  const known = new Set(queue.map(({ identity }) => identityKey(identity)));
+  const queried = new Set<string>();
+  const facts: DataCapabilityFact[] = [];
+  const activeExpanders = expanders.filter((declared) => {
+    const unavailable = dataServiceUnavailable(declared.name, inspectionFacts);
+    if (unavailable) {
+      ctx.bundle.fill(dataOutcomeId("expand", declared.name), { status: "unavailable", reason: unavailable });
+      return false;
+    }
+    return true;
+  });
+
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const current = queue[cursor]!;
+    for (const declared of activeExpanders) {
+      if (!declared.capabilities.data.accepts.includes(current.identity.kind)) continue;
+      const queryKey = `${declared.name}\0${identityKey(current.identity)}`;
+      if (queried.has(queryKey)) continue;
+      queried.add(queryKey);
+      const queryFacts = await queryIdentity({
+        declared,
+        stage: "expand",
+        identity: current.identity,
+        ctx,
+        results: completedResults(facts),
+      });
+      facts.push(...queryFacts);
+      for (const fact of queryFacts) {
+        if (!isCollected(fact)) continue;
+        for (const target of relationTargets(fact)) {
+          const key = identityKey(target);
+          if (known.has(key)) continue;
+          if (current.depth >= MAX_DATA_RELATION_DEPTH) {
+            throw new Error(`Data Relation 扩展深度超过上限 ${MAX_DATA_RELATION_DEPTH}`);
+          }
+          if (known.size >= MAX_DATA_IDENTITIES) {
+            throw new Error(`Data Relation Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
+          }
+          known.add(key);
+          queue.push({ identity: target, depth: current.depth + 1 });
+        }
+      }
+    }
+  }
+
+  for (const declared of activeExpanders) {
+    recordStage(ctx, "expand", declared.name, facts.filter((fact) => fact.service === declared.name));
+  }
+  return { facts, identities: queue.map(({ identity }) => identity) };
 }
 
 /**
@@ -204,51 +224,44 @@ export async function collectDataCapabilityFacts(input: {
 }): Promise<readonly DataCapabilityFact[]> {
   const { selections, catalog, inspectionFacts, config, ctx } = input;
   const collected: DataCapabilityFact[] = [];
-  const expanders = selections.filter(({ service }) => (
-    !!catalog.findWith(service, "data")?.capabilities.data.expands?.length
-  ));
-
-  for (const { service } of expanders) {
-    const unavailable = dataServiceUnavailable(service, inspectionFacts);
-    if (unavailable) {
-      ctx.bundle.fill(dataOutcomeId("expand", service), { status: "unavailable", reason: unavailable });
-      continue;
-    }
+  const declaredServices = selections.map(({ service }) => {
     const declared = catalog.findWith(service, "data");
     if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的数据贡献能力`);
-    const facts = await queryIdentities({
-      declared,
-      stage: "expand",
-      identities: expandedIdentities(config, collected, catalog),
-      ctx,
-      results: completedResults(collected),
-    });
-    collected.push(...facts);
-    recordStage(ctx, "expand", service, facts);
-  }
-
-  const expansionFacts = [...collected];
-  const finalIdentities = expandedIdentities(config, expansionFacts, catalog);
+    return declared;
+  });
+  const expansion = await collectExpansionFacts({
+    expanders: declaredServices.filter(({ capabilities }) => !!capabilities.data.expands?.length),
+    inspectionFacts,
+    config,
+    ctx,
+  });
+  collected.push(...expansion.facts);
+  const expansionFacts = [...expansion.facts];
   const expansionResults = completedResults(expansionFacts);
-  for (const { service } of selections) {
-    const unavailable = dataServiceUnavailable(service, inspectionFacts);
+  for (const declared of declaredServices) {
+    const service = declared.name;
+    const unavailable = dataServiceUnavailable(declared.name, inspectionFacts);
     if (unavailable) {
       ctx.bundle.fill(dataOutcomeId("provide", service), { status: "unavailable", reason: unavailable });
       continue;
     }
-    const declared = catalog.findWith(service, "data");
-    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的数据贡献能力`);
     const reusable = expansionFacts.filter((fact): fact is CollectedDataCapabilityFact => (
       isCollected(fact) && fact.service === service
     ));
     const reusedIdentities = new Set(reusable.map((fact) => identityKey(fact.identity)));
-    const facts = await queryIdentities({
-      declared,
-      stage: "provide",
-      identities: finalIdentities.filter((identity) => !reusedIdentities.has(identityKey(identity))),
-      ctx,
-      results: expansionResults,
-    });
+    const facts: DataCapabilityFact[] = [];
+    for (const identity of expansion.identities.filter((identity) => (
+      declared.capabilities.data.accepts.includes(identity.kind)
+      && !reusedIdentities.has(identityKey(identity))
+    ))) {
+      facts.push(...await queryIdentity({
+        declared,
+        stage: "provide",
+        identity,
+        ctx,
+        results: expansionResults,
+      }));
+    }
     collected.push(...facts);
     recordStage(ctx, "provide", service, facts, reusable);
   }

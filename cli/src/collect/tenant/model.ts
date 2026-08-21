@@ -1,6 +1,6 @@
 import type {
   Model,
-  ServiceDataResult,
+  ServiceDataFact,
   ServiceDataSummary,
   TenantDirectory,
   TenantIdentity,
@@ -40,7 +40,7 @@ export interface TenantCapabilityIdentity {
 
 export type TenantCapabilityResult =
   | { kind: "models"; models: readonly Model[] }
-  | { kind: "data"; result: ServiceDataResult; summary: ServiceDataSummary };
+  | { kind: "data"; fact: ServiceDataFact; summary: ServiceDataSummary };
 
 export type TenantCapabilityFact = TenantCapabilityIdentity & Fact<TenantCapabilityResult>;
 export type CollectedTenantCapabilityFact = TenantCapabilityIdentity
@@ -59,7 +59,7 @@ export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDia
 
 export interface TenantCapabilityCollector extends TenantCapabilityIdentity {
   id: string;
-  query(identity: TenantIdentity): Promise<TenantCapabilityResult>;
+  query(identity: TenantIdentity): Promise<readonly TenantCapabilityResult[]>;
 }
 
 export interface TenantCommandContext {

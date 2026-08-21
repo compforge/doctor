@@ -1,8 +1,8 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
+  ServiceDataFact,
   ServiceDataFinding,
-  ServiceDataResult,
   ServiceDataSummary,
 } from "@compforge/doctor-plugin";
 import type { DatabaseIdentity } from "../../infra/database";
@@ -70,14 +70,14 @@ export interface DataCapabilityFactIdentity {
 }
 
 export type DataCapabilityFact = DataCapabilityFactIdentity & Fact<{
-  result: ServiceDataResult;
+  fact: ServiceDataFact;
   summary: ServiceDataSummary;
 }>;
 
 export type CollectedDataCapabilityFact = DataCapabilityFactIdentity
   & { status: "collected" }
   & {
-    result: ServiceDataResult;
+    fact: ServiceDataFact;
     summary: ServiceDataSummary;
   };
 

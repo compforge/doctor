@@ -23,8 +23,8 @@ Core 与 Plugin 以 capability 为中心：capability 是 Doctor 发现、准备
 config 都只支撑 capability 的调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
 kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
 
-只读数据能力接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并返回领域
-Fact 或已证实的 `Relation`。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 Relation
+只读数据能力接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并返回一个或
+多个独立领域 Fact；每个 Fact 也可携带已证实的 `Relation`。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 Relation
 扩展并把结果组织为 Evidence。summary/table 等展示投影不能反向驱动 Query。
 
 `trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接

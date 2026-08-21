@@ -24,7 +24,7 @@ export function makeDataDetectors(
       if (fact.status !== "collected") continue;
       const declared = catalog.findWith(fact.service, "data");
       if (!declared) continue;
-      for (const finding of declared.capabilities.data.detect(fact.result)) {
+      for (const finding of declared.capabilities.data.detect(fact.fact)) {
         const key = `${fact.service}:${finding.id}`;
         const existing = findings.get(key);
         const reference = { factPath: `capabilityFacts.${index}`, role: "supporting" as const };

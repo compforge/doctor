@@ -34,9 +34,9 @@ function capabilityResults(facts: readonly CollectedDataCapabilityFact[]): strin
   const resolved = facts.filter((item) => item.summary.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
   return resolved.map((item) => {
-    const title = `${item.service} · ${item.stage} · ${item.result.resolution.inputId} · ${item.summary.resolvedAs}`;
-    const result = JSON.stringify(item.result, null, 2) ?? String(item.result);
-    return `<details class="data-result" open><summary><span>${escapeHtml(title)}</span></summary><pre><code>${escapeHtml(result)}</code></pre></details>`;
+    const title = `${item.service} · ${item.stage} · ${item.fact.resolution.inputId} · ${item.summary.resolvedAs}`;
+    const fact = JSON.stringify(item.fact, null, 2) ?? String(item.fact);
+    return `<details class="data-result" open><summary><span>${escapeHtml(title)}</span></summary><pre><code>${escapeHtml(fact)}</code></pre></details>`;
   }).join("");
 }
 

@@ -46,7 +46,7 @@ test("tenant command combines model and data capabilities as facts", async () =>
       id: "models",
       service: "model-api",
       capability: "modelCatalog",
-      query: async (identity) => ({
+      query: async (identity) => [{
         kind: "models",
         models: [{
           id: "model-1",
@@ -55,14 +55,14 @@ test("tenant command combines model and data capabilities as facts", async () =>
           provider: "test",
           apiKey: "must-not-leak",
         } as never],
-      }),
+      }],
     }, {
       id: "data:config-api",
       service: "config-api",
       capability: "data",
-      query: async (identity) => ({
+      query: async (identity) => [{
         kind: "data",
-        result: {
+        fact: {
           kind: "tenant-configuration",
           service: "config-api",
           resolution: { inputId: identity.value, resolvedAs: "tenant_id" },
@@ -75,7 +75,16 @@ test("tenant command combines model and data capabilities as facts", async () =>
           missingEvidence: ["runtime: unavailable"],
         },
         summary: { resolvedAs: "tenant_id", identifiers: { tenant_id: identity.value } },
-      }),
+      }, {
+        kind: "data",
+        fact: {
+          kind: "tenant-intention",
+          service: "config-api",
+          resolution: { inputId: identity.value, resolvedAs: "tenant_id" },
+          data: { intentions: [{ id: "intent-1" }] },
+        },
+        summary: { resolvedAs: "tenant_id", identifiers: { tenant_id: identity.value } },
+      }],
     }],
   };
   try {
@@ -92,16 +101,22 @@ test("tenant command combines model and data capabilities as facts", async () =>
     expect(JSON.stringify(facts.capabilityFacts[0])).not.toContain("must-not-leak");
     expect(facts.capabilityFacts[1]).toMatchObject({
       status: "collected",
-      id: "data:config-api",
+      id: "data:config-api:tenant-configuration",
       kind: "data",
-      result: { data: { configuration: { enabled: true } } },
+      fact: { data: { configuration: { enabled: true } } },
     });
     expect(facts.capabilityFacts[1]).toMatchObject({
-      result: { relations: [{ to: { kind: "bot_id", value: "bot-1" } }] },
+      fact: { relations: [{ to: { kind: "bot_id", value: "bot-1" } }] },
+    });
+    expect(facts.capabilityFacts[2]).toMatchObject({
+      status: "collected",
+      id: "data:config-api:tenant-intention",
+      fact: { data: { intentions: [{ id: "intent-1" }] } },
     });
     expect(coverage.map((item) => [item.goal, item.status])).toEqual([
       ["models", "sufficient"],
-      ["data:config-api", "partial"],
+      ["data:config-api:tenant-configuration", "partial"],
+      ["data:config-api:tenant-intention", "sufficient"],
     ]);
     const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
     expect(sections[0]?.html).toContain("Model for tenant-1");
