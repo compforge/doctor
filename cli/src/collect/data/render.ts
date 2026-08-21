@@ -5,18 +5,24 @@ import {
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { DataDiagnosis, DataObservation } from "./model";
+import type { CollectedDataCapabilityFact, DataDiagnosis } from "./model";
 
 function value(value: string | undefined): string {
   return value || "未找到";
 }
 
-function identifierNames(observations: readonly DataObservation[]): string[] {
-  return [...new Set(observations.flatMap((item) => Object.keys(item.summary.identifiers)))];
+function collectedFacts(diagnosis: DataDiagnosis): CollectedDataCapabilityFact[] {
+  return diagnosis.evidence.facts.capabilityFacts.filter(
+    (fact): fact is CollectedDataCapabilityFact => fact.status === "collected",
+  );
 }
 
-function observationRows(observations: readonly DataObservation[], identifiers: readonly string[]): string[][] {
-  return observations.map((item) => [
+function identifierNames(facts: readonly CollectedDataCapabilityFact[]): string[] {
+  return [...new Set(facts.flatMap((item) => Object.keys(item.summary.identifiers)))];
+}
+
+function factRows(facts: readonly CollectedDataCapabilityFact[], identifiers: readonly string[]): string[][] {
+  return facts.map((item) => [
     item.service,
     item.stage,
     item.summary.resolvedAs,
@@ -24,8 +30,8 @@ function observationRows(observations: readonly DataObservation[], identifiers: 
   ]);
 }
 
-function observationResults(observations: readonly DataObservation[]): string {
-  const resolved = observations.filter((item) => item.summary.resolvedAs !== "unresolved");
+function capabilityResults(facts: readonly CollectedDataCapabilityFact[]): string {
+  const resolved = facts.filter((item) => item.summary.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
   return resolved.map((item) => {
     const title = `${item.service} · ${item.stage} · ${item.result.resolution.inputId} · ${item.summary.resolvedAs}`;
@@ -35,9 +41,10 @@ function observationResults(observations: readonly DataObservation[]): string {
 }
 
 export function buildDataSummary(diagnosis: DataDiagnosis): string {
-  const identifiers = identifierNames(diagnosis.evidence.observations);
+  const facts = collectedFacts(diagnosis);
+  const identifiers = identifierNames(facts);
   const columns = ["service", "stage", "resolved as", ...identifiers];
-  const rows = observationRows(diagnosis.evidence.observations, identifiers);
+  const rows = factRows(facts, identifiers);
   const coverage = diagnosis.coverage[0];
   return [
     "# 业务数据汇集诊断",
@@ -60,16 +67,17 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
 }
 
 export function buildDataHtml(diagnosis: DataDiagnosis): string {
-  const identifiers = identifierNames(diagnosis.evidence.observations);
+  const facts = collectedFacts(diagnosis);
+  const identifiers = identifierNames(facts);
   const coverage = diagnosis.coverage[0];
   return [
     htmlHeading(1, "业务数据汇集诊断"),
     htmlTable(
       ["service", "stage", "resolved as", ...identifiers],
-      observationRows(diagnosis.evidence.observations, identifiers),
+      factRows(facts, identifiers),
     ),
     htmlHeading(2, "业务数据"),
-    observationResults(diagnosis.evidence.observations),
+    capabilityResults(facts),
     htmlHeading(2, "Findings"),
     htmlList(diagnosis.findings.length
       ? diagnosis.findings.map((item) => item.message)

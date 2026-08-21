@@ -1,4 +1,4 @@
-import type { Diagnosis, Evidence, Fact, FindingMeta, ObservationMeta } from "../protocol";
+import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
   ServiceDataFinding,
@@ -62,15 +62,30 @@ export interface DataInspectionFacts {
   services: Record<string, DataServiceFacts>;
 }
 
-export interface DataObservation extends ObservationMeta {
-  kind: "service-data-inspection";
+export interface DataCapabilityFactIdentity {
+  id: string;
   stage: "expand" | "provide";
   service: string;
   identity: Identity;
+}
+
+export type DataCapabilityFact = DataCapabilityFactIdentity & Fact<{
   result: ServiceDataResult;
   summary: ServiceDataSummary;
+}>;
+
+export type CollectedDataCapabilityFact = DataCapabilityFactIdentity
+  & { status: "collected" }
+  & {
+    result: ServiceDataResult;
+    summary: ServiceDataSummary;
+  };
+
+export interface DataFacts extends DataInspectionFacts {
+  capabilityFacts: readonly DataCapabilityFact[];
 }
-export type DataEvidence = Evidence<DataObservation, DataInspectionFacts>;
+
+export type DataEvidence = Evidence<never, DataFacts>;
 
 export type DataFinding = FindingMeta<string> & ServiceDataFinding & { service: string };
 

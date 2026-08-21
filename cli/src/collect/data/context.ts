@@ -12,7 +12,7 @@ export interface PreparedDataCommand {
   executor: Executor;
 }
 
-/** Data command 的完整执行作用域；同一个对象继续交给 Inspect / Probe。 */
+/** Data command 的完整执行作用域；同一个对象继续交给 Capability、Inspect 与 Probe。 */
 export interface DataCommandContext extends PreparedDataCommand {
   pluginContexts: Readonly<Record<string, PluginContext>>;
   bundle: EvidenceBundle;

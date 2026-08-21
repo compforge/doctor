@@ -75,7 +75,7 @@ export interface ManifestMeta {
   doctorVersion: string;
   kubectlVersion?: string;
   target: Record<string, unknown>;
-  /** Inspect 产生的可持久化、已脱敏领域 Facts；与 probe observations 分开存放。 */
+  /** Command 选入 Evidence 的可持久化、已脱敏领域 Facts；与 Probe Observations 分开存放。 */
   inspectionFacts: Record<string, unknown>;
   params: Record<string, unknown>;
   startedAt: string;

@@ -110,6 +110,21 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
+  if (capabilities.data !== undefined) {
+    const data = record(capabilities.data, `${service.name}.data`);
+    if (typeof data.resolveTarget !== "function") {
+      throw new Error(`${service.name}.data.resolveTarget must be a function`);
+    }
+    if (typeof data.query !== "function") {
+      throw new Error(`${service.name}.data.query must be a function`);
+    }
+    if (typeof data.summarize !== "function") {
+      throw new Error(`${service.name}.data.summarize must be a function`);
+    }
+    if (typeof data.detect !== "function") {
+      throw new Error(`${service.name}.data.detect must be a function`);
+    }
+  }
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case"] as const) {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);

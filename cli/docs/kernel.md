@@ -48,11 +48,12 @@ Relation 的目标 Identity 可以形成后续 Query，但只有 Command 能决�
 确定性诊断的核心不是“执行一组命令”，而是生成可复查的 Evidence：
 
 ```text
-Config → target confirmation → preparation → Inspect → Facts ─┬→ Probe → Observations ─┐
-                                                               └─────────────────────────→ Evidence
-                                                                                            ├→ Detector → Findings
-                                                                                            ├→ Coverage
-                                                                                            └→ Render
+Command(Config)
+  ├→ Query → Service Capability → Facts / Relations ─┐
+  ├→ Inspect → Facts ─────────────────────────────────┼→ Evidence
+  └→ Probe → Observations ────────────────────────────┘    ├→ Detector → Findings
+                                                          ├→ Coverage
+                                                          └→ Render
 ```
 
 | 概念 | 稳定语义 |
@@ -60,7 +61,8 @@ Config → target confirmation → preparation → Inspect → Facts ─┬→ P
 | Config | flags/profile/交互输入形成的用户意图，不进入 Facts |
 | Query | Command 为一次 capability 调用形成的只读查询；由类型化 Identity 和 capability-specific Constraints 组成 |
 | Identity | Query 的类型化诊断对象标识；kind 与 value 的语义由提供它的领域拥有 |
-| Inspect / Facts | 行动前的只读现场快照；每个子 Fact 显式标记取得状态 |
+| Capability Facts | Service Capability 响应 Query 取得的领域事实；可以携带已证明的 Relation |
+| Inspect / Facts | Command 行动前取得的只读现场快照；每个子 Fact 显式标记取得状态 |
 | Relation | Capability 从现场事实中确认的 Identity 关系；它本身不拥有后续调度权 |
 | Probe / Observation | 一次受限采集行动，以及它产生的结构化数据 |
 | Evidence | 交给 detector 的 Observations 与领域显式挑选的 Facts |

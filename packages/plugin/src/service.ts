@@ -250,6 +250,7 @@ export interface ServicePerfCapability {
   scenarios: readonly ServicePerfScenario[];
 }
 
+/** One domain Fact returned by a Service data capability for a Query. */
 export interface ServiceDataResult {
   kind: string;
   service: string;
@@ -277,13 +278,8 @@ export interface ServiceDataFinding {
 }
 
 export interface ServiceDataQuery extends Query<Identity> {
-  /** @deprecated Read identities[0].value instead. */
-  inputId: string;
   results: ReadonlyMap<string, readonly ServiceDataResult[]>;
 }
-
-/** @deprecated Use ServiceDataQuery. */
-export type ServiceDataInput = ServiceDataQuery;
 
 /** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
 export interface ServiceDataTarget {
@@ -293,6 +289,11 @@ export interface ServiceDataTarget {
   credentialSource: string;
 }
 
+export type ServiceDataQueryHandler = (
+  context: PluginContext,
+  query: ServiceDataQuery,
+) => Promise<ServiceDataResult>;
+
 export interface ServiceDataCapability extends CapabilityWithAccess {
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
@@ -300,9 +301,10 @@ export interface ServiceDataCapability extends CapabilityWithAccess {
   expands?: readonly string[];
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;
-  inspectTarget(context: PluginContext): Promise<ServiceDataTarget>;
-  inspect(context: PluginContext, query: ServiceDataQuery): Promise<ServiceDataResult>;
+  resolveTarget(context: PluginContext): Promise<ServiceDataTarget>;
+  query: ServiceDataQueryHandler;
   summarize(result: ServiceDataResult): ServiceDataSummary;
+  /** Pure domain rule adapted by doctor data into an Evidence detector. */
   detect(result: ServiceDataResult): ServiceDataFinding[];
 }
 

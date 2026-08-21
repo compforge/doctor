@@ -1,6 +1,6 @@
 {
   "name": "@compforge/doctor-plugin",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "Plugin protocol and shared SDK types for Doctor",
   "type": "module",
   "scripts": {
