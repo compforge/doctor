@@ -11,13 +11,15 @@ import {
 } from "../src/perf/config";
 import {
   formatPerfCaseMix,
-  resolvePerfRequestIdentity,
-  resolveUserSearchPromptAction,
   createPerfArtifact,
-  selectUserFromSearch,
   selectPerfSamples,
   workloadFromCaseRunner,
 } from "../src/perf";
+import {
+  resolveCaseRequestIdentity,
+  resolveUserSearchPromptAction,
+  selectUserFromSearch,
+} from "../src/case";
 import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
 import { CommandContext } from "../src/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";
@@ -164,7 +166,7 @@ test("Perf fills missing tenant and user identity from the declared directory", 
   const tenants = [{ id: "tenant-1", name: "alpha", displayName: "Alpha" }];
   const users = [{ id: "user-1", name: "alice", displayName: "Alice" }];
   const searches: unknown[] = [];
-  expect(await resolvePerfRequestIdentity({
+  expect(await resolveCaseRequestIdentity({
     configured: {},
     directory: {
       listActive: async () => tenants,
@@ -174,6 +176,8 @@ test("Perf fills missing tenant and user identity from the declared directory", 
         return { users, total: 1 };
       },
     },
+    commandLabel: "Perf",
+    logPrefix: "perf",
     promptTenant: async (choices) => choices[0],
     promptUser: async ({ search }) => (await search({
       query: "alice",
@@ -228,9 +232,11 @@ test("Perf preserves configured identity and only queries missing user", async (
       total: 1,
     }),
   };
-  expect(await resolvePerfRequestIdentity({
+  expect(await resolveCaseRequestIdentity({
     configured: { tenantId: "tenant-1" },
     directory,
+    commandLabel: "Perf",
+    logPrefix: "perf",
     promptUser: async ({ search }) => (await search({ page: 1, pageSize: 10 })).users[0],
   })).toEqual({ tenantId: "tenant-1", userId: "tenant-1-user" });
   expect(listedTenants).toBe(0);

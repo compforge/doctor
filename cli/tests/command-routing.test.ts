@@ -53,6 +53,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("store [options]");
     expect(result.stdout).toContain("tenant [options]");
     expect(result.stdout).toContain("model [options]");
+    expect(result.stdout).toContain("eval [options]");
     expect(result.stdout).toContain("perf [options]");
     expect(result.stdout).toContain("--debug");
   });
@@ -142,6 +143,18 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--trace-samples <n>");
     expect(result.stdout).toContain('(default: "10")');
     expect(result.stdout).toContain("--format <format>");
+    expect(result.stdout).toContain("html 或 bundle");
+    expect(result.stdout).toContain("-y, --yes");
+  });
+
+  test("eval runs canonical Cases once and only collects evidence", () => {
+    const result = runCoreCli("eval", "--help");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("Usage: doctor eval [options]");
+    expect(result.stdout).toContain("--caseset <id>");
+    expect(result.stdout).toContain("--cases <ids>");
+    expect(result.stdout).toContain("每个执行一次");
+    expect(result.stdout).toContain("不做质量评分");
     expect(result.stdout).toContain("html 或 bundle");
     expect(result.stdout).toContain("-y, --yes");
   });

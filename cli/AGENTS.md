@@ -2,12 +2,13 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四条并列主路径组织能力准备、
-确定性诊断、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Chat 五条并列主路径组织能力准备、
+确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
+- **数据集采集**：`doctor eval` 逐例触发 canonical CaseSet，并复用 Collect 取得关联证据，不做质量评分。
 - **主动施压**：`doctor perf` 按共享 Perf Harness 契约产生业务流量，并复用 Collect 取得同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
 - **Plugin 扩展**：CLI 只负责选择并注入 Plugin；公共契约归 `../packages/plugin`。
@@ -19,9 +20,11 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
 | `app` | 命令入口、profile 与 composition root |
 | `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
 | `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
-| `command` | 四条主路径共用的启动检查、Kubernetes 目标解析与 access/审批契约 |
+| `command` | 五条主路径共用的启动检查、Kubernetes 目标解析与 access/审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
+| `case` | Eval 与 Perf 共用的 Case 请求身份选择 |
+| `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
 | `perf` | 对 Plugin Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `infra` | DB、HTTP、Kubernetes、进程和本机工具等访问原语 |
@@ -43,8 +46,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
    不能反向依赖 CLI。
 5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 capability；collect 再结合现场环境判断本次
    是否可用。
-6. **Case 触发与加压分开**：Plugin case runner 每次只触发一个 Case；Perf/Core 独占并发调度、预算、
-   熔断和 Window 归约。
+6. **Case 触发、采集与加压分开**：Plugin case runner 每次只触发一个 Case；Eval 顺序执行每个选中 Case
+   一次并保留关联证据，Perf/Core 独占并发调度、预算、熔断和 Window 归约。两者都不在 runner 内隐藏循环。
 7. **工具与执行通道分开**：根目录 `toolkit/` 只分发版本化资源；CLI `infra/toolkit` 按 Host process、
    Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。
    同一 Host 能力同时支持 container 与 process 时，先探测已有且可用的本地 container；不可用才回退
@@ -63,6 +66,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
 - `docs/kernel.md` — CLI 核心分层、Collect/Evidence、Doctor Host/Target 与授权契约
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定

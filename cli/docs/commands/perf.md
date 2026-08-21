@@ -7,7 +7,7 @@
 Perf 是带自身加压动作的组合工作流：它拥有负载执行和 Perf Artifact，同时触发 Metric、代表请求的 Trace
 和 Log；这些产物最终由统一 Delivery 一起交付。
 
-Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生真实业务数据、Trace 和可能的模型费用，
+Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会产生真实业务数据、Trace 和可能的模型费用，
 因此执行前必须展示最大请求量、并发档位、熔断条件和影响并取得确认。
 
 ## 职责边界

@@ -2,13 +2,15 @@
 
 ## 理念 / 概念
 
-CLI kernel 定义 Provision、Collect、Perf 和 Chat 四条并列主路径的稳定边界。它们共用底层能力，
+CLI kernel 定义 Provision、Collect、Eval、Perf 和 Chat 五条并列主路径的稳定边界。它们共用底层能力，
 但不共享业务流程：
 
 - `app` 是 composition root，编排 command 的 prepare、execute 与 finalize，并注入 Plugin 与基础设施能力；
-- `command` 持有四条主路径共用的启动事实、目标解析和 access/审批契约；
+- `command` 持有五条主路径共用的启动事实、目标解析和 access/审批契约；
 - `provision` 承载 image 发布、debug environment 创建和目标工具安装等显式状态变更；
 - `collect/<domain>` 拥有一次确定性诊断的配置、Facts、Probes、Detectors 和格式产物准备；
+- `eval` 按 canonical CaseSet 逐例触发真实请求，并调用现有 Collect 入口取得关联 Trace/Log/Data；
+  它保留供下游评估的数据，不在 Doctor 内进行回答质量评分；
 - `perf` 使用共享 Perf Harness 产生受控业务负载，同时触发 Metric/Trace/Log；它拥有自身加压动作，
   因而不是只做转发的纯 composite；
 - `packages/agent → chat/Session → chat/Controller → chat-tui` 是独立问答链路，不依赖
@@ -94,7 +96,7 @@ validated Profile snapshot + command options
   → selected Target + staged access plan
   → permission check
   → CommandContext + resolved profile/capabilities
-  → Provision / Inspect+Probe / Chat
+  → Provision / Inspect+Probe / Eval / Perf / Chat
   → Finalize（当前主要执行 Delivery）
 ```
 
@@ -131,6 +133,8 @@ cli/src/
 ├── plugin/              Plugin 宿主侧的选择、上下文与加载边界
 ├── command/             启动检查、Kubernetes 目标解析、执行上下文与 access/审批契约
 ├── provision/           image、debug environment 与目标工具准备
+├── case/                Eval 与 Perf 共用的 Case 请求身份选择
+├── eval/                CaseSet 逐例触发、Observation 与关联证据编排
 ├── perf/                主动负载、Perf Harness 适配和可观测证据编排
 ├── protocol/            CLI ↔ doctor-server 协议与 SSE client
 ├── terminal/            命令共用的选择、输入、确认与输出边界
@@ -276,6 +280,18 @@ Collect 仍遵循 Config → Facts → Observations → Evidence → Findings/Co
 Provision 不使用统一 engine。image、debug、install 的结果和生命周期不同，因此各自拥有检查、授权、
 执行和验证流程，只共享 `CommandContext`、terminal 交互和 infra 原语。
 
+### Eval 为什么单列
+
+Eval 的主要动作是按一个版本化 CaseSet 逐例产生真实请求，并把 CaseSet 快照、协议 Observation 与关联的
+Trace/Log/Data 一起交付。它不是只观察既有现场的 Collect，也不具有 Perf 的并发档位、请求预算、熔断和
+窗口归约，因此保留顶层入口。Case 的 canonical 资产归 spec-case，单次请求协议归 Service Case Capability；
+Eval 只负责选择 Case、顺序调度一次和证据编排。CaseSet 中可保留 `judge.eval` 等下游评估配置，但 Doctor
+Eval 不解释或执行这些配置，也不产出回答质量分数。
+
+Eval 调用既有 Trace、Log、Data Command 的稳定采集入口并共享 `CommandContext`，不能在 `eval/` 下复制
+采集实现。缺少关联 ID 或某类可选 capability 时，报告明确记录该数据面不可用，同时保留已取得的 Case
+Observation；已声明且实际执行的采集器失败则使本次命令失败。
+
 ### Perf 为什么单列
 
 Perf 的主要动作是主动产生业务请求，结果是负载曲线与其对应的可观测证据。它既不是为后续诊断准备
@@ -286,9 +302,9 @@ Perf 的主要动作是主动产生业务请求，结果是负载曲线与其对
 
 ### 依赖方向与领域所有权
 
-`app` 可以组装 Plugin、`provision`、`collect`、`perf`、`chat` 和 `infra`。Provision、Collect 与 Chat
-保持互不依赖；Perf 是编排层，会有意调用 Collect 稳定的 Metric、Trace、Log 入口，但不能复制其采集
-实现。共同启动上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
+`app` 可以组装 Plugin、`provision`、`collect`、`eval`、`perf`、`chat` 和 `infra`。Provision、Collect 与
+Chat 保持互不依赖；Eval 和 Perf 是编排层，会有意调用 Collect 的稳定入口，但不能复制其采集实现。
+共同启动上下文、Kubernetes 目标解析和审批模型归 `command`，交互归 `terminal`，执行原语归 `infra`。
 `packages/agent` 与 `packages/plugin` 不依赖 CLI，具体 Plugin 只依赖 Plugin 公共包；CLI infra 实现
 Plugin 公共包定义的 access port，但不知道业务
 Service、表关系和诊断结论。Plugin loader 把当前精确 Plugin 版本的 Skills 解析后交给本地 Agent，Agent
@@ -350,6 +366,7 @@ Linux x64 CLI 同时提供 modern Bun 与 glibc 2.17-compatible Node SEA；无�
 | MCP | [`commands/mcp-diagnosis.md`](commands/mcp-diagnosis.md) |
 | Memory | [`commands/memory-diagnosis.md`](commands/memory-diagnosis.md) |
 | Metric | [`commands/metric-diagnosis.md`](commands/metric-diagnosis.md) |
+| Eval | [`commands/eval.md`](commands/eval.md) |
 | Perf | [`commands/perf.md`](commands/perf.md) |
 | Model | [`commands/model-diagnosis.md`](commands/model-diagnosis.md) |
 | Network | [`commands/network-diagnosis.md`](commands/network-diagnosis.md) |

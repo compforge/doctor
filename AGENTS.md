@@ -16,8 +16,9 @@ Doctor 是以本地 `doctor` CLI 为中心的开源业务诊断工具。在产�
 
 Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Trace、Metric、Log 三类可观测性信号，再
 观察 CPU、内存、网络等运行时状态；业务侧通过 capability 补充 data、config、store 等领域事实，
-必要时以受控 HTTP 或协议调用主动复现问题。只在压力下出现的问题归 Perf 施压与同窗口信号关联，
-Model、MCP 等业务特有领域仍复用同一套 Service 与 capability 模型。
+必要时以受控 HTTP 或协议调用主动复现问题。Eval 按 canonical CaseSet 逐例触发请求并采集关联证据，
+但不在 Doctor 内评价回答质量；只在压力下出现的问题归 Perf 施压与同窗口信号关联。Model、MCP 等
+业务特有领域仍复用同一套 Service 与 capability 模型。
 
 `image`、`debug`、`install` 负责显式准备上述诊断所需的镜像、临时环境和工具。确定性问题由 Core 的
 通用能力与 Plugin 的业务 capability 协作形成 Evidence 和报告；无法预先固化路径的开放式问题交给
@@ -66,4 +67,5 @@ Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Ski
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
 - `cli/docs/kernel.md` — CLI 核心分层、Collect/Evidence 与授权契约
 - `cli/docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- `cli/docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/chat.md` — Doctor Chat 数据流、Agent 复用边界与 Plugin Skill 生命周期
