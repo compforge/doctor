@@ -63,6 +63,113 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   expect(context?.config.namespace).toBe("vke-system");
 });
 
+test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summary 回退", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-data-relations-"));
+  const seen: string[] = [];
+  const resolver = "sample-resolver";
+  const records = "sample-records";
+  const relationPlugin = {
+    id: "sample-relations",
+    version: "0.0.1",
+    services: createServiceCatalog([{
+      name: resolver,
+      capabilities: {
+        data: {
+          access: {},
+          provides: ["resolution-record"],
+          expands: ["message_id"],
+          inspectTarget: async () => ({
+            endpoint: "http://sample-resolver",
+            database: "sample",
+            username: "reader",
+            credentialSource: "test",
+          }),
+          inspect: async (_context, query) => {
+            const identity = query.identities[0]!;
+            return {
+              kind: "resolution-record",
+              service: resolver,
+              resolution: { inputId: identity.value, resolvedAs: identity.kind },
+              relations: identity.value === "biz-legacy"
+                ? undefined
+                : identity.kind === "biz_id" ? [{
+                    kind: "resolves-to",
+                    from: identity,
+                    to: { kind: "message_id", value: "message-1" },
+                  }] : [],
+            };
+          },
+          summarize: (result) => ({
+            resolvedAs: result.resolution.resolvedAs,
+            identifiers: {
+              message_id: result.resolution.inputId === "biz-legacy"
+                ? "message-legacy"
+                : "presentation-only",
+            },
+          }),
+          detect: () => [],
+        },
+      },
+    }, {
+      name: records,
+      capabilities: {
+        data: {
+          access: {},
+          provides: ["sample-record"],
+          inspectTarget: async () => ({
+            endpoint: "http://sample-records",
+            database: "sample",
+            username: "reader",
+            credentialSource: "test",
+          }),
+          inspect: async (_context, query) => {
+            const identity = query.identities[0]!;
+            seen.push(`${identity.kind}:${identity.value}`);
+            return {
+              kind: "sample-record",
+              service: records,
+              resolution: { inputId: identity.value, resolvedAs: identity.kind },
+            };
+          },
+          summarize: (result) => ({
+            resolvedAs: result.resolution.resolvedAs,
+            identifiers: {},
+          }),
+          detect: () => [],
+        },
+      },
+    }]),
+  } satisfies PluginDefinition;
+
+  try {
+    const context = new CommandContext({});
+    const code = await runCollectData({
+      bizIds: ["biz-1", "biz-legacy"],
+      services: `${resolver},${records}`,
+      namespace: "vke-system",
+      format: "json",
+      output: join(root, "result.json"),
+    }, relationPlugin, context, executor, {
+      [resolver]: {} as PluginContext,
+      [records]: {} as PluginContext,
+    });
+
+    expect(code).toBe(0);
+    expect(await deliverCommandArtifacts(
+      context,
+      { format: "json", output: join(root, "result.json") },
+      code,
+      "doctor data",
+    )).toBe(true);
+    expect(seen).toContain("biz_id:biz-1");
+    expect(seen).toContain("message_id:message-1");
+    expect(seen).not.toContain("message_id:presentation-only");
+    expect(seen).toContain("message_id:message-legacy");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("doctor data JSON 写入文件，stdout 只报告文件路径", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-json-output-"));
   const requestedOutput = join(root, "result");

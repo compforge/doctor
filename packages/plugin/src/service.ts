@@ -1,4 +1,5 @@
 import type { PluginContext } from "./context";
+import type { Identity, Query, Relation } from "./capability";
 import type {
   ModelCatalog,
   ModelInference,
@@ -256,10 +257,13 @@ export interface ServiceDataResult {
     inputId: string;
     resolvedAs: string;
   };
+  /** Relations proven while collecting this Fact. Commands own any follow-up scheduling. */
+  relations?: readonly Relation[];
 }
 
 export interface ServiceDataSummary {
   resolvedAs: string;
+  /** Presentation-only identifiers. Query expansion consumes ServiceDataResult.relations. */
   identifiers: Readonly<Record<string, string | undefined>>;
 }
 
@@ -272,10 +276,14 @@ export interface ServiceDataFinding {
   [name: string]: unknown;
 }
 
-export interface ServiceDataInput {
+export interface ServiceDataQuery extends Query<Identity> {
+  /** @deprecated Read identities[0].value instead. */
   inputId: string;
   results: ReadonlyMap<string, readonly ServiceDataResult[]>;
 }
+
+/** @deprecated Use ServiceDataQuery. */
+export type ServiceDataInput = ServiceDataQuery;
 
 /** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
 export interface ServiceDataTarget {
@@ -288,12 +296,12 @@ export interface ServiceDataTarget {
 export interface ServiceDataCapability extends CapabilityWithAccess {
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
-  /** 存在时表示此 Service 还可扩展这些规范 ID 类型。 */
+  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
   expands?: readonly string[];
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;
   inspectTarget(context: PluginContext): Promise<ServiceDataTarget>;
-  inspect(context: PluginContext, input: ServiceDataInput): Promise<ServiceDataResult>;
+  inspect(context: PluginContext, query: ServiceDataQuery): Promise<ServiceDataResult>;
   summarize(result: ServiceDataResult): ServiceDataSummary;
   detect(result: ServiceDataResult): ServiceDataFinding[];
 }
