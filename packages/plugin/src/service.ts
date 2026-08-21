@@ -5,7 +5,7 @@ import type {
   Identity,
   InspectCapability,
   Query,
-  RelationFact,
+  Relation,
 } from "./capability";
 import type {
   ModelCatalog,
@@ -200,8 +200,8 @@ export interface ServiceDataFact extends Fact {
     inputId: string;
     resolvedAs: string;
   };
-  /** RelationFacts proven while collecting this Fact. Commands own any follow-up scheduling. */
-  relations?: readonly RelationFact[];
+  /** Relations proven while collecting this Fact. Commands own any follow-up scheduling. */
+  relations?: readonly Relation[];
   /** Optional sources that could not contribute to an otherwise collected Fact. */
   missingEvidence?: readonly string[];
 }
@@ -244,7 +244,7 @@ export interface ServiceDataCapability
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
-  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 RelationFact。 */
+  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
   expands?: readonly string[];
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;

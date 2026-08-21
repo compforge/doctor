@@ -67,7 +67,7 @@ orchestration, analysis and delivery. It contains no application-specific Servic
 or schemas.
 
 A versioned Plugin describes the application's Service catalog. Each Service can expose Capabilities as
-business extensions to the same Core flow: an Inspect Capability maps a Query to Facts (including RelationFact),
+business extensions to the same Core flow: an Inspect Capability maps a Query to Facts (including Relation),
 while a Probe Capability maps one scheduled Input to an Observation. A Capability contributes business
 semantics and declares the target data and access Doctor must prepare before it runs; Command and Harness
 code still own scheduling, authorization, Evidence and delivery.

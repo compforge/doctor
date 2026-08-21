@@ -30,7 +30,7 @@ export interface Fact {
  * A Fact that proves a relationship between two diagnostic identities.
  * Core commands decide whether and how far a discovered identity is queried again.
  */
-export interface RelationFact<I extends Identity = Identity> extends Fact {
+export interface Relation<I extends Identity = Identity> extends Fact {
   from: I;
   to: I;
 }

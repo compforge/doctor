@@ -84,7 +84,7 @@ function makeTenantCapabilitiesInspect(
 }
 
 /**
- * @spec Tenant Command 按 tenant_id 选择 Capability 并保留其 Fact/RelationFact，Core 不理解 Plugin 业务领域
+ * @spec Tenant Command 按 tenant_id 选择 Capability 并保留其 Fact/Relation，Core 不理解 Plugin 业务领域
  * @see {@link ../../../../docs/commands/tenant.md}
  */
 export function makeTenantInspects(

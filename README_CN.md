@@ -57,7 +57,7 @@ Doctor Core 与具体业务无关，负责 Kubernetes 访问、通用 Collector 
 交付，不包含特定应用的 Service 名称、私有协议或 Schema。
 
 版本化 Plugin 描述一个应用的 Service Catalog。每个 Service 可以把 Capability 作为业务补充接入 Core
-的同一条流程：Inspect Capability 把 Query 转为 Fact（RelationFact 也是 Fact），Probe Capability 在
+的同一条流程：Inspect Capability 把 Query 转为 Fact（Relation 也是 Fact），Probe Capability 在
 一次调度中把 Input 转为 Observation。Capability 同时贡献业务语义，并声明执行前需要准备的目标数据和
 访问权限；Command 与 Harness 仍拥有调度、授权、Evidence 和交付。
 

@@ -55,8 +55,8 @@ Plugin 扩展点或生命周期：
 
 Core 与 Plugin 使用同一套 Capability 词汇；Plugin Service 只是业务 Capability 的归属与提供单元，不形成
 第二条扩展流程。Inspect Capability 遵循 `Query → Capability → Fact`：Query 由类型化 Identity 与该
-capability 的约束组成；RelationFact 是一种 Fact，表示 Plugin 已从现场数据确认的 Identity 关系。
-Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 RelationFact 继续查询、
+capability 的约束组成；Relation 是一种 Fact，表示 Plugin 已从现场数据确认的 Identity 关系。
+Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
 查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与 Query 调度。
 
 Probe Capability 遵循 `Input → Capability → Observation`，提供业务协议的一次执行原语。调用方每调度一次，

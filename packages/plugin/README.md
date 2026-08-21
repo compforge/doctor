@@ -25,9 +25,9 @@ kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
 
 Core 与 Plugin 共用一套 Capability 词汇和流程，Plugin Service 只是其中业务 Capability 的归属与提供
 单元。Inspect Capability 接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并
-返回一个或多个独立领域 `Fact`；`RelationFact` 是 Fact 的一种，表达已经由现场数据证明的 Identity 关系。
+返回一个或多个独立领域 `Fact`；`Relation` 是 Fact 的一种，表达已经由现场数据证明的 Identity 关系。
 Probe Capability 在调用方的每个调度点接受一次 Input 并返回 Observation，不拥有循环、预算、授权或
-Evidence。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 RelationFact 扩展并组织
+Evidence。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 Relation 扩展并组织
 Evidence。summary/table 等展示投影不能反向驱动 Query。
 
 `trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
