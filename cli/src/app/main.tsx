@@ -18,6 +18,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
 //   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
 //   doctor metric            → 基于 Prometheus 或内嵌 Prombed 采集并可视化 Service metrics
+//   doctor eval              → 按 canonical CaseSet 顺序触发请求，采集关联 trace/log/data，不做质量评分
 //   doctor perf              → 发起受控业务压测，并在同一窗口采集 metric、trace、log
 //   doctor install           → 向选定 Pod container 安装 GDB
 //   doctor init              → 首次初始化 local profile
@@ -51,6 +52,7 @@ import {
   type CollectCliOpts,
 } from "../collect/composite";
 import { runPerf } from "../perf";
+import { runEval } from "../eval";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
 import { runInstall, validateInstallOptions } from "../provision/install";
@@ -412,6 +414,21 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
     .option("-o, --output <path>", "HTML 产物目录或 Bundle 路径（默认 ./doctor-perf-<时间戳>）");
+}
+
+function withEvalOptions(cmd: CommandT): CommandT {
+  return withApprovalOptions(cmd)
+    .option("--service <name>", "提供 case capability 的 Service；仅一个 provider 时自动选择")
+    .option("--caseset <id>", "要执行的 canonical CaseSet；仅一个 CaseSet 时自动选择")
+    .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
+    .option("--request-timeout <seconds>", "单个 Case 请求超时", "180")
+    .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
+    .option("--kubeconfig <path>", "kubeconfig 路径")
+    .option("--context <name>", "kubeconfig context")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
+    .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
+    .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
 async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
@@ -806,6 +823,20 @@ export async function main(plugin?: PluginDefinition) {
       opts,
       plugin,
       (activePlugin, context) => runCollectMetric(opts, activePlugin, context),
+    );
+  });
+  withEvalOptions(
+    program.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
+  ).action(async (opts) => {
+    await runPluginCommand(
+      {
+        name: "doctor eval",
+        environment: { kubernetes: true },
+        plugin: PLUGIN_COMMAND_CAPABILITIES.eval,
+      },
+      opts,
+      plugin,
+      (activePlugin, context) => runEval(opts, activePlugin, context),
     );
   });
   withPerfOptions(

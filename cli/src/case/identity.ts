@@ -51,6 +51,7 @@ export function resolveUserSearchPromptAction(
 export async function selectUserFromSearch(
   search: UserSearch,
   ask: Ask,
+  logPrefix = "case",
 ): Promise<UserSummary | undefined> {
   let query: string | undefined;
   let page = 1;
@@ -64,7 +65,7 @@ export async function selectUserFromSearch(
       page = 1;
     }
 
-    terminalStdout.info(`[perf] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户（第 ${page} 页）…\n`);
+    terminalStdout.info(`[${logPrefix}] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户（第 ${page} 页）…\n`);
     const result = await search({
       query: query || undefined,
       page,
@@ -82,7 +83,7 @@ export async function selectUserFromSearch(
     const pageCount = Math.max(1, Math.ceil(result.total / USER_PAGE_SIZE));
     printNumberedChoices(
       users,
-      `[perf] 用户候选：第 ${page}/${pageCount} 页，共 ${result.total} 个匹配用户`,
+      `[${logPrefix}] 用户候选：第 ${page}/${pageCount} 页，共 ${result.total} 个匹配用户`,
       (user) => `${user.name}（${user.displayName}，${user.id}）`,
     );
     const answer = await ask(
@@ -112,19 +113,24 @@ export async function selectUserFromSearch(
   }
 }
 
-async function promptUserChoice(search: UserSearch): Promise<UserSummary | undefined> {
+async function promptUserChoice(
+  search: UserSearch,
+  logPrefix: string,
+): Promise<UserSummary | undefined> {
   prepareTerminalInput();
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    return await selectUserFromSearch(search, (question) => readline.question(question));
+    return await selectUserFromSearch(search, (question) => readline.question(question), logPrefix);
   } finally {
     readline.close();
   }
 }
 
-export async function resolvePerfRequestIdentity(input: {
+export async function resolveCaseRequestIdentity(input: {
   configured: Partial<ServiceRequestIdentity>;
   directory: TenantDirectory;
+  commandLabel: string;
+  logPrefix: string;
   promptTenant?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
   promptUser?: (input: { search: UserSearch }) => Promise<UserSummary | undefined>;
 }): Promise<ServiceRequestIdentity | undefined> {
@@ -135,20 +141,22 @@ export async function resolvePerfRequestIdentity(input: {
     if (!tenants.length) throw new Error("租户目录未返回当前启用租户");
     const tenant = await (input.promptTenant ?? ((choices) => promptTenantChoice({
       choices,
-      title: "[perf] 当前启用租户：",
+      title: `[${input.logPrefix}] 当前启用租户：`,
     })))(tenants);
     if (!tenant) return undefined;
     tenantId = tenant.id;
   }
   if (!userId) {
     if (!input.directory.searchActiveUsers) {
-      throw new Error("Perf Case 需要选择用户，但 tenantDirectory 未提供 searchActiveUsers");
+      throw new Error(`${input.commandLabel} Case 需要选择用户，但 tenantDirectory 未提供 searchActiveUsers`);
     }
     const search: UserSearch = (request) => input.directory.searchActiveUsers!({
       tenantId,
       ...request,
     });
-    const user = await (input.promptUser ?? ((selection) => promptUserChoice(selection.search)))({ search });
+    const user = await (input.promptUser ?? ((selection) => (
+      promptUserChoice(selection.search, input.logPrefix)
+    )))({ search });
     if (!user) return undefined;
     userId = user.id;
   }

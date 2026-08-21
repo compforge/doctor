@@ -106,6 +106,29 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "定位指标端点并提供业务指标语义",
     }],
   },
+  eval: {
+    command: "doctor eval",
+    needs: [{
+      requirement: "required",
+      capability: { scope: "service", name: "case" },
+      purpose: "提供 canonical CaseSet、单次请求触发和协议判定",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "traceId" },
+      purpose: "把 Case Observation 的业务关联 ID 解析为 trace_id",
+      fallback: "只保留 Case Observation，不采集 Trace/Log",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "log" },
+      purpose: "采集 Case 关联的业务日志",
+      fallback: "跳过 Log 证据",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "data" },
+      purpose: "采集 Case 关联的业务 Facts/Relations",
+      fallback: "跳过业务 Data 证据",
+    }],
+  },
   perf: {
     command: "doctor perf",
     needs: [{

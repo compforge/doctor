@@ -91,7 +91,8 @@ Tenant Capability 只绑定租户目录，不再定义 Command-specific contribu
 Case Capability 是 Service 的稳定请求资产与触发协议。它暴露一个或多个 CaseSet，以及并发安全的
 单次 Case runner；Case 与 CaseSet 的 canonical schema、校验和类型均归 spec-case，Doctor Plugin SDK
 直接引用该资产模型，不复制子集或维护第二套 schema。环境地址、身份和凭据由 runner 从 Plugin context
-取得，不写入 Case。
+取得，不写入 Case。`doctor eval` 顺序调用该 runner 并采集每次 Observation 的关联证据；`doctor perf`
+在 Perf Harness 的 dispatch 点并发调用同一 runner。Capability 不为任一 Command 内建隐藏循环。
 
 Perf Capability 是其上的场景预设，只选择 CaseSet 中的一个或多个 Case、声明本次权重、业务关联键
 优先级和 Metric/Log Service。权重属于本次 Experiment，不属于 Case。并发模型、dispatch、

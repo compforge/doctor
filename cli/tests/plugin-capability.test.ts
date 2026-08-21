@@ -94,6 +94,27 @@ test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
   ]);
 });
 
+test("eval command 只强依赖 Case，并把关联证据能力作为可降级工具", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.eval.needs).toEqual([
+    expect.objectContaining({
+      requirement: "required",
+      capability: { scope: "service", name: "case" },
+    }),
+    expect.objectContaining({
+      requirement: "preferred",
+      capability: { scope: "service", name: "traceId" },
+    }),
+    expect.objectContaining({
+      requirement: "preferred",
+      capability: { scope: "service", name: "log" },
+    }),
+    expect.objectContaining({
+      requirement: "preferred",
+      capability: { scope: "service", name: "data" },
+    }),
+  ]);
+});
+
 test("traceId capability 以 Service provider 为单位发现", () => {
   const tracePlugin = {
     id: "trace-sample",

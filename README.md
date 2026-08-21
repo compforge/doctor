@@ -44,6 +44,9 @@ Business data is organized by lookup scope:
   collectors; Collect does not infer relationships between scopes, create load or change individual
   command semantics.
 - `doctor http` executes a controlled request when reproducing the problem requires an active probe.
+- `doctor eval` executes each selected canonical Case once and captures its protocol observation plus
+  correlated Trace, Log and business Data. It preserves the CaseSet for downstream evaluators but does
+  not score answer quality or interpret `judge.eval`.
 - `doctor perf` generates bounded application load, records request outcomes and correlates the load
   window with Metric plus representative Trace and Log evidence. Because it creates real traffic and may
   have business or model cost, it is always an explicit, confirmed workflow.

@@ -37,13 +37,12 @@ import {
   perfLevelsThrough,
   resolvePerfConfig,
 } from "./config";
-import { resolvePerfRequestIdentity } from "./identity";
+import { resolveCaseRequestIdentity } from "../case";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
 import { createPerfArtifact } from "./output";
 import { writePerfReport } from "./report";
 
 export * from "./config";
-export * from "./identity";
 export * from "./model";
 export * from "./output";
 export * from "./report";
@@ -335,9 +334,11 @@ export async function runPerf(
         authorization,
       });
       try {
-        requestIdentity = await resolvePerfRequestIdentity({
+        requestIdentity = await resolveCaseRequestIdentity({
           configured: { tenantId, userId },
           directory: directoryService.capabilities.tenantDirectory.create(directoryContext),
+          commandLabel: "Perf",
+          logPrefix: "perf",
         });
       } finally {
         await directoryContext.dispose();
