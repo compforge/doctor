@@ -137,11 +137,18 @@ export function collectPluginCapabilities(kinds: readonly CollectKind[]): Plugin
   const needs: PluginCapabilityNeed[] = [];
   for (const kind of kinds) {
     for (const need of PLUGIN_COMMAND_CAPABILITIES[kind].needs) {
-      if (needs.some((candidate) => (
+      const existingIndex = needs.findIndex((candidate) => (
         candidate.capability.scope === need.capability.scope
         && candidate.capability.name === need.capability.name
-      ))) continue;
-      needs.push(need);
+      ));
+      if (existingIndex === -1) {
+        needs.push(need);
+      } else if (
+        needs[existingIndex]?.requirement === "preferred"
+        && need.requirement === "required"
+      ) {
+        needs[existingIndex] = need;
+      }
     }
   }
   return {

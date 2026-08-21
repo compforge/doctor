@@ -25,8 +25,8 @@ Service 提供可复用的 capability；capability、Inspect/Probe 与 detector 
 选择并驱动一个或多个 capability，同时编排 Inspect/Probe，将取得的 Fact、Relation 与 Observation 汇总
 为面向该诊断视角的 Evidence；随后按需装配纯 detector 分析 Evidence，产出 Finding 与 Coverage。
 
-Command 不拥有业务数据源。Capability 描述“能提供什么”，经 Query 调用后返回领域 Fact，或返回两个
-Identity 之间已经由现场数据证明的 Relation；例如同一模型目录可以被 Tenant、Model 与 Chat 消费，
+Command 不拥有业务数据源。Capability 描述“能提供什么”，经 Query 调用后返回一个或多个独立领域 Fact；
+Fact 也可携带两个 Identity 之间已经由现场数据证明的 Relation。例如同一模型目录可以被 Tenant、Model 与 Chat 消费，
 同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
 
 ```text
@@ -61,7 +61,7 @@ Command(Config)
 | Config | flags/profile/交互输入形成的用户意图，不进入 Facts |
 | Query | Command 为一次 capability 调用形成的只读查询；由类型化 Identity 和 capability-specific Constraints 组成 |
 | Identity | Query 的类型化诊断对象标识；kind 与 value 的语义由提供它的领域拥有 |
-| Capability Facts | Service Capability 响应 Query 取得的领域事实；可以携带已证明的 Relation |
+| Capability Facts | Service Capability 响应 Query 取得的一个或多个独立领域事实；可以携带已证明的 Relation |
 | Inspect / Facts | Command 行动前取得的只读现场快照；每个子 Fact 显式标记取得状态 |
 | Relation | Capability 从现场事实中确认的 Identity 关系；它本身不拥有后续调度权 |
 | Probe / Observation | 一次受限采集行动，以及它产生的结构化数据 |

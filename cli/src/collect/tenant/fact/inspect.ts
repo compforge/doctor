@@ -31,27 +31,34 @@ function makeTenantCapabilitiesInspect(
       for (const capability of capabilities) {
         const started = Date.now();
         try {
-          const result = await capability.query(identity);
-          const safeResult = result.kind === "models"
-            ? { ...result, models: result.models.map(modelSnapshot) }
-            : result;
-          const fact = {
-            status: "collected" as const,
-            id: capability.id,
-            service: capability.service,
-            capability: capability.capability,
-            ...safeResult,
-          };
-          facts.push(fact);
-          ctx.bundle.addStep({
-            id: `tenant-${capability.id}`,
-            title: `${capability.service} ${capability.capability}`,
-            risk: "observe",
-            status: "ok",
-            durationMs: Date.now() - started,
-            output: JSON.stringify(fact, null, 2),
-            ext: "json",
-          });
+          const results = await capability.query(identity);
+          for (const result of results) {
+            const safeResult = result.kind === "models"
+              ? { ...result, models: result.models.map(modelSnapshot) }
+              : result;
+            const id = result.kind === "data"
+              ? `${capability.id}:${result.fact.kind}`
+              : capability.id;
+            const fact = {
+              status: "collected" as const,
+              id,
+              service: capability.service,
+              capability: capability.capability,
+              ...safeResult,
+            };
+            facts.push(fact);
+            ctx.bundle.addStep({
+              id: `tenant-${id}`,
+              title: `${capability.service} ${capability.capability} · ${
+                result.kind === "data" ? result.fact.kind : "models"
+              }`,
+              risk: "observe",
+              status: "ok",
+              durationMs: Date.now() - started,
+              output: JSON.stringify(fact, null, 2),
+              ext: "json",
+            });
+          }
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
           facts.push({

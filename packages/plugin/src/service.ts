@@ -214,8 +214,8 @@ export interface ServicePerfCapability {
   scenarios: readonly ServicePerfScenario[];
 }
 
-/** One domain Fact returned by a Service data capability for a Query. */
-export interface ServiceDataResult {
+/** One independently consumable domain Fact returned by a Service data capability. */
+export interface ServiceDataFact {
   kind: string;
   service: string;
   resolution: {
@@ -230,7 +230,7 @@ export interface ServiceDataResult {
 
 export interface ServiceDataSummary {
   resolvedAs: string;
-  /** Presentation-only identifiers. Query expansion consumes ServiceDataResult.relations. */
+  /** Presentation-only identifiers. Query expansion consumes ServiceDataFact.relations. */
   identifiers: Readonly<Record<string, string | undefined>>;
 }
 
@@ -244,7 +244,7 @@ export interface ServiceDataFinding {
 }
 
 export interface ServiceDataQuery extends Query<Identity> {
-  results: ReadonlyMap<string, readonly ServiceDataResult[]>;
+  results: ReadonlyMap<string, readonly ServiceDataFact[]>;
 }
 
 /** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
@@ -258,7 +258,7 @@ export interface ServiceDataTarget {
 export type ServiceDataQueryHandler = (
   context: PluginContext,
   query: ServiceDataQuery,
-) => Promise<ServiceDataResult>;
+) => Promise<readonly ServiceDataFact[]>;
 
 export interface ServiceDataCapability extends CapabilityWithAccess {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
@@ -271,9 +271,9 @@ export interface ServiceDataCapability extends CapabilityWithAccess {
   store?: string;
   resolveTarget(context: PluginContext): Promise<ServiceDataTarget>;
   query: ServiceDataQueryHandler;
-  summarize(result: ServiceDataResult): ServiceDataSummary;
+  summarize(fact: ServiceDataFact): ServiceDataSummary;
   /** Pure domain rule adapted by doctor data into an Evidence detector. */
-  detect(result: ServiceDataResult): ServiceDataFinding[];
+  detect(fact: ServiceDataFact): ServiceDataFinding[];
 }
 
 export interface ServiceTraceIdInput {

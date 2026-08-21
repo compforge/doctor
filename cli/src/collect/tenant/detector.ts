@@ -16,7 +16,7 @@ export function buildTenantCoverage(
     if (fact.status !== "collected") {
       return { goal: fact.id, status: "insufficient", missingEvidence: [fact.reason] };
     }
-    const missingEvidence = fact.kind === "data" ? fact.result.missingEvidence ?? [] : [];
+    const missingEvidence = fact.kind === "data" ? fact.fact.missingEvidence ?? [] : [];
     return {
       goal: fact.id,
       status: missingEvidence.length ? "partial" : "sufficient",

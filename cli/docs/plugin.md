@@ -81,7 +81,7 @@ Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 m
 
 Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
 `tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Data Capability；
-返回的 Model 或 ServiceDataResult 作为 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
+返回的 Model 或每个 `ServiceDataFact` 作为独立 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
 复用，Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间

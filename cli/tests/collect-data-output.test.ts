@@ -33,11 +33,11 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => ({
+        query: async (_context, query) => [{
           kind: "sample-record",
           service,
           resolution: { inputId: query.identity.value, resolvedAs: "sample_id" },
-        }),
+        }],
         summarize: (result) => ({
           resolvedAs: result.resolution.resolvedAs,
           identifiers: { sample_id: result.resolution.inputId },
@@ -74,11 +74,11 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => ({
+        query: async (_context, query) => [{
           kind: "tenant-record",
           service: "tenant-api",
           resolution: { inputId: query.identity.value, resolvedAs: query.identity.kind },
-        }),
+        }],
         summarize: (result) => ({
           resolvedAs: result.resolution.resolvedAs,
           identifiers: {},
@@ -108,15 +108,48 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   expect(context?.config.namespace).toBe("vke-system");
 });
 
-test("doctor data 只用 capability Relation 扩展 Query，不读取 summary identifier", async () => {
+test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 summary identifier", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-relations-"));
   const seen: string[] = [];
   const resolver = "sample-resolver";
+  const traceResolver = "trace-resolver";
   const records = "sample-records";
   const relationPlugin = {
     id: "sample-relations",
     version: "0.0.1",
     services: createServiceCatalog([{
+      // Deliberately declared first: it can only run after the later resolver discovers message_id.
+      name: traceResolver,
+      capabilities: {
+        data: {
+          access: {},
+          accepts: ["message_id"],
+          provides: ["trace-resolution"],
+          expands: ["trace_id"],
+          resolveTarget: async () => ({
+            endpoint: "http://trace-resolver",
+            database: "sample",
+            username: "reader",
+            credentialSource: "test",
+          }),
+          query: async (_context, query) => [{
+            kind: "trace-resolution",
+            service: traceResolver,
+            resolution: { inputId: query.identity.value, resolvedAs: query.identity.kind },
+            relations: [{
+              kind: "resolves-to",
+              from: query.identity,
+              to: { kind: "trace_id", value: "trace-1" },
+            }],
+          }],
+          summarize: (fact) => ({
+            resolvedAs: fact.resolution.resolvedAs,
+            identifiers: {},
+          }),
+          detect: () => [],
+        },
+      },
+    }, {
       name: resolver,
       capabilities: {
         data: {
@@ -132,7 +165,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
           }),
           query: async (_context, query) => {
             const identity = query.identity;
-            return {
+            return [{
               kind: "resolution-record",
               service: resolver,
               resolution: { inputId: identity.value, resolvedAs: identity.kind },
@@ -141,7 +174,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
                     from: identity,
                     to: { kind: "message_id", value: "message-1" },
                   }] : [],
-            };
+            }];
           },
           summarize: (result) => ({
             resolvedAs: result.resolution.resolvedAs,
@@ -157,7 +190,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
       capabilities: {
         data: {
           access: {},
-          accepts: ["biz_id", "message_id"],
+          accepts: ["trace_id"],
           provides: ["sample-record"],
           resolveTarget: async () => ({
             endpoint: "http://sample-records",
@@ -168,11 +201,11 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
           query: async (_context, query) => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
-            return {
+            return [{
               kind: "sample-record",
               service: records,
               resolution: { inputId: identity.value, resolvedAs: identity.kind },
-            };
+            }];
           },
           summarize: (result) => ({
             resolvedAs: result.resolution.resolvedAs,
@@ -188,12 +221,13 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
     const context = new CommandContext({});
     const code = await runCollectData({
       bizIds: ["biz-1"],
-      services: `${resolver},${records}`,
+      services: `${traceResolver},${resolver},${records}`,
       namespace: "vke-system",
       format: "json",
       output: join(root, "result.json"),
     }, relationPlugin, context, executor, {
       [resolver]: {} as PluginContext,
+      [traceResolver]: {} as PluginContext,
       [records]: {} as PluginContext,
     });
 
@@ -204,8 +238,7 @@ test("doctor data 只用 capability Relation 扩展 Query，不读取 summary id
       code,
       "doctor data",
     )).toBe(true);
-    expect(seen).toContain("biz_id:biz-1");
-    expect(seen).toContain("message_id:message-1");
+    expect(seen).toEqual(["trace_id:trace-1"]);
     expect(seen).not.toContain("message_id:presentation-only");
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -237,7 +270,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
           capabilityFacts: [{
             status: "collected",
             service,
-            result: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
+            fact: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
           }],
         },
       },

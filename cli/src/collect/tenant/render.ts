@@ -50,7 +50,7 @@ export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
       `## ${capabilityLabel(fact)}`,
       "",
       "```json",
-      JSON.stringify(fact.kind === "models" ? fact.models : fact.result, null, 2),
+      JSON.stringify(fact.kind === "models" ? fact.models : fact.fact, null, 2),
       "```",
       "",
     ]),
@@ -78,7 +78,7 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
 
 export function buildTenantHtmlSections(diagnosis: TenantDiagnosis): HtmlReportSection[] {
   return collectedCapabilities(diagnosis).map((fact) => {
-    const value = fact.kind === "models" ? fact.models : fact.result;
+    const value = fact.kind === "models" ? fact.models : fact.fact;
     return {
       title: capabilityLabel(fact),
       html: `<pre><code>${escapeHtml(JSON.stringify(value, null, 2))}</code></pre>`,

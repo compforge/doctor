@@ -11,6 +11,7 @@ import {
 } from "../../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
+import { normalizeServiceDataFacts } from "../../plugin/data";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
@@ -104,8 +105,17 @@ export async function openTenantAccess(input: {
             authorization,
           });
           try {
-            const result = await capability.query(context, { identity, results: new Map() });
-            return { kind: "data" as const, result, summary: capability.summarize(result) };
+            const facts = normalizeServiceDataFacts({
+              value: await capability.query(context, { identity, results: new Map() }),
+              service: service.name,
+              queryIdentity: identity,
+              capability,
+            });
+            return facts.map((fact) => ({
+              kind: "data" as const,
+              fact,
+              summary: capability.summarize(fact),
+            }));
           } finally {
             await context.dispose();
           }
@@ -136,7 +146,7 @@ export async function openTenantAccess(input: {
           });
           try {
             const catalog: ModelCatalog = capability.create(context);
-            return { kind: "models", models: await catalog.query({ identity }) };
+            return [{ kind: "models", models: await catalog.query({ identity }) }];
           } finally {
             await context.dispose();
           }
