@@ -114,6 +114,12 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
   }
+  if (capabilities.intentionCatalog !== undefined) {
+    const intentionCatalog = record(capabilities.intentionCatalog, `${service.name}.intentionCatalog`);
+    if (typeof intentionCatalog.create !== "function") {
+      throw new Error(`${service.name}.intentionCatalog.create must be a function`);
+    }
+  }
   const serviceCase = capabilities.case;
   let caseSets = new Map<string, Record<string, unknown>>();
   if (serviceCase !== undefined) {
@@ -300,6 +306,15 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
     if (model.inferenceService !== undefined) {
       requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
     }
+  }
+  if (definition.intention !== undefined) {
+    const intention = record(definition.intention, "Plugin intention capability");
+    requireProvider(
+      services,
+      intention.catalogService,
+      "intentionCatalog",
+      "intention.catalogService",
+    );
   }
   if (definition.tenantConfiguration !== undefined) {
     const tenant = record(definition.tenantConfiguration, "Plugin tenantConfiguration capability");

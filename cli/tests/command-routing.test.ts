@@ -202,7 +202,7 @@ describe("CLI command routing", () => {
     const result = runCli("tenant", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor tenant [options]");
-    expect(result.stdout).toContain("租户配置、可用模型与模型 capacities");
+    expect(result.stdout).toContain("租户配置、可用模型与 Intention");
     expect(result.stdout).toContain("--tenant-id <id>");
     expect(result.stdout).toContain("--tenant-name <name>");
     expect(result.stdout).toContain("--tenant-config-service <name>");

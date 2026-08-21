@@ -9,7 +9,7 @@ import {
   buildTenantCoverage,
   buildTenantEvidence,
   buildTenantHtmlSections,
-  makeTenantInspect,
+  makeTenantInspects,
   safeTenantId,
   tenantReportName,
   type TenantCommandContext,
@@ -23,12 +23,22 @@ test("tenant report name keeps the tenant identity", () => {
     .toBe("doctor-tenant-tenant-team-1-20260819-150405");
 });
 
+test("tenant facets keep independent Inspect ownership", () => {
+  expect(makeTenantInspects().map((inspect) => inspect.id)).toEqual([
+    "tenant-identity",
+    "tenant-model-catalog",
+    "tenant-intention-catalog",
+    "tenant-configuration",
+  ]);
+});
+
 test("tenant inspect aggregates model capacities and tenant configuration without probes", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-tenant-test-"));
   const config: TenantConfig = {
     tenant: { id: "tenant-1", name: "alpha", displayName: "Alpha" },
     scopes: ["default", "runtime"],
     tenantConfigService: "config-api",
+    intentionCatalogService: "intention-api",
     format: "json",
     reportName: "tenant-test",
     profileName: "test",
@@ -66,6 +76,21 @@ test("tenant inspect aggregates model capacities and tenant configuration withou
         updatedAt: "2026-08-19T00:00:00Z",
       }],
     },
+    prepareIntentionCatalog: async () => ({
+      list: async (tenantId) => [{
+        id: "intention-1",
+        name: "文案创作",
+        actionType: "handoff",
+        sceneId: "scene-1",
+        sceneName: "内容生产",
+        enabled: true,
+        level: 1,
+        examples: [`${tenantId} 写一篇文章`],
+        reference: { id: "bot-1", type: "bot" },
+        createdAt: "2026-08-01T00:00:00Z",
+        updatedAt: "2026-08-19T00:00:00Z",
+      }],
+    }),
     prepareTenantConfigReader: async () => ({
       target: {
         endpoint: "config-api:8080",
@@ -77,7 +102,7 @@ test("tenant inspect aggregates model capacities and tenant configuration withou
     }),
   };
   try {
-    const facts = await runInspects([makeTenantInspect()], ctx);
+    const facts = await runInspects(makeTenantInspects(), ctx);
     const evidence = buildTenantEvidence([], facts);
     const coverage = buildTenantCoverage(evidence);
 
@@ -92,16 +117,30 @@ test("tenant inspect aggregates model capacities and tenant configuration withou
         runtime: { status: "collected", values: { "runtime.enabled": true } },
       },
     });
+    expect(facts.configurationTarget).toMatchObject({
+      status: "collected",
+      service: "config-api",
+      database: "tenant",
+    });
+    expect(facts.intentions).toMatchObject({
+      status: "collected",
+      items: [{ id: "intention-1", actionType: "handoff", sceneName: "内容生产" }],
+    });
     expect(coverage.map((item) => [item.goal, item.status])).toEqual([
       ["model-catalog", "sufficient"],
+      ["intention-catalog", "sufficient"],
       ["tenant-config", "sufficient"],
     ]);
-    expect(buildTenantHtmlSections({ evidence, findings: [], coverage })[0]?.html)
+    const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
+    expect(sections[0]?.html)
       .toContain("image_understanding");
-    expect(buildTenantHtmlSections({ evidence, findings: [], coverage })[0]?.html)
+    expect(sections[0]?.html)
       .toContain("Tenant default reasoning model");
-    expect(buildTenantHtmlSections({ evidence, findings: [], coverage })[0]?.html)
+    expect(sections[0]?.html)
       .toContain("128k");
+    expect(sections[1]?.html).toContain("文案创作");
+    expect(sections[1]?.html).toContain("内容生产");
+    expect(sections[1]?.html).toContain("bot-1");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

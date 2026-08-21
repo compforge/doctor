@@ -14,6 +14,28 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
+test("Plugin Intention capability 必须指向 intentionCatalog provider", () => {
+  const valid = {
+    id: "test",
+    version: "0.0.1",
+    intention: { catalogService: "control" },
+    services: { services: [{
+      name: "control",
+      capabilities: {
+        intentionCatalog: {
+          access: {},
+          create: () => ({ list: async () => [] }),
+        },
+      },
+    }] },
+  };
+  expect(validatePluginDefinition(valid, manifest).intention).toEqual({ catalogService: "control" });
+  expect(() => validatePluginDefinition({
+    ...valid,
+    services: { services: [{ name: "control", capabilities: {} }] },
+  }, manifest)).toThrow("without intentionCatalog capability");
+});
+
 test("Plugin model capability requires an endpoint on each declared provider", () => {
   const plugin = {
     id: "test",

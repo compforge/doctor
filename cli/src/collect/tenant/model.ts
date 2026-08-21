@@ -1,4 +1,6 @@
 import type {
+  Intention,
+  IntentionCatalog,
   Model,
   TenantConfigReader,
   TenantSummary,
@@ -33,6 +35,7 @@ export interface TenantConfig {
   tenant: TenantSummary;
   scopes: readonly string[];
   tenantConfigService?: string;
+  intentionCatalogService?: string;
   format: TenantOutputFormat;
   reportName: string;
   profileName: string;
@@ -58,6 +61,7 @@ export type TenantConfigurationScopeFacts = Record<
 export interface TenantFacts {
   tenant: Fact<Pick<TenantSummary, "id" | "name" | "displayName">>;
   models: Fact<{ items: readonly Model[] }>;
+  intentions: Fact<{ items: readonly Intention[] }>;
   configurationTarget: Fact<TenantConfigurationTargetFact>;
   configuration: Fact<{
     scopes: Readonly<TenantConfigurationScopeFacts>;
@@ -66,7 +70,7 @@ export interface TenantFacts {
 
 export type TenantEvidence = Evidence<never, TenantFacts>;
 export type TenantFinding = never;
-export type TenantDiagnosisGoal = "model-catalog" | "tenant-config";
+export type TenantDiagnosisGoal = "model-catalog" | "intention-catalog" | "tenant-config";
 export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDiagnosisGoal>;
 
 export interface TenantCommandContext {
@@ -74,6 +78,8 @@ export interface TenantCommandContext {
   config: TenantConfig;
   bundle: EvidenceBundle;
   catalog: { listAvailable(tenantId: string): Promise<Model[]> };
+  intentionCatalog?: IntentionCatalog;
+  prepareIntentionCatalog?: () => Promise<IntentionCatalog>;
   tenantConfigReader?: TenantConfigReader;
   prepareTenantConfigReader?: () => Promise<TenantConfigReader>;
 }

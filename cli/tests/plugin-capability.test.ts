@@ -74,12 +74,14 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
-test("tenant command 汇总目录和配置但不依赖 inference capability", () => {
+test("tenant command 汇总 Model、Intention 和配置但不依赖 inference capability", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
     { scope: "plugin", name: "model" },
     { scope: "service", name: "tenantDirectory" },
     { scope: "service", name: "modelCatalog" },
     { scope: "plugin", name: "tenantConfiguration" },
+    { scope: "plugin", name: "intention" },
+    { scope: "service", name: "intentionCatalog" },
   ]);
 });
 

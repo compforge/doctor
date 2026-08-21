@@ -1,5 +1,6 @@
 import type { PluginContext } from "./context";
 import type {
+  IntentionCatalog,
   ModelCatalog,
   ModelInference,
   ModelInferenceTarget,
@@ -50,6 +51,10 @@ export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {
 export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
   create(context: PluginContext): ModelCatalog;
+}
+
+export interface ServiceIntentionCatalogCapability extends CapabilityWithAccess {
+  create(context: PluginContext): IntentionCatalog;
 }
 
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
@@ -434,6 +439,7 @@ export interface ServiceCapabilities {
   data?: ServiceDataCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
   modelCatalog?: ServiceModelCatalogCapability;
+  intentionCatalog?: ServiceIntentionCatalogCapability;
   inference?: ServiceInferenceCapability;
   case?: ServiceCaseCapability;
   perf?: ServicePerfCapability;

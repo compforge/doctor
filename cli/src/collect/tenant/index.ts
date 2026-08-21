@@ -2,6 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
+  IntentionCatalog,
   PluginDefinition,
   TenantConfigReader,
 } from "@compforge/doctor-plugin";
@@ -22,7 +23,7 @@ import {
   tenantReportName,
 } from "./config";
 import { buildTenantCoverage, buildTenantEvidence } from "./detector";
-import { makeTenantInspect } from "./fact/inspect";
+import { makeTenantInspects } from "./fact/inspect";
 import type {
   CollectTenantCliOptions,
   TenantCommandContext,
@@ -38,7 +39,9 @@ import {
 
 export * from "./config";
 export * from "./detector";
+export * from "./facet";
 export * from "./fact/inspect";
+export * from "./facets";
 export * from "./model";
 export * from "./render";
 
@@ -84,8 +87,50 @@ function tenantConfigReaderFactory(input: {
   };
 }
 
+function intentionCatalogFactory(input: {
+  plugin: PluginDefinition;
+  commandContext: CommandContext;
+  access: NonNullable<Awaited<ReturnType<typeof openModelDiscoveryAccess>>>;
+  onDispose: (close: () => Promise<void>) => void;
+}): (() => Promise<IntentionCatalog>) | undefined {
+  const declaration = input.plugin.intention;
+  if (!declaration) return undefined;
+  const provider = input.plugin.services.findWith(declaration.catalogService, "intentionCatalog");
+  if (!provider) return undefined;
+  return async () => {
+    const executor = createKubernetesExecutor(input.access.config);
+    const context = await openPluginContext(executor, {
+      namespace: input.access.config.kubernetes.namespace,
+      kubeconfig: input.access.config.kubernetes.kubeconfig,
+      context: input.access.config.kubernetes.context,
+    }, {
+      env: input.commandContext.profile.name,
+      config: input.commandContext.profile.pluginConfig,
+      databaseIdentity: input.commandContext.profile.value.db?.user
+          && input.commandContext.profile.value.db.password
+        ? {
+            user: input.commandContext.profile.value.db.user,
+            password: input.commandContext.profile.value.db.password,
+          }
+        : undefined,
+      service: { name: provider.name },
+      command: "doctor tenant",
+      capability: provider.capabilities.intentionCatalog,
+      authorization: resolveKubernetesCommandContext(executor, input.commandContext).access,
+    });
+    try {
+      const catalog = provider.capabilities.intentionCatalog.create(context);
+      input.onDispose(() => context.dispose());
+      return catalog;
+    } catch (error) {
+      await context.dispose();
+      throw error;
+    }
+  };
+}
+
 /**
- * @spec doctor tenant 只汇总租户配置与 Model Catalog Facts，不创建 inference handle 或主动模型流量
+ * @spec doctor tenant 只汇总租户配置、Model Catalog 与 Intention Catalog Facts，不创建主动业务流量
  * @see {@link ../../../docs/commands/tenant.md}
  */
 export async function runCollectTenant(
@@ -141,6 +186,7 @@ export async function runCollectTenant(
       scopes: plugin.tenantConfiguration?.scopes ?? [],
       tenantConfigService: opts.tenantConfigService?.trim()
         || plugin.tenantConfiguration?.databaseService,
+      intentionCatalogService: plugin.intention?.catalogService,
       format,
       reportName,
       profileName: access.config.profileName,
@@ -151,11 +197,18 @@ export async function runCollectTenant(
     commandContext.artifacts.add("tenant", staging);
     const bundle = new EvidenceBundle(staging);
     let closeTenantConfig: (() => Promise<void>) | undefined;
+    let closeIntentionCatalog: (() => Promise<void>) | undefined;
     const ctx: TenantCommandContext = {
       command: commandContext,
       config,
       bundle,
       catalog: access.catalog,
+      prepareIntentionCatalog: intentionCatalogFactory({
+        plugin,
+        commandContext,
+        access,
+        onDispose: (close) => { closeIntentionCatalog = close; },
+      }),
       prepareTenantConfigReader: tenantConfigReaderFactory({
         plugin,
         opts,
@@ -167,7 +220,7 @@ export async function runCollectTenant(
     let facts: Readonly<TenantFacts>;
     let diagnosis: TenantDiagnosis;
     try {
-      facts = await runInspects([makeTenantInspect()], ctx, (line) => terminalStdout.write(`${line}\n`));
+      facts = await runInspects(makeTenantInspects(), ctx, (line) => terminalStdout.write(`${line}\n`));
       diagnosis = await runDiagnosis({
         ctx,
         facts,
@@ -179,7 +232,12 @@ export async function runCollectTenant(
         buildCoverage: buildTenantCoverage,
       });
     } finally {
-      await closeTenantConfig?.();
+      const settled = await Promise.allSettled([
+        closeIntentionCatalog?.(),
+        closeTenantConfig?.(),
+      ]);
+      const failure = settled.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
     }
 
     bundle.writeSummary(buildTenantSummary(diagnosis));
@@ -190,6 +248,7 @@ export async function runCollectTenant(
       params: {
         tenant_config_scopes: config.scopes,
         tenant_config_service: config.tenantConfigService ?? null,
+        intention_catalog_service: config.intentionCatalogService ?? null,
         output_format: format,
       },
       startedAt,

@@ -62,6 +62,16 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       capability: { scope: "plugin", name: "tenantConfiguration" },
       purpose: "汇总 Plugin 声明的租户配置",
       fallback: "仍交付租户身份和模型目录",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "plugin", name: "intention" },
+      purpose: "汇总租户 Intention Catalog",
+      fallback: "仍交付租户身份、模型目录和租户配置",
+    }, {
+      requirement: "preferred",
+      capability: { scope: "service", name: "intentionCatalog" },
+      purpose: "读取租户 Intention 数据",
+      fallback: "仍交付其它 tenant facts",
     }],
   },
   mcp: {

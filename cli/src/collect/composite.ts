@@ -19,7 +19,7 @@ export type CollectOutputFormat = "default" | "bundle" | "html";
 
 const COLLECT_LABELS: Record<CollectKind, string> = {
   inspect: "Inspect · Service 运行态与配置",
-  tenant: "Tenant · 租户配置与模型目录",
+  tenant: "Tenant · 租户配置、模型与 Intention Catalog",
   data: "Data · 业务关联数据",
   trace: "Trace · 调用链与耗时",
   log: "Log · 关联日志",

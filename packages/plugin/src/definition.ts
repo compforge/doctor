@@ -82,6 +82,34 @@ export interface ModelCatalog {
   getBackend(model: Model): Promise<ModelBackendHandle | undefined>;
 }
 
+export interface IntentionReference {
+  id: string;
+  type: string;
+}
+
+export interface Intention {
+  id: string;
+  name: string;
+  actionType: string;
+  sceneId: string;
+  sceneName?: string;
+  description?: string;
+  enabled?: boolean;
+  level?: number;
+  syncStatus?: string;
+  examples?: readonly string[];
+  replies?: readonly string[];
+  reference?: IntentionReference;
+  cot?: string;
+  reportTemplate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface IntentionCatalog {
+  list(tenantId: string): Promise<Intention[]>;
+}
+
 /** Plugin-owned inference handle; LLM chat uses the OpenAI-compatible chat completions path. */
 export interface ModelInference {
   invoke(path: string, body: Record<string, unknown>): Promise<ServiceHttpResponse>;
@@ -104,6 +132,16 @@ export interface ModelCapability {
   tenantDirectoryService: string;
   catalogService: string;
   inferenceService?: string;
+}
+
+/**
+ * Plugin-level binding for tenant-scoped Intention discovery.
+ *
+ * @spec Intention 以 tenant-id 为查询边界，由 doctor tenant 汇总；不能降级为 biz-id data
+ * @see {@link cli/docs/commands/tenant.md}
+ */
+export interface IntentionCapability {
+  catalogService: string;
 }
 
 export interface TraceCapability {
@@ -130,6 +168,7 @@ export interface TenantConfigurationCapability extends CapabilityWithAccess {
 export interface PluginLevelCapabilities {
   tenantConfiguration?: TenantConfigurationCapability;
   model?: ModelCapability;
+  intention?: IntentionCapability;
   trace?: TraceCapability;
 }
 

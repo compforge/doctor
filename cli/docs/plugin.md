@@ -73,6 +73,11 @@ Evidence 编排。Model Capability 只描述通用供给，不拥有任何 comma
 检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
 
+Intention Capability 是 Plugin 对租户 Intention 域的声明。`catalogService` 指向提供
+`intentionCatalog` capability 的 Service；`doctor tenant` 以已经解析的 tenant-id 调用 Catalog，取得
+公共 Intention 白名单投影并形成独立 Facts。Intention 不从 biz-id 反推 tenant，也不通过通用 data
+capability 上报。私有表结构、查询和 metadata 解释留在 Plugin，Core 只保存和展示公共字段。
+
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
 信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射
 公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。

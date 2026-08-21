@@ -720,7 +720,7 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withTenantOptions(
-    program.command("tenant").description("汇总租户配置、可用模型与模型 capacities（只读）"),
+    program.command("tenant").description("汇总租户配置、可用模型与 Intention（只读）"),
   ).action(async (opts: CollectTenantCliOptions) => {
     await runPluginCommand(
       {

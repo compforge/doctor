@@ -40,6 +40,8 @@ test("collect capability contract is the union of selected concrete commands", (
       "service.tenantDirectory",
       "service.modelCatalog",
       "plugin.tenantConfiguration",
+      "plugin.intention",
+      "service.intentionCatalog",
       "service.data",
       "service.traceId",
       "service.log",
