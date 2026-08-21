@@ -53,11 +53,16 @@ Plugin 扩展点或生命周期：
 这五类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
-只读 capability 的 data 面遵循 `Query → Capability → Fact / Relation`：Query 由类型化 Identity 与该
-capability 的约束组成；Fact 是领域现场快照，Relation 是 Plugin 已从现场数据确认的 Identity 关系。
-Capability 不归属某个 command，同一份 Fact 或 Relation 可以被多个诊断入口消费；是否沿 Relation 继续
-查询、查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与
-Query 调度。主动 inference、Case 和运行时取证仍返回 Observation 或临时 handle，不伪装成 Fact。
+Core 与 Plugin 使用同一套 Capability 词汇；Plugin Service 只是业务 Capability 的归属与提供单元，不形成
+第二条扩展流程。Inspect Capability 遵循 `Query → Capability → Fact`：Query 由类型化 Identity 与该
+capability 的约束组成；RelationFact 是一种 Fact，表示 Plugin 已从现场数据确认的 Identity 关系。
+Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 RelationFact 继续查询、
+查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与 Query 调度。
+
+Probe Capability 遵循 `Input → Capability → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
+runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
+拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe Capability；主动
+inference、Case 和运行时取证因此返回 Observation 或临时 handle，不伪装成 Fact。
 Data Capability 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 Capability，不能通过
 试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
 
@@ -88,10 +93,10 @@ Tenant Capability 只绑定租户目录，不再定义 Command-specific contribu
 信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射
 公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。
 
-Case Capability 是 Service 的稳定请求资产与触发协议。它暴露一个或多个 CaseSet，以及并发安全的
+Case Capability 是 Service 的 Probe Capability，提供稳定请求资产与单次执行协议。它暴露一个或多个 CaseSet，以及并发安全的
 单次 Case runner；Case 与 CaseSet 的 canonical schema、校验和类型均归 spec-case，Doctor Plugin SDK
 直接引用该资产模型，不复制子集或维护第二套 schema。环境地址、身份和凭据由 runner 从 Plugin context
-取得，不写入 Case。`doctor eval` 顺序调用该 runner 并采集每次 Observation 的关联证据；`doctor perf`
+取得，不写入 Case。`doctor eval` 顺序调用 runner 的 `run` 并采集每次 Observation 的关联证据；`doctor perf`
 在 Perf Harness 的 dispatch 点并发调用同一 runner。Capability 不为任一 Command 内建隐藏循环。
 
 Perf Capability 是其上的场景预设，只选择 CaseSet 中的一个或多个 Case、声明本次权重、业务关联键

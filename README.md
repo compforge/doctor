@@ -18,6 +18,8 @@ application. It returns raw evidence and offline reports to the same machine.
 Doctor starts from the Services that make up an application, then moves from broad service facts to the
 evidence needed for a specific problem:
 
+![Doctor Command diagnostic flow](docs/doctor-diagnostic-flow.svg)
+
 | Diagnostic surface | Commands | What Doctor investigates |
 |---|---|---|
 | Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
@@ -64,11 +66,11 @@ Doctor Core is business-neutral. It owns Kubernetes access, common collectors an
 orchestration, analysis and delivery. It contains no application-specific Service names, private protocols
 or schemas.
 
-A versioned Plugin describes the application's Service catalog. Each Service can expose Capabilities:
-typed contracts for data, metrics, logs, HTTP cases, models, MCP servers or other application-specific
-diagnostics. A Capability contributes the business semantics and declares the target data and access
-Doctor must prepare before it runs. Plugins provide the semantics for each business-data scope; Core only
-understands the declared scope and neutral results.
+A versioned Plugin describes the application's Service catalog. Each Service can expose Capabilities as
+business extensions to the same Core flow: an Inspect Capability maps a Query to Facts (including RelationFact),
+while a Probe Capability maps one scheduled Input to an Observation. A Capability contributes business
+semantics and declares the target data and access Doctor must prepare before it runs; Command and Harness
+code still own scheduling, authorization, Evidence and delivery.
 
 For a typical investigation, start with `doctor inspect`, use `doctor collect` to gather the relevant
 tenant, business and observability evidence, then run a targeted runtime or Agent command if the combined

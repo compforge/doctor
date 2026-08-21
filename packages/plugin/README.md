@@ -23,17 +23,20 @@ Core 与 Plugin 以 capability 为中心：capability 是 Doctor 发现、准备
 config 都只支撑 capability 的调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
 kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
 
-只读数据能力接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并返回一个或
-多个独立领域 Fact；每个 Fact 也可携带已证实的 `Relation`。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 Relation
-扩展并把结果组织为 Evidence。summary/table 等展示投影不能反向驱动 Query。
+Core 与 Plugin 共用一套 Capability 词汇和流程，Plugin Service 只是其中业务 Capability 的归属与提供
+单元。Inspect Capability 接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并
+返回一个或多个独立领域 `Fact`；`RelationFact` 是 Fact 的一种，表达已经由现场数据证明的 Identity 关系。
+Probe Capability 在调用方的每个调度点接受一次 Input 并返回 Observation，不拥有循环、预算、授权或
+Evidence。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 RelationFact 扩展并组织
+Evidence。summary/table 等展示投影不能反向驱动 Query。
 
 `trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
 使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
 凭据和外部访问仍在进入 Trace Harness 前完成。
 
-`case` 是 Service 的稳定 CaseSet 与单次请求 runner；runner 实现 HTTP/SSE、鉴权和协议分类，但不拥有
-加压循环。`perf` 只在 CaseSet 上声明本次 Case mix 与可观测性预设，调度、预算、熔断和统计由 Core 的
-Perf Harness 统一完成。
+`case` 是 Service 的 Probe Capability，提供稳定 CaseSet 与单次请求 runner；runner 的 `run` 实现
+HTTP/SSE、鉴权和协议分类，但不拥有加压循环。`perf` 只在 CaseSet 上声明本次 Case mix 与可观测性预设，
+调度、预算、熔断和统计由 Core 的 Perf Harness 统一完成。
 
 `PluginSkill` 是 runtime 视图，不规定归档或磁盘布局。Plugin loader 或定制发行入口负责读取
 `SKILL.md`，并把内容及可由宿主 `ExecutionEnv` 访问的绝对路径注入对应 `PluginDefinition`。Skill 因此

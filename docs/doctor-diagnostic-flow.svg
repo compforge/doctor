@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1930" height="620" viewBox="0 0 1930 620" role="img" aria-labelledby="title desc">
+  <title id="title">Doctor command diagnostic flow</title>
+  <desc id="desc">A Command prepares runtime context, schedules Inspect and Probe implementations from Core or Plugin Service Capabilities, combines Facts and Observations into Evidence, applies Detectors, renders Findings and Coverage, then finalizes delivery.</desc>
+
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#172033" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#172033"/>
+    </marker>
+    <style>
+      .text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #172033; }
+      .box { stroke: #172033; stroke-width: 3; }
+      .flow { fill: none; stroke: #172033; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .bus { fill: none; stroke: #172033; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+      .title { font-size: 27px; font-weight: 700; }
+      .label { font-size: 18px; font-weight: 650; }
+      .small { font-size: 15px; fill: #526078; }
+      .edge { font-size: 16px; font-weight: 600; fill: #526078; }
+      .chip { font-size: 14px; font-weight: 650; }
+    </style>
+  </defs>
+
+  <rect width="1930" height="620" rx="24" fill="#ffffff"/>
+  <text class="text title" x="1890" y="48" text-anchor="end">Command diagnostic flow</text>
+
+  <!-- Shared runtime context: document shape preserves the visual language of the original sketch. -->
+  <g filter="url(#shadow)">
+    <path class="box" d="M38 42 H224 V146 C178 123 112 171 38 144 Z" fill="#dfe7fb"/>
+  </g>
+  <text class="text title" x="131" y="103" text-anchor="middle">Context</text>
+
+  <!-- Context is prepared once and then shared by both scheduling stages. -->
+  <path class="bus" d="M234 92 H738 V188"/>
+  <path class="flow" d="M131 151 V188"/>
+  <path class="flow" d="M408 92 V188"/>
+  <path class="flow" d="M738 92 V188"/>
+  <text class="text edge" x="482" y="80">shared runtime context</text>
+
+  <!-- Main command flow. -->
+  <g filter="url(#shadow)">
+    <rect class="box" x="38" y="198" width="186" height="150" rx="16" fill="#edf2ff"/>
+    <rect class="box" x="292" y="198" width="232" height="150" rx="16" fill="#edf2ff"/>
+    <rect class="box" x="622" y="198" width="232" height="150" rx="16" fill="#edf2ff"/>
+    <rect class="box" x="950" y="198" width="190" height="150" rx="16" fill="#fff7dc"/>
+    <rect class="box" x="1234" y="198" width="190" height="150" rx="16" fill="#edf2ff"/>
+    <rect class="box" x="1514" y="198" width="150" height="150" rx="16" fill="#edf2ff"/>
+    <rect class="box" x="1742" y="198" width="150" height="150" rx="16" fill="#eee9ff"/>
+  </g>
+
+  <text class="text title" x="131" y="258" text-anchor="middle">Prepare</text>
+  <text class="text small" x="131" y="292" text-anchor="middle">access · lifecycle</text>
+  <text class="text small" x="131" y="317" text-anchor="middle">e.g. port-forward</text>
+
+  <text class="text title" x="408" y="244" text-anchor="middle">Inspect</text>
+  <text class="text small" x="408" y="273" text-anchor="middle">Query → Fact</text>
+  <rect x="315" y="291" width="82" height="34" rx="17" fill="#dce7ff"/>
+  <text class="text chip" x="356" y="313" text-anchor="middle">Core</text>
+  <rect x="405" y="291" width="96" height="34" rx="17" fill="#d9f5e8"/>
+  <text class="text chip" x="453" y="313" text-anchor="middle">Plugin</text>
+
+  <text class="text title" x="738" y="244" text-anchor="middle">Probe</text>
+  <text class="text small" x="738" y="273" text-anchor="middle">Input → Observation</text>
+  <rect x="645" y="291" width="82" height="34" rx="17" fill="#dce7ff"/>
+  <text class="text chip" x="686" y="313" text-anchor="middle">Core</text>
+  <rect x="735" y="291" width="96" height="34" rx="17" fill="#d9f5e8"/>
+  <text class="text chip" x="783" y="313" text-anchor="middle">Plugin</text>
+
+  <text class="text title" x="1045" y="258" text-anchor="middle">Evidence</text>
+  <text class="text small" x="1045" y="292" text-anchor="middle">Facts + Observations</text>
+  <text class="text small" x="1045" y="317" text-anchor="middle">auditable input</text>
+
+  <text class="text title" x="1329" y="258" text-anchor="middle">Detector</text>
+  <text class="text small" x="1329" y="292" text-anchor="middle">pure analysis</text>
+  <text class="text small" x="1329" y="317" text-anchor="middle">no external I/O</text>
+
+  <text class="text title" x="1589" y="258" text-anchor="middle">Render</text>
+  <text class="text small" x="1589" y="292" text-anchor="middle">report</text>
+  <text class="text small" x="1589" y="317" text-anchor="middle">bundle</text>
+
+  <text class="text title" x="1817" y="258" text-anchor="middle">Finalize</text>
+  <text class="text small" x="1817" y="292" text-anchor="middle">delivery</text>
+  <text class="text small" x="1817" y="317" text-anchor="middle">HTML · tar.gz</text>
+
+  <path class="flow" d="M224 273 H282"/>
+  <text class="text edge" x="253" y="258" text-anchor="middle">context</text>
+  <path class="flow" d="M524 273 H612"/>
+  <text class="text edge" x="568" y="258" text-anchor="middle">facts</text>
+  <path class="flow" d="M854 273 H940"/>
+  <text class="text edge" x="897" y="258" text-anchor="middle">observations</text>
+  <path class="flow" d="M1140 273 H1224"/>
+  <path class="flow" d="M1424 273 H1504"/>
+  <text class="text edge" x="1464" y="258" text-anchor="middle">findings</text>
+  <path class="flow" d="M1664 273 H1732"/>
+  <text class="text edge" x="1698" y="258" text-anchor="middle">artifacts</text>
+
+  <!-- Facts remain available to Probe and Detector through Evidence. -->
+  <path class="flow" d="M408 348 V468 H1045 V358"/>
+  <text class="text edge" x="726" y="457" text-anchor="middle">Facts, including RelationFact</text>
+
+  <!-- Legend makes the Plugin/Core boundary explicit without splitting the flow. -->
+  <rect x="38" y="536" width="18" height="18" rx="5" fill="#dce7ff" stroke="#172033"/>
+  <text class="text small" x="68" y="551">Core implementation</text>
+  <rect x="220" y="536" width="18" height="18" rx="5" fill="#d9f5e8" stroke="#172033"/>
+  <text class="text small" x="250" y="551">Plugin Service Capability: business supplement to the same flow</text>
+  <text class="text small" x="1892" y="551" text-anchor="end">Command owns scheduling · authorization · Evidence · delivery</text>
+</svg>

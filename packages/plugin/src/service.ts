@@ -1,6 +1,12 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
-import type { Identity, Query, Relation } from "./capability";
+import type {
+  Fact,
+  Identity,
+  InspectCapability,
+  Query,
+  RelationFact,
+} from "./capability";
 import type {
   ModelCatalog,
   ModelInference,
@@ -8,6 +14,7 @@ import type {
 } from "./definition";
 import type { ServiceMcpCapability } from "./mcp";
 import type { CapabilityWithAccess } from "./kubernetes";
+import type { ProbeCapability, ProbeRunner } from "./probe";
 
 export interface ServiceEndpoint {
   port: number;
@@ -117,11 +124,6 @@ export interface ServiceCaseVerdict {
   errorKind?: string;
 }
 
-export interface ServiceCaseTrialContext {
-  runId: string;
-  signal: AbortSignal;
-}
-
 export interface ServiceRequestIdentity {
   tenantId: string;
   userId: string;
@@ -141,30 +143,27 @@ export interface ServiceCaseIdentityRequirement {
  * A runner must not create an independent load loop: request budgets, timing and cancellation
  * belong to Core so every Outcome remains attributable to one Trial and Window.
  */
-export interface ServiceCaseRunner {
-  setup?(context: ServiceCaseTrialContext): Promise<void>;
-  trigger(input: {
-    case: Case;
-    runId: string;
-    signal: AbortSignal;
-  }): Promise<ServiceCaseObservation>;
+export interface ServiceCaseRunner extends ProbeRunner<Case, ServiceCaseObservation> {
   /** Pure per-request protocol classification; aggregate Case/Perf judgment stays outside the runner. */
   classify(observation: ServiceCaseObservation): ServiceCaseVerdict;
-  /** Stop accepting new protocol work after Core has stopped dispatching this Trial. */
-  deactivate?(context: ServiceCaseTrialContext): Promise<void>;
-  /** Release per-Trial protocol resources; Core attempts this even when setup/trigger fails. */
-  cleanup?(context: ServiceCaseTrialContext): Promise<void>;
 }
 
-/** Service-owned single-Case trigger consumed by Case Harness and Perf Harness callers. */
-export interface ServiceCaseCapability extends CapabilityWithAccess {
+export interface ServiceCaseProbeOptions {
+  caseSetId: string;
+  timeoutMs: number;
+  requestIdentity?: ServiceRequestIdentity;
+}
+
+/** Service-owned single-Case Probe Capability consumed by Eval and Perf Harness callers. */
+export interface ServiceCaseCapability
+  extends ProbeCapability<Case, ServiceCaseObservation, ServiceCaseProbeOptions> {
   endpoint: ServiceEndpoint;
   /** Canonical assets owned and validated by spec-case; commands only select and execute them. */
   caseSets: readonly CaseSet[];
   requestIdentity?: ServiceCaseIdentityRequirement;
   createRunner(
     context: PluginContext,
-    input: { caseSetId: string; timeoutMs: number; requestIdentity?: ServiceRequestIdentity },
+    input: ServiceCaseProbeOptions,
   ): Promise<ServiceCaseRunner>;
 }
 
@@ -195,15 +194,14 @@ export interface ServicePerfCapability {
 }
 
 /** One independently consumable domain Fact returned by a Service data capability. */
-export interface ServiceDataFact {
-  kind: string;
+export interface ServiceDataFact extends Fact {
   service: string;
   resolution: {
     inputId: string;
     resolvedAs: string;
   };
-  /** Relations proven while collecting this Fact. Commands own any follow-up scheduling. */
-  relations?: readonly Relation[];
+  /** RelationFacts proven while collecting this Fact. Commands own any follow-up scheduling. */
+  relations?: readonly RelationFact[];
   /** Optional sources that could not contribute to an otherwise collected Fact. */
   missingEvidence?: readonly string[];
 }
@@ -240,12 +238,13 @@ export type ServiceDataQueryHandler = (
   query: ServiceDataQuery,
 ) => Promise<readonly ServiceDataFact[]>;
 
-export interface ServiceDataCapability extends CapabilityWithAccess {
+export interface ServiceDataCapability
+  extends InspectCapability<ServiceDataQuery, ServiceDataFact> {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
   provides: readonly string[];
-  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
+  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 RelationFact。 */
   expands?: readonly string[];
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;

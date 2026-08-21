@@ -7,6 +7,7 @@ export * from "./http";
 export * from "./kubernetes";
 export * from "./mcp";
 export * from "./definition";
+export * from "./probe";
 export * from "./service";
 export * from "./skill";
 export * from "./store";

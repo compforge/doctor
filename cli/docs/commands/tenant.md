@@ -3,7 +3,7 @@
 ## 理念 / 概念
 
 `doctor tenant` 与 `doctor data` 都是数据采集 Command。前者以 tenant-id 为根 Identity，采集租户粒度
-Fact / Relation；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact / Relation。
+Fact（包括表达 Identity 关系的 RelationFact）；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact。
 `doctor tenant` 通过租户目录确定 Identity，再组合 Plugin 已经提供的可复用 Capability，把返回的
 Model 或 `ServiceDataFact` 组织为 Tenant Evidence；同一次 Data Query 可以返回多个领域上独立的 Fact。
 
@@ -21,7 +21,7 @@ Model 或 `ServiceDataFact` 组织为 Tenant Evidence；同一次 Data Query 可
 4. 每个 `ServiceDataFact` 形成独立 Tenant Fact；单个 Capability 失败不丢弃其它已取得事实。
 5. Command 汇总 Facts，计算 Coverage，并生成 Evidence、Markdown 与 HTML。
 
-Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；
+Tenant Command 当前只消费返回的 Fact，尚不沿 RelationFact 继续查询。协议仍保留 Capability 返回的 RelationFact；
 出现真实场景后，由 Tenant Command 决定是否继续形成 Query，以及深度、数量、去重和失败预算，Capability
 不自行递归。
 
@@ -30,14 +30,14 @@ Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询�
 ### Query 作用域与 Capability 归属分开
 
 Tenant 与 Data 分别以 tenant-id、biz-id 形成数据采集入口，但不因此复制数据能力。Model Catalog 可同时被
-Tenant、Model 与 Chat 消费；Data Capability 只声明接受的 Identity 与提供的 Fact/Relation，不感知
+Tenant、Model 与 Chat 消费；Data Capability 只声明接受的 Identity 与提供的 Fact / RelationFact，不感知
 调用它的 Command。
 
 ### Command 拥有诊断视角
 
 Plugin 不再返回 tenant report contribution，也不拥有 Tenant 报告 schema。Plugin 负责私有存储查询和
 领域 Fact；Command 负责选择哪些 Fact 进入本次 Evidence，以及如何表达 Coverage 和报告。展示逻辑不能
-反向驱动 Capability 选择或 Relation 遍历。
+反向驱动 Capability 选择或 RelationFact 遍历。
 
 ### 主动诊断保持独立
 

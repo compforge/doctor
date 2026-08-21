@@ -45,7 +45,7 @@ export function dataReportName(now: Date): string {
   return `doctor-data-${timestamp}`;
 }
 
-/** Providers reachable from a biz_id Query through declared Relation expansions. */
+/** Providers reachable from a biz_id Query through declared RelationFact expansions. */
 export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
   const reachable = new Set(["biz_id"]);
   const selected = new Set<string>();

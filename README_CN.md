@@ -17,6 +17,8 @@ Doctor 以本地 CLI 运行在 Doctor Host，通过受限的 Kubernetes 和业�
 
 Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐步深入到具体问题所需的证据：
 
+![Doctor Command 诊断流程](docs/doctor-diagnostic-flow.svg)
+
 | 诊断面 | 命令 | Doctor 关注的问题 |
 |---|---|---|
 | Service 状态 | `doctor inspect` | 匹配的 Pod 与 Container、镜像、Ready、重启、终止状态、CPU/内存 requests 与 limits，以及按需取得的配置 |
@@ -54,10 +56,10 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 Doctor Core 与具体业务无关，负责 Kubernetes 访问、通用 Collector 与运行时工具、证据编排、分析和
 交付，不包含特定应用的 Service 名称、私有协议或 Schema。
 
-版本化 Plugin 描述一个应用的 Service Catalog。每个 Service 可以通过 Capability 声明自己能提供的
-数据、Metric、Log、HTTP Case、Model、MCP Server 或其它业务诊断能力；Capability 同时贡献业务语义，
-并声明执行前需要准备的目标数据和访问权限。各业务数据维度的语义由 Plugin 提供，Core 只理解声明的
-scope 与中性结果。
+版本化 Plugin 描述一个应用的 Service Catalog。每个 Service 可以把 Capability 作为业务补充接入 Core
+的同一条流程：Inspect Capability 把 Query 转为 Fact（RelationFact 也是 Fact），Probe Capability 在
+一次调度中把 Input 转为 Observation。Capability 同时贡献业务语义，并声明执行前需要准备的目标数据和
+访问权限；Command 与 Harness 仍拥有调度、授权、Evidence 和交付。
 
 一次典型排查从 `doctor inspect` 开始，再用 `doctor collect` 汇集所需的 tenant、业务与可观测证据；当
 组合证据已经指向具体 Service 或协议后，再进入相应的运行时或 Agent 专项命令。

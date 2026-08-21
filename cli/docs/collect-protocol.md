@@ -37,11 +37,12 @@ partial，而不是把缺数据解释为系统健康。
 1. 配置确认合并 CLI、profile 与交互输入，确定目标身份，但不创建临时访问资源。
 2. preparation 建立 port-forward、临时文件等访问条件，并拥有其清理生命周期。
 3. `runInspects` 按依赖取得初始 Facts；每个 Fact 一经取得便在本轮后续只读。
-4. Command 按诊断目标生成 Query 并驱动选中的 Service Capability，将返回数据保存为 Facts/Relations；
+4. Command 按诊断目标生成 Query 并驱动选中的 Inspect Capability，将返回数据保存为 Facts；RelationFact
+   作为 Fact 的一种保留已确认的 Identity 关系；
    没有业务 Capability 的 Command 可跳过此步。
-5. `runDiagnosis` 调度 Probes。Probe 产生 Observations；单项现场访问失败只影响对应 Coverage，独立 Probe
-   继续执行。
-6. Evidence Builder 组合 Inspect Facts、Capability Facts/Relations 与 Observations，纯 Detector/Coverage
+5. `runDiagnosis` 调度 Probes。Probe 可调用 Core 通用实现或 Plugin Probe Capability，并产生 Observations；
+   单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
+6. Evidence Builder 组合 Inspect Facts、Capability Facts（含 RelationFact）与 Observations，纯 Detector/Coverage
    形成 Findings 和证据缺口。
 7. Renderer 只消费 Diagnosis 与产物元数据，按用户请求交付 HTML、Markdown 或 Bundle。
 

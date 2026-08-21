@@ -22,40 +22,49 @@ CLI kernel 定义 Provision、Collect、Eval、Perf 和 Chat 五条并列主路�
 
 ### Query、Capability 与 Evidence
 
-Service 提供可复用的 capability；capability、Inspect/Probe 与 detector 共同构成 Command 可按诊断目标
-组合的工具箱。Command 是诊断视角与执行编排单元：它把 Config 中与本次采集有关的输入收敛成 Query，
-选择并驱动一个或多个 capability，同时编排 Inspect/Probe，将取得的 Fact、Relation 与 Observation 汇总
-为面向该诊断视角的 Evidence；随后按需装配纯 detector 分析 Evidence，产出 Finding 与 Coverage。
+> Service 提供可复用的 Inspect Capability 与 Probe Capability，作为 Core 同一 Inspect / Probe 流程中的
+> 业务补充：前者接受 Query 并返回 Fact（RelationFact 也是 Fact），后者接受 Input 并返回 Observation。
+> Command 根据本次诊断目标编排 Inspect / Probe，选择并驱动 Core 实现或 Service Capability，把 Fact 与
+> Observation 组织成 Evidence，再经 Detector 形成 Finding / Coverage 并最终交付报告。
 
-Command 不拥有业务数据源。Capability 描述“能提供什么”，经 Query 调用后返回一个或多个独立领域 Fact；
-Fact 也可携带两个 Identity 之间已经由现场数据证明的 Relation。例如同一模型目录可以被 Tenant、Model 与 Chat 消费，
-同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
+这套词汇同时用于 Core 与 Plugin，不建立 Plugin 专属的平行流程。Plugin Service 是业务 Capability 的归属和
+提供单元：它把私有协议、数据位置与业务语义补充到 Core 的同一条诊断流程；Core 提供通用基础设施实现、
+调度、安全边界和交付。Command 是诊断视角与执行编排单元，不拥有业务数据源。
+
+Inspect Capability 描述“业务侧能读到什么”，由 Command 的 Inspect 调度节点经 Query 调用，返回一个或
+多个独立领域 Fact，但不拥有遍历和 Evidence。RelationFact 是一种 Fact，表达两个 Identity 之间已经由
+现场数据证明的关系。例如同一模型目录可以被 Tenant、Model 与 Chat 消费，同一业务关联也可以被 Data、
+Trace、Log 或 Perf 消费。
 
 ```text
 Command(Config)
   → Query(Identity + Constraints)
-  → Capability
-  → Fact / Relation
+  → Inspect Capability
+  → Fact（含 RelationFact）
   → Evidence
 ```
 
-Relation 的目标 Identity 可以形成后续 Query，但只有 Command 能决定是否继续、选择哪些 capability，
-以及查询深度、数量、去重、失败隔离和停止条件。Plugin 负责 Identity、Fact 与 Relation 的业务语义和
+RelationFact 的目标 Identity 可以形成后续 Query，但只有 Command 能决定是否继续、选择哪些 capability，
+以及查询深度、数量、去重、失败隔离和停止条件。Plugin 负责 Identity、Fact 与 RelationFact 的业务语义和
 固定查询；Core 负责 Query 调度、access 生命周期和 Evidence 组织。Capability 的 summary、table 或其它
 展示投影不得反向参与 Query 调度。
 
-这条数据路径描述只读发现与业务事实采集。会产生流量或改变现场的能力仍由 Probe/Operation 表达，结果
-进入 Observation；不能为了统一形状把 inference、Case 或运行时取证伪装成 Fact。
+Probe Capability 描述“业务侧能主动观察什么”，由 Command 的 Probe 调度节点在每个调度点以一次 Input
+调用并取得 Observation；它不内建循环，也不拥有 Command 的依赖、预算、停止条件、授权或 Evidence。
+Probe 调度可以调用 Core 通用实现，也可以适配 Plugin Capability；Eval/Perf 也可按各自 Harness 的调度
+模型调用同一 Capability。会产生流量或改变现场的动作仍由 Command 通过 Operation 门禁和审计，不能为了
+统一形状把 inference、Case 或运行时取证伪装成 Fact。
 
 确定性诊断的核心不是“执行一组命令”，而是生成可复查的 Evidence：
 
 ```text
 Command(Config)
-  ├→ Query → Service Capability → Facts / Relations ─┐
-  ├→ Inspect → Facts ─────────────────────────────────┼→ Evidence
-  └→ Probe → Observations ────────────────────────────┘    ├→ Detector → Findings
-                                                          ├→ Coverage
-                                                          └→ Render
+  ├→ Inspect 调度 → Core 实现 ──────────────────────────────→ Facts ───────┐
+  │             └→ Query → Inspect Capability ─────────────→ Facts ───────┤
+  └→ Probe 调度   → Core 实现 ──────────────────────────────→ Observations ┤
+                └→ Input → Probe Capability ───────────────→ Observations ┘
+                                                                          ↓
+                       Evidence → Detector → Findings / Coverage → Render → Finalize
 ```
 
 | 概念 | 稳定语义 |
@@ -63,13 +72,15 @@ Command(Config)
 | Config | flags/profile/交互输入形成的用户意图，不进入 Facts |
 | Query | Command 为一次 capability 调用形成的只读查询；由类型化 Identity 和 capability-specific Constraints 组成 |
 | Identity | Query 的类型化诊断对象标识；kind 与 value 的语义由提供它的领域拥有 |
-| Capability Facts | Service Capability 响应 Query 取得的一个或多个独立领域事实；可以携带已证明的 Relation |
+| Inspect Capability / Facts | Service Capability 响应 Query 取得的一个或多个独立领域事实 |
 | Inspect / Facts | Command 行动前取得的只读现场快照；每个子 Fact 显式标记取得状态 |
-| Relation | Capability 从现场事实中确认的 Identity 关系；它本身不拥有后续调度权 |
-| Probe / Observation | 一次受限采集行动，以及它产生的结构化数据 |
+| RelationFact | 一种 Fact，表示 Capability 从现场数据中确认的 Identity 关系；它本身不拥有后续调度权 |
+| Probe Capability | Service 提供的 `Input → Observation` 业务执行原语，不拥有调度与授权 |
+| Probe / Observation | Command 内的一次受限采集调度，以及它产生的结构化数据 |
 | Evidence | 交给 detector 的 Observations 与领域显式挑选的 Facts |
 | Finding / Coverage | 基于证据的确定性判断，以及诊断目标的证据充分度 |
 | Operation | 需要授权的副作用描述，本身不执行动作 |
+| Finalize | 汇总 Command 注册的 Artifacts，统一完成路径、格式、Bundle 与对外交付 |
 | Evidence Bundle | 解压后单一顶层目录内由 `report.html`、`AGENTS.md`、manifest、领域 JSON、原始输出、附件和摘要组成的可审计产物 |
 
 诊断命令未显式指定 `--format` 时采用双交付：同一 basename 下生成一份可直接打开的 `.html`，以及一份
@@ -243,15 +254,16 @@ OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`in
 ### Application 数据按作用域拆分
 
 Application 数据不是一个单一粒度的数据面。`doctor tenant` 与 `doctor data` 都是数据采集 Command：
-前者以 tenant-id 为根 Identity，采集租户粒度 Fact / Relation；后者以 biz-id 为根 Identity，采集业务
-对象粒度 Fact / Relation。二者的差异是 Query 作用域和 Evidence 组织，不是是否采集数据。当前 Tenant
-尚无 Relation 的实际 case，但后续遍历仍由 Tenant Command 决定，不能下沉为 Capability 自递归。
+前者以 tenant-id 为根 Identity，采集租户粒度 Fact；后者以 biz-id 为根 Identity，采集业务对象粒度 Fact。
+RelationFact 作为 Fact 的一种表达 Identity 关系。二者的差异是 Query 作用域和 Evidence 组织，不是是否
+采集数据。当前 Tenant 尚无 RelationFact 的实际 case，但后续遍历仍由 Tenant Command 决定，不能下沉为
+Capability 自递归。
 新的 identifier 只有在查询流程、证据生命周期和用户心智均独立时才形成新的 scope command，不能仅因
 查询键不同就增加命令，也不能继续扩张 `data` 或让 `collect` 理解 identifier 之间的私有关联。
 
 Tenant Command 只生成单个 `tenant_id` Identity 的 Query，并选择声明接受该 Identity 的可复用
 Capability。模型清单直接来自 Model Catalog；其它租户事实来自 Service Data Capability。Plugin 拥有
-具体查询和 Fact/Relation 语义，Command 拥有结果选择、Evidence、Coverage 与展示，不再设置一层
+具体查询和 Fact / RelationFact 语义，Command 拥有结果选择、Evidence、Coverage 与展示，不再设置一层
 Command-specific tenant contribution 协议。
 
 这些作用域 command 可以复用同一个 `CommandContext` 中已经确认的 profile、namespace 和同语义决策，

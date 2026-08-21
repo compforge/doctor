@@ -108,7 +108,7 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   expect(context?.config.namespace).toBe("vke-system");
 });
 
-test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 summary identifier", async () => {
+test("doctor data RelationFact work queue 不依赖 Catalog 顺序，也不读取 summary identifier", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-relations-"));
   const seen: string[] = [];
   const resolver = "sample-resolver";

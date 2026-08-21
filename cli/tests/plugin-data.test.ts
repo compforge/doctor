@@ -37,7 +37,7 @@ test("Data query 可返回多个独立 Fact", () => {
   }).map((fact) => fact.kind)).toEqual(["intention", "tenant-configuration"]);
 });
 
-test("Data query 拒绝未声明 Fact 与不可信 Relation", () => {
+test("Data query 拒绝未声明 Fact 与不可信 RelationFact", () => {
   expect(() => normalizeServiceDataFacts({
     value: [{
       kind: "unknown",

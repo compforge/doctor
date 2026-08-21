@@ -141,9 +141,9 @@ interface QueuedIdentity {
 }
 
 /**
- * Expand Relations to a bounded identity closure, independent of Service Catalog order.
+ * Expand RelationFacts to a bounded identity closure, independent of Service Catalog order.
  *
- * @spec Data Relation expansion uses a deduplicated work queue with explicit depth and identity budgets
+ * @spec Data RelationFact expansion uses a deduplicated work queue with explicit depth and identity budgets
  * @see {@link ../../../../docs/kernel.md}
  */
 async function collectExpansionFacts(input: {
@@ -193,10 +193,10 @@ async function collectExpansionFacts(input: {
           const key = identityKey(target);
           if (known.has(key)) continue;
           if (current.depth >= MAX_DATA_RELATION_DEPTH) {
-            throw new Error(`Data Relation 扩展深度超过上限 ${MAX_DATA_RELATION_DEPTH}`);
+            throw new Error(`Data RelationFact 扩展深度超过上限 ${MAX_DATA_RELATION_DEPTH}`);
           }
           if (known.size >= MAX_DATA_IDENTITIES) {
-            throw new Error(`Data Relation Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
+            throw new Error(`Data RelationFact Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
           }
           known.add(key);
           queue.push({ identity: target, depth: current.depth + 1 });
@@ -212,7 +212,7 @@ async function collectExpansionFacts(input: {
 }
 
 /**
- * Run the Service capabilities selected by doctor data and retain their outputs as Facts/Relations.
+ * Run the Service capabilities selected by doctor data and retain their outputs as Facts, including RelationFacts.
  * Command owns traversal and ordering; capability implementations only answer one Query at a time.
  */
 export async function collectDataCapabilityFacts(input: {
