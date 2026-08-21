@@ -1,6 +1,6 @@
 {
   "name": "@compforge/doctor-plugin-example",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "private": true,
   "type": "module",
   "doctorPlugin": {

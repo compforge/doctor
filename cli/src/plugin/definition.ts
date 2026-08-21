@@ -5,6 +5,7 @@ import {
   type ServiceCapabilityName,
   type ServiceDefinition,
 } from "@compforge/doctor-plugin";
+import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
 import type { PluginManifest } from "./manifest";
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -57,44 +58,6 @@ function uniqueNonEmptyStrings(value: unknown, label: string): void {
     if (seen.has(text)) throw new Error(`${label} contains duplicate value '${text}'`);
     seen.add(text);
   }
-}
-
-interface CaseFacetVocabulary {
-  values?: ReadonlySet<string>;
-  open: boolean;
-}
-
-function caseFacetVocabulary(value: unknown, label: string): Map<string, CaseFacetVocabulary> {
-  if (value === undefined) return new Map();
-  const result = new Map<string, CaseFacetVocabulary>();
-  for (const [rawName, rawSpec] of Object.entries(record(value, label))) {
-    const name = nonEmptyString(rawName, `${label} key`);
-    const spec = record(rawSpec, `${label}.${name}`);
-    const open = spec.open ?? false;
-    const ordered = spec.ordered ?? false;
-    if (typeof open !== "boolean") throw new Error(`${label}.${name}.open must be a boolean`);
-    if (typeof ordered !== "boolean") throw new Error(`${label}.${name}.ordered must be a boolean`);
-
-    let values: Set<string> | undefined;
-    if (spec.values !== undefined) {
-      values = new Set<string>();
-      for (const [index, rawValue] of nonEmptyArray(spec.values, `${label}.${name}.values`).entries()) {
-        const facetValue = nonEmptyString(rawValue, `${label}.${name}.values[${index}]`);
-        if (values.has(facetValue)) {
-          throw new Error(`${label}.${name}.values contains duplicate value '${facetValue}'`);
-        }
-        values.add(facetValue);
-      }
-    }
-    if (!values && !open) {
-      throw new Error(`${label}.${name} must declare non-empty values or open: true`);
-    }
-    if (ordered && !values) {
-      throw new Error(`${label}.${name}.ordered requires values`);
-    }
-    result.set(name, { values, open });
-  }
-  return result;
 }
 
 function validateService(value: unknown, index: number): ServiceDefinition {
@@ -157,29 +120,24 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         throw new Error(`${service.name}.case.requestIdentity.configured must be a function`);
       }
     }
-    caseSets = uniqueIdRecords(caseCapability.caseSets, `${service.name}.case.caseSets`);
-    for (const [caseSetId, caseSet] of caseSets) {
-      nonEmptyString(caseSet.title, `${service.name}.case.caseSets.${caseSetId}.title`);
-      const facetLabel = `${service.name}.case.caseSets.${caseSetId}.facets`;
-      const facets = caseFacetVocabulary(caseSet.facets, facetLabel);
-      const cases = uniqueIdRecords(caseSet.cases, `${service.name}.case.caseSets.${caseSetId}.cases`);
-      for (const [caseId, caseAsset] of cases) {
-        record(caseAsset.input, `${service.name}.case.caseSets.${caseSetId}.cases.${caseId}.input`);
-        if (caseAsset.facets !== undefined) {
-          const caseFacetLabel = `${service.name}.case.caseSets.${caseSetId}.cases.${caseId}.facets`;
-          for (const [rawName, rawValue] of Object.entries(record(caseAsset.facets, caseFacetLabel))) {
-            const name = nonEmptyString(rawName, `${caseFacetLabel} key`);
-            const facetValue = nonEmptyString(rawValue, `${caseFacetLabel}.${name}`);
-            const vocabulary = facets.get(name);
-            if (!vocabulary) {
-              throw new Error(`${caseFacetLabel}.${name} references an undeclared facet`);
-            }
-            if (vocabulary.values && !vocabulary.open && !vocabulary.values.has(facetValue)) {
-              throw new Error(`${caseFacetLabel}.${name} has unknown value '${facetValue}'`);
-            }
-          }
-        }
+    for (const [index, value] of nonEmptyArray(
+      caseCapability.caseSets,
+      `${service.name}.case.caseSets`,
+    ).entries()) {
+      const label = `${service.name}.case.caseSets[${index}]`;
+      const raw = record(value, label);
+      let caseSet;
+      try {
+        caseSet = caseSetFromRaw(raw);
+        validateCaseSet(caseSet);
+      } catch (error) {
+        throw new Error(`${label} is not a valid canonical CaseSet: ${String(error)}`);
       }
+      if (!caseSet.cases.length) throw new Error(`${label} must contain at least one Case`);
+      if (caseSets.has(caseSet.caseset)) {
+        throw new Error(`${service.name}.case.caseSets contains duplicate CaseSet '${caseSet.caseset}'`);
+      }
+      caseSets.set(caseSet.caseset, raw);
     }
   }
   const perf = capabilities.perf;

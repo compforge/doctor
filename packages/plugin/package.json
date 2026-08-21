@@ -1,6 +1,6 @@
 {
   "name": "@compforge/doctor-plugin",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "Plugin protocol and shared SDK types for Doctor",
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@compforge/spec-case": "0.0.4",
     "@compforge/trace-harness": "0.0.8"
   },
   "devDependencies": {

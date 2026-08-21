@@ -5,7 +5,7 @@ import { openModelAccess } from "../src/model";
 
 const manifest: PluginManifest = {
   manifestVersion: 1,
-  pluginApiVersion: 1,
+  pluginApiVersion: 2,
   id: "test",
   version: "0.0.1",
   requiresDoctor: ">=0.1.0",
@@ -301,8 +301,9 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
           endpoint: { port: 8000 },
           access: {},
           caseSets: [{
-            id: "chat",
-            title: "Chat Cases",
+            caseset: "chat",
+            focus: "Chat Cases",
+            schema_version: 1,
             facets: {
               difficulty: { values: ["simple", "complex"], ordered: true },
             },
@@ -348,7 +349,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
         },
       },
     }] },
-  }, manifest)).toThrow("references an undeclared facet");
+  }, manifest)).toThrow("unknown facet 'difficulty'");
 
   expect(() => validatePluginDefinition({
     ...base,
@@ -368,7 +369,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
         },
       },
     }] },
-  }, manifest)).toThrow("has unknown value 'medium'");
+  }, manifest)).toThrow("facet difficulty='medium' not in declared values");
 
   expect(() => validatePluginDefinition({
     ...base,
@@ -406,8 +407,9 @@ test("Plugin Case request identity references a tenant directory provider", () =
         endpoint: { port: 8000 },
         access: {},
         caseSets: [{
-          id: "chat",
-          title: "Chat Cases",
+          caseset: "chat",
+          focus: "Chat Cases",
+          schema_version: 1,
           cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
         }],
         requestIdentity: {

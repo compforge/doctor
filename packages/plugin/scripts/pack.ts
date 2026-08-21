@@ -108,17 +108,33 @@ export async function buildPluginArchive(pluginRoot: string, outputDir?: string)
   const stage = join(temporary, "package");
   try {
     mkdirSync(stage, { recursive: true });
-    const result = await Bun.build({
-      entrypoints: [join(root, "src", "index.ts")],
-      outdir: stage,
-      naming: "plugin.mjs",
-      target: "bun",
-      format: "esm",
-      sourcemap: "none",
-      minify: false,
+    // Bun.build always resolves from process.cwd(); the packer is also called from CLI tests and
+    // other workspace directories. A child build gives the Plugin workspace an explicit cwd
+    // without changing global process state for concurrent callers.
+    const build = Bun.spawn([
+      process.execPath,
+      "build",
+      "src/index.ts",
+      "--outdir",
+      stage,
+      "--entry-naming",
+      "plugin.mjs",
+      "--target",
+      "bun",
+      "--format",
+      "esm",
+    ], {
+      cwd: root,
+      stdout: "pipe",
+      stderr: "pipe",
     });
-    if (!result.success) {
-      throw new Error(result.logs.map((log) => log.message).join("\n") || "Plugin bundle failed");
+    const [exitCode, stdout, stderr] = await Promise.all([
+      build.exited,
+      new Response(build.stdout).text(),
+      new Response(build.stderr).text(),
+    ]);
+    if (exitCode !== 0) {
+      throw new Error(stderr.trim() || stdout.trim() || `Plugin bundle failed (exit ${exitCode})`);
     }
     if (existsSync(join(root, "skills"))) {
       cpSync(join(root, "skills"), join(stage, "skills"), { recursive: true, errorOnExist: true });

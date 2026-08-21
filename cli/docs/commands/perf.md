@@ -16,11 +16,11 @@ Perf 是与 Provision、Collect、Chat 平级的顶层工作流。它会产生�
   TypeScript 是两个平级实现，互不作为对方的规范。
 - Doctor Core 使用 TypeScript 实现调度负载、限制请求数、按 dispatch 时间归窗，并写出
   `run.json` / `outcomes.jsonl`。
-- Service `case` capability 提供 canonical CaseSet 的运行时投影，以及并发安全的单请求 runner；
+- Service `case` capability 直接提供 spec-case canonical CaseSet，以及并发安全的单请求 runner；
   `perf` capability 只选择一个或多个 Case、声明本次权重、关联键优先级和可观测 Service 清单。Case
   不携带环境、凭据、并发度或权重。
-- CaseSet 用受控 Facet 词表声明 `difficulty`、`task_type` 等分类轴；Case 只选择每个轴上的值。Core
-  校验词表并按 Facet 归约性能数据，避免用自由字符串形成不可维护的报告维度。
+- CaseSet 用受控 Facet 词表声明 `difficulty`、`task_type` 等分类轴；Case 只选择每个轴上的值。
+  spec-case 统一校验完整资产，Perf Harness 按 Facet 归约性能数据，避免用自由字符串形成不可维护的报告维度。
 - HTTP/SSE 私有字段、鉴权、连接复用和首 token 语义留在 Plugin runner，Core 不认识某个产品的 Chat
   body、身份 header 或业务 ID 语义。
 - Case 需要租户/用户身份时，由 Plugin 声明目录 Service 并读取自身 profile 配置；Core 复用

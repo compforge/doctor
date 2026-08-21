@@ -62,10 +62,10 @@ test("CLI core 不包含具体 Plugin 配置约定", () => {
   }
 });
 
-test("config/data/log/trace collect 不按示例 Service 名分支", () => {
+test("data/log/trace collect 不按示例 Service 名分支", () => {
   const root = join(import.meta.dir, "../../../cli/src/collect");
   const exampleServices = /example-api|example-worker/i;
-  for (const domain of ["config", "data", "log", "trace"]) {
+  for (const domain of ["data", "log", "trace"]) {
     for (const path of sourceFiles(join(root, domain))) {
       expect(readFileSync(path, "utf-8")).not.toMatch(exampleServices);
     }

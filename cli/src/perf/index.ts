@@ -4,6 +4,8 @@ import {
   Engine,
   rampHold,
   writeRunData,
+  type CaseMixEntry,
+  type CaseSet,
   type Outcome,
   type Run,
   type TimedOutcome,
@@ -11,7 +13,6 @@ import {
 } from "@compforge/perf-harness";
 import type {
   PluginDefinition,
-  ServiceCaseAsset,
   ServiceCaseObservation,
   ServiceCaseRunner,
   ServiceDefinition,
@@ -53,9 +54,13 @@ type PerfProvider = ServiceDefinition & {
 };
 
 export function formatPerfCaseMix(
-  caseMix: readonly { case: ServiceCaseAsset; weight: number }[],
+  caseSet: CaseSet,
+  caseMix: readonly CaseMixEntry[],
 ): string {
-  return caseMix.map(({ case: selectedCase, weight }) => {
+  const cases = new Map(caseSet.cases.map((item) => [item.id, item]));
+  return caseMix.map(({ id, weight = 1 }) => {
+    const selectedCase = cases.get(id);
+    if (!selectedCase) throw new Error(`CaseSet '${caseSet.caseset}' 不包含 Case '${id}'`);
     const facets = Object.entries(selectedCase.facets ?? {})
       .map(([name, value]) => `${name}=${value}`)
       .join(", ");
@@ -259,18 +264,15 @@ export async function runPerf(
   const declaredScenario = provider.capabilities.perf.scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
   const caseSet = provider.capabilities.case.caseSets.find(
-    (candidate) => candidate.id === declaredScenario.caseSetId,
+    (candidate) => candidate.caseset === declaredScenario.caseSetId,
   );
   if (!caseSet) {
     throw new Error(`Perf scenario '${scenario}' 引用了未知 CaseSet '${declaredScenario.caseSetId}'`);
   }
-  const caseMix = declaredScenario.cases.map((selection) => {
-    const selectedCase = caseSet.cases.find((candidate) => candidate.id === selection.caseId);
-    if (!selectedCase) {
-      throw new Error(`Perf scenario '${scenario}' 引用了未知 Case '${selection.caseId}'`);
-    }
-    return { case: selectedCase, weight: selection.weight ?? 1 };
-  });
+  const caseMix = declaredScenario.cases.map((selection) => ({
+    id: selection.caseId,
+    weight: selection.weight ?? 1,
+  }));
 
   if (!opts.levels?.trim() && process.stdin.isTTY && process.stdout.isTTY) {
     terminalStdout.info(
@@ -384,7 +386,7 @@ export async function runPerf(
   let runner: ServiceCaseRunner;
   try {
     runner = await provider.capabilities.case.createRunner(managed, {
-      caseSetId: caseSet.id,
+      caseSetId: caseSet.caseset,
       timeoutMs: config.requestTimeoutMs,
       requestIdentity,
     });
@@ -468,6 +470,7 @@ export async function runPerf(
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
       workload: workloadFromCaseRunner(runner),
+      caseSet,
       caseMix,
       loads: config.levels.map((level) => rampHold("closed", level, config.rampSeconds, config.holdSeconds, {
         max_requests: config.maxRequests,
@@ -477,7 +480,9 @@ export async function runPerf(
       })),
       signal: loadController.signal,
       onTrialStart: (context) => {
-        terminalStdout.write(`[perf] trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseMix)}`);
+        terminalStdout.write(
+          `[perf] trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseSet, caseMix)}`,
+        );
       },
     }).run();
   } catch (error) {
