@@ -55,7 +55,7 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
     command: "doctor inspect",
     needs: [{
       requirement: "preferred",
-      capability: { scope: "plugin", name: "tenantConfiguration" },
+      capability: { scope: "plugin", name: "tenant" },
       purpose: "补充租户配置",
       fallback: "只交付部署配置",
     }],
@@ -74,12 +74,11 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
-test("tenant command 汇总目录和配置但不依赖 inference capability", () => {
+test("tenant command 只依赖通用 tenant capability", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
-    { scope: "plugin", name: "model" },
+    { scope: "plugin", name: "tenant" },
     { scope: "service", name: "tenantDirectory" },
-    { scope: "service", name: "modelCatalog" },
-    { scope: "plugin", name: "tenantConfiguration" },
+    { scope: "service", name: "tenant" },
   ]);
 });
 

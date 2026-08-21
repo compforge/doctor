@@ -1,28 +1,23 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type {
-  PluginDefinition,
-  TenantConfigReader,
-} from "@compforge/doctor-plugin";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
-import { createKubernetesExecutor } from "../../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../../command";
-import { openModelDiscoveryAccess, resolveTenant } from "../../model";
-import { openPluginContext } from "../../plugin/context";
+import { resolveTenant } from "../../model";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runDiagnosis } from "../engine";
 import { EvidenceBundle } from "../evidence";
 import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
+import { openTenantAccess } from "./access";
 import {
   parseTenantOutputFormat,
   tenantReportName,
 } from "./config";
 import { buildTenantCoverage, buildTenantEvidence } from "./detector";
-import { makeTenantInspect } from "./fact/inspect";
+import { makeTenantInspects } from "./fact/inspect";
 import type {
   CollectTenantCliOptions,
   TenantCommandContext,
@@ -36,56 +31,15 @@ import {
   buildTenantSummary,
 } from "./render";
 
+export * from "./access";
 export * from "./config";
 export * from "./detector";
 export * from "./fact/inspect";
 export * from "./model";
 export * from "./render";
 
-function tenantConfigReaderFactory(input: {
-  plugin: PluginDefinition;
-  opts: CollectTenantCliOptions;
-  commandContext: CommandContext;
-  access: NonNullable<Awaited<ReturnType<typeof openModelDiscoveryAccess>>>;
-  onDispose: (close: () => Promise<void>) => void;
-}): (() => Promise<TenantConfigReader>) | undefined {
-  const capability = input.plugin.tenantConfiguration;
-  if (!capability) return undefined;
-  const service = input.opts.tenantConfigService?.trim() || capability.databaseService;
-  return async () => {
-    const executor = createKubernetesExecutor(input.access.config);
-    const context = await openPluginContext(executor, {
-      namespace: input.access.config.kubernetes.namespace,
-      kubeconfig: input.access.config.kubernetes.kubeconfig,
-      context: input.access.config.kubernetes.context,
-    }, {
-      env: input.commandContext.profile.name,
-      config: input.commandContext.profile.pluginConfig,
-      databaseIdentity: input.commandContext.profile.value.db?.user
-          && input.commandContext.profile.value.db.password
-        ? {
-            user: input.commandContext.profile.value.db.user,
-            password: input.commandContext.profile.value.db.password,
-          }
-        : undefined,
-      service: { name: service },
-      command: "doctor tenant",
-      capability,
-      authorization: resolveKubernetesCommandContext(executor, input.commandContext).access,
-    });
-    try {
-      const reader = await capability.createReader(context);
-      input.onDispose(() => context.dispose());
-      return reader;
-    } catch (error) {
-      await context.dispose();
-      throw error;
-    }
-  };
-}
-
 /**
- * @spec doctor tenant 只汇总租户配置与 Model Catalog Facts，不创建 inference handle 或主动模型流量
+ * @spec doctor tenant 只汇总 Plugin 声明的通用 tenant contributions，不理解具体业务概念
  * @see {@link ../../../docs/commands/tenant.md}
  */
 export async function runCollectTenant(
@@ -105,9 +59,8 @@ export async function runCollectTenant(
 
   let access;
   try {
-    access = await openModelDiscoveryAccess({
-      ...opts,
-      command: "doctor tenant",
+    access = await openTenantAccess({
+      options: opts,
       plugin,
       commandContext,
     });
@@ -138,9 +91,6 @@ export async function runCollectTenant(
     const reportName = tenantReportName(tenant.id);
     const config: TenantConfig = {
       tenant,
-      scopes: plugin.tenantConfiguration?.scopes ?? [],
-      tenantConfigService: opts.tenantConfigService?.trim()
-        || plugin.tenantConfiguration?.databaseService,
       format,
       reportName,
       profileName: access.config.profileName,
@@ -150,37 +100,27 @@ export async function runCollectTenant(
     retainedStaging = staging;
     commandContext.artifacts.add("tenant", staging);
     const bundle = new EvidenceBundle(staging);
-    let closeTenantConfig: (() => Promise<void>) | undefined;
     const ctx: TenantCommandContext = {
       command: commandContext,
       config,
       bundle,
-      catalog: access.catalog,
-      prepareTenantConfigReader: tenantConfigReaderFactory({
-        plugin,
-        opts,
-        commandContext,
-        access,
-        onDispose: (close) => { closeTenantConfig = close; },
-      }),
+      contributions: access.contributions,
     };
-    let facts: Readonly<TenantFacts>;
-    let diagnosis: TenantDiagnosis;
-    try {
-      facts = await runInspects([makeTenantInspect()], ctx, (line) => terminalStdout.write(`${line}\n`));
-      diagnosis = await runDiagnosis({
-        ctx,
-        facts,
-        config,
-        probes: [],
-        log: (line) => terminalStdout.write(`${line}\n`),
-        buildEvidence: buildTenantEvidence,
-        detectors: [],
-        buildCoverage: buildTenantCoverage,
-      });
-    } finally {
-      await closeTenantConfig?.();
-    }
+    const facts: Readonly<TenantFacts> = await runInspects(
+      makeTenantInspects(access.contributions),
+      ctx,
+      (line) => terminalStdout.write(`${line}\n`),
+    );
+    const diagnosis: TenantDiagnosis = await runDiagnosis({
+      ctx,
+      facts,
+      config,
+      probes: [],
+      log: (line) => terminalStdout.write(`${line}\n`),
+      buildEvidence: buildTenantEvidence,
+      detectors: [],
+      buildCoverage: buildTenantCoverage,
+    });
 
     bundle.writeSummary(buildTenantSummary(diagnosis));
     bundle.writeManifest({
@@ -188,8 +128,7 @@ export async function runCollectTenant(
       target: { tenant_id: tenant.id, tenant_name: tenant.name },
       inspectionFacts: { ...facts },
       params: {
-        tenant_config_scopes: config.scopes,
-        tenant_config_service: config.tenantConfigService ?? null,
+        contributions: access.contributions.map(({ id, service }) => ({ id, service })),
         output_format: format,
       },
       startedAt,

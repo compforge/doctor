@@ -206,10 +206,13 @@ OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`in
 
 ### Application 数据按作用域拆分
 
-Application 数据不是一个单一粒度的数据面，而是由各自拥有稳定查询边界的作用域组成：租户级数据由
-`tenant` 汇总，例如 Model Catalog 与租户配置；业务对象级数据由 `data` 按 biz-id 汇总。后续若出现用户级
-数据，应由独立的 user scope command 拥有它的 Config、Facts 与 Evidence，而不是继续扩张 `data` 或让
-`collect` 理解 identifier 之间的私有关联。
+Application 数据不是一个单一粒度的数据面，而是由各自拥有稳定查询边界的作用域组成：租户快照由
+`tenant` 汇总 Plugin 声明的租户粒度贡献；业务实体关系由 `data` 按 biz-id 汇总。
+新的 identifier 只有在查询流程、证据生命周期和用户心智均独立时才形成新的 scope command，不能仅因
+查询键不同就增加命令，也不能继续扩张 `data` 或让 `collect` 理解 identifier 之间的私有关联。
+
+Tenant Core 只编排通用 contribution：每个贡献独立声明 access，Plugin 拥有具体业务查询和字段
+投影。边界只允许 summary/table 报告 IR，不允许任意 HTML 或未约束嵌套数据穿透 Core。
 
 这些作用域 command 可以复用同一个 `CommandContext` 中已经确认的 profile、namespace 和同语义决策，
 但不能相互推导未声明的 identifier。`collect` 只组合被选择的数据面和产物，因此增加新的 Application

@@ -14,6 +14,42 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
+test("Plugin tenant capability 必须指向租户目录并提供 contribution", () => {
+  const valid = {
+    id: "test",
+    version: "0.0.1",
+    tenant: { directoryService: "iam" },
+    services: { services: [{
+      name: "iam",
+      capabilities: {
+        tenantDirectory: {
+          endpoint: { port: 8080 },
+          access: {},
+          create: () => ({
+            listActive: async () => [],
+            getByName: async (name: string) => ({ id: name, name, displayName: name }),
+          }),
+        },
+      },
+    }, {
+      name: "control",
+      capabilities: {
+        tenant: { contributions: [{
+          id: "inventory",
+          title: "Inventory",
+          access: {},
+          collect: async () => ({}),
+        }] },
+      },
+    }] },
+  };
+  expect(validatePluginDefinition(valid, manifest).tenant).toEqual({ directoryService: "iam" });
+  expect(() => validatePluginDefinition({
+    ...valid,
+    services: { services: valid.services.services.slice(1) },
+  }, manifest)).toThrow("unknown Service 'iam'");
+});
+
 test("Plugin model capability requires an endpoint on each declared provider", () => {
   const plugin = {
     id: "test",

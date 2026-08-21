@@ -1,126 +1,187 @@
+import type {
+  TenantContributionSnapshot,
+  TenantReportCell,
+} from "@compforge/doctor-plugin";
 import type { Inspect } from "../../inspection";
-import { modelSnapshot } from "../../../model";
 import type {
   TenantCommandContext,
-  TenantConfigurationScopeFacts,
+  TenantContributionCollector,
   TenantFacts,
-  TenantJsonValue,
 } from "../model";
 
-function jsonValue(value: unknown): TenantJsonValue {
-  if (Array.isArray(value)) return value.map(jsonValue);
-  if (typeof value === "object" && value !== null) {
-    return Object.fromEntries(Object.entries(value).map(([name, child]) => [name, jsonValue(child)]));
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
   }
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
-    return value;
-  }
-  return String(value ?? "");
+  return value as Record<string, unknown>;
 }
 
-export function makeTenantInspect(): Inspect<TenantFacts, TenantCommandContext> {
+function cell(value: unknown, label: string): TenantReportCell {
+  if (
+    value === null
+    || typeof value === "string"
+    || typeof value === "boolean"
+    || (typeof value === "number" && Number.isFinite(value))
+  ) return value;
+  throw new Error(`${label} must be a string, finite number, boolean, or null`);
+}
+
+/** Validate the runtime Plugin boundary and retain only the safe tenant report IR. */
+function normalizeSnapshot(value: unknown, contributionId: string): TenantContributionSnapshot {
+  const label = `tenant contribution '${contributionId}'`;
+  const snapshot = record(value, label);
+  const summary = snapshot.summary === undefined ? [] : (() => {
+    if (!Array.isArray(snapshot.summary)) throw new Error(`${label}.summary must be an array`);
+    return snapshot.summary.map((value, index) => {
+      const item = record(value, `${label}.summary[${index}]`);
+      if (typeof item.label !== "string" || !item.label.trim()) {
+        throw new Error(`${label}.summary[${index}].label must be a non-empty string`);
+      }
+      return {
+        label: item.label,
+        value: cell(item.value, `${label}.summary[${index}].value`),
+      };
+    });
+  })();
+  const tables = snapshot.tables === undefined ? [] : (() => {
+    if (!Array.isArray(snapshot.tables)) throw new Error(`${label}.tables must be an array`);
+    return snapshot.tables.map((value, tableIndex) => {
+      const tableLabel = `${label}.tables[${tableIndex}]`;
+      const table = record(value, tableLabel);
+      if (typeof table.title !== "string" || !table.title.trim()) {
+        throw new Error(`${tableLabel}.title must be a non-empty string`);
+      }
+      if (!Array.isArray(table.columns) || table.columns.length === 0) {
+        throw new Error(`${tableLabel}.columns must be a non-empty array`);
+      }
+      const columns = table.columns.map((column, index) => {
+        if (typeof column !== "string" || !column.trim()) {
+          throw new Error(`${tableLabel}.columns[${index}] must be a non-empty string`);
+        }
+        return column;
+      });
+      if (!Array.isArray(table.rows)) throw new Error(`${tableLabel}.rows must be an array`);
+      const rows = table.rows.map((row, rowIndex) => {
+        if (!Array.isArray(row) || row.length !== columns.length) {
+          throw new Error(`${tableLabel}.rows[${rowIndex}] must have ${columns.length} cells`);
+        }
+        return row.map((value, columnIndex) => (
+          cell(value, `${tableLabel}.rows[${rowIndex}][${columnIndex}]`)
+        ));
+      });
+      let search;
+      if (table.search !== undefined) {
+        const rawSearch = record(table.search, `${tableLabel}.search`);
+        if (
+          !Number.isInteger(rawSearch.column)
+          || Number(rawSearch.column) < 0
+          || Number(rawSearch.column) >= columns.length
+        ) {
+          throw new Error(`${tableLabel}.search.column must reference a table column`);
+        }
+        if (rawSearch.placeholder !== undefined && typeof rawSearch.placeholder !== "string") {
+          throw new Error(`${tableLabel}.search.placeholder must be a string`);
+        }
+        search = {
+          column: Number(rawSearch.column),
+          placeholder: rawSearch.placeholder as string | undefined,
+        };
+      }
+      return { title: table.title, columns, rows, search };
+    });
+  })();
+  const missingEvidence = snapshot.missingEvidence === undefined ? [] : (() => {
+    if (!Array.isArray(snapshot.missingEvidence)) {
+      throw new Error(`${label}.missingEvidence must be an array`);
+    }
+    return snapshot.missingEvidence.map((reason, index) => {
+      if (typeof reason !== "string" || !reason.trim()) {
+        throw new Error(`${label}.missingEvidence[${index}] must be a non-empty string`);
+      }
+      return reason;
+    });
+  })();
+  return { summary, tables, missingEvidence };
+}
+
+function makeTenantIdentityInspect(): Inspect<TenantFacts, TenantCommandContext> {
   return {
-    id: "tenant-profile",
-    run: async (ctx) => {
-      const tenant: TenantFacts["tenant"] = {
+    id: "tenant-identity",
+    run: async (ctx) => ({
+      tenant: {
         status: "collected",
         id: ctx.config.tenant.id,
         name: ctx.config.tenant.name,
         displayName: ctx.config.tenant.displayName,
-      };
-      let models: TenantFacts["models"];
-      const modelsStarted = Date.now();
-      try {
-        const items = (await ctx.catalog.listAvailable(ctx.config.tenant.id)).map(modelSnapshot);
-        models = { status: "collected", items };
-        ctx.bundle.addStep({
-          id: "tenant-model-catalog",
-          title: "租户可用模型目录",
-          risk: "observe",
-          status: "ok",
-          durationMs: Date.now() - modelsStarted,
-          output: JSON.stringify(items, null, 2),
-          ext: "json",
-        });
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        models = { status: "failed", reason };
-        ctx.bundle.addStep({
-          id: "tenant-model-catalog",
-          title: "租户可用模型目录",
-          risk: "observe",
-          status: "failed",
-          reason,
-          durationMs: Date.now() - modelsStarted,
-        });
-      }
+      },
+    }),
+  };
+}
 
-      if (!ctx.config.scopes.length || !ctx.prepareTenantConfigReader) {
-        const reason = "Plugin 未提供 tenantConfiguration capability";
-        return {
-          tenant,
-          models,
-          configurationTarget: { status: "unavailable", reason },
-          configuration: { status: "unavailable", reason },
-        };
-      }
-
-      try {
-        ctx.tenantConfigReader ??= await ctx.prepareTenantConfigReader();
-        const target = ctx.tenantConfigReader.target;
-        const scopes: TenantConfigurationScopeFacts = {};
-        for (const scope of ctx.config.scopes) {
-          const started = Date.now();
-          try {
-            const raw = await ctx.tenantConfigReader.loadTenantConfig(ctx.config.tenant.id, scope);
-            const values = Object.fromEntries(
-              Object.entries(raw).map(([name, value]) => [name, jsonValue(value)]),
-            );
-            scopes[scope] = { status: "collected", values };
-            ctx.bundle.addStep({
-              id: `tenant-config-${scope}`,
-              title: `${scope} 租户配置`,
-              risk: "observe",
-              status: "ok",
-              durationMs: Date.now() - started,
-              output: JSON.stringify(values, null, 2),
-              ext: "json",
-            });
-          } catch (error) {
-            const reason = error instanceof Error ? error.message : String(error);
-            scopes[scope] = { status: "failed", reason };
-            ctx.bundle.addStep({
-              id: `tenant-config-${scope}`,
-              title: `${scope} 租户配置`,
-              risk: "observe",
-              status: "failed",
-              reason,
-              durationMs: Date.now() - started,
-            });
-          }
+function makeTenantContributionsInspect(
+  contributions: readonly TenantContributionCollector[],
+): Inspect<TenantFacts, TenantCommandContext> {
+  return {
+    id: "tenant-contributions",
+    run: async (ctx) => {
+      const facts: Record<string, TenantFacts["contributions"][string]> = {};
+      for (const contribution of contributions) {
+        const started = Date.now();
+        try {
+          const snapshot = normalizeSnapshot(
+            await contribution.collect(ctx.config.tenant.id),
+            contribution.id,
+          );
+          const fact = {
+            status: "collected" as const,
+            id: contribution.id,
+            title: contribution.title,
+            service: contribution.service,
+            ...snapshot,
+          };
+          facts[contribution.id] = fact;
+          ctx.bundle.addStep({
+            id: `tenant-${contribution.id}`,
+            title: contribution.title,
+            risk: "observe",
+            status: "ok",
+            durationMs: Date.now() - started,
+            output: JSON.stringify(fact, null, 2),
+            ext: "json",
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          facts[contribution.id] = {
+            status: "failed",
+            id: contribution.id,
+            title: contribution.title,
+            service: contribution.service,
+            reason,
+          };
+          ctx.bundle.addStep({
+            id: `tenant-${contribution.id}`,
+            title: contribution.title,
+            risk: "observe",
+            status: "failed",
+            reason,
+            durationMs: Date.now() - started,
+          });
         }
-        return {
-          tenant,
-          models,
-          configurationTarget: {
-            status: "collected",
-            service: ctx.config.tenantConfigService!,
-            endpoint: target.endpoint,
-            database: target.database,
-            username: target.username,
-            credentialSource: target.credentialSource,
-          },
-          configuration: { status: "collected", scopes },
-        };
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        return {
-          tenant,
-          models,
-          configurationTarget: { status: "failed", reason },
-          configuration: { status: "failed", reason },
-        };
       }
+      return { contributions: facts };
     },
   };
+}
+
+/**
+ * @spec Tenant Core 只编排通用 contribution；新增租户领域不修改 Core Inspect
+ * @see {@link ../../../../docs/commands/tenant.md}
+ */
+export function makeTenantInspects(
+  contributions: readonly TenantContributionCollector[],
+): Inspect<TenantFacts, TenantCommandContext>[] {
+  return [
+    makeTenantIdentityInspect(),
+    makeTenantContributionsInspect(contributions),
+  ];
 }

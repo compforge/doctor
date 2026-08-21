@@ -52,6 +52,42 @@ export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
   create(context: PluginContext): ModelCatalog;
 }
 
+export type TenantReportCell = string | number | boolean | null;
+
+export interface TenantReportSummaryItem {
+  label: string;
+  value: TenantReportCell;
+}
+
+export interface TenantReportTable {
+  title: string;
+  columns: readonly string[];
+  rows: readonly (readonly TenantReportCell[])[];
+  search?: {
+    column: number;
+    placeholder?: string;
+  };
+}
+
+/** Safe, serializable report IR returned by one tenant contribution. */
+export interface TenantContributionSnapshot {
+  summary?: readonly TenantReportSummaryItem[];
+  tables?: readonly TenantReportTable[];
+  /** A collected snapshot may still be partial when some optional source reads failed. */
+  missingEvidence?: readonly string[];
+}
+
+export interface ServiceTenantContribution extends CapabilityWithAccess {
+  id: string;
+  title: string;
+  endpoint?: ServiceEndpoint;
+  collect(context: PluginContext, tenantId: string): Promise<TenantContributionSnapshot>;
+}
+
+export interface ServiceTenantCapability {
+  contributions: readonly ServiceTenantContribution[];
+}
+
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
   endpoint: ServiceEndpoint;
   /** Resolve only after required connectivity, including any port-forward, is ready for use. */
@@ -433,6 +469,7 @@ export interface ServiceCapabilities {
   traceId?: ServiceTraceIdCapability;
   data?: ServiceDataCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
+  tenant?: ServiceTenantCapability;
   modelCatalog?: ServiceModelCatalogCapability;
   inference?: ServiceInferenceCapability;
   case?: ServiceCaseCapability;

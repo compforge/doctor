@@ -5,26 +5,11 @@ import type {
 } from "./http";
 import type { HttpTransportResponse } from "./http";
 import type { ServiceCatalog } from "./catalog";
-import type { ServiceDataTarget } from "./service";
 import type {
   PluginSkill,
   PreparedSkillContext,
   SkillExecutionTarget,
 } from "./skill";
-import type { CapabilityWithAccess } from "./kubernetes";
-
-export interface TenantConfigTarget {
-  service: string;
-  port: number;
-}
-
-export interface TenantConfigReader {
-  target: ServiceDataTarget;
-  loadTenantConfig(
-    tenantId: string,
-    scope: string,
-  ): Promise<Record<string, unknown>>;
-}
 
 export type ModelType = "llm" | "embedding" | "rerank" | "audio";
 export type ModelInputModality = "text" | "image" | "audio";
@@ -93,17 +78,20 @@ export interface ModelInference {
 }
 
 /**
- * Plugin-level model domain binding shared by inventory and active model consumers.
- * Tenant/model discovery only needs the directory and catalog; active inference is optional.
+ * Plugin-level model domain binding shared by model discovery and active model consumers.
+ * Discovery only needs the directory and catalog; active inference is optional.
  *
- * @spec doctor tenant 与 doctor model 只共享 Model Capability 和 Model 数据契约，各自拥有独立的 command 实现与 Evidence 生命周期
- * @see {@link cli/docs/commands/tenant.md}
  * @see {@link cli/docs/commands/model-diagnosis.md}
  */
 export interface ModelCapability {
   tenantDirectoryService: string;
   catalogService: string;
   inferenceService?: string;
+}
+
+/** Plugin-level binding for tenant identity and tenant-scoped contributions. */
+export interface TenantCapability {
+  directoryService: string;
 }
 
 export interface TraceCapability {
@@ -118,17 +106,9 @@ export interface TraceCapability {
   };
 }
 
-export interface TenantConfigurationCapability extends CapabilityWithAccess {
-  /** 顺序从低优先级到高优先级，后一个 scope 覆盖前一个。 */
-  scopes: readonly string[];
-  directoryService: string;
-  databaseService: string;
-  createReader(context: PluginContext): Promise<TenantConfigReader>;
-}
-
 /** 不属于单个 Service、但仍由 Plugin 提供的业务语义。 */
 export interface PluginLevelCapabilities {
-  tenantConfiguration?: TenantConfigurationCapability;
+  tenant?: TenantCapability;
   model?: ModelCapability;
   trace?: TraceCapability;
 }
