@@ -5,7 +5,7 @@ import { openModelAccess } from "../src/model";
 
 const manifest: PluginManifest = {
   manifestVersion: 1,
-  pluginApiVersion: 2,
+  pluginApiVersion: 3,
   id: "test",
   version: "0.0.1",
   requiresDoctor: ">=0.1.0",
@@ -14,7 +14,7 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
-test("Plugin data capability 必须提供 query", () => {
+test("Plugin Inspect Capability 必须提供 query", () => {
   const base = {
     access: {},
     accepts: ["biz_id"],
@@ -23,18 +23,18 @@ test("Plugin data capability 必须提供 query", () => {
     summarize: () => ({ resolvedAs: "record", identifiers: {} }),
     detect: () => [],
   };
-  const definition = (data: Record<string, unknown>) => ({
+  const definition = (inspect: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "records", capabilities: { data } }] },
+    services: { services: [{ name: "records", capabilities: { inspect } }] },
   });
 
   expect(validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
     .toBeDefined();
   expect(() => validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
-    .toThrow("records.data.query must be a function");
+    .toThrow("records.inspect.query must be a function");
   expect(() => validatePluginDefinition(definition(base), manifest))
-    .toThrow("records.data.query must be a function");
+    .toThrow("records.inspect.query must be a function");
 });
 
 test("Plugin tenant capability 只绑定租户目录", () => {

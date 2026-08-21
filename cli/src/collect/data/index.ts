@@ -20,7 +20,7 @@ import {
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
-import { collectDataCapabilityFacts } from "./capability/collect";
+import { collectDataInspectFacts } from "./capability/collect";
 import { prepareDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
@@ -40,7 +40,7 @@ export * from "./model";
 
 function dataOutcomes(services: readonly string[], plugin: PluginDefinition): OutcomeDecl[] {
   return services.flatMap((service) => {
-    const capability = plugin.services.findWith(service, "data")!.capabilities.data;
+    const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
     return [
       ...(capability.expands?.length ? [{
         id: `data-expand-${service}`,
@@ -101,9 +101,9 @@ async function runCollectDataSingle(
     return 130;
   }
   for (const { service } of selections) {
-    const capability = plugin.services.findWith(service, "data")!.capabilities.data;
+    const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
     terminalStdout.write(
-      `[collect] data capability: ${service}（provides=${capability.provides.join(",")}`
+      `[collect] Inspect Capability: ${service}（provides=${capability.provides.join(",")}`
       + `${capability.expands?.length ? `；expands=${capability.expands.join(",")}` : ""}）\n`,
     );
   }
@@ -134,8 +134,8 @@ async function runCollectDataSingle(
     },
     params: {
       services: selections.map((item) => item.service),
-      data_capabilities: Object.fromEntries(selections.map(({ service }) => {
-        const capability = plugin.services.findWith(service, "data")!.capabilities.data;
+      inspect_capabilities: Object.fromEntries(selections.map(({ service }) => {
+        const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
         return [service, {
           provides: capability.provides,
           expands: capability.expands ?? [],
@@ -175,7 +175,7 @@ async function runCollectDataSingle(
       ctx,
       log,
     );
-    const capabilityFacts = await collectDataCapabilityFacts({
+    const capabilityFacts = await collectDataInspectFacts({
       selections,
       catalog: plugin.services,
       inspectionFacts,

@@ -200,7 +200,7 @@ preferred 被拒绝时进入手动输入或低能力降级；`kubectl auth can-i
 但在创建 `CommandContext` 和访问 Kubernetes 前先验证 Doctor Host 已加载 Plugin 且具备 required
 capability，缺失时直接说明具体 capability。preferred capability 缺失只触发声明过的降级路径。
 命令应声明自己真正消费的最窄业务契约：例如 `doctor trace` 和 `doctor log` 消费规范 `trace_id`，因此
-依赖 `service.traceId`，而不是借用宽泛的 `service.data` 或在 OpenSearch 中猜测业务 ID 语义。
+依赖 `service.traceId`，而不是借用宽泛的 `service.inspect` 或在 OpenSearch 中猜测业务 ID 语义。
 
 ```text
 Command requirements
@@ -262,7 +262,7 @@ Capability 自递归。
 查询键不同就增加命令，也不能继续扩张 `data` 或让 `collect` 理解 identifier 之间的私有关联。
 
 Tenant Command 只生成单个 `tenant_id` Identity 的 Query，并选择声明接受该 Identity 的可复用
-Capability。模型清单直接来自 Model Catalog；其它租户事实来自 Service Data Capability。Plugin 拥有
+Capability。模型清单直接来自 Model Catalog；其它租户事实来自 Service Inspect Capability。Plugin 拥有
 具体查询和 Fact / Relation 语义，Command 拥有结果选择、Evidence、Coverage 与展示，不再设置一层
 Command-specific tenant contribution 协议。
 

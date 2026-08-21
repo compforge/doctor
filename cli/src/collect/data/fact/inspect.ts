@@ -11,17 +11,17 @@ export function makeDataInspect(
     run: async (ctx) => {
       const services: Record<string, DataServiceFacts> = {};
       for (const confirmed of prepared.confirmed) {
-        const capability: DataServiceFacts["capability"] = confirmed.targetFact.status === "collected"
+        const inspect: DataServiceFacts["inspect"] = confirmed.targetFact.status === "collected"
           ? { status: "collected", queryable: true }
           : { status: confirmed.targetFact.status, reason: confirmed.targetFact.reason };
         ctx.bundle.addStep({
-          id: `data-capability-${confirmed.service}`,
-          title: `${confirmed.service} data capability`,
+          id: `data-inspect-${confirmed.service}`,
+          title: `${confirmed.service} Inspect Capability`,
           risk: "observe",
-          status: capability.status === "collected" ? "ok" : capability.status,
-          reason: capability.status === "collected" ? undefined : capability.reason,
+          status: inspect.status === "collected" ? "ok" : inspect.status,
+          reason: inspect.status === "collected" ? undefined : inspect.reason,
         });
-        services[confirmed.service] = { target: confirmed.targetFact, capability };
+        services[confirmed.service] = { target: confirmed.targetFact, inspect };
       }
       return { services };
     },

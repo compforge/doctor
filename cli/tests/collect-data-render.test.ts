@@ -17,7 +17,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
             username: "reader",
             credentialSource: "test",
           },
-          capability: { status: "collected", queryable: true },
+          inspect: { status: "collected", queryable: true },
         },
       },
       capabilityFacts: [{

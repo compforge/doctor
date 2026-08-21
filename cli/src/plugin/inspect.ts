@@ -1,7 +1,7 @@
 import type {
   Identity,
-  ServiceDataCapability,
-  ServiceDataFact,
+  ServiceInspectCapability,
+  ServiceInspectFact,
 } from "@compforge/doctor-plugin";
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -33,18 +33,18 @@ function sameIdentity(left: Identity, right: Identity): boolean {
 /**
  * Validate runtime values crossing the Plugin boundary before Commands retain them as Facts.
  *
- * @spec One Data Query returns independently consumable Facts whose kinds are declared by provides
+ * @spec One Inspect Query returns independently consumable Facts whose kinds are declared by provides
  * @see {@link ../../docs/kernel.md}
  */
-export function normalizeServiceDataFacts(input: {
+export function normalizeServiceInspectFacts(input: {
   value: unknown;
   service: string;
   queryIdentity: Identity;
-  capability: ServiceDataCapability;
-}): readonly ServiceDataFact[] {
+  capability: ServiceInspectCapability;
+}): readonly ServiceInspectFact[] {
   const { value, service, queryIdentity, capability } = input;
   if (!Array.isArray(value) || value.length === 0) {
-    throw new Error(`${service} data query must return a non-empty Fact array`);
+    throw new Error(`${service} inspect query must return a non-empty Fact array`);
   }
 
   const kinds = new Set<string>();
@@ -58,7 +58,7 @@ export function normalizeServiceDataFacts(input: {
       );
     }
     if (kinds.has(kind)) {
-      throw new Error(`${service} data query returned duplicate Fact kind '${kind}'`);
+      throw new Error(`${service} inspect query returned duplicate Fact kind '${kind}'`);
     }
     kinds.add(kind);
     if (fact.service !== service) {
@@ -98,6 +98,6 @@ export function normalizeServiceDataFacts(input: {
         }
       });
     }
-    return item as ServiceDataFact;
+    return item as ServiceInspectFact;
   });
 }

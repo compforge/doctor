@@ -1,7 +1,7 @@
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
-  CollectedDataCapabilityFact,
+  CollectedDataInspectFact,
   DataDiagnosisGoal,
   DataEvidence,
   DataFinding,
@@ -18,13 +18,13 @@ export function buildDataEvidence(
 export function makeDataDetectors(
   catalog: ServiceCatalog,
 ): readonly Detector<DataEvidence, DataFinding>[] {
-  const detectServiceDataResults: Detector<DataEvidence, DataFinding> = (evidence) => {
+  const detectServiceInspectFacts: Detector<DataEvidence, DataFinding> = (evidence) => {
     const findings = new Map<string, DataFinding>();
     for (const [index, fact] of evidence.facts.capabilityFacts.entries()) {
       if (fact.status !== "collected") continue;
-      const declared = catalog.findWith(fact.service, "data");
+      const declared = catalog.findWith(fact.service, "inspect");
       if (!declared) continue;
-      for (const finding of declared.capabilities.data.detect(fact.fact)) {
+      for (const finding of declared.capabilities.inspect.detect(fact.fact)) {
         const key = `${fact.service}:${finding.id}`;
         const existing = findings.get(key);
         const reference = { factPath: `capabilityFacts.${index}`, role: "supporting" as const };
@@ -41,7 +41,7 @@ export function makeDataDetectors(
     }
     return [...findings.values()];
   };
-  return [detectServiceDataResults];
+  return [detectServiceInspectFacts];
 }
 
 export function buildDataCoverage(
@@ -55,11 +55,11 @@ export function buildDataCoverage(
       missingEvidence.push(`${service} 目标不可用：${serviceFacts.target.reason}`);
       continue;
     }
-    if (serviceFacts.capability.status !== "collected") {
-      missingEvidence.push(`${service} 数据库不可查询：${serviceFacts.capability.reason}`);
+    if (serviceFacts.inspect.status !== "collected") {
+      missingEvidence.push(`${service} 数据库不可查询：${serviceFacts.inspect.reason}`);
       continue;
     }
-    const facts = evidence.facts.capabilityFacts.filter((item): item is CollectedDataCapabilityFact => (
+    const facts = evidence.facts.capabilityFacts.filter((item): item is CollectedDataInspectFact => (
       item.status === "collected" && item.service === service
     ));
     if (!facts.length) {

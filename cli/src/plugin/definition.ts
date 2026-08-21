@@ -82,24 +82,24 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
-  if (capabilities.data !== undefined) {
-    const data = record(capabilities.data, `${service.name}.data`);
-    uniqueNonEmptyStrings(data.accepts, `${service.name}.data.accepts`);
-    uniqueNonEmptyStrings(data.provides, `${service.name}.data.provides`);
-    if (data.expands !== undefined) {
-      uniqueNonEmptyStrings(data.expands, `${service.name}.data.expands`);
+  if (capabilities.inspect !== undefined) {
+    const inspect = record(capabilities.inspect, `${service.name}.inspect`);
+    uniqueNonEmptyStrings(inspect.accepts, `${service.name}.inspect.accepts`);
+    uniqueNonEmptyStrings(inspect.provides, `${service.name}.inspect.provides`);
+    if (inspect.expands !== undefined) {
+      uniqueNonEmptyStrings(inspect.expands, `${service.name}.inspect.expands`);
     }
-    if (typeof data.resolveTarget !== "function") {
-      throw new Error(`${service.name}.data.resolveTarget must be a function`);
+    if (typeof inspect.resolveTarget !== "function") {
+      throw new Error(`${service.name}.inspect.resolveTarget must be a function`);
     }
-    if (typeof data.query !== "function") {
-      throw new Error(`${service.name}.data.query must be a function`);
+    if (typeof inspect.query !== "function") {
+      throw new Error(`${service.name}.inspect.query must be a function`);
     }
-    if (typeof data.summarize !== "function") {
-      throw new Error(`${service.name}.data.summarize must be a function`);
+    if (typeof inspect.summarize !== "function") {
+      throw new Error(`${service.name}.inspect.summarize must be a function`);
     }
-    if (typeof data.detect !== "function") {
-      throw new Error(`${service.name}.data.detect must be a function`);
+    if (typeof inspect.detect !== "function") {
+      throw new Error(`${service.name}.inspect.detect must be a function`);
     }
   }
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case"] as const) {

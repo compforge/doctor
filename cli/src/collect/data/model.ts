@@ -1,9 +1,9 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
-  ServiceDataFact,
-  ServiceDataFinding,
-  ServiceDataSummary,
+  ServiceInspectFact,
+  ServiceInspectFinding,
+  ServiceInspectSummary,
 } from "@compforge/doctor-plugin";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { KubectlOptions } from "../../infra/k8s/executor";
@@ -55,39 +55,39 @@ export interface DataTargetFact {
 
 export interface DataServiceFacts {
   target: Fact<DataTargetFact>;
-  capability: Fact<{ queryable: true }>;
+  inspect: Fact<{ queryable: true }>;
 }
 
 export interface DataInspectionFacts {
   services: Record<string, DataServiceFacts>;
 }
 
-export interface DataCapabilityFactIdentity {
+export interface DataInspectFactIdentity {
   id: string;
   stage: "expand" | "provide";
   service: string;
   identity: Identity;
 }
 
-export type DataCapabilityFact = DataCapabilityFactIdentity & Fact<{
-  fact: ServiceDataFact;
-  summary: ServiceDataSummary;
+export type DataInspectFact = DataInspectFactIdentity & Fact<{
+  fact: ServiceInspectFact;
+  summary: ServiceInspectSummary;
 }>;
 
-export type CollectedDataCapabilityFact = DataCapabilityFactIdentity
+export type CollectedDataInspectFact = DataInspectFactIdentity
   & { status: "collected" }
   & {
-    fact: ServiceDataFact;
-    summary: ServiceDataSummary;
+    fact: ServiceInspectFact;
+    summary: ServiceInspectSummary;
   };
 
 export interface DataFacts extends DataInspectionFacts {
-  capabilityFacts: readonly DataCapabilityFact[];
+  capabilityFacts: readonly DataInspectFact[];
 }
 
 export type DataEvidence = Evidence<never, DataFacts>;
 
-export type DataFinding = FindingMeta<string> & ServiceDataFinding & { service: string };
+export type DataFinding = FindingMeta<string> & ServiceInspectFinding & { service: string };
 
 export type DataDiagnosisGoal = "business-data-relations";
 export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding, DataDiagnosisGoal>;

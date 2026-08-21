@@ -193,8 +193,8 @@ export interface ServicePerfCapability {
   scenarios: readonly ServicePerfScenario[];
 }
 
-/** One independently consumable domain Fact returned by a Service data capability. */
-export interface ServiceDataFact extends Fact {
+/** One independently consumable domain Fact returned by a Service Inspect Capability. */
+export interface ServiceInspectFact extends Fact {
   service: string;
   resolution: {
     inputId: string;
@@ -206,13 +206,13 @@ export interface ServiceDataFact extends Fact {
   missingEvidence?: readonly string[];
 }
 
-export interface ServiceDataSummary {
+export interface ServiceInspectSummary {
   resolvedAs: string;
-  /** Presentation-only identifiers. Query expansion consumes ServiceDataFact.relations. */
+  /** Presentation-only identifiers. Query expansion consumes ServiceInspectFact.relations. */
   identifiers: Readonly<Record<string, string | undefined>>;
 }
 
-export interface ServiceDataFinding {
+export interface ServiceInspectFinding {
   id: string;
   kind: string;
   severity: "info" | "warning" | "critical";
@@ -221,25 +221,25 @@ export interface ServiceDataFinding {
   [name: string]: unknown;
 }
 
-export interface ServiceDataQuery extends Query<Identity> {
-  results: ReadonlyMap<string, readonly ServiceDataFact[]>;
+export interface ServiceInspectQuery extends Query<Identity> {
+  results: ReadonlyMap<string, readonly ServiceInspectFact[]>;
 }
 
 /** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
-export interface ServiceDataTarget {
+export interface ServiceInspectTarget {
   endpoint: string;
   database: string;
   username: string;
   credentialSource: string;
 }
 
-export type ServiceDataQueryHandler = (
+export type ServiceInspectQueryHandler = (
   context: PluginContext,
-  query: ServiceDataQuery,
-) => Promise<readonly ServiceDataFact[]>;
+  query: ServiceInspectQuery,
+) => Promise<readonly ServiceInspectFact[]>;
 
-export interface ServiceDataCapability
-  extends InspectCapability<ServiceDataQuery, ServiceDataFact> {
+export interface ServiceInspectCapability
+  extends InspectCapability<ServiceInspectQuery, ServiceInspectFact> {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
@@ -248,11 +248,11 @@ export interface ServiceDataCapability
   expands?: readonly string[];
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;
-  resolveTarget(context: PluginContext): Promise<ServiceDataTarget>;
-  query: ServiceDataQueryHandler;
-  summarize(fact: ServiceDataFact): ServiceDataSummary;
+  resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
+  query: ServiceInspectQueryHandler;
+  summarize(fact: ServiceInspectFact): ServiceInspectSummary;
   /** Pure domain rule adapted by doctor data into an Evidence detector. */
-  detect(fact: ServiceDataFact): ServiceDataFinding[];
+  detect(fact: ServiceInspectFact): ServiceInspectFinding[];
 }
 
 export interface ServiceTraceIdInput {
@@ -424,7 +424,7 @@ export interface ServiceCapabilities {
     default: boolean;
   };
   traceId?: ServiceTraceIdCapability;
-  data?: ServiceDataCapability;
+  inspect?: ServiceInspectCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
   modelCatalog?: ServiceModelCatalogCapability;
   inference?: ServiceInferenceCapability;

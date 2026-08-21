@@ -184,7 +184,7 @@ export async function runCollectDelegates(
   return results;
 }
 
-function providerNames(plugin: PluginDefinition, capability: "data" | "log" | "metric"): string {
+function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string {
   return plugin.services.servicesWith(capability).map((service) => service.name).join(",");
 }
 
@@ -232,7 +232,7 @@ function collectDelegate(
         code = await runCollectData({
           ...common,
           bizIds: opts.bizIds,
-          services: providerNames(plugin, "data"),
+          services: providerNames(plugin, "inspect"),
           format,
           output: undefined,
         }, plugin, commandContext);
