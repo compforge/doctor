@@ -20,22 +20,23 @@ import {
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
+import { collectDataCapabilityFacts } from "./capability/collect";
 import { prepareDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   CollectDataCliOpts,
   DataDiagnosis,
+  DataFacts,
   DataInspectionFacts,
 } from "./model";
 import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
-import { makeDataServiceProbes } from "./probe";
 import { buildDataHtml, buildDataSummary } from "./render";
 
 export * from "./config";
 export * from "./context";
+export * from "./capability/collect";
 export * from "./detector";
 export * from "./model";
-export * from "./probe";
 
 function dataOutcomes(services: readonly string[], plugin: PluginDefinition): OutcomeDecl[] {
   return services.flatMap((service) => {
@@ -55,7 +56,7 @@ function dataOutcomes(services: readonly string[], plugin: PluginDefinition): Ou
   });
 }
 
-/** commander 入口只编排 Service 选择、Inspect、Probe、Detector 与最终交付。 */
+/** commander 入口编排 Service Capability、Inspect/Probe、Detector 与最终交付。 */
 interface DataSingleRunHooks {
   onDiagnosis?: (diagnosis: DataDiagnosis) => void;
   suppressJson?: boolean;
@@ -116,7 +117,7 @@ async function runCollectDataSingle(
   );
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   let access: DataAccessPreparation | undefined;
-  let facts: DataInspectionFacts = { services: {} };
+  let facts: DataFacts = { services: {}, capabilityFacts: [] };
   let diagnosis: DataDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
 
@@ -127,7 +128,10 @@ async function runCollectDataSingle(
       input_ids: config.ids,
       services: selections.map((item) => item.service),
     },
-    inspectionFacts: { services: facts.services },
+    inspectionFacts: {
+      services: facts.services,
+      capabilityFacts: facts.capabilityFacts,
+    },
     params: {
       services: selections.map((item) => item.service),
       data_capabilities: Object.fromEntries(selections.map(({ service }) => {
@@ -166,12 +170,24 @@ async function runCollectDataSingle(
       access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),
     );
     const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
-    facts = await runInspects([makeDataInspect(access)], ctx, log);
+    const inspectionFacts: Readonly<DataInspectionFacts> = await runInspects(
+      [makeDataInspect(access)],
+      ctx,
+      log,
+    );
+    const capabilityFacts = await collectDataCapabilityFacts({
+      selections,
+      catalog: plugin.services,
+      inspectionFacts,
+      config,
+      ctx,
+    });
+    facts = { ...inspectionFacts, capabilityFacts };
     diagnosis = await runDiagnosis({
       ctx,
       facts,
       config,
-      probes: makeDataServiceProbes(selections, plugin.services),
+      probes: [],
       log,
       buildEvidence: buildDataEvidence,
       detectors: makeDataDetectors(plugin.services),
@@ -191,8 +207,10 @@ async function runCollectDataSingle(
   if (diagnosisFailure || !diagnosis) return await fail(diagnosisFailure ?? "Data 诊断未形成结果");
 
   const requirements = selections.map((selection) => (
-    diagnosis.evidence.observations.some((item) => (
-      item.service === selection.service && item.summary.resolvedAs !== "unresolved"
+    diagnosis.evidence.facts.capabilityFacts.some((item) => (
+      item.status === "collected"
+      && item.service === selection.service
+      && item.summary.resolvedAs !== "unresolved"
     ))
   ));
   const outcome = evaluateCollectOutcome(requirements);

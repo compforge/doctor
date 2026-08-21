@@ -22,22 +22,28 @@ const plugin = {
       data: {
         access: {},
         provides: ["sample-record"],
-        inspectTarget: async () => ({
+        resolveTarget: async () => ({
           endpoint: "http://sample-api",
           database: "sample",
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: async (_context, { inputId }) => ({
+        query: async (_context, query) => ({
           kind: "sample-record",
           service,
-          resolution: { inputId, resolvedAs: "sample_id" },
+          resolution: { inputId: query.identities[0]!.value, resolvedAs: "sample_id" },
         }),
         summarize: (result) => ({
           resolvedAs: result.resolution.resolvedAs,
           identifiers: { sample_id: result.resolution.inputId },
         }),
-        detect: () => [],
+        detect: (result) => [{
+          id: "sample-record-collected",
+          kind: "sample.record-collected",
+          severity: "info",
+          confidence: "high",
+          message: `collected ${result.resolution.inputId}`,
+        }],
       },
     },
   }]),
@@ -63,7 +69,7 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   expect(context?.config.namespace).toBe("vke-system");
 });
 
-test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summary 回退", async () => {
+test("doctor data 只用 capability Relation 扩展 Query，不读取 summary identifier", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-relations-"));
   const seen: string[] = [];
   const resolver = "sample-resolver";
@@ -78,21 +84,19 @@ test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summ
           access: {},
           provides: ["resolution-record"],
           expands: ["message_id"],
-          inspectTarget: async () => ({
+          resolveTarget: async () => ({
             endpoint: "http://sample-resolver",
             database: "sample",
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: async (_context, query) => {
+          query: async (_context, query) => {
             const identity = query.identities[0]!;
             return {
               kind: "resolution-record",
               service: resolver,
               resolution: { inputId: identity.value, resolvedAs: identity.kind },
-              relations: identity.value === "biz-legacy"
-                ? undefined
-                : identity.kind === "biz_id" ? [{
+              relations: identity.kind === "biz_id" ? [{
                     kind: "resolves-to",
                     from: identity,
                     to: { kind: "message_id", value: "message-1" },
@@ -102,9 +106,7 @@ test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summ
           summarize: (result) => ({
             resolvedAs: result.resolution.resolvedAs,
             identifiers: {
-              message_id: result.resolution.inputId === "biz-legacy"
-                ? "message-legacy"
-                : "presentation-only",
+              message_id: "presentation-only",
             },
           }),
           detect: () => [],
@@ -116,13 +118,13 @@ test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summ
         data: {
           access: {},
           provides: ["sample-record"],
-          inspectTarget: async () => ({
+          resolveTarget: async () => ({
             endpoint: "http://sample-records",
             database: "sample",
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: async (_context, query) => {
+          query: async (_context, query) => {
             const identity = query.identities[0]!;
             seen.push(`${identity.kind}:${identity.value}`);
             return {
@@ -144,7 +146,7 @@ test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summ
   try {
     const context = new CommandContext({});
     const code = await runCollectData({
-      bizIds: ["biz-1", "biz-legacy"],
+      bizIds: ["biz-1"],
       services: `${resolver},${records}`,
       namespace: "vke-system",
       format: "json",
@@ -164,7 +166,6 @@ test("doctor data 优先用 capability Relation 扩展 Query，并保留旧 summ
     expect(seen).toContain("biz_id:biz-1");
     expect(seen).toContain("message_id:message-1");
     expect(seen).not.toContain("message_id:presentation-only");
-    expect(seen).toContain("message_id:message-legacy");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -190,11 +191,19 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
 
     expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
       evidence: {
-        observations: [{
-          service,
-          result: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
-        }],
+        observations: [],
+        facts: {
+          capabilityFacts: [{
+            status: "collected",
+            service,
+            result: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
+          }],
+        },
       },
+      findings: [{
+        id: "sample-record-collected",
+        evidence: [{ factPath: "capabilityFacts.0", role: "supporting" }],
+      }],
     });
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
@@ -261,6 +270,13 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     expect(listing).toContain("/diagnosis.json");
     expect(listing).toContain("/manifest.json");
     expect(listing).toContain("/raw/");
+    const manifest = JSON.parse(
+      Bun.spawnSync(["tar", "-xOf", bundlePath, "report/manifest.json"]).stdout.toString(),
+    );
+    expect(manifest.inspection_facts.capabilityFacts).toMatchObject([{
+      status: "collected",
+      service,
+    }]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
     expect(agents).toContain("`report.html`");
   } finally {

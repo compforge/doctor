@@ -70,7 +70,7 @@ export async function prepareDataAccess(
     }
 
     try {
-      const target = await declared.capabilities.data.inspectTarget(context);
+      const target = await declared.capabilities.data.resolveTarget(context);
       if (managed) managedContexts.push(managed);
       confirmed.push({
         ...selection,

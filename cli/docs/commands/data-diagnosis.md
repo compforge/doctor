@@ -30,10 +30,12 @@ data capability 接受由业务 Identity 与约束组成的 Query，并可以提
    的数据贡献。
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
    阶段已经查过的 ID 直接复用，只补查后续 Relation 新增的 Identity。
-5. Detector 只根据当前 ID 的结构化 Observation 形成 Finding；Render 汇总其解析方式、规范 ID、服务数据、
-   Finding 和 Coverage。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 写入本地文件，并用 `groups`
-   按原始 ID 分组。
-6. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
+5. Command 将 capability 返回的数据保存为带状态的 Facts/Relations，并与访问准备阶段的 Inspect Facts
+   一起形成 Evidence；`doctor data` 当前没有额外现场取证动作，因此不产生 Probe Observation。
+6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding 与 Coverage；Render 汇总解析方式、
+   规范 ID、服务数据和诊断结论。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 写入本地文件，并用
+   `groups` 按原始 ID 分组。
+7. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
 ## 关键设计
 
@@ -45,9 +47,9 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 
 ### Relation 是确定性的两阶段依赖
 
-所有 Relation provider 构成一条稳定的依赖链，每个 Service 的 provide Probe 显式依赖整条链。这保证
-Fact provider 不会因注册顺序提前运行，也允许后一个 Relation provider 继续扩展前一个发现的 Identity。
-提供 Relation 的 capability 也可以同时提供 Fact；它在 expansion 阶段的查询结果会被 provide Probe
+所有 Relation provider 构成一条稳定的依赖链，Data Command 完成整条 expansion 后才进入 provide。
+这保证 Fact provider 不会因注册顺序提前运行，也允许后一个 Relation provider 继续扩展前一个发现的 Identity。
+提供 Relation 的 capability 也可以同时提供 Fact；它在 expansion 阶段的查询结果会被 provide 阶段
 复用，避免为了角色建模重复访问数据源。Data Command 只执行一轮 Catalog 顺序的有界 expansion，避免
 不受控的循环查询。
 
@@ -57,12 +59,12 @@ Core 校验 Relation 的目标 kind 是否由 `expands` 声明，并拥有去重
 ### ID 是不带类型的输入，类型来自证据
 
 用户无需先知道业务 ID 的具体类型。每个 capability 以
-自身稳定关系尝试解析，并在 Observation 中记录 `inputId`、`resolvedAs` 和解析出的命名 ID。未命中是
+自身稳定关系尝试解析，并在 capability Fact 中记录 `inputId`、`resolvedAs` 和解析出的命名 ID。未命中是
 证据缺口，不等于异常；只有数据库已经证明的业务不变量才形成 Finding。
 
 ### 访问准备与业务查询分开
 
 Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命周期；Plugin 决定如何定位运行实例、解释配置、使用哪套
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
-连接凭据只存在于本轮执行态；Facts、Observations 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
+连接凭据只存在于本轮执行态；Facts 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
 凭据来源。

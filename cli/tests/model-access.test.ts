@@ -14,6 +14,28 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
+test("Plugin data capability 必须提供 query", () => {
+  const base = {
+    access: {},
+    provides: ["record"],
+    resolveTarget: async () => ({}),
+    summarize: () => ({ resolvedAs: "record", identifiers: {} }),
+    detect: () => [],
+  };
+  const definition = (data: Record<string, unknown>) => ({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{ name: "records", capabilities: { data } }] },
+  });
+
+  expect(validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
+    .toBeDefined();
+  expect(() => validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
+    .toThrow("records.data.query must be a function");
+  expect(() => validatePluginDefinition(definition(base), manifest))
+    .toThrow("records.data.query must be a function");
+});
+
 test("Plugin tenant capability 必须指向租户目录并提供 contribution", () => {
   const valid = {
     id: "test",
