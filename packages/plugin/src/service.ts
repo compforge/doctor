@@ -1,6 +1,5 @@
 import type { PluginContext } from "./context";
 import type {
-  IntentionCatalog,
   ModelCatalog,
   ModelInference,
   ModelInferenceTarget,
@@ -53,8 +52,40 @@ export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
   create(context: PluginContext): ModelCatalog;
 }
 
-export interface ServiceIntentionCatalogCapability extends CapabilityWithAccess {
-  create(context: PluginContext): IntentionCatalog;
+export type TenantReportCell = string | number | boolean | null;
+
+export interface TenantReportSummaryItem {
+  label: string;
+  value: TenantReportCell;
+}
+
+export interface TenantReportTable {
+  title: string;
+  columns: readonly string[];
+  rows: readonly (readonly TenantReportCell[])[];
+  search?: {
+    column: number;
+    placeholder?: string;
+  };
+}
+
+/** Safe, serializable report IR returned by one tenant contribution. */
+export interface TenantContributionSnapshot {
+  summary?: readonly TenantReportSummaryItem[];
+  tables?: readonly TenantReportTable[];
+  /** A collected snapshot may still be partial when some optional source reads failed. */
+  missingEvidence?: readonly string[];
+}
+
+export interface ServiceTenantContribution extends CapabilityWithAccess {
+  id: string;
+  title: string;
+  endpoint?: ServiceEndpoint;
+  collect(context: PluginContext, tenantId: string): Promise<TenantContributionSnapshot>;
+}
+
+export interface ServiceTenantCapability {
+  contributions: readonly ServiceTenantContribution[];
 }
 
 export interface ServiceInferenceCapability extends CapabilityWithAccess {
@@ -438,8 +469,8 @@ export interface ServiceCapabilities {
   traceId?: ServiceTraceIdCapability;
   data?: ServiceDataCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
+  tenant?: ServiceTenantCapability;
   modelCatalog?: ServiceModelCatalogCapability;
-  intentionCatalog?: ServiceIntentionCatalogCapability;
   inference?: ServiceInferenceCapability;
   case?: ServiceCaseCapability;
   perf?: ServicePerfCapability;

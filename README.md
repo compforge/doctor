@@ -21,7 +21,7 @@ evidence needed for a specific problem:
 | Diagnostic surface | Commands | What Doctor investigates |
 |---|---|---|
 | Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
-| Business data | `doctor tenant`, `doctor data` | Tenant-scoped configuration and model catalogs, plus business-ID-linked data contributed by Services |
+| Business data | `doctor tenant`, `doctor data` | Tenant-scoped contributions plus business-ID-linked data contributed by Services |
 | Observability | `doctor trace`, `doctor log`, `doctor metric` | A request's path, related service logs and metrics over the diagnostic window |
 | Runtime forensics | `doctor cpu`, `doctor mem`, `doctor net` | Thread stacks, heap captures and packet captures for a specific Service runtime |
 | Agent applications | `doctor model`, `doctor mcp` | Model and MCP configuration, connectivity, calls and service-side evidence |
@@ -32,7 +32,7 @@ runtime diagnostics.
 
 Business data is organized by lookup scope:
 
-- **Tenant**: `doctor tenant` gathers configuration and model catalogs shared within a tenant.
+- **Tenant**: `doctor tenant` gathers safe tenant-scoped contributions declared by the active Plugin.
 - **User**: user-linked data; a general user-scoped collector is not yet available.
 - **Business ID**: `doctor data` gathers records contributed by Services and correlates them from a
   conversation, request or other business identifier.

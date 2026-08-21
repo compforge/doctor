@@ -1,8 +1,6 @@
 import type {
-  Intention,
-  IntentionCatalog,
-  Model,
-  TenantConfigReader,
+  TenantContributionSnapshot,
+  TenantDirectory,
   TenantSummary,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
@@ -10,17 +8,10 @@ import type { EvidenceBundle } from "../evidence";
 import type { Diagnosis, Evidence, Fact } from "../protocol";
 
 export type TenantOutputFormat = "default" | "bundle" | "json" | "html";
-export type TenantJsonValue = string | number | boolean | null
-  | TenantJsonValue[]
-  | { [key: string]: TenantJsonValue };
-
 export interface CollectTenantCliOptions {
   namespace?: string;
   tenantId?: string;
   tenantName?: string;
-  tenantConfigService?: string;
-  modelCatalogService?: string;
-  modelCatalogPort?: string;
   tenantDirectoryService?: string;
   tenantDirectoryPort?: string;
   kubeconfig?: string;
@@ -33,53 +24,57 @@ export interface CollectTenantCliOptions {
 
 export interface TenantConfig {
   tenant: TenantSummary;
-  scopes: readonly string[];
-  tenantConfigService?: string;
-  intentionCatalogService?: string;
   format: TenantOutputFormat;
   reportName: string;
   profileName: string;
 }
 
-export interface TenantConfigurationTargetFact {
+export interface TenantContributionIdentity {
+  id: string;
+  title: string;
   service: string;
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
 }
 
-export interface TenantConfigurationScopeFact {
-  values: Record<string, TenantJsonValue>;
-}
-
-export type TenantConfigurationScopeFacts = Record<
-  string,
-  Fact<TenantConfigurationScopeFact>
->;
+export type TenantContributionFact = TenantContributionIdentity & Fact<TenantContributionSnapshot>;
+export type CollectedTenantContributionFact = TenantContributionIdentity
+  & { status: "collected" }
+  & TenantContributionSnapshot;
 
 export interface TenantFacts {
   tenant: Fact<Pick<TenantSummary, "id" | "name" | "displayName">>;
-  models: Fact<{ items: readonly Model[] }>;
-  intentions: Fact<{ items: readonly Intention[] }>;
-  configurationTarget: Fact<TenantConfigurationTargetFact>;
-  configuration: Fact<{
-    scopes: Readonly<TenantConfigurationScopeFacts>;
-  }>;
+  contributions: Readonly<Record<string, TenantContributionFact>>;
 }
 
 export type TenantEvidence = Evidence<never, TenantFacts>;
 export type TenantFinding = never;
-export type TenantDiagnosisGoal = "model-catalog" | "intention-catalog" | "tenant-config";
+export type TenantDiagnosisGoal = string;
 export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDiagnosisGoal>;
+
+export interface TenantContributionCollector {
+  id: string;
+  title: string;
+  service: string;
+  collect(tenantId: string): Promise<TenantContributionSnapshot>;
+}
 
 export interface TenantCommandContext {
   command: CommandContext;
   config: TenantConfig;
   bundle: EvidenceBundle;
-  catalog: { listAvailable(tenantId: string): Promise<Model[]> };
-  intentionCatalog?: IntentionCatalog;
-  prepareIntentionCatalog?: () => Promise<IntentionCatalog>;
-  tenantConfigReader?: TenantConfigReader;
-  prepareTenantConfigReader?: () => Promise<TenantConfigReader>;
+  contributions: readonly TenantContributionCollector[];
+}
+
+export interface TenantAccess {
+  config: {
+    profileName: string;
+    kubernetes: {
+      namespace: string;
+      namespaceSource: string;
+      kubeconfig?: string;
+      context?: string;
+    };
+  };
+  directory: TenantDirectory;
+  contributions: readonly TenantContributionCollector[];
+  dispose(): Promise<void>;
 }

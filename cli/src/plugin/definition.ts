@@ -114,10 +114,21 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
   }
-  if (capabilities.intentionCatalog !== undefined) {
-    const intentionCatalog = record(capabilities.intentionCatalog, `${service.name}.intentionCatalog`);
-    if (typeof intentionCatalog.create !== "function") {
-      throw new Error(`${service.name}.intentionCatalog.create must be a function`);
+  if (capabilities.tenant !== undefined) {
+    const tenant = record(capabilities.tenant, `${service.name}.tenant`);
+    const contributions = uniqueIdRecords(tenant.contributions, `${service.name}.tenant.contributions`);
+    for (const [id, contribution] of contributions) {
+      if (!/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
+        throw new Error(`${service.name}.tenant contribution id '${id}' is invalid`);
+      }
+      nonEmptyString(contribution.title, `${service.name}.tenant.contributions.${id}.title`);
+      record(contribution.access, `${service.name}.tenant.contributions.${id}.access`);
+      if (contribution.endpoint !== undefined) {
+        endpointPort(contribution, `${service.name}.tenant.contributions.${id}`);
+      }
+      if (typeof contribution.collect !== "function") {
+        throw new Error(`${service.name}.tenant.contributions.${id}.collect must be a function`);
+      }
     }
   }
   const serviceCase = capabilities.case;
@@ -307,24 +318,21 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
       requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
     }
   }
-  if (definition.intention !== undefined) {
-    const intention = record(definition.intention, "Plugin intention capability");
-    requireProvider(
-      services,
-      intention.catalogService,
-      "intentionCatalog",
-      "intention.catalogService",
-    );
-  }
-  if (definition.tenantConfiguration !== undefined) {
-    const tenant = record(definition.tenantConfiguration, "Plugin tenantConfiguration capability");
-    requireProvider(services, tenant.directoryService, "tenantDirectory", "tenantConfiguration.directoryService");
-    const databaseService = nonEmptyString(
-      tenant.databaseService,
-      "tenantConfiguration.databaseService",
-    );
-    if (!catalog.find(databaseService)) {
-      throw new Error(`tenantConfiguration.databaseService references unknown Service '${databaseService}'`);
+  if (definition.tenant !== undefined) {
+    const tenant = record(definition.tenant, "Plugin tenant capability");
+    requireProvider(services, tenant.directoryService, "tenantDirectory", "tenant.directoryService");
+    const providers = services.filter((service) => service.capabilities.tenant !== undefined);
+    if (providers.length === 0) {
+      throw new Error("Plugin tenant capability requires at least one Service tenant provider");
+    }
+    const contributionIds = new Set<string>();
+    for (const provider of providers) {
+      for (const contribution of provider.capabilities.tenant!.contributions) {
+        if (contributionIds.has(contribution.id)) {
+          throw new Error(`Plugin tenant contributions contain duplicate id '${contribution.id}'`);
+        }
+        contributionIds.add(contribution.id);
+      }
     }
   }
   if (definition.trace !== undefined) {

@@ -47,31 +47,16 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor tenant",
     needs: [{
       requirement: "required",
-      capability: { scope: "plugin", name: "model" },
-      purpose: "声明租户目录与模型目录",
+      capability: { scope: "plugin", name: "tenant" },
+      purpose: "声明租户身份解析入口",
     }, {
       requirement: "required",
       capability: { scope: "service", name: "tenantDirectory" },
       purpose: "解析要 Inspect 的租户",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "modelCatalog" },
-      purpose: "汇总租户可用模型与 capacities",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "plugin", name: "tenantConfiguration" },
-      purpose: "汇总 Plugin 声明的租户配置",
-      fallback: "仍交付租户身份和模型目录",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "plugin", name: "intention" },
-      purpose: "汇总租户 Intention Catalog",
-      fallback: "仍交付租户身份、模型目录和租户配置",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "service", name: "intentionCatalog" },
-      purpose: "读取租户 Intention 数据",
-      fallback: "仍交付其它 tenant facts",
+      capability: { scope: "service", name: "tenant" },
+      purpose: "提供租户粒度的只读贡献",
     }],
   },
   mcp: {

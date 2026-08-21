@@ -273,12 +273,9 @@ function withInspectOptions(cmd: CommandT): CommandT {
 
 function withTenantOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("-n, --namespace <ns>", "租户目录/模型目录所在 namespace（profile 兜底，默认 default）")
+    .option("-n, --namespace <ns>", "租户目录与贡献 Service 所在 namespace（profile 兜底，默认 default）")
     .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
     .option("--tenant-name <name>", "通过租户目录精确解析租户名")
-    .option("--tenant-config-service <name>", "提供租户配置的 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--model-catalog-service <name>", "模型目录 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--model-catalog-port <port>", "模型目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--kubeconfig <path>", "kubeconfig 路径")
@@ -720,7 +717,7 @@ export async function main(plugin?: PluginDefinition) {
     );
   });
   withTenantOptions(
-    program.command("tenant").description("汇总租户配置、可用模型与 Intention（只读）"),
+    program.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
   ).action(async (opts: CollectTenantCliOptions) => {
     await runPluginCommand(
       {

@@ -1,5 +1,4 @@
 import type { DiagnosisCoverage } from "../protocol";
-import { TENANT_FACETS } from "./facets";
 import type {
   TenantDiagnosisGoal,
   TenantEvidence,
@@ -13,8 +12,15 @@ export function buildTenantEvidence(_observations: readonly never[], facts: Tena
 export function buildTenantCoverage(
   evidence: TenantEvidence,
 ): DiagnosisCoverage<TenantDiagnosisGoal>[] {
-  return TENANT_FACETS.flatMap((facet) => {
-    const coverage = facet.coverage(evidence.facts);
-    return coverage ? [coverage] : [];
+  return Object.entries(evidence.facts.contributions).map(([id, fact]) => {
+    if (fact.status !== "collected") {
+      return { goal: id, status: "insufficient", missingEvidence: [fact.reason] };
+    }
+    const missingEvidence = fact.missingEvidence ?? [];
+    return {
+      goal: id,
+      status: missingEvidence.length ? "partial" : "sufficient",
+      missingEvidence,
+    };
   });
 }

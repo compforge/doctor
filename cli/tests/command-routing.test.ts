@@ -198,15 +198,15 @@ describe("CLI command routing", () => {
     expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时输出 HTML + Bundle");
   });
 
-  test("tenant owns tenant configuration and model catalog aggregation", () => {
+  test("tenant exposes generic tenant contribution aggregation", () => {
     const result = runCli("tenant", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor tenant [options]");
-    expect(result.stdout).toContain("租户配置、可用模型与 Intention");
+    expect(result.stdout).toContain("租户粒度业务事实");
     expect(result.stdout).toContain("--tenant-id <id>");
     expect(result.stdout).toContain("--tenant-name <name>");
-    expect(result.stdout).toContain("--tenant-config-service <name>");
-    expect(result.stdout).toContain("--model-catalog-service <name>");
+    expect(result.stdout).not.toContain("--tenant-config-service <name>");
+    expect(result.stdout).not.toContain("--model-catalog-service <name>");
     expect(result.stdout).toContain("--tenant-directory-service <name>");
     expect(result.stdout).toContain("--format <format>");
   });

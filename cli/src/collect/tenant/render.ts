@@ -2,25 +2,45 @@ import {
   htmlHeading,
   htmlList,
   htmlParagraph,
+  htmlTable,
   type HtmlReportSection,
 } from "../output/html";
-import { TENANT_FACETS } from "./facets";
-import type { TenantDiagnosis } from "./model";
+import type {
+  CollectedTenantContributionFact,
+  TenantDiagnosis,
+} from "./model";
 
-function facetViews(diagnosis: TenantDiagnosis) {
-  return TENANT_FACETS.map((facet) => facet.render(diagnosis.evidence.facts));
+function display(value: string | number | boolean | null): string {
+  return value === null ? "—" : String(value);
+}
+
+function markdownCell(value: string | number | boolean | null): string {
+  return display(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
+}
+
+function collectedContributions(diagnosis: TenantDiagnosis): CollectedTenantContributionFact[] {
+  return Object.values(diagnosis.evidence.facts.contributions).flatMap((fact) => (
+    fact.status === "collected" ? [fact as CollectedTenantContributionFact] : []
+  ));
+}
+
+function contributionSummary(diagnosis: TenantDiagnosis): string[] {
+  return Object.entries(diagnosis.evidence.facts.contributions).flatMap(([id, fact]) => {
+    if (fact.status !== "collected") return [`${fact.title || id}：未取得（${fact.reason}）`];
+    return (fact.summary ?? []).map((item) => `${item.label}：${display(item.value)}`);
+  });
 }
 
 export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
   const tenant = diagnosis.evidence.facts.tenant;
-  const views = facetViews(diagnosis);
+  const contributions = collectedContributions(diagnosis);
   return [
     "# Tenant Inspect",
     "",
     tenant.status === "collected"
       ? `- 租户：${tenant.displayName || tenant.name}（${tenant.id}）`
       : `- 租户：未取得（${tenant.reason}）`,
-    ...views.flatMap((view) => view.summary.map((line) => `- ${line}`)),
+    ...contributionSummary(diagnosis).map((line) => `- ${line}`),
     "",
     "## Coverage",
     "",
@@ -29,22 +49,32 @@ export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
       ...item.missingEvidence.map((missing) => `  - 缺失：${missing}`),
     ]),
     "",
-    ...views.flatMap((view) => view.markdown),
+    ...contributions.flatMap((contribution) => [
+      `## ${contribution.title}`,
+      "",
+      ...(contribution.tables ?? []).flatMap((table) => [
+        `### ${table.title}`,
+        "",
+        `| ${table.columns.map(markdownCell).join(" | ")} |`,
+        `|${table.columns.map(() => "---").join("|")}|`,
+        ...table.rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
+        "",
+      ]),
+    ]),
   ].join("\n");
 }
 
 export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
   const tenant = diagnosis.evidence.facts.tenant;
-  const views = facetViews(diagnosis);
   return [
     htmlHeading(1, "Tenant Inspect"),
     htmlList([
       tenant.status === "collected"
         ? `租户：${tenant.displayName || tenant.name}（${tenant.id}）`
         : `租户：未取得（${tenant.reason}）`,
-      ...views.flatMap((view) => view.summary),
+      ...contributionSummary(diagnosis),
     ]),
-    htmlParagraph("租户各领域数据均为只读 Inspect Facts；本命令不执行 validation、inference 或其它主动业务调用。"),
+    htmlParagraph("租户贡献均为只读 Inspect Facts；业务查询与安全投影由当前 Plugin 负责。"),
     htmlHeading(2, "Coverage"),
     htmlList(diagnosis.coverage.flatMap((item) => [
       `${item.goal}：${item.status}`,
@@ -54,5 +84,10 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
 }
 
 export function buildTenantHtmlSections(diagnosis: TenantDiagnosis): HtmlReportSection[] {
-  return facetViews(diagnosis).flatMap((view) => view.sections);
+  return collectedContributions(diagnosis).flatMap((contribution) => (
+    (contribution.tables ?? []).map((table) => ({
+      title: `${contribution.title} / ${table.title}`,
+      html: htmlTable(table.columns, table.rows, { search: table.search }),
+    }))
+  ));
 }

@@ -64,6 +64,6 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Perf 和 Chat 四�
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
-- `docs/commands/tenant.md` — Tenant 作用域、typed facets、Model/Intention Catalog 与租户配置边界
+- `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
 - `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
