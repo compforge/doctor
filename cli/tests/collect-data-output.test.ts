@@ -23,7 +23,7 @@ const plugin = {
   services: createServiceCatalog([{
     name: service,
     capabilities: {
-      data: {
+      inspect: {
         access: {},
         accepts: ["biz_id"],
         provides: ["sample-record"],
@@ -64,7 +64,7 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
   const tenantOnly = {
     name: "tenant-api",
     capabilities: {
-      data: {
+      inspect: {
         access: {},
         accepts: ["tenant_id"],
         provides: ["tenant-record"],
@@ -121,7 +121,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       // Deliberately declared first: it can only run after the later resolver discovers message_id.
       name: traceResolver,
       capabilities: {
-        data: {
+        inspect: {
           access: {},
           accepts: ["message_id"],
           provides: ["trace-resolution"],
@@ -152,7 +152,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     }, {
       name: resolver,
       capabilities: {
-        data: {
+        inspect: {
           access: {},
           accepts: ["biz_id"],
           provides: ["resolution-record"],
@@ -188,7 +188,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     }, {
       name: records,
       capabilities: {
-        data: {
+        inspect: {
           access: {},
           accepts: ["trace_id"],
           provides: ["sample-record"],
@@ -347,6 +347,8 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     const manifest = JSON.parse(
       Bun.spawnSync(["tar", "-xOf", bundlePath, "report/manifest.json"]).stdout.toString(),
     );
+    expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
+    expect(manifest.params).not.toHaveProperty("data_capabilities");
     expect(manifest.inspection_facts.capabilityFacts).toMatchObject([{
       status: "collected",
       service,

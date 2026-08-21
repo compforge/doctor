@@ -11,7 +11,7 @@ import {
 } from "../../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
-import { normalizeServiceDataFacts } from "../../plugin/data";
+import { normalizeServiceInspectFacts } from "../../plugin/inspect";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
@@ -85,14 +85,14 @@ export async function openTenantAccess(input: {
   try {
     const directory = directoryProvider.capabilities.tenantDirectory.create(directoryContext);
     const capabilities: TenantCapabilityCollector[] = plugin.services
-      .servicesWith("data")
-      .filter((service) => service.capabilities.data.accepts.includes("tenant_id"))
+      .servicesWith("inspect")
+      .filter((service) => service.capabilities.inspect.accepts.includes("tenant_id"))
       .map((service) => ({
-        id: `data:${service.name}`,
+        id: `inspect:${service.name}`,
         service: service.name,
-        capability: "data" as const,
+        capability: "inspect" as const,
         query: async (identity) => {
-          const capability = service.capabilities.data;
+          const capability = service.capabilities.inspect;
           const context = await openPluginContext(executor, kube, {
             env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
@@ -100,12 +100,12 @@ export async function openTenantAccess(input: {
             service: {
               name: service.name,
             },
-            command: `doctor tenant · ${service.name} data`,
+            command: `doctor tenant · ${service.name} inspect`,
             capability,
             authorization,
           });
           try {
-            const facts = normalizeServiceDataFacts({
+            const facts = normalizeServiceInspectFacts({
               value: await capability.query(context, { identity, results: new Map() }),
               service: service.name,
               queryIdentity: identity,

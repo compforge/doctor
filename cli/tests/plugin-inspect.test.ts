@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { ServiceDataCapability } from "@compforge/doctor-plugin";
-import { normalizeServiceDataFacts } from "../src/plugin/data";
+import type { ServiceInspectCapability } from "@compforge/doctor-plugin";
+import { normalizeServiceInspectFacts } from "../src/plugin/inspect";
 
 const capability = {
   access: {},
@@ -16,12 +16,12 @@ const capability = {
   query: async () => [],
   summarize: () => ({ resolvedAs: "tenant_id", identifiers: {} }),
   detect: () => [],
-} satisfies ServiceDataCapability;
+} satisfies ServiceInspectCapability;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
 
-test("Data query 可返回多个独立 Fact", () => {
-  expect(normalizeServiceDataFacts({
+test("Inspect query 可返回多个独立 Fact", () => {
+  expect(normalizeServiceInspectFacts({
     value: [{
       kind: "intention",
       service: "control",
@@ -37,8 +37,8 @@ test("Data query 可返回多个独立 Fact", () => {
   }).map((fact) => fact.kind)).toEqual(["intention", "tenant-configuration"]);
 });
 
-test("Data query 拒绝未声明 Fact 与不可信 Relation", () => {
-  expect(() => normalizeServiceDataFacts({
+test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
+  expect(() => normalizeServiceInspectFacts({
     value: [{
       kind: "unknown",
       service: "control",
@@ -49,7 +49,7 @@ test("Data query 拒绝未声明 Fact 与不可信 Relation", () => {
     capability,
   })).toThrow("is not declared by provides");
 
-  expect(() => normalizeServiceDataFacts({
+  expect(() => normalizeServiceInspectFacts({
     value: [{
       kind: "intention",
       service: "control",

@@ -31,7 +31,7 @@ profiles:
       # debug_image: registry.example.com/doctor/doctor-debug:0.0.8
 
     db:
-      # doctor data 优先使用各 data capability 所引用 Store 的运行时 DB 身份；
+      # doctor data 优先使用各 Inspect Capability 所引用 Store 的运行时 DB 身份；
       # 服务未暴露完整身份时，使用这里的 user/password 兜底。
       user: doctor_readonly
       password: change-me

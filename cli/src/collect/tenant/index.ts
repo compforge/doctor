@@ -39,7 +39,7 @@ export * from "./model";
 export * from "./render";
 
 /**
- * @spec doctor tenant 以 tenant_id Query 组合 Model Catalog 与 Data Capability，不理解 Plugin 业务概念
+ * @spec doctor tenant 以 tenant_id Query 组合 Model Catalog 与 Inspect Capability，不理解 Plugin 业务概念
  * @see {@link ../../../docs/commands/tenant.md}
  */
 export async function runCollectTenant(

@@ -5,9 +5,9 @@
 `doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
 `--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
-`data` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
+`inspect` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
 
-data capability 接受由业务 Identity 与约束组成的 Query，并返回一个或多个可独立消费的 Fact：
+Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回一个或多个可独立消费的 Fact：
 
 - Fact：每个 capability 通过 `provides` 声明并贡献自身业务数据。
 - Relation：一种 Fact；可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。
@@ -16,7 +16,7 @@ data capability 接受由业务 Identity 与约束组成的 Query，并返回一
 这里的 expansion 只服务 `doctor data` 的多 Service 数据汇集，不是其它命令的隐式通用依赖。需要规范
 `trace_id` 的 `doctor trace` 和 `doctor log` 使用更窄的 `service.traceId` capability。
 
-具体 Plugin capability 自己解释 Service 环境、建立数据库访问并执行固定查询；Catalog 的 data 契约
+具体 Plugin capability 自己解释 Service 环境、建立数据库访问并执行固定查询；Catalog 的 Inspect 契约
 只回答“能贡献什么业务数据”，不会把 Database client 或业务连接规则注入 Plugin。
 
 ## 流程

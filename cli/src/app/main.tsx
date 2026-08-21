@@ -220,11 +220,11 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
 function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]): CommandT {
   const defaultDescription = defaultServiceNames.length
     ? defaultServiceNames.join(",")
-    : "当前 Plugin 声明的 data provider";
+    : "当前 Plugin 中提供 Inspect Capability 的 Service";
   return withBizIdInputs(cmd, "需要汇集关联数据的业务 ID；可重复传入")
     .option(
       "--services <names>",
-      `逗号分隔的 data provider；缺省交互选择，非交互默认 ${defaultDescription}`,
+      `逗号分隔、提供 Inspect Capability 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle（JSON、HTML、Evidence）")

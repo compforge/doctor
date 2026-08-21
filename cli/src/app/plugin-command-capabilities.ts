@@ -35,7 +35,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor data",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "data" },
+      capability: { scope: "service", name: "inspect" },
       purpose: "定位业务数据源并返回约定数据",
     }],
   },
@@ -65,7 +65,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "跳过模型目录",
     }, {
       requirement: "preferred",
-      capability: { scope: "service", name: "data" },
+      capability: { scope: "service", name: "inspect" },
       purpose: "查询接受 tenant_id 的业务 Facts",
       fallback: "仅汇总租户身份与模型目录",
     }],
@@ -124,7 +124,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "跳过 Log 证据",
     }, {
       requirement: "preferred",
-      capability: { scope: "service", name: "data" },
+      capability: { scope: "service", name: "inspect" },
       purpose: "采集 Case 关联的业务 Facts/Relations",
       fallback: "跳过业务 Data 证据",
     }],

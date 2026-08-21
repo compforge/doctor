@@ -63,7 +63,7 @@ Probe Capability 遵循 `Input → Capability → Observation`，提供业务协
 runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
 拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe Capability；主动
 inference、Case 和运行时取证因此返回 Observation 或临时 handle，不伪装成 Fact。
-Data Capability 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 Capability，不能通过
+Inspect Capability 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 Capability，不能通过
 试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
 
 Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
@@ -85,8 +85,8 @@ Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 m
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
 
 Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
-`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Data Capability；
-返回的 Model 或每个 `ServiceDataFact` 作为独立 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
+`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Inspect Capability；
+返回的 Model 或每个 `ServiceInspectFact` 作为独立 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
 复用，Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
@@ -152,7 +152,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 2,
+  "pluginApiVersion": 3,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",

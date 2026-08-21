@@ -30,7 +30,7 @@ test("tenant capabilities share one generic Inspect entry", () => {
   ]);
 });
 
-test("tenant command combines model and data capabilities as facts", async () => {
+test("tenant command combines model catalog and Inspect Capabilities as facts", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-tenant-test-"));
   const config: TenantConfig = {
     tenant: { id: "tenant-1", name: "alpha", displayName: "Alpha" },
@@ -57,9 +57,9 @@ test("tenant command combines model and data capabilities as facts", async () =>
         } as never],
       }],
     }, {
-      id: "data:config-api",
+      id: "inspect:config-api",
       service: "config-api",
-      capability: "data",
+      capability: "inspect",
       query: async (identity) => [{
         kind: "data",
         fact: {
@@ -101,7 +101,7 @@ test("tenant command combines model and data capabilities as facts", async () =>
     expect(JSON.stringify(facts.capabilityFacts[0])).not.toContain("must-not-leak");
     expect(facts.capabilityFacts[1]).toMatchObject({
       status: "collected",
-      id: "data:config-api:tenant-configuration",
+      id: "inspect:config-api:tenant-configuration",
       kind: "data",
       fact: { data: { configuration: { enabled: true } } },
     });
@@ -110,13 +110,13 @@ test("tenant command combines model and data capabilities as facts", async () =>
     });
     expect(facts.capabilityFacts[2]).toMatchObject({
       status: "collected",
-      id: "data:config-api:tenant-intention",
+      id: "inspect:config-api:tenant-intention",
       fact: { data: { intentions: [{ id: "intent-1" }] } },
     });
     expect(coverage.map((item) => [item.goal, item.status])).toEqual([
       ["models", "sufficient"],
-      ["data:config-api:tenant-configuration", "partial"],
-      ["data:config-api:tenant-intention", "sufficient"],
+      ["inspect:config-api:tenant-configuration", "partial"],
+      ["inspect:config-api:tenant-intention", "sufficient"],
     ]);
     const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
     expect(sections[0]?.html).toContain("Model for tenant-1");
@@ -138,9 +138,9 @@ test("tenant command retains capability failures as evidence", async () => {
     },
     bundle: new EvidenceBundle(root),
     capabilities: [{
-      id: "data:unsafe-api",
+      id: "inspect:unsafe-api",
       service: "unsafe-api",
-      capability: "data",
+      capability: "inspect",
       query: async () => { throw new Error("source unavailable"); },
     }],
   };
@@ -148,7 +148,7 @@ test("tenant command retains capability failures as evidence", async () => {
     const facts = await runInspects(makeTenantInspects(ctx.capabilities), ctx);
     expect(facts.capabilityFacts[0]).toMatchObject({
       status: "failed",
-      id: "data:unsafe-api",
+      id: "inspect:unsafe-api",
       reason: "source unavailable",
     });
   } finally {

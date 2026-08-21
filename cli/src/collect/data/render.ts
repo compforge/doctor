@@ -5,23 +5,23 @@ import {
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { CollectedDataCapabilityFact, DataDiagnosis } from "./model";
+import type { CollectedDataInspectFact, DataDiagnosis } from "./model";
 
 function value(value: string | undefined): string {
   return value || "未找到";
 }
 
-function collectedFacts(diagnosis: DataDiagnosis): CollectedDataCapabilityFact[] {
+function collectedFacts(diagnosis: DataDiagnosis): CollectedDataInspectFact[] {
   return diagnosis.evidence.facts.capabilityFacts.filter(
-    (fact): fact is CollectedDataCapabilityFact => fact.status === "collected",
+    (fact): fact is CollectedDataInspectFact => fact.status === "collected",
   );
 }
 
-function identifierNames(facts: readonly CollectedDataCapabilityFact[]): string[] {
+function identifierNames(facts: readonly CollectedDataInspectFact[]): string[] {
   return [...new Set(facts.flatMap((item) => Object.keys(item.summary.identifiers)))];
 }
 
-function factRows(facts: readonly CollectedDataCapabilityFact[], identifiers: readonly string[]): string[][] {
+function factRows(facts: readonly CollectedDataInspectFact[], identifiers: readonly string[]): string[][] {
   return facts.map((item) => [
     item.service,
     item.stage,
@@ -30,7 +30,7 @@ function factRows(facts: readonly CollectedDataCapabilityFact[], identifiers: re
   ]);
 }
 
-function capabilityResults(facts: readonly CollectedDataCapabilityFact[]): string {
+function capabilityResults(facts: readonly CollectedDataInspectFact[]): string {
   const resolved = facts.filter((item) => item.summary.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
   return resolved.map((item) => {

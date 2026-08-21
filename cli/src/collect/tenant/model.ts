@@ -1,7 +1,7 @@
 import type {
   Model,
-  ServiceDataFact,
-  ServiceDataSummary,
+  ServiceInspectFact,
+  ServiceInspectSummary,
   TenantDirectory,
   TenantIdentity,
   TenantSummary,
@@ -35,12 +35,12 @@ export interface TenantConfig {
 export interface TenantCapabilityIdentity {
   id: string;
   service: string;
-  capability: "modelCatalog" | "data";
+  capability: "modelCatalog" | "inspect";
 }
 
 export type TenantCapabilityResult =
   | { kind: "models"; models: readonly Model[] }
-  | { kind: "data"; fact: ServiceDataFact; summary: ServiceDataSummary };
+  | { kind: "data"; fact: ServiceInspectFact; summary: ServiceInspectSummary };
 
 export type TenantCapabilityFact = TenantCapabilityIdentity & Fact<TenantCapabilityResult>;
 export type CollectedTenantCapabilityFact = TenantCapabilityIdentity

@@ -52,8 +52,8 @@ export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
   let changed = true;
   while (changed) {
     changed = false;
-    for (const service of catalog.servicesWith("data")) {
-      const capability = service.capabilities.data;
+    for (const service of catalog.servicesWith("inspect")) {
+      const capability = service.capabilities.inspect;
       if (!capability.accepts.some((kind) => reachable.has(kind))) continue;
       if (!selected.has(service.name)) {
         selected.add(service.name);
@@ -66,7 +66,7 @@ export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
       }
     }
   }
-  return catalog.servicesWith("data")
+  return catalog.servicesWith("inspect")
     .map((service) => service.name)
     .filter((service) => selected.has(service));
 }
@@ -79,9 +79,9 @@ export function parseDataServices(raw: string | undefined, catalog: ServiceCatal
     .filter(Boolean);
   const services = [...new Set(values)];
   if (!services.length) throw new Error("--services 未解析出任何 Service");
-  const unsupported = services.filter((service) => !catalog.findWith(service, "data"));
+  const unsupported = services.filter((service) => !catalog.findWith(service, "inspect"));
   if (unsupported.length) {
-    throw new Error(`Doctor 未注册以下 Service 的数据贡献能力：${unsupported.join(", ")}`);
+    throw new Error(`Doctor 未注册以下 Service 的 Inspect Capability：${unsupported.join(", ")}`);
   }
   return services;
 }
@@ -105,7 +105,7 @@ export async function resolveDataServiceSelection(
   if (interactive && !input.config.servicesExplicit) {
     const choices = dataServicesForBizQuery(input.catalog).map((name) => ({ name }));
     if (!choices.length) {
-      throw new Error("当前 Plugin 未声明 data capability");
+      throw new Error("当前 Plugin 未声明 Inspect Capability");
     }
     const selected = await (input.promptServices ?? promptNamedChoices)({
       choices,
