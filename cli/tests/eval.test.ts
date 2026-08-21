@@ -50,7 +50,7 @@ function testPlugin(): PluginDefinition {
           access: {},
           caseSets: [CASE_SET],
           createRunner: async () => ({
-            trigger: async () => ({ status: 200, durationMs: 10 }),
+            run: async () => ({ status: 200, durationMs: 10 }),
             classify: () => ({ ok: true }),
           }),
         },
@@ -79,7 +79,7 @@ test("eval config selects one canonical CaseSet and an optional Case subset", ()
 test("eval executes selected Cases once and preserves protocol observations", async () => {
   const triggered: string[] = [];
   const runner: ServiceCaseRunner = {
-    trigger: async ({ case: selected }) => {
+    run: async ({ input: selected }) => {
       triggered.push(selected.id);
       if (selected.id === "reason") throw new Error("request failed");
       return {

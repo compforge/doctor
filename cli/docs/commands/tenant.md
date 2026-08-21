@@ -3,7 +3,7 @@
 ## 理念 / 概念
 
 `doctor tenant` 与 `doctor data` 都是数据采集 Command。前者以 tenant-id 为根 Identity，采集租户粒度
-Fact / Relation；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact / Relation。
+Fact（包括表达 Identity 关系的 Relation）；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact。
 `doctor tenant` 通过租户目录确定 Identity，再组合 Plugin 已经提供的可复用 Capability，把返回的
 Model 或 `ServiceDataFact` 组织为 Tenant Evidence；同一次 Data Query 可以返回多个领域上独立的 Fact。
 
@@ -30,7 +30,7 @@ Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询�
 ### Query 作用域与 Capability 归属分开
 
 Tenant 与 Data 分别以 tenant-id、biz-id 形成数据采集入口，但不因此复制数据能力。Model Catalog 可同时被
-Tenant、Model 与 Chat 消费；Data Capability 只声明接受的 Identity 与提供的 Fact/Relation，不感知
+Tenant、Model 与 Chat 消费；Data Capability 只声明接受的 Identity 与提供的 Fact / Relation，不感知
 调用它的 Command。
 
 ### Command 拥有诊断视角

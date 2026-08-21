@@ -115,7 +115,7 @@ export async function executeEvalCases(
     const startedAt = new Date().toISOString();
     terminalStdout.write(`[eval] case ${selected.id}…\n`);
     try {
-      const observation = await runner.trigger({ case: selected, runId, signal });
+      const observation = await runner.run({ input: selected, runId, signal });
       const protocol = runner.classify(observation);
       results.push({
         caseId: selected.id,

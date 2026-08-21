@@ -1,3 +1,6 @@
+import type { PluginContext } from "./context";
+import type { CapabilityWithAccess } from "./kubernetes";
+
 /** A typed diagnostic lookup key. Its kind is domain-owned and independent of commands. */
 export interface Identity {
   kind: string;
@@ -18,12 +21,24 @@ export interface Query<
   constraints?: Constraints;
 }
 
+/** One independently consumable statement obtained from a diagnostic target. */
+export interface Fact {
+  kind: string;
+}
+
 /**
- * A proven relationship between two diagnostic identities.
+ * A Fact that proves a relationship between two diagnostic identities.
  * Core commands decide whether and how far a discovered identity is queried again.
  */
-export interface Relation<I extends Identity = Identity> {
-  kind: string;
+export interface Relation<I extends Identity = Identity> extends Fact {
   from: I;
   to: I;
+}
+
+/** A reusable inspection capability. Commands own selection, traversal and Evidence composition. */
+export interface InspectCapability<
+  Q extends Query = Query,
+  F extends Fact = Fact,
+> extends CapabilityWithAccess {
+  query(context: PluginContext, query: Q): Promise<readonly F[]>;
 }

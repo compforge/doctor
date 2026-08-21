@@ -10,8 +10,8 @@
 data capability 接受由业务 Identity 与约束组成的 Query，并返回一个或多个可独立消费的 Fact：
 
 - Fact：每个 capability 通过 `provides` 声明并贡献自身业务数据。
-- Relation：可选通过 `expands` 声明目标 Identity kind，并在结果中返回已由现场数据证明的关联。
-  一个 Service 可以同时提供 Fact 与 Relation，Relation 的目标 Identity 也可以交给后续 Service 查询。
+- Relation：一种 Fact；可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。
+  一个 Service 可以同时提供普通 Fact 与 Relation，Relation 的目标 Identity 也可以交给后续 Service 查询。
 
 这里的 expansion 只服务 `doctor data` 的多 Service 数据汇集，不是其它命令的隐式通用依赖。需要规范
 `trace_id` 的 `doctor trace` 和 `doctor log` 使用更窄的 `service.traceId` capability。
@@ -26,11 +26,11 @@ data capability 接受由业务 Identity 与约束组成的 Query，并返回一
 2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
    按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
-   Relation capability；新 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
+   Relation provider；新的 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
    扩展时取得的每个 Fact 同时作为该 Service 的独立数据贡献。
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
    阶段已经查过的 ID 直接复用，只补查后续 Relation 新增的 Identity。
-5. Command 将 capability 返回的数据保存为带状态的 Facts/Relations，并与访问准备阶段的 Inspect Facts
+5. Command 将 capability 返回的数据保存为带状态的 Facts（含 Relation），并与访问准备阶段的 Inspect Facts
    一起形成 Evidence；`doctor data` 当前没有额外现场取证动作，因此不产生 Probe Observation。
 6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding 与 Coverage；Render 汇总解析方式、
    规范 ID、服务数据和诊断结论。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 写入本地文件，并用

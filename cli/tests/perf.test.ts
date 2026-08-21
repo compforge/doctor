@@ -121,11 +121,11 @@ test("perf trial output describes the active Case mix and Facets", () => {
   );
 });
 
-test("Service Case runner maps one trigger into one shared Outcome", async () => {
+test("Service Case runner maps one Probe into one shared Outcome", async () => {
   const lifecycle: string[] = [];
   const workload = workloadFromCaseRunner({
     setup: async () => { lifecycle.push("setup"); },
-    trigger: async ({ case: selected }) => ({
+    run: async ({ input: selected }) => ({
       status: 200,
       durationMs: 7000,
       metrics: { first_token_ms: 6500 },

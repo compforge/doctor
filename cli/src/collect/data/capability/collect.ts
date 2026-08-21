@@ -212,7 +212,7 @@ async function collectExpansionFacts(input: {
 }
 
 /**
- * Run the Service capabilities selected by doctor data and retain their outputs as Facts/Relations.
+ * Run the Service capabilities selected by doctor data and retain their outputs as Facts, including Relations.
  * Command owns traversal and ordering; capability implementations only answer one Query at a time.
  */
 export async function collectDataCapabilityFacts(input: {

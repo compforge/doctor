@@ -101,8 +101,8 @@ export function workloadFromCaseRunner(runner: ServiceCaseRunner): Workload {
       await runner.setup?.({ runId: run_id, signal });
     },
     fire: async ({ case: perfCase, run_id, signal }) => {
-      const observation = await runner.trigger({
-        case: { id: perfCase.id, input: perfCase.input, facets: perfCase.facets },
+      const observation = await runner.run({
+        input: { id: perfCase.id, input: perfCase.input, facets: perfCase.facets },
         runId: run_id,
         signal,
       });
