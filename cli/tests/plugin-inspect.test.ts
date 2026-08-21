@@ -47,7 +47,7 @@ test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
     service: "control",
     queryIdentity: identity,
     capability,
-  })).toThrow("is not declared by provides");
+  })).toThrow("control inspect fact[0].kind 'unknown' is not declared by provides");
 
   expect(() => normalizeServiceInspectFacts({
     value: [{

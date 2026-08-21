@@ -49,7 +49,7 @@ export function normalizeServiceInspectFacts(input: {
 
   const kinds = new Set<string>();
   return value.map((item, index) => {
-    const label = `${service} data fact[${index}]`;
+    const label = `${service} inspect fact[${index}]`;
     const fact = record(item, label);
     const kind = nonEmptyString(fact.kind, `${label}.kind`);
     if (!capability.provides.includes(kind)) {
