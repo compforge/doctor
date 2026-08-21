@@ -17,6 +17,7 @@ const manifest: PluginManifest = {
 test("Plugin data capability 必须提供 query", () => {
   const base = {
     access: {},
+    accepts: ["biz_id"],
     provides: ["record"],
     resolveTarget: async () => ({}),
     summarize: () => ({ resolvedAs: "record", identifiers: {} }),
@@ -36,7 +37,7 @@ test("Plugin data capability 必须提供 query", () => {
     .toThrow("records.data.query must be a function");
 });
 
-test("Plugin tenant capability 必须指向租户目录并提供 contribution", () => {
+test("Plugin tenant capability 只绑定租户目录", () => {
   const valid = {
     id: "test",
     version: "0.0.1",
@@ -53,22 +54,12 @@ test("Plugin tenant capability 必须指向租户目录并提供 contribution", 
           }),
         },
       },
-    }, {
-      name: "control",
-      capabilities: {
-        tenant: { contributions: [{
-          id: "inventory",
-          title: "Inventory",
-          access: {},
-          collect: async () => ({}),
-        }] },
-      },
     }] },
   };
   expect(validatePluginDefinition(valid, manifest).tenant).toEqual({ directoryService: "iam" });
   expect(() => validatePluginDefinition({
     ...valid,
-    services: { services: valid.services.services.slice(1) },
+    services: { services: [] },
   }, manifest)).toThrow("unknown Service 'iam'");
 });
 
@@ -100,7 +91,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
           endpoint: { port: 8081 },
           access: {},
           create: () => ({
-            listAvailable: async () => [],
+            query: async () => [],
             getBackend: async () => undefined,
           }),
         },
@@ -150,7 +141,7 @@ test("Plugin model capability supports discovery without inference", async () =>
           endpoint: { port: 8081 },
           access: {},
           create: () => ({
-            listAvailable: async () => [],
+            query: async () => [],
             getBackend: async () => undefined,
           }),
         },

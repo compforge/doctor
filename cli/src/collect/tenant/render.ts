@@ -1,46 +1,43 @@
 import {
+  escapeHtml,
   htmlHeading,
   htmlList,
   htmlParagraph,
-  htmlTable,
   type HtmlReportSection,
 } from "../output/html";
 import type {
-  CollectedTenantContributionFact,
+  CollectedTenantCapabilityFact,
   TenantDiagnosis,
 } from "./model";
 
-function display(value: string | number | boolean | null): string {
-  return value === null ? "—" : String(value);
+function collectedCapabilities(diagnosis: TenantDiagnosis): CollectedTenantCapabilityFact[] {
+  return diagnosis.evidence.facts.capabilityFacts.filter(
+    (fact): fact is CollectedTenantCapabilityFact => fact.status === "collected",
+  );
 }
 
-function markdownCell(value: string | number | boolean | null): string {
-  return display(value).replaceAll("|", "\\|").replaceAll("\n", "<br>");
+function capabilityLabel(fact: CollectedTenantCapabilityFact): string {
+  return `${fact.service} · ${fact.capability}`;
 }
 
-function collectedContributions(diagnosis: TenantDiagnosis): CollectedTenantContributionFact[] {
-  return Object.values(diagnosis.evidence.facts.contributions).flatMap((fact) => (
-    fact.status === "collected" ? [fact as CollectedTenantContributionFact] : []
-  ));
-}
-
-function contributionSummary(diagnosis: TenantDiagnosis): string[] {
-  return Object.entries(diagnosis.evidence.facts.contributions).flatMap(([id, fact]) => {
-    if (fact.status !== "collected") return [`${fact.title || id}：未取得（${fact.reason}）`];
-    return (fact.summary ?? []).map((item) => `${item.label}：${display(item.value)}`);
+function capabilitySummary(diagnosis: TenantDiagnosis): string[] {
+  return diagnosis.evidence.facts.capabilityFacts.map((fact) => {
+    if (fact.status !== "collected") return `${fact.service} · ${fact.capability}：未取得（${fact.reason}）`;
+    if (fact.kind === "models") return `${capabilityLabel(fact)}：${fact.models.length} 个模型`;
+    return `${capabilityLabel(fact)}：${fact.summary.resolvedAs}`;
   });
 }
 
 export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
   const tenant = diagnosis.evidence.facts.tenant;
-  const contributions = collectedContributions(diagnosis);
+  const capabilities = collectedCapabilities(diagnosis);
   return [
     "# Tenant Inspect",
     "",
     tenant.status === "collected"
       ? `- 租户：${tenant.displayName || tenant.name}（${tenant.id}）`
       : `- 租户：未取得（${tenant.reason}）`,
-    ...contributionSummary(diagnosis).map((line) => `- ${line}`),
+    ...capabilitySummary(diagnosis).map((line) => `- ${line}`),
     "",
     "## Coverage",
     "",
@@ -49,17 +46,13 @@ export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
       ...item.missingEvidence.map((missing) => `  - 缺失：${missing}`),
     ]),
     "",
-    ...contributions.flatMap((contribution) => [
-      `## ${contribution.title}`,
+    ...capabilities.flatMap((fact) => [
+      `## ${capabilityLabel(fact)}`,
       "",
-      ...(contribution.tables ?? []).flatMap((table) => [
-        `### ${table.title}`,
-        "",
-        `| ${table.columns.map(markdownCell).join(" | ")} |`,
-        `|${table.columns.map(() => "---").join("|")}|`,
-        ...table.rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
-        "",
-      ]),
+      "```json",
+      JSON.stringify(fact.kind === "models" ? fact.models : fact.result, null, 2),
+      "```",
+      "",
     ]),
   ].join("\n");
 }
@@ -72,9 +65,9 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
       tenant.status === "collected"
         ? `租户：${tenant.displayName || tenant.name}（${tenant.id}）`
         : `租户：未取得（${tenant.reason}）`,
-      ...contributionSummary(diagnosis),
+      ...capabilitySummary(diagnosis),
     ]),
-    htmlParagraph("租户贡献均为只读 Inspect Facts；业务查询与安全投影由当前 Plugin 负责。"),
+    htmlParagraph("Tenant Command 组合 Model Catalog 与接受 tenant_id 的 Data Capability，并将结果保留为 Facts。"),
     htmlHeading(2, "Coverage"),
     htmlList(diagnosis.coverage.flatMap((item) => [
       `${item.goal}：${item.status}`,
@@ -84,10 +77,11 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
 }
 
 export function buildTenantHtmlSections(diagnosis: TenantDiagnosis): HtmlReportSection[] {
-  return collectedContributions(diagnosis).flatMap((contribution) => (
-    (contribution.tables ?? []).map((table) => ({
-      title: `${contribution.title} / ${table.title}`,
-      html: htmlTable(table.columns, table.rows, { search: table.search }),
-    }))
-  ));
+  return collectedCapabilities(diagnosis).map((fact) => {
+    const value = fact.kind === "models" ? fact.models : fact.result;
+    return {
+      title: capabilityLabel(fact),
+      html: `<pre><code>${escapeHtml(JSON.stringify(value, null, 2))}</code></pre>`,
+    };
+  });
 }

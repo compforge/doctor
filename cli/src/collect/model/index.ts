@@ -80,7 +80,10 @@ export async function runCollectModel(
     }
     terminalStdout.write(`[model] tenant: ${tenant.name}（${tenant.id}）\n`);
 
-    const models = await access.catalog.listAvailable(tenant.id, type);
+    const models = await access.catalog.query({
+      identity: { kind: "tenant_id", value: tenant.id },
+      constraints: { type },
+    });
     const selected = await selectModel({ models, query: opts.model });
     if (!selected) {
       terminalStderr.warning("[model] 已取消\n");

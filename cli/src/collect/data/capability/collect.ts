@@ -131,13 +131,15 @@ async function queryIdentities(input: {
   const pluginContext = ctx.pluginContexts[declared.name];
   if (!pluginContext) throw new Error(`Service '${declared.name}' data capability 缺少 PluginContext`);
   const facts: DataCapabilityFact[] = [];
-  for (const identity of identities) {
+  for (const identity of identities.filter((identity) => (
+    declared.capabilities.data.accepts.includes(identity.kind)
+  ))) {
     const id = factId(stage, declared.name, identity);
     try {
       const result = await declared.capabilities.data.query(
         pluginContext,
         {
-          identities: [identity],
+          identity,
           results,
         },
       );

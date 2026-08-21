@@ -39,7 +39,7 @@ export * from "./model";
 export * from "./render";
 
 /**
- * @spec doctor tenant 只汇总 Plugin 声明的通用 tenant contributions，不理解具体业务概念
+ * @spec doctor tenant 以 tenant_id Query 组合 Model Catalog 与 Data Capability，不理解 Plugin 业务概念
  * @see {@link ../../../docs/commands/tenant.md}
  */
 export async function runCollectTenant(
@@ -104,10 +104,10 @@ export async function runCollectTenant(
       command: commandContext,
       config,
       bundle,
-      contributions: access.contributions,
+      capabilities: access.capabilities,
     };
     const facts: Readonly<TenantFacts> = await runInspects(
-      makeTenantInspects(access.contributions),
+      makeTenantInspects(access.capabilities),
       ctx,
       (line) => terminalStdout.write(`${line}\n`),
     );
@@ -128,7 +128,11 @@ export async function runCollectTenant(
       target: { tenant_id: tenant.id, tenant_name: tenant.name },
       inspectionFacts: { ...facts },
       params: {
-        contributions: access.contributions.map(({ id, service }) => ({ id, service })),
+        capabilities: access.capabilities.map(({ id, service, capability }) => ({
+          id,
+          service,
+          capability,
+        })),
         output_format: format,
       },
       startedAt,

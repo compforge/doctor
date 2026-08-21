@@ -74,11 +74,13 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
-test("tenant command 只依赖通用 tenant capability", () => {
+test("tenant command 组合租户身份、模型与通用数据 capability", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
     { scope: "plugin", name: "tenant" },
     { scope: "service", name: "tenantDirectory" },
-    { scope: "service", name: "tenant" },
+    { scope: "plugin", name: "model" },
+    { scope: "service", name: "modelCatalog" },
+    { scope: "service", name: "data" },
   ]);
 });
 

@@ -1,4 +1,5 @@
 import type { TraceContributions } from "@compforge/trace-harness";
+import type { Identity, Query } from "./capability";
 import type { PluginContext } from "./context";
 import type {
   ServiceHttpResponse,
@@ -63,8 +64,12 @@ export interface ModelBackendHandle {
 }
 
 export interface ModelCatalog {
-  listAvailable(tenantId: string, type?: ModelType): Promise<Model[]>;
+  query(query: Query<TenantIdentity, { type?: ModelType }>): Promise<Model[]>;
   getBackend(model: Model): Promise<ModelBackendHandle | undefined>;
+}
+
+export interface TenantIdentity extends Identity {
+  kind: "tenant_id";
 }
 
 /** Plugin-owned inference handle; LLM chat uses the OpenAI-compatible chat completions path. */
@@ -89,7 +94,7 @@ export interface ModelCapability {
   inferenceService?: string;
 }
 
-/** Plugin-level binding for tenant identity and tenant-scoped contributions. */
+/** Plugin-level binding for resolving tenant identities. */
 export interface TenantCapability {
   directoryService: string;
 }

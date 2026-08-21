@@ -7,14 +7,14 @@ export interface Identity {
 /**
  * A read intent passed from a Core command to a capability.
  *
- * @spec Query keeps typed identities separate from capability-specific constraints; it does not carry command DTOs
+ * @spec Query keeps one typed identity separate from capability-specific constraints; it does not carry command DTOs
  * @see {@link ../../../cli/docs/kernel.md}
  */
 export interface Query<
   I extends Identity = Identity,
   Constraints = unknown,
 > {
-  identities: readonly I[];
+  identity: I;
   constraints?: Constraints;
 }
 

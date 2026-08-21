@@ -112,6 +112,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
   if (capabilities.data !== undefined) {
     const data = record(capabilities.data, `${service.name}.data`);
+    nonEmptyStrings(data.accepts, `${service.name}.data.accepts`);
     if (typeof data.resolveTarget !== "function") {
       throw new Error(`${service.name}.data.resolveTarget must be a function`);
     }
@@ -128,23 +129,6 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case"] as const) {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
-  }
-  if (capabilities.tenant !== undefined) {
-    const tenant = record(capabilities.tenant, `${service.name}.tenant`);
-    const contributions = uniqueIdRecords(tenant.contributions, `${service.name}.tenant.contributions`);
-    for (const [id, contribution] of contributions) {
-      if (!/^[a-z0-9][a-z0-9._-]*$/.test(id)) {
-        throw new Error(`${service.name}.tenant contribution id '${id}' is invalid`);
-      }
-      nonEmptyString(contribution.title, `${service.name}.tenant.contributions.${id}.title`);
-      record(contribution.access, `${service.name}.tenant.contributions.${id}.access`);
-      if (contribution.endpoint !== undefined) {
-        endpointPort(contribution, `${service.name}.tenant.contributions.${id}`);
-      }
-      if (typeof contribution.collect !== "function") {
-        throw new Error(`${service.name}.tenant.contributions.${id}.collect must be a function`);
-      }
-    }
   }
   const serviceCase = capabilities.case;
   let caseSets = new Map<string, Record<string, unknown>>();
@@ -336,19 +320,6 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (definition.tenant !== undefined) {
     const tenant = record(definition.tenant, "Plugin tenant capability");
     requireProvider(services, tenant.directoryService, "tenantDirectory", "tenant.directoryService");
-    const providers = services.filter((service) => service.capabilities.tenant !== undefined);
-    if (providers.length === 0) {
-      throw new Error("Plugin tenant capability requires at least one Service tenant provider");
-    }
-    const contributionIds = new Set<string>();
-    for (const provider of providers) {
-      for (const contribution of provider.capabilities.tenant!.contributions) {
-        if (contributionIds.has(contribution.id)) {
-          throw new Error(`Plugin tenant contributions contain duplicate id '${contribution.id}'`);
-        }
-        contributionIds.add(contribution.id);
-      }
-    }
   }
   if (definition.trace !== undefined) {
     const trace = record(definition.trace, "Plugin trace capability");

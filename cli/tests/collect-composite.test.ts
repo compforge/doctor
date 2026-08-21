@@ -38,7 +38,8 @@ test("collect capability contract is the union of selected concrete commands", (
     .toEqual([
       "plugin.tenant",
       "service.tenantDirectory",
-      "service.tenant",
+      "plugin.model",
+      "service.modelCatalog",
       "service.data",
       "service.traceId",
       "service.log",

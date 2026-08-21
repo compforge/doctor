@@ -61,7 +61,7 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     inference: { baseUrl: "http://inference.invalid/v1", model: "model-1" },
   });
   const catalog: ModelCatalog = {
-    listAvailable: async () => [model],
+    query: async () => [model],
     getBackend: async () => ({
       modelId: model.id,
       modelName: model.name,

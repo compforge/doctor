@@ -198,7 +198,7 @@ describe("CLI command routing", () => {
     expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时输出 HTML + Bundle");
   });
 
-  test("tenant exposes generic tenant contribution aggregation", () => {
+  test("tenant exposes tenant-scoped data collection", () => {
     const result = runCli("tenant", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor tenant [options]");
