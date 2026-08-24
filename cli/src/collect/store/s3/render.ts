@@ -3,6 +3,8 @@ import {
   htmlBarChart,
   htmlPieCharts,
   htmlProgressMetrics,
+  htmlTable,
+  htmlTableCell,
   type HtmlReportSection,
 } from "../../output/html";
 import type { StoreConfig } from "../config";
@@ -88,6 +90,7 @@ export function buildS3HtmlReport(observations: S3Observations): {
   sections: HtmlReportSection[];
 } {
   const capacity = observations.capacity;
+  const driveCapacity = observations.driveCapacity;
   const inventory = observations.inventory;
   const physicalCapacityHtml = capacity
     ? htmlProgressMetrics([{
@@ -105,6 +108,31 @@ export function buildS3HtmlReport(observations: S3Observations): {
           : capacity.rawUsagePercent >= 80 ? "warning" : "normal",
       }])
     : `<p class="muted">当前 S3 Provider 未提供物理容量指标。</p>`;
+
+  const inodeExhausted = driveCapacity?.drives.filter(
+    (drive) => drive.freeInodes < driveCapacity.minimumFreeInodes,
+  ) ?? [];
+  const driveCapacityHtml = driveCapacity
+    ? `<p class="${inodeExhausted.length ? "metric-status-critical" : "muted"}">${inodeExhausted.length
+        ? `${inodeExhausted.length}/${driveCapacity.drives.length} 块盘低于 ${driveCapacity.minimumFreeInodes} free inode 写入阈值。`
+        : `${driveCapacity.drives.length} 块盘均高于 ${driveCapacity.minimumFreeInodes} free inode 写入阈值。`}</p>${htmlTable(
+        ["状态", "Drive", "Free inode", "Inode 使用率", "Free bytes"],
+        driveCapacity.drives.map((drive) => {
+          const exhausted = drive.freeInodes < driveCapacity.minimumFreeInodes;
+          return [
+            exhausted ? "写入受阻" : "正常",
+            drive.drive,
+            htmlTableCell(drive.freeInodes.toLocaleString("en-US"), drive.freeInodes),
+            htmlTableCell(
+              `${(drive.usedInodes / drive.totalInodes * 100).toFixed(2)}%`,
+              drive.usedInodes / drive.totalInodes * 100,
+            ),
+            htmlTableCell(formatBytes(drive.freeBytes), drive.freeBytes),
+          ];
+        }),
+        { search: { column: 1, placeholder: "检索 Drive" } },
+      )}`
+    : `<p class="muted">当前 S3 Provider 未提供逐盘 byte/inode 指标。</p>`;
 
   const scannedByBucket = new Map(inventory?.buckets.map((bucket) => [bucket.bucket, bucket]) ?? []);
   const accessible = new Set(observations.bucketAccess?.buckets ?? []);
@@ -203,6 +231,7 @@ export function buildS3HtmlReport(observations: S3Observations): {
   return {
     sections: [
       { title: "物理容量", html: physicalCapacityHtml },
+      { title: "逐盘写入容量", html: driveCapacityHtml },
       { title: "Bucket 容量分布", html: bucketCapacityHtml },
       { title: "Prefix 容量分布", html: prefixDistributionHtml },
       { title: "Prefix 下一级 Object 分布", html: prefixDetailHtml },
@@ -214,12 +243,21 @@ export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, ob
   const access = observations.bucketAccess;
   const health = observations.providerHealth;
   const capacity = observations.capacity;
+  const driveCapacity = observations.driveCapacity;
   const inventory = observations.inventory;
   const bucket = facts.configuration.status === "collected" ? facts.configuration.bucket : "unknown";
   const providerHealthy = !health || Object.values(health.endpoints).every((status) => status === 200);
   const providerName = facts.provider.status === "collected" ? facts.provider.displayName : "未识别";
   const capacityLine = capacity
     ? `${formatBytes(capacity.rawUsageBytes)} / ${formatBytes(capacity.rawCapacityBytes)}（${capacity.rawUsagePercent.toFixed(1)}%，剩余 ${formatBytes(capacity.rawFreeBytes)}）`
+    : "未取得";
+  const inodeExhausted = driveCapacity?.drives.filter(
+    (drive) => drive.freeInodes < driveCapacity.minimumFreeInodes,
+  ) ?? [];
+  const driveCapacityLine = driveCapacity
+    ? inodeExhausted.length
+      ? `${inodeExhausted.length}/${driveCapacity.drives.length} 块盘低于 ${driveCapacity.minimumFreeInodes} free inode 写入阈值`
+      : `${driveCapacity.drives.length} 块盘均高于 ${driveCapacity.minimumFreeInodes} free inode 写入阈值`
     : "未取得";
   const inventoryLines = inventory
     ? [
@@ -242,6 +280,7 @@ export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, ob
     `- Provider: **${providerName}**`,
     `- Provider 健康: **${health ? (providerHealthy ? "正常" : "异常") : "未取得扩展健康信息"}**`,
     `- 物理容量: **${capacityLine}**`,
+    `- 逐盘写入容量: **${driveCapacityLine}**`,
     `- Top Bucket 对象占用: ${usageLine}`,
     ...inventoryLines,
     "",

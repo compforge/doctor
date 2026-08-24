@@ -21,6 +21,7 @@ export interface S3ProviderFact {
   capabilities: {
     health: boolean;
     bucketUsage: boolean;
+    driveCapacity: boolean;
     physicalCapacity: boolean;
   };
 }
