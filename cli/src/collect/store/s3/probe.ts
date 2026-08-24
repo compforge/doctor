@@ -2,6 +2,7 @@ import type { ExecResult } from "../../../infra/k8s/executor";
 import {
   getBucketVersioning,
   getS3ProviderBucketUsage,
+  getS3ProviderDriveCapacity,
   getS3ProviderHealth,
   getS3ProviderPhysicalCapacity,
   headBucket,
@@ -22,11 +23,11 @@ function accessEvaluation(facts: S3InspectionFacts) {
   return facts.access.status === "collected" ? PROBE_RUNNABLE : probeUnavailable(facts.access.reason);
 }
 
-function capabilityEvaluation(capability: "health" | "bucketUsage" | "physicalCapacity") {
+function capabilityEvaluation(capability: "health" | "bucketUsage" | "driveCapacity" | "physicalCapacity") {
   return (facts: S3InspectionFacts) => {
-  if (facts.provider.status !== "collected") return probeUnavailable(facts.provider.reason);
+    if (facts.provider.status !== "collected") return probeUnavailable(facts.provider.reason);
     return facts.provider.capabilities[capability]
-    ? PROBE_RUNNABLE
+      ? PROBE_RUNNABLE
       : probeUnavailable(`${facts.provider.displayName} Provider Adapter 不提供 ${capability} 能力`);
   };
 }
@@ -225,6 +226,41 @@ const BUCKET_USAGE_PROBE: S3Probe = {
   },
 };
 
+const DRIVE_CAPACITY_PROBE: S3Probe = {
+  id: "drive-capacity",
+  evaluate: capabilityEvaluation("driveCapacity"),
+  onUnavailable: unavailable("drive-capacity"),
+  run: async (ctx, facts) => {
+    try {
+      const provider = facts.provider;
+      if (provider.status !== "collected") return [];
+      const capacity = await getS3ProviderDriveCapacity(provider.providerId, {
+        endpoint: ctx.preparedEndpoint!,
+        credentials: { accessKey: ctx.target!.accessKey, secretKey: ctx.target!.secretKey },
+      });
+      const observation = {
+        id: "s3-drive-capacity" as const,
+        kind: "s3-drive-capacity" as const,
+        providerId: provider.providerId,
+        providerDisplayName: provider.displayName,
+        metricsEndpoint: capacity.endpoint,
+        minimumFreeInodes: capacity.minimumFreeInodes,
+        maximumRawUsagePercent: capacity.maximumRawUsagePercent,
+        drives: capacity.drives,
+      };
+      ctx.bundle.fill("drive-capacity", {
+        status: "ok",
+        output: `${JSON.stringify(observation, null, 2)}\n`,
+        ext: "json",
+      });
+      return [observation];
+    } catch (error) {
+      ctx.bundle.fill("drive-capacity", { status: "unavailable", reason: errorReason(error) });
+      return [];
+    }
+  },
+};
+
 const CAPACITY_PROBE: S3Probe = {
   id: "capacity",
   evaluate: capabilityEvaluation("physicalCapacity"),
@@ -250,5 +286,12 @@ const CAPACITY_PROBE: S3Probe = {
 };
 
 export function makeS3Probes(): S3Probe[] {
-  return [BUCKET_ACCESS_PROBE, PROVIDER_HEALTH_PROBE, BUCKET_USAGE_PROBE, INVENTORY_PROBE, CAPACITY_PROBE];
+  return [
+    BUCKET_ACCESS_PROBE,
+    PROVIDER_HEALTH_PROBE,
+    BUCKET_USAGE_PROBE,
+    DRIVE_CAPACITY_PROBE,
+    INVENTORY_PROBE,
+    CAPACITY_PROBE,
+  ];
 }

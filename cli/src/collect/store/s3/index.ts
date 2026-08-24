@@ -22,6 +22,7 @@ const S3_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "provider-detection", title: "识别 S3 Provider 能力", risk: "observe" },
   { id: "bucket-access", title: "S3 Bucket 发现与访问检查", risk: "observe" },
   { id: "bucket-usage", title: "Provider Bucket Usage Metrics", risk: "observe" },
+  { id: "drive-capacity", title: "Provider 逐盘 byte 与 inode 容量", risk: "observe" },
   { id: "object-inventory", title: "S3 对象前缀、大小与时间画像", risk: "observe" },
   { id: "provider-health", title: "对象存储 provider 健康检查", risk: "observe" },
   { id: "capacity", title: "对象存储物理容量", risk: "observe" },

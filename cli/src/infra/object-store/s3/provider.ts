@@ -12,6 +12,7 @@ export interface S3ProviderConnection {
 export interface S3ProviderCapabilities {
   health: boolean;
   bucketUsage: boolean;
+  driveCapacity: boolean;
   physicalCapacity: boolean;
 }
 
@@ -36,6 +37,24 @@ export interface S3BucketUsage {
 export interface S3BucketUsageResult {
   endpoint: string;
   buckets: S3BucketUsage[];
+}
+
+export interface S3DriveCapacity {
+  drive: string;
+  server?: string;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  totalInodes: number;
+  usedInodes: number;
+  freeInodes: number;
+}
+
+export interface S3DriveCapacityResult {
+  endpoint: string;
+  minimumFreeInodes: number;
+  maximumRawUsagePercent: number;
+  drives: S3DriveCapacity[];
 }
 
 export interface S3PhysicalCapacity {
@@ -69,6 +88,7 @@ export interface S3ProviderAdapter {
   inspect(connection: S3ProviderConnection): Promise<string | undefined>;
   health?: (connection: S3ProviderConnection) => Promise<S3ProviderHealth>;
   bucketUsage?: (connection: S3ProviderConnection) => Promise<S3BucketUsageResult>;
+  driveCapacity?: (connection: S3ProviderConnection) => Promise<S3DriveCapacityResult>;
   physicalCapacity?: (input: S3ProviderCapacityInput) => Promise<S3ProviderCapacityResult>;
 }
 
@@ -91,6 +111,7 @@ export async function inspectS3Provider(connection: S3ProviderConnection): Promi
       capabilities: {
         health: !!adapter.health,
         bucketUsage: !!adapter.bucketUsage,
+        driveCapacity: !!adapter.driveCapacity,
         physicalCapacity: !!adapter.physicalCapacity,
       },
     };
@@ -99,7 +120,7 @@ export async function inspectS3Provider(connection: S3ProviderConnection): Promi
     providerId: "generic-s3",
     displayName: "S3 Compatible",
     detection: "s3-api",
-    capabilities: { health: false, bucketUsage: false, physicalCapacity: false },
+    capabilities: { health: false, bucketUsage: false, driveCapacity: false, physicalCapacity: false },
   };
 }
 
@@ -118,6 +139,15 @@ export async function getS3ProviderBucketUsage(
 ): Promise<S3BucketUsageResult> {
   const operation = provider(providerId).bucketUsage;
   if (!operation) throw new Error(`S3 Provider '${providerId}' 不提供 bucket usage 能力`);
+  return operation(connection);
+}
+
+export async function getS3ProviderDriveCapacity(
+  providerId: string,
+  connection: S3ProviderConnection,
+): Promise<S3DriveCapacityResult> {
+  const operation = provider(providerId).driveCapacity;
+  if (!operation) throw new Error(`S3 Provider '${providerId}' 不提供 drive capacity 能力`);
   return operation(connection);
 }
 

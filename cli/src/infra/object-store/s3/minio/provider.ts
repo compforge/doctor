@@ -1,5 +1,6 @@
 import type { S3ProviderAdapter, S3ProviderConnection } from "../provider";
 import { inspectMinioPhysicalCapacity } from "./capacity";
+import { getMinioDriveCapacity } from "./drive-capacity";
 import { getMinioBucketUsage } from "./usage";
 
 async function httpStatus(endpoint: string, path: string): Promise<number | undefined> {
@@ -38,5 +39,6 @@ export const S3_PROVIDER: S3ProviderAdapter = {
     return { endpoints: Object.fromEntries(entries) };
   },
   bucketUsage: async (connection) => getMinioBucketUsage(connection.endpoint, connection.credentials),
+  driveCapacity: getMinioDriveCapacity,
   physicalCapacity: inspectMinioPhysicalCapacity,
 };

@@ -55,21 +55,41 @@ export interface S3ProviderHealthObservation {
   providerDisplayName: string;
   endpoints: Record<string, number | undefined>;
 }
+export interface S3DriveCapacityObservation {
+  id: "s3-drive-capacity";
+  kind: "s3-drive-capacity";
+  providerId: string;
+  providerDisplayName: string;
+  metricsEndpoint: string;
+  minimumFreeInodes: number;
+  maximumRawUsagePercent: number;
+  drives: Array<{
+    drive: string;
+    server?: string;
+    totalBytes: number;
+    usedBytes: number;
+    freeBytes: number;
+    totalInodes: number;
+    usedInodes: number;
+    freeInodes: number;
+  }>;
+}
 export interface S3CapacityObservation extends S3PhysicalCapacity {
   id: "s3-capacity";
   kind: "s3-capacity";
 }
-export type S3Observation = S3BucketAccessObservation | S3InventoryObservation | S3BucketUsageObservation | S3ProviderHealthObservation | S3CapacityObservation;
+export type S3Observation = S3BucketAccessObservation | S3InventoryObservation | S3BucketUsageObservation | S3ProviderHealthObservation | S3DriveCapacityObservation | S3CapacityObservation;
 export interface S3Observations {
   bucketAccess?: S3BucketAccessObservation;
   inventory?: S3InventoryObservation;
   bucketUsage?: S3BucketUsageObservation;
   providerHealth?: S3ProviderHealthObservation;
+  driveCapacity?: S3DriveCapacityObservation;
   capacity?: S3CapacityObservation;
 }
 export type S3FindingKind = `s3.${string}`;
 export interface S3Finding extends FindingMeta<S3FindingKind> { summary: string; [key: string]: unknown }
-export type S3DiagnosisGoal = "bucket-access" | "object-inventory" | "provider-health" | "capacity";
+export type S3DiagnosisGoal = "bucket-access" | "object-inventory" | "provider-health" | "drive-capacity" | "capacity";
 export type S3Evidence = Evidence<S3Observation, S3InspectionFacts>;
 export type S3Diagnosis = Diagnosis<S3Evidence, S3Finding, S3DiagnosisGoal>;
 
@@ -81,6 +101,7 @@ export function groupS3Observations(observations: readonly S3Observation[]): S3O
     inventory: find("s3-object-inventory"),
     bucketUsage: find("s3-bucket-usage"),
     providerHealth: find("s3-provider-health"),
+    driveCapacity: find("s3-drive-capacity"),
     capacity: find("s3-capacity"),
   };
 }

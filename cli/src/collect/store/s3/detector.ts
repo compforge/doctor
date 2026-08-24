@@ -81,6 +81,38 @@ export function detectS3Findings(evidence: S3Evidence): S3Finding[] {
       }));
     }
   }
+  if (observations.driveCapacity) {
+    const driveCapacity = observations.driveCapacity;
+    const inodeExhausted = driveCapacity.drives.filter(
+      (drive) => drive.freeInodes < driveCapacity.minimumFreeInodes,
+    );
+    const totalBytes = driveCapacity.drives.reduce((sum, drive) => sum + drive.totalBytes, 0);
+    const usedBytes = driveCapacity.drives.reduce((sum, drive) => sum + drive.usedBytes, 0);
+    const rawUsagePercent = totalBytes > 0 ? usedBytes / totalBytes * 100 : 0;
+    const byteThresholdReached = rawUsagePercent >= driveCapacity.maximumRawUsagePercent;
+    if (inodeExhausted.length || byteThresholdReached) {
+      const reasons = [
+        ...(inodeExhausted.length
+          ? [`${inodeExhausted.length}/${driveCapacity.drives.length} 块盘 free inode 低于 ${driveCapacity.minimumFreeInodes}`]
+          : []),
+        ...(byteThresholdReached
+          ? [`逐盘 raw 使用率合计 ${rawUsagePercent.toFixed(1)}%`]
+          : []),
+      ];
+      findings.push(finding({
+        id: "s3-minio-storage-full",
+        kind: "s3.minio-storage-full",
+        severity: "critical",
+        observationId: driveCapacity.id,
+        summary: `${driveCapacity.providerDisplayName} 已达到写入保护阈值：${reasons.join("；")}，写入可能返回 XMinioStorageFull。`,
+        detail: {
+          affectedDrives: inodeExhausted.map((drive) => drive.drive),
+          minimumFreeInodes: driveCapacity.minimumFreeInodes,
+          rawUsagePercent,
+        },
+      }));
+    }
+  }
   const inventory = observations.inventory;
   const versionedBuckets = inventory?.buckets
     .filter((bucket) => bucket.versioning === "enabled")
@@ -130,6 +162,7 @@ export function buildS3Coverage(evidence: S3Evidence): DiagnosisCoverage<S3Diagn
         }
       : coverage("object-inventory", false, "对象画像"),
     coverage("provider-health", !!observations.providerHealth, "provider health API", true),
+    coverage("drive-capacity", !!observations.driveCapacity, "provider drive capacity metrics", true),
     coverage("capacity", !!observations.capacity, "对象存储物理容量", true),
   ];
 }

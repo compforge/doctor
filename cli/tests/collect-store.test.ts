@@ -42,8 +42,10 @@ import {
   parseListObjectsV2Xml,
 } from "../src/infra/object-store";
 import {
+  getMinioDriveCapacity,
   getMinioBucketUsage,
   parseMinioBucketUsageMetrics,
+  parseMinioDriveCapacityMetrics,
   parseMinioTenantCapacity,
 } from "../src/infra/object-store/s3/minio";
 import {
@@ -213,6 +215,35 @@ describe("Store output", () => {
         rawFreeBytes: 47 * 1024 ** 3,
         rawUsagePercent: 94.125,
       },
+      driveCapacity: {
+        id: "s3-drive-capacity",
+        kind: "s3-drive-capacity",
+        providerId: "minio",
+        providerDisplayName: "MinIO",
+        metricsEndpoint: "/minio/v2/metrics/resource",
+        minimumFreeInodes: 1_000,
+        maximumRawUsagePercent: 99,
+        drives: [
+          {
+            drive: "http://minio-0/export0",
+            totalBytes: 100 * 1024 ** 3,
+            usedBytes: 76 * 1024 ** 3,
+            freeBytes: 24 * 1024 ** 3,
+            totalInodes: 6_553_600,
+            usedInodes: 6_553_600,
+            freeInodes: 0,
+          },
+          {
+            drive: "http://minio-1/export0",
+            totalBytes: 100 * 1024 ** 3,
+            usedBytes: 76 * 1024 ** 3,
+            freeBytes: 24 * 1024 ** 3,
+            totalInodes: 6_553_600,
+            usedInodes: 6_500_000,
+            freeInodes: 53_600,
+          },
+        ],
+      },
       inventory: {
         id: "s3-object-inventory",
         kind: "s3-object-inventory",
@@ -294,38 +325,42 @@ describe("Store output", () => {
       },
     });
 
-    expect(report.sections).toHaveLength(4);
+    expect(report.sections).toHaveLength(5);
     expect(report.sections[0]).toMatchObject({ title: "物理容量" });
     expect(report.sections[0]?.html).toContain("metric-fill-critical");
     expect(report.sections[0]?.html).toContain("剩余 47.00 GiB");
-    expect(report.sections[1]).toMatchObject({ title: "Bucket 容量分布" });
-    expect(report.sections[1]?.html).toContain("Bucket 对象占用占比");
-    expect(report.sections[1]?.html).toContain("与 Prefix 图使用同一次 ListObjectsV2 扫描");
-    expect(report.sections[1]?.html).toContain("25.00 GiB");
-    expect(report.sections[1]?.html).not.toContain("46.00 GiB");
-    expect(report.sections[1]?.html).not.toContain("MinIO Bucket Usage Metrics");
-    expect(report.sections[1]?.html).toContain("xai-test");
-    expect(report.sections[2]).toMatchObject({ title: "Prefix 容量分布" });
-    expect(report.sections[2]?.html).toContain("report-switcher-select");
-    expect(report.sections[2]?.html).toContain("Service 关注");
-    expect(report.sections[2]?.html).toContain("knowledge/&lt;unsafe&gt;");
-    expect(report.sections[2]?.html).not.toContain("knowledge/<unsafe>");
-    expect(report.sections[2]?.html).toContain("发现 24 个一级 Prefix");
-    expect(report.sections[2]?.html).toContain("其它一级 Prefix（22）");
-    expect(report.sections[2]?.html).toContain("13.00 GiB");
-    expect(report.sections[3]).toMatchObject({ title: "Prefix 下一级 Object 分布" });
-    expect(report.sections[3]?.html).toContain("report-cascade-parent-select");
-    expect(report.sections[3]?.html).toContain("report-cascade-child-select");
-    expect(report.sections[3]?.html).toContain("第二级 Prefix（Top 1）");
-    expect(report.sections[3]?.html).toContain("采样 Object Top 1");
-    expect(report.sections[3]?.html).toContain("采样 Object 年龄分布");
-    expect(report.sections[3]?.html).toContain("采样 Object 文件扩展名分布");
-    expect(report.sections[3]?.html).toContain("knowledge/&lt;unsafe&gt;/documents");
-    expect(report.sections[3]?.html).toContain(".zip");
-    expect(report.sections[3]?.html).toContain(".html");
-    expect(report.sections[3]?.html).toContain("最近修改 2026-08-01 08:30:00 UTC");
-    expect(report.sections[3]?.html).toContain("最近修改 2026-07-31 07:20:00 UTC");
-    expect(report.sections[3]?.html).toContain("87.5%");
+    expect(report.sections[1]).toMatchObject({ title: "逐盘写入容量" });
+    expect(report.sections[1]?.html).toContain("1/2 块盘低于 1000 free inode");
+    expect(report.sections[1]?.html).toContain("写入受阻");
+    expect(report.sections[1]?.html).toContain("http://minio-0/export0");
+    expect(report.sections[2]).toMatchObject({ title: "Bucket 容量分布" });
+    expect(report.sections[2]?.html).toContain("Bucket 对象占用占比");
+    expect(report.sections[2]?.html).toContain("与 Prefix 图使用同一次 ListObjectsV2 扫描");
+    expect(report.sections[2]?.html).toContain("25.00 GiB");
+    expect(report.sections[2]?.html).not.toContain("46.00 GiB");
+    expect(report.sections[2]?.html).not.toContain("MinIO Bucket Usage Metrics");
+    expect(report.sections[2]?.html).toContain("xai-test");
+    expect(report.sections[3]).toMatchObject({ title: "Prefix 容量分布" });
+    expect(report.sections[3]?.html).toContain("report-switcher-select");
+    expect(report.sections[3]?.html).toContain("Service 关注");
+    expect(report.sections[3]?.html).toContain("knowledge/&lt;unsafe&gt;");
+    expect(report.sections[3]?.html).not.toContain("knowledge/<unsafe>");
+    expect(report.sections[3]?.html).toContain("发现 24 个一级 Prefix");
+    expect(report.sections[3]?.html).toContain("其它一级 Prefix（22）");
+    expect(report.sections[3]?.html).toContain("13.00 GiB");
+    expect(report.sections[4]).toMatchObject({ title: "Prefix 下一级 Object 分布" });
+    expect(report.sections[4]?.html).toContain("report-cascade-parent-select");
+    expect(report.sections[4]?.html).toContain("report-cascade-child-select");
+    expect(report.sections[4]?.html).toContain("第二级 Prefix（Top 1）");
+    expect(report.sections[4]?.html).toContain("采样 Object Top 1");
+    expect(report.sections[4]?.html).toContain("采样 Object 年龄分布");
+    expect(report.sections[4]?.html).toContain("采样 Object 文件扩展名分布");
+    expect(report.sections[4]?.html).toContain("knowledge/&lt;unsafe&gt;/documents");
+    expect(report.sections[4]?.html).toContain(".zip");
+    expect(report.sections[4]?.html).toContain(".html");
+    expect(report.sections[4]?.html).toContain("最近修改 2026-08-01 08:30:00 UTC");
+    expect(report.sections[4]?.html).toContain("最近修改 2026-07-31 07:20:00 UTC");
+    expect(report.sections[4]?.html).toContain("87.5%");
 
     const root = mkdtempSync(join(tmpdir(), "doctor-s3-report-test-"));
     const bundle = new EvidenceBundle(root, []);
@@ -472,7 +507,7 @@ describe("MySQL basic diagnosis", () => {
 describe("Store capability runtime state", () => {
   test("S3 通过 Inspect Facts、Probe 和 Coverage 表达诊断链", () => {
     expect(makeS3Probes().map((probe) => probe.id)).toEqual([
-      "bucket-access", "provider-health", "bucket-usage", "object-inventory", "capacity",
+      "bucket-access", "provider-health", "bucket-usage", "drive-capacity", "object-inventory", "capacity",
     ]);
     const facts: S3InspectionFacts = {
       configuration: { status: "unavailable", reason: "not configured" },
@@ -484,6 +519,7 @@ describe("Store capability runtime state", () => {
       ["bucket-access", "insufficient"],
       ["object-inventory", "insufficient"],
       ["provider-health", "partial"],
+      ["drive-capacity", "partial"],
       ["capacity", "partial"],
     ]);
     expect(detectS3Findings(evidence)).toEqual([]);
@@ -511,6 +547,53 @@ describe("Store capability runtime state", () => {
       severity: "critical",
       kind: "s3.capacity-exhausted",
     });
+  });
+
+  test("MinIO 任一 Drive 低于 free inode 写入阈值时识别 XMinioStorageFull", () => {
+    const facts: S3InspectionFacts = {
+      configuration: { status: "unavailable", reason: "not needed" },
+      access: { status: "unavailable", reason: "not needed" },
+      provider: { status: "unavailable", reason: "not needed" },
+    };
+    const findings = detectS3Findings({
+      facts,
+      observations: [{
+        id: "s3-drive-capacity",
+        kind: "s3-drive-capacity",
+        providerId: "minio",
+        providerDisplayName: "MinIO",
+        metricsEndpoint: "/minio/v2/metrics/resource",
+        minimumFreeInodes: 1_000,
+        maximumRawUsagePercent: 99,
+        drives: [
+          {
+            drive: "http://minio-0/export0",
+            totalBytes: 100_000,
+            usedBytes: 75_000,
+            freeBytes: 25_000,
+            totalInodes: 10_000,
+            usedInodes: 10_000,
+            freeInodes: 0,
+          },
+          {
+            drive: "http://minio-1/export0",
+            totalBytes: 100_000,
+            usedBytes: 75_000,
+            freeBytes: 25_000,
+            totalInodes: 10_000,
+            usedInodes: 8_000,
+            freeInodes: 2_000,
+          },
+        ],
+      }],
+    });
+    expect(findings).toEqual([expect.objectContaining({
+      kind: "s3.minio-storage-full",
+      severity: "critical",
+      affectedDrives: ["http://minio-0/export0"],
+      minimumFreeInodes: 1_000,
+    })]);
+    expect(findings[0]?.summary).toContain("XMinioStorageFull");
   });
 
   test("ListObjectsV2 解析对象 metadata 与翻页 token", () => {
@@ -583,6 +666,52 @@ describe("Store capability runtime state", () => {
     }
   });
 
+  test("MinIO Resource Metrics 解析逐盘 byte/inode 并复用 Metrics 鉴权", async () => {
+    const metrics = `
+      minio_node_drive_total_bytes{drive="http://minio-0/export0",server="minio-0"} 107374182400
+      minio_node_drive_used_bytes{drive="http://minio-0/export0",server="minio-0"} 80530636800
+      minio_node_drive_total_inodes{drive="http://minio-0/export0",server="minio-0"} 6553600
+      minio_node_drive_used_inodes{drive="http://minio-0/export0",server="minio-0"} 6553600
+    `;
+    expect(parseMinioDriveCapacityMetrics(metrics)).toEqual([{
+      drive: "http://minio-0/export0",
+      server: "minio-0",
+      totalBytes: 107_374_182_400,
+      usedBytes: 80_530_636_800,
+      freeBytes: 26_843_545_600,
+      totalInodes: 6_553_600,
+      usedInodes: 6_553_600,
+      freeInodes: 0,
+    }]);
+
+    const originalFetch = globalThis.fetch;
+    const authorizations: Array<string | null> = [];
+    const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const authorization = new Headers(init?.headers).get("authorization");
+      authorizations.push(authorization);
+      return authorization
+        ? new Response(metrics)
+        : new Response("forbidden", { status: 403 });
+    };
+    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
+    try {
+      const capacity = await getMinioDriveCapacity({
+        endpoint: "http://minio.example.com",
+        credentials: { accessKey: "doctor-access", secretKey: "doctor-secret" },
+      });
+      expect(capacity).toMatchObject({
+        endpoint: "/minio/v2/metrics/resource",
+        minimumFreeInodes: 1_000,
+        maximumRawUsagePercent: 99,
+        drives: [{ freeInodes: 0 }],
+      });
+      expect(authorizations).toHaveLength(2);
+      expect(authorizations[1]).toStartWith("Bearer ");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("Provider Inspect 只启用已识别扩展，未知厂商保留通用 S3 能力", async () => {
     const originalFetch = globalThis.fetch;
     const fakeFetch = async (input: string | URL | Request): Promise<Response> => {
@@ -593,13 +722,13 @@ describe("Store capability runtime state", () => {
     try {
       await expect(inspectS3Provider({ endpoint: "http://minio.example.com" })).resolves.toMatchObject({
         providerId: "minio",
-        capabilities: { health: true, bucketUsage: true, physicalCapacity: true },
+        capabilities: { health: true, bucketUsage: true, driveCapacity: true, physicalCapacity: true },
       });
       await expect(inspectS3Provider({ endpoint: "https://s3-compatible.example.com" })).resolves.toEqual({
         providerId: "generic-s3",
         displayName: "S3 Compatible",
         detection: "s3-api",
-        capabilities: { health: false, bucketUsage: false, physicalCapacity: false },
+        capabilities: { health: false, bucketUsage: false, driveCapacity: false, physicalCapacity: false },
       });
     } finally {
       globalThis.fetch = originalFetch;
