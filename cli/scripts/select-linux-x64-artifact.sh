@@ -46,7 +46,7 @@ fi
 
 # 只有明确满足 Bun 的推荐内核和当前构建的 glibc 基线才发 modern；无法证明时回退到兼容版。
 if version_ge "$kernel" "5.6" && version_ge "$glibc" "2.25"; then
-  echo "doctor-$version-linux-x64-kernel-5.6-glibc-2.25"
+  echo "doctor-$version-debian-x64-kernel-5.6-glibc-2.25"
 else
-  echo "doctor-$version-linux-x64-kernel-3.10-glibc-2.17"
+  echo "doctor-$version-debian-x64-kernel-3.10-glibc-2.17"
 fi
