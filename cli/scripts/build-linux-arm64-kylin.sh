@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUTPUT="${1:-$ROOT_DIR/dist/doctor-kylin-arm64}"
+OUTPUT="${1:-$ROOT_DIR/dist/doctor-kylin-arm64-kernel-4.19-glibc-2.28}"
 DOCTOR_ENTRY="${DOCTOR_ENTRY:-$ROOT_DIR/src/app/entry.ts}"
 WORK_DIR="$ROOT_DIR/dist/.linux-arm64-kylin"
 NODE_VERSION="22.23.1"

@@ -50,22 +50,22 @@ build-linux: build-linux-x64 build-linux-arm64
 build-linux-x64: build-linux-x64-modern build-linux-x64-legacy
 
 build-linux-x64-modern: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-x64-baseline --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-linux-x64-kernel-5.6-glibc-2.25
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-x64-baseline --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-5.6-glibc-2.25
 
 build-linux-x64-legacy: prepare-dist
-	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-x64-legacy.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-linux-x64-kernel-3.10-glibc-2.17
+	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-x64-legacy.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-3.10-glibc-2.17
 
 build-linux-arm64: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-linux-arm64-kernel-5.6-glibc-2.25
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-5.6-glibc-2.25
 
 # 银河麒麟 V10（kernel 4.19 / glibc 2.28）直接交付产物。
 build-kylin: build-kylin-arm64 build-kylin-x86-64
 
 build-kylin-arm64: prepare-dist
-	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-arm64-kylin.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-arm64
+	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-arm64-kylin.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-arm64-kernel-4.19-glibc-2.28
 
 build-kylin-x86-64: prepare-dist
-	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-x64-legacy.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-x86-64
+	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-x64-legacy.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-x86-64-kernel-4.19-glibc-2.28
 
 test:
 	bun test $(TEST_FILES)
