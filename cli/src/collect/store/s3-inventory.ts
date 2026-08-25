@@ -16,6 +16,10 @@ interface AggregateRow {
   bytes: number;
 }
 
+export interface S3PrefixAggregateUsage extends AggregateRow {
+  prefix: string;
+}
+
 interface PrefixRow extends AggregateRow {
   latestLastModified?: Date;
 }
@@ -55,6 +59,8 @@ export interface S3InventorySummary {
   discoveredFirstLevelPrefixes: number;
   firstLevelPrefixes: S3PrefixUsage[];
   otherFirstLevelPrefixes?: AggregateRow & { prefixes: number };
+  firstLevelPrefixesByObjects: S3PrefixAggregateUsage[];
+  otherFirstLevelPrefixesByObjects?: AggregateRow & { prefixes: number };
   topObjects: S3ObjectUsage[];
   stoppedReason?: "object-limit" | "time-limit";
   note: string;
@@ -220,6 +226,15 @@ export function summarizeS3Objects(input: {
   const omittedFirstLevelPrefixes = prefixMode === "top-n"
     ? firstLevelPrefixes.slice(S3_PREFIX_TOP_N)
     : [];
+  const firstLevelPrefixesByObjects = firstLevelPrefixes
+    .map(({ prefix, objects, bytes }) => ({ prefix, objects, bytes }))
+    .sort((left, right) => right.objects - left.objects || right.bytes - left.bytes);
+  const selectedFirstLevelPrefixesByObjects = prefixMode === "top-n"
+    ? firstLevelPrefixesByObjects.slice(0, S3_PREFIX_TOP_N)
+    : firstLevelPrefixesByObjects;
+  const omittedFirstLevelPrefixesByObjects = prefixMode === "top-n"
+    ? firstLevelPrefixesByObjects.slice(S3_PREFIX_TOP_N)
+    : [];
   return {
     status: input.complete ? "complete" : "partial",
     scopePrefix,
@@ -240,14 +255,22 @@ export function summarizeS3Objects(input: {
           bytes: omittedFirstLevelPrefixes.reduce((sum, row) => sum + row.bytes, 0),
         }
       : undefined,
+    firstLevelPrefixesByObjects: selectedFirstLevelPrefixesByObjects,
+    otherFirstLevelPrefixesByObjects: omittedFirstLevelPrefixesByObjects.length
+      ? {
+          prefixes: omittedFirstLevelPrefixesByObjects.length,
+          objects: omittedFirstLevelPrefixesByObjects.reduce((sum, row) => sum + row.objects, 0),
+          bytes: omittedFirstLevelPrefixesByObjects.reduce((sum, row) => sum + row.bytes, 0),
+        }
+      : undefined,
     topObjects: topObjects(input.objects),
     stoppedReason: input.stoppedReason,
     note: input.complete
       ? prefixMode === "top-n"
-        ? `已完整扫描当前 scope；报告仅展示容量 Top ${S3_PREFIX_TOP_N} 一级 Prefix`
+        ? `已完整扫描当前 scope；报告分别展示容量和 Object 数量 Top ${S3_PREFIX_TOP_N} 一级 Prefix`
         : "统计覆盖当前 scope 下 ListObjectsV2 返回的全部当前对象版本"
       : prefixMode === "top-n"
-        ? `一级 Prefix 超过 ${FIRST_LEVEL_PREFIX_FULL_SCAN_THRESHOLD} 个；结果按 Prefix 公平采样并展示样本容量 Top ${S3_PREFIX_TOP_N}`
+        ? `一级 Prefix 超过 ${FIRST_LEVEL_PREFIX_FULL_SCAN_THRESHOLD} 个；结果按 Prefix 公平采样并分别展示样本容量和 Object 数量 Top ${S3_PREFIX_TOP_N}`
         : "扫描受对象数或时间预算限制；结果只代表已扫描对象",
   };
 }

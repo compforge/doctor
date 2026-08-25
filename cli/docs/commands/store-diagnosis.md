@@ -112,14 +112,17 @@ Metrics 等更不属于通用 S3 数据面。Inspect 因此把 Provider 身份�
 点名的 bucket 和 prefix；`--s3-prefix` 用于显式限定所有 bucket 的扫描范围。
 
 Doctor 先用 delimiter 发现 bucket 下的一级 Prefix。Prefix 数量未超过内置阈值时，在总预算内逐个完整
-翻页；数量较多时，为每个一级 Prefix 分配公平样本，再按样本逻辑容量展示 Top-N。每个入选 Prefix
-继续聚合第二级 Prefix、Top Object、对象年龄和扩展名分布。只有完整翻页到结尾时，容量占比才是确定
-结论；采样或预算耗尽时结果标记为 partial，并明确说明容量与占比只代表样本。大桶长期治理优先消费
-平台已有的 S3 Inventory；它是离线清单，不把同步 List 请求压力施加到在线 bucket。
+翻页；数量较多时，为每个一级 Prefix 分配公平样本，再分别按样本逻辑容量和 Object 数量展示 Top-N。
+两种 Top-N 独立排序，避免小文件密集但容量较低的 Prefix 被容量排名隐藏。容量与文件数复用同一次对象
+扫描，不增加 S3 请求。每个容量 Top-N 入选 Prefix 继续聚合第二级 Prefix、Top Object、对象年龄和扩展名
+分布。只有完整翻页到结尾时，占比才是确定结论；采样或预算耗尽时结果标记为 partial，并明确说明容量
+与文件数只代表样本。大桶长期治理优先消费平台已有的 S3 Inventory；它是离线清单，不把同步 List 请求
+压力施加到在线 bucket。
 
-S3 HTML 按诊断摘要、物理容量、Bucket 容量、一级 Prefix 容量、Prefix 下一级 Object、Inspect Facts 和
-采集步骤组织；Bucket 与一级 Prefix 采用联动选择，并共用同一次对象扫描口径，避免把 Provider 的异步
-Usage Metrics 与当前 Prefix 样本混在同一张图中。Provider Metrics 仍作为证据和扫描排序参考。
+S3 HTML 按诊断摘要、物理容量、Bucket 容量、一级 Prefix 容量与 Object 数量、Prefix 下一级 Object、
+Inspect Facts 和采集步骤组织；Bucket 与一级 Prefix 采用联动选择，并共用同一次对象扫描口径，避免把
+Provider 的异步 Usage Metrics 与当前 Prefix 样本混在同一张图中。Provider Metrics 仍作为证据和扫描
+排序参考。
 
 LastModified 表示对象创建或最近一次修改时间，不保证等于业务首次写入时间。`ListObjectsV2` 只覆盖当前
 对象版本，也不含未完成 multipart upload；若 bucket 开启 versioning，删除当前对象可能只新增 delete
