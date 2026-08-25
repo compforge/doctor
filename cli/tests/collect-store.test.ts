@@ -319,6 +319,15 @@ describe("Store output", () => {
             objects: 18_000,
             bytes: 13 * 1024 ** 3,
           },
+          firstLevelPrefixesByObjects: [
+            { prefix: "knowledge/<unsafe>", objects: 10_000, bytes: 8 * 1024 ** 3 },
+            { prefix: "knowledge/b", objects: 5_000, bytes: 4 * 1024 ** 3 },
+          ],
+          otherFirstLevelPrefixesByObjects: {
+            prefixes: 22,
+            objects: 18_000,
+            bytes: 13 * 1024 ** 3,
+          },
           note: "partial",
           versioning: "disabled",
         }],
@@ -340,12 +349,15 @@ describe("Store output", () => {
     expect(report.sections[2]?.html).not.toContain("46.00 GiB");
     expect(report.sections[2]?.html).not.toContain("MinIO Bucket Usage Metrics");
     expect(report.sections[2]?.html).toContain("xai-test");
-    expect(report.sections[3]).toMatchObject({ title: "Prefix 容量分布" });
+    expect(report.sections[3]).toMatchObject({ title: "Prefix 容量与文件数分布" });
     expect(report.sections[3]?.html).toContain("report-switcher-select");
     expect(report.sections[3]?.html).toContain("Service 关注");
     expect(report.sections[3]?.html).toContain("knowledge/&lt;unsafe&gt;");
     expect(report.sections[3]?.html).not.toContain("knowledge/<unsafe>");
     expect(report.sections[3]?.html).toContain("发现 24 个一级 Prefix");
+    expect(report.sections[3]?.html).toContain("一级 Prefix Object 数量占比");
+    expect(report.sections[3]?.html).toContain("公平采样 · Object 数量 Top 2");
+    expect(report.sections[3]?.html).toContain("10,000 objects");
     expect(report.sections[3]?.html).toContain("其它一级 Prefix（22）");
     expect(report.sections[3]?.html).toContain("13.00 GiB");
     expect(report.sections[4]).toMatchObject({ title: "Prefix 下一级 Object 分布" });
@@ -386,8 +398,8 @@ describe("Store output", () => {
     expect(html).toContain("bar-chart-fill");
     expect(html.indexOf("诊断摘要")).toBeLessThan(html.indexOf("物理容量"));
     expect(html.indexOf("物理容量")).toBeLessThan(html.indexOf("Bucket 容量分布"));
-    expect(html.indexOf("Bucket 容量分布")).toBeLessThan(html.indexOf("Prefix 容量分布"));
-    expect(html.indexOf("Prefix 容量分布")).toBeLessThan(html.indexOf("Prefix 下一级 Object 分布"));
+    expect(html.indexOf("Bucket 容量分布")).toBeLessThan(html.indexOf("Prefix 容量与文件数分布"));
+    expect(html.indexOf("Prefix 容量与文件数分布")).toBeLessThan(html.indexOf("Prefix 下一级 Object 分布"));
     expect(html.indexOf("Prefix 下一级 Object 分布")).toBeLessThan(html.indexOf("Inspect Facts"));
     expect(html.indexOf("Inspect Facts")).toBeLessThan(html.indexOf("采集步骤"));
     expect(html).not.toContain("report-inspector");
@@ -883,12 +895,47 @@ describe("Store capability runtime state", () => {
       ]);
       expect(inventory.firstLevelPrefixes.every((row) => row.status === "sampled")).toBe(true);
       expect(inventory.otherFirstLevelPrefixes).toEqual({ prefixes: 11, objects: 11, bytes: 66 });
+      expect(inventory.firstLevelPrefixesByObjects.map((row) => row.prefix)).toEqual([
+        "prefix-20", "prefix-19", "prefix-18", "prefix-17", "prefix-16",
+        "prefix-15", "prefix-14", "prefix-13", "prefix-12", "prefix-11",
+      ]);
+      expect(inventory.otherFirstLevelPrefixesByObjects).toEqual({ prefixes: 11, objects: 11, bytes: 66 });
       expect(inventory.firstLevelPrefixes[0]?.extensionDistribution).toEqual([
         { extension: ".zip", objects: 1, bytes: 21 },
       ]);
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  test("一级 Prefix 文件数 Top 10 独立于容量 Top 10", () => {
+    const lastModified = new Date("2026-08-01T00:00:00.000Z");
+    const inventory = summarizeS3Objects({
+      now: new Date("2026-08-03T00:00:00.000Z"),
+      complete: false,
+      pages: 1,
+      prefixMode: "top-n",
+      discoveredFirstLevelPrefixes: 21,
+      objects: [
+        ...Array.from({ length: 20 }, (_, index) => ({
+          key: `large-${index.toString().padStart(2, "0")}/object.bin`,
+          size: 1_000 + index,
+          lastModified,
+        })),
+        ...Array.from({ length: 11 }, (_, index) => ({
+          key: `many-small/object-${index}.bin`,
+          size: 1,
+          lastModified,
+        })),
+      ],
+    });
+
+    expect(inventory.firstLevelPrefixes.map((row) => row.prefix)).not.toContain("many-small");
+    expect(inventory.firstLevelPrefixesByObjects[0]).toEqual({
+      prefix: "many-small",
+      objects: 11,
+      bytes: 11,
+    });
   });
 
   test("Bucket 根目录 Object 归入统一的 bucket-root 分组", () => {

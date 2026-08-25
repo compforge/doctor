@@ -32,10 +32,16 @@ function focusDescription(bucket: S3BucketInventory): string {
     : "";
 }
 
-function prefixDistributionDescription(bucket: S3BucketInventory): string {
+function prefixDistributionDescription(
+  bucket: S3BucketInventory,
+  ranking: "capacity" | "objects",
+): string {
   const scope = bucket.scopePrefix || "(whole bucket)";
   if (bucket.prefixMode === "top-n") {
-    return `scope=${scope} · 发现 ${bucket.discoveredFirstLevelPrefixes} 个一级 Prefix · 公平采样容量 Top ${bucket.firstLevelPrefixes.length}`;
+    const rows = ranking === "capacity"
+      ? bucket.firstLevelPrefixes
+      : bucket.firstLevelPrefixesByObjects;
+    return `scope=${scope} · 发现 ${bucket.discoveredFirstLevelPrefixes} 个一级 Prefix · 公平采样 · ${ranking === "capacity" ? "容量" : "Object 数量"} Top ${rows.length}`;
   }
   return `scope=${scope} · ${bucket.status === "complete" ? "完整扫描" : "部分扫描"} ${bucket.discoveredFirstLevelPrefixes} 个一级 Prefix`;
 }
@@ -180,28 +186,48 @@ export function buildS3HtmlReport(observations: S3Observations): {
     `<option value="${index}">${escapeHtml(bucket.bucket)}${bucket.serviceFocus ? "（Service 关注）" : ""}</option>`
   ).join("") ?? "";
   const prefixDistributionPanels = inventory?.buckets.map((bucket, index) =>
-    `<div class="report-switcher-panel" data-switcher-value="${index}"${index === 0 ? "" : " hidden"}>${focusDescription(bucket)}${htmlPieCharts([{
-      title: `${bucket.bucket} 一级 Prefix 容量占比`,
-      description: prefixDistributionDescription(bucket),
-      slices: [
-        ...bucket.firstLevelPrefixes.map((prefix) => ({
-          label: prefix.prefix,
-          value: prefix.bytes,
-          valueLabel: `${formatBytes(prefix.bytes)} · ${prefix.objects} objects`,
-        })),
-        ...(bucket.otherFirstLevelPrefixes
-          ? [{
-              label: `其它一级 Prefix（${bucket.otherFirstLevelPrefixes.prefixes}）`,
-              value: bucket.otherFirstLevelPrefixes.bytes,
-              valueLabel: `${formatBytes(bucket.otherFirstLevelPrefixes.bytes)} · ${bucket.otherFirstLevelPrefixes.objects} objects`,
-            }]
-          : []),
-      ],
-    }])}<p class="muted">${escapeHtml(bucket.note)}</p></div>`
+    `<div class="report-switcher-panel" data-switcher-value="${index}"${index === 0 ? "" : " hidden"}>${focusDescription(bucket)}${htmlPieCharts([
+      {
+        title: `${bucket.bucket} 一级 Prefix 容量占比`,
+        description: prefixDistributionDescription(bucket, "capacity"),
+        slices: [
+          ...bucket.firstLevelPrefixes.map((prefix) => ({
+            label: prefix.prefix,
+            value: prefix.bytes,
+            valueLabel: `${formatBytes(prefix.bytes)} · ${prefix.objects.toLocaleString("en-US")} objects`,
+          })),
+          ...(bucket.otherFirstLevelPrefixes
+            ? [{
+                label: `其它一级 Prefix（${bucket.otherFirstLevelPrefixes.prefixes}）`,
+                value: bucket.otherFirstLevelPrefixes.bytes,
+                valueLabel: `${formatBytes(bucket.otherFirstLevelPrefixes.bytes)} · ${bucket.otherFirstLevelPrefixes.objects.toLocaleString("en-US")} objects`,
+              }]
+            : []),
+        ],
+      },
+      {
+        title: `${bucket.bucket} 一级 Prefix Object 数量占比`,
+        description: prefixDistributionDescription(bucket, "objects"),
+        slices: [
+          ...bucket.firstLevelPrefixesByObjects.map((prefix) => ({
+            label: prefix.prefix,
+            value: prefix.objects,
+            valueLabel: `${prefix.objects.toLocaleString("en-US")} objects · ${formatBytes(prefix.bytes)}`,
+          })),
+          ...(bucket.otherFirstLevelPrefixesByObjects
+            ? [{
+                label: `其它一级 Prefix（${bucket.otherFirstLevelPrefixesByObjects.prefixes}）`,
+                value: bucket.otherFirstLevelPrefixesByObjects.objects,
+                valueLabel: `${bucket.otherFirstLevelPrefixesByObjects.objects.toLocaleString("en-US")} objects · ${formatBytes(bucket.otherFirstLevelPrefixesByObjects.bytes)}`,
+              }]
+            : []),
+        ],
+      },
+    ])}<p class="muted">${escapeHtml(bucket.note)}</p></div>`
   ).join("") ?? "";
   const prefixDistributionHtml = inventory?.buckets.length
     ? `<div class="report-switcher"><label>Bucket <select class="report-switcher-select" aria-label="选择 S3 Bucket">${bucketOptions}</select></label>${prefixDistributionPanels}</div>`
-    : `<p class="muted">未取得一级 Prefix 容量数据。</p>`;
+    : `<p class="muted">未取得一级 Prefix 容量与 Object 数量数据。</p>`;
 
   const detailBuckets = inventory?.buckets
     .map((bucket, bucketIndex) => ({ bucket, bucketIndex }))
@@ -233,7 +259,7 @@ export function buildS3HtmlReport(observations: S3Observations): {
       { title: "物理容量", html: physicalCapacityHtml },
       { title: "逐盘写入容量", html: driveCapacityHtml },
       { title: "Bucket 容量分布", html: bucketCapacityHtml },
-      { title: "Prefix 容量分布", html: prefixDistributionHtml },
+      { title: "Prefix 容量与文件数分布", html: prefixDistributionHtml },
       { title: "Prefix 下一级 Object 分布", html: prefixDetailHtml },
     ],
   };
@@ -262,7 +288,7 @@ export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, ob
   const inventoryLines = inventory
     ? [
         `- Bucket Prefix 画像: **${inventory.scannedBuckets}/${inventory.discoveredBuckets}**`,
-        ...inventory.buckets.map((row) => `  - \`${row.bucket}\`${row.serviceFocus ? "（Service 关注）" : ""}: **${row.status === "complete" ? "完整" : "部分"}**，scope=\`${row.scopePrefix || "(whole bucket)"}\`，${row.objects} objects / ${formatBytes(row.bytes)}；一级 Prefix ${row.prefixMode === "top-n" ? `采样 Top ${row.firstLevelPrefixes.length}/${row.discoveredFirstLevelPrefixes}` : `${row.firstLevelPrefixes.length}`}：${row.firstLevelPrefixes.slice(0, 3).map((prefix) => `\`${prefix.prefix}\` ${formatBytes(prefix.bytes)}`).join("、") || "n/a"}`),
+        ...inventory.buckets.map((row) => `  - \`${row.bucket}\`${row.serviceFocus ? "（Service 关注）" : ""}: **${row.status === "complete" ? "完整" : "部分"}**，scope=\`${row.scopePrefix || "(whole bucket)"}\`，${row.objects} objects / ${formatBytes(row.bytes)}；一级 Prefix 容量 ${row.prefixMode === "top-n" ? `采样 Top ${row.firstLevelPrefixes.length}/${row.discoveredFirstLevelPrefixes}` : `${row.firstLevelPrefixes.length}`}：${row.firstLevelPrefixes.slice(0, 3).map((prefix) => `\`${prefix.prefix}\` ${formatBytes(prefix.bytes)}`).join("、") || "n/a"}；Object 数量 Top ${Math.min(3, row.firstLevelPrefixesByObjects.length)}：${row.firstLevelPrefixesByObjects.slice(0, 3).map((prefix) => `\`${prefix.prefix}\` ${prefix.objects.toLocaleString("en-US")}`).join("、") || "n/a"}`),
         ...(inventory.buckets.some((row) => row.status === "partial") ? ["- 注意: 部分画像只代表已扫描或采样对象，不能外推为全桶分布。"] : []),
       ]
     : ["- Prefix 画像: **失败或未取得**"];
