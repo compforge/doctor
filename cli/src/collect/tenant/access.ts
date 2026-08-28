@@ -11,7 +11,7 @@ import {
 } from "../../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
-import { normalizeServiceInspectFacts } from "../../plugin/inspect";
+import { normalizeServiceInspectResult } from "../../plugin/inspect";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
@@ -105,17 +105,15 @@ export async function openTenantAccess(input: {
             authorization,
           });
           try {
-            const facts = normalizeServiceInspectFacts({
-              value: await capability.query(context, { identity, results: new Map() }),
+            const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
+            const result = normalizeServiceInspectResult({
+              value: await capability.query(context, { identity, results: new Map(), budget }),
               service: service.name,
               queryIdentity: identity,
               capability,
+              budget,
             });
-            return facts.map((fact) => ({
-              kind: "data" as const,
-              fact,
-              summary: capability.summarize(fact),
-            }));
+            return [{ kind: "data" as const, result }];
           } finally {
             await context.dispose();
           }

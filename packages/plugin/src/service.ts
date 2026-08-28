@@ -4,8 +4,8 @@ import type {
   Fact,
   Identity,
   InspectCapability,
+  InspectQueryResult,
   Query,
-  Relation,
 } from "./capability";
 import type {
   ModelCatalog,
@@ -193,23 +193,30 @@ export interface ServicePerfCapability {
   scenarios: readonly ServicePerfScenario[];
 }
 
-/** One independently consumable domain Fact returned by a Service Inspect Capability. */
-export interface ServiceInspectFact extends Fact {
-  service: string;
-  resolution: {
-    inputId: string;
-    resolvedAs: string;
-  };
-  /** Relations proven while collecting this Fact. Commands own any follow-up scheduling. */
-  relations?: readonly Relation[];
-  /** Optional sources that could not contribute to an otherwise collected Fact. */
-  missingEvidence?: readonly string[];
+export interface ServiceInspectResolution {
+  inputId: string;
+  resolvedAs: string;
+  /** Presentation-only identifiers. Query expansion consumes RelationFacts. */
+  identifiers: Readonly<Record<string, string | undefined>>;
 }
 
-export interface ServiceInspectSummary {
-  resolvedAs: string;
-  /** Presentation-only identifiers. Query expansion consumes ServiceInspectFact.relations. */
-  identifiers: Readonly<Record<string, string | undefined>>;
+export interface ServiceInspectTruncation {
+  reason: string;
+  omittedFacts?: number;
+}
+
+/** Query-level outcome; acquisition state is not disguised as a domain Fact. */
+export interface ServiceInspectResult<F extends Fact = Fact> extends InspectQueryResult<F> {
+  resolution: ServiceInspectResolution;
+  /** Optional sources that could not contribute to this otherwise collected result. */
+  missingEvidence?: readonly string[];
+  /** Explicitly records provider-side or Core-side capacity truncation. */
+  truncated?: ServiceInspectTruncation;
+}
+
+export interface ServiceInspectBudget {
+  maxFacts: number;
+  maxBytes: number;
 }
 
 export interface ServiceInspectFinding {
@@ -222,7 +229,8 @@ export interface ServiceInspectFinding {
 }
 
 export interface ServiceInspectQuery extends Query<Identity> {
-  results: ReadonlyMap<string, readonly ServiceInspectFact[]>;
+  budget: ServiceInspectBudget;
+  results: ReadonlyMap<string, readonly ServiceInspectResult[]>;
 }
 
 /** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
@@ -236,10 +244,10 @@ export interface ServiceInspectTarget {
 export type ServiceInspectQueryHandler = (
   context: PluginContext,
   query: ServiceInspectQuery,
-) => Promise<readonly ServiceInspectFact[]>;
+) => Promise<ServiceInspectResult>;
 
 export interface ServiceInspectCapability
-  extends InspectCapability<ServiceInspectQuery, ServiceInspectFact> {
+  extends InspectCapability<ServiceInspectQuery, Fact> {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
@@ -250,9 +258,8 @@ export interface ServiceInspectCapability
   store?: string;
   resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
   query: ServiceInspectQueryHandler;
-  summarize(fact: ServiceInspectFact): ServiceInspectSummary;
-  /** Pure domain rule adapted by doctor data into an Evidence detector. */
-  detect(fact: ServiceInspectFact): ServiceInspectFinding[];
+  /** Pure query-level domain rule adapted by doctor data into an Evidence detector. */
+  detect(result: ServiceInspectResult): ServiceInspectFinding[];
 }
 
 export interface ServiceTraceIdInput {

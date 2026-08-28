@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
+import { DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { openModelAccess } from "../src/model";
 
 const manifest: PluginManifest = {
   manifestVersion: 1,
-  pluginApiVersion: 3,
+  pluginApiVersion: DOCTOR_PLUGIN_API_VERSION,
   id: "test",
   version: "0.0.1",
   requiresDoctor: ">=0.1.0",
@@ -20,7 +21,6 @@ test("Plugin Inspect Capability 必须提供 query", () => {
     accepts: ["biz_id"],
     provides: ["record"],
     resolveTarget: async () => ({}),
-    summarize: () => ({ resolvedAs: "record", identifiers: {} }),
     detect: () => [],
   };
   const definition = (inspect: Record<string, unknown>) => ({

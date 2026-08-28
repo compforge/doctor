@@ -39,8 +39,10 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
    在执行前展示位置、对象、真实动作和影响。
 2. **Provision 与 Collect 按结果分离**：Provision 的结果是外部状态变化或能力准备；Collect 的结果是
    Evidence，不能演变成隐藏式发布、环境创建或工具安装。
-3. **Collect 单向且可复查**：Inspect 形成 Facts，Probe 产生 Observations，再进入 Detector/Coverage 和
-   Render；Detector/Render 不访问外部资源。
+3. **Collect 单向且可复查**：Inspect 形成可被后续 Probe 复用的 Facts，Probe 产生时间点或时间窗口内的
+   Observations，再进入 Detector/Coverage 和 Render；Detector/Render 不访问外部资源。Inspect 的获取状态
+   归 query-level result，领域信息按形态使用单值 `ValueFact`、带稳定 key 的可重复 `RecordFact` 或
+   Identity 关系 `RelationFact`；Core 不解释 value/record 内部结构，并独占遍历、预算与 Evidence 编排。
 4. **分层不穿透**：业务目标与私有语义归外部 Plugin，标准基础设施采集与分析归 CLI Core，公共契约归
    `packages/plugin`；命令必须先完成配置、capability、环境和实际 access 准备，再进入领域工作，具体 Plugin
    不能反向依赖 CLI。

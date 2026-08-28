@@ -31,20 +31,25 @@ CLI kernel 定义 Provision、Collect、Eval、Perf 和 Chat 五条并列主路�
 提供单元：它把私有协议、数据位置与业务语义补充到 Core 的同一条诊断流程；Core 提供通用基础设施实现、
 调度、安全边界和交付。Command 是诊断视角与执行编排单元，不拥有业务数据源。
 
-Inspect Capability 描述“业务侧能读到什么”，由 Command 的 Inspect 调度节点经 Query 调用，返回一个或
-多个独立领域 Fact，但不拥有遍历和 Evidence。Relation 是一种 Fact，表达两个 Identity 之间已经由
-现场数据证明的关系。例如同一模型目录可以被 Tenant、Model 与 Chat 消费，同一业务关联也可以被 Data、
-Trace、Log 或 Perf 消费。
+Inspect Capability 描述“业务侧能读到什么”，由 Command 的 Inspect 调度节点经 Query 调用，返回一个
+query-level result 及其中零到多个领域 Fact，但不拥有遍历和 Evidence。Fact 表示在本次诊断过程中足够稳定、
+可被后续步骤复用的信息；它不是永恒真理。Probe 可以消费 Inspect 已取得的 Fact，再针对确定目标采集
+Observation。Observation 只陈述某个探测时间点或时间窗口看到的状态，不默认可代表之后的现场。
+
+Fact 有三种形态：`ValueFact` 表达一个 kind 至多一个的领域值；`RecordFact` 表达同 kind 可重复、带稳定
+`recordKey` 的独立记录，记录内部结构对 Core 不透明；`RelationFact` 表达两个 Identity 之间已经由现场
+数据证明的关系。三者都使用 `Fact` 后缀，因为相对 Observation 的稳定性是共同语义，形态只是消费方式。
+例如同一模型目录可以被 Tenant、Model 与 Chat 消费，同一业务关联也可以被 Data、Trace、Log 或 Perf 消费。
 
 ```text
 Command(Config)
   → Query(Identity + Constraints)
   → Inspect Capability
-  → Fact（含 Relation）
+  → InspectQueryResult（ValueFact / RecordFact / RelationFact）
   → Evidence
 ```
 
-Relation 的目标 Identity 可以形成后续 Query，但只有 Command 能决定是否继续、选择哪些 capability，
+RelationFact 的目标 Identity 可以形成后续 Query，但只有 Command 能决定是否继续、选择哪些 capability，
 以及查询深度、数量、去重、失败隔离和停止条件。Plugin 负责 Identity、Fact 与 Relation 的业务语义和
 固定查询；Core 负责 Query 调度、access 生命周期和 Evidence 组织。Capability 的 summary、table 或其它
 展示投影不得反向参与 Query 调度。
@@ -72,11 +77,11 @@ Command(Config)
 | Config | flags/profile/交互输入形成的用户意图，不进入 Facts |
 | Query | Command 为一次 capability 调用形成的只读查询；由类型化 Identity 和 capability-specific Constraints 组成 |
 | Identity | Query 的类型化诊断对象标识；kind 与 value 的语义由提供它的领域拥有 |
-| Inspect Capability / Facts | Service Capability 响应 Query 取得的一个或多个独立领域事实 |
-| Inspect / Facts | Command 行动前取得的只读现场快照；每个子 Fact 显式标记取得状态 |
-| Relation | 一种 Fact，表示 Capability 从现场数据中确认的 Identity 关系；它本身不拥有后续调度权 |
+| Inspect Capability / Facts | Service Capability 响应 Query 取得的可复用信息；query-level result 独立表达解析、缺失证据与截断状态 |
+| Inspect / Facts | 在本次诊断内足够稳定的只读快照，可被后续 Probe 使用；不是跨时间永远成立的真理 |
+| ValueFact / RecordFact / RelationFact | 分别表达单值、带稳定 key 的重复记录和 Identity 关系；RelationFact 本身不拥有后续调度权 |
 | Probe Capability | Service 提供的 `Input → Observation` 业务执行原语，不拥有调度与授权 |
-| Probe / Observation | Command 内的一次受限采集调度，以及它产生的结构化数据 |
+| Probe / Observation | Command 内的一次受限采集调度，以及它在该时间点或时间窗口产生的结构化数据 |
 | Evidence | 交给 detector 的 Observations 与领域显式挑选的 Facts |
 | Finding / Coverage | 基于证据的确定性判断，以及诊断目标的证据充分度 |
 | Operation | 需要授权的副作用描述，本身不执行动作 |

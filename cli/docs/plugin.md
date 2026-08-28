@@ -54,12 +54,14 @@ Plugin 扩展点或生命周期：
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
 Core 与 Plugin 使用同一套 Capability 词汇；Plugin Service 只是业务 Capability 的归属与提供单元，不形成
-第二条扩展流程。Inspect Capability 遵循 `Query → Capability → Fact`：Query 由类型化 Identity 与该
-capability 的约束组成；Relation 是一种 Fact，表示 Plugin 已从现场数据确认的 Identity 关系。
-一次 Query 可以返回多个同 kind 的 Fact；kind 只声明数据类别，不承担记录唯一标识，单条 Fact 的内部结构
-仍由 Plugin 拥有。这样列表型业务数据可以逐条进入 Evidence，由 Command 统一分页、检索和展示。
+第二条扩展流程。Inspect Capability 遵循 `Query → Capability → InspectQueryResult`：Query 由类型化 Identity
+与该 capability 的约束组成；result 以 `resolution`、`missingEvidence`、`truncated` 表达一次获取的状态，
+不把状态伪装成领域 Fact。`facts` 有三种形态：同 kind 至多一个的 `ValueFact`、用稳定 `recordKey` 区分的
+可重复 `RecordFact`，以及表示现场已确认 Identity 关系的 `RelationFact`。Fact 在本次诊断过程中足够稳定，
+可作为后续 Probe 输入；Observation 只代表具体探测时间点或时间窗口。Record 内部结构仍由 Plugin 拥有，
+列表型业务数据因此可以逐条进入 Evidence，由 Command 统一分页、检索和展示。
 Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
-查询边界以及如何组织 Evidence 始终由 Core Command 拥有。summary/table 等展示投影不能参与 Query 调度。
+查询边界以及如何组织 Evidence 始终由 Core Command 拥有。resolution 的展示 identifier 不能参与 Query 调度。
 
 Probe Capability 遵循 `Input → Capability → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
 runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
@@ -88,8 +90,8 @@ Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 m
 
 Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
 `tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Inspect Capability；
-返回的 Model 或每个 `ServiceInspectFact` 作为独立 Fact 进入 Tenant Evidence。相同 Capability 仍可被其它 Command
-复用，Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
+返回的 Model 或 `ServiceInspectResult` 进入 Tenant Evidence。相同 Capability 仍可被其它 Command 复用，
+Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
 信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射

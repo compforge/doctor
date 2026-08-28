@@ -36,9 +36,7 @@ function makeTenantCapabilitiesInspect(
             const safeResult = result.kind === "models"
               ? { ...result, models: result.models.map(modelSnapshot) }
               : result;
-            const id = result.kind === "data"
-              ? `${capability.id}:${result.fact.kind}`
-              : capability.id;
+            const id = capability.id;
             const fact = {
               status: "collected" as const,
               id,
@@ -50,7 +48,7 @@ function makeTenantCapabilitiesInspect(
             ctx.bundle.addStep({
               id: `tenant-${id}`,
               title: `${capability.service} ${capability.capability} · ${
-                result.kind === "data" ? result.fact.kind : "models"
+                result.kind === "data" ? "facts" : "models"
               }`,
               risk: "observe",
               status: "ok",

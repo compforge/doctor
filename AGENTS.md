@@ -45,8 +45,9 @@ Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Ski
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
    capability 是业务能力和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
-3. **确定性诊断以 Evidence 为结果**：采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得
-   的 Facts/Observations，不继续访问外部资源。
+3. **确定性诊断以 Evidence 为结果**：Fact 表示本次诊断内足够稳定、可供后续 Probe 复用的信息，
+   Observation 只表示某个探测时间点或时间窗口取得的信息；这种稳定性是相对生命周期，不是永恒真理。
+   采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得的 Facts/Observations，不继续访问外部资源。
 4. **默认安全边界显式化**：命令先完成配置、capability、环境与实际 access 准备，再进入领域工作；
    外部访问应声明超时、容量与权限，有副作用的操作必须在执行前展示并确认。
 5. **Agent 共用，宿主分离**：CLI 与 server 通过各自的 interface、凭据和执行环境使用同一

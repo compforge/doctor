@@ -5,14 +5,16 @@
 `doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
 `--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
-`inspect` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询、结果摘要和确定性判读。
+`inspect` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询和确定性判读。
 
-Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回一个或多个可独立消费的 Fact：
+Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回一个 query-level result。result 的
+`resolution`、`missingEvidence` 与 `truncated` 表达本次获取状态；`facts` 承载可独立消费的稳定信息：
 
-- Fact：每个 capability 通过 `provides` 声明并贡献自身业务数据；同 kind 的列表数据逐条返回，单条内部
-  shape 仍由 Plugin 决定。
-- Relation：一种 Fact；可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。
-  一个 Service 可以同时提供普通 Fact 与 Relation，Relation 的目标 Identity 也可以交给后续 Service 查询。
+- `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。
+- `RecordFact`：同 kind 可以返回多条，每条有稳定 `recordKey`；record 内部 shape 对 Doctor 不透明。HTML
+  将每个 RecordFact 作为一行，先对全部行做关键字过滤，再分页渲染。
+- `RelationFact`：可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。一个 Service
+  可以同时提供领域 Fact 与 RelationFact，目标 Identity 也可以交给后续 Service 查询。
 
 这里的 expansion 只服务 `doctor data` 的多 Service 数据汇集，不是其它命令的隐式通用依赖。需要规范
 `trace_id` 的 `doctor trace` 和 `doctor log` 使用更窄的 `service.traceId` capability。
@@ -28,13 +30,14 @@ Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回
    按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
    Relation provider；新的 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
-   扩展时取得的每个 Fact 同时作为该 Service 的独立数据贡献。
+   扩展时取得的 query result 同时作为该 Service 的数据贡献。
 4. expansion 链完成后，所有 Service 都进入 provide 阶段并消费最终去重 ID 集合。Service 在 expansion
    阶段已经查过的 ID 直接复用，只补查后续 Relation 新增的 Identity。
-5. Command 将 capability 返回的数据保存为带状态的 Facts（含 Relation），并与访问准备阶段的 Inspect Facts
+5. Command 将 capability 返回的 query result 保存为带状态的 Evidence，其中 Facts 可供后续 Probe 复用，
+   并与访问准备阶段的 Inspect Facts
    一起形成 Evidence；`doctor data` 当前没有额外现场取证动作，因此不产生 Probe Observation。
 6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding 与 Coverage；Render 汇总解析方式、
-   规范 ID、服务数据和诊断结论。HTML 中的业务 Fact 按页挂载，并支持对全部记录做关键字过滤后再分页；
+   规范 ID、服务数据和诊断结论。HTML 中的业务 Fact 逐条形成行，支持对全部记录做关键字过滤后再分页；
    批量 HTML 仅在最外层用 tab 组合独立报告。JSON 写入本地文件，并用 `groups` 按原始 ID 分组。
 7. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
@@ -51,17 +54,19 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 所有 Relation provider 共享一个按 Identity 去重的 work queue，Data Command 取得有界闭包后才进入
 provide。这样 capability 无论以什么 Catalog 顺序注册，都能在其接受的 Identity 出现后运行。提供 Relation
 的 capability 也可以同时提供 Fact；它在 expansion 阶段的查询结果会被 provide 阶段复用，避免为了角色
-建模重复访问数据源。每个 Service/Identity 组合最多查询一次，扩展深度最多 8 层、Identity 最多 1000 个，
-从而隔离环和异常膨胀。
+建模重复访问数据源。每个 Service/Identity 组合最多查询一次，扩展深度最多 8 层、Identity 最多 1000 个；
+单批次最多保留 5000 个 Fact、序列化后最多 32 MiB。Command 把剩余预算传给每次 Query，Plugin 应在数据源
+查询处尽早限流；Core 仍在 Evidence 入口执行最终截断并记录原因，从而隔离环和异常膨胀。
 
-Relation 是 capability 数据结果的一部分；summary 中的 identifier 只用于展示，不参与新 Query 的调度。
-Core 校验每个 Fact kind 是否由 `provides` 声明、Relation 的起点是否等于本次 Query Identity、目标 kind
-是否由 `expands` 声明，并拥有去重、查询边界和后续调度。
+RelationFact 是 capability 数据结果的一部分；resolution 中的 identifier 只用于展示，不参与新 Query 的
+调度。Core 校验 ValueFact/RecordFact kind 是否由 `provides` 声明、同 kind ValueFact 是否唯一、RecordFact
+的 `recordKey` 是否唯一、RelationFact 的起点是否等于本次 Query Identity、目标 kind 是否由 `expands`
+声明，并拥有去重、查询边界和后续调度。
 
 ### ID 是不带类型的输入，类型来自证据
 
 用户无需先知道业务 ID 的具体类型。每个 capability 以
-自身稳定关系尝试解析，并在 capability Fact 中记录 `inputId`、`resolvedAs` 和解析出的命名 ID。未命中是
+自身稳定关系尝试解析，并在 query-level resolution 中记录 `inputId`、`resolvedAs` 和解析出的命名 ID。未命中是
 证据缺口，不等于异常；只有数据库已经证明的业务不变量才形成 Finding。
 
 ### 访问准备与业务查询分开
