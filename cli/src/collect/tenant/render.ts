@@ -1,5 +1,5 @@
 import {
-  escapeHtml,
+  htmlFactTable,
   htmlHeading,
   htmlList,
   htmlParagraph,
@@ -23,8 +23,7 @@ function capabilityLabel(fact: CollectedTenantCapabilityFact): string {
 function capabilitySummary(diagnosis: TenantDiagnosis): string[] {
   return diagnosis.evidence.facts.capabilityFacts.map((fact) => {
     if (fact.status !== "collected") return `${fact.service} · ${fact.capability}：未取得（${fact.reason}）`;
-    if (fact.kind === "models") return `${capabilityLabel(fact)}：${fact.models.length} 个模型`;
-    return `${capabilityLabel(fact)}：${fact.result.resolution.resolvedAs}`;
+    return `${capabilityLabel(fact)}：${fact.result.facts.length} 条 Fact`;
   });
 }
 
@@ -50,7 +49,7 @@ export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
       `## ${capabilityLabel(fact)}`,
       "",
       "```json",
-      JSON.stringify(fact.kind === "models" ? fact.models : fact.result, null, 2),
+      JSON.stringify(fact.result, null, 2),
       "```",
       "",
     ]),
@@ -78,10 +77,11 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
 
 export function buildTenantHtmlSections(diagnosis: TenantDiagnosis): HtmlReportSection[] {
   return collectedCapabilities(diagnosis).map((fact) => {
-    const value = fact.kind === "models" ? fact.models : fact.result;
     return {
       title: capabilityLabel(fact),
-      html: `<pre><code>${escapeHtml(JSON.stringify(value, null, 2))}</code></pre>`,
+      html: htmlFactTable(fact.result.facts, {
+        searchPlaceholder: `搜索 ${capabilityLabel(fact)} 关键字`,
+      }) || `<p class="muted">已采集，0 条 Fact。</p>`,
     };
   });
 }

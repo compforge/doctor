@@ -7,6 +7,7 @@ import {
   htmlPieChartSection,
   htmlTable,
   htmlTableCell,
+  htmlTableDetailCell,
   writeHtmlReport,
 } from "../src/collect/output/html";
 import { REPORT_SCRIPT } from "../src/collect/output/report/assets/base-script";
@@ -45,6 +46,21 @@ test("htmlTable 为离线报告提供数值/字符串排序和分页控件", () 
   expect(html).toContain('12 条 · 3 列');
   expect(html).toContain("\\u003c/script\\u003e\\u003cscript\\u003ealert(3)");
   expect(html).not.toContain("</script><script>alert(3)</script>");
+});
+
+test("htmlTable 大字段仅渲染短预览并保留可搜索详情", () => {
+  const html = htmlTable(
+    ["key", "data"],
+    [["message:1", htmlTableDetailCell('{"message":"preview"}', '{\n  "message": "full detail"\n}', "message:1")]],
+    { search: { placeholder: "搜索数据" } },
+  );
+
+  expect(html).toContain('"display":"{\\"message\\":\\"preview\\"}"');
+  expect(html).toContain('"detail":"{\\n  \\"message\\": \\"full detail\\"\\n}"');
+  expect(html).toContain('"detailTitle":"message:1"');
+  expect(REPORT_SCRIPT).toContain("cell.detail ?? cell.display");
+  expect(REPORT_SCRIPT).toContain("dialog.showModal()");
+  expect(REPORT_SCRIPT).toContain("className = 'table-detail-trigger'");
 });
 
 test("writeHtmlReport 生成包含诊断内容、Facts 和步骤的轻量单文件报告", () => {

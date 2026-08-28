@@ -37,6 +37,16 @@ th { background:#f8fafc; }
 .table-mount { padding:14px 14px 0; }
 .table-view table { margin:0; }
 .data-table td { white-space:pre-wrap; }
+.table-detail-cell { width:min(520px,42vw); min-width:280px; }
+.table-detail-trigger { display:block; overflow:hidden; width:100%; border:0; padding:0; color:var(--ink); background:transparent; text-align:left; text-overflow:ellipsis; white-space:nowrap; }
+.table-detail-trigger:hover { color:var(--accent); background:transparent; text-decoration:underline; }
+.table-detail-dialog { width:min(960px,calc(100vw - 48px)); max-width:none; max-height:calc(100vh - 48px); border:0; border-radius:12px; padding:0; color:var(--ink); background:var(--panel); box-shadow:0 24px 64px rgba(15,23,42,.28); }
+.table-detail-dialog::backdrop { background:rgba(15,23,42,.5); }
+.table-detail-dialog[open] { display:grid; grid-template-rows:auto minmax(0,1fr); }
+.table-detail-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 18px; border-bottom:1px solid var(--line); }
+.table-detail-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.table-detail-close { padding:5px 10px; }
+.table-detail-content { max-height:calc(100vh - 130px); margin:0; border-radius:0 0 12px 12px; white-space:pre-wrap; }
 .collection-steps-view > .table-scroll { padding:14px; }
 .collection-steps-view table { margin:0; }
 .inspection-facts { display:grid; gap:10px; }

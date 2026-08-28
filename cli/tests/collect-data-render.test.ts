@@ -97,6 +97,9 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
   expect(html).toContain("搜索业务数据关键字");
   expect(html).toContain("example-service");
   expect(html).toContain("example-card");
+  expect(html).toContain('"headers":[{"display":"key","sortType":"text"},{"display":"data","sortType":"text"}');
+  expect(html).toContain('{"display":"type","sortType":"text"},{"display":"resolved as","sortType":"text"},{"display":"service","sortType":"text"}');
+  expect(html).toContain('"detailTitle":"example-card · —"');
   expect(html).toContain("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e");
   expect(html).not.toContain("</script><script>alert(1)</script>");
   expect(html).not.toContain("unresolved-result");

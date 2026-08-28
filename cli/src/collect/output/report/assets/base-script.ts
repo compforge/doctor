@@ -31,10 +31,40 @@ function enhanceDataTable(table, payload) {
   function selectedRows() {
     const query = search?.value.trim().toLocaleLowerCase() ?? '';
     return Number.isInteger(searchColumn)
-      ? rows.filter((row) => String(row.cells[searchColumn]?.display ?? '').toLocaleLowerCase().includes(query))
+      ? rows.filter((row) => {
+        const cell = row.cells[searchColumn];
+        return String(cell?.detail ?? cell?.display ?? '').toLocaleLowerCase().includes(query);
+      })
       : rows.filter((row) => row.cells.some((cell) => (
-        String(cell.display).toLocaleLowerCase().includes(query)
+        String(cell.detail ?? cell.display).toLocaleLowerCase().includes(query)
       )));
+  }
+
+  function showCellDetail(cell) {
+    let dialog = document.querySelector('.table-detail-dialog');
+    if (!dialog) {
+      dialog = document.createElement('dialog');
+      dialog.className = 'table-detail-dialog';
+      const heading = document.createElement('div');
+      heading.className = 'table-detail-heading';
+      const title = document.createElement('strong');
+      title.className = 'table-detail-title';
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'table-detail-close';
+      close.setAttribute('aria-label', '关闭详情');
+      close.textContent = '关闭';
+      close.addEventListener('click', () => dialog.close());
+      heading.append(title, close);
+      const content = document.createElement('pre');
+      content.className = 'table-detail-content';
+      dialog.append(heading, content);
+      document.body.append(dialog);
+    }
+    dialog.querySelector('.table-detail-title').textContent = cell.detailTitle ?? '数据详情';
+    dialog.querySelector('.table-detail-content').textContent = cell.detail;
+    if (typeof dialog.showModal === 'function') dialog.showModal();
+    else dialog.setAttribute('open', '');
   }
 
   function renderRows(visibleRows) {
@@ -45,7 +75,18 @@ function enhanceDataTable(table, payload) {
       row.cells.forEach((cell) => {
         const tableCell = tableRow.insertCell();
         tableCell.dataset.sortValue = String(cell.sortValue);
-        tableCell.textContent = cell.display;
+        if (cell.detail === undefined) {
+          tableCell.textContent = cell.display;
+          return;
+        }
+        tableCell.className = 'table-detail-cell';
+        const trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'table-detail-trigger';
+        trigger.title = '点击查看完整内容';
+        trigger.textContent = cell.display;
+        trigger.addEventListener('click', () => showCellDetail(cell));
+        tableCell.append(trigger);
       });
       fragment.append(tableRow);
     });

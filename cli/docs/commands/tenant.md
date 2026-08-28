@@ -8,7 +8,8 @@ Fact（包括表达 Identity 关系的 Relation）；后者以 biz-id 为根 Ide
 Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Query 可以返回多个领域 Fact。
 
 - **Tenant identity**：由 Plugin 声明的 `tenantDirectory` capability 解析。
-- **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog。
+- **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog；Command 将数量投影为
+  `model-summary` ValueFact，并将每个 Model 投影为以 model id 为稳定 key 的 `model` RecordFact。
 - **Service Inspect Fact**：来自 `accepts` 包含 `tenant_id` 的 Service Inspect Capability。
 - **Evidence**：由 Tenant Command 负责失败隔离、Coverage、Bundle 与报告展示。
 
@@ -18,7 +19,8 @@ Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Q
 2. Command 形成 `{ identity: { kind: "tenant_id", value } }` Query。
 3. Command 查询 Model Catalog，并选择接受 `tenant_id` 的 Inspect Capability；每次调用独立准备 access 和
    `PluginContext`，完成后回收连接与 port-forward。
-4. 每个 `ServiceInspectResult` 形成一条带 query 获取状态的 Tenant Fact；单个 Capability 失败不丢弃其它已取得事实。
+4. Model Catalog 与每个 `ServiceInspectResult` 都形成带 query 获取状态的 Tenant Fact；列表实体按
+   RecordFact 进入统一的过滤、分页和详情展示，单个 Capability 失败不丢弃其它已取得事实。
 5. Command 汇总 Facts，计算 Coverage，并生成 Evidence、Markdown 与 HTML。
 
 Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；

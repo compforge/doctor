@@ -5,3 +5,4 @@ export * from "./report/components/content";
 export * from "./report/components/charts";
 export * from "./report/components/metrics";
 export * from "./report/components/table";
+export * from "./report/components/fact-table";

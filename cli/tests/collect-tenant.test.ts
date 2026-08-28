@@ -95,8 +95,14 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
     expect(facts.capabilityFacts[0]).toMatchObject({
       status: "collected",
       id: "models",
-      kind: "models",
-      models: [{ name: "Model for tenant-1" }],
+      kind: "data",
+      result: {
+        resolution: { identifiers: { models: "1" } },
+        facts: [
+          { factType: "value", kind: "model-summary", value: { count: 1 } },
+          { factType: "record", kind: "model", recordKey: "model-1", record: { name: "Model for tenant-1" } },
+        ],
+      },
     });
     expect(JSON.stringify(facts.capabilityFacts[0])).not.toContain("must-not-leak");
     const inspectFact = facts.capabilityFacts[1];
@@ -123,6 +129,7 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
     ]);
     const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
     expect(sections[0]?.html).toContain("Model for tenant-1");
+    expect(sections[0]?.html).toContain('class="table-data"');
     expect(sections[1]?.html).toContain("enabled");
   } finally {
     rmSync(root, { recursive: true, force: true });
