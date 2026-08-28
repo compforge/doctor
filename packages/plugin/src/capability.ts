@@ -21,7 +21,10 @@ export interface Query<
   constraints?: Constraints;
 }
 
-/** One independently consumable statement obtained from a diagnostic target. */
+/**
+ * One independently consumable statement obtained from a diagnostic target.
+ * `kind` identifies the schema family; one Query may return multiple records of the same kind.
+ */
 export interface Fact {
   kind: string;
 }

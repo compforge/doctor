@@ -81,15 +81,27 @@ async function queryIdentity(input: {
       queryIdentity: identity,
       capability,
     });
-    return serviceFacts.map((fact) => ({
-      id: factId(stage, declared.name, identity, fact.kind),
-      status: "collected",
-      stage,
-      service: declared.name,
-      identity,
-      fact,
-      summary: capability.summarize(fact),
-    }));
+    const kindCounts = new Map<string, number>();
+    for (const fact of serviceFacts) {
+      kindCounts.set(fact.kind, (kindCounts.get(fact.kind) ?? 0) + 1);
+    }
+    const kindOrdinals = new Map<string, number>();
+    return serviceFacts.map((fact) => {
+      const ordinal = (kindOrdinals.get(fact.kind) ?? 0) + 1;
+      kindOrdinals.set(fact.kind, ordinal);
+      const discriminator = kindCounts.get(fact.kind)! > 1
+        ? `${fact.kind}:${ordinal}`
+        : fact.kind;
+      return {
+        id: factId(stage, declared.name, identity, discriminator),
+        status: "collected",
+        stage,
+        service: declared.name,
+        identity,
+        fact,
+        summary: capability.summarize(fact),
+      };
+    });
   } catch (error) {
     return [{
       id: factId(stage, declared.name, identity),

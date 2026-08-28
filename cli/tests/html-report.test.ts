@@ -9,6 +9,14 @@ import {
   htmlTableCell,
   writeHtmlReport,
 } from "../src/collect/output/html";
+import { REPORT_SCRIPT } from "../src/collect/output/report/assets/base-script";
+
+test("离线表格脚本只挂载当前页记录且保持可执行", () => {
+  expect(() => new Function(REPORT_SCRIPT)).not.toThrow();
+  expect(REPORT_SCRIPT).toContain("renderRows(filteredRows.slice(start, end))");
+  expect(REPORT_SCRIPT).toContain("body.replaceChildren(fragment)");
+  expect(REPORT_SCRIPT).not.toContain("payload.rows.forEach");
+});
 
 test("htmlTable 为离线报告提供数值/字符串排序和分页控件", () => {
   const html = htmlTable(

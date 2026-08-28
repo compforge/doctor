@@ -37,6 +37,25 @@ test("Inspect query 可返回多个独立 Fact", () => {
   }).map((fact) => fact.kind)).toEqual(["intention", "tenant-configuration"]);
 });
 
+test("Inspect query 可返回同 kind 的多条独立 Fact", () => {
+  expect(normalizeServiceInspectFacts({
+    value: [{
+      kind: "intention",
+      service: "control",
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
+      record: { id: "one" },
+    }, {
+      kind: "intention",
+      service: "control",
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
+      record: { id: "two" },
+    }],
+    service: "control",
+    queryIdentity: identity,
+    capability,
+  })).toHaveLength(2);
+});
+
 test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
   expect(() => normalizeServiceInspectFacts({
     value: [{
