@@ -37,9 +37,11 @@ export interface TenantCapabilityIdentity {
   capability: "modelCatalog" | "inspect";
 }
 
-export type TenantCapabilityResult =
+export type TenantCapabilityQueryResult =
   | { kind: "models"; models: readonly Model[] }
   | { kind: "data"; result: ServiceInspectResult };
+
+export type TenantCapabilityResult = { kind: "data"; result: ServiceInspectResult };
 
 export type TenantCapabilityFact = TenantCapabilityIdentity & Fact<TenantCapabilityResult>;
 export type CollectedTenantCapabilityFact = TenantCapabilityIdentity
@@ -58,7 +60,7 @@ export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDia
 
 export interface TenantCapabilityCollector extends TenantCapabilityIdentity {
   id: string;
-  query(identity: TenantIdentity): Promise<readonly TenantCapabilityResult[]>;
+  query(identity: TenantIdentity): Promise<readonly TenantCapabilityQueryResult[]>;
 }
 
 export interface TenantCommandContext {

@@ -1,10 +1,25 @@
 import type { Inspect } from "../../inspection";
 import { modelSnapshot } from "../../../model";
+import type { Fact } from "@compforge/doctor-plugin";
 import type {
   TenantCommandContext,
   TenantCapabilityCollector,
+  TenantCapabilityResult,
   TenantFacts,
 } from "../model";
+
+function modelFacts(models: readonly ReturnType<typeof modelSnapshot>[]): Fact[] {
+  return [{
+    factType: "value",
+    kind: "model-summary",
+    value: { count: models.length },
+  }, ...models.map((model) => ({
+    factType: "record" as const,
+    kind: "model",
+    recordKey: model.id,
+    record: model,
+  }))];
+}
 
 function makeTenantIdentityInspect(): Inspect<TenantFacts, TenantCommandContext> {
   return {
@@ -33,8 +48,21 @@ function makeTenantCapabilitiesInspect(
         try {
           const results = await capability.query(identity);
           for (const result of results) {
-            const safeResult = result.kind === "models"
-              ? { ...result, models: result.models.map(modelSnapshot) }
+            const safeResult: TenantCapabilityResult = result.kind === "models"
+              ? {
+                  kind: "data",
+                  result: {
+                    resolution: {
+                      inputId: identity.value,
+                      resolvedAs: identity.kind,
+                      identifiers: {
+                        tenant_id: identity.value,
+                        models: String(result.models.length),
+                      },
+                    },
+                    facts: modelFacts(result.models.map(modelSnapshot)),
+                  },
+                }
               : result;
             const id = capability.id;
             const fact = {
@@ -47,9 +75,7 @@ function makeTenantCapabilitiesInspect(
             facts.push(fact);
             ctx.bundle.addStep({
               id: `tenant-${id}`,
-              title: `${capability.service} ${capability.capability} · ${
-                result.kind === "data" ? "facts" : "models"
-              }`,
+              title: `${capability.service} ${capability.capability} · facts`,
               risk: "observe",
               status: "ok",
               durationMs: Date.now() - started,

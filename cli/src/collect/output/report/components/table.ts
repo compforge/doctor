@@ -5,7 +5,12 @@ interface HtmlTablePayload {
   pageSize: number;
   searchColumn?: number;
   headers: Array<{ display: string; sortType: "number" | "text" }>;
-  rows: Array<Array<{ display: string; sortValue: string | number }>>;
+  rows: Array<Array<{
+    display: string;
+    sortValue: string | number;
+    detail?: string;
+    detailTitle?: string;
+  }>>;
 }
 
 const HTML_TABLE_PAGE_SIZE = 10;
@@ -14,11 +19,15 @@ export function htmlTableCell(display: unknown, sortValue: string | number): Htm
   return { display, sortValue };
 }
 
+export function htmlTableDetailCell(display: unknown, detail: string, detailTitle?: string): HtmlTableCell {
+  return { display, sortValue: String(display ?? ""), detail, detailTitle };
+}
+
 function isHtmlTableCell(value: unknown): value is HtmlTableCell {
   return typeof value === "object" && value !== null && "display" in value && "sortValue" in value;
 }
 
-function tableCell(value: unknown): { display: unknown; sortValue: string | number; numeric: boolean } {
+function tableCell(value: unknown): HtmlTableCell & { numeric: boolean } {
   const cell = isHtmlTableCell(value)
     ? value
     : { display: value, sortValue: typeof value === "number" ? value : String(value ?? "") };
@@ -49,6 +58,8 @@ export function htmlTable(
     rows: cells.map((row) => row.map((cell) => ({
       display: String(cell.display),
       sortValue: cell.numeric ? cell.sortValue : String(cell.sortValue),
+      ...(cell.detail === undefined ? {} : { detail: cell.detail }),
+      ...(cell.detailTitle === undefined ? {} : { detailTitle: cell.detailTitle }),
     }))),
   };
   const search = options.search

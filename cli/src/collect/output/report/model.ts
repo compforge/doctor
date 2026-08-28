@@ -28,6 +28,8 @@ export interface HtmlBarChartItem {
 export interface HtmlTableCell {
   display: unknown;
   sortValue: string | number;
+  detail?: string;
+  detailTitle?: string;
 }
 
 export interface HtmlTableOptions {

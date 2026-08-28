@@ -16,12 +16,10 @@ export function buildTenantCoverage(
     if (fact.status !== "collected") {
       return { goal: fact.id, status: "insufficient", missingEvidence: [fact.reason] };
     }
-    const missingEvidence = fact.kind === "data"
-      ? [
-          ...(fact.result.missingEvidence ?? []),
-          ...(fact.result.truncated ? [`Facts 已截断：${fact.result.truncated.reason}`] : []),
-        ]
-      : [];
+    const missingEvidence = [
+      ...(fact.result.missingEvidence ?? []),
+      ...(fact.result.truncated ? [`Facts 已截断：${fact.result.truncated.reason}`] : []),
+    ];
     return {
       goal: fact.id,
       status: missingEvidence.length ? "partial" : "sufficient",

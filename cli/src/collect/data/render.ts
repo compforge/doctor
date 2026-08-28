@@ -1,10 +1,10 @@
 import {
   htmlHeading,
+  htmlFactTable,
   htmlList,
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { Fact, RelationFact } from "@compforge/doctor-plugin";
 import type { CollectedDataInspectResult, DataDiagnosis } from "./model";
 
 function value(value: string | undefined): string {
@@ -30,31 +30,20 @@ function resultRows(results: readonly CollectedDataInspectResult[], identifiers:
   ]);
 }
 
-function factKey(fact: Fact): string {
-  if (fact.factType === "record") return fact.recordKey;
-  if (fact.factType === "relation") {
-    const relation = fact as RelationFact;
-    return `${relation.from.kind}:${relation.from.value} → ${relation.to.kind}:${relation.to.value}`;
-  }
-  return "—";
-}
-
 function capabilityFacts(results: readonly CollectedDataInspectResult[]): string {
   const resolved = results.filter((item) => item.result.resolution.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
-  return htmlTable(
-    ["service", "stage", "input ID", "resolved as", "type", "kind", "key", "data"],
-    resolved.flatMap((item) => item.result.facts.map((fact) => [
-      item.service,
-      item.stage,
-      item.result.resolution.inputId,
-      item.result.resolution.resolvedAs,
-      fact.factType,
-      fact.kind,
-      factKey(fact),
-      JSON.stringify(fact, null, 2) ?? String(fact),
-    ])),
-    { search: { placeholder: "搜索业务数据关键字" } },
+  const rows = resolved.flatMap((item) => item.result.facts.map((fact) => ({ fact, item })));
+  return htmlFactTable(
+    rows.map((row) => row.fact),
+    {
+      metadataHeaders: ["resolved as", "service", "stage", "input ID"],
+      metadataCells: (_fact, index) => {
+        const item = rows[index]!.item;
+        return [item.result.resolution.resolvedAs, item.service, item.stage, item.result.resolution.inputId];
+      },
+      searchPlaceholder: "搜索业务数据关键字",
+    },
   );
 }
 
