@@ -259,6 +259,7 @@ export function makeServiceTargetsInspect(
                 status: "collected",
                 pods: podsForService(snapshot, serviceName).map((pod) => ({
                   pod: pod.name,
+                  serviceAccountName: pod.serviceAccountName,
                   phase: pod.phase,
                   reason: pod.reason,
                   message: pod.message,

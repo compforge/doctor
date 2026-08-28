@@ -99,6 +99,16 @@ export interface ServiceMetricDetector {
   message: string;
 }
 
+export interface KubernetesAppArmorUnconfinedInspectionProbe {
+  id: string;
+  kind: "kubernetes.apparmor-unconfined-admission";
+  /** Resolve the caller identity and probe image from this Service's running workload. */
+  subject: "workload-service-account";
+}
+
+/** Service-owned declarations adapted to common probes by Doctor. */
+export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProbe;
+
 /** Service-owned Prometheus contract consumed by doctor metric. */
 export interface ServiceMetricCapability {
   endpoint: { port: number; path: string };
@@ -427,6 +437,7 @@ export function isToolchain(value: unknown): value is Toolchain {
 export interface ServiceCapabilities {
   stores?: readonly ServiceStoreCapability[];
   config?: Record<string, never>;
+  environmentProbes?: readonly ServiceEnvironmentProbe[];
   log?: {
     default: boolean;
   };

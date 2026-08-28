@@ -88,6 +88,24 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
 });
 
 test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage", async () => {
+  const pluginWithEnvironmentProbes = {
+    ...examplePlugin,
+    services: createServiceCatalog(examplePlugin.services.services.map((service) => (
+      service.name === "example-api"
+        ? {
+            ...service,
+            capabilities: {
+              ...service.capabilities,
+              environmentProbes: [{
+                id: "apparmor-unconfined",
+                kind: "kubernetes.apparmor-unconfined-admission",
+                subject: "workload-service-account",
+              }],
+            },
+          }
+        : service
+    ))),
+  } satisfies PluginDefinition;
   const resources = {
     services: JSON.stringify({ items: [{
       metadata: { name: "example-api", namespace: "demo" },
@@ -108,7 +126,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     }] }),
     pods: JSON.stringify({ items: [{
       metadata: { namespace: "demo", name: "example-api-0", labels: { app: "example-api" } },
-      spec: { containers: [{
+      spec: { serviceAccountName: "example-api", containers: [{
         name: "example-api",
         image: "example.test/example-api:v1.2.3",
         resources: {
@@ -147,8 +165,15 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
   };
   const queriedResources: string[] = [];
   const dependencyCommands: string[][] = [];
+  let admissionCalls = 0;
+  let admissionUnavailable = false;
   const executor: Executor = {
     run: async (args) => {
+      if (args[0] === "create" && args.includes("--dry-run=server")) {
+        admissionCalls += 1;
+        if (admissionUnavailable) throw new Error("impersonation unavailable");
+        return result("{}");
+      }
       const resource = args[1];
       if (resource) queriedResources.push(resource);
       if (resource && resource in resources) return result(resources[resource as keyof typeof resources]);
@@ -174,7 +199,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: completeOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, pluginWithEnvironmentProbes, executor)).toBe(0);
     const complete = readFileSync(completeOutput, "utf-8");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
@@ -184,6 +209,8 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(complete).toContain("waiting: CrashLoopBackOff");
     expect(complete).toContain("last=terminated: OOMKilled, exit=137");
     expect(complete).toContain("REQUEST_TIMEOUT");
+    expect(complete).toContain("AppArmor Unconfined：1 个 ServiceAccount 允许");
+    expect(complete).toContain("| example-api | demo | example-api | allowed | — |");
     expect(complete).toContain("environment-config：sufficient");
     expect(complete).toContain("workload-runtime：sufficient");
 
@@ -194,11 +221,12 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       deploymentConfig: true,
       config: configPath,
       output: defaultOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, pluginWithEnvironmentProbes, executor)).toBe(0);
     expect(existsSync(join(dir, "default.html"))).toBe(true);
     expect(existsSync(defaultOutput)).toBe(true);
 
     queriedResources.length = 0;
+    admissionUnavailable = true;
     const partialOutput = join(dir, "partial.md");
     expect(await runInspectWithDelivery({
       namespace: "demo",
@@ -206,7 +234,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: partialOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, pluginWithEnvironmentProbes, executor)).toBe(0);
     expect(queriedResources).not.toContain("deployments");
     expect(queriedResources).not.toContain("configmaps");
     const partial = readFileSync(partialOutput, "utf-8");
@@ -214,6 +242,8 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(partial).toContain("environment-config：insufficient");
     expect(partial).toContain("workload-runtime：sufficient");
     expect(partial).toContain("用户未确认采集 Deployment Env/ConfigMap");
+    expect(partial).toContain("AppArmor Unconfined：未探测到（best effort）");
+    admissionUnavailable = false;
 
     const dependenciesOutput = join(dir, "dependencies.md");
     expect(await runInspectWithDelivery({
@@ -223,7 +253,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       config: configPath,
       format: "md",
       output: dependenciesOutput,
-    }, examplePlugin, executor)).toBe(0);
+    }, pluginWithEnvironmentProbes, executor)).toBe(0);
     expect(dependencyCommands).toHaveLength(1);
     expect(dependencyCommands[0]?.slice(0, 2)).toEqual(["node", "-e"]);
     const dependencies = readFileSync(dependenciesOutput, "utf-8");
@@ -261,6 +291,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(unavailable).toContain("Plugin 未声明 Toolchain");
     expect(unavailable).toContain("未声明");
     expect(unavailable).toContain("runtime-dependencies：insufficient");
+    expect(admissionCalls).toBe(4);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

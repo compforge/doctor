@@ -82,6 +82,19 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
+  if (capabilities.environmentProbes !== undefined) {
+    for (const [probeId, probe] of uniqueIdRecords(
+      capabilities.environmentProbes,
+      `${service.name}.environmentProbes`,
+    )) {
+      if (probe.kind !== "kubernetes.apparmor-unconfined-admission") {
+        throw new Error(`${service.name}.environmentProbes probe '${probeId}' uses unsupported kind '${String(probe.kind)}'`);
+      }
+      if (probe.subject !== "workload-service-account") {
+        throw new Error(`${service.name}.environmentProbes probe '${probeId}' uses unsupported subject '${String(probe.subject)}'`);
+      }
+    }
+  }
   if (capabilities.inspect !== undefined) {
     const inspect = record(capabilities.inspect, `${service.name}.inspect`);
     uniqueNonEmptyStrings(inspect.accepts, `${service.name}.inspect.accepts`);

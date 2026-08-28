@@ -4,6 +4,7 @@ export interface KubernetesPod {
   kind: "pod";
   namespace: string;
   name: string;
+  serviceAccountName: string;
   ip?: string;
   phase: string;
   reason?: string;
@@ -79,6 +80,8 @@ interface KubernetesPodList {
   items?: Array<{
     metadata?: { namespace?: string; name?: string; labels?: Record<string, string> };
     spec?: {
+      serviceAccountName?: string;
+      serviceAccount?: string;
       containers?: Array<{
         name?: string;
         image?: string;
@@ -165,6 +168,9 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
       kind: "pod",
       namespace: item.metadata?.namespace ?? defaultNamespace,
       name,
+      serviceAccountName: item.spec?.serviceAccountName?.trim()
+        || item.spec?.serviceAccount?.trim()
+        || "default",
       ip: item.status?.podIP,
       phase: item.status?.phase ?? "Unknown",
       reason: item.status?.reason,

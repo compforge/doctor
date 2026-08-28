@@ -19,6 +19,7 @@ function serviceList(targetPort: string | number = 6379): string {
       {
         metadata: { namespace: "dev", name: "redis", labels: { app: "redis" } },
         spec: {
+          serviceAccountName: "redis-runtime",
           clusterIP: "10.0.0.8",
           selector: { app: "redis" },
           ports: [{ name: "redis", port: 6379, targetPort }],
@@ -111,6 +112,7 @@ test("K8s Pod endpoint 可按 Pod 名、FQDN 和 PodIP 解析", () => {
     message: "containers with unready status: [redis]",
     lastTransitionTime: undefined,
   }]);
+  expect(pods[0]!.serviceAccountName).toBe("redis-runtime");
   expect(pods[0]!.containers).toMatchObject([{
     name: "redis",
     image: "registry.example/redis:7.2",
