@@ -38,7 +38,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
   }]);
 });
 
-test("Data HTML 直接展示已解析的业务结果并安全转义 JSON", () => {
+test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全序列化 JSON", () => {
   const cardResult = {
     kind: "example-card",
     service: "example-service",
@@ -88,9 +88,11 @@ test("Data HTML 直接展示已解析的业务结果并安全转义 JSON", () =>
   const html = buildDataHtml(diagnosis);
 
   expect(html).toContain("<h2>业务数据</h2>");
-  expect(html).toContain('<details class="data-result" open>');
-  expect(html).toContain("example-service · provide · card-1 · card_id");
-  expect(html).toContain("&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;");
+  expect(html).toContain('<details class="table-view">');
+  expect(html).toContain("搜索业务数据关键字");
+  expect(html).toContain("example-service");
+  expect(html).toContain("example-card");
+  expect(html).toContain("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e");
   expect(html).not.toContain("</script><script>alert(1)</script>");
   expect(html).not.toContain("unresolved-result");
 });

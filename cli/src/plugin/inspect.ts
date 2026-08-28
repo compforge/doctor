@@ -33,7 +33,7 @@ function sameIdentity(left: Identity, right: Identity): boolean {
 /**
  * Validate runtime values crossing the Plugin boundary before Commands retain them as Facts.
  *
- * @spec One Inspect Query returns independently consumable Facts whose kinds are declared by provides
+ * @spec One Inspect Query returns independently consumable Facts whose kinds are declared by provides; multiple records may share one kind
  * @see {@link ../../docs/kernel.md}
  */
 export function normalizeServiceInspectFacts(input: {
@@ -47,7 +47,6 @@ export function normalizeServiceInspectFacts(input: {
     throw new Error(`${service} inspect query must return a non-empty Fact array`);
   }
 
-  const kinds = new Set<string>();
   return value.map((item, index) => {
     const label = `${service} inspect fact[${index}]`;
     const fact = record(item, label);
@@ -57,10 +56,6 @@ export function normalizeServiceInspectFacts(input: {
         `${label}.kind '${kind}' is not declared by provides=[${capability.provides.join(", ")}]`,
       );
     }
-    if (kinds.has(kind)) {
-      throw new Error(`${service} inspect query returned duplicate Fact kind '${kind}'`);
-    }
-    kinds.add(kind);
     if (fact.service !== service) {
       throw new Error(`${label}.service must equal '${service}'`);
     }

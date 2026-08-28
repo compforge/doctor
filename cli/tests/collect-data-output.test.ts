@@ -33,11 +33,12 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => [{
+        query: async (_context, query) => ["one", "two"].map((recordId) => ({
           kind: "sample-record",
           service,
           resolution: { inputId: query.identity.value, resolvedAs: "sample_id" },
-        }],
+          record: { id: recordId },
+        })),
         summarize: (result) => ({
           resolvedAs: result.resolution.resolvedAs,
           identifiers: { sample_id: result.resolution.inputId },
@@ -263,7 +264,8 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
     expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, code, "doctor data"))
       .toBe(true);
 
-    expect(JSON.parse(readFileSync(outputPath, "utf8"))).toMatchObject({
+    const report = JSON.parse(readFileSync(outputPath, "utf8"));
+    expect(report).toMatchObject({
       evidence: {
         observations: [],
         facts: {
@@ -271,14 +273,24 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
             status: "collected",
             service,
             fact: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
+          }, {
+            status: "collected",
+            service,
           }],
         },
       },
       findings: [{
         id: "sample-record-collected",
-        evidence: [{ factPath: "capabilityFacts.0", role: "supporting" }],
+        evidence: [
+          { factPath: "capabilityFacts.0", role: "supporting" },
+          { factPath: "capabilityFacts.1", role: "supporting" },
+        ],
       }],
     });
+    expect(report.evidence.facts.capabilityFacts.map((fact: { id: string }) => fact.id)).toEqual([
+      `data-fact:provide:${service}:biz_id:biz-1:sample-record:1`,
+      `data-fact:provide:${service}:biz_id:biz-1:sample-record:2`,
+    ]);
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
     expect(stdout).not.toContain('"evidence"');
@@ -349,10 +361,10 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     );
     expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
     expect(manifest.params).not.toHaveProperty("data_capabilities");
-    expect(manifest.inspection_facts.capabilityFacts).toMatchObject([{
-      status: "collected",
-      service,
-    }]);
+    expect(manifest.inspection_facts.capabilityFacts).toMatchObject([
+      { status: "collected", service },
+      { status: "collected", service },
+    ]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
     expect(agents).toContain("`report.html`");
   } finally {

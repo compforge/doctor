@@ -9,7 +9,8 @@
 
 Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回一个或多个可独立消费的 Fact：
 
-- Fact：每个 capability 通过 `provides` 声明并贡献自身业务数据。
+- Fact：每个 capability 通过 `provides` 声明并贡献自身业务数据；同 kind 的列表数据逐条返回，单条内部
+  shape 仍由 Plugin 决定。
 - Relation：一种 Fact；可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。
   一个 Service 可以同时提供普通 Fact 与 Relation，Relation 的目标 Identity 也可以交给后续 Service 查询。
 
@@ -33,8 +34,8 @@ Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回
 5. Command 将 capability 返回的数据保存为带状态的 Facts（含 Relation），并与访问准备阶段的 Inspect Facts
    一起形成 Evidence；`doctor data` 当前没有额外现场取证动作，因此不产生 Probe Observation。
 6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding 与 Coverage；Render 汇总解析方式、
-   规范 ID、服务数据和诊断结论。批量 HTML 仅在最外层用 tab 组合独立报告；JSON 写入本地文件，并用
-   `groups` 按原始 ID 分组。
+   规范 ID、服务数据和诊断结论。HTML 中的业务 Fact 按页挂载，并支持对全部记录做关键字过滤后再分页；
+   批量 HTML 仅在最外层用 tab 组合独立报告。JSON 写入本地文件，并用 `groups` 按原始 ID 分组。
 7. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
 ## 关键设计

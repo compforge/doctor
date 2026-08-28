@@ -1,5 +1,4 @@
 import {
-  escapeHtml,
   htmlHeading,
   htmlList,
   htmlParagraph,
@@ -33,11 +32,18 @@ function factRows(facts: readonly CollectedDataInspectFact[], identifiers: reado
 function capabilityResults(facts: readonly CollectedDataInspectFact[]): string {
   const resolved = facts.filter((item) => item.summary.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
-  return resolved.map((item) => {
-    const title = `${item.service} · ${item.stage} · ${item.fact.resolution.inputId} · ${item.summary.resolvedAs}`;
-    const fact = JSON.stringify(item.fact, null, 2) ?? String(item.fact);
-    return `<details class="data-result" open><summary><span>${escapeHtml(title)}</span></summary><pre><code>${escapeHtml(fact)}</code></pre></details>`;
-  }).join("");
+  return htmlTable(
+    ["service", "stage", "input ID", "resolved as", "kind", "data"],
+    resolved.map((item) => [
+      item.service,
+      item.stage,
+      item.fact.resolution.inputId,
+      item.summary.resolvedAs,
+      item.fact.kind,
+      JSON.stringify(item.fact, null, 2) ?? String(item.fact),
+    ]),
+    { search: { placeholder: "搜索业务数据关键字" } },
+  );
 }
 
 export function buildDataSummary(diagnosis: DataDiagnosis): string {

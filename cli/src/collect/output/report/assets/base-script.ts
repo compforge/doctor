@@ -12,10 +12,9 @@ document.querySelectorAll('.sidebar a[href^="#"]').forEach((link) => {
   });
 });
 
-function enhanceDataTable(table) {
-  const rows = Array.from(table.tBodies[0]?.rows ?? []);
+function enhanceDataTable(table, payload) {
+  const rows = payload.rows.map((cells, originalIndex) => ({ cells, originalIndex }));
   if (!rows.length) return;
-  rows.forEach((row, index) => { row.dataset.originalIndex = String(index); });
   const wrapper = table.closest('.table-view');
   const controls = wrapper?.querySelector('.table-controls');
   const pageSizeSelect = controls?.querySelector('.table-page-size');
@@ -29,17 +28,37 @@ function enhanceDataTable(table) {
   let sortColumn = -1;
   let sortDirection = 1;
 
-  function renderPage() {
+  function selectedRows() {
     const query = search?.value.trim().toLocaleLowerCase() ?? '';
-    const filteredRows = Number.isInteger(searchColumn)
-      ? rows.filter((row) => (row.cells[searchColumn]?.textContent ?? '').toLocaleLowerCase().includes(query))
-      : rows;
+    return Number.isInteger(searchColumn)
+      ? rows.filter((row) => String(row.cells[searchColumn]?.display ?? '').toLocaleLowerCase().includes(query))
+      : rows.filter((row) => row.cells.some((cell) => (
+        String(cell.display).toLocaleLowerCase().includes(query)
+      )));
+  }
+
+  function renderRows(visibleRows) {
+    const body = table.tBodies[0];
+    const fragment = document.createDocumentFragment();
+    visibleRows.forEach((row) => {
+      const tableRow = document.createElement('tr');
+      row.cells.forEach((cell) => {
+        const tableCell = tableRow.insertCell();
+        tableCell.dataset.sortValue = String(cell.sortValue);
+        tableCell.textContent = cell.display;
+      });
+      fragment.append(tableRow);
+    });
+    body.replaceChildren(fragment);
+  }
+
+  function renderPage() {
+    const filteredRows = selectedRows();
     const pageCount = pageSize === 0 ? 1 : Math.max(1, Math.ceil(filteredRows.length / pageSize));
     currentPage = Math.min(currentPage, pageCount);
     const start = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
     const end = pageSize === 0 ? filteredRows.length : Math.min(filteredRows.length, start + pageSize);
-    const visible = new Set(filteredRows.slice(start, end));
-    rows.forEach((row) => { row.hidden = !visible.has(row); });
+    renderRows(filteredRows.slice(start, end));
     if (controls) controls.hidden = rows.length <= 10;
     if (pageInfo) pageInfo.textContent = filteredRows.length
       ? (start + 1) + '–' + end + ' / ' + filteredRows.length
@@ -54,8 +73,8 @@ function enhanceDataTable(table) {
       sortColumn = column;
       const sortType = heading.dataset.sortType;
       rows.sort((left, right) => {
-        const leftValue = left.cells[column]?.dataset.sortValue ?? '';
-        const rightValue = right.cells[column]?.dataset.sortValue ?? '';
+        const leftValue = String(left.cells[column]?.sortValue ?? '');
+        const rightValue = String(right.cells[column]?.sortValue ?? '');
         let comparison;
         if (sortType === 'number') {
           const leftNumber = Number(leftValue);
@@ -73,9 +92,8 @@ function enhanceDataTable(table) {
         }
         return comparison
           ? comparison * sortDirection
-          : Number(left.dataset.originalIndex) - Number(right.dataset.originalIndex);
+          : left.originalIndex - right.originalIndex;
       });
-      rows.forEach((row) => table.tBodies[0].appendChild(row));
       table.querySelectorAll('thead th').forEach((item) => item.setAttribute('aria-sort', 'none'));
       heading.setAttribute('aria-sort', sortDirection === 1 ? 'ascending' : 'descending');
       currentPage = 1;
@@ -90,6 +108,8 @@ function enhanceDataTable(table) {
   search?.addEventListener('input', () => { currentPage = 1; renderPage(); });
   previous?.addEventListener('click', () => { currentPage -= 1; renderPage(); });
   next?.addEventListener('click', () => { currentPage += 1; renderPage(); });
+  wrapper.__doctorTablePrint = () => renderRows(selectedRows());
+  wrapper.__doctorTableRestore = renderPage;
   renderPage();
 }
 
@@ -126,21 +146,12 @@ function mountDataTable(wrapper, trigger) {
       headingRow.append(heading);
     });
 
-    const tbody = table.createTBody();
-    payload.rows.forEach((cells, rowIndex) => {
-      const row = tbody.insertRow();
-      row.hidden = rowIndex >= payload.pageSize;
-      cells.forEach((cell) => {
-        const tableCell = row.insertCell();
-        tableCell.dataset.sortValue = String(cell.sortValue);
-        tableCell.textContent = cell.display;
-      });
-    });
+    table.createTBody();
     scroll.append(table);
     mount?.replaceChildren(scroll);
     wrapper.dataset.tableMounted = 'true';
     source?.remove();
-    enhanceDataTable(table);
+    enhanceDataTable(table, payload);
     console.log('[doctor-report] table:mounted', {
       table: Number(wrapper.dataset.tableIndex),
       trigger,
@@ -174,7 +185,13 @@ tableViews.forEach((wrapper, index) => {
   });
 });
 window.addEventListener('beforeprint', () => {
-  tableViews.forEach((wrapper) => mountDataTable(wrapper, 'print'));
+  tableViews.forEach((wrapper) => {
+    mountDataTable(wrapper, 'print');
+    wrapper.__doctorTablePrint?.();
+  });
+});
+window.addEventListener('afterprint', () => {
+  tableViews.forEach((wrapper) => wrapper.__doctorTableRestore?.());
 });
 document.querySelectorAll('.report-switcher').forEach((switcher) => {
   const select = switcher.querySelector('.report-switcher-select');

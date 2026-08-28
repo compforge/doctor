@@ -32,7 +32,8 @@ export interface HtmlTableCell {
 
 export interface HtmlTableOptions {
   search?: {
-    column: number;
+    /** Omit to search every cell in a row. */
+    column?: number;
     placeholder?: string;
   };
 }
