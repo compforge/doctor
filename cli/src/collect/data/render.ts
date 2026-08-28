@@ -4,53 +4,65 @@ import {
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { CollectedDataInspectFact, DataDiagnosis } from "./model";
+import type { Fact, RelationFact } from "@compforge/doctor-plugin";
+import type { CollectedDataInspectResult, DataDiagnosis } from "./model";
 
 function value(value: string | undefined): string {
   return value || "未找到";
 }
 
-function collectedFacts(diagnosis: DataDiagnosis): CollectedDataInspectFact[] {
-  return diagnosis.evidence.facts.capabilityFacts.filter(
-    (fact): fact is CollectedDataInspectFact => fact.status === "collected",
+function collectedResults(diagnosis: DataDiagnosis): CollectedDataInspectResult[] {
+  return diagnosis.evidence.facts.capabilityResults.filter(
+    (result): result is CollectedDataInspectResult => result.status === "collected",
   );
 }
 
-function identifierNames(facts: readonly CollectedDataInspectFact[]): string[] {
-  return [...new Set(facts.flatMap((item) => Object.keys(item.summary.identifiers)))];
+function identifierNames(results: readonly CollectedDataInspectResult[]): string[] {
+  return [...new Set(results.flatMap((item) => Object.keys(item.result.resolution.identifiers)))];
 }
 
-function factRows(facts: readonly CollectedDataInspectFact[], identifiers: readonly string[]): string[][] {
-  return facts.map((item) => [
+function resultRows(results: readonly CollectedDataInspectResult[], identifiers: readonly string[]): string[][] {
+  return results.map((item) => [
     item.service,
     item.stage,
-    item.summary.resolvedAs,
-    ...identifiers.map((name) => value(item.summary.identifiers[name])),
+    item.result.resolution.resolvedAs,
+    ...identifiers.map((name) => value(item.result.resolution.identifiers[name])),
   ]);
 }
 
-function capabilityResults(facts: readonly CollectedDataInspectFact[]): string {
-  const resolved = facts.filter((item) => item.summary.resolvedAs !== "unresolved");
+function factKey(fact: Fact): string {
+  if (fact.factType === "record") return fact.recordKey;
+  if (fact.factType === "relation") {
+    const relation = fact as RelationFact;
+    return `${relation.from.kind}:${relation.from.value} → ${relation.to.kind}:${relation.to.value}`;
+  }
+  return "—";
+}
+
+function capabilityFacts(results: readonly CollectedDataInspectResult[]): string {
+  const resolved = results.filter((item) => item.result.resolution.resolvedAs !== "unresolved");
   if (!resolved.length) return htmlParagraph("没有 Service 将该业务 ID 解析为已知业务对象。");
   return htmlTable(
-    ["service", "stage", "input ID", "resolved as", "kind", "data"],
-    resolved.map((item) => [
+    ["service", "stage", "input ID", "resolved as", "type", "kind", "key", "data"],
+    resolved.flatMap((item) => item.result.facts.map((fact) => [
       item.service,
       item.stage,
-      item.fact.resolution.inputId,
-      item.summary.resolvedAs,
-      item.fact.kind,
-      JSON.stringify(item.fact, null, 2) ?? String(item.fact),
-    ]),
+      item.result.resolution.inputId,
+      item.result.resolution.resolvedAs,
+      fact.factType,
+      fact.kind,
+      factKey(fact),
+      JSON.stringify(fact, null, 2) ?? String(fact),
+    ])),
     { search: { placeholder: "搜索业务数据关键字" } },
   );
 }
 
 export function buildDataSummary(diagnosis: DataDiagnosis): string {
-  const facts = collectedFacts(diagnosis);
-  const identifiers = identifierNames(facts);
+  const results = collectedResults(diagnosis);
+  const identifiers = identifierNames(results);
   const columns = ["service", "stage", "resolved as", ...identifiers];
-  const rows = factRows(facts, identifiers);
+  const rows = resultRows(results, identifiers);
   const coverage = diagnosis.coverage[0];
   return [
     "# 业务数据汇集诊断",
@@ -73,17 +85,17 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
 }
 
 export function buildDataHtml(diagnosis: DataDiagnosis): string {
-  const facts = collectedFacts(diagnosis);
-  const identifiers = identifierNames(facts);
+  const results = collectedResults(diagnosis);
+  const identifiers = identifierNames(results);
   const coverage = diagnosis.coverage[0];
   return [
     htmlHeading(1, "业务数据汇集诊断"),
     htmlTable(
       ["service", "stage", "resolved as", ...identifiers],
-      factRows(facts, identifiers),
+      resultRows(results, identifiers),
     ),
     htmlHeading(2, "业务数据"),
-    capabilityResults(facts),
+    capabilityFacts(results),
     htmlHeading(2, "Findings"),
     htmlList(diagnosis.findings.length
       ? diagnosis.findings.map((item) => item.message)

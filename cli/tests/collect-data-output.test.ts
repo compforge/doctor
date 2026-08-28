@@ -33,15 +33,18 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => ["one", "two"].map((recordId) => ({
-          kind: "sample-record",
-          service,
-          resolution: { inputId: query.identity.value, resolvedAs: "sample_id" },
-          record: { id: recordId },
-        })),
-        summarize: (result) => ({
-          resolvedAs: result.resolution.resolvedAs,
-          identifiers: { sample_id: result.resolution.inputId },
+        query: async (_context, query) => ({
+          resolution: {
+            inputId: query.identity.value,
+            resolvedAs: "sample_id",
+            identifiers: { sample_id: query.identity.value },
+          },
+          facts: ["one", "two"].map((recordId) => ({
+            factType: "record" as const,
+            kind: "sample-record",
+            recordKey: recordId,
+            record: { id: recordId },
+          })),
         }),
         detect: (result) => [{
           id: "sample-record-collected",
@@ -75,14 +78,13 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => [{
-          kind: "tenant-record",
-          service: "tenant-api",
-          resolution: { inputId: query.identity.value, resolvedAs: query.identity.kind },
-        }],
-        summarize: (result) => ({
-          resolvedAs: result.resolution.resolvedAs,
-          identifiers: {},
+        query: async (_context, query) => ({
+          resolution: {
+            inputId: query.identity.value,
+            resolvedAs: query.identity.kind,
+            identifiers: {},
+          },
+          facts: [{ factType: "value", kind: "tenant-record", value: {} }],
         }),
         detect: () => [],
       },
@@ -133,19 +135,18 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          query: async (_context, query) => [{
-            kind: "trace-resolution",
-            service: traceResolver,
-            resolution: { inputId: query.identity.value, resolvedAs: query.identity.kind },
-            relations: [{
+          query: async (_context, query) => ({
+            resolution: {
+              inputId: query.identity.value,
+              resolvedAs: query.identity.kind,
+              identifiers: {},
+            },
+            facts: [{ factType: "value", kind: "trace-resolution", value: {} }, {
+              factType: "relation",
               kind: "resolves-to",
               from: query.identity,
               to: { kind: "trace_id", value: "trace-1" },
             }],
-          }],
-          summarize: (fact) => ({
-            resolvedAs: fact.resolution.resolvedAs,
-            identifiers: {},
           }),
           detect: () => [],
         },
@@ -166,23 +167,17 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
           }),
           query: async (_context, query) => {
             const identity = query.identity;
-            return [{
-              kind: "resolution-record",
-              service: resolver,
-              resolution: { inputId: identity.value, resolvedAs: identity.kind },
-              relations: identity.kind === "biz_id" ? [{
+            return {
+              resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
+              facts: [{ factType: "value", kind: "resolution-record", value: {} },
+                ...(identity.kind === "biz_id" ? [{
+                  factType: "relation" as const,
                     kind: "resolves-to",
                     from: identity,
                     to: { kind: "message_id", value: "message-1" },
-                  }] : [],
-            }];
+                  }] : [])],
+            };
           },
-          summarize: (result) => ({
-            resolvedAs: result.resolution.resolvedAs,
-            identifiers: {
-              message_id: "presentation-only",
-            },
-          }),
           detect: () => [],
         },
       },
@@ -202,16 +197,11 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
           query: async (_context, query) => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
-            return [{
-              kind: "sample-record",
-              service: records,
-              resolution: { inputId: identity.value, resolvedAs: identity.kind },
-            }];
+            return {
+              resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
+              facts: [{ factType: "value", kind: "sample-record", value: {} }],
+            };
           },
-          summarize: (result) => ({
-            resolvedAs: result.resolution.resolvedAs,
-            identifiers: {},
-          }),
           detect: () => [],
         },
       },
@@ -269,27 +259,25 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       evidence: {
         observations: [],
         facts: {
-          capabilityFacts: [{
+          capabilityResults: [{
             status: "collected",
             service,
-            fact: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" } },
-          }, {
-            status: "collected",
-            service,
+            result: {
+              resolution: { inputId: "biz-1", resolvedAs: "sample_id" },
+              facts: [{ factType: "record", recordKey: "one" }, { factType: "record", recordKey: "two" }],
+            },
           }],
         },
       },
       findings: [{
         id: "sample-record-collected",
         evidence: [
-          { factPath: "capabilityFacts.0", role: "supporting" },
-          { factPath: "capabilityFacts.1", role: "supporting" },
+          { factPath: "capabilityResults.0", role: "supporting" },
         ],
       }],
     });
-    expect(report.evidence.facts.capabilityFacts.map((fact: { id: string }) => fact.id)).toEqual([
-      `data-fact:provide:${service}:biz_id:biz-1:sample-record:1`,
-      `data-fact:provide:${service}:biz_id:biz-1:sample-record:2`,
+    expect(report.evidence.facts.capabilityResults.map((result: { id: string }) => result.id)).toEqual([
+      `data-query:provide:${service}:biz_id:biz-1`,
     ]);
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
@@ -361,9 +349,8 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     );
     expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
     expect(manifest.params).not.toHaveProperty("data_capabilities");
-    expect(manifest.inspection_facts.capabilityFacts).toMatchObject([
-      { status: "collected", service },
-      { status: "collected", service },
+    expect(manifest.inspection_facts.capabilityResults).toMatchObject([
+      { status: "collected", service, result: { facts: [{ recordKey: "one" }, { recordKey: "two" }] } },
     ]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
     expect(agents).toContain("`report.html`");

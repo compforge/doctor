@@ -62,28 +62,28 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
       capability: "inspect",
       query: async (identity) => [{
         kind: "data",
-        fact: {
-          kind: "tenant-configuration",
-          service: "config-api",
-          resolution: { inputId: identity.value, resolvedAs: "tenant_id" },
-          data: { configuration: { enabled: true } },
-          relations: [{
+        result: {
+          resolution: {
+            inputId: identity.value,
+            resolvedAs: "tenant_id",
+            identifiers: { tenant_id: identity.value },
+          },
+          facts: [{
+            factType: "value",
+            kind: "tenant-configuration",
+            value: { configuration: { enabled: true } },
+          }, {
+            factType: "value",
+            kind: "tenant-intention",
+            value: { intentions: [{ id: "intent-1" }] },
+          }, {
+            factType: "relation",
             kind: "owns",
             from: identity,
             to: { kind: "bot_id", value: "bot-1" },
           }],
           missingEvidence: ["runtime: unavailable"],
         },
-        summary: { resolvedAs: "tenant_id", identifiers: { tenant_id: identity.value } },
-      }, {
-        kind: "data",
-        fact: {
-          kind: "tenant-intention",
-          service: "config-api",
-          resolution: { inputId: identity.value, resolvedAs: "tenant_id" },
-          data: { intentions: [{ id: "intent-1" }] },
-        },
-        summary: { resolvedAs: "tenant_id", identifiers: { tenant_id: identity.value } },
       }],
     }],
   };
@@ -99,24 +99,27 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
       models: [{ name: "Model for tenant-1" }],
     });
     expect(JSON.stringify(facts.capabilityFacts[0])).not.toContain("must-not-leak");
-    expect(facts.capabilityFacts[1]).toMatchObject({
+    const inspectFact = facts.capabilityFacts[1];
+    expect(inspectFact).toMatchObject({
       status: "collected",
-      id: "inspect:config-api:tenant-configuration",
+      id: "inspect:config-api",
       kind: "data",
-      fact: { data: { configuration: { enabled: true } } },
+      result: {
+        resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
+        missingEvidence: ["runtime: unavailable"],
+      },
     });
-    expect(facts.capabilityFacts[1]).toMatchObject({
-      fact: { relations: [{ to: { kind: "bot_id", value: "bot-1" } }] },
-    });
-    expect(facts.capabilityFacts[2]).toMatchObject({
-      status: "collected",
-      id: "inspect:config-api:tenant-intention",
-      fact: { data: { intentions: [{ id: "intent-1" }] } },
-    });
+    if (inspectFact?.status !== "collected" || inspectFact.kind !== "data") {
+      throw new Error("expected collected inspect data");
+    }
+    expect(inspectFact.result.facts).toMatchObject([
+      { value: { configuration: { enabled: true } } },
+      { value: { intentions: [{ id: "intent-1" }] } },
+      { to: { kind: "bot_id", value: "bot-1" } },
+    ]);
     expect(coverage.map((item) => [item.goal, item.status])).toEqual([
       ["models", "sufficient"],
-      ["inspect:config-api:tenant-configuration", "partial"],
-      ["inspect:config-api:tenant-intention", "sufficient"],
+      ["inspect:config-api", "partial"],
     ]);
     const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
     expect(sections[0]?.html).toContain("Model for tenant-1");

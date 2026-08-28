@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ServiceInspectCapability } from "@compforge/doctor-plugin";
-import { normalizeServiceInspectFacts } from "../src/plugin/inspect";
+import { normalizeServiceInspectResult } from "../src/plugin/inspect";
 
 const capability = {
   access: {},
@@ -13,74 +13,130 @@ const capability = {
     username: "reader",
     credentialSource: "test",
   }),
-  query: async () => [],
-  summarize: () => ({ resolvedAs: "tenant_id", identifiers: {} }),
+  query: async (_context, query) => ({
+    resolution: {
+      inputId: query.identity.value,
+      resolvedAs: query.identity.kind,
+      identifiers: {},
+    },
+    facts: [],
+  }),
   detect: () => [],
 } satisfies ServiceInspectCapability;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
+const budget = { maxFacts: 10, maxBytes: 1024 * 1024 };
 
-test("Inspect query 可返回多个独立 Fact", () => {
-  expect(normalizeServiceInspectFacts({
-    value: [{
-      kind: "intention",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-    }, {
-      kind: "tenant-configuration",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-    }],
+test("Inspect query 支持 ValueFact、RecordFact 与 RelationFact", () => {
+  const result = normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{
+        factType: "value",
+        kind: "tenant-configuration",
+        value: { enabled: true },
+      }, {
+        factType: "record",
+        kind: "intention",
+        recordKey: "one",
+        record: { id: "one" },
+      }, {
+        factType: "record",
+        kind: "intention",
+        recordKey: "two",
+        record: { id: "two" },
+      }, {
+        factType: "relation",
+        kind: "owns",
+        from: identity,
+        to: { kind: "bot_id", value: "bot-1" },
+      }],
+    },
     service: "control",
     queryIdentity: identity,
     capability,
-  }).map((fact) => fact.kind)).toEqual(["intention", "tenant-configuration"]);
+    budget,
+  });
+
+  expect(result.facts.map((fact) => [fact.factType, fact.kind])).toEqual([
+    ["value", "tenant-configuration"],
+    ["record", "intention"],
+    ["record", "intention"],
+    ["relation", "owns"],
+  ]);
 });
 
-test("Inspect query 可返回同 kind 的多条独立 Fact", () => {
-  expect(normalizeServiceInspectFacts({
-    value: [{
-      kind: "intention",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-      record: { id: "one" },
-    }, {
-      kind: "intention",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-      record: { id: "two" },
-    }],
+test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
+  expect(() => normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "value", kind: "intention", value: "one" },
+        { factType: "value", kind: "intention", value: "two" }],
+    },
     service: "control",
     queryIdentity: identity,
     capability,
-  })).toHaveLength(2);
+    budget,
+  })).toThrow("duplicate ValueFact kind 'intention'");
+
+  expect(() => normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "record", kind: "intention", recordKey: "one", record: {} },
+        { factType: "record", kind: "intention", recordKey: "one", record: {} }],
+    },
+    service: "control",
+    queryIdentity: identity,
+    capability,
+    budget,
+  })).toThrow("duplicate RecordFact 'intention:one'");
 });
 
 test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
-  expect(() => normalizeServiceInspectFacts({
-    value: [{
-      kind: "unknown",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-    }],
+  expect(() => normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "value", kind: "unknown", value: {} }],
+    },
     service: "control",
     queryIdentity: identity,
     capability,
-  })).toThrow("control inspect fact[0].kind 'unknown' is not declared by provides");
+    budget,
+  })).toThrow("control inspect result.facts[0].kind 'unknown' is not declared by provides");
 
-  expect(() => normalizeServiceInspectFacts({
-    value: [{
-      kind: "intention",
-      service: "control",
-      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-      relations: [{
+  expect(() => normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{
+        factType: "relation",
         kind: "owns",
         from: identity,
         to: { kind: "message_id", value: "message-1" },
       }],
-    }],
+    },
     service: "control",
     queryIdentity: identity,
     capability,
+    budget,
   })).toThrow("is not declared by expands");
+});
+
+test("Core 按预算截断 query result", () => {
+  const result = normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "record", kind: "intention", recordKey: "one", record: {} },
+        { factType: "record", kind: "intention", recordKey: "two", record: {} }],
+    },
+    service: "control",
+    queryIdentity: identity,
+    capability,
+    budget: { ...budget, maxFacts: 1 },
+  });
+
+  expect(result.facts).toHaveLength(1);
+  expect(result.truncated).toEqual({
+    reason: "Core Fact budget omitted 1 item(s) (maxFacts=1, maxBytes=1048576)",
+    omittedFacts: 1,
+  });
 });

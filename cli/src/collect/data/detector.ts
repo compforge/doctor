@@ -1,7 +1,7 @@
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
-  CollectedDataInspectFact,
+  CollectedDataInspectResult,
   DataDiagnosisGoal,
   DataEvidence,
   DataFinding,
@@ -18,22 +18,22 @@ export function buildDataEvidence(
 export function makeDataDetectors(
   catalog: ServiceCatalog,
 ): readonly Detector<DataEvidence, DataFinding>[] {
-  const detectServiceInspectFacts: Detector<DataEvidence, DataFinding> = (evidence) => {
+  const detectServiceInspectResults: Detector<DataEvidence, DataFinding> = (evidence) => {
     const findings = new Map<string, DataFinding>();
-    for (const [index, fact] of evidence.facts.capabilityFacts.entries()) {
-      if (fact.status !== "collected") continue;
-      const declared = catalog.findWith(fact.service, "inspect");
+    for (const [index, result] of evidence.facts.capabilityResults.entries()) {
+      if (result.status !== "collected") continue;
+      const declared = catalog.findWith(result.service, "inspect");
       if (!declared) continue;
-      for (const finding of declared.capabilities.inspect.detect(fact.fact)) {
-        const key = `${fact.service}:${finding.id}`;
+      for (const finding of declared.capabilities.inspect.detect(result.result)) {
+        const key = `${result.service}:${finding.id}`;
         const existing = findings.get(key);
-        const reference = { factPath: `capabilityFacts.${index}`, role: "supporting" as const };
+        const reference = { factPath: `capabilityResults.${index}`, role: "supporting" as const };
         if (existing) {
           findings.set(key, { ...existing, evidence: [...existing.evidence, reference] });
         } else {
           findings.set(key, {
             ...finding,
-            service: fact.service,
+            service: result.service,
             evidence: [reference],
           });
         }
@@ -41,7 +41,7 @@ export function makeDataDetectors(
     }
     return [...findings.values()];
   };
-  return [detectServiceInspectFacts];
+  return [detectServiceInspectResults];
 }
 
 export function buildDataCoverage(
@@ -59,15 +59,15 @@ export function buildDataCoverage(
       missingEvidence.push(`${service} 数据库不可查询：${serviceFacts.inspect.reason}`);
       continue;
     }
-    const facts = evidence.facts.capabilityFacts.filter((item): item is CollectedDataInspectFact => (
+    const results = evidence.facts.capabilityResults.filter((item): item is CollectedDataInspectResult => (
       item.status === "collected" && item.service === service
     ));
-    if (!facts.length) {
-      const failures = evidence.facts.capabilityFacts
-        .filter((item) => item.status === "failed" && item.service === service)
-        .map((item) => item.status === "failed"
-          ? `${item.identity.kind}:${item.identity.value}: ${item.reason}`
-          : "");
+    if (!results.length) {
+      const failures = evidence.facts.capabilityResults.flatMap((item) => (
+        item.status !== "collected" && item.service === service
+          ? [`${item.identity.kind}:${item.identity.value}: ${item.reason}`]
+          : []
+      ));
       missingEvidence.push(
         failures.length
           ? `${service} 业务记录未取得：${failures.join("；")}`
@@ -75,15 +75,21 @@ export function buildDataCoverage(
       );
       continue;
     }
-    if (!facts.some((item) => item.summary.resolvedAs !== "unresolved")) {
+    if (!results.some((item) => item.result.resolution.resolvedAs !== "unresolved")) {
       missingEvidence.push(`${service} 未能把输入 ID 解析为已知业务对象`);
       continue;
+    }
+    for (const result of results) {
+      missingEvidence.push(...(result.result.missingEvidence ?? []).map((reason) => `${service}：${reason}`));
+      if (result.result.truncated) {
+        missingEvidence.push(`${service} 业务 Facts 已截断：${result.result.truncated.reason}`);
+      }
     }
     resolved += 1;
   }
   return [{
     goal: "business-data-relations",
-    status: resolved === services.length && services.length > 0
+    status: resolved === services.length && services.length > 0 && !missingEvidence.length
       ? "sufficient"
       : resolved > 0
         ? "partial"

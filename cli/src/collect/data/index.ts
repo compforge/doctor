@@ -20,7 +20,7 @@ import {
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
-import { collectDataInspectFacts } from "./capability/collect";
+import { collectDataInspectResults } from "./capability/collect";
 import { prepareDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
@@ -117,7 +117,7 @@ async function runCollectDataSingle(
   );
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   let access: DataAccessPreparation | undefined;
-  let facts: DataFacts = { services: {}, capabilityFacts: [] };
+  let facts: DataFacts = { services: {}, capabilityResults: [] };
   let diagnosis: DataDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
 
@@ -130,7 +130,7 @@ async function runCollectDataSingle(
     },
     inspectionFacts: {
       services: facts.services,
-      capabilityFacts: facts.capabilityFacts,
+      capabilityResults: facts.capabilityResults,
     },
     params: {
       services: selections.map((item) => item.service),
@@ -175,14 +175,14 @@ async function runCollectDataSingle(
       ctx,
       log,
     );
-    const capabilityFacts = await collectDataInspectFacts({
+    const capabilityResults = await collectDataInspectResults({
       selections,
       catalog: plugin.services,
       inspectionFacts,
       config,
       ctx,
     });
-    facts = { ...inspectionFacts, capabilityFacts };
+    facts = { ...inspectionFacts, capabilityResults };
     diagnosis = await runDiagnosis({
       ctx,
       facts,
@@ -207,10 +207,10 @@ async function runCollectDataSingle(
   if (diagnosisFailure || !diagnosis) return await fail(diagnosisFailure ?? "Data 诊断未形成结果");
 
   const requirements = selections.map((selection) => (
-    diagnosis.evidence.facts.capabilityFacts.some((item) => (
+    diagnosis.evidence.facts.capabilityResults.some((item) => (
       item.status === "collected"
       && item.service === selection.service
-      && item.summary.resolvedAs !== "unresolved"
+      && item.result.resolution.resolvedAs !== "unresolved"
     ))
   ));
   const outcome = evaluateCollectOutcome(requirements);

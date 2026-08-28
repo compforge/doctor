@@ -21,27 +21,44 @@ export interface Query<
   constraints?: Constraints;
 }
 
-/**
- * One independently consumable statement obtained from a diagnostic target.
- * `kind` identifies the schema family; one Query may return multiple records of the same kind.
- */
-export interface Fact {
+/** Inspect output that remains reusable as stable context for the current diagnosis run. */
+export interface FactBase {
   kind: string;
 }
 
-/**
- * A Fact that proves a relationship between two diagnostic identities.
- * Core commands decide whether and how far a discovered identity is queried again.
- */
-export interface Relation<I extends Identity = Identity> extends Fact {
+/** One opaque domain value; a Query may return at most one ValueFact of each kind. */
+export interface ValueFact<Value = unknown> extends FactBase {
+  factType: "value";
+  value: Value;
+}
+
+/** One repeatable opaque domain record, identified stably within its kind. */
+export interface RecordFact<Value = unknown> extends FactBase {
+  factType: "record";
+  recordKey: string;
+  record: Value;
+}
+
+/** A relationship proven between two diagnostic identities. */
+export interface RelationFact<I extends Identity = Identity> extends FactBase {
+  factType: "relation";
   from: I;
   to: I;
 }
 
-/** A reusable inspection capability. Commands own selection, traversal and Evidence composition. */
+export type Fact = ValueFact | RecordFact | RelationFact;
+
+export interface InspectQueryResult<F extends Fact = Fact> {
+  facts: readonly F[];
+}
+
+/**
+ * A reusable inspection capability. Facts are stable inputs for the current diagnosis run;
+ * Commands own selection, traversal, Probe scheduling and Evidence composition.
+ */
 export interface InspectCapability<
   Q extends Query = Query,
   F extends Fact = Fact,
 > extends CapabilityWithAccess {
-  query(context: PluginContext, query: Q): Promise<readonly F[]>;
+  query(context: PluginContext, query: Q): Promise<InspectQueryResult<F>>;
 }

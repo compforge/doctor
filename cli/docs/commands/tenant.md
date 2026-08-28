@@ -5,7 +5,7 @@
 `doctor tenant` 与 `doctor data` 都是数据采集 Command。前者以 tenant-id 为根 Identity，采集租户粒度
 Fact（包括表达 Identity 关系的 Relation）；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact。
 `doctor tenant` 通过租户目录确定 Identity，再组合 Plugin 已经提供的可复用 Capability，把返回的
-Model 或 `ServiceInspectFact` 组织为 Tenant Evidence；同一次 Inspect Query 可以返回多个领域上独立的 Fact。
+Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Query 可以返回多个领域 Fact。
 
 - **Tenant identity**：由 Plugin 声明的 `tenantDirectory` capability 解析。
 - **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog。
@@ -18,7 +18,7 @@ Model 或 `ServiceInspectFact` 组织为 Tenant Evidence；同一次 Inspect Que
 2. Command 形成 `{ identity: { kind: "tenant_id", value } }` Query。
 3. Command 查询 Model Catalog，并选择接受 `tenant_id` 的 Inspect Capability；每次调用独立准备 access 和
    `PluginContext`，完成后回收连接与 port-forward。
-4. 每个 `ServiceInspectFact` 形成独立 Tenant Fact；单个 Capability 失败不丢弃其它已取得事实。
+4. 每个 `ServiceInspectResult` 形成一条带 query 获取状态的 Tenant Fact；单个 Capability 失败不丢弃其它已取得事实。
 5. Command 汇总 Facts，计算 Coverage，并生成 Evidence、Markdown 与 HTML。
 
 Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；

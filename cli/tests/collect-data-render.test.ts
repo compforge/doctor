@@ -20,8 +20,8 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
           inspect: { status: "collected", queryable: true },
         },
       },
-      capabilityFacts: [{
-        id: "data-fact:provide:sample:biz_id:biz-1",
+      capabilityResults: [{
+        id: "data-query:provide:sample:biz_id:biz-1",
         status: "failed",
         stage: "provide",
         service: "sample",
@@ -56,27 +56,32 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
       observations: [],
       facts: {
         services: {},
-        capabilityFacts: [
+      capabilityResults: [
           {
-            id: "data-fact:provide:example-service:card_id:card-1",
+            id: "data-query:provide:example-service:card_id:card-1",
             status: "collected",
             stage: "provide",
             service: "example-service",
             identity: { kind: "card_id", value: "card-1" },
-            fact: cardResult,
-            summary: {
-              resolvedAs: "card_id",
-              identifiers: { card_id: "card-1" },
+            result: {
+              resolution: {
+                inputId: "card-1",
+                resolvedAs: "card_id",
+                identifiers: { card_id: "card-1" },
+              },
+              facts: [{ factType: "value", kind: "example-card", value: cardResult }],
             },
           },
           {
-            id: "data-fact:provide:other-service:biz_id:card-1",
+            id: "data-query:provide:other-service:biz_id:card-1",
             status: "collected",
             stage: "provide",
             service: "other-service",
             identity: { kind: "biz_id", value: "card-1" },
-            fact: unresolvedResult,
-            summary: { resolvedAs: "unresolved", identifiers: {} },
+            result: {
+              resolution: { inputId: "card-1", resolvedAs: "unresolved", identifiers: {} },
+              facts: [{ factType: "value", kind: "other-records", value: unresolvedResult }],
+            },
           },
         ],
       },

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { formatDoctorVersion } from "../src/app/version";
+import { DOCTOR_CLI_VERSION, formatDoctorVersion } from "../src/app/version";
 import type { DoctorHostInfo } from "../src/infra/host";
 
 function host(overrides: Partial<DoctorHostInfo> = {}): DoctorHostInfo {
@@ -17,7 +17,7 @@ function host(overrides: Partial<DoctorHostInfo> = {}): DoctorHostInfo {
 
 test("doctor version 输出 Doctor Host 的 OS、arch 和 glibc", () => {
   expect(formatDoctorVersion({ id: "test", version: "0.0.1" }, host(), "v1.32.3")).toBe([
-    "doctor 0.1.60",
+    `doctor ${DOCTOR_CLI_VERSION}`,
     "plugin test@0.0.1",
     "os linux 5.15.0-100",
     "arch x64",

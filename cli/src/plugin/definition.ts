@@ -95,9 +95,6 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     if (typeof inspect.query !== "function") {
       throw new Error(`${service.name}.inspect.query must be a function`);
     }
-    if (typeof inspect.summarize !== "function") {
-      throw new Error(`${service.name}.inspect.summarize must be a function`);
-    }
     if (typeof inspect.detect !== "function") {
       throw new Error(`${service.name}.inspect.detect must be a function`);
     }
