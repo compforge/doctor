@@ -77,6 +77,7 @@ export interface InspectPodConditionFact {
 
 export interface InspectPodRuntimeFact {
   pod: string;
+  serviceAccountName: string;
   phase: string;
   reason?: string;
   message?: string;
@@ -137,9 +138,19 @@ export interface DependencyInventoryObservation extends ObservationMeta {
   reason?: string;
 }
 
+export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta {
+  kind: "kubernetes-apparmor-unconfined-admission";
+  service: string;
+  namespace: string;
+  serviceAccountName: string;
+  status: "allowed" | "denied";
+  reason?: string;
+}
+
 export type InspectObservation =
   | EnvironmentConfigObservation
-  | DependencyInventoryObservation;
+  | DependencyInventoryObservation
+  | KubernetesAppArmorAdmissionObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;

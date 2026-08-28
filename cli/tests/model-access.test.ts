@@ -179,6 +179,30 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
 });
 
+test("environmentProbes 只接受 Core 支持的声明式共同 Probe", () => {
+  const probe = {
+    id: "apparmor-unconfined",
+    kind: "kubernetes.apparmor-unconfined-admission",
+    subject: "workload-service-account",
+  } as const;
+  const plugin = (candidate: Record<string, unknown>) => ({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{
+      name: "runtime-api",
+      capabilities: { environmentProbes: [candidate] },
+    }] },
+  });
+
+  expect(validatePluginDefinition(plugin(probe), manifest).services
+    .findWith("runtime-api", "environmentProbes")?.capabilities.environmentProbes)
+    .toEqual([probe]);
+  expect(() => validatePluginDefinition(plugin({ ...probe, kind: "custom.exec" }), manifest))
+    .toThrow("uses unsupported kind 'custom.exec'");
+  expect(() => validatePluginDefinition(plugin({ ...probe, subject: "fixed-service-account" }), manifest))
+    .toThrow("uses unsupported subject 'fixed-service-account'");
+});
+
 test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
   const base = {
     id: "test",

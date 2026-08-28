@@ -12,6 +12,7 @@ import type {
   InspectPodContainerFact,
   InspectPodRuntimeFact,
   JsonValue,
+  KubernetesAppArmorAdmissionObservation,
 } from "./model";
 
 function displayValue(value: JsonValue | undefined): string {
@@ -48,6 +49,7 @@ const POD_TABLE_HEADERS = [
   "Service",
   "Pod 数量",
   "Pod",
+  "ServiceAccount",
   "Pod 状态",
   "Container",
   "Container 状态",
@@ -122,20 +124,35 @@ function podRows(diagnosis: InspectDiagnosis): string[][] {
           "—",
           "—",
           "—",
+          "—",
         ]];
       }
       const count = String(target.podRuntime.pods.length);
       if (!target.podRuntime.pods.length) {
-        return [[target.service, count, "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
+        return [[target.service, count, "—", "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
       }
       return target.podRuntime.pods.flatMap((pod) => {
         if (!pod.containers.length) {
-          return [[target.service, count, pod.pod, podStatus(pod), "—", "—", "—", "—", "—", "—", "—"]];
+          return [[
+            target.service,
+            count,
+            pod.pod,
+            pod.serviceAccountName,
+            podStatus(pod),
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+            "—",
+          ]];
         }
         return pod.containers.map((container) => [
           target.service,
           count,
           pod.pod,
+          pod.serviceAccountName,
           podStatus(pod),
           container.name,
           containerStatus(container),
@@ -179,6 +196,31 @@ function dependencyLabel(diagnosis: InspectDiagnosis): string {
   const collected = observations.filter((item) => item.status === "collected").length;
   if (collected === targets.targets.length && !targets.missing.length) return `已采集 ${collected} 个镜像`;
   return `已采集 ${collected}/${targets.targets.length} 个镜像`;
+}
+
+function appArmorObservations(diagnosis: InspectDiagnosis): KubernetesAppArmorAdmissionObservation[] {
+  return diagnosis.evidence.observations.filter(
+    (item): item is KubernetesAppArmorAdmissionObservation => (
+      item.kind === "kubernetes-apparmor-unconfined-admission"
+    ),
+  );
+}
+
+function appArmorLabel(diagnosis: InspectDiagnosis): string {
+  const observations = appArmorObservations(diagnosis);
+  if (!observations.length) return "未探测到（best effort）";
+  const denied = observations.filter((item) => item.status === "denied").length;
+  return denied ? `${denied} 个 ServiceAccount 被拒绝` : `${observations.length} 个 ServiceAccount 允许`;
+}
+
+function appArmorRows(diagnosis: InspectDiagnosis): string[][] {
+  return appArmorObservations(diagnosis).map((observation) => [
+    observation.service,
+    observation.namespace,
+    observation.serviceAccountName,
+    observation.status,
+    observation.reason ?? "—",
+  ]);
 }
 
 const TOOLCHAIN_TABLE_HEADERS = [
@@ -240,8 +282,10 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     `- Pod：${podSummary(diagnosis)}`,
     `- Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
     `- 应用依赖：${dependencyLabel(diagnosis)}`,
+    `- AppArmor Unconfined：${appArmorLabel(diagnosis)}`,
     `- 配置项：${diagnosis.evidence.rows.length}`,
     "- Env 来源仅包含 ConfigMap 与 Deployment env。",
+    "- AppArmor admission 使用 workload ServiceAccount 做 server-side dry-run；不会创建 Pod，也不验证节点运行时。",
     "",
     "## Coverage",
     "",
@@ -259,6 +303,13 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     "### Toolchain",
     "",
     ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
+    "",
+    "### AppArmor Unconfined admission（best effort）",
+    "",
+    ...markdownTable(
+      ["Service", "Namespace", "ServiceAccount", "Admission", "Reason"],
+      appArmorRows(diagnosis),
+    ),
     "",
     "### 应用依赖",
     "",
@@ -283,11 +334,13 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
       `Pod：${podSummary(diagnosis)}`,
       `Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
       `应用依赖：${dependencyLabel(diagnosis)}`,
+      `AppArmor Unconfined：${appArmorLabel(diagnosis)}`,
       `配置项：${diagnosis.evidence.rows.length}`,
     ]),
     htmlParagraph("同名配置合并为一行。Env 列来自 ConfigMap 与 Deployment env。"),
     htmlParagraph("显式 Deployment env 按 Kubernetes 语义覆盖同名 ConfigMap 值。"),
     htmlParagraph("Toolchain 来自 Plugin 声明；依赖清单与 runtime version 来自本次 Target 观测。"),
+    htmlParagraph("AppArmor admission 使用 workload ServiceAccount 做 server-side dry-run；不会创建 Pod，也不验证节点运行时。"),
     htmlHeading(2, "Coverage"),
     htmlList(diagnosis.coverage.flatMap((item) => [
       `${item.goal}：${item.status}`,
@@ -305,6 +358,13 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "Workload / Toolchain",
       html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
+    },
+    {
+      title: "Workload / AppArmor Unconfined admission（best effort）",
+      html: htmlTable(
+        ["Service", "Namespace", "ServiceAccount", "Admission", "Reason"],
+        appArmorRows(diagnosis),
+      ),
     },
     {
       title: "Workload / 应用依赖",

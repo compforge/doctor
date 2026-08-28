@@ -205,7 +205,7 @@ export async function runCollectInspect(
       ctx,
       facts,
       config,
-      probes: makeInspectProbes(facts, config),
+      probes: makeInspectProbes(facts, config, plugin.services),
       log,
       buildEvidence: buildInspectEvidence,
       detectors: inspectDetectors,
