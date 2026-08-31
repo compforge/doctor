@@ -1,5 +1,6 @@
 import {
   createServiceCatalog,
+  kubernetesServiceWorkload,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
 import pluginPackage from "../package.json" with { type: "json" };
@@ -7,6 +8,7 @@ import pluginPackage from "../package.json" with { type: "json" };
 const services = createServiceCatalog([
   {
     name: "example-api",
+    workloads: [kubernetesServiceWorkload("example-api")],
     toolchain: {
       language: "typescript",
       executionPlatform: "node",
@@ -20,6 +22,7 @@ const services = createServiceCatalog([
   },
   {
     name: "example-worker",
+    workloads: [kubernetesServiceWorkload("example-worker")],
     toolchain: {
       language: "python",
       executionPlatform: "python",

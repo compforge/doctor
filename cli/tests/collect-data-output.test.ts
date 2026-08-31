@@ -22,6 +22,7 @@ const plugin = {
   version: "0.0.1",
   services: createServiceCatalog([{
     name: service,
+    workloads: [],
     capabilities: {
       inspect: {
         access: {},
@@ -67,6 +68,7 @@ const contexts = { [service]: {} as PluginContext };
 test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
   const tenantOnly = {
     name: "tenant-api",
+    workloads: [],
     capabilities: {
       inspect: {
         access: {},
@@ -123,6 +125,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     services: createServiceCatalog([{
       // Deliberately declared first: it can only run after the later resolver discovers message_id.
       name: traceResolver,
+      workloads: [],
       capabilities: {
         inspect: {
           access: {},
@@ -153,6 +156,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       },
     }, {
       name: resolver,
+      workloads: [],
       capabilities: {
         inspect: {
           access: {},
@@ -183,6 +187,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       },
     }, {
       name: records,
+      workloads: [],
       capabilities: {
         inspect: {
           access: {},

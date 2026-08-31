@@ -22,6 +22,7 @@ function nonEmptyString(value: unknown, label: string): string {
 
 function endpointPort(capability: Record<string, unknown>, label: string): void {
   const endpoint = record(capability.endpoint, `${label}.endpoint`);
+  nonEmptyString(endpoint.host, `${label}.endpoint.host`);
   if (!Number.isInteger(endpoint.port) || Number(endpoint.port) < 1 || Number(endpoint.port) > 65_535) {
     throw new Error(`${label}.endpoint.port must be an integer in 1..65535`);
   }
@@ -63,6 +64,33 @@ function uniqueNonEmptyStrings(value: unknown, label: string): void {
 function validateService(value: unknown, index: number): ServiceDefinition {
   const service = record(value, `Plugin Service[${index}]`);
   nonEmptyString(service.name, `Plugin Service[${index}].name`);
+  if (!Array.isArray(service.workloads)) {
+    throw new Error(`Plugin Service '${String(service.name)}'.workloads must be an array`);
+  }
+  const workloadNames = new Set<string>();
+  for (const [workloadIndex, value] of service.workloads.entries()) {
+    const workload = record(value, `${service.name}.workloads[${workloadIndex}]`);
+    const name = nonEmptyString(workload.name, `${service.name}.workloads[${workloadIndex}].name`);
+    if (workloadNames.has(name)) throw new Error(`${service.name}.workloads contains duplicate name '${name}'`);
+    workloadNames.add(name);
+    if (workload.lifecycle !== "persistent" && workload.lifecycle !== "ephemeral") {
+      throw new Error(`${service.name}.workloads.${name}.lifecycle must be persistent or ephemeral`);
+    }
+    if (workload.container !== undefined) nonEmptyString(workload.container, `${service.name}.workloads.${name}.container`);
+    const discovery = record(workload.discovery, `${service.name}.workloads.${name}.discovery`);
+    if (discovery.kind === "kubernetes-service") {
+      nonEmptyString(discovery.service, `${service.name}.workloads.${name}.discovery.service`);
+    } else if (discovery.kind === "kubernetes-pods") {
+      const labels = record(discovery.labels, `${service.name}.workloads.${name}.discovery.labels`);
+      if (!Object.keys(labels).length) throw new Error(`${service.name}.workloads.${name}.discovery.labels must not be empty`);
+      for (const [label, labelValue] of Object.entries(labels)) {
+        nonEmptyString(label, `${service.name}.workloads.${name}.discovery.labels key`);
+        nonEmptyString(labelValue, `${service.name}.workloads.${name}.discovery.labels.${label}`);
+      }
+    } else {
+      throw new Error(`${service.name}.workloads.${name}.discovery.kind is unsupported`);
+    }
+  }
   if (service.toolchain !== undefined && !isToolchain(service.toolchain)) {
     throw new Error(`Plugin Service '${String(service.name)}'.toolchain is invalid`);
   }
@@ -112,7 +140,22 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       throw new Error(`${service.name}.inspect.detect must be a function`);
     }
   }
-  for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case"] as const) {
+  if (capabilities.workload !== undefined) {
+    const workload = record(capabilities.workload, `${service.name}.workload`);
+    for (const [probeId, probe] of uniqueIdRecords(workload.probes, `${service.name}.workload.probes`)) {
+      const workloadName = nonEmptyString(probe.workload, `${service.name}.workload.probes.${probeId}.workload`);
+      if (!workloadNames.has(workloadName)) {
+        throw new Error(`${service.name}.workload probe '${probeId}' references unknown Workload '${workloadName}'`);
+      }
+      if (typeof probe.observe !== "function") {
+        throw new Error(`${service.name}.workload.probes.${probeId}.observe must be a function`);
+      }
+      if (probe.detect !== undefined && typeof probe.detect !== "function") {
+        throw new Error(`${service.name}.workload.probes.${probeId}.detect must be a function`);
+      }
+    }
+  }
+  for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case", "metric"] as const) {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
   }
@@ -243,6 +286,16 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   const catalog = createServiceCatalog(services);
 
   for (const service of services) {
+    for (const [index, value] of (service.relationships ?? []).entries()) {
+      const relationship = record(value, `${service.name}.relationships[${index}]`);
+      if (relationship.kind !== "managed-by") {
+        throw new Error(`${service.name}.relationships[${index}].kind is unsupported`);
+      }
+      const target = nonEmptyString(relationship.service, `${service.name}.relationships[${index}].service`);
+      if (!services.some((candidate) => candidate.name === target)) {
+        throw new Error(`${service.name}.relationships[${index}] references unknown Service '${target}'`);
+      }
+    }
     const dependencies = service.dependencies ?? [];
     const dependencyIds = new Set<string>();
     for (const dependency of dependencies) {

@@ -42,7 +42,7 @@ export const STORE_METRIC_NAMES: Record<MetricStoreKind, readonly string[]> = {
 
 export const STORE_METRIC_CAPABILITIES: Record<MetricStoreKind, ServiceMetricCapability> = {
   redis: {
-    endpoint: { port: 9121, path: "/metrics" },
+    endpoint: { host: "redis-exporter", port: 9121, path: "/metrics" },
     metricNames: STORE_METRIC_NAMES.redis,
     charts: [
       {
@@ -94,7 +94,7 @@ export const STORE_METRIC_CAPABILITIES: Record<MetricStoreKind, ServiceMetricCap
     ],
   },
   mysql: {
-    endpoint: { port: 9104, path: "/metrics" },
+    endpoint: { host: "mysql-exporter", port: 9104, path: "/metrics" },
     metricNames: STORE_METRIC_NAMES.mysql,
     charts: [
       {

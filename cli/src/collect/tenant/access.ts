@@ -71,7 +71,11 @@ export async function openTenantAccess(input: {
     config: commandContext.profile.pluginConfig,
     databaseIdentity,
     service: {
-      name: options.tenantDirectoryService?.trim() || directoryProvider.name,
+      name: directoryProvider.name,
+    },
+    endpoint: {
+      host: options.tenantDirectoryService?.trim()
+        || directoryProvider.capabilities.tenantDirectory.endpoint.host,
       port: tenantDirectoryPort(
         options.tenantDirectoryPort,
         directoryProvider.capabilities.tenantDirectory.endpoint.port,
@@ -137,7 +141,8 @@ export async function openTenantAccess(input: {
             env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
             databaseIdentity,
-            service: { name: service.name, port: capability.endpoint.port },
+            service: { name: service.name },
+            endpoint: capability.endpoint,
             command: "doctor tenant · model catalog",
             capability,
             authorization,

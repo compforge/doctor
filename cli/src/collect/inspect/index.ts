@@ -24,7 +24,7 @@ import {
   resolveInspectDeploymentSelection,
   resolveInspectServiceSelection,
 } from "./options";
-import { buildInspectCoverage, buildInspectEvidence, inspectDetectors } from "./detector";
+import { buildInspectCoverage, buildInspectEvidence, makeInspectDetectors } from "./detector";
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,
@@ -72,14 +72,6 @@ export async function runCollectInspect(
   }
   terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
-  await enforceKubernetesAccess(authorization, {
-    command: "doctor inspect",
-    needs: [{
-      requirement: "required",
-      rule: { verb: "list", resource: "services" },
-      purpose: "解析要 Inspect 的 Service",
-    }],
-  });
   let services;
   try {
     services = await resolveInspectServiceSelection({ config, catalog: plugin.services, executor });
@@ -92,6 +84,7 @@ export async function runCollectInspect(
     return 130;
   }
   config = { ...config, services };
+  const selectedDefinitions = services.map((name) => plugin.services.find(name)!);
   const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
   if (includeDeploymentConfig === undefined) {
     terminalStderr.warning("[collect] 已取消\n");
@@ -141,6 +134,14 @@ export async function runCollectInspect(
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
         fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
       },
+      ...(selectedDefinitions.some((service) => service.workloads.some(
+        (workload) => workload.discovery.kind === "kubernetes-service",
+      )) ? [{
+        requirement: "preferred" as const,
+        rule: { verb: "list" as const, resource: "services" },
+        purpose: "解析所选 Workload 声明的 Kubernetes Service",
+        fallback: "仅 Pod selector Workload 可继续解析",
+      }] : []),
       ...dependencyNeeds,
     ],
   });
@@ -208,7 +209,7 @@ export async function runCollectInspect(
       probes: makeInspectProbes(facts, config, plugin.services),
       log,
       buildEvidence: buildInspectEvidence,
-      detectors: inspectDetectors,
+      detectors: makeInspectDetectors(plugin.services),
       buildCoverage: buildInspectCoverage,
     });
   } catch (error) {

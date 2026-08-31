@@ -13,6 +13,7 @@ import type {
   InspectPodRuntimeFact,
   JsonValue,
   KubernetesAppArmorAdmissionObservation,
+  PluginWorkloadObservation,
 } from "./model";
 
 function displayValue(value: JsonValue | undefined): string {
@@ -47,6 +48,7 @@ function tableRows(diagnosis: InspectDiagnosis): string[][] {
 
 const POD_TABLE_HEADERS = [
   "Service",
+  "Workload",
   "Pod 数量",
   "Pod",
   "ServiceAccount",
@@ -110,12 +112,13 @@ function podRows(diagnosis: InspectDiagnosis): string[][] {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
   return Object.values(diagnosis.evidence.facts.serviceTargets.services)
     .sort((left, right) => left.service.localeCompare(right.service))
-    .flatMap((target) => {
-      if (target.podRuntime.status !== "collected") {
+    .flatMap((target) => Object.values(target.workloads).flatMap((workload) => {
+      if (workload.podRuntime.status !== "collected") {
         return [[
           target.service,
+          workload.name,
           "—",
-          `${target.podRuntime.status}: ${target.podRuntime.reason}`,
+          `${workload.podRuntime.status}: ${workload.podRuntime.reason}`,
           "—",
           "—",
           "—",
@@ -127,14 +130,15 @@ function podRows(diagnosis: InspectDiagnosis): string[][] {
           "—",
         ]];
       }
-      const count = String(target.podRuntime.pods.length);
-      if (!target.podRuntime.pods.length) {
-        return [[target.service, count, "—", "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
+      const count = String(workload.podRuntime.pods.length);
+      if (!workload.podRuntime.pods.length) {
+        return [[target.service, workload.name, count, "—", "—", "—", "—", "—", "—", "—", "—", "—", "—"]];
       }
-      return target.podRuntime.pods.flatMap((pod) => {
+      return workload.podRuntime.pods.flatMap((pod) => {
         if (!pod.containers.length) {
           return [[
             target.service,
+            workload.name,
             count,
             pod.pod,
             pod.serviceAccountName,
@@ -150,6 +154,7 @@ function podRows(diagnosis: InspectDiagnosis): string[][] {
         }
         return pod.containers.map((container) => [
           target.service,
+          workload.name,
           count,
           pod.pod,
           pod.serviceAccountName,
@@ -163,16 +168,17 @@ function podRows(diagnosis: InspectDiagnosis): string[][] {
           container.limits.memory ?? "—",
         ]);
       });
-    });
+    }));
 }
 
 function podSummary(diagnosis: InspectDiagnosis): string {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return "—";
   const targets = Object.values(diagnosis.evidence.facts.serviceTargets.services);
-  const pods = new Set(targets.flatMap((target) => target.podRuntime.status === "collected"
-    ? target.podRuntime.pods.map((pod) => pod.pod)
+  const workloads = targets.flatMap((target) => Object.values(target.workloads));
+  const pods = new Set(workloads.flatMap((workload) => workload.podRuntime.status === "collected"
+    ? workload.podRuntime.pods.map((pod) => pod.pod)
     : []));
-  return targets.some((target) => target.podRuntime.status !== "collected")
+  return workloads.some((workload) => workload.podRuntime.status !== "collected")
     ? `${pods.size}（部分 Service 未取得）`
     : String(pods.size);
 }
@@ -220,6 +226,31 @@ function appArmorRows(diagnosis: InspectDiagnosis): string[][] {
     observation.serviceAccountName,
     observation.status,
     observation.reason ?? "—",
+  ]);
+}
+
+function workloadProbeObservations(diagnosis: InspectDiagnosis): PluginWorkloadObservation[] {
+  return diagnosis.evidence.observations.filter(
+    (item): item is PluginWorkloadObservation => item.kind === "plugin-workload",
+  );
+}
+
+function workloadProbeRows(diagnosis: InspectDiagnosis): string[][] {
+  return workloadProbeObservations(diagnosis).map((observation) => [
+    observation.service,
+    observation.workload,
+    observation.pod,
+    observation.probe,
+    observation.observationKind,
+    JSON.stringify(observation.value),
+  ]);
+}
+
+function findingRows(diagnosis: InspectDiagnosis): string[][] {
+  return diagnosis.findings.map((finding) => [
+    finding.severity,
+    finding.kind,
+    finding.message,
   ]);
 }
 
@@ -311,6 +342,17 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
       appArmorRows(diagnosis),
     ),
     "",
+    "### Plugin Workload 探测",
+    "",
+    ...markdownTable(
+      ["Service", "Workload", "Pod", "Probe", "Kind", "Value"],
+      workloadProbeRows(diagnosis),
+    ),
+    "",
+    "### Findings",
+    "",
+    ...markdownTable(["Severity", "Kind", "Message"], findingRows(diagnosis)),
+    "",
     "### 应用依赖",
     "",
     ...markdownTable(DEPENDENCY_TABLE_HEADERS, dependencyRows(diagnosis)),
@@ -358,6 +400,17 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "Workload / Toolchain",
       html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
+    },
+    {
+      title: "Workload / Plugin 探测",
+      html: htmlTable(
+        ["Service", "Workload", "Pod", "Probe", "Kind", "Value"],
+        workloadProbeRows(diagnosis),
+      ),
+    },
+    {
+      title: "Findings",
+      html: htmlTable(["Severity", "Kind", "Message"], findingRows(diagnosis)),
     },
     {
       title: "Workload / AppArmor Unconfined admission（best effort）",

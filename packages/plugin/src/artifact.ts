@@ -6,7 +6,7 @@ import {
 } from "node:fs";
 import { relative, resolve, sep } from "node:path";
 
-export const DOCTOR_PLUGIN_API_VERSION = 4;
+export const DOCTOR_PLUGIN_API_VERSION = 5;
 
 const ARTIFACT_DIGEST_DOMAIN = "doctor-plugin-artifact-v1";
 const HOST_FILES = new Set(["plugin.json", ".doctor-install.json"]);

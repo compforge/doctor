@@ -89,6 +89,7 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "logical-opensearch-provider",
+      workloads: [],
       capabilities: {
         stores: [{
           id: "trace",

@@ -1,4 +1,4 @@
-import type { Toolchain } from "@compforge/doctor-plugin";
+import type { ServiceInspectFinding, Toolchain, WorkloadDiscovery, WorkloadLifecycle } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
@@ -39,6 +39,7 @@ export interface InspectConfig {
 
 export interface InspectDeploymentTarget {
   service: string;
+  workload: string;
   deployment: string;
   container: string;
 }
@@ -85,13 +86,21 @@ export interface InspectPodRuntimeFact {
   containers: InspectPodContainerFact[];
 }
 
+export interface InspectWorkloadTargetFact {
+  name: string;
+  lifecycle: WorkloadLifecycle;
+  discovery: WorkloadDiscovery;
+  probes: string[];
+  deployments: InspectDeploymentTarget[];
+  unavailableDeployments: Array<{ deployment: string; reason: string }>;
+  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }>;
+}
+
 export interface InspectServiceTargetFact {
   service: string;
   toolchain?: Toolchain;
   configurationSupported: boolean;
-  deployments: InspectDeploymentTarget[];
-  unavailableDeployments: Array<{ deployment: string; reason: string }>;
-  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }>;
+  workloads: Record<string, InspectWorkloadTargetFact>;
 }
 
 export interface InspectDependencyTarget {
@@ -147,10 +156,23 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
   reason?: string;
 }
 
+export interface PluginWorkloadObservation extends ObservationMeta {
+  kind: "plugin-workload";
+  observationKind: string;
+  service: string;
+  workload: string;
+  namespace: string;
+  pod: string;
+  container?: string;
+  probe: string;
+  value: Readonly<Record<string, unknown>>;
+}
+
 export type InspectObservation =
   | EnvironmentConfigObservation
   | DependencyInventoryObservation
-  | KubernetesAppArmorAdmissionObservation;
+  | KubernetesAppArmorAdmissionObservation
+  | PluginWorkloadObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;
@@ -161,11 +183,14 @@ export interface InspectEvidence extends Evidence<InspectObservation, InspectFac
   rows: ConfigurationComparisonRow[];
 }
 
-export type InspectFinding = never;
+export type InspectFinding = ServiceInspectFinding & {
+  evidence: readonly [{ observationId: string; role: "supporting" }];
+};
 export type InspectDiagnosisGoal =
   | "environment-config"
   | "workload-runtime"
-  | "runtime-dependencies";
+  | "runtime-dependencies"
+  | "workload-observations";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
 
 export interface InspectCommandContext {

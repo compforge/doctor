@@ -226,8 +226,8 @@ Command orchestration
 
 Plugin (versioned distribution unit)
 ├── Service Catalog
-│   ├── Service A ── capabilities + access declarations
-│   └── Service B ── capabilities + access declarations
+│   ├── Service A ── Workloads + capabilities + access declarations
+│   └── Service B ── Workloads + capabilities + access declarations
 └── Skills
 ```
 
@@ -245,12 +245,11 @@ Collect command 按诊断算法和数据语义的所有者分为三类。这个�
 | 基础设施型 | `store`、`mem`、`net` | 按需贡献目标身份、连接配置或默认选择，不实现通用基础设施诊断 | 执行标准探测与分析，控制风险、资源生命周期和证据交付 |
 | 混合型 | `trace`、`log`、`tenant`、`model`、`mcp` | 处理业务入口、私有 schema 和目标投影 | 消费规范目标后执行通用采集、协议分析和报告 |
 
-Kubernetes 的分工遵循同一所有权：Core 解析当前 profile 的 kubeconfig/context，但只向 Plugin 注入
-namespace、Service 身份和 Target-scoped Kubernetes access，并统一托管超时、输出上限、取消与
-port-forward 回收；Plugin 用该 access 自行解释 selector、定位 Pod、读取运行时配置。Core 不预先读取
-selector、Pod、container 或 env 再回传给 Plugin，Plugin 也不持有 kubeconfig 或自行启动 kubectl。
-只有 Kubernetes 操作本身属于 Core command 时，例如 `log` 读取 Pod 日志、`mem` 操作目标进程，Core 才
-负责定位和操作对应 Target，并声明实际需要的 access contract。
+Kubernetes 的分工遵循同一所有权：Core 解析当前 profile 的 kubeconfig/context，并统一托管查询、超时、
+输出上限、取消与 port-forward 回收；Plugin 以 Workload discovery 声明业务 Service 的部署拓扑，并以
+capability 持有专有 API 和数据语义。Core 根据本轮命令解析 Workload Instance；只有 Workload-scoped
+capability 会取得相应 Instance，其它 capability 仍只获得 Service 身份和 Target-scoped access。Plugin
+不持有 kubeconfig 或自行启动 kubectl。
 
 混合型命令按阶段保持边界。例如 `trace` 先由 Plugin 把业务 ID 解析为规范 `trace_id` 并贡献
 OpenSearch 目标，再由 Core 按 OTel/Jaeger 语义下载和分析 span；`inspect` 的 Deployment env 由 Core

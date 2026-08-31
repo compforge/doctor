@@ -26,7 +26,7 @@ test("Plugin Inspect Capability 必须提供 query", () => {
   const definition = (inspect: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "records", capabilities: { inspect } }] },
+    services: { services: [{ name: "records", workloads: [], capabilities: { inspect } }] },
   });
 
   expect(validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
@@ -44,9 +44,10 @@ test("Plugin tenant capability 只绑定租户目录", () => {
     tenant: { directoryService: "iam" },
     services: { services: [{
       name: "iam",
+      workloads: [],
       capabilities: {
         tenantDirectory: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
@@ -74,9 +75,10 @@ test("Plugin model capability requires an endpoint on each declared provider", (
     },
     services: { services: [{
       name: "tenant-directory",
+      workloads: [],
       capabilities: {
         tenantDirectory: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
@@ -86,9 +88,10 @@ test("Plugin model capability requires an endpoint on each declared provider", (
       },
     }, {
       name: "model-catalog",
+      workloads: [],
       capabilities: {
         modelCatalog: {
-          endpoint: { port: 8081 },
+          endpoint: { host: "test-service", port: 8081 },
           access: {},
           create: () => ({
             query: async () => [],
@@ -98,6 +101,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
       },
     }, {
       name: "inference",
+      workloads: [],
       capabilities: {
         inference: {
           access: {},
@@ -124,9 +128,10 @@ test("Plugin model capability supports discovery without inference", async () =>
     },
     services: { services: [{
       name: "tenant-directory",
+      workloads: [],
       capabilities: {
         tenantDirectory: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
@@ -136,9 +141,10 @@ test("Plugin model capability supports discovery without inference", async () =>
       },
     }, {
       name: "model-catalog",
+      workloads: [],
       capabilities: {
         modelCatalog: {
-          endpoint: { port: 8081 },
+          endpoint: { host: "test-service", port: 8081 },
           access: {},
           create: () => ({
             query: async () => [],
@@ -163,7 +169,7 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   const base = {
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "api", capabilities: {} }] },
+    services: { services: [{ name: "api", workloads: [], capabilities: {} }] },
   };
   expect(validatePluginDefinition(base, manifest).services.find("api")?.toolchain).toBeUndefined();
 
@@ -172,6 +178,7 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
     services: {
       services: [{
         name: "api",
+        workloads: [],
         toolchain: { language: "python", executionPlatform: "unknown" },
         capabilities: {},
       }],
@@ -190,6 +197,7 @@ test("environmentProbes 只接受 Core 支持的声明式共同 Probe", () => {
     version: "0.0.1",
     services: { services: [{
       name: "runtime-api",
+      workloads: [],
       capabilities: { environmentProbes: [candidate] },
     }] },
   });
@@ -211,6 +219,7 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
     services: {
       services: [{
         name: "trace-store",
+        workloads: [],
         capabilities: {
           stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
         },
@@ -256,11 +265,13 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
     services: {
       services: [{
         name: "kb-server",
+        workloads: [],
         capabilities: {
           stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
         },
       }, {
         name: "opensearch",
+        workloads: [],
         dependencies: [dependency],
         capabilities: {},
       }],
@@ -303,6 +314,7 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
     services: {
       services: [{
         name: "kb-server",
+        workloads: [],
         capabilities: {
           stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
         },
@@ -320,9 +332,10 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     version: "0.0.1",
     services: { services: [{
       name: "chat",
+      workloads: [],
       capabilities: {
         case: {
-          endpoint: { port: 8000 },
+          endpoint: { host: "test-service", port: 8000 },
           access: {},
           caseSets: [{
             caseset: "chat",
@@ -365,6 +378,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     ...base,
     services: { services: [{
       name: "chat",
+      workloads: [],
       capabilities: {
         ...base.services.services[0].capabilities,
         case: {
@@ -379,6 +393,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     ...base,
     services: { services: [{
       name: "chat",
+      workloads: [],
       capabilities: {
         ...base.services.services[0].capabilities,
         case: {
@@ -399,6 +414,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     ...base,
     services: { services: [{
       name: "chat",
+      workloads: [],
       capabilities: {
         case: base.services.services[0].capabilities.case,
         perf: { ...base.services.services[0].capabilities.perf, scenarios: [] },
@@ -410,6 +426,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
     ...base,
     services: { services: [{
       name: "chat",
+      workloads: [],
       capabilities: {
         ...base.services.services[0].capabilities,
         perf: {
@@ -426,9 +443,10 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
 test("Plugin Case request identity references a tenant directory provider", () => {
   const caseService = {
     name: "chat",
+    workloads: [],
     capabilities: {
       case: {
-        endpoint: { port: 8000 },
+        endpoint: { host: "test-service", port: 8000 },
         access: {},
         caseSets: [{
           caseset: "chat",
@@ -455,9 +473,10 @@ test("Plugin Case request identity references a tenant directory provider", () =
     version: "0.0.1",
     services: { services: [caseService, {
       name: "iam",
+      workloads: [],
       capabilities: {
         tenantDirectory: {
-          endpoint: { port: 8001 },
+          endpoint: { host: "test-service", port: 8001 },
           access: {},
           create: () => ({
             listActive: async () => [],

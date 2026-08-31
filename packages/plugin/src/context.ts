@@ -1,6 +1,6 @@
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
-import type { ServiceStoreCapabilityDependency } from "./service";
+import type { ServiceEndpoint, ServiceStoreCapabilityDependency } from "./service";
 
 export interface PluginSearchAccess {
   /** The host binds the index and owns connection/auth/cleanup. */
@@ -27,8 +27,9 @@ export interface PluginTarget {
   namespace: string;
   service: {
     name: string;
-    port?: number;
   };
+  /** Capability-owned transport endpoint, independent of the logical Service identity. */
+  endpoint?: ServiceEndpoint;
 }
 
 export interface PluginInfra {

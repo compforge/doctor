@@ -24,9 +24,11 @@ function targets(
 ): AdmissionTarget[] {
   if (facts.serviceTargets.status !== "collected") return [];
   const service = facts.serviceTargets.services[serviceName];
-  if (!service || service.podRuntime.status !== "collected") return [];
+  if (!service) return [];
   const byServiceAccount = new Map<string, AdmissionTarget>();
-  for (const pod of service.podRuntime.pods) {
+  for (const pod of Object.values(service.workloads).flatMap((workload) =>
+    workload.podRuntime.status === "collected" ? workload.podRuntime.pods : []
+  )) {
     const image = pod.containers.find((container) => container.image)?.image;
     if (!image || byServiceAccount.has(pod.serviceAccountName)) continue;
     byServiceAccount.set(pod.serviceAccountName, {

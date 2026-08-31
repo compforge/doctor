@@ -1,4 +1,4 @@
-.PHONY: dev build build-all build-mac build-darwin-arm64 build-darwin-x64 prepare-dist bump-version build-linux build-linux-x64 build-linux-x64-modern build-linux-x64-legacy build-linux-arm64 build-kylin build-kylin-arm64 build-kylin-x86-64 lint lint-ci test typecheck deps install clean
+.PHONY: dev build build-all build-mac build-darwin-arm64 build-darwin-x64 prepare-dist bump-version build-linux build-linux-x64 build-linux-x64-modern build-linux-x64-legacy build-linux-arm64 build-kylin build-kylin-arm64 build-kylin-x86-64 fix lint lint-ci test typecheck deps install clean
 
 # 安装目录默认 ~/.local/bin（用户可写、常在 PATH）；可用 BIN_DIR 覆盖，如 make install BIN_DIR=/opt/homebrew/bin
 BIN_DIR ?= $(HOME)/.local/bin
@@ -72,6 +72,9 @@ test:
 
 typecheck:
 	bunx tsc --noEmit
+
+fix:
+	@true
 
 lint: typecheck
 

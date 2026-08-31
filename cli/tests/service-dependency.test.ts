@@ -17,11 +17,13 @@ test("Service Store dependency 以声明项为首选并补齐其它 VDB target",
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "kb-server",
+      workloads: [],
       capabilities: {
         stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "jaeger-collector",
+      workloads: [],
       capabilities: {
         stores: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
       },
