@@ -1,4 +1,5 @@
 import type { ExecResult, Executor } from "./executor";
+import type { ServiceWorkloadDefinition } from "@compforge/doctor-plugin";
 import { parsePods, type KubernetesPod } from "./pod";
 import { parseServices, type KubernetesService } from "./service";
 
@@ -42,7 +43,7 @@ export interface KubernetesWorkloadConfigSnapshot {
 }
 
 export interface KubernetesWorkloadConfigCapture {
-  serviceCapture: ExecResult;
+  serviceCapture?: ExecResult;
   deploymentCapture?: ExecResult;
   configMapCapture?: ExecResult;
   podCapture: ExecResult;
@@ -171,24 +172,83 @@ function selectorMatches(labels: Readonly<Record<string, string>>, selector: Rea
   return entries.length > 0 && entries.every(([name, value]) => labels[name] === value);
 }
 
-export function deploymentsForService(
-  snapshot: KubernetesWorkloadConfigSnapshot,
-  serviceName: string,
-): KubernetesDeploymentConfig[] {
-  const service = snapshot.services.find((item) => item.name === serviceName);
-  if (!service) return [];
-  return snapshot.deployments.filter((deployment) => selectorMatches(deployment.labels, service.selector));
+export interface ResolvedKubernetesWorkload {
+  definition: ServiceWorkloadDefinition;
+  service?: KubernetesService;
+  deployments: KubernetesDeploymentConfig[];
+  pods: KubernetesPod[];
+  unavailableReason?: string;
 }
 
-export function podsForService(
+/** Resolve one declared Workload without assuming any relationship between its Service and Kubernetes names. */
+export function resolveKubernetesWorkload(
   snapshot: KubernetesWorkloadConfigSnapshot,
-  serviceName: string,
-): KubernetesPod[] {
-  const service = snapshot.services.find((item) => item.name === serviceName);
-  if (!service) return [];
-  return snapshot.pods
-    .filter((pod) => pod.namespace === service.namespace && selectorMatches(pod.labels, service.selector))
-    .sort((left, right) => left.name.localeCompare(right.name));
+  definition: ServiceWorkloadDefinition,
+): ResolvedKubernetesWorkload {
+  const discovery = definition.discovery;
+  if (discovery.kind === "kubernetes-service") {
+    const service = snapshot.services.find((item) => item.name === discovery.service);
+    if (!service) {
+      return {
+        definition,
+        deployments: [],
+        pods: [],
+        unavailableReason: `Kubernetes Service '${discovery.service}' 不存在`,
+      };
+    }
+    return {
+      definition,
+      service,
+      deployments: snapshot.deployments.filter((item) => selectorMatches(item.labels, service.selector)),
+      pods: snapshot.pods
+        .filter((pod) => pod.namespace === service.namespace && selectorMatches(pod.labels, service.selector))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    };
+  }
+  const labels = discovery.labels;
+  return {
+    definition,
+    deployments: snapshot.deployments.filter((item) => selectorMatches(item.labels, labels)),
+    pods: snapshot.pods
+      .filter((pod) => selectorMatches(pod.labels, labels))
+      .sort((left, right) => left.name.localeCompare(right.name)),
+  };
+}
+
+export function selectWorkloadPodContainer(
+  workload: ResolvedKubernetesWorkload,
+  pod: KubernetesPod,
+): { container?: KubernetesPod["containers"][number]; reason?: string } {
+  const declared = workload.definition.container;
+  if (declared) {
+    const container = pod.containers.find((item) => item.name === declared);
+    return container ? { container } : { reason: `Pod 不包含声明的 Container '${declared}'` };
+  }
+  if (workload.service) return selectPodServiceContainer(workload.service, pod);
+  if (pod.containers.length === 1) return { container: pod.containers[0] };
+  return {
+    reason: pod.containers.length
+      ? `Workload 未声明业务 Container：${pod.containers.map((item) => item.name).join(", ")}`
+      : "Pod 没有 Container",
+  };
+}
+
+export function selectWorkloadDeploymentContainer(
+  workload: ResolvedKubernetesWorkload,
+  deployment: KubernetesDeploymentConfig,
+): { container?: KubernetesContainerConfig; reason?: string } {
+  const declared = workload.definition.container;
+  if (declared) {
+    const container = deployment.containers.find((item) => item.name === declared);
+    return container ? { container } : { reason: `Deployment 不包含声明的 Container '${declared}'` };
+  }
+  if (workload.service) return selectServiceContainer(workload.service, deployment);
+  if (deployment.containers.length === 1) return { container: deployment.containers[0] };
+  return {
+    reason: deployment.containers.length
+      ? `Workload 未声明业务 Container：${deployment.containers.map((item) => item.name).join(", ")}`
+      : "Deployment 没有 Container",
+  };
 }
 
 export function selectPodServiceContainer(
@@ -281,9 +341,12 @@ export async function captureKubernetesWorkloadConfig(
   executor: Executor,
   namespace: string,
   includeDeploymentConfig: boolean,
+  includeServices: boolean,
 ): Promise<KubernetesWorkloadConfigCapture> {
   const [serviceCapture, podCapture, deploymentCapture, configMapCapture] = await Promise.all([
-    executor.run(["get", "services", "-o", "json"], { timeoutMs: 30_000 }),
+    includeServices
+      ? executor.run(["get", "services", "-o", "json"], { timeoutMs: 30_000 })
+      : Promise.resolve(undefined),
     executor.run(["get", "pods", "-o", "json"], { timeoutMs: 30_000 }),
     includeDeploymentConfig
       ? executor.run(["get", "deployments", "-o", "json"], { timeoutMs: 30_000 })
@@ -298,10 +361,10 @@ export async function captureKubernetesWorkloadConfig(
     configMapCapture,
     podCapture,
   };
-  if (!serviceCapture.ok) return result;
+  if (serviceCapture && !serviceCapture.ok) return result;
   try {
     result.snapshot = {
-      services: parseServices(serviceCapture.stdout, namespace),
+      services: serviceCapture ? parseServices(serviceCapture.stdout, namespace) : [],
       deployments: [],
       configMaps: [],
       pods: [],

@@ -147,6 +147,7 @@ interface PluginContextOptions {
   config?: Readonly<Record<string, unknown>>;
   databaseIdentity?: DatabaseIdentity;
   service: PluginContext["target"]["service"];
+  endpoint?: PluginContext["target"]["endpoint"];
   capability: CapabilityWithAccess;
   dependencies?: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
 }
@@ -182,6 +183,7 @@ export function createPluginContext(
       env: options.env,
       namespace: kube.namespace,
       service: options.service,
+      endpoint: options.endpoint,
     },
     config: options.config ?? {},
     dependencies: options.dependencies ?? {},

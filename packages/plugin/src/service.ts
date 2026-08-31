@@ -15,8 +15,11 @@ import type {
 import type { ServiceMcpCapability } from "./mcp";
 import type { CapabilityWithAccess } from "./kubernetes";
 import type { ProbeCapability, ProbeRunner } from "./probe";
+import type { ServiceWorkloadDefinition, WorkloadInstance } from "./workload";
 
 export interface ServiceEndpoint {
+  /** Explicit network host; a logical Service name is never treated as transport identity. */
+  host: string;
   port: number;
 }
 
@@ -111,7 +114,7 @@ export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProb
 
 /** Service-owned Prometheus contract consumed by doctor metric. */
 export interface ServiceMetricCapability {
-  endpoint: { port: number; path: string };
+  endpoint: ServiceEndpoint & { path: string };
   /** Limits embedded scraping to the metric families required by this declaration. */
   metricNames: readonly string[];
   charts: readonly ServiceMetricChart[];
@@ -236,6 +239,30 @@ export interface ServiceInspectFinding {
   confidence: "low" | "medium" | "high";
   message: string;
   [name: string]: unknown;
+}
+
+export interface ServiceWorkloadProbeObservation {
+  kind: string;
+  value: Readonly<Record<string, unknown>>;
+}
+
+export interface ServiceWorkloadProbe {
+  id: string;
+  /** Stable WorkloadDefinition.name owned by this Service. */
+  workload: string;
+  observe(
+    context: PluginContext,
+    instance: WorkloadInstance,
+  ): Promise<ServiceWorkloadProbeObservation>;
+  /** Pure domain judgment; Core attaches the observation evidence reference. */
+  detect?(
+    observation: ServiceWorkloadProbeObservation,
+  ): readonly ServiceInspectFinding[];
+}
+
+/** Business observations made once for every resolved workload instance. */
+export interface ServiceWorkloadCapability extends CapabilityWithAccess {
+  probes: readonly ServiceWorkloadProbe[];
 }
 
 export interface ServiceInspectQuery extends Query<Identity> {
@@ -450,6 +477,7 @@ export interface ServiceCapabilities {
   perf?: ServicePerfCapability;
   metric?: ServiceMetricCapability;
   mcp?: ServiceMcpCapability;
+  workload?: ServiceWorkloadCapability;
 }
 
 export type ServiceCapabilityName = keyof ServiceCapabilities;
@@ -466,9 +494,17 @@ export interface ServiceStoreCapabilityDependency {
 /** Extend this union when another capability gains a concrete runtime dependency contract. */
 export type ServiceCapabilityDependency = ServiceStoreCapabilityDependency;
 
+export interface ServiceRelationship {
+  kind: "managed-by";
+  service: string;
+}
+
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
+  /** Explicit deployment topology. An empty list means this Service has no runtime workload. */
+  workloads: readonly ServiceWorkloadDefinition[];
+  relationships?: readonly ServiceRelationship[];
   toolchain?: Toolchain;
   /**
    * Runtime capabilities this Service requires from other Services in the same Plugin.

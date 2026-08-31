@@ -15,7 +15,7 @@ function targetFromFacts(
   target: InspectDeploymentTarget,
 ): InspectDeploymentTarget | undefined {
   if (facts.serviceTargets.status !== "collected") return undefined;
-  return facts.serviceTargets.services[target.service]?.deployments.find(
+  return facts.serviceTargets.services[target.service]?.workloads[target.workload]?.deployments.find(
     (item) => item.deployment === target.deployment && item.container === target.container,
   );
 }
@@ -23,12 +23,12 @@ function targetFromFacts(
 export function makeServiceConfigProbe(
   target: InspectDeploymentTarget,
 ): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
-  const id = `config-environment-${target.service}-${target.deployment}`;
+  const id = `config-environment-${target.service}-${target.workload}-${target.deployment}`;
   return {
     id,
     evaluate: (facts) => targetFromFacts(facts, target)
       ? PROBE_RUNNABLE
-      : probeUnavailable(`${target.service}/${target.deployment} 不在 Inspect 确认的采集目标中`),
+      : probeUnavailable(`${target.service}/${target.workload}/${target.deployment} 不在 Inspect 确认的采集目标中`),
     onUnavailable: (ctx, reason) => ctx.bundle.addStep({
       id,
       title: `${target.service}/${target.deployment} Env 配置`,

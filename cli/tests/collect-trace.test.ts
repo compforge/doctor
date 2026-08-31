@@ -33,16 +33,19 @@ test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target",
     },
     services: createServiceCatalog([{
       name: "kb-server",
+      workloads: [],
       capabilities: {
         stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "jaeger-collector",
+      workloads: [],
       capabilities: {
         stores: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "chat-server",
+      workloads: [],
       capabilities: {
         stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
       },

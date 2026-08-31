@@ -9,6 +9,7 @@ import type {
 import { makeServiceConfigProbe } from "./service-environment";
 import { makeDependencyInventoryProbe } from "./dependencies";
 import { makeAppArmorUnconfinedAdmissionProbe } from "./apparmor";
+import { makePluginWorkloadProbe } from "./plugin-workload";
 
 export function makeInspectProbes(
   facts: InspectFacts,
@@ -20,11 +21,20 @@ export function makeInspectProbes(
       makeAppArmorUnconfinedAdmissionProbe(serviceName, declaration)
     )
   );
+  const workloadProbes = config.services.flatMap((serviceName) => {
+    const service = catalog.find(serviceName);
+    return service?.capabilities.workload?.probes.map((probe) =>
+      makePluginWorkloadProbe(service, probe)
+    ) ?? [];
+  });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...environmentProbes,
+    ...workloadProbes,
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>
-        service.deployments.map((target) => makeServiceConfigProbe(target))
+        Object.values(service.workloads).flatMap((workload) =>
+          workload.deployments.map((target) => makeServiceConfigProbe(target))
+        )
       )
       : []),
   ];
@@ -37,3 +47,4 @@ export function makeInspectProbes(
 export * from "./service-environment";
 export * from "./dependencies";
 export * from "./apparmor";
+export * from "./plugin-workload";

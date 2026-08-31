@@ -5,6 +5,7 @@ import type {
   ModelInferenceTarget,
   PluginDefinition,
   ServiceDefinition,
+  ServiceEndpoint,
   ServiceWithCapability,
   TenantDirectory,
 } from "@compforge/doctor-plugin";
@@ -64,8 +65,7 @@ interface PreparedModelDiscovery {
   contextFor(
     service: ServiceDefinition,
     capability: CapabilityWithAccess,
-    name?: string,
-    port?: number,
+    endpoint?: ServiceEndpoint,
   ): Promise<ManagedPluginContext>;
 }
 
@@ -136,13 +136,13 @@ async function prepareModelDiscovery(
   const contextFor = async (
     service: ServiceDefinition,
     capability: CapabilityWithAccess,
-    name = service.name,
-    port?: number,
+    endpoint?: ServiceEndpoint,
   ) => {
     const context = await openPluginContext(executor, kube, {
       env: options.commandContext?.profile.name ?? config.profileName,
       config: options.commandContext?.profile.pluginConfig,
-      service: { name, port },
+      service: { name: service.name },
+      endpoint,
       command: options.command,
       capability,
       authorization,
@@ -158,14 +158,20 @@ async function prepareModelDiscovery(
     const directory = tenantService.capabilities.tenantDirectory.create(await contextFor(
       tenantService,
       tenantService.capabilities.tenantDirectory,
-      options.tenantDirectoryService?.trim() || tenantService.name,
-      tenantPort,
+      {
+        host: options.tenantDirectoryService?.trim()
+          || tenantService.capabilities.tenantDirectory.endpoint.host,
+        port: tenantPort,
+      },
     ));
     const catalog = catalogService.capabilities.modelCatalog.create(await contextFor(
       catalogService,
       catalogService.capabilities.modelCatalog,
-      options.modelCatalogService?.trim() || catalogService.name,
-      catalogPort,
+      {
+        host: options.modelCatalogService?.trim()
+          || catalogService.capabilities.modelCatalog.endpoint.host,
+        port: catalogPort,
+      },
     ));
     const access: ModelDiscoveryAccess = {
       config,
@@ -202,8 +208,7 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
       await prepared.contextFor(
         inference,
         inference.capabilities.inference,
-        inference.name,
-        inference.capabilities.inference.endpoint.port,
+        inference.capabilities.inference.endpoint,
       ),
       target,
       timeoutMs,

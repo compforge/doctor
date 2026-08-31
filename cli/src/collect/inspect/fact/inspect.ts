@@ -4,10 +4,9 @@ import type {
 } from "@compforge/doctor-plugin";
 import {
   captureKubernetesWorkloadConfig,
-  deploymentsForService,
-  podsForService,
-  selectPodServiceContainer,
-  selectServiceContainer,
+  resolveKubernetesWorkload,
+  selectWorkloadDeploymentContainer,
+  selectWorkloadPodContainer,
 } from "../../../infra/k8s/workload-config";
 import type { KubernetesWorkloadConfigSnapshot } from "../../../infra/k8s/workload-config";
 import type {
@@ -65,51 +64,50 @@ function dependencyTargets(
   const targets: Extract<InspectFacts["dependencyTargets"], { status: "collected" }>["targets"] = [];
   const missing: string[] = [];
   for (const serviceName of config.services) {
-    const declared = catalog.find(serviceName)?.toolchain;
+    const service = catalog.find(serviceName);
+    const declared = service?.toolchain;
     if (!declared) {
       missing.push(`${serviceName}: Plugin 未声明 Toolchain`);
       continue;
     }
-    const service = snapshot.services.find((item) => item.name === serviceName);
-    if (!service) {
-      missing.push(`${serviceName}: Service 不存在`);
-      continue;
-    }
-    const pods = podsForService(snapshot, serviceName).filter((pod) => pod.phase === "Running");
-    if (!pods.length) {
-      missing.push(`${serviceName}: 没有 Running Pod`);
-      continue;
-    }
     let selectedCount = 0;
-    for (const pod of pods) {
-      const selected = selectPodServiceContainer(service, pod);
-      if (!selected.container) {
-        missing.push(`${serviceName}/${pod.name}: ${selected.reason}`);
+    for (const definition of service?.workloads ?? []) {
+      const workload = resolveKubernetesWorkload(snapshot, definition);
+      const pods = workload.pods.filter((pod) => pod.phase === "Running");
+      if (!pods.length) {
+        missing.push(`${serviceName}/${definition.name}: ${workload.unavailableReason ?? "没有 Running Pod"}`);
         continue;
       }
-      selectedCount += 1;
-      const imageKey = selected.container.imageId || selected.container.image
-        || `${pod.name}/${selected.container.name}`;
-      const existing = targets.find((target) => (target.imageId || target.image) === imageKey);
-      if (existing) {
-        if (!sameToolchain(existing.toolchain, declared)) {
-          missing.push(
-            `${serviceName}: image '${imageKey}' 的 Toolchain 声明与 ${existing.services.join(", ")} 不一致`,
-          );
-        } else if (!existing.services.includes(serviceName)) {
-          existing.services.push(serviceName);
+      for (const pod of pods) {
+        const selected = selectWorkloadPodContainer(workload, pod);
+        if (!selected.container) {
+          missing.push(`${serviceName}/${definition.name}/${pod.name}: ${selected.reason}`);
+          continue;
         }
-        continue;
+        selectedCount += 1;
+        const imageKey = selected.container.imageId || selected.container.image
+          || `${pod.name}/${selected.container.name}`;
+        const existing = targets.find((target) => (target.imageId || target.image) === imageKey);
+        if (existing) {
+          if (!sameToolchain(existing.toolchain, declared)) {
+            missing.push(
+              `${serviceName}: image '${imageKey}' 的 Toolchain 声明与 ${existing.services.join(", ")} 不一致`,
+            );
+          } else if (!existing.services.includes(serviceName)) {
+            existing.services.push(serviceName);
+          }
+          continue;
+        }
+        targets.push({
+          id: `inspect-dependencies-${targets.length + 1}`,
+          services: [serviceName],
+          pod: pod.name,
+          container: selected.container.name,
+          image: selected.container.image,
+          imageId: selected.container.imageId,
+          toolchain: declared,
+        });
       }
-      targets.push({
-        id: `inspect-dependencies-${targets.length + 1}`,
-        services: [serviceName],
-        pod: pod.name,
-        container: selected.container.name,
-        image: selected.container.image,
-        imageId: selected.container.imageId,
-        toolchain: declared,
-      });
     }
     if (!selectedCount) missing.push(`${serviceName}: 未定位到可采集依赖的业务 Container`);
   }
@@ -127,6 +125,9 @@ export function makeServiceTargetsInspect(
         ctx.executor,
         config.namespace,
         config.includeDeploymentConfig,
+        config.services.some((name) => catalog.find(name)?.workloads.some(
+          (workload) => workload.discovery.kind === "kubernetes-service",
+        )),
       );
       const deploymentReasons = config.includeDeploymentConfig ? [
         capture.deploymentParseError
@@ -146,7 +147,7 @@ export function makeServiceTargetsInspect(
       const dependencyTargetsFailure = capture.podParseError
         ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
       const steps = [
-        ["inspect-services", "Service 目标", capture.serviceCapture, undefined],
+        ...(capture.serviceCapture ? [["inspect-services", "Workload Service 资源", capture.serviceCapture, undefined] as const] : []),
         ["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
         ...(capture.deploymentCapture ? [[
           "inspect-deployments",
@@ -194,7 +195,9 @@ export function makeServiceTargetsInspect(
       const snapshot = capture.snapshot;
       if (!snapshot) {
         const reason = capture.parseError
-          ?? commandReason(capture.serviceCapture.ok, capture.serviceCapture.stderr)
+          ?? (capture.serviceCapture
+            ? commandReason(capture.serviceCapture.ok, capture.serviceCapture.stderr)
+            : undefined)
           ?? "读取 Kubernetes 配置失败";
         return {
           serviceTargets: { status: "failed", reason },
@@ -213,78 +216,74 @@ export function makeServiceTargetsInspect(
 
       const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
+        const declaredService = catalog.find(serviceName)!;
         const configurationSupported = !!catalog.findWith(serviceName, "config");
-        const service = snapshot.services.find((item) => item.name === serviceName);
-        const deployments: InspectServiceTargetFact["deployments"] = [];
-        const unavailableDeployments: InspectServiceTargetFact["unavailableDeployments"] = [];
-        if (!service) {
-          if (config.includeDeploymentConfig) {
-            unavailableDeployments.push({ deployment: "—", reason: "Service 不存在" });
-          }
-          services[serviceName] = {
-            service: serviceName,
-            toolchain: catalog.find(serviceName)?.toolchain,
-            configurationSupported,
-            deployments,
-            unavailableDeployments,
-            podRuntime: { status: "unavailable", reason: "Service 不存在" },
-          };
-          continue;
-        }
-        if (configurationSupported) {
-          for (const deployment of deploymentsForService(snapshot, serviceName)) {
-            const selected = selectServiceContainer(service, deployment);
-            if (selected.container) {
-              deployments.push({
-                service: serviceName,
-                deployment: deployment.name,
-                container: selected.container.name,
-              });
-            } else {
-              unavailableDeployments.push({ deployment: deployment.name, reason: selected.reason! });
+        const workloads: InspectServiceTargetFact["workloads"] = {};
+        for (const definition of declaredService.workloads) {
+          const resolved = resolveKubernetesWorkload(snapshot, definition);
+          const deployments = [] as typeof workloads[string]["deployments"];
+          const unavailableDeployments = [] as typeof workloads[string]["unavailableDeployments"];
+          if (configurationSupported) {
+            for (const deployment of resolved.deployments) {
+              const selected = selectWorkloadDeploymentContainer(resolved, deployment);
+              if (selected.container) {
+                deployments.push({
+                  service: serviceName,
+                  workload: definition.name,
+                  deployment: deployment.name,
+                  container: selected.container.name,
+                });
+              } else {
+                unavailableDeployments.push({ deployment: deployment.name, reason: selected.reason! });
+              }
             }
           }
+          const podFailure = capture.podParseError
+            ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
+          workloads[definition.name] = {
+            name: definition.name,
+            lifecycle: definition.lifecycle,
+            discovery: definition.discovery,
+            probes: declaredService.capabilities.workload?.probes
+              .filter((probe) => probe.workload === definition.name)
+              .map((probe) => probe.id) ?? [],
+            deployments,
+            unavailableDeployments,
+            podRuntime: podFailure
+              ? { status: "failed", reason: podFailure }
+              : resolved.unavailableReason
+                ? { status: "unavailable", reason: resolved.unavailableReason }
+                : {
+                    status: "collected",
+                    pods: resolved.pods.map((pod) => ({
+                      pod: pod.name,
+                      serviceAccountName: pod.serviceAccountName,
+                      phase: pod.phase,
+                      reason: pod.reason,
+                      message: pod.message,
+                      conditions: pod.conditions.map((condition) => ({ ...condition })),
+                      containers: pod.containers.map((container) => ({
+                        name: container.name,
+                        image: container.image,
+                        imageId: container.imageId,
+                        requests: { cpu: container.requests.cpu, memory: container.requests.memory },
+                        limits: { cpu: container.limits.cpu, memory: container.limits.memory },
+                        ready: container.ready,
+                        restartCount: container.restartCount,
+                        state: inspectContainerStateFact(container.state),
+                        lastTermination: container.lastTermination
+                          ? terminationFact(container.lastTermination)
+                          : undefined,
+                      })),
+                    })),
+                  },
+          };
         }
-        const podFailure = capture.podParseError
-          ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
         services[serviceName] = {
           service: serviceName,
-          toolchain: catalog.find(serviceName)?.toolchain,
+          toolchain: declaredService.toolchain,
           configurationSupported,
-          deployments,
-          unavailableDeployments,
-          podRuntime: podFailure
-            ? { status: "failed", reason: podFailure }
-            : {
-                status: "collected",
-                pods: podsForService(snapshot, serviceName).map((pod) => ({
-                  pod: pod.name,
-                  serviceAccountName: pod.serviceAccountName,
-                  phase: pod.phase,
-                  reason: pod.reason,
-                  message: pod.message,
-                  conditions: pod.conditions.map((condition) => ({ ...condition })),
-                  containers: pod.containers.map((container) => ({
-                    name: container.name,
-                    image: container.image,
-                    imageId: container.imageId,
-                    requests: {
-                      cpu: container.requests.cpu,
-                      memory: container.requests.memory,
-                    },
-                    limits: {
-                      cpu: container.limits.cpu,
-                      memory: container.limits.memory,
-                    },
-                    ready: container.ready,
-                    restartCount: container.restartCount,
-                    state: inspectContainerStateFact(container.state),
-                    lastTermination: container.lastTermination
-                      ? terminationFact(container.lastTermination)
-                      : undefined,
-                  })),
-                })),
-              },
+          workloads,
         };
       }
       return {

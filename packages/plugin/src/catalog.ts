@@ -16,6 +16,12 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
+    for (const service of services) {
+      const workloads = service.workloads.map((workload) => workload.name);
+      if (new Set(workloads).size !== workloads.length) {
+        throw new Error(`Service '${service.name}' 包含重复 Workload 名称`);
+      }
+    }
   }
 
   find(name: string): T | undefined {

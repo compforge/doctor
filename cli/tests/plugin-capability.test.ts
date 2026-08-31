@@ -16,6 +16,7 @@ const plugin = {
   version: "0.0.1",
   services: createServiceCatalog([{
     name: "sample-api",
+    workloads: [],
     capabilities: { log: { default: true } },
   }]),
 } satisfies PluginDefinition;
@@ -121,9 +122,10 @@ test("traceId capability 以 Service provider 为单位发现", () => {
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "trace-api",
+      workloads: [],
       capabilities: {
         traceId: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
         },
@@ -149,14 +151,16 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "first-api",
+      workloads: [],
       capabilities: {
-        traceId: { endpoint: { port: 8080 }, access: {}, resolve: async () => undefined },
+        traceId: { endpoint: { host: "test-service", port: 8080 }, access: {}, resolve: async () => undefined },
       },
     }, {
       name: "trace-api",
+      workloads: [],
       capabilities: {
         traceId: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
             expect(context).toMatchObject({
@@ -200,9 +204,10 @@ test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace"
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "trace-api",
+      workloads: [],
       capabilities: {
         traceId: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           resolve: async (_context: PluginContext, { bizId }: { bizId: string }) => (
             bizId === "conversation"
@@ -263,15 +268,17 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "kb-server",
+      workloads: [],
       capabilities: {
         stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "opensearch",
+      workloads: [],
       dependencies: [dependency],
       capabilities: {
         traceId: {
-          endpoint: { port: 9200 },
+          endpoint: { host: "test-service", port: 9200 },
           access: {},
           resolve: async (context: PluginContext) => {
             expect(context.dependencies["trace-store"]).toEqual({

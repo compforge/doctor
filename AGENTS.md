@@ -4,7 +4,8 @@
 
 Doctor 是以本地 `doctor` CLI 为中心的开源业务诊断工具。在产品心智上，它是面向业务的增强版
 `kubectl`：`kubectl` 以 Kubernetes Resource/Object 为操作对象，Doctor 以业务 Service 为基本诊断
-粒度；Pod、Container 与 Process 是 Service 下的运行目标和证据来源。Service 通过 capability 声明
+粒度；Service 显式拥有零到多个 Workload，Pod、Container 与 Process 是 Workload 的运行实例和证据来源。
+业务 Service 与 Kubernetes Service 是不同概念，后者只是一种 Workload discovery。Service 通过 capability 声明
 可提供的诊断数据或动作，以及运行该能力所需的目标数据和 access。CLI 负责确定性采集、证据编排、
 报告交付和本地 agent 问答。业务知识和私有 Service 访问规则不进入本仓，通过 Plugin 协议由使用方
 独立实现和分发。

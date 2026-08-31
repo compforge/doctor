@@ -271,6 +271,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       ...examplePlugin,
       services: createServiceCatalog([{
         name: "example-api",
+        workloads: examplePlugin.services.find("example-api")!.workloads,
         capabilities: {
           log: { default: true },
         },

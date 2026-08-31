@@ -116,7 +116,7 @@ export async function prepareMetricSource(
         const service = plugin.services.findWith(serviceName, "metric")!;
         const capability = service.capabilities.metric;
         const endpoints = await forwarder.forwardServiceTargets({
-          host: service.name,
+          host: capability.endpoint.host,
           port: capability.endpoint.port,
         });
         for (const endpoint of endpoints) {

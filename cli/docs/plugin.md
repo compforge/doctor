@@ -156,7 +156,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 3,
+  "pluginApiVersion": 5,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -268,14 +268,15 @@ Plugin 的准备边界，不通过裁剪 Skill、修改 Skill 文案或维护宿
 
 `doctor-plugin` 同时承担稳定协议和可选 SDK，但两者职责不同。协议定义 Plugin/Service/capability 的
 声明、调用输入输出，以及所有 Service 共用的 `PluginContext`；上下文提供 namespace、当前 Service、
-取消信号和 Target-scoped Kubernetes access。Plugin 用 access 读取 Service、定位 Pod 或访问其它资源，
-Core 不接收再回传 Plugin-owned 的 selector 等实现细节。profile 切换后，Doctor 在下一次调用中注入新的
-上下文，Plugin 不持有 kubeconfig 或旧环境选择。
+取消信号和 Target-scoped Kubernetes access。Service 是业务诊断对象，并显式声明零到多个 Workload；
+Workload discovery 把 Kubernetes Service 或 Pod selector 投影为运行 Instance，不从业务 Service 名推断
+Kubernetes 资源名。profile 切换后，Doctor 在下一次调用中注入新的上下文，Plugin 不持有 kubeconfig
+或旧环境选择。
 
 Service capability 的输入只由两部分组成：Core 已知且受控的 `PluginContext`，以及该
 capability 实际需要的业务输入。`PluginContext` 可以携带 profile 环境、当前 Target namespace、
-已选逻辑 Service、Plugin-owned config 和受 access 约束的 infra；Core 不应为了调用 Service，
-先猜测其部署 namespace、Pod 或业务数据位置，再把这些 Plugin-owned 事实回传给 Plugin。
+已选逻辑 Service、Plugin-owned config 和受 access 约束的 infra。Core 只在执行 Workload-scoped capability
+时按声明解析 Instance 并传入；其它 capability 不会收到与其无关的 Pod 或部署细节。
 
 当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
 `inNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
@@ -285,12 +286,13 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 
 网络 endpoint 跟随实际消费它的 capability 声明，不放在 Service 根上假设一个全局端口。同一 Service
 可以分别为 tenant directory、model catalog、inference、MCP 或 metrics 提供不同 endpoint；命令只为
-本轮选中的 capability 建立对应连接。
+本轮选中的 capability 建立对应连接。endpoint 必须显式声明 `host` 与 `port`，Core 不用逻辑 Service 名
+推导网络地址。
 
 Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
 `PluginContext` 按需提供。HTTP、数据库客户端由 Plugin 实现；SDK helper 只承载稳定且跨 Plugin 同义
-重复的代码。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Service 定位规则、API、
-SQL、表结构及诊断知识始终属于具体 Plugin。
+重复的代码。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Workload discovery 规则、
+API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
 本轮参与的 Service，再把 Core command 自身需求与这些 capability 的声明合成阶段性的 access plan；

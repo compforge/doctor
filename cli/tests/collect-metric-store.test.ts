@@ -21,9 +21,10 @@ describe("metric Store observability", () => {
   test("bundle 输出拒绝 HTML/Markdown 后缀", async () => {
     const services = createServiceCatalog([{
       name: "app",
+      workloads: [],
       capabilities: {
         metric: {
-          endpoint: { port: 8080, path: "/metrics" },
+          endpoint: { host: "test-service", port: 8080, path: "/metrics" },
           metricNames: ["requests_total"],
           charts: [],
         },
@@ -137,6 +138,7 @@ describe("metric Store observability", () => {
     const catalog = createServiceCatalog([
       {
         name: "chat-server",
+        workloads: [],
         capabilities: {
           stores: [
             { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
@@ -146,6 +148,7 @@ describe("metric Store observability", () => {
       },
       {
         name: "unrelated-server",
+        workloads: [],
         capabilities: {
           stores: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }],
         },
@@ -168,6 +171,7 @@ describe("metric Store observability", () => {
   test("keeps remote Service and Store queries usable when the selected profile has no kubeconfig", async () => {
     const services = createServiceCatalog([{
       name: "app",
+      workloads: [],
       capabilities: {
         stores: [{
           id: "redis",
@@ -176,7 +180,7 @@ describe("metric Store observability", () => {
           environment: { address: "REDIS_HOST" },
         }],
         metric: {
-          endpoint: { port: 8080, path: "/metrics" },
+          endpoint: { host: "test-service", port: 8080, path: "/metrics" },
           metricNames: ["requests_total"],
           charts: [],
         },

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := build
 
-.PHONY: deps build-deps check-plugin-version bump-plugin-version lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local toolkit toolkit-all toolkit-matrix install clean
+.PHONY: deps build-deps check-plugin-version bump-plugin-version fix lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local toolkit toolkit-all toolkit-matrix install clean
 
 ROOT_DIR := $(abspath .)
 DIST_DIR := $(ROOT_DIR)/dist
@@ -27,6 +27,10 @@ check-plugin-version:
 
 bump-plugin-version:
 	bun $(PLUGIN_VERSION_TOOL) bump $(PLUGIN_ROOT) $(PLUGIN_VERSION_ARGS)
+
+# The repository has no source-rewriting formatter; keep the normalization entrypoint explicit.
+fix:
+	@true
 
 lint:
 	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin check-plugin-version

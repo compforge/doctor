@@ -11,3 +11,4 @@ export * from "./probe";
 export * from "./service";
 export * from "./skill";
 export * from "./store";
+export * from "./workload";

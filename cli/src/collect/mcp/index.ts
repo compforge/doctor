@@ -162,7 +162,8 @@ export async function runCollectMcp(
   }, {
     env: collect.profileName,
     config: commandContext?.profile.pluginConfig,
-    service: { name: gatewayService, port: capability.endpoint.port },
+    service: { name: gatewayService },
+    endpoint: capability.endpoint,
     command: "doctor mcp",
     capability,
     authorization: access,

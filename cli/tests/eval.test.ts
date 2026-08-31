@@ -44,9 +44,10 @@ function testPlugin(): PluginDefinition {
     version: "0.0.1",
     services: createServiceCatalog([{
       name: "chat",
+      workloads: [],
       capabilities: {
         case: {
-          endpoint: { port: 8080 },
+          endpoint: { host: "test-service", port: 8080 },
           access: {},
           caseSets: [CASE_SET],
           createRunner: async () => ({

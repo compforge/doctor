@@ -5,7 +5,6 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
 import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import {
-  listServiceChoices,
   rankRecentServiceChoices,
   recordRecentServiceTargets,
   type ServiceChoice,
@@ -188,8 +187,9 @@ export async function resolveInspectServiceSelection(
   if (!interactive) {
     throw new Error("非交互环境必须通过 --services 显式指定要统计的 Service");
   }
-  const listed = (await listServiceChoices(input.executor, input.config.namespace))
-    .filter((choice) => input.catalog.find(choice.name));
+  const listed = input.catalog.services
+    .filter((service) => service.workloads.length > 0)
+    .map((service) => ({ name: service.name }));
   const recentInput = {
     namespace: input.config.namespace,
     kubeconfig: input.config.kube.kubeconfig,
@@ -199,7 +199,7 @@ export async function resolveInspectServiceSelection(
   };
   const choices = rankRecentServiceChoices(listed, recentInput);
   if (!choices.length) {
-    throw new Error(`namespace '${input.config.namespace}' 中没有当前 Plugin 注册的 Service`);
+    throw new Error("当前 Plugin 没有声明可 Inspect 的 Service Workload");
   }
   const selected = await (input.prompt ?? promptNamedChoices)({
     choices,
