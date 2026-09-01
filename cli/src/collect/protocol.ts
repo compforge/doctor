@@ -27,9 +27,58 @@ export interface EvidenceSchemaMeta<Kind extends string = string> {
  * `collected` 表示业务字段可用；预期的现场缺失使用 `unavailable`，执行或解析失败使用
  * `failed`。后两者必须携带原因，Probe/Detector 不再靠缺字段猜测为什么没有事实。
  */
-export type Fact<Value extends object> =
+export type Fact<Value extends object, Kind extends string = string> = EvidenceSchemaMeta<Kind> & (
   | ({ status: "collected" } & Value)
-  | { status: Exclude<FactStatus, "collected">; reason: string };
+  | { status: "unavailable"; reason: string }
+  | { status: "failed"; reason: string }
+);
+
+export type CollectedFact<
+  Value extends object,
+  Kind extends string = string,
+> = Extract<Fact<Value, Kind>, { status: "collected" }>;
+
+export function collectedFact<Kind extends string, Value extends object>(
+  kind: Kind,
+  producerId: string,
+  value: Value,
+): CollectedFact<Value, Kind> {
+  return {
+    ...value,
+    kind,
+    schemaVersion: 1,
+    producer: { origin: "core", id: producerId },
+    status: "collected",
+  };
+}
+
+export function unavailableFact<Kind extends string>(
+  kind: Kind,
+  producerId: string,
+  reason: string,
+): Extract<Fact<Record<string, never>, Kind>, { status: "unavailable" }> {
+  return {
+    kind,
+    schemaVersion: 1,
+    producer: { origin: "core", id: producerId },
+    status: "unavailable",
+    reason,
+  };
+}
+
+export function failedFact<Kind extends string>(
+  kind: Kind,
+  producerId: string,
+  reason: string,
+): Extract<Fact<Record<string, never>, Kind>, { status: "failed" }> {
+  return {
+    kind,
+    schemaVersion: 1,
+    producer: { origin: "core", id: producerId },
+    status: "failed",
+    reason,
+  };
+}
 
 export interface ObservationMeta extends EvidenceSchemaMeta {
   /** Stable within one diagnosis and valid as an EvidenceRef observationId. */

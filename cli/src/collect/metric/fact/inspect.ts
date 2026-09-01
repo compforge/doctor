@@ -1,5 +1,6 @@
 import type { Inspect } from "../../inspection";
 import type { MetricCommandContext, MetricInspectionFacts } from "../model";
+import { collectedFact } from "../../protocol";
 
 export function makeMetricSourceInspect(
   targetCount: number,
@@ -7,16 +8,15 @@ export function makeMetricSourceInspect(
   return {
     id: "metric-source",
     run: async (ctx) => {
-      const source = {
-        status: "collected" as const,
-        kind: ctx.sourceKind,
+      const source = collectedFact("metric.source", "metric-source", {
+        sourceKind: ctx.sourceKind,
         backend: ctx.sourceKind === "remote"
           ? "Prometheus-compatible API"
           : ctx.sourceKind === "hybrid"
             ? "Prometheus-compatible API + Prombed Store sampling"
             : "Prombed",
         targetCount,
-      };
+      });
       ctx.bundle.addStep({
         id: "metric-source",
         title: "Metric 查询数据源",

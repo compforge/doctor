@@ -26,7 +26,7 @@ export interface VdbAccessFact {
 }
 
 export interface VdbInspectionFacts {
-  execution: Fact<VdbExecutionFact>;
-  configuration: Fact<VdbConfigurationFact>;
-  access: Fact<VdbAccessFact>;
+  execution: Fact<VdbExecutionFact, "store.vdb.execution">;
+  configuration: Fact<VdbConfigurationFact, "store.vdb.configuration">;
+  access: Fact<VdbAccessFact, "store.vdb.access">;
 }

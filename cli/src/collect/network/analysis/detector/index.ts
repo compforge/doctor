@@ -144,14 +144,14 @@ export function buildNetworkCoverage(
   return [
     {
       goal: "capture-scope",
-      status: coverageStatus(covered.length, evidence.facts.artifacts.length),
+      status: coverageStatus(covered.length, evidence.facts.bundle.artifacts.length),
       missingEvidence: artifacts
         .filter((item) => !item.windowComplete || !item.verified)
         .map((item) => `${item.pod}: ${item.reason ?? "PCAP 不完整或校验失败"}`),
     },
     {
       goal: "protocol-decoding",
-      status: coverageStatus(decoded.length, evidence.facts.artifacts.length),
+      status: coverageStatus(decoded.length, evidence.facts.bundle.artifacts.length),
       missingEvidence: artifacts
         .filter((item) => !item.decoded)
         .map((item) => `${item.pod}: ${item.reason ?? "PCAP 未解码"}`),

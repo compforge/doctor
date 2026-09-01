@@ -21,23 +21,23 @@ import {
   parseCgroupMemoryFacts,
   type CgroupMemoryFacts,
 } from "./cgroup-memory";
+import { collectedFact, type CollectedFact } from "../protocol";
 
 export interface CommonTargetFacts {
-  kubernetes: { podsExec: boolean; podsEphemeralContainers: boolean };
-  container: { python3: boolean; gdb: boolean; proc: boolean };
-  canExec: boolean;
-  hasPython: boolean;
-  hasProc: boolean;
-  resourceUsage?: ContainerResourceUsage;
-  platform?: ContainerPlatformFacts;
-  processScan?: ProcScan;
-  pickedPid?: number;
-  debug?: DebugEnvironmentFacts;
-  cgroupMemory?: CgroupMemoryFacts;
+  kubernetes: CollectedFact<{
+    podsExec: boolean;
+    podsEphemeralContainers: boolean;
+  }, "target.kubernetes-access">;
+  container: CollectedFact<{ python3: boolean; gdb: boolean; proc: boolean }, "target.container-capabilities">;
+  resourceUsage?: CollectedFact<ContainerResourceUsage, "target.resource-usage">;
+  platform?: CollectedFact<ContainerPlatformFacts, "target.platform">;
+  processScan?: CollectedFact<ProcScan & { pickedPid?: number }, "target.process-scan">;
+  debug?: CollectedFact<DebugEnvironmentFacts, "target.debug-environment">;
+  cgroupMemory?: CollectedFact<CgroupMemoryFacts, "target.cgroup-memory">;
 }
 
 export interface CgroupMemoryTargetFacts {
-  cgroupMemory?: CgroupMemoryFacts;
+  cgroupMemory?: CollectedFact<CgroupMemoryFacts, "target.cgroup-memory">;
 }
 
 export function makeCgroupMemoryInspect(
@@ -62,7 +62,9 @@ export function makeCgroupMemoryInspect(
         output: result.stdout,
         stderr: result.stderr,
       });
-      return cgroupMemory ? { cgroupMemory } : {};
+      return cgroupMemory
+        ? { cgroupMemory: collectedFact("target.cgroup-memory", "cgroup-memory", cgroupMemory) }
+        : {};
     },
   };
 }
@@ -75,12 +77,12 @@ export function makePlatformInspect(): Inspect<
     id: "platform",
     dependsOn: ["container-capabilities"],
     run: async (ctx, facts) => {
-      if (!(facts.canExec && facts.hasPython)) return {};
+      if (!(facts.kubernetes?.podsExec && facts.container?.python3)) return {};
       const result = await ctx.exec.exec(ctx.target, platformFactsCmd(), { timeoutMs: 10_000 });
       fillFromExec(ctx.bundle, "platform-facts", result, "json");
       if (!result.ok) return {};
       const platform = parsePlatformFacts(result.stdout);
-      return platform ? { platform } : {};
+      return platform ? { platform: collectedFact("target.platform", "platform", platform) } : {};
     },
   };
 }
@@ -110,7 +112,7 @@ export function makeDebugInspect(): Inspect<
         output: `${JSON.stringify(debug, null, 2)}\n`,
         ext: "json",
       });
-      return { debug };
+      return { debug: collectedFact("target.debug-environment", "debug", debug) };
     },
   };
 }
@@ -149,7 +151,9 @@ export function makeResourceUsageInspect(): Inspect<
         stderr: result.stderr,
         ext: resourceUsage ? "json" : "txt",
       });
-      return resourceUsage ? { resourceUsage } : {};
+      return resourceUsage
+        ? { resourceUsage: collectedFact("target.resource-usage", "resource-usage", resourceUsage) }
+        : {};
     },
   };
 }
@@ -229,14 +233,15 @@ export function makeContainerCapabilitiesInspect(): Inspect<
         hasProc = capability.stdout.includes("proc=yes");
       }
       return {
-        kubernetes: {
+        kubernetes: collectedFact("target.kubernetes-access", "container-capabilities", {
           podsExec: canExec,
           podsEphemeralContainers: canUpdateEphemeralContainers,
-        },
-        container: { python3: hasPython, gdb: hasGdb, proc: hasProc },
-        canExec,
-        hasPython,
-        hasProc,
+        }),
+        container: collectedFact("target.container-capabilities", "container-capabilities", {
+          python3: hasPython,
+          gdb: hasGdb,
+          proc: hasProc,
+        }),
       };
     },
   };
@@ -250,7 +255,11 @@ export function makeProcessInspect(
     id: "process-scan",
     dependsOn: ["container-capabilities"],
     run: async (ctx, facts) => {
-      if (!facts.canExec || !facts.hasPython || (options.requireProc && !facts.hasProc)) return {};
+      if (
+        !facts.kubernetes?.podsExec
+        || !facts.container?.python3
+        || (options.requireProc && !facts.container?.proc)
+      ) return {};
       const result = await ctx.exec.exec(ctx.target, processScanCmd(), {
         stdin: PROCESS_SCAN_SOURCE,
         timeoutMs: 60_000,
@@ -259,7 +268,12 @@ export function makeProcessInspect(
       if (!result.ok) return {};
       const processScan = parseProcscan(result.stdout);
       const picked = pickPid(processScan, options.pidFlag);
-      return picked.ok ? { processScan, pickedPid: picked.value } : { processScan };
+      return {
+        processScan: collectedFact("target.process-scan", "process-scan", {
+          ...processScan,
+          pickedPid: picked.ok ? picked.value : undefined,
+        }),
+      };
     },
   };
 }

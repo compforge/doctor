@@ -122,14 +122,14 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
     }),
   ], context);
 
-  expect(facts.databaseScope).toEqual({
+  expect(facts.databaseScope).toEqual(expect.objectContaining({
     status: "collected",
     clusterType: "single",
     clusterTypeSource: "runtime",
     discoveredDatabases: [0, 7],
     mode: "all",
     databases: [0, 7],
-  });
+  }));
   expect(Object.isFrozen(facts.databaseScope)).toBe(true);
   if (facts.databaseScope.status !== "collected") throw new Error("scope Fact should be collected");
 
@@ -192,9 +192,9 @@ test("Redis database scope Inspect 保留用户取消原因，供 Core 停在 Pr
   const produced = await inspect.run(context, prerequisiteFacts);
 
   expect(inspect.dependsOn).toEqual(["redis-target"]);
-  expect(produced.databaseScope).toEqual({
+  expect(produced.databaseScope).toEqual(expect.objectContaining({
     status: "unavailable",
     reason: "用户取消 Redis database 范围选择",
     cause: "cancelled",
-  });
+  }));
 });

@@ -26,7 +26,7 @@ export interface S3ProviderFact {
   };
 }
 export interface S3InspectionFacts {
-  configuration: Fact<S3ConfigurationFact>;
-  access: Fact<S3AccessFact>;
-  provider: Fact<S3ProviderFact>;
+  configuration: Fact<S3ConfigurationFact, "store.s3.configuration">;
+  access: Fact<S3AccessFact, "store.s3.access">;
+  provider: Fact<S3ProviderFact, "store.s3.provider">;
 }

@@ -27,7 +27,7 @@ function validateProducer(producer: EvidenceProducer, label: string): void {
   throw new Error(`${label}.producer.origin must be core or plugin`);
 }
 
-/** Validate the shared schema identity emitted by both Probe and Detector boundaries. */
+/** Validate the shared schema identity emitted by Inspect, Probe, and Detector boundaries. */
 export function validateEvidenceSchemaMeta(value: EvidenceSchemaMeta, label: string): void {
   if (!value || typeof value !== "object") throw new Error(`${label} must be an Evidence record`);
   if (!isNonEmptyString(value.kind)) {

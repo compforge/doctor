@@ -8,14 +8,14 @@ import type {
   LogInspectionFacts,
   ServiceLogObservation,
 } from "../src/collect/log/model";
+import { collectedFact, failedFact, unavailableFact } from "../src/collect/protocol";
 
 const collectedFacts: LogInspectionFacts = {
-  runtime: { status: "collected", kubectlVersion: "v1.31.0" },
-  servicePods: {
-    status: "collected",
+  runtime: collectedFact("log.runtime", "log-target", { kubectlVersion: "v1.31.0" }),
+  servicePods: collectedFact("log.service-pods", "log-target", {
     byService: { api: ["api-0", "api-1"], worker: [] },
     previousContainersByPod: {},
-  },
+  }),
 };
 
 function observation(
@@ -43,8 +43,8 @@ describe("Log diagnosis", () => {
 
   test("Inspect 失败形成明确的 insufficient Coverage", () => {
     const runtimeFailed: LogInspectionFacts = {
-      runtime: { status: "failed", reason: "kubectl 不可用" },
-      servicePods: { status: "unavailable", reason: "kubectl 不可用" },
+      runtime: failedFact("log.runtime", "log-target", "kubectl 不可用"),
+      servicePods: unavailableFact("log.service-pods", "log-target", "kubectl 不可用"),
     };
 
     expect(buildLogCoverage(buildLogEvidence([], runtimeFailed))).toEqual([{

@@ -22,6 +22,7 @@ import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 import { CommandContext } from "../src/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";
+import { collectedFact, unavailableFact } from "../src/collect/protocol";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -51,9 +52,9 @@ async function runInspectWithDelivery(
 function detectorEvidence(): InspectEvidence {
   return {
     facts: {
-      serviceTargets: { status: "unavailable", reason: "not needed by detector test" },
-      deploymentConfiguration: { status: "unavailable", reason: "not requested" },
-      dependencyTargets: { status: "unavailable", reason: "not requested" },
+      serviceTargets: unavailableFact("inspect.service-targets", "service-targets", "not needed by detector test"),
+      deploymentConfiguration: unavailableFact("inspect.deployment-configuration", "service-targets", "not requested"),
+      dependencyTargets: unavailableFact("inspect.dependency-targets", "service-targets", "not requested"),
     },
     rows: [],
     observations: [{
@@ -171,16 +172,15 @@ test("Service Evidence detector 不能引用本次 Evidence 之外的对象", ()
 
 test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => {
   const facts: InspectFacts = {
-    serviceTargets: {
-      status: "collected",
+    serviceTargets: collectedFact("inspect.service-targets", "service-targets", {
       services: Object.fromEntries(["api", "worker"].map((service) => [service, {
         service,
         configurationSupported: false,
         workloads: {},
       }])),
-    },
-    deploymentConfiguration: { status: "unavailable", reason: "not requested" },
-    dependencyTargets: { status: "unavailable", reason: "not requested" },
+    }),
+    deploymentConfiguration: unavailableFact("inspect.deployment-configuration", "service-targets", "not requested"),
+    dependencyTargets: unavailableFact("inspect.dependency-targets", "service-targets", "not requested"),
   };
 
   const projected = projectInspectServiceFacts(facts, ["api", "worker"]);

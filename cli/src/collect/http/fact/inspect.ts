@@ -7,6 +7,7 @@ import type {
   HttpScenario,
 } from "../../shared/http/model";
 import type { HttpCommandContext } from "../context";
+import { collectedFact } from "../../protocol";
 
 function endpointForUrl(rawUrl: string): HttpEndpointTarget {
   const url = new URL(rawUrl);
@@ -83,11 +84,10 @@ export function makeHttpEndpointInspect(
   return {
     id: "http-endpoint-connectivity",
     run: async (ctx) => ({
-      execution: { status: "collected", target: ctx.target },
-      endpoints: {
-        status: "collected",
+      execution: collectedFact("http.execution", "http-endpoint-connectivity", { target: ctx.target }),
+      endpoints: collectedFact("http.endpoints", "http-endpoint-connectivity", {
         items: await inspectAllEndpoints(scenario, ctx.inspectEndpoint, timeoutMs),
-      },
+      }),
     }),
   };
 }

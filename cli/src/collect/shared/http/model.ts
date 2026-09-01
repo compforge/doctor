@@ -79,8 +79,8 @@ export interface HttpEndpointConnectivityFact {
 }
 
 export interface HttpInspectionFacts {
-  execution: Fact<{ target: HttpExecutionTarget }>;
-  endpoints: Fact<{ items: readonly HttpEndpointConnectivityFact[] }>;
+  execution: Fact<{ target: HttpExecutionTarget }, "http.execution">;
+  endpoints: Fact<{ items: readonly HttpEndpointConnectivityFact[] }, "http.endpoints">;
 }
 
 export type HttpTerminationReason =

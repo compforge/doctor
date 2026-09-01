@@ -15,6 +15,6 @@ export interface DbAccessFact {
 }
 
 export interface DbInspectionFacts {
-  configuration: Fact<DbConfigurationFact>;
-  access: Fact<DbAccessFact>;
+  configuration: Fact<DbConfigurationFact, "store.db.configuration">;
+  access: Fact<DbAccessFact, "store.db.access">;
 }

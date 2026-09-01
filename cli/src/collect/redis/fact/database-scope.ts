@@ -10,6 +10,7 @@ import {
   type RedisDatabaseScopeFact,
   type RedisInspectionFacts,
 } from "./model";
+import { failedFact, unavailableFact } from "../../protocol";
 
 function databasesFromInfo(info: Record<string, unknown>): number[] {
   return Object.entries(info)
@@ -54,11 +55,13 @@ export function makeRedisDatabaseScopeInspect(
     run: async (ctx, facts) => {
       const prerequisite = facts.capabilities;
       if (!prerequisite || prerequisite.status !== "collected") {
-        const databaseScope: RedisDatabaseScopeFact = {
-          status: "unavailable",
-          reason: prerequisite?.reason ?? "Redis target Inspect 未形成可用连接能力",
-          cause: "prerequisite",
-        };
+        const databaseScope: RedisDatabaseScopeFact = Object.assign(unavailableFact(
+          "redis.database-scope",
+          "redis-database-scope",
+          prerequisite?.reason ?? "Redis target Inspect 未形成可用连接能力",
+        ), {
+          cause: "prerequisite" as const,
+        });
         return { databaseScope };
       }
 
@@ -89,11 +92,13 @@ export function makeRedisDatabaseScopeInspect(
         );
         if (!scope) {
           return {
-            databaseScope: {
-              status: "unavailable",
-              reason: "用户取消 Redis database 范围选择",
-              cause: "cancelled",
-            },
+            databaseScope: Object.assign(unavailableFact(
+              "redis.database-scope",
+              "redis-database-scope",
+              "用户取消 Redis database 范围选择",
+            ), {
+              cause: "cancelled" as const,
+            }),
           };
         }
         const databases = scope.databases.map((database) => `db${database}`).join("、") || "无数据 DB";
@@ -108,10 +113,11 @@ export function makeRedisDatabaseScopeInspect(
         };
       } catch (error) {
         return {
-          databaseScope: {
-            status: "failed",
-            reason: error instanceof Error ? error.message : String(error),
-          },
+          databaseScope: failedFact(
+            "redis.database-scope",
+            "redis-database-scope",
+            error instanceof Error ? error.message : String(error),
+          ),
         };
       }
     },

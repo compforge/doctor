@@ -36,7 +36,7 @@ function findingSummary(diagnosis: McpDiagnosis): string[] {
 }
 
 export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
-  const { facts } = diagnosis.evidence;
+  const facts = diagnosis.evidence.facts.configuration;
   const mcp = mcpCallObservation(diagnosis.evidence);
   const http = httpCallObservation(diagnosis.evidence)?.capture;
   const logs = gatewayLogsObservation(diagnosis.evidence);
@@ -96,7 +96,7 @@ export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
 }
 
 export function renderMcpSummary(diagnosis: McpDiagnosis): string {
-  const { facts } = diagnosis.evidence;
+  const facts = diagnosis.evidence.facts.configuration;
   const mcp = mcpCallObservation(diagnosis.evidence);
   const http = httpCallObservation(diagnosis.evidence)?.capture;
   const logs = gatewayLogsObservation(diagnosis.evidence);

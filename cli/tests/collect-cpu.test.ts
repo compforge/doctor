@@ -222,12 +222,20 @@ describe("collectCpu", () => {
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
     expect(manifest.inspection_facts.resourceUsage.cpu.ratio).toBeCloseTo(0.1);
     expect(manifest.inspection_facts.resourceUsage.memory.ratio).toBeCloseTo(0.125);
-    expect(manifest.inspection_facts.container).toEqual({ python3: true, gdb: true, proc: true });
+    expect(manifest.inspection_facts.container).toMatchObject({
+      kind: "target.container-capabilities",
+      producer: { origin: "core", id: "container-capabilities" },
+      python3: true,
+      gdb: true,
+      proc: true,
+    });
     expect(manifest.inspection_facts.debug).toMatchObject({
       environments: [],
       reason: expect.stringContaining("doctor debug"),
     });
-    expect(manifest.inspection_facts.platform).toEqual({
+    expect(manifest.inspection_facts.platform).toMatchObject({
+      kind: "target.platform",
+      producer: { origin: "core", id: "platform" },
       machine: "arm64",
       kernelVersion: "6.1.0-test",
       glibcVersion: "2.36",

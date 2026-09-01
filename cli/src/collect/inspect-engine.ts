@@ -1,4 +1,7 @@
 import type { Inspect } from "./inspection";
+import { validateEvidenceSchemaMeta } from "./evidence-identity";
+
+const FACT_STATUSES = new Set(["collected", "unavailable", "failed"]);
 
 function validateInspects<Facts extends object, Ctx>(
   inspects: readonly Inspect<Facts, Ctx>[],
@@ -30,6 +33,23 @@ function freezeFactValue(value: unknown): void {
   Object.freeze(value);
 }
 
+function validateFactTree(value: unknown, label: string, inspectId: string): void {
+  if (!value || typeof value !== "object") {
+    throw new Error(`${label} must be a Fact record or contain Fact records`);
+  }
+  if (!Array.isArray(value) && FACT_STATUSES.has((value as { status?: unknown }).status as string)) {
+    validateEvidenceSchemaMeta(value as never, label);
+    const producer = (value as { producer: { origin: string; id?: string } }).producer;
+    if (producer.origin !== "core" || producer.id !== inspectId) {
+      throw new Error(`${label}.producer must identify core Inspect '${inspectId}'`);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    validateFactTree(child, `${label}.${key}`, inspectId);
+  }
+}
+
 export function freezeFacts<Facts extends object>(facts: Facts): Readonly<Facts> {
   freezeFactValue(facts);
   return facts;
@@ -39,7 +59,11 @@ export function freezeFacts<Facts extends object>(facts: Facts): Readonly<Facts>
  * 按依赖顺序执行 collect 起点的只读 Inspect，并合并为一份初始 Facts 快照。
  *
  * 一个 fact key 只能由一个 Inspect 负责；拒绝覆盖可避免后执行的算子悄悄改写已经用于
- * 策略选择的现场现实。每批已产出的 JSON-like 值会被冻结，再交给依赖它的 Inspect。
+ * 策略选择的现场现实。每个叶子 Fact 必须声明 schema identity，且 Core producer 必须指向
+ * 当前 Inspect；每批已产出的 JSON-like Fact tree 会被冻结，再交给依赖它的 Inspect。
+ *
+ * @spec Every emitted Fact carries schema identity and identifies the executing Core Inspect as producer
+ * @rule Fact contract violations abort Collect rather than degrade Coverage
  */
 export async function runInspects<Facts extends object, Ctx = void>(
   inspects: readonly Inspect<Facts, Ctx>[],
@@ -66,6 +90,7 @@ export async function runInspects<Facts extends object, Ctx = void>(
         throw new Error(`inspect ${inspect.id} produced duplicate fact: ${String(key)}`);
       }
       const value = produced[key];
+      validateFactTree(value, `inspect ${inspect.id} fact ${String(key)}`, inspect.id);
       freezeFactValue(value);
       facts[key] = value;
     }

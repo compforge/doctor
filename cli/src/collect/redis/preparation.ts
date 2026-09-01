@@ -4,6 +4,7 @@ import type { Executor, ExecTarget } from "../../infra/k8s/executor";
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";
 import { buildRedisEnvironmentFact, buildRedisTargetFact } from "./fact/model";
+import { failedFact, unavailableFact } from "../protocol";
 import {
   extractRedisEnvironment,
   hasRedisStoreConfiguration,
@@ -35,13 +36,19 @@ export async function confirmRedisTarget(
   const envResult = await executor.exec(execTarget, ["env"], { timeoutMs: 20_000 });
   const environmentFact: RedisEnvironmentFact = envResult.ok
     ? buildRedisEnvironmentFact(extractRedisEnvironment(envResult.stdout))
-    : {
-        status: "failed",
-        reason: `读取运行时配置失败：${envResult.stderr.trim() || `exit=${envResult.exitCode}`}`,
-      };
+    : failedFact(
+        "redis.environment",
+        "redis-target",
+        `读取运行时配置失败：${envResult.stderr.trim() || `exit=${envResult.exitCode}`}`,
+      );
   if (!envResult.ok && !config.url && !config.profile?.url) {
     const reason = environmentFact.status === "failed" ? environmentFact.reason : "读取运行时配置失败";
-    return { targetFact: { status: "failed", reason }, environmentFact, command: envResult.command, reason };
+    return {
+      targetFact: failedFact("redis.target", "redis-target", reason),
+      environmentFact,
+      command: envResult.command,
+      reason,
+    };
   }
   if (
     envResult.ok
@@ -52,7 +59,7 @@ export async function confirmRedisTarget(
   ) {
     const reason = `Service '${config.service}' 当前未提供有效 ${config.store.environment.address}，Redis Store 未启用`;
     return {
-      targetFact: { status: "unavailable", reason },
+      targetFact: unavailableFact("redis.target", "redis-target", reason),
       environmentFact,
       command: envResult.command,
       reason,
@@ -73,7 +80,12 @@ export async function confirmRedisTarget(
     };
   } catch (err) {
     const reason = `解析 Redis 目标失败：${err instanceof Error ? err.message : String(err)}`;
-    return { targetFact: { status: "failed", reason }, environmentFact, command: envResult.command, reason };
+    return {
+      targetFact: failedFact("redis.target", "redis-target", reason),
+      environmentFact,
+      command: envResult.command,
+      reason,
+    };
   }
 }
 

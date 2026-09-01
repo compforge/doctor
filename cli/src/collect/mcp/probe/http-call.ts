@@ -12,14 +12,14 @@ import { approveProbeCall } from "./approval";
 
 export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCommandContext> = {
   id: "http-call",
-  evaluate: (facts) => facts.httpPlan
+  evaluate: (facts) => facts.configuration.httpPlan
     ? { runnable: true }
     : probeUnavailable("Plugin 未提供该 tool 的直接 HTTP 映射"),
   onUnavailable: (ctx, reason) => {
     ctx.bundle.fill("http-response", { status: "unavailable", reason });
   },
   async run(ctx, facts, config) {
-    const plan = facts.httpPlan;
+    const plan = facts.configuration.httpPlan;
     if (!plan) return [];
     const approved = await approveProbeCall(
       ctx,
@@ -42,7 +42,7 @@ export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, 
       });
       return [];
     }
-    const pod = facts.gatewayPods[0];
+    const pod = facts.configuration.gatewayPods[0];
     if (!pod) {
       ctx.bundle.fill("http-response", { status: "unavailable", reason: "没有可 exec 的 MCP Service Pod" });
       return [];

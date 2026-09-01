@@ -33,6 +33,7 @@ import type {
   NetworkAnalysisDocument,
   NetworkAnalysisFacts,
 } from "./model";
+import { collectedFact } from "../../protocol";
 import { networkPcapProbe } from "./probe";
 import type { NetworkCaptureMode } from "../model";
 import {
@@ -232,7 +233,7 @@ function buildNetworkAnalysisFacts(
     }));
   if (!artifacts.length) throw new Error("NetBundle 没有可分析的 PCAP artifact");
   const topology = manifest.inspection_facts?.topology;
-  return {
+  return { bundle: collectedFact("network.bundle", "network-bundle", {
     sourceBundle: basename(input),
     namespace: manifest.target?.namespace,
     requestedServices: manifest.target?.services ?? [],
@@ -266,7 +267,7 @@ function buildNetworkAnalysisFacts(
           terminationReason: manifest.inspection_facts.response.termination_reason,
         }
       : undefined,
-  };
+  }) };
 }
 
 function buildNetworkAnalysisConfig(manifest: NetManifest): NetworkAnalysisConfig {
@@ -285,7 +286,7 @@ function writeNetworkAnalysisHtml(
   outputPath: string,
 ): void {
   const staging = mkdtempSync(join(tmpdir(), "doctor-network-analysis-report-"));
-  const facts = document.diagnosis.evidence.facts;
+  const facts = document.diagnosis.evidence.facts.bundle;
   try {
     writeFileSync(join(staging, "manifest.json"), `${JSON.stringify({
       doctor_version: DOCTOR_CLI_VERSION,
@@ -345,7 +346,8 @@ export async function analyzeNetworkBundle(
       detectors: networkDetectors,
       buildCoverage: (evidence) => buildNetworkCoverage(evidence, config),
     });
-    const { facts, diagnosis } = execution;
+    const { diagnosis } = execution;
+    const facts = execution.facts.bundle;
     const artifacts = networkArtifactObservations(diagnosis.evidence);
     const hops = networkHopObservations(diagnosis.evidence);
     const streams = new Set(hops.map((hop) => hop.stream));

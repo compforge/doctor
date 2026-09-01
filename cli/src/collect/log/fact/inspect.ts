@@ -1,6 +1,7 @@
 import type { ExecResult } from "../../../infra/k8s/executor";
 import type { Inspect } from "../../inspection";
 import type { LogCommandContext, LogInspectionFacts } from "../model";
+import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 
 function failureReason(result: ExecResult): string {
   return result.stderr.trim().split("\n")[0] || `exit=${result.exitCode}`;
@@ -38,8 +39,8 @@ export function makeLogInspect(
       if (!version.ok) {
         const reason = `kubectl 不可用：${failureReason(version)}`;
         return {
-          runtime: { status: "failed", reason },
-          servicePods: { status: "unavailable", reason },
+          runtime: failedFact("log.runtime", "log-target", reason),
+          servicePods: unavailableFact("log.service-pods", "log-target", reason),
         };
       }
 
@@ -51,11 +52,12 @@ export function makeLogInspect(
       if (!podList.serviceCapture.ok || !podList.podCapture.ok) {
         const failed = !podList.serviceCapture.ok ? podList.serviceCapture : podList.podCapture;
         return {
-          runtime: { status: "collected", kubectlVersion },
-          servicePods: {
-            status: "failed",
-            reason: `Service/Pod 列表获取失败：${failureReason(failed)}`,
-          },
+          runtime: collectedFact("log.runtime", "log-target", { kubectlVersion }),
+          servicePods: failedFact(
+            "log.service-pods",
+            "log-target",
+            `Service/Pod 列表获取失败：${failureReason(failed)}`,
+          ),
         };
       }
       if (podList.parseError) {
@@ -68,14 +70,13 @@ export function makeLogInspect(
           reason,
         });
         return {
-          runtime: { status: "collected", kubectlVersion },
-          servicePods: { status: "failed", reason },
+          runtime: collectedFact("log.runtime", "log-target", { kubectlVersion }),
+          servicePods: failedFact("log.service-pods", "log-target", reason),
         };
       }
       return {
-        runtime: { status: "collected", kubectlVersion },
-        servicePods: {
-          status: "collected",
+        runtime: collectedFact("log.runtime", "log-target", { kubectlVersion }),
+        servicePods: collectedFact("log.service-pods", "log-target", {
           byService: podList.byService,
           previousContainersByPod: Object.fromEntries(podList.pods.map((pod) => [
             pod.name,
@@ -83,7 +84,7 @@ export function makeLogInspect(
               .filter((container) => container.restartCount > 0 && container.hasPreviousTerminated)
               .map((container) => container.name),
           ])),
-        },
+        }),
       };
     },
   };

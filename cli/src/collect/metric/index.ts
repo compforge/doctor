@@ -214,7 +214,7 @@ function writeMetricManifest(
     target: { namespace: config.namespace, services: config.services.join(",") },
     inspectionFacts: facts ? { source: facts.source } : {},
     params: {
-      source: facts?.source.status === "collected" ? facts.source.kind : undefined,
+      source: facts?.source.status === "collected" ? facts.source.sourceKind : undefined,
       watch: config.watch.label,
       interval_ms: config.intervalMs,
       prometheus: config.prometheus ? config.prometheus.url : undefined,

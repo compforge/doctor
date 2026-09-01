@@ -5,22 +5,21 @@ import type { ContainerPlatformFacts } from "../../fact/platform";
 import type { CpuPythonFacts } from "./python";
 import type { ContainerInfo, TargetPod } from "../../../infra/k8s/target";
 import type { DebugEnvironmentFacts } from "../../../infra/target/debug";
+import type { CollectedFact } from "../../protocol";
 
 export type CpuInspectionFacts = {
-  target?: { pod: TargetPod; container: ContainerInfo };
-  kubernetes?: { podsExec: boolean; podsEphemeralContainers: boolean };
-  container?: { python3: boolean; gdb: boolean; proc: boolean };
-  processScan?: ProcScan;
-  resourceUsage?: ContainerResourceUsage;
-  platform?: ContainerPlatformFacts;
-  pickedPid?: number;
-  pythonProcess?: CpuPythonFacts;
-  ptrace?: PtraceFacts;
-  debug?: DebugEnvironmentFacts;
+  target?: CollectedFact<{ pod: TargetPod; container: ContainerInfo }, "cpu.target">;
+  kubernetes?: CollectedFact<{
+    podsExec: boolean;
+    podsEphemeralContainers: boolean;
+  }, "target.kubernetes-access">;
+  container?: CollectedFact<{ python3: boolean; gdb: boolean; proc: boolean }, "target.container-capabilities">;
+  processScan?: CollectedFact<ProcScan & { pickedPid?: number }, "target.process-scan">;
+  resourceUsage?: CollectedFact<ContainerResourceUsage, "target.resource-usage">;
+  platform?: CollectedFact<ContainerPlatformFacts, "target.platform">;
+  pythonProcess?: CollectedFact<CpuPythonFacts, "cpu.python-process">;
+  ptrace?: CollectedFact<PtraceFacts, "cpu.ptrace">;
+  debug?: CollectedFact<DebugEnvironmentFacts, "target.debug-environment">;
 };
 
-export type CpuDiagnosisFacts = CpuInspectionFacts & {
-  canExec: boolean;
-  hasPython: boolean;
-  hasProc: boolean;
-};
+export type CpuDiagnosisFacts = CpuInspectionFacts;

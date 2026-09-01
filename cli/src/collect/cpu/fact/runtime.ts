@@ -7,6 +7,7 @@ import type { Inspect } from "../../inspection";
 import type { CpuCommandContext } from "../context";
 import type { CpuDiagnosisFacts } from "./model";
 import { cpuPythonFactsCmd, parseCpuPythonFacts } from "./python";
+import { collectedFact } from "../../protocol";
 
 export function makeCpuTargetInspect(
   pod: TargetPod,
@@ -14,7 +15,7 @@ export function makeCpuTargetInspect(
 ): Inspect<CpuDiagnosisFacts, CpuCommandContext> {
   return {
     id: "cpu-target",
-    run: async () => ({ target: { pod, container } }),
+    run: async () => ({ target: collectedFact("cpu.target", "cpu-target", { pod, container }) }),
   };
 }
 
@@ -24,7 +25,7 @@ export function makeCpuRuntimeInspect(): Inspect<CpuDiagnosisFacts, CpuCommandCo
     dependsOn: ["process-scan"],
     run: async (ctx, facts) => {
       if (!facts.processScan) {
-        if (facts.canExec && facts.hasPython && facts.hasProc) {
+        if (facts.kubernetes?.podsExec && facts.container?.python3 && facts.container?.proc) {
           ctx.bundle.settle("进程扫描失败", ["cpu-python-facts", "ptrace-facts", "py-spy-dump"]);
         } else {
           ctx.bundle.settle("缺少 pods/exec、python3 或 /proc", [
@@ -51,7 +52,10 @@ export function makeCpuRuntimeInspect(): Inspect<CpuDiagnosisFacts, CpuCommandCo
       fillFromExec(ctx.bundle, "cpu-python-facts", pythonFacts, "json");
       if (pythonFacts.ok) {
         try {
-          produced.pythonProcess = parseCpuPythonFacts(pythonFacts.stdout);
+          const parsed = parseCpuPythonFacts(pythonFacts.stdout);
+          if (parsed) {
+            produced.pythonProcess = collectedFact("cpu.python-process", "cpu-runtime", parsed);
+          }
         } catch (error) {
           writeErrorLog(error, "doctor cpu/parse-python-facts");
           ctx.notes.push(`py-spy 运行环境 Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);
@@ -62,10 +66,10 @@ export function makeCpuRuntimeInspect(): Inspect<CpuDiagnosisFacts, CpuCommandCo
       fillFromExec(ctx.bundle, "ptrace-facts", ptrace, "json");
       if (ptrace.ok) {
         try {
-          produced.ptrace = parsePtraceFacts(
+          produced.ptrace = collectedFact("cpu.ptrace", "cpu-runtime", parsePtraceFacts(
             ptrace.stdout,
             podDeclaresSysPtrace(ctx.podJson, ctx.container.name),
-          );
+          ));
         } catch (error) {
           writeErrorLog(error, "doctor cpu/parse-ptrace-facts");
           ctx.notes.push(`ptrace Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);

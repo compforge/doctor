@@ -40,7 +40,9 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
 1. **Prepare**：合并 CLI、profile 与交互输入，确定目标身份和本轮选中的 Core / Plugin Service
    contribution；建立 port-forward、临时文件等访问条件，并登记其清理责任。
 2. **Execute / Inspect**：`runCollect` 统一驱动自身 Inspect 与选中 Plugin Service 注册的 Inspect
-   contribution；底层 `runInspects` 按依赖取得 Facts，每个 Fact 一经取得便在本轮后续只读。Core 按诊断目标
+   contribution；底层 `runInspects` 按依赖取得 Facts，校验每个叶子 Fact 的
+   `kind / schemaVersion / producer`，并要求 Core producer 指向实际执行的 Inspect；每个 Fact 一经取得便在
+   本轮后续只读。Core 按诊断目标
    生成 Query，将返回数据保存为 Facts；Relation 作为 Fact 的一种保留已确认的 Identity 关系；没有业务
    Inspect contribution 的 Command 可跳过此步。需要在长 Probe 前保留阶段证据时，Core Command 可通过
    `checkpointFacts` 持久化完整的冻结 Facts；checkpoint 不采集或修改 Facts，也不构成新的 Execute 阶段。
@@ -62,10 +64,11 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
 Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DSN 或 Probe 运行结果；带凭据 Target
 只存在于本轮 Ctx，进入 manifest 和 Detector 前使用领域脱敏投影。Detector 可以读取 Evidence 中领域
 显式选择的 Facts 解释证据为何缺失，但不能追加 I/O。
-进入 Service Detector 的 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识数据契约，并携带
-Core 规范化的 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的
-Plugin schema。Core Finding 遵循相同的 schema identity 与 producer 约束；缺失身份、重复 ID、空 Evidence
-或引用本轮不存在的 `factPath / observationId` 都是 Detector 契约错误，不能伪装成 partial。
+Core 与适配后的 Plugin Fact、Observation、Finding 都使用 `kind + schemaVersion` 标识数据契约，并携带
+结构化 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的 Plugin
+schema。Fact 不另设对象 ID，由 Evidence 内的 `factPath` 引用；Observation 与 Finding 使用本轮唯一 ID。
+缺失身份、producer 不匹配、重复 ID、空 Evidence 或引用本轮不存在的 `factPath / observationId` 都是
+Collect 契约错误，不能伪装成 partial。
 
 ## 关键设计
 

@@ -1,4 +1,5 @@
 import type {
+  CollectedFact,
   Diagnosis,
   Evidence,
   FindingMeta,
@@ -41,7 +42,7 @@ export interface NetworkAnalysisArtifactFact {
   reason?: string;
 }
 
-export interface NetworkAnalysisFacts {
+export interface NetworkAnalysisFact {
   sourceBundle: string;
   namespace?: string;
   requestedServices: string[];
@@ -60,6 +61,10 @@ export interface NetworkAnalysisFacts {
     endedAt?: string;
     terminationReason?: string;
   };
+}
+
+export interface NetworkAnalysisFacts {
+  bundle: CollectedFact<NetworkAnalysisFact, "network.bundle">;
 }
 
 export interface NetworkArtifactObservation extends ObservationMeta {

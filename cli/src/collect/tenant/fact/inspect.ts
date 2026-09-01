@@ -1,4 +1,5 @@
 import type { Inspect } from "../../inspection";
+import { collectedFact, failedFact } from "../../protocol";
 import { modelSnapshot } from "../../../model";
 import type { Fact } from "@compforge/doctor-plugin";
 import type {
@@ -27,12 +28,11 @@ function makeTenantIdentityInspect(): Inspect<TenantFacts, TenantCommandContext>
   return {
     id: "tenant-identity",
     run: async (ctx) => ({
-      tenant: {
-        status: "collected",
+      tenant: collectedFact("tenant.identity", "tenant-identity", {
         id: ctx.config.tenant.id,
         name: ctx.config.tenant.name,
         displayName: ctx.config.tenant.displayName,
-      },
+      }),
     }),
   };
 }
@@ -52,7 +52,6 @@ function makeTenantCapabilitiesInspect(
           for (const result of results) {
             const safeResult: TenantCapabilityResult = result.kind === "models"
               ? {
-                  kind: "data",
                   result: {
                     resolution: {
                       inputId: identity.value,
@@ -65,15 +64,17 @@ function makeTenantCapabilitiesInspect(
                     facts: modelFacts(result.models.map(modelSnapshot)),
                   },
                 }
-              : result;
+              : { result: result.result };
             const id = capability.id;
-            const fact = {
-              status: "collected" as const,
+            const fact = Object.assign(collectedFact(
+              "tenant.capability-result",
+              "tenant-capabilities",
+              safeResult,
+            ), {
               id,
               service: capability.service,
               capability: capability.capability,
-              ...safeResult,
-            };
+            });
             facts.push(fact);
             ctx.bundle.addStep({
               id: `tenant-${id}`,
@@ -87,13 +88,15 @@ function makeTenantCapabilitiesInspect(
           }
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          facts.push({
-            status: "failed",
+          facts.push(Object.assign(failedFact(
+            "tenant.capability-result",
+            "tenant-capabilities",
+            reason,
+          ), {
             id: capability.id,
             service: capability.service,
             capability: capability.capability,
-            reason,
-          });
+          }));
           ctx.bundle.addStep({
             id: `tenant-${capability.id}`,
             title: `${capability.service} ${capability.capability}`,

@@ -9,6 +9,7 @@ import type {
 } from "../../../../infra/host/network-analysis";
 import type {
   NetworkAnalysisConfig,
+  NetworkAnalysisFact,
   NetworkAnalysisFacts,
   NetworkArtifactObservation,
   NetworkHopObservation,
@@ -36,7 +37,7 @@ function endpointAddress(endpoint: string): string {
   return separator > 0 ? endpoint.slice(0, separator) : endpoint;
 }
 
-function serviceForEndpoint(endpoint: string, facts: NetworkAnalysisFacts): string | undefined {
+function serviceForEndpoint(endpoint: string, facts: NetworkAnalysisFact): string | undefined {
   const address = endpointAddress(endpoint);
   const pod = facts.pods.find((item) => item.podIp === address);
   if (pod?.services.length) return pod.services.join("+");
@@ -45,7 +46,7 @@ function serviceForEndpoint(endpoint: string, facts: NetworkAnalysisFacts): stri
 
 function hopEndpointLabels(
   request: NetworkFrameSummary,
-  facts: NetworkAnalysisFacts,
+  facts: NetworkAnalysisFact,
 ): { caller: string; callee: string } {
   return {
     caller: serviceForEndpoint(request.source, facts) ?? request.source,
@@ -104,7 +105,7 @@ function messageBody(
 
 export function buildNetworkHopObservations(
   rows: readonly NetworkFrameSummary[],
-  facts: NetworkAnalysisFacts,
+  facts: NetworkAnalysisFact,
 ): NetworkHopObservation[] {
   const matchedStreams = new Set(
     rows.filter((row) =>
@@ -213,13 +214,14 @@ export const networkPcapProbe: Probe<
   NetworkAnalysisProbeContext
 > = {
   id: "network-pcap-analysis",
-  evaluate: (facts) => facts.artifacts.length
+  evaluate: (facts) => facts.bundle.artifacts.length
     ? { runnable: true }
     : { runnable: false, status: "unavailable", reason: "NetBundle 没有 PCAP artifact" },
   async run(ctx, facts, config) {
+    const bundle = facts.bundle;
     const artifacts: NetworkArtifactObservation[] = [];
     const rows: NetworkFrameSummary[] = [];
-    for (const artifact of facts.artifacts) {
+    for (const artifact of bundle.artifacts) {
       const pcap = safeArtifactPath(ctx.bundleRoot, artifact.file);
       if (!pcap || !existsSync(pcap)) {
         artifacts.push({
@@ -259,7 +261,7 @@ export const networkPcapProbe: Probe<
         const decoded = await ctx.packetAnalysis.decodePcap({
           pcap,
           pod: artifact.pod,
-          identifiers: facts.identifiers,
+          identifiers: bundle.identifiers,
           timeoutMs: config.timeoutMs,
         });
         rows.push(...decoded.frames);
@@ -295,6 +297,6 @@ export const networkPcapProbe: Probe<
         });
       }
     }
-    return [...artifacts, ...buildNetworkHopObservations(rows, facts)];
+    return [...artifacts, ...buildNetworkHopObservations(rows, bundle)];
   },
 };

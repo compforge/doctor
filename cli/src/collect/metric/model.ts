@@ -61,10 +61,10 @@ export type MetricSourceKind = "remote" | "embedded" | "hybrid";
 
 export interface MetricInspectionFacts {
   source: Fact<{
-    kind: MetricSourceKind;
+    sourceKind: MetricSourceKind;
     backend: string;
     targetCount: number;
-  }>;
+  }, "metric.source">;
 }
 
 export interface MetricWindowObservation extends ObservationMeta {

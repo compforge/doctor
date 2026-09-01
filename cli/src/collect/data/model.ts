@@ -53,8 +53,8 @@ export interface DataTargetFact {
 }
 
 export interface DataServiceFacts {
-  target: Fact<DataTargetFact>;
-  inspect: Fact<{ queryable: true }>;
+  target: Fact<DataTargetFact, "data.service-target">;
+  inspect: Fact<{ queryable: true }, "data.inspect-capability">;
 }
 
 export interface DataInspectionFacts {
@@ -70,11 +70,9 @@ export interface DataInspectResultIdentity {
 
 export type DataInspectResult = DataInspectResultIdentity & Fact<{
   result: ServiceInspectResult;
-}>;
+}, "data.inspect-result">;
 
-export type CollectedDataInspectResult = DataInspectResultIdentity
-  & { status: "collected" }
-  & { result: ServiceInspectResult };
+export type CollectedDataInspectResult = Extract<DataInspectResult, { status: "collected" }>;
 
 export interface DataFacts extends DataInspectionFacts {
   capabilityResults: readonly DataInspectResult[];

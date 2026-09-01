@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { buildDataCoverage } from "../src/collect/data/detector";
 import { buildDataHtml } from "../src/collect/data/render";
 import type { DataDiagnosis, DataEvidence } from "../src/collect/data";
+import { collectedFact, failedFact } from "../src/collect/protocol";
 
 test("Data Coverage 保留 capability Fact 的失败原因", () => {
   const evidence: DataEvidence = {
@@ -9,24 +10,22 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
     facts: {
       services: {
         sample: {
-          target: {
-            status: "collected",
+          target: collectedFact("data.service-target", "data-service-targets", {
             service: "sample",
             endpoint: "http://sample",
             database: "sample",
             username: "reader",
             credentialSource: "test",
-          },
-          inspect: { status: "collected", queryable: true },
+          }),
+          inspect: collectedFact("data.inspect-capability", "data-service-targets", { queryable: true }),
         },
       },
       capabilityResults: [{
         id: "data-query:provide:sample:biz_id:biz-1",
-        status: "failed",
+        ...failedFact("data.inspect-result", "data-service-contributions", "query timeout"),
         stage: "provide",
         service: "sample",
         identity: { kind: "biz_id", value: "biz-1" },
-        reason: "query timeout",
       }],
     },
   };
@@ -58,30 +57,32 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
         services: {},
       capabilityResults: [
           {
+            ...collectedFact("data.inspect-result", "data-service-contributions", {
+              result: {
+                resolution: {
+                  inputId: "card-1",
+                  resolvedAs: "card_id",
+                  identifiers: { card_id: "card-1" },
+                },
+                facts: [{ factType: "value", kind: "example-card", schemaVersion: 1, value: cardResult }],
+              },
+            }),
             id: "data-query:provide:example-service:card_id:card-1",
-            status: "collected",
             stage: "provide",
             service: "example-service",
             identity: { kind: "card_id", value: "card-1" },
-            result: {
-              resolution: {
-                inputId: "card-1",
-                resolvedAs: "card_id",
-                identifiers: { card_id: "card-1" },
-              },
-              facts: [{ factType: "value", kind: "example-card", schemaVersion: 1, value: cardResult }],
-            },
           },
           {
+            ...collectedFact("data.inspect-result", "data-service-contributions", {
+              result: {
+                resolution: { inputId: "card-1", resolvedAs: "unresolved", identifiers: {} },
+                facts: [{ factType: "value", kind: "other-records", schemaVersion: 1, value: unresolvedResult }],
+              },
+            }),
             id: "data-query:provide:other-service:biz_id:card-1",
-            status: "collected",
             stage: "provide",
             service: "other-service",
             identity: { kind: "biz_id", value: "card-1" },
-            result: {
-              resolution: { inputId: "card-1", resolvedAs: "unresolved", identifiers: {} },
-              facts: [{ factType: "value", kind: "other-records", schemaVersion: 1, value: unresolvedResult }],
-            },
           },
         ],
       },

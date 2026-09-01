@@ -41,15 +41,14 @@ export type TenantCapabilityQueryResult =
   | { kind: "models"; models: readonly Model[] }
   | { kind: "data"; result: ServiceInspectResult };
 
-export type TenantCapabilityResult = { kind: "data"; result: ServiceInspectResult };
+export type TenantCapabilityResult = { result: ServiceInspectResult };
 
-export type TenantCapabilityFact = TenantCapabilityIdentity & Fact<TenantCapabilityResult>;
-export type CollectedTenantCapabilityFact = TenantCapabilityIdentity
-  & { status: "collected" }
-  & TenantCapabilityResult;
+export type TenantCapabilityFact = TenantCapabilityIdentity
+  & Fact<TenantCapabilityResult, "tenant.capability-result">;
+export type CollectedTenantCapabilityFact = Extract<TenantCapabilityFact, { status: "collected" }>;
 
 export interface TenantFacts {
-  tenant: Fact<Pick<TenantSummary, "id" | "name" | "displayName">>;
+  tenant: Fact<Pick<TenantSummary, "id" | "name" | "displayName">, "tenant.identity">;
   capabilityFacts: readonly TenantCapabilityFact[];
 }
 

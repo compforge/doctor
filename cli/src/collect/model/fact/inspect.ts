@@ -6,6 +6,7 @@ import type {
   ModelInspectionFacts,
   SelectedInferenceModel,
 } from "../model";
+import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 
 export function makeModelInspect(
   tenant: TenantSummary,
@@ -14,8 +15,7 @@ export function makeModelInspect(
   return {
     id: "model-target",
     run: async (ctx) => {
-      const target: ModelInspectionFacts["target"] = {
-        status: "collected",
+      const target: ModelInspectionFacts["target"] = collectedFact("model.target", "model-target", {
         tenant: {
           id: tenant.id,
           name: tenant.name,
@@ -25,40 +25,33 @@ export function makeModelInspect(
           ...modelSnapshot(model),
           inference: model.inference,
         },
-      };
+      });
       try {
         const backend = await ctx.catalog.getBackend(model);
         if (!backend) {
           return {
             target,
-            backend: {
-              status: "unavailable",
-              reason: `模型目录 backend 中不包含模型 ${model.id}`,
-            },
+            backend: unavailableFact("model.backend", "model-target", `模型目录 backend 中不包含模型 ${model.id}`),
           };
         }
         // Plugin handle 可能持有 credentials，因此只持久化规范化身份。
         ctx.backend = backend;
         return {
           target,
-          backend: {
-            status: "collected",
+          backend: collectedFact("model.backend", "model-target", {
             modelId: backend.modelId,
             modelName: backend.modelName,
             model: backend.model,
             type: backend.type,
             provider: backend.provider,
-          },
+          }),
         };
       } catch (error) {
         return {
           target,
-          backend: {
-            status: "failed",
-            reason: `读取模型目录 backend 失败：${
+          backend: failedFact("model.backend", "model-target", `读取模型目录 backend 失败：${
               error instanceof Error ? error.message : String(error)
-            }`,
-          },
+            }`),
         };
       }
     },
