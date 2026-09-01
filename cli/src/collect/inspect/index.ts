@@ -29,7 +29,7 @@ import {
   makeInspectDetectors,
   projectInspectServiceFacts,
 } from "./detector";
-import { immutableServiceProbeFacts } from "../../plugin/evidence-detector";
+import { immutableServiceProbeFacts } from "../../plugin/evidence";
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,

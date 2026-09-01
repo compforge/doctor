@@ -2,8 +2,8 @@ import type { ServiceCatalog, ServiceEvidence } from "@compforge/doctor-plugin";
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import {
   makeServiceEvidenceDetectors,
-  pluginEvidenceKind,
 } from "../../plugin/evidence-detector";
+import { projectPluginServiceEvidenceFact } from "../../plugin/evidence";
 import type {
   CollectedDataInspectResult,
   DataDiagnosisGoal,
@@ -23,17 +23,12 @@ export function projectDataServiceEvidence(evidence: DataEvidence, plugin: strin
   return {
     facts: evidence.facts.capabilityResults.flatMap((result, resultIndex) => (
       result.status === "collected"
-        ? result.result.facts.map((fact, factIndex) => ({
+        ? result.result.facts.map((fact, factIndex) => projectPluginServiceEvidenceFact({
+          plugin,
+          service: result.service,
+          producerId: "inspect",
           factPath: `capabilityResults.${resultIndex}.result.facts.${factIndex}`,
-          services: [result.service],
-          kind: pluginEvidenceKind(plugin, result.service, fact.kind),
-          schemaVersion: fact.schemaVersion,
-          producer: {
-            origin: "plugin" as const,
-            plugin,
-            service: result.service,
-            id: "inspect",
-          },
+          fact,
           query: result.identity,
           value: fact,
         }))

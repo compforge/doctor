@@ -18,8 +18,12 @@ import type {
 } from "@compforge/doctor-plugin";
 import {
   makeServiceEvidenceDetectors,
-  pluginEvidenceKind,
 } from "../../plugin/evidence-detector";
+import {
+  projectPluginServiceEvidenceObservation,
+  projectServiceEvidenceFact,
+  projectServiceEvidenceObservation,
+} from "../../plugin/evidence";
 
 function normalizeName(name: string): string {
   return name.trim().toUpperCase();
@@ -92,48 +96,26 @@ export function projectInspectServiceFacts(
   facts: InspectFacts,
   services: readonly string[],
 ): ServiceEvidenceFact[] {
-  const serviceFacts: ServiceEvidenceFact[] = facts.serviceTargets.status === "collected"
-    ? Object.entries(facts.serviceTargets.services).map(([service, value]) => ({
-      factPath: `serviceTargets.services.${service}`,
-      services: [service],
-      kind: "service-target",
-      schemaVersion: 1,
-      producer: { origin: "core" as const, id: "service-targets" },
-      value,
-    }))
-    : [];
-  const dependencyFacts: ServiceEvidenceFact[] = facts.dependencyTargets.status === "collected"
-    ? facts.dependencyTargets.targets.map((value, index) => ({
-      factPath: `dependencyTargets.targets.${index}`,
-      services: value.services,
-      kind: "dependency-target",
-      schemaVersion: 1,
-      producer: { origin: "core" as const, id: "dependency-targets" },
-      value,
-    }))
-    : [];
-  return [{
-    factPath: "serviceTargets",
-    services,
-    kind: "service-targets",
-    schemaVersion: 1,
-    producer: { origin: "core", id: "service-targets" },
-    value: facts.serviceTargets,
-  }, ...serviceFacts, {
-    factPath: "deploymentConfiguration",
-    services,
-    kind: "deployment-configuration",
-    schemaVersion: 1,
-    producer: { origin: "core", id: "service-targets" },
-    value: facts.deploymentConfiguration,
-  }, {
-    factPath: "dependencyTargets",
-    services,
-    kind: "dependency-targets",
-    schemaVersion: 1,
-    producer: { origin: "core", id: "service-targets" },
-    value: facts.dependencyTargets,
-  }, ...dependencyFacts];
+  return [
+    projectServiceEvidenceFact({
+      factPath: "serviceTargets",
+      services,
+      source: facts.serviceTargets,
+      value: facts.serviceTargets,
+    }),
+    projectServiceEvidenceFact({
+      factPath: "deploymentConfiguration",
+      services,
+      source: facts.deploymentConfiguration,
+      value: facts.deploymentConfiguration,
+    }),
+    projectServiceEvidenceFact({
+      factPath: "dependencyTargets",
+      services,
+      source: facts.dependencyTargets,
+      value: facts.dependencyTargets,
+    }),
+  ];
 }
 
 export function projectInspectServiceEvidence(
@@ -145,67 +127,54 @@ export function projectInspectServiceEvidence(
     facts: projectInspectServiceFacts(evidence.facts, services),
     observations: evidence.observations.flatMap<ServiceEvidenceObservation>((observation) => {
       if (observation.kind === "plugin-workload") {
-        return [{
+        return [projectPluginServiceEvidenceObservation({
           id: observation.id,
-          services: [observation.service],
+          plugin,
+          service: observation.service,
+          producerId: observation.probe,
           probe: observation.probe,
-          kind: pluginEvidenceKind(plugin, observation.service, observation.observationKind),
+          kind: observation.observationKind,
           schemaVersion: observation.observationSchemaVersion,
-          producer: {
-            origin: "plugin" as const,
-            plugin,
-            service: observation.service,
-            id: observation.probe,
-          },
           workload: observation.workload,
           instance: {
-            kind: "kubernetes-pod" as const,
+            kind: "kubernetes-pod",
             namespace: observation.namespace,
             pod: observation.pod,
             container: observation.container,
           },
           value: observation.value,
-        }];
+        })];
       }
       if (observation.kind === "kubernetes-apparmor-unconfined-admission") {
-        return [{
-          id: observation.id,
+        return [projectServiceEvidenceObservation({
           services: [observation.service],
           probe: observation.probe,
-          kind: observation.kind,
-          schemaVersion: 1,
-          producer: { origin: "core" as const, id: "kubernetes.apparmor-unconfined-admission" },
+          source: observation,
           value: {
             namespace: observation.namespace,
             serviceAccountName: observation.serviceAccountName,
             status: observation.status,
             ...(observation.reason ? { reason: observation.reason } : {}),
           },
-        }];
+        })];
       }
       if (observation.kind === "environment-config") {
-        return [{
-          id: observation.id,
+        return [projectServiceEvidenceObservation({
           services: [observation.service],
           probe: "environment-config",
-          kind: observation.kind,
-          schemaVersion: 1,
-          producer: { origin: "core" as const, id: "environment-config" },
+          source: observation,
           value: {
             deployment: observation.deployment,
             container: observation.container,
             values: observation.values,
           },
-        }];
+        })];
       }
       if (observation.kind === "dependency-inventory") {
-        return [{
-          id: observation.id,
+        return [projectServiceEvidenceObservation({
           services: observation.services,
           probe: "dependency-inventory",
-          kind: observation.kind,
-          schemaVersion: 1,
-          producer: { origin: "core" as const, id: "dependency-inventory" },
+          source: observation,
           value: {
             pod: observation.pod,
             container: observation.container,
@@ -218,7 +187,7 @@ export function projectInspectServiceEvidence(
             ...(observation.truncated === undefined ? {} : { truncated: observation.truncated }),
             ...(observation.reason ? { reason: observation.reason } : {}),
           },
-        }];
+        })];
       }
       return [];
     }),

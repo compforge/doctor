@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { buildDataCoverage } from "../src/collect/data/detector";
+import {
+  buildDataCoverage,
+  projectDataServiceEvidence,
+} from "../src/collect/data/detector";
 import { buildDataHtml } from "../src/collect/data/render";
 import type { DataDiagnosis, DataEvidence } from "../src/collect/data";
 import { collectedFact, failedFact } from "../src/collect/protocol";
@@ -92,6 +95,22 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
   };
 
   const html = buildDataHtml(diagnosis);
+  const serviceEvidence = projectDataServiceEvidence(diagnosis.evidence, "example");
+
+  expect(serviceEvidence.facts.map((fact) => [fact.kind, fact.producer])).toEqual([
+    ["plugin/example/example-service/example-card", {
+      origin: "plugin",
+      plugin: "example",
+      service: "example-service",
+      id: "inspect",
+    }],
+    ["plugin/example/other-service/other-records", {
+      origin: "plugin",
+      plugin: "example",
+      service: "other-service",
+      id: "inspect",
+    }],
+  ]);
 
   expect(html).toContain("<h2>业务数据</h2>");
   expect(html).toContain('<details class="table-view">');
