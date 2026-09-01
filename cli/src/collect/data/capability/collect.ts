@@ -5,7 +5,7 @@ import type {
   ServiceDefinition,
   ServiceInspectBudget,
   ServiceInspectResult,
-  ServiceWithCapability,
+  ServiceWithContribution,
 } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../../../plugin/inspect";
 import type { DataCommandContext } from "../context";
@@ -86,7 +86,7 @@ function consumeBudget(remaining: RemainingFactBudget, result: ServiceInspectRes
 }
 
 async function queryIdentity(input: {
-  declared: ServiceWithCapability<ServiceDefinition, "inspect">;
+  declared: ServiceWithContribution<ServiceDefinition, "inspect">;
   stage: DataStage;
   identity: Identity;
   ctx: DataCommandContext;
@@ -107,11 +107,11 @@ async function queryIdentity(input: {
     };
   }
   const pluginContext = ctx.pluginContexts[declared.name];
-  if (!pluginContext) throw new Error(`Service '${declared.name}' Inspect Capability 缺少 PluginContext`);
+  if (!pluginContext) throw new Error(`Service '${declared.name}' Inspect contribution 缺少 PluginContext`);
   try {
-    const capability = declared.capabilities.inspect;
+    const capability = declared.contributions.inspect;
     const result = normalizeServiceInspectResult({
-      value: await capability.query(pluginContext, { identity, results, budget }),
+      value: await capability.inspect(pluginContext, { identity, results, budget }),
       service: declared.name,
       queryIdentity: identity,
       capability,
@@ -185,7 +185,7 @@ interface QueuedIdentity {
  * @see {@link ../../../../docs/kernel.md}
  */
 async function collectExpansionResults(input: {
-  expanders: readonly ServiceWithCapability<ServiceDefinition, "inspect">[];
+  expanders: readonly ServiceWithContribution<ServiceDefinition, "inspect">[];
   inspectionFacts: DataInspectionFacts;
   config: DataConfig;
   ctx: DataCommandContext;
@@ -214,7 +214,7 @@ async function collectExpansionResults(input: {
   for (let cursor = 0; cursor < queue.length; cursor += 1) {
     const current = queue[cursor]!;
     for (const declared of activeExpanders) {
-      if (!declared.capabilities.inspect.accepts.includes(current.identity.kind)) continue;
+      if (!declared.contributions.inspect.accepts.includes(current.identity.kind)) continue;
       const queryKey = `${declared.name}\0${identityKey(current.identity)}`;
       if (queried.has(queryKey)) continue;
       queried.add(queryKey);
@@ -264,12 +264,12 @@ export async function collectDataInspectResults(input: {
   const collected: DataInspectResult[] = [];
   const remaining = { facts: MAX_DATA_FACTS, bytes: MAX_DATA_FACT_BYTES };
   const declaredServices = selections.map(({ service }) => {
-    const declared = catalog.findWith(service, "inspect");
-    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 Inspect Capability`);
+    const declared = catalog.findWithContribution(service, "inspect");
+    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 Inspect contribution`);
     return declared;
   });
   const expansion = await collectExpansionResults({
-    expanders: declaredServices.filter(({ capabilities }) => !!capabilities.inspect.expands?.length),
+    expanders: declaredServices.filter(({ contributions }) => !!contributions.inspect.expands?.length),
     inspectionFacts,
     config,
     ctx,
@@ -291,7 +291,7 @@ export async function collectDataInspectResults(input: {
     const reusedIdentities = new Set(reusable.map((result) => identityKey(result.identity)));
     const results: DataInspectResult[] = [];
     for (const identity of expansion.identities.filter((identity) => (
-      declared.capabilities.inspect.accepts.includes(identity.kind)
+      declared.contributions.inspect.accepts.includes(identity.kind)
       && !reusedIdentities.has(identityKey(identity))
     ))) {
       results.push(await queryIdentity({

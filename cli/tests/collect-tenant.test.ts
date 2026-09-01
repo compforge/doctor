@@ -71,14 +71,17 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
           facts: [{
             factType: "value",
             kind: "tenant-configuration",
+            schemaVersion: 1,
             value: { configuration: { enabled: true } },
           }, {
             factType: "value",
             kind: "tenant-intention",
+            schemaVersion: 1,
             value: { intentions: [{ id: "intent-1" }] },
           }, {
             factType: "relation",
             kind: "owns",
+            schemaVersion: 1,
             from: identity,
             to: { kind: "bot_id", value: "bot-1" },
           }],

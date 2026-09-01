@@ -24,7 +24,13 @@ import {
   resolveInspectDeploymentSelection,
   resolveInspectServiceSelection,
 } from "./options";
-import { buildInspectCoverage, buildInspectEvidence, makeInspectDetectors } from "./detector";
+import {
+  buildInspectCoverage,
+  buildInspectEvidence,
+  makeInspectDetectors,
+  projectInspectServiceFacts,
+} from "./detector";
+import { immutableServiceProbeFacts } from "../../plugin/evidence-detector";
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,
@@ -202,14 +208,17 @@ export async function runCollectInspect(
       ctx,
       log,
     ) as InspectFacts;
+    const probeFacts = immutableServiceProbeFacts(
+      projectInspectServiceFacts(facts, config.services),
+    );
     diagnosis = await runDiagnosis({
       ctx,
       facts,
       config,
-      probes: makeInspectProbes(facts, config, plugin.services),
+      probes: makeInspectProbes(facts, config, plugin.services, probeFacts),
       log,
       buildEvidence: buildInspectEvidence,
-      detectors: makeInspectDetectors(plugin.services),
+      detectors: makeInspectDetectors(plugin.id, plugin.services, config.services),
       buildCoverage: buildInspectCoverage,
     });
   } catch (error) {

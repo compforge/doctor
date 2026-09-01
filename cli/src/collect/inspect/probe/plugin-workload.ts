@@ -1,5 +1,6 @@
 import type {
   ServiceDefinition,
+  ServiceEvidenceFact,
   ServiceWorkloadProbe,
 } from "@compforge/doctor-plugin";
 import { openPluginContext } from "../../../plugin/context";
@@ -16,6 +17,7 @@ import type {
 export function makePluginWorkloadProbe(
   service: ServiceDefinition,
   declaration: ServiceWorkloadProbe,
+  probeFacts: readonly ServiceEvidenceFact[],
 ): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   const id = `plugin-workload-${service.name}-${declaration.workload}-${declaration.id}`;
   const targets = (facts: InspectFacts) => {
@@ -43,12 +45,11 @@ export function makePluginWorkloadProbe(
       reason,
     }),
     run: async (ctx, facts, config) => {
-      const capability = service.capabilities.workload!;
       const managed = await openPluginContext(ctx.executor, config.kube, {
         env: config.profileName,
         config: ctx.command.profile.pluginConfig,
         service: { name: service.name },
-        capability,
+        capability: declaration,
         command: "doctor inspect",
         authorization: ctx.authorization,
       });
@@ -58,16 +59,20 @@ export function makePluginWorkloadProbe(
         for (const pod of targets(facts)) {
           const stepId = `${id}-${pod.pod}`;
           try {
-            const observed = await declaration.observe(managed, {
-              kind: "kubernetes-pod",
-              namespace: config.namespace,
-              pod: pod.pod,
-              container: definition.container,
+            const observed = await declaration.probe(managed, {
+              instance: {
+                kind: "kubernetes-pod",
+                namespace: config.namespace,
+                pod: pod.pod,
+                container: definition.container,
+              },
+              facts: probeFacts,
             });
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
-              observationKind: observed.kind,
+              observationKind: declaration.observation.kind,
+              observationSchemaVersion: declaration.observation.schemaVersion,
               service: service.name,
               workload: declaration.workload,
               namespace: config.namespace,

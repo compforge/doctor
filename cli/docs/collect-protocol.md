@@ -34,21 +34,31 @@ partial，而不是把缺数据解释为系统健康。
 
 ## 流程
 
-1. 配置确认合并 CLI、profile 与交互输入，确定目标身份，但不创建临时访问资源。
-2. preparation 建立 port-forward、临时文件等访问条件，并拥有其清理生命周期。
-3. `runInspects` 按依赖取得初始 Facts；每个 Fact 一经取得便在本轮后续只读。
-4. Command 按诊断目标生成 Query 并驱动选中的 Inspect Capability，将返回数据保存为 Facts；Relation
+Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Probe、Detector contribution，不自行推进
+阶段，也不接管 Render、Delivery 或 Cleanup。
+
+1. **Prepare**：合并 CLI、profile 与交互输入，确定目标身份和本轮选中的 Core / Plugin Service
+   contribution；建立 port-forward、临时文件等访问条件，并登记其清理责任。
+2. **Work / Inspect**：`runInspects` 按依赖取得初始 Facts；每个 Fact 一经取得便在本轮后续只读。
+3. Core 按诊断目标生成 Query，并驱动自身 Inspect 与选中 Plugin Service 注册的 Inspect contribution，将返回
+   数据保存为 Facts；Relation
    作为 Fact 的一种保留已确认的 Identity 关系；
    没有业务 Capability 的 Command 可跳过此步。
-5. `runDiagnosis` 调度 Probes。Probe 可调用 Core 通用实现或 Plugin Probe Capability，并产生 Observations；
-   单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
-6. Evidence Builder 组合 Inspect Facts、Capability Facts（含 Relation）与 Observations，纯 Detector/Coverage
-   形成 Findings 和证据缺口。
-7. Renderer 只消费 Diagnosis 与产物元数据，按用户请求交付 HTML、Markdown 或 Bundle。
+4. **Work / Probe**：Core 对已收敛 Facts 建立完整公共投影并深冻结，将同一份 Facts 注入 Core Probe 与
+   选中 Plugin Service 注册的 Probe Capability，再由 `runDiagnosis` 驱动它们产生 Observations；当前不按
+   Service、producer 或 kind 过滤。单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
+5. **Work / Detector**：Evidence Builder 组合 Inspect Facts、Capability Facts（含 Relation）与 Observations；
+   Core 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，形成 Findings，Coverage
+   记录证据缺口。
+6. **Finalize**：Renderer 只消费 Diagnosis 与产物元数据，随后统一完成 HTML、Markdown 或 Bundle 的
+   Delivery，并执行本轮 Cleanup。
 
 Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DSN 或 Probe 运行结果；带凭据 Target
 只存在于本轮 Ctx，进入 manifest 和 Detector 前使用领域脱敏投影。Detector 可以读取 Evidence 中领域
 显式选择的 Facts 解释证据为何缺失，但不能追加 I/O。
+进入 Service Detector 的 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识数据契约，并携带
+Core 规范化的 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的
+Plugin schema。
 
 ## 关键设计
 

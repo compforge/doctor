@@ -23,7 +23,25 @@ const plugin = {
   services: createServiceCatalog([{
     name: service,
     workloads: [],
-    capabilities: {
+    contributions: {
+      detectors: [{
+        id: "sample-records",
+        detect: (evidence) => {
+          const facts = evidence.facts.filter((item) => item.services.includes(service));
+          return facts.length ? [{
+            id: "sample-record-collected",
+            kind: "record-collected",
+            schemaVersion: 1,
+            severity: "info",
+            confidence: "high",
+            message: `collected ${facts[0]!.query!.value}`,
+            evidence: facts.map((item) => ({
+              factPath: item.factPath,
+              role: "supporting" as const,
+            })),
+          }] : [];
+        },
+      }],
       inspect: {
         access: {},
         accepts: ["biz_id"],
@@ -34,7 +52,7 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => ({
+        inspect: async (_context, query) => ({
           resolution: {
             inputId: query.identity.value,
             resolvedAs: "sample_id",
@@ -43,19 +61,14 @@ const plugin = {
           facts: ["one", "two"].map((recordId) => ({
             factType: "record" as const,
             kind: "sample-record",
+            schemaVersion: 1,
             recordKey: recordId,
             record: { id: recordId },
           })),
         }),
-        detect: (result) => [{
-          id: "sample-record-collected",
-          kind: "sample.record-collected",
-          severity: "info",
-          confidence: "high",
-          message: `collected ${result.resolution.inputId}`,
-        }],
       },
     },
+    capabilities: {},
   }]),
 } satisfies PluginDefinition;
 
@@ -69,7 +82,7 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
   const tenantOnly = {
     name: "tenant-api",
     workloads: [],
-    capabilities: {
+    contributions: {
       inspect: {
         access: {},
         accepts: ["tenant_id"],
@@ -80,17 +93,17 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
           username: "reader",
           credentialSource: "test",
         }),
-        query: async (_context, query) => ({
+        inspect: async (_context, query) => ({
           resolution: {
             inputId: query.identity.value,
             resolvedAs: query.identity.kind,
             identifiers: {},
           },
-          facts: [{ factType: "value", kind: "tenant-record", value: {} }],
+          facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
         }),
-        detect: () => [],
       },
     },
+    capabilities: {},
   } satisfies PluginDefinition["services"]["services"][number];
 
   expect(dataServicesForBizQuery(createServiceCatalog([
@@ -126,7 +139,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       // Deliberately declared first: it can only run after the later resolver discovers message_id.
       name: traceResolver,
       workloads: [],
-      capabilities: {
+      contributions: {
         inspect: {
           access: {},
           accepts: ["message_id"],
@@ -138,26 +151,27 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          query: async (_context, query) => ({
+          inspect: async (_context, query) => ({
             resolution: {
               inputId: query.identity.value,
               resolvedAs: query.identity.kind,
               identifiers: {},
             },
-            facts: [{ factType: "value", kind: "trace-resolution", value: {} }, {
+            facts: [{ factType: "value", kind: "trace-resolution", schemaVersion: 1, value: {} }, {
               factType: "relation",
               kind: "resolves-to",
+              schemaVersion: 1,
               from: query.identity,
               to: { kind: "trace_id", value: "trace-1" },
             }],
           }),
-          detect: () => [],
         },
       },
+      capabilities: {},
     }, {
       name: resolver,
       workloads: [],
-      capabilities: {
+      contributions: {
         inspect: {
           access: {},
           accepts: ["biz_id"],
@@ -169,26 +183,27 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          query: async (_context, query) => {
+          inspect: async (_context, query) => {
             const identity = query.identity;
             return {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
-              facts: [{ factType: "value", kind: "resolution-record", value: {} },
+              facts: [{ factType: "value", kind: "resolution-record", schemaVersion: 1, value: {} },
                 ...(identity.kind === "biz_id" ? [{
                   factType: "relation" as const,
                     kind: "resolves-to",
+                    schemaVersion: 1,
                     from: identity,
                     to: { kind: "message_id", value: "message-1" },
                   }] : [])],
             };
           },
-          detect: () => [],
         },
       },
+      capabilities: {},
     }, {
       name: records,
       workloads: [],
-      capabilities: {
+      contributions: {
         inspect: {
           access: {},
           accepts: ["trace_id"],
@@ -199,17 +214,17 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          query: async (_context, query) => {
+          inspect: async (_context, query) => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
             return {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
-              facts: [{ factType: "value", kind: "sample-record", value: {} }],
+              facts: [{ factType: "value", kind: "sample-record", schemaVersion: 1, value: {} }],
             };
           },
-          detect: () => [],
         },
       },
+      capabilities: {},
     }]),
   } satisfies PluginDefinition;
 
@@ -275,9 +290,10 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
         },
       },
       findings: [{
-        id: "sample-record-collected",
+        id: `service-detector:${service}:sample-records:sample-record-collected`,
         evidence: [
-          { factPath: "capabilityResults.0", role: "supporting" },
+          { factPath: "capabilityResults.0.result.facts.0", role: "supporting" },
+          { factPath: "capabilityResults.0.result.facts.1", role: "supporting" },
         ],
       }],
     });

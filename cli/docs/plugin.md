@@ -39,22 +39,23 @@ Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访�
 当操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
 Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
-capability 是 Core 发现、准备和调用 Plugin 能力的中心。下面五类契约只服务于 capability，不各自形成
-Plugin 扩展点或生命周期：
+Service 通过 `contributions.inspect / probes / detectors` 统一注册 Collect Execute 三阶段的业务贡献。
+capability 继续表达 Store、Metric、Case 等可复用业务能力；两者都不拥有 Command 生命周期。跨边界契约为：
 
 | 协议面 | 方向 | 所有权 |
 |---|---|---|
 | access | Plugin capability → Core | Plugin 声明最小需求，Core 合并、预检并执行策略 |
 | dependencies | Service → Core | Service 引用同一 Plugin 中其它 Service 的 capability，Core 验证并准备运行时 handle |
 | data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
+| contributions | Plugin Service → Core | Service 统一注册 Inspect、Probe 和 Detector；Core 选择、驱动并校验结果 |
 | infra | Core → Plugin context | 当前 Target 的 Kubernetes access、取消与资源生命周期等运行便利 |
 | config | profile/Core → Plugin context | Core 不透明保存和透传，schema、校验和解释归 Plugin |
 
-这五类不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
+这些协议面不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
-Core 与 Plugin 使用同一套 Capability 词汇；Plugin Service 只是业务 Capability 的归属与提供单元，不形成
-第二条扩展流程。Inspect Capability 遵循 `Query → Capability → InspectQueryResult`：Query 由类型化 Identity
+Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇；Plugin Service 只是业务 contribution 的归属和
+提供单元，不形成第二条扩展流程。Service Inspect 遵循 `Query → Inspect → InspectQueryResult`：Query 由类型化 Identity
 与该 capability 的约束组成；result 以 `resolution`、`missingEvidence`、`truncated` 表达一次获取的状态，
 不把状态伪装成领域 Fact。`facts` 有三种形态：同 kind 至多一个的 `ValueFact`、用稳定 `recordKey` 区分的
 可重复 `RecordFact`，以及表示现场已确认 Identity 关系的 `RelationFact`。Fact 在本次诊断过程中足够稳定，
@@ -63,12 +64,38 @@ Core 与 Plugin 使用同一套 Capability 词汇；Plugin Service 只是业务 
 Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
 查询边界以及如何组织 Evidence 始终由 Core Command 拥有。resolution 的展示 identifier 不能参与 Query 调度。
 
-Probe Capability 遵循 `Input → Capability → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
+Service Probe 遵循 `Input → Probe → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
 runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
 拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe Capability；主动
 inference、Case 和运行时取证因此返回 Observation 或临时 handle，不伪装成 Fact。
-Inspect Capability 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 Capability，不能通过
+Core 必须等本轮 Inspect 收敛后再进入 Probe。当前 `ServiceProbeInput.facts` 注入本轮全部已公开 Fact，
+不按 Service、producer 或 kind 过滤；Service Probe 因而可以通过 `kind + schemaVersion + producer` 读取
+Core Inspect 的基础信息，也可以读取其它选中 Service 的 Fact。该列表由 Core 做 JSON 投影并深冻结，
+Plugin 只能消费，不能补写或修改 Fact。本阶段不声明 `requires`，后续若证据规模或最小披露需要收紧，
+再在 Core 侧增加选择规则，不改变 Inspect → Probe 的所有权。
+Service Inspect 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 contribution，不能通过
 试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
+
+`contributions.detectors` 贡献业务判断，与 Inspect/Probe producer 分离。Core 在完成当前 Command 的
+Inspect 与 Probe 后，把可供 Plugin 分析的 Service Fact/Observation 投影为 `ServiceEvidence`，再调用本次
+选中 Service 的 Detector。一个 Detector 因而可以关联多个 producer 或多个 Service 的证据，例如同时判断
+平台准入 Observation 与业务 workload health Observation。Detector 只接收可序列化 Evidence，不接收
+`PluginContext`、infra handle 或 profile config，也不能发起 I/O。返回的每个 Finding 必须至少引用一个
+现有 `factPath` 或 `observationId`；Core 校验引用、补充 owner Service 与 detector ID 后才进入 Diagnosis。
+Inspect 与 Probe 自身只负责采集，不再内嵌 `detect` 回调。
+
+Plugin Service 注册这三类 contribution，但不拥有命令生命周期。Core 统一驱动
+`Prepare → Execute（Inspect → Probe → Detector）→ Finalize`：Execute 阶段同时调度 Core 自有 contribution 与
+本次选中 Plugin Service 注册的 contribution；Render 保持领域归属和当前触发位置，Finalize 负责 Delivery 与 Cleanup。Service 不能
+自行提前执行 Detector，也不能在 Detector 后直接渲染或交付结果。
+
+Detector 依赖的是 Evidence schema，而不是 producer 的实现细节。Service Inspect 返回的每个 Fact 必须携带
+本地 `kind` 与正整数 `schemaVersion`；Workload Probe 在 `observation` 声明中预先声明二者，`probe` 只返回
+`value`，由 Core 按声明写入 Observation，避免运行时输出冒充其它 schema。Service Detector 返回的 Finding
+同样携带本地 `kind + schemaVersion`。Core 把 Plugin 本地 kind 规范化为
+`plugin/<plugin-id>/<service>/<local-kind>`，并写入 `{ origin: "plugin", plugin, service, id }` producer；
+Core 自有 schema 使用保留短 kind 与 `{ origin: "core", id }`。Plugin immutable version 加 Service/contribution
+id 标识规则实现版本，`schemaVersion` 只在 payload 契约不兼容时递增，两者不能合并成一个含义模糊的 version。
 
 Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
 Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
@@ -89,8 +116,8 @@ Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 m
 所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
 
 Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
-`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Inspect Capability；
-返回的 Model 或 `ServiceInspectResult` 进入 Tenant Evidence。相同 Capability 仍可被其它 Command 复用，
+`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Inspect；
+返回的 Model 或 `ServiceInspectResult` 进入 Tenant Evidence。相同 Inspect 仍可被其它 Command 复用，
 Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 
 公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
@@ -156,7 +183,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 5,
+  "pluginApiVersion": 6,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",

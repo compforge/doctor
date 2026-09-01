@@ -66,7 +66,7 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
         : `租户：未取得（${tenant.reason}）`,
       ...capabilitySummary(diagnosis),
     ]),
-    htmlParagraph("Tenant Command 组合 Model Catalog 与接受 tenant_id 的 Inspect Capability，并将结果保留为 Facts。"),
+    htmlParagraph("Tenant Command 组合 Model Catalog 与接受 tenant_id 的 Inspect contribution，并将结果保留为 Facts。"),
     htmlHeading(2, "Coverage"),
     htmlList(diagnosis.coverage.flatMap((item) => [
       `${item.goal}：${item.status}`,

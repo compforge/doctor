@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { ServiceInspectCapability } from "@compforge/doctor-plugin";
+import type { ServiceInspect } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
 
 const capability = {
@@ -13,7 +13,7 @@ const capability = {
     username: "reader",
     credentialSource: "test",
   }),
-  query: async (_context, query) => ({
+  inspect: async (_context, query) => ({
     resolution: {
       inputId: query.identity.value,
       resolvedAs: query.identity.kind,
@@ -21,8 +21,7 @@ const capability = {
     },
     facts: [],
   }),
-  detect: () => [],
-} satisfies ServiceInspectCapability;
+} satisfies ServiceInspect;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
 const budget = { maxFacts: 10, maxBytes: 1024 * 1024 };
@@ -34,20 +33,24 @@ test("Inspect query 支持 ValueFact、RecordFact 与 RelationFact", () => {
       facts: [{
         factType: "value",
         kind: "tenant-configuration",
+        schemaVersion: 1,
         value: { enabled: true },
       }, {
         factType: "record",
         kind: "intention",
+        schemaVersion: 1,
         recordKey: "one",
         record: { id: "one" },
       }, {
         factType: "record",
         kind: "intention",
+        schemaVersion: 1,
         recordKey: "two",
         record: { id: "two" },
       }, {
         factType: "relation",
         kind: "owns",
+        schemaVersion: 1,
         from: identity,
         to: { kind: "bot_id", value: "bot-1" },
       }],
@@ -70,8 +73,8 @@ test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
   expect(() => normalizeServiceInspectResult({
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
-      facts: [{ factType: "value", kind: "intention", value: "one" },
-        { factType: "value", kind: "intention", value: "two" }],
+      facts: [{ factType: "value", kind: "intention", schemaVersion: 1, value: "one" },
+        { factType: "value", kind: "intention", schemaVersion: 1, value: "two" }],
     },
     service: "control",
     queryIdentity: identity,
@@ -82,8 +85,8 @@ test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
   expect(() => normalizeServiceInspectResult({
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
-      facts: [{ factType: "record", kind: "intention", recordKey: "one", record: {} },
-        { factType: "record", kind: "intention", recordKey: "one", record: {} }],
+      facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} },
+        { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} }],
     },
     service: "control",
     queryIdentity: identity,
@@ -92,11 +95,24 @@ test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
   })).toThrow("duplicate RecordFact 'intention:one'");
 });
 
+test("Inspect Fact 必须声明正整数 schemaVersion", () => {
+  expect(() => normalizeServiceInspectResult({
+    value: {
+      resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "value", kind: "intention", schemaVersion: 0, value: "one" }],
+    },
+    service: "control",
+    queryIdentity: identity,
+    capability,
+    budget,
+  })).toThrow("control inspect result.facts[0].schemaVersion must be a positive integer");
+});
+
 test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
   expect(() => normalizeServiceInspectResult({
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
-      facts: [{ factType: "value", kind: "unknown", value: {} }],
+      facts: [{ factType: "value", kind: "unknown", schemaVersion: 1, value: {} }],
     },
     service: "control",
     queryIdentity: identity,
@@ -110,6 +126,7 @@ test("Inspect query 拒绝未声明 Fact 与不可信 Relation", () => {
       facts: [{
         factType: "relation",
         kind: "owns",
+        schemaVersion: 1,
         from: identity,
         to: { kind: "message_id", value: "message-1" },
       }],
@@ -125,8 +142,8 @@ test("Core 按预算截断 query result", () => {
   const result = normalizeServiceInspectResult({
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
-      facts: [{ factType: "record", kind: "intention", recordKey: "one", record: {} },
-        { factType: "record", kind: "intention", recordKey: "two", record: {} }],
+      facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} },
+        { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "two", record: {} }],
     },
     service: "control",
     queryIdentity: identity,

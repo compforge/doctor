@@ -1,5 +1,6 @@
-import type { ServiceInspectFinding, Toolchain, WorkloadDiscovery, WorkloadLifecycle } from "@compforge/doctor-plugin";
+import type { Toolchain, WorkloadDiscovery, WorkloadLifecycle } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
+import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { CommandContext } from "../../command";
@@ -150,6 +151,7 @@ export interface DependencyInventoryObservation extends ObservationMeta {
 export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta {
   kind: "kubernetes-apparmor-unconfined-admission";
   service: string;
+  probe: string;
   namespace: string;
   serviceAccountName: string;
   status: "allowed" | "denied";
@@ -159,6 +161,7 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
 export interface PluginWorkloadObservation extends ObservationMeta {
   kind: "plugin-workload";
   observationKind: string;
+  observationSchemaVersion: number;
   service: string;
   workload: string;
   namespace: string;
@@ -183,9 +186,7 @@ export interface InspectEvidence extends Evidence<InspectObservation, InspectFac
   rows: ConfigurationComparisonRow[];
 }
 
-export type InspectFinding = ServiceInspectFinding & {
-  evidence: readonly [{ observationId: string; role: "supporting" }];
-};
+export type InspectFinding = ServiceDetectorFinding;
 export type InspectDiagnosisGoal =
   | "environment-config"
   | "workload-runtime"

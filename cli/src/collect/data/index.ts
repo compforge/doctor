@@ -40,7 +40,7 @@ export * from "./model";
 
 function dataOutcomes(services: readonly string[], plugin: PluginDefinition): OutcomeDecl[] {
   return services.flatMap((service) => {
-    const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
+    const capability = plugin.services.findWithContribution(service, "inspect")!.contributions.inspect;
     return [
       ...(capability.expands?.length ? [{
         id: `data-expand-${service}`,
@@ -101,9 +101,9 @@ async function runCollectDataSingle(
     return 130;
   }
   for (const { service } of selections) {
-    const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
+    const capability = plugin.services.findWithContribution(service, "inspect")!.contributions.inspect;
     terminalStdout.write(
-      `[collect] Inspect Capability: ${service}（provides=${capability.provides.join(",")}`
+      `[collect] Inspect contribution: ${service}（provides=${capability.provides.join(",")}`
       + `${capability.expands?.length ? `；expands=${capability.expands.join(",")}` : ""}）\n`,
     );
   }
@@ -135,7 +135,7 @@ async function runCollectDataSingle(
     params: {
       services: selections.map((item) => item.service),
       inspect_capabilities: Object.fromEntries(selections.map(({ service }) => {
-        const capability = plugin.services.findWith(service, "inspect")!.capabilities.inspect;
+        const capability = plugin.services.findWithContribution(service, "inspect")!.contributions.inspect;
         return [service, {
           provides: capability.provides,
           expands: capability.expands ?? [],
@@ -190,7 +190,7 @@ async function runCollectDataSingle(
       probes: [],
       log,
       buildEvidence: buildDataEvidence,
-      detectors: makeDataDetectors(plugin.services),
+      detectors: makeDataDetectors(plugin.id, plugin.services, selections.map((selection) => selection.service)),
       buildCoverage: buildDataCoverage,
     });
   } catch (error) {

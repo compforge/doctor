@@ -2,7 +2,7 @@
 
 Doctor Plugin 的协议与可选共享 SDK。Plugin 是 Service 与 Skill 的打包和分发单位：一个业务 Plugin
 通过本包导出一个 `PluginDefinition`，其中 Service Catalog 可以包含多个 Service，每个 Service 独立声明
-capability 及其 access，同一精确 Plugin 版本还可携带多个已解析的 Skills。Doctor 只注入
+`contributions.inspect / probes / detectors`、capability 及其 access，同一精确 Plugin 版本还可携带多个已解析的 Skills。Doctor 只注入
 `PluginContext`。其中 Kubernetes access 和 port-forward 由 Core 绑定到已选 Target，具体 HTTP、数据库
 协议和业务查询由 Plugin 持有。例如 `traceId` capability 只约定业务 ID 到规范 `trace_id` 的输入输出，
 查询哪个 Service、如何解释数据源和 ID 的业务语义都留在 Plugin。
@@ -18,17 +18,18 @@ Plugin version 后重新封存。
 协议返回值既可以是可持久化数据，也可以是临时 capability handle。后者只暴露 Core 需要的规范化身份
 和操作方法，适合让原始凭据、厂商字段与请求拼装始终留在 Plugin 内。
 
-Core 与 Plugin 以 capability 为中心：capability 是 Doctor 发现、准备和消费 Plugin 能力的入口；access
-声明、调用时交换的类型化 data、Core 注入的 Target-scoped infra，以及 profile 中不透明透传的 Plugin
-config 都只支撑 capability 的调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
+Core 通过 contribution 发现和驱动 Inspect、Probe、Detector，通过 capability 复用 Store、Metric、Case 等
+业务能力。access 声明、调用时交换的类型化 data、Core 注入的 Target-scoped infra，以及 profile 中
+不透明透传的 Plugin config 都只支撑当前贡献或能力调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
 kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
 
-Core 与 Plugin 共用一套 Capability 词汇和流程，Plugin Service 只是其中业务 Capability 的归属与提供
-单元。Inspect Capability 接受由类型化 `Identity` 与 capability-specific constraints 组成的 `Query`，并
+Core 与 Plugin 共用一套 Inspect → Probe → Detector 诊断流程。Plugin Service 在 `contributions` 中按这三类
+统一注册业务逻辑；Core 选择、驱动并校验结果。Service Inspect 接受由类型化 `Identity` 与
+capability-specific constraints 组成的 `Query`，并
 返回 `InspectQueryResult`。其中 `ValueFact` 表达单值，`RecordFact` 用稳定 key 表达可重复记录，
 `RelationFact` 表达已经由现场数据证明的 Identity 关系；记录内部结构对 Core 不透明。
-Probe Capability 在调用方的每个调度点接受一次 Input 并返回 Observation，不拥有循环、预算、授权或
-Evidence。Capability 不绑定具体 Doctor Command；Command 选择能力、限制 Relation 扩展并组织
+Service Probe 在调用方的每个调度点接受一次 Input 并返回 Observation，不拥有循环、预算、授权或
+Evidence。Service Detector 只消费已组织的只读 Evidence，不接收 PluginContext 或执行 I/O。Command 选择能力、限制 Relation 扩展并组织
 Evidence。Fact 是本次诊断中可复用的相对稳定信息，Observation 只代表探测时间点或窗口；展示 identifier
 不能反向驱动 Query。
 

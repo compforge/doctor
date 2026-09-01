@@ -10,14 +10,14 @@ Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Q
 - **Tenant identity**：由 Plugin 声明的 `tenantDirectory` capability 解析。
 - **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog；Command 将数量投影为
   `model-summary` ValueFact，并将每个 Model 投影为以 model id 为稳定 key 的 `model` RecordFact。
-- **Service Inspect Fact**：来自 `accepts` 包含 `tenant_id` 的 Service Inspect Capability。
+- **Service Inspect Fact**：来自 `accepts` 包含 `tenant_id` 的 Service Inspect contribution。
 - **Evidence**：由 Tenant Command 负责失败隔离、Coverage、Bundle 与报告展示。
 
 ## 流程
 
 1. Core 解析 profile、namespace 与 Kubernetes 连接，通过租户目录确定 tenant-id。
 2. Command 形成 `{ identity: { kind: "tenant_id", value } }` Query。
-3. Command 查询 Model Catalog，并选择接受 `tenant_id` 的 Inspect Capability；每次调用独立准备 access 和
+3. Command 查询 Model Catalog，并选择接受 `tenant_id` 的 Inspect contribution；每次调用独立准备 access 和
    `PluginContext`，完成后回收连接与 port-forward。
 4. Model Catalog 与每个 `ServiceInspectResult` 都形成带 query 获取状态的 Tenant Fact；列表实体按
    RecordFact 进入统一的过滤、分页和详情展示，单个 Capability 失败不丢弃其它已取得事实。
@@ -32,7 +32,7 @@ Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询�
 ### Query 作用域与 Capability 归属分开
 
 Tenant 与 Data 分别以 tenant-id、biz-id 形成数据采集入口，但不因此复制数据能力。Model Catalog 可同时被
-Tenant、Model 与 Chat 消费；Inspect Capability 只声明接受的 Identity 与提供的 Fact / Relation，不感知
+Tenant、Model 与 Chat 消费；Inspect contribution 只声明接受的 Identity 与提供的 Fact / Relation，不感知
 调用它的 Command。
 
 ### Command 拥有诊断视角

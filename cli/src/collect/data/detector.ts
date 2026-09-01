@@ -1,5 +1,9 @@
-import type { ServiceCatalog } from "@compforge/doctor-plugin";
+import type { ServiceCatalog, ServiceEvidence } from "@compforge/doctor-plugin";
 import type { Detector, DiagnosisCoverage } from "../protocol";
+import {
+  makeServiceEvidenceDetectors,
+  pluginEvidenceKind,
+} from "../../plugin/evidence-detector";
 import type {
   CollectedDataInspectResult,
   DataDiagnosisGoal,
@@ -15,33 +19,41 @@ export function buildDataEvidence(
   return { observations: [], facts };
 }
 
-export function makeDataDetectors(
-  catalog: ServiceCatalog,
-): readonly Detector<DataEvidence, DataFinding>[] {
-  const detectServiceInspectResults: Detector<DataEvidence, DataFinding> = (evidence) => {
-    const findings = new Map<string, DataFinding>();
-    for (const [index, result] of evidence.facts.capabilityResults.entries()) {
-      if (result.status !== "collected") continue;
-      const declared = catalog.findWith(result.service, "inspect");
-      if (!declared) continue;
-      for (const finding of declared.capabilities.inspect.detect(result.result)) {
-        const key = `${result.service}:${finding.id}`;
-        const existing = findings.get(key);
-        const reference = { factPath: `capabilityResults.${index}`, role: "supporting" as const };
-        if (existing) {
-          findings.set(key, { ...existing, evidence: [...existing.evidence, reference] });
-        } else {
-          findings.set(key, {
-            ...finding,
+export function projectDataServiceEvidence(evidence: DataEvidence, plugin: string): ServiceEvidence {
+  return {
+    facts: evidence.facts.capabilityResults.flatMap((result, resultIndex) => (
+      result.status === "collected"
+        ? result.result.facts.map((fact, factIndex) => ({
+          factPath: `capabilityResults.${resultIndex}.result.facts.${factIndex}`,
+          services: [result.service],
+          kind: pluginEvidenceKind(plugin, result.service, fact.kind),
+          schemaVersion: fact.schemaVersion,
+          producer: {
+            origin: "plugin" as const,
+            plugin,
             service: result.service,
-            evidence: [reference],
-          });
-        }
-      }
-    }
-    return [...findings.values()];
+            id: "inspect",
+          },
+          query: result.identity,
+          value: fact,
+        }))
+        : []
+    )),
+    observations: [],
   };
-  return [detectServiceInspectResults];
+}
+
+export function makeDataDetectors(
+  plugin: string,
+  catalog: ServiceCatalog,
+  services: readonly string[],
+): readonly Detector<DataEvidence, DataFinding>[] {
+  return makeServiceEvidenceDetectors<DataEvidence>({
+    plugin,
+    catalog,
+    services,
+    project: (evidence) => projectDataServiceEvidence(evidence, plugin),
+  });
 }
 
 export function buildDataCoverage(

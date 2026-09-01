@@ -88,6 +88,7 @@ export function makeAppArmorUnconfinedAdmissionProbe(
           id: stepId,
           kind: "kubernetes-apparmor-unconfined-admission",
           service: target.service,
+          probe: declaration.id,
           namespace: target.namespace,
           serviceAccountName: target.serviceAccountName,
           status: result.status,

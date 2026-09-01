@@ -7,7 +7,7 @@
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
 `inspect` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询和确定性判读。
 
-Inspect Capability 接受由业务 Identity 与约束组成的 Query，并返回一个 query-level result。result 的
+Service Inspect contribution 接受由业务 Identity 与约束组成的 Query，并返回一个 query-level result。result 的
 `resolution`、`missingEvidence` 与 `truncated` 表达本次获取状态；`facts` 承载可独立消费的稳定信息：
 
 - `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。

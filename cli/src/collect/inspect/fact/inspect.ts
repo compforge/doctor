@@ -244,7 +244,8 @@ export function makeServiceTargetsInspect(
             name: definition.name,
             lifecycle: definition.lifecycle,
             discovery: definition.discovery,
-            probes: declaredService.capabilities.workload?.probes
+            probes: declaredService.contributions?.probes
+              ?.filter((probe) => probe.kind === "workload")
               .filter((probe) => probe.workload === definition.name)
               .map((probe) => probe.id) ?? [],
             deployments,

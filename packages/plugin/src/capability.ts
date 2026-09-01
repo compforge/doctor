@@ -24,6 +24,8 @@ export interface Query<
 /** Inspect output that remains reusable as stable context for the current diagnosis run. */
 export interface FactBase {
   kind: string;
+  /** Positive integer version of the Fact value schema. */
+  schemaVersion: number;
 }
 
 /** One opaque domain value; a Query may return at most one ValueFact of each kind. */
@@ -60,5 +62,5 @@ export interface InspectCapability<
   Q extends Query = Query,
   F extends Fact = Fact,
 > extends CapabilityWithAccess {
-  query(context: PluginContext, query: Q): Promise<InspectQueryResult<F>>;
+  inspect(context: PluginContext, query: Q): Promise<InspectQueryResult<F>>;
 }

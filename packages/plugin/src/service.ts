@@ -102,9 +102,16 @@ export interface ServiceMetricDetector {
   message: string;
 }
 
-export interface KubernetesAppArmorUnconfinedInspectionProbe {
+/** Common identity carried by every Plugin-side Probe contribution. */
+export interface ServiceProbe {
   id: string;
+  kind: string;
+  schemaVersion: number;
+}
+
+export interface KubernetesAppArmorUnconfinedInspectionProbe extends ServiceProbe {
   kind: "kubernetes.apparmor-unconfined-admission";
+  schemaVersion: 1;
   /** Resolve the caller identity and probe image from this Service's running workload. */
   subject: "workload-service-account";
 }
@@ -232,38 +239,103 @@ export interface ServiceInspectBudget {
   maxBytes: number;
 }
 
-export interface ServiceInspectFinding {
+export type ServiceEvidenceRole = "supporting" | "contradicting" | "context";
+
+export type ServiceEvidenceReference =
+  | { observationId: string; role: ServiceEvidenceRole }
+  | { factPath: string; role: ServiceEvidenceRole };
+
+export type ServiceEvidenceProducer =
+  | { origin: "core"; id: string }
+  | { origin: "plugin"; plugin: string; service: string; id: string };
+
+export interface ServiceFinding {
   id: string;
   kind: string;
+  schemaVersion: number;
   severity: "info" | "warning" | "critical";
   confidence: "low" | "medium" | "high";
   message: string;
+  /** Every business judgment names the persisted evidence that supports or qualifies it. */
+  evidence: readonly ServiceEvidenceReference[];
   [name: string]: unknown;
 }
 
-export interface ServiceWorkloadProbeObservation {
+/** One Core- or Plugin-produced Inspect Fact exposed to Service Probes and Detectors. */
+export interface ServiceEvidenceFact {
+  /** Path below the command Evidence `facts` root; valid as a Finding fact reference. */
+  factPath: string;
+  /** Logical Services this Fact describes; Core Facts may cover more than one Service. */
+  services: readonly string[];
   kind: string;
+  schemaVersion: number;
+  producer: ServiceEvidenceProducer;
+  /** Present when the Fact came from a Service Inspect query. */
+  query?: Identity;
+  value: unknown;
+}
+
+/** One Service-scoped Probe Observation exposed to pure business detectors. */
+export interface ServiceEvidenceObservation {
+  /** Persisted Observation identity; valid as a Finding observation reference. */
+  id: string;
+  /** Logical Services this Observation describes. */
+  services: readonly string[];
+  probe: string;
+  kind: string;
+  schemaVersion: number;
+  producer: ServiceEvidenceProducer;
+  workload?: string;
+  instance?: WorkloadInstance;
   value: Readonly<Record<string, unknown>>;
 }
 
-export interface ServiceWorkloadProbe {
-  id: string;
-  /** Stable WorkloadDefinition.name owned by this Service. */
-  workload: string;
-  observe(
-    context: PluginContext,
-    instance: WorkloadInstance,
-  ): Promise<ServiceWorkloadProbeObservation>;
-  /** Pure domain judgment; Core attaches the observation evidence reference. */
-  detect?(
-    observation: ServiceWorkloadProbeObservation,
-  ): readonly ServiceInspectFinding[];
+/** Serializable, read-only projection of the Evidence selected for Service detectors. */
+export interface ServiceEvidence {
+  facts: readonly ServiceEvidenceFact[];
+  observations: readonly ServiceEvidenceObservation[];
 }
 
-/** Business observations made once for every resolved workload instance. */
-export interface ServiceWorkloadCapability extends CapabilityWithAccess {
-  probes: readonly ServiceWorkloadProbe[];
+/** Pure business judgment over already collected Evidence; it never receives PluginContext. */
+export interface ServiceDetector {
+  id: string;
+  detect(evidence: ServiceEvidence): readonly ServiceFinding[];
 }
+
+export interface ServiceWorkloadProbeObservation {
+  value: Readonly<Record<string, unknown>>;
+}
+
+/** Core-built input shared by Service Probe capabilities after Inspect has settled. */
+export interface ServiceProbeInput {
+  /** Complete immutable Fact projection for this command; currently not filtered by Service or kind. */
+  facts: readonly ServiceEvidenceFact[];
+}
+
+export interface ServiceWorkloadProbeInput extends ServiceProbeInput {
+  instance: WorkloadInstance;
+}
+
+export interface ServiceWorkloadProbe extends ServiceProbe {
+  kind: "workload";
+  schemaVersion: 1;
+  /** Stable WorkloadDefinition.name owned by this Service. */
+  workload: string;
+  /** Access is declared per Probe so unrelated probes do not inherit a broader capability grant. */
+  access: CapabilityWithAccess["access"];
+  /** Observation schema declared before Core schedules this Probe. */
+  observation: {
+    kind: string;
+    schemaVersion: number;
+  };
+  probe(
+    context: PluginContext,
+    input: ServiceWorkloadProbeInput,
+  ): Promise<ServiceWorkloadProbeObservation>;
+}
+
+/** Supported Probe forms at the untyped Plugin boundary. */
+export type ServiceProbeDefinition = ServiceEnvironmentProbe | ServiceWorkloadProbe;
 
 export interface ServiceInspectQuery extends Query<Identity> {
   budget: ServiceInspectBudget;
@@ -283,7 +355,7 @@ export type ServiceInspectQueryHandler = (
   query: ServiceInspectQuery,
 ) => Promise<ServiceInspectResult>;
 
-export interface ServiceInspectCapability
+export interface ServiceInspect
   extends InspectCapability<ServiceInspectQuery, Fact> {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
@@ -294,10 +366,17 @@ export interface ServiceInspectCapability
   /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
   store?: string;
   resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
-  query: ServiceInspectQueryHandler;
-  /** Pure query-level domain rule adapted by doctor data into an Evidence detector. */
-  detect(result: ServiceInspectResult): ServiceInspectFinding[];
+  inspect: ServiceInspectQueryHandler;
 }
+
+/** The three Plugin-side contributions that participate in Collect execute. */
+export interface ServiceContributions {
+  inspect?: ServiceInspect;
+  probes?: readonly ServiceProbeDefinition[];
+  detectors?: readonly ServiceDetector[];
+}
+
+export type ServiceContributionName = keyof ServiceContributions;
 
 export interface ServiceTraceIdInput {
   bizId: string;
@@ -464,12 +543,10 @@ export function isToolchain(value: unknown): value is Toolchain {
 export interface ServiceCapabilities {
   stores?: readonly ServiceStoreCapability[];
   config?: Record<string, never>;
-  environmentProbes?: readonly ServiceEnvironmentProbe[];
   log?: {
     default: boolean;
   };
   traceId?: ServiceTraceIdCapability;
-  inspect?: ServiceInspectCapability;
   tenantDirectory?: ServiceTenantDirectoryCapability;
   modelCatalog?: ServiceModelCatalogCapability;
   inference?: ServiceInferenceCapability;
@@ -477,7 +554,6 @@ export interface ServiceCapabilities {
   perf?: ServicePerfCapability;
   metric?: ServiceMetricCapability;
   mcp?: ServiceMcpCapability;
-  workload?: ServiceWorkloadCapability;
 }
 
 export type ServiceCapabilityName = keyof ServiceCapabilities;
@@ -511,5 +587,7 @@ export interface ServiceDefinition {
    * This stays Service-scoped because capability ownership and connection-config ownership may differ.
    */
   dependencies?: readonly ServiceCapabilityDependency[];
+  /** Inspect, Probe and Detector contributions selected and driven by Core Collect commands. */
+  contributions?: ServiceContributions;
   capabilities: ServiceCapabilities;
 }

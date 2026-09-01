@@ -89,14 +89,14 @@ export async function openTenantAccess(input: {
   try {
     const directory = directoryProvider.capabilities.tenantDirectory.create(directoryContext);
     const capabilities: TenantCapabilityCollector[] = plugin.services
-      .servicesWith("inspect")
-      .filter((service) => service.capabilities.inspect.accepts.includes("tenant_id"))
+      .servicesWithContribution("inspect")
+      .filter((service) => service.contributions.inspect.accepts.includes("tenant_id"))
       .map((service) => ({
         id: `inspect:${service.name}`,
         service: service.name,
         capability: "inspect" as const,
         query: async (identity) => {
-          const capability = service.capabilities.inspect;
+          const capability = service.contributions.inspect;
           const context = await openPluginContext(executor, kube, {
             env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
@@ -111,7 +111,7 @@ export async function openTenantAccess(input: {
           try {
             const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
             const result = normalizeServiceInspectResult({
-              value: await capability.query(context, { identity, results: new Map(), budget }),
+              value: await capability.inspect(context, { identity, results: new Map(), budget }),
               service: service.name,
               queryIdentity: identity,
               capability,
