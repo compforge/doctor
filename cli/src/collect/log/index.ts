@@ -8,8 +8,7 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
-import { runInspects } from "../inspect-engine";
-import { runProbes } from "../probe-engine";
+import { runCollect } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import {
@@ -28,11 +27,11 @@ import {
   resolveLogTimeWindow,
   resolveLogServiceSelection,
 } from "./config";
+import { buildLogCoverage, buildLogEvidence, logDetectors } from "./detector";
 import { makeLogInspect } from "./fact/inspect";
 import type {
   LogCollectOptions,
   LogCommandContext,
-  LogInspectionFacts,
   LogProbeConfig,
 } from "./model";
 import { makeLogProbe } from "./probe/service";
@@ -46,6 +45,7 @@ import { ServiceDependencyRuntime } from "../shared/service-dependency";
 import { buildIndexExpr } from "../trace/opensearch";
 
 export * from "./config";
+export * from "./detector";
 export * from "./html";
 export * from "./model";
 export * from "./output";
@@ -343,19 +343,21 @@ export async function collectLog(
     log,
   };
 
-  const facts = await runInspects<LogInspectionFacts, LogCommandContext>([
-    makeLogInspect(opts.services),
-  ], ctx, log);
-  const observations = await runProbes(
-    [makeLogProbe(opts.services)],
+  const execution = await runCollect({
     ctx,
-    facts,
     config,
+    inspects: [makeLogInspect(opts.services)],
+    planProbes: () => [makeLogProbe(opts.services)],
     log,
-  );
-  const rendered = renderLogResult(config, facts, observations);
+    buildEvidence: buildLogEvidence,
+    detectors: logDetectors,
+    buildCoverage: buildLogCoverage,
+  });
+  const { facts, diagnosis } = execution;
+  const rendered = renderLogResult(config, diagnosis);
   writeFileSync(join(opts.outputDir, "timeline.jsonl"), renderTimelineJsonl(rendered.timeline), "utf-8");
   writeFileSync(join(opts.outputDir, "service-logs.txt"), rendered.serviceLogs, "utf-8");
+  writeFileSync(join(opts.outputDir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
   bundle.writeSummary(rendered.summary);
 
   const kubectlVersion = facts.runtime.status === "collected"
@@ -385,6 +387,7 @@ export async function collectLog(
   if (facts.runtime.status !== "collected") return 1;
   if (facts.servicePods.status !== "collected") return 1;
   log(`[collect] 完成（扫描 ${rendered.stats.podCount} pod，命中 ${rendered.stats.matchedEventCount} 个日志事件，失败 ${rendered.stats.failedCount} pod）。`);
-  const podEvidence = observations.flatMap((observation) => observation.pods.map((pod) => !pod.failed));
-  return evaluateCollectOutcome(podEvidence).exitCode;
+  return evaluateCollectOutcome(
+    diagnosis.coverage.map((item) => item.status === "sufficient"),
+  ).exitCode;
 }

@@ -19,7 +19,7 @@ import type {
 import { runArgv } from "../../../infra/k8s/executor";
 import { findSelectableFiles, resolveFileSelection } from "../../../terminal/file-selection";
 import { terminalStderr, terminalStdout } from "../../../terminal/output";
-import { runDiagnosis } from "../../engine";
+import { runCollect } from "../../engine";
 import { writeHtmlReport } from "../../output/html";
 import {
   buildNetworkCoverage,
@@ -329,20 +329,23 @@ export async function analyzeNetworkBundle(
   try {
     const manifest = JSON.parse(readFileSync(join(prepared.root, "manifest.json"), "utf-8")) as NetManifest;
     const config = buildNetworkAnalysisConfig(manifest);
-    const facts = buildNetworkAnalysisFacts(input, manifest, opts, config);
-    const diagnosis = await runDiagnosis({
+    const execution = await runCollect({
       ctx: {
         bundleRoot: prepared.root,
         packetAnalysis: dependencies.packetAnalysis,
       },
-      facts,
       config,
-      probes: [networkPcapProbe],
+      inspects: [{
+        id: "network-bundle",
+        run: async () => buildNetworkAnalysisFacts(input, manifest, opts, config),
+      }],
+      planProbes: () => [networkPcapProbe],
       log: dependencies.log ?? (() => undefined),
       buildEvidence: buildNetworkEvidence,
       detectors: networkDetectors,
       buildCoverage: (evidence) => buildNetworkCoverage(evidence, config),
     });
+    const { facts, diagnosis } = execution;
     const artifacts = networkArtifactObservations(diagnosis.evidence);
     const hops = networkHopObservations(diagnosis.evidence);
     const streams = new Set(hops.map((hop) => hop.stream));

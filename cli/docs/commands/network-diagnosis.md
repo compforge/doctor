@@ -133,13 +133,14 @@ net-<session>/
 
 `doctor neta` 不访问 Kubernetes，也不修改 NetBundle 中的原始证据。它按以下顺序处理：
 
-1. 校验 manifest 与文件摘要，建立 Pod、地址、端口和采集时钟索引；
+1. Prepare 安全解包并读取 manifest；`runCollect` 的 `network-bundle` Inspect 校验输入并形成 Pod、地址、
+   端口、artifact 和采集时钟 Facts；
 2. TCP 重组和重传去重，识别 FIN、RST、半关闭与未完成连接；
 3. 在协议允许时解析 HTTP request/response、chunked body、SSE 与 OpenAI-like chunks；
 4. 跟踪模式先按染色 ID 或 trace ID 定位目标消息；守候模式重建窗口内所有可见 HTTP 请求，再用连接、
    时间和服务拓扑组织候选调用；
 5. 将重复抓到的同一连接视为多观察点，不误报成两次业务调用；
-6. Detector 根据同一份 Facts 与调用 Observations 生成 Findings/Coverage；
+6. PCAP Probe 完成后，Detector 根据同一份冻结 Facts 与调用 Observations 生成 Findings/Coverage；
 7. 输出每一跳的请求时间、持续时间、状态、终止方式和证据来源。
 
 `doctor net` 的默认产物名为 `doctor-net-YYYYMMDD-HHmmss.tar.gz`。交互终端直接运行

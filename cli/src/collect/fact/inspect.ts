@@ -36,9 +36,13 @@ export interface CommonTargetFacts {
   cgroupMemory?: CgroupMemoryFacts;
 }
 
+export interface CgroupMemoryTargetFacts {
+  cgroupMemory?: CgroupMemoryFacts;
+}
+
 export function makeCgroupMemoryInspect(
   stepId = "cgroup-memory-facts",
-): Inspect<CommonTargetFacts, CommonTargetInspectContext> {
+): Inspect<CgroupMemoryTargetFacts, CommonTargetInspectContext> {
   return {
     id: "cgroup-memory",
     run: async (ctx) => {

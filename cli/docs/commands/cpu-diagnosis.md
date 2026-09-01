@@ -10,7 +10,8 @@ py-spy 与 tracemalloc 分属两个领域：py-spy 观察 Python 线程当前停
 
 ## 流程
 
-命令先解析 Pod、容器和 Python PID，并采集以下公共 Facts：
+Prepare 先解析 Pod 与容器；随后 Core 通过 `runCollect` 驱动全部 Inspect，Python PID 也在 Inspect 阶段
+从冻结前的进程扫描事实中确定。当前采集以下公共 Facts：
 
 1. `kubectl top pod --containers` 返回的容器 CPU、内存用量及其相对 limit 的比例；
 2. `/proc` 中的 Python 进程列表与目标 PID；
@@ -18,7 +19,10 @@ py-spy 与 tracemalloc 分属两个领域：py-spy 观察 Python 线程当前停
 4. `ptrace_scope`、有效 capability 和 Pod spec 中的 `SYS_PTRACE` 声明；
 5. 当前 Pod 是否已有与目标容器共享 PID namespace、声明 `SYS_PTRACE` 且 Running 的 doctor-debug 临时容器。
 
-执行 py-spy 前会输出本轮 Facts 中的 CPU 和内存占用。如果任一指标达到容器 limit 的高占用阈值，命令会提示当前负载和额外采样风险，并要求用户确认后才继续。缺少 limit 或 metrics-server 数据时会明确说明没有取得占用比例，不伪造判断。
+全部 Inspect 完成并冻结 Facts 后，Core 才规划 py-spy Probe。执行前会输出本轮 Facts 中的 CPU 和内存占用。
+如果任一指标达到容器 limit 的高占用阈值，命令会提示当前负载和额外采样风险，并要求用户确认后才继续。
+缺少 limit 或 metrics-server 数据时会明确说明没有取得占用比例，不伪造判断。Probe Observation 随后进入
+Evidence、空 Detector 集与线程栈 Coverage，Render 只消费形成的 Diagnosis。
 
 三种 mode 控制允许的最大副作用。py-spy 是按需执行的采样器，不是需要常驻启动的服务。CPU probe 不再安装、上传工具或修改 Pod；需要额外工具和 `SYS_PTRACE` 时，由用户先通过 `doctor debug` 显式准备通用临时容器。
 

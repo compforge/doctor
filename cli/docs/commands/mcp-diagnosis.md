@@ -19,7 +19,9 @@ MCP tool call 和直接 HTTP 重放都可能产生业务副作用，它们是两
 
 1. 解析 profile、Namespace 和输出格式后，从 Plugin Catalog 唯一选择声明 `mcp` capability 的 Service；Doctor 注入 `PluginContext`，capability 自行读取私有配置源并返回 server/tool 中性投影。
 2. 网络准备在同一生命周期内解析 MCP Service/Pod、建立 port-forward，并执行 `tools/list` 确认运行时实际暴露的 tools。
-3. 根据 Plugin 配置投影与 runtime tools 共同确认 server、tool 和参数；无显式参数时由通用终端交互逐项收集。`tools/list` 属于动态配置确认，不是 Inspect 或 Probe，因为后续 Probe 执行前必须先知道共同目标。
+3. 根据 Plugin 配置投影与 runtime tools 共同确认 server、tool 和参数；无显式参数时由通用终端交互逐项收集。
+   `tools/list` 仍属于动态配置确认，因为后续 Probe 执行前必须先知道共同目标；目标确认后，
+   `mcp-configuration` Inspect 不再访问外部资源，只把这份已确认快照发布为冻结 Facts。
 4. MCP call Probe 经独立授权后执行 `tools/call`，保留 JSON-RPC response 和完整协议 transcript。
 5. Plugin 提供 HTTP request plan 时，HTTP call Probe 生成复现 cURL，经第二次授权后在 gateway Pod 内执行直接 HTTP；未提供映射不影响标准 MCP 诊断。
 6. Gateway logs Probe 在两条调用 Probe 后收集本次窗口日志，并按 trace/tool/连接错误筛选为证据；Plugin 配置投影失败记录为 `mcp-config` 证据缺口，Core 不会猜测其私有配置。
@@ -42,11 +44,13 @@ tenant 是 mcp-gateway server 的路由隔离维度，参与唯一身份和 URL 
 Plugin 可通过 `PluginContext.portForward` 准备私有配置访问通道；该上下文与后续 gateway forward 共享命令生命周期，
 不迫使 Probe 自己管理临时网络资源。
 
-### tools/list 是配置确认，不是 Inspect
+### tools/list 是配置确认，Inspect 是 Execute 快照边界
 
 Inspect 描述目标原本就存在的环境事实，Probe 描述对已确定目标的一次取证动作。runtime `tools/list`
 直接参与 tool 候选确认；若把它放进 Probe，MCP call 与 HTTP call 在启动时反而没有确定目标。配置阶段取得的
-configured/runtime tool 快照仍进入 Facts，供后续报告说明目标如何确定，但不会伪装成独立诊断动作。
+configured/runtime tool 快照由无 I/O 的 `mcp-configuration` Inspect 进入 Facts，供后续报告说明目标如何确定。
+这个 Inspect 是 Prepare → Execute 的显式只读交接，不把 `tools/list` 伪装成第二次诊断动作；后续 Probe 只能
+消费 `runCollect` 冻结后的同一快照。
 
 ### Probe 与 Detector 可独立扩展
 

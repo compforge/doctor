@@ -55,7 +55,8 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    Delivery，并执行本轮 Cleanup。
 
 `runInspects`、`runProbes` 与 `runDiagnosis` 是 Collect engine 的低层实现入口；新增领域 Command 必须通过
-`runCollect` 进入 Execute。尚未迁移的历史调用点由架构测试中的 legacy allowlist 锁定，该列表只允许缩减。
+`runCollect` 进入 Execute。所有领域 Command 已完成迁移，架构测试禁止 `collect/<domain>` 直接调用这些
+低层 runner；它们只由 `collect/engine.ts` 组合。
 
 Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DSN 或 Probe 运行结果；带凭据 Target
 只存在于本轮 Ctx，进入 manifest 和 Detector 前使用领域脱敏投影。Detector 可以读取 Evidence 中领域

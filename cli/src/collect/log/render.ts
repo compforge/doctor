@@ -1,5 +1,6 @@
 import stripAnsi from "strip-ansi";
 import type {
+  LogDiagnosis,
   LogInspectionFacts,
   LogProbeConfig,
   LogRenderResult,
@@ -141,9 +142,9 @@ function failureSummary(facts: LogInspectionFacts): string | undefined {
 
 export function renderLogResult(
   config: LogProbeConfig,
-  facts: LogInspectionFacts,
-  observations: readonly ServiceLogObservation[],
+  diagnosis: LogDiagnosis,
 ): LogRenderResult {
+  const { facts, observations } = diagnosis.evidence;
   const stats = observations.reduce((total, service) => {
     total.podCount += service.pods.length;
     total.matchedEventCount += service.pods.reduce(

@@ -14,14 +14,14 @@ import {
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { openPluginContext } from "../../plugin/context";
-import { resolveMcpConfiguration } from "./configuration";
+import { makeMcpConfigurationInspect, resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
 import {
   buildMcpEvidence,
@@ -279,16 +279,18 @@ export async function runCollectMcp(
       requiredEvidence,
       writeArtifact,
     };
-    diagnosis = await runDiagnosis({
+    const execution = await runCollect({
       ctx,
-      facts,
       config: resolved.config,
-      probes: mcpProbes,
+      inspects: [makeMcpConfigurationInspect(facts)],
+      planProbes: () => mcpProbes,
       log: (line) => terminalStdout.write(`${line}\n`),
       buildEvidence: buildMcpEvidence,
       detectors: mcpDetectors,
       buildCoverage: buildMcpCoverage,
     });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
     return await finish();
   } catch (error) {
     failureReason = error instanceof Error ? error.message : String(error);

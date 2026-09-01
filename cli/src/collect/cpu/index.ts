@@ -4,12 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { writeErrorLog } from "../../app/error-log";
-import { runDiagnosis } from "../engine";
-import { freezeFacts, runInspects } from "../inspect-engine";
+import { runCollect } from "../engine";
 import type { Detector } from "../protocol";
 import { EvidenceBundle, type OutcomeDecl, type StepRisk } from "../evidence";
 import { failReason } from "../../infra/k8s/result";
-import { fillFromExec } from "../exec-step";
 import { resolveCpuConfig } from "./config";
 import type { ApprovalDecision } from "../../command/approval";
 import { packBundle, resolveArchivePath } from "../output/archive";
@@ -24,15 +22,11 @@ import {
   makePlatformInspect,
   makeProcessInspect,
   makeResourceUsageInspect,
-  type CommonTargetFacts,
-  type CommonTargetInspectContext,
 } from "../fact/inspect";
-import { pickPid } from "../fact/process";
 import { type ExecResult, type Executor } from "../../infra/k8s/executor";
 import { parsePodJson, pickContainer } from "../../infra/k8s/target";
-import { cpuPythonFactsCmd, parseCpuPythonFacts } from "./fact/python";
-import type { CpuDiagnosisFacts, CpuInspectionFacts } from "./fact/model";
-import { parsePtraceFacts, podDeclaresSysPtrace, ptraceFactsCmd } from "../fact/ptrace";
+import type { CpuDiagnosisFacts } from "./fact/model";
+import { makeCpuRuntimeInspect, makeCpuTargetInspect } from "./fact/runtime";
 import { PY_SPY_VERSION } from "./probes";
 import { makePySpyProbe } from "./probe/py-spy";
 import {
@@ -135,7 +129,7 @@ export async function collectCpu(
   const bundle = new EvidenceBundle(opts.outputDir, CPU_OUTCOMES);
   const approvals = new Map<string, ApprovalDecision>();
   const notes: string[] = [];
-  const inspection: CpuInspectionFacts = {};
+  let facts: Readonly<CpuDiagnosisFacts> | undefined;
   let resolvedContainer = configuredContainer;
   const record = (
     id: string,
@@ -161,8 +155,8 @@ export async function collectCpu(
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       kubectlVersion,
-      target: { namespace, pod: podName, container: resolvedContainer, pid: inspection.pickedPid },
-      inspectionFacts: inspection,
+      target: { namespace, pod: podName, container: resolvedContainer, pid: facts?.pickedPid },
+      inspectionFacts: facts ?? {},
       params: { mode, pid_flag: pidFlag, py_spy_version: PY_SPY_VERSION },
       startedAt,
       finishedAt: new Date().toISOString(),
@@ -203,7 +197,6 @@ export async function collectCpu(
   }
   const container = selected.value;
   resolvedContainer = container.name;
-  inspection.target = { pod, container };
   const target = { pod: podName, container: container.name };
   const ctx: CpuCommandContext = {
     command: commandContext,
@@ -221,82 +214,24 @@ export async function collectCpu(
     notes,
   };
 
-  const commonFacts = await runInspects<CommonTargetFacts, CommonTargetInspectContext>([
-    makeResourceUsageInspect(),
-    makeContainerCapabilitiesInspect(),
-    makeDebugInspect(),
-    makePlatformInspect(),
-    makeProcessInspect("process-scan", { requireProc: true, pidFlag }),
-  ], ctx, log);
-  const { canExec, hasPython, hasProc } = commonFacts;
-  inspection.resourceUsage = commonFacts.resourceUsage;
-  inspection.kubernetes = commonFacts.kubernetes;
-  inspection.container = commonFacts.container;
-  inspection.platform = commonFacts.platform;
-  inspection.processScan = commonFacts.processScan;
-  inspection.pickedPid = commonFacts.pickedPid;
-  inspection.debug = commonFacts.debug;
-
-  if (commonFacts.processScan) {
-    const picked = pickPid(commonFacts.processScan, pidFlag);
-    if (picked.ok) {
-      if (picked.note) notes.push(picked.note);
-      const pythonFacts = await exec.exec(target, cpuPythonFactsCmd(), { timeoutMs: 20_000 });
-      fillFromExec(bundle, "cpu-python-facts", pythonFacts, "json");
-      if (pythonFacts.ok) {
-        try {
-          inspection.pythonProcess = parseCpuPythonFacts(pythonFacts.stdout);
-        } catch (error) {
-          writeErrorLog(error, "doctor cpu/parse-python-facts");
-          notes.push(`py-spy 运行环境 Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-      const ptrace = await exec.exec(target, ptraceFactsCmd(picked.value), { timeoutMs: 20_000 });
-      fillFromExec(bundle, "ptrace-facts", ptrace, "json");
-      if (ptrace.ok) {
-        try {
-          inspection.ptrace = parsePtraceFacts(
-            ptrace.stdout,
-            podDeclaresSysPtrace(podJson.stdout, container.name),
-          );
-        } catch (error) {
-          writeErrorLog(error, "doctor cpu/parse-ptrace-facts");
-          notes.push(`ptrace Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    } else {
-      notes.push(picked.reason);
-      bundle.settle(picked.reason, ["cpu-python-facts", "ptrace-facts", "py-spy-dump"]);
-    }
-  } else if (canExec && hasPython && hasProc) {
-    bundle.settle("进程扫描失败", ["cpu-python-facts", "ptrace-facts", "py-spy-dump"]);
-  } else {
-    bundle.settle("缺少 pods/exec、python3 或 /proc", [
-      "platform-facts",
-      "process-scan",
-      "cpu-python-facts",
-      "ptrace-facts",
-      "py-spy-dump",
-    ]);
-  }
-
-  freezeFacts(inspection);
-  const facts = freezeFacts({
-    ...inspection,
-    canExec,
-    hasPython,
-    hasProc,
-  }) as CpuDiagnosisFacts;
   const pySpyProbe = makePySpyProbe({
     podJson: podJson.stdout,
     podName,
     container,
   });
-  const diagnosis = await runDiagnosis({
+  const execution = await runCollect({
     ctx,
-    facts,
     config: opts.config,
-    probes: [pySpyProbe],
+    inspects: [
+      makeCpuTargetInspect(pod, container),
+      makeResourceUsageInspect(),
+      makeContainerCapabilitiesInspect(),
+      makeDebugInspect(),
+      makePlatformInspect(),
+      makeProcessInspect("process-scan", { requireProc: true, pidFlag }),
+      makeCpuRuntimeInspect(),
+    ],
+    planProbes: () => [pySpyProbe],
     log,
     buildEvidence: buildCpuEvidence,
     detectors: CPU_DETECTORS,
@@ -306,6 +241,8 @@ export async function collectCpu(
       missingEvidence: evidence.observations.length > 0 ? [] : ["py-spy Python 线程栈快照"],
     }],
   });
+  facts = execution.facts;
+  const { diagnosis } = execution;
   bundle.writeSummary(buildCpuMarkdown(diagnosis, mode));
   return finish(0, diagnosis);
 }
