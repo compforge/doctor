@@ -1,4 +1,4 @@
-import type { Fact, ObservationMeta } from "../protocol";
+import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
 import type { CommandContext } from "../../command";
@@ -48,6 +48,16 @@ export interface ServiceLogObservation extends ObservationMeta {
   service: string;
   pods: readonly PodLogObservation[];
 }
+
+export type LogEvidence = Evidence<ServiceLogObservation, LogInspectionFacts>;
+export type LogFinding = never;
+export type LogDiagnosisGoal =
+  | "log:collection"
+  | "log:runtime"
+  | "log:service-pods"
+  | `log:service:${string}`
+  | `log:pod:${string}:${string}`;
+export type LogDiagnosis = Diagnosis<LogEvidence, LogFinding, LogDiagnosisGoal>;
 
 /** raw Pod 日志经 ID 过滤后的结构化投影；TXT 与 HTML renderer 只消费这一份时间线。 */
 export interface LogTimelineRecord {

@@ -67,15 +67,8 @@ test("doctor model 与 doctor tenant 不依赖彼此的 command 实现", () => {
   }
 });
 
-test("Collect 低层 runner 旁路受显式 legacy allowlist 约束", () => {
+test("Collect domain 不得绕过 runCollect 调用低层 runner", () => {
   const collectRoot = resolve(import.meta.dir, "../src/collect");
-  const allowedLegacyCallers = [
-    "cpu/index.ts",
-    "log/index.ts",
-    "mcp/index.ts",
-    "memory/capture-command.ts",
-    "network/analysis/index.ts",
-  ];
   const lowLevelRunner = /\b(?:runDiagnosis|runInspects|runProbes)\b/;
   const directCallers = sourceFiles(collectRoot)
     .filter((path) => path !== join(collectRoot, "engine.ts"))
@@ -87,6 +80,5 @@ test("Collect 低层 runner 旁路受显式 legacy allowlist 约束", () => {
     .map((path) => relative(collectRoot, path))
     .sort();
 
-  // Transitional callers may only disappear; new Collect domains must enter Execute through runCollect.
-  expect(directCallers).toEqual(allowedLegacyCallers);
+  expect(directCallers).toEqual([]);
 });

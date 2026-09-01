@@ -7,8 +7,9 @@ import type {
   ServiceMcpCapability,
 } from "@compforge/doctor-plugin";
 import type { EvidenceBundle } from "../evidence";
+import type { Inspect } from "../inspection";
 import { renderHttpPlanAsCurl } from "./http";
-import type { McpDiagnosisConfig, McpFacts } from "./model";
+import type { McpCommandContext, McpDiagnosisConfig, McpFacts } from "./model";
 import { resolveToolArgs, selectServer, selectTool, type McpSelectionOptions } from "./selection";
 
 export interface McpConfigurationInput {
@@ -30,6 +31,16 @@ export interface ResolvedMcpConfiguration {
   facts: McpFacts;
   client?: McpClient;
   configSourceKind: string;
+}
+
+/** Prepare 已确认的动态 MCP 目标在 Execute 起点成为本轮只读 Facts。 */
+export function makeMcpConfigurationInspect(
+  facts: McpFacts,
+): Inspect<McpFacts, McpCommandContext> {
+  return {
+    id: "mcp-configuration",
+    run: async () => facts,
+  };
 }
 
 async function listRuntimeTools(client: McpClient) {

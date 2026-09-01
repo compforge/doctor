@@ -16,11 +16,11 @@ import {
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle } from "../evidence";
+import { runCollect } from "../engine";
 import { failReason } from "../../infra/k8s/result";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { deliverFailureBundle } from "../output/failure-bundle";
 import {
-  captureMemoryHeap,
   parseCapturePreference,
   parseHeapDumpDetail,
   parseStrReprLen,
@@ -30,14 +30,18 @@ import {
   type HeapDumpDetail,
 } from "./capture";
 import { heapDumpBackendMetadata, pyheapBackend } from "../../infra/dump";
-import { runInspects } from "../inspect-engine";
 import {
   makeCgroupMemoryInspect,
-  type CommonTargetFacts,
-  type CommonTargetInspectContext,
 } from "../fact/inspect";
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
-import { cgroupMemoryHint } from "./capture-risk";
+import {
+  buildMemoryCaptureCoverage,
+  buildMemoryCaptureEvidence,
+  memoryCaptureDetectors,
+  memoryCaptureObservation,
+  type MemoryCaptureDiagnosis,
+} from "./capture-diagnosis";
+import { makeMemoryCaptureProbe } from "./capture-probe";
 
 export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   pod?: string;
@@ -162,27 +166,22 @@ export async function runCollectMemory(
 
   let result: CaptureResult;
   let cgroupMemory: CgroupMemoryFacts | undefined;
+  let diagnosis: MemoryCaptureDiagnosis | undefined;
   try {
     const rawPod = JSON.parse(podJsonResult.stdout) as { metadata?: { uid?: string } };
-    const facts = await runInspects<CommonTargetFacts, CommonTargetInspectContext>([
-      makeCgroupMemoryInspect("mem-cgroup"),
-    ], {
-      exec: executor,
-      target: { pod: target.pod, container: selected.value.name },
-      podName: target.pod,
-      container: selected.value,
-      bundle,
-      podJson: podJsonResult.stdout,
-    }, log);
-    cgroupMemory = facts.cgroupMemory;
-    log(cgroupMemory
-      ? `[collect] 检测到目标容器使用 cgroup v${cgroupMemory.version}`
-      : "[collect] 未能识别目标容器的 cgroup 版本；继续执行 heap dump");
-    log(`[collect] ${cgroupMemoryHint(cgroupMemory)}`);
-    log(`[collect] heap 采集后端：${pyheapBackend.displayName}`);
-    result = await captureMemoryHeap(
-      executor,
-      {
+    const execution = await runCollect({
+      ctx: {
+        command: commandContext,
+        exec: executor,
+        target: { pod: target.pod, container: selected.value.name },
+        podName: target.pod,
+        container: selected.value,
+        bundle,
+        podJson: podJsonResult.stdout,
+        progress: (update) => progressLine.update(update),
+        log,
+      },
+      config: {
         namespace: collect.kubernetes.namespace,
         pod: target.pod,
         podUid: rawPod.metadata?.uid,
@@ -196,11 +195,20 @@ export async function runCollectMemory(
         output: opts.output,
         invokedAt,
         confirmed: !!opts.yes,
-        cgroupMemory,
       },
-      { bundle, progress: (update) => progressLine.update(update) },
+      inspects: [makeCgroupMemoryInspect("mem-cgroup")],
+      planProbes: () => [makeMemoryCaptureProbe()],
       log,
-    );
+      buildEvidence: buildMemoryCaptureEvidence,
+      detectors: memoryCaptureDetectors,
+      buildCoverage: buildMemoryCaptureCoverage,
+    });
+    cgroupMemory = execution.facts.cgroupMemory;
+    diagnosis = execution.diagnosis;
+    result = memoryCaptureObservation(diagnosis.evidence)?.result ?? {
+      code: 1,
+      reason: "Memory Capture Probe 未返回结果",
+    };
   } catch (error) {
     result = { code: 1, reason: error instanceof Error ? error.message : String(error) };
   }
@@ -253,6 +261,11 @@ export async function runCollectMemory(
     + `${reasons.map((reason) => `  - ${reason}`).join("\n")}\n`,
   );
   writeFileSync(join(staging, "doctor.log"), `${logs.join("\n")}\n`, { mode: 0o600 });
+  if (diagnosis) {
+    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, {
+      mode: 0o600,
+    });
+  }
   bundle.writeManifest({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
