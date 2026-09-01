@@ -166,6 +166,34 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
   expect(result.diagnosis.findings[0]?.value).toBe(6);
 });
 
+test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", async () => {
+  type Facts = { tenant: { id: string } };
+  type Evidence = { observations: readonly never[]; facts: Facts };
+
+  const result = await runCollect<never, Facts, Evidence, never, "tenant", {}, undefined>({
+    ctx: undefined,
+    config: {},
+    inspects: [{
+      id: "tenant",
+      run: async () => ({ tenant: { id: "tenant-1" } }),
+    }],
+    planProbes: (facts) => {
+      expect(facts.tenant.id).toBe("tenant-1");
+      return [];
+    },
+    log: () => {},
+    buildEvidence: (observations, facts) => ({ observations, facts }),
+    detectors: [],
+    buildCoverage: () => [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
+  });
+
+  expect(result.diagnosis).toEqual({
+    evidence: { observations: [], facts: { tenant: { id: "tenant-1" } } },
+    findings: [],
+    coverage: [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
+  });
+});
+
 test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会成环", async () => {
   type Observation = { id: string; kind: "n"; value: number };
   type Facts = { probeAllowed: boolean };

@@ -8,9 +8,8 @@ import type { CommandContext } from "../../command";
 import type { Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { promptNamedChoices } from "../../terminal/service-selection";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
@@ -132,17 +131,18 @@ export async function runCollectMetric(
       onWindowStart: control?.onWindowStart,
       bundle,
     };
-    facts = await runInspects([makeMetricSourceInspect(preparation.targetCount)], ctx, log);
-    diagnosis = await runDiagnosis({
+    const execution = await runCollect({
       ctx,
-      facts,
       config,
-      probes: makeMetricProbes(config.services, plugin.services),
+      inspects: [makeMetricSourceInspect(preparation.targetCount)],
+      planProbes: () => makeMetricProbes(config.services, plugin.services),
       log,
       buildEvidence: buildMetricEvidence,
       detectors: metricDetectors,
       buildCoverage: buildMetricCoverage,
     });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
   } catch (error) {
     reportError(error, { context: "doctor metric/diagnosis", summary: "Metric 诊断失败" });
     failure = error instanceof Error ? error.message : String(error);

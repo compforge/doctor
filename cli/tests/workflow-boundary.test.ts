@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 function sourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -65,4 +65,34 @@ test("doctor model 与 doctor tenant 不依赖彼此的 command 实现", () => {
       }
     }
   }
+});
+
+test("Collect 低层 runner 旁路受显式 legacy allowlist 约束", () => {
+  const collectRoot = resolve(import.meta.dir, "../src/collect");
+  const allowedLegacyCallers = [
+    "cpu/index.ts",
+    "http/index.ts",
+    "log/index.ts",
+    "mcp/index.ts",
+    "memory/capture-command.ts",
+    "model/runner.ts",
+    "network/analysis/index.ts",
+    "redis/index.ts",
+    "store/db/index.ts",
+    "store/s3/index.ts",
+    "store/vdb/index.ts",
+  ];
+  const lowLevelRunner = /\b(?:runDiagnosis|runInspects|runProbes)\b/;
+  const directCallers = sourceFiles(collectRoot)
+    .filter((path) => path !== join(collectRoot, "engine.ts"))
+    .filter((path) => {
+      const source = readFileSync(path, "utf-8");
+      return [...source.matchAll(/import\s*\{([^}]*)\}\s*from\s*["'][^"']+["']/g)]
+        .some((match) => lowLevelRunner.test(match[1] ?? ""));
+    })
+    .map((path) => relative(collectRoot, path))
+    .sort();
+
+  // Transitional callers may only disappear; new Collect domains must enter Execute through runCollect.
+  expect(directCallers).toEqual(allowedLegacyCallers);
 });
