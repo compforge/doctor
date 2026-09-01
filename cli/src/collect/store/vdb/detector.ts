@@ -21,6 +21,11 @@ const FALLBACK_DISK_SETTINGS: OpenSearchDiskSettingsObservation = {
   source: "fallback-defaults",
 };
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "vdb-health" },
+};
+
 export function effectiveDiskSettings(observations: VdbObservations): OpenSearchDiskSettingsObservation {
   const collected = observations.diskSettings;
   if (!collected) return FALLBACK_DISK_SETTINGS;
@@ -64,6 +69,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
   const health = observations.health;
   if (health?.status === "red") {
     findings.push({
+      ...FINDING_META,
       id: "cluster-red",
       kind: "vdb.cluster-red",
       severity: "critical",
@@ -73,6 +79,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
     });
   } else if (health?.status === "yellow") {
     findings.push({
+      ...FINDING_META,
       id: "cluster-yellow",
       kind: "vdb.cluster-yellow",
       severity: "warning",
@@ -85,6 +92,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
   const blocked = observations.indexBlocks?.readOnlyAllowDelete ?? [];
   if (blocked.length) {
     findings.push({
+      ...FINDING_META,
       id: "index-write-blocked",
       kind: "vdb.index-write-blocked",
       severity: "critical",
@@ -101,6 +109,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
   const highNode = firstCrossed(nodes, settings.high);
   if (floodNode) {
     findings.push({
+      ...FINDING_META,
       id: "disk-capacity-exhausted",
       kind: "vdb.disk-capacity-exhausted",
       severity: "critical",
@@ -111,6 +120,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
     });
   } else if (highNode) {
     findings.push({
+      ...FINDING_META,
       id: "disk-capacity-high",
       kind: "vdb.disk-capacity-high",
       severity: "warning",
@@ -124,6 +134,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
   const shards = observations.shards;
   if ((shards?.unassignedPrimary ?? 0) > 0) {
     findings.push({
+      ...FINDING_META,
       id: "unassigned-primary-shards",
       kind: "vdb.unassigned-primary-shards",
       severity: "critical",
@@ -134,6 +145,7 @@ export function detectVdbFindings(observations: VdbObservations): VdbFinding[] {
   }
   if ((shards?.unassignedReplica ?? 0) > 0) {
     findings.push({
+      ...FINDING_META,
       id: "unassigned-replica-shards",
       kind: "vdb.unassigned-replica-shards",
       severity: "warning",

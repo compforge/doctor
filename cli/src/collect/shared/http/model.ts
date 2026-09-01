@@ -201,6 +201,8 @@ export interface HttpEvidence extends Evidence<HttpAttemptObservation, HttpInspe
 }
 
 export interface HttpExecution {
+  /** Top-level persisted Observation referenced by Findings derived from this attempt. */
+  observationId: string;
   requestId: string;
   entrypointId: string;
   round: number;

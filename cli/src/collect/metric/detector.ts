@@ -8,6 +8,11 @@ import type {
   MetricWindowObservation,
 } from "./model";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "metric-threshold" },
+};
+
 function queryObservations(evidence: MetricEvidence): MetricQueryObservation[] {
   return evidence.observations.filter(
     (item): item is MetricQueryObservation => item.kind === "metric-query",
@@ -36,6 +41,7 @@ export function detectMetricValue(
 ): MetricFinding | undefined {
   if (value === undefined || detector.operator !== "gt" || value <= detector.threshold) return undefined;
   return {
+    ...FINDING_META,
     id: `${service}:${detector.id}`,
     kind: "metric.threshold-exceeded",
     service,

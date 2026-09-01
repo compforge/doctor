@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { runCollect, runDiagnosis } from "../src/collect/engine";
+import { runDetectors } from "../src/collect/detector-engine";
 import { runInspects } from "../src/collect/inspect-engine";
 import { runProbes } from "../src/collect/probe-engine";
 import type { Inspect } from "../src/collect/inspection";
@@ -15,6 +16,13 @@ import {
 } from "../src/collect/protocol";
 
 function observationMeta(producer: string) {
+  return {
+    schemaVersion: 1,
+    producer: { origin: "core" as const, id: producer },
+  };
+}
+
+function findingMeta(producer: string) {
   return {
     schemaVersion: 1,
     producer: { origin: "core" as const, id: producer },
@@ -42,6 +50,7 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
   });
   // detector 同时读 observations 与 facts，并分别引用两种来源
   const detector: Detector<Evidence, TotalFinding> = (evidence) => [{
+    ...findingMeta("total"),
     id: "total",
     kind: "total",
     severity: "info",
@@ -80,6 +89,7 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
       total: 5,
     },
     findings: [{
+      ...findingMeta("total"),
       id: "total",
       kind: "total",
       severity: "info",
@@ -147,6 +157,7 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
     detectors: [(evidence) => {
       ctx.trace.push(`detector:${evidence.observations[0]?.value}`);
       return [{
+        ...findingMeta("sum"),
         id: "sum",
         kind: "sum",
         severity: "info",
@@ -227,6 +238,70 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
     evidence: { observations: [], facts: { tenant: { id: "tenant-1" } } },
     findings: [],
     coverage: [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
+  });
+});
+
+describe("runDetectors 契约", () => {
+  const evidence = {
+    observations: [{
+      id: "observation:1",
+      kind: "number",
+      ...observationMeta("number"),
+      value: 1,
+    }],
+    facts: { nested: { value: 2 } },
+  };
+  const finding = () => ({
+    id: "finding:1",
+    kind: "number.high" as const,
+    ...findingMeta("number-detector"),
+    severity: "warning" as const,
+    confidence: "high" as const,
+    evidence: [
+      { observationId: "observation:1", role: "supporting" as const },
+      { factPath: "nested.value", role: "context" as const },
+    ],
+  });
+
+  test("接受带 schema identity、producer 与有效 Evidence 引用的 Finding", () => {
+    expect(runDetectors([() => [finding()]], evidence)).toEqual([finding()]);
+  });
+
+  test("拒绝缺失身份、空 Evidence 与悬空引用", () => {
+    expect(() => runDetectors([() => [{ ...finding(), schemaVersion: 0 }]], evidence))
+      .toThrow("schemaVersion must be a positive integer");
+    expect(() => runDetectors([() => [{ ...finding(), producer: undefined as never }]], evidence))
+      .toThrow("producer must be a structured producer");
+    expect(() => runDetectors([() => [{ ...finding(), evidence: [] }]], evidence))
+      .toThrow("evidence must be a non-empty array");
+    expect(() => runDetectors([() => [{
+      ...finding(),
+      evidence: [{ observationId: "missing", role: "supporting" }],
+    }]], evidence)).toThrow("references unknown Observation 'missing'");
+    expect(() => runDetectors([() => [{
+      ...finding(),
+      evidence: [{ factPath: "nested.missing", role: "supporting" }],
+    }]], evidence)).toThrow("references unknown Fact 'nested.missing'");
+  });
+
+  test("拒绝重复 Finding id 与含糊的 Evidence 引用", () => {
+    expect(() => runDetectors([() => [finding()], () => [finding()]], evidence))
+      .toThrow("duplicate finding id: finding:1");
+    expect(() => runDetectors([() => [{
+      ...finding(),
+      evidence: [{
+        observationId: "observation:1",
+        factPath: "nested.value",
+        role: "supporting",
+      }],
+    }]], evidence)).toThrow("must reference exactly one factPath or observationId");
+  });
+
+  test("拒绝 Evidence 中重复的 Observation id，避免 Finding 引用含糊", () => {
+    expect(() => runDetectors([], {
+      ...evidence,
+      observations: [evidence.observations[0]!, evidence.observations[0]!],
+    })).toThrow("duplicate observation id in Evidence: observation:1");
   });
 });
 

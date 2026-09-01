@@ -27,6 +27,11 @@ export interface PydumpDiagnosis {
 const CONCENTRATED_TYPE_SHARE = 0.1;
 const RETAINED_OWNER_SHARE = 0.05;
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "pydump-analysis" },
+};
+
 function typeCount(owner: PydumpRetainedObject, side: "key_types" | "value_types", typeName: string): number {
   return owner.container_profile?.[side]?.find((item) => item.type_name === typeName)?.object_count ?? 0;
 }
@@ -53,6 +58,7 @@ export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosi
   const findings: PydumpFinding[] = [];
   if (dominantTypes.length > 0) {
     findings.push({
+      ...FINDING_META,
       id: "memory.pydump-type-concentration",
       kind: "memory.pydump-type-concentration",
       severity: "info",
@@ -66,6 +72,7 @@ export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosi
   const pathImporterCache = analysis.retained_heap.top_objects.find(looksLikePathImporterCache);
   if (pathImporterCache) {
     findings.push({
+      ...FINDING_META,
       id: "memory.pydump-known-runtime-owner",
       kind: "memory.pydump-known-runtime-owner",
       severity: "info",
@@ -83,6 +90,7 @@ export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosi
       .slice(0, 10);
     if (owners.length > 0) {
       findings.push({
+        ...FINDING_META,
         id: "memory.pydump-retained-owners",
         kind: "memory.pydump-retained-owners",
         severity: "warning",
@@ -93,6 +101,7 @@ export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosi
     } else if (analysis.retained_heap.top_objects[0]) {
       const largest = analysis.retained_heap.top_objects[0];
       findings.push({
+        ...FINDING_META,
         id: "memory.pydump-retained-distributed",
         kind: "memory.pydump-retained-distributed",
         severity: "info",

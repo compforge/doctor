@@ -19,6 +19,11 @@ import {
 // 超过 1 秒的语义 SSE event 停顿已能被用户直接感知；控制帧、usage 和 DONE 不参与。
 export const MODEL_ICL_WARNING_MS = 1_000;
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "model-diagnosis" },
+};
+
 export function buildModelEvidence(
   observations: readonly ModelObservation[],
   facts: ModelEvidence["facts"],
@@ -73,6 +78,7 @@ function responseFailure(
   const reason = observation.error
     ?? `HTTP ${observation.response?.statusCode ?? "unknown"} ${observation.response?.statusText ?? ""}`.trim();
   return {
+    ...FINDING_META,
     id: kind,
     kind,
     severity: "critical",
@@ -90,6 +96,7 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
     if (finding) findings.push(finding);
   } else if (evidence.facts.backend.status !== "collected") {
     findings.push({
+      ...FINDING_META,
       id: "model.validation-failed",
       kind: "model.validation-failed",
       severity: "critical",
@@ -110,6 +117,7 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
     const observationId = `model-performance:${attempt.caseId}:${attempt.round}`;
     if (!attempt.success) {
       findings.push({
+        ...FINDING_META,
         id: `model.performance-sample-failed:${attempt.caseId}:${attempt.round}`,
         kind: "model.performance-sample-failed",
         severity: "critical",
@@ -127,6 +135,7 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
         ? "响应未返回 usage，无法确认实际 ISL"
         : attempt.tokenMetricsUnavailableReason ?? "无法计算 TPOT";
       findings.push({
+        ...FINDING_META,
         id: `model.performance-token-metrics-unavailable:${attempt.caseId}:${attempt.round}`,
         kind: "model.performance-token-metrics-unavailable",
         severity: attempt.kind === "decode" ? "warning" : "info",
@@ -143,6 +152,7 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
       && attempt.maxInterChunkLatencyMs > MODEL_ICL_WARNING_MS
     ) {
       findings.push({
+        ...FINDING_META,
         id: `model.performance-icl-high:${attempt.caseId}:${attempt.round}`,
         kind: "model.performance-icl-high",
         severity: "warning",
@@ -162,6 +172,7 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
   for (const summary of summarizeModelPerformance(attempts)) {
     if (summary.successful === 0 || summary.successful === summary.total) continue;
     findings.push({
+      ...FINDING_META,
       id: `model.performance-intermittent:${summary.caseId}`,
       kind: "model.performance-intermittent",
       severity: "warning",

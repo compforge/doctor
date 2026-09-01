@@ -1,6 +1,11 @@
 import { httpCallObservation, mcpCallObservation } from "../model";
 import type { McpDetector, McpFinding } from "./types";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "mcp-path-comparison" },
+};
+
 function callEvidence(): McpFinding["evidence"] {
   return [
     { observationId: "mcp-call", role: "supporting" },
@@ -19,6 +24,7 @@ export const compareMcpAndHttp: McpDetector = (evidence) => {
 
   if (!mcp.ok && http.ok) {
     return [{
+      ...FINDING_META,
       id: "mcp-protocol-path-failure",
       kind: "mcp.protocol-path-failure",
       severity: "warning",
@@ -29,6 +35,7 @@ export const compareMcpAndHttp: McpDetector = (evidence) => {
   }
   if (!mcp.ok && !http.ok) {
     return [{
+      ...FINDING_META,
       id: "mcp-common-downstream-failure",
       kind: "mcp.common-downstream-failure",
       severity: "warning",
@@ -39,6 +46,7 @@ export const compareMcpAndHttp: McpDetector = (evidence) => {
   }
   if (mcp.ok && !http.ok) {
     return [{
+      ...FINDING_META,
       id: "mcp-http-replay-divergence",
       kind: "mcp.http-replay-divergence",
       severity: "info",

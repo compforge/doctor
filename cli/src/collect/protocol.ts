@@ -11,6 +11,16 @@ export type EvidenceProducer =
   | { origin: "core"; id: string }
   | { origin: "plugin"; plugin: string; service: string; id: string };
 
+/** Schema identity and implementation provenance shared by persisted Evidence-derived records. */
+export interface EvidenceSchemaMeta<Kind extends string = string> {
+  /** Payload schema identity; origin is expressed separately by producer. */
+  kind: Kind;
+  /** Positive integer version of the payload identified by kind. */
+  schemaVersion: number;
+  /** Structured provenance; consumers must not infer it by parsing kind. */
+  producer: EvidenceProducer;
+}
+
 /**
  * 领域子 Fact 的共享形状。
  *
@@ -21,15 +31,9 @@ export type Fact<Value extends object> =
   | ({ status: "collected" } & Value)
   | { status: Exclude<FactStatus, "collected">; reason: string };
 
-export interface ObservationMeta {
+export interface ObservationMeta extends EvidenceSchemaMeta {
   /** Stable within one diagnosis and valid as an EvidenceRef observationId. */
   id: string;
-  /** Payload schema identity; origin is expressed separately by producer. */
-  kind: string;
-  /** Positive integer version of the payload identified by kind. */
-  schemaVersion: number;
-  /** Structured provenance; consumers must not infer it by parsing kind. */
-  producer: EvidenceProducer;
 }
 
 /**
@@ -46,9 +50,8 @@ export type EvidenceRef =
   | { factPath: string; role: EvidenceRole };
 
 /** Finding 是 detector 产出的领域判断；人类文案由各领域 renderer 生成。 */
-export interface FindingMeta<Kind extends string> {
+export interface FindingMeta<Kind extends string> extends EvidenceSchemaMeta<Kind> {
   id: string;
-  kind: Kind;
   severity: FindingSeverity;
   confidence: FindingConfidence;
   window?: {
