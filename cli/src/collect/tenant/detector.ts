@@ -1,9 +1,12 @@
-import type { DiagnosisCoverage } from "../protocol";
+import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
   TenantDiagnosisGoal,
   TenantEvidence,
   TenantFacts,
+  TenantFinding,
 } from "./model";
+
+export const tenantDetectors: readonly Detector<TenantEvidence, TenantFinding>[] = [];
 
 export function buildTenantEvidence(_observations: readonly never[], facts: TenantFacts): TenantEvidence {
   return { observations: [], facts };

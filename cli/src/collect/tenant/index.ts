@@ -6,9 +6,8 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { resolveTenant } from "../../model";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
 import { openTenantAccess } from "./access";
@@ -16,7 +15,7 @@ import {
   parseTenantOutputFormat,
   tenantReportName,
 } from "./config";
-import { buildTenantCoverage, buildTenantEvidence } from "./detector";
+import { buildTenantCoverage, buildTenantEvidence, tenantDetectors } from "./detector";
 import { makeTenantInspects } from "./fact/inspect";
 import type {
   CollectTenantCliOptions,
@@ -106,21 +105,18 @@ export async function runCollectTenant(
       bundle,
       capabilities: access.capabilities,
     };
-    const facts: Readonly<TenantFacts> = await runInspects(
-      makeTenantInspects(access.capabilities),
+    const execution = await runCollect({
       ctx,
-      (line) => terminalStdout.write(`${line}\n`),
-    );
-    const diagnosis: TenantDiagnosis = await runDiagnosis({
-      ctx,
-      facts,
       config,
-      probes: [],
+      inspects: makeTenantInspects(access.capabilities),
+      planProbes: () => [],
       log: (line) => terminalStdout.write(`${line}\n`),
       buildEvidence: buildTenantEvidence,
-      detectors: [],
+      detectors: tenantDetectors,
       buildCoverage: buildTenantCoverage,
     });
+    const facts: Readonly<TenantFacts> = execution.facts;
+    const diagnosis: TenantDiagnosis = execution.diagnosis;
 
     bundle.writeSummary(buildTenantSummary(diagnosis));
     bundle.writeManifest({
