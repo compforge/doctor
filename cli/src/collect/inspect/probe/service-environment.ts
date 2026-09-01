@@ -45,6 +45,8 @@ export function makeServiceConfigProbe(
       const observation: EnvironmentConfigObservation = {
         id,
         kind: "environment-config",
+        schemaVersion: 1,
+        producer: { origin: "core", id: "environment-config" },
         service: target.service,
         deployment: target.deployment,
         container: target.container,

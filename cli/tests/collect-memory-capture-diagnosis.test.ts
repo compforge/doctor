@@ -10,6 +10,8 @@ describe("Memory Capture diagnosis", () => {
     const evidence = buildMemoryCaptureEvidence([{
       id: "memory-heap-capture",
       kind: "memory.heap-capture",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "memory-heap-capture" },
       result: { code: 0, heapPath: "heap.pyheap", capturePath: "capture.json" },
     }], { cgroupMemory: { version: 2, events: {} } });
 
@@ -25,6 +27,8 @@ describe("Memory Capture diagnosis", () => {
     const evidence = buildMemoryCaptureEvidence([{
       id: "memory-heap-capture",
       kind: "memory.heap-capture",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "memory-heap-capture" },
       result: { code: 1, reasons: ["attach 失败", "heap 未生成"] },
     }], {});
 

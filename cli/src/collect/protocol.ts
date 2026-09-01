@@ -6,6 +6,11 @@ export type CoverageStatus = "sufficient" | "partial" | "insufficient";
 /** Inspect 产出的单个 Fact 是否取得；不是目标能力或 Worksheet 的执行状态。 */
 export type FactStatus = "collected" | "unavailable" | "failed";
 
+/** Stable implementation identity for persisted Evidence; target identity belongs in the payload. */
+export type EvidenceProducer =
+  | { origin: "core"; id: string }
+  | { origin: "plugin"; plugin: string; service: string; id: string };
+
 /**
  * 领域子 Fact 的共享形状。
  *
@@ -17,8 +22,14 @@ export type Fact<Value extends object> =
   | { status: Exclude<FactStatus, "collected">; reason: string };
 
 export interface ObservationMeta {
+  /** Stable within one diagnosis and valid as an EvidenceRef observationId. */
   id: string;
+  /** Payload schema identity; origin is expressed separately by producer. */
   kind: string;
+  /** Positive integer version of the payload identified by kind. */
+  schemaVersion: number;
+  /** Structured provenance; consumers must not infer it by parsing kind. */
+  producer: EvidenceProducer;
 }
 
 /**

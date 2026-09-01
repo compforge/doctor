@@ -147,6 +147,11 @@ Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇。Service 是�
 依赖的归属单元；Plugin 是多个 Service 与 Skill 的版本化分发单元。具体 Plugin 只依赖公共 Plugin SDK，
 CLI Core 不依赖任何具体 Plugin 实现。
 
+这里统一的是概念、执行阶段和 Evidence 语义，不要求 Core 与 Plugin 直接复用同一个代码 interface。
+Core 实现可以直接消费进程内领域上下文；Plugin contribution 还必须携带 Service、版本、access 与分发
+边界所需的信息。CLI composition root 负责把选中的 Plugin contribution 适配进同一 Execute 流程，不能
+为了统一函数签名丢掉边界信息，也不让 `packages/plugin` 反向依赖 CLI Core。
+
 双方边界分为两层：
 
 | 边界 | 方向 | 所有权 |

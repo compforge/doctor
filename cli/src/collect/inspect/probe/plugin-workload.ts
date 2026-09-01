@@ -71,6 +71,8 @@ export function makePluginWorkloadProbe(
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
+              schemaVersion: 1,
+              producer: { origin: "core", id: "plugin-workload-adapter" },
               observationKind: declaration.observation.kind,
               observationSchemaVersion: declaration.observation.schemaVersion,
               service: service.name,

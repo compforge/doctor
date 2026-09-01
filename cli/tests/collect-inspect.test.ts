@@ -59,6 +59,8 @@ function detectorEvidence(): InspectEvidence {
     observations: [{
       id: "environment-probe-sandbox-server-apparmor-sandbox",
       kind: "kubernetes-apparmor-unconfined-admission",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "kubernetes.apparmor-unconfined-admission" },
       service: "sandbox-server",
       probe: "apparmor-unconfined",
       namespace: "demo",
@@ -67,6 +69,8 @@ function detectorEvidence(): InspectEvidence {
     }, {
       id: "plugin-workload-bedbox-main-health-bedbox-0",
       kind: "plugin-workload",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "plugin-workload-adapter" },
       observationKind: "hostel-health",
       observationSchemaVersion: 1,
       service: "bedbox",

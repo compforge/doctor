@@ -15,6 +15,11 @@ import { makeRedisRuntimeProbe } from "../src/collect/redis/probe/runtime";
 import { buildRedisHtml, buildRedisMarkdown } from "../src/collect/redis/render";
 import type { RedisAccessApi, RedisConnectionApi } from "../src/infra/redis";
 
+const CORE_OBSERVATION_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "test" },
+};
+
 test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe 记为 partial", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-redis-partial-test-"));
   try {
@@ -261,6 +266,7 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
     {
       id: "overview",
       kind: "overview",
+      ...CORE_OBSERVATION_META,
       clusterType: "cluster",
       scanMode: "sample",
       databaseScope: "single",
@@ -272,6 +278,7 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
     ...["redis-1.example.com", "redis-2.example.com"].map((host) => ({
       id: `node:${host}:6379`,
       kind: "node" as const,
+      ...CORE_OBSERVATION_META,
       node: {
         host,
         port: 6379,
@@ -284,6 +291,7 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
     {
       id: "keyspace:redis-1.example.com:6379:db7",
       kind: "keyspace",
+      ...CORE_OBSERVATION_META,
       scan: {
         node: { host: "redis-1.example.com", port: 6379 },
         database: 7,

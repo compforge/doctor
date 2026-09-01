@@ -46,6 +46,8 @@ export function makeModelPerformanceDecisionProbe(
       const observation: ModelPerformanceDecisionObservation = {
         id: MODEL_PERFORMANCE_DECISION_PROBE_ID,
         kind: "model-performance-decision",
+        schemaVersion: 1,
+        producer: { origin: "core", id: MODEL_PERFORMANCE_DECISION_PROBE_ID },
         enabled,
       };
       ctx.bundle.fill(MODEL_PERFORMANCE_DECISION_PROBE_ID, {

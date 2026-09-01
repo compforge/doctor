@@ -80,6 +80,8 @@ const BUCKET_ACCESS_PROBE: S3Probe = {
       const observation = {
         id: "s3-bucket-access" as const,
         kind: "s3-bucket-access" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "bucket-access" },
         ok: true,
         httpStatus,
         buckets: ctx.accessibleBuckets,
@@ -160,6 +162,8 @@ const INVENTORY_PROBE: S3Probe = {
       const observation = {
         id: "s3-object-inventory" as const,
         kind: "s3-object-inventory" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "object-inventory" },
         buckets: inventories,
         discoveredBuckets: buckets.length,
         scannedBuckets: inventories.length,
@@ -187,6 +191,8 @@ const PROVIDER_HEALTH_PROBE: S3Probe = {
     const observation = {
       id: "s3-provider-health" as const,
       kind: "s3-provider-health" as const,
+      schemaVersion: 1,
+      producer: { origin: "core" as const, id: "provider-health" },
       providerId: provider.providerId,
       providerDisplayName: provider.displayName,
       endpoints: health.endpoints,
@@ -212,6 +218,8 @@ const BUCKET_USAGE_PROBE: S3Probe = {
       const observation = {
         id: "s3-bucket-usage" as const,
         kind: "s3-bucket-usage" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "bucket-usage" },
         providerId: provider.providerId,
         providerDisplayName: provider.displayName,
         metricsEndpoint: usage.endpoint,
@@ -241,6 +249,8 @@ const DRIVE_CAPACITY_PROBE: S3Probe = {
       const observation = {
         id: "s3-drive-capacity" as const,
         kind: "s3-drive-capacity" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "drive-capacity" },
         providerId: provider.providerId,
         providerDisplayName: provider.displayName,
         metricsEndpoint: capacity.endpoint,
@@ -280,7 +290,13 @@ const CAPACITY_PROBE: S3Probe = {
       ext: result.status === "collected" ? "json" : undefined,
     });
     return result.status === "collected"
-      ? [{ id: "s3-capacity" as const, kind: "s3-capacity" as const, ...result.capacity }]
+      ? [{
+          id: "s3-capacity" as const,
+          kind: "s3-capacity" as const,
+          schemaVersion: 1,
+          producer: { origin: "core" as const, id: "capacity" },
+          ...result.capacity,
+        }]
       : [];
   },
 };

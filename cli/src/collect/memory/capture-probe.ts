@@ -67,6 +67,8 @@ export function makeMemoryCaptureProbe(): Probe<
       return [{
         id: "memory-heap-capture",
         kind: "memory.heap-capture",
+        schemaVersion: 1,
+        producer: { origin: "core", id: "memory-heap-capture" },
         result,
       }];
     },

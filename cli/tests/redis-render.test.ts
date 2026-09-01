@@ -7,6 +7,11 @@ import {
   buildRedisPrefixMemoryPieCharts,
 } from "../src/collect/redis/render";
 
+const CORE_OBSERVATION_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "test" },
+};
+
 test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () => {
   const facts = buildRedisInspectionFacts({
     endpoints: [["redis.example.com", 6379]],
@@ -19,6 +24,7 @@ test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () =>
   const evidence = buildRedisEvidence([{
     id: "keyspace:redis.example.com:6379:db0",
     kind: "keyspace",
+    ...CORE_OBSERVATION_META,
     scan: {
       node: { host: "redis.example.com", port: 6379 },
       database: 0,
@@ -88,6 +94,7 @@ test("Redis Key 分布对同一 master 的多个 DB 使用独立 DB 下拉框", 
   const scans = [0, 7].map((database) => ({
     id: `keyspace:redis.example.com:6379:db${database}`,
     kind: "keyspace" as const,
+    ...CORE_OBSERVATION_META,
     scan: {
       node: { host: "redis.example.com", port: 6379 },
       database,

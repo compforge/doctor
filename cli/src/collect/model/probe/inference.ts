@@ -56,6 +56,8 @@ export function makeModelInferenceProbe(
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,
           kind: "model-inference",
+          schemaVersion: 1,
+          producer: { origin: "core", id: MODEL_INFERENCE_PROBE_ID },
           response,
         };
         ctx.bundle.fill(MODEL_INFERENCE_PROBE_ID, {
@@ -69,6 +71,8 @@ export function makeModelInferenceProbe(
         observation = {
           id: MODEL_INFERENCE_PROBE_ID,
           kind: "model-inference",
+          schemaVersion: 1,
+          producer: { origin: "core", id: MODEL_INFERENCE_PROBE_ID },
           error: reason,
         };
         ctx.bundle.fill(MODEL_INFERENCE_PROBE_ID, { status: "failed", reason });

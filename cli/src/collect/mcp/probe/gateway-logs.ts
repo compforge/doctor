@@ -41,6 +41,8 @@ export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfi
     const observation: GatewayLogsObservation = {
       id: "gateway-logs",
       kind: "gateway-logs",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "gateway-logs" },
       ok: logs.ok,
       matchedLines,
       reason: logs.reason,

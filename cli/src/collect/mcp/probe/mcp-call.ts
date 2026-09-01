@@ -63,6 +63,8 @@ export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, M
     const observation: McpCallObservation = {
       id: "mcp-call",
       kind: "mcp-call",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "mcp-call" },
       ok: !!capture.response && !reason,
       durationMs: capture.durationMs,
       response: capture.response,

@@ -87,6 +87,8 @@ export function makeAppArmorUnconfinedAdmissionProbe(
         const observation: KubernetesAppArmorAdmissionObservation = {
           id: stepId,
           kind: "kubernetes-apparmor-unconfined-admission",
+          schemaVersion: 1,
+          producer: { origin: "core", id: "kubernetes.apparmor-unconfined-admission" },
           service: target.service,
           probe: declaration.id,
           namespace: target.namespace,
