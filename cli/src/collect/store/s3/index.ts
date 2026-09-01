@@ -2,9 +2,8 @@ import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
 import type { Executor } from "../../../infra/k8s/executor";
 import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
-import { runDiagnosis } from "../../engine";
+import { runCollect } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
-import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { PodStoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle, type StoreHtmlReportOptions } from "../artifacts";
@@ -61,11 +60,27 @@ export async function runStoreS3(
   };
 
   try {
-    facts = await runInspects([
-      makeS3ConfigurationInspect(),
-      makeS3AccessInspect(),
-      makeS3ProviderInspect(),
-    ], ctx, log) as S3InspectionFacts;
+    const execution = await runCollect({
+      ctx,
+      config,
+      inspects: [
+        makeS3ConfigurationInspect(),
+        makeS3AccessInspect(),
+        makeS3ProviderInspect(),
+      ],
+      checkpointFacts: (collectedFacts) => {
+        facts = collectedFacts;
+      },
+      planProbes: (collectedFacts) => collectedFacts.configuration.status === "unavailable"
+        ? []
+        : makeS3Probes(),
+      log,
+      buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
+      detectors: s3Detectors,
+      buildCoverage: buildS3Coverage,
+    });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
     if (facts.configuration.status === "unavailable") {
       return finish(0, [
         "# S3 Store 诊断摘要",
@@ -77,16 +92,6 @@ export async function runStoreS3(
         "",
       ].join("\n"));
     }
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
-      config,
-      probes: makeS3Probes(),
-      log,
-      buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
-      detectors: s3Detectors,
-      buildCoverage: buildS3Coverage,
-    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return finish(1, `# S3 Store 诊断失败\n\n${reason}\n`);
