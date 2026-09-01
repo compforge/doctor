@@ -1,4 +1,4 @@
-import type { Diagnosis, Evidence, FindingMeta } from "../../protocol";
+import type { Diagnosis, Evidence, FindingMeta, ObservationMeta } from "../../protocol";
 import type { S3InventorySummary } from "../s3-inventory";
 import type { S3InspectionFacts } from "./fact/model";
 
@@ -12,7 +12,7 @@ export interface S3PhysicalCapacity {
   rawFreeBytes: number;
   rawUsagePercent: number;
 }
-export interface S3BucketAccessObservation {
+export interface S3BucketAccessObservation extends ObservationMeta {
   id: "s3-bucket-access";
   kind: "s3-bucket-access";
   ok: boolean;
@@ -28,14 +28,14 @@ export interface S3BucketInventory extends S3InventorySummary {
   versioning: "enabled" | "suspended" | "disabled" | "unavailable";
   versioningReason?: string;
 }
-export interface S3InventoryObservation {
+export interface S3InventoryObservation extends ObservationMeta {
   id: "s3-object-inventory";
   kind: "s3-object-inventory";
   buckets: S3BucketInventory[];
   discoveredBuckets: number;
   scannedBuckets: number;
 }
-export interface S3BucketUsageObservation {
+export interface S3BucketUsageObservation extends ObservationMeta {
   id: "s3-bucket-usage";
   kind: "s3-bucket-usage";
   providerId: string;
@@ -48,14 +48,14 @@ export interface S3BucketUsageObservation {
     sinceLastUpdateSeconds?: number;
   }>;
 }
-export interface S3ProviderHealthObservation {
+export interface S3ProviderHealthObservation extends ObservationMeta {
   id: "s3-provider-health";
   kind: "s3-provider-health";
   providerId: string;
   providerDisplayName: string;
   endpoints: Record<string, number | undefined>;
 }
-export interface S3DriveCapacityObservation {
+export interface S3DriveCapacityObservation extends ObservationMeta {
   id: "s3-drive-capacity";
   kind: "s3-drive-capacity";
   providerId: string;
@@ -74,7 +74,7 @@ export interface S3DriveCapacityObservation {
     freeInodes: number;
   }>;
 }
-export interface S3CapacityObservation extends S3PhysicalCapacity {
+export interface S3CapacityObservation extends S3PhysicalCapacity, ObservationMeta {
   id: "s3-capacity";
   kind: "s3-capacity";
 }

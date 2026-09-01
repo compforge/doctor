@@ -153,6 +153,8 @@ export function makeLogProbe(
       return services.map((service) => ({
         id: `service-log:${service}`,
         kind: "service-log" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "service-logs" },
         service,
         pods: (servicePods.byService[service] ?? []).map((pod) => {
           const key = targetKey(service, pod);

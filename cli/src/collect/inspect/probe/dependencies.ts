@@ -231,6 +231,8 @@ export function makeDependencyInventoryProbe(
       const observation: DependencyInventoryObservation = {
         id: target.id,
         kind: "dependency-inventory",
+        schemaVersion: 1,
+        producer: { origin: "core", id: "dependency-inventory" },
         services: target.services,
         pod: target.pod,
         container: target.container,

@@ -32,6 +32,8 @@ export const modelValidationProbe: Probe<
       observation = {
         id: MODEL_VALIDATION_PROBE_ID,
         kind: "model-validation",
+        schemaVersion: 1,
+        producer: { origin: "core", id: MODEL_VALIDATION_PROBE_ID },
         response,
       };
       ctx.bundle.fill(MODEL_VALIDATION_PROBE_ID, {
@@ -45,6 +47,8 @@ export const modelValidationProbe: Probe<
       observation = {
         id: MODEL_VALIDATION_PROBE_ID,
         kind: "model-validation",
+        schemaVersion: 1,
+        producer: { origin: "core", id: MODEL_VALIDATION_PROBE_ID },
         error: reason,
       };
       ctx.bundle.fill(MODEL_VALIDATION_PROBE_ID, {

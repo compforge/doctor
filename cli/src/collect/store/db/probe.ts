@@ -41,6 +41,8 @@ const HEALTH_PROBE: DbProbe = {
       const observation = {
         id: "db-health" as const,
         kind: "db-health" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "health" },
         queryable: Number(initial?.doctor_store_probe) === 1 && Number(reused?.doctor_store_probe) === 1,
         connectionAndQueryLatencyMs,
         queryLatencyMs: Date.now() - reusedAt,
@@ -63,6 +65,8 @@ const SERVER_INFO_PROBE: DbProbe = {
       const observation = {
         id: "db-server-info" as const,
         kind: "db-server-info" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "server-info" },
         ...await collectMysqlServerInfo(ctx.database!, ctx.target!),
       };
       ctx.bundle.fill("server-info", { status: "ok", output: `${JSON.stringify(observation, null, 2)}\n`, ext: "json" });
@@ -83,6 +87,8 @@ const CAPACITY_PROBE: DbProbe = {
       const observation = {
         id: "db-capacity" as const,
         kind: "db-capacity" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "capacity" },
         ...await collectMysqlCapacity(ctx.database!, ctx.target!),
       };
       ctx.bundle.fill("capacity", { status: "ok", output: `${JSON.stringify(observation, null, 2)}\n`, ext: "json" });
@@ -106,6 +112,8 @@ const LOAD_PROBE: DbProbe = {
       const observation = {
         id: "db-load" as const,
         kind: "db-load" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "load" },
         ...await collectMysqlLoad(ctx.database!, ctx.target!, serverInfo?.maxConnections ?? 0),
       };
       ctx.bundle.fill("load", { status: "ok", output: `${JSON.stringify(observation, null, 2)}\n`, ext: "json" });
@@ -126,6 +134,8 @@ const LOCK_WAITS_PROBE: DbProbe = {
       const observation = {
         id: "db-lock-waits" as const,
         kind: "db-lock-waits" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "lock-waits" },
         ...await collectMysqlLockWaits(ctx.database!, ctx.target!),
       };
       ctx.bundle.fill("lock-waits", { status: "ok", output: `${JSON.stringify(observation, null, 2)}\n`, ext: "json" });

@@ -15,6 +15,8 @@
 // N 个 8MB 线程栈段，而这里 N 个线程停在同一处 → 线程泄露且定位到代码行；两者单独
 // 都只能说"疑似"。
 
+import type { ObservationMeta } from "../protocol";
+
 export interface CpuPySpyFrame {
   /** 函数名；py-spy 对 native 帧可能给不出，用 "?" 占位 */
   func: string;
@@ -30,7 +32,7 @@ export interface CpuPySpyThread {
   frames: CpuPySpyFrame[];
 }
 
-export interface CpuPySpyObservation {
+export interface CpuPySpyObservation extends ObservationMeta {
   id: "py-spy";
   kind: "py-spy";
   /** 采到栈的进程 pid；解析不出时缺省 */
@@ -86,7 +88,16 @@ export function parseCpuPySpyDump(output: string): CpuPySpyObservation | undefin
   }
 
   if (!threads.length) return undefined;
-  return { id: "py-spy", kind: "py-spy", pid, pythonVersion, threads, topFrameGroups: groupTopFrames(threads) };
+  return {
+    id: "py-spy",
+    kind: "py-spy",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "py-spy" },
+    pid,
+    pythonVersion,
+    threads,
+    topFrameGroups: groupTopFrames(threads),
+  };
 }
 
 /** 按栈顶帧聚类。只统计有栈的线程——空栈线程聚在一起没有诊断意义。 */

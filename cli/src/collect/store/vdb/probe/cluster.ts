@@ -11,6 +11,8 @@ export function parseHealth(raw: unknown): OpenSearchHealthObservation {
   return {
     id: "vdb-health",
     kind: "opensearch-health",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "cluster-health" },
     status: stringValue(value.status).toLowerCase(),
     clusterName: stringValue(value.cluster_name) || undefined,
     nodes: numberValue(value.number_of_nodes),
@@ -32,6 +34,8 @@ export function parseStats(raw: unknown): OpenSearchStatsObservation {
   return {
     id: "vdb-stats",
     kind: "opensearch-stats",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "cluster-stats" },
     indices: numberValue(indices.count),
     documents: numberValue(docs.count),
     deletedDocuments: numberValue(docs.deleted),
@@ -48,6 +52,8 @@ export function parseShards(raw: unknown): OpenSearchShardObservation {
   return {
     id: "vdb-shards",
     kind: "opensearch-shards",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "shard-state" },
     total: rows.length,
     unassigned: unassigned.length,
     unassignedPrimary: primary,

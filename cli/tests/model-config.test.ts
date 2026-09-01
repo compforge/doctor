@@ -84,6 +84,8 @@ describe("doctor model multimodal inference", () => {
       observations: [{
         id: "model-performance-decision" as const,
         kind: "model-performance-decision" as const,
+        schemaVersion: 1,
+        producer: { origin: "core" as const, id: "model-performance-decision" },
         enabled: true,
       }],
     }];

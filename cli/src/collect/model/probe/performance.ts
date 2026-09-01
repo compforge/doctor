@@ -129,6 +129,8 @@ export function makeModelPerformanceProbe(
           observations.push({
             id: modelPerformanceObservationId(testCase.id, round),
             kind: "model-performance",
+            schemaVersion: 1,
+            producer: { origin: "core", id: MODEL_PERFORMANCE_PROBE_ID },
             workload: workload(testCase),
             round,
             capture,

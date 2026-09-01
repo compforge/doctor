@@ -1,7 +1,7 @@
-import type { Diagnosis, Evidence, FindingMeta } from "../../protocol";
+import type { Diagnosis, Evidence, FindingMeta, ObservationMeta } from "../../protocol";
 import type { VdbInspectionFacts } from "./fact/model";
 
-export interface OpenSearchHealthObservation {
+export interface OpenSearchHealthObservation extends ObservationMeta {
   id: "vdb-health";
   kind: "opensearch-health";
   status: string;
@@ -25,13 +25,13 @@ export interface OpenSearchAllocationNode {
   diskPercent?: number;
 }
 
-export interface OpenSearchAllocationObservation {
+export interface OpenSearchAllocationObservation extends ObservationMeta {
   id: "vdb-allocation";
   kind: "opensearch-allocation";
   nodes: OpenSearchAllocationNode[];
 }
 
-export interface OpenSearchStatsObservation {
+export interface OpenSearchStatsObservation extends ObservationMeta {
   id: "vdb-stats";
   kind: "opensearch-stats";
   indices: number;
@@ -42,7 +42,7 @@ export interface OpenSearchStatsObservation {
   primaryShards: number;
 }
 
-export interface OpenSearchShardObservation {
+export interface OpenSearchShardObservation extends ObservationMeta {
   id: "vdb-shards";
   kind: "opensearch-shards";
   total: number;
@@ -56,7 +56,7 @@ export type OpenSearchDiskWatermark =
   | { raw: string; kind: "free-bytes"; freeBytes: number }
   | { raw: string; kind: "unknown" };
 
-export interface OpenSearchDiskSettingsObservation {
+export interface OpenSearchDiskSettingsObservation extends ObservationMeta {
   id: "vdb-disk-settings";
   kind: "opensearch-disk-settings";
   low: OpenSearchDiskWatermark;
@@ -65,7 +65,7 @@ export interface OpenSearchDiskSettingsObservation {
   source: "cluster-settings" | "fallback-defaults";
 }
 
-export interface OpenSearchIndexBlocksObservation {
+export interface OpenSearchIndexBlocksObservation extends ObservationMeta {
   id: "vdb-index-blocks";
   kind: "opensearch-index-blocks";
   readOnlyAllowDelete: string[];

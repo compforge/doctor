@@ -75,6 +75,8 @@ export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, 
     const observation: HttpCallObservation = {
       id: "http-call",
       kind: "http-call",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "http-call" },
       ok,
       capture,
     };

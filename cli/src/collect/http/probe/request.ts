@@ -31,7 +31,10 @@ function serializeSse(sse: SseResponseObservation | undefined) {
 export function serializeHttpAttempt(observation: HttpAttemptObservation): Record<string, unknown> {
   const response = observation.response;
   return {
+    kind: observation.kind,
     observation_id: observation.id,
+    schema_version: observation.schemaVersion,
+    producer: observation.producer,
     request_id: observation.requestId,
     entrypoint_id: observation.entrypointId,
     round: observation.round,
@@ -107,6 +110,8 @@ export function makeHttpRequestProbe(
       const observation: HttpAttemptObservation = {
         id: `http-attempt:${request.requestId}:${request.entrypointId}:${round}`,
         kind: "http-attempt",
+        schemaVersion: 1,
+        producer: { origin: "core", id: "http-request" },
         requestId: request.requestId,
         entrypointId: request.entrypointId,
         round,

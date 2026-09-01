@@ -22,7 +22,14 @@ function observation(
   service: string,
   pods: ServiceLogObservation["pods"],
 ): ServiceLogObservation {
-  return { id: `service-log:${service}`, kind: "service-log", service, pods };
+  return {
+    id: `service-log:${service}`,
+    kind: "service-log",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "service-logs" },
+    service,
+    pods,
+  };
 }
 
 describe("Log diagnosis", () => {

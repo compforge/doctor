@@ -1,8 +1,45 @@
 import type {
+  EvidenceProducer,
   ObservationMeta,
   Probe,
   UpstreamProbeResult,
 } from "./protocol";
+
+function nonEmpty(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validateProducer(producer: EvidenceProducer, label: string): void {
+  if (!producer || typeof producer !== "object") {
+    throw new Error(`${label}.producer must be a structured producer`);
+  }
+  if (producer.origin === "core") {
+    if (!nonEmpty(producer.id)) throw new Error(`${label}.producer.id must be a non-empty string`);
+    return;
+  }
+  if (producer.origin === "plugin") {
+    if (!nonEmpty(producer.plugin) || !nonEmpty(producer.service) || !nonEmpty(producer.id)) {
+      throw new Error(`${label}.producer plugin, service, and id must be non-empty strings`);
+    }
+    return;
+  }
+  throw new Error(`${label}.producer.origin must be core or plugin`);
+}
+
+function validateObservations(
+  probeId: string,
+  observations: readonly ObservationMeta[],
+): void {
+  for (const [index, observation] of observations.entries()) {
+    const label = `probe ${probeId} observation[${index}]`;
+    if (!nonEmpty(observation.id)) throw new Error(`${label}.id must be a non-empty string`);
+    if (!nonEmpty(observation.kind)) throw new Error(`${label}.kind must be a non-empty string`);
+    if (!Number.isInteger(observation.schemaVersion) || observation.schemaVersion < 1) {
+      throw new Error(`${label}.schemaVersion must be a positive integer`);
+    }
+    validateProducer(observation.producer, label);
+  }
+}
 
 function validateProbes<Observation extends ObservationMeta, Facts, Config, Ctx>(
   probes: readonly Probe<Observation, Facts, Config, Ctx>[],
@@ -85,18 +122,24 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
       continue;
     }
     log(`[collect] 执行 Probe：${probe.id}…`);
+    let probeObservations: readonly Observation[];
     try {
-      const probeObservations = await probe.run(ctx, facts, config, progress);
-      log(`[collect] Probe 完成：${probe.id}（${probeObservations.length} 条 Observation）`);
-      results.set(probe.id, { probeId: probe.id, status: "ok", observations: probeObservations });
-      observations.push(...probeObservations);
+      probeObservations = await probe.run(ctx, facts, config, progress);
     } catch (error) {
       if (!probe.onFailed) throw error;
       const reason = error instanceof Error ? error.message : String(error);
       probe.onFailed(ctx, reason);
       log(`[collect] Probe 失败：${probe.id}（${reason}）`);
       results.set(probe.id, { probeId: probe.id, status: "failed", reason, observations: [] });
+      pending.delete(probe.id);
+      completed.add(probe.id);
+      continue;
     }
+    // Metadata violations are Doctor/adapter contract bugs, not environmental Probe failures.
+    validateObservations(probe.id, probeObservations);
+    log(`[collect] Probe 完成：${probe.id}（${probeObservations.length} 条 Observation）`);
+    results.set(probe.id, { probeId: probe.id, status: "ok", observations: probeObservations });
+    observations.push(...probeObservations);
     pending.delete(probe.id);
     completed.add(probe.id);
   }

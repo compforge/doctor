@@ -10,11 +10,19 @@ import {
   type Detector,
   type EvidenceBuilder,
   type FindingMeta,
+  type ObservationMeta,
   type Probe,
 } from "../src/collect/protocol";
 
+function observationMeta(producer: string) {
+  return {
+    schemaVersion: 1,
+    producer: { origin: "core" as const, id: producer },
+  };
+}
+
 test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async () => {
-  type Observation = { id: string; kind: "number"; value: number };
+  type Observation = ObservationMeta & { kind: "number"; value: number };
   type Facts = { limit: number };
   type Evidence = { observations: readonly Observation[]; facts: Facts; total: number };
   type TotalFinding = FindingMeta<"total"> & { total: number; overLimit: boolean };
@@ -23,8 +31,8 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
     id: "numbers",
     evaluate: () => PROBE_RUNNABLE,
     run: async () => [
-      { id: "number:1", kind: "number", value: 2 },
-      { id: "number:2", kind: "number", value: 3 },
+      { id: "number:1", kind: "number", ...observationMeta("numbers"), value: 2 },
+      { id: "number:2", kind: "number", ...observationMeta("numbers"), value: 3 },
     ],
   };
   const buildEvidence: EvidenceBuilder<Observation, Facts, Evidence> = (observations, facts) => ({
@@ -65,8 +73,8 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
   })).resolves.toEqual({
     evidence: {
       observations: [
-        { id: "number:1", kind: "number", value: 2 },
-        { id: "number:2", kind: "number", value: 3 },
+        { id: "number:1", kind: "number", ...observationMeta("numbers"), value: 2 },
+        { id: "number:2", kind: "number", ...observationMeta("numbers"), value: 3 },
       ],
       facts: { limit: 4 },
       total: 5,
@@ -89,7 +97,7 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
 });
 
 test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏障后规划 Probe", async () => {
-  type Observation = { id: string; kind: "number"; value: number };
+  type Observation = ObservationMeta & { kind: "number"; value: number };
   type Facts = { core: { value: number }; plugin: { value: number } };
   type Evidence = { observations: readonly Observation[]; facts: Facts };
   type Finding = FindingMeta<"sum"> & { value: number };
@@ -127,7 +135,7 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
         evaluate: () => PROBE_RUNNABLE,
         run: async ({ trace }, collectedFacts) => {
           trace.push(`probe:${collectedFacts.plugin.value}`);
-          return [{ id: "number:1", kind: "number", value: 3 }];
+          return [{ id: "number:1", kind: "number", ...observationMeta("number"), value: 3 }];
         },
       }];
     },
@@ -223,7 +231,7 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
 });
 
 test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会成环", async () => {
-  type Observation = { id: string; kind: "n"; value: number };
+  type Observation = ObservationMeta & { kind: "n"; value: number };
   type Facts = { probeAllowed: boolean };
   type Evidence = { observations: readonly Observation[]; facts: Facts };
 
@@ -235,7 +243,7 @@ test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会�
       : probeUnavailable("探针未获准执行"),
     run: async () => {
       probeRan = true;
-      return [{ id: "n:1", kind: "n", value: 1 }];
+      return [{ id: "n:1", kind: "n", ...observationMeta("n"), value: 1 }];
     },
   };
   const buildEvidence: EvidenceBuilder<Observation, Facts, Evidence> = (observations, facts) => ({
@@ -365,7 +373,7 @@ describe("runInspects 调度", () => {
  * 用 targetAccess 表达，新 probe 默认 read 就自动安全。
  */
 describe("runProbes 调度", () => {
-  type O = { id: string; kind: "x"; from: string };
+  type O = ObservationMeta & { kind: "x"; from: string };
   const trace: string[] = [];
   const probe = (id: string, targetAccess?: "read" | "destroy"): Probe<O, {}, {}> => ({
     id,
@@ -373,7 +381,7 @@ describe("runProbes 调度", () => {
     evaluate: () => PROBE_RUNNABLE,
     run: async () => {
       trace.push(id);
-      return [{ id, kind: "x", from: id }];
+      return [{ id, kind: "x", ...observationMeta(id), from: id }];
     },
   });
 
@@ -508,7 +516,12 @@ describe("runProbes 调度", () => {
       {
         id: "independent",
         evaluate: () => PROBE_RUNNABLE,
-        run: async () => [{ id: "independent", kind: "x", from: "independent" }],
+        run: async () => [{
+          id: "independent",
+          kind: "x",
+          ...observationMeta("independent"),
+          from: "independent",
+        }],
       },
       {
         id: "consumer",
@@ -559,6 +572,41 @@ describe("runProbes 调度", () => {
       "[collect] 执行 Probe：empty…",
       "[collect] Probe 完成：empty（0 条 Observation）",
     ]);
+  });
+
+  test("拒绝没有正整数 schemaVersion 的 Observation", async () => {
+    let recordedAsProbeFailure = false;
+    await expect(runProbes<O, {}, {}>([{
+      id: "invalid-schema",
+      evaluate: () => PROBE_RUNNABLE,
+      onFailed: () => { recordedAsProbeFailure = true; },
+      run: async () => [{
+        id: "invalid-schema",
+        kind: "x",
+        schemaVersion: 0,
+        producer: { origin: "core", id: "invalid-schema" },
+        from: "invalid-schema",
+      }],
+    }], undefined, {}, {})).rejects.toThrow(
+      "probe invalid-schema observation[0].schemaVersion must be a positive integer",
+    );
+    expect(recordedAsProbeFailure).toBe(false);
+  });
+
+  test("拒绝没有结构化 producer 的 Observation", async () => {
+    await expect(runProbes<O, {}, {}>([{
+      id: "invalid-producer",
+      evaluate: () => PROBE_RUNNABLE,
+      run: async () => [{
+        id: "invalid-producer",
+        kind: "x",
+        schemaVersion: 1,
+        producer: undefined,
+        from: "invalid-producer",
+      } as unknown as O],
+    }], undefined, {}, {})).rejects.toThrow(
+      "probe invalid-producer observation[0].producer must be a structured producer",
+    );
   });
 
   test("evaluate 不可用时不执行 run，并由 engine 统一记录原因", async () => {

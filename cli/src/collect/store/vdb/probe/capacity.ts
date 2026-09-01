@@ -25,7 +25,13 @@ export function parseAllocation(raw: unknown): OpenSearchAllocationObservation {
       diskPercent: optionalNumber(row["disk.percent"]),
     };
   });
-  return { id: "vdb-allocation", kind: "opensearch-allocation", nodes };
+  return {
+    id: "vdb-allocation",
+    kind: "opensearch-allocation",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "node-allocation" },
+    nodes,
+  };
 }
 
 function parseBytes(value: string | undefined): number | undefined {
@@ -66,6 +72,8 @@ export function parseDiskSettings(rawValue: unknown): OpenSearchDiskSettingsObse
   return {
     id: "vdb-disk-settings",
     kind: "opensearch-disk-settings",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "cluster-settings" },
     low: parseWatermark(setting(raw, `${prefix}low`), setting(raw, `${prefix}low.max_headroom`)),
     high: parseWatermark(setting(raw, `${prefix}high`), setting(raw, `${prefix}high.max_headroom`)),
     floodStage: parseWatermark(
@@ -88,6 +96,8 @@ export function parseIndexBlocks(rawValue: unknown): OpenSearchIndexBlocksObserv
   return {
     id: "vdb-index-blocks",
     kind: "opensearch-index-blocks",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "index-write-blocks" },
     readOnlyAllowDelete,
   };
 }

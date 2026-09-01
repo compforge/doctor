@@ -1,4 +1,4 @@
-import type { Diagnosis, Evidence } from "../protocol";
+import type { Diagnosis, Evidence, ObservationMeta } from "../protocol";
 import type { RedisInspectionFacts } from "./fact/model";
 import type { RedisFinding, RedisDiagnosisGoal } from "./findings";
 
@@ -65,7 +65,7 @@ export interface RedisSlotRange {
   replicas: Array<{ host: string; port: number }>;
 }
 
-export interface RedisOverviewObservation {
+export interface RedisOverviewObservation extends ObservationMeta {
   id: "overview";
   kind: "overview";
   clusterType: "single" | "sentinel" | "cluster";
@@ -79,19 +79,19 @@ export interface RedisOverviewObservation {
   partialReason?: string;
 }
 
-export interface RedisNodeObservation {
+export interface RedisNodeObservation extends ObservationMeta {
   id: string;
   kind: "node";
   node: RedisNode;
 }
 
-export interface RedisKeyspaceObservation {
+export interface RedisKeyspaceObservation extends ObservationMeta {
   id: string;
   kind: "keyspace";
   scan: RedisScan;
 }
 
-export interface RedisPressureObservation {
+export interface RedisPressureObservation extends ObservationMeta {
   id: string;
   kind: "pressure";
   node: { host: string; port: number };
@@ -101,7 +101,7 @@ export interface RedisPressureObservation {
   oomErrorsDelta: number;
 }
 
-export interface RedisKeyStatsObservation {
+export interface RedisKeyStatsObservation extends ObservationMeta {
   id: string;
   kind: "key-stats";
   trigger: "forced" | "memory-skew";
@@ -243,6 +243,8 @@ export function redisPressureWindows(
   return seconds > 0 ? [{
     id: `pressure:1s:${node.host}:${node.port}`,
     kind: "pressure",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "redis-pressure-legacy" },
     node,
     window: "1s",
     observationSeconds: seconds,

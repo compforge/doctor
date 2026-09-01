@@ -113,6 +113,8 @@ export function makeMetricWindowProbe(): Probe<
       const observation: MetricWindowObservation = {
         id: WINDOW_PROBE_ID,
         kind: "metric-window",
+        schemaVersion: 1,
+        producer: { origin: "core", id: WINDOW_PROBE_ID },
         source: ctx.sourceKind,
         startedAt,
         finishedAt,
@@ -181,6 +183,8 @@ function makeMetricServiceProbe(
           return {
             ...plan,
             kind: "metric-query",
+            schemaVersion: 1,
+            producer: { origin: "core", id: "metric-query" },
             service,
             status: series.some((item) => item.points.length) ? "collected" : "empty",
             series,
@@ -189,6 +193,8 @@ function makeMetricServiceProbe(
           return {
             ...plan,
             kind: "metric-query",
+            schemaVersion: 1,
+            producer: { origin: "core", id: "metric-query" },
             service,
             status: "failed",
             series: [],

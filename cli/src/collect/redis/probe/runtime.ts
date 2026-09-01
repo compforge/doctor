@@ -50,6 +50,8 @@ export function redisObservationsFromRuntimeOutput(output: RedisRuntimeProbeOutp
     {
       id: "overview",
       kind: "overview",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "redis-probe" },
       clusterType: output.cluster_type,
       scanMode: output.scan_mode,
       databaseScope: output.database_scope,
@@ -61,25 +63,36 @@ export function redisObservationsFromRuntimeOutput(output: RedisRuntimeProbeOutp
     ...output.masters.map((node): RedisNodeObservation => ({
       id: `node:${node.host}:${node.port}`,
       kind: "node",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "redis-probe" },
       node,
     })),
     ...output.replicas.map((node): RedisNodeObservation => ({
       id: `node:${node.host}:${node.port}`,
       kind: "node",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "redis-probe" },
       node,
     })),
     ...output.scans.map((scan): RedisKeyspaceObservation => ({
       id: `keyspace:${scan.node.host}:${scan.node.port}:db${scan.database}`,
       kind: "keyspace",
+      schemaVersion: 1,
+      producer: { origin: "core", id: "redis-probe" },
       scan,
     })),
   ];
 }
 
-function redisObservationsFromPressureOutput(output: RedisPressureProbeOutput): RedisPressureObservation[] {
+function redisObservationsFromPressureOutput(
+  output: RedisPressureProbeOutput,
+  producerId: string,
+): RedisPressureObservation[] {
   return output.pressure_windows.map((window) => ({
     id: `pressure:${window.window}:${window.node.host}:${window.node.port}`,
     kind: "pressure",
+    schemaVersion: 1,
+    producer: { origin: "core", id: producerId },
     node: window.node,
     window: window.window,
     observationSeconds: window.observation_seconds,
@@ -266,6 +279,8 @@ export function makeRedisKeyStatsProbe(): Probe<
         observations.push({
           id: `key-stats:${node.host}:${node.port}:db${scan.database}`,
           kind: "key-stats",
+          schemaVersion: 1,
+          producer: { origin: "core", id },
           trigger: target.trigger,
           memoryRatio: target.memoryRatio,
           scan,
@@ -319,7 +334,7 @@ export function makeRedisPressureProbe(seconds: 1 | 10): Probe<
         output: `${JSON.stringify(output, null, 2)}\n`,
         ext: "json",
       });
-      return redisObservationsFromPressureOutput(output);
+      return redisObservationsFromPressureOutput(output, id);
     },
   };
 }

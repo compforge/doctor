@@ -63,6 +63,11 @@ import { writeStoreArtifacts } from "../src/collect/store/artifacts";
 import { writeTabbedStoreReport } from "../src/collect/store/tabs";
 import { writeHtmlReport } from "../src/collect/output/html";
 
+const CORE_OBSERVATION_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "test" },
+};
+
 test("Store 类型支持一次选择多个并保持首次出现顺序", () => {
   expect(parseStoreKinds("db,redis,s3,db")).toEqual(["db", "redis", "s3"]);
   expect(parseStoreKinds(undefined)).toEqual([]);
@@ -190,6 +195,7 @@ describe("Store output", () => {
       bucketAccess: {
         id: "s3-bucket-access",
         kind: "s3-bucket-access",
+        ...CORE_OBSERVATION_META,
         ok: true,
         httpStatus: 200,
         discovery: "list-buckets",
@@ -198,6 +204,7 @@ describe("Store output", () => {
       bucketUsage: {
         id: "s3-bucket-usage",
         kind: "s3-bucket-usage",
+        ...CORE_OBSERVATION_META,
         providerId: "minio",
         providerDisplayName: "MinIO",
         metricsEndpoint: "/minio/metrics/v3/cluster/usage/buckets",
@@ -209,6 +216,7 @@ describe("Store output", () => {
       capacity: {
         id: "s3-capacity",
         kind: "s3-capacity",
+        ...CORE_OBSERVATION_META,
         providerId: "minio",
         title: "MinIO Tenant minio/minio",
         rawCapacityBytes: 800 * 1024 ** 3,
@@ -219,6 +227,7 @@ describe("Store output", () => {
       driveCapacity: {
         id: "s3-drive-capacity",
         kind: "s3-drive-capacity",
+        ...CORE_OBSERVATION_META,
         providerId: "minio",
         providerDisplayName: "MinIO",
         metricsEndpoint: "/minio/v2/metrics/resource",
@@ -248,6 +257,7 @@ describe("Store output", () => {
       inventory: {
         id: "s3-object-inventory",
         kind: "s3-object-inventory",
+        ...CORE_OBSERVATION_META,
         discoveredBuckets: 1,
         scannedBuckets: 1,
         buckets: [{
@@ -573,6 +583,7 @@ describe("Store capability runtime state", () => {
       observations: [{
         id: "s3-drive-capacity",
         kind: "s3-drive-capacity",
+        ...CORE_OBSERVATION_META,
         providerId: "minio",
         providerDisplayName: "MinIO",
         metricsEndpoint: "/minio/v2/metrics/resource",
@@ -1228,6 +1239,7 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
     health: {
       id: "vdb-health",
       kind: "opensearch-health",
+      ...CORE_OBSERVATION_META,
       status: "red",
       nodes: 2,
       dataNodes: 1,
@@ -1241,11 +1253,13 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
     allocation: {
       id: "vdb-allocation",
       kind: "opensearch-allocation",
+      ...CORE_OBSERVATION_META,
       nodes: [{ node: "data-0", shards: 2, diskPercent: 96 }],
     },
     diskSettings: {
       id: "vdb-disk-settings",
       kind: "opensearch-disk-settings",
+      ...CORE_OBSERVATION_META,
       low: { raw: "70%", kind: "used-ratio", usedRatio: 0.7 },
       high: { raw: "80%", kind: "used-ratio", usedRatio: 0.8 },
       floodStage: { raw: "90%", kind: "used-ratio", usedRatio: 0.9 },
@@ -1254,11 +1268,13 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
     indexBlocks: {
       id: "vdb-index-blocks",
       kind: "opensearch-index-blocks",
+      ...CORE_OBSERVATION_META,
       readOnlyAllowDelete: ["idx"],
     },
     shards: {
       id: "vdb-shards",
       kind: "opensearch-shards",
+      ...CORE_OBSERVATION_META,
       total: 3,
       unassigned: 1,
       unassignedPrimary: 1,

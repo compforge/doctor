@@ -153,6 +153,8 @@ export function buildNetworkHopObservations(
       hops.push({
         id: `network-hop:${hopStream}:${requestIndex + 1}`,
         kind: "network.http-hop",
+        schemaVersion: 1,
+        producer: { origin: "core", id: "network-pcap-analysis" },
         pod: current.event.pod,
         observedAtServices: observedPod?.services ?? [],
         stream: hopStream,
@@ -223,6 +225,8 @@ export const networkPcapProbe: Probe<
         artifacts.push({
           id: `network-artifact:${artifact.pod}`,
           kind: "network.capture-artifact",
+          schemaVersion: 1,
+          producer: { origin: "core", id: "network-pcap-analysis" },
           pod: artifact.pod,
           services: artifact.services,
           file: artifact.file,
@@ -238,6 +242,8 @@ export const networkPcapProbe: Probe<
         artifacts.push({
           id: `network-artifact:${artifact.pod}`,
           kind: "network.capture-artifact",
+          schemaVersion: 1,
+          producer: { origin: "core", id: "network-pcap-analysis" },
           pod: artifact.pod,
           services: artifact.services,
           file: artifact.file,
@@ -260,6 +266,8 @@ export const networkPcapProbe: Probe<
         artifacts.push({
           id: `network-artifact:${artifact.pod}`,
           kind: "network.capture-artifact",
+          schemaVersion: 1,
+          producer: { origin: "core", id: "network-pcap-analysis" },
           pod: artifact.pod,
           services: artifact.services,
           file: artifact.file,
@@ -274,6 +282,8 @@ export const networkPcapProbe: Probe<
         artifacts.push({
           id: `network-artifact:${artifact.pod}`,
           kind: "network.capture-artifact",
+          schemaVersion: 1,
+          producer: { origin: "core", id: "network-pcap-analysis" },
           pod: artifact.pod,
           services: artifact.services,
           file: artifact.file,

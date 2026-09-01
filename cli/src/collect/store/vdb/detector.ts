@@ -13,6 +13,8 @@ import { groupVdbObservations } from "./model";
 const FALLBACK_DISK_SETTINGS: OpenSearchDiskSettingsObservation = {
   id: "vdb-disk-settings",
   kind: "opensearch-disk-settings",
+  schemaVersion: 1,
+  producer: { origin: "core", id: "vdb-detector-defaults" },
   low: { raw: "85%", kind: "used-ratio", usedRatio: 0.85 },
   high: { raw: "90%", kind: "used-ratio", usedRatio: 0.9 },
   floodStage: { raw: "95%", kind: "used-ratio", usedRatio: 0.95 },
