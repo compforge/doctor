@@ -21,6 +21,9 @@ import {
   printNumberedChoices,
   promptListedChoice,
 } from "../../terminal/selection";
+import type { RedisDatabaseScope } from "./fact/model";
+
+export type { RedisDatabaseScope } from "./fact/model";
 
 export const REDIS_DEFAULTS = {
   maxKeys: 10_000,
@@ -32,11 +35,6 @@ export const REDIS_DEFAULTS = {
 } as const;
 
 export type RedisOutputFormat = "default" | "bundle" | "html" | "md";
-
-export interface RedisDatabaseScope {
-  mode: "all" | "single";
-  databases: number[];
-}
 
 export interface RedisConfig {
   collect: KubernetesCommandConfig;

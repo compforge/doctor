@@ -98,6 +98,9 @@ function evaluateRedisRuntime(facts: RedisInspectionFacts) {
   if (facts.capabilities.status !== "collected") {
     return probeUnavailable(facts.capabilities.reason);
   }
+  if (facts.databaseScope.status !== "collected") {
+    return probeUnavailable(facts.databaseScope.reason);
+  }
   return PROBE_RUNNABLE;
 }
 
@@ -153,10 +156,13 @@ export function makeRedisRuntimeProbe(): Probe<
     onUnavailable: (ctx, reason) => {
       ctx.bundle.fill("redis-probe", { status: "unavailable", reason });
     },
-    run: async (ctx, _facts, config) => {
+    run: async (ctx, facts, config) => {
       ctx.log("[collect] 运行 Redis 只读诊断探针…");
       try {
-        const output = await collectRedisRuntime(ctx, config.scan);
+        if (facts.databaseScope.status !== "collected") {
+          throw new Error(`Redis database scope 不可用：${facts.databaseScope.reason}`);
+        }
+        const output = await collectRedisRuntime(ctx, facts.databaseScope, config.scan);
         ctx.bundle.fill("redis-probe", {
           status: output.error ? "partial" : "ok",
           reason: output.error,

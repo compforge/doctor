@@ -4,9 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError, writeErrorLog } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import type { Executor } from "../../infra/k8s/executor";
 import type { RedisAccessApi } from "../../infra/redis";
 import type { CommandContext } from "../../command";
@@ -17,18 +16,15 @@ import { evaluateCollectOutcome } from "../outcome";
 import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
 import type { RedisCommandContext } from "./context";
 import { buildRedisCoverage, redisDetectors } from "./detector";
-import { makeRedisInspect, sanitizeRedisTarget } from "./fact/inspect";
+import { makeRedisDatabaseScopeInspect } from "./fact/database-scope";
+import { makeRedisTargetInspect, sanitizeRedisTarget } from "./fact/inspect";
 import type { RedisInspectionFacts } from "./fact/model";
-import {
-  buildRedisEvidence,
-  type RedisDiagnosis,
-} from "./model";
+import { buildRedisEvidence } from "./model";
 import {
   makeRedisPressureProbe,
   makeRedisRuntimeProbe,
   makeRedisKeyStatsProbe,
 } from "./probe/runtime";
-import { discoverRedisDatabases } from "./probe/collector";
 import { confirmRedisTarget, prepareRedisAccess } from "./preparation";
 import {
   buildRedisHtml,
@@ -43,7 +39,6 @@ import {
   REDIS_DEFAULTS,
   parseRedisOutputFormat,
   resolveRedisConfig,
-  selectRedisDatabaseScope,
   type RedisOutputFormat,
 } from "./config";
 
@@ -189,16 +184,19 @@ export async function runCollectRedis(
   let prefixKeyPieCharts: HtmlPieChart[] = [];
   let prefixMemoryPieCharts: HtmlPieChart[] = [];
   let ttlPieCharts: HtmlPieChart[] = [];
-  const inspectionFacts: Record<string, unknown> = {};
+  let facts: Readonly<RedisInspectionFacts> | undefined;
 
   const finish = async (target: Record<string, unknown>, code: number) => {
+    const databaseScope = facts?.databaseScope.status === "collected"
+      ? facts.databaseScope
+      : undefined;
     const closePreparation = ctx.closePreparation;
     ctx.closePreparation = undefined;
     await closePreparation?.();
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       target,
-      inspectionFacts,
+      inspectionFacts: facts ?? {},
       params: {
         namespace,
         pod,
@@ -215,10 +213,10 @@ export async function runCollectRedis(
         show_key_names: config.scan.showKeyNames,
         key_stats: config.scan.keyStats,
         connection_database: ctx.redisTarget?.database ?? null,
-        database_scope: ctx.redisDatabaseScope?.mode ?? null,
-        databases: ctx.redisDatabaseScope?.databases ?? [],
-        database: ctx.redisDatabaseScope?.mode === "single"
-          ? ctx.redisDatabaseScope.databases[0] ?? null
+        database_scope: databaseScope?.mode ?? null,
+        databases: databaseScope?.databases ?? [],
+        database: databaseScope?.mode === "single"
+          ? databaseScope.databases[0] ?? null
           : null,
         output_format: format,
       },
@@ -299,53 +297,7 @@ export async function runCollectRedis(
     });
   }
 
-  const inspectRedis = makeRedisInspect(confirmed);
-
-  let facts: RedisInspectionFacts;
-  try {
-    ctx.log("[collect] 采集 Facts…");
-    facts = await runInspects([inspectRedis], ctx, ctx.log);
-    Object.assign(inspectionFacts, facts);
-    ctx.log("[collect] Facts 采集完成。");
-  } catch (err) {
-    writeErrorLog(err, "doctor store/redis/inspect");
-    const reason = err instanceof Error ? err.message : String(err);
-    // 目标都没解析出来，下游三格一律没戏。以前只写 summary.md，manifest 里它们直接消失。
-    bundle.fill("resolve-target", { status: "failed", reason });
-    bundle.settle(`解析 Redis 目标失败：${reason}`);
-    bundle.writeSummary(`# Redis 诊断失败\n\n${reason}\n`);
-    return finish({ namespace, pod, container, service: config.service, store: config.store?.id }, 1);
-  }
-
-  const sanitizedTarget = sanitizeRedisTarget(config, facts.target);
-
-  if (ctx.redisAccess && facts.capabilities.status === "collected") {
-    if (mode === "sample") {
-      try {
-        ctx.log("[collect] 正在发现 Redis database…");
-        const discovered = await discoverRedisDatabases(ctx);
-        const scope = await selectRedisDatabaseScope(
-          discovered.databases,
-          discovered.clusterType,
-          config.requestedDatabase,
-        );
-        if (!scope) return finish(sanitizedTarget, 130);
-        ctx.redisDatabaseScope = scope;
-        const databases = scope.databases.map((database) => `db${database}`).join("、") || "无数据 DB";
-        ctx.log(`[collect] Redis database scope: ${scope.mode === "all" ? `所有有数据的 DB（${databases}）` : databases}`);
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        bundle.settle(`Redis database 范围确认失败：${reason}`);
-        bundle.writeSummary(`# Redis 诊断失败\n\n${reason}\n`);
-        return finish(sanitizedTarget, 1);
-      }
-    } else {
-      ctx.redisDatabaseScope = config.requestedDatabase === undefined
-        ? { mode: "all", databases: [] }
-        : { mode: "single", databases: [config.requestedDatabase] };
-    }
-  }
-
+  const sanitizedTarget = sanitizeRedisTarget(config, confirmed.targetFact);
   try {
     // redis 是"一个方面、一次受限外部访问、多条 observation"的标准形态：
     // 基础探针返回 overview + nodes + keyspaces；压力窗口单独建 Probe，10 秒 Probe
@@ -354,16 +306,31 @@ export async function runCollectRedis(
     const probeRedisKeyStats = makeRedisKeyStatsProbe();
     const probeRedisPressure1s = makeRedisPressureProbe(1);
     const probeRedisPressure10s = makeRedisPressureProbe(10);
-    const diagnosis: RedisDiagnosis = await runDiagnosis({
-      ctx: ctx,
-      facts,
+    const probes = [probeRedis, probeRedisPressure1s, probeRedisPressure10s, probeRedisKeyStats];
+    const execution = await runCollect({
+      ctx,
       config,
       log: ctx.log,
-      probes: [probeRedis, probeRedisPressure1s, probeRedisPressure10s, probeRedisKeyStats],
+      inspects: [
+        makeRedisTargetInspect(confirmed),
+        makeRedisDatabaseScopeInspect(),
+      ],
+      checkpointFacts: (collectedFacts) => {
+        facts = collectedFacts;
+      },
+      planProbes: (collectedFacts) => collectedFacts.databaseScope.status === "unavailable"
+        && collectedFacts.databaseScope.cause === "cancelled"
+        ? []
+        : probes,
       buildEvidence: buildRedisEvidence,
       detectors: redisDetectors,
       buildCoverage: buildRedisCoverage,
     });
+    facts = execution.facts;
+    if (facts.databaseScope.status === "unavailable" && facts.databaseScope.cause === "cancelled") {
+      return finish(sanitizedTarget, 130);
+    }
+    const diagnosis = execution.diagnosis;
     bundle.fill("redis-findings", {
       status: "ok",
       output: `${JSON.stringify(diagnosis.findings, null, 2)}\n`,
@@ -396,7 +363,7 @@ export async function runCollectRedis(
       disabledCatalogStore ? 0 : outcome.exitCode,
     );
   } catch (err) {
-    writeErrorLog(err, "doctor store/redis/runDiagnosis");
+    writeErrorLog(err, "doctor store/redis/runCollect");
     const reason = err instanceof Error ? err.message : String(err);
     // 探针或判读挂了 → 剩下的格子（redis-probe 若还没填 / redis-findings）一并交代
     bundle.settle(reason);

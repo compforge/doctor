@@ -166,7 +166,7 @@ test("Redis replica 读取失败进入 partial 原因", async () => {
       log: () => undefined,
     } satisfies RedisCommandContext;
 
-    const output = await collectRedisRuntime(context, {
+    const output = await collectRedisRuntime(context, { mode: "single", databases: [7] }, {
       mode: "quick",
       maxKeys: 10,
       maxKeysPerSecond: 100,

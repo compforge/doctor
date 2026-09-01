@@ -35,11 +35,27 @@ export type RedisEnvironmentFact = Fact<{
   variables: Record<string, string>;
 }>;
 
+export interface RedisDatabaseScope {
+  mode: "all" | "single";
+  databases: number[];
+}
+
+export type RedisDatabaseScopeFact =
+  | ({
+      status: "collected";
+      clusterType: RedisFactTarget["clusterType"];
+      clusterTypeSource: "configured" | "runtime";
+      discoveredDatabases: number[];
+    } & RedisDatabaseScope)
+  | { status: "unavailable"; reason: string; cause: "prerequisite" | "cancelled" }
+  | { status: "failed"; reason: string };
+
 export interface RedisInspectionFacts {
   execution: RedisExecutionFact;
   target: RedisTargetFact;
   environment: RedisEnvironmentFact;
   capabilities: RedisCapabilitiesFact;
+  databaseScope: RedisDatabaseScopeFact;
 }
 
 function displayHost(host: string): string {
@@ -88,6 +104,22 @@ export function buildRedisCapabilitiesFact(
       };
 }
 
+export function buildRedisDatabaseScopeFact(input: {
+  clusterType: RedisFactTarget["clusterType"];
+  clusterTypeSource: "configured" | "runtime";
+  discoveredDatabases: readonly number[];
+  scope: RedisDatabaseScope;
+}): RedisDatabaseScopeFact {
+  return {
+    status: "collected",
+    clusterType: input.clusterType,
+    clusterTypeSource: input.clusterTypeSource,
+    discoveredDatabases: [...input.discoveredDatabases],
+    mode: input.scope.mode,
+    databases: [...input.scope.databases],
+  };
+}
+
 /** Inspect Facts 可进入 manifest，不能携带连接密码、sentinel 密码或原始 DSN。 */
 export function buildRedisInspectionFacts(
   target: RedisFactTarget,
@@ -98,11 +130,18 @@ export function buildRedisInspectionFacts(
     failureStatus?: "unavailable" | "failed";
   },
   environment: Record<string, string> = {},
+  databaseScope: RedisDatabaseScope = { mode: "single", databases: [target.database] },
 ): RedisInspectionFacts {
   return {
     execution: buildRedisExecutionFact(execution),
     target: buildRedisTargetFact(target),
     environment: buildRedisEnvironmentFact(environment),
     capabilities: buildRedisCapabilitiesFact(capability),
+    databaseScope: buildRedisDatabaseScopeFact({
+      clusterType: target.clusterType,
+      clusterTypeSource: "configured",
+      discoveredDatabases: [],
+      scope: databaseScope,
+    }),
   };
 }
