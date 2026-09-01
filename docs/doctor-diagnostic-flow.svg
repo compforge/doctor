@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1930" height="620" viewBox="0 0 1930 620" role="img" aria-labelledby="title desc">
   <title id="title">Doctor command diagnostic flow</title>
-  <desc id="desc">A Command prepares runtime context, schedules Inspect and Probe implementations from Core or Plugin Service Capabilities, combines Facts and Observations into Evidence, applies Detectors, renders Findings and Coverage, then finalizes delivery.</desc>
+  <desc id="desc">Two nested layers organize a Doctor Collect command. The outer Command lifecycle runs Prepare, Execute, and Finalize. Inside Execute, Core and Plugin Service contributions run Inspect, Probe, and Detector in order, producing Facts, Observations, Evidence, Findings, Coverage, and delivery artifacts.</desc>
 
   <defs>
     <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
@@ -19,11 +19,15 @@
       .small { font-size: 15px; fill: #526078; }
       .edge { font-size: 16px; font-weight: 600; fill: #526078; }
       .chip { font-size: 14px; font-weight: 650; }
+      .stage { font-size: 13px; font-weight: 750; letter-spacing: 0.08em; fill: #526078; }
+      .layer { font-size: 14px; font-weight: 750; letter-spacing: 0.06em; fill: #526078; }
+      .layer-box { stroke: #b9c5da; stroke-width: 2; stroke-dasharray: 7 7; }
     </style>
   </defs>
 
   <rect width="1930" height="620" rx="24" fill="#ffffff"/>
   <text class="text title" x="1890" y="48" text-anchor="end">Command diagnostic flow</text>
+  <text class="text small" x="1890" y="72" text-anchor="end">Command lifecycle outside · evidence pipeline inside</text>
 
   <!-- Shared runtime context: document shape preserves the visual language of the original sketch. -->
   <g filter="url(#shadow)">
@@ -31,12 +35,22 @@
   </g>
   <text class="text title" x="131" y="103" text-anchor="middle">Context</text>
 
-  <!-- Context is prepared once and then shared by both scheduling stages. -->
+  <!-- Context is prepared once and then shared by the Execute collection stages. -->
   <path class="bus" d="M234 92 H738 V188"/>
   <path class="flow" d="M131 151 V188"/>
   <path class="flow" d="M408 92 V188"/>
   <path class="flow" d="M738 92 V188"/>
   <text class="text edge" x="482" y="80">shared runtime context</text>
+
+  <!-- Outer layer: one Command lifecycle with three stages. Execute owns the inner evidence pipeline. -->
+  <g>
+    <rect class="layer-box" x="24" y="164" width="214" height="216" rx="22" fill="#f8faff"/>
+    <rect class="layer-box" x="270" y="164" width="1420" height="216" rx="22" fill="#fbfcff"/>
+    <rect class="layer-box" x="1718" y="164" width="190" height="216" rx="22" fill="#fbf9ff"/>
+  </g>
+  <text class="text layer" x="218" y="184" text-anchor="end">LIFECYCLE 1 · PREPARE</text>
+  <text class="text layer" x="980" y="184" text-anchor="middle">LIFECYCLE 2 · EXECUTE</text>
+  <text class="text layer" x="1888" y="184" text-anchor="end">LIFECYCLE 3 · FINALIZE</text>
 
   <!-- Main command flow. -->
   <g filter="url(#shadow)">
@@ -53,28 +67,37 @@
   <text class="text small" x="131" y="292" text-anchor="middle">access · lifecycle</text>
   <text class="text small" x="131" y="317" text-anchor="middle">e.g. port-forward</text>
 
-  <text class="text title" x="408" y="244" text-anchor="middle">Inspect</text>
-  <text class="text small" x="408" y="273" text-anchor="middle">Query → Fact</text>
+  <text class="text stage" x="408" y="221" text-anchor="middle">EXECUTE 1 / 3</text>
+  <text class="text title" x="408" y="252" text-anchor="middle">Inspect</text>
+  <text class="text small" x="408" y="278" text-anchor="middle">Query → Facts</text>
   <rect x="315" y="291" width="82" height="34" rx="17" fill="#dce7ff"/>
   <text class="text chip" x="356" y="313" text-anchor="middle">Core</text>
   <rect x="405" y="291" width="96" height="34" rx="17" fill="#d9f5e8"/>
   <text class="text chip" x="453" y="313" text-anchor="middle">Plugin</text>
 
-  <text class="text title" x="738" y="244" text-anchor="middle">Probe</text>
-  <text class="text small" x="738" y="273" text-anchor="middle">Input → Observation</text>
+  <text class="text stage" x="738" y="221" text-anchor="middle">EXECUTE 2 / 3</text>
+  <text class="text title" x="738" y="252" text-anchor="middle">Probe</text>
+  <text class="text small" x="738" y="278" text-anchor="middle">Facts + Input → Observation</text>
   <rect x="645" y="291" width="82" height="34" rx="17" fill="#dce7ff"/>
   <text class="text chip" x="686" y="313" text-anchor="middle">Core</text>
   <rect x="735" y="291" width="96" height="34" rx="17" fill="#d9f5e8"/>
   <text class="text chip" x="783" y="313" text-anchor="middle">Plugin</text>
 
+  <text class="text stage" x="1045" y="221" text-anchor="middle">STAGE BARRIER</text>
   <text class="text title" x="1045" y="258" text-anchor="middle">Evidence</text>
   <text class="text small" x="1045" y="292" text-anchor="middle">Facts + Observations</text>
   <text class="text small" x="1045" y="317" text-anchor="middle">auditable input</text>
 
-  <text class="text title" x="1329" y="258" text-anchor="middle">Detector</text>
-  <text class="text small" x="1329" y="292" text-anchor="middle">pure analysis</text>
-  <text class="text small" x="1329" y="317" text-anchor="middle">no external I/O</text>
+  <text class="text stage" x="1329" y="221" text-anchor="middle">EXECUTE 3 / 3</text>
+  <text class="text title" x="1329" y="252" text-anchor="middle">Detector</text>
+  <text class="text small" x="1329" y="278" text-anchor="middle">Evidence → Finding</text>
+  <rect x="1236" y="291" width="82" height="34" rx="17" fill="#dce7ff"/>
+  <text class="text chip" x="1277" y="313" text-anchor="middle">Core</text>
+  <rect x="1326" y="291" width="96" height="34" rx="17" fill="#d9f5e8"/>
+  <text class="text chip" x="1374" y="313" text-anchor="middle">Plugin</text>
+  <text class="text small" x="1329" y="341" text-anchor="middle">pure · no external I/O</text>
 
+  <text class="text stage" x="1589" y="221" text-anchor="middle">OUTPUT</text>
   <text class="text title" x="1589" y="258" text-anchor="middle">Render</text>
   <text class="text small" x="1589" y="292" text-anchor="middle">report</text>
   <text class="text small" x="1589" y="317" text-anchor="middle">bundle</text>
@@ -99,10 +122,12 @@
   <path class="flow" d="M408 348 V468 H1045 V358"/>
   <text class="text edge" x="726" y="457" text-anchor="middle">Facts, including Relation</text>
 
-  <!-- Legend makes the Plugin/Core boundary explicit without splitting the flow. -->
+  <!-- The bottom caption names the two nested layers; the legend keeps Core and Plugin as contribution sources. -->
+  <text class="text layer" x="38" y="510">OUTER LAYER · PREPARE → EXECUTE → FINALIZE</text>
+  <text class="text layer" x="1892" y="510" text-anchor="end">INNER EXECUTE · INSPECT → PROBE → DETECTOR</text>
   <rect x="38" y="536" width="18" height="18" rx="5" fill="#dce7ff" stroke="#172033"/>
   <text class="text small" x="68" y="551">Core implementation</text>
   <rect x="220" y="536" width="18" height="18" rx="5" fill="#d9f5e8" stroke="#172033"/>
-  <text class="text small" x="250" y="551">Plugin Service Capability: business supplement to the same flow</text>
+  <text class="text small" x="250" y="551">Plugin Service contribution: business supplement to the same flow</text>
   <text class="text small" x="1892" y="551" text-anchor="end">Command owns scheduling · authorization · Evidence · delivery</text>
 </svg>
