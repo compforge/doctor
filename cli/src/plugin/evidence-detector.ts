@@ -1,7 +1,6 @@
 import type {
   ServiceCatalog,
   ServiceEvidence,
-  ServiceEvidenceFact,
   ServiceEvidenceReference,
   ServiceFinding,
 } from "@compforge/doctor-plugin";
@@ -10,6 +9,10 @@ import type {
   Evidence,
   ObservationMeta,
 } from "../collect/protocol";
+import {
+  immutableServiceEvidence,
+  pluginEvidenceKind,
+} from "./evidence";
 
 const ROLES = new Set(["supporting", "contradicting", "context"]);
 const SEVERITIES = new Set(["info", "warning", "critical"]);
@@ -28,11 +31,6 @@ export interface ServiceDetectorFinding extends ServiceFinding {
   };
 }
 
-/** Core canonicalizes local Plugin schema kinds instead of trusting hand-written prefixes. */
-export function pluginEvidenceKind(plugin: string, service: string, kind: string): string {
-  return `plugin/${plugin}/${service}/${kind}`;
-}
-
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -45,34 +43,6 @@ function nonEmptyString(value: unknown, label: string): string {
     throw new Error(`${label} must be a non-empty string`);
   }
   return value;
-}
-
-function freezeDeep(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value)) freezeDeep(child);
-  return Object.freeze(value);
-}
-
-function immutableJson<T>(value: T, label: string): T {
-  try {
-    const serialized = JSON.stringify(value);
-    return freezeDeep(JSON.parse(serialized)) as T;
-  } catch (error) {
-    throw new Error(
-      `${label} must be JSON serializable: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
-}
-
-function immutableEvidence(value: ServiceEvidence): ServiceEvidence {
-  return immutableJson(value, "Service Evidence");
-}
-
-/** Freeze the complete Inspect result before it crosses from Core into a Service Probe. */
-export function immutableServiceProbeFacts(
-  facts: readonly ServiceEvidenceFact[],
-): readonly ServiceEvidenceFact[] {
-  return immutableJson(facts, "Service Probe Facts");
 }
 
 function validateReference(input: {
@@ -178,7 +148,7 @@ export function makeServiceEvidenceDetectors<DomainEvidence extends Evidence<Obs
   ));
   if (!declarations.length) return [];
   return [(evidence) => {
-    const projected = immutableEvidence(input.project(evidence));
+    const projected = immutableServiceEvidence(input.project(evidence));
     return declarations.flatMap(({ service, detector }) => validateFindings({
       value: detector.detect(projected),
       plugin: input.plugin,

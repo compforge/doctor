@@ -47,8 +47,9 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    Inspect contribution 的 Command 可跳过此步。需要在长 Probe 前保留阶段证据时，Core Command 可通过
    `checkpointFacts` 持久化完整的冻结 Facts；checkpoint 不采集或修改 Facts，也不构成新的 Execute 阶段。
 3. **Execute / Probe**：全部 Inspect 完成并深冻结 Facts 后，`runCollect` 才调用 `planProbes(facts)`；Core
-   对已收敛 Facts 建立完整公共投影，将同一份 Facts 注入 Core Probe 与选中 Plugin Service 注册的 Probe
-   contribution，再驱动它们产生 Observations；当前不按
+   由领域显式选择公开的 Facts、Service scope、`factPath` 与 value shape，再通过共享 adapter 建立公共投影，
+   将同一份 Facts 注入 Core Probe 与选中 Plugin Service 注册的 Probe contribution，再驱动它们产生
+   Observations；adapter 保留原始 identity，不递归遍历 Evidence 或派生伪 Fact；当前选出的投影不按
    Service、producer 或 kind 过滤。单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
 4. **Execute / Detector**：Evidence Builder 组合 Inspect Facts、Contribution Facts（含 Relation）与 Observations；
    Core 通过 `runDetectors` 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，
@@ -67,6 +68,8 @@ Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DS
 Core 与适配后的 Plugin Fact、Observation、Finding 都使用 `kind + schemaVersion` 标识数据契约，并携带
 结构化 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的 Plugin
 schema。Fact 不另设对象 ID，由 Evidence 内的 `factPath` 引用；Observation 与 Finding 使用本轮唯一 ID。
+Core Fact/Observation 的 identity 必须由共享 Service Evidence adapter 从持久化对象原样继承，领域
+projector 不能手写替代值；Plugin 本地 schema 的 namespace 与 producer 也只在同一 adapter 中规范化。
 缺失身份、producer 不匹配、重复 ID、空 Evidence 或引用本轮不存在的 `factPath / observationId` 都是
 Collect 契约错误，不能伪装成 partial。
 

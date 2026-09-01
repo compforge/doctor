@@ -185,14 +185,14 @@ test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => 
 
   const projected = projectInspectServiceFacts(facts, ["api", "worker"]);
 
-  expect(projected.filter((fact) => fact.kind === "service-target").map((fact) => fact.services))
-    .toEqual([["api"], ["worker"]]);
-  expect(projected).toContainEqual(expect.objectContaining({
-    kind: "service-targets",
-    schemaVersion: 1,
-    services: ["api", "worker"],
-    producer: { origin: "core", id: "service-targets" },
-  }));
+  expect(projected.map((fact) => [fact.factPath, fact.kind, fact.producer])).toEqual([
+    ["serviceTargets", "inspect.service-targets", facts.serviceTargets.producer],
+    ["deploymentConfiguration", "inspect.deployment-configuration", facts.deploymentConfiguration.producer],
+    ["dependencyTargets", "inspect.dependency-targets", facts.dependencyTargets.producer],
+  ]);
+  expect(projected.every((fact) => (
+    fact.services.join(",") === "api,worker"
+  ))).toBe(true);
 });
 
 test("terminated state 只投影 Inspect Fact 声明的字段", () => {
@@ -382,19 +382,21 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(complete).toContain("workload-runtime：sufficient");
     expect(workloadProbeFacts).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        kind: "service-target",
+        kind: "inspect.service-targets",
         schemaVersion: 1,
         services: ["example-api"],
         producer: { origin: "core", id: "service-targets" },
       }),
       expect.objectContaining({
-        kind: "deployment-configuration",
+        kind: "inspect.deployment-configuration",
         schemaVersion: 1,
       }),
     ]));
     expect(Object.isFrozen(workloadProbeFacts)).toBe(true);
     expect(workloadProbeFacts?.every((fact) => Object.isFrozen(fact))).toBe(true);
-    expect(Object.isFrozen(workloadProbeFacts?.find((fact) => fact.kind === "service-target")?.value)).toBe(true);
+    expect(Object.isFrozen(
+      workloadProbeFacts?.find((fact) => fact.kind === "inspect.service-targets")?.value,
+    )).toBe(true);
 
     const defaultOutput = join(dir, "default.tar.gz");
     expect(await runInspectWithDelivery({

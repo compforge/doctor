@@ -88,8 +88,10 @@ RelationFact 可以形成后续 Query，但只有 Core Command 能决定是否�
 ### Probe 与 Observation
 
 Probe 回答“针对已确认目标，本次主动观察到了什么”。Core 根据冻结 Facts 选择并驱动 Core Probe 与
-Service Probe。当前 Service Probe 取得本轮完整的公共 Fact 投影，不按 Service、producer 或 kind 过滤；
-所有 Probe 共享同一份深冻结快照，只能消费，不能修改或追加 Fact。
+Service Probe。领域先显式选择可公开的 Fact、Service scope、`factPath` 与 value shape，再由共享
+Service Evidence adapter 保留原始 `kind + schemaVersion + producer` 并形成公共投影；adapter 不递归遍历
+Evidence，也不把 Fact payload 的子对象派生成新的伪 Fact。当前选出的公共 Fact 不再按 Service、producer
+或 kind 过滤；所有 Probe 共享同一份深冻结快照，只能消费，不能修改或追加 Fact。
 
 Probe 是一次执行原语：可以使用 Core 提供的 Target-scoped infra 和授权入口，但不拥有 Command 的循环、
 并发、预算、停止条件或 Evidence。Observation 只陈述某个探测时间点或时间窗口看到的状态，不能默认
@@ -111,6 +113,9 @@ Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答
 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识 payload schema。Core kind 使用保留短名；
 Plugin 本地 kind 由 Core 规范化为 `plugin/<plugin-id>/<service>/<local-kind>`。两者都携带结构化 producer，
 消费方不能通过解析 kind 字符串猜测来源。Plugin version 标识实现版本，`schemaVersion` 只标识数据契约。
+`cli/src/plugin/evidence.ts` 是 Core/Plugin Service Evidence 的统一适配边界：Core Fact/Observation 原样继承
+已持久化 identity，Plugin 本地 schema 在这里统一补 namespace 与 producer；领域 projector 只拥有披露和
+Service 关联决策，不能再次手写或改写 identity。
 
 ## 共享生命周期边界
 

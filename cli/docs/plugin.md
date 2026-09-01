@@ -73,6 +73,9 @@ Core 必须等本轮 Inspect 收敛后再进入 Probe。当前 `ServiceProbeInpu
 Core Inspect 的基础信息，也可以读取其它选中 Service 的 Fact。该列表由 Core 做 JSON 投影并深冻结，
 Plugin 只能消费，不能补写或修改 Fact。本阶段不声明 `requires`，后续若证据规模或最小披露需要收紧，
 再在 Core 侧增加选择规则，不改变 Inspect → Probe 的所有权。
+公开范围、Service scope、`factPath` 与 value shape 由领域 projector 显式决定；共享 adapter 只保留 Core
+Fact 的 canonical identity，或为 Plugin 本地 schema 统一补 namespace 与 producer。它不反射遍历整个
+Evidence，也不把 payload 子对象派生成独立 Fact，避免扩大披露范围或产生脱离持久化 Evidence 的 identity。
 Service Inspect 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 contribution，不能通过
 试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
 
@@ -96,6 +99,7 @@ Detector 依赖的是 Evidence schema，而不是 producer 的实现细节。Ser
 `plugin/<plugin-id>/<service>/<local-kind>`，并写入 `{ origin: "plugin", plugin, service, id }` producer；
 Core 自有 schema 使用保留短 kind 与 `{ origin: "core", id }`。Plugin immutable version 加 Service/contribution
 id 标识规则实现版本，`schemaVersion` 只在 payload 契约不兼容时递增，两者不能合并成一个含义模糊的 version。
+上述 identity 规范化只由 `cli/src/plugin/evidence.ts` 完成；各 Command 的领域 projector 不重复构造。
 
 Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
 Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
