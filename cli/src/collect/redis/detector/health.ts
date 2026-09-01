@@ -8,6 +8,11 @@ import {
 import type { RedisFinding } from "../findings";
 import { keyspaceEvidence, nodeEvidence, pressureEvidence, type RedisDetector } from "./types";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "redis-health" },
+};
+
 export const detectStreamsWithoutTtl: RedisDetector = (
   e: RedisEvidence,
 ): RedisFinding[] => {
@@ -24,6 +29,7 @@ export const detectStreamsWithoutTtl: RedisDetector = (
   }
   return [...databases.entries()].flatMap(([database, group]) =>
     group.count > 0 ? [{
+      ...FINDING_META,
       id: `redis.streams-without-ttl:db${database}`,
       kind: "redis.streams-without-ttl",
       severity: "warning",
@@ -47,6 +53,7 @@ export const detectNodeHealth: RedisDetector = (e: RedisEvidence): RedisFinding[
     const fragmentation = Number(node.info?.mem_fragmentation_ratio ?? 0);
     if (fragmentation >= 1.5) {
       findings.push({
+        ...FINDING_META,
         id: `redis.memory-fragmentation:${node.host}:${node.port}`,
         kind: "redis.memory-fragmentation",
         severity: "info",
@@ -68,6 +75,7 @@ export const detectNodeHealth: RedisDetector = (e: RedisEvidence): RedisFinding[
         || oomErrorsDelta > 0
         || (capacity.utilization >= 0.9 && oomErrors > 0);
       findings.push({
+        ...FINDING_META,
         id: `redis.memory-capacity-${exhausted ? "exhausted" : "high"}:${node.host}:${node.port}`,
         kind: exhausted ? "redis.memory-capacity-exhausted" : "redis.memory-capacity-high",
         severity: exhausted ? "critical" : "warning",
@@ -85,6 +93,7 @@ export const detectNodeHealth: RedisDetector = (e: RedisEvidence): RedisFinding[
     }
     if (oomErrors > 0) {
       findings.push({
+        ...FINDING_META,
         id: `redis.oom-errors-observed:${node.host}:${node.port}`,
         kind: "redis.oom-errors-observed",
         severity: "critical",
@@ -96,6 +105,7 @@ export const detectNodeHealth: RedisDetector = (e: RedisEvidence): RedisFinding[
     }
     if (evictedKeys > 0) {
       findings.push({
+        ...FINDING_META,
         id: `redis.evictions-observed:${node.host}:${node.port}`,
         kind: "redis.evictions-observed",
         severity: "warning",

@@ -69,7 +69,7 @@ test("doctor model 与 doctor tenant 不依赖彼此的 command 实现", () => {
 
 test("Collect domain 不得绕过 runCollect 调用低层 runner", () => {
   const collectRoot = resolve(import.meta.dir, "../src/collect");
-  const lowLevelRunner = /\b(?:runDiagnosis|runInspects|runProbes)\b/;
+  const lowLevelRunner = /\b(?:runDiagnosis|runInspects|runProbes|runDetectors)\b/;
   const directCallers = sourceFiles(collectRoot)
     .filter((path) => path !== join(collectRoot, "engine.ts"))
     .filter((path) => {

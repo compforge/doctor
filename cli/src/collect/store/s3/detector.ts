@@ -2,6 +2,11 @@ import type { Detector, DiagnosisCoverage } from "../../protocol";
 import type { S3DiagnosisGoal, S3Evidence, S3Finding, S3PhysicalCapacity } from "./model";
 import { groupS3Observations } from "./model";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "s3-health" },
+};
+
 export function detectS3CapacityFinding(capacity: S3PhysicalCapacity): Record<string, unknown> | undefined {
   if (capacity.rawUsagePercent >= 90) {
     return { severity: "critical", kind: "s3.capacity-exhausted", usagePercent: capacity.rawUsagePercent };
@@ -21,6 +26,7 @@ function finding(input: {
   detail?: Record<string, unknown>;
 }): S3Finding {
   return {
+    ...FINDING_META,
     ...input.detail,
     id: input.id,
     kind: input.kind,

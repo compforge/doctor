@@ -11,12 +11,25 @@ import type {
   HttpRequestGroup,
   HttpRequestPlan,
   HttpRequestSummary,
-  HttpResponseObservation,
-  SseResponseObservation,
 } from "../shared/http/model";
 
-function attemptFindingBase(response: HttpResponseObservation, kind: string) {
+const HTTP_ATTEMPT_FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "http-attempt-detector" },
+};
+const HTTP_RESPONSE_FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "http-response-detector" },
+};
+const HTTP_ENDPOINT_FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "http-endpoint-detector" },
+};
+
+function attemptFindingBase(observation: HttpAttemptObservation, kind: string) {
+  const response = observation.response;
   return {
+    ...HTTP_ATTEMPT_FINDING_META,
     id: `${kind}:${response.requestId}:${response.entrypointId}:${response.round}`,
     requestId: response.requestId,
     entrypointId: response.entrypointId,
@@ -28,56 +41,56 @@ function attemptFindingBase(response: HttpResponseObservation, kind: string) {
 
 export function detectHttpAttempt(
   request: HttpRequestPlan,
-  response: HttpResponseObservation,
-  sse?: SseResponseObservation,
+  observation: HttpAttemptObservation,
 ): HttpFinding[] {
+  const { response, sse } = observation;
   const findings: HttpFinding[] = [];
   if (!response.captureComplete) {
     findings.push({
-      ...attemptFindingBase(response, "http.transport-failed"),
+      ...attemptFindingBase(observation, "http.transport-failed"),
       kind: "http.transport-failed",
       severity: "critical",
-      evidence: [{ observationId: response.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       terminationReason: response.terminationReason,
       error: response.error,
     });
   }
   if (response.statusCode === undefined || !request.expect.status.includes(response.statusCode)) {
     findings.push({
-      ...attemptFindingBase(response, "http.unexpected-status"),
+      ...attemptFindingBase(observation, "http.unexpected-status"),
       kind: "http.unexpected-status",
       severity: "critical",
-      evidence: [{ observationId: response.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       actual: response.statusCode,
       expected: request.expect.status,
     });
   }
   if (request.expect.contentType && !matchesContentType(response.contentType, request.expect.contentType)) {
     findings.push({
-      ...attemptFindingBase(response, "http.unexpected-content-type"),
+      ...attemptFindingBase(observation, "http.unexpected-content-type"),
       kind: "http.unexpected-content-type",
       severity: "warning",
-      evidence: [{ observationId: response.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       actual: response.contentType,
       expected: request.expect.contentType,
     });
   }
   if (request.expect.maxDurationMs !== undefined && response.durationMs > request.expect.maxDurationMs) {
     findings.push({
-      ...attemptFindingBase(response, "http.response-too-slow"),
+      ...attemptFindingBase(observation, "http.response-too-slow"),
       kind: "http.response-too-slow",
       severity: "warning",
-      evidence: [{ observationId: response.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       actualMs: response.durationMs,
       expectedMaxMs: request.expect.maxDurationMs,
     });
   }
   if (request.expect.sseTerminalEvent && !sse?.frames.some((frame) => frame.event === request.expect.sseTerminalEvent)) {
     findings.push({
-      ...attemptFindingBase(response, "http.sse-missing-terminal-event"),
+      ...attemptFindingBase(observation, "http.sse-missing-terminal-event"),
       kind: "http.sse-missing-terminal-event",
       severity: "warning",
-      evidence: [{ observationId: sse?.id ?? response.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       expectedEvent: request.expect.sseTerminalEvent,
       lastEvent: sse?.frames.at(-1)?.event,
     });
@@ -85,10 +98,10 @@ export function detectHttpAttempt(
   sse?.frames.forEach((frame, index) => {
     if (frame.event !== "error") return;
     findings.push({
-      ...attemptFindingBase(response, `http.sse-error-event:${index}`),
+      ...attemptFindingBase(observation, `http.sse-error-event:${index}`),
       kind: "http.sse-error-event",
       severity: "critical",
-      evidence: [{ observationId: sse.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
       code: frame.code,
       traceId: frame.traceId,
       messageId: frame.messageId,
@@ -96,10 +109,10 @@ export function detectHttpAttempt(
   });
   if (sse?.incompleteFrame) {
     findings.push({
-      ...attemptFindingBase(response, "http.sse-incomplete-frame"),
+      ...attemptFindingBase(observation, "http.sse-incomplete-frame"),
       kind: "http.sse-incomplete-frame",
       severity: "warning",
-      evidence: [{ observationId: sse.id, role: "supporting" }],
+      evidence: [{ observationId: observation.id, role: "supporting" }],
     });
   }
   return findings;
@@ -188,13 +201,14 @@ function detectEntrypointMismatches(
         const differences = entrypointDifferences(group, outer, inner);
         if (!differences.length) continue;
         findings.push({
+          ...HTTP_RESPONSE_FINDING_META,
           id: `http.entrypoint-response-mismatch:${group.id}:${round}:${outer.entrypointId}:${inner.entrypointId}`,
           kind: "http.entrypoint-response-mismatch",
           severity: "warning",
           confidence: "high",
           evidence: [
-            { observationId: outer.response.id, role: "supporting" },
-            { observationId: inner.response.id, role: "contradicting" },
+            { observationId: outer.observationId, role: "supporting" },
+            { observationId: inner.observationId, role: "contradicting" },
           ],
           requestId: group.id,
           round,
@@ -227,12 +241,13 @@ export function diagnoseHttp(
     const summary = summarizeRequest(requestId, attempts);
     if (summary.successful > 0 && summary.failed > 0) {
       aggregateFindings.push({
+        ...HTTP_RESPONSE_FINDING_META,
         id: `http.intermittent-failure:${requestId}:${entrypointId}`,
         kind: "http.intermittent-failure",
         severity: "warning",
         confidence: "high",
         evidence: attempts.filter((attempt) => !attempt.requestSuccess).map((attempt) => ({
-          observationId: attempt.response.id,
+          observationId: attempt.observationId,
           role: "supporting" as const,
         })),
         requestId,
@@ -277,10 +292,10 @@ export function materializeHttpExecutions(
   return observations.map((observation) => {
     const findings = detectHttpAttempt(
       requestPlan(groups, observation),
-      observation.response,
-      observation.sse,
+      observation,
     );
     return {
+      observationId: observation.id,
       requestId: observation.requestId,
       entrypointId: observation.entrypointId,
       round: observation.round,
@@ -311,6 +326,7 @@ export function detectHttpEndpointConnectivity(evidence: HttpEvidence): HttpFind
       (reference) => `${reference.requestId}/${reference.entrypointId}`,
     ))];
     const base = {
+      ...HTTP_ENDPOINT_FINDING_META,
       id: `http.endpoint-${endpoint.status}:${endpoint.endpoint.key}`,
       severity: endpoint.status === "unreachable" ? "critical" as const : "warning" as const,
       confidence: "high" as const,

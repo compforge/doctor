@@ -12,6 +12,11 @@ const SUMMARIES: Record<string, string> = {
   "db.lock-waits-observed": "当前存在事务锁等待。",
 };
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "db-health" },
+};
+
 export function detectDbFindings(evidence: DbEvidence): DbFinding[] {
   const observations = groupDbObservations(evidence.observations);
   return detectMysqlFindings({
@@ -26,6 +31,7 @@ export function detectDbFindings(evidence: DbEvidence): DbFinding[] {
         ? observations.lockWaits
         : observations.load;
     return {
+      ...FINDING_META,
       ...finding,
       id: `${finding.kind.replaceAll(".", "-")}-${index + 1}`,
       kind: finding.kind as `db.${string}`,

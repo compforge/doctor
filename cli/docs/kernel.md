@@ -100,6 +100,8 @@ Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答
 - Service Detector 提供业务判断，可以关联跨 producer、跨 Service 的 Evidence。
 - Detector 不接收 `CommandContext`、`PluginContext` 或 infra handle，不执行 I/O。
 - Finding 必须显式引用 Evidence 中的 `factPath` 或 `observationId`。
+- Core 通过同一个 Detector runner 执行 Core Detector 与适配后的 Service Detector，并校验 Finding 身份、
+  producer、Evidence 引用和本轮唯一 ID；违反契约属于实现错误，不能降级成 Coverage 缺口。
 - Coverage 表达诊断目标的证据充分度，不表达 Target 是否健康。
 
 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识 payload schema。Core kind 使用保留短名；
@@ -205,9 +207,11 @@ cli/src/
 ├── command/             CommandContext、Target、access 与审批契约
 ├── collect/
 │   ├── protocol.ts      Fact、Observation、Finding、Coverage 共享协议
+│   ├── evidence-identity.ts  Observation/Finding schema identity 运行时校验
 │   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector / Coverage
 │   ├── inspect-engine.ts  Inspect 依赖调度与 Facts 冻结
 │   ├── probe-engine.ts  Probe 依赖、安全顺序与失败隔离
+│   ├── detector-engine.ts  Core/Plugin Detector 执行与 Finding 契约校验
 │   ├── evidence.ts      Worksheet 与 Evidence Bundle
 │   ├── operation.ts     副作用授权与审计
 │   ├── output/          通用格式与交付原语

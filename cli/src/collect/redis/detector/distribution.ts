@@ -10,6 +10,11 @@ import {
 import type { RedisFinding } from "../findings";
 import { keyspaceEvidence, nodeEvidence, ratio, type RedisDetector } from "./types";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "redis-distribution" },
+};
+
 const LARGE_KEY_LIMIT = 10;
 const LARGE_KEY_DATASET_SHARE = 0.3;
 const SKEW_EXCESS_EXPLAINED_SHARE = 0.8;
@@ -26,6 +31,7 @@ export const detectMasterSkew: RedisDetector = (e: RedisEvidence): RedisFinding[
   if (memoryRatio >= 1.5) {
     findings.push(keyRatio <= 1.2
       ? {
+          ...FINDING_META,
           id: "redis.memory-skew-with-balanced-keys",
           kind: "redis.memory-skew-with-balanced-keys",
           severity: "warning",
@@ -35,6 +41,7 @@ export const detectMasterSkew: RedisDetector = (e: RedisEvidence): RedisFinding[
           keyRatio,
         }
       : {
+          ...FINDING_META,
           id: "redis.memory-skew",
           kind: "redis.memory-skew",
           severity: "warning",
@@ -54,6 +61,7 @@ export const detectMasterSkew: RedisDetector = (e: RedisEvidence): RedisFinding[
     const averageRatio = ratio(group.map((scan) => scan.average_sampled_bytes_per_key));
     if (averageRatio < 1.5) continue;
     findings.push({
+      ...FINDING_META,
       id: `redis.sampled-key-size-skew:db${database}`,
       kind: "redis.sampled-key-size-skew",
       severity: "warning",
@@ -103,6 +111,7 @@ export const detectLargeKeysExplainingMasterSkew: RedisDetector = (e: RedisEvide
     if (datasetShare < LARGE_KEY_DATASET_SHARE || skewExcessShare < SKEW_EXCESS_EXPLAINED_SHARE) continue;
 
     return [{
+      ...FINDING_META,
       id: `redis.memory-skew-dominated-by-large-keys:${skew.target.host}:${skew.target.port}:db${keyStats.scan.database}`,
       kind: "redis.memory-skew-dominated-by-large-keys",
       severity: "warning",
@@ -131,6 +140,7 @@ export const detectConcentrations: RedisDetector = (e: RedisEvidence): RedisFind
     const prefix = scan.prefixes[0];
     if (prefix && prefix.memory_bytes / sampledMemory >= 0.5) {
       findings.push({
+        ...FINDING_META,
         id: `redis.prefix-concentration:${scan.node.host}:${scan.node.port}:db${scan.database}`,
         kind: "redis.prefix-concentration",
         severity: "info",
@@ -145,6 +155,7 @@ export const detectConcentrations: RedisDetector = (e: RedisEvidence): RedisFind
     const type = scan.types[0];
     if (type && type.memory_bytes / sampledMemory >= 0.7) {
       findings.push({
+        ...FINDING_META,
         id: `redis.type-concentration:${scan.node.host}:${scan.node.port}:db${scan.database}`,
         kind: "redis.type-concentration",
         severity: "info",
@@ -159,6 +170,7 @@ export const detectConcentrations: RedisDetector = (e: RedisEvidence): RedisFind
     const slot = scan.top_slots[0];
     if (slot && slot.memory_bytes / sampledMemory >= 0.2) {
       findings.push({
+        ...FINDING_META,
         id: `redis.slot-concentration:${scan.node.host}:${scan.node.port}:db${scan.database}`,
         kind: "redis.slot-concentration",
         severity: "info",

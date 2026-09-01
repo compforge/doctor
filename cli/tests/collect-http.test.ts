@@ -19,7 +19,14 @@ import {
 } from "../src/collect/http";
 import { detectHttpAttempt } from "../src/collect/http/detector";
 import { resolveHttpScenarioEndpoints } from "../src/collect/http/fact/inspect";
-import type { HttpExecution, HttpRequestGroup, HttpRequestPlan } from "../src/collect/shared/http/model";
+import type {
+  HttpAttemptObservation,
+  HttpExecution,
+  HttpRequestGroup,
+  HttpRequestPlan,
+  HttpResponseObservation,
+  SseResponseObservation,
+} from "../src/collect/shared/http/model";
 import {
   sendHttpRequest,
   type HttpTransportResponse,
@@ -29,6 +36,24 @@ import { CommandContext } from "../src/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";
 
 const encoder = new TextEncoder();
+
+function httpAttempt(
+  response: HttpResponseObservation,
+  sse?: SseResponseObservation,
+): HttpAttemptObservation {
+  return {
+    id: `http-attempt:${response.requestId}:${response.entrypointId}:${response.round}`,
+    kind: "http-attempt",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "http-request" },
+    requestId: response.requestId,
+    entrypointId: response.entrypointId,
+    round: response.round,
+    directory: `attempts/${response.round}`,
+    response,
+    sse,
+  };
+}
 
 const createCommandContext = () => new CommandContext({});
 
@@ -374,7 +399,7 @@ describe("captureHttpResponse", () => {
     expect(readFileSync(join(dir, "headers.txt"), "utf-8")).toContain("x-request-id: request-1");
     expect(readFileSync(join(dir, "body.sse"), "utf-8")).toContain('"event":"end"');
     expect(capture.sse?.frames.map((frame) => frame.event)).toEqual(["start", "end"]);
-    expect(detectHttpAttempt(request(), capture.response, capture.sse)).toEqual([]);
+    expect(detectHttpAttempt(request(), httpAttempt(capture.response, capture.sse))).toEqual([]);
   });
 
   test("容量截断与请求异常仍返回可聚合结果", async () => {
@@ -553,7 +578,10 @@ test("detector 识别状态、耗时、SSE 终态和 error event", async () => {
     "text/event-stream",
     'data: {"event":"error","code":"E1","trace_id":"trace-1"}\n\n',
   ));
-  const findings = detectHttpAttempt(plan, { ...capture.response, durationMs: 10 }, capture.sse);
+  const findings = detectHttpAttempt(
+    plan,
+    httpAttempt({ ...capture.response, durationMs: 10 }, capture.sse),
+  );
   expect(findings.map((finding) => finding.kind)).toContain("http.unexpected-status");
   expect(findings.map((finding) => finding.kind)).toContain("http.response-too-slow");
   expect(findings.map((finding) => finding.kind)).toContain("http.sse-missing-terminal-event");
@@ -562,6 +590,7 @@ test("detector 识别状态、耗时、SSE 终态和 error event", async () => {
 
 test("跨轮汇总识别偶现失败并计算延迟分位数", () => {
   const execution = (round: number, requestSuccess: boolean, durationMs: number): HttpExecution => ({
+    observationId: `http-attempt:chat:default:${round}`,
     requestId: "chat",
     entrypointId: "default",
     round,
@@ -584,11 +613,13 @@ test("跨轮汇总识别偶现失败并计算延迟分位数", () => {
       terminationReason: "response_complete",
     },
     findings: requestSuccess ? [] : [{
+      schemaVersion: 1,
+      producer: { origin: "core", id: "http-attempt-detector" },
       id: `status-${round}`,
       kind: "http.unexpected-status",
       severity: "critical",
       confidence: "high",
-      evidence: [{ observationId: `response-${round}`, role: "supporting" }],
+      evidence: [{ observationId: `http-attempt:chat:default:${round}`, role: "supporting" }],
       requestId: "chat",
       entrypointId: "default",
       round,

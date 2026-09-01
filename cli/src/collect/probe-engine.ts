@@ -1,30 +1,9 @@
 import type {
-  EvidenceProducer,
   ObservationMeta,
   Probe,
   UpstreamProbeResult,
 } from "./protocol";
-
-function nonEmpty(value: unknown): value is string {
-  return typeof value === "string" && value.trim().length > 0;
-}
-
-function validateProducer(producer: EvidenceProducer, label: string): void {
-  if (!producer || typeof producer !== "object") {
-    throw new Error(`${label}.producer must be a structured producer`);
-  }
-  if (producer.origin === "core") {
-    if (!nonEmpty(producer.id)) throw new Error(`${label}.producer.id must be a non-empty string`);
-    return;
-  }
-  if (producer.origin === "plugin") {
-    if (!nonEmpty(producer.plugin) || !nonEmpty(producer.service) || !nonEmpty(producer.id)) {
-      throw new Error(`${label}.producer plugin, service, and id must be non-empty strings`);
-    }
-    return;
-  }
-  throw new Error(`${label}.producer.origin must be core or plugin`);
-}
+import { isNonEmptyString, validateEvidenceSchemaMeta } from "./evidence-identity";
 
 function validateObservations(
   probeId: string,
@@ -32,12 +11,10 @@ function validateObservations(
 ): void {
   for (const [index, observation] of observations.entries()) {
     const label = `probe ${probeId} observation[${index}]`;
-    if (!nonEmpty(observation.id)) throw new Error(`${label}.id must be a non-empty string`);
-    if (!nonEmpty(observation.kind)) throw new Error(`${label}.kind must be a non-empty string`);
-    if (!Number.isInteger(observation.schemaVersion) || observation.schemaVersion < 1) {
-      throw new Error(`${label}.schemaVersion must be a positive integer`);
+    if (!isNonEmptyString(observation.id)) {
+      throw new Error(`${label}.id must be a non-empty string`);
     }
-    validateProducer(observation.producer, label);
+    validateEvidenceSchemaMeta(observation, label);
   }
 }
 

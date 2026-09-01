@@ -49,8 +49,9 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    contribution，再驱动它们产生 Observations；当前不按
    Service、producer 或 kind 过滤。单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
 4. **Execute / Detector**：Evidence Builder 组合 Inspect Facts、Contribution Facts（含 Relation）与 Observations；
-   Core 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，形成 Findings，Coverage
-   记录证据缺口。
+   Core 通过 `runDetectors` 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，
+   校验 Finding 的 `id / kind / schemaVersion / producer`、本轮 ID 唯一性及 Evidence 引用后形成 Findings；
+   Coverage 记录证据缺口。
 5. **Finalize**：Renderer 只消费 Diagnosis 与产物元数据，随后统一完成 HTML、Markdown 或 Bundle 的
    Delivery，并执行本轮 Cleanup。
 
@@ -63,7 +64,8 @@ Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DS
 显式选择的 Facts 解释证据为何缺失，但不能追加 I/O。
 进入 Service Detector 的 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识数据契约，并携带
 Core 规范化的 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的
-Plugin schema。
+Plugin schema。Core Finding 遵循相同的 schema identity 与 producer 约束；缺失身份、重复 ID、空 Evidence
+或引用本轮不存在的 `factPath / observationId` 都是 Detector 契约错误，不能伪装成 partial。
 
 ## 关键设计
 

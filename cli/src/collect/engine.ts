@@ -9,6 +9,7 @@ import type {
   Probe,
 } from "./protocol";
 import type { Inspect } from "./inspection";
+import { runDetectors } from "./detector-engine";
 import { runInspects } from "./inspect-engine";
 import { runProbes } from "./probe-engine";
 
@@ -100,7 +101,7 @@ export async function runDiagnosis<
   // ctx 到 probe 为止。后续阶段只能从可持久化、可引用的 facts / evidence 推导。
   const observations = await runProbes(probes, ctx, facts, config, log);
   const evidence = buildEvidence(observations, facts);
-  const findings = detectors.flatMap((detector) => detector(evidence));
+  const findings = runDetectors(detectors, evidence);
   const coverage = buildCoverage(evidence);
   return { evidence, findings, coverage };
 }

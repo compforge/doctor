@@ -12,6 +12,11 @@ import type {
   NetworkObservation,
 } from "../model";
 
+const FINDING_META = {
+  schemaVersion: 1,
+  producer: { origin: "core" as const, id: "network-http-analysis" },
+};
+
 export function buildNetworkEvidence(
   observations: readonly NetworkObservation[],
   facts: NetworkEvidence["facts"],
@@ -55,6 +60,7 @@ const detectHttpErrors: Detector<NetworkEvidence, NetworkFinding> = (evidence) =
     .map((observations) => {
       const hop = observations[0]!;
       return {
+        ...FINDING_META,
         id: `network-http-error:${hop.callee}:${hop.status}:${hop.method}:${hop.path}`,
         kind: "network.http-error",
         severity: "warning",
@@ -77,6 +83,7 @@ const detectResets: Detector<NetworkEvidence, NetworkFinding> = (evidence) =>
     .map((observations) => {
       const hop = observations[0]!;
       return {
+        ...FINDING_META,
         id: `network-reset:${hop.callee}:${hop.method}:${hop.path}`,
         kind: "network.connection-reset",
         severity: "warning",
@@ -96,6 +103,7 @@ const detectMissingResponses: Detector<NetworkEvidence, NetworkFinding> = (evide
     .map((observations) => {
       const hop = observations[0]!;
       return {
+        ...FINDING_META,
         id: `network-response-missing:${hop.callee}:${hop.method}:${hop.path}`,
         kind: "network.response-missing",
         severity: "warning",
