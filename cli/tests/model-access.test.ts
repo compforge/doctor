@@ -15,26 +15,25 @@ const manifest: PluginManifest = {
   skills: [],
 };
 
-test("Plugin Inspect Capability 必须提供 query", () => {
+test("Plugin Inspect contribution 必须提供 inspect", () => {
   const base = {
     access: {},
     accepts: ["biz_id"],
     provides: ["record"],
     resolveTarget: async () => ({}),
-    detect: () => [],
   };
   const definition = (inspect: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "records", workloads: [], capabilities: { inspect } }] },
+    services: { services: [{ name: "records", workloads: [], contributions: { inspect }, capabilities: {} }] },
   });
 
-  expect(validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
+  expect(validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
     .toBeDefined();
-  expect(() => validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
-    .toThrow("records.inspect.query must be a function");
+  expect(() => validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
+    .toThrow("records.contributions.inspect.inspect must be a function");
   expect(() => validatePluginDefinition(definition(base), manifest))
-    .toThrow("records.inspect.query must be a function");
+    .toThrow("records.contributions.inspect.inspect must be a function");
 });
 
 test("Plugin tenant capability 只绑定租户目录", () => {
@@ -186,10 +185,11 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
 });
 
-test("environmentProbes 只接受 Core 支持的声明式共同 Probe", () => {
+test("Service probes 只接受 Core 支持的声明式共同 Probe", () => {
   const probe = {
     id: "apparmor-unconfined",
     kind: "kubernetes.apparmor-unconfined-admission",
+    schemaVersion: 1,
     subject: "workload-service-account",
   } as const;
   const plugin = (candidate: Record<string, unknown>) => ({
@@ -198,17 +198,81 @@ test("environmentProbes 只接受 Core 支持的声明式共同 Probe", () => {
     services: { services: [{
       name: "runtime-api",
       workloads: [],
-      capabilities: { environmentProbes: [candidate] },
+      contributions: { probes: [candidate] },
+      capabilities: {},
     }] },
   });
 
   expect(validatePluginDefinition(plugin(probe), manifest).services
-    .findWith("runtime-api", "environmentProbes")?.capabilities.environmentProbes)
+    .findWithContribution("runtime-api", "probes")?.contributions.probes)
     .toEqual([probe]);
   expect(() => validatePluginDefinition(plugin({ ...probe, kind: "custom.exec" }), manifest))
     .toThrow("uses unsupported kind 'custom.exec'");
   expect(() => validatePluginDefinition(plugin({ ...probe, subject: "fixed-service-account" }), manifest))
     .toThrow("uses unsupported subject 'fixed-service-account'");
+  expect(() => validatePluginDefinition(plugin({ ...probe, schemaVersion: 2 }), manifest))
+    .toThrow("uses unsupported schemaVersion '2'");
+});
+
+test("Service detector 必须有唯一 id 与纯 detect 入口", () => {
+  const definition = (detectors: unknown) => ({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{
+      name: "runtime-api",
+      workloads: [],
+      contributions: { detectors },
+      capabilities: {},
+    }] },
+  });
+  const detector = { id: "runtime-health", detect: () => [] };
+
+  expect(validatePluginDefinition(definition([detector]), manifest).services
+    .find("runtime-api")?.contributions?.detectors?.[0]?.id).toBe("runtime-health");
+  expect(() => validatePluginDefinition(definition([
+    detector,
+    { ...detector },
+  ]), manifest)).toThrow("runtime-api.contributions.detectors contains duplicate id 'runtime-health'");
+  expect(() => validatePluginDefinition(definition([{
+    id: "runtime-health",
+  }]), manifest)).toThrow("runtime-api.contributions.detectors.runtime-health.detect must be a function");
+});
+
+test("Workload Probe 在执行前声明 Observation kind 与 schemaVersion", () => {
+  const definition = (observation: unknown) => ({
+    id: "test",
+    version: "0.0.1",
+    services: { services: [{
+      name: "runtime-api",
+      workloads: [{
+        name: "main",
+        lifecycle: "persistent",
+        discovery: { kind: "kubernetes-service", service: "runtime-api" },
+      }],
+      contributions: { probes: [{
+        id: "health",
+        kind: "workload",
+        schemaVersion: 1,
+        access: {},
+        workload: "main",
+        observation,
+        probe: async () => ({ value: {} }),
+      }] },
+      capabilities: {},
+    }] },
+  });
+
+  const validated = validatePluginDefinition(definition({
+    kind: "health",
+    schemaVersion: 1,
+  }), manifest).services.find("runtime-api")?.contributions?.probes?.[0];
+  expect(validated?.kind).toBe("workload");
+  expect(validated?.kind === "workload" ? validated.observation : undefined)
+    .toEqual({ kind: "health", schemaVersion: 1 });
+  expect(() => validatePluginDefinition(definition({ schemaVersion: 1 }), manifest))
+    .toThrow("runtime-api.contributions.probes.health.observation.kind must be a non-empty string");
+  expect(() => validatePluginDefinition(definition({ kind: "health", schemaVersion: 0 }), manifest))
+    .toThrow("runtime-api.contributions.probes.health.observation.schemaVersion must be a positive integer");
 });
 
 test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {

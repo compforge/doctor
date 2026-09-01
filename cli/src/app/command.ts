@@ -14,14 +14,14 @@ export type { CommandSpec } from "./prepare";
 export async function runCommand(
   spec: CommandSpec,
   opts: CommandOptions,
-  action: (commandContext: CommandContext, profileName: string) => Promise<number | void>,
+  work: (commandContext: CommandContext, profileName: string) => Promise<number | void>,
   printProfile = true,
 ): Promise<void> {
   try {
     const { context, profileName } = await prepareCommand(spec, opts, printProfile);
     let code: number | void;
     try {
-      code = await action(context, profileName);
+      code = await work(context, profileName);
     } catch (err) {
       reportError(err, { context: spec.name, summary: "fatal" });
       code = 1;
@@ -44,7 +44,7 @@ export async function runPluginCommand(
   spec: CommandSpec & { plugin: PluginCapabilityContract },
   opts: CommandOptions & { namespace?: string },
   embeddedPlugin: PluginDefinition | undefined,
-  action: (
+  work: (
     plugin: PluginDefinition,
     commandContext: CommandContext,
     profileName: string,
@@ -66,7 +66,7 @@ export async function runPluginCommand(
       capabilities.id,
       capabilities.services.services.map((service) => service.name),
     );
-    const code = await action(
+    const code = await work(
       capabilities,
       context,
       profileName,

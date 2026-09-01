@@ -69,7 +69,7 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
                 resolvedAs: "card_id",
                 identifiers: { card_id: "card-1" },
               },
-              facts: [{ factType: "value", kind: "example-card", value: cardResult }],
+              facts: [{ factType: "value", kind: "example-card", schemaVersion: 1, value: cardResult }],
             },
           },
           {
@@ -80,7 +80,7 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
             identity: { kind: "biz_id", value: "card-1" },
             result: {
               resolution: { inputId: "card-1", resolvedAs: "unresolved", identifiers: {} },
-              facts: [{ factType: "value", kind: "other-records", value: unresolvedResult }],
+              facts: [{ factType: "value", kind: "other-records", schemaVersion: 1, value: unresolvedResult }],
             },
           },
         ],

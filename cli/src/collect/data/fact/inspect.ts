@@ -16,7 +16,7 @@ export function makeDataInspect(
           : { status: confirmed.targetFact.status, reason: confirmed.targetFact.reason };
         ctx.bundle.addStep({
           id: `data-inspect-${confirmed.service}`,
-          title: `${confirmed.service} Inspect Capability`,
+          title: `${confirmed.service} Inspect contribution`,
           risk: "observe",
           status: inspect.status === "collected" ? "ok" : inspect.status,
           reason: inspect.status === "collected" ? undefined : inspect.reason,

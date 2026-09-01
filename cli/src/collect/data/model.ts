@@ -1,9 +1,9 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
-  ServiceInspectFinding,
   ServiceInspectResult,
 } from "@compforge/doctor-plugin";
+import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { KubectlOptions } from "../../infra/k8s/executor";
 
@@ -82,7 +82,7 @@ export interface DataFacts extends DataInspectionFacts {
 
 export type DataEvidence = Evidence<never, DataFacts>;
 
-export type DataFinding = FindingMeta<string> & ServiceInspectFinding & { service: string };
+export type DataFinding = FindingMeta<string> & ServiceDetectorFinding;
 
 export type DataDiagnosisGoal = "business-data-relations";
 export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding, DataDiagnosisGoal>;

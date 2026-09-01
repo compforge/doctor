@@ -1,5 +1,5 @@
 import type { Probe } from "../../protocol";
-import type { ServiceCatalog } from "@compforge/doctor-plugin";
+import type { ServiceCatalog, ServiceEvidenceFact } from "@compforge/doctor-plugin";
 import type {
   InspectCommandContext,
   InspectConfig,
@@ -15,21 +15,16 @@ export function makeInspectProbes(
   facts: InspectFacts,
   config: InspectConfig,
   catalog: ServiceCatalog,
+  probeFacts: readonly ServiceEvidenceFact[],
 ): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> {
-  const environmentProbes = config.services.flatMap((serviceName) =>
-    (catalog.find(serviceName)?.capabilities.environmentProbes ?? []).map((declaration) =>
-      makeAppArmorUnconfinedAdmissionProbe(serviceName, declaration)
-    )
-  );
-  const workloadProbes = config.services.flatMap((serviceName) => {
+  const serviceProbes = config.services.flatMap((serviceName) => {
     const service = catalog.find(serviceName);
-    return service?.capabilities.workload?.probes.map((probe) =>
-      makePluginWorkloadProbe(service, probe)
-    ) ?? [];
+    return service?.contributions?.probes?.map((probe) => probe.kind === "workload"
+      ? makePluginWorkloadProbe(service, probe, probeFacts)
+      : makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
-    ...environmentProbes,
-    ...workloadProbes,
+    ...serviceProbes,
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>
         Object.values(service.workloads).flatMap((workload) =>

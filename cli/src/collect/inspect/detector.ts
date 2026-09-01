@@ -10,7 +10,16 @@ import type {
   InspectObservation,
   JsonValue,
 } from "./model";
-import type { ServiceCatalog } from "@compforge/doctor-plugin";
+import type {
+  ServiceCatalog,
+  ServiceEvidence,
+  ServiceEvidenceFact,
+  ServiceEvidenceObservation,
+} from "@compforge/doctor-plugin";
+import {
+  makeServiceEvidenceDetectors,
+  pluginEvidenceKind,
+} from "../../plugin/evidence-detector";
 
 function normalizeName(name: string): string {
   return name.trim().toUpperCase();
@@ -78,18 +87,158 @@ export function buildInspectEvidence(
 
 export const inspectDetectors: readonly Detector<InspectEvidence, InspectFinding>[] = [];
 
-export function makeInspectDetectors(catalog: ServiceCatalog): readonly Detector<InspectEvidence, InspectFinding>[] {
-  return [(evidence) => evidence.observations.flatMap((observation) => {
-    if (observation.kind !== "plugin-workload") return [];
-    const probe = catalog.find(observation.service)?.capabilities.workload?.probes.find(
-      (candidate) => candidate.id === observation.probe && candidate.workload === observation.workload,
-    );
-    return (probe?.detect?.({ kind: observation.observationKind, value: observation.value }) ?? []).map((finding) => ({
-      ...finding,
-      id: `${observation.id}:${finding.id}`,
-      evidence: [{ observationId: observation.id, role: "supporting" as const }],
-    }));
-  })];
+/** Public, schema-identified projection shared by every selected Service Probe and Detector. */
+export function projectInspectServiceFacts(
+  facts: InspectFacts,
+  services: readonly string[],
+): ServiceEvidenceFact[] {
+  const serviceFacts: ServiceEvidenceFact[] = facts.serviceTargets.status === "collected"
+    ? Object.entries(facts.serviceTargets.services).map(([service, value]) => ({
+      factPath: `serviceTargets.services.${service}`,
+      services: [service],
+      kind: "service-target",
+      schemaVersion: 1,
+      producer: { origin: "core" as const, id: "service-targets" },
+      value,
+    }))
+    : [];
+  const dependencyFacts: ServiceEvidenceFact[] = facts.dependencyTargets.status === "collected"
+    ? facts.dependencyTargets.targets.map((value, index) => ({
+      factPath: `dependencyTargets.targets.${index}`,
+      services: value.services,
+      kind: "dependency-target",
+      schemaVersion: 1,
+      producer: { origin: "core" as const, id: "dependency-targets" },
+      value,
+    }))
+    : [];
+  return [{
+    factPath: "serviceTargets",
+    services,
+    kind: "service-targets",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "service-targets" },
+    value: facts.serviceTargets,
+  }, ...serviceFacts, {
+    factPath: "deploymentConfiguration",
+    services,
+    kind: "deployment-configuration",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "service-targets" },
+    value: facts.deploymentConfiguration,
+  }, {
+    factPath: "dependencyTargets",
+    services,
+    kind: "dependency-targets",
+    schemaVersion: 1,
+    producer: { origin: "core", id: "service-targets" },
+    value: facts.dependencyTargets,
+  }, ...dependencyFacts];
+}
+
+export function projectInspectServiceEvidence(
+  evidence: InspectEvidence,
+  plugin: string,
+  services: readonly string[],
+): ServiceEvidence {
+  return {
+    facts: projectInspectServiceFacts(evidence.facts, services),
+    observations: evidence.observations.flatMap<ServiceEvidenceObservation>((observation) => {
+      if (observation.kind === "plugin-workload") {
+        return [{
+          id: observation.id,
+          services: [observation.service],
+          probe: observation.probe,
+          kind: pluginEvidenceKind(plugin, observation.service, observation.observationKind),
+          schemaVersion: observation.observationSchemaVersion,
+          producer: {
+            origin: "plugin" as const,
+            plugin,
+            service: observation.service,
+            id: observation.probe,
+          },
+          workload: observation.workload,
+          instance: {
+            kind: "kubernetes-pod" as const,
+            namespace: observation.namespace,
+            pod: observation.pod,
+            container: observation.container,
+          },
+          value: observation.value,
+        }];
+      }
+      if (observation.kind === "kubernetes-apparmor-unconfined-admission") {
+        return [{
+          id: observation.id,
+          services: [observation.service],
+          probe: observation.probe,
+          kind: observation.kind,
+          schemaVersion: 1,
+          producer: { origin: "core" as const, id: "kubernetes.apparmor-unconfined-admission" },
+          value: {
+            namespace: observation.namespace,
+            serviceAccountName: observation.serviceAccountName,
+            status: observation.status,
+            ...(observation.reason ? { reason: observation.reason } : {}),
+          },
+        }];
+      }
+      if (observation.kind === "environment-config") {
+        return [{
+          id: observation.id,
+          services: [observation.service],
+          probe: "environment-config",
+          kind: observation.kind,
+          schemaVersion: 1,
+          producer: { origin: "core" as const, id: "environment-config" },
+          value: {
+            deployment: observation.deployment,
+            container: observation.container,
+            values: observation.values,
+          },
+        }];
+      }
+      if (observation.kind === "dependency-inventory") {
+        return [{
+          id: observation.id,
+          services: observation.services,
+          probe: "dependency-inventory",
+          kind: observation.kind,
+          schemaVersion: 1,
+          producer: { origin: "core" as const, id: "dependency-inventory" },
+          value: {
+            pod: observation.pod,
+            container: observation.container,
+            image: observation.image,
+            ...(observation.imageId ? { imageId: observation.imageId } : {}),
+            toolchain: observation.toolchain,
+            status: observation.status,
+            ...(observation.runtimeVersion ? { runtimeVersion: observation.runtimeVersion } : {}),
+            dependencies: observation.dependencies,
+            ...(observation.truncated === undefined ? {} : { truncated: observation.truncated }),
+            ...(observation.reason ? { reason: observation.reason } : {}),
+          },
+        }];
+      }
+      return [];
+    }),
+  };
+}
+
+export function makeInspectDetectors(
+  plugin: string,
+  catalog: ServiceCatalog,
+  services: readonly string[],
+): readonly Detector<InspectEvidence, InspectFinding>[] {
+  return [
+    ...inspectDetectors,
+    ...makeServiceEvidenceDetectors<InspectEvidence>({
+      plugin,
+      catalog,
+      services,
+      project: (evidence) => projectInspectServiceEvidence(evidence, plugin, services),
+    }),
+  ];
 }
 
 export function buildInspectCoverage(

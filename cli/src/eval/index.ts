@@ -171,7 +171,7 @@ async function collectEvalEvidence(input: {
   }
   let trace = unavailable("当前 Plugin 未声明 traceId capability");
   let log = unavailable("当前 Plugin 未同时声明 traceId/log capability");
-  let data = unavailable("当前 Plugin 没有可从 biz_id 到达的 Inspect Capability");
+  let data = unavailable("当前 Plugin 没有可从 biz_id 到达的 Inspect contribution");
 
   if (input.plugin.services.servicesWith("traceId").length) {
     try {

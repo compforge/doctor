@@ -20,6 +20,13 @@ function nonEmptyString(value: unknown, label: string): string {
   return value;
 }
 
+function positiveInteger(value: unknown, label: string): number {
+  if (!Number.isInteger(value) || Number(value) < 1) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return Number(value);
+}
+
 function endpointPort(capability: Record<string, unknown>, label: string): void {
   const endpoint = record(capability.endpoint, `${label}.endpoint`);
   nonEmptyString(endpoint.host, `${label}.endpoint.host`);
@@ -109,52 +116,67 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       nonEmptyString(dependency.store, `${service.name}.dependencies[${dependencyIndex}].store`);
     }
   }
-  const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
-  if (capabilities.environmentProbes !== undefined) {
-    for (const [probeId, probe] of uniqueIdRecords(
-      capabilities.environmentProbes,
-      `${service.name}.environmentProbes`,
+  const contributions = service.contributions === undefined
+    ? {}
+    : record(service.contributions, `Plugin Service '${String(service.name)}'.contributions`);
+  if (contributions.detectors !== undefined) {
+    for (const [detectorId, detector] of uniqueIdRecords(
+      contributions.detectors,
+      `${service.name}.contributions.detectors`,
     )) {
-      if (probe.kind !== "kubernetes.apparmor-unconfined-admission") {
-        throw new Error(`${service.name}.environmentProbes probe '${probeId}' uses unsupported kind '${String(probe.kind)}'`);
-      }
-      if (probe.subject !== "workload-service-account") {
-        throw new Error(`${service.name}.environmentProbes probe '${probeId}' uses unsupported subject '${String(probe.subject)}'`);
+      if (typeof detector.detect !== "function") {
+        throw new Error(`${service.name}.contributions.detectors.${detectorId}.detect must be a function`);
       }
     }
   }
-  if (capabilities.inspect !== undefined) {
-    const inspect = record(capabilities.inspect, `${service.name}.inspect`);
-    uniqueNonEmptyStrings(inspect.accepts, `${service.name}.inspect.accepts`);
-    uniqueNonEmptyStrings(inspect.provides, `${service.name}.inspect.provides`);
+  if (contributions.probes !== undefined) {
+    for (const [probeId, probe] of uniqueIdRecords(
+      contributions.probes,
+      `${service.name}.contributions.probes`,
+    )) {
+      const label = `${service.name}.contributions.probes.${probeId}`;
+      if (probe.kind === "kubernetes.apparmor-unconfined-admission") {
+        if (probe.schemaVersion !== 1) {
+          throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
+        }
+        if (probe.subject !== "workload-service-account") {
+          throw new Error(`${label} uses unsupported subject '${String(probe.subject)}'`);
+        }
+      } else if (probe.kind === "workload") {
+        if (probe.schemaVersion !== 1) {
+          throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
+        }
+        const workloadName = nonEmptyString(probe.workload, `${label}.workload`);
+        if (!workloadNames.has(workloadName)) {
+          throw new Error(`${label} references unknown Workload '${workloadName}'`);
+        }
+        record(probe.access, `${label}.access`);
+        if (typeof probe.probe !== "function") {
+          throw new Error(`${label}.probe must be a function`);
+        }
+        const observation = record(probe.observation, `${label}.observation`);
+        nonEmptyString(observation.kind, `${label}.observation.kind`);
+        positiveInteger(observation.schemaVersion, `${label}.observation.schemaVersion`);
+      } else {
+        throw new Error(`${label} uses unsupported kind '${String(probe.kind)}'`);
+      }
+    }
+  }
+  if (contributions.inspect !== undefined) {
+    const inspect = record(contributions.inspect, `${service.name}.contributions.inspect`);
+    uniqueNonEmptyStrings(inspect.accepts, `${service.name}.contributions.inspect.accepts`);
+    uniqueNonEmptyStrings(inspect.provides, `${service.name}.contributions.inspect.provides`);
     if (inspect.expands !== undefined) {
-      uniqueNonEmptyStrings(inspect.expands, `${service.name}.inspect.expands`);
+      uniqueNonEmptyStrings(inspect.expands, `${service.name}.contributions.inspect.expands`);
     }
     if (typeof inspect.resolveTarget !== "function") {
-      throw new Error(`${service.name}.inspect.resolveTarget must be a function`);
+      throw new Error(`${service.name}.contributions.inspect.resolveTarget must be a function`);
     }
-    if (typeof inspect.query !== "function") {
-      throw new Error(`${service.name}.inspect.query must be a function`);
-    }
-    if (typeof inspect.detect !== "function") {
-      throw new Error(`${service.name}.inspect.detect must be a function`);
+    if (typeof inspect.inspect !== "function") {
+      throw new Error(`${service.name}.contributions.inspect.inspect must be a function`);
     }
   }
-  if (capabilities.workload !== undefined) {
-    const workload = record(capabilities.workload, `${service.name}.workload`);
-    for (const [probeId, probe] of uniqueIdRecords(workload.probes, `${service.name}.workload.probes`)) {
-      const workloadName = nonEmptyString(probe.workload, `${service.name}.workload.probes.${probeId}.workload`);
-      if (!workloadNames.has(workloadName)) {
-        throw new Error(`${service.name}.workload probe '${probeId}' references unknown Workload '${workloadName}'`);
-      }
-      if (typeof probe.observe !== "function") {
-        throw new Error(`${service.name}.workload.probes.${probeId}.observe must be a function`);
-      }
-      if (probe.detect !== undefined && typeof probe.detect !== "function") {
-        throw new Error(`${service.name}.workload.probes.${probeId}.detect must be a function`);
-      }
-    }
-  }
+  const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case", "metric"] as const) {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);

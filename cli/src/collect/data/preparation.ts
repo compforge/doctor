@@ -15,7 +15,7 @@ export function isSupportedDataService(
   service: string,
   catalog: ServiceCatalog,
 ): service is SupportedDataService {
-  return catalog.findWith(service, "inspect") !== undefined;
+  return catalog.findWithContribution(service, "inspect") !== undefined;
 }
 
 export interface ConfirmedDataServiceTarget {
@@ -43,13 +43,13 @@ export async function prepareDataAccess(
   const managedContexts: ManagedPluginContext[] = [];
 
   for (const selection of selections) {
-    const declared = catalog.findWith(selection.service, "inspect");
+    const declared = catalog.findWithContribution(selection.service, "inspect");
     if (!declared) {
       confirmed.push({
         ...selection,
         targetFact: {
           status: "unavailable",
-          reason: `Doctor 未注册 Service '${selection.service}' 的 Inspect Capability`,
+          reason: `Doctor 未注册 Service '${selection.service}' 的 Inspect contribution`,
         },
       });
       continue;
@@ -63,14 +63,14 @@ export async function prepareDataAccess(
         databaseIdentity: config.fallbackIdentity,
         service: { name: selection.service },
         command: "doctor data",
-        capability: declared.capabilities.inspect,
+        capability: declared.contributions.inspect,
         authorization: resolveKubernetesCommandContext(executor, command).access,
       });
       context = managed;
     }
 
     try {
-      const target = await declared.capabilities.inspect.resolveTarget(context);
+      const target = await declared.contributions.inspect.resolveTarget(context);
       if (managed) managedContexts.push(managed);
       confirmed.push({
         ...selection,

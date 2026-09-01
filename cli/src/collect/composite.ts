@@ -185,7 +185,10 @@ export async function runCollectDelegates(
 }
 
 function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string {
-  return plugin.services.servicesWith(capability).map((service) => service.name).join(",");
+  const services = capability === "inspect"
+    ? plugin.services.servicesWithContribution("inspect")
+    : plugin.services.servicesWith(capability);
+  return services.map((service) => service.name).join(",");
 }
 
 /** biz-id 不能推导 Service 范围；组合执行时显式采用 Plugin 声明的完整业务 Service 边界。 */

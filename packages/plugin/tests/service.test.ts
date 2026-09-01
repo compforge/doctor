@@ -57,3 +57,47 @@ test("Service Catalog 拒绝同一 Service 内重复 Workload 身份", () => {
     capabilities: {},
   }])).toThrow("重复 Workload 名称");
 });
+
+test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", () => {
+  const service: ServiceDefinition = {
+    name: "api",
+    workloads: [],
+    contributions: {
+      inspect: {
+        access: {},
+        accepts: ["biz_id"],
+        provides: ["record"],
+        resolveTarget: async () => ({
+          endpoint: "http://api",
+          database: "api",
+          username: "reader",
+          credentialSource: "test",
+        }),
+        inspect: async (_context, query) => ({
+          resolution: {
+            inputId: query.identity.value,
+            resolvedAs: query.identity.kind,
+            identifiers: {},
+          },
+          facts: [],
+        }),
+      },
+      probes: [{
+        id: "apparmor",
+        kind: "kubernetes.apparmor-unconfined-admission",
+        schemaVersion: 1,
+        subject: "workload-service-account",
+      }],
+      detectors: [{ id: "health", detect: () => [] }],
+    },
+    capabilities: {},
+  };
+  const catalog = createServiceCatalog([service]);
+
+  expect(catalog.findWithContribution("api", "inspect")?.contributions.inspect.provides)
+    .toEqual(["record"]);
+  expect(catalog.findWithContribution("api", "probes")?.contributions.probes[0]?.id)
+    .toBe("apparmor");
+  expect(catalog.servicesWithContribution("detectors").map(({ name }) => name))
+    .toEqual(["api"]);
+});

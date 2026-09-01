@@ -40,12 +40,12 @@ test("collect capability contract is the union of selected concrete commands", (
       "service.tenantDirectory",
       "plugin.model",
       "service.modelCatalog",
-      "service.inspect",
+      "contribution.inspect",
       "service.traceId",
       "service.log",
     ]);
   expect(contract.needs.find((need) => (
-    need.capability.scope === "service" && need.capability.name === "inspect"
+    need.capability.scope === "contribution" && need.capability.name === "inspect"
   ))?.requirement).toBe("required");
 });
 

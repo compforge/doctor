@@ -12,10 +12,12 @@ function modelFacts(models: readonly ReturnType<typeof modelSnapshot>[]): Fact[]
   return [{
     factType: "value",
     kind: "model-summary",
+    schemaVersion: 1,
     value: { count: models.length },
   }, ...models.map((model) => ({
     factType: "record" as const,
     kind: "model",
+    schemaVersion: 1,
     recordKey: model.id,
     record: model,
   }))];

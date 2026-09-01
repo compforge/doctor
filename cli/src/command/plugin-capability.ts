@@ -2,13 +2,15 @@ import type {
   PluginLevelCapabilityName,
   PluginDefinition,
   ServiceCapabilityName,
+  ServiceContributionName,
 } from "@compforge/doctor-plugin";
 
 export type PluginCapabilityRequirement = "required" | "preferred";
 
 export type PluginCapabilityReference =
   | { scope: "plugin"; name: PluginLevelCapabilityName }
-  | { scope: "service"; name: ServiceCapabilityName };
+  | { scope: "service"; name: ServiceCapabilityName }
+  | { scope: "contribution"; name: ServiceContributionName };
 
 export interface PluginCapabilityNeed {
   capability: PluginCapabilityReference;
@@ -47,6 +49,9 @@ function capabilityProviders(
   if (!plugin) return [];
   if (capability.scope === "plugin") {
     return plugin[capability.name] === undefined ? [] : [plugin.id];
+  }
+  if (capability.scope === "contribution") {
+    return plugin.services.servicesWithContribution(capability.name).map((service) => service.name);
   }
   return plugin.services.servicesWith(capability.name).map((service) => service.name);
 }

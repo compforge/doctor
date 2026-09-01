@@ -1,6 +1,8 @@
 import type {
   ServiceCapabilityName,
   ServiceCapabilities,
+  ServiceContributionName,
+  ServiceContributions,
   ServiceDefinition,
 } from "./service";
 
@@ -9,6 +11,13 @@ export type ServiceWithCapability<
   K extends ServiceCapabilityName,
 > = T & {
   capabilities: T["capabilities"] & Required<Pick<ServiceCapabilities, K>>;
+};
+
+export type ServiceWithContribution<
+  T extends ServiceDefinition,
+  K extends ServiceContributionName,
+> = T & {
+  contributions: ServiceContributions & Required<Pick<ServiceContributions, K>>;
 };
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
@@ -44,6 +53,25 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
     return this.services.filter(
       (service): service is ServiceWithCapability<T, K> =>
         service.capabilities[capability] !== undefined,
+    );
+  }
+
+  findWithContribution<K extends ServiceContributionName>(
+    name: string,
+    contribution: K,
+  ): ServiceWithContribution<T, K> | undefined {
+    const service = this.find(name);
+    return service?.contributions?.[contribution] !== undefined
+      ? service as ServiceWithContribution<T, K>
+      : undefined;
+  }
+
+  servicesWithContribution<K extends ServiceContributionName>(
+    contribution: K,
+  ): ServiceWithContribution<T, K>[] {
+    return this.services.filter(
+      (service): service is ServiceWithContribution<T, K> =>
+        service.contributions?.[contribution] !== undefined,
     );
   }
 }

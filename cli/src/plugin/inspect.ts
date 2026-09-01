@@ -3,7 +3,7 @@ import type {
   Identity,
   RelationFact,
   ServiceInspectBudget,
-  ServiceInspectCapability,
+  ServiceInspect,
   ServiceInspectResult,
 } from "@compforge/doctor-plugin";
 
@@ -37,7 +37,7 @@ function validateRelation(input: {
   fact: Record<string, unknown>;
   label: string;
   queryIdentity: Identity;
-  capability: ServiceInspectCapability;
+  capability: ServiceInspect;
 }): RelationFact {
   const { fact, label, queryIdentity, capability } = input;
   const from = identity(fact.from, `${label}.from`);
@@ -58,7 +58,7 @@ function validateFact(input: {
   index: number;
   service: string;
   queryIdentity: Identity;
-  capability: ServiceInspectCapability;
+  capability: ServiceInspect;
   valueKinds: Set<string>;
   recordKeys: Set<string>;
   relationKeys: Set<string>;
@@ -67,6 +67,9 @@ function validateFact(input: {
   const label = `${service} inspect result.facts[${index}]`;
   const fact = record(item, label);
   const kind = nonEmptyString(fact.kind, `${label}.kind`);
+  if (!Number.isInteger(fact.schemaVersion) || Number(fact.schemaVersion) < 1) {
+    throw new Error(`${label}.schemaVersion must be a positive integer`);
+  }
   const factType = nonEmptyString(fact.factType, `${label}.factType`);
 
   if (factType === "relation") {
@@ -140,7 +143,7 @@ export function normalizeServiceInspectResult(input: {
   value: unknown;
   service: string;
   queryIdentity: Identity;
-  capability: ServiceInspectCapability;
+  capability: ServiceInspect;
   budget: ServiceInspectBudget;
 }): ServiceInspectResult {
   const { service, queryIdentity, capability, budget } = input;

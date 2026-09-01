@@ -10,7 +10,7 @@ Service Catalog 的 `stores` 描述“这个 Service 可能提供哪些 Store �
 环境变量；它不代表当前部署已启用该能力。只有运行时 endpoint、目标名和凭据等必需值完整时才连接
 Store。配置缺失或空值表示当前未启用，Evidence 记录为 `unavailable`，不会被误判为凭据错误或健康故障。
 
-`doctor data` 负责按业务 ID 汇集数据；其 Service Inspect Capability 引用同一份 DB Store capability，
+`doctor data` 负责按业务 ID 汇集数据；其 Service Inspect contribution 引用同一份 DB Store capability，
 避免业务数据查询与设施诊断各自维护环境变量前缀。
 
 Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力窗口与 keyStats 探测链。S3 对象画像只

@@ -2,13 +2,21 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import {
+  createServiceCatalog,
+  type PluginDefinition,
+  type ServiceEvidenceFact,
+} from "@compforge/doctor-plugin";
 import { examplePlugin } from "../../plugins/example/src";
 import {
+  makeInspectDetectors,
+  projectInspectServiceFacts,
   resolveInspectDeploymentSelection,
   resolveInspectDependencySelection,
   runCollectInspect,
   type InspectConfig,
+  type InspectEvidence,
+  type InspectFacts,
 } from "../src/collect/inspect";
 import type { ExecResult, Executor } from "../src/infra/k8s/executor";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
@@ -39,6 +47,149 @@ async function runInspectWithDelivery(
   expect(await deliverCommandArtifacts(context, opts, code, "doctor inspect")).toBe(true);
   return code;
 }
+
+function detectorEvidence(): InspectEvidence {
+  return {
+    facts: {
+      serviceTargets: { status: "unavailable", reason: "not needed by detector test" },
+      deploymentConfiguration: { status: "unavailable", reason: "not requested" },
+      dependencyTargets: { status: "unavailable", reason: "not requested" },
+    },
+    rows: [],
+    observations: [{
+      id: "environment-probe-sandbox-server-apparmor-sandbox",
+      kind: "kubernetes-apparmor-unconfined-admission",
+      service: "sandbox-server",
+      probe: "apparmor-unconfined",
+      namespace: "demo",
+      serviceAccountName: "sandbox-server",
+      status: "allowed",
+    }, {
+      id: "plugin-workload-bedbox-main-health-bedbox-0",
+      kind: "plugin-workload",
+      observationKind: "hostel-health",
+      observationSchemaVersion: 1,
+      service: "bedbox",
+      workload: "main",
+      namespace: "demo",
+      pod: "bedbox-0",
+      probe: "health",
+      value: { suite: false },
+    }],
+  };
+}
+
+test("Service Evidence detector 可关联跨 Service Observation", () => {
+  const catalog = createServiceCatalog([{
+    name: "sandbox-server",
+    workloads: [],
+    capabilities: {},
+  }, {
+    name: "bedbox",
+    workloads: [],
+    contributions: {
+      detectors: [{
+        id: "suite-isolation",
+        detect: (evidence) => {
+        const appArmor = evidence.observations.find((item) => (
+          item.services.includes("sandbox-server")
+          && item.kind === "kubernetes-apparmor-unconfined-admission"
+        ));
+        const health = evidence.observations.find((item) => (
+          item.services.includes("bedbox")
+          && item.kind === "plugin/agentsphere/bedbox/hostel-health"
+          && item.schemaVersion === 1
+        ));
+        return appArmor && health ? [{
+          id: "suite-disabled",
+          kind: "suite-disabled",
+          schemaVersion: 1,
+          severity: "warning",
+          confidence: "high",
+          message: "AppArmor admission 已放开，但 Bedbox 尚未启用 suite isolation",
+          evidence: [
+            { observationId: appArmor.id, role: "context" },
+            { observationId: health.id, role: "supporting" },
+          ],
+        }] : [];
+        },
+      }],
+    },
+    capabilities: {},
+  }]);
+
+  const findings = makeInspectDetectors("agentsphere", catalog, ["sandbox-server", "bedbox"])
+    .flatMap((detector) => detector(detectorEvidence()));
+
+  expect(findings).toEqual([expect.objectContaining({
+    id: "service-detector:bedbox:suite-isolation:suite-disabled",
+    service: "bedbox",
+    detector: "suite-isolation",
+    kind: "plugin/agentsphere/bedbox/suite-disabled",
+    schemaVersion: 1,
+    producer: {
+      origin: "plugin",
+      plugin: "agentsphere",
+      service: "bedbox",
+      id: "suite-isolation",
+    },
+    evidence: [
+      { observationId: "environment-probe-sandbox-server-apparmor-sandbox", role: "context" },
+      { observationId: "plugin-workload-bedbox-main-health-bedbox-0", role: "supporting" },
+    ],
+  })]);
+});
+
+test("Service Evidence detector 不能引用本次 Evidence 之外的对象", () => {
+  const catalog = createServiceCatalog([{
+    name: "bedbox",
+    workloads: [],
+    contributions: {
+      detectors: [{
+        id: "invalid-reference",
+        detect: () => [{
+        id: "invalid",
+        kind: "invalid",
+        schemaVersion: 1,
+        severity: "critical",
+        confidence: "high",
+        message: "invalid evidence reference",
+        evidence: [{ observationId: "missing", role: "supporting" }],
+        }],
+      }],
+    },
+    capabilities: {},
+  }]);
+
+  expect(() => makeInspectDetectors("agentsphere", catalog, ["bedbox"])[0]!(detectorEvidence()))
+    .toThrow("references unknown Observation 'missing'");
+});
+
+test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => {
+  const facts: InspectFacts = {
+    serviceTargets: {
+      status: "collected",
+      services: Object.fromEntries(["api", "worker"].map((service) => [service, {
+        service,
+        configurationSupported: false,
+        workloads: {},
+      }])),
+    },
+    deploymentConfiguration: { status: "unavailable", reason: "not requested" },
+    dependencyTargets: { status: "unavailable", reason: "not requested" },
+  };
+
+  const projected = projectInspectServiceFacts(facts, ["api", "worker"]);
+
+  expect(projected.filter((fact) => fact.kind === "service-target").map((fact) => fact.services))
+    .toEqual([["api"], ["worker"]]);
+  expect(projected).toContainEqual(expect.objectContaining({
+    kind: "service-targets",
+    schemaVersion: 1,
+    services: ["api", "worker"],
+    producer: { origin: "core", id: "service-targets" },
+  }));
+});
 
 test("terminated state 只投影 Inspect Fact 声明的字段", () => {
   const state = inspectContainerStateFact({
@@ -88,18 +239,30 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
 });
 
 test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage", async () => {
+  let workloadProbeFacts: readonly ServiceEvidenceFact[] | undefined;
   const pluginWithEnvironmentProbes = {
     ...examplePlugin,
     services: createServiceCatalog(examplePlugin.services.services.map((service) => (
       service.name === "example-api"
         ? {
             ...service,
-            capabilities: {
-              ...service.capabilities,
-              environmentProbes: [{
+            contributions: {
+              probes: [{
                 id: "apparmor-unconfined",
                 kind: "kubernetes.apparmor-unconfined-admission",
+                schemaVersion: 1,
                 subject: "workload-service-account",
+              }, {
+                id: "core-facts",
+                kind: "workload",
+                schemaVersion: 1,
+                access: {},
+                workload: "main",
+                observation: { kind: "core-facts-visible", schemaVersion: 1 },
+                probe: async (_context, input) => {
+                  workloadProbeFacts = input.facts;
+                  return { value: { pod: input.instance.pod } };
+                },
               }],
             },
           }
@@ -213,6 +376,21 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(complete).toContain("| example-api | demo | example-api | allowed | — |");
     expect(complete).toContain("environment-config：sufficient");
     expect(complete).toContain("workload-runtime：sufficient");
+    expect(workloadProbeFacts).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: "service-target",
+        schemaVersion: 1,
+        services: ["example-api"],
+        producer: { origin: "core", id: "service-targets" },
+      }),
+      expect.objectContaining({
+        kind: "deployment-configuration",
+        schemaVersion: 1,
+      }),
+    ]));
+    expect(Object.isFrozen(workloadProbeFacts)).toBe(true);
+    expect(workloadProbeFacts?.every((fact) => Object.isFrozen(fact))).toBe(true);
+    expect(Object.isFrozen(workloadProbeFacts?.find((fact) => fact.kind === "service-target")?.value)).toBe(true);
 
     const defaultOutput = join(dir, "default.tar.gz");
     expect(await runInspectWithDelivery({
