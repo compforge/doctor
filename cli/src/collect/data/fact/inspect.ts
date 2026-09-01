@@ -1,11 +1,11 @@
 import type { Inspect } from "../../inspection";
 import type { DataAccessPreparation } from "../preparation";
 import type { DataCommandContext } from "../context";
-import type { DataInspectionFacts, DataServiceFacts } from "../model";
+import type { DataFacts, DataServiceFacts } from "../model";
 
 export function makeDataInspect(
   prepared: DataAccessPreparation,
-): Inspect<DataInspectionFacts, DataCommandContext> {
+): Inspect<DataFacts, DataCommandContext> {
   return {
     id: "data-service-targets",
     run: async (ctx) => {

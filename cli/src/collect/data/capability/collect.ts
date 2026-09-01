@@ -8,10 +8,12 @@ import type {
   ServiceWithContribution,
 } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../../../plugin/inspect";
+import type { Inspect } from "../../inspection";
 import type { DataCommandContext } from "../context";
 import type {
   CollectedDataInspectResult,
   DataConfig,
+  DataFacts,
   DataInspectionFacts,
   DataInspectResult,
   DataServiceSelection,
@@ -250,8 +252,8 @@ async function collectExpansionResults(input: {
 }
 
 /**
- * Run selected Service capabilities and retain query-level results whose Facts may feed later Probes.
- * Command owns traversal and budgets; capability implementations only answer one Query at a time.
+ * Run selected Service Inspect contributions and retain query-level results that may feed later Probes.
+ * Command owns traversal and budgets; contribution implementations only answer one Query at a time.
  */
 export async function collectDataInspectResults(input: {
   selections: readonly DataServiceSelection[];
@@ -308,4 +310,27 @@ export async function collectDataInspectResults(input: {
   }
 
   return collected;
+}
+
+/** Adapt the selected Plugin Service Inspect contributions into Core's Inspect phase. */
+export function makeDataContributionInspect(input: {
+  selections: readonly DataServiceSelection[];
+  catalog: ServiceCatalog;
+  config: DataConfig;
+}): Inspect<DataFacts, DataCommandContext> {
+  return {
+    id: "data-service-contributions",
+    dependsOn: ["data-service-targets"],
+    run: async (ctx, facts) => {
+      if (!facts.services) {
+        throw new Error("data-service-contributions requires data-service-targets Facts");
+      }
+      const capabilityResults = await collectDataInspectResults({
+        ...input,
+        inspectionFacts: { services: facts.services },
+        ctx,
+      });
+      return { capabilityResults };
+    },
+  };
 }

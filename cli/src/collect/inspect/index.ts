@@ -6,11 +6,10 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
@@ -203,24 +202,28 @@ export async function runCollectInspect(
   };
 
   try {
-    facts = await runInspects(
-      [makeServiceTargetsInspect(config, plugin.services)],
+    const execution = await runCollect({
       ctx,
-      log,
-    ) as InspectFacts;
-    const probeFacts = immutableServiceProbeFacts(
-      projectInspectServiceFacts(facts, config.services),
-    );
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
       config,
-      probes: makeInspectProbes(facts, config, plugin.services, probeFacts),
+      inspects: [makeServiceTargetsInspect(config, plugin.services)],
+      planProbes: (collectedFacts) => {
+        const probeFacts = immutableServiceProbeFacts(
+          projectInspectServiceFacts(collectedFacts, config.services),
+        );
+        return makeInspectProbes(
+          collectedFacts,
+          config,
+          plugin.services,
+          probeFacts,
+        );
+      },
       log,
       buildEvidence: buildInspectEvidence,
       detectors: makeInspectDetectors(plugin.id, plugin.services, config.services),
       buildCoverage: buildInspectCoverage,
     });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
   } catch (error) {
     reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);

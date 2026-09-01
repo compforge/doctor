@@ -61,12 +61,12 @@ Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇；Plugin Servi
 可重复 `RecordFact`，以及表示现场已确认 Identity 关系的 `RelationFact`。Fact 在本次诊断过程中足够稳定，
 可作为后续 Probe 输入；Observation 只代表具体探测时间点或时间窗口。Record 内部结构仍由 Plugin 拥有，
 列表型业务数据因此可以逐条进入 Evidence，由 Command 统一分页、检索和展示。
-Capability 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
+Inspect contribution 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
 查询边界以及如何组织 Evidence 始终由 Core Command 拥有。resolution 的展示 identifier 不能参与 Query 调度。
 
 Service Probe 遵循 `Input → Probe → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
 runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
-拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe Capability；主动
+拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe contribution；主动
 inference、Case 和运行时取证因此返回 Observation 或临时 handle，不伪装成 Fact。
 Core 必须等本轮 Inspect 收敛后再进入 Probe。当前 `ServiceProbeInput.facts` 注入本轮全部已公开 Fact，
 不按 Service、producer 或 kind 过滤；Service Probe 因而可以通过 `kind + schemaVersion + producer` 读取
@@ -124,7 +124,7 @@ Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
 信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射
 公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。
 
-Case Capability 是 Service 的 Probe Capability，提供稳定请求资产与单次执行协议。它暴露一个或多个 CaseSet，以及并发安全的
+Case Capability 为 Probe contribution 提供稳定请求资产与单次执行协议。它暴露一个或多个 CaseSet，以及并发安全的
 单次 Case runner；Case 与 CaseSet 的 canonical schema、校验和类型均归 spec-case，Doctor Plugin SDK
 直接引用该资产模型，不复制子集或维护第二套 schema。环境地址、身份和凭据由 runner 从 Plugin context
 取得，不写入 Case。`doctor eval` 顺序调用 runner 的 `run` 并采集每次 Observation 的关联证据；`doctor perf`

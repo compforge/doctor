@@ -6,10 +6,9 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
@@ -20,14 +19,13 @@ import {
   resolveDataServiceSelection,
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
-import { collectDataInspectResults } from "./capability/collect";
+import { makeDataContributionInspect } from "./capability/collect";
 import { prepareDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   CollectDataCliOpts,
   DataDiagnosis,
   DataFacts,
-  DataInspectionFacts,
 } from "./model";
 import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
 import { buildDataHtml, buildDataSummary } from "./render";
@@ -170,29 +168,21 @@ async function runCollectDataSingle(
       access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),
     );
     const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
-    const inspectionFacts: Readonly<DataInspectionFacts> = await runInspects(
-      [makeDataInspect(access)],
+    const execution = await runCollect({
       ctx,
-      log,
-    );
-    const capabilityResults = await collectDataInspectResults({
-      selections,
-      catalog: plugin.services,
-      inspectionFacts,
       config,
-      ctx,
-    });
-    facts = { ...inspectionFacts, capabilityResults };
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
-      config,
-      probes: [],
+      inspects: [
+        makeDataInspect(access),
+        makeDataContributionInspect({ selections, catalog: plugin.services, config }),
+      ],
+      planProbes: () => [],
       log,
       buildEvidence: buildDataEvidence,
       detectors: makeDataDetectors(plugin.id, plugin.services, selections.map((selection) => selection.service)),
       buildCoverage: buildDataCoverage,
     });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
   } catch (error) {
     reportError(error, { context: "doctor data/diagnosis", summary: "Data 诊断失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);

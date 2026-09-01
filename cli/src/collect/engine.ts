@@ -8,7 +8,41 @@ import type {
   ObservationMeta,
   Probe,
 } from "./protocol";
+import type { Inspect } from "./inspection";
+import { runInspects } from "./inspect-engine";
 import { runProbes } from "./probe-engine";
+
+export interface CollectEngineInput<
+  Observation extends ObservationMeta,
+  Facts extends object,
+  DomainEvidence extends Evidence<Observation, Facts>,
+  DomainFinding extends FindingMeta<string>,
+  Goal extends string,
+  Config,
+  Ctx = void,
+> {
+  ctx: Ctx;
+  config: Config;
+  inspects: readonly Inspect<Facts, Ctx>[];
+  /** Probe planning starts only after every Inspect has completed and Facts are deeply frozen. */
+  planProbes: (
+    facts: Readonly<Facts>,
+  ) => readonly Probe<Observation, Facts, Config, Ctx>[];
+  log: (line: string) => void;
+  buildEvidence: EvidenceBuilder<Observation, Facts, DomainEvidence>;
+  detectors: readonly Detector<DomainEvidence, DomainFinding>[];
+  buildCoverage: CoverageBuilder<DomainEvidence, Goal>;
+}
+
+export interface CollectEngineResult<
+  Facts extends object,
+  DomainEvidence extends Evidence<ObservationMeta, Facts>,
+  DomainFinding extends FindingMeta<string>,
+  Goal extends string,
+> {
+  facts: Readonly<Facts>;
+  diagnosis: Diagnosis<DomainEvidence, DomainFinding, Goal>;
+}
 
 export interface DiagnosisEngineInput<
   Observation extends ObservationMeta,
@@ -67,4 +101,51 @@ export async function runDiagnosis<
   const findings = detectors.flatMap((detector) => detector(evidence));
   const coverage = buildCoverage(evidence);
   return { evidence, findings, coverage };
+}
+
+/**
+ * Core-owned Collect Execute pipeline.
+ *
+ * @spec runCollect completes and freezes all Inspect Facts before planning or running any Probe
+ * @rule Core alone advances Inspect → Probe → Detector; contributions provide work but never drive phases
+ * @see {@link ../../docs/kernel.md}
+ */
+export async function runCollect<
+  Observation extends ObservationMeta,
+  Facts extends object,
+  DomainEvidence extends Evidence<Observation, Facts>,
+  DomainFinding extends FindingMeta<string>,
+  Goal extends string,
+  Config,
+  Ctx = void,
+>({
+  ctx,
+  config,
+  inspects,
+  planProbes,
+  log,
+  buildEvidence,
+  detectors,
+  buildCoverage,
+}: CollectEngineInput<
+  Observation,
+  Facts,
+  DomainEvidence,
+  DomainFinding,
+  Goal,
+  Config,
+  Ctx
+>): Promise<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>> {
+  const facts = await runInspects(inspects, ctx, log);
+  const diagnosis = await runDiagnosis({
+    ctx,
+    facts: facts as Facts,
+    config,
+    probes: planProbes(facts),
+    log,
+    buildEvidence,
+    detectors,
+    buildCoverage,
+  });
+  return { facts, diagnosis };
 }

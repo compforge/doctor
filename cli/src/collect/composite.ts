@@ -280,7 +280,7 @@ function collectDelegate(
  * Collection command owns selection and delegation only; global finalize owns delivery.
  * Inspect, Tenant, Data, Trace, Log and Metric remain the sole owners of concrete collection work.
  */
-export async function runCollect(
+export async function runCollectCommand(
   opts: CollectCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,

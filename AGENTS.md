@@ -5,8 +5,9 @@
 Doctor 是以本地 `doctor` CLI 为中心的开源业务诊断工具。在产品心智上，它是面向业务的增强版
 `kubectl`：`kubectl` 以 Kubernetes Resource/Object 为操作对象，Doctor 以业务 Service 为基本诊断
 粒度；Service 显式拥有零到多个 Workload，Pod、Container 与 Process 是 Workload 的运行实例和证据来源。
-业务 Service 与 Kubernetes Service 是不同概念，后者只是一种 Workload discovery。Service 通过 capability 声明
-可提供的诊断数据或动作，以及运行该能力所需的目标数据和 access。CLI 负责确定性采集、证据编排、
+业务 Service 与 Kubernetes Service 是不同概念，后者只是一种 Workload discovery。Service 通过
+Inspect/Probe/Detector contribution 声明确定性诊断工作，通过 capability 声明可复用业务能力，以及运行
+它们所需的目标数据和 access。CLI 负责确定性采集、证据编排、
 报告交付和本地 agent 问答。业务知识和私有 Service 访问规则不进入本仓，通过 Plugin 协议由使用方
 独立实现和分发。
 
@@ -16,7 +17,8 @@ Doctor 是以本地 `doctor` CLI 为中心的开源业务诊断工具。在产�
 ## 诊断能力模型
 
 Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Trace、Metric、Log 三类可观测性信号，再
-观察 CPU、内存、网络等运行时状态；业务侧通过 capability 补充 data、config、store 等领域事实，
+观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
+通过 capability 提供 store、model、case 等可复用能力，
 必要时以受控 HTTP 或协议调用主动复现问题。Eval 按 canonical CaseSet 逐例触发请求并采集关联证据，
 但不在 Doctor 内评价回答质量；只在压力下出现的问题归 Perf 施压与同窗口信号关联。Model、MCP 等
 业务特有领域仍复用同一套 Service 与 capability 模型。
@@ -33,18 +35,19 @@ Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Ski
 | `toolkit/` | 独立版本的诊断工具、debug image 与离线系统包；按执行位置的 OS/arch 分发 |
 | `server/` | 可选 Doctor server 的宿主边界 |
 | `packages/agent/` | `@compforge/doctor-agent`：供 CLI 与 server 宿主共用的 agent loop、Skill 输入和 AgentUE 输出 |
-| `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog 与 capability 公共协议 |
+| `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog、contribution 与 capability 公共协议 |
 | `plugins/example/` | 只演示协议接入的业务中立 Plugin |
 
 更细的 CLI 分层与诊断领域索引见 `cli/AGENTS.md`。
 
 ## 关键约定
 
-1. **Core/Plugin 以 capability 为中心**：capability 是 Core 发现和消费 Plugin 能力的入口；access、
-   类型化 data、Target-scoped infra 与 profile config 只支撑 capability 的准备和调用，不形成平行的
-   扩展生命周期。私有业务实现不进入 CLI/SDK。
+1. **Core/Plugin 共用一条 Collect 流程**：Core 通过 Service contribution 统一驱动
+   Inspect → Probe → Detector，通过 capability 复用 Store、Model、Case 等业务能力；access、类型化 data、
+   Target-scoped infra 与 profile config 只支撑 contribution/capability 的准备和调用，不形成平行生命周期。
+   私有业务实现不进入 CLI/SDK。
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
-   capability 是业务能力和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
+   是 contribution、capability 和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
 3. **确定性诊断以 Evidence 为结果**：Fact 表示本次诊断内足够稳定、可供后续 Probe 复用的信息，
    Observation 只表示某个探测时间点或时间窗口取得的信息；这种稳定性是相对生命周期，不是永恒真理。
