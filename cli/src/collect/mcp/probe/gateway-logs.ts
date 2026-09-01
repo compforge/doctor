@@ -13,7 +13,7 @@ import type {
 export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, McpCommandContext> = {
   id: "gateway-logs",
   dependsOn: ["mcp-call", "http-call"],
-  evaluate: (facts) => facts.gatewayPods.length
+  evaluate: (facts) => facts.configuration.gatewayPods.length
     ? { runnable: true }
     : probeUnavailable("没有运行中的 MCP Service Pod"),
   onUnavailable: (ctx, reason) => {
@@ -23,10 +23,10 @@ export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfi
     terminalStdout.write("[mcp] 收集本次窗口 MCP Service 日志…\n");
     const logs = await collectGatewayLogs(
       ctx.podLogs,
-      facts.gatewayPods,
+      facts.configuration.gatewayPods,
       ctx.startedAt,
       ctx.traceId,
-      facts.target.tool.name,
+      facts.configuration.target.tool.name,
     );
     const logsFile = ctx.writeArtifact("mcp-service-logs.txt", logs.output);
     const matchedLines = logs.output.split(/\r?\n/)

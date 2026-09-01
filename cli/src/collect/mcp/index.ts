@@ -193,17 +193,17 @@ export async function runCollectMcp(
       doctorVersion: DOCTOR_CLI_VERSION,
       target: {
         namespace: collect.kubernetes.namespace,
-        tenant: facts?.target.server.tenant,
-        server: facts?.target.server.name,
-        tool: facts?.target.tool.name,
+        tenant: facts?.configuration.target.server.tenant,
+        server: facts?.configuration.target.server.name,
+        tool: facts?.configuration.target.tool.name,
         trace_id: trace.traceId,
       },
       inspectionFacts: facts
         ? {
-          configured_tools: facts.configuredTools,
-          runtime_tools: facts.runtimeTools,
-          runtime_tools_error: facts.runtimeToolsError,
-          gateway_pods: facts.gatewayPods,
+          configured_tools: facts.configuration.configuredTools,
+          runtime_tools: facts.configuration.runtimeTools,
+          runtime_tools_error: facts.configuration.runtimeToolsError,
+          gateway_pods: facts.configuration.gatewayPods,
         }
         : {},
       params: {
@@ -212,7 +212,7 @@ export async function runCollectMcp(
         config_source_kind: configSourceKind,
         timeout_seconds: timeoutMs / 1000,
         output_format: format,
-        argument_names: facts?.target.argumentNames ?? [],
+        argument_names: facts?.configuration.target.argumentNames ?? [],
       },
       startedAt,
       finishedAt: new Date().toISOString(),

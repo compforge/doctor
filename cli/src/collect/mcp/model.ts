@@ -1,4 +1,4 @@
-import type { Diagnosis, Evidence, ObservationMeta } from "../protocol";
+import type { CollectedFact, Diagnosis, Evidence, ObservationMeta } from "../protocol";
 import type { McpJsonRpcMessage } from "../../infra/mcp";
 import type { McpClient } from "../../infra/mcp";
 import type { Executor } from "../../infra/k8s/executor";
@@ -23,7 +23,7 @@ export interface HttpCapture {
   command: string[];
 }
 
-export interface McpFacts {
+export interface McpConfigurationFact {
   traceId: string;
   target: {
     server: McpServerDefinition;
@@ -36,6 +36,10 @@ export interface McpFacts {
   gatewayPods: readonly string[];
   httpPlan?: McpHttpRequestPlan;
   httpCurl?: string;
+}
+
+export interface McpFacts {
+  configuration: CollectedFact<McpConfigurationFact, "mcp.configuration">;
 }
 
 export interface McpDiagnosisConfig {

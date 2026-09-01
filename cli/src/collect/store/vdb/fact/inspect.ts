@@ -10,6 +10,7 @@ import {
 } from "../configuration";
 import type { VdbCommandContext } from "../context";
 import type { VdbConfigurationFact, VdbInspectionFacts } from "./model";
+import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
 
 function captureReason(ok: boolean, stderr: string, exitCode: number | null): string | undefined {
   return ok ? undefined : stderr.trim().split("\n")[0] || `exit=${exitCode}`;
@@ -38,18 +39,17 @@ export function makeVdbConfigurationInspect(
           durationMs: capture.durationMs,
         });
       }
-      const execution = {
-        status: "collected" as const,
+      const execution = collectedFact("store.vdb.execution", "vdb-configuration", {
         namespace: confirmed.connection?.source?.namespace ?? ctx.kube.namespace,
         pod: confirmed.connection?.source?.pod ?? ctx.execTarget?.pod,
         container: confirmed.connection?.source?.container ?? ctx.execTarget?.container,
-      };
+      });
       if (!confirmed.connection) {
         const reason = confirmed.reason ?? "Service 当前未提供有效 VDB 配置，VDB Store 未启用";
         ctx.bundle.fill("runtime-config", { status: "unavailable", reason });
         return {
           execution,
-          configuration: { status: "unavailable" as const, reason },
+          configuration: unavailableFact("store.vdb.configuration", "vdb-configuration", reason),
         };
       }
       ctx.connection = confirmed.connection;
@@ -74,7 +74,7 @@ export function makeVdbConfigurationInspect(
       });
       return {
         execution,
-        configuration: { status: "collected" as const, ...sanitized },
+        configuration: collectedFact("store.vdb.configuration", "vdb-configuration", sanitized),
       };
     },
   };
@@ -90,7 +90,7 @@ export function makeVdbAccessInspect(
       if (facts.configuration?.status !== "collected") {
         const reason = facts.configuration?.reason ?? "VDB 配置未确认";
         ctx.bundle.fill("access-preparation", { status: "unavailable", reason });
-        return { access: { status: "unavailable", reason } };
+        return { access: unavailableFact("store.vdb.access", "vdb-access", reason) };
       }
       if (ctx.connection?.type !== "opensearch") {
         const backend = ctx.connection?.type === "unsupported"
@@ -98,7 +98,7 @@ export function makeVdbAccessInspect(
           : facts.configuration.backend;
         const reason = `暂不支持 VDB backend '${backend}'；当前探针仅实现 opensearch`;
         ctx.bundle.fill("access-preparation", { status: "unavailable", reason });
-        return { access: { status: "unavailable", reason } };
+        return { access: unavailableFact("store.vdb.access", "vdb-access", reason) };
       }
       ctx.openSearchConnection = ctx.connection;
       const confirmation = await confirmOpenSearchConnection({
@@ -113,7 +113,7 @@ export function makeVdbAccessInspect(
           status: "failed",
           reason: confirmation.failure.reason,
         });
-        return { access: { status: "failed", reason: confirmation.failure.reason } };
+        return { access: failedFact("store.vdb.access", "vdb-access", confirmation.failure.reason) };
       }
       const directCredentials = confirmation.connection?.kind === "direct"
         && confirmation.connection.username
@@ -133,7 +133,7 @@ export function makeVdbAccessInspect(
       if (preparation.failure || !preparation.search || !preparation.channel) {
         const reason = preparation.failure?.reason ?? "OpenSearch 访问通道不完整";
         ctx.bundle.fill("access-preparation", { status: "failed", reason });
-        return { access: { status: "failed", reason } };
+        return { access: failedFact("store.vdb.access", "vdb-access", reason) };
       }
       ctx.search = preparation.search;
       ctx.channel = preparation.channel;
@@ -151,7 +151,7 @@ export function makeVdbAccessInspect(
         output: `${JSON.stringify(access, null, 2)}\n`,
         ext: "json",
       });
-      return { access: { status: "collected", ...access } };
+      return { access: collectedFact("store.vdb.access", "vdb-access", access) };
     },
   };
 }

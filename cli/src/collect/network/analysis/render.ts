@@ -104,7 +104,7 @@ function technicalTimeline(diagnosis: NetworkDiagnosis) {
 
 export function renderNetworkAnalysisMarkdown(document: NetworkAnalysisDocument): string {
   const { diagnosis } = document;
-  const facts = diagnosis.evidence.facts;
+  const facts = diagnosis.evidence.facts.bundle;
   const calls = businessCallRows(diagnosis);
   const artifacts = artifactRows(diagnosis);
   const timeline = technicalTimeline(diagnosis);
@@ -293,7 +293,7 @@ function coverageCards(diagnosis: NetworkDiagnosis): string {
 
 export function buildNetworkAnalysisHtml(document: NetworkAnalysisDocument): string {
   const { diagnosis } = document;
-  const facts = diagnosis.evidence.facts;
+  const facts = diagnosis.evidence.facts.bundle;
   const hops = networkHopObservations(diagnosis.evidence);
   const artifacts = artifactRows(diagnosis);
   const timeline = technicalTimeline(diagnosis);

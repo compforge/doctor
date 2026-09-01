@@ -62,6 +62,7 @@ import {
 import { writeStoreArtifacts } from "../src/collect/store/artifacts";
 import { writeTabbedStoreReport } from "../src/collect/store/tabs";
 import { writeHtmlReport } from "../src/collect/output/html";
+import { collectedFact, unavailableFact } from "../src/collect/protocol";
 
 const CORE_OBSERVATION_META = {
   schemaVersion: 1,
@@ -431,8 +432,8 @@ describe("MySQL basic diagnosis", () => {
     ]);
     expect(makeDbProbes().find((probe) => probe.id === "load")?.dependsOn).toEqual(["server-info"]);
     const facts: DbInspectionFacts = {
-      configuration: { status: "unavailable", reason: "not configured" },
-      access: { status: "unavailable", reason: "not configured" },
+      configuration: unavailableFact("store.db.configuration", "db-configuration", "not configured"),
+      access: unavailableFact("store.db.access", "db-access", "not configured"),
     };
     const evidence = { observations: [], facts };
     expect(buildDbCoverage(evidence).map((item) => [item.goal, item.status])).toEqual([
@@ -533,9 +534,9 @@ describe("Store capability runtime state", () => {
       "bucket-access", "provider-health", "bucket-usage", "drive-capacity", "object-inventory", "capacity",
     ]);
     const facts: S3InspectionFacts = {
-      configuration: { status: "unavailable", reason: "not configured" },
-      access: { status: "unavailable", reason: "not configured" },
-      provider: { status: "unavailable", reason: "not configured" },
+      configuration: unavailableFact("store.s3.configuration", "s3-configuration", "not configured"),
+      access: unavailableFact("store.s3.access", "s3-access", "not configured"),
+      provider: unavailableFact("store.s3.provider", "s3-provider", "not configured"),
     };
     const evidence = { observations: [], facts };
     expect(buildS3Coverage(evidence).map((item) => [item.goal, item.status])).toEqual([
@@ -574,9 +575,9 @@ describe("Store capability runtime state", () => {
 
   test("MinIO 任一 Drive 低于 free inode 写入阈值时识别 XMinioStorageFull", () => {
     const facts: S3InspectionFacts = {
-      configuration: { status: "unavailable", reason: "not needed" },
-      access: { status: "unavailable", reason: "not needed" },
-      provider: { status: "unavailable", reason: "not needed" },
+      configuration: unavailableFact("store.s3.configuration", "s3-configuration", "not needed"),
+      access: unavailableFact("store.s3.access", "s3-access", "not needed"),
+      provider: unavailableFact("store.s3.provider", "s3-provider", "not needed"),
     };
     const findings = detectS3Findings({
       facts,
@@ -1191,16 +1192,15 @@ describe("OpenSearch VDB probe", () => {
     };
 
     const facts: VdbInspectionFacts = {
-      execution: { status: "collected", namespace: "ns", pod: "kb-0" },
-      configuration: {
-        status: "collected",
+      execution: collectedFact("store.vdb.execution", "vdb-configuration", { namespace: "ns", pod: "kb-0" }),
+      configuration: collectedFact("store.vdb.configuration", "vdb-configuration", {
         type: "opensearch",
         backend: "opensearch",
         store: "opensearch",
         configSource: "container-runtime",
         configurationKind: "environment",
-      },
-      access: { status: "collected", backend: "opensearch", channel: "direct" },
+      }),
+      access: collectedFact("store.vdb.access", "vdb-access", { backend: "opensearch", channel: "direct" }),
     };
     const ctx = {
       command: new CommandContext({}),

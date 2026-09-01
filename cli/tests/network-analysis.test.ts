@@ -304,7 +304,7 @@ test("doctor neta 对守候模式 NetBundle 重建窗口内的可见 HTTP 请求
 
   expect(analyzed.analysis.config.mode).toBe("watch");
   expect(analyzed.analysis.diagnosis.evidence.facts).not.toHaveProperty("captureMode");
-  expect(analyzed.analysis.diagnosis.evidence.facts.identifiers).toEqual([]);
+  expect(analyzed.analysis.diagnosis.evidence.facts.bundle.identifiers).toEqual([]);
   expect(analyzed.analysis.summary.hopCount).toBe(1);
   expect(analyzed.analysis.diagnosis.coverage.find((item) => item.goal === "request-correlation")?.status)
     .toBe("sufficient");

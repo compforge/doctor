@@ -58,9 +58,9 @@ export interface ModelBackendFact {
 }
 
 export interface ModelInspectionFacts {
-  target: Fact<ModelTargetFact>;
+  target: Fact<ModelTargetFact, "model.target">;
   /** 只持久化 backend 身份；原始配置与 credentials 由 Plugin handle 持有。 */
-  backend: Fact<ModelBackendFact>;
+  backend: Fact<ModelBackendFact, "model.backend">;
 }
 
 export interface ModelDiagnosisConfig {

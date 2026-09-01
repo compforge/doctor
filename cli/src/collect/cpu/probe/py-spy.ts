@@ -51,9 +51,9 @@ export function makePySpyProbe(
     id: "py-spy",
     evaluate: (facts, config) => {
       if (config.mode === "observe") return probeUnavailable("mode=observe 不 attach 目标进程");
-      if (!facts.canExec) return probeUnavailable("无 pods/exec 权限");
-      if (!facts.hasPython) return probeUnavailable("目标容器没有 python3");
-      if (facts.pickedPid === undefined) return probeUnavailable("未定位到目标 Python 进程");
+      if (!facts.kubernetes?.podsExec) return probeUnavailable("无 pods/exec 权限");
+      if (!facts.container?.python3) return probeUnavailable("目标容器没有 python3");
+      if (facts.processScan?.pickedPid === undefined) return probeUnavailable("未定位到目标 Python 进程");
       if (facts.ptrace?.ptraceScope === 3) return probeUnavailable("kernel ptrace_scope=3 禁止 attach");
       if (config.mode === "overhead" && !facts.ptrace?.attachLikely) {
         return probeUnavailable(`${facts.ptrace?.reason ?? "未取得 ptrace Facts"}；可先执行 doctor debug，再使用 --mode disrupt`);
@@ -68,7 +68,7 @@ export function makePySpyProbe(
     },
     onUnavailable: (ctx, reason) => ctx.bundle.settle(reason, ["py-spy-dump"]),
     run: async (ctx, facts, config) => {
-      const pickedPid = facts.pickedPid!; // evaluate 已保证 pid 存在
+      const pickedPid = facts.processScan!.pickedPid!; // evaluate 已保证 pid 存在
       if (shouldRunResourcePreflight(facts, config.mode)) {
         const usage = facts.resourceUsage;
         if (usage) {

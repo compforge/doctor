@@ -6,6 +6,7 @@ import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { S3CommandContext } from "../context";
 import type { S3InspectionFacts } from "./model";
+import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
 
 function captureReason(capture: ExecResult): string | undefined {
   return capture.ok ? undefined : capture.stderr.trim().split("\n")[0] || `exit=${capture.exitCode}`;
@@ -39,7 +40,7 @@ export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3Comma
         const reason = runtime.reason
           ?? `Service '${ctx.config.service}' 当前未提供完整 S3 endpoint/bucket/credential，S3 Store 未启用`;
         ctx.bundle.fill("runtime-config", { status: "unavailable", reason });
-        return { configuration: { status: "unavailable", reason } };
+        return { configuration: unavailableFact("store.s3.configuration", "s3-configuration", reason) };
       }
       const originalEndpoint = new URL(configuredValue(runtime.environment, names.endpoint)!);
       originalEndpoint.username = "";
@@ -78,7 +79,7 @@ export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3Comma
         output: `${JSON.stringify({ status: "collected", ...configuration }, null, 2)}\n`,
         ext: "json",
       });
-      return { configuration: { status: "collected", ...configuration } };
+      return { configuration: collectedFact("store.s3.configuration", "s3-configuration", configuration) };
     },
   };
 }
@@ -93,7 +94,7 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
           ? "S3 endpoint 未解析"
           : facts.configuration?.reason ?? "S3 配置未确认";
         ctx.bundle.fill("access-preparation", { status: "unavailable", reason });
-        return { access: { status: "unavailable", reason } };
+        return { access: unavailableFact("store.s3.access", "s3-access", reason) };
       }
       try {
         const endpoint = ctx.originalEndpoint;
@@ -128,11 +129,11 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
           output: `${JSON.stringify(access, null, 2)}\n`,
           ext: "json",
         });
-        return { access: { status: "collected", ...access } };
+        return { access: collectedFact("store.s3.access", "s3-access", access) };
       } catch (error) {
         const reason = `准备 S3 访问通道失败：${error instanceof Error ? error.message : String(error)}`;
         ctx.bundle.fill("access-preparation", { status: "failed", reason });
-        return { access: { status: "failed", reason } };
+        return { access: failedFact("store.s3.access", "s3-access", reason) };
       }
     },
   };
@@ -148,7 +149,7 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
           ? facts.access.reason
           : "S3 访问通道未就绪";
         ctx.bundle.fill("provider-detection", { status: "unavailable", reason });
-        return { provider: { status: "unavailable", reason } };
+        return { provider: unavailableFact("store.s3.provider", "s3-provider", reason) };
       }
       const provider = await inspectS3Provider({
         endpoint: ctx.preparedEndpoint,
@@ -161,7 +162,7 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
         output: `${JSON.stringify(provider, null, 2)}\n`,
         ext: "json",
       });
-      return { provider: { status: "collected", ...provider } };
+      return { provider: collectedFact("store.s3.provider", "s3-provider", provider) };
     },
   };
 }

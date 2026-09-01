@@ -12,8 +12,8 @@ export function buildCpuMarkdown(diagnosis: CpuDiagnosis, mode: InspectionMode):
     "## Facts",
     "",
     `- mode: ${mode}`,
-    `- exec/python3/proc: ${facts.canExec}/${facts.hasPython}/${facts.hasProc}`,
-    `- pid: ${facts.pickedPid ?? "unknown"}`,
+    `- exec/python3/proc: ${facts.kubernetes?.podsExec ?? false}/${facts.container?.python3 ?? false}/${facts.container?.proc ?? false}`,
+    `- pid: ${facts.processScan?.pickedPid ?? "unknown"}`,
     `- ptrace: ${facts.ptrace?.reason ?? "未取得"}`,
     `- py-spy: ${stack ? "已采集" : "未取得（见 coverage / raw 步骤）"}`,
   ];

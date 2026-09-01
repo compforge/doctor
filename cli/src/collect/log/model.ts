@@ -23,11 +23,11 @@ export interface LogProbeConfig extends Omit<LogCollectOptions, "traceIds"> {
 }
 
 export interface LogInspectionFacts {
-  runtime: Fact<{ kubectlVersion?: string }>;
+  runtime: Fact<{ kubectlVersion?: string }, "log.runtime">;
   servicePods: Fact<{
     byService: Record<string, string[]>;
     previousContainersByPod: Record<string, string[]>;
-  }>;
+  }, "log.service-pods">;
 }
 
 export interface PreviousContainerLogObservation {

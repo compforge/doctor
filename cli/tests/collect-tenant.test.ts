@@ -98,7 +98,7 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
     expect(facts.capabilityFacts[0]).toMatchObject({
       status: "collected",
       id: "models",
-      kind: "data",
+      kind: "tenant.capability-result",
       result: {
         resolution: { identifiers: { models: "1" } },
         facts: [
@@ -112,13 +112,13 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
     expect(inspectFact).toMatchObject({
       status: "collected",
       id: "inspect:config-api",
-      kind: "data",
+      kind: "tenant.capability-result",
       result: {
         resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
         missingEvidence: ["runtime: unavailable"],
       },
     });
-    if (inspectFact?.status !== "collected" || inspectFact.kind !== "data") {
+    if (inspectFact?.status !== "collected") {
       throw new Error("expected collected inspect data");
     }
     expect(inspectFact.result.facts).toMatchObject([

@@ -14,6 +14,7 @@ import type {
   KubernetesContainerTermination,
 } from "../../../infra/k8s/pod";
 import type { Inspect } from "../../inspection";
+import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type {
   InspectCommandContext,
   InspectConfig,
@@ -111,7 +112,7 @@ function dependencyTargets(
     }
     if (!selectedCount) missing.push(`${serviceName}: 未定位到可采集依赖的业务 Container`);
   }
-  return { status: "collected", targets, missing };
+  return collectedFact("inspect.dependency-targets", "service-targets", { targets, missing });
 }
 
 export function makeServiceTargetsInspect(
@@ -140,10 +141,10 @@ export function makeServiceTargetsInspect(
             : "ConfigMap 未读取"),
       ].filter((reason): reason is string => !!reason) : [];
       const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
-        ? { status: "unavailable", reason: DEPLOYMENT_CONFIG_SKIPPED_REASON }
+        ? unavailableFact("inspect.deployment-configuration", "service-targets", DEPLOYMENT_CONFIG_SKIPPED_REASON)
         : deploymentReasons.length
-          ? { status: "failed", reason: deploymentReasons.join("；") }
-          : { status: "collected", requested: true };
+          ? failedFact("inspect.deployment-configuration", "service-targets", deploymentReasons.join("；"))
+          : collectedFact("inspect.deployment-configuration", "service-targets", { requested: true });
       const dependencyTargetsFailure = capture.podParseError
         ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
       const steps = [
@@ -200,18 +201,18 @@ export function makeServiceTargetsInspect(
             : undefined)
           ?? "读取 Kubernetes 配置失败";
         return {
-          serviceTargets: { status: "failed", reason },
+          serviceTargets: failedFact("inspect.service-targets", "service-targets", reason),
           deploymentConfiguration,
           dependencyTargets: config.includeDependencies
-            ? { status: "failed", reason }
-            : { status: "unavailable", reason: DEPENDENCIES_SKIPPED_REASON },
+            ? failedFact("inspect.dependency-targets", "service-targets", reason)
+            : unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON),
         };
       }
       ctx.workloadConfig = snapshot;
       const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !config.includeDependencies
-        ? { status: "unavailable", reason: DEPENDENCIES_SKIPPED_REASON }
+        ? unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON)
         : dependencyTargetsFailure
-          ? { status: "failed", reason: dependencyTargetsFailure }
+          ? failedFact("inspect.dependency-targets", "service-targets", dependencyTargetsFailure)
           : dependencyTargets(config, snapshot, catalog);
 
       const services: Record<string, InspectServiceTargetFact> = {};
@@ -251,11 +252,10 @@ export function makeServiceTargetsInspect(
             deployments,
             unavailableDeployments,
             podRuntime: podFailure
-              ? { status: "failed", reason: podFailure }
+              ? failedFact("inspect.workload-pods", "service-targets", podFailure)
               : resolved.unavailableReason
-                ? { status: "unavailable", reason: resolved.unavailableReason }
-                : {
-                    status: "collected",
+                ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
+                : collectedFact("inspect.workload-pods", "service-targets", {
                     pods: resolved.pods.map((pod) => ({
                       pod: pod.name,
                       serviceAccountName: pod.serviceAccountName,
@@ -277,7 +277,7 @@ export function makeServiceTargetsInspect(
                           : undefined,
                       })),
                     })),
-                  },
+                  }),
           };
         }
         services[serviceName] = {
@@ -288,7 +288,7 @@ export function makeServiceTargetsInspect(
         };
       }
       return {
-        serviceTargets: { status: "collected", services },
+        serviceTargets: collectedFact("inspect.service-targets", "service-targets", { services }),
         deploymentConfiguration,
         dependencyTargets: resolvedDependencyTargets,
       };

@@ -155,7 +155,7 @@ export async function collectCpu(
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       kubectlVersion,
-      target: { namespace, pod: podName, container: resolvedContainer, pid: facts?.pickedPid },
+      target: { namespace, pod: podName, container: resolvedContainer, pid: facts?.processScan?.pickedPid },
       inspectionFacts: facts ?? {},
       params: { mode, pid_flag: pidFlag, py_spy_version: PY_SPY_VERSION },
       startedAt,

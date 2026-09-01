@@ -94,7 +94,7 @@ export interface InspectWorkloadTargetFact {
   probes: string[];
   deployments: InspectDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
-  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }>;
+  podRuntime: Fact<{ pods: InspectPodRuntimeFact[] }, "inspect.workload-pods">;
 }
 
 export interface InspectServiceTargetFact {
@@ -115,9 +115,12 @@ export interface InspectDependencyTarget {
 }
 
 export interface InspectFacts {
-  serviceTargets: Fact<{ services: Record<string, InspectServiceTargetFact> }>;
-  deploymentConfiguration: Fact<{ requested: true }>;
-  dependencyTargets: Fact<{ targets: InspectDependencyTarget[]; missing: string[] }>;
+  serviceTargets: Fact<{ services: Record<string, InspectServiceTargetFact> }, "inspect.service-targets">;
+  deploymentConfiguration: Fact<{ requested: true }, "inspect.deployment-configuration">;
+  dependencyTargets: Fact<{
+    targets: InspectDependencyTarget[];
+    missing: string[];
+  }, "inspect.dependency-targets">;
 }
 
 export interface EnvironmentConfigObservation extends ObservationMeta {

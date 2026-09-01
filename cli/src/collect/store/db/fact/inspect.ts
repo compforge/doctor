@@ -5,6 +5,7 @@ import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { DbCommandContext } from "../context";
 import type { DbInspectionFacts } from "./model";
+import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
 
 function environmentText(environment: Map<string, string>): string {
   return [...environment].map(([name, value]) => `${name}=${value}`).join("\n");
@@ -42,7 +43,7 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbComma
         const reason = runtime.reason
           ?? `Service '${ctx.config.service}' 当前未提供完整的 ${prefix}_* 配置，DB Store 未启用`;
         ctx.bundle.fill("runtime-config", { status: "unavailable", reason });
-        return { configuration: { status: "unavailable", reason } };
+        return { configuration: unavailableFact("store.db.configuration", "db-configuration", reason) };
       }
       ctx.target = parseMysqlEnvTarget(environmentText(runtime.environment), {
         label: ctx.config.service,
@@ -61,7 +62,7 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbComma
         output: `${JSON.stringify({ status: "collected", ...configuration }, null, 2)}\n`,
         ext: "json",
       });
-      return { configuration: { status: "collected", ...configuration } };
+      return { configuration: collectedFact("store.db.configuration", "db-configuration", configuration) };
     },
   };
 }
@@ -76,7 +77,7 @@ export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandConte
           ? "DB target 未解析"
           : facts.configuration?.reason ?? "DB 配置未确认";
         ctx.bundle.fill("access-preparation", { status: "unavailable", reason });
-        return { access: { status: "unavailable", reason } };
+        return { access: unavailableFact("store.db.access", "db-access", reason) };
       }
       try {
         ctx.forwarder = await ServicePortForwarder.create(ctx.executor, {
@@ -94,11 +95,11 @@ export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandConte
           output: `${JSON.stringify(access, null, 2)}\n`,
           ext: "json",
         });
-        return { access: { status: "collected", ...access } };
+        return { access: collectedFact("store.db.access", "db-access", access) };
       } catch (error) {
         const reason = `准备 DB 访问通道失败：${error instanceof Error ? error.message : String(error)}`;
         ctx.bundle.fill("access-preparation", { status: "failed", reason });
-        return { access: { status: "failed", reason } };
+        return { access: failedFact("store.db.access", "db-access", reason) };
       }
     },
   };

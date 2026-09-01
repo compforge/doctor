@@ -8,6 +8,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import type { EvidenceBundle } from "../evidence";
 import type { Inspect } from "../inspection";
+import { collectedFact } from "../protocol";
 import { renderHttpPlanAsCurl } from "./http";
 import type { McpCommandContext, McpDiagnosisConfig, McpFacts } from "./model";
 import { resolveToolArgs, selectServer, selectTool, type McpSelectionOptions } from "./selection";
@@ -220,7 +221,7 @@ export async function resolveMcpConfiguration(
 
     return {
       config: { timeoutMs, args },
-      facts: {
+      facts: { configuration: collectedFact("mcp.configuration", "mcp-configuration", {
         traceId,
         target: { server, tool, argumentNames: Object.keys(args) },
         configuredTools,
@@ -229,7 +230,7 @@ export async function resolveMcpConfiguration(
         gatewayPods,
         httpPlan,
         httpCurl,
-      },
+      }) },
       client,
       configSourceKind: projection.sourceKind,
     };

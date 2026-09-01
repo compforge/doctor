@@ -9,6 +9,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../../../plugin/inspect";
 import type { Inspect } from "../../inspection";
+import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type { DataCommandContext } from "../context";
 import type {
   CollectedDataInspectResult,
@@ -99,14 +100,16 @@ async function queryIdentity(input: {
   const id = resultId(stage, declared.name, identity);
   const budget = inspectBudget(remaining);
   if (!budget) {
-    return {
+    return Object.assign(unavailableFact(
+      "data.inspect-result",
+      "data-service-contributions",
+      `Data Fact 总预算已耗尽（maxFacts=${MAX_DATA_FACTS}, maxBytes=${MAX_DATA_FACT_BYTES}）`,
+    ), {
       id,
-      status: "unavailable",
       stage,
       service: declared.name,
       identity,
-      reason: `Data Fact 总预算已耗尽（maxFacts=${MAX_DATA_FACTS}, maxBytes=${MAX_DATA_FACT_BYTES}）`,
-    };
+    });
   }
   const pluginContext = ctx.pluginContexts[declared.name];
   if (!pluginContext) throw new Error(`Service '${declared.name}' Inspect contribution 缺少 PluginContext`);
@@ -120,23 +123,27 @@ async function queryIdentity(input: {
       budget,
     });
     consumeBudget(remaining, result);
-    return {
+    return Object.assign(collectedFact(
+      "data.inspect-result",
+      "data-service-contributions",
+      { result },
+    ), {
       id,
-      status: "collected",
       stage,
       service: declared.name,
       identity,
-      result,
-    };
+    });
   } catch (error) {
-    return {
+    return Object.assign(failedFact(
+      "data.inspect-result",
+      "data-service-contributions",
+      error instanceof Error ? error.message : String(error),
+    ), {
       id,
-      status: "failed",
       stage,
       service: declared.name,
       identity,
-      reason: error instanceof Error ? error.message : String(error),
-    };
+    });
   }
 }
 

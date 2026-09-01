@@ -18,7 +18,7 @@ export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, M
       ctx,
       "mcp-tool-call",
       "通过 MCP 协议执行所选 tool",
-      `${facts.target.server.id}/${facts.target.tool.name}`,
+      `${facts.configuration.target.server.id}/${facts.configuration.target.tool.name}`,
       ["会真实调用下游 API，可能写入或修改业务数据", "随后直接 HTTP 重放会形成第二次独立调用"],
     );
     if (!approved) {
@@ -30,13 +30,13 @@ export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, M
     if (!ctx.client) {
       ctx.bundle.fill("mcp-response", {
         status: "unavailable",
-        reason: facts.runtimeToolsError ?? "MCP session 未建立",
+        reason: facts.configuration.runtimeToolsError ?? "MCP session 未建立",
       });
       return [];
     }
 
-    terminalStdout.write(`[mcp] 执行 MCP tools/call: ${facts.target.tool.name}…\n`);
-    const rawCapture = await ctx.client.callTool(facts.target.tool.name, config.args);
+    terminalStdout.write(`[mcp] 执行 MCP tools/call: ${facts.configuration.target.tool.name}…\n`);
+    const rawCapture = await ctx.client.callTool(facts.configuration.target.tool.name, config.args);
     const capture = {
       ...rawCapture,
       transcript: serializeMcpTranscript(ctx.client.transcript),

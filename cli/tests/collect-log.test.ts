@@ -12,6 +12,7 @@ import type {
 import { makeLogProbe } from "../src/collect/log/probe/service";
 import type { ExecResult } from "../src/infra/k8s/executor";
 import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
+import { collectedFact } from "../src/collect/protocol";
 
 test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-concurrency-"));
@@ -54,9 +55,8 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
     log: () => undefined,
   } satisfies LogCommandContext;
   const facts: LogInspectionFacts = {
-    runtime: { status: "collected" },
-    servicePods: {
-      status: "collected",
+    runtime: collectedFact("log.runtime", "log-target", {}),
+    servicePods: collectedFact("log.service-pods", "log-target", {
       byService: {
         "service-a": ["pod-a"],
         "service-b": ["pod-b"],
@@ -71,7 +71,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
         "pod-d": ["app"],
         "pod-e": ["app"],
       },
-    },
+    }),
   };
 
   try {

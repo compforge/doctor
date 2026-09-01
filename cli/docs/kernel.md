@@ -77,6 +77,10 @@ Query(Identity + Constraints)
 
 Fact 在一次 Command 内足够稳定，可被后续 Probe 和 Detector 复用，但不是跨时间永远成立的真理。
 InspectQueryResult 独立表达解析状态、缺失证据与截断，不能把采集状态伪装成领域 Fact。
+Core 与适配后的 Plugin Fact 都携带 `kind + schemaVersion + producer`。`runInspects` 在阶段边界校验
+每个叶子 Fact 的 schema identity，并要求 Core Fact 的 `producer.id` 等于实际执行的 `Inspect.id`；违反
+契约属于实现错误，不能降级成 Coverage 缺口。Fact 不另设对象 ID，Detector 通过本轮 Evidence 中的
+`factPath` 引用它。
 
 RelationFact 可以形成后续 Query，但只有 Core Command 能决定是否继续，以及查询深度、容量、去重、
 失败隔离和停止条件。Plugin 拥有 Identity、Fact、Relation 的业务语义与固定查询，不拥有自递归调度。
@@ -207,7 +211,7 @@ cli/src/
 ├── command/             CommandContext、Target、access 与审批契约
 ├── collect/
 │   ├── protocol.ts      Fact、Observation、Finding、Coverage 共享协议
-│   ├── evidence-identity.ts  Observation/Finding schema identity 运行时校验
+│   ├── evidence-identity.ts  Fact/Observation/Finding schema identity 运行时校验
 │   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector / Coverage
 │   ├── inspect-engine.ts  Inspect 依赖调度与 Facts 冻结
 │   ├── probe-engine.ts  Probe 依赖、安全顺序与失败隔离

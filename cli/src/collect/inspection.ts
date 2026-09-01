@@ -11,6 +11,8 @@
  * 为什么没拿到"，而原因只在 Facts 里（tracemallocStartup 来自 /proc/<pid>/environ，
  * 没有任何 observation 有）。但读的是领域 buildEvidence 显式挑选的子集，不是全局；
  * Finding 引用 fact 走 EvidenceRef.factPath，跟引用 observation 一样留痕。
+ * 每个叶子 Fact 都携带 kind、schemaVersion 与 producer；Core Inspect 的 producer.id
+ * 必须等于 Inspect.id。Fact 不另设 id，Evidence 内的稳定引用由 factPath 提供。
  */
 export interface Inspect<Facts extends object, Ctx = void> {
   id: string;

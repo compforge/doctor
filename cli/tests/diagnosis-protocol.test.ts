@@ -8,8 +8,10 @@ import {
   PROBE_RUNNABLE,
   probeUnavailable,
   probeUnnecessary,
+  collectedFact,
   type Detector,
   type EvidenceBuilder,
+  type CollectedFact,
   type FindingMeta,
   type ObservationMeta,
   type Probe,
@@ -108,7 +110,10 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
 
 test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏障后规划 Probe", async () => {
   type Observation = ObservationMeta & { kind: "number"; value: number };
-  type Facts = { core: { value: number }; plugin: { value: number } };
+  type Facts = {
+    core: CollectedFact<{ value: number }, "test.core">;
+    plugin: CollectedFact<{ value: number }, "test.plugin">;
+  };
   type Evidence = { observations: readonly Observation[]; facts: Facts };
   type Finding = FindingMeta<"sum"> & { value: number };
   type Ctx = { trace: string[] };
@@ -121,14 +126,14 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
       id: "core",
       run: async ({ trace }) => {
         trace.push("inspect:core");
-        return { core: { value: 1 } };
+        return { core: collectedFact("test.core", "core", { value: 1 }) };
       },
     }, {
       id: "plugin",
       dependsOn: ["core"],
       run: async ({ trace }, facts) => {
         trace.push(`inspect:plugin:${facts.core?.value}`);
-        return { plugin: { value: 2 } };
+        return { plugin: collectedFact("test.plugin", "plugin", { value: 2 }) };
       },
     }],
     checkpointFacts: (facts) => {
@@ -187,7 +192,10 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
     "detector:3",
     "coverage",
   ]);
-  expect(result.facts).toEqual({ core: { value: 1 }, plugin: { value: 2 } });
+  expect(result.facts).toEqual({
+    core: collectedFact("test.core", "core", { value: 1 }),
+    plugin: collectedFact("test.plugin", "plugin", { value: 2 }),
+  });
   expect(result.diagnosis.findings[0]?.value).toBe(6);
 });
 
@@ -196,7 +204,10 @@ test("runCollect 在 Facts checkpoint 失败时不规划或运行 Probe", async 
   await expect(runCollect({
     ctx: undefined,
     config: {},
-    inspects: [{ id: "facts", run: async () => ({ ready: true }) }],
+    inspects: [{
+      id: "facts",
+      run: async () => ({ ready: collectedFact("test.ready", "facts", { value: true }) }),
+    }],
     checkpointFacts: async (facts) => {
       expect(Object.isFrozen(facts)).toBe(true);
       throw new Error("checkpoint unavailable");
@@ -214,7 +225,7 @@ test("runCollect 在 Facts checkpoint 失败时不规划或运行 Probe", async 
 });
 
 test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", async () => {
-  type Facts = { tenant: { id: string } };
+  type Facts = { tenant: CollectedFact<{ id: string }, "test.tenant"> };
   type Evidence = { observations: readonly never[]; facts: Facts };
 
   const result = await runCollect<never, Facts, Evidence, never, "tenant", {}, undefined>({
@@ -222,7 +233,7 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
     config: {},
     inspects: [{
       id: "tenant",
-      run: async () => ({ tenant: { id: "tenant-1" } }),
+      run: async () => ({ tenant: collectedFact("test.tenant", "tenant", { id: "tenant-1" }) }),
     }],
     planProbes: (facts) => {
       expect(facts.tenant.id).toBe("tenant-1");
@@ -235,7 +246,10 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
   });
 
   expect(result.diagnosis).toEqual({
-    evidence: { observations: [], facts: { tenant: { id: "tenant-1" } } },
+    evidence: {
+      observations: [],
+      facts: { tenant: collectedFact("test.tenant", "tenant", { id: "tenant-1" }) },
+    },
     findings: [],
     coverage: [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
   });
@@ -353,9 +367,9 @@ test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会�
 
 describe("runInspects 调度", () => {
   type Facts = {
-    target: { pod: string };
-    canExec: boolean;
-    runtime: { python3: boolean; paths: string[] };
+    target: CollectedFact<{ pod: string }, "test.target">;
+    canExec: CollectedFact<{ value: boolean }, "test.can-exec">;
+    runtime: CollectedFact<{ python3: boolean; paths: string[] }, "test.runtime">;
   };
   type Ctx = { pod: string };
 
@@ -365,7 +379,7 @@ describe("runInspects 调度", () => {
       id: "target",
       run: async (ctx) => {
         trace.push("target");
-        return { target: { pod: ctx.pod } };
+        return { target: collectedFact("test.target", "target", { pod: ctx.pod }) };
       },
     };
     const capabilities: Inspect<Facts, Ctx> = {
@@ -374,8 +388,8 @@ describe("runInspects 调度", () => {
       run: async (_ctx, facts) => {
         trace.push(`capabilities:${facts.target?.pod}`);
         return {
-          canExec: true,
-          runtime: { python3: true, paths: ["/proc"] },
+          canExec: collectedFact("test.can-exec", "capabilities", { value: true }),
+          runtime: collectedFact("test.runtime", "capabilities", { python3: true, paths: ["/proc"] }),
         };
       },
     };
@@ -384,9 +398,9 @@ describe("runInspects 调度", () => {
 
     expect(trace).toEqual(["target", "capabilities:app-0"]);
     expect(facts).toEqual({
-      target: { pod: "app-0" },
-      canExec: true,
-      runtime: { python3: true, paths: ["/proc"] },
+      target: collectedFact("test.target", "target", { pod: "app-0" }),
+      canExec: collectedFact("test.can-exec", "capabilities", { value: true }),
+      runtime: collectedFact("test.runtime", "capabilities", { python3: true, paths: ["/proc"] }),
     });
     expect(Object.isFrozen(facts)).toBe(true);
     expect(Object.isFrozen(facts.runtime)).toBe(true);
@@ -397,7 +411,10 @@ describe("runInspects 调度", () => {
     const logs: string[] = [];
     await runInspects<Facts, Ctx>([
       { id: "empty", run: async () => ({}) },
-      { id: "target", run: async (ctx) => ({ target: { pod: ctx.pod } }) },
+      {
+        id: "target",
+        run: async (ctx) => ({ target: collectedFact("test.target", "target", { pod: ctx.pod }) }),
+      },
     ], { pod: "app-0" }, (line) => logs.push(line));
     expect(logs).toEqual([
       "[collect] 执行 Inspect：empty…",
@@ -409,9 +426,21 @@ describe("runInspects 调度", () => {
 
   test("拒绝重复 fact，避免后执行的 Inspect 覆盖初始现实", async () => {
     await expect(runInspects<Facts, Ctx>([
-      { id: "first", run: async () => ({ canExec: true }) },
-      { id: "second", run: async () => ({ canExec: false }) },
+      { id: "first", run: async () => ({ canExec: collectedFact("test.can-exec", "first", { value: true }) }) },
+      { id: "second", run: async () => ({ canExec: collectedFact("test.can-exec", "second", { value: false }) }) },
     ], { pod: "app-0" })).rejects.toThrow("inspect second produced duplicate fact: canExec");
+  });
+
+  test("拒绝缺少 schema identity 或冒充其它 Inspect 的 Fact", async () => {
+    await expect(runInspects([{
+      id: "target",
+      run: async () => ({ target: { status: "collected", pod: "app-0" } }),
+    }], { pod: "app-0" })).rejects.toThrow("kind must be a non-empty string");
+
+    await expect(runInspects<Facts, Ctx>([{
+      id: "target",
+      run: async () => ({ target: collectedFact("test.target", "other", { pod: "app-0" }) }),
+    }], { pod: "app-0" })).rejects.toThrow("producer must identify core Inspect 'target'");
   });
 
   test("执行前拒绝重复 id、未知依赖和重复依赖", async () => {
