@@ -75,7 +75,6 @@ test("Collect 低层 runner 旁路受显式 legacy allowlist 约束", () => {
     "mcp/index.ts",
     "memory/capture-command.ts",
     "network/analysis/index.ts",
-    "redis/index.ts",
   ];
   const lowLevelRunner = /\b(?:runDiagnosis|runInspects|runProbes)\b/;
   const directCallers = sourceFiles(collectRoot)

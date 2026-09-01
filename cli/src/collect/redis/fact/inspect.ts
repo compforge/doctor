@@ -52,7 +52,7 @@ export function sanitizeRedisTarget(
   };
 }
 
-export function makeRedisInspect(
+export function makeRedisTargetInspect(
   confirmed: ConfirmedRedisTarget,
 ): Inspect<RedisInspectionFacts, RedisCommandContext> {
   return {

@@ -4,9 +4,9 @@ import {
   discoverRedisTopology,
   type RedisConnectionApi,
   type RedisEndpoint,
-  type RedisTopologyConfig,
 } from "../../../infra/redis";
-import type { RedisCommandContext } from "../context";
+import { redisTopologyConfig, type RedisCommandContext } from "../context";
+import type { RedisDatabaseScope } from "../fact/model";
 import type { RedisGroup, RedisKey, RedisNode, RedisScan } from "../model";
 import type { RedisPressureProbeOutput, RedisRuntimeProbeOutput } from "./runtime";
 import { sleep } from "../../../infra/host/process";
@@ -38,22 +38,6 @@ const INFO_FIELDS = [
   "rdb_last_save_time", "rdb_last_bgsave_status", "loading", "cluster_enabled",
 ] as const;
 
-function topologyConfig(ctx: RedisCommandContext): RedisTopologyConfig {
-  const target = ctx.redisTarget;
-  if (!target) throw new Error("Redis Probe 在执行态目标未就绪时被调用");
-  return {
-    endpoints: target.endpoints.map(([host, port]) => ({ host, port })),
-    database: target.database,
-    username: target.username,
-    password: target.password,
-    clusterType: target.clusterType,
-    sentinelHosts: target.sentinelHosts.map(([host, port]) => ({ host, port })),
-    sentinelMasterName: target.sentinelMasterName,
-    sentinelUsername: target.sentinelUsername,
-    sentinelPassword: target.sentinelPassword,
-  };
-}
-
 function selectedInfo(info: Record<string, unknown>): Record<string, unknown> {
   return Object.fromEntries(INFO_FIELDS.flatMap((key) => key in info ? [[key, info[key]]] : []));
 }
@@ -69,25 +53,6 @@ function databases(info: Record<string, unknown>) {
       average_ttl_ms: Number(row.avg_ttl ?? 0),
     }];
   }).sort((left, right) => left.database - right.database);
-}
-
-export async function discoverRedisDatabases(
-  ctx: RedisCommandContext,
-): Promise<{ clusterType: "single" | "sentinel" | "cluster"; databases: number[] }> {
-  const access = ctx.redisAccess;
-  const target = ctx.redisTarget;
-  if (!access || !target) throw new Error("Redis 采集准备未完成");
-  const topology = await discoverRedisTopology(access, topologyConfig(ctx));
-  if (topology.clusterType === "cluster") return { clusterType: "cluster", databases: [0] };
-  const discovered = new Set<number>();
-  for (const endpoint of topology.masters) {
-    const info = await (await access.connection(endpoint, target.database)).info("keyspace");
-    for (const database of databases(info)) discovered.add(database.database);
-  }
-  return {
-    clusterType: topology.clusterType,
-    databases: [...discovered].sort((left, right) => left - right),
-  };
 }
 
 async function nodeObservation(
@@ -243,16 +208,16 @@ async function scanMaster(
 
 export async function collectRedisRuntime(
   ctx: RedisCommandContext,
+  databaseScope: RedisDatabaseScope,
   options: ScanOptions,
 ): Promise<RedisRuntimeProbeOutput> {
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
   ctx.log("[collect] 正在发现 Redis 拓扑…");
-  const topology = await discoverRedisTopology(access, topologyConfig(ctx));
+  const topology = await discoverRedisTopology(access, redisTopologyConfig(ctx));
   ctx.log(`[collect] 拓扑发现完成：${topology.clusterType}，${topology.masters.length} 个 master，${topology.replicas.length} 个 replica`);
   const errors: string[] = [];
-  const databaseScope = ctx.redisDatabaseScope ?? { mode: "single" as const, databases: [target.database] };
   const masters: RedisNode[] = [];
   for (const [index, endpoint] of topology.masters.entries()) {
     ctx.log(`[collect] 正在读取 master ${index + 1}/${topology.masters.length}（${endpoint.host}:${endpoint.port}）…`);
@@ -354,7 +319,7 @@ export async function collectRedisPressure(
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
-  const topology = await discoverRedisTopology(access, topologyConfig(ctx));
+  const topology = await discoverRedisTopology(access, redisTopologyConfig(ctx));
   const samples = await Promise.all(topology.masters.map(async (node) => {
     const client = await access.connection(node, target.database);
     return { node, client, started: performance.now(), info: selectedInfo(await client.info()) };

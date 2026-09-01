@@ -17,6 +17,7 @@ function prerequisiteGap(e: RedisEvidence): string | undefined {
     ["Redis 执行环境", e.facts.execution],
     ["Redis 目标", e.facts.target],
     ["TS Redis 客户端连通性", e.facts.capabilities],
+    ["Redis database 范围", e.facts.databaseScope],
   ] as const;
   for (const [label, fact] of facts) {
     if (fact.status !== "collected") return `${label} Fact ${fact.status}：${fact.reason}`;
