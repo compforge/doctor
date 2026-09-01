@@ -71,11 +71,9 @@ test("Collect 低层 runner 旁路受显式 legacy allowlist 约束", () => {
   const collectRoot = resolve(import.meta.dir, "../src/collect");
   const allowedLegacyCallers = [
     "cpu/index.ts",
-    "http/index.ts",
     "log/index.ts",
     "mcp/index.ts",
     "memory/capture-command.ts",
-    "model/runner.ts",
     "network/analysis/index.ts",
     "redis/index.ts",
     "store/db/index.ts",

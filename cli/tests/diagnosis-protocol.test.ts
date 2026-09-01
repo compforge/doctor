@@ -113,6 +113,11 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
         return { plugin: { value: 2 } };
       },
     }],
+    checkpointFacts: (facts) => {
+      ctx.trace.push(`checkpoint-facts:${facts.plugin.value}`);
+      expect(Object.isFrozen(facts)).toBe(true);
+      expect(Object.isFrozen(facts.plugin)).toBe(true);
+    },
     planProbes: (facts) => {
       ctx.trace.push(`plan-probes:${facts.core.value + facts.plugin.value}`);
       expect(Object.isFrozen(facts)).toBe(true);
@@ -156,6 +161,7 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
   expect(ctx.trace).toEqual([
     "inspect:core",
     "inspect:plugin:1",
+    "checkpoint-facts:2",
     "plan-probes:3",
     "probe:2",
     "evidence",
@@ -164,6 +170,28 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
   ]);
   expect(result.facts).toEqual({ core: { value: 1 }, plugin: { value: 2 } });
   expect(result.diagnosis.findings[0]?.value).toBe(6);
+});
+
+test("runCollect 在 Facts checkpoint 失败时不规划或运行 Probe", async () => {
+  let planned = false;
+  await expect(runCollect({
+    ctx: undefined,
+    config: {},
+    inspects: [{ id: "facts", run: async () => ({ ready: true }) }],
+    checkpointFacts: async (facts) => {
+      expect(Object.isFrozen(facts)).toBe(true);
+      throw new Error("checkpoint unavailable");
+    },
+    planProbes: () => {
+      planned = true;
+      return [];
+    },
+    log: () => {},
+    buildEvidence: (observations, facts) => ({ observations, facts }),
+    detectors: [],
+    buildCoverage: () => [],
+  })).rejects.toThrow("checkpoint unavailable");
+  expect(planned).toBe(false);
 });
 
 test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", async () => {
