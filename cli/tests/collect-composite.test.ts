@@ -7,7 +7,7 @@ import {
   collectReportName,
   createCollectManifest,
   parseCollectKinds,
-  runCollect,
+  runCollectCommand,
   runCollectDelegates,
 } from "../src/collect/composite";
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
@@ -103,7 +103,7 @@ test("collect can run a tenant-scoped command without biz-id", async () => {
     services: createServiceCatalog([]),
   } satisfies PluginDefinition;
   try {
-    expect(await runCollect({
+    expect(await runCollectCommand({
       bizIds: [],
       kinds: ["tenant"],
       tenantId: "tenant-1",
@@ -125,7 +125,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
   } satisfies PluginDefinition;
   const context = new CommandContext({});
   try {
-    const code = await runCollect({
+    const code = await runCollectCommand({
       bizIds: ["biz-1"],
       kinds: ["inspect", "data"],
       namespace: "doctor-system",
@@ -248,7 +248,7 @@ test("collect preserves staged evidence when default delivery fails", async () =
   const context = new CommandContext({});
   let stagingDir: string | undefined;
   try {
-    const code = await runCollect({
+    const code = await runCollectCommand({
       bizIds: ["biz-1"],
       kinds: ["inspect"],
       output,

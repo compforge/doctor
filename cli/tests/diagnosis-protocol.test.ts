@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runDiagnosis } from "../src/collect/engine";
+import { runCollect, runDiagnosis } from "../src/collect/engine";
 import { runInspects } from "../src/collect/inspect-engine";
 import { runProbes } from "../src/collect/probe-engine";
 import type { Inspect } from "../src/collect/inspection";
@@ -86,6 +86,84 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
     }],
     coverage: [{ goal: "sum", status: "sufficient", missingEvidence: [] }],
   });
+});
+
+test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏障后规划 Probe", async () => {
+  type Observation = { id: string; kind: "number"; value: number };
+  type Facts = { core: { value: number }; plugin: { value: number } };
+  type Evidence = { observations: readonly Observation[]; facts: Facts };
+  type Finding = FindingMeta<"sum"> & { value: number };
+  type Ctx = { trace: string[] };
+
+  const ctx: Ctx = { trace: [] };
+  const result = await runCollect<Observation, Facts, Evidence, Finding, "sum", {}, Ctx>({
+    ctx,
+    config: {},
+    inspects: [{
+      id: "core",
+      run: async ({ trace }) => {
+        trace.push("inspect:core");
+        return { core: { value: 1 } };
+      },
+    }, {
+      id: "plugin",
+      dependsOn: ["core"],
+      run: async ({ trace }, facts) => {
+        trace.push(`inspect:plugin:${facts.core?.value}`);
+        return { plugin: { value: 2 } };
+      },
+    }],
+    planProbes: (facts) => {
+      ctx.trace.push(`plan-probes:${facts.core.value + facts.plugin.value}`);
+      expect(Object.isFrozen(facts)).toBe(true);
+      expect(Object.isFrozen(facts.plugin)).toBe(true);
+      return [{
+        id: "number",
+        evaluate: () => PROBE_RUNNABLE,
+        run: async ({ trace }, collectedFacts) => {
+          trace.push(`probe:${collectedFacts.plugin.value}`);
+          return [{ id: "number:1", kind: "number", value: 3 }];
+        },
+      }];
+    },
+    log: () => {},
+    buildEvidence: (observations, facts) => {
+      ctx.trace.push("evidence");
+      return { observations, facts };
+    },
+    detectors: [(evidence) => {
+      ctx.trace.push(`detector:${evidence.observations[0]?.value}`);
+      return [{
+        id: "sum",
+        kind: "sum",
+        severity: "info",
+        confidence: "high",
+        evidence: [
+          { factPath: "plugin", role: "context" },
+          { observationId: "number:1", role: "supporting" },
+        ],
+        value: evidence.facts.core.value
+          + evidence.facts.plugin.value
+          + evidence.observations[0]!.value,
+      }];
+    }],
+    buildCoverage: () => {
+      ctx.trace.push("coverage");
+      return [{ goal: "sum", status: "sufficient", missingEvidence: [] }];
+    },
+  });
+
+  expect(ctx.trace).toEqual([
+    "inspect:core",
+    "inspect:plugin:1",
+    "plan-probes:3",
+    "probe:2",
+    "evidence",
+    "detector:3",
+    "coverage",
+  ]);
+  expect(result.facts).toEqual({ core: { value: 1 }, plugin: { value: 2 } });
+  expect(result.diagnosis.findings[0]?.value).toBe(6);
 });
 
 test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会成环", async () => {

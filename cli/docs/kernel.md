@@ -200,9 +200,9 @@ cli/src/
 ├── command/             CommandContext、Target、access 与审批契约
 ├── collect/
 │   ├── protocol.ts      Fact、Observation、Finding、Coverage 共享协议
-│   ├── inspect-engine.ts
-│   ├── probe-engine.ts  Core 调度引擎
-│   ├── engine.ts        Probe → Evidence → Detector / Coverage
+│   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector / Coverage
+│   ├── inspect-engine.ts  Inspect 依赖调度与 Facts 冻结
+│   ├── probe-engine.ts  Probe 依赖、安全顺序与失败隔离
 │   ├── evidence.ts      Worksheet 与 Evidence Bundle
 │   ├── operation.ts     副作用授权与审计
 │   ├── output/          通用格式与交付原语

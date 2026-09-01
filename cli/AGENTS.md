@@ -44,9 +44,9 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
    归 query-level result，领域信息按形态使用单值 `ValueFact`、带稳定 key 的可重复 `RecordFact` 或
    Identity 关系 `RelationFact`；Core 不解释 value/record 内部结构，并独占遍历、预算与 Evidence 编排。
 4. **分层不穿透**：业务目标与私有语义归外部 Plugin，标准基础设施采集与分析归 CLI Core，公共契约归
-   `packages/plugin`；命令必须先完成配置、capability、环境和实际 access 准备，再进入领域工作，具体 Plugin
+   `packages/plugin`；命令必须先完成配置、contribution/capability、环境和实际 access 准备，再进入领域工作，具体 Plugin
    不能反向依赖 CLI。
-5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 capability；collect 再结合现场环境判断本次
+5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 contribution/capability；collect 再结合现场环境判断本次
    是否可用。
 6. **Case 触发、采集与加压分开**：Plugin case runner 每次只触发一个 Case；Eval 顺序执行每个选中 Case
    一次并保留关联证据，Perf/Core 独占并发调度、预算、熔断和 Window 归约。两者都不在 runner 内隐藏循环。

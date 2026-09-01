@@ -47,7 +47,7 @@ import { runCollectModel } from "../collect/model";
 import { runCollectTenant, type CollectTenantCliOptions } from "../collect/tenant";
 import { runCollectMetric } from "../collect/metric";
 import {
-  runCollect,
+  runCollectCommand,
   resolveCollectKinds,
   type CollectCliOpts,
 } from "../collect/composite";
@@ -647,7 +647,7 @@ export async function main(plugin?: PluginDefinition) {
       },
       commandOpts,
       plugin,
-      (activePlugin, context) => runCollect(commandOpts, activePlugin, context),
+      (activePlugin, context) => runCollectCommand(commandOpts, activePlugin, context),
     );
   });
   withTraceOptions(
