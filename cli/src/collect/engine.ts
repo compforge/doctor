@@ -24,6 +24,8 @@ export interface CollectEngineInput<
   ctx: Ctx;
   config: Config;
   inspects: readonly Inspect<Facts, Ctx>[];
+  /** Persist the complete frozen Facts snapshot before any Probe is planned or run. */
+  checkpointFacts?: (facts: Readonly<Facts>) => void | Promise<void>;
   /** Probe planning starts only after every Inspect has completed and Facts are deeply frozen. */
   planProbes: (
     facts: Readonly<Facts>,
@@ -107,6 +109,7 @@ export async function runDiagnosis<
  * Core-owned Collect Execute pipeline.
  *
  * @spec runCollect completes and freezes all Inspect Facts before planning or running any Probe
+ * @spec runCollect checkpoints frozen Facts before Probe planning and aborts if the checkpoint fails
  * @rule Core alone advances Inspect → Probe → Detector; contributions provide work but never drive phases
  * @see {@link ../../docs/kernel.md}
  */
@@ -122,6 +125,7 @@ export async function runCollect<
   ctx,
   config,
   inspects,
+  checkpointFacts,
   planProbes,
   log,
   buildEvidence,
@@ -137,6 +141,7 @@ export async function runCollect<
   Ctx
 >): Promise<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>> {
   const facts = await runInspects(inspects, ctx, log);
+  await checkpointFacts?.(facts);
   const diagnosis = await runDiagnosis({
     ctx,
     facts: facts as Facts,

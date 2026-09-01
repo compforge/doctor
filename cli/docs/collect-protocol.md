@@ -42,7 +42,8 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
 2. **Execute / Inspect**：`runCollect` 统一驱动自身 Inspect 与选中 Plugin Service 注册的 Inspect
    contribution；底层 `runInspects` 按依赖取得 Facts，每个 Fact 一经取得便在本轮后续只读。Core 按诊断目标
    生成 Query，将返回数据保存为 Facts；Relation 作为 Fact 的一种保留已确认的 Identity 关系；没有业务
-   Inspect contribution 的 Command 可跳过此步。
+   Inspect contribution 的 Command 可跳过此步。需要在长 Probe 前保留阶段证据时，Core Command 可通过
+   `checkpointFacts` 持久化完整的冻结 Facts；checkpoint 不采集或修改 Facts，也不构成新的 Execute 阶段。
 3. **Execute / Probe**：全部 Inspect 完成并深冻结 Facts 后，`runCollect` 才调用 `planProbes(facts)`；Core
    对已收敛 Facts 建立完整公共投影，将同一份 Facts 注入 Core Probe 与选中 Plugin Service 注册的 Probe
    contribution，再驱动它们产生 Observations；当前不按

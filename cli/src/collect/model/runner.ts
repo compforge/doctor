@@ -9,9 +9,8 @@ import type { CommandContext } from "../../command";
 import type { TenantSummary } from "@compforge/doctor-plugin";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
 import { recordFailureBundle } from "../output/failure-bundle";
@@ -169,28 +168,26 @@ export async function runModelDiagnosis(
   let diagnosis!: ModelDiagnosis;
 
   try {
-    facts = await runInspects(
-      [makeModelInspect(input.tenant, input.model)],
+    const execution = await runCollect({
       ctx,
-      (line) => terminalStdout.write(`${line}\n`),
-    );
-    bundle.fill("model-inspect", {
-      status: facts.backend.status === "collected" ? "ok" : facts.backend.status,
-      reason: facts.backend.status === "collected" ? undefined : facts.backend.reason,
-      output: `${JSON.stringify(facts, null, 2)}\n`,
-      ext: "json",
-    });
-
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
       config,
-      probes: makeModelProbes(input.model),
+      inspects: [makeModelInspect(input.tenant, input.model)],
+      checkpointFacts: (collectedFacts) => {
+        bundle.fill("model-inspect", {
+          status: collectedFacts.backend.status === "collected" ? "ok" : collectedFacts.backend.status,
+          reason: collectedFacts.backend.status === "collected" ? undefined : collectedFacts.backend.reason,
+          output: `${JSON.stringify(collectedFacts, null, 2)}\n`,
+          ext: "json",
+        });
+      },
+      planProbes: () => makeModelProbes(input.model),
       log: (line) => terminalStdout.write(`${line}\n`),
       buildEvidence: buildModelEvidence,
       detectors: modelDetectors,
       buildCoverage: buildModelCoverage(config),
     });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
     bundle.fill("model-findings", {
       status: "ok",
       output: `${JSON.stringify({

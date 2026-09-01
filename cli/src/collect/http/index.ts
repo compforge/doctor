@@ -10,9 +10,8 @@ import {
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import type { CommandContext } from "../../command";
 import type { KubernetesCommandInput } from "../../command/kubernetes-target";
-import { runDiagnosis } from "../engine";
+import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { runInspects } from "../inspect-engine";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { recordFailureBundle } from "../output/failure-bundle";
@@ -321,34 +320,33 @@ export async function runCollectHttp(
   let facts!: HttpInspectionFacts;
   let diagnosis!: HttpDiagnosis;
   try {
-    terminalStdout.write("[collect] 采集 HTTP Facts…\n");
-    facts = await runInspects(
-      [makeHttpEndpointInspect(scenario, inspectTimeoutSeconds * 1000)],
-      ctx,
-      (line) => terminalStdout.write(`${line}\n`),
-    );
-    bundle.fill("http-endpoint-connectivity", {
-      status: facts.endpoints.status === "collected" ? "ok" : "unavailable",
-      reason: facts.endpoints.status === "collected" ? undefined : facts.endpoints.reason,
-      output: `${JSON.stringify(facts.endpoints, null, 2)}\n`,
-      ext: "json",
-    });
     writeFileSync(
       join(staging, "scenario.json"),
       `${JSON.stringify(sanitizedScenario(scenario), null, 2)}\n`,
       { mode: 0o600 },
     );
-
-    const engineDiagnosis = await runDiagnosis({
+    terminalStdout.write("[collect] 采集 HTTP Facts…\n");
+    const execution = await runCollect({
       ctx,
-      facts,
       config: ctx.config,
-      probes: attempts.map(({ request, round }) => makeHttpRequestProbe(request, round)),
+      inspects: [makeHttpEndpointInspect(scenario, inspectTimeoutSeconds * 1000)],
+      checkpointFacts: (collectedFacts) => {
+        facts = collectedFacts;
+        bundle.fill("http-endpoint-connectivity", {
+          status: collectedFacts.endpoints.status === "collected" ? "ok" : "unavailable",
+          reason: collectedFacts.endpoints.status === "collected" ? undefined : collectedFacts.endpoints.reason,
+          output: `${JSON.stringify(collectedFacts.endpoints, null, 2)}\n`,
+          ext: "json",
+        });
+      },
+      planProbes: () => attempts.map(({ request, round }) => makeHttpRequestProbe(request, round)),
       log: (line) => terminalStdout.write(`${line}\n`),
       buildEvidence: buildHttpEvidence(scenario.requests, repeat),
       detectors: httpDetectors,
       buildCoverage: buildHttpCoverage,
     });
+    facts = execution.facts;
+    const engineDiagnosis = execution.diagnosis;
     diagnosis = buildHttpDiagnosis(
       engineDiagnosis.evidence,
       engineDiagnosis.findings,
