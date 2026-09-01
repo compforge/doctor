@@ -2,9 +2,8 @@ import type { ServiceDatabaseStoreCapability } from "@compforge/doctor-plugin";
 import type { Executor } from "../../../infra/k8s/executor";
 import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
-import { runDiagnosis } from "../../engine";
+import { runCollect } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
-import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import type { PodStoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle } from "../artifacts";
@@ -59,10 +58,26 @@ export async function runStoreDb(
   };
 
   try {
-    facts = await runInspects([
-      makeDbConfigurationInspect(),
-      makeDbAccessInspect(),
-    ], ctx, log) as DbInspectionFacts;
+    const execution = await runCollect({
+      ctx,
+      config,
+      inspects: [
+        makeDbConfigurationInspect(),
+        makeDbAccessInspect(),
+      ],
+      checkpointFacts: (collectedFacts) => {
+        facts = collectedFacts;
+      },
+      planProbes: (collectedFacts) => collectedFacts.configuration.status === "unavailable"
+        ? []
+        : makeDbProbes(),
+      log,
+      buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
+      detectors: dbDetectors,
+      buildCoverage: buildDbCoverage,
+    });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
     if (facts.configuration.status === "unavailable") {
       return finish(0, [
         "# DB Store 诊断摘要",
@@ -74,16 +89,6 @@ export async function runStoreDb(
         "",
       ].join("\n"));
     }
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
-      config,
-      probes: makeDbProbes(),
-      log,
-      buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
-      detectors: dbDetectors,
-      buildCoverage: buildDbCoverage,
-    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return finish(1, `# DB Store 诊断失败\n\n${reason}\n`);

@@ -7,9 +7,8 @@ import type { CommandContext } from "../../../command";
 import type { SearchEngine } from "../../../infra/search";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 import { terminalStderr, terminalStdout } from "../../../terminal/output";
-import { runDiagnosis } from "../../engine";
+import { runCollect } from "../../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../../evidence";
-import { runInspects } from "../../inspect-engine";
 import { evaluateCollectOutcome } from "../../outcome";
 import { resolveStoreOutputPath, type StoreConfig } from "../config";
 import { writeStoreArtifacts } from "../artifacts";
@@ -128,10 +127,29 @@ export async function runStoreVdb(
   };
 
   try {
-    facts = await runInspects([
-      makeVdbConfigurationInspect(config),
-      makeVdbAccessInspect(config),
-    ], ctx, log) as VdbInspectionFacts;
+    const execution = await runCollect({
+      ctx,
+      config,
+      inspects: [
+        makeVdbConfigurationInspect(config),
+        makeVdbAccessInspect(config),
+      ],
+      checkpointFacts: (collectedFacts) => {
+        facts = collectedFacts;
+      },
+      planProbes: (collectedFacts) => collectedFacts.configuration.status === "unavailable"
+        ? []
+        : makeVdbProbes(),
+      log,
+      buildEvidence: (observations, inspectionFacts) => ({
+        observations,
+        facts: inspectionFacts,
+      }),
+      detectors: vdbDetectors,
+      buildCoverage: buildVdbCoverage,
+    });
+    facts = execution.facts;
+    diagnosis = execution.diagnosis;
     if (facts.configuration.status === "unavailable") {
       const reason = facts.configuration.reason;
       return finish(0, [
@@ -144,19 +162,6 @@ export async function runStoreVdb(
         "",
       ].join("\n"));
     }
-    diagnosis = await runDiagnosis({
-      ctx,
-      facts,
-      config,
-      probes: makeVdbProbes(),
-      log,
-      buildEvidence: (observations, inspectionFacts) => ({
-        observations,
-        facts: inspectionFacts,
-      }),
-      detectors: vdbDetectors,
-      buildCoverage: buildVdbCoverage,
-    });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     return finish(1, `# VDB Store 诊断失败\n\n${reason}\n`);

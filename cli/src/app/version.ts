@@ -2,7 +2,7 @@ import type { PluginIdentity } from "@compforge/doctor-plugin";
 import type { DoctorHostInfo } from "../infra/host";
 
 // Doctor Core 的唯一版本事实源；运行时和构建流程都读取这里。
-export const DOCTOR_CLI_VERSION = "0.1.70";
+export const DOCTOR_CLI_VERSION = "0.1.71";
 
 export function formatDoctorVersion(
   plugin: PluginIdentity | undefined,
