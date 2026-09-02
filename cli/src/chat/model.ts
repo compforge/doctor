@@ -91,8 +91,10 @@ export function projectChatState(model: DoctorModel): ChatState {
     },
     composer: {
       busy: meta.busy,
-      queued: meta.queued.map((item) => ({ ...item, tag: "queued" })),
       placeholder: "描述现场现象（/help 查看命令）",
+    },
+    queue: {
+      items: meta.queued.map((item) => ({ ...item, tag: "queued" })),
     },
     activity: {
       items: activeTools.length

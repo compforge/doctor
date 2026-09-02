@@ -76,14 +76,17 @@ export class Agent implements AgentSource {
   async *run(text: string, context: RunContext): AsyncIterable<PatchEvent> {
     const queue = new AsyncQueue<PatchEvent>();
     let assistantId: string | undefined;
+    let assistantHasText = false;
     let thoughtId: string | undefined;
 
     const unsubscribe = this.agent.subscribe((event) => {
       for (const patch of mapEvent(event, context, {
         assistantId,
+        assistantHasText,
         thoughtId,
         verbose: this.verbose,
         setAssistantId: (id) => { assistantId = id; },
+        setAssistantHasText: (hasText) => { assistantHasText = hasText; },
         setThoughtId: (id) => { thoughtId = id; },
       })) {
         queue.push(patch);
@@ -116,38 +119,44 @@ export class Agent implements AgentSource {
   }
 }
 
-interface EventState {
+export interface EventState {
   assistantId?: string;
+  assistantHasText: boolean;
   thoughtId?: string;
   verbose: boolean;
   setAssistantId(id: string): void;
+  setAssistantHasText(hasText: boolean): void;
   setThoughtId(id: string): void;
 }
 
-function mapEvent(event: AgentEvent, context: RunContext, state: EventState): PatchEvent[] {
+export function mapEvent(event: AgentEvent, context: RunContext, state: EventState): PatchEvent[] {
   const { emitter } = context;
   switch (event.type) {
     case "message_start": {
       if (event.message.role !== "assistant") return [];
       const id = `assistant-${crypto.randomUUID()}`;
       state.setAssistantId(id);
-      return [emitter.blockSet({
-        id,
-        type: "message",
-        role: "agent",
-        content: "",
-        streaming: true,
-      } satisfies MessageBlock, { eventType: event.type })];
+      state.setAssistantHasText(false);
+      return [];
     }
     case "message_update": {
       const update = event.assistantMessageEvent;
       if (update.type === "text_delta") {
-        return state.assistantId
-          ? [emitter.blockAppend(
-              { id: state.assistantId, type: "message", content: update.delta },
-              { mask: "block.content", eventType: update.type },
-            )]
-          : [];
+        if (!state.assistantId || update.delta.length === 0) return [];
+        if (!state.assistantHasText) {
+          state.setAssistantHasText(true);
+          return [emitter.blockSet({
+            id: state.assistantId,
+            type: "message",
+            role: "agent",
+            content: update.delta,
+            streaming: true,
+          } satisfies MessageBlock, { eventType: update.type })];
+        }
+        return [emitter.blockAppend(
+          { id: state.assistantId, type: "message", content: update.delta },
+          { mask: "block.content", eventType: update.type },
+        )];
       }
       if (state.verbose && update.type === "thinking_start") {
         const id = `thought-${crypto.randomUUID()}`;
@@ -169,13 +178,16 @@ function mapEvent(event: AgentEvent, context: RunContext, state: EventState): Pa
     }
     case "message_end": {
       if (event.message.role !== "assistant" || !state.assistantId) return [];
-      const patches: PatchEvent[] = [emitter.blockSet({
-        id: state.assistantId,
-        type: "message",
-        role: "agent",
-        content: assistantText(event.message),
-        streaming: false,
-      } satisfies MessageBlock, { eventType: event.type })];
+      const content = assistantText(event.message);
+      const patches: PatchEvent[] = content || state.assistantHasText
+        ? [emitter.blockSet({
+            id: state.assistantId,
+            type: "message",
+            role: "agent",
+            content,
+            streaming: false,
+          } satisfies MessageBlock, { eventType: event.type })]
+        : [];
       if (event.message.stopReason === "error" && event.message.errorMessage) {
         patches.push(emitter.error("llm_error", event.message.errorMessage));
       }
