@@ -26,16 +26,28 @@ export interface PodLogRequest {
   tail?: number;
   since?: string;
   sinceTime?: string;
+  /** 单次 Container 日志响应的服务端字节上限。 */
+  limitBytes?: number;
   /** 指定后 stdout 原样流式写入该文件，返回值不再在内存中保留 stdout。 */
   rawFilePath?: string;
   onLine?: (line: string) => void;
+}
+
+export type PodLogCaptureStatus = "complete" | "partial" | "unavailable";
+
+export interface PodLogResult extends ExecResult {
+  /** complete=完整读完；partial=保留了部分证据；unavailable=没有取得可用日志。 */
+  captureStatus: PodLogCaptureStatus;
+  reason?: string;
+  bytesRead: number;
+  attempts: number;
 }
 
 /** Pod 枚举与日志读取能力；调用方决定采哪个 Pod，infra 决定如何通过 Kubernetes 采。 */
 export interface KubernetesPodLogAccess {
   clientVersion(): Promise<ExecResult>;
   listServicePods(services: readonly string[]): Promise<ServicePodListResult>;
-  collectPodLogs(request: PodLogRequest): Promise<ExecResult>;
+  collectPodLogs(request: PodLogRequest): Promise<PodLogResult>;
 }
 
 export class KubectlPodLogAccess implements KubernetesPodLogAccess {
@@ -80,7 +92,7 @@ export class KubectlPodLogAccess implements KubernetesPodLogAccess {
     }
   }
 
-  collectPodLogs(request: PodLogRequest) {
+  async collectPodLogs(request: PodLogRequest): Promise<PodLogResult> {
     const args = [
       "logs",
       request.pod,
@@ -91,30 +103,50 @@ export class KubectlPodLogAccess implements KubernetesPodLogAccess {
     if (request.prefix) args.push("--prefix=true");
     if (request.previous) args.push("--previous");
     if (request.tail !== undefined) args.push(`--tail=${request.tail}`);
+    if (request.limitBytes !== undefined) args.push(`--limit-bytes=${request.limitBytes}`);
     if (request.sinceTime) args.push(`--since-time=${request.sinceTime}`);
     else if (request.since) args.push(`--since=${request.since}`);
     if (!request.rawFilePath && !request.onLine) {
-      return this.executor.run(args, { timeoutMs: 60_000 });
+      const result = await this.executor.run(args, { timeoutMs: 60_000 });
+      const bytesRead = Buffer.byteLength(result.stdout);
+      return {
+        ...result,
+        captureStatus: result.ok ? "complete" : bytesRead ? "partial" : "unavailable",
+        reason: result.ok ? undefined : result.stderr.trim() || `exit=${result.exitCode}`,
+        bytesRead,
+        attempts: 1,
+      };
     }
 
     const fd = request.rawFilePath
       ? openSync(request.rawFilePath, "w", 0o600)
       : undefined;
     let pending = "";
+    let bytesRead = 0;
     const emitLines = (text: string) => {
       pending += text;
       const lines = pending.split(/\r?\n/);
       pending = lines.pop() ?? "";
       for (const line of lines) request.onLine?.(line);
     };
-    return this.executor.run(args, {
+    const result = await this.executor.run(args, {
       timeoutMs: 60_000,
       collectStdout: !request.rawFilePath,
-      onStdoutBytes: fd === undefined ? undefined : (chunk) => writeSync(fd, chunk),
+      onStdoutBytes: (chunk) => {
+        bytesRead += chunk.byteLength;
+        if (fd !== undefined) writeSync(fd, chunk);
+      },
       onStdout: request.onLine ? emitLines : undefined,
     }).finally(() => {
       if (pending) request.onLine?.(pending);
       if (fd !== undefined) closeSync(fd);
     });
+    return {
+      ...result,
+      captureStatus: result.ok ? "complete" : bytesRead ? "partial" : "unavailable",
+      reason: result.ok ? undefined : result.stderr.trim() || `exit=${result.exitCode}`,
+      bytesRead,
+      attempts: 1,
+    };
   }
 }

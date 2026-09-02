@@ -157,9 +157,16 @@ export function renderLogResult(
       (count, pod) => count + (pod.previous?.length ?? 0),
       0,
     );
-    total.failedCount += service.pods.filter((pod) => pod.failed).length;
+    total.partialCount += service.pods.filter((pod) => pod.captureStatus === "partial").length;
+    total.unavailableCount += service.pods.filter((pod) => pod.captureStatus === "unavailable").length;
     return total;
-  }, { podCount: 0, matchedEventCount: 0, previousContainerCount: 0, failedCount: 0 });
+  }, {
+    podCount: 0,
+    matchedEventCount: 0,
+    previousContainerCount: 0,
+    partialCount: 0,
+    unavailableCount: 0,
+  });
   const timeline = buildLogTimeline(observations);
   const serviceLogs = renderServiceLogs(
     config.traceIds,
@@ -175,7 +182,7 @@ export function renderLogResult(
     "",
     `- namespace: \`${config.namespace}\``,
     `- services: ${config.services.map((service) => `\`${service}\``).join(", ")}`,
-    `- 扫描 pod: ${stats.podCount}  命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  采集失败 pod: ${stats.failedCount}`,
+    `- 扫描 pod: ${stats.podCount}  命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  部分采集 pod: ${stats.partialCount}  不可用 pod: ${stats.unavailableCount}`,
     `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}`,
     `- 过滤: ${config.errorsOnly ? "errors-only" : "全部 trace 日志"}${config.pattern ? ` + /${config.pattern}/` : ""}`,
     "",

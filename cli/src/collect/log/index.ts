@@ -8,6 +8,7 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "../../infra/k8s/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
+import { ClientNodePodLogAccess } from "../../infra/k8s/client-node-pod-log";
 import { runCollect } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
@@ -223,6 +224,8 @@ async function runCollectLogSingle(
       bizId: selected.bizId,
       traceIds: trace.map((item) => item.traceId),
       namespace: resolvedNamespace.namespace,
+      kubeconfig: resolved.kubeconfig,
+      context: collect.kubernetes.context,
       services,
       since: timeWindow.since,
       sinceTime: timeWindow.sinceTime,
@@ -338,7 +341,14 @@ export async function collectLog(
   const ctx: LogCommandContext = {
     command: commandContext,
     config,
-    access: new KubectlPodLogAccess(executor, opts.namespace),
+    access: new ClientNodePodLogAccess(
+      new KubectlPodLogAccess(executor, opts.namespace),
+      {
+        namespace: opts.namespace,
+        kubeconfig: opts.kubeconfig,
+        context: opts.context,
+      },
+    ),
     bundle,
     log,
   };
@@ -386,7 +396,10 @@ export async function collectLog(
 
   if (facts.runtime.status !== "collected") return 1;
   if (facts.servicePods.status !== "collected") return 1;
-  log(`[collect] 完成（扫描 ${rendered.stats.podCount} pod，命中 ${rendered.stats.matchedEventCount} 个日志事件，失败 ${rendered.stats.failedCount} pod）。`);
+  log(
+    `[collect] 完成（扫描 ${rendered.stats.podCount} pod，命中 ${rendered.stats.matchedEventCount} 个日志事件，`
+    + `部分采集 ${rendered.stats.partialCount} pod，不可用 ${rendered.stats.unavailableCount} pod）。`,
+  );
   return evaluateCollectOutcome(
     diagnosis.coverage.map((item) => item.status === "sufficient"),
   ).exitCode;

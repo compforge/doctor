@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node-fetch": "2.6.13",
     "@types/react": "^19.2.0",
     "@types/shell-quote": "1.7.5",
     "boxen": "8.0.1",
@@ -36,15 +37,18 @@
     "@compforge/prombed": "0.0.2",
     "@compforge/trace-harness": "0.0.8",
     "@earendil-works/pi-agent-core": "0.84.0",
+    "@kubernetes/client-node": "1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opentui/core": "0.5.3",
     "@opentui/keymap": "0.5.3",
     "@opentui/react": "0.5.3",
     "@opensearch-project/opensearch": "3.6.0",
     "@redis/client": "6.1.0",
+    "abort-controller": "3.0.0",
     "chat-tui": "github:compforge/chat-tui#9836e9ab6c6a3ebd9bad3b21e1ad0604182b4918",
     "got": "15.1.0",
     "mysql2": "3.23.1",
+    "node-fetch": "2.7.0",
     "shell-quote": "1.8.3",
     "zod": "4.4.3"
   }
