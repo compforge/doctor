@@ -84,7 +84,12 @@ export async function runCollectModel(
       identity: { kind: "tenant_id", value: tenant.id },
       constraints: { type },
     });
-    const selected = await selectModel({ models, query: opts.model });
+    const selected = await selectModel({
+      models,
+      query: opts.model,
+      profileName: access.config.profileName,
+      tenantId: tenant.id,
+    });
     if (!selected) {
       terminalStderr.warning("[model] 已取消\n");
       return 130;

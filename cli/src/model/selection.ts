@@ -141,7 +141,10 @@ async function promptModel(models: readonly Model[]): Promise<Model | undefined>
 export async function selectModel(input: {
   models: readonly Model[];
   query?: string;
+  profileName?: string;
+  tenantId?: string;
   interactive?: boolean;
+  recent?: RecentSelections;
   prompt?: (models: readonly Model[]) => Promise<Model | undefined>;
 }): Promise<Model | undefined> {
   if (!input.models.length) throw new Error("模型目录未返回可用模型");
@@ -158,7 +161,23 @@ export async function selectModel(input: {
   }
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   if (!interactive) throw new Error("非交互环境必须通过 --model <id|name> 显式指定模型");
-  return (input.prompt ?? promptModel)(input.models);
+  const recent = recentSelectionsForInteractive(input.interactive, input.recent);
+  const recentScope = input.profileName && input.tenantId
+    ? JSON.stringify([input.profileName, input.tenantId])
+    : undefined;
+  const recentModels = recent && recentScope
+    ? recent.recentChoices("model", recentScope, input.models, (model) => model.id)
+    : [];
+  const recentIds = new Set(recentModels.map((model) => model.id));
+  const rankedModels = [
+    ...recentModels,
+    ...input.models.filter((model) => !recentIds.has(model.id)),
+  ];
+  const selected = await (input.prompt ?? promptModel)(rankedModels);
+  if (selected && recentScope) {
+    recent?.recordChoice("model", recentScope, selected.id);
+  }
+  return selected;
 }
 
 export function requireInferenceModel(model: Model): SelectedInferenceModel {
