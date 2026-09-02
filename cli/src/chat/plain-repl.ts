@@ -1,7 +1,5 @@
 import { createInterface } from "node:readline/promises";
 
-import { DOCTOR_CLI_VERSION } from "../app/version";
-import { renderBanner } from "./banner";
 import type { DoctorModel } from "./model";
 import type { Session } from "./session";
 
@@ -69,7 +67,6 @@ export async function runPlainRepl(session: Session): Promise<void> {
   let closed = false;
   let busy = false;
 
-  output.write(`${renderBanner({ version: DOCTOR_CLI_VERSION, meta: session.getModel().meta })}\n`);
   output.write("兼容终端模式：Enter 发送 · /help 查看命令 · /exit 退出 · Ctrl+C 中断\n");
   const unsubscribe = session.subscribe((model) => renderer.render(model));
   const close = () => {

@@ -2,6 +2,7 @@ import boxen from "boxen";
 
 import type { DoctorMeta } from "./model";
 
+// 当前听诊器 ASCII 的视觉效果尚不理想，暂不在 doctor chat 中展示；保留实现供后续迭代。
 const LOGO = [
   // 用 Braille 点阵离线生成软管曲线，避免不同线型在终端字体中出现断裂接头。
   "  ⡤⠤⠤●   ●⠤⠤⡄",

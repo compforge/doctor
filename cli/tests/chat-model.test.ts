@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { createDoctorModel, projectChatState } from "../src/chat/model";
 
 describe("Doctor AgentUE model projection", () => {
-  test("preserves the Doctor banner and projects messages into chat-tui state", () => {
+  test("projects messages into chat-tui state without printing a banner", () => {
     const model = createDoctorModel({
       profileName: "local",
       profile: {
@@ -22,11 +22,9 @@ describe("Doctor AgentUE model projection", () => {
       streaming: true,
     });
 
-    const state = projectChatState(model, "0.0.1");
+    const state = projectChatState(model);
 
-    expect(state.timeline.header).toContain("⡤⠤⠤●   ●⠤⠤⡄");
-    expect(state.timeline.header).toContain("agent    local");
-    expect(state.timeline.header).not.toContain("doctor.test");
+    expect(state.timeline.header).toBeUndefined();
     expect(state.timeline.items).toEqual([{
       type: "message",
       id: "m1",

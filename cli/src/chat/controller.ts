@@ -5,7 +5,6 @@ import {
   type InteractionResponse,
 } from "chat-tui";
 
-import { DOCTOR_CLI_VERSION } from "../app/version";
 import { projectChatState } from "./model";
 import { Session } from "./session";
 
@@ -25,9 +24,9 @@ export class Controller implements ChatProtocol {
     private readonly session: Session,
     private readonly onExit: () => void | Promise<void>,
   ) {
-    this.stateStore = createChatStore(projectChatState(session.getModel(), DOCTOR_CLI_VERSION));
+    this.stateStore = createChatStore(projectChatState(session.getModel()));
     this.unsubscribe = session.subscribe((model) => {
-      this.stateStore.commit(projectChatState(model, DOCTOR_CLI_VERSION));
+      this.stateStore.commit(projectChatState(model));
     });
   }
 
