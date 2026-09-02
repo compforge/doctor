@@ -250,10 +250,14 @@ async function resolveLocalModel(
     });
     if (!tenant) throw new Error("已取消租户选择");
     terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
-    const model = await selectChatModel(await access.catalog.query({
-      identity: { kind: "tenant_id", value: tenant.id },
-      constraints: { type: "llm" },
-    }));
+    const model = await selectChatModel(
+      await access.catalog.query({
+        identity: { kind: "tenant_id", value: tenant.id },
+        constraints: { type: "llm" },
+      }),
+      undefined,
+      { profileName, tenantId: tenant.id },
+    );
     if (!model) throw new Error("已取消模型选择");
     const inference = await access.createInference(model.inference, 60_000);
     terminalStdout.write(
@@ -279,9 +283,11 @@ async function resolveLocalModel(
 export async function selectChatModel(
   models: readonly Model[],
   prompt?: (models: readonly Model[]) => Promise<Model | undefined>,
+  recentScope?: { profileName: string; tenantId: string },
 ): Promise<SelectedInferenceModel | undefined> {
   const selected = await selectModel({
     models: models.filter((model) => model.type === "llm"),
+    ...recentScope,
     ...(prompt ? { interactive: true, prompt } : {}),
   });
   if (!selected) return undefined;
