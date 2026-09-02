@@ -12,7 +12,6 @@ import {
 import type { ChatState, TranscriptItem } from "chat-tui";
 
 import type { Profile } from "../app/config/model";
-import { renderBanner } from "./banner";
 
 export type { InfoBlock, MessageBlock, ToolBlock } from "@compforge/doctor-agent";
 export type AgentMode = "local" | "server";
@@ -77,7 +76,7 @@ export function createDoctorModel(options: InitialModelOptions): DoctorModel {
   };
 }
 
-export function projectChatState(model: DoctorModel, version: string): ChatState {
+export function projectChatState(model: DoctorModel): ChatState {
   const meta = model.meta;
   const items = model.blocks.map(projectBlock);
   const activeTools = model.blocks.filter(
@@ -88,7 +87,6 @@ export function projectChatState(model: DoctorModel, version: string): ChatState
   return {
     timeline: {
       items,
-      header: renderBanner({ version, meta }),
       showThoughts: false,
     },
     composer: {
