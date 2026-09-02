@@ -46,7 +46,7 @@ capability 继续表达 Store、Metric、Case 等可复用业务能力；两者�
 |---|---|---|
 | access | Plugin capability → Core | Plugin 声明最小需求，Core 合并、预检并执行策略 |
 | dependencies | Service → Core | Service 引用同一 Plugin 中其它 Service 的 capability，Core 验证并准备运行时 handle |
-| data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
+| data | Core ↔ Plugin capability | 公共包定义类型化输入输出；Plugin-owned Observation schema 随契约交给 Core 验证 |
 | contributions | Plugin Service → Core | Service 统一注册 Inspect、Probe 和 Detector；Core 选择、驱动并校验结果 |
 | infra | Core → Plugin context | 当前 Target 的 Kubernetes access、取消与资源生命周期等运行便利 |
 | config | profile/Core → Plugin context | Core 不透明保存和透传，schema、校验和解释归 Plugin |
@@ -93,8 +93,12 @@ Plugin Service 注册这三类 contribution，但不拥有命令生命周期。C
 自行提前执行 Detector，也不能在 Detector 后直接渲染或交付结果。
 
 Detector 依赖的是 Evidence schema，而不是 producer 的实现细节。Service Inspect 返回的每个 Fact 必须携带
-本地 `kind` 与正整数 `schemaVersion`；Workload Probe 在 `observation` 声明中预先声明二者，`probe` 只返回
-`value`，由 Core 按声明写入 Observation，避免运行时输出冒充其它 schema。Service Detector 返回的 Finding
+本地 `kind` 与正整数 `schemaVersion`；Workload Probe 用 `produces: ObservationDefinition` 预先声明
+`kind + schemaVersion + schema`，`probe` 直接返回由 schema 推导的 payload。TypeBox 作为 Plugin 作者侧的单一类型来源；
+Core 在加载时用 JSON Schema Draft 2020-12 编译契约，调用后把 ESM 边界返回值当作 `unknown`
+执行无 coercion 校验，再复制和深冻结。开放 object schema、远程 `$ref`、非有限数字和其它非 JSON 值都会被拒绝。
+`Any/Unknown` 与仅依赖本地函数的 `Refine/Codec/Unsafe` 也不是可移植 schema。
+Service Detector 返回的 Finding
 同样携带本地 `kind + schemaVersion`。Core 把 Plugin 本地 kind 规范化为
 `plugin/<plugin-id>/<service>/<local-kind>`，并写入 `{ origin: "plugin", plugin, service, id }` producer；
 Core 自有 schema 使用保留短 kind 与 `{ origin: "core", id }`。Plugin immutable version 加 Service/contribution
@@ -187,7 +191,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 6,
+  "pluginApiVersion": 7,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",

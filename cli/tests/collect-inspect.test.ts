@@ -4,6 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createServiceCatalog,
+  defineObservation,
+  defineServiceWorkloadProbe,
+  Type,
   type PluginDefinition,
   type ServiceEvidenceFact,
 } from "@compforge/doctor-plugin";
@@ -244,6 +247,11 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
 
 test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage", async () => {
   let workloadProbeFacts: readonly ServiceEvidenceFact[] | undefined;
+  const coreFactsVisible = defineObservation({
+    kind: "core-facts-visible",
+    schemaVersion: 1,
+    schema: Type.Object({ pod: Type.String() }, { additionalProperties: false }),
+  });
   const pluginWithEnvironmentProbes = {
     ...examplePlugin,
     services: createServiceCatalog(examplePlugin.services.services.map((service) => (
@@ -256,18 +264,18 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
                 kind: "kubernetes.apparmor-unconfined-admission",
                 schemaVersion: 1,
                 subject: "workload-service-account",
-              }, {
+              }, defineServiceWorkloadProbe({
                 id: "core-facts",
                 kind: "workload",
                 schemaVersion: 1,
                 access: {},
                 workload: "main",
-                observation: { kind: "core-facts-visible", schemaVersion: 1 },
+                produces: coreFactsVisible,
                 probe: async (_context, input) => {
                   workloadProbeFacts = input.facts;
-                  return { value: { pod: input.instance.pod } };
+                  return { pod: input.instance.pod };
                 },
-              }],
+              })],
             },
           }
         : service

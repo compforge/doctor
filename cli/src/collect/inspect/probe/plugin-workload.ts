@@ -4,6 +4,7 @@ import type {
   ServiceWorkloadProbe,
 } from "@compforge/doctor-plugin";
 import { openPluginContext } from "../../../plugin/context";
+import { validateObservationValue } from "../../../plugin/observation";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {
@@ -68,20 +69,25 @@ export function makePluginWorkloadProbe(
               },
               facts: probeFacts,
             });
+            const value = validateObservationValue(
+              declaration.produces,
+              observed,
+              `${service.name}/${declaration.workload}/${declaration.id}`,
+            );
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
               schemaVersion: 1,
               producer: { origin: "core", id: "plugin-workload-adapter" },
-              observationKind: declaration.observation.kind,
-              observationSchemaVersion: declaration.observation.schemaVersion,
+              observationKind: declaration.produces.kind,
+              observationSchemaVersion: declaration.produces.schemaVersion,
               service: service.name,
               workload: declaration.workload,
               namespace: config.namespace,
               pod: pod.pod,
               container: definition.container,
               probe: declaration.id,
-              value: observed.value,
+              value,
             };
             observations.push(observation);
             ctx.bundle.addStep({

@@ -7,6 +7,7 @@ import {
 } from "@compforge/doctor-plugin";
 import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
 import type { PluginManifest } from "./manifest";
+import { validateObservationSchema } from "./observation";
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -154,9 +155,10 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         if (typeof probe.probe !== "function") {
           throw new Error(`${label}.probe must be a function`);
         }
-        const observation = record(probe.observation, `${label}.observation`);
-        nonEmptyString(observation.kind, `${label}.observation.kind`);
-        positiveInteger(observation.schemaVersion, `${label}.observation.schemaVersion`);
+        const observation = record(probe.produces, `${label}.produces`);
+        nonEmptyString(observation.kind, `${label}.produces.kind`);
+        positiveInteger(observation.schemaVersion, `${label}.produces.schemaVersion`);
+        validateObservationSchema(observation.schema, `${label}.produces.schema`);
       } else {
         throw new Error(`${label} uses unsupported kind '${String(probe.kind)}'`);
       }
