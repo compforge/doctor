@@ -7,7 +7,7 @@ import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { OperationRisk } from "../command/approval";
 
-export type StepStatus = "ok" | "failed" | "skipped" | "unavailable";
+export type StepStatus = "ok" | "partial" | "failed" | "skipped" | "unavailable";
 export type OutcomeStatus = "ok" | "partial" | "failed" | "unavailable" | "unnecessary";
 export type EvidenceStatus = StepStatus | OutcomeStatus;
 
@@ -19,7 +19,7 @@ export interface StepInput {
   title: string;
   risk: StepRisk;
   status: StepStatus;
-  /** failed/skipped/unavailable 时的原因（降级原因也算证据） */
+  /** partial/failed/skipped/unavailable 时的原因（降级原因也算证据） */
   reason?: string;
   command?: string[];
   exitCode?: number | null;

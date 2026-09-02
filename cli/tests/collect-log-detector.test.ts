@@ -14,6 +14,7 @@ const collectedFacts: LogInspectionFacts = {
   runtime: collectedFact("log.runtime", "log-target", { kubectlVersion: "v1.31.0" }),
   servicePods: collectedFact("log.service-pods", "log-target", {
     byService: { api: ["api-0", "api-1"], worker: [] },
+    containersByPod: {},
     previousContainersByPod: {},
   }),
 };
@@ -64,11 +65,12 @@ describe("Log diagnosis", () => {
     }]);
   });
 
-  test("按 Pod 区分已取得与失败的日志证据", () => {
+  test("按 Pod 区分完整、部分与不可用的日志证据", () => {
     const evidence = buildLogEvidence([
       observation("api", [
-        { pod: "api-0", events: ["request complete"], failed: false },
-        { pod: "api-1", events: ["[collect-error] timeout"], failed: true },
+        { pod: "api-0", events: ["request complete"], captureStatus: "complete" },
+        { pod: "api-1", events: ["[collect-error: partial] timeout"], captureStatus: "partial" },
+        { pod: "api-2", events: ["[collect-error] denied"], captureStatus: "unavailable" },
       ]),
     ], collectedFacts);
 
@@ -78,8 +80,12 @@ describe("Log diagnosis", () => {
       missingEvidence: [],
     }, {
       goal: "log:pod:api:api-1",
+      status: "partial",
+      missingEvidence: ["Pod api-1 只取得部分 current 日志"],
+    }, {
+      goal: "log:pod:api:api-2",
       status: "insufficient",
-      missingEvidence: ["Pod api-1 的 current 日志读取失败"],
+      missingEvidence: ["Pod api-2 的 current 日志不可用"],
     }]);
   });
 });

@@ -1,6 +1,14 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
-import type { ExecResult } from "../../../infra/k8s/executor";
+import {
+  runPodLogCapturePlan,
+  type PodLogCapturePlanItem,
+} from "../../../infra/k8s/log-capture-plan";
+import type {
+  PodLogCaptureStatus,
+  PodLogResult,
+} from "../../../infra/k8s/pod-log";
 import type {
   LogCommandContext,
   LogInspectionFacts,
@@ -10,48 +18,61 @@ import type {
 } from "../model";
 import { createTraceLineCollector } from "../config";
 
-const LOG_CAPTURE_CONCURRENCY = 8;
-
 interface LogCaptureInput {
   service: string;
   pod: string;
-  container?: string;
+  container: string;
   previous?: boolean;
 }
 
+interface PreparedLogCapture {
+  input: LogCaptureInput;
+  events: string[];
+  rawFilePath: string;
+}
+
 interface LogCaptureResult extends LogCaptureInput {
-  capture: Awaited<ReturnType<typeof capturePodLog>>;
+  capture: PodLogResult;
+  events: string[];
+  rawFilePath: string;
 }
 
-function collectError(result: ExecResult): string {
-  const suffix = result.timedOut ? ": timeout, partial output follows" : "";
-  return `[collect-error${suffix}] ${result.command.join(" ")}\n${result.stderr.trim()}`;
+function collectError(result: PodLogResult): string {
+  const kind = result.captureStatus === "partial" ? ": partial" : "";
+  return `[collect-error${kind}] ${result.command.join(" ")}\n${result.stderr.trim()}`;
 }
 
-function failureReason(result: ExecResult): string {
-  return result.stderr.trim().split("\n")[0] || `exit=${result.exitCode}`;
+function failureReason(result: PodLogResult): string {
+  return result.stderr.trim().split("\n")[0] || result.reason || `exit=${result.exitCode}`;
 }
 
-async function capturePodLog(
+function prepareCapture(
   ctx: LogCommandContext,
   config: LogProbeConfig,
   input: LogCaptureInput,
-): Promise<{ result: ExecResult; events: string[]; rawFilePath: string }> {
-  const suffix = input.previous ? `-${input.container}-previous` : "";
-  const rawFilePath = join(ctx.bundle.dir, `.capture-${input.service}-${input.pod}${suffix}.log`);
+): PodLogCapturePlanItem<PreparedLogCapture> {
+  const suffix = input.previous ? "-previous" : "";
+  const rawFilePath = join(
+    ctx.bundle.dir,
+    `.capture-${input.service}-${input.pod}-${input.container}${suffix}.log`,
+  );
   const collector = createTraceLineCollector(config.traceIds, config.linePattern);
-  const result = await ctx.access.collectPodLogs({
-    pod: input.pod,
-    container: input.container,
-    allContainers: !input.container,
-    prefix: true,
-    previous: input.previous,
-    since: config.since,
-    sinceTime: config.sinceTime,
-    rawFilePath,
-    onLine: collector.push,
-  });
-  return { result, events: collector.events, rawFilePath };
+  return {
+    target: { input, events: collector.events, rawFilePath },
+    request: {
+      pod: input.pod,
+      container: input.container,
+      prefix: true,
+      previous: input.previous,
+      since: config.since,
+      sinceTime: config.sinceTime,
+      rawFilePath,
+      onLine: collector.push,
+    },
+    onStart: () => ctx.log(input.previous
+      ? `[collect] ${input.service}/${input.pod}/${input.container} previous…`
+      : `[collect] ${input.service}/${input.pod}/${input.container}…`),
+  };
 }
 
 async function captureLogPlan(
@@ -59,55 +80,53 @@ async function captureLogPlan(
   config: LogProbeConfig,
   plan: readonly LogCaptureInput[],
 ): Promise<LogCaptureResult[]> {
-  const results: Array<LogCaptureResult | undefined> = new Array(plan.length);
-  let cursor = 0;
-  const worker = async () => {
-    while (cursor < plan.length) {
-      const index = cursor++;
-      const input = plan[index]!;
-      ctx.log(input.previous
-        ? `[collect] ${input.service}/${input.pod}/${input.container} previous…`
-        : `[collect] ${input.service}/${input.pod}…`);
-      results[index] = { ...input, capture: await capturePodLog(ctx, config, input) };
-    }
-  };
-  await Promise.all(Array.from(
-    { length: Math.min(LOG_CAPTURE_CONCURRENCY, plan.length) },
-    () => worker(),
-  ));
-  return results.map((result) => result!);
+  const captures = await runPodLogCapturePlan(
+    ctx.access,
+    plan.map((input) => prepareCapture(ctx, config, input)),
+  );
+  return captures.map(({ target, capture }) => ({
+    ...target.input,
+    capture,
+    events: target.events,
+    rawFilePath: target.rawFilePath,
+  }));
 }
 
-function recordPodLog(
-  ctx: LogCommandContext,
-  input: {
-    pod: string;
-    container?: string;
-    previous?: boolean;
-    capture: Awaited<ReturnType<typeof capturePodLog>>;
-  },
-): void {
-  const { result, rawFilePath } = input.capture;
-  const previousSuffix = input.previous ? `-${input.container}-previous` : "";
+function recordPodLog(ctx: LogCommandContext, input: LogCaptureResult): void {
+  const { capture, rawFilePath } = input;
+  const previousSuffix = input.previous ? "-previous" : "";
+  const partial = capture.captureStatus === "partial";
   ctx.bundle.addStep({
-    id: `logs-${input.pod}${previousSuffix}`,
+    id: `logs-${input.pod}-${input.container}${previousSuffix}`,
     title: input.previous
       ? `${input.pod}/${input.container} 上一次重启前 trace 日志`
-      : `${input.pod} trace 日志`,
+      : `${input.pod}/${input.container} trace 日志`,
     risk: "observe",
-    status: result.ok ? "ok" : input.previous ? "unavailable" : "failed",
-    reason: result.ok ? undefined : failureReason(result),
-    command: result.command,
-    exitCode: result.exitCode,
-    durationMs: result.durationMs,
-    // raw/ 保存不限容量的 kubectl 原始 stdout；ID/错误过滤只塑造 Observation。
-    rawFilePath,
+    status: capture.captureStatus === "partial"
+      ? "partial"
+      : capture.captureStatus === "unavailable"
+        ? input.previous ? "unavailable" : "failed"
+        : "ok",
+    reason: capture.captureStatus === "complete"
+      ? undefined
+      : `${partial ? "部分采集" : "采集不可用"}：${failureReason(capture)}`,
+    command: capture.command,
+    exitCode: capture.exitCode,
+    durationMs: capture.durationMs,
+    rawFilePath: existsSync(rawFilePath) ? rawFilePath : undefined,
     ext: "log",
   });
 }
 
 function targetKey(service: string, pod: string): string {
   return `${service}\u0000${pod}`;
+}
+
+function podCaptureStatus(captures: readonly LogCaptureResult[]): PodLogCaptureStatus {
+  if (!captures.length) return "unavailable";
+  if (captures.every(({ capture }) => capture.captureStatus === "complete")) return "complete";
+  if (captures.every(({ capture }) => capture.captureStatus === "unavailable")) return "unavailable";
+  return "partial";
 }
 
 /**
@@ -126,7 +145,11 @@ export function makeLogProbe(
       if (servicePods.status !== "collected") return [];
       const plan = services.flatMap((service) => (
         (servicePods.byService[service] ?? []).flatMap((pod): LogCaptureInput[] => [
-          { service, pod },
+          ...(servicePods.containersByPod[pod] ?? []).map((container) => ({
+            service,
+            pod,
+            container,
+          })),
           ...(servicePods.previousContainersByPod[pod] ?? []).map((container) => ({
             service,
             pod,
@@ -136,18 +159,20 @@ export function makeLogProbe(
         ])
       ));
       const captures = await captureLogPlan(ctx, config, plan);
-      const currentByTarget = new Map<string, LogCaptureResult>();
+      const currentByTarget = new Map<string, LogCaptureResult[]>();
       const previousByTarget = new Map<string, PreviousContainerLogObservation[]>();
       for (const captured of captures) {
         recordPodLog(ctx, captured);
         const key = targetKey(captured.service, captured.pod);
         if (!captured.previous) {
-          currentByTarget.set(key, captured);
+          const current = currentByTarget.get(key) ?? [];
+          current.push(captured);
+          currentByTarget.set(key, current);
           continue;
         }
-        if (!captured.capture.result.ok && !captured.capture.events.length) continue;
+        if (captured.capture.captureStatus === "unavailable" && !captured.events.length) continue;
         const previous = previousByTarget.get(key) ?? [];
-        previous.push({ container: captured.container!, events: captured.capture.events });
+        previous.push({ container: captured.container, events: captured.events });
         previousByTarget.set(key, previous);
       }
       return services.map((service) => ({
@@ -158,14 +183,18 @@ export function makeLogProbe(
         service,
         pods: (servicePods.byService[service] ?? []).map((pod) => {
           const key = targetKey(service, pod);
-          const current = currentByTarget.get(key)!;
-          // kubectl 超时/失败时 raw 文件仍保留已经到手的 stdout；Observation 同样保留已匹配行。
+          const current = currentByTarget.get(key) ?? [];
+          const captureStatus = podCaptureStatus(current);
+          const events = current.flatMap(({ capture, events }) => capture.captureStatus === "complete"
+            ? events
+            : [collectError(capture), ...events]);
+          if (!current.length) {
+            events.push(`[collect-error] Pod ${pod} 没有可读取的 application container`);
+          }
           return {
             pod,
-            failed: !current.capture.result.ok,
-            events: current.capture.result.ok
-              ? current.capture.events
-              : [collectError(current.capture.result), ...current.capture.events],
+            captureStatus,
+            events,
             previous: previousByTarget.get(key) ?? [],
           };
         }),

@@ -38,11 +38,22 @@ export function buildLogCoverage(
         `Service ${observation.service} 没有可采集日志的运行中 Pod`,
       )];
     }
-    return observation.pods.map((pod): DiagnosisCoverage<LogDiagnosisGoal> => ({
-      goal: `log:pod:${observation.service}:${pod.pod}`,
-      status: pod.failed ? "insufficient" : "sufficient",
-      missingEvidence: pod.failed ? [`Pod ${pod.pod} 的 current 日志读取失败`] : [],
-    }));
+    return observation.pods.map((pod): DiagnosisCoverage<LogDiagnosisGoal> => {
+      if (pod.captureStatus === "complete") {
+        return {
+          goal: `log:pod:${observation.service}:${pod.pod}`,
+          status: "sufficient",
+          missingEvidence: [],
+        };
+      }
+      return {
+        goal: `log:pod:${observation.service}:${pod.pod}`,
+        status: pod.captureStatus === "partial" ? "partial" : "insufficient",
+        missingEvidence: [pod.captureStatus === "partial"
+          ? `Pod ${pod.pod} 只取得部分 current 日志`
+          : `Pod ${pod.pod} 的 current 日志不可用`],
+      };
+    });
   });
 
   return coverage.length

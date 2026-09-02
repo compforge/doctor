@@ -11,13 +11,13 @@
 
 - `timeline.jsonl` 是过滤后日志的结构化时间线，保留 Service、Pod、Container、current/previous、时间戳和消息；它是文本与 HTML 展示的共同输入。
 - `service-logs.txt` 与 `report.html` 分别面向纯文本阅读和交互排查，二者不重新解析 raw 日志。
-- `raw/` 保留逐 Pod 的 kubectl 原始 stdout，作为可复查证据，不被聚合或过滤结果替代。
+- `raw/` 保留逐 Pod/Container 的 Kubernetes Log API 原始日志流，作为可复查证据，不被聚合或过滤结果替代。
 
 ## 流程
 
 1. 配置确认先确定 Namespace，并由 `service.traceId` provider 分别解析每个 biz-id，输出 provider 与本次映射。provider Service 声明 capability 依赖时，Core 只在调用该 provider 时准备 handle，解析完成后统一回收。非交互使用 Catalog 的默认日志主链；交互候选是统一 Catalog 与当前 Namespace 实际 Service 的交集。时间范围优先采用显式参数；未指定时，近期 UUIDv7 业务 ID 会提供带少量前置余量的日志起点，其他 ID 回退默认回看窗口。
 2. Inspect 通过 `KubernetesPodLogAccess` 读取 Service、Pod 和 Container status，按 selector 建立 Service → Running Pod 关系，并确认哪些容器存在可读取的上一次终止实例。
-3. Log Probe 为所选 Service 建立有序 capture plan，以最多 8 路并发采集各 Pod 同一时间范围内的 current 日志，并对发生过重启且存在 `lastState.terminated` 的容器 best-effort 补采 previous 日志。并发只覆盖互不依赖的 Kubernetes 读取；完成后仍按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。原始字节流分别直接落盘，同时按业务标识和可选错误模式过滤。
+3. Log Probe 为所选 Service 建立有序 capture plan，按 Container 通过 `@kubernetes/client-node` 的 kubeconfig/auth 能力直连 Pod Log API；默认最多 3 路并发，每流 64 MiB、整次 512 MiB，并以 15 秒 idle timeout 和 120 秒 hard timeout 约束现场访问。瞬态失败最多重试一次，并从最近日志时间戳继续；已取得字节后触发超时或预算上限记为 `partial`，完全没有取得日志才记为 `unavailable`。发生过重启且存在 `lastState.terminated` 的容器仍 best-effort 补采 previous 日志。完成后按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。
 4. Core 通过 `runCollect` 把 Inspect Facts 与全部 Service Observation 组成 Evidence；当前没有独立根因
    Detector，Coverage 按 Pod 记录 current 日志是否取得，并明确 Inspect 失败、无运行中 Pod 或读取失败等
    缺口。Render 只消费形成的 Diagnosis，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
@@ -33,7 +33,7 @@
 ### Service 选择是业务策略，selector 解析是基础能力
 
 有哪些 Service 属于 Plugin 知识，只在对应 Plugin 的统一 Catalog 定义；是否采集日志以及是否属于默认主链由各 Service 的 log capability 声明，
-`collect/log` 不维护平行名单或按服务名分支。如何读取 Kubernetes Service、如何按 selector 找到 Pod、如何执行 `kubectl logs` 可被 MCP 等领域复用，因此属于
+`collect/log` 不维护平行名单或按服务名分支。如何读取 Kubernetes Service、如何按 selector 找到 Pod、如何通过 Kubernetes API 读取日志可被 MCP 等领域复用，因此属于
 `infra/k8s`。通用多选交互属于 `terminal/`，不进入 infra。
 
 ### Service 是证据边界，capture plan 是调度边界
@@ -45,8 +45,8 @@ Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建�
 
 ### raw 完整性优先，聚合结果保持精简
 
-逐 Pod raw 日志当前不做容量截断，而是从 kubectl stdout 流式落盘，避免日志大小同时转化为进程
-内存占用。时间窗口和 Service 范围仍由配置确认限制；current 与 previous 分开记账，previous
+逐 Pod/Container raw 日志从 API response 流式落盘，不把完整日志保留在进程内存；单流和整次采集都
+有显式字节预算，预算耗尽时保留已取得部分并记录 `partial`。时间窗口和 Service 范围仍由配置确认限制；current 与 previous 分开记账，previous
 不可用只形成证据缺口，不让 current 采集失败。全局时间线保留匹配业务标识和过滤条件的日志；
 异常首行命中后还会连续保留常见 Python、JavaScript、Java 和 Go 堆栈续行，并把错误首行与续行组成一个逻辑日志事件。时间线排序、计数和筛选都以事件为粒度，事件消息仍保留换行供文本与 HTML 多行展示。raw 与时间线不能互相替代。
 

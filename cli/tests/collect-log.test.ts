@@ -10,8 +10,10 @@ import type {
   LogProbeConfig,
 } from "../src/collect/log/model";
 import { makeLogProbe } from "../src/collect/log/probe/service";
-import type { ExecResult } from "../src/infra/k8s/executor";
-import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
+import type {
+  KubernetesPodLogAccess,
+  PodLogResult,
+} from "../src/infra/k8s/pod-log";
 import { collectedFact } from "../src/collect/protocol";
 
 test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Evidence", async () => {
@@ -21,7 +23,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
   const access: KubernetesPodLogAccess = {
     clientVersion: async () => { throw new Error("unexpected clientVersion"); },
     listServicePods: async () => { throw new Error("unexpected listServicePods"); },
-    collectPodLogs: async (request): Promise<ExecResult> => {
+    collectPodLogs: async (request): Promise<PodLogResult> => {
       active += 1;
       maxActive = Math.max(maxActive, active);
       await Bun.sleep(request.pod === "pod-a" ? 20 : 2);
@@ -36,6 +38,9 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
         durationMs: 2,
         timedOut: false,
         command: ["kubectl", "logs", request.pod],
+        captureStatus: "complete",
+        bytesRead: request.pod.length + 1,
+        attempts: 1,
       };
     },
   };
@@ -64,6 +69,13 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
         "service-d": ["pod-d"],
         "service-e": ["pod-e"],
       },
+      containersByPod: {
+        "pod-a": ["app"],
+        "pod-b": ["app"],
+        "pod-c": ["app"],
+        "pod-d": ["app"],
+        "pod-e": ["app"],
+      },
       previousContainersByPod: {
         "pod-a": ["app"],
         "pod-b": ["app"],
@@ -78,7 +90,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
     const probe = makeLogProbe(config.services);
     const observations = await probe.run(context, facts, config, []);
 
-    expect(maxActive).toBe(8);
+    expect(maxActive).toBe(3);
     expect(observations.map((observation) => observation.service)).toEqual([
       "service-a",
       "service-b",
@@ -87,15 +99,15 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       "service-e",
     ]);
     expect(bundle.getSteps().map((step) => step.id)).toEqual([
-      "logs-pod-a",
+      "logs-pod-a-app",
       "logs-pod-a-app-previous",
-      "logs-pod-b",
+      "logs-pod-b-app",
       "logs-pod-b-app-previous",
-      "logs-pod-c",
+      "logs-pod-c-app",
       "logs-pod-c-app-previous",
-      "logs-pod-d",
+      "logs-pod-d-app",
       "logs-pod-d-app-previous",
-      "logs-pod-e",
+      "logs-pod-e-app",
       "logs-pod-e-app-previous",
     ]);
   } finally {

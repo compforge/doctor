@@ -1,6 +1,7 @@
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
+import type { PodLogCaptureStatus } from "../../infra/k8s/pod-log";
 import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {
@@ -9,6 +10,8 @@ export interface LogCollectOptions {
   /** @deprecated Use traceIds. */
   traceId?: string;
   namespace: string;
+  kubeconfig?: string;
+  context?: string;
   services: string[];
   since?: string;
   sinceTime?: string;
@@ -26,6 +29,7 @@ export interface LogInspectionFacts {
   runtime: Fact<{ kubectlVersion?: string }, "log.runtime">;
   servicePods: Fact<{
     byService: Record<string, string[]>;
+    containersByPod: Record<string, string[]>;
     previousContainersByPod: Record<string, string[]>;
   }, "log.service-pods">;
 }
@@ -40,7 +44,7 @@ export interface PodLogObservation {
   /** 过滤后的逻辑日志事件；堆栈在单个 event 内保留为多行。 */
   events: readonly string[];
   previous?: readonly PreviousContainerLogObservation[];
-  failed: boolean;
+  captureStatus: PodLogCaptureStatus;
 }
 
 export interface ServiceLogObservation extends ObservationMeta {
@@ -83,7 +87,8 @@ export interface LogRenderStats {
   podCount: number;
   matchedEventCount: number;
   previousContainerCount: number;
-  failedCount: number;
+  partialCount: number;
+  unavailableCount: number;
 }
 
 export interface LogRenderResult {
