@@ -57,7 +57,12 @@ async function runFullscreenRepl(session: Session): Promise<void> {
     import("react"),
     import("../chat/controller"),
   ]);
-  const { createCliRenderer } = core;
+  const {
+    createCliRenderer,
+    createClipboard,
+    createHostClipboard,
+    createRendererClipboardAdapter,
+  } = core;
   const { createRoot } = opentuiReact;
   const { ChatShell } = chatTui;
   const { createElement } = react;
@@ -66,6 +71,10 @@ async function runFullscreenRepl(session: Session): Promise<void> {
     exitOnCtrlC: false,
     targetFps: 30,
     autoFocus: false,
+  });
+  const clipboard = createClipboard({
+    host: createHostClipboard(),
+    terminal: createRendererClipboardAdapter(renderer),
   });
   const root = createRoot(renderer);
 
@@ -83,8 +92,12 @@ async function runFullscreenRepl(session: Session): Promise<void> {
       ]);
     } finally {
       root.unmount();
-      renderer.destroy();
-      resolveExit();
+      try {
+        await clipboard.dispose();
+      } finally {
+        renderer.destroy();
+        resolveExit();
+      }
     }
   };
 
@@ -92,7 +105,11 @@ async function runFullscreenRepl(session: Session): Promise<void> {
   const onSignal = () => { void cleanup(); };
   process.once("SIGTERM", onSignal);
   process.once("SIGINT", onSignal);
-  root.render(createElement(ChatShell, { protocol: controller, commands: CHAT_COMMANDS }));
+  root.render(createElement(ChatShell, {
+    protocol: controller,
+    commands: CHAT_COMMANDS,
+    clipboard,
+  }));
 
   await exited;
   process.off("SIGTERM", onSignal);

@@ -21,6 +21,7 @@ describe("Doctor AgentUE model projection", () => {
       content: "hello",
       streaming: true,
     });
+    model.meta.queued.push({ id: "q1", text: "follow up" });
 
     const state = projectChatState(model);
 
@@ -33,6 +34,11 @@ describe("Doctor AgentUE model projection", () => {
       text: "hello",
       format: "markdown",
       streaming: true,
+    }]);
+    expect(state.queue?.items).toEqual([{
+      id: "q1",
+      text: "follow up",
+      tag: "queued",
     }]);
   });
 });

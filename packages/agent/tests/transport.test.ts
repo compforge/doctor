@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { PatchEmitter } from "@compforge/agentue/ui";
+import type { PatchEvent } from "@compforge/agentue/ui";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
 import { Agent } from "../src/agent";
 
 test("Agent uses the host-provided LLM transport", async () => {
   let request: Request | undefined;
+  const events: PatchEvent[] = [];
   const agent = new Agent({
     llm: {
       provider: "openai",
@@ -33,8 +35,8 @@ test("Agent uses the host-provided LLM transport", async () => {
   });
 
   try {
-    for await (const _event of agent.run("hello", { emitter: new PatchEmitter() })) {
-      // Drain the complete AgentUE stream.
+    for await (const event of agent.run("hello", { emitter: new PatchEmitter() })) {
+      events.push(event);
     }
   } finally {
     await agent.dispose();
@@ -42,4 +44,6 @@ test("Agent uses the host-provided LLM transport", async () => {
 
   expect(request?.url).toBe("http://inference.invalid/v1/chat/completions");
   expect(await request?.clone().json()).toMatchObject({ model: "chat-backend", stream: true });
+  expect(JSON.stringify(events)).not.toContain('"content":""');
+  expect(JSON.stringify(events)).toContain('"content":"ok"');
 });
