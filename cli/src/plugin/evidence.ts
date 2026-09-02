@@ -7,6 +7,9 @@ import type {
   WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { EvidenceSchemaMeta, ObservationMeta } from "../collect/protocol";
+import {
+  immutableJsonObject,
+} from "./observation";
 
 /** Core canonicalizes local Plugin schema kinds instead of trusting hand-written prefixes. */
 export function pluginEvidenceKind(plugin: string, service: string, kind: string): string {
@@ -70,7 +73,7 @@ export function projectServiceEvidenceObservation(input: {
   services: readonly string[];
   probe: string;
   source: ObservationMeta;
-  value: Readonly<Record<string, unknown>>;
+  value: unknown;
   workload?: string;
   instance?: WorkloadInstance;
 }): ServiceEvidenceObservation {
@@ -83,7 +86,7 @@ export function projectServiceEvidenceObservation(input: {
     producer: input.source.producer,
     ...(input.workload ? { workload: input.workload } : {}),
     ...(input.instance ? { instance: input.instance } : {}),
-    value: input.value,
+    value: immutableJsonObject(input.value, `${input.probe} Observation`),
   };
 }
 
@@ -96,7 +99,7 @@ export function projectPluginServiceEvidenceObservation(input: {
   probe: string;
   kind: string;
   schemaVersion: number;
-  value: Readonly<Record<string, unknown>>;
+  value: unknown;
   workload?: string;
   instance?: WorkloadInstance;
 }): ServiceEvidenceObservation {
@@ -114,25 +117,8 @@ export function projectPluginServiceEvidenceObservation(input: {
     },
     ...(input.workload ? { workload: input.workload } : {}),
     ...(input.instance ? { instance: input.instance } : {}),
-    value: input.value,
+    value: immutableJsonObject(input.value, `${input.probe} Observation`),
   };
-}
-
-function freezeDeep(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
-  for (const child of Object.values(value)) freezeDeep(child);
-  return Object.freeze(value);
-}
-
-function immutableJson<T>(value: T, label: string): T {
-  try {
-    const serialized = JSON.stringify(value);
-    return freezeDeep(JSON.parse(serialized)) as T;
-  } catch (error) {
-    throw new Error(
-      `${label} must be JSON serializable: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
 }
 
 /** Freeze the complete projected Evidence before it crosses into a Service Detector. */
@@ -145,4 +131,22 @@ export function immutableServiceProbeFacts(
   facts: readonly ServiceEvidenceFact[],
 ): readonly ServiceEvidenceFact[] {
   return immutableJson(facts, "Service Probe Facts");
+}
+
+function freezeDeep(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+  for (const child of Object.values(value)) freezeDeep(child);
+  return Object.freeze(value);
+}
+
+/** Preserve the established Fact/Evidence normalization contract; Observation payloads validate earlier. */
+function immutableJson<T>(value: T, label: string): T {
+  try {
+    const serialized = JSON.stringify(value);
+    return freezeDeep(JSON.parse(serialized)) as T;
+  } catch (error) {
+    throw new Error(
+      `${label} must be JSON serializable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
 }

@@ -33,6 +33,40 @@ Evidence。Service Detector 只消费已组织的只读 Evidence，不接收 Plu
 Evidence。Fact 是本次诊断中可复用的相对稳定信息，Observation 只代表探测时间点或窗口；展示 identifier
 不能反向驱动 Query。
 
+Workload Probe 用版本化的 `ObservationDefinition` 同时声明 payload 类型和 JSON Schema：
+
+```ts
+import {
+  defineObservation,
+  defineServiceWorkloadProbe,
+  Type,
+} from "@compforge/doctor-plugin";
+
+const WorkloadHealth = defineObservation({
+  kind: "workload-health",
+  schemaVersion: 1,
+  schema: Type.Object({
+    ready: Type.Boolean(),
+    latencyMs: Type.Optional(Type.Number({ minimum: 0 })),
+  }, { additionalProperties: false }),
+});
+
+export const workloadHealthProbe = defineServiceWorkloadProbe({
+  id: "workload-health",
+  kind: "workload",
+  schemaVersion: 1,
+  workload: "main",
+  access: {},
+  produces: WorkloadHealth,
+  probe: async (_context, _input) => ({ ready: true }),
+});
+```
+
+`probe` 的返回类型由 `schema` 推导；Core 在 Plugin 加载时编译 schema，在每次动态调用后把结果
+重新视为 `unknown` 验证。只有通过无强转、无默认值、无字段剔除校验的有限 JSON object 会被复制、
+深冻结并进入 Evidence。每个 object schema 都必须显式声明 `additionalProperties`，不允许远程 `$ref`。
+`Type.Any/Unknown`、`Type.Refine/Codec/Unsafe` 等无法完整表达为可移植 JSON Schema 的逃生口不可用。
+
 `trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
 使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
 凭据和外部访问仍在进入 Trace Harness 前完成。

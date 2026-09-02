@@ -1,4 +1,9 @@
-import type { Toolchain, WorkloadDiscovery, WorkloadLifecycle } from "@compforge/doctor-plugin";
+import type {
+  JsonObject,
+  Toolchain,
+  WorkloadDiscovery,
+  WorkloadLifecycle,
+} from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
@@ -171,7 +176,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   pod: string;
   container?: string;
   probe: string;
-  value: Readonly<Record<string, unknown>>;
+  value: JsonObject;
 }
 
 export type InspectObservation =

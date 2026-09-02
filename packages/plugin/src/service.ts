@@ -14,6 +14,11 @@ import type {
 } from "./definition";
 import type { ServiceMcpCapability } from "./mcp";
 import type { CapabilityWithAccess } from "./kubernetes";
+import type { JsonObject } from "./json";
+import type {
+  ObservationDefinition,
+  ObservationValue,
+} from "./observation";
 import type { ProbeCapability, ProbeRunner } from "./probe";
 import type { ServiceWorkloadDefinition, WorkloadInstance } from "./workload";
 
@@ -276,7 +281,7 @@ export interface ServiceEvidenceFact {
 }
 
 /** One Service-scoped Probe Observation exposed to pure business detectors. */
-export interface ServiceEvidenceObservation {
+export interface ServiceEvidenceObservation<Value extends JsonObject = JsonObject> {
   /** Persisted Observation identity; valid as a Finding observation reference. */
   id: string;
   /** Logical Services this Observation describes. */
@@ -287,7 +292,7 @@ export interface ServiceEvidenceObservation {
   producer: ServiceEvidenceProducer;
   workload?: string;
   instance?: WorkloadInstance;
-  value: Readonly<Record<string, unknown>>;
+  value: Value;
 }
 
 /** Serializable, read-only projection of the Evidence selected for Service detectors. */
@@ -302,10 +307,6 @@ export interface ServiceDetector {
   detect(evidence: ServiceEvidence): readonly ServiceFinding[];
 }
 
-export interface ServiceWorkloadProbeObservation {
-  value: Readonly<Record<string, unknown>>;
-}
-
 /** Core-built input shared by Service Probe capabilities after Inspect has settled. */
 export interface ServiceProbeInput {
   /** Complete immutable Fact projection for this command; currently not filtered by Service or kind. */
@@ -316,22 +317,21 @@ export interface ServiceWorkloadProbeInput extends ServiceProbeInput {
   instance: WorkloadInstance;
 }
 
-export interface ServiceWorkloadProbe extends ServiceProbe {
+export interface ServiceWorkloadProbe<
+  Definition extends ObservationDefinition = ObservationDefinition,
+> extends ServiceProbe {
   kind: "workload";
   schemaVersion: 1;
   /** Stable WorkloadDefinition.name owned by this Service. */
   workload: string;
   /** Access is declared per Probe so unrelated probes do not inherit a broader capability grant. */
   access: CapabilityWithAccess["access"];
-  /** Observation schema declared before Core schedules this Probe. */
-  observation: {
-    kind: string;
-    schemaVersion: number;
-  };
+  /** Observation contract declared before Core schedules this Probe. */
+  produces: Definition;
   probe(
     context: PluginContext,
     input: ServiceWorkloadProbeInput,
-  ): Promise<ServiceWorkloadProbeObservation>;
+  ): Promise<ObservationValue<Definition>>;
 }
 
 /** Supported Probe forms at the untyped Plugin boundary. */

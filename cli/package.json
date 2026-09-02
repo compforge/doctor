@@ -45,6 +45,8 @@
     "@opensearch-project/opensearch": "3.6.0",
     "@redis/client": "6.1.0",
     "abort-controller": "3.0.0",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
     "chat-tui": "github:compforge/chat-tui#9836e9ab6c6a3ebd9bad3b21e1ad0604182b4918",
     "got": "15.1.0",
     "mysql2": "3.23.1",

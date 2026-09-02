@@ -238,8 +238,8 @@ test("Service detector 必须有唯一 id 与纯 detect 入口", () => {
   }]), manifest)).toThrow("runtime-api.contributions.detectors.runtime-health.detect must be a function");
 });
 
-test("Workload Probe 在执行前声明 Observation kind 与 schemaVersion", () => {
-  const definition = (observation: unknown) => ({
+test("Workload Probe 在执行前声明完整 Observation contract", () => {
+  const definition = (produces: unknown) => ({
     id: "test",
     version: "0.0.1",
     services: { services: [{
@@ -255,8 +255,8 @@ test("Workload Probe 在执行前声明 Observation kind 与 schemaVersion", () 
         schemaVersion: 1,
         access: {},
         workload: "main",
-        observation,
-        probe: async () => ({ value: {} }),
+        produces,
+        probe: async () => ({}),
       }] },
       capabilities: {},
     }] },
@@ -265,14 +265,19 @@ test("Workload Probe 在执行前声明 Observation kind 与 schemaVersion", () 
   const validated = validatePluginDefinition(definition({
     kind: "health",
     schemaVersion: 1,
+    schema: {
+      type: "object",
+      properties: { ready: { type: "boolean" } },
+      required: ["ready"],
+      additionalProperties: false,
+    },
   }), manifest).services.find("runtime-api")?.contributions?.probes?.[0];
   expect(validated?.kind).toBe("workload");
-  expect(validated?.kind === "workload" ? validated.observation : undefined)
-    .toEqual({ kind: "health", schemaVersion: 1 });
+  expect(validated?.kind === "workload" ? validated.produces.kind : undefined).toBe("health");
   expect(() => validatePluginDefinition(definition({ schemaVersion: 1 }), manifest))
-    .toThrow("runtime-api.contributions.probes.health.observation.kind must be a non-empty string");
+    .toThrow("runtime-api.contributions.probes.health.produces.kind must be a non-empty string");
   expect(() => validatePluginDefinition(definition({ kind: "health", schemaVersion: 0 }), manifest))
-    .toThrow("runtime-api.contributions.probes.health.observation.schemaVersion must be a positive integer");
+    .toThrow("runtime-api.contributions.probes.health.produces.schemaVersion must be a positive integer");
 });
 
 test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
