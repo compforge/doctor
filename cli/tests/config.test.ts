@@ -229,3 +229,14 @@ describe("profileToUpload", () => {
     ).toThrow(/ENOENT|not found/i);
   });
 });
+
+describe("overview sampling defaults", () => {
+  it("loads a positive sample_count and rejects invalid configuration", () => {
+    const path = makeTmpFile("overview.yaml", "profiles:\n  test:\n    readonly: true\n    overview:\n      sample_count: 3\n");
+    expect(loadConfig(path).profiles.test.overview?.sample_count).toBe(3);
+    for (const value of ["0", "-1", "1.5", '"5"']) {
+      const invalid = makeTmpFile("overview-invalid.yaml", `profiles:\n  test:\n    readonly: true\n    overview:\n      sample_count: ${value}\n`);
+      expect(() => loadConfig(invalid)).toThrow("overview.sample_count");
+    }
+  });
+});

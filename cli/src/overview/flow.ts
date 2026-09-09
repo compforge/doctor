@@ -1,6 +1,7 @@
+import { overviewSampleCount } from "./options";
 import { CommandStatus, type CommandResult } from "../command";
 import type {
-  OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
+  OverviewEntry, OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
   ServiceDefinition, ServiceOverviewCapability,
 } from "@compforge/doctor-plugin";
 
@@ -31,7 +32,15 @@ export interface OverviewResult {
   collection: "not-requested" | "no-samples" | CommandStatus;
 }
 
+export interface OverviewEntryChoice {
+  service: string;
+  facetId: string;
+  entry: OverviewEntry;
+}
+
 export interface OverviewActions {
+  sampleCount?: number;
+  selectEntries?(entries: readonly OverviewEntryChoice[], defaultCount: number): Promise<readonly OverviewEntryChoice[] | undefined>;
   summarize(provider: OverviewProvider, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
   sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<OverviewSample | undefined>;
   /** Undefined means overview only. Even one Facet must be explicitly confirmed. */
@@ -99,21 +108,29 @@ export async function runOverviewSession(
   const selected = await actions.select([...eligible.values()]);
   if (!selected) return result;
   if (!eligible.has(selected)) throw new Error(`Facet '${selected}' 没有可采集的 Entry`);
-  for (const service of result.services) {
-    const provider = providers.find((item) => item.name === service.service)!;
-    const facet = service.facets.find((item) => item.facetId === selected);
-    for (const entry of facet?.entries ?? []) {
-      actions.signal?.throwIfAborted();
-      if (!entry.canSample) continue;
-      const source = { service: service.service, facetId: selected, entryKey: entry.key };
-      try {
-        const sample = await actions.sample(provider, { ...query, facetId: selected, entryKey: entry.key });
-        result.samples.push(sample?.bizId.trim()
-          ? { ...source, bizId: sample.bizId.trim(), source: sample.source }
-          : { ...source, error: "没有可用样本（数据可能已变化）" });
-      } catch (error) {
-        result.samples.push({ ...source, error: errorMessage(error) });
-      }
+  // The default budget spans all Services in the selected Facet. Entry data may be text,
+  // so retain dashboard/provider ordering instead of inventing a numeric ranking.
+  const candidates = result.services.flatMap((service) => (
+    service.facets.find((facet) => facet.facetId === selected)?.entries
+      .filter((entry) => entry.canSample)
+      .map((entry) => ({ service: service.service, facetId: selected, entry })) ?? []
+  ));
+  const count = overviewSampleCount(actions.sampleCount);
+  const entries = actions.selectEntries
+    ? await actions.selectEntries(candidates, count)
+    : candidates.slice(0, count);
+  if (!entries?.length) return result;
+  for (const choice of entries) {
+    actions.signal?.throwIfAborted();
+    const provider = providers.find((item) => item.name === choice.service)!;
+    const source = { service: choice.service, facetId: choice.facetId, entryKey: choice.entry.key };
+    try {
+      const sample = await actions.sample(provider, { ...query, facetId: choice.facetId, entryKey: choice.entry.key });
+      result.samples.push(sample?.bizId.trim()
+        ? { ...source, bizId: sample.bizId.trim(), source: sample.source }
+        : { ...source, error: "没有可用样本（数据可能已变化）" });
+    } catch (error) {
+      result.samples.push({ ...source, error: errorMessage(error) });
     }
   }
   const bizIds = [...new Set(result.samples.flatMap((sample) => sample.bizId ? [sample.bizId] : []))];

@@ -170,3 +170,73 @@ test("overview preserves partial collection status and cancellation", async () =
     expect(result.services[0]?.facets).toHaveLength(1);
   }
 });
+
+test("default sampling selects five entries across Services without truncating the dashboard", async () => {
+  const batches: string[][] = [];
+  const result = await runOverviewSession([provider("a"), provider("b"), provider("c")], query, actions({
+    select: async () => "errors",
+    sample: async (service, input) => ({ bizId: `${service.name}/${input.entryKey}` }),
+    collect: async ids => { batches.push(ids); return commandOutcome(0); },
+  }));
+  expect(result.services.flatMap(service => service.facets[0]!.entries)).toHaveLength(6);
+  expect(batches).toEqual([["a/E1", "a/E2", "b/E1", "b/E2", "c/E1"]]);
+  expect(result.samples).toHaveLength(5);
+});
+
+test("configured sample count limits calls; failure does not backfill with unselected entries", async () => {
+  const result = await runOverviewSession([provider("a"), provider("b")], query, actions({
+    select: async () => "errors", sampleCount: 1,
+    sample: async () => undefined,
+  }));
+  expect(result.samples).toHaveLength(1);
+  expect(result.collection).toBe("no-samples");
+});
+
+test("Entry selection can choose later entries and cancelling leaves overview read-only", async () => {
+  const sample = mock(async () => ({ bizId: "trace-1" }));
+  const collect = mock(async () => commandOutcome(0));
+  const result = await runOverviewSession([provider("a"), provider("b")], query, actions({
+    select: async () => "errors", sampleCount: 1,
+    selectEntries: async entries => [entries[3]!], sample, collect,
+  }));
+  expect(result.samples.map(item => [item.service, item.entryKey])).toEqual([["b", "E2"]]);
+  expect(sample).toHaveBeenCalledTimes(1);
+  for (const selection of [undefined, []]) {
+    sample.mockClear(); collect.mockClear();
+    const declined = await runOverviewSession([provider("a")], query, actions({
+      select: async () => "errors", selectEntries: async () => selection, sample, collect,
+    }));
+    expect(declined.collection).toBe("not-requested");
+    expect(sample).not.toHaveBeenCalled();
+    expect(collect).not.toHaveBeenCalled();
+  }
+});
+
+test("Entry multiselect preselects five, distinguishes Services and permits explicit larger selections", async () => {
+  const { selectOverviewEntries } = await import("../src/overview/selection");
+  const entries = Array.from({ length: 6 }, (_, i) => ({ service: `service-${i}`, facetId: "errors", entry: summary[0]!.entries[0]! }));
+  let asked = 0;
+  const chosen = await selectOverviewEntries(entries, 5, true, async input => {
+    asked++;
+    expect(input.defaults).toHaveLength(5);
+    expect(new Set(input.choices.map(choice => choice.name)).size).toBe(6);
+    return input.choices.map(choice => choice.name);
+  });
+  expect(chosen).toHaveLength(6);
+  expect(asked).toBe(1);
+  const noPrompt = async () => { throw new Error("unexpected prompt"); };
+  expect(await selectOverviewEntries(entries, 5, false, noPrompt)).toEqual(entries.slice(0, 5));
+  expect(await selectOverviewEntries(entries.slice(0, 5), 5, true, noPrompt)).toEqual(entries.slice(0, 5));
+  expect(await selectOverviewEntries(entries, 5, true, async () => undefined)).toBeUndefined();
+});
+
+test("sample count honors CLI over profile and rejects invalid numbers", async () => {
+  const { overviewSampleCount } = await import("../src/overview/options");
+  const { validateOverviewOptions } = await import("../src/overview");
+  expect(overviewSampleCount()).toBe(5);
+  expect(overviewSampleCount(undefined, 3)).toBe(3);
+  expect(overviewSampleCount(2, 3)).toBe(2);
+  for (const count of [0, -1, 1.5, NaN, Infinity]) {
+    expect(() => validateOverviewOptions({ sampleCount: count })).toThrow("正整数");
+  }
+});

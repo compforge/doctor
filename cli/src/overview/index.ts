@@ -1,3 +1,4 @@
+import { overviewSampleCount } from "./options";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
 import { commandOptions, type CommandHostOption } from "../command/options";
@@ -7,7 +8,7 @@ import { openPluginContext } from "../plugin/context";
 import { parseCollectOutputFormat, collectCommand } from "../collect/composite";
 import { terminalStdout } from "../terminal/output";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
-import { overviewWindow, selectOverviewFacet, selectOverviewWindow } from "./selection";
+import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
 import { printOverview, writeOverviewReport } from "./report";
 
 export interface OverviewCliOpts extends KubernetesCommandInput {
@@ -16,6 +17,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
   tenantId?: string;
   facet?: string;
   collect?: boolean;
+  sampleCount?: number;
   output?: string;
   format?: string;
 }
@@ -23,9 +25,11 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
 export function validateOverviewOptions(opts: OverviewCliOpts): void {
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
+  overviewSampleCount(opts.sampleCount);
 }
 
 async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewResult>> {
+  const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
@@ -60,6 +64,8 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   try {
     result = await runOverviewSession(selected, query, {
       signal: context.signal,
+      sampleCount,
+      selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
       summarize: (provider, input) => invoke(provider, (managed) => (
         provider.capabilities.overview.summarize(managed, input)
       )),

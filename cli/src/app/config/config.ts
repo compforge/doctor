@@ -70,6 +70,11 @@ function validateProfileShape(value: unknown, name: string): Profile {
       optionalScalar(item, allowed, `profile '${name}'.${field}.${key}`);
     }
   }
+  const overview = optionalMap(profile.overview, `profile '${name}'.overview`);
+  if (overview?.sample_count !== undefined
+    && (typeof overview.sample_count !== "number" || !Number.isSafeInteger(overview.sample_count) || overview.sample_count <= 0)) {
+    throw new Error(`profile '${name}'.overview.sample_count must be a positive integer`);
+  }
   const prometheus = optionalMap(profile.prometheus, `profile '${name}'.prometheus`);
   if (prometheus) {
     if (typeof prometheus.url !== "string" || !prometheus.url) {
