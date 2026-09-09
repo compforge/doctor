@@ -92,6 +92,7 @@ test("collect manifest records partial coverage and failure reasons", () => {
       bizIds: ["conversation-1"],
       kinds: ["data", "trace"],
       sinceTime: "2026-08-18T04:00:00Z",
+      untilTime: "2026-08-18T04:01:00Z",
     },
     plugin: { id: "agentsphere", version: "1.2.3" },
     results: [
@@ -106,7 +107,7 @@ test("collect manifest records partial coverage and failure reasons", () => {
   expect(manifest).toMatchObject({
     status: "partial",
     target: { biz_ids: ["conversation-1"] },
-    params: { include: ["data", "trace"], since_time: "2026-08-18T04:00:00Z" },
+    params: { include: ["data", "trace"], since_time: "2026-08-18T04:00:00Z", until_time: "2026-08-18T04:01:00Z" },
     steps: [
       { id: "data", status: "ok" },
       { id: "trace", status: "failed", reason: "trace unavailable" },

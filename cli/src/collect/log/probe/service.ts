@@ -30,12 +30,16 @@ interface PreparedLogCapture {
   input: LogCaptureInput;
   events: string[];
   rawFilePath: string;
+  firstMatchMs?: number;
+  startedAfterMs: number;
 }
 
 interface LogCaptureResult extends LogCaptureInput {
   capture: PodLogResult;
   events: string[];
   rawFilePath: string;
+  firstMatchMs?: number;
+  startedAfterMs: number;
 }
 
 function collectError(result: PodLogResult): string {
@@ -51,15 +55,22 @@ function prepareCapture(
   ctx: LogCommandContext,
   config: LogProbeConfig,
   input: LogCaptureInput,
+  startedAtMs: number,
 ): PodLogCapturePlanItem<PreparedLogCapture> {
   const suffix = input.previous ? "-previous" : "";
   const rawFilePath = join(
     ctx.bundle.dir,
     `.capture-${input.service}-${input.pod}-${input.container}${suffix}.log`,
   );
-  const collector = createTraceLineCollector(config.traceIds, config.linePattern);
+  const target: PreparedLogCapture = { input, events: [], rawFilePath, startedAfterMs: 0 };
+  const collector = createTraceLineCollector(config.traceIds, config.linePattern, (traceId) => {
+    const elapsed = Date.now() - startedAtMs;
+    target.firstMatchMs ??= elapsed;
+    ctx.log(`[collect] 命中 ${input.service}/${input.pod}/${input.container}${suffix}：${traceId}（${elapsed} ms；继续搜索全部 Pod）`);
+  });
+  target.events = collector.events;
   return {
-    target: { input, events: collector.events, rawFilePath },
+    target,
     request: {
       pod: input.pod,
       container: input.container,
@@ -67,12 +78,16 @@ function prepareCapture(
       previous: input.previous,
       since: config.since,
       sinceTime: config.sinceTime,
+      untilTime: config.untilTime,
       rawFilePath,
       onLine: collector.push,
     },
-    onStart: () => ctx.log(input.previous
-      ? `[collect] ${input.service}/${input.pod}/${input.container} previous…`
-      : `[collect] ${input.service}/${input.pod}/${input.container}…`),
+    onStart: () => {
+      target.startedAfterMs = Date.now() - startedAtMs;
+      ctx.log(input.previous
+        ? `[collect] ${input.service}/${input.pod}/${input.container} previous…`
+        : `[collect] ${input.service}/${input.pod}/${input.container}…`);
+    },
   };
 }
 
@@ -81,9 +96,12 @@ async function captureLogPlan(
   config: LogProbeConfig,
   plan: readonly LogCaptureInput[],
 ): Promise<LogCaptureResult[]> {
+  const startedAtMs = ctx.startedAtMs ?? Date.now();
+  // TODO: Evaluate time-window parallelism against single-stream capture. Pod Log API has no
+  // server-side end-time filter; compare wall-clock, transferred bytes and coverage before enabling it.
   const captures = await runPodLogCapturePlan(
     ctx.access,
-    plan.map((input) => prepareCapture(ctx, config, input)),
+    plan.map((input) => prepareCapture(ctx, config, input, startedAtMs)),
     { ...DEFAULT_POD_LOG_CAPTURE_POLICY, concurrency: ctx.command.limits.podLogs.concurrency },
     ctx.command.limits.podLogs,
     ctx.command.signal,
@@ -93,6 +111,8 @@ async function captureLogPlan(
     capture,
     events: target.events,
     rawFilePath: target.rawFilePath,
+    firstMatchMs: target.firstMatchMs,
+    startedAfterMs: target.startedAfterMs,
   }));
 }
 
@@ -179,30 +199,41 @@ export function makeLogProbe(
         previous.push({ container: captured.container, events: captured.events });
         previousByTarget.set(key, previous);
       }
-      return services.map((service) => ({
-        id: `service-log:${service}`,
-        kind: "service-log" as const,
-        schemaVersion: 1,
-        producer: { origin: "core" as const, id: "service-logs" },
-        service,
-        pods: (servicePods.byService[service] ?? []).map((pod) => {
-          const key = targetKey(service, pod);
-          const current = currentByTarget.get(key) ?? [];
-          const captureStatus = podCaptureStatus(current);
-          const events = current.flatMap(({ capture, events }) => capture.captureStatus === "complete"
-            ? events
-            : [collectError(capture), ...events]);
-          if (!current.length) {
-            events.push(`[collect-error] Pod ${pod} 没有可读取的 application container`);
-          }
-          return {
-            pod,
-            captureStatus,
-            events,
-            previous: previousByTarget.get(key) ?? [],
-          };
-        }),
-      }));
+      return services.map((service) => {
+        const serviceCaptures = captures.filter((capture) => capture.service === service);
+        const matches = serviceCaptures.filter((capture) => capture.firstMatchMs !== undefined);
+        return {
+          id: `service-log:${service}`,
+          kind: "service-log" as const,
+          schemaVersion: 1,
+          producer: { origin: "core" as const, id: "service-logs" },
+          service,
+          capture: {
+            bytesRead: serviceCaptures.reduce((sum, item) => sum + item.capture.bytesRead, 0),
+            matchedPodCount: new Set(matches.map((item) => item.pod)).size,
+            scannedPodCount: new Set(serviceCaptures.filter((item) => item.capture.attempts > 0).map((item) => item.pod)).size,
+            firstMatchMs: matches.length ? Math.min(...matches.map((item) => item.firstMatchMs!)) : undefined,
+            wallMs: serviceCaptures.reduce((max, item) => Math.max(max, item.startedAfterMs + item.capture.durationMs), 0),
+          },
+          pods: (servicePods.byService[service] ?? []).map((pod) => {
+            const key = targetKey(service, pod);
+            const current = currentByTarget.get(key) ?? [];
+            const captureStatus = podCaptureStatus(current);
+            const events = current.flatMap(({ capture, events }) => capture.captureStatus === "complete"
+              ? events
+              : [collectError(capture), ...events]);
+            if (!current.length) {
+              events.push(`[collect-error] Pod ${pod} 没有可读取的 application container`);
+            }
+            return {
+              pod,
+              captureStatus,
+              events,
+              previous: previousByTarget.get(key) ?? [],
+            };
+          }),
+        };
+      });
     },
   };
 }

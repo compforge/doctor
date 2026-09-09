@@ -1,3 +1,4 @@
+import { logTimestampNanos } from "./log-timestamp";
 import { currentCommandSignal } from "../../command/execution-scope";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { KubeConfig } from "@kubernetes/client-node";
@@ -47,6 +48,7 @@ interface AttemptResult {
   statusCode?: number;
   bytesRead: number;
   lastTimestamp?: string;
+  windowComplete?: boolean;
 }
 
 const RFC3339_LINE = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2}))(?:\s|$)/;
@@ -95,6 +97,7 @@ function logCommand(namespace: string, request: PodLogRequest): string[] {
   if (request.limitBytes !== undefined) command.push(`--limit-bytes=${request.limitBytes}`);
   if (request.sinceTime) command.push(`--since-time=${request.sinceTime}`);
   else if (request.since) command.push(`--since=${request.since}`);
+  if (request.untilTime) command.push(`--until-time=${request.untilTime}`);
   return command;
 }
 
@@ -152,8 +155,20 @@ class ClientNodeLogTransport {
       return this.unavailable(command, startedAt, `无法解析日志时间窗口：${request.since}`);
     }
 
+    const untilNanos = request.untilTime === undefined ? undefined : logTimestampNanos(request.untilTime);
+    if (request.untilTime !== undefined && untilNanos === undefined) {
+      return this.unavailable(command, startedAt, "untilTime 必须是 RFC3339 时间戳");
+    }
     const fd = request.rawFilePath ? openSync(request.rawFilePath, "w", 0o600) : undefined;
     const output: string[] = [];
+    // Bound buffering while avoiding a synchronous filesystem call for every unfiltered log line.
+    let rawChunks: string[] = [];
+    let rawBytes = 0;
+    const flushRaw = () => {
+      if (fd !== undefined && rawChunks.length) writeSync(fd, rawChunks.join(""));
+      rawChunks = [];
+      rawBytes = 0;
+    };
     const recentLines: string[] = [];
     const recentLineSet = new Set<string>();
     const errors: string[] = [];
@@ -169,8 +184,12 @@ class ClientNodeLogTransport {
       const prefix = request.prefix ? `[pod/${request.pod}/${request.container}] ` : "";
       const rendered = `${prefix}${line}`;
       request.onLine?.(rendered);
-      if (fd !== undefined) writeSync(fd, `${rendered}\n`);
-      else output.push(rendered);
+      if (fd !== undefined) {
+        const chunk = `${rendered}\n`;
+        rawChunks.push(chunk);
+        rawBytes += Buffer.byteLength(chunk);
+        if (rawBytes >= 64 * 1024) flushRaw();
+      } else output.push(rendered);
       recentLines.push(line);
       recentLineSet.add(line);
       if (recentLines.length > RECENT_LINE_LIMIT) {
@@ -197,6 +216,7 @@ class ClientNodeLogTransport {
             ? request
             : { ...request, limitBytes: remainingBytes },
           sinceSeconds,
+          untilNanos,
           sinceTime: resumeSinceTime,
           hardTimeoutMs: remainingHardTimeoutMs,
           deduplicate: attempts > 1,
@@ -207,7 +227,7 @@ class ClientNodeLogTransport {
         finalStatusCode = attempt.statusCode;
         if (attempt.lastTimestamp) resumeSinceTime = attempt.lastTimestamp;
         if (attempt.ok) {
-          const limited = request.limitBytes !== undefined
+          const limited = !attempt.windowComplete && request.limitBytes !== undefined
             && totalBytesRead >= request.limitBytes;
           return {
             ok: !limited,
@@ -227,7 +247,8 @@ class ClientNodeLogTransport {
         if (currentCommandSignal()?.aborted || !attempt.retryable || attempts >= this.policy.maxAttempts) break;
       }
     } finally {
-      if (fd !== undefined) closeSync(fd);
+      try { flushRaw(); }
+      finally { if (fd !== undefined) closeSync(fd); }
     }
 
     const captureStatus = totalBytesRead > 0 ? "partial" : "unavailable";
@@ -268,6 +289,7 @@ class ClientNodeLogTransport {
   private async captureAttempt(input: {
     request: PodLogRequest;
     sinceSeconds?: number;
+    untilNanos?: bigint;
     sinceTime?: string;
     hardTimeoutMs: number;
     deduplicate: boolean;
@@ -314,14 +336,24 @@ class ClientNodeLogTransport {
     let pending = "";
     let bytesRead = 0;
     let lastTimestamp: string | undefined;
+    let windowComplete = false;
+    const emit = (line: string) => {
+      const timestamp = line.match(RFC3339_LINE)?.[1];
+      const nanos = timestamp && input.untilNanos !== undefined ? logTimestampNanos(timestamp) : undefined;
+      if (nanos !== undefined && input.untilNanos !== undefined && nanos > input.untilNanos) {
+        windowComplete = true;
+        return;
+      }
+      if (timestamp) lastTimestamp = timestamp;
+      input.emitLine(line, input.deduplicate);
+    };
     const consume = (text: string) => {
       pending += text;
       const lines = pending.split(/\r?\n/);
       pending = lines.pop() ?? "";
       for (const line of lines) {
-        const timestamp = line.match(RFC3339_LINE)?.[1];
-        if (timestamp) lastTimestamp = timestamp;
-        input.emitLine(line, input.deduplicate);
+        emit(line);
+        if (windowComplete) break;
       }
     };
 
@@ -361,13 +393,15 @@ class ClientNodeLogTransport {
         bytesRead += chunk.byteLength;
         resetIdleTimer();
         consume(decoder.decode(chunk, { stream: true }));
+        if (windowComplete) {
+          // Closing the HTTP stream is normal completion of the requested window, not a retryable abort.
+          controller.abort();
+          return { ok: true, retryable: false, timedOut: false, bytesRead, lastTimestamp, windowComplete: true };
+        }
       }
+      commandSignal?.throwIfAborted();
       consume(decoder.decode());
-      if (pending) {
-        const timestamp = pending.match(RFC3339_LINE)?.[1];
-        if (timestamp) lastTimestamp = timestamp;
-        input.emitLine(pending, input.deduplicate);
-      }
+      if (pending && !windowComplete) emit(pending);
       if (abortReason) {
         return {
           ok: false,
@@ -386,8 +420,12 @@ class ClientNodeLogTransport {
         statusCode: response.status,
         bytesRead,
         lastTimestamp,
+        windowComplete,
       };
     } catch (error) {
+      if (windowComplete && !commandSignal?.aborted) {
+        return { ok: true, retryable: false, timedOut: false, bytesRead, lastTimestamp, windowComplete: true };
+      }
       const timedOut = abortReason !== undefined;
       return {
         ok: false,

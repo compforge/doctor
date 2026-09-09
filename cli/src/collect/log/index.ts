@@ -26,6 +26,7 @@ import {
 } from "../../terminal/kubernetes-access";
 import {
   buildLogPattern,
+  validateLogTimeWindow,
   resolveLogTimeWindow,
   resolveLogServiceSelection,
 } from "./config";
@@ -37,7 +38,7 @@ import type {
   LogProbeConfig,
 } from "./model";
 import { makeLogProbe } from "./probe/service";
-import { renderLogResult, renderTimelineJsonl } from "./render";
+import { formatLogCaptureStats, renderLogResult, renderTimelineJsonl } from "./render";
 import { parseLogOutputFormat } from "./output";
 import type { LogOutputFormat } from "./output";
 import { writeLogHtmlReport } from "./html";
@@ -61,6 +62,7 @@ export interface CollectLogCliOpts {
   services?: string;
   since?: string;
   sinceTime?: string;
+  untilTime?: string;
   errorsOnly?: boolean;
   pattern?: string;
   format?: string;
@@ -91,6 +93,7 @@ async function runCollectLogSingle(
   let pattern: RegExp | undefined;
   let format: LogOutputFormat;
   try {
+    validateLogTimeWindow(opts);
     pattern = buildLogPattern(!!opts.errorsOnly, opts.pattern);
     format = parseLogOutputFormat(opts.format);
   } catch (err) {
@@ -230,6 +233,7 @@ async function runCollectLogSingle(
       services,
       since: timeWindow.since,
       sinceTime: timeWindow.sinceTime,
+      untilTime: opts.untilTime,
       errorsOnly: !!opts.errorsOnly,
       pattern: opts.pattern,
       outputDir: staging,
@@ -339,9 +343,11 @@ export async function collectLog(
     ...(opts.traceId ? [opts.traceId] : []),
   ].map((item) => item.trim()).filter(Boolean))];
   if (!traceIds.length) throw new Error("collectLog 需要至少一个 trace_id");
+  validateLogTimeWindow(opts);
   const config: LogProbeConfig = { ...opts, traceIds, linePattern };
   const ctx: LogCommandContext = {
     command: commandContext,
+    startedAtMs: Date.parse(startedAt),
     config,
     access: new ClientNodePodLogAccess(
       new KubectlPodLogAccess(executor, opts.namespace),
@@ -371,6 +377,7 @@ export async function collectLog(
   writeFileSync(join(opts.outputDir, "service-logs.txt"), rendered.serviceLogs, "utf-8");
   writeFileSync(join(opts.outputDir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
   bundle.writeSummary(rendered.summary);
+  writeFileSync(join(opts.outputDir, "log-stats.json"), `${JSON.stringify(rendered.stats, null, 2)}\n`, "utf-8");
 
   const kubectlVersion = facts.runtime.status === "collected"
     ? facts.runtime.kubectlVersion
@@ -389,6 +396,7 @@ export async function collectLog(
     params: {
       since: opts.since,
       since_time: opts.sinceTime,
+      until_time: opts.untilTime,
       errors_only: opts.errorsOnly,
       pattern: opts.pattern,
     },
@@ -398,8 +406,9 @@ export async function collectLog(
 
   if (facts.runtime.status !== "collected") return 1;
   if (facts.servicePods.status !== "collected") return 1;
+  log(`[collect] ${formatLogCaptureStats(rendered.stats)}`);
   log(
-    `[collect] 完成（扫描 ${rendered.stats.podCount} pod，命中 ${rendered.stats.matchedEventCount} 个日志事件，`
+    `[collect] 完成（扫描 ${rendered.stats.scannedPodCount} pod，命中 ${rendered.stats.matchedEventCount} 个日志事件，`
     + `部分采集 ${rendered.stats.partialCount} pod，不可用 ${rendered.stats.unavailableCount} pod）。`,
   );
   return evaluateCollectOutcome(

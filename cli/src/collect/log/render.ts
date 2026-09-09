@@ -1,6 +1,7 @@
 import stripAnsi from "strip-ansi";
 import type {
   LogDiagnosis,
+  LogRenderStats,
   LogInspectionFacts,
   LogProbeConfig,
   LogRenderResult,
@@ -140,12 +141,26 @@ function failureSummary(facts: LogInspectionFacts): string | undefined {
   return undefined;
 }
 
+export function formatLogCaptureStats(stats: LogRenderStats): string {
+  const first = stats.firstMatchMs === undefined ? "未命中" : `${(stats.firstMatchMs / 1000).toFixed(2)} s`;
+  return `候选 ${stats.podCount} Pod，扫描 ${stats.scannedPodCount} Pod，trace 命中 ${stats.matchedPodCount} Pod；下载 ${(stats.bytesRead / 1024 / 1024).toFixed(2)} MiB；首次命中 ${first}；采集 wall-clock ${(stats.wallMs / 1000).toFixed(2)} s`;
+}
+
 export function renderLogResult(
   config: LogProbeConfig,
   diagnosis: LogDiagnosis,
 ): LogRenderResult {
   const { facts, observations } = diagnosis.evidence;
-  const stats = observations.reduce((total, service) => {
+  const stats = observations.reduce<LogRenderStats>((total, service) => {
+    if (service.capture) {
+      total.bytesRead += service.capture.bytesRead;
+      total.matchedPodCount += service.capture.matchedPodCount;
+      total.scannedPodCount += service.capture.scannedPodCount;
+      total.wallMs = Math.max(total.wallMs, service.capture.wallMs);
+      if (service.capture.firstMatchMs !== undefined) {
+        total.firstMatchMs = Math.min(total.firstMatchMs ?? Infinity, service.capture.firstMatchMs);
+      }
+    }
     total.podCount += service.pods.length;
     total.matchedEventCount += service.pods.reduce(
       (count, pod) => count
@@ -161,6 +176,10 @@ export function renderLogResult(
     total.unavailableCount += service.pods.filter((pod) => pod.captureStatus === "unavailable").length;
     return total;
   }, {
+    bytesRead: 0,
+    matchedPodCount: 0,
+    scannedPodCount: 0,
+    wallMs: 0,
     podCount: 0,
     matchedEventCount: 0,
     previousContainerCount: 0,
@@ -182,14 +201,18 @@ export function renderLogResult(
     "",
     `- namespace: \`${config.namespace}\``,
     `- services: ${config.services.map((service) => `\`${service}\``).join(", ")}`,
-    `- 扫描 pod: ${stats.podCount}  命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  部分采集 pod: ${stats.partialCount}  不可用 pod: ${stats.unavailableCount}`,
-    `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}`,
+    `- 命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  部分采集 pod: ${stats.partialCount}  不可用 pod: ${stats.unavailableCount}`,
+    `- ${formatLogCaptureStats(stats)}`,
+    `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}${config.untilTime ? ` until-time=${config.untilTime}（含边界）` : ""}`,
+    "- 首次命中按 trace ID 统计，早于错误/内容筛选；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。",
     `- 过滤: ${config.errorsOnly ? "errors-only" : "全部 trace 日志"}${config.pattern ? ` + /${config.pattern}/` : ""}`,
     "",
     "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
   ];
   if (stats.podCount === 0) {
     lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --services。");
+  } else if (stats.matchedPodCount > 0 && stats.matchedEventCount === 0) {
+    lines.push("", "> 找到 trace 日志，但没有日志满足错误/内容筛选条件。");
   } else if (stats.matchedEventCount === 0) {
     lines.push("", "> 未命中日志；可能已超出 pod 日志保留期，或 trace 未经过这些服务。");
   }
