@@ -114,7 +114,7 @@ port-forward 和清理仍归 Core 拥有。
 Trace Capability 把采集定位和纯分析明确分开：`trace.source.store` 引用 Service Catalog 中的首选 Store；
 Core 在运行时解析实际 OpenSearch target，并在首选项不可用时尝试 Catalog 中其余 OpenSearch VDB Store。
 `trace.analysis` 直接采用 trace-harness 的
-`TraceContributions`，只对已标准化的 Trace IR/Facts 做确定性 feature、detect 与 render 扩展。它不读取
+`TraceContributions`，只对已标准化的 Trace IR/Facts 做确定性 fact transform、measure、detect 与 render 扩展。它不读取
 profile config，不持有 infra，也不访问外部资源；诊断流程和 TraceHarness 实例生命周期仍由 Core 拥有。
 
 Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 model catalog 构成模型消费者共用的

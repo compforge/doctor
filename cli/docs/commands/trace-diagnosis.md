@@ -26,7 +26,8 @@ span。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
 4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不再用任意 span tag 猜测业务 ID 关系。
 5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
 6. Render 使用 TypeScript trace-harness 将物理 span 归一化并聚合为逻辑节点树，再结合
-   `PluginDefinition.trace.analysis` 显式提供的 specs / features / detectors / facets 生成交互式 HTML。
+   `PluginDefinition.trace.analysis` 显式提供的 specs / transforms / measurers / detectors / facets 完成分析，
+   将同一次分析的 Findings 与 Measurements 交给 HTML 渲染。
 7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；批量 HTML 按 biz-id 分顶层
    tab，同一 biz-id 的多条 trace 再按来源 message/trace 分子 tab。各组只共享交付壳，不混合 span、
    Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
@@ -54,6 +55,12 @@ Service 发现回答“本轮目标是谁”，属于配置确认；port-forward
 
 trace-harness 只提供与 Python 版本一致的 span 归一化、逻辑节点融合、诊断和 HTML 渲染能力，不认识
 具体 Plugin。Plugin 通过 `trace.analysis` 提供 trace-harness 原生的 scoped contributions，用于节点分类、
-派生特征、业务判读和展示意图；Core 为每次 trace 采集创建独立 TraceHarness，因此模块加载顺序不会改变
+fact 转换、Measurement、业务判读和展示意图；Core 为每次 trace 采集创建独立 TraceHarness，因此模块加载顺序不会改变
 分析结果，业务规则也不会进入通用采集层。analysis 只消费 Trace IR/Facts，不读取 Plugin config、infra
 或外部资源。
+
+### 累计调用统计解释慢在哪里
+
+选择节点后，Measurements 展示从请求开始到该节点结束的调用次数、耗时总和与覆盖时间，按 kind 区分
+HTTP、model 和 tool。窗口包含尚未结束调用已发生的部分；它不是节点内部子树统计。调用可能并行或嵌套，
+耗时总和可以超过 wall-clock，覆盖时间也不能直接当作对用户等待的因果贡献。
