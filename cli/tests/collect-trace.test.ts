@@ -320,6 +320,39 @@ describe("collectTrace 记账", () => {
     expect(html).toContain("火焰图");
   });
 
+  test("reports cumulative calls and exposes the same measurements to Plugin detectors", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-measurements-"));
+    let detectedCount = 0;
+    const detector: Detector = (node, analysis) => {
+      if (node.primary_span_id === "root") {
+        const calls = analysis.measurements.get(node.node_id, "calls_until_node_end")?.values.http as { count: number } | undefined;
+        detectedCount = calls?.count ?? 0;
+      }
+      return [];
+    };
+    const spans = [
+      { traceID: "abc123", spanID: "root", operationName: "root", startTime: 1000000, duration: 500000 },
+      ...[0, 1, 2].map((index) => ({
+        traceID: "abc123", spanID: `http-${index}`, operationName: "POST /configs",
+        references: [{ refType: "CHILD_OF", spanID: "root" }],
+        startTime: 1000000 + index * 100000, duration: 80000,
+        tags: [{ key: "span.kind", value: "client" }, { key: "http.method", value: "POST" },
+          { key: "http.url", value: "http://api.example/configs" }],
+      })),
+    ];
+    const { genAiSpecs } = await import("@compforge/trace-harness");
+    const code = await collectTrace(
+      { ...traceOpts(dir), contributions: { specs: genAiSpecs(), detectors: [detector] } },
+      () => {}, fakeSearch({ count: spans.length, spans }),
+    );
+    expect(code).toBe(0);
+    expect(detectedCount).toBe(3);
+    const html = readFileSync(join(dir, "trace.html"), "utf-8");
+    expect(html).toContain("calls_until_node_end");
+    expect(html).toContain('"duration_sum_ms":240');
+    expect(html).toContain('"covered_ms":240');
+  });
+
   test("Plugin trace analysis 只注入本次 TraceHarness", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
     const pluginDetector: Detector = (node) => [{

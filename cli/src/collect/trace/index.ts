@@ -295,9 +295,14 @@ export async function runCollectTrace(
         namespace: runtime.collect.kubernetes.namespace,
       }
     : undefined;
-  const contributions = plugin.trace
-    ? mergeTraceContributions(plugin.trace.analysis, { specs: genAiSpecs() })
-    : { specs: genAiSpecs() };
+  const pluginSpecs = [...(plugin.trace?.analysis.specs ?? [])];
+  const overriddenKinds = new Set(pluginSpecs.map((spec) => spec.kind));
+  // A kind has one projection owner; appending a second spec silently discards the
+  // Plugin projection and its required facts during assembly.
+  const contributions = mergeTraceContributions(
+    { ...plugin.trace?.analysis, specs: pluginSpecs },
+    { specs: [...genAiSpecs()].filter((spec) => !overriddenKinds.has(spec.kind)) },
+  );
   const groups: ReportTab[] = [];
   const statuses: CommandStatus[] = [];
   let exitCode = 0;
@@ -565,9 +570,10 @@ export async function collectTrace(
       .map((line) => JSON.parse(line) as Record<string, unknown>);
     const harness = new TraceHarness(opts.contributions ?? { specs: genAiSpecs() });
     const context = harness.assemble(normalizeJaegerSpans(spanDocuments));
+    const analysis = harness.analyze(context);
     writeFileSync(
       join(opts.outputDir, "trace.html"),
-      harness.renderInteractive(context, harness.diagnose(context)),
+      harness.renderInteractive(context, analysis.findings, { measurements: analysis.measurements }),
       "utf-8",
     );
     bundle.fill("render-html", { status: "ok" });
