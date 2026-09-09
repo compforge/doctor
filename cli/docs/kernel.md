@@ -124,38 +124,55 @@ Service 关联决策，不能再次手写或改写 identity。
 
 ## 共享生命周期边界
 
-### Prepare
+### CommandSpec 与执行入口
 
-所有顶层 Command 都先完成同一条准备链路：
+每个常规命令提供 `CommandSpec<Input, Output>`，普通命令和组合命令共用
+`run(context, input): Promise<CommandResult<Output>>`。CLI 将 flags 转为领域 Input；父命令直接调用
+子命令的同一入口。`defineCommand` 包装校验、环境准备、取消与资源收尾，因此嵌套调用仍需满足自身
+的 capability 和 access 前提。
+
+根入口只解析一次 Profile，选定的 Plugin 及其配置校验在整轮内复用。每次调用按顺序执行：
 
 ```text
-validated Profile snapshot + command options
-  → required Plugin capability + Plugin config
+validate domain input
+  → required Plugin capability + validated Plugin config
   → declared Host / Kubernetes environment
-  → selected Target + selected contributions
-  → staged access plan + permission check
-  → CommandContext + resolved capabilities
+  → selected Target + staged access plan + permission check
+  → domain work or child CommandSpec.run calls
+  → invocation result + resource cleanup
 ```
 
-Profile 在一次 Command 内只解析和校验一次。`CommandContext` 是从 Prepare 到 Finalize 的运行作用域：
+组合命令逐个调用已选择的子命令；一个子命令不可用时，其它独立子命令仍可执行。子命令的必要条件
+不能简单合并成父命令的全局门槛，否则缺少一种证据能力就会阻断整个概览或采集。
 
-- Decision 复用已经确认的用户或命令意图。
-- Discovery 复用执行期间的只读发现。
-- ExecutionRecord 保存会影响后续动作的临时执行结果。
-- Artifacts 保存交给 Finalize 处理的领域产物声明。
+### Context 与调用归属
 
-运行态 executor、临时 handle 和凭据属于 Context，不进入 Facts/Evidence。独立 Command 由 `app` 创建
-Context；组合 Command 把同一实例传给下游稳定入口。配置、capability、执行通道或 required access 不满足
-时，不得进入 Execute。
+`CommandContext` 属于整轮执行树，保存 Profile、当前 Plugin、按需准备并复用的环境信息、权限检查、
+Decision、Discovery、ExecutionRecord 与取消信号。领域 Context 保存单次执行准备的 Target、client、
+Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的受限依赖与 infra。
 
-### Finalize
+同一 CommandContext 可以被并发子命令共享。Artifacts 使用异步调用作用域，每次调用返回自己的产物
+引用和报告名称，父命令显式选择并纳入子产物；不能按全局列表位置或命令名猜测产物属于哪次调用。
+领域输入与输出通过 Input / Output 传递，不放入共享 Context。
 
-Finalize 只消费 Execute 准备的产物元数据和已登记的 Artifacts，统一完成路径/格式处理、
-Bundle、Delivery、Cleanup 与退出状态。领域 Command 不自行对外复制、压缩或交付产物；组合 Command
-也不复制子 Command 的渲染和打包逻辑。
+Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本次调用的资源作用域。显式 dispose
+和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
+执行树，停止后续工作，并保留已生成证据。
+
+### 结果与 Finalize
+
+`CommandStatus` 统一定义 `ok / partial / failed / cancelled` 四种最终执行状态。它描述命令完成度；
+业务错误、Finding severity 和 Evidence Coverage 各自保留领域含义。父命令依据自己的目标汇总子结果：
+部分采集失败但仍形成有效结果时为 partial；用户只看 Overview 并拒绝可选采集属于正常完成。
+
+根 CLI 将结果映射为退出码：ok 和 partial 为 0，failed 为非零，cancelled 为 130。子命令不设置
+进程退出码，也不调用根入口的最终交付。
+
+Finalize 只执行一次，消费根结果纳入的 Artifacts，统一处理路径、格式、Bundle、Delivery 和临时产物
+清理。报告名称由相应调用拥有，最外层决定最终交付名称。交付失败时保留源产物以便恢复。
 
 默认格式、partial 报告、Evidence Bundle、失败兜底和退出码语义由
-[`collect-protocol.md`](collect-protocol.md) 统一定义；具体 Command 文档只描述自身 Diagnosis 和展示差异。
+[`collect-protocol.md`](collect-protocol.md) 统一定义。init/profile 等启动命令不要求已有 Profile。
 
 ## Core / Plugin 边界
 

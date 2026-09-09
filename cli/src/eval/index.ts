@@ -6,7 +6,7 @@ import type {
   ServiceCaseRunner,
   ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../command";
+import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -17,9 +17,10 @@ import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
 import { openPluginContext } from "../plugin/context";
 import { resolveCaseRequestIdentity } from "../case";
-import { runCollectTrace } from "../collect/trace";
-import { runCollectLog } from "../collect/log";
-import { runCollectData, dataServicesForBizQuery } from "../collect/data";
+import { traceCommand } from "../collect/trace/command";
+import { logCommand } from "../collect/log/command";
+import { dataServicesForBizQuery } from "../collect/data";
+import { dataCommand } from "../collect/data/command";
 import {
   resolveEvalConfig,
   selectEvalCases,
@@ -149,10 +150,10 @@ function unavailable(reason: string): EvalEvidenceResult {
   return { status: "unavailable", reason };
 }
 
-function collected(code: number): EvalEvidenceResult {
-  return code === 0
-    ? { status: "collected", exitCode: 0 }
-    : { status: "failed", exitCode: code, reason: `collector exit ${code}` };
+function collected(result: CommandResult<void>, context: CommandContext): EvalEvidenceResult {
+  context.artifacts.include(result.artifacts);
+  return { status: result.status, artifacts: result.artifacts,
+    reason: "reason" in result ? result.reason : undefined };
 }
 
 async function collectEvalEvidence(input: {
@@ -165,7 +166,7 @@ async function collectEvalEvidence(input: {
   plugin: PluginDefinition;
   commandContext: CommandContext;
 }): Promise<EvalEvidenceCollection> {
-  if (!input.correlations.length) {
+  if (!input.correlations.length || input.commandContext.signal.aborted) {
     const reason = "Case Observation 未提供可识别的关联 ID";
     return { trace: unavailable(reason), log: unavailable(reason), data: unavailable(reason) };
   }
@@ -175,54 +176,41 @@ async function collectEvalEvidence(input: {
 
   if (input.plugin.services.servicesWith("traceId").length) {
     try {
-      trace = collected(await runCollectTrace({
+      trace = collected(await traceCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        kubeconfig: input.kubeconfig,
-        context: input.context,
-        profile: input.profileName,
-        pageSize: "1000",
-        format: "html",
-      }, input.plugin, input.commandContext));
+      }), input.commandContext);
     } catch (error) {
-      trace = { status: "failed", reason: error instanceof Error ? error.message : String(error) };
+      trace = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
     }
   }
 
   const logServices = input.plugin.services.servicesWith("log")
     .filter((service) => service.capabilities.log.default)
     .map((service) => service.name);
-  if (input.plugin.services.servicesWith("traceId").length && logServices.length) {
+  if (!input.commandContext.signal.aborted && input.plugin.services.servicesWith("traceId").length && logServices.length) {
     try {
-      log = collected(await runCollectLog({
+      log = collected(await logCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        kubeconfig: input.kubeconfig,
-        context: input.context,
-        profile: input.profileName,
         services: logServices.join(","),
         sinceTime: input.startedAt,
-        format: "html",
-      }, input.plugin, input.commandContext));
+      }), input.commandContext);
     } catch (error) {
-      log = { status: "failed", reason: error instanceof Error ? error.message : String(error) };
+      log = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
     }
   }
 
   const dataServices = dataServicesForBizQuery(input.plugin.services);
-  if (dataServices.length) {
+  if (!input.commandContext.signal.aborted && dataServices.length) {
     try {
-      data = collected(await runCollectData({
+      data = collected(await dataCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        kubeconfig: input.kubeconfig,
-        context: input.context,
-        profile: input.profileName,
         services: dataServices.join(","),
-        format: "html",
-      }, input.plugin, input.commandContext));
+      }), input.commandContext);
     } catch (error) {
-      data = { status: "failed", reason: error instanceof Error ? error.message : String(error) };
+      data = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
     }
   }
   return { trace, log, data };
@@ -236,13 +224,13 @@ export async function runEval(
   opts: EvalCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<EvalRun>> {
   const config = resolveEvalConfig(opts);
   const provider = selectEvalProvider(plugin, config.service);
   const caseSet: CaseSet = selectEvalCaseSet(provider, config.caseset);
   const cases = selectEvalCases(caseSet, config.caseIds);
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
-  if (!kube) return 130;
+  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
   const requestIdentity = await resolveEvalRequestIdentity({
     provider,
@@ -256,7 +244,7 @@ export async function runEval(
   });
   if (provider.capabilities.case.requestIdentity && !requestIdentity) {
     terminalStderr.warning("[eval] 已取消身份选择\n");
-    return 130;
+    return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
   const decision = await resolveApprovalGate(opts)({
@@ -273,7 +261,7 @@ export async function runEval(
   });
   if (!decision.approved) {
     terminalStderr.warning(`[eval] ${approvalDeniedReason(decision.source)}\n`);
-    return 130;
+    return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
   const managed = await openPluginContext(executor, {
@@ -300,9 +288,7 @@ export async function runEval(
   commandContext.artifacts.add("eval", artifact.path);
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
-  const controller = new AbortController();
-  const onInterrupt = () => controller.abort(new Error("doctor eval interrupted"));
-  process.once("SIGINT", onInterrupt);
+  const signal = commandContext.signal;
   let runner: ServiceCaseRunner | undefined;
   let results: EvalCaseResult[] = [];
   let lifecycleError: string | undefined;
@@ -312,18 +298,17 @@ export async function runEval(
       timeoutMs: config.requestTimeoutMs,
       requestIdentity,
     });
-    await runner.setup?.({ runId, signal: controller.signal });
-    results = await executeEvalCases(runner, cases, runId, controller.signal);
+    await runner.setup?.({ runId, signal: signal });
+    results = await executeEvalCases(runner, cases, runId, signal);
   } catch (error) {
     lifecycleError = error instanceof Error ? error.message : String(error);
   } finally {
     try {
-      await runner?.deactivate?.({ runId, signal: controller.signal });
-      await runner?.cleanup?.({ runId, signal: controller.signal });
+      await runner?.deactivate?.({ runId, signal: signal });
+      await runner?.cleanup?.({ runId, signal: signal });
     } catch (error) {
       lifecycleError ??= error instanceof Error ? error.message : String(error);
     }
-    process.removeListener("SIGINT", onInterrupt);
     await managed.dispose();
   }
   if (lifecycleError) terminalStderr.error(`[eval] runner lifecycle: ${lifecycleError}\n`);
@@ -340,7 +325,7 @@ export async function runEval(
     commandContext,
   });
   const run: EvalRun = {
-    schema: "doctor-eval/v1",
+    schema: "doctor-eval/v2",
     runId,
     plugin: `${plugin.id}@${plugin.version}`,
     service: provider.name,
@@ -351,10 +336,9 @@ export async function runEval(
     evidence,
   };
   writeEvalArtifact(artifact, run, caseSet, kube.profileName);
-  if (controller.signal.aborted) return 130;
-  const caseFailed = lifecycleError !== undefined
-    || results.length !== cases.length
-    || results.some((item) => item.protocol?.ok !== true);
-  const evidenceFailed = Object.values(evidence).some((item) => item.status === "failed");
-  return caseFailed || evidenceFailed ? 1 : 0;
+  if (signal.aborted) return { status: CommandStatus.Cancelled, output: run, artifacts: commandContext.artifacts.list() };
+  const statuses = results.map((item) => item.observation ? CommandStatus.Ok : CommandStatus.Failed);
+  if (lifecycleError || results.length !== cases.length) statuses.push(CommandStatus.Failed);
+  statuses.push(...Object.values(evidence).flatMap((item) => item.status === "unavailable" ? [] : [item.status]));
+  return { status: aggregateCommandStatus(statuses), output: run, artifacts: commandContext.artifacts.list() };
 }

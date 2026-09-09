@@ -3,15 +3,18 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
-import type { CommandContext } from "../command";
-import { terminalStderr } from "../terminal/output";
+import {
+  CommandStatus, CommandInputError, defineCommand, aggregateCommandStatus,
+  type CommandContext, type CommandResult,
+} from "../command";
+import type { CommandHostOption } from "../command/options";
 import { promptMultiSelect } from "../terminal/multi-select";
-import { runCollectData } from "./data";
-import { runCollectInspect } from "./inspect";
-import { runCollectLog } from "./log";
-import { runCollectMetric } from "./metric";
-import { runCollectTenant } from "./tenant";
-import { runCollectTrace } from "./trace";
+import { dataCommand } from "./data/command";
+import { inspectCommand } from "./inspect/command";
+import { logCommand } from "./log/command";
+import { metricCommand } from "./metric/command";
+import { tenantCommand } from "./tenant/command";
+import { traceCommand } from "./trace/command";
 
 export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log", "metric"] as const;
 export type CollectKind = typeof COLLECT_KINDS[number];
@@ -47,16 +50,18 @@ export interface CollectCliOpts {
   format?: string;
 }
 
+export type CollectInput = Omit<CollectCliOpts, CommandHostOption>;
+
 export interface CollectDelegateResult {
-  kind: CollectKind;
-  code: number;
-  error?: string;
+  readonly kind: CollectKind;
+  readonly result: CommandResult<void>;
 }
 
-export type CollectDelegate = (kind: CollectKind) => Promise<number>;
+export interface CollectOutput { readonly steps: readonly CollectDelegateResult[]; }
+export type CollectDelegate = (kind: CollectKind) => Promise<CommandResult<void>>;
 
 interface CollectManifestInput {
-  opts: CollectCliOpts;
+  opts: CollectInput;
   plugin: Pick<PluginDefinition, "id" | "version">;
   results: readonly CollectDelegateResult[];
   commandContext: CommandContext;
@@ -65,11 +70,10 @@ interface CollectManifestInput {
 }
 
 export function createCollectManifest(input: CollectManifestInput): Record<string, unknown> {
-  const succeeded = input.results.filter((result) => result.code === 0).length;
   return {
-    schema_version: 1,
+    schema_version: 2,
     command: "doctor collect",
-    status: succeeded === input.results.length ? "ok" : succeeded > 0 ? "partial" : "failed",
+    status: aggregateCommandStatus(input.results.map((step) => step.result.status)),
     doctor_version: DOCTOR_CLI_VERSION,
     plugin: {
       id: input.plugin.id,
@@ -95,11 +99,9 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
     steps: input.results.map((result) => ({
       id: result.kind,
       title: COLLECT_LABELS[result.kind],
-      status: result.code === 0 ? "ok" : "failed",
-      exit_code: result.code,
-      reason: result.error,
-      artifacts: input.commandContext.artifacts.list()
-        .filter((artifact) => artifact.command === result.kind)
+      status: result.result.status,
+      reason: "reason" in result.result ? result.result.reason : undefined,
+      artifacts: result.result.artifacts
         .map((artifact) => basename(artifact.path)),
     })),
   };
@@ -171,15 +173,9 @@ export async function runCollectDelegates(
 ): Promise<CollectDelegateResult[]> {
   const results: CollectDelegateResult[] = [];
   for (const kind of kinds) {
-    try {
-      results.push({ kind, code: await delegate(kind) });
-    } catch (error) {
-      results.push({
-        kind,
-        code: 1,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+    const result = await delegate(kind);
+    results.push({ kind, result });
+    if (result.status === CommandStatus.Cancelled) break;
   }
   return results;
 }
@@ -196,119 +192,64 @@ function inspectServiceNames(plugin: PluginDefinition): string {
   return plugin.services.services.map((service) => service.name).join(",");
 }
 
-function collectDelegate(
-  opts: CollectCliOpts,
-  plugin: PluginDefinition,
-  commandContext: CommandContext,
-): CollectDelegate {
-  const common = {
-    namespace: opts.namespace,
-    kubeconfig: opts.kubeconfig,
-    context: opts.context,
-    profile: commandContext.profile.name,
-    config: opts.config,
-  };
-  return async (kind) => {
-    const format = parseCollectOutputFormat(opts.format);
-    let code: number;
+function collectDelegate(input: CollectInput, context: CommandContext): CollectDelegate {
+  const plugin = context.plugin;
+  const common = { namespace: input.namespace };
+  return (kind) => {
     switch (kind) {
-      case "inspect":
-        code = await runCollectInspect({
-          ...common,
-          services: inspectServiceNames(plugin),
-          deploymentConfig: opts.deploymentConfig,
-          dependencies: opts.dependencies,
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
-      case "tenant":
-        code = await runCollectTenant({
-          ...common,
-          tenantId: opts.tenantId,
-          tenantName: opts.tenantName,
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
-      case "data":
-        code = await runCollectData({
-          ...common,
-          bizIds: opts.bizIds,
-          services: providerNames(plugin, "inspect"),
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
-      case "trace":
-        code = await runCollectTrace({
-          ...common,
-          bizIds: opts.bizIds,
-          pageSize: "1000",
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
-      case "log":
-        code = await runCollectLog({
-          ...common,
-          bizIds: opts.bizIds,
-          services: providerNames(plugin, "log"),
-          since: opts.since,
-          sinceTime: opts.sinceTime,
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
-      case "metric":
-        code = await runCollectMetric({
-          ...common,
-          services: providerNames(plugin, "metric"),
-          watch: opts.watch ?? "0",
-          interval: opts.interval,
-          prometheus: opts.prometheus,
-          format,
-          output: undefined,
-        }, plugin, commandContext);
-        break;
+      case "inspect": return inspectCommand.run(context, {
+        ...common, services: inspectServiceNames(plugin),
+        deploymentConfig: input.deploymentConfig, dependencies: input.dependencies,
+      });
+      case "tenant": return tenantCommand.run(context, {
+        ...common, tenantId: input.tenantId, tenantName: input.tenantName,
+      });
+      case "data": return dataCommand.run(context, {
+        ...common, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
+      });
+      case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds });
+      case "log": return logCommand.run(context, {
+        ...common, bizIds: input.bizIds, services: providerNames(plugin, "log"),
+        since: input.since, sinceTime: input.sinceTime,
+      });
+      case "metric": return metricCommand.run(context, {
+        ...common, services: providerNames(plugin, "metric"), watch: input.watch ?? "0",
+        interval: input.interval, prometheus: input.prometheus,
+      });
     }
-    return code;
   };
 }
 
-/**
- * Collection command owns selection and delegation only; global finalize owns delivery.
- * Inspect, Tenant, Data, Trace, Log and Metric remain the sole owners of concrete collection work.
- */
-export async function runCollectCommand(
-  opts: CollectCliOpts,
-  plugin: PluginDefinition,
-  commandContext: CommandContext,
-  injectedDelegate?: CollectDelegate,
-): Promise<number> {
-  if (!opts.bizIds.length && opts.kinds.some((kind) => (
-    kind === "data" || kind === "trace" || kind === "log"
-  ))) {
-    terminalStderr.error("doctor collect 需要至少一个 biz-id\n");
-    return 2;
-  }
-  const format = parseCollectOutputFormat(opts.format);
-  // A parent command (for example overview) owns the aggregate report name.
-  if (!commandContext.artifacts.reportName()) commandContext.artifacts.setReportName(collectReportName(opts.bizIds));
-  const startedAt = new Date().toISOString();
-  const results = await runCollectDelegates(
-    opts.kinds,
-    injectedDelegate ?? collectDelegate(opts, plugin, commandContext),
-  );
-  if (format !== "html") {
-    registerCollectManifest({
-      opts,
-      plugin,
-      results,
-      commandContext,
-      startedAt,
-      finishedAt: new Date().toISOString(),
-    });
-  }
-  return results.some((result) => result.code === 0) ? 0 : 1;
+/** Each selected command checks its own requirements so missing optional collectors cannot veto siblings. */
+export function createCollectCommand(delegate?: CollectDelegate) {
+  return defineCommand<CollectInput, CollectOutput>({
+    name: "doctor collect",
+    plugin: { command: "doctor collect", needs: [] },
+    validate: (input) => {
+      if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
+        throw new CommandInputError("doctor collect 需要至少一个 biz-id");
+      }
+    },
+    run: async (context, input) => {
+      context.artifacts.setReportName(collectReportName(input.bizIds));
+      const startedAt = new Date().toISOString();
+      const invoke = delegate ?? collectDelegate(input, context);
+      const results = await runCollectDelegates(input.kinds, async (kind) => {
+        context.signal.throwIfAborted();
+        const result = await invoke(kind);
+        context.artifacts.include(result.artifacts);
+        return result;
+      });
+      registerCollectManifest({
+        opts: input, plugin: context.plugin, results, commandContext: context,
+        startedAt, finishedAt: new Date().toISOString(),
+      });
+      return {
+        status: aggregateCommandStatus(results.map((step) => step.result.status)),
+        output: { steps: results }, artifacts: context.artifacts.list(),
+      };
+    },
+  });
 }
+
+export const collectCommand = createCollectCommand();

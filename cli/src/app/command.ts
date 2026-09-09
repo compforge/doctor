@@ -1,102 +1,54 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import {
-  type CommandContext,
-  type PluginCapabilityContract,
-} from "../command";
-import { loadActivePlugin } from "../plugin";
-import { requirePluginCapabilities } from "../terminal/plugin-capability";
+import { CommandInputError, CommandStatus, type CommandResult, type CommandSpec } from "../command";
 import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
-import { prepareCommand, type CommandOptions, type CommandSpec } from "./prepare";
+import { prepareCommand, type CommandOptions } from "./prepare";
 
-export type { CommandSpec } from "./prepare";
+export type { CommandSpec } from "../command";
 
-export async function runCommand(
-  spec: CommandSpec,
+export function commandExitCode(result: CommandResult<unknown>): number {
+  switch (result.status) {
+    case CommandStatus.Ok:
+    case CommandStatus.Partial: return 0;
+    case CommandStatus.Cancelled: return 130;
+    case CommandStatus.Failed: return result.error instanceof CommandInputError ? 2 : 1;
+  }
+}
+
+/** The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once. */
+export async function runCommand<Input, Output>(
+  spec: CommandSpec<Input, Output>,
   opts: CommandOptions,
-  work: (commandContext: CommandContext, profileName: string) => Promise<number | void>,
-  printProfile = true,
+  input: Input,
+  runtime: { plugin?: PluginDefinition; printProfile?: boolean } = {},
 ): Promise<void> {
   try {
-    const { context, profileName } = await prepareCommand(spec, opts, printProfile);
-    let code: number | void;
-    try {
-      code = await work(context, profileName);
-    } catch (err) {
-      reportError(err, { context: spec.name, summary: "fatal" });
-      code = 1;
-    }
-    const commandCode = typeof code === "number" ? code : 0;
-    const finalCode = await finalizeCommand({
-      command: spec.name,
-      context,
-      delivery: opts,
-      code: commandCode,
+    const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
+    const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
+    process.once("SIGINT", interrupt);
+    let result: CommandResult<Output>;
+    try { result = await spec.run(context, input); }
+    finally { process.removeListener("SIGINT", interrupt); }
+    context.artifacts.include(result.artifacts);
+    if (result.reportName) context.artifacts.setReportName(result.reportName);
+    process.exitCode = await finalizeCommand({
+      command: spec.name, context, delivery: opts, code: commandExitCode(result),
     });
-    if (typeof code === "number" || finalCode !== 0) process.exitCode = finalCode;
-  } catch (err) {
-    reportError(err, { context: spec.name, summary: "fatal" });
+  } catch (error) {
+    reportError(error, { context: spec.name, summary: "fatal" });
     process.exitCode = 1;
   }
 }
 
-export async function runPluginCommand(
-  spec: CommandSpec & { plugin: PluginCapabilityContract },
-  opts: CommandOptions & { namespace?: string },
-  embeddedPlugin: PluginDefinition | undefined,
-  work: (
-    plugin: PluginDefinition,
-    commandContext: CommandContext,
-    profileName: string,
-  ) => Promise<number | void>,
-): Promise<void> {
-  let pluginIdentity: string | undefined;
-  try {
-    const { context, profileName, capabilities } = await prepareCommand(spec, opts, true, async (profile) => {
-      const selectedPlugin = embeddedPlugin ?? await loadActivePlugin();
-      if (selectedPlugin) pluginIdentity = `${selectedPlugin.id}@${selectedPlugin.version}`;
-      const activePlugin = requirePluginCapabilities(
-        selectedPlugin,
-        spec.plugin,
-      );
-      activePlugin.validateConfig?.(profile.pluginConfig);
-      return activePlugin;
-    });
-    context.registerPluginServices(
-      capabilities.id,
-      capabilities.services.services.map((service) => service.name),
-    );
-    const code = await work(
-      capabilities,
-      context,
-      profileName,
-    ).catch((err) => {
-      reportError(err, { context: spec.name, summary: "fatal", plugin: pluginIdentity });
-      return 1;
-    });
-    const commandCode = typeof code === "number" ? code : 0;
-    const finalCode = await finalizeCommand({
-      command: spec.name,
-      context,
-      delivery: opts,
-      code: commandCode,
-    });
-    if (typeof code === "number" || finalCode !== 0) process.exitCode = finalCode;
-  } catch (err) {
-    reportError(err, { context: spec.name, summary: "fatal", plugin: pluginIdentity });
-    process.exitCode = 1;
-  }
-}
-
+/** Bootstrap/offline commands do not require an existing profile. */
 export async function runStandaloneCommand(
-  context: string,
-  action: () => Promise<number | void>,
+  context: string, action: () => Promise<number | void>,
 ): Promise<void> {
   try {
     const code = await action();
     if (typeof code === "number") process.exitCode = code;
-  } catch (err) {
-    reportError(err, { context, summary: "fatal" });
+  } catch (error) {
+    reportError(error, { context, summary: "fatal" });
     process.exitCode = 1;
   }
 }

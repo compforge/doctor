@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { runPluginCommand } from "../app/command";
-import { PLUGIN_COMMAND_CAPABILITIES } from "../app/plugin-command-capabilities";
-import { runOverview, validateOverviewOptions, type OverviewCliOpts } from "./index";
+import { runCommand } from "../app/command";
+import { domainInput } from "../command/options";
+import { overviewCommand, type OverviewCliOpts } from "./index";
 
 export function registerOverviewCommand(program: Command, plugin?: PluginDefinition): void {
   program.command("overview").description("展示各 Service 值得注意的 Facet / Entry，可选采集代表请求")
@@ -19,9 +19,6 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("-f, --format <format>", "html 或 bundle；默认 HTML + Bundle")
     .option("-o, --output <path>", "报告 basename/路径")
     .action(async (opts: OverviewCliOpts) => {
-      await runPluginCommand({
-        name: "doctor overview", environment: { kubernetes: true },
-        validate: () => validateOverviewOptions(opts), plugin: PLUGIN_COMMAND_CAPABILITIES.overview,
-      }, opts, plugin, (activePlugin, context) => runOverview(opts, activePlugin, context));
+      await runCommand(overviewCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
     });
 }

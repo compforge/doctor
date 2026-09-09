@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult } from "../../command";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { writeHtmlReport } from "../output/html";
 import { resolveMetricConfig } from "./config";
@@ -45,14 +46,14 @@ export async function runCollectMetric(
   commandContext: CommandContext,
   injectedExecutor?: Executor,
   control?: MetricRunControl,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   let config = await resolveMetricConfig(
     opts,
     plugin.services,
     commandContext,
     !!(process.stdin.isTTY && process.stdout.isTTY),
   );
-  if (!config) return 130;
+  if (!config) return commandOutcome(130);
   if (!config.servicesExplicit && process.stdin.isTTY && process.stdout.isTTY) {
     const selected = await promptNamedChoices({
       choices: plugin.services.servicesWith("metric").map((service) => ({ name: service.name })),
@@ -60,12 +61,12 @@ export async function runCollectMetric(
       candidateType: "Service",
       context: { purpose: "确定 Metric 分析范围" },
     });
-    if (!selected) return 130;
+    if (!selected) return commandOutcome(130);
     config = { ...config, services: selected };
   }
   if (!config.services.length) {
     terminalStderr.error("[collect] 未选择任何 Metric Service\n");
-    return 2;
+    return commandOutcome(2);
   }
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-metric-"));
@@ -162,7 +163,7 @@ export async function runCollectMetric(
       collectCode: 1,
       reason,
     });
-    return 1;
+    return commandOutcome(1);
   }
 
   bundle.writeSummary("# Metric diagnosis\n");
@@ -184,15 +185,15 @@ export async function runCollectMetric(
       collectCode: 1,
       reason,
     });
-    return 1;
+    return commandOutcome(1);
   }
-  const exitCode = evaluateCollectOutcome(
+  const outcome = evaluateCollectOutcome(
     diagnosis.coverage.map((item) => item.status === "sufficient"),
-  ).exitCode;
+  );
   if (config.format === "html") {
-    return exitCode;
+    return collectCommandOutcome(outcome);
   }
-  return exitCode;
+  return collectCommandOutcome(outcome);
 }
 
 function metricWindow(diagnosis: MetricDiagnosis | undefined): MetricWindowObservation | undefined {

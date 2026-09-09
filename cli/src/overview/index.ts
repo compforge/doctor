@@ -1,8 +1,10 @@
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../command";
+import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
+import { commandOptions, type CommandHostOption } from "../command/options";
+import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
-import { parseCollectOutputFormat, runCollectCommand } from "../collect/composite";
+import { parseCollectOutputFormat, collectCommand } from "../collect/composite";
 import { terminalStdout } from "../terminal/output";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
 import { overviewWindow, selectOverviewFacet, selectOverviewWindow } from "./selection";
@@ -23,10 +25,10 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
   parseCollectOutputFormat(opts.format);
 }
 
-export async function runOverview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<number> {
+async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewResult>> {
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
   const since = opts.since ?? await selectOverviewWindow(interactive);
-  if (!since) return 130;
+  if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
   const providers = plugin.services.servicesWith("overview");
   const requested = opts.services?.split(",").map((name) => name.trim()).filter(Boolean);
   for (const name of requested ?? []) {
@@ -37,7 +39,7 @@ export async function runOverview(opts: OverviewCliOpts, plugin: PluginDefinitio
     throw new Error(`未声明的 Facet: ${opts.facet}`);
   }
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
-  if (!kube) return 130;
+  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
   const db = context.profile.value.db;
   const invoke = async <T>(provider: OverviewProvider, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
@@ -57,6 +59,7 @@ export async function runOverview(opts: OverviewCliOpts, plugin: PluginDefinitio
   let result: OverviewResult;
   try {
     result = await runOverviewSession(selected, query, {
+      signal: context.signal,
       summarize: (provider, input) => invoke(provider, (managed) => (
         provider.capabilities.overview.summarize(managed, input)
       )),
@@ -70,9 +73,14 @@ export async function runOverview(opts: OverviewCliOpts, plugin: PluginDefinitio
         // Register the dashboard before child artifacts so it is the first report tab.
         reportDirectory = writeOverviewReport(result, context);
       },
-      collect: (bizIds) => runCollectCommand({
-        ...opts, bizIds, kinds: ["data", "trace", "log"], sinceTime: query.window.from,
-      }, plugin, context),
+      collect: async (bizIds) => {
+        const collected = await collectCommand.run(context, {
+          namespace: kube.kubernetes.namespace, tenantId: opts.tenantId,
+          bizIds, kinds: ["data", "trace", "log"], sinceTime: query.window.from,
+        });
+        context.artifacts.include(collected.artifacts);
+        return collected;
+      },
     });
   } finally {
     // The dashboard remains deliverable even if optional selection or collection fails.
@@ -81,5 +89,17 @@ export async function runOverview(opts: OverviewCliOpts, plugin: PluginDefinitio
   for (const sample of result.samples) {
     terminalStdout.write(`[overview] ${sample.service}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}\n`);
   }
-  return result.services.some((service) => !service.error) && result.collection !== "failed" ? 0 : 1;
+  const statuses: CommandStatus[] = result.services.map((service) => service.error ? CommandStatus.Failed : CommandStatus.Ok);
+  if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
+  if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
+  return { status: aggregateCommandStatus(statuses), output: result, artifacts: context.artifacts.list() };
 }
+
+export type OverviewInput = Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
+export const overviewCommand = defineCommand<OverviewInput, OverviewResult>({
+  name: "doctor overview",
+  environment: { kubernetes: true },
+  plugin: PLUGIN_COMMAND_CAPABILITIES.overview,
+  validate: validateOverviewOptions,
+  run: (context, input) => overview({ ...commandOptions(context), ...input }, context.plugin, context),
+});

@@ -1,3 +1,4 @@
+import { CommandStatus, commandOutcome } from "../src/command";
 import { expect, mock, test } from "bun:test";
 import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResult, type OverviewQuery } from "@compforge/doctor-plugin";
 import { runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
@@ -19,12 +20,12 @@ const summary: OverviewFacetResult[] = [{ facetId: "errors", description: "creat
 ] }];
 function actions(overrides: Partial<OverviewActions> = {}): OverviewActions {
   return { summarize: async () => summary, sample: async () => ({ bizId: "trace-1" }),
-    select: async () => undefined, collect: async () => 0, show: () => {}, ...overrides };
+    select: async () => undefined, collect: async () => commandOutcome(0), show: () => {}, ...overrides };
 }
 
 test("overview shows text and numeric entries without sampling on decline", async () => {
   const sample = mock(async () => ({ bizId: "trace-1" }));
-  const collect = mock(async () => 0);
+  const collect = mock(async () => commandOutcome(0));
   const order: string[] = [];
   const result = await runOverviewSession([provider("chat")], query, actions({ sample, collect,
     show: () => { order.push("show"); }, select: async () => { order.push("confirm"); return undefined; },
@@ -42,7 +43,7 @@ test("one sample per eligible entry retains provenance and deduplicates collect 
   const result = await runOverviewSession([provider("chat"), provider("plan")], query, actions({
     select: async (facets) => { expect(facets).toEqual([facet]); return "errors"; },
     sample: async (_provider, input) => { sampleQueries.push(input); return { bizId: "trace-1", source: { kind: "message_id", value: "m1" } }; },
-    collect: async (ids) => { batches.push(ids); return 0; },
+    collect: async (ids) => { batches.push(ids); return commandOutcome(0); },
   }));
   expect(sampleQueries).toHaveLength(4);
   expect(sampleQueries[0]).toEqual({ ...query, facetId: "errors", entryKey: "E1" });
@@ -91,7 +92,7 @@ test("collection errors retain the dashboard and samples", async () => {
   const result = await runOverviewSession([provider("chat")], query, actions({
     select: async () => "errors", collect: async () => { throw new Error("collect unavailable"); },
   }));
-  expect(result.collection).toBe("failed");
+  expect(result.collection).toBe(CommandStatus.Failed);
   expect(result.collectionError).toBe("collect unavailable");
   expect(result.samples).toHaveLength(2);
 });
@@ -156,4 +157,16 @@ test("report preserves source IDs, text data and failed providers and escapes HT
     expect(html).toContain("message_id: m1");
     expect(JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8")).samples[0].bizId).toBe("trace-1");
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("overview preserves partial collection status and cancellation", async () => {
+  for (const status of [CommandStatus.Partial, CommandStatus.Cancelled]) {
+    const result = await runOverviewSession([provider("api")], query, actions({
+      select: async () => "errors",
+      collect: async () => ({ status, output: undefined, artifacts: [] }),
+    }));
+    expect(result.collection).toBe(status);
+    expect(result.samples).toHaveLength(2);
+    expect(result.services[0]?.facets).toHaveLength(1);
+  }
 });

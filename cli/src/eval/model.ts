@@ -1,3 +1,4 @@
+import type { CommandStatus, CommandArtifact } from "../command";
 import type {
   ServiceCaseObservation,
   ServiceCaseVerdict,
@@ -42,11 +43,11 @@ export interface EvalCaseResult {
   error?: string;
 }
 
-export type EvalEvidenceStatus = "collected" | "unavailable" | "failed";
+export type EvalEvidenceStatus = CommandStatus | "unavailable";
 
 export interface EvalEvidenceResult {
   status: EvalEvidenceStatus;
-  exitCode?: number;
+  artifacts?: readonly CommandArtifact[];
   reason?: string;
 }
 
@@ -57,7 +58,7 @@ export interface EvalEvidenceCollection {
 }
 
 export interface EvalRun {
-  schema: "doctor-eval/v1";
+  schema: "doctor-eval/v2";
   runId: string;
   plugin: string;
   service: string;

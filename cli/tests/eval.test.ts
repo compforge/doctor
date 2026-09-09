@@ -1,3 +1,4 @@
+import { CommandStatus } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -113,7 +114,7 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
   const config = resolveEvalConfig({}, new Date("2026-01-02T03:04:05"));
   const artifact = createEvalArtifact(config);
   const run: EvalRun = {
-    schema: "doctor-eval/v1",
+    schema: "doctor-eval/v2",
     runId: "run-1",
     plugin: "test@0.0.1",
     service: "chat",
@@ -130,14 +131,14 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
       correlation: { key: "trace_id", id: "trace-1" },
     }],
     evidence: {
-      trace: { status: "collected", exitCode: 0 },
+      trace: { status: CommandStatus.Ok },
       log: { status: "unavailable", reason: "no log capability" },
-      data: { status: "collected", exitCode: 0 },
+      data: { status: CommandStatus.Ok },
     },
   };
   try {
     writeEvalArtifact(artifact, run, CASE_SET, "test");
-    expect(readFileSync(join(artifact.path, "run.json"), "utf8")).toContain("doctor-eval/v1");
+    expect(readFileSync(join(artifact.path, "run.json"), "utf8")).toContain("doctor-eval/v2");
     expect(readFileSync(join(artifact.path, "caseset.json"), "utf8")).toContain("ordinary-chat");
     expect(readFileSync(join(artifact.path, "observations.jsonl"), "utf8")).toContain("trace-1");
     expect(readFileSync(join(artifact.path, "report.html"), "utf8")).toContain("不评价回答质量");

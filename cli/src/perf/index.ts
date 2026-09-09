@@ -18,14 +18,14 @@ import type {
   ServiceDefinition,
   ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../command";
+import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../command/kubernetes-target";
-import { runCollectLog } from "../collect/log";
-import { runCollectMetric } from "../collect/metric";
-import { runCollectTrace } from "../collect/trace";
+import { logCommand } from "../collect/log/command";
+import { metricCommand } from "../collect/metric/command";
+import { traceCommand } from "../collect/trace/command";
 import { openPluginContext } from "../plugin/context";
 import { resolveKubernetesCommandContext } from "../command";
 import { approvalDeniedReason } from "../command/approval";
@@ -218,25 +218,19 @@ async function collectCorrelatedEvidence(input: {
     input.limit,
     input.correlationKeys,
   )) {
-    const traceCode = await runCollectTrace({
+    if (input.commandContext.signal.aborted) break;
+    const trace = await traceCommand.run(input.commandContext, {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
-      kubeconfig: input.kubeconfig,
-      context: input.context,
-      profile: input.profileName,
-      pageSize: "1000",
-      format: "html",
-    }, input.plugin, input.commandContext);
-    const logCode = await runCollectLog({
+    });
+    input.commandContext.artifacts.include(trace.artifacts);
+    const log = trace.status === CommandStatus.Cancelled ? undefined : await logCommand.run(input.commandContext, {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
-      kubeconfig: input.kubeconfig,
-      context: input.context,
-      profile: input.profileName,
       services: input.services.join(","),
       sinceTime: input.run.trials.find((trial) => trial.id === selected.trialId)?.started_at,
-      format: "html",
-    }, input.plugin, input.commandContext);
+    });
+    if (log) input.commandContext.artifacts.include(log.artifacts);
     samples.push({
       trialId: selected.trialId,
       caseId: selected.outcome.case_id,
@@ -245,8 +239,8 @@ async function collectCorrelatedEvidence(input: {
       firstTokenMs: firstToken(selected.outcome),
       durationMs: selected.outcome.duration_ms,
       errorKind: selected.outcome.error_kind,
-      traceCode,
-      logCode,
+      trace,
+      log,
     });
   }
   return samples;
@@ -256,7 +250,7 @@ export async function runPerf(
   opts: PerfCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
   const provider = selectProvider(plugin, config.service);
   const scenario = config.scenario ?? provider.capabilities.perf.scenarios[0]?.id;
@@ -288,12 +282,12 @@ export async function runPerf(
       invalidMessage: `最高并发只支持 ${PERF_MAX_CONCURRENCY_OPTIONS.join("、")}`,
       emptyValue: 20,
     });
-    if (maxConcurrency === undefined) return 130;
+    if (maxConcurrency === undefined) return { status: CommandStatus.Cancelled, artifacts: [] };
     config.levels = perfLevelsThrough(maxConcurrency);
   }
 
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
-  if (!kube) return 130;
+  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
 
   const executor = createKubernetesExecutor(kube);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
@@ -345,7 +339,7 @@ export async function runPerf(
       }
       if (!requestIdentity) {
         terminalStderr.warning("[perf] 已取消身份选择\n");
-        return 130;
+        return { status: CommandStatus.Cancelled, artifacts: [] };
       }
     }
     terminalStdout.write(
@@ -369,7 +363,7 @@ export async function runPerf(
   });
   if (!decision.approved) {
     terminalStderr.warning(`[perf] ${approvalDeniedReason(decision.source)}\n`);
-    return 130;
+    return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
   const managed = await openPluginContext(executor, {
@@ -438,33 +432,23 @@ export async function runPerf(
     };
     rejectMetricStart = rejectReady;
   });
-  const metricPromise = runCollectMetric({
+  const metricPromise = metricCommand.run(commandContext, {
     services: declaredScenario.observability.metricServices.join(","),
     watch: "until-interrupt",
     interval: opts.interval ?? "5s",
     prometheus: opts.prometheus,
     namespace: kube.kubernetes.namespace,
-    kubeconfig: kube.kubernetes.kubeconfig,
-    context: kube.kubernetes.context,
-    profile: kube.profileName,
-  }, plugin, commandContext, executor, {
-    signal: metricController.signal,
-    onWindowStart: markMetricStarted,
+    window: { signal: metricController.signal, onWindowStart: markMetricStarted },
   });
-  metricPromise.then((code) => {
-    if (!metricStarted) rejectMetricStart(new Error(`Metric 采集窗口启动失败（exit ${code}）`));
+  metricPromise.then((result) => {
+    if (!metricStarted) rejectMetricStart(new Error(`Metric 采集窗口启动失败（${result.status}）`));
   }, (error) => {
     if (!metricStarted) rejectMetricStart(error instanceof Error ? error : new Error(String(error)));
   });
 
-  const loadController = new AbortController();
-  const onInterrupt = () => {
-    loadController.abort(new Error("doctor perf interrupted"));
-    metricController.abort();
-  };
-  process.once("SIGINT", onInterrupt);
   let run: Run | undefined;
   let loadError: unknown;
+  let metric: CommandResult<void>;
   try {
     await metricReady;
     terminalStdout.write(`[perf] metric window ready; starting ${config.levels.join(" → ")} concurrency\n`);
@@ -480,7 +464,7 @@ export async function runPerf(
         breaker_min_n: config.breakerMinN,
         graceful_stop_s: config.gracefulStopSeconds,
       })),
-      signal: loadController.signal,
+      signal: commandContext.signal,
       onTrialStart: (context) => {
         terminalStdout.write(
           `[perf] trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseSet, caseMix)}`,
@@ -491,10 +475,14 @@ export async function runPerf(
     loadError = error;
   } finally {
     metricController.abort();
-    process.removeListener("SIGINT", onInterrupt);
-    await managed.dispose();
+    try {
+      // Join the child before closing the parent's scope, even when parent cleanup fails.
+      metric = await metricPromise;
+      commandContext.artifacts.include(metric.artifacts);
+    } finally {
+      await managed.dispose();
+    }
   }
-  const metricCode = await metricPromise;
   if (loadError) throw loadError;
   if (!run) throw new Error("Perf Harness 未形成 Run");
   writeRunData(run, outputDir);
@@ -513,12 +501,14 @@ export async function runPerf(
   const result: PerfResult = {
     run,
     outputDir,
-    metricCode,
+    metric,
     samples,
     caseFacets: caseSet.facets,
   };
   const reportPath = writePerfReport(result);
   copyFileSync(reportPath, join(outputDir, "report.html"));
-  const passed = run.passed && metricCode === 0;
-  return passed ? 0 : 1;
+  const statuses = [run.passed ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
+    [sample.trace.status, ...(sample.log ? [sample.log.status] : [])]
+  ))];
+  return { status: aggregateCommandStatus(statuses), output: result, artifacts: commandContext.artifacts.list() };
 }

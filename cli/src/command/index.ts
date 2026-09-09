@@ -3,3 +3,6 @@ export * from "./context";
 export * from "./inspect/kubernetes";
 export * from "./plugin-capability";
 export * from "./profile";
+export * from "./status";
+export * from "./result";
+export * from "./spec";

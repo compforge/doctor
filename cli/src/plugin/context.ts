@@ -1,3 +1,4 @@
+import { currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
@@ -158,6 +159,10 @@ export function createPluginContext(
   options: PluginContextOptions,
 ): ManagedPluginContext {
   const controller = new AbortController();
+  const parentSignal = currentCommandSignal();
+  const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
+  let disposal: Promise<void> | undefined;
+  let unregister = () => {};
   const disposers: Array<() => void | Promise<void>> = [];
   const executors = new Map<string, Executor>([[kube.namespace, executor]]);
   const executorForNamespace = (namespace: string): Executor => {
@@ -192,21 +197,25 @@ export function createPluginContext(
       kubernetes: createKubernetesAccess(
         executorForNamespace,
         kube.namespace,
-        controller.signal,
+        signal,
         options.capability,
         portForward,
       ),
     },
-    signal: controller.signal,
+    signal,
     onDispose: (disposer) => disposers.push(disposer),
-    dispose: async () => {
+    dispose: () => disposal ??= (async () => {
+      unregister();
       controller.abort();
-      const settled = await Promise.allSettled(disposers.reverse().map((dispose) => dispose()));
-      for (const forwarder of forwarders.values()) (await forwarder).stop();
-      const failure = settled.find((result) => result.status === "rejected");
-      if (failure?.status === "rejected") throw failure.reason;
-    },
+      const settled = await Promise.allSettled([
+        ...disposers.reverse().map((dispose) => Promise.resolve().then(dispose)),
+        ...[...forwarders.values()].map(async (forwarder) => (await forwarder).stop()),
+      ]);
+      const errors = settled.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+      if (errors.length) throw new AggregateError(errors, "Plugin resource cleanup failed");
+    })(),
   };
+  unregister = onCommandDispose(() => context.dispose());
   return context;
 }
 

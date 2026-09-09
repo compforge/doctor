@@ -1,3 +1,4 @@
+import { commandExitCode } from "../src/app/command";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -242,11 +243,11 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       [records]: {} as PluginContext,
     });
 
-    expect(code).toBe(0);
+    expect(commandExitCode(code)).toBe(0);
     expect(await deliverCommandArtifacts(
       context,
       { format: "json", output: join(root, "result.json") },
-      code,
+      commandExitCode(code),
       "doctor data",
     )).toBe(true);
     expect(seen).toEqual(["trace_id:trace-1"]);
@@ -270,8 +271,8 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       format: "json",
       output: requestedOutput,
     }, plugin, context, executor, contexts);
-    expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, code, "doctor data"))
+    expect(commandExitCode(code)).toBe(0);
+    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, commandExitCode(code), "doctor data"))
       .toBe(true);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
@@ -322,8 +323,8 @@ test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
       format: "json",
       output: outputPath,
     }, plugin, context, executor, contexts);
-    expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, code, "doctor data"))
+    expect(commandExitCode(code)).toBe(0);
+    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, commandExitCode(code), "doctor data"))
       .toBe(true);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
@@ -351,8 +352,8 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
       config: join(root, "missing-config.yaml"),
       output,
     }, plugin, context, executor, contexts);
-    expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, code, "doctor data")).toBe(true);
+    expect(commandExitCode(code)).toBe(0);
+    expect(await deliverCommandArtifacts(context, { output }, commandExitCode(code), "doctor data")).toBe(true);
 
     expect(existsSync(htmlPath)).toBe(true);
     expect(existsSync(bundlePath)).toBe(true);

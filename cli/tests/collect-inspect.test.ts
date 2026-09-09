@@ -1,3 +1,4 @@
+import { commandExitCode } from "../src/app/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -48,8 +49,8 @@ async function runInspectWithDelivery(
 ): Promise<number> {
   const context = createCommandContext();
   const code = await runCollectInspect(opts, plugin, context, executor);
-  expect(await deliverCommandArtifacts(context, opts, code, "doctor inspect")).toBe(true);
-  return code;
+  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect")).toBe(true);
+  return commandExitCode(code);
 }
 
 function detectorEvidence(): InspectEvidence {

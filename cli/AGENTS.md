@@ -21,7 +21,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 | `app` | 命令入口、profile 与 composition root |
 | `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
 | `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
-| `command` | 五条主路径共用的启动检查、Kubernetes 目标解析与 access/审批契约 |
+| `command` | CommandSpec、结构化结果、共享 Context、调用作用域及环境/access/审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `case` | Eval 与 Perf 共用的 Case 请求身份选择 |
@@ -62,8 +62,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 9. **默认交付兼顾阅读与完整取证**：诊断命令未指定 `--format` 时，同时交付外置 HTML 和完整
    `tar.gz`；Bundle 解压后只产生一个顶层目录，目录内保留 `report.html`、领域 JSON、原始 Evidence 与附件；
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。
-   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 command 只准备并向共享
-   `CommandContext` 注册 Artifacts；统一 finalize 阶段负责 Delivery，组合命令不自行复制或压缩子产物。
+   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
+   根入口统一 finalize 和 Delivery。单次调用的资源与产物独立，环境、决策及取消信号在整轮内共享。
 
 ## References
 

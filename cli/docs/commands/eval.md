@@ -39,5 +39,6 @@ Eval 自身目录至少包含：
 - `report.html`：Case 执行与证据覆盖概览。
 
 缺少关联 ID 或 Plugin 未声明某类可选 capability 时，该数据面标记为 `unavailable`，已取得的 Observation
-仍然交付；已经选择并执行的采集器失败时标记为 `failed`，命令返回失败。默认同时生成外置 HTML 和完整
+仍然交付；已经选择并执行的采集器保留其 `CommandStatus`，部分采集失败时整轮按有效结果汇总为
+`partial`，并在报告显示原因。Case 协议判定与命令完成状态分开，用户取消时停止后续采集。默认同时生成外置 HTML 和完整
 `.tar.gz`，也可通过 `--format html|bundle` 只选择一种交付。

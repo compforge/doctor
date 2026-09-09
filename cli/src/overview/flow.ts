@@ -1,3 +1,4 @@
+import { CommandStatus, type CommandResult } from "../command";
 import type {
   OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
   ServiceDefinition, ServiceOverviewCapability,
@@ -27,7 +28,7 @@ export interface OverviewResult {
   services: OverviewServiceResult[];
   samples: OverviewSampleResult[];
   collectionError?: string;
-  collection: "not-requested" | "no-samples" | "collected" | "failed";
+  collection: "not-requested" | "no-samples" | CommandStatus;
 }
 
 export interface OverviewActions {
@@ -35,7 +36,8 @@ export interface OverviewActions {
   sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<OverviewSample | undefined>;
   /** Undefined means overview only. Even one Facet must be explicitly confirmed. */
   select(facets: readonly OverviewFacet[]): Promise<string | undefined>;
-  collect(bizIds: string[]): Promise<number>;
+  collect(bizIds: string[]): Promise<CommandResult<unknown>>;
+  signal?: AbortSignal;
   show(result: OverviewResult): void;
 }
 
@@ -73,6 +75,7 @@ export async function runOverviewSession(
   const result: OverviewResult = { query, services: [], samples: [], collection: "not-requested" };
   // Sequential provider calls keep external-resource concurrency bounded across customer environments.
   for (const provider of providers) {
+    actions.signal?.throwIfAborted();
     try {
       result.services.push({
         service: provider.name,
@@ -100,6 +103,7 @@ export async function runOverviewSession(
     const provider = providers.find((item) => item.name === service.service)!;
     const facet = service.facets.find((item) => item.facetId === selected);
     for (const entry of facet?.entries ?? []) {
+      actions.signal?.throwIfAborted();
       if (!entry.canSample) continue;
       const source = { service: service.service, facetId: selected, entryKey: entry.key };
       try {
@@ -116,9 +120,11 @@ export async function runOverviewSession(
   result.collection = "no-samples";
   if (bizIds.length) {
     try {
-      result.collection = await actions.collect(bizIds) === 0 ? "collected" : "failed";
+      const collected = await actions.collect(bizIds);
+      result.collection = collected.status;
+      if ("reason" in collected) result.collectionError = collected.reason;
     } catch (error) {
-      result.collection = "failed";
+      result.collection = actions.signal?.aborted ? CommandStatus.Cancelled : CommandStatus.Failed;
       result.collectionError = errorMessage(error);
     }
   }
