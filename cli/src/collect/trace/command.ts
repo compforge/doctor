@@ -1,9 +1,9 @@
-import { defineCommand, CommandInputError } from "../../command";
+import { type CommandInput, defineCommand, CommandInputError } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { runCollectTrace } from "./index";
 
-export type TraceInput = Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
+export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
 
 export const traceCommand = defineCommand<TraceInput, void>({
   name: "doctor trace",

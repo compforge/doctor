@@ -1,10 +1,10 @@
-import { defineCommand } from "../../command";
+import { type CommandInput, defineCommand } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { runCollectMetric } from "./index";
 import type { MetricRunControl } from "./model";
 
-export type MetricInput = Omit<Parameters<typeof runCollectMetric>[0], CommandHostOption> & { window?: MetricRunControl };
+export type MetricInput = CommandInput & Omit<Parameters<typeof runCollectMetric>[0], CommandHostOption> & { window?: MetricRunControl };
 
 export const metricCommand = defineCommand<MetricInput, void>({
   name: "doctor metric",

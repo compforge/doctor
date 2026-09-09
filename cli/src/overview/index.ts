@@ -1,12 +1,12 @@
 import { collectOverviewSamples } from "./collect";
 import { overviewSampleCount, overviewCollectConcurrency } from "./options";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
+import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandInput, type CommandContext, type CommandResult } from "../command";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
-import { parseCollectOutputFormat } from "../collect/composite";
+import { parseCollectOutputFormat, parseCollectKinds, resolveCollectKinds } from "../collect/composite";
 import { terminalStdout } from "../terminal/output";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
 import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
@@ -20,6 +20,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
   collect?: boolean;
   sampleCount?: number;
   collectConcurrency?: number;
+  include?: string;
   output?: string;
   format?: string;
 }
@@ -27,6 +28,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
 export function validateOverviewOptions(opts: OverviewCliOpts): void {
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
+  parseCollectKinds(opts.include);
   overviewSampleCount(opts.sampleCount);
   overviewCollectConcurrency(opts.collectConcurrency);
 }
@@ -84,9 +86,11 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
         reportDirectory = writeOverviewReport(result, context);
       },
       collect: async (bizIds) => {
+        const kinds = await resolveCollectKinds(opts.include, interactive);
+        if (!kinds) return { status: CommandStatus.Cancelled, artifacts: [] };
         return collectOverviewSamples(context, bizIds, {
           namespace: kube.kubernetes.namespace, tenantId: opts.tenantId,
-          kinds: ["data", "trace", "log"], sinceTime: query.window.from,
+          kinds, sinceTime: query.window.from,
         }, concurrency);
       },
     });
@@ -103,7 +107,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   return { status: aggregateCommandStatus(statuses), output: result, artifacts: context.artifacts.list() };
 }
 
-export type OverviewInput = Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
+export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
 export const overviewCommand = defineCommand<OverviewInput, OverviewResult>({
   name: "doctor overview",
   environment: { kubernetes: true },

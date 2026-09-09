@@ -1,4 +1,6 @@
 #!/usr/bin/env bun
+import type { CollectHttpCliOpts } from "../collect/http";
+import type { CollectNetworkCliOpts } from "../collect/network";
 import { terminalStdout } from "../terminal/output";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
@@ -646,12 +648,12 @@ export async function main(plugin?: PluginDefinition) {
   });
   withHttpOptions(
     program.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
-  ).action(async (opts) => {
+  ).action(async (opts: CollectHttpCliOpts) => {
     await runCommand(httpCommand, opts, domainInput(opts), { plugin, printProfile: opts.example === undefined });
   });
   withNetworkOptions(
     program.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
-  ).action(async (opts) => {
+  ).action(async (opts: CollectNetworkCliOpts) => {
     await runCommand(netCommand, opts, domainInput(opts), { plugin });
   });
   program
