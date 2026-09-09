@@ -1,11 +1,12 @@
-import { overviewSampleCount } from "./options";
+import { collectOverviewSamples } from "./collect";
+import { overviewSampleCount, overviewCollectConcurrency } from "./options";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
-import { parseCollectOutputFormat, collectCommand } from "../collect/composite";
+import { parseCollectOutputFormat } from "../collect/composite";
 import { terminalStdout } from "../terminal/output";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
 import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
@@ -18,6 +19,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
   facet?: string;
   collect?: boolean;
   sampleCount?: number;
+  collectConcurrency?: number;
   output?: string;
   format?: string;
 }
@@ -26,10 +28,12 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
   overviewSampleCount(opts.sampleCount);
+  overviewCollectConcurrency(opts.collectConcurrency);
 }
 
 async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewResult>> {
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
+  const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
@@ -80,12 +84,10 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
         reportDirectory = writeOverviewReport(result, context);
       },
       collect: async (bizIds) => {
-        const collected = await collectCommand.run(context, {
+        return collectOverviewSamples(context, bizIds, {
           namespace: kube.kubernetes.namespace, tenantId: opts.tenantId,
-          bizIds, kinds: ["data", "trace", "log"], sinceTime: query.window.from,
-        });
-        context.artifacts.include(collected.artifacts);
-        return collected;
+          kinds: ["data", "trace", "log"], sinceTime: query.window.from,
+        }, concurrency);
       },
     });
   } finally {

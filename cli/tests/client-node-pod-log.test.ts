@@ -8,6 +8,7 @@ import {
   ClientNodePodLogAccess,
   type ClientNodeFetch,
 } from "../src/infra/k8s/client-node-pod-log";
+import { inCommandScope } from "../src/command/execution-scope";
 import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
 
 const roots: string[] = [];
@@ -243,4 +244,32 @@ describe("Pod Log kubeconfig HTTP(S)", () => {
     expect(authenticated.stderr).toBe("");
     expect(authenticated.captureStatus).toBe("complete");
   });
+});
+
+
+test("command cancellation closes an active HTTPS log stream without retry and retains raw evidence", async () => {
+  let requests = 0;
+  const controller = new AbortController();
+  const server = Bun.serve({
+    hostname: "127.0.0.1", port: 0,
+    tls: { key: tlsFixture("server-key"), cert: tlsFixture("server-cert") },
+    fetch: () => {
+      requests++;
+      return new Response(new ReadableStream({
+        start(stream) { stream.enqueue(new TextEncoder().encode("2026-09-09T11:00:00Z INFO before-cancel\n")); },
+      }));
+    },
+  });
+  servers.push(server);
+  const access = accessFor(server, { idleTimeoutMs: 2_000, hardTimeoutMs: 3_000, maxAttempts: 2 }, undefined, { cluster: trustedCluster });
+  const rawFilePath = join(roots.at(-1)!, "cancelled.log");
+  const result = await inCommandScope(controller.signal, () => access.collectPodLogs({
+    ...logRequest, rawFilePath, onLine: () => controller.abort(),
+  }));
+  expect(result.captureStatus).toBe("partial");
+  expect(result.reason).toBe("cancelled");
+  expect(result.timedOut).toBeFalse();
+  expect(result.attempts).toBe(1);
+  expect(requests).toBe(1);
+  expect(readFileSync(rawFilePath, "utf8")).toContain("before-cancel");
 });

@@ -1,3 +1,4 @@
+import { currentCommandSignal } from "../../command/execution-scope";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { KubeConfig } from "@kubernetes/client-node";
 // Bun replaces the bare node-fetch import with a shim that ignores HTTPS Agent TLS options.
@@ -135,6 +136,7 @@ class ClientNodeLogTransport {
   }
 
   async capture(request: PodLogRequest): Promise<PodLogResult> {
+    currentCommandSignal()?.throwIfAborted();
     const command = logCommand(this.options.namespace, request);
     const startedAt = Date.now();
     if (this.initializationError) {
@@ -178,6 +180,7 @@ class ClientNodeLogTransport {
 
     try {
       while (attempts < this.policy.maxAttempts) {
+        if (currentCommandSignal()?.aborted) break;
         const remainingHardTimeoutMs = hardDeadline - Date.now();
         if (remainingHardTimeoutMs <= 0) {
           timedOut = true;
@@ -221,7 +224,7 @@ class ClientNodeLogTransport {
           };
         }
         errors.push(attempt.error ?? "Kubernetes Pod Log API 请求失败");
-        if (!attempt.retryable || attempts >= this.policy.maxAttempts) break;
+        if (currentCommandSignal()?.aborted || !attempt.retryable || attempts >= this.policy.maxAttempts) break;
       }
     } finally {
       if (fd !== undefined) closeSync(fd);
@@ -240,7 +243,7 @@ class ClientNodeLogTransport {
       timedOut,
       command,
       captureStatus,
-      reason: byteLimitReached ? "byte_limit" : timedOut ? "timeout" : "transport_error",
+      reason: currentCommandSignal()?.aborted ? "cancelled" : byteLimitReached ? "byte_limit" : timedOut ? "timeout" : "transport_error",
       bytesRead: totalBytesRead,
       attempts,
     };
@@ -289,6 +292,10 @@ class ClientNodeLogTransport {
 
     // Native AbortSignal retains its identity in Node bundles; node-fetch checks the constructor name.
     const controller = new AbortController();
+    const commandSignal = currentCommandSignal();
+    const abort = () => controller.abort(commandSignal?.reason);
+    commandSignal?.addEventListener("abort", abort, { once: true });
+    if (commandSignal?.aborted) abort();
     let abortReason: "idle_timeout" | "hard_timeout" | undefined;
     let idleTimer: ReturnType<typeof setTimeout>;
     const resetIdleTimer = () => {
@@ -393,6 +400,7 @@ class ClientNodeLogTransport {
         lastTimestamp,
       };
     } finally {
+      commandSignal?.removeEventListener("abort", abort);
       clearTimeout(idleTimer!);
       clearTimeout(hardTimer);
     }

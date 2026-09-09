@@ -19,7 +19,8 @@
     "./redis": "./src/redis/index.ts",
     "./redis/*": "./src/redis/*.ts",
     "./opensearch": "./src/opensearch/index.ts",
-    "./opensearch/*": "./src/opensearch/*.ts"
+    "./opensearch/*": "./src/opensearch/*.ts",
+    "./concurrency": "./src/concurrency.ts"
   },
   "files": [
     "src"

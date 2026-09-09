@@ -1,3 +1,5 @@
+import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../infra/k8s/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import {
   createKubernetesCommandContext,
@@ -99,6 +101,8 @@ export class CommandContext {
   #plugin?: PluginDefinition;
   readonly signal: AbortSignal;
 
+  /** One budget for the entire command tree, independent of the number of child collects. */
+  readonly limits: { readonly podLogs: ConcurrencyPool };
   readonly artifacts = new CommandArtifacts();
   readonly #pluginServices = new Map<string, readonly string[]>();
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
@@ -116,6 +120,7 @@ export class CommandContext {
     },
     readonly options: CommandContextOptions = {},
   ) {
+    this.limits = { podLogs: new ConcurrencyPool(profile.value.log?.concurrency ?? DEFAULT_POD_LOG_CAPTURE_POLICY.concurrency) };
     this.#plugin = options.plugin;
     this.signal = options.signal
       ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;

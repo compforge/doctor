@@ -17,7 +17,7 @@
 
 1. 配置确认先确定 Namespace，并由 `service.traceId` provider 分别解析每个 biz-id，输出 provider 与本次映射。provider Service 声明 capability 依赖时，Core 只在调用该 provider 时准备 handle，解析完成后统一回收。非交互使用 Catalog 的默认日志主链；交互候选是统一 Catalog 与当前 Namespace 实际 Service 的交集。时间范围优先采用显式参数；未指定时，近期 UUIDv7 业务 ID 会提供带少量前置余量的日志起点，其他 ID 回退默认回看窗口。
 2. Inspect 通过 `KubernetesPodLogAccess` 读取 Service、Pod 和 Container status，按 selector 建立 Service → Running Pod 关系，并确认哪些容器存在可读取的上一次终止实例。
-3. Log Probe 为所选 Service 建立有序 capture plan，按 Container 通过 `@kubernetes/client-node` 的 kubeconfig/auth 能力直连 Pod Log API；默认最多 3 路并发，每流 64 MiB、整次 512 MiB，并以 15 秒 idle timeout 和 120 秒 hard timeout 约束现场访问。瞬态失败最多重试一次，并从最近日志时间戳继续；已取得字节后触发超时或预算上限记为 `partial`，完全没有取得日志才记为 `unavailable`。发生过重启且存在 `lastState.terminated` 的容器仍 best-effort 补采 previous 日志。完成后按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。
+3. Log Probe 为所选 Service 建立有序 capture plan，按 Container 通过 `@kubernetes/client-node` 的 kubeconfig/auth 能力直连 Pod Log API；默认整个命令树共享最多 4 路并发（profile `log.concurrency` 可配置），每流 64 MiB、整次 512 MiB，并以 15 秒 idle timeout 和 120 秒 hard timeout 约束现场访问。瞬态失败最多重试一次，并从最近日志时间戳继续；已取得字节后触发超时或预算上限记为 `partial`，完全没有取得日志才记为 `unavailable`。发生过重启且存在 `lastState.terminated` 的容器仍 best-effort 补采 previous 日志。完成后按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。
 4. Core 通过 `runCollect` 把 Inspect Facts 与全部 Service Observation 组成 Evidence；当前没有独立根因
    Detector，Coverage 按 Pod 记录 current 日志是否取得，并明确 Inspect 失败、无运行中 Pod 或读取失败等
    缺口。Render 只消费形成的 Diagnosis，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
@@ -48,7 +48,7 @@ Agent；裸 `node-fetch` 导入会被 Bun 替换为忽略该 Agent 的内置实�
 Service 是用户理解日志来源和后续扩展采集规则的稳定边界，因此 Observation、Pod 失败状态和最终时间线
 仍按 Service 分组。Kubernetes 日志读取彼此独立，若把 Service 边界同时当成调度边界，会让多个 Service、
 Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建立跨 Service 的有序 capture plan，
-以固定上限并发读取，再按计划顺序落 Evidence；单 Service 失败仍不会抹掉其它 Service 的日志。
+共享 CommandContext 的日志名额池，限制整次 Doctor 运行的实际日志流并发，再按计划顺序落 Evidence；单 Service 失败仍不会抹掉其它 Service 的日志。
 
 ### raw 完整性优先，聚合结果保持精简
 

@@ -1,3 +1,4 @@
+import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import type {
   KubernetesPodLogAccess,
   PodLogRequest,
@@ -12,7 +13,7 @@ export interface PodLogCapturePolicy {
 
 export const DEFAULT_POD_LOG_CAPTURE_POLICY: PodLogCapturePolicy = {
   // 客户现场单流约 13–26 MiB；8 路会把链路打满并触发原来的 60s timeout。
-  concurrency: 3,
+  concurrency: 4,
   maxBytesPerCapture: 64 * 1024 * 1024,
   maxTotalBytes: 512 * 1024 * 1024,
 };
@@ -53,6 +54,8 @@ export async function runPodLogCapturePlan<T>(
   access: KubernetesPodLogAccess,
   plan: readonly PodLogCapturePlanItem<T>[],
   policy: PodLogCapturePolicy = DEFAULT_POD_LOG_CAPTURE_POLICY,
+  pool = new ConcurrencyPool(policy.concurrency),
+  signal?: AbortSignal,
 ): Promise<PodLogCapturePlanResult<T>[]> {
   if (!Number.isInteger(policy.concurrency) || policy.concurrency < 1) {
     throw new Error("Pod Log capture concurrency 必须是正整数");
@@ -68,27 +71,32 @@ export async function runPodLogCapturePlan<T>(
     while (cursor < plan.length) {
       const index = cursor++;
       const item = plan[index]!;
-      item.onStart?.();
-      const reservedBytes = Math.min(policy.maxBytesPerCapture, availableBytes);
-      availableBytes -= reservedBytes;
-      if (reservedBytes <= 0) {
-        results[index] = {
-          target: item.target,
-          request: item.request,
-          capture: budgetUnavailable(item.request),
-        };
-        continue;
-      }
-      const request = { ...item.request, limitBytes: reservedBytes };
-      const capture = await access.collectPodLogs(request);
-      availableBytes += Math.max(0, reservedBytes - capture.bytesRead);
-      results[index] = { target: item.target, request, capture };
+      await pool.run(async () => {
+        item.onStart?.();
+        const reservedBytes = Math.min(policy.maxBytesPerCapture, availableBytes);
+        availableBytes -= reservedBytes;
+        if (reservedBytes <= 0) {
+          results[index] = {
+            target: item.target,
+            request: item.request,
+            capture: budgetUnavailable(item.request),
+          };
+          return;
+        }
+        const request = { ...item.request, limitBytes: reservedBytes };
+        const capture = await access.collectPodLogs(request);
+        availableBytes += Math.max(0, reservedBytes - capture.bytesRead);
+        results[index] = { target: item.target, request, capture };
+      }, signal);
     }
   };
 
-  await Promise.all(Array.from(
+  const settled = await Promise.allSettled(Array.from(
     { length: Math.min(policy.concurrency, plan.length) },
     () => worker(),
   ));
-  return results.map((result) => result!);
+  const failed = settled.find((result) => result.status === "rejected");
+  if (failed?.status === "rejected" && !signal?.aborted) throw failed.reason;
+  // Cancellation drains active streams first; keep their evidence while queued captures never start.
+  return results.filter((result): result is PodLogCapturePlanResult<T> => result !== undefined);
 }

@@ -1,3 +1,5 @@
+import { currentCommandSignal } from "../command/execution-scope";
+import { withTerminalInput } from "./interaction";
 import { terminalStdout } from "./output";
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "./input";
@@ -23,22 +25,24 @@ export async function promptListedChoice<Value>(input: {
   invalidMessage: string;
   emptyValue?: Value;
 }): Promise<Value | undefined> {
-  prepareTerminalInput();
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    while (true) {
-      const answer = (await readline.question(input.question)).trim();
-      if (/^(q|quit)$/i.test(answer)) return undefined;
-      if (!answer && Object.prototype.hasOwnProperty.call(input, "emptyValue")) {
-        return input.emptyValue;
+  return withTerminalInput(async () => {
+    prepareTerminalInput();
+    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      while (true) {
+        const answer = (await readline.question(input.question, { signal: currentCommandSignal() })).trim();
+        if (/^(q|quit)$/i.test(answer)) return undefined;
+        if (!answer && Object.prototype.hasOwnProperty.call(input, "emptyValue")) {
+          return input.emptyValue;
+        }
+        const selected = input.match(answer);
+        if (selected !== undefined) return selected;
+        terminalStdout.warning(`${input.invalidMessage}\n`);
       }
-      const selected = input.match(answer);
-      if (selected !== undefined) return selected;
-      terminalStdout.warning(`${input.invalidMessage}\n`);
+    } finally {
+      readline.close();
     }
-  } finally {
-    readline.close();
-  }
+  });
 }
 
 export type EnterPromptResult = "submitted" | "cancelled" | "timeout";
@@ -48,32 +52,37 @@ export async function promptEnter(input: {
   timeoutMs: number;
   signal?: AbortSignal;
 }): Promise<EnterPromptResult> {
-  prepareTerminalInput();
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  input.signal?.addEventListener("abort", onAbort, { once: true });
-  const timer = setTimeout(() => controller.abort(), input.timeoutMs);
-  try {
-    while (true) {
-      let answer: string;
-      try {
-        answer = (await readline.question(input.question, { signal: controller.signal })).trim();
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
-          return input.signal?.aborted ? "cancelled" : "timeout";
+  return withTerminalInput(async () => {
+    prepareTerminalInput();
+    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    const controller = new AbortController();
+    const signal = input.signal && currentCommandSignal()
+      ? AbortSignal.any([input.signal, currentCommandSignal()!]) : input.signal ?? currentCommandSignal();
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+    const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+    try {
+      while (true) {
+        let answer: string;
+        try {
+          answer = (await readline.question(input.question, { signal: controller.signal })).trim();
+        } catch (error) {
+          if (error instanceof Error && error.name === "AbortError") {
+            return signal?.aborted ? "cancelled" : "timeout";
+          }
+          throw error;
         }
-        throw error;
+        if (!answer) return "submitted";
+        if (/^(q|quit)$/i.test(answer)) return "cancelled";
+        terminalStdout.warning("操作完成后请直接按回车，或输入 q 取消。\n");
       }
-      if (!answer) return "submitted";
-      if (/^(q|quit)$/i.test(answer)) return "cancelled";
-      terminalStdout.warning("操作完成后请直接按回车，或输入 q 取消。\n");
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      readline.close();
     }
-  } finally {
-    clearTimeout(timer);
-    input.signal?.removeEventListener("abort", onAbort);
-    readline.close();
-  }
+  });
 }
 
 export function matchSearchableChoices<Choice>(
@@ -139,35 +148,37 @@ export async function promptSearchableChoice<Value, Choice>(input: {
   invalidNumberMessage: string;
   emptyMessage?: string;
 }): Promise<Value | undefined> {
-  prepareTerminalInput();
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
-  let numberedChoices = input.numberedChoices
-    ? [...input.numberedChoices]
-    : input.choicesAreListed
-      ? [...input.choices]
-      : [];
-  try {
-    while (true) {
-      const answer = (await readline.question(input.question(numberedChoices.length > 0))).trim();
-      if (/^(q|quit)$/i.test(answer)) return undefined;
-      if (!answer && input.emptyMessage) {
-        terminalStdout.warning(`${input.emptyMessage}\n`);
-        continue;
+  return withTerminalInput(async () => {
+    prepareTerminalInput();
+    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    let numberedChoices = input.numberedChoices
+      ? [...input.numberedChoices]
+      : input.choicesAreListed
+        ? [...input.choices]
+        : [];
+    try {
+      while (true) {
+        const answer = (await readline.question(input.question(numberedChoices.length > 0), { signal: currentCommandSignal() })).trim();
+        if (/^(q|quit)$/i.test(answer)) return undefined;
+        if (!answer && input.emptyMessage) {
+          terminalStdout.warning(`${input.emptyMessage}\n`);
+          continue;
+        }
+        const resolution = input.resolve(answer, numberedChoices);
+        if (resolution.kind === "selected") return resolution.value;
+        if (resolution.kind === "ambiguous") {
+          numberedChoices = resolution.matches;
+          input.printChoices(numberedChoices, input.ambiguousTitle(answer));
+          continue;
+        }
+        if (resolution.kind === "not-found") {
+          terminalStdout.warning(`${input.notFoundMessage(answer)}\n`);
+          continue;
+        }
+        terminalStdout.warning(`${input.invalidNumberMessage}\n`);
       }
-      const resolution = input.resolve(answer, numberedChoices);
-      if (resolution.kind === "selected") return resolution.value;
-      if (resolution.kind === "ambiguous") {
-        numberedChoices = resolution.matches;
-        input.printChoices(numberedChoices, input.ambiguousTitle(answer));
-        continue;
-      }
-      if (resolution.kind === "not-found") {
-        terminalStdout.warning(`${input.notFoundMessage(answer)}\n`);
-        continue;
-      }
-      terminalStdout.warning(`${input.invalidNumberMessage}\n`);
+    } finally {
+      readline.close();
     }
-  } finally {
-    readline.close();
-  }
+  });
 }

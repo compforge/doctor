@@ -1,3 +1,4 @@
+import { writeTerminalOutput } from "./interaction";
 // 非 chat command 的统一终端输出边界：业务代码不要直接写 process.stdout/stderr。
 // 子进程、协议 body 等原始数据用 write 原样透传；面向人的状态使用语义方法，确保
 // 颜色策略、TTY/重定向判断与 NO_COLOR 支持始终只在这一层演进。
@@ -55,7 +56,7 @@ export class TerminalOutput {
   ) {}
 
   write(chunk: string | Uint8Array): boolean {
-    return this.stream.write(chunk);
+    return writeTerminalOutput(this.stream, chunk);
   }
 
   info(text: string): boolean {
@@ -91,7 +92,7 @@ export class TerminalOutput {
   }
 
   private writeStyled(text: string, tone: TerminalTone): boolean {
-    return this.stream.write(this.style(text, tone));
+    return this.write(this.style(text, tone));
   }
 }
 
