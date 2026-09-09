@@ -14,9 +14,9 @@ import type {
   ExecResult,
   Executor,
   KubectlOptions,
-} from "../infra/k8s/executor";
-import { KubectlExecutor } from "../infra/k8s/executor";
-import { ServicePortForwarder } from "../infra/k8s/service-port-forward";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
+import { KubectlExecutor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 const PLUGIN_KUBERNETES_TIMEOUT_MS = 20_000;
@@ -121,13 +121,14 @@ function createKubernetesAccess(
         const list = parseJson<{ items?: T[] }>(`Kubernetes ${resource} list`, await run(command));
         return list.items ?? [];
       },
-      exec: async (target, command) => {
+      exec: async (target, command, options) => {
         assertDeclared("create", "pods/exec", target.pod);
         return checkedOutput(
-          commandLabel(["exec", target.pod, "--", ...command]),
+          commandLabel(["exec", target.pod]),
           await executorForNamespace(namespace).exec(target, [...command], {
             signal,
-            timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS,
+            stdin: options?.stdin,
+            timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
           }),
         );
       },

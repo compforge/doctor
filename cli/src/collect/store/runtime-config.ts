@@ -2,7 +2,7 @@ import {
   loadDeclaredContainerConfig,
   type DeclaredContainerConfig,
 } from "../../infra/k8s/container-config";
-import type { ExecResult, ExecTarget, Executor } from "../../infra/k8s/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export interface ServiceRuntimeConfig {
   environment: Map<string, string>;

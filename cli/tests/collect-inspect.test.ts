@@ -22,7 +22,7 @@ import {
   type InspectEvidence,
   type InspectFacts,
 } from "../src/collect/inspect";
-import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 import { CommandContext } from "../src/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";

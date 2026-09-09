@@ -1,5 +1,5 @@
-import type { SearchEngine } from "../../../infra/search";
-import type { ExecTarget, Executor, KubectlOptions } from "../../../infra/k8s/executor";
+import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
+import type { ExecTarget, Executor, KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { EvidenceBundle } from "../../evidence";
 import type { OpenSearchAccessPreparation } from "../../shared/opensearch-access";
 import type { OpenSearchVdbConnection, VdbConnection } from "./configuration";

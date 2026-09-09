@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import type { SearchEngine } from "../../infra/search";
+import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
 import type { EvidenceBundle } from "../evidence";
 import { countSpans, downloadSpans } from "./opensearch";
 

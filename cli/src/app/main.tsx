@@ -51,7 +51,7 @@ import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
 import { getKubernetesServerVersion } from "../infra/k8s/version";
-import { KubectlExecutor } from "../infra/k8s/executor";
+import { KubectlExecutor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 import { domainInput } from "../command/options";
 import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, httpCommand, netCommand } from "./core-commands";

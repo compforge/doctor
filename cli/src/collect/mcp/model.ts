@@ -1,7 +1,7 @@
 import type { CollectedFact, Diagnosis, Evidence, ObservationMeta } from "../protocol";
 import type { McpJsonRpcMessage } from "../../infra/mcp";
 import type { McpClient } from "../../infra/mcp";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
 import type { CommandContext } from "../../command";
 import type { ApprovalGate } from "../../command/approval";

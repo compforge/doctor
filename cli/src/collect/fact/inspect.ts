@@ -2,7 +2,7 @@ import type { Inspect } from "../inspection";
 import type { EvidenceBundle } from "../evidence";
 import { failReason } from "../../infra/k8s/result";
 import { fillFromExec } from "../exec-step";
-import type { ExecTarget, Executor } from "../../infra/k8s/executor";
+import type { ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { ContainerInfo } from "../../infra/k8s/target";
 import {
   parseProcscan,

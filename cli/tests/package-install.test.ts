@@ -32,7 +32,7 @@ import type {
   ExecTarget,
   Executor,
   RunOptions,
-} from "../src/infra/k8s/executor";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { PackageTargetFact } from "../src/infra/target/package-install";
 
 function result(stdout = "", ok = true): ExecResult {

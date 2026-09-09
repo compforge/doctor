@@ -1,5 +1,5 @@
 import { Client } from "@opensearch-project/opensearch";
-import type { SearchEngine, SearchQuery, SearchResult } from "..";
+import type { SearchEngine, SearchQuery, SearchResult } from "./types";
 
 export interface OpenSearchAuth {
   username?: string;
@@ -82,4 +82,21 @@ export class OpenSearchEngine implements OpenSearchReadApi {
   close(): Promise<void> {
     return this.client.close();
   }
+}
+
+export async function openOpenSearch(
+  source: import("../datasource").DataSource<OpenSearchOptions>,
+  lifecycle: import("../datasource").ClientLifecycle = {},
+): Promise<OpenSearchEngine> {
+  lifecycle.signal?.throwIfAborted();
+  const target = await source.resolve();
+  const transport = source.transports[0];
+  if (!transport || transport.kind !== "tcp") throw new Error("OpenSearch requires a TCP transport");
+  const url = new URL(target.node);
+  const endpoint = await transport.connect({ host: url.hostname, port: Number(url.port || (url.protocol === "https:" ? 443 : 80)) });
+  url.hostname = endpoint.host;
+  url.port = String(endpoint.port);
+  const client = new OpenSearchEngine({ ...target, node: url.toString() });
+  lifecycle.onDispose?.(() => client.close());
+  return client;
 }

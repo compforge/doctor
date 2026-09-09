@@ -12,7 +12,7 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { infra } from "../../infra";
-import type { ExecResult } from "../../infra/k8s/executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   listServiceChoices,
   rankRecentServiceChoices,
@@ -20,7 +20,7 @@ import {
   type ServiceChoice,
 } from "../../infra/k8s/service-selection";
 import type { RecentSelections } from "../../infra/recent";
-import { sleep } from "../../infra/host/process";
+import { sleep } from "@compforge/doctor-toolkit/process/index";
 import { findSelectableFiles } from "../../terminal/file-selection";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { formatDoctorDebugCommand } from "../../terminal/debug-recommendation";

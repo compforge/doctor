@@ -1,3 +1,4 @@
+import { PortForwardTransport, DirectTransport } from "@compforge/doctor-toolkit/transport";
 import { expect, test } from "bun:test";
 import {
   collectRedisKeyStats,
@@ -7,7 +8,7 @@ import {
   RedisConnection,
   type RedisAccessApi,
   type RedisManagedConnection,
-} from "../src/infra/redis";
+} from "@compforge/doctor-toolkit/redis/index";
 
 test("Redis keyStats 对完整 keyspace pipeline 采集内存与类型长度", async () => {
   let pipelineCall = 0;
@@ -174,7 +175,7 @@ test("Redis command deadline 淘汰无响应连接，且不使用 idle socket ti
 test("RedisAccess 复用健康连接，并淘汰失效连接", async () => {
   const states: Array<{ ready: boolean; closes: number }> = [];
   const access = new RedisAccess(
-    async (endpoint) => endpoint,
+    new DirectTransport(),
     { useSsl: false, timeoutMs: 5_000 },
     async (endpoint): Promise<RedisManagedConnection> => {
       const state = { ready: true, closes: 0 };
@@ -213,7 +214,7 @@ test("RedisAccess 复用健康连接，并淘汰失效连接", async () => {
 test("RedisAccess 建连失败后不缓存 rejected promise", async () => {
   let attempts = 0;
   const access = new RedisAccess(
-    async (endpoint) => endpoint,
+    new DirectTransport(),
     { useSsl: false, timeoutMs: 5_000 },
     async (endpoint): Promise<RedisManagedConnection> => {
       attempts += 1;

@@ -1,5 +1,5 @@
 import { posix } from "node:path";
-import type { ExecResult, ExecTarget, Executor } from "./executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export interface DeclaredContainerConfig {
   environment: Map<string, string>;

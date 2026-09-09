@@ -16,7 +16,9 @@
     "typecheck:cli": "bun run --cwd cli typecheck",
     "typecheck:agent": "bun run --cwd packages/agent typecheck",
     "typecheck:plugin-sdk": "bun run --cwd packages/plugin typecheck",
-    "typecheck:example-plugin": "bun run --cwd plugins/example typecheck"
+    "typecheck:example-plugin": "bun run --cwd plugins/example typecheck",
+    "test:toolkit": "bun run --cwd packages/toolkit test",
+    "typecheck:toolkit": "bun run --cwd packages/toolkit typecheck"
   },
   "devDependencies": {
     "@compforge/spec-case": "0.0.4"

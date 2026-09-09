@@ -1,5 +1,5 @@
 import { infra } from "../../infra";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { failReason } from "../../infra/k8s/result";
 import {
   materializePackageBundle,

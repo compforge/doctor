@@ -1,4 +1,4 @@
-import type { ExecResult, Executor } from "../../k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { TargetRequirements } from "../requirements";
 
 export type PackageManagerKind = "apk" | "apt-get" | "dnf" | "microdnf" | "yum";

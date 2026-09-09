@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Probe } from "../../protocol";
-import { sleep } from "../../../infra/host/process";
+import { sleep } from "@compforge/doctor-toolkit/process/index";
 import { probeUnavailable, PROBE_RUNNABLE } from "../../protocol";
 import { captureHttpResponse } from "../../shared/http/capture";
 import { endpointKeyForUrl } from "../fact/inspect";

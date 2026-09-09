@@ -1,7 +1,7 @@
 import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
-import { KubectlExecutor, type Executor } from "../../infra/k8s/executor";
-import { ServicePortForwarder } from "../../infra/k8s/service-port-forward";
+import { KubectlExecutor, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import {
   EmbeddedMetricSource,
   RemoteMetricSource,

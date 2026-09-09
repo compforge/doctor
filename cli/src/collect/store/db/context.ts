@@ -1,8 +1,8 @@
 import type { ServiceDatabaseStoreCapability } from "@compforge/doctor-plugin";
 import type { DatabaseTarget } from "../../../infra/database";
 import type { MysqlDatabase } from "../../../infra/database/mysql";
-import type { Executor } from "../../../infra/k8s/executor";
-import type { ServicePortForwarder } from "../../../infra/k8s/service-port-forward";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import type { EvidenceBundle } from "../../evidence";
 import type { PodStoreConfig } from "../config";
 import type { CommandContext } from "../../../command";

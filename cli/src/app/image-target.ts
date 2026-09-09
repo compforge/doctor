@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "../terminal/input";
 import { terminalStdout } from "../terminal/output";
-import { KubectlExecutor, type Executor } from "../infra/k8s/executor";
+import { KubectlExecutor, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { resolveCollectKubeconfig } from "../infra/k8s/context";
 import {
   inspectKubernetesChannel,

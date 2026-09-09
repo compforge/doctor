@@ -1,5 +1,5 @@
-import type { Executor } from "./executor";
-import { parseServices } from "./service";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { parseServices } from "@compforge/doctor-toolkit/kubernetes/service";
 import {
   recentSelectionsForInteractive,
   resolveKubernetesRecentScope,

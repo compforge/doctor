@@ -1,8 +1,8 @@
 import type { EvidenceBundle } from "../evidence";
-import type { Executor, ExecTarget } from "../../infra/k8s/executor";
+import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { RedisTarget } from "./fact/target";
-import type { RedisAccessApi } from "../../infra/redis";
-import type { RedisTopologyConfig } from "../../infra/redis";
+import type { RedisAccessApi } from "@compforge/doctor-toolkit/redis/index";
+import type { RedisTopologyConfig } from "@compforge/doctor-toolkit/redis/index";
 import type { RedisConfig } from "./config";
 import type { CommandContext } from "../../command";
 

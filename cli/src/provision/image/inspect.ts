@@ -2,7 +2,7 @@ import {
   discoverRegistryCatalog,
 } from "../../app/image-target";
 import { resolveCollectKubeconfig } from "../../infra/k8s/context";
-import { KubectlExecutor } from "../../infra/k8s/executor";
+import { KubectlExecutor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { CommandContext } from "../../command";
 import { terminalStdout } from "../../terminal/output";
 import type { ImageCliOpts } from "./model";

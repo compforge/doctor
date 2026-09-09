@@ -14,8 +14,8 @@ import {
   resolveKubernetesCommandConfig,
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import type { Executor, KubectlOptions } from "../../infra/k8s/executor";
-import type { SearchEngine } from "../../infra/search";
+import type { Executor, KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
 import {
   parseOpenSearchEndpoint,
   resolveOpenSearchAuth,

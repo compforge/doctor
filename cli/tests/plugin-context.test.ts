@@ -6,7 +6,7 @@ import type {
   ExecResult,
   Executor,
   RunOptions,
-} from "../src/infra/k8s/executor";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
 
 function result(command: string[], stdout = "", ok = true): ExecResult {
   return {
@@ -207,4 +207,31 @@ test("Plugin Kubernetes access enforces the Core output limit", async () => {
   await expect(context.infra.kubernetes.get("configmaps", "sample"))
     .rejects.toThrow("输出超过 4194304 bytes");
   await context.dispose();
+});
+
+test("Plugin exec forwards stdin under access checks and caps timeout without exposing payload in errors", async () => {
+  const calls: RunOptions[] = [];
+  const executor: Executor = {
+    run: async command => result(command),
+    exec: async (_target, command, options) => {
+      calls.push(options!);
+      return result(command, "", false);
+    },
+  };
+  const context = createPluginContext(executor, { namespace: "default" }, {
+    env: "test", service: { name: "sample" },
+    capability: { access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec" }, purpose: "query" }] } },
+  });
+  await expect(context.infra.kubernetes.exec({ pod: "sample-0" }, ["python", "-c", "private-script"], { stdin: "secret", timeoutMs: 60_000 }))
+    .rejects.toThrow("kubectl -n default exec sample-0 失败：forbidden");
+  expect(calls[0]?.stdin).toBe("secret");
+  expect(calls[0]?.timeoutMs).toBe(20_000);
+  expect(calls[0]?.signal).toBe(context.signal);
+  await context.dispose();
+  const denied = createPluginContext(executor, { namespace: "default" }, {
+    env: "test", service: { name: "sample" }, capability: { access: {} },
+  });
+  await expect(denied.infra.kubernetes.exec({ pod: "sample-0" }, ["python"], { stdin: "secret" })).rejects.toThrow("未声明");
+  expect(calls).toHaveLength(1);
+  await denied.dispose();
 });

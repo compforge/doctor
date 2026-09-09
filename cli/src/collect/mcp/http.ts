@@ -1,4 +1,4 @@
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
 import type { McpHttpRequestPlan } from "@compforge/doctor-plugin";
 import type { HttpCapture } from "./model";

@@ -1,4 +1,4 @@
-import type { ExecResult, Executor } from "../../k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export const DOCTOR_DEBUG_CONTAINER_PREFIX = "doctor-debug-";
 export const DOCTOR_DEBUG_MANIFEST = "/opt/doctor/manifest.json";

@@ -1,7 +1,7 @@
 import type {
   KubernetesCommandInput,
 } from "../../command/kubernetes-target";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { ImagePlatform } from "../../infra/image";
 import type { CommandContext } from "../../command";
 

@@ -1,5 +1,5 @@
-import type { Executor, KubectlOptions } from "../k8s/executor";
-import { ServicePortForwarder } from "../k8s/service-port-forward";
+import type { Executor, KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import type {
   HttpServiceTarget,
   HttpTransportResponse,

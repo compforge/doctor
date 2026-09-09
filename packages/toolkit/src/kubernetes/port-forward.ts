@@ -2,7 +2,7 @@
 // ClusterIP 通常不可从集群外直达，而 kubeconfig 是现场已有的最小凭据面，
 // 所以沿用「kubectl 是传输层」的 collect 约定，不要求现场额外开网络。
 import { buildKubectlArgs, type KubectlOptions } from "./executor";
-import { sleep, spawnProcess, type RuntimeProcess } from "../host/process";
+import { sleep, spawnProcess, type RuntimeProcess } from "../process/index";
 
 export interface PortForward {
   target: PortForwardTarget;

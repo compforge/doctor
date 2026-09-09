@@ -4,14 +4,14 @@ import {
   discoverRedisTopology,
   type RedisConnectionApi,
   type RedisEndpoint,
-} from "../../../infra/redis";
+} from "@compforge/doctor-toolkit/redis/index";
 import { redisTopologyConfig, type RedisCommandContext } from "../context";
 import type { RedisDatabaseScope } from "../fact/model";
 import type { RedisGroup, RedisKey, RedisNode, RedisScan } from "../model";
 import type { RedisPressureProbeOutput, RedisRuntimeProbeOutput } from "./runtime";
-import { sleep } from "../../../infra/host/process";
+import { sleep } from "@compforge/doctor-toolkit/process/index";
 
-export { redisGroupedSampleSizes } from "../../../infra/redis";
+export { redisGroupedSampleSizes } from "@compforge/doctor-toolkit/redis/index";
 
 interface ScanOptions {
   mode: "quick" | "sample";

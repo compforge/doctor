@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { resolveKubernetesCommandConfig } from "../../command/kubernetes-target";
 import {
   rankRecentServiceChoices,

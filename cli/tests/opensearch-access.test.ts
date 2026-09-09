@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   confirmOpenSearchConnection,
 } from "../src/collect/shared/opensearch-access";
-import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 function result(command: string[], stdout: string): ExecResult {
   return {

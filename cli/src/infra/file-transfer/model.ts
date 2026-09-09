@@ -1,4 +1,4 @@
-import type { ExecResult, ExecTarget, Executor } from "../k8s/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export interface DownloadFromTargetOptions {
   executor: Executor;

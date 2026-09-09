@@ -1,6 +1,7 @@
-import { RedisAccess, type RedisAccessApi } from "../../infra/redis";
-import { ServicePortForwarder } from "../../infra/k8s/service-port-forward";
-import type { Executor, ExecTarget } from "../../infra/k8s/executor";
+import { PortForwardTransport, DirectTransport } from "@compforge/doctor-toolkit/transport";
+import { RedisAccess, type RedisAccessApi } from "@compforge/doctor-toolkit/redis/index";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
+import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";
 import { buildRedisEnvironmentFact, buildRedisTargetFact } from "./fact/model";
@@ -109,7 +110,7 @@ export async function prepareRedisAccess(
       context: kubernetes.context,
     });
     access = new RedisAccess(
-      (endpoint) => forwarder!.forward(endpoint),
+      new PortForwardTransport((endpoint) => forwarder!.forward(endpoint)),
       {
         username: target.username,
         password: target.password,

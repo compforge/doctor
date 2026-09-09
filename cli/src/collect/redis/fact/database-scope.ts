@@ -1,4 +1,4 @@
-import { discoverRedisTopology } from "../../../infra/redis";
+import { discoverRedisTopology } from "@compforge/doctor-toolkit/redis/index";
 import type { Inspect } from "../../inspection";
 import { selectRedisDatabaseScope } from "../config";
 import {

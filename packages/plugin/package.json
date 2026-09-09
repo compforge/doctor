@@ -10,7 +10,8 @@
   "dependencies": {
     "@compforge/spec-case": "0.0.4",
     "@compforge/trace-harness": "0.0.8",
-    "typebox": "1.3.7"
+    "typebox": "1.3.7",
+    "@compforge/doctor-toolkit": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "latest",

@@ -52,6 +52,7 @@
     "mysql2": "3.23.1",
     "node-fetch": "2.7.0",
     "shell-quote": "1.8.3",
-    "zod": "4.4.3"
+    "zod": "4.4.3",
+    "@compforge/doctor-toolkit": "workspace:*"
   }
 }

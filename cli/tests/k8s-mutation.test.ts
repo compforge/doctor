@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { infra } from "../src/infra";
-import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { buildEphemeralContainerMutation } from "../src/infra/k8s/ephemeral-container";
 import {
   executeK8sMutation,

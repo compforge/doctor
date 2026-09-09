@@ -4,7 +4,7 @@ import {
   createPodHttpSender,
   supportsPodCurlDiagnostics,
 } from "../../infra/http/pod";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,

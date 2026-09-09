@@ -16,7 +16,7 @@ import {
   resolveKubernetesCommandContext,
   type CommandContext,
 } from "../../command";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
 import {
   parsePodChoices,

@@ -16,7 +16,7 @@ import type {
   CommandRunner,
   NetworkAnalysisInfra,
 } from "../../../infra/host/network-analysis";
-import { runArgv } from "../../../infra/k8s/executor";
+import { runArgv } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { findSelectableFiles, resolveFileSelection } from "../../../terminal/file-selection";
 import { terminalStderr, terminalStdout } from "../../../terminal/output";
 import { runCollect } from "../../engine";
