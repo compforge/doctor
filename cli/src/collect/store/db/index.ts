@@ -46,8 +46,6 @@ export async function runStoreDb(
   let diagnosis: DbDiagnosis | undefined;
 
   const finish = async (code: number, summary: string) => {
-    await ctx.database?.close();
-    ctx.forwarder?.stop();
     return finishStoreBundle({
       state,
       config,

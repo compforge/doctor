@@ -1,3 +1,5 @@
+import type { Client } from "../client";
+import type { ConnectionSource, ClientLifecycle } from "../datasource";
 import type { TcpTransport } from "../transport";
 import { createClient, type RedisClientType } from "@redis/client";
 
@@ -130,7 +132,8 @@ export class RedisConnection implements RedisManagedConnection {
     client.on("error", (err) => {
       lastError = err instanceof Error ? err : new Error(String(err));
     });
-    await client.connect();
+    try { await client.connect(); }
+    catch (error) { if (client.isOpen) client.destroy(); throw error; }
     return new RedisConnection(endpoint, client as NodeRedisClient, config.timeoutMs, () => lastError);
   }
 
@@ -211,6 +214,7 @@ export class RedisConnection implements RedisManagedConnection {
 
 export class RedisAccess implements RedisAccessApi {
   readonly #connections = new Map<string, Promise<RedisManagedConnection>>();
+  #closing?: Promise<void>;
 
   constructor(
     private readonly transport: TcpTransport,
@@ -223,6 +227,7 @@ export class RedisAccess implements RedisAccessApi {
     database: number,
     credentials: RedisCredentials = this.baseConfig,
   ): Promise<RedisManagedConnection> {
+    if (this.#closing) throw new Error("Redis access is closed");
     const key = [
       endpoint.host,
       endpoint.port,
@@ -233,6 +238,7 @@ export class RedisAccess implements RedisAccessApi {
     let pending = this.#connections.get(key);
     if (pending) {
       const connection = await pending;
+      if (this.#closing) throw new Error("Redis access is closed");
       if (connection.isReady) return connection;
       if (this.#connections.get(key) === pending) {
         this.#connections.delete(key);
@@ -254,11 +260,16 @@ export class RedisAccess implements RedisAccessApi {
     return await pending;
   }
 
-  async close(): Promise<void> {
-    const pending = [...this.#connections.values()];
-    this.#connections.clear();
-    const settled = await Promise.allSettled(pending);
-    for (const result of settled) if (result.status === "fulfilled") result.value.close();
+  close(): Promise<void> {
+    return this.#closing ??= (async () => {
+      const settled = await Promise.allSettled(this.#connections.values());
+      this.#connections.clear();
+      const errors: unknown[] = [];
+      for (const result of settled) if (result.status === "fulfilled") {
+        try { result.value.close(); } catch (error) { errors.push(error); }
+      }
+      if (errors.length) throw new AggregateError(errors, "Redis connection cleanup failed");
+    })();
   }
 }
 
@@ -266,15 +277,48 @@ export interface RedisDataSourceTarget extends RedisConnectionConfig {
   endpoints: RedisEndpoint[];
 }
 
-export async function openRedis(
-  source: import("../datasource").DataSource<RedisDataSourceTarget>,
-  lifecycle: import("../datasource").ClientLifecycle = {},
-): Promise<{ access: RedisAccess; target: RedisDataSourceTarget }> {
-  lifecycle.signal?.throwIfAborted();
-  const target = await source.resolve();
-  const transport = source.transports[0];
-  if (!transport || transport.kind !== "tcp") throw new Error("Redis requires a TCP transport");
-  const access = new RedisAccess(transport, target);
-  lifecycle.onDispose?.(() => access.close());
-  return { access, target };
+export class RedisClient implements Client {
+  readonly #controller = new AbortController();
+  readonly signal: AbortSignal;
+  #initialization?: Promise<void>;
+  #disposal?: Promise<void>;
+  #access?: RedisAccess;
+  #target?: RedisDataSourceTarget;
+  constructor(private readonly source: ConnectionSource<RedisDataSourceTarget>, lifecycle: ClientLifecycle = {}) {
+    this.signal = lifecycle.signal ? AbortSignal.any([lifecycle.signal, this.#controller.signal]) : this.#controller.signal;
+  }
+  initialize(): Promise<void> {
+    this.signal.throwIfAborted();
+    return this.#initialization ??= (async () => {
+      this.#target = await this.source.resolve();
+      this.signal.throwIfAborted();
+      const transport = this.source.transports[0];
+      if (!transport || transport.kind !== "tcp") throw new Error("Redis requires a TCP transport");
+      this.#access = new RedisAccess(transport, this.#target);
+    })();
+  }
+  get access(): RedisAccess {
+    this.signal.throwIfAborted();
+    if (!this.#access) throw new Error("Redis client is not initialized");
+    return this.#access;
+  }
+  get target(): RedisDataSourceTarget {
+    if (!this.#target) throw new Error("Redis client is not initialized");
+    return this.#target;
+  }
+  dispose(): Promise<void> {
+    return this.#disposal ??= (async () => {
+      this.#controller.abort(new Error("Redis client disposed"));
+      await this.#initialization?.catch(() => {});
+      await this.#access?.close();
+    })();
+  }
+}
+
+export async function openRedis(source: ConnectionSource<RedisDataSourceTarget>, lifecycle: ClientLifecycle = {}): Promise<RedisClient> {
+  const client = new RedisClient(source, lifecycle);
+  try { await client.initialize(); }
+  catch (error) { await client.dispose(); throw error; }
+  lifecycle.onDispose?.(() => client.dispose());
+  return client;
 }

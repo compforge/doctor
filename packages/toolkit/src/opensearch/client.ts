@@ -1,3 +1,5 @@
+import type { Client as ManagedClient } from "../client";
+import type { ConnectionSource, ClientLifecycle } from "../datasource";
 import { Client } from "@opensearch-project/opensearch";
 import type { SearchEngine, SearchQuery, SearchResult } from "./types";
 
@@ -84,19 +86,63 @@ export class OpenSearchEngine implements OpenSearchReadApi {
   }
 }
 
-export async function openOpenSearch(
-  source: import("../datasource").DataSource<OpenSearchOptions>,
-  lifecycle: import("../datasource").ClientLifecycle = {},
-): Promise<OpenSearchEngine> {
-  lifecycle.signal?.throwIfAborted();
-  const target = await source.resolve();
-  const transport = source.transports[0];
-  if (!transport || transport.kind !== "tcp") throw new Error("OpenSearch requires a TCP transport");
-  const url = new URL(target.node);
-  const endpoint = await transport.connect({ host: url.hostname, port: Number(url.port || (url.protocol === "https:" ? 443 : 80)) });
-  url.hostname = endpoint.host;
-  url.port = String(endpoint.port);
-  const client = new OpenSearchEngine({ ...target, node: url.toString() });
-  lifecycle.onDispose?.(() => client.close());
+export class OpenSearchClient implements ManagedClient, OpenSearchReadApi {
+  readonly #controller = new AbortController();
+  readonly signal: AbortSignal;
+  #initialization?: Promise<void>;
+  #disposal?: Promise<void>;
+  #engine?: OpenSearchEngine;
+  readonly #operations = new Set<Promise<unknown>>();
+
+  constructor(private readonly source: ConnectionSource<OpenSearchOptions>, lifecycle: ClientLifecycle = {}) {
+    this.signal = lifecycle.signal ? AbortSignal.any([lifecycle.signal, this.#controller.signal]) : this.#controller.signal;
+  }
+  initialize(): Promise<void> {
+    this.signal.throwIfAborted();
+    return this.#initialization ??= (async () => {
+      const target = await this.source.resolve();
+      this.signal.throwIfAborted();
+      const transport = this.source.transports[0];
+      if (!transport || transport.kind !== "tcp") throw new Error("OpenSearch requires a TCP transport");
+      const url = new URL(target.node);
+      const endpoint = await transport.connect({ host: url.hostname, port: Number(url.port || (url.protocol === "https:" ? 443 : 80)) });
+      this.signal.throwIfAborted();
+      url.hostname = endpoint.host;
+      url.port = String(endpoint.port);
+      this.#engine = new OpenSearchEngine({ ...target, node: url.toString() });
+    })();
+  }
+  #ready(): OpenSearchEngine {
+    this.signal.throwIfAborted();
+    if (!this.#engine) throw new Error("OpenSearch client is not initialized");
+    return this.#engine;
+  }
+  #run<T>(operation: (engine: OpenSearchEngine) => Promise<T>): Promise<T> {
+    const engine = this.#ready();
+    const pending = operation(engine);
+    this.#operations.add(pending);
+    void pending.then(() => this.#operations.delete(pending), () => this.#operations.delete(pending));
+    return pending;
+  }
+  count(index: string, query: SearchQuery) { return this.#run(engine => engine.count(index, query)); }
+  search(index: string, body: SearchQuery) { return this.#run(engine => engine.search(index, body)); }
+  request(path: string, query?: SearchQuery) { return this.#run(engine => engine.request(path, query)); }
+  ping() { return this.#run(engine => engine.ping()); }
+  close(): Promise<void> { return this.dispose(); }
+  dispose(): Promise<void> {
+    return this.#disposal ??= (async () => {
+      this.#controller.abort(new Error("OpenSearch client disposed"));
+      await this.#initialization?.catch(() => {});
+      await Promise.allSettled(this.#operations);
+      await this.#engine?.close();
+    })();
+  }
+}
+
+export async function openOpenSearch(source: ConnectionSource<OpenSearchOptions>, lifecycle: ClientLifecycle = {}): Promise<OpenSearchClient> {
+  const client = new OpenSearchClient(source, lifecycle);
+  try { await client.initialize(); }
+  catch (error) { await client.dispose(); throw error; }
+  lifecycle.onDispose?.(() => client.dispose());
   return client;
 }

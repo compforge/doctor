@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import {
   CommandContext,
   defineCommandDecision,
-  defineCommandDiscovery,
   defineExecutionRecord,
 } from "../src/command";
 import {
@@ -76,23 +75,6 @@ test("Decision 复用取消结果，异常不会污染后续决策", async () =>
     return "pod-1";
   })).toBe("pod-1");
   expect(attempts).toBe(2);
-});
-
-test("Discovery 按作用域复用只读发现，异常后允许重新探测", async () => {
-  const context = new CommandContext({});
-  const discovery = defineCommandDiscovery<string>("test.discovery");
-  let attempts = 0;
-  const discover = () => context.discover(discovery, ["default"], async () => {
-    attempts += 1;
-    return "available";
-  });
-  expect(await Promise.all([discover(), discover()])).toEqual(["available", "available"]);
-  expect(attempts).toBe(1);
-
-  await expect(context.discover(discovery, ["retry"], async () => {
-    throw new Error("temporary failure");
-  })).rejects.toThrow("temporary failure");
-  expect(await context.discover(discovery, ["retry"], async () => "ready")).toBe("ready");
 });
 
 test("ExecutionRecord 按作用域追加保存本次命令产生的中间结果", () => {

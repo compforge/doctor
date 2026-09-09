@@ -324,11 +324,26 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 本轮选中的 capability 建立对应连接。endpoint 必须显式声明 `host` 与 `port`，Core 不用逻辑 Service 名
 推导网络地址。
 
-Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
+Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收由宿主按调用或共享资源的生命周期管理，因此由
 `PluginContext` 按需提供。通用数据访问实现由独立的 `packages/toolkit` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
 与协议 Client。toolkit 不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
+
+Service 通过 `context.clients.get(dataSource)` 获取已初始化的 Client。DataSource 的 key 表达 Plugin 内的
+目标及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、配置、数据库身份与声明的
+access 隔离。同一 key 必须对应同一种 Client。配置身份只保留内存摘要，不输出凭据；每次 capability
+调用仍先通过自己的 access 预检，客户端复用不扩大权限。
+
+DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dispose 的 Client。工厂只构造对象，
+外部操作归 initialize；dispose 必须幂等，并能清理初始化失败留下的资源。工厂上下文的 signal 和 infra
+属于整棵执行树，没有单次调用的依赖 handle，也无需手动注册共享客户端 cleanup。
+
+Client 持有初始化所需的运行时配置、选中的 Pod 与 Transport，并自行限制并发。MySQL 使用单个查询槽位，
+覆盖原生连接和 Pod Python 路径，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
+根 finalize 集中关闭消费者和其依赖的 Kubernetes Client。借用的 Kubernetes 通道不能由某个数据库客户端关闭。
+客户端复用只覆盖访问准备和连接，各次 SQL、Overview Entry 查询与诊断结果独立执行。
+
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
 本轮参与的 Service，再把 Core command 自身需求与这些 capability 的声明合成阶段性的 access plan；

@@ -1,3 +1,4 @@
+import type { Client } from "@compforge/doctor-toolkit/client";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
 import type { ServiceEndpoint, ServiceStoreCapabilityDependency } from "./service";
@@ -38,13 +39,28 @@ export interface PluginInfra {
   databaseIdentity?: DatabaseIdentity;
 }
 
-export interface PluginContext {
+/** Client factories receive root-owned access; never capture a capability call's context. */
+export interface PluginClientContext {
   target: PluginTarget;
   /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
   config: Readonly<Record<string, unknown>>;
-  /** Service-declared dependencies resolved and lifetime-managed by Doctor Core. */
-  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
   infra: PluginInfra;
   signal: AbortSignal;
+}
+
+export interface PluginDataSource<C extends Client> {
+  /** The host additionally namespaces this key by target, configuration and declared access. */
+  readonly key: string;
+  createClient(context: PluginClientContext): C;
+}
+
+export interface PluginClients {
+  get<C extends Client>(source: PluginDataSource<C>): Promise<C>;
+}
+
+export interface PluginContext extends PluginClientContext {
+  /** Dependencies belong to this capability call and cannot enter shared client factories. */
+  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
+  clients: PluginClients;
   onDispose(disposer: () => void | Promise<void>): void;
 }

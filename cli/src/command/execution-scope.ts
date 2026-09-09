@@ -1,7 +1,9 @@
+import type { ClientProvider } from "@compforge/doctor-toolkit/client-manager";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 interface ExecutionScope {
   signal: AbortSignal;
+  clients?: ClientProvider;
   disposers: Set<() => void | Promise<void>>;
 }
 
@@ -12,14 +14,18 @@ export function currentCommandSignal(): AbortSignal | undefined {
   return execution.getStore()?.signal;
 }
 
+export function currentCommandClients(): ClientProvider | undefined {
+  return execution.getStore()?.clients;
+}
+
 export function onCommandDispose(dispose: () => void | Promise<void>): () => void {
   const scope = execution.getStore();
   scope?.disposers.add(dispose);
   return () => { scope?.disposers.delete(dispose); };
 }
 
-export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
-  const scope: ExecutionScope = { signal, disposers: new Set() };
+export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: ClientProvider): Promise<T> {
+  const scope: ExecutionScope = { signal, clients, disposers: new Set() };
   return execution.run(scope, async () => {
     let failed = false;
     let failure: unknown;
@@ -27,7 +33,7 @@ export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise
     catch (error) { failed = true; failure = error; throw error; }
     finally {
       const errors: unknown[] = [];
-      // Dependent resources may have been acquired in order; release in reverse order.
+      // Invocation-owned temporary resources are released in reverse acquisition order.
       for (const dispose of [...scope.disposers].reverse()) {
         try { await dispose(); } catch (error) { errors.push(error); }
       }

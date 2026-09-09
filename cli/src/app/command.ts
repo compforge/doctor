@@ -27,13 +27,18 @@ export async function runCommand<Input extends CommandInput, Output>(
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
     process.once("SIGINT", interrupt);
     let result: CommandResult<Output>;
-    try { result = await spec.run(context, input); }
-    finally { process.removeListener("SIGINT", interrupt); }
-    context.artifacts.include(result.artifacts);
-    if (result.reportName) context.artifacts.setReportName(result.reportName);
-    process.exitCode = await finalizeCommand({
-      command: spec.name, context, delivery: opts, code: commandExitCode(result),
-    });
+    try {
+      try { result = await spec.run(context, input); }
+      catch (error) {
+        reportError(error, { context: spec.name, summary: "fatal" });
+        result = { status: CommandStatus.Failed, artifacts: [], error };
+      }
+      context.artifacts.include(result.artifacts);
+      if (result.reportName) context.artifacts.setReportName(result.reportName);
+      process.exitCode = await finalizeCommand({
+        command: spec.name, context, delivery: opts, code: commandExitCode(result),
+      });
+    } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
     reportError(error, { context: spec.name, summary: "fatal" });
     process.exitCode = 1;

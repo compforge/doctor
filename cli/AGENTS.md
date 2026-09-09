@@ -63,7 +63,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
    `tar.gz`；Bundle 解压后只产生一个顶层目录，目录内保留 `report.html`、领域 JSON、原始 Evidence 与附件；
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。
    显式指定已有 format 时只交付该格式，不改变其既有语义。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
-   根入口统一 finalize 和 Delivery。单次调用的资源与产物独立，环境、决策及取消信号在整轮内共享。
+   根入口统一 finalize 和 Delivery。单次调用的临时资源与产物独立，环境、决策、共享基础设施资源及取消信号在整轮内共享。
 
 ## References
 
