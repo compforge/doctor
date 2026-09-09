@@ -294,6 +294,7 @@ export async function runCollectLog(
   const statuses: CommandStatus[] = [];
   for (const [index, bizId] of ids.entries()) {
     if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+    terminalStdout.warning(`\n[collect:log] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
     const child = await commandContext.artifacts.capture(() => runCollectLogSingle(
       { ...opts, bizIds: [bizId], format: "html", output: undefined },
       plugin,

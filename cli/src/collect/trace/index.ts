@@ -308,6 +308,7 @@ export async function runCollectTrace(
   let exitCode = 0;
   for (const [bizIndex, bizId] of bizIds.entries()) {
     if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+    terminalStdout.warning(`\n[collect:trace] [${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}\n`);
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
     if (!groupTraces.length) statuses.push(CommandStatus.Failed);
     const groupKey = `biz-${bizIndex + 1}`;
