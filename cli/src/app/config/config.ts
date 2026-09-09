@@ -75,6 +75,15 @@ function validateProfileShape(value: unknown, name: string): Profile {
     && (typeof overview.sample_count !== "number" || !Number.isSafeInteger(overview.sample_count) || overview.sample_count <= 0)) {
     throw new Error(`profile '${name}'.overview.sample_count must be a positive integer`);
   }
+  const log = optionalMap(profile.log, `profile '${name}'.log`);
+  for (const [field, value] of [
+    ["overview.collect_concurrency", overview?.collect_concurrency],
+    ["log.concurrency", log?.concurrency],
+  ] as const) {
+    if (value !== undefined && (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0)) {
+      throw new Error(`profile '${name}'.${field} must be a positive integer`);
+    }
+  }
   const prometheus = optionalMap(profile.prometheus, `profile '${name}'.prometheus`);
   if (prometheus) {
     if (typeof prometheus.url !== "string" || !prometheus.url) {

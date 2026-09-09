@@ -1,3 +1,4 @@
+import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import { expect, test } from "bun:test";
 import { runPodLogCapturePlan } from "../src/infra/k8s/log-capture-plan";
 import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
@@ -41,4 +42,37 @@ test("Pod Log plan 为并发任务预留总预算，耗尽后返回 unavailable"
     "unavailable",
   ]);
   expect(results[2]?.capture.reason).toBe("total_byte_budget");
+});
+
+
+test("cancelling a log plan retains completed captures and drains active work without starting queued pods", async () => {
+  const controller = new AbortController();
+  const pool = new ConcurrencyPool(1);
+  const started: string[] = [];
+  let drained = false;
+  const access: KubernetesPodLogAccess = {
+    clientVersion: async () => { throw new Error("unused"); },
+    listServicePods: async () => { throw new Error("unused"); },
+    collectPodLogs: async (request) => {
+      started.push(request.pod);
+      if (request.pod === "b") {
+        controller.abort();
+        await Bun.sleep(1);
+        drained = true;
+      }
+      return {
+        ok: request.pod === "a", exitCode: null, stdout: "partial log", stderr: "",
+        durationMs: 1, timedOut: false, command: [],
+        captureStatus: request.pod === "a" ? "complete" : "partial", bytesRead: 11, attempts: 1,
+      };
+    },
+  };
+  const captures = await runPodLogCapturePlan(access,
+    ["a", "b", "c", "d", "e"].map((pod) => ({ target: pod, request: { pod, container: "app" } })),
+    { concurrency: 4, maxBytesPerCapture: 100, maxTotalBytes: 1000 }, pool, controller.signal);
+  expect(drained).toBeTrue();
+  expect(started).toEqual(["a", "b"]);
+  expect(captures.map((item) => item.target)).toEqual(["a", "b"]);
+  expect(captures.map((item) => item.capture.captureStatus)).toEqual(["complete", "partial"]);
+  expect(await pool.run(async () => "released")).toBe("released");
 });

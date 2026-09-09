@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
 import {
   runPodLogCapturePlan,
+  DEFAULT_POD_LOG_CAPTURE_POLICY,
   type PodLogCapturePlanItem,
 } from "../../../infra/k8s/log-capture-plan";
 import type {
@@ -83,6 +84,9 @@ async function captureLogPlan(
   const captures = await runPodLogCapturePlan(
     ctx.access,
     plan.map((input) => prepareCapture(ctx, config, input)),
+    { ...DEFAULT_POD_LOG_CAPTURE_POLICY, concurrency: ctx.command.limits.podLogs.concurrency },
+    ctx.command.limits.podLogs,
+    ctx.command.signal,
   );
   return captures.map(({ target, capture }) => ({
     ...target.input,

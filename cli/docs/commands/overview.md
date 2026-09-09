@@ -32,6 +32,27 @@ profiles:
       sample_count: 5
 ```
 
+采样并去重后，Core 按 biz-id 并发调用 Collect，默认同时处理 2 个请求，每个请求内部仍按 data、trace、log
+顺序执行。`--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`。失败请求不阻止其它
+请求完成；取消后不启动排队任务，已启动任务响应同一取消信号，已取得的证据仍统一交付。报告按输入顺序
+合并，终端选择与确认串行执行，后台输出在交互完成后恢复。
+
+日志使用独立的全局预算：同一次 Doctor 运行的整个 CommandContext 命令树共享 `log.concurrency` 个
+Pod/Container 日志读取名额，默认 4。current、previous 和重试都不能绕过这个池；每项请求从开始读取到
+流关闭才归还名额。提高 Collect 并发数不会乘大日志并发数，字节预算仍按原来的单次 Log 采集计算。
+例如下列配置最多并发两个 Collect，而所有 Collect 合计最多并发读取八路 Pod 日志：
+
+```yaml
+profiles:
+  test:
+    readonly: true
+    overview:
+      sample_count: 5
+      collect_concurrency: 2
+    log:
+      concurrency: 8
+```
+
 默认交付 HTML 和 Bundle；`--format html|bundle` 与 `--output` 控制交付形式。报告保留查询窗口、租户、
 Service / Facet / Entry、数据、截断原因、采样来源和 collect biz-id；采集产物与概览一起交付。
 

@@ -1,3 +1,5 @@
+import { currentCommandSignal } from "../command/execution-scope";
+import { withTerminalInput } from "./interaction";
 import { Box, Text, render, useApp, useInput } from "ink";
 import { PassThrough } from "node:stream";
 import { useMemo, useState } from "react";
@@ -207,24 +209,31 @@ export async function promptMultiSelect<Choice extends MultiSelectChoice>(input:
   title: string;
   renderChoice?: (choice: Choice) => string;
 }): Promise<string[] | undefined> {
-  let selected: string[] | undefined;
-  const bridge = createInkStdinBridge();
-  try {
-    const app = render(
-      <MultiSelectPrompt
-        choices={input.choices}
-        defaults={input.defaults ?? []}
-        title={input.title}
-        renderChoice={input.renderChoice ?? ((choice) => choice.name)}
-        onComplete={(value) => {
-          selected = value;
-        }}
-      />,
-      { stdin: bridge.stdin, incrementalRendering: true },
-    );
-    await app.waitUntilExit();
-    return selected;
-  } finally {
-    bridge.close();
-  }
+  return withTerminalInput(async () => {
+    let selected: string[] | undefined;
+    const bridge = createInkStdinBridge();
+    try {
+      const app = render(
+        <MultiSelectPrompt
+          choices={input.choices}
+          defaults={input.defaults ?? []}
+          title={input.title}
+          renderChoice={input.renderChoice ?? ((choice) => choice.name)}
+          onComplete={(value) => {
+            selected = value;
+          }}
+        />,
+        { stdin: bridge.stdin, incrementalRendering: true },
+      );
+      const signal = currentCommandSignal();
+      const abort = () => app.unmount();
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      try { await app.waitUntilExit(); }
+      finally { signal?.removeEventListener("abort", abort); }
+      return selected;
+    } finally {
+      bridge.close();
+    }
+  });
 }

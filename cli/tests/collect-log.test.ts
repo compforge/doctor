@@ -88,9 +88,15 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
 
   try {
     const probe = makeLogProbe(config.services);
-    const observations = await probe.run(context, facts, config, []);
+    const siblingRoot = mkdtempSync(join(root, "sibling-"));
+    const siblingConfig = { ...config, outputDir: siblingRoot };
+    const [observations, siblingObservations] = await Promise.all([
+      probe.run(context, facts, config, []),
+      probe.run({ ...context, config: siblingConfig, bundle: new EvidenceBundle(siblingRoot) }, facts, siblingConfig, []),
+    ]);
+    expect(siblingObservations).toHaveLength(config.services.length);
 
-    expect(maxActive).toBe(3);
+    expect(maxActive).toBe(4);
     expect(observations.map((observation) => observation.service)).toEqual([
       "service-a",
       "service-b",

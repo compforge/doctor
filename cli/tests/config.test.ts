@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -238,5 +238,25 @@ describe("overview sampling defaults", () => {
       const invalid = makeTmpFile("overview-invalid.yaml", `profiles:\n  test:\n    readonly: true\n    overview:\n      sample_count: ${value}\n`);
       expect(() => loadConfig(invalid)).toThrow("overview.sample_count");
     }
+  });
+});
+
+describe("independent collection concurrency", () => {
+  it("profile validates overview collect and global log limits independently", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-concurrency-config-"));
+    const path = join(dir, "config.yaml");
+    try {
+      writeFileSync(path, "profiles:\n  test:\n    readonly: true\n    overview:\n      collect_concurrency: 2\n    log:\n      concurrency: 8\n");
+      const config = loadConfig(path);
+      expect(config.profiles.test?.overview?.collect_concurrency).toBe(2);
+      expect(config.profiles.test?.log?.concurrency).toBe(8);
+      for (const section of ["overview", "log"]) {
+        const field = section === "overview" ? "collect_concurrency" : "concurrency";
+        for (const value of ["0", "-1", "1.5", '\"8\"']) {
+          writeFileSync(path, `profiles:\n  test:\n    readonly: true\n    ${section}:\n      ${field}: ${value}\n`);
+          expect(() => loadConfig(path)).toThrow(`${section}.${field}`);
+        }
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
