@@ -274,6 +274,7 @@ export async function runCollectData(
     const statuses: CommandStatus[] = [];
     for (const [index, bizId] of ids.entries()) {
       if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+      terminalStdout.warning(`\n[collect:data] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
       let captured: DataDiagnosis | undefined;
       const child = await commandContext.artifacts.capture(() => runCollectDataSingle(
         {
@@ -304,6 +305,7 @@ export async function runCollectData(
   const statuses: CommandStatus[] = [];
   for (const [index, bizId] of ids.entries()) {
     if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+    terminalStdout.warning(`\n[collect:data] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
     let captured: DataDiagnosis | undefined;
     const child = await commandContext.artifacts.capture(() => runCollectDataSingle(
       {
