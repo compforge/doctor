@@ -36,6 +36,13 @@
 `collect/log` 不维护平行名单或按服务名分支。如何读取 Kubernetes Service、如何按 selector 找到 Pod、如何通过 Kubernetes API 读取日志可被 MCP 等领域复用，因此属于
 `infra/k8s`。通用多选交互属于 `terminal/`，不进入 infra。
 
+### 日志传输遵循 kubeconfig 的协议与信任配置
+
+Pod Log API 按当前 cluster 的 `server` URL 自动选择 HTTP 或 HTTPS，无需额外协议开关。HTTPS 复用
+kubeconfig 的 CA（文件或内嵌）、客户端证书、`tls-server-name` 和显式 TLS 校验设置；证书失败不会
+降级为 HTTP 或自动关闭校验。Bun 和 Node 发行使用同一份 node-fetch 包实现，保留 client-node 创建的
+Agent；裸 `node-fetch` 导入会被 Bun 替换为忽略该 Agent 的内置实现，因此这里显式加载包文件。
+
 ### Service 是证据边界，capture plan 是调度边界
 
 Service 是用户理解日志来源和后续扩展采集规则的稳定边界，因此 Observation、Pod 失败状态和最终时间线
