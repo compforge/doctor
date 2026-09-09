@@ -5,15 +5,15 @@ import { basename, join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
 import {
   CommandStatus, CommandInputError, defineCommand, aggregateCommandStatus,
-  type CommandContext, type CommandResult,
+  type CommandInput, type CommandContext, type CommandResult,
 } from "../command";
 import type { CommandHostOption } from "../command/options";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { dataCommand } from "./data/command";
-import { inspectCommand } from "./inspect/command";
+import { createInspectInput, inspectCommand } from "./inspect/command";
 import { logCommand } from "./log/command";
 import { metricCommand } from "./metric/command";
-import { tenantCommand } from "./tenant/command";
+import { createTenantInput, tenantCommand } from "./tenant/command";
 import { traceCommand } from "./trace/command";
 
 export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log", "metric"] as const;
@@ -50,7 +50,7 @@ export interface CollectCliOpts {
   format?: string;
 }
 
-export type CollectInput = Omit<CollectCliOpts, CommandHostOption>;
+export type CollectInput = CommandInput & Omit<CollectCliOpts, CommandHostOption>;
 
 export interface CollectDelegateResult {
   readonly kind: CollectKind;
@@ -197,19 +197,22 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
   const common = { namespace: input.namespace };
   return (kind) => {
     switch (kind) {
-      case "inspect": return inspectCommand.run(context, {
+      case "inspect": return inspectCommand.run(context, createInspectInput({
         ...common, services: inspectServiceNames(plugin),
         deploymentConfig: input.deploymentConfig, dependencies: input.dependencies,
-      });
-      case "tenant": return tenantCommand.run(context, {
+      }));
+      case "tenant": return tenantCommand.run(context, createTenantInput({
         ...common, tenantId: input.tenantId, tenantName: input.tenantName,
-      });
+      }));
       case "data": return dataCommand.run(context, {
         ...common, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
       });
       case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds });
       case "log": return logCommand.run(context, {
-        ...common, bizIds: input.bizIds, services: providerNames(plugin, "log"),
+        ...common, bizIds: input.bizIds,
+        // Capability availability is broader than the Plugin's default collection scope.
+        services: plugin.services.servicesWith("log")
+          .filter((service) => service.capabilities.log.default).map((service) => service.name).join(","),
         since: input.since, sinceTime: input.sinceTime,
       });
       case "metric": return metricCommand.run(context, {

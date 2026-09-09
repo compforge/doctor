@@ -32,8 +32,12 @@ profiles:
       sample_count: 5
 ```
 
-采样并去重后，Core 按 biz-id 并发调用 Collect，默认同时处理 2 个请求，每个请求内部仍按 data、trace、log
-顺序执行。`--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`。失败请求不阻止其它
+采样并去重后，Core 复用 Collect 的命令选择：交互模式选择一次，非交互默认全部；`--include` 可显式
+指定 inspect、tenant、data、trace、log、metric 的子集（例如 `--include inspect,tenant,data,trace,log`）。
+Core 按 biz-id 并发调用 Collect，默认同时处理 2 个请求，每个请求内部按所选命令顺序执行。
+Inspect、Tenant 的 Input 提供幂等 key，相同环境/检查范围或相同租户/采集参数只执行一次；并发调用等待
+同一次执行，后续调用复用原状态和产物，最终报告保留 Inspect、Tenant 页签。范围改变则另行执行。
+`--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`。失败请求不阻止其它
 请求完成；取消后不启动排队任务，已启动任务响应同一取消信号，已取得的证据仍统一交付。报告按输入顺序
 合并，终端选择与确认串行执行，后台输出在交互完成后恢复。
 
@@ -67,6 +71,6 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 不同状态；某个 Service 失败不会阻止其它 Service 展示结果。
 
 确认后，仅对选中的 Entry 各查询一个代表请求。Plugin 应返回最精确的 collect biz-id，并可提供源记录
-Identity；数据已变化时返回无样本。Core 对 biz-id 去重后复用 data、trace、log collect。采样失败保留
+Identity；数据已变化时返回无样本。Core 对 biz-id 去重后调用所选 Collect 子命令。采样失败保留
 在对应 Entry，不以其他请求替代。概览阶段使用既有 PluginContext 访问和资源回收机制，采集阶段继续
 使用各 collector 的访问策略与报告流水线。

@@ -1,9 +1,9 @@
-import { defineCommand } from "../../command";
+import { type CommandInput, defineCommand } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { runCollectMcp } from "./index";
 
-export type McpInput = Omit<Parameters<typeof runCollectMcp>[0], CommandHostOption>;
+export type McpInput = CommandInput & Omit<Parameters<typeof runCollectMcp>[0], CommandHostOption>;
 
 export const mcpCommand = defineCommand<McpInput, void>({
   name: "doctor mcp",

@@ -1,5 +1,5 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandInputError, CommandStatus, type CommandResult, type CommandSpec } from "../command";
+import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type CommandSpec } from "../command";
 import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
@@ -16,7 +16,7 @@ export function commandExitCode(result: CommandResult<unknown>): number {
 }
 
 /** The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once. */
-export async function runCommand<Input, Output>(
+export async function runCommand<Input extends CommandInput, Output>(
   spec: CommandSpec<Input, Output>,
   opts: CommandOptions,
   input: Input,

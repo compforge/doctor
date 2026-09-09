@@ -145,6 +145,16 @@ validate domain input
 组合命令逐个调用已选择的子命令；一个子命令不可用时，其它独立子命令仍可执行。子命令的必要条件
 不能简单合并成父命令的全局门槛，否则缺少一种证据能力就会阻断整个概览或采集。
 
+Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行的身份。`defineCommand` 在输入校验后，
+按 Command 定义身份和 key 在当前 CommandContext 中合并调用：正在执行时等待同一个 Promise，包括资源
+清理；已完成时返回原状态、Output、Artifacts 和 reportName，不产生 skipped 状态。未提供方法时每次独立
+执行。完成结果包括 partial 和 failed，本轮不隐式重试；取消始终优先于复用。key 必须包含会改变结果的
+领域参数，Profile、Plugin 和宿主配置由当前 Context 隔离，记录不跨 Doctor 运行保留。
+
+Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数生成 key，Collect 使用这些 Input 调用
+子命令。调用方仍显式纳入子产物，Artifacts 按路径去重，因此多个 Collect 可引用同一份环境/租户证据，
+最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
+
 ### Context 与调用归属
 
 `CommandContext` 属于整轮执行树，保存 Profile、当前 Plugin、按需准备并复用的环境信息、权限检查、

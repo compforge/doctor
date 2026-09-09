@@ -107,6 +107,7 @@ export class CommandContext {
   readonly #pluginServices = new Map<string, readonly string[]>();
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
   readonly #decisions = new Map<object, Map<string, Promise<unknown>>>();
+  readonly #runs = new Map<object, Map<string, Promise<unknown>>>();
   readonly #discoveries = new Map<object, Map<string, Promise<unknown>>>();
   readonly #executionRecords = new Map<object, Map<string, unknown[]>>();
 
@@ -201,6 +202,13 @@ export class CommandContext {
     inspect: () => Value | Promise<Value>,
   ): Promise<Value> {
     return this.#memoize(this.#discoveries, type, scope, inspect);
+  }
+
+  /** Same command and declared scope share one completed result, including partial/failed evidence. */
+  runIdempotent<Value>(command: object, key: string, run: () => Promise<Value>, onReuse: () => void): Promise<Value> {
+    if (this.#runs.get(command)?.has(commandScopeKey([key]))) onReuse();
+    // Publish the promise before work starts, so concurrent callers also share cleanup and artifacts.
+    return this.#memoize(this.#runs, command, [key], run);
   }
 
   #memoize<Value>(
