@@ -2,12 +2,13 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Chat 五条并列主路径组织能力准备、
-确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、Perf 和 Chat 六条并列主路径组织能力准备、
+概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
+- **概览与采样**：`doctor overview` 展示 Plugin Service 的 Facet / Entry，经用户确认后采样并复用 Collect。
 - **数据集采集**：`doctor eval` 逐例触发 canonical CaseSet，并复用 Collect 取得关联证据，不做质量评分。
 - **主动施压**：`doctor perf` 按共享 Perf Harness 契约产生业务流量，并复用 Collect 取得同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
@@ -25,6 +26,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `case` | Eval 与 Perf 共用的 Case 请求身份选择 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
+| `overview` | Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
 | `perf` | 对 Plugin Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `infra` | DB、HTTP、Kubernetes、进程和本机工具等访问原语 |
@@ -69,6 +71,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
+- `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定

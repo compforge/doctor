@@ -293,7 +293,8 @@ export async function runCollectCommand(
     return 2;
   }
   const format = parseCollectOutputFormat(opts.format);
-  commandContext.artifacts.setReportName(collectReportName(opts.bizIds));
+  // A parent command (for example overview) owns the aggregate report name.
+  if (!commandContext.artifacts.reportName()) commandContext.artifacts.setReportName(collectReportName(opts.bizIds));
   const startedAt = new Date().toISOString();
   const results = await runCollectDelegates(
     opts.kinds,

@@ -270,3 +270,11 @@ test("collect preserves staged evidence when default delivery fails", async () =
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("collect preserves the parent overview report name", async () => {
+  const context = new CommandContext({});
+  context.artifacts.setReportName("doctor-overview-test");
+  const plugin: PluginDefinition = { id: "test", version: "0.0.1", services: createServiceCatalog([]) };
+  expect(await runCollectCommand({ bizIds: ["t1"], kinds: ["data"], format: "html" }, plugin, context, async () => 0)).toBe(0);
+  expect(context.artifacts.reportName()).toBe("doctor-overview-test");
+});

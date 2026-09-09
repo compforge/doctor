@@ -52,6 +52,7 @@ import {
   type CollectCliOpts,
 } from "../collect/composite";
 import { runPerf } from "../perf";
+import { registerOverviewCommand } from "../overview/command";
 import { runEval } from "../eval";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
@@ -625,6 +626,8 @@ export async function main(plugin?: PluginDefinition) {
       (context) => runCollectCpu(opts, context),
     );
   });
+  registerOverviewCommand(program, plugin);
+
   withCollectOptions(
     program.command("collect").description(
       "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",

@@ -3,6 +3,10 @@ import type { CollectKind } from "../collect/composite";
 
 /** Plugin command 在接触环境前声明的静态业务能力；依赖 flags 的条件能力由对应 command 延迟检查。 */
 export const PLUGIN_COMMAND_CAPABILITIES = {
+  overview: {
+    command: "doctor overview",
+    needs: [{ requirement: "required", capability: { scope: "service", name: "overview" }, purpose: "展示值得注意的 Facet / Entry，并按需采样" }],
+  },
   trace: {
     command: "doctor trace",
     needs: [{

@@ -41,6 +41,8 @@ Business data is organized by lookup scope:
 
 ## Workflows across evidence
 
+- `doctor overview` shows notable entries grouped by Service and Facet, then optionally samples
+  representative requests for collection. See [Overview](cli/docs/commands/overview.md).
 - `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their
   reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
   collectors; Collect does not infer relationships between scopes, create load or change individual
