@@ -1,7 +1,8 @@
 import { closeSync, openSync, writeSync } from "node:fs";
 import { KubeConfig } from "@kubernetes/client-node";
-import { AbortController } from "abort-controller";
-import fetch from "node-fetch";
+// Bun replaces the bare node-fetch import with a shim that ignores HTTPS Agent TLS options.
+// Use the installed implementation so kubeconfig CA, client certificates and proxies reach HTTP(S).
+import fetch from "node-fetch/lib/index.js";
 import type { RequestInfo, RequestInit, Response } from "node-fetch";
 import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type {
@@ -117,8 +118,16 @@ class ClientNodeLogTransport {
       if (options.kubeconfig) this.kubeConfig.loadFromFile(options.kubeconfig);
       else this.kubeConfig.loadFromDefault();
       if (options.context) this.kubeConfig.setCurrentContext(options.context);
-      if (!this.kubeConfig.getCurrentCluster()) {
+      const cluster = this.kubeConfig.getCurrentCluster();
+      if (!cluster) {
         throw new Error(`kubeconfig context '${this.kubeConfig.getCurrentContext()}' 没有关联 cluster`);
+      }
+      // client-node also gates plaintext HTTP on this TLS flag. An explicit http:// URL
+      // already chooses plaintext; normalize only HTTP and preserve HTTPS verification.
+      if (new URL(cluster.server).protocol === "http:") {
+        this.kubeConfig.clusters = this.kubeConfig.clusters.map((item) => (
+          item === cluster ? { ...item, skipTLSVerify: true } : item
+        ));
       }
     } catch (error) {
       this.initializationError = errorMessage(error);
@@ -278,6 +287,7 @@ class ClientNodeLogTransport {
       url.searchParams.set("sinceSeconds", String(input.sinceSeconds));
     }
 
+    // Native AbortSignal retains its identity in Node bundles; node-fetch checks the constructor name.
     const controller = new AbortController();
     let abortReason: "idle_timeout" | "hard_timeout" | undefined;
     let idleTimer: ReturnType<typeof setTimeout>;
@@ -313,8 +323,7 @@ class ClientNodeLogTransport {
       const response = await (this.options.fetchImpl ?? fetch)(url, {
         ...init,
         method: "GET",
-        // node-fetch v2 接受 abort-controller 的 signal；DOM 新版类型额外要求 reason/throwIfAborted。
-        signal: controller.signal as never,
+        signal: controller.signal,
       });
       if (!response.ok) {
         const body = (await response.text()).trim().slice(0, 2_000);
