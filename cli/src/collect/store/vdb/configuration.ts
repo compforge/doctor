@@ -3,7 +3,7 @@ import type {
   ServiceVdbStoreCapability,
   ServiceVdbTarget,
 } from "@compforge/doctor-plugin";
-import type { ExecResult, ExecTarget, Executor } from "../../../infra/k8s/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { loadDeclaredContainerConfig } from "../../../infra/k8s/container-config";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 

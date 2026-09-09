@@ -1,5 +1,5 @@
 import type { ImageArchitecture, ImagePlatform } from "../image";
-import type { Executor } from "./executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export interface PodImagePlatform {
   platform?: ImagePlatform;

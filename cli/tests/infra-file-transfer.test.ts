@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { hostTargetFileTransfer } from "../src/infra/file-transfer";
-import type { ExecResult, ExecTarget, Executor, RunOptions } from "../src/infra/k8s/executor";
+import type { ExecResult, ExecTarget, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 function result(): ExecResult {
   return {

@@ -7,7 +7,7 @@ import {
   statSync,
   writeSync,
 } from "node:fs";
-import type { ExecResult } from "../k8s/executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type {
   DownloadFromTargetOptions,
   DownloadFromTargetResult,

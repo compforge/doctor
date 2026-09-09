@@ -1,6 +1,7 @@
+import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
 import { MysqlDatabase, parseMysqlEnvTarget } from "../../../../infra/database/mysql";
-import type { ExecResult } from "../../../../infra/k8s/executor";
-import { ServicePortForwarder } from "../../../../infra/k8s/service-port-forward";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { DbCommandContext } from "../context";
@@ -85,7 +86,7 @@ export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandConte
           kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
           context: ctx.config.collect.kubernetes.context,
         });
-        ctx.database = new MysqlDatabase((endpoint) => ctx.forwarder!.forward(endpoint), {
+        ctx.database = new MysqlDatabase([new PortForwardTransport((endpoint) => ctx.forwarder!.forward(endpoint))], {
           connectTimeoutMs: 10_000,
           queryTimeoutMs: 15_000,
         });

@@ -4,7 +4,7 @@
 // 跟"证据是怎么来的"无关，evidence.ts 对 kubectl 一无所知是**对的**。这里是两者的胶水，
 // 胶水该自己待一层。
 import type { EvidenceBundle, StepRisk } from "./evidence";
-import type { ExecResult } from "../infra/k8s/executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { failReason } from "../infra/k8s/result";
 
 /**

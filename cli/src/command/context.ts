@@ -3,7 +3,7 @@ import {
   createKubernetesCommandContext,
   type KubernetesCommandContext,
 } from "../infra/k8s/access";
-import type { Executor } from "../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   getDoctorHostInfo,
   type DoctorHostInfo,

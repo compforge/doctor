@@ -1,4 +1,4 @@
-import type { ExecResult } from "../../../infra/k8s/executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   getBucketVersioning,
   getS3ProviderBucketUsage,

@@ -11,7 +11,7 @@ import type {
   ExecTarget,
   Executor,
   RunOptions,
-} from "../src/infra/k8s/executor";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
 
 const POD_JSON = JSON.stringify({
   metadata: {

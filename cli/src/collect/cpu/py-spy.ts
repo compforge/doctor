@@ -1,6 +1,6 @@
 import { writeErrorLog } from "../../app/error-log";
 import type { DebugEnvironmentFacts } from "../../infra/target/debug";
-import type { ExecResult, ExecTarget } from "../../infra/k8s/executor";
+import type { ExecResult, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { CpuCommandContext } from "./context";
 import type { CpuPythonFacts } from "./fact/python";
 import {

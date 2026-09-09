@@ -1,5 +1,5 @@
-import type { ExecResult, RunOptions } from "../../k8s/executor";
-import { runArgv } from "../../k8s/executor";
+import type { ExecResult, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { runArgv } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { createGopacketBackend } from "./gopacket";
 import { createTsharkBackend } from "./tshark";
 

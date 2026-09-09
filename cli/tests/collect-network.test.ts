@@ -20,7 +20,7 @@ import {
 } from "../src/collect/network";
 import type { SendHttp } from "../src/collect/shared/http/capture";
 import type { NetworkCaptureRuntime } from "../src/infra/target/network-capture";
-import type { ExecResult, Executor, RunOptions } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { TerminalProgressUpdate } from "../src/terminal/progress";
 
 function result(command: string[], input: Partial<ExecResult> = {}): ExecResult {

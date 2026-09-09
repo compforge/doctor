@@ -1,4 +1,4 @@
-import type { ExecResult, ExecTarget, Executor } from "../k8s/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { ContainerInfo } from "../k8s/target";
 import type { DebugEnvironmentFact } from "../target/debug";
 

@@ -3,7 +3,7 @@ import {
   KubernetesAccessContext,
   type KubernetesAccessContract,
 } from "../src/infra/k8s/access";
-import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { CommandContext } from "../src/command";
 import {
   enforceKubernetesAccess,

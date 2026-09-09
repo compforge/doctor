@@ -15,7 +15,7 @@ import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createGunzip } from "node:zlib";
 import { infra } from "../../infra";
-import type { ExecResult, ExecTarget, Executor } from "../../infra/k8s/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { ContainerInfo } from "../../infra/k8s/target";
 import {
   compressFileCmd,

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { ExecResult, Executor } from "../src/infra/k8s/executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import { RecentSelections } from "../src/infra/recent";
 import {

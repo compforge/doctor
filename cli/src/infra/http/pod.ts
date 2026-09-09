@@ -1,4 +1,4 @@
-import type { ExecResult, Executor, ExecTarget } from "../k8s/executor";
+import type { ExecResult, Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { HttpTransportError } from ".";
 import type {
   HttpTransportDiagnostics,

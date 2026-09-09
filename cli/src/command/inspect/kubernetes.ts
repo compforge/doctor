@@ -10,7 +10,7 @@ import {
 import {
   KubectlExecutor,
   type ExecResult,
-} from "../../infra/k8s/executor";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
 
 export interface KubernetesInspection {
   readonly kubeconfig: ResolvedKubeconfig;

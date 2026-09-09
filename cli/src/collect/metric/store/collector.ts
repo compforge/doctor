@@ -1,3 +1,4 @@
+import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
 import { parseExposition } from "@compforge/prombed";
 import type {
   PluginDefinition,
@@ -7,21 +8,21 @@ import type {
 } from "@compforge/doctor-plugin";
 import { MysqlDatabase, parseMysqlEnvTarget } from "../../../infra/database/mysql";
 import type { DatabaseTarget } from "../../../infra/database";
-import type { Executor, ExecTarget } from "../../../infra/k8s/executor";
-import type { ServicePortForwarder } from "../../../infra/k8s/service-port-forward";
+import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import {
   findPodsForService,
   listServiceNetwork,
   type KubernetesService,
-} from "../../../infra/k8s/service";
-import type { KubernetesPod } from "../../../infra/k8s/pod";
+} from "@compforge/doctor-toolkit/kubernetes/service";
+import type { KubernetesPod } from "@compforge/doctor-toolkit/kubernetes/pod";
 import type { EmbeddedMetricSource, MetricFetch } from "../../../infra/metric";
 import {
   discoverRedisTopology,
   RedisAccess,
   type RedisEndpoint,
   type RedisTopology,
-} from "../../../infra/redis";
+} from "@compforge/doctor-toolkit/redis/index";
 import { configuredValue, loadServiceRuntimeConfig } from "../../store/runtime-config";
 import {
   hasRedisStoreConfiguration,
@@ -183,7 +184,7 @@ function redisSampler(
   forwarder: ServicePortForwarder,
 ): StoreMetricSampler {
   const access = new RedisAccess(
-    (endpoint) => forwarder.forward(endpoint),
+    new PortForwardTransport((endpoint) => forwarder.forward(endpoint)),
     {
       username: target.username,
       password: target.password,
@@ -279,7 +280,7 @@ async function prepareDirectSamplers(input: {
 }> {
   const samplers = new Map<string, StoreMetricSampler>();
   const errors: Array<{ kind: MetricStoreKind; message: string }> = [];
-  const mysql = new MysqlDatabase((endpoint) => input.forwarder.forward(endpoint), {
+  const mysql = new MysqlDatabase([new PortForwardTransport((endpoint) => input.forwarder.forward(endpoint))], {
     connectTimeoutMs: 10_000,
     queryTimeoutMs: 15_000,
   });

@@ -3,7 +3,7 @@ import { KubeConfig } from "@kubernetes/client-node";
 import { AbortController } from "abort-controller";
 import fetch from "node-fetch";
 import type { RequestInfo, RequestInit, Response } from "node-fetch";
-import type { ExecResult } from "./executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type {
   KubernetesPodLogAccess,
   PodLogRequest,

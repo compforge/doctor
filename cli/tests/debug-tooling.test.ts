@@ -6,7 +6,7 @@ import {
 import type {
   ExecResult,
   Executor,
-} from "../src/infra/k8s/executor";
+} from "@compforge/doctor-toolkit/kubernetes/executor";
 
 function result(stdout = "", ok = true): ExecResult {
   return {

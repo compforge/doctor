@@ -1,4 +1,4 @@
-import type { ExecTarget, Executor } from "../../../k8s/executor";
+import type { ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { DebugGdbFact, DebugTargetImageKeepalive } from "../model";
 
 const KEEPALIVE_SECONDS = "2147483647";

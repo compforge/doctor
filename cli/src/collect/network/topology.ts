@@ -1,14 +1,14 @@
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { infra } from "../../infra";
 import {
   parsePods,
   type KubernetesPod,
-} from "../../infra/k8s/pod";
+} from "@compforge/doctor-toolkit/kubernetes/pod";
 import {
   findPodsForService,
   parseServices,
   type KubernetesService,
-} from "../../infra/k8s/service";
+} from "@compforge/doctor-toolkit/kubernetes/service";
 import type { NetworkTopology } from "./model";
 
 export const NETWORK_DEBUG_ENVIRONMENT_MISSING_REASON =

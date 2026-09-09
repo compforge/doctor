@@ -37,7 +37,7 @@ import {
   parseNodeImagePlatform,
   pullableImageReference,
 } from "../src/infra/k8s/platform";
-import type { Executor } from "../src/infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { RecentSelections } from "../src/infra/recent";
 import { CommandContext } from "../src/command";
 

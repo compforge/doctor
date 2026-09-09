@@ -1,3 +1,4 @@
+import type { TcpTransport } from "../transport";
 import { createClient, type RedisClientType } from "@redis/client";
 
 export interface RedisEndpoint {
@@ -212,7 +213,7 @@ export class RedisAccess implements RedisAccessApi {
   readonly #connections = new Map<string, Promise<RedisManagedConnection>>();
 
   constructor(
-    private readonly mapper: RedisEndpointMapper,
+    private readonly transport: TcpTransport,
     private readonly baseConfig: Omit<RedisConnectionConfig, "database">,
     private readonly connectionFactory: RedisConnectionFactory = RedisConnection.connect,
   ) {}
@@ -240,7 +241,7 @@ export class RedisAccess implements RedisAccessApi {
         return this.connection(endpoint, database, credentials);
       }
     }
-    pending = this.mapper(endpoint).then((mapped) => this.connectionFactory(endpoint, mapped, {
+    pending = this.transport.connect(endpoint).then((mapped) => this.connectionFactory(endpoint, mapped, {
         ...this.baseConfig,
         ...credentials,
         database,
@@ -259,4 +260,21 @@ export class RedisAccess implements RedisAccessApi {
     const settled = await Promise.allSettled(pending);
     for (const result of settled) if (result.status === "fulfilled") result.value.close();
   }
+}
+
+export interface RedisDataSourceTarget extends RedisConnectionConfig {
+  endpoints: RedisEndpoint[];
+}
+
+export async function openRedis(
+  source: import("../datasource").DataSource<RedisDataSourceTarget>,
+  lifecycle: import("../datasource").ClientLifecycle = {},
+): Promise<{ access: RedisAccess; target: RedisDataSourceTarget }> {
+  lifecycle.signal?.throwIfAborted();
+  const target = await source.resolve();
+  const transport = source.transports[0];
+  if (!transport || transport.kind !== "tcp") throw new Error("Redis requires a TCP transport");
+  const access = new RedisAccess(transport, target);
+  lifecycle.onDispose?.(() => access.close());
+  return { access, target };
 }

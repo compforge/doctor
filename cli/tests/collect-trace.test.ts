@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Detector } from "@compforge/trace-harness";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { OUTCOME_UNREACHED_REASON } from "../src/collect/evidence";
-import type { SearchEngine } from "../src/infra/search";
+import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
 import { pickOpenSearchService } from "../src/infra/search/opensearch";
 import {
   buildIndexExpr,

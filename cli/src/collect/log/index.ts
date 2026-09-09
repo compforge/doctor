@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
 import { ClientNodePodLogAccess } from "../../infra/k8s/client-node-pod-log";
 import { runCollect } from "../engine";

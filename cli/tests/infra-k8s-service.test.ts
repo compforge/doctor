@@ -1,17 +1,17 @@
 import { expect, test } from "bun:test";
-import type { Executor } from "../src/infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   findPod,
   parsePods,
-} from "../src/infra/k8s/pod";
-import { PortForwardScope, type PortForwardTarget } from "../src/infra/k8s/port-forward";
-import { ServicePortForwarder } from "../src/infra/k8s/service-port-forward";
+} from "@compforge/doctor-toolkit/kubernetes/pod";
+import { PortForwardScope, type PortForwardTarget } from "@compforge/doctor-toolkit/kubernetes/port-forward";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import {
   findService,
   findServicesForPod,
   parseServices,
   serviceIdentity,
-} from "../src/infra/k8s/service";
+} from "@compforge/doctor-toolkit/kubernetes/service";
 
 function serviceList(targetPort: string | number = 6379): string {
   return JSON.stringify({

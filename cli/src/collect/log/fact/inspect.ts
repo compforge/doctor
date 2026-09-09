@@ -1,4 +1,4 @@
-import type { ExecResult } from "../../../infra/k8s/executor";
+import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { Inspect } from "../../inspection";
 import type { LogCommandContext, LogInspectionFacts } from "../model";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";

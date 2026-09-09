@@ -3,7 +3,7 @@ import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import {
   resolveKubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { ServiceChoice } from "../../infra/k8s/service-selection";
 import {
   promptNamedChoices,

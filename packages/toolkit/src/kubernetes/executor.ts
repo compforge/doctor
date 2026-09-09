@@ -2,7 +2,7 @@
 // 只负责传输语义——argv 组装（数组形式，无 shell 拼接注入面）、stdin 送入、
 // 超时、退出码与 stdout/stderr 捕获；不理解任何诊断领域语义。
 
-import { spawnProcess, type RuntimeProcess } from "../host/process";
+import { spawnProcess, type RuntimeProcess } from "../process/index";
 
 export interface KubectlOptions {
   /** 省略时不加 -n（doctor trace 的 svc 发现需要跨 namespace / -A 查询） */

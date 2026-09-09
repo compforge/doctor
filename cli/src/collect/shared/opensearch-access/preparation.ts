@@ -1,6 +1,8 @@
-import { KubectlExecutor, type KubectlOptions } from "../../../infra/k8s/executor";
-import { ServicePortForwarder } from "../../../infra/k8s/service-port-forward";
-import type { SearchEngine } from "../../../infra/search";
+import { DirectTransport } from "@compforge/doctor-toolkit/transport";
+import { openOpenSearch } from "@compforge/doctor-toolkit/opensearch";
+import { KubectlExecutor, type KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
+import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
 import {
   normalizeOpenSearchHost,
   OpenSearchEngine,
@@ -131,6 +133,6 @@ export async function prepareOpenSearchAccess(
       return failed("OpenSearch 不可达", reason);
     }
   }
-  search = injectedSearch ?? new OpenSearchEngine({ node: baseUrl, auth });
+  search = injectedSearch ?? await openOpenSearch({ resolve: async () => ({ node: baseUrl, auth }), transports: [new DirectTransport()] });
   return { search, channel, baseUrl, steps, close };
 }

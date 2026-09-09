@@ -325,8 +325,9 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 推导网络地址。
 
 Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
-`PluginContext` 按需提供。HTTP、数据库客户端由 Plugin 实现；SDK helper 只承载稳定且跨 Plugin 同义
-重复的代码。协议不注入 Doctor 的 `HttpTransport`、`Database` 等具体实现。Workload discovery 规则、
+`PluginContext` 按需提供。通用数据访问实现由独立的 `packages/toolkit` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
+与协议 Client。toolkit 不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
+Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
@@ -372,3 +373,6 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 `capabilities.overview` 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
 文字，`canSample` 决定是否可进入可选采集。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
 Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。详见 [Overview](commands/overview.md)。
+
+Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，
+不得放入命令参数。取消信号、权限检查及资源生命周期继续由宿主管理。

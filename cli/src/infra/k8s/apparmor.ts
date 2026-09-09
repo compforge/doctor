@@ -1,4 +1,4 @@
-import type { ExecResult, Executor } from "./executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 const PROBE_TIMEOUT_MS = 15_000;
 

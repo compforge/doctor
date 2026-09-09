@@ -1,5 +1,5 @@
-import { KubectlExecutor } from "../../../k8s/executor";
-import { serviceIdentity } from "../../../k8s/service";
+import { KubectlExecutor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { serviceIdentity } from "@compforge/doctor-toolkit/kubernetes/service";
 import type {
   S3PhysicalCapacity,
   S3ProviderCapacityInput,

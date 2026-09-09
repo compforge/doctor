@@ -1,4 +1,4 @@
-import type { ExecResult, Executor } from "./executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import type { K8sMutation } from "./mutation";
 
 export interface EphemeralContainerOptions {

@@ -10,7 +10,7 @@ import {
   type CommandScope,
 } from "../src/command";
 import { diagnosticPids, parseProcscan, pickPid } from "../src/collect/fact/process";
-import type { Executor } from "../src/infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import {
   shouldPreviewPodChoices,

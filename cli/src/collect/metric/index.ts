@@ -6,7 +6,7 @@ import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
-import type { Executor } from "../../infra/k8s/executor";
+import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { runCollect } from "../engine";

@@ -1,13 +1,13 @@
 import { closeSync, openSync, writeSync } from "node:fs";
-import type { ExecResult, Executor } from "./executor";
+import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
   parsePods,
   type KubernetesPod,
-} from "./pod";
+} from "@compforge/doctor-toolkit/kubernetes/pod";
 import {
   findPodsForService,
   parseServices,
-} from "./service";
+} from "@compforge/doctor-toolkit/kubernetes/service";
 
 export interface ServicePodListResult {
   serviceCapture: ExecResult;

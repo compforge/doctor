@@ -41,6 +41,6 @@ export interface KubernetesAccess {
   inNamespace(namespace: string): KubernetesAccess;
   get<T>(resource: string, name: string): Promise<T>;
   list<T>(resource: string, options?: KubernetesListOptions): Promise<T[]>;
-  exec(target: KubernetesExecTarget, command: readonly string[]): Promise<string>;
+  exec(target: KubernetesExecTarget, command: readonly string[], options?: { stdin?: string; timeoutMs?: number }): Promise<string>;
   portForward(target: HttpServiceTarget): Promise<HttpServiceTarget & { servername?: string }>;
 }

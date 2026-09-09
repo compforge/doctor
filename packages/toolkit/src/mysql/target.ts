@@ -1,4 +1,4 @@
-import type { DatabaseIdentity, DatabaseTarget } from "..";
+import type { DatabaseIdentity, DatabaseTarget } from "./types";
 
 export interface MysqlTarget extends DatabaseTarget {
   credentialSource: "service-env" | "profile";
