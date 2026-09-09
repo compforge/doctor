@@ -1,7 +1,8 @@
+import type { Client } from "../client";
 import { ConcurrencyPool } from "../concurrency";
 import { createConnection, type Connection, type ConnectionOptions, type RowDataPacket } from "mysql2/promise";
 import type { Database, DatabaseTarget, DatabaseRow } from "./types";
-import type { DataSource, ClientLifecycle } from "../datasource";
+import type { ConnectionSource, ClientLifecycle } from "../datasource";
 import { isConnectionNetworkError, type Transport, type PodPythonTransport } from "../transport";
 import { queryMysqlViaPod } from "./pod";
 
@@ -24,14 +25,26 @@ export class MysqlDatabase implements Database {
     return this.#queries.run(() => this.#query(target, sql, values), this.options.signal);
   }
 
-  async #query(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow[]> {
+  initialize(target: DatabaseTarget): Promise<void> {
+    return this.#queries.run(async () => { await this.#session(target); }, this.options.signal);
+  }
+
+  #session(target: DatabaseTarget): Promise<Session> {
     this.options.signal?.throwIfAborted();
     const key = [target.host, target.port, target.database, target.user, target.password].join("\0");
     let pending = this.#connections.get(key);
     if (!pending) {
       pending = this.#open(target);
       this.#connections.set(key, pending);
+      void pending.catch(() => { if (this.#connections.get(key) === pending) this.#connections.delete(key); });
     }
+    return pending;
+  }
+
+  async #query(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow[]> {
+    this.options.signal?.throwIfAborted();
+    const key = [target.host, target.port, target.database, target.user, target.password].join("\0");
+    const pending = this.#session(target);
     let session: Session | undefined;
     try {
       session = await pending;
@@ -85,9 +98,51 @@ export class MysqlDatabase implements Database {
   }
 }
 
-export async function openMysql<Target extends DatabaseTarget>(source: DataSource<Target>, options: MysqlDatabaseOptions): Promise<{ database: Database; target: Target }> {
-  const target = await source.resolve();
-  const database = new MysqlDatabase(source.transports, options);
-  options.onDispose?.(() => database.close());
-  return { database, target };
+/** A datasource-bound MySQL client; the protocol adapter still supports explicit multi-target diagnostics. */
+export class MysqlClient<Target extends DatabaseTarget = DatabaseTarget> implements Client {
+  readonly #controller = new AbortController();
+  readonly signal: AbortSignal;
+  #initialization?: Promise<void>;
+  #disposal?: Promise<void>;
+  #database?: MysqlDatabase;
+  #target?: Target;
+
+  constructor(private readonly source: ConnectionSource<Target>, private readonly options: MysqlDatabaseOptions) {
+    this.signal = options.signal ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
+  }
+
+  initialize(): Promise<void> {
+    this.signal.throwIfAborted();
+    return this.#initialization ??= (async () => {
+      this.#target = await this.source.resolve();
+      this.signal.throwIfAborted();
+      this.#database = new MysqlDatabase(this.source.transports, { ...this.options, signal: this.signal });
+      await this.#database.initialize(this.#target);
+    })();
+  }
+
+  get database(): Database {
+    if (!this.#database) throw new Error("MySQL client is not initialized");
+    return this.#database;
+  }
+  get target(): Target {
+    if (!this.#target) throw new Error("MySQL client is not initialized");
+    return this.#target;
+  }
+
+  dispose(): Promise<void> {
+    return this.#disposal ??= (async () => {
+      this.#controller.abort(new Error("MySQL client disposed"));
+      await this.#initialization?.catch(() => {});
+      await this.#database?.close();
+    })();
+  }
+}
+
+export async function openMysql<Target extends DatabaseTarget>(source: ConnectionSource<Target>, options: MysqlDatabaseOptions): Promise<MysqlClient<Target>> {
+  const client = new MysqlClient(source, options);
+  try { await client.initialize(); }
+  catch (error) { await client.dispose(); throw error; }
+  options.onDispose?.(() => client.dispose());
+  return client;
 }

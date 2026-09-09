@@ -158,7 +158,7 @@ Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数
 ### Context 与调用归属
 
 `CommandContext` 属于整轮执行树，保存 Profile、当前 Plugin、按需准备并复用的环境信息、权限检查、
-Decision、Discovery、ExecutionRecord、共享 ResourceScope 与取消信号。领域 Context 保存单次执行准备的 Target、client、
+Decision、ExecutionRecord、共享 ClientManager 与取消信号。领域 Context 保存单次执行准备的 Target、client、
 Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的受限依赖与 infra。
 
 同一 CommandContext 可以被并发子命令共享。Artifacts 使用异步调用作用域，每次调用返回自己的产物
@@ -169,11 +169,19 @@ Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本
 和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
 执行树，停止后续工作，并保留已生成证据。
 
-共享基础设施由根 CommandContext 的 `resources` 持有，复用 DataSource 解析、Transport 和 Client；
-查询与命令结果仍各自执行。Toolkit 的 ResourceScope 合并并发初始化，在初始化失败后先清理再允许重试。
-Plugin 的资源工厂接收独立的 PluginResourceContext，不能捕获某次调用的 signal、infra 或 dependency。
-子调用结束只清理自己的临时资源；根入口等待领域工作结束，再关闭共享客户端与传输，最后交付报告。
-直接嵌入 CommandSpec 的宿主同样负责在整棵调用树结束后 dispose 根资源作用域。
+共享基础设施由根 CommandContext 的 ClientManager 持有，命令通过只提供 get 的 `clients` 视图借用。
+DataSource 标识目标与访问配置并构造 Client；Client.initialize 按需解析配置、选择 Transport、准备连接，
+Client.dispose 幂等回收自己拥有的资源。构造函数不执行外部操作，查询及其结果仍属于各次领域调用。
+普通领域数据保存在相应模块中，不进入通用 Context 缓存。
+
+同一 DataSource 身份的并发调用等待同一次初始化；成功后复用 Client，失败后先清理部分初始化的资源，
+再允许后续调用重试。身份包含影响访问的配置和凭据，不能使用对象地址。依赖客户端先获取，消费者后初始化；
+finalize 等待所有初始化结束，再按相反顺序销毁，保证数据库先关闭、Kubernetes 通道后停止。
+开始销毁后拒绝新获取，即使某个客户端清理失败也继续处理其余客户端。
+
+Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束的 infra 属于根执行树，不能捕获
+某次 capability 调用的上下文或 dependency handle。子调用只清理自己的临时资源。直接嵌入 CommandSpec 的
+宿主同样负责在整棵调用树结束后调用根 Context 的 disposeClients；CLI 在 finalize 中统一完成此操作。
 
 
 ### 结果与 Finalize
@@ -185,7 +193,7 @@ Plugin 的资源工厂接收独立的 PluginResourceContext，不能捕获某次
 根 CLI 将结果映射为退出码：ok 和 partial 为 0，failed 为非零，cancelled 为 130。子命令不设置
 进程退出码，也不调用根入口的最终交付。
 
-Finalize 只执行一次，消费根结果纳入的 Artifacts，统一处理路径、格式、Bundle、Delivery 和临时产物
+Finalize 只执行一次，先销毁共享 Client；清理失败记录错误，仍继续交付证据。随后消费根结果纳入的 Artifacts，统一处理路径、格式、Bundle、Delivery 和临时产物
 清理。报告名称由相应调用拥有，最外层决定最终交付名称。交付失败时保留源产物以便恢复。
 
 默认格式、partial 报告、Evidence Bundle、失败兜底和退出码语义由

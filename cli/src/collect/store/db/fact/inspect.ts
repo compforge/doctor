@@ -1,7 +1,8 @@
+import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
+import { KubernetesClient } from "@compforge/doctor-toolkit/kubernetes/client";
 import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
-import { MysqlDatabase, parseMysqlEnvTarget } from "../../../../infra/database/mysql";
+import { MysqlClient, parseMysqlEnvTarget } from "../../../../infra/database/mysql";
 import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { DbCommandContext } from "../context";
@@ -81,15 +82,23 @@ export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandConte
         return { access: unavailableFact("store.db.access", "db-access", reason) };
       }
       try {
-        ctx.forwarder = await ServicePortForwarder.create(ctx.executor, {
+        const kube = {
           namespace: ctx.config.collect.kubernetes.namespace,
           kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
           context: ctx.config.collect.kubernetes.context,
+        };
+        const kubernetes = await ctx.command.clients.get({
+          key: dataSourceKey("kubernetes", kube),
+          createClient: signal => new KubernetesClient(kube, signal, ctx.executor),
         });
-        ctx.database = new MysqlDatabase([new PortForwardTransport((endpoint) => ctx.forwarder!.forward(endpoint))], {
-          connectTimeoutMs: 10_000,
-          queryTimeoutMs: 15_000,
+        const target = ctx.target;
+        const client = await ctx.command.clients.get({
+          key: dataSourceKey("mysql", { kube, target }),
+          createClient: signal => new MysqlClient({ resolve: async () => target,
+            transports: [new PortForwardTransport(endpoint => kubernetes.forward(kube.namespace, endpoint))],
+          }, { signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
         });
+        ctx.database = client.database;
         const access = { backend: "mysql" as const, channel: "service-port-forward" as const };
         ctx.bundle.fill("access-preparation", {
           status: "ok",

@@ -330,16 +330,19 @@ Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收由�
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
 
-Service 通过 `context.resources.acquire(key, factory)` 复用同一执行树中的数据访问资源。
-key 表达 Plugin 内的数据源及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、
-配置、数据库身份与声明的 access 隔离。同一 key 的工厂必须返回同一种资源类型。配置身份只保留内存摘要，
-不输出凭据。每次 capability 调用仍先通过自己的 access 预检，资源复用不扩大权限。
+Service 通过 `context.clients.get(dataSource)` 获取已初始化的 Client。DataSource 的 key 表达 Plugin 内的
+目标及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、配置、数据库身份与声明的
+access 隔离。同一 key 必须对应同一种 Client。配置身份只保留内存摘要，不输出凭据；每次 capability
+调用仍先通过自己的 access 预检，客户端复用不扩大权限。
 
-工厂接收的 `PluginResourceContext` 提供共享资源的 signal、infra 和 onDispose；它没有单次调用的
-依赖 handle。DataSource 解析及 Transport 闭包应只捕获工厂上下文，以免首个调用结束后使共享客户端失效。
-工厂创建的 Client 应注册 cleanup，并自行限制并发；MySQL Client 使用单个查询槽位，覆盖原生连接和
-Pod Python 路径，保持现有连接/查询超时。资源关闭会先等待客户端工作结束，再停止 port-forward。
-共享资源只缓存访问准备与连接，不能缓存 SQL 或业务查询结果。
+DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dispose 的 Client。工厂只构造对象，
+外部操作归 initialize；dispose 必须幂等，并能清理初始化失败留下的资源。工厂上下文的 signal 和 infra
+属于整棵执行树，没有单次调用的依赖 handle，也无需手动注册共享客户端 cleanup。
+
+Client 持有初始化所需的运行时配置、选中的 Pod 与 Transport，并自行限制并发。MySQL 使用单个查询槽位，
+覆盖原生连接和 Pod Python 路径，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
+根 finalize 集中关闭消费者和其依赖的 Kubernetes Client。借用的 Kubernetes 通道不能由某个数据库客户端关闭。
+客户端复用只覆盖访问准备和连接，各次 SQL、Overview Entry 查询与诊断结果独立执行。
 
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定

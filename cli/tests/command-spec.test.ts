@@ -200,14 +200,14 @@ test("only the root delivers and cleans child artifacts, including partial resul
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
   const parent = defineCommand<CommandInput, void>({ name: "overview", run: async (ctx) => {
-    await ctx.resources.acquire("shared", async lifetime => {
-      lifetime.onDispose(() => {
+    await ctx.clients.get({ key: "shared", createClient: () => ({
+      initialize: async () => {},
+      dispose: async () => {
         expect(existsSync(join(root, "first", "report.html"))).toBe(true);
         expect(existsSync(join(root, "second", "report.html"))).toBe(true);
         resourceClosed = true;
-      });
-      return {};
-    });
+      },
+    }) });
     for (const id of ["first", "second"]) {
       const result = await child.run(ctx, { id });
       expect(result.status).toBe(CommandStatus.Partial);
@@ -229,4 +229,26 @@ test("only the root delivers and cleans child artifacts, including partial resul
     process.exitCode = previousExit;
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+test("finalize cleanup failure still delivers captured evidence", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-finalize-failure-"));
+  const output = join(root, "report.html");
+  const previousExit = process.exitCode;
+  const command = defineCommand<CommandInput, void>({ name: "overview", run: async ctx => {
+    await ctx.clients.get({ key: "broken-close", createClient: () => ({
+      initialize: async () => {}, dispose: async () => { throw new Error("close failed"); },
+    }) });
+    const artifact = join(root, "evidence");
+    mkdirSync(artifact);
+    writeFileSync(join(artifact, "report.html"), "<html>captured evidence</html>");
+    ctx.artifacts.add("overview", artifact);
+    return ok(undefined);
+  } });
+  try {
+    await runCommand(command, { config: join(root, "absent.yaml"), output, format: "html" }, {}, { printProfile: false });
+    expect(process.exitCode).toBe(1);
+    expect(readFileSync(output, "utf8")).toContain("captured evidence");
+  } finally { process.exitCode = previousExit; rmSync(root, { recursive: true, force: true }); }
 });

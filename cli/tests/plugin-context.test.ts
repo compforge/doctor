@@ -75,7 +75,7 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
     command: ["sample-api-0", "env"],
   }]);
   expect(calls.every(({ options }) => options?.timeoutMs === 20_000)).toBe(true);
-  expect(calls.every(({ options }) => options?.signal === context.signal)).toBe(true);
+  expect(calls.every(({ options }) => options?.signal?.aborted === false)).toBe(true);
 
   await context.dispose();
   expect(context.signal.aborted).toBe(true);
@@ -226,7 +226,7 @@ test("Plugin exec forwards stdin under access checks and caps timeout without ex
     .rejects.toThrow("kubectl -n default exec sample-0 失败：forbidden");
   expect(calls[0]?.stdin).toBe("secret");
   expect(calls[0]?.timeoutMs).toBe(20_000);
-  expect(calls[0]?.signal).toBe(context.signal);
+  expect(calls[0]?.signal?.aborted).toBe(false);
   await context.dispose();
   const denied = createPluginContext(executor, { namespace: "default" }, {
     env: "test", service: { name: "sample" }, capability: { access: {} },
@@ -255,14 +255,14 @@ test("siblings share resources after the first PluginContext is disposed, but ne
   } as const;
   const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", run: async (_root, input) => {
     const context = createPluginContext(executor, { namespace: "test" }, options);
-    const client = await context.resources.acquire("db", async resource => {
-      discoveries++;
-      resource.onDispose(() => { closed++; });
-      return { query: async (id: string) => {
+    const client = await context.clients.get({ key: "db", createClient: resource => ({
+      initialize: async () => { discoveries++; },
+      dispose: async () => { closed++; },
+      query: async (id: string) => {
         await resource.infra.kubernetes.get("services", "api");
         return id;
-      } };
-    });
+      },
+    }) });
     await context.dispose();
     expect(context.signal.aborted).toBe(true);
     return { status: CommandStatus.Ok, artifacts: [], output: await client.query(input.id) };
@@ -283,7 +283,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
     ];
     for (const variant of variants) {
       const ctx = createPluginContext(executor, variant.kube, variant.options);
-      const distinct = await ctx.resources.acquire("db", async resource => ({ resource }));
+      const distinct = await ctx.clients.get({ key: "db", createClient: resource => ({ resource, initialize: async () => {}, dispose: async () => {} }) });
       expect(distinct).toHaveProperty("resource");
       if (!("kubernetes" in variant.options.capability.access)) {
         await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");
@@ -292,7 +292,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
     return { status: CommandStatus.Ok, artifacts: [], output: undefined };
   } });
   expect((await isolation.run(root, {})).status).toBe(CommandStatus.Ok);
-  await root.resources.dispose();
+  await root.disposeClients();
   expect(closed).toBe(1);
 });
 

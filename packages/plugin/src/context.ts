@@ -1,3 +1,4 @@
+import type { Client } from "@compforge/doctor-toolkit/client";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
 import type { ServiceEndpoint, ServiceStoreCapabilityDependency } from "./service";
@@ -38,23 +39,28 @@ export interface PluginInfra {
   databaseIdentity?: DatabaseIdentity;
 }
 
-/** Resource factories receive a root-owned lifetime; never capture a capability call's context. */
-export interface PluginResourceContext {
+/** Client factories receive root-owned access; never capture a capability call's context. */
+export interface PluginClientContext {
   target: PluginTarget;
   /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
   config: Readonly<Record<string, unknown>>;
   infra: PluginInfra;
   signal: AbortSignal;
-  onDispose(disposer: () => void | Promise<void>): void;
 }
 
-export interface PluginResources {
-  /** The host namespaces this key by target, configuration and declared access. */
-  acquire<T>(key: string, create: (context: PluginResourceContext) => Promise<T>): Promise<T>;
+export interface PluginDataSource<C extends Client> {
+  /** The host additionally namespaces this key by target, configuration and declared access. */
+  readonly key: string;
+  createClient(context: PluginClientContext): C;
 }
 
-export interface PluginContext extends PluginResourceContext {
-  /** Dependencies have the capability call's lifetime and cannot enter shared resource factories. */
+export interface PluginClients {
+  get<C extends Client>(source: PluginDataSource<C>): Promise<C>;
+}
+
+export interface PluginContext extends PluginClientContext {
+  /** Dependencies belong to this capability call and cannot enter shared client factories. */
   dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
-  resources: PluginResources;
+  clients: PluginClients;
+  onDispose(disposer: () => void | Promise<void>): void;
 }

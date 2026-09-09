@@ -46,7 +46,7 @@ export function defineCommand<Input extends CommandInput, Output>(spec: CommandS
               if (result.reportName) context.artifacts.setReportName(result.reportName);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return result;
-            }, context.resources);
+            }, context.clients);
             return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
           } catch (error) {
             if (!context.signal.aborted) context.options.onError?.(error, spec.name);

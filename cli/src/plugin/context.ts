@@ -1,12 +1,13 @@
-import { createHash } from "node:crypto";
-import { ResourceScope, type ResourceLifetime } from "@compforge/doctor-toolkit/resources";
-import { currentCommandResources, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
+import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
+import { ClientManager } from "@compforge/doctor-toolkit/client-manager";
+import { KubernetesClient } from "@compforge/doctor-toolkit/kubernetes/client";
+import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
   KubernetesAccess,
   PluginContext,
-  PluginResourceContext,
+  PluginClientContext,
   ResolvedServiceCapabilityDependency,
 } from "@compforge/doctor-plugin";
 import type {
@@ -18,8 +19,6 @@ import type {
   Executor,
   KubectlOptions,
 } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { KubectlExecutor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 const PLUGIN_KUBERNETES_TIMEOUT_MS = 20_000;
@@ -87,6 +86,7 @@ function createKubernetesAccess(
 ): KubernetesAccess {
   const scoped = (namespace: string): KubernetesAccess => {
     const assertDeclared = (verb: string, resource: string, resourceName?: string): void => {
+      signal.throwIfAborted();
       const declared = capability.access.kubernetes?.some((need) => (
         need.rule.verb === verb
         && need.rule.resource === resource
@@ -159,79 +159,13 @@ interface PluginContextOptions {
 }
 
 /** Stable configuration identity stays in memory as a digest; credentials never enter logs or keys. */
-function resourceNamespace(kube: KubectlOptions, options: PluginContextOptions): string {
-  const canonical = (value: unknown): unknown => {
-    if (Array.isArray(value)) return value.map(canonical);
-    if (value && typeof value === "object") return Object.fromEntries(
-      Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]),
-    );
-    return value;
-  };
-  const access = (options.capability.access.kubernetes ?? []).map((need) => canonical(need.rule));
-  access.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
-  return createHash("sha256").update(JSON.stringify(canonical({
+function clientNamespace(kube: KubectlOptions, options: PluginContextOptions): string {
+  const access = (options.capability.access.kubernetes ?? []).map(need => need.rule)
+    .sort((a, b) => dataSourceKey("rule", a).localeCompare(dataSourceKey("rule", b)));
+  return dataSourceKey("plugin", {
     kube, env: options.env, service: options.service, endpoint: options.endpoint,
     config: options.config ?? {}, databaseIdentity: options.databaseIdentity, access,
-  }))).digest("hex");
-}
-
-function createResourceContext(
-  executor: Executor,
-  kube: KubectlOptions & { namespace: string },
-  options: PluginContextOptions,
-  lifetime: ResourceLifetime,
-): PluginResourceContext {
-  const { signal } = lifetime;
-  const executors = new Map<string, Executor>([[kube.namespace, executor]]);
-  const executorForNamespace = (namespace: string): Executor => {
-    let scoped = executors.get(namespace);
-    if (!scoped) {
-      scoped = new KubectlExecutor({ ...kube, namespace });
-      executors.set(namespace, scoped);
-    }
-    return scoped;
-  };
-  const forwarders = new Map<string, Promise<ServicePortForwarder>>();
-  // Install transport cleanup before clients register theirs, so clients close first.
-  lifetime.onDispose(async () => {
-    const results = await Promise.allSettled([...forwarders.values()].map(async (pending) => {
-      const ready = await pending.catch(() => undefined);
-      await ready?.stop();
-    }));
-    const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-    if (errors.length) throw new AggregateError(errors, "Plugin transport cleanup failed");
   });
-  const portForward = async (namespace: string, target: Parameters<KubernetesAccess["portForward"]>[0]) => {
-    let forwarder = forwarders.get(namespace);
-    if (!forwarder) {
-      const scopedKube = { ...kube, namespace };
-      forwarder = ServicePortForwarder.create(executorForNamespace(namespace), scopedKube);
-      forwarders.set(namespace, forwarder);
-      void forwarder.catch(() => { if (forwarders.get(namespace) === forwarder) forwarders.delete(namespace); });
-    }
-    return await (await forwarder).forward(target);
-  };
-  return {
-    target: {
-      env: options.env,
-      namespace: kube.namespace,
-      service: options.service,
-      endpoint: options.endpoint,
-    },
-    config: options.config ?? {},
-    infra: {
-      databaseIdentity: options.databaseIdentity,
-      kubernetes: createKubernetesAccess(
-        executorForNamespace,
-        kube.namespace,
-        signal,
-        options.capability,
-        portForward,
-      ),
-    },
-    signal,
-    onDispose: (disposer) => lifetime.onDispose(disposer),
-  };
 }
 
 export function createPluginContext(
@@ -239,22 +173,55 @@ export function createPluginContext(
   kube: KubectlOptions & { namespace: string },
   options: PluginContextOptions,
 ): ManagedPluginContext {
-  const local = new ResourceScope(currentCommandSignal());
-  const shared = currentCommandResources() ?? local;
-  const namespace = resourceNamespace(kube, options);
-  const unregister = onCommandDispose(() => local.dispose());
+  const controller = new AbortController();
+  const parentSignal = currentCommandSignal();
+  const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
+  const root = currentCommandClients();
+  const local = root ? undefined : new ClientManager(parentSignal);
+  const clients = root ?? local!;
+  const namespace = clientNamespace(kube, options);
+  const clusterKey = dataSourceKey("kubernetes", kube);
+  const cluster = () => clients.get({ key: clusterKey, createClient: rootSignal => new KubernetesClient(kube, rootSignal, executor) });
+  const disposers: Array<() => void | Promise<void>> = [];
+  let disposal: Promise<void> | undefined;
+  const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
+    target: { env: options.env, namespace: kube.namespace, service: options.service, endpoint: options.endpoint },
+    config: options.config ?? {},
+    infra: {
+      databaseIdentity: options.databaseIdentity,
+      kubernetes: createKubernetesAccess(ns => ({
+        run: async (command, runOptions) => (client ?? await cluster()).run(ns, command, runOptions),
+        exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
+      }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target)),
+    },
+    signal: accessSignal,
+  });
+  const dispose = () => disposal ??= (async () => {
+    unregister();
+    controller.abort();
+    const errors: unknown[] = [];
+    for (const close of disposers.reverse()) { try { await close(); } catch (error) { errors.push(error); } }
+    try { await local?.dispose(); } catch (error) { errors.push(error); }
+    if (errors.length) throw new AggregateError(errors, "Plugin resource cleanup failed");
+  })();
+  const unregister = onCommandDispose(dispose);
   return {
-    ...createResourceContext(executor, kube, options, local),
+    ...access(signal),
     dependencies: options.dependencies ?? {},
-    resources: {
-      acquire: (key, create) => {
-        local.signal.throwIfAborted();
-        return shared.acquire(`${namespace}:${key}`, (lifetime) => create(
-          createResourceContext(executor, kube, options, lifetime),
-        ));
+    clients: {
+      get: async source => {
+        signal.throwIfAborted();
+        // Acquire dependencies first; finalization then closes consumers before Kubernetes transports.
+        const kubernetes = await cluster();
+        signal.throwIfAborted();
+        return clients.get({
+          key: `${namespace}:${source.key}`,
+          createClient: rootSignal => source.createClient(access(rootSignal, kubernetes)),
+        });
       },
     },
-    dispose: () => { unregister(); return local.dispose(); },
+    onDispose: disposer => disposers.push(disposer),
+    dispose,
   };
 }
 

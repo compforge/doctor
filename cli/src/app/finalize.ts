@@ -1,3 +1,4 @@
+import { reportError } from "./error-log";
 import type { CommandContext } from "../command";
 import { deliverCommandArtifacts, type CommandDeliveryOptions } from "./delivery";
 
@@ -8,13 +9,20 @@ export interface FinalizeCommandInput {
   code: number;
 }
 
-/** Stable command lifecycle boundary for delivery and future global closing work. */
+/** Root lifecycle boundary: release clients and deliver evidence even when cleanup fails. */
 export async function finalizeCommand(input: FinalizeCommandInput): Promise<number> {
+  let code = input.code;
+  try { await input.context.disposeClients(); }
+  catch (error) {
+    reportError(error, { context: input.command, summary: "client cleanup failed" });
+    code = 1;
+  }
+  if (input.context.signal.aborted) code = 130;
   const delivered = await deliverCommandArtifacts(
     input.context,
     input.delivery,
-    input.code,
+    code,
     input.command,
   );
-  return delivered ? input.code : 1;
+  return delivered ? code : 1;
 }

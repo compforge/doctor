@@ -1,4 +1,7 @@
-import { PortForwardTransport, DirectTransport } from "@compforge/doctor-toolkit/transport";
+import type { Client } from "@compforge/doctor-toolkit/client";
+import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
+import { currentCommandClients } from "../../command/execution-scope";
+import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
 import { RedisAccess, type RedisAccessApi } from "@compforge/doctor-toolkit/redis/index";
 import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
 import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
@@ -90,50 +93,64 @@ export async function confirmRedisTarget(
   }
 }
 
-/** 采集准备建立所有初始 endpoint 的访问通道；拓扑节点在 Probe 中按需追加并由同一 scope 回收。 */
+/** Owns connection preparation; topology and observations remain per collection. */
+class RedisAccessClient implements Client {
+  #initialization?: Promise<void>;
+  #disposal?: Promise<void>;
+  #forwarder?: ServicePortForwarder;
+  access?: RedisAccess;
+  constructor(private readonly executor: Executor, private readonly config: RedisConfig,
+    private readonly target: RedisTarget, private readonly signal?: AbortSignal) {}
+  initialize(): Promise<void> {
+    return this.#initialization ??= (async () => {
+      this.signal?.throwIfAborted();
+      const kubernetes = this.config.collect.kubernetes;
+      this.#forwarder = await ServicePortForwarder.create(this.executor, kubernetes);
+      this.signal?.throwIfAborted();
+      this.access = new RedisAccess(new PortForwardTransport(endpoint => this.#forwarder!.forward(endpoint)), {
+        username: this.target.username, password: this.target.password,
+        useSsl: this.target.useSsl, timeoutMs: this.target.timeout * 1_000,
+      });
+      const initial = this.target.clusterType === "sentinel" && this.target.sentinelHosts.length
+        ? this.target.sentinelHosts : this.target.endpoints;
+      // Wait for every started forward before failure cleanup can stop the forwarder.
+      const results = await Promise.allSettled(initial.map(([host, port]) => this.#forwarder!.forward({ host, port })));
+      const failed = results.find(result => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      this.signal?.throwIfAborted();
+    })();
+  }
+  get forwards() { return this.#forwarder?.activeForwards ?? []; }
+  dispose(): Promise<void> {
+    return this.#disposal ??= (async () => {
+      await this.#initialization?.catch(() => {});
+      try { await this.access?.close(); }
+      finally { this.#forwarder?.stop(); }
+    })();
+  }
+}
+
+/** Nested commands borrow access; standalone callers retain explicit ownership. */
 export async function prepareRedisAccess(
   executor: Executor,
   config: RedisConfig,
   target: RedisTarget,
   injectedAccess?: RedisAccessApi,
 ): Promise<PreparedRedisAccess> {
-  if (injectedAccess) {
-    return { access: injectedAccess, forwards: [], close: () => injectedAccess.close() };
-  }
-  let forwarder: ServicePortForwarder | undefined;
-  let access: RedisAccess | undefined;
+  if (injectedAccess) return { access: injectedAccess, forwards: [], close: () => injectedAccess.close() };
+  const clients = currentCommandClients();
+  let local: RedisAccessClient | undefined;
   try {
-    const kubernetes = config.collect.kubernetes;
-    forwarder = await ServicePortForwarder.create(executor, {
-      namespace: kubernetes.namespace,
-      kubeconfig: kubernetes.kubeconfig,
-      context: kubernetes.context,
-    });
-    access = new RedisAccess(
-      new PortForwardTransport((endpoint) => forwarder!.forward(endpoint)),
-      {
-        username: target.username,
-        password: target.password,
-        useSsl: target.useSsl,
-        timeoutMs: target.timeout * 1_000,
-      },
-    );
-    const initial = target.clusterType === "sentinel" && target.sentinelHosts.length
-      ? target.sentinelHosts
-      : target.endpoints;
-    await Promise.all(initial.map(([host, port]) => forwarder!.forward({ host, port })));
-    return {
-      access,
-      forwards: forwarder.activeForwards,
-      close: async () => {
-        await access!.close();
-        forwarder!.stop();
-      },
-    };
-  } catch (err) {
-    await access?.close();
-    forwarder?.stop();
-    const reason = err instanceof Error ? err.message : String(err);
-    return { forwards: [], reason, close: async () => undefined };
+    const client = clients
+      ? await clients.get({
+          key: dataSourceKey("redis-access", { kubernetes: config.collect.kubernetes, target }),
+          createClient: signal => new RedisAccessClient(executor, config, target, signal),
+        })
+      : (local = new RedisAccessClient(executor, config, target));
+    if (local) await local.initialize();
+    return { access: client.access, forwards: client.forwards, close: local ? () => client.dispose() : async () => {} };
+  } catch (error) {
+    await local?.dispose();
+    return { forwards: [], reason: error instanceof Error ? error.message : String(error), close: async () => {} };
   }
 }

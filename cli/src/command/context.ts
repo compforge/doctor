@@ -1,4 +1,4 @@
-import { ResourceScope } from "@compforge/doctor-toolkit/resources";
+import { ClientManager, type ClientProvider } from "@compforge/doctor-toolkit/client-manager";
 import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../infra/k8s/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -43,19 +43,12 @@ export interface CommandPluginServices {
 export type CommandScope = readonly (string | number | boolean | null)[];
 
 declare const commandDecisionValue: unique symbol;
-declare const commandDiscoveryValue: unique symbol;
 declare const executionRecordValue: unique symbol;
 
 /** A user or command-intent decision made at most once for the same semantic scope. */
 export interface CommandDecision<Value> {
   readonly name: string;
   readonly [commandDecisionValue]: (value: Value) => Value;
-}
-
-/** A read-only runtime discovery reused within the same semantic scope. */
-export interface CommandDiscovery<Value> {
-  readonly name: string;
-  readonly [commandDiscoveryValue]: (value: Value) => Value;
 }
 
 /** An append-only intermediate result produced during command execution. */
@@ -66,10 +59,6 @@ export interface ExecutionRecord<Value> {
 
 export function defineCommandDecision<Value>(name: string): CommandDecision<Value> {
   return Object.freeze({ name }) as unknown as CommandDecision<Value>;
-}
-
-export function defineCommandDiscovery<Value>(name: string): CommandDiscovery<Value> {
-  return Object.freeze({ name }) as unknown as CommandDiscovery<Value>;
 }
 
 export function defineExecutionRecord<Value>(name: string): ExecutionRecord<Value> {
@@ -101,7 +90,8 @@ export class CommandContext {
   #kubernetesPromise?: Promise<KubernetesInspection>;
   #plugin?: PluginDefinition;
   readonly signal: AbortSignal;
-  readonly resources: ResourceScope;
+  readonly clients: ClientProvider;
+  readonly #clients: ClientManager;
 
   /** One budget for the entire command tree, independent of the number of child collects. */
   readonly limits: { readonly podLogs: ConcurrencyPool };
@@ -110,7 +100,6 @@ export class CommandContext {
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
   readonly #decisions = new Map<object, Map<string, Promise<unknown>>>();
   readonly #runs = new Map<object, Map<string, Promise<unknown>>>();
-  readonly #discoveries = new Map<object, Map<string, Promise<unknown>>>();
   readonly #executionRecords = new Map<object, Map<string, unknown[]>>();
 
   constructor(
@@ -127,8 +116,12 @@ export class CommandContext {
     this.#plugin = options.plugin;
     this.signal = options.signal
       ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
-    this.resources = new ResourceScope(this.signal);
+    this.#clients = new ClientManager(this.signal);
+    this.clients = { get: source => this.#clients.get(source) };
   }
+
+  /** Root finalize owns this operation; child commands only borrow clients. */
+  disposeClients(): Promise<void> { return this.#clients.dispose(); }
 
   get plugin(): PluginDefinition {
     if (!this.#plugin) throw new Error("This command requires a loaded Plugin");
@@ -196,15 +189,6 @@ export class CommandContext {
     decide: () => Value | Promise<Value>,
   ): Promise<Value> {
     return this.#memoize(this.#decisions, type, scope, decide);
-  }
-
-  /** 同一类型、同一作用域只发现一次；异常不会污染后续步骤，可再次探测。 */
-  discover<Value>(
-    type: CommandDiscovery<Value>,
-    scope: CommandScope,
-    inspect: () => Value | Promise<Value>,
-  ): Promise<Value> {
-    return this.#memoize(this.#discoveries, type, scope, inspect);
   }
 
   /** Same command and declared scope share one completed result, including partial/failed evidence. */

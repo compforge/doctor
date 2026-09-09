@@ -1,6 +1,5 @@
 import { cwd } from "node:process";
 import {
-  defineCommandDiscovery,
   type CommandContext,
 } from "../../command";
 import {
@@ -20,10 +19,6 @@ export interface DebugInstallFollowUp {
   packageTars: string[];
   install: InstallCliOpts;
 }
-
-const localPackageBundles = defineCommandDiscovery<readonly PackageBundle[]>(
-  "toolkit.packages.local",
-);
 
 export function resolveDebugInstallFollowUp(input: {
   interactive: boolean;
@@ -63,11 +58,7 @@ export async function offerDebugInstall(
   commandContext: CommandContext,
 ): Promise<number> {
   const directory = cwd();
-  const bundles = await commandContext.discover(
-    localPackageBundles,
-    [directory],
-    () => discoverPackageBundles(directory),
-  );
+  const bundles = discoverPackageBundles(directory);
   const followUp = resolveDebugInstallFollowUp({
     interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
     bundles,
