@@ -28,6 +28,8 @@ export async function requireKubernetesChannel(input: {
   terminalStdout.success("[k8s] Kubernetes API Server 可达\n");
 }
 
+const reportedAccess = new WeakMap<KubernetesAccessContext, Set<string>>();
+
 export async function enforceKubernetesAccess(
   context: KubernetesAccessContext,
   contract: KubernetesAccessContract,
@@ -37,6 +39,11 @@ export async function enforceKubernetesAccess(
     const label = accessLabel(fact.need.rule);
     const scope = contract.namespace ? `，namespace=${contract.namespace}` : "";
     if (fact.status === "allowed") {
+      const reported = reportedAccess.get(context) ?? new Set<string>();
+      reportedAccess.set(context, reported);
+      const key = JSON.stringify([contract.namespace, fact.need.rule, fact.need.requirement]);
+      if (reported.has(key)) continue;
+      reported.add(key);
       terminalStdout.success(
         `[k8s] ${fact.need.requirement}: ${label} ✓（${fact.need.purpose}${scope}）\n`,
       );

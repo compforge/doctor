@@ -1,7 +1,9 @@
+import type { ResourceScope } from "@compforge/doctor-toolkit/resources";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 interface ExecutionScope {
   signal: AbortSignal;
+  resources?: ResourceScope;
   disposers: Set<() => void | Promise<void>>;
 }
 
@@ -12,14 +14,18 @@ export function currentCommandSignal(): AbortSignal | undefined {
   return execution.getStore()?.signal;
 }
 
+export function currentCommandResources(): ResourceScope | undefined {
+  return execution.getStore()?.resources;
+}
+
 export function onCommandDispose(dispose: () => void | Promise<void>): () => void {
   const scope = execution.getStore();
   scope?.disposers.add(dispose);
   return () => { scope?.disposers.delete(dispose); };
 }
 
-export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>): Promise<T> {
-  const scope: ExecutionScope = { signal, disposers: new Set() };
+export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, resources?: ResourceScope): Promise<T> {
+  const scope: ExecutionScope = { signal, resources, disposers: new Set() };
   return execution.run(scope, async () => {
     let failed = false;
     let failure: unknown;

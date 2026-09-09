@@ -1,9 +1,12 @@
-import { currentCommandSignal, onCommandDispose } from "../command/execution-scope";
+import { createHash } from "node:crypto";
+import { ResourceScope, type ResourceLifetime } from "@compforge/doctor-toolkit/resources";
+import { currentCommandResources, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
   KubernetesAccess,
   PluginContext,
+  PluginResourceContext,
   ResolvedServiceCapabilityDependency,
 } from "@compforge/doctor-plugin";
 import type {
@@ -133,6 +136,7 @@ function createKubernetesAccess(
         );
       },
       portForward: async (target) => {
+        signal.throwIfAborted();
         assertDeclared("create", "pods/portforward");
         return portForward(namespace, target);
       },
@@ -154,17 +158,30 @@ interface PluginContextOptions {
   dependencies?: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
 }
 
-export function createPluginContext(
+/** Stable configuration identity stays in memory as a digest; credentials never enter logs or keys. */
+function resourceNamespace(kube: KubectlOptions, options: PluginContextOptions): string {
+  const canonical = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map(canonical);
+    if (value && typeof value === "object") return Object.fromEntries(
+      Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)]),
+    );
+    return value;
+  };
+  const access = (options.capability.access.kubernetes ?? []).map((need) => canonical(need.rule));
+  access.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  return createHash("sha256").update(JSON.stringify(canonical({
+    kube, env: options.env, service: options.service, endpoint: options.endpoint,
+    config: options.config ?? {}, databaseIdentity: options.databaseIdentity, access,
+  }))).digest("hex");
+}
+
+function createResourceContext(
   executor: Executor,
   kube: KubectlOptions & { namespace: string },
   options: PluginContextOptions,
-): ManagedPluginContext {
-  const controller = new AbortController();
-  const parentSignal = currentCommandSignal();
-  const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
-  let disposal: Promise<void> | undefined;
-  let unregister = () => {};
-  const disposers: Array<() => void | Promise<void>> = [];
+  lifetime: ResourceLifetime,
+): PluginResourceContext {
+  const { signal } = lifetime;
   const executors = new Map<string, Executor>([[kube.namespace, executor]]);
   const executorForNamespace = (namespace: string): Executor => {
     let scoped = executors.get(namespace);
@@ -175,16 +192,26 @@ export function createPluginContext(
     return scoped;
   };
   const forwarders = new Map<string, Promise<ServicePortForwarder>>();
+  // Install transport cleanup before clients register theirs, so clients close first.
+  lifetime.onDispose(async () => {
+    const results = await Promise.allSettled([...forwarders.values()].map(async (pending) => {
+      const ready = await pending.catch(() => undefined);
+      await ready?.stop();
+    }));
+    const errors = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
+    if (errors.length) throw new AggregateError(errors, "Plugin transport cleanup failed");
+  });
   const portForward = async (namespace: string, target: Parameters<KubernetesAccess["portForward"]>[0]) => {
     let forwarder = forwarders.get(namespace);
     if (!forwarder) {
       const scopedKube = { ...kube, namespace };
       forwarder = ServicePortForwarder.create(executorForNamespace(namespace), scopedKube);
       forwarders.set(namespace, forwarder);
+      void forwarder.catch(() => { if (forwarders.get(namespace) === forwarder) forwarders.delete(namespace); });
     }
     return await (await forwarder).forward(target);
   };
-  const context: ManagedPluginContext = {
+  return {
     target: {
       env: options.env,
       namespace: kube.namespace,
@@ -192,7 +219,6 @@ export function createPluginContext(
       endpoint: options.endpoint,
     },
     config: options.config ?? {},
-    dependencies: options.dependencies ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
       kubernetes: createKubernetesAccess(
@@ -204,20 +230,32 @@ export function createPluginContext(
       ),
     },
     signal,
-    onDispose: (disposer) => disposers.push(disposer),
-    dispose: () => disposal ??= (async () => {
-      unregister();
-      controller.abort();
-      const settled = await Promise.allSettled([
-        ...disposers.reverse().map((dispose) => Promise.resolve().then(dispose)),
-        ...[...forwarders.values()].map(async (forwarder) => (await forwarder).stop()),
-      ]);
-      const errors = settled.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
-      if (errors.length) throw new AggregateError(errors, "Plugin resource cleanup failed");
-    })(),
+    onDispose: (disposer) => lifetime.onDispose(disposer),
   };
-  unregister = onCommandDispose(() => context.dispose());
-  return context;
+}
+
+export function createPluginContext(
+  executor: Executor,
+  kube: KubectlOptions & { namespace: string },
+  options: PluginContextOptions,
+): ManagedPluginContext {
+  const local = new ResourceScope(currentCommandSignal());
+  const shared = currentCommandResources() ?? local;
+  const namespace = resourceNamespace(kube, options);
+  const unregister = onCommandDispose(() => local.dispose());
+  return {
+    ...createResourceContext(executor, kube, options, local),
+    dependencies: options.dependencies ?? {},
+    resources: {
+      acquire: (key, create) => {
+        local.signal.throwIfAborted();
+        return shared.acquire(`${namespace}:${key}`, (lifetime) => create(
+          createResourceContext(executor, kube, options, lifetime),
+        ));
+      },
+    },
+    dispose: () => { unregister(); return local.dispose(); },
+  };
 }
 
 /** Authorize the selected capability before exposing its target-scoped transport. */

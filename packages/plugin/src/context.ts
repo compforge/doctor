@@ -38,13 +38,23 @@ export interface PluginInfra {
   databaseIdentity?: DatabaseIdentity;
 }
 
-export interface PluginContext {
+/** Resource factories receive a root-owned lifetime; never capture a capability call's context. */
+export interface PluginResourceContext {
   target: PluginTarget;
   /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
   config: Readonly<Record<string, unknown>>;
-  /** Service-declared dependencies resolved and lifetime-managed by Doctor Core. */
-  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
   infra: PluginInfra;
   signal: AbortSignal;
   onDispose(disposer: () => void | Promise<void>): void;
+}
+
+export interface PluginResources {
+  /** The host namespaces this key by target, configuration and declared access. */
+  acquire<T>(key: string, create: (context: PluginResourceContext) => Promise<T>): Promise<T>;
+}
+
+export interface PluginContext extends PluginResourceContext {
+  /** Dependencies have the capability call's lifetime and cannot enter shared resource factories. */
+  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
+  resources: PluginResources;
 }

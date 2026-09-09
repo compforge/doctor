@@ -23,7 +23,7 @@ export interface CommandSpec<Input extends CommandInput, Output> {
 
 /**
  * @spec CLI and parent commands call the same checked run entry point.
- * Each invocation owns its artifacts and cleanup; environment and decisions are shared.
+ * Each invocation owns its artifacts and temporary cleanup; root resources and environment are shared.
  */
 export function defineCommand<Input extends CommandInput, Output>(spec: CommandSpec<Input, Output>): CommandSpec<Input, Output> {
   return {
@@ -46,7 +46,7 @@ export function defineCommand<Input extends CommandInput, Output>(spec: CommandS
               if (result.reportName) context.artifacts.setReportName(result.reportName);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return result;
-            });
+            }, context.resources);
             return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
           } catch (error) {
             if (!context.signal.aborted) context.options.onError?.(error, spec.name);

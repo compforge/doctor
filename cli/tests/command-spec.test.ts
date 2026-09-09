@@ -190,6 +190,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   const root = mkdtempSync(join(tmpdir(), "doctor-command-delivery-"));
   const output = join(root, "report.html");
   const previousExit = process.exitCode;
+  let resourceClosed = false;
   const child = defineCommand<CommandInput & { id: string }, void>({ name: "trace", run: async (ctx, { id }) => {
     expect(existsSync(output)).toBe(false);
     const path = join(root, id);
@@ -199,6 +200,14 @@ test("only the root delivers and cleans child artifacts, including partial resul
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
   const parent = defineCommand<CommandInput, void>({ name: "overview", run: async (ctx) => {
+    await ctx.resources.acquire("shared", async lifetime => {
+      lifetime.onDispose(() => {
+        expect(existsSync(join(root, "first", "report.html"))).toBe(true);
+        expect(existsSync(join(root, "second", "report.html"))).toBe(true);
+        resourceClosed = true;
+      });
+      return {};
+    });
     for (const id of ["first", "second"]) {
       const result = await child.run(ctx, { id });
       expect(result.status).toBe(CommandStatus.Partial);
@@ -210,6 +219,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   try {
     await runCommand(parent, { config: join(root, "absent.yaml"), output, format: "html" }, {}, { printProfile: false });
     expect(process.exitCode).toBe(0);
+    expect(resourceClosed).toBe(true);
     const report = readFileSync(output, "utf8");
     expect(report).toContain("first");
     expect(report).toContain("second");

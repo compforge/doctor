@@ -1,3 +1,4 @@
+import { ConcurrencyPool } from "../concurrency";
 import { createConnection, type Connection, type ConnectionOptions, type RowDataPacket } from "mysql2/promise";
 import type { Database, DatabaseTarget, DatabaseRow } from "./types";
 import type { DataSource, ClientLifecycle } from "../datasource";
@@ -10,6 +11,8 @@ type Session = { kind: "tcp"; connection: Connection } | { kind: "python"; trans
 
 /** SQL is executed once; only native connection establishment may advance to another transport. */
 export class MysqlDatabase implements Database {
+  // A client owns one native session per target; serialize queries on both transports.
+  readonly #queries = new ConcurrencyPool(1);
   readonly #connections = new Map<string, Promise<Session>>();
   constructor(
     private readonly transports: readonly Transport[],
@@ -17,7 +20,11 @@ export class MysqlDatabase implements Database {
     private readonly connect: ConnectionFactory = createConnection,
   ) {}
 
-  async query(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow[]> {
+  query(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow[]> {
+    return this.#queries.run(() => this.#query(target, sql, values), this.options.signal);
+  }
+
+  async #query(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow[]> {
     this.options.signal?.throwIfAborted();
     const key = [target.host, target.port, target.database, target.user, target.password].join("\0");
     let pending = this.#connections.get(key);
@@ -67,12 +74,14 @@ export class MysqlDatabase implements Database {
   async queryOne(target: DatabaseTarget, sql: string, values: readonly unknown[]): Promise<DatabaseRow | undefined> {
     return (await this.query(target, sql, values))[0];
   }
-  async close(): Promise<void> {
-    const pending = [...this.#connections.values()];
-    this.#connections.clear();
-    for (const result of await Promise.allSettled(pending)) {
-      if (result.status === "fulfilled" && result.value.kind === "tcp") result.value.connection.destroy();
-    }
+  close(): Promise<void> {
+    return this.#queries.run(async () => {
+      const pending = [...this.#connections.values()];
+      this.#connections.clear();
+      for (const result of await Promise.allSettled(pending)) {
+        if (result.status === "fulfilled" && result.value.kind === "tcp") result.value.connection.destroy();
+      }
+    });
   }
 }
 

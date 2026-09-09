@@ -20,6 +20,7 @@
     "./redis/*": "./src/redis/*.ts",
     "./opensearch": "./src/opensearch/index.ts",
     "./opensearch/*": "./src/opensearch/*.ts",
+    "./resources": "./src/resources.ts",
     "./concurrency": "./src/concurrency.ts"
   },
   "files": [

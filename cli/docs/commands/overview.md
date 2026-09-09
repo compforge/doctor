@@ -72,5 +72,5 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 
 确认后，仅对选中的 Entry 各查询一个代表请求。Plugin 应返回最精确的 collect biz-id，并可提供源记录
 Identity；数据已变化时返回无样本。Core 对 biz-id 去重后调用所选 Collect 子命令。采样失败保留
-在对应 Entry，不以其他请求替代。概览阶段使用既有 PluginContext 访问和资源回收机制，采集阶段继续
+在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，共享同一根 ResourceScope 中的数据源和客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。

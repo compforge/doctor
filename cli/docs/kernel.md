@@ -158,7 +158,7 @@ Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数
 ### Context 与调用归属
 
 `CommandContext` 属于整轮执行树，保存 Profile、当前 Plugin、按需准备并复用的环境信息、权限检查、
-Decision、Discovery、ExecutionRecord 与取消信号。领域 Context 保存单次执行准备的 Target、client、
+Decision、Discovery、ExecutionRecord、共享 ResourceScope 与取消信号。领域 Context 保存单次执行准备的 Target、client、
 Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的受限依赖与 infra。
 
 同一 CommandContext 可以被并发子命令共享。Artifacts 使用异步调用作用域，每次调用返回自己的产物
@@ -168,6 +168,13 @@ Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的�
 Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本次调用的资源作用域。显式 dispose
 和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
 执行树，停止后续工作，并保留已生成证据。
+
+共享基础设施由根 CommandContext 的 `resources` 持有，复用 DataSource 解析、Transport 和 Client；
+查询与命令结果仍各自执行。Toolkit 的 ResourceScope 合并并发初始化，在初始化失败后先清理再允许重试。
+Plugin 的资源工厂接收独立的 PluginResourceContext，不能捕获某次调用的 signal、infra 或 dependency。
+子调用结束只清理自己的临时资源；根入口等待领域工作结束，再关闭共享客户端与传输，最后交付报告。
+直接嵌入 CommandSpec 的宿主同样负责在整棵调用树结束后 dispose 根资源作用域。
+
 
 ### 结果与 Finalize
 

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import { createPluginContext, openPluginContext } from "../src/plugin/context";
@@ -234,4 +234,88 @@ test("Plugin exec forwards stdin under access checks and caps timeout without ex
   await expect(denied.infra.kubernetes.exec({ pod: "sample-0" }, ["python"], { stdin: "secret" })).rejects.toThrow("未声明");
   expect(calls).toHaveLength(1);
   await denied.dispose();
+});
+
+// This exercises the actual host adapter, including distinct capability-call lifetimes.
+test("siblings share resources after the first PluginContext is disposed, but never share permissions or targets", async () => {
+  const { CommandContext, defineCommand, CommandStatus } = await import("../src/command");
+  const root = new CommandContext({});
+  let discoveries = 0;
+  let closed = 0;
+  const executor: Executor = {
+    run: async (command, options) => {
+      options?.signal?.throwIfAborted();
+      return result(command, command[0] === "auth" ? "yes" : '{"kind":"Service"}');
+    },
+    exec: async (_target, command) => result(command),
+  };
+  const options = {
+    env: "test", service: { name: "api" },
+    capability: { access: { kubernetes: [{ rule: { verb: "get", resource: "services" }, requirement: "required", purpose: "discover" }] } },
+  } as const;
+  const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", run: async (_root, input) => {
+    const context = createPluginContext(executor, { namespace: "test" }, options);
+    const client = await context.resources.acquire("db", async resource => {
+      discoveries++;
+      resource.onDispose(() => { closed++; });
+      return { query: async (id: string) => {
+        await resource.infra.kubernetes.get("services", "api");
+        return id;
+      } };
+    });
+    await context.dispose();
+    expect(context.signal.aborted).toBe(true);
+    return { status: CommandStatus.Ok, artifacts: [], output: await client.query(input.id) };
+  } });
+  const first = await query.run(root, { id: "summary" });
+  const siblings = await Promise.all([query.run(root, { id: "a" }), query.run(root, { id: "b" })]);
+  expect([first, ...siblings].map(r => r.output)).toEqual(["summary", "a", "b"]);
+  expect(discoveries).toBe(1);
+  expect(closed).toBe(0);
+
+  const isolation = defineCommand({ name: "isolation", run: async () => {
+    const variants = [
+      { kube: { namespace: "other" }, options },
+      { kube: { namespace: "test" }, options: { ...options, config: { tenant: "other" } } },
+      { kube: { namespace: "test" }, options: { ...options, databaseIdentity: { user: "other", password: "secret" } } },
+      { kube: { namespace: "test", context: "other-cluster" }, options },
+      { kube: { namespace: "test" }, options: { ...options, capability: { access: {} } } },
+    ];
+    for (const variant of variants) {
+      const ctx = createPluginContext(executor, variant.kube, variant.options);
+      const distinct = await ctx.resources.acquire("db", async resource => ({ resource }));
+      expect(distinct).toHaveProperty("resource");
+      if (!("kubernetes" in variant.options.capability.access)) {
+        await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");
+      }
+    }
+    return { status: CommandStatus.Ok, artifacts: [], output: undefined };
+  } });
+  expect((await isolation.run(root, {})).status).toBe(CommandStatus.Ok);
+  await root.resources.dispose();
+  expect(closed).toBe(1);
+});
+
+test("repeated successful access prints once, and reuse never bypasses a caller's authorization", async () => {
+  const { enforceKubernetesAccess } = await import("../src/terminal/kubernetes-access");
+  const { terminalStdout } = await import("../src/terminal/output");
+  const output = spyOn(terminalStdout, "success").mockImplementation(() => true);
+  let checks = 0;
+  const executor: Executor = {
+    run: async command => { checks++; return result(command, "yes"); },
+    exec: async (_target, command) => result(command),
+  };
+  const access = new KubernetesAccessContext(executor);
+  const need = { rule: { verb: "get", resource: "services" }, requirement: "required", purpose: "test" } as const;
+  const contract = { command: "overview", namespace: "test", needs: [need] };
+  try {
+    await Promise.all([enforceKubernetesAccess(access, contract), enforceKubernetesAccess(access, contract)]);
+    expect(checks).toBe(1);
+    expect(output).toHaveBeenCalledTimes(1);
+    const denied = new KubernetesAccessContext({ ...executor, run: async command => result(command, "no", false) });
+    await expect(openPluginContext(executor, { namespace: "test" }, {
+      env: "test", service: { name: "api" }, command: "sample", authorization: denied,
+      capability: { access: { kubernetes: [need] } },
+    })).rejects.toThrow("缺少必须");
+  } finally { output.mockRestore(); }
 });

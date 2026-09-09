@@ -27,8 +27,19 @@ export async function runCommand<Input extends CommandInput, Output>(
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
     process.once("SIGINT", interrupt);
     let result: CommandResult<Output>;
+    let cleanupFailed = false;
+    let cleanupError: unknown;
     try { result = await spec.run(context, input); }
-    finally { process.removeListener("SIGINT", interrupt); }
+    finally {
+      try { await context.resources.dispose(); }
+      catch (error) {
+        cleanupFailed = true;
+        cleanupError = error;
+        reportError(error, { context: spec.name, summary: "resource cleanup failed" });
+      }
+      process.removeListener("SIGINT", interrupt);
+    }
+    if (cleanupFailed) result = { ...result, status: CommandStatus.Failed, error: cleanupError };
     context.artifacts.include(result.artifacts);
     if (result.reportName) context.artifacts.setReportName(result.reportName);
     process.exitCode = await finalizeCommand({

@@ -1,3 +1,4 @@
+import { ResourceScope } from "@compforge/doctor-toolkit/resources";
 import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../infra/k8s/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -92,7 +93,7 @@ export interface CommandContextOptions {
   signal?: AbortSignal;
 }
 
-/** Shared environment, Plugin, decisions and cancellation; each run owns its artifacts and resources. */
+/** Shared environment, Plugin, decisions and cancellation; each run owns its artifacts and temporary resources. */
 export class CommandContext {
   readonly #controller = new AbortController();
   #pluginPromise?: Promise<PluginDefinition | undefined>;
@@ -100,6 +101,7 @@ export class CommandContext {
   #kubernetesPromise?: Promise<KubernetesInspection>;
   #plugin?: PluginDefinition;
   readonly signal: AbortSignal;
+  readonly resources: ResourceScope;
 
   /** One budget for the entire command tree, independent of the number of child collects. */
   readonly limits: { readonly podLogs: ConcurrencyPool };
@@ -125,6 +127,7 @@ export class CommandContext {
     this.#plugin = options.plugin;
     this.signal = options.signal
       ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
+    this.resources = new ResourceScope(this.signal);
   }
 
   get plugin(): PluginDefinition {

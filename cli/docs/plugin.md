@@ -324,11 +324,23 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 本轮选中的 capability 建立对应连接。endpoint 必须显式声明 `host` 与 `port`，Core 不用逻辑 Service 名
 推导网络地址。
 
-Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收具有明确的 Doctor 调用生命周期，因此由
+Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收由宿主按调用或共享资源的生命周期管理，因此由
 `PluginContext` 按需提供。通用数据访问实现由独立的 `packages/toolkit` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
 与协议 Client。toolkit 不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
+
+Service 通过 `context.resources.acquire(key, factory)` 复用同一执行树中的数据访问资源。
+key 表达 Plugin 内的数据源及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、
+配置、数据库身份与声明的 access 隔离。同一 key 的工厂必须返回同一种资源类型。配置身份只保留内存摘要，
+不输出凭据。每次 capability 调用仍先通过自己的 access 预检，资源复用不扩大权限。
+
+工厂接收的 `PluginResourceContext` 提供共享资源的 signal、infra 和 onDispose；它没有单次调用的
+依赖 handle。DataSource 解析及 Transport 闭包应只捕获工厂上下文，以免首个调用结束后使共享客户端失效。
+工厂创建的 Client 应注册 cleanup，并自行限制并发；MySQL Client 使用单个查询槽位，覆盖原生连接和
+Pod Python 路径，保持现有连接/查询超时。资源关闭会先等待客户端工作结束，再停止 port-forward。
+共享资源只缓存访问准备与连接，不能缓存 SQL 或业务查询结果。
+
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
 本轮参与的 Service，再把 Core command 自身需求与这些 capability 的声明合成阶段性的 access plan；

@@ -76,3 +76,22 @@ test("close destroys open sockets and drops cached sessions", async () => {
   expect(opened).toBe(2);
   expect(destroyed).toBe(2);
 });
+
+test("shared MySQL client queues Pod queries and drains before close", async () => {
+  let active = 0;
+  let peak = 0;
+  let connects = 0;
+  const pod = new PodPythonTransport(async (_command, run) => {
+    peak = Math.max(peak, ++active);
+    await Promise.resolve();
+    active--;
+    return JSON.stringify({ rows: [{ id: JSON.parse(run.stdin).values[0] }] });
+  });
+  const db = new MysqlDatabase([new DirectTransport(), pod], options, async () => { connects++; throw networkError(); });
+  const queries = [1, 2, 3].map(id => db.queryOne(target, "SELECT ?", [id]));
+  const close = db.close();
+  expect(await Promise.all(queries)).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+  await close;
+  expect(connects).toBe(1);
+  expect(peak).toBe(1);
+});
