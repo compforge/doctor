@@ -7,13 +7,32 @@ import {
   collectReportName,
   createCollectManifest,
   parseCollectKinds,
-  runCollectCommand,
+  createCollectCommand,
+  type CollectCliOpts,
+  type CollectKind,
   runCollectDelegates,
 } from "../src/collect/composite";
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandContext } from "../src/command";
+import { CommandContext, CommandStatus, commandOutcome, defineCommand, type CommandResult } from "../src/command";
+import { commandExitCode } from "../src/app/command";
+import { domainInput } from "../src/command/options";
 import { deliverCommandArtifacts } from "../src/app/delivery";
+
+async function runCollectCommand(
+  opts: CollectCliOpts, plugin: PluginDefinition, context: CommandContext,
+  delegate: (kind: CollectKind) => Promise<number> = async () => 0,
+): Promise<number> {
+  const testCommand = createCollectCommand(async (kind) => {
+    const captured = await context.artifacts.capture(async () => commandOutcome(await delegate(kind)));
+    return { ...captured.value, artifacts: captured.artifacts };
+  });
+  const selected = new CommandContext(context.inspection, context.profile, { plugin });
+  // Fixture collectors register on the supplied context; production collectors use their own checked scope.
+  const result = await testCommand.run(selected, domainInput(opts));
+  context.artifacts.include(result.artifacts);
+  return commandExitCode(result);
+}
 
 test("collect include accepts comma or pipe separated command names", () => {
   expect(parseCollectKinds(undefined)).toEqual([...COLLECT_KINDS]);
@@ -53,18 +72,18 @@ test("collect delegates concrete work and continues after one command fails", as
   const calls: string[] = [];
   const results = await runCollectDelegates(["inspect", "data", "trace", "log"], async (kind) => {
     calls.push(kind);
-    if (kind === "trace") throw new Error("trace unavailable");
-    return 0;
+    if (kind === "trace") return { status: CommandStatus.Failed, artifacts: [], reason: "trace unavailable" };
+    return commandOutcome(0);
   });
 
   expect(calls).toEqual(["inspect", "data", "trace", "log"]);
-  expect(results.map((result) => [result.kind, result.code])).toEqual([
+  expect(results.map((result) => [result.kind, commandExitCode(result.result)])).toEqual([
     ["inspect", 0],
     ["data", 0],
     ["trace", 1],
     ["log", 0],
   ]);
-  expect(results[2]?.error).toBe("trace unavailable");
+  expect((results[2]?.result as { reason?: string }).reason).toBe("trace unavailable");
 });
 
 test("collect manifest records partial coverage and failure reasons", () => {
@@ -76,8 +95,8 @@ test("collect manifest records partial coverage and failure reasons", () => {
     },
     plugin: { id: "agentsphere", version: "1.2.3" },
     results: [
-      { kind: "data", code: 0 },
-      { kind: "trace", code: 1, error: "trace unavailable" },
+      { kind: "data", result: commandOutcome(0) },
+      { kind: "trace", result: { status: CommandStatus.Failed, artifacts: [], reason: "trace unavailable" } },
     ],
     commandContext: new CommandContext({}),
     startedAt: "2026-08-20T01:00:00Z",
@@ -89,8 +108,8 @@ test("collect manifest records partial coverage and failure reasons", () => {
     target: { biz_ids: ["conversation-1"] },
     params: { include: ["data", "trace"], since_time: "2026-08-18T04:00:00Z" },
     steps: [
-      { id: "data", status: "ok", exit_code: 0 },
-      { id: "trace", status: "failed", exit_code: 1, reason: "trace unavailable" },
+      { id: "data", status: "ok" },
+      { id: "trace", status: "failed", reason: "trace unavailable" },
     ],
   });
 });
@@ -159,7 +178,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
       "tar", "-xOf", `${output}.tar.gz`, "case/manifest.json",
     ]).stdout.toString());
     expect(manifest).toMatchObject({
-      schema_version: 1,
+      schema_version: 2,
       command: "doctor collect",
       status: "ok",
       doctor_version: expect.any(String),
@@ -167,8 +186,8 @@ test("collect default delivery contains combined HTML and child full bundles", a
       target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
       params: { include: ["inspect", "data"] },
       steps: [
-        { id: "inspect", status: "ok", exit_code: 0, artifacts: ["doctor-inspect"] },
-        { id: "data", status: "ok", exit_code: 0, artifacts: ["doctor-data"] },
+        { id: "inspect", status: "ok", artifacts: ["doctor-inspect"] },
+        { id: "data", status: "ok", artifacts: ["doctor-data"] },
       ],
     });
     expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
@@ -269,4 +288,12 @@ test("collect preserves staged evidence when default delivery fails", async () =
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("collect preserves the parent overview report name", async () => {
+  const context = new CommandContext({});
+  context.artifacts.setReportName("doctor-overview-test");
+  const plugin: PluginDefinition = { id: "test", version: "0.0.1", services: createServiceCatalog([]) };
+  expect(await runCollectCommand({ bizIds: ["t1"], kinds: ["data"], format: "html" }, plugin, context, async () => 0)).toBe(0);
+  expect(context.artifacts.reportName()).toBe("doctor-overview-test");
 });

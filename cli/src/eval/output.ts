@@ -21,7 +21,6 @@ export function createEvalArtifact(config: EvalConfig): EvalArtifact {
 }
 
 function evidenceLabel(result: EvalEvidenceResult): string {
-  if (result.status === "collected") return "collected";
   return result.reason ? `${result.status}: ${result.reason}` : result.status;
 }
 
@@ -43,7 +42,7 @@ function writeEvalReport(path: string, run: EvalRun, profileName: string): void 
   const evidenceRows = (["trace", "log", "data"] as const).map((kind) => [
     kind,
     evidenceLabel(run.evidence[kind]),
-    run.evidence[kind].exitCode ?? "—",
+    run.evidence[kind].artifacts?.length ?? "—",
   ]);
   const manifest = {
     doctor_version: DOCTOR_CLI_VERSION,
@@ -81,7 +80,7 @@ function writeEvalReport(path: string, run: EvalRun, profileName: string): void 
     }, {
       id: "evidence-results",
       title: "关联证据采集",
-      html: htmlTable(["数据面", "状态", "退出码"], evidenceRows),
+      html: htmlTable(["数据面", "状态", "产物数"], evidenceRows),
     }, {
       id: "raw-results",
       title: "结构化产物",

@@ -1,43 +1,28 @@
-import {
-  prepareCommandContext,
-  type CommandEnvironmentRequirements,
-  type CommandProfile,
-} from "../command";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { reportError } from "./error-log";
+import { CommandContext } from "../command";
+import { loadActivePlugin } from "../plugin";
 import { terminalStdout } from "../terminal/output";
 import type { CommandDeliveryOptions } from "./delivery";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
-
-export interface CommandSpec {
-  readonly name: string;
-  /** Pure command-option checks that must finish before capability or environment preparation. */
-  readonly validate?: () => void | Promise<void>;
-  /** Host-level requirements resolved before the command is allowed to do domain work. */
-  readonly environment?: CommandEnvironmentRequirements;
-}
 
 export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
   kubeconfig?: string;
   context?: string;
 };
 
-export async function prepareCommand<T = undefined>(
-  spec: CommandSpec,
-  opts: CommandOptions,
-  printProfile: boolean,
-  resolveCapabilities?: (profile: CommandProfile) => T | Promise<T>,
-) {
-  const resolvedProfile = resolveWorkingProfile(opts);
-  if (printProfile) terminalStdout.warning(`profile: ${resolvedProfile.name}\n`);
-  await spec.validate?.();
-  const profile: CommandProfile = {
-    name: resolvedProfile.name,
-    configPath: resolvedProfile.configPath,
-    value: resolvedProfile.profile,
-    pluginConfig: resolvedProfile.profile.plugin?.config ?? {},
-  };
-  const capabilities = resolveCapabilities
-    ? await resolveCapabilities(profile)
-    : undefined as T;
-  const context = await prepareCommandContext(opts, profile, spec.environment ?? {});
-  return { context, profileName: resolvedProfile.name, capabilities };
+/** Only the root resolves profile and host settings; each spec prepares its own requirements. */
+export function prepareCommand(opts: CommandOptions, printProfile: boolean, plugin?: PluginDefinition): CommandContext {
+  const resolved = resolveWorkingProfile(opts);
+  if (printProfile) terminalStdout.warning(`profile: ${resolved.name}\n`);
+  const context = new CommandContext({}, {
+    name: resolved.name, configPath: resolved.configPath, value: resolved.profile,
+    pluginConfig: resolved.profile.plugin?.config ?? {},
+  }, {
+    plugin, loadPlugin: loadActivePlugin,
+    environment: { kubeconfig: opts.kubeconfig, context: opts.context },
+    format: opts.format, output: opts.output,
+    onError: (error, command) => reportError(error, { context: command, summary: "fatal", plugin: context.pluginIdentity }),
+  });
+  return context;
 }

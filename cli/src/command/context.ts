@@ -1,3 +1,4 @@
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import {
   createKubernetesCommandContext,
   type KubernetesCommandContext,
@@ -19,7 +20,7 @@ export interface CommandInspection {
   readonly kubernetes?: KubernetesInspection;
 }
 
-export interface CommandEnvironmentRequirements {
+export interface EnvironmentRequirements {
   readonly host?: boolean;
   readonly kubernetes?: boolean;
 }
@@ -77,11 +78,27 @@ function commandScopeKey(scope: CommandScope): string {
 }
 
 /**
- * Shared execution state created once after CLI/profile resolution and before domain dispatch.
- * Collect and Provision consume the same immutable startup facts, command-scoped RBAC cache,
- * memoized decisions/discoveries, and append-only execution records produced by later steps.
+ * Root-owned configuration for one execution tree. Domain inputs and per-call results stay outside it.
  */
+export interface CommandContextOptions {
+  format?: string;
+  output?: string;
+  plugin?: PluginDefinition;
+  loadPlugin?: () => Promise<PluginDefinition | undefined>;
+  onError?: (error: unknown, command: string) => void;
+  environment?: { kubeconfig?: string; context?: string };
+  signal?: AbortSignal;
+}
+
+/** Shared environment, Plugin, decisions and cancellation; each run owns its artifacts and resources. */
 export class CommandContext {
+  readonly #controller = new AbortController();
+  #pluginPromise?: Promise<PluginDefinition | undefined>;
+  #hostPromise?: Promise<DoctorHostInfo>;
+  #kubernetesPromise?: Promise<KubernetesInspection>;
+  #plugin?: PluginDefinition;
+  readonly signal: AbortSignal;
+
   readonly artifacts = new CommandArtifacts();
   readonly #pluginServices = new Map<string, readonly string[]>();
   readonly #kubernetes = new WeakMap<Executor, KubernetesCommandContext>();
@@ -97,7 +114,49 @@ export class CommandContext {
       value: { readonly: true },
       pluginConfig: {},
     },
-  ) {}
+    readonly options: CommandContextOptions = {},
+  ) {
+    this.#plugin = options.plugin;
+    this.signal = options.signal
+      ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
+  }
+
+  get plugin(): PluginDefinition {
+    if (!this.#plugin) throw new Error("This command requires a loaded Plugin");
+    return this.#plugin;
+  }
+
+  get pluginIdentity(): string | undefined {
+    return this.#plugin ? `${this.#plugin.id}@${this.#plugin.version}` : undefined;
+  }
+
+  cancel(reason: unknown = new Error("Command cancelled")): void { this.#controller.abort(reason); }
+
+  async resolvePlugin(): Promise<PluginDefinition | undefined> {
+    this.#pluginPromise ??= (async () => {
+      const plugin = this.#plugin ?? await this.options.loadPlugin?.();
+      this.#plugin = plugin;
+      plugin?.validateConfig?.(this.profile.pluginConfig);
+      if (plugin) this.registerPluginServices(plugin.id, plugin.services.services.map((service) => service.name));
+      return plugin;
+    })();
+    return this.#pluginPromise;
+  }
+
+  async ensureEnvironment(requirements: EnvironmentRequirements): Promise<void> {
+    const [host, kubernetes] = await Promise.all([
+      requirements.host ? this.inspection.host ?? (this.#hostPromise ??= Promise.resolve(getDoctorHostInfo())) : undefined,
+      requirements.kubernetes ? this.inspection.kubernetes ?? (this.#kubernetesPromise ??= inspectKubernetes(
+        this.options.environment ?? {}, this.profile,
+      )) : undefined,
+    ]);
+    if (requirements.kubernetes && !kubernetes?.channel.available) {
+      throw new Error(kubernetes?.channel.reason ?? "Kubernetes environment preparation failed");
+    }
+    Object.assign(this.inspection, {
+      ...(host ? { host } : {}), ...(kubernetes ? { kubernetes } : {}),
+    });
+  }
 
   kubernetes(executor: Executor): KubernetesCommandContext {
     let context = this.#kubernetes.get(executor);
@@ -197,17 +256,9 @@ export async function prepareCommandContext(
     context?: string;
   },
   profile: CommandProfile,
-  requirements: CommandEnvironmentRequirements,
+  requirements: EnvironmentRequirements,
 ): Promise<CommandContext> {
-  const [host, kubernetes] = await Promise.all([
-    requirements.host ? getDoctorHostInfo() : undefined,
-    requirements.kubernetes ? inspectKubernetes(opts, profile) : undefined,
-  ]);
-  if (requirements.kubernetes && !kubernetes?.channel.available) {
-    throw new Error(kubernetes?.channel.reason ?? "Kubernetes environment preparation failed");
-  }
-  return new CommandContext(
-    { host, kubernetes },
-    profile,
-  );
+  const context = new CommandContext({}, profile, { environment: opts });
+  await context.ensureEnvironment(requirements);
+  return context;
 }

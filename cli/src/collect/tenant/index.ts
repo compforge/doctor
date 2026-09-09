@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult } from "../../command";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +9,7 @@ import { resolveTenant } from "../../model";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
 import { writeHtmlReport } from "../output/html";
 import { openTenantAccess } from "./access";
 import {
@@ -45,7 +46,7 @@ export async function runCollectTenant(
   opts: CollectTenantCliOptions,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const startedAt = new Date().toISOString();
   let retainedStaging: string | undefined;
   let format;
@@ -53,7 +54,7 @@ export async function runCollectTenant(
     format = parseTenantOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
 
   let access;
@@ -65,9 +66,9 @@ export async function runCollectTenant(
     });
   } catch (error) {
     terminalStderr.error(`[tenant] ${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
-  if (!access) return 130;
+  if (!access) return commandOutcome(130);
 
   try {
     const tenant = await resolveTenant({
@@ -79,7 +80,7 @@ export async function runCollectTenant(
     });
     if (!tenant) {
       terminalStderr.warning("[tenant] 已取消\n");
-      return 130;
+      return commandOutcome(130);
     }
     terminalStdout.write(`[tenant] tenant: ${tenant.name}（${tenant.id}）\n`);
     terminalStdout.write(
@@ -147,13 +148,13 @@ export async function runCollectTenant(
     const outcome = evaluateCollectOutcome(
       diagnosis.coverage.map((item) => item.status !== "insufficient"),
     );
-    return outcome.exitCode;
+    return collectCommandOutcome(outcome);
   } catch (error) {
     const retained = retainedStaging ? `；原始证据保留在目录: ${retainedStaging}` : "";
     terminalStderr.error(
       `[tenant] ${error instanceof Error ? error.message : String(error)}${retained}\n`,
     );
-    return 1;
+    return commandOutcome(1);
   } finally {
     await access.dispose();
   }

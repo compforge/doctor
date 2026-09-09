@@ -27,47 +27,46 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { Command, type Command as CommandT } from "commander";
 import { formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
-import { runRepl } from "./repl";
-import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
-import { runCollectCpu } from "../collect/cpu";
-import { runCollectTrace, type CollectTraceCliOpts } from "../collect/trace";
-import { runCollectStore } from "../collect/store";
-import { runCollectLog, type CollectLogCliOpts } from "../collect/log";
-import { runCollectData, type CollectDataCliOpts } from "../collect/data";
-import { runCollectInspect } from "../collect/inspect/index";
+import { type CollectTraceCliOpts } from "../collect/trace";
+import { type CollectLogCliOpts } from "../collect/log";
+import { type CollectDataCliOpts } from "../collect/data";
 import { REDIS_DEFAULTS } from "../collect/redis";
-import { runCollectHttp } from "../collect/http";
 import {
   NETWORK_DEFAULTS,
   runAnalyzeNetwork,
-  runCollectNetwork,
 } from "../collect/network";
-import { runCollectMcp } from "../collect/mcp";
-import { runCollectModel } from "../collect/model";
-import { runCollectTenant, type CollectTenantCliOptions } from "../collect/tenant";
-import { runCollectMetric } from "../collect/metric";
+import { type CollectTenantCliOptions } from "../collect/tenant";
 import {
-  runCollectCommand,
   resolveCollectKinds,
   type CollectCliOpts,
 } from "../collect/composite";
-import { runPerf } from "../perf";
-import { runEval } from "../eval";
-import { runDebug } from "../provision/debug";
-import { runDoctorImage } from "../provision/image";
-import { runInstall, validateInstallOptions } from "../provision/install";
+import { registerOverviewCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-log";
 import { runInit } from "./init";
 import { runProfile } from "./profile";
-import { collectPluginCapabilities, PLUGIN_COMMAND_CAPABILITIES } from "./plugin-command-capabilities";
 import { loadActivePlugin } from "../plugin";
 import { runPluginInstall, runPluginUninstall } from "./plugin";
-import { runCommand, runPluginCommand, runStandaloneCommand } from "./command";
+import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
 import { getKubernetesServerVersion } from "../infra/k8s/version";
 import { KubectlExecutor } from "../infra/k8s/executor";
+
+import { domainInput } from "../command/options";
+import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, httpCommand, netCommand } from "./core-commands";
+import { traceCommand } from "../collect/trace/command";
+import { logCommand } from "../collect/log/command";
+import { dataCommand } from "../collect/data/command";
+import { inspectCommand } from "../collect/inspect/command";
+import { tenantCommand } from "../collect/tenant/command";
+import { metricCommand } from "../collect/metric/command";
+import { storeCommand } from "../collect/store/command";
+import { mcpCommand } from "../collect/mcp/command";
+import { modelCommand } from "../collect/model/command";
+import { collectCommand } from "../collect/composite";
+import { evalCommand } from "../eval/command";
+import { perfCommand } from "../perf/command";
 
 type RawBizIdOptions<T> = Omit<T, "bizIds" | "bizId"> & { bizId?: string[] };
 
@@ -466,11 +465,7 @@ export async function main(plugin?: PluginDefinition) {
     program.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
   ).action(async (opts) => {
     const flags = toReplFlags(opts);
-    await runCommand({ name: "doctor chat" }, flags, async (commandContext) => {
-      const activePlugin = plugin ?? await loadActivePlugin();
-      activePlugin?.validateConfig?.(commandContext.profile.pluginConfig);
-      return runRepl(flags, activePlugin, commandContext);
-    });
+    await runCommand(chatCommand, flags, domainInput(flags), { plugin });
   });
 
   program
@@ -536,12 +531,7 @@ export async function main(plugin?: PluginDefinition) {
     .option("--profile <name>", "从 profile 取 kubeconfig 和 registry 凭据")
     .option("--config <path>", "config 文件路径")
     .action(async (image, opts) => {
-      const needsKubernetes = Boolean(opts.registry || image || !opts.host);
-      await runCommand(
-        { name: "doctor image", environment: { kubernetes: needsKubernetes } },
-        opts,
-        (context) => runDoctorImage(image, opts, context),
-      );
+      await runCommand(imageCommand, opts, { ...domainInput(opts), image }, { plugin });
     });
 
   program
@@ -563,11 +553,7 @@ export async function main(plugin?: PluginDefinition) {
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认 Pod mutation", false)
     .action(async (opts) => {
-      await runCommand(
-        { name: "doctor debug", environment: { kubernetes: true } },
-        opts,
-        (context) => runDebug(opts, context),
-      );
+      await runCommand(debugCommand, opts, domainInput(opts), { plugin });
     });
 
   program
@@ -587,44 +573,26 @@ export async function main(plugin?: PluginDefinition) {
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认修改目标 container 可写层", false)
     .action(async (opts) => {
-      await runCommand(
-        {
-          name: "doctor install",
-          validate: () => validateInstallOptions(opts),
-          environment: { kubernetes: true },
-        },
-        opts,
-        (context) => runInstall(opts, context),
-      );
+      await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
     });
 
   withMemOptions(
     program.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
   ).action(async (opts) => {
-    await runCommand(
-      { name: "doctor mem", environment: { kubernetes: true } },
-      opts,
-      async (context) => runCollectMemory(opts, context),
-    );
+    await runCommand(memCommand, opts, domainInput(opts), { plugin });
   });
   withMemaOptions(
     program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
   ).action(async (inputs, opts) => {
-    await runCommand(
-      { name: "doctor mema" },
-      opts,
-      (context) => runCollectMemoryAnalysis({ ...opts, inputs }, context),
-    );
+    await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, { plugin });
   });
   withCpuOptions(
     program.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
   ).action(async (opts) => {
-    await runCommand(
-      { name: "doctor cpu", environment: { kubernetes: true } },
-      opts,
-      (context) => runCollectCpu(opts, context),
-    );
+    await runCommand(cpuCommand, opts, domainInput(opts), { plugin });
   });
+  registerOverviewCommand(program, plugin);
+
   withCollectOptions(
     program.command("collect").description(
       "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
@@ -639,137 +607,52 @@ export async function main(plugin?: PluginDefinition) {
       return;
     }
     const commandOpts = { ...normalizeBizIdOptions(positionalBizIds, opts), kinds };
-    await runPluginCommand(
-      {
-        name: "doctor collect",
-        environment: { kubernetes: kinds.some((kind) => kind !== "metric") },
-        plugin: collectPluginCapabilities(kinds),
-      },
-      commandOpts,
-      plugin,
-      (activePlugin, context) => runCollectCommand(commandOpts, activePlugin, context),
-    );
+    await runCommand(collectCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withTraceOptions(
     program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runPluginCommand(
-      {
-        name: "doctor trace",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.trace,
-      },
-      commandOpts,
-      plugin,
-      (activePlugin, context) => runCollectTrace(commandOpts, activePlugin, context),
-    );
+    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, { plugin });
   });
   withStoreOptions(
     program.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor store",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.store,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectStore(opts, activePlugin, context),
-    );
+    await runCommand(storeCommand, opts, domainInput(opts), { plugin });
   });
   withLogOptions(
     program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
     "",
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runPluginCommand(
-      {
-        name: "doctor log",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.log,
-      },
-      commandOpts,
-      plugin,
-      (activePlugin, context) => runCollectLog(commandOpts, activePlugin, context),
-    );
+    await runCommand(logCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withDataOptions(
     program.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
     [],
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runPluginCommand(
-      {
-        name: "doctor data",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.data,
-      },
-      commandOpts,
-      plugin,
-      (activePlugin, context) => runCollectData(
-        commandOpts,
-        activePlugin,
-        context,
-      ),
-    );
+    await runCommand(dataCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withInspectOptions(
     program.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor inspect",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.inspect,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectInspect(
-        opts,
-        activePlugin,
-        context,
-      ),
-    );
+    await runCommand(inspectCommand, opts, domainInput(opts), { plugin });
   });
   withTenantOptions(
     program.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
   ).action(async (opts: CollectTenantCliOptions) => {
-    await runPluginCommand(
-      {
-        name: "doctor tenant",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.tenant,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectTenant(opts, activePlugin, context),
-    );
+    await runCommand(tenantCommand, opts, domainInput(opts), { plugin });
   });
   withHttpOptions(
     program.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
   ).action(async (opts) => {
-    await runCommand(
-      { name: "doctor http" },
-      opts,
-      (context) => runCollectHttp(
-        opts,
-        context,
-        undefined,
-        undefined,
-      ),
-      opts.example === undefined,
-    );
+    await runCommand(httpCommand, opts, domainInput(opts), { plugin, printProfile: opts.example === undefined });
   });
   withNetworkOptions(
     program.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
   ).action(async (opts) => {
-    await runCommand(
-      { name: "doctor net", environment: { kubernetes: true } },
-      opts,
-      (context) => runCollectNetwork(opts, context),
-    );
+    await runCommand(netCommand, opts, domainInput(opts), { plugin });
   });
   program
     .command("neta [input]")
@@ -783,75 +666,27 @@ export async function main(plugin?: PluginDefinition) {
   withMcpOptions(
     program.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor mcp",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.mcp,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectMcp(opts, activePlugin, context),
-    );
+    await runCommand(mcpCommand, opts, domainInput(opts), { plugin });
   });
   withModelOptions(
     program.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor model",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.model,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectModel(
-        opts,
-        activePlugin,
-        context,
-      ),
-    );
+    await runCommand(modelCommand, opts, domainInput(opts), { plugin });
   });
   withMetricOptions(
     program.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor metric",
-        plugin: PLUGIN_COMMAND_CAPABILITIES.metric,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runCollectMetric(opts, activePlugin, context),
-    );
+    await runCommand(metricCommand, opts, domainInput(opts), { plugin });
   });
   withEvalOptions(
     program.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor eval",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.eval,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runEval(opts, activePlugin, context),
-    );
+    await runCommand(evalCommand, opts, domainInput(opts), { plugin });
   });
   withPerfOptions(
     program.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
   ).action(async (opts) => {
-    await runPluginCommand(
-      {
-        name: "doctor perf",
-        environment: { kubernetes: true },
-        plugin: PLUGIN_COMMAND_CAPABILITIES.perf,
-      },
-      opts,
-      plugin,
-      (activePlugin, context) => runPerf(opts, activePlugin, context),
-    );
+    await runCommand(perfCommand, opts, domainInput(opts), { plugin });
   });
 
   if (process.argv.length === 2) {

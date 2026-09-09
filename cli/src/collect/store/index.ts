@@ -1,3 +1,4 @@
+import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
@@ -16,24 +17,26 @@ export async function runCollectStore(
   opts: CollectStoreCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
   let kinds;
   try {
     kinds = await resolveStoreKinds(opts.type, plugin, interactive);
   } catch (error) {
     terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
-  if (!kinds) return 130;
+  if (!kinds) return commandOutcome(130);
   try {
     parseStoreOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
-  let exitCode = 0;
+  const statuses: CommandStatus[] = [];
+  let failure: CommandResult<void> | undefined;
   for (const kind of kinds) {
+    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
     let code: number;
     const kindOpts = kinds.length > 1
       ? { ...opts, output: undefined, deferDelivery: true }
@@ -52,11 +55,12 @@ export async function runCollectStore(
       } catch (error) {
         terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
         code = 2;
-        exitCode = Math.max(exitCode, code);
+        failure ??= commandOutcome(code);
+        statuses.push(commandOutcome(code).status);
         continue;
       }
       if (!resolved) {
-        return 130;
+        return commandOutcome(130);
       }
       const { config, executor } = resolved;
       if (config.capability.kind !== "vdb" && !config.target) {
@@ -67,11 +71,14 @@ export async function runCollectStore(
       else code = await runStoreS3({ ...config, target: config.target! }, commandContext, executor);
     }
     if (code === 130) {
-      return code;
+      return commandOutcome(code);
     }
-    exitCode = Math.max(exitCode, code);
+    if (code !== 0) failure ??= commandOutcome(code);
+    statuses.push(commandOutcome(code).status);
   }
-  return exitCode;
+  const status = aggregateCommandStatus(statuses);
+  if (status === CommandStatus.Failed && failure) return failure;
+  return { status, output: undefined, artifacts: commandContext.artifacts.list() };
 }
 
 export * from "./config";

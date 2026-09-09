@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult } from "../../command";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -96,7 +97,7 @@ export async function runCollectMcp(
   opts: CollectMcpCliOptions,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const timeoutMs = parseTimeout(opts.timeout);
   const format = parseMcpOutputFormat(opts.format);
   const mcpServices = plugin.services.servicesWith("mcp");
@@ -117,7 +118,7 @@ export async function runCollectMcp(
     undefined,
     commandContext,
   );
-  if (!collect) return 130;
+  if (!collect) return commandOutcome(130);
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(access, {
@@ -263,7 +264,7 @@ export async function runCollectMcp(
       traceparent: trace.traceparent,
       writeArtifact,
     });
-    if (!resolved) return await finish(130);
+    if (!resolved) return commandOutcome(await finish(130));
     ({ configSourceKind, facts, client } = resolved);
 
     const ctx: McpCommandContext = {
@@ -291,11 +292,11 @@ export async function runCollectMcp(
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
-    return await finish();
+    return commandOutcome(await finish());
   } catch (error) {
     failureReason = error instanceof Error ? error.message : String(error);
     terminalStderr.error(`[mcp] ${failureReason}\n`);
     bundle.settle(failureReason);
-    return await finish(1);
+    return commandOutcome(await finish(1));
   }
 }

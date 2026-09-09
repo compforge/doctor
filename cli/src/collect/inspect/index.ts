@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult } from "../../command";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import { runCollect } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
 import {
   enforceKubernetesAccess,
   requireKubernetesChannel,
@@ -53,18 +54,18 @@ export async function runCollectInspect(
   plugin: PluginDefinition,
   commandContext: CommandContext,
   injectedExecutor?: Executor,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const startedAt = new Date().toISOString();
   let config;
   try {
     config = await resolveInspectConfig(opts, plugin, commandContext, injectedExecutor);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   if (!config) {
     terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+    return commandOutcome(130);
   }
   const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
   if (!injectedExecutor) {
@@ -82,18 +83,18 @@ export async function runCollectInspect(
     services = await resolveInspectServiceSelection({ config, catalog: plugin.services, executor });
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   if (!services) {
     terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+    return commandOutcome(130);
   }
   config = { ...config, services };
   const selectedDefinitions = services.map((name) => plugin.services.find(name)!);
   const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
   if (includeDeploymentConfig === undefined) {
     terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+    return commandOutcome(130);
   }
   config = { ...config, includeDeploymentConfig };
   terminalStdout.write(
@@ -104,7 +105,7 @@ export async function runCollectInspect(
   const includeDependencies = await resolveInspectDependencySelection({ config });
   if (includeDependencies === undefined) {
     terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+    return commandOutcome(130);
   }
   config = { ...config, includeDependencies };
   terminalStdout.write(
@@ -228,22 +229,22 @@ export async function runCollectInspect(
     reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
   }
-  if (diagnosisFailure || !diagnosis) return await fail(diagnosisFailure ?? "配置诊断未形成结果");
+  if (diagnosisFailure || !diagnosis) return commandOutcome(await fail(diagnosisFailure ?? "配置诊断未形成结果"));
 
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status === "sufficient"));
   if (outcome.exitCode !== 0) {
     const reason = diagnosis.coverage.flatMap((item) => item.missingEvidence).join("；") || "未取得完整配置证据";
-    return await fail(reason);
+    return commandOutcome(await fail(reason));
   }
 
   bundle.writeSummary(buildInspectSummary(diagnosis));
   writeManifest();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (config.format === "json") {
-    return 0;
+    return collectCommandOutcome(outcome);
   }
   if (config.format === "md") {
-    return 0;
+    return collectCommandOutcome(outcome);
   }
   const reportPath = join(staging, "report.html");
   try {
@@ -255,10 +256,10 @@ export async function runCollectInspect(
     });
   } catch (error) {
     reportError(error, { context: "doctor inspect/html-report", summary: "HTML 报告生成失败" });
-    return await fail(error instanceof Error ? error.message : String(error));
+    return commandOutcome(await fail(error instanceof Error ? error.message : String(error)));
   }
   if (config.format === "html") {
-    return 0;
+    return collectCommandOutcome(outcome);
   }
-  return 0;
+  return collectCommandOutcome(outcome);
 }

@@ -34,7 +34,7 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
 
 ## 流程
 
-1. 校验 Plugin 同时提供 Case、Perf、Metric、Trace ID 和 Log capability，选择 Service 与 scenario，并
+1. 校验 Plugin 提供 Case、Perf 和 Metric capability；Trace ID 和 Log 是关联证据的可选能力。选择 Service 与 scenario，并
    从其 CaseSet 解析 Case mix。
 2. 交互运行选择最高并发；按需从 Plugin 声明的目录选择租户，再通过服务端关键词搜索和分页选择用户；
    随后展示并确认并发档位、每档最大请求数、错误率熔断和持久数据影响。非交互运行默认使用
@@ -43,9 +43,12 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
 4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
    阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
 5. 负载结束后封口 Metric 报告，从各 Trial 选择慢请求/错误请求的关联 ID，复用 Trace 与 Log 采集。
-6. Perf 与它触发的 Metric/Trace/Log 分别向共享 Context 注册 Artifacts；统一 Delivery 汇总 HTML，并在
+6. Perf 通过统一 CommandSpec 调用 Metric/Trace/Log，显式汇总每次调用的状态和 Artifacts；统一 Delivery 汇总 HTML，并在
    `--format bundle` 时把完整目录一次性压成 `.tar.gz`。Perf 目录保留 `run.json`、`outcomes.jsonl` 和
    `verdict.json` 等 Harness 契约产物。
 
 Trace/Log 的部分采集失败不会抹掉负载与 Metric 事实；综合报告必须显示具体缺口。Metric 窗口无法开始时
 则不发起业务负载，避免得到无法解释的压测数据。
+
+命令结果保留 Metric 和各代表请求的 Trace/Log 状态，部分证据失败时为 partial，用户取消时为 cancelled。
+Metric 窗口正常封口只停止该采集窗口，不取消整轮 Perf；根取消信号则同时停止负载和正在执行的采集。

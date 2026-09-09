@@ -55,6 +55,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("model [options]");
     expect(result.stdout).toContain("eval [options]");
     expect(result.stdout).toContain("perf [options]");
+    expect(result.stdout).toContain("overview [options]");
     expect(result.stdout).toContain("--debug");
   });
 

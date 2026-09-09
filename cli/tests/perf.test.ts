@@ -1,3 +1,4 @@
+import { commandOutcome } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -285,14 +286,14 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
   expect(perfEvidenceStatus({
     run,
     outputDir: ".",
-    metricCode: 0,
+    metric: commandOutcome(0),
     samples: [{
       trialId: "closed/5c",
       correlationKey: "trace_id",
       correlationId: "trace-1",
       durationMs: 5100,
-      traceCode: 0,
-      logCode: 1,
+      trace: commandOutcome(0),
+      log: commandOutcome(1),
     }],
   })).toBe("partial");
 });
@@ -356,7 +357,7 @@ test("perf report renders Facet values in their declared order", () => {
     const report = writePerfReport({
       run,
       outputDir,
-      metricCode: 0,
+      metric: commandOutcome(0),
       samples: [],
       caseFacets: {
         difficulty: { values: ["simple", "medium", "complex"], ordered: true },

@@ -83,10 +83,6 @@ export async function deliverCommandArtifacts(
 ): Promise<boolean> {
   const artifacts = commandContext.artifacts.list();
   if (!artifacts.length) return true;
-  if (commandCode === 130) {
-    cleanupTemporaryArtifacts(artifacts.map((artifact) => artifact.path));
-    return true;
-  }
 
   const commands = [...new Set(artifacts.map((artifact) => artifact.command))];
   const commandSlug = commandName?.replace(/^doctor\s+/, "").trim().replace(/\s+/g, "-");

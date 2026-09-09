@@ -1,11 +1,12 @@
+import { CommandStatus } from "../command";
 import { basename, join } from "node:path";
 import { writeFileSync } from "node:fs";
 import type { PerfEvidenceSample, PerfResult } from "./model";
 
 export function perfEvidenceStatus(result: PerfResult): "complete" | "partial" {
-  return result.metricCode === 0
+  return result.metric.status === CommandStatus.Ok
     && result.samples.length > 0
-    && result.samples.every((sample) => sample.traceCode === 0 && sample.logCode === 0)
+    && result.samples.every((sample) => sample.trace.status === CommandStatus.Ok && sample.log?.status === CommandStatus.Ok)
     ? "complete"
     : "partial";
 }
@@ -30,8 +31,8 @@ function sampleRow(sample: PerfEvidenceSample): string {
     + `<td>${sample.firstTokenMs === undefined ? "-" : escapeHtml(sample.firstTokenMs.toFixed(0))}</td>`
     + `<td>${escapeHtml(sample.durationMs.toFixed(0))}</td>`
     + `<td>${escapeHtml(sample.errorKind ?? "-")}</td>`
-    + `<td>${sample.traceCode === 0 ? "见顶部 trace Tab" : `trace(${sample.traceCode})`}</td>`
-    + `<td>${sample.logCode === 0 ? "见顶部 log Tab" : `log(${sample.logCode})`}</td></tr>`;
+    + `<td>${sample.trace.status === CommandStatus.Ok ? "见顶部 trace Tab" : `trace(${sample.trace.status})`}</td>`
+    + `<td>${sample.log?.status === CommandStatus.Ok ? "见顶部 log Tab" : `log(${sample.log?.status ?? "not-run"})`}</td></tr>`;
 }
 
 function orderedFacetValues(result: PerfResult, facet: string, values: string[]): string[] {
@@ -87,9 +88,9 @@ export function writePerfReport(result: PerfResult): string {
   }).join("\n") || "<tr><td colspan=\"9\">没有带 Facet 的请求结果</td></tr>";
   const samples = result.samples.map(sampleRow).join("\n")
     || "<tr><td colspan=\"9\">未取得 Plugin 声明的可关联业务 ID</td></tr>";
-  const metric = result.metricCode === 0
+  const metric = result.metric.status === CommandStatus.Ok
     ? "压测窗口 Metric 报告见顶部 metric Tab"
-    : `Metric 采集未完成（exit ${result.metricCode}）`;
+    : `Metric 采集未完成（${result.metric.status}）`;
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>doctor perf</title>
 <style>body{font:14px system-ui;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;margin:16px 0 28px}th,td{border:1px solid #d9e0e6;padding:8px;text-align:left}th{background:#f4f7f9}code{font-size:12px}a{color:#075dcc}</style></head><body>
 <h1>doctor perf</h1><p>run <code>${escapeHtml(result.run.run_id)}</code> · subject ${escapeHtml(result.run.subject)} · ${result.run.passed ? "completed" : "incomplete"} · observability evidence ${evidenceStatus}</p>

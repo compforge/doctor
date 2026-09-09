@@ -183,6 +183,20 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
   }
+  if (capabilities.overview !== undefined) {
+    const label = `${service.name}.overview`;
+    const overview = record(capabilities.overview, label);
+    record(overview.access, `${label}.access`);
+    const facets = uniqueIdRecords(overview.facets, `${label}.facets`);
+    if (!facets.size) throw new Error(`${label}.facets must not be empty`);
+    for (const [id, facet] of facets) {
+      nonEmptyString(facet.title, `${label}.facets.${id}.title`);
+      nonEmptyString(facet.description, `${label}.facets.${id}.description`);
+    }
+    for (const method of ["summarize", "sample"] as const) {
+      if (typeof overview[method] !== "function") throw new Error(`${label}.${method} must be a function`);
+    }
+  }
   const serviceCase = capabilities.case;
   let caseSets = new Map<string, Record<string, unknown>>();
   if (serviceCase !== undefined) {

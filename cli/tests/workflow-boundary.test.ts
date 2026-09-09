@@ -27,9 +27,9 @@ test("perf 只编排 collect 的稳定信号入口，不依赖 provision 或 cha
     .join("\n");
 
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|chat)(?:\/[^"']*)?["']/);
-  expect(sources).toContain('from "../collect/metric"');
-  expect(sources).toContain('from "../collect/trace"');
-  expect(sources).toContain('from "../collect/log"');
+  expect(sources).toContain('from "../collect/metric/command"');
+  expect(sources).toContain('from "../collect/trace/command"');
+  expect(sources).toContain('from "../collect/log/command"');
 });
 
 test("eval 只编排 Case 与 collect 的稳定数据入口，不依赖 provision、perf 或 chat", () => {
@@ -39,9 +39,9 @@ test("eval 只编排 Case 与 collect 的稳定数据入口，不依赖 provisio
 
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|perf|chat)(?:\/[^"']*)?["']/);
   expect(sources).toContain('from "../case"');
-  expect(sources).toContain('from "../collect/trace"');
-  expect(sources).toContain('from "../collect/log"');
-  expect(sources).toContain('from "../collect/data"');
+  expect(sources).toContain('from "../collect/trace/command"');
+  expect(sources).toContain('from "../collect/log/command"');
+  expect(sources).toContain('from "../collect/data/command"');
 });
 
 test("共享 model 能力不依赖任何主路径", () => {

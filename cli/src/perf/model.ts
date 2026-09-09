@@ -1,3 +1,4 @@
+import type { CommandResult } from "../command";
 import type { FacetSpec } from "@compforge/spec-case/model";
 import type { Run } from "@compforge/perf-harness";
 
@@ -51,14 +52,14 @@ export interface PerfEvidenceSample {
   firstTokenMs?: number;
   durationMs: number;
   errorKind?: string;
-  traceCode: number;
-  logCode: number;
+  trace: CommandResult<void>;
+  log?: CommandResult<void>;
 }
 
 export interface PerfResult {
   run: Run;
   outputDir: string;
-  metricCode: number;
+  metric: CommandResult<void>;
   samples: PerfEvidenceSample[];
   caseFacets?: Readonly<Record<string, FacetSpec>>;
 }

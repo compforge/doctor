@@ -366,3 +366,9 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 分发方可从 `doctor-cli/embed` 导入 `startDoctor`，提供独立 composition entry，并通过
 `cli/Makefile` 的 `DOCTOR_ENTRY` 构建。本仓根 `make build/install` 始终构建不带具体 Plugin 的通用 CLI。
 两种形态共用 `PluginDefinition` 与 capability，差别只在启动时如何取得 Plugin。
+
+### Service Overview
+
+`capabilities.overview` 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
+文字，`canSample` 决定是否可进入可选采集。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
+Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。详见 [Overview](commands/overview.md)。

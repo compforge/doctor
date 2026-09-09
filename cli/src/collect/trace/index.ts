@@ -1,3 +1,4 @@
+import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // trace 采集编排：通道解析（--endpoint 直连 / DOCTOR_OPENSEARCH_URL / kubectl 发现 svc +
 // port-forward）→ _count 验证 → search_after 全量下载 → spans.jsonl → HTML / 证据包。
@@ -183,26 +184,26 @@ export async function runCollectTrace(
   opts: CollectTraceCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
   ].map((item) => item.trim()).filter(Boolean))];
   if (!bizIds.length) {
     terminalStderr.error("doctor trace 需要至少一个 biz-id\n");
-    return 2;
+    return commandOutcome(2);
   }
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
     terminalStderr.error(`--page-size 需要正整数: '${opts.pageSize}'\n`);
-    return 2;
+    return commandOutcome(2);
   }
   let format: TraceOutputFormat;
   try {
     format = parseTraceOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
   let runtime: TraceKubernetesRuntime | undefined;
@@ -214,11 +215,11 @@ export async function runCollectTrace(
     );
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   if (!runtime) {
     terminalStderr.warning("[collect] 已取消\n");
-    return 130;
+    return commandOutcome(130);
   }
 
   const index = buildIndexExpr(opts.index, opts.indexDate);
@@ -254,7 +255,7 @@ export async function runCollectTrace(
     }, plugin, runtime.executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   for (const trace of traces) {
     terminalStdout.write(
@@ -273,7 +274,7 @@ export async function runCollectTrace(
         : await dependencyRuntime.prepareStoreCandidates(traceStores);
     } catch (error) {
       terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-      return 2;
+      return commandOutcome(2);
     }
   }
 
@@ -298,13 +299,17 @@ export async function runCollectTrace(
     ? mergeTraceContributions(plugin.trace.analysis, { specs: genAiSpecs() })
     : { specs: genAiSpecs() };
   const groups: ReportTab[] = [];
+  const statuses: CommandStatus[] = [];
   let exitCode = 0;
   for (const [bizIndex, bizId] of bizIds.entries()) {
+    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
+    if (!groupTraces.length) statuses.push(CommandStatus.Failed);
     const groupKey = `biz-${bizIndex + 1}`;
     const traceTabs: ReportLeafTab[] = [];
-    let groupCode = 0;
+    let groupCode = groupTraces.length ? 0 : 1;
     for (const [traceIndex, trace] of groupTraces.entries()) {
+      if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
       const outputDir = singleTrace
         ? staging
         : join(staging, `biz-${bizIndex + 1}`, `trace-${traceIndex + 1}-${trace.traceId.slice(0, 12)}`);
@@ -349,6 +354,7 @@ export async function runCollectTrace(
           ? readFileSync(join(outputDir, "trace.html"), "utf8")
           : failedReportHtml(`Trace 采集失败：${trace.traceId}`, `Biz ID ${bizId}，退出码 ${code}`),
       });
+      statuses.push(commandOutcome(code).status);
       groupCode = Math.max(groupCode, code);
     }
     const group = {
@@ -373,7 +379,7 @@ export async function runCollectTrace(
         tabs: groups,
       });
     }
-    return exitCode;
+    return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
   }
 
   const reportPath = join(staging, "report.html");
@@ -386,7 +392,7 @@ export async function runCollectTrace(
       tabs: groups,
     });
   }
-  return exitCode;
+  return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
   } finally {
     try {
       await dependencyRuntime.close();

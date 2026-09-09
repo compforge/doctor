@@ -1,3 +1,4 @@
+import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
 // Kubernetes 的 Pod 枚举和日志读取由 infra/k8s 提供；本目录只保留业务选择和证据语义。
@@ -264,17 +265,17 @@ export async function runCollectLog(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
   ].map((item) => item.trim()).filter(Boolean))];
   if (!ids.length) {
     terminalStderr.error("doctor log 需要至少一个 biz-id\n");
-    return 2;
+    return commandOutcome(2);
   }
   if (ids.length === 1) {
-    return runCollectLogSingle({ ...opts, bizIds: ids }, plugin, commandContext);
+    return commandOutcome(await (runCollectLogSingle({ ...opts, bizIds: ids }, plugin, commandContext)));
   }
 
   let format;
@@ -282,7 +283,7 @@ export async function runCollectLog(
     format = parseLogOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
   const batchName = defaultLogBatchName(new Date());
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
@@ -290,18 +291,17 @@ export async function runCollectLog(
   mkdirSync(staging, { recursive: true });
   commandContext.artifacts.add("log", staging);
   const tabs = [];
-  let exitCode = 0;
+  const statuses: CommandStatus[] = [];
   for (const [index, bizId] of ids.entries()) {
-    const artifactOffset = commandContext.artifacts.list().length;
-    const code = await runCollectLogSingle(
+    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+    const child = await commandContext.artifacts.capture(() => runCollectLogSingle(
       { ...opts, bizIds: [bizId], format: "html", output: undefined },
       plugin,
       commandContext,
-    );
-    if (code === 130) {
-      return code;
-    }
-    const childArtifact = commandContext.artifacts.list()[artifactOffset];
+    ));
+    commandContext.artifacts.include(child.artifacts);
+    const code = child.value;
+    const childArtifact = child.artifacts[0];
     const htmlPath = childArtifact ? join(childArtifact.path, "report.html") : "";
     tabs.push({
       key: `biz-${index + 1}`,
@@ -311,7 +311,8 @@ export async function runCollectLog(
         ? readFileSync(htmlPath, "utf8")
         : failedReportHtml(`Log 诊断失败：${bizId}`, `采集退出码 ${code}`),
     });
-    exitCode = Math.max(exitCode, code);
+    statuses.push(commandOutcome(code).status);
+    if (code === 130) break;
   }
 
   writeTabbedReport(join(staging, "report.html"), {
@@ -320,7 +321,7 @@ export async function runCollectLog(
     ariaLabel: "Biz ID 日志诊断结果",
     tabs,
   });
-  return exitCode;
+  return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
 }
 
 export async function collectLog(

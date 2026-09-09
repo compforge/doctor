@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult } from "../../command";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import {
@@ -31,7 +32,7 @@ export async function runCollectModel(
   opts: CollectModelCliOptions,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   let type;
   let timeoutMs;
   let performanceRepeat;
@@ -45,7 +46,7 @@ export async function runCollectModel(
     format = parseModelOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
 
   let access: ModelAccess | undefined;
@@ -58,9 +59,9 @@ export async function runCollectModel(
     });
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return 2;
+    return commandOutcome(2);
   }
-  if (!access) return 130;
+  if (!access) return commandOutcome(130);
   terminalStdout.write(
     `[model] namespace: ${access.config.kubernetes.namespace}（${access.config.kubernetes.namespaceSource}）\n`,
   );
@@ -76,7 +77,7 @@ export async function runCollectModel(
     });
     if (!tenant) {
       terminalStderr.warning("[model] 已取消\n");
-      return 130;
+      return commandOutcome(130);
     }
     terminalStdout.write(`[model] tenant: ${tenant.name}（${tenant.id}）\n`);
 
@@ -92,7 +93,7 @@ export async function runCollectModel(
     });
     if (!selected) {
       terminalStderr.warning("[model] 已取消\n");
-      return 130;
+      return commandOutcome(130);
     }
     const model = requireInferenceModel(selected);
     if (model.type === "audio") {
@@ -127,10 +128,10 @@ export async function runCollectModel(
     )) {
       terminalStdout.success("[model] 模型诊断完成，所需证据已完整取得。\n");
     }
-    return result.exitCode;
+    return commandOutcome(result.exitCode);
   } catch (error) {
     terminalStderr.error(`[model] ${error instanceof Error ? error.message : String(error)}\n`);
-    return 1;
+    return commandOutcome(1);
   } finally {
     await access.dispose();
   }

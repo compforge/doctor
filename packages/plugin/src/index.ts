@@ -9,6 +9,7 @@ export * from "./kubernetes";
 export * from "./mcp";
 export * from "./definition";
 export * from "./observation";
+export * from "./overview";
 export * from "./probe";
 export * from "./service";
 export * from "./skill";

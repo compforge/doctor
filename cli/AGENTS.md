@@ -2,12 +2,13 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Chat 五条并列主路径组织能力准备、
-确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、Perf 和 Chat 六条并列主路径组织能力准备、
+概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
+- **概览与采样**：`doctor overview` 展示 Plugin Service 的 Facet / Entry，经用户确认后采样并复用 Collect。
 - **数据集采集**：`doctor eval` 逐例触发 canonical CaseSet，并复用 Collect 取得关联证据，不做质量评分。
 - **主动施压**：`doctor perf` 按共享 Perf Harness 契约产生业务流量，并复用 Collect 取得同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
@@ -20,11 +21,12 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
 | `app` | 命令入口、profile 与 composition root |
 | `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
 | `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
-| `command` | 五条主路径共用的启动检查、Kubernetes 目标解析与 access/审批契约 |
+| `command` | CommandSpec、结构化结果、共享 Context、调用作用域及环境/access/审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `case` | Eval 与 Perf 共用的 Case 请求身份选择 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
+| `overview` | Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
 | `perf` | 对 Plugin Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `infra` | DB、HTTP、Kubernetes、进程和本机工具等访问原语 |
@@ -60,8 +62,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
 9. **默认交付兼顾阅读与完整取证**：诊断命令未指定 `--format` 时，同时交付外置 HTML 和完整
    `tar.gz`；Bundle 解压后只产生一个顶层目录，目录内保留 `report.html`、领域 JSON、原始 Evidence 与附件；
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。
-   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 command 只准备并向共享
-   `CommandContext` 注册 Artifacts；统一 finalize 阶段负责 Delivery，组合命令不自行复制或压缩子产物。
+   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
+   根入口统一 finalize 和 Delivery。单次调用的资源与产物独立，环境、决策及取消信号在整轮内共享。
 
 ## References
 
@@ -69,6 +71,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Collect、Eval、Perf 和 Cha
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
+- `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定

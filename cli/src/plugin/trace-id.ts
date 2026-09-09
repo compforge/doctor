@@ -142,7 +142,8 @@ export async function resolvePluginTraceIds(
     const detail = [...unresolved].map((bizId) => (
       `${bizId}: ${failures.get(bizId)!.join("；")}`
     )).join("；");
-    throw new Error(`无法从 biz-id 解析出 trace_id：${detail}`);
+    if (!resolutions.length) throw new Error(`无法从 biz-id 解析出 trace_id：${detail}`);
+    terminalStdout.warning(`[collect] 部分请求没有可用 trace，跳过其 Trace/Log：${detail}\n`);
   }
   const seen = new Set<string>();
   return resolutions.filter((item) => {

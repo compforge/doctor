@@ -12,6 +12,7 @@ import type {
   ModelInference,
   ModelInferenceTarget,
 } from "./definition";
+import type { ServiceOverviewCapability } from "./overview";
 import type { ServiceMcpCapability } from "./mcp";
 import type { CapabilityWithAccess } from "./kubernetes";
 import type { JsonObject } from "./json";
@@ -541,6 +542,7 @@ export function isToolchain(value: unknown): value is Toolchain {
 }
 
 export interface ServiceCapabilities {
+  overview?: ServiceOverviewCapability;
   stores?: readonly ServiceStoreCapability[];
   config?: Record<string, never>;
   log?: {

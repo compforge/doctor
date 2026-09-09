@@ -315,3 +315,17 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
     resolvedAs: "skill_version_id",
   });
 });
+
+test("trace batch keeps resolvable samples when another message has no trace", async () => {
+  const plugin: PluginDefinition = { id: "partial-traces", version: "0.0.1", services: createServiceCatalog([{
+    name: "chat", workloads: [], capabilities: { traceId: {
+      endpoint: { host: "chat", port: 8001 }, access: {},
+      resolve: async (_context, { bizId }) => bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" },
+    } },
+  }]) };
+  const executor = { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } };
+  const opts = { namespace: "default", profileName: "test", command: "doctor trace" as const };
+  expect(await resolvePluginTraceIds({ ...opts, bizIds: ["t1", "missing"] }, plugin, executor))
+    .toEqual([{ bizId: "t1", traceId: "t1", service: "chat", resolvedAs: "trace_id", sourceId: undefined }]);
+  await expect(resolvePluginTraceIds({ ...opts, bizIds: ["missing"] }, plugin, executor)).rejects.toThrow("无法从 biz-id");
+});
