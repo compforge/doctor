@@ -127,6 +127,16 @@ describe("CLI command routing", () => {
     expect(result.stderr).toBe("");
   });
 
+  test("log exposes the inclusive upper time bound and rejects invalid bounds before target access", () => {
+    const help = runCoreCli("log", "--help");
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("--until-time <timestamp>");
+    const invalid = runCoreCli("log", "--biz-id", "trace-a", "--until-time", "yesterday");
+    expect(invalid.exitCode).toBe(2);
+    expect(invalid.stderr).toContain("RFC3339");
+    expect(invalid.stderr).not.toContain("Kubernetes");
+  });
+
   test("chat is the explicit interactive command", () => {
     const result = runCli("chat", "--help");
     expect(result.exitCode).toBe(0);

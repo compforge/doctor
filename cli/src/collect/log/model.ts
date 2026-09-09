@@ -15,6 +15,7 @@ export interface LogCollectOptions {
   services: string[];
   since?: string;
   sinceTime?: string;
+  untilTime?: string;
   errorsOnly: boolean;
   pattern?: string;
   outputDir: string;
@@ -47,10 +48,20 @@ export interface PodLogObservation {
   captureStatus: PodLogCaptureStatus;
 }
 
+export interface LogCaptureStats {
+  bytesRead: number;
+  matchedPodCount: number;
+  scannedPodCount: number;
+  /** Elapsed since log collection began (includes discovery and queueing), before content filtering. */
+  firstMatchMs?: number;
+  wallMs: number;
+}
+
 export interface ServiceLogObservation extends ObservationMeta {
   kind: "service-log";
   service: string;
   pods: readonly PodLogObservation[];
+  capture?: LogCaptureStats;
 }
 
 export type LogEvidence = Evidence<ServiceLogObservation, LogInspectionFacts>;
@@ -77,13 +88,14 @@ export interface LogTimelineRecord {
 
 export interface LogCommandContext {
   command: CommandContext;
+  startedAtMs?: number;
   config: LogProbeConfig;
   access: KubernetesPodLogAccess;
   bundle: EvidenceBundle;
   log: (line: string) => void;
 }
 
-export interface LogRenderStats {
+export interface LogRenderStats extends LogCaptureStats {
   podCount: number;
   matchedEventCount: number;
   previousContainerCount: number;

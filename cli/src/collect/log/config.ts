@@ -1,3 +1,4 @@
+import { logTimestampNanos } from "../../infra/k8s/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {
@@ -51,21 +52,32 @@ export interface TraceLineCollector {
 export function createTraceLineCollector(
   traceIds: string | readonly string[],
   pattern?: RegExp,
+  onTraceMatch?: (traceId: string) => void,
 ): TraceLineCollector {
   const ids = typeof traceIds === "string" ? [traceIds] : traceIds;
   const lines: string[] = [];
   const events: string[] = [];
   let collectingStack = false;
+  const notified = new Set<string>();
   return {
     lines,
     events,
     push: (line) => {
+      const matchesTrace = ids.some((traceId) => line.includes(traceId));
+      if (matchesTrace && onTraceMatch) {
+        for (const traceId of ids) {
+          if (!notified.has(traceId) && line.includes(traceId)) {
+            notified.add(traceId);
+            onTraceMatch(traceId);
+          }
+        }
+      }
       if (collectingStack && isStackContinuation(line)) {
         lines.push(line);
         events[events.length - 1] += `\n${line}`;
         return;
       }
-      const selected = ids.some((traceId) => line.includes(traceId)) && (!pattern || pattern.test(line));
+      const selected = matchesTrace && (!pattern || pattern.test(line));
       if (selected) {
         lines.push(line);
         events.push(line);
@@ -153,6 +165,18 @@ export function resolveLogTimeWindow(input: {
     return { since: DEFAULT_LOG_SINCE };
   }
   return { sinceTime: new Date(timestampMs - UUID_V7_LEAD_MS).toISOString() };
+}
+
+/** Reject ambiguous/invalid upper bounds before any remote access. */
+export function validateLogTimeWindow(input: { sinceTime?: string; untilTime?: string }): void {
+  if (input.untilTime === undefined) return;
+  const end = logTimestampNanos(input.untilTime);
+  if (end === undefined) throw new Error("--until-time 必须是 RFC3339 时间戳");
+  if (input.sinceTime !== undefined) {
+    const start = logTimestampNanos(input.sinceTime);
+    if (start === undefined) throw new Error("--since-time 必须是 RFC3339 时间戳");
+    if (start > end) throw new Error("--until-time 不能早于 --since-time");
+  }
 }
 
 export function filterTraceLines(stdout: string, traceIds: string | readonly string[], pattern?: RegExp): string[] {

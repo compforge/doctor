@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   escapeHtml,
@@ -7,7 +7,8 @@ import {
 } from "../output/html";
 import type { BundleManifest } from "../output/html";
 import { LOG_REPORT_SCRIPT, LOG_REPORT_STYLES } from "./html-assets";
-import type { LogTimelineRecord } from "./model";
+import { formatLogCaptureStats } from "./render";
+import type { LogRenderStats, LogTimelineRecord } from "./model";
 
 export function parseLogTimelineJsonl(text: string): LogTimelineRecord[] {
   return text.split("\n")
@@ -59,7 +60,7 @@ export function renderLogViewer(records: readonly LogTimelineRecord[]): string {
   </div>`;
 }
 
-function buildLogSummary(manifest: BundleManifest, records: readonly LogTimelineRecord[]): string {
+function buildLogSummary(manifest: BundleManifest, records: readonly LogTimelineRecord[], stats?: LogRenderStats): string {
   const target = manifest.target ?? {};
   const params = manifest.params ?? {};
   const logCount = records.filter((record) => record.kind === "log").length;
@@ -70,12 +71,13 @@ function buildLogSummary(manifest: BundleManifest, records: readonly LogTimeline
     : `since=${String(params.since ?? "")}`;
   return `<h1>日志诊断</h1>
     <p>按时间聚合多个 Service 的业务日志，支持离线搜索、时间范围和来源筛选。</p>
+    ${stats ? `<p>${escapeHtml(formatLogCaptureStats(stats))}</p>` : ""}
     <ul>
       <li>Namespace：<code>${escapeHtml(target.namespace ?? "")}</code></li>
       <li>Biz ID：<code>${escapeHtml(target.biz_id ?? "")}</code></li>
       <li>Trace IDs：<code>${escapeHtml(Array.isArray(target.trace_ids) ? target.trace_ids.join(", ") : target.trace_id ?? "")}</code></li>
       <li>Services：${escapeHtml(services)}</li>
-      <li>时间窗口：<code>${escapeHtml(timeWindow)}</code></li>
+      <li>时间窗口：<code>${escapeHtml(`${timeWindow}${params.until_time ? ` until-time=${params.until_time}（含边界）` : ""}`)}</code></li>
       <li>日志事件：${logCount} 条；采集失败：${errorCount} 项</li>
     </ul>`;
 }
@@ -86,10 +88,12 @@ export function writeLogHtmlReport(bundleDir: string, outputPath: string, profil
   const manifest = JSON.parse(
     readFileSync(join(bundleDir, "manifest.json"), "utf-8"),
   ) as BundleManifest;
+  const statsPath = join(bundleDir, "log-stats.json");
+  const stats = existsSync(statsPath) ? JSON.parse(readFileSync(statsPath, "utf-8")) as LogRenderStats : undefined;
   writeHtmlReport(bundleDir, outputPath, {
     title: "doctor log 日志报告",
     profileName,
-    summaryHtml: buildLogSummary(manifest, records),
+    summaryHtml: buildLogSummary(manifest, records, stats),
     sections: [{ id: "log-timeline", title: "日志时间线", html: renderLogViewer(records) }],
     assets: { styles: LOG_REPORT_STYLES, script: LOG_REPORT_SCRIPT },
   });

@@ -37,6 +37,7 @@ export interface CollectCliOpts {
   tenantName?: string;
   since?: string;
   sinceTime?: string;
+  untilTime?: string;
   watch?: string;
   interval?: string;
   prometheus?: string;
@@ -89,6 +90,7 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
       include: input.opts.kinds,
       since: input.opts.since,
       since_time: input.opts.sinceTime,
+      until_time: input.opts.untilTime,
       metric_watch: input.opts.watch,
       metric_interval: input.opts.interval,
       deployment_config: input.opts.deploymentConfig,
@@ -213,7 +215,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         // Capability availability is broader than the Plugin's default collection scope.
         services: plugin.services.servicesWith("log")
           .filter((service) => service.capabilities.log.default).map((service) => service.name).join(","),
-        since: input.since, sinceTime: input.sinceTime,
+        since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime,
       });
       case "metric": return metricCommand.run(context, {
         ...common, services: providerNames(plugin, "metric"), watch: input.watch ?? "0",

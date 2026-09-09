@@ -26,6 +26,8 @@ export interface PodLogRequest {
   tail?: number;
   since?: string;
   sinceTime?: string;
+  /** Inclusive runtime timestamp boundary, enforced while streaming by the API transport. */
+  untilTime?: string;
   /** 单次 Container 日志响应的服务端字节上限。 */
   limitBytes?: number;
   /** 指定后 stdout 原样流式写入该文件，返回值不再在内存中保留 stdout。 */

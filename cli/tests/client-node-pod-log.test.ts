@@ -273,3 +273,63 @@ test("command cancellation closes an active HTTPS log stream without retry and r
   expect(requests).toBe(1);
   expect(readFileSync(rawFilePath, "utf8")).toContain("before-cancel");
 });
+
+describe("Pod Log upper time boundary and buffered evidence", () => {
+  test("inclusive nanosecond boundary closes a live stream without retrying or emitting later records", async () => {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("unused") });
+    servers.push(server);
+    let attempts = 0;
+    let aborted = false;
+    const stream = new PassThrough();
+    const fetchImpl: ClientNodeFetch = async (url, init) => {
+      attempts++;
+      // until-time is enforced by the reader; Kubernetes has no such query parameter.
+      expect(new URL(String(url)).searchParams.has("untilTime")).toBeFalse();
+      init?.signal?.addEventListener("abort", () => { aborted = true; stream.end(); }, { once: true });
+      stream.write("2026-09-09T01:00:00.123456788Z INFO trace-a before\n");
+      stream.write("2026-09-09T01:00:00.123456789Z ERROR trace-a at-boundary\n");
+      stream.write("    stack continuation\n");
+      stream.write("2026-09-09T01:00:00.123456790Z INFO trace-a outside\n");
+      return new NodeFetchResponse(stream);
+    };
+    const access = accessFor(server, oneAttempt, fetchImpl);
+    const rawFilePath = join(roots.at(-1)!, "window.log");
+    const lines: string[] = [];
+    const result = await access.collectPodLogs({
+      ...logRequest, untilTime: "2026-09-09T01:00:00.123456789Z", rawFilePath,
+      onLine: (line) => lines.push(line),
+    });
+    expect(result.captureStatus).toBe("complete");
+    expect(result.timedOut).toBeFalse();
+    expect(aborted).toBeTrue();
+    expect(attempts).toBe(1);
+    expect(lines).toHaveLength(3);
+    expect(lines[1]).toContain("at-boundary");
+    expect(readFileSync(rawFilePath, "utf8")).toBe(lines.join("\n") + "\n");
+    expect(readFileSync(rawFilePath, "utf8")).not.toContain("outside");
+  });
+
+  test("EOF after an empty requested window is complete and preserves an empty raw file", async () => {
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
+      fetch: () => new Response("2026-09-09T01:00:01Z INFO outside") });
+    servers.push(server);
+    const access = accessFor(server);
+    const rawFilePath = join(roots.at(-1)!, "empty-window.log");
+    const result = await access.collectPodLogs({ ...logRequest, untilTime: "2026-09-09T01:00:00Z", rawFilePath });
+    expect(result.captureStatus).toBe("complete");
+    expect(readFileSync(rawFilePath, "utf8")).toBe("");
+    expect(result.bytesRead).toBeGreaterThan(0);
+  });
+
+  test("batched writes preserve multibyte logs across transport chunks and flush the final buffer", async () => {
+    const payload = Array.from({ length: 2500 }, (_, i) => `2026-09-09T01:00:00Z trace-a 中文日志 ${i}\n`).join("");
+    const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(payload) });
+    servers.push(server);
+    const access = accessFor(server);
+    const rawFilePath = join(roots.at(-1)!, "buffered.log");
+    const result = await access.collectPodLogs({ ...logRequest, rawFilePath });
+    expect(result.captureStatus).toBe("complete");
+    expect(result.bytesRead).toBe(Buffer.byteLength(payload));
+    expect(readFileSync(rawFilePath, "utf8")).toBe(payload);
+  });
+});
