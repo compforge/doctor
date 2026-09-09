@@ -1,0 +1,8 @@
+export const DEFAULT_OVERVIEW_SAMPLE_COUNT = 5;
+
+/** CLI overrides profile; this is a default selection size, not a cap on explicit interactive choices. */
+export function overviewSampleCount(value?: number, configured?: number): number {
+  const count = value ?? configured ?? DEFAULT_OVERVIEW_SAMPLE_COUNT;
+  if (!Number.isSafeInteger(count) || count <= 0) throw new Error("overview sample count 必须是正整数（--sample-count / overview.sample_count）");
+  return count;
+}

@@ -1,3 +1,5 @@
+import { promptMultiSelect } from "../terminal/multi-select";
+import type { OverviewEntryChoice } from "./flow";
 import type { OverviewFacet, OverviewQuery } from "@compforge/doctor-plugin";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 
@@ -42,10 +44,29 @@ export async function selectOverviewFacet(
   // --collect is explicit consent. Generic --yes must never turn overview into collection.
   if (opts.collect) return facet.id;
   const confirmed = await prompt({
-    question: `采集 ${facet.title} 每个可采样 Entry 的一个请求（data、trace、log）？[y/N]: `,
+    question: `选择 ${facet.title} 的代表请求并采集（data、trace、log）？[y/N]: `,
     emptyValue: false,
     match: (answer) => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
     invalidMessage: "请输入 y 或 n",
   });
   return confirmed ? facet.id : undefined;
+}
+
+export async function selectOverviewEntries(
+  entries: readonly OverviewEntryChoice[], defaultCount: number, interactive: boolean,
+  prompt: typeof promptMultiSelect = promptMultiSelect,
+): Promise<readonly OverviewEntryChoice[] | undefined> {
+  const defaults = entries.slice(0, defaultCount);
+  if (!interactive || entries.length <= defaultCount) return defaults;
+  const choices = entries.map((choice) => ({
+    ...choice, name: JSON.stringify([choice.service, choice.facetId, choice.entry.key]),
+  }));
+  const selected = await prompt({
+    choices, defaults: choices.slice(0, defaultCount).map((choice) => choice.name),
+    title: `选择要采集的 Entry（默认前 ${defaultCount} 个；确认后每项采集一个代表请求）`,
+    renderChoice: (choice) => `${choice.service} · ${choice.entry.label}: ${choice.entry.data}${choice.entry.unit ? ` ${choice.entry.unit}` : ""}`,
+  });
+  if (!selected) return undefined;
+  const names = new Set(selected);
+  return choices.filter((choice) => names.has(choice.name));
 }

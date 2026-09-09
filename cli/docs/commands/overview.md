@@ -9,12 +9,28 @@ Entry 才进入后续采集。
 ```bash
 doctor overview
 doctor overview --since 6h --services example-api --tenant-id <tenant-id>
-doctor overview --since 1h --collect --facet errors
+doctor overview --since 1h --collect --facet errors --sample-count 5
 ```
 
 交互模式先选择近 10m、1h、6h、1d 或 3d，再展示所有 Service 的结果。用户可以直接结束，也可以选择
 一个 Facet 并确认采集。只有一个可采集 Facet 时省略选择，仍需确认，默认不采集。非交互模式默认近 1h，
 只有显式 `--collect` 才采集；多个可采集 Facet 时还需指定 `--facet`。`--facet` 本身不触发采集。
+
+选定 Facet 后，默认采样前 5 个可采样 Entry，这个数量跨 Service 合计。大盘展示不受影响；默认顺序
+沿用大盘中的 Service / Entry 顺序，不按数值重新排序，因为 Entry data 也可以是文字。超过默认数量时，
+交互模式显示 Entry 多选列表，预选前 5 项，允许增减后确认采集；按 Esc 取消后不采样、不 collect。
+非交互模式只采前 5 项，每项至多一个代表请求；样本缺失或失败不自动补选其他 Entry。
+
+`--sample-count` 覆盖 profile 的 `overview.sample_count`，未配置时为 5，必须是正整数。它控制默认选择
+数量，交互模式的显式选择可以超过该数量：
+
+```yaml
+profiles:
+  test:
+    readonly: true
+    overview:
+      sample_count: 5
+```
 
 默认交付 HTML 和 Bundle；`--format html|bundle` 与 `--output` 控制交付形式。报告保留查询窗口、租户、
 Service / Facet / Entry、数据、截断原因、采样来源和 collect biz-id；采集产物与概览一起交付。
@@ -29,7 +45,7 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 时间字段，在 description 中说明统计口径，并在查询处限制结果数、声明截断。查询失败与“没有条目”是
 不同状态；某个 Service 失败不会阻止其它 Service 展示结果。
 
-确认后，每个可采样 Entry 查询一个代表请求。Plugin 应返回最精确的 collect biz-id，并可提供源记录
+确认后，仅对选中的 Entry 各查询一个代表请求。Plugin 应返回最精确的 collect biz-id，并可提供源记录
 Identity；数据已变化时返回无样本。Core 对 biz-id 去重后复用 data、trace、log collect。采样失败保留
 在对应 Entry，不以其他请求替代。概览阶段使用既有 PluginContext 访问和资源回收机制，采集阶段继续
 使用各 collector 的访问策略与报告流水线。

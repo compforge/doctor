@@ -42,6 +42,7 @@ export interface Profile {
   redis?: RedisProfileConfig;
   registry?: RegistryProfileConfig;
   prometheus?: PrometheusProfileConfig;
+  overview?: { sample_count?: number };
   plugin?: PluginProfileConfig;
   kube?: {
     kubeconfig_path?: string;
