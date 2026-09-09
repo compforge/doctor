@@ -1,3 +1,4 @@
+import { readBundleIndex } from "./bundle-fixture";
 import { CommandStatus } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -144,14 +145,15 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
     expect(readFileSync(join(artifact.path, "report.html"), "utf8")).toContain("不评价回答质量");
 
     const context = new CommandContext({});
-    context.artifacts.add("eval", artifact.path);
+    context.artifacts.add({ command: "eval", path: artifact.path });
     expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor eval"))
       .toBe(true);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
-    expect(listing).toContain("eval/report.html");
-    expect(listing).toContain("eval/caseset.json");
-    expect(listing).toContain("eval/observations.jsonl");
+    const index = readBundleIndex(archive, "eval");
+    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.report}`);
+    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.path}/caseset.json`);
+    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.path}/observations.jsonl`);
   } finally {
     rmSync(parent, { recursive: true, force: true });
     rmSync(artifact.temporaryRoot, { recursive: true, force: true });

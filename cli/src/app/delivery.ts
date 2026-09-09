@@ -1,15 +1,16 @@
-import { chmodSync, copyFileSync, existsSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import type { CommandContext } from "../command";
 import {
-  packArtifacts,
+  packArchiveEntries,
   resolveArchivePath,
   resolveDefaultReportPaths,
 } from "../collect/output/archive";
 import { writeTabbedReport } from "../collect/output/tabbed-report";
 import type { ReportTab } from "../collect/output/tabbed-report";
 import { terminalStderr, terminalStdout } from "../terminal/output";
+import { createBundleManifest, planBundleArtifacts } from "./bundle-layout";
 import { writeBundleAgents } from "./bundle-agents";
 
 export interface CommandDeliveryOptions {
@@ -204,20 +205,27 @@ export async function deliverCommandArtifacts(
   if (needsBundle) {
     let packed;
     let agentsPath: string | undefined;
+    let indexDirectory: string | undefined;
     try {
+      const layout = planBundleArtifacts(artifacts);
+      indexDirectory = mkdtempSync(join(tmpdir(), "doctor-delivery-index-"));
+      const indexPath = join(indexDirectory, "manifest.json");
+      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout), null, 2)}\n`, { mode: 0o600 });
       agentsPath = writeBundleAgents({
         command: commandName ?? "doctor diagnosis",
         commandCode,
-        artifacts,
+        artifacts: layout,
       });
-      packed = await packArtifacts(
-        [...artifacts.map((artifact) => artifact.path), agentsPath],
+      packed = await packArchiveEntries(
+        [...layout.map(({ artifact, path }) => ({ source: artifact.path, path })),
+          { source: indexPath, path: "manifest.json" }, { source: agentsPath, path: "AGENTS.md" }],
         archivePath!,
       );
     } catch (error) {
       packed = { ok: false, exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
     } finally {
       if (agentsPath) cleanupTemporaryArtifacts([agentsPath]);
+      if (indexDirectory) cleanupTemporaryArtifacts([indexDirectory]);
     }
     if (packed.ok) {
       chmodSync(archivePath!, 0o600);

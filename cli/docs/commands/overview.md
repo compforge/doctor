@@ -74,3 +74,6 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 Identity；数据已变化时返回无样本。Core 对 biz-id 去重后调用所选 Collect 子命令。采样失败保留
 在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，通过同一根 ClientManager 复用已初始化的客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。
+
+Overview 引用各次 Collect 的独立产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
+统一提供 ID 到归档路径的映射，因此同名目录和多个 Collect manifest 均可保留，串行与并发采用同一规则。

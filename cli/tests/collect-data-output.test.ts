@@ -1,3 +1,4 @@
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { commandExitCode } from "../src/app/command";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -361,13 +362,15 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     const entries = listing.split(/\r?\n/).filter(Boolean);
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["report"]);
     expect(entries).toContain("report/AGENTS.md");
-    expect(entries).toContain("report/report.html");
+    const index = readBundleIndex(bundlePath, "report");
+    const data = index.artifacts.find(artifact => artifact.command === "data")!;
+    expect(entries).toContain(`report/${data.report}`);
     expect(listing).toContain("/report.html");
     expect(listing).toContain("/diagnosis.json");
     expect(listing).toContain("/manifest.json");
     expect(listing).toContain("/raw/");
     const manifest = JSON.parse(
-      Bun.spawnSync(["tar", "-xOf", bundlePath, "report/manifest.json"]).stdout.toString(),
+      readBundleText(bundlePath, `report/${data.path}/manifest.json`),
     );
     expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
     expect(manifest.params).not.toHaveProperty("data_capabilities");
@@ -375,7 +378,7 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
       { status: "collected", service, result: { facts: [{ recordKey: "one" }, { recordKey: "two" }] } },
     ]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
-    expect(agents).toContain("`report.html`");
+    expect(agents).toContain(`\`${data.report}\``);
   } finally {
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });

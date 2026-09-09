@@ -31,7 +31,7 @@ test("all collects share eight log slots regardless of collect concurrency", asy
       run: async (ctx, input) => {
         const id = input.bizIds[0]!;
         collecting++; peakCollect = Math.max(peakCollect, collecting);
-        ctx.artifacts.add("log", `/tmp/${id}`);
+        ctx.artifacts.add({ command: "log", path: `/tmp/${id}` });
         onCommandDispose(() => { disposed.push(id); collecting--; });
         const plan = Array.from({ length: 16 }, (_, i) => ({ target: i, request: { pod: `${id}-${i}`, container: "app", previous: i % 2 === 0 } }));
         const result = await runPodLogCapturePlan(access, plan,
@@ -62,7 +62,7 @@ test("cancelling overview drains started collects and never starts queued ids", 
     run: async (ctx, input) => {
       const id = input.bizIds[0]!;
       started.push(id);
-      ctx.artifacts.add("log", `/tmp/partial-${id}`);
+      ctx.artifacts.add({ command: "log", path: `/tmp/partial-${id}` });
       onCommandDispose(() => { disposed.push(id); });
       if (started.length === 2) ready();
       await new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve(), { once: true }));

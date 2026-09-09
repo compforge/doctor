@@ -223,14 +223,14 @@ async function collectCorrelatedEvidence(input: {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
     });
-    input.commandContext.artifacts.include(trace.artifacts);
+    input.commandContext.artifacts.add(trace.artifacts);
     const log = trace.status === CommandStatus.Cancelled ? undefined : await logCommand.run(input.commandContext, {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
       services: input.services.join(","),
       sinceTime: input.run.trials.find((trial) => trial.id === selected.trialId)?.started_at,
     });
-    if (log) input.commandContext.artifacts.include(log.artifacts);
+    if (log) input.commandContext.artifacts.add(log.artifacts);
     samples.push({
       trialId: selected.trialId,
       caseId: selected.outcome.case_id,
@@ -419,7 +419,7 @@ export async function runPerf(
     throw error;
   }
   const outputDir = artifact.path;
-  commandContext.artifacts.add("perf", outputDir);
+  commandContext.artifacts.add({ command: "perf", path: outputDir });
 
   const metricController = new AbortController();
   let markMetricStarted!: () => void;
@@ -478,7 +478,7 @@ export async function runPerf(
     try {
       // Join the child before closing the parent's scope, even when parent cleanup fails.
       metric = await metricPromise;
-      commandContext.artifacts.include(metric.artifacts);
+      commandContext.artifacts.add(metric.artifacts);
     } finally {
       await managed.dispose();
     }

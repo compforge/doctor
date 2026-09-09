@@ -286,7 +286,7 @@ export async function runCollectTrace(
   const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
   const staging = join(stagingRoot, bundleName);
-  commandContext.artifacts.add("trace", staging);
+  commandContext.artifacts.add({ command: "trace", path: staging });
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {

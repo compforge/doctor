@@ -289,7 +289,7 @@ export async function runCollectHttp(
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-http-"));
   const staging = join(stagingRoot, bundleName);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
-  commandContext.artifacts.add("http", staging);
+  commandContext.artifacts.add({ command: "http", path: staging });
   const startedAt = new Date();
   const entrypointCount = scenario.requests.reduce((count, group) => count + group.entrypoints.length, 0);
   terminalStderr.info(`[http] 场景 ${scenario.name}：${scenario.requests.length} 个逻辑请求、${entrypointCount} 个入口 × ${repeat} 轮\n`);

@@ -39,6 +39,6 @@ export function writeOverviewReport(
 <style>body{font:15px system-ui;margin:32px;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:10px;text-align:left;overflow-wrap:anywhere}h2{margin-top:32px}</style>
 <h1>Doctor Overview</h1><p>${escapeHtml(result.query.window.from)} → ${escapeHtml(result.query.window.to)} [from, to)</p>
 <p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · 采集状态: ${escapeHtml(result.collection)} ${escapeHtml(result.collectionError ?? "")}</p>${sections}</html>`, { mode: 0o600 });
-  context.artifacts.add("overview", directory);
+  context.artifacts.add({ command: "overview", path: directory });
   return directory;
 }

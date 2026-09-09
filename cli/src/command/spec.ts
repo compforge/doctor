@@ -42,7 +42,7 @@ export function defineCommand<Input extends CommandInput, Output>(spec: CommandS
               await context.ensureEnvironment(environment ?? {});
               context.signal.throwIfAborted();
               const result = await spec.run(context, input);
-              context.artifacts.include(result.artifacts);
+              context.artifacts.add(result.artifacts);
               if (result.reportName) context.artifacts.setReportName(result.reportName);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return result;

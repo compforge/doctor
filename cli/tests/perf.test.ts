@@ -1,3 +1,4 @@
+import { readBundleIndex } from "./bundle-fixture";
 import { commandOutcome } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -71,21 +72,20 @@ test("Perf bundle archives the complete linked report directory", async () => {
       writeFileSync(join(dir, "report.html"), report);
     }
     const context = new CommandContext({});
-    context.artifacts.add("perf", artifact.path);
-    context.artifacts.add("metric", metricDir);
-    context.artifacts.add("trace", traceDir);
-    context.artifacts.add("log", logDir);
+    context.artifacts.add({ command: "perf", path: artifact.path });
+    context.artifacts.add({ command: "metric", path: metricDir });
+    context.artifacts.add({ command: "trace", path: traceDir });
+    context.artifacts.add({ command: "log", path: logDir });
     expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor perf"))
       .toBe(true);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     const entries = listing.split(/\r?\n/).filter(Boolean);
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["perf"]);
-    expect(listing).toContain("perf/doctor-perf-20260102-030405/perf.html");
-    expect(listing).toContain("perf/doctor-perf-20260102-030405/report.html");
-    expect(listing).toContain("perf/doctor-metric-test/report.html");
-    expect(listing).toContain("perf/doctor-trace-test/report.html");
-    expect(listing).toContain("perf/doctor-log-test/report.html");
+    const index = readBundleIndex(archive, "perf");
+    for (const command of ["perf", "metric", "trace", "log"]) {
+      expect(listing).toContain(`perf/${index.artifacts.find(artifact => artifact.command === command)!.report}`);
+    }
     expect(existsSync(artifact.temporaryRoot)).toBe(false);
   } finally {
     rmSync(parent, { recursive: true, force: true });

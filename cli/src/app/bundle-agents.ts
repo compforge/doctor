@@ -1,7 +1,7 @@
-import { existsSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import type { CommandArtifact } from "../command/artifacts";
+import { join } from "node:path";
+import type { BundleArtifact } from "./bundle-layout";
 
 function markdownCode(value: string): string {
   return `\`${value.replaceAll("`", "\\`")}\``;
@@ -10,18 +10,9 @@ function markdownCode(value: string): string {
 export function renderBundleAgents(input: {
   command: string;
   commandCode: number;
-  artifacts: readonly CommandArtifact[];
+  artifacts: readonly BundleArtifact[];
 }): string {
-  const directories = input.artifacts.filter((artifact) => (
-    existsSync(artifact.path) && statSync(artifact.path).isDirectory()
-  ));
-  const flattenedDirectory = directories.length === 1 ? directories[0]?.path : undefined;
-  const reports = input.artifacts.flatMap((artifact) => {
-    const report = join(artifact.path, "report.html");
-    return existsSync(report)
-      ? [artifact.path === flattenedDirectory ? "report.html" : `${basename(artifact.path)}/report.html`]
-      : [];
-  });
+  const reports = input.artifacts.flatMap(artifact => artifact.report ? [artifact.report] : []);
   const reportGuide = reports.length
     ? [
         "解压后可直接用浏览器打开以下完整相对路径；这是面向人的首选入口：",
@@ -30,9 +21,7 @@ export function renderBundleAgents(input: {
       ].join("\n")
     : "本 Bundle 未包含 HTML；直接从各产物目录的 `manifest.json` 或 `summary.md` 开始。";
   const artifacts = input.artifacts
-    .map((artifact) => `- ${markdownCode(artifact.command)}：${markdownCode(
-      artifact.path === flattenedDirectory ? "." : basename(artifact.path),
-    )}`)
+    .map(({ artifact, path }) => `- ${markdownCode(artifact.command)} (${markdownCode(artifact.id)})：${markdownCode(path)}`)
     .join("\n");
 
   return `# Doctor Evidence Bundle
@@ -44,6 +33,8 @@ export function renderBundleAgents(input: {
 ${reportGuide}
 
 ## 分析顺序
+
+根目录的 ${markdownCode("manifest.json")} 将 Artifact ID 映射为 Bundle 内的相对路径；Collect manifest 的 ${markdownCode("artifact_ids")} 通过该索引定位证据。
 
 1. 先阅读 HTML 或各目录的 ${markdownCode("summary.md")}，了解现象和主要结论。
 2. 再读取 ${markdownCode("manifest.json")} 与 ${markdownCode("diagnosis.json")} 核对目标、参数、时间范围、步骤状态和结构化证据。

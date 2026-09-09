@@ -152,7 +152,7 @@ Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行�
 领域参数，Profile、Plugin 和宿主配置由当前 Context 隔离，记录不跨 Doctor 运行保留。
 
 Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数生成 key，Collect 使用这些 Input 调用
-子命令。调用方仍显式纳入子产物，Artifacts 按路径去重，因此多个 Collect 可引用同一份环境/租户证据，
+子命令。调用方仍显式纳入子产物，Artifacts 按产物 ID 去重，因此多个 Collect 可引用同一份环境/租户证据，
 最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
 
 ### Context 与调用归属
@@ -164,6 +164,12 @@ Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的�
 同一 CommandContext 可以被并发子命令共享。Artifacts 使用异步调用作用域，每次调用返回自己的产物
 引用和报告名称，父命令显式选择并纳入子产物；不能按全局列表位置或命令名猜测产物属于哪次调用。
 领域输入与输出通过 Input / Output 传递，不放入共享 Context。
+
+Artifact ID 标识一份具体产物，command 幂等 key 标识一次可复用执行，两者职责独立。CommandArtifacts
+统一使用 add 登记或添加引用：首次登记由 Core 分配 ID，同一本轮内重复登记规范化源路径返回原引用；
+已携带 ID 时保留身份，并校验其 command 与来源路径一致。父命令添加子结果不会重新分配 ID，幂等返回的
+结果自然引用原产物。文件名和时间戳只用于阅读，不能承担产物唯一性。
+
 
 Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本次调用的资源作用域。显式 dispose
 和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
@@ -195,6 +201,11 @@ Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束
 
 Finalize 只执行一次，先销毁共享 Client；清理失败记录错误，仍继续交付证据。随后消费根结果纳入的 Artifacts，统一处理路径、格式、Bundle、Delivery 和临时产物
 清理。报告名称由相应调用拥有，最外层决定最终交付名称。交付失败时保留源产物以便恢复。
+
+Delivery 为每份产物分配独立归档位置，并生成根 manifest，统一记录 Artifact ID 与 Bundle 相对路径。
+Collect manifest 通过 artifact_ids 引用证据；多个 Collect 可以引用同一份 Inspect/Tenant。AGENTS.md 导航
+与打包使用同一份路径映射，领域目录内部的相对路径保持不变。单次和组合命令遵循相同布局，归档路径
+不由各 command 猜测或拼接。根索引不保存 Doctor Host 的临时绝对路径。
 
 默认格式、partial 报告、Evidence Bundle、失败兜底和退出码语义由
 [`collect-protocol.md`](collect-protocol.md) 统一定义。init/profile 等启动命令不要求已有 Profile。

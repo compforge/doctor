@@ -33,7 +33,7 @@ export async function runCommand<Input extends CommandInput, Output>(
         reportError(error, { context: spec.name, summary: "fatal" });
         result = { status: CommandStatus.Failed, artifacts: [], error };
       }
-      context.artifacts.include(result.artifacts);
+      context.artifacts.add(result.artifacts);
       if (result.reportName) context.artifacts.setReportName(result.reportName);
       process.exitCode = await finalizeCommand({
         command: spec.name, context, delivery: opts, code: commandExitCode(result),

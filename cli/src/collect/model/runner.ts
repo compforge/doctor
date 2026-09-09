@@ -153,7 +153,7 @@ export async function runModelDiagnosis(
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-model-diagnosis-"));
   const staging = join(stagingRoot, `doctor-model-${timestamp(startedAt)}`);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
-  input.command.artifacts.add("model", staging);
+  input.command.artifacts.add({ command: "model", path: staging });
   const bundle = new EvidenceBundle(staging, modelOutcomes());
   const ctx: ModelCommandContext = {
     command: input.command,

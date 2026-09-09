@@ -222,7 +222,7 @@ async function runCollectLogSingle(
 
   const bundleName = defaultLogBundleName(selected.traceId, new Date());
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-collect-")), bundleName);
-  commandContext.artifacts.add("log", staging);
+  commandContext.artifacts.add({ command: "log", path: staging });
   const code = await collectLog(
     {
       bizId: selected.bizId,
@@ -293,7 +293,7 @@ export async function runCollectLog(
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
   const staging = join(stagingRoot, batchName);
   mkdirSync(staging, { recursive: true });
-  commandContext.artifacts.add("log", staging);
+  commandContext.artifacts.add({ command: "log", path: staging });
   const tabs = [];
   const statuses: CommandStatus[] = [];
   for (const [index, bizId] of ids.entries()) {
@@ -304,7 +304,7 @@ export async function runCollectLog(
       plugin,
       commandContext,
     ));
-    commandContext.artifacts.include(child.artifacts);
+    commandContext.artifacts.add(child.artifacts);
     const code = child.value;
     const childArtifact = child.artifacts[0];
     const htmlPath = childArtifact ? join(childArtifact.path, "report.html") : "";

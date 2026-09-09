@@ -21,6 +21,6 @@
     "typecheck:toolkit": "bun run --cwd packages/toolkit typecheck"
   },
   "devDependencies": {
-    "@compforge/spec-case": "0.0.4"
+    "@compforge/spec-case": "0.0.6"
   }
 }

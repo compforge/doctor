@@ -1,3 +1,4 @@
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +16,7 @@ import { metricCommand } from "../src/collect/metric/command";
 import { deliverCommandArtifacts } from "../src/app/delivery";
 
 // Keep the real Overview -> Collect delegation and CommandSpec wrappers; only replace external work.
-test("overview collects all selected kinds, shares Inspect/Tenant evidence, and honors default log Services", async () => {
+test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and shared Inspect/Tenant evidence", async concurrency => {
   const root = mkdtempSync(join(tmpdir(), "doctor-overview-idempotency-"));
   const calls: Record<string, number> = {};
   const plugin: PluginDefinition = {
@@ -30,10 +31,10 @@ test("overview collects all selected kinds, shares Inspect/Tenant evidence, and 
     const replacement = defineCommand<Input, void>({ name: command.name, run: async (ctx, input) => {
       check?.(input);
       calls[kind] = (calls[kind] ?? 0) + 1;
-      const path = join(root, `${kind}-${calls[kind]}`);
-      mkdirSync(path);
+      const path = join(root, `${kind}-${calls[kind]}`, `doctor-${kind}-same-second`);
+      mkdirSync(path, { recursive: true });
       writeFileSync(join(path, "report.html"), `<html><body>${kind} evidence ${calls[kind]}</body></html>`);
-      ctx.artifacts.add(kind, path);
+      ctx.artifacts.add({ command: kind, path });
       await Bun.sleep(2);
       return { status: kind === "tenant" ? CommandStatus.Partial : CommandStatus.Ok, output: undefined, artifacts: [] };
     } });
@@ -51,7 +52,7 @@ test("overview collects all selected kinds, shares Inspect/Tenant evidence, and 
     expect(kinds).toEqual([...COLLECT_KINDS]);
     const result = await collectOverviewSamples(context, ["a", "b", "c", "d", "e"], {
       kinds: kinds!, namespace: "ns", tenantId: "tenant-one",
-    }, 2);
+    }, concurrency);
     expect(result.status).toBe(CommandStatus.Partial);
     expect(calls).toEqual({ inspect: 1, tenant: 1, data: 5, trace: 5, log: 5, metric: 5 });
     for (const command of ["inspect", "tenant"]) expect(result.artifacts.filter((artifact) => artifact.command === command)).toHaveLength(1);
@@ -63,7 +64,33 @@ test("overview collects all selected kinds, shares Inspect/Tenant evidence, and 
       expect(manifest.steps.find((step: { id: string }) => step.id === "tenant").status).toBe("partial");
     }
     const output = join(root, "overview.html");
-    expect(await deliverCommandArtifacts(context, { output, format: "html" }, 0, "doctor overview")).toBeTrue();
+    expect(await deliverCommandArtifacts(context, { output }, 0, "doctor overview")).toBeTrue();
+    const archive = join(root, "overview.tar.gz");
+    const index = readBundleIndex(archive, "overview");
+    expect(index.artifacts).toHaveLength(result.artifacts.length);
+    expect(new Set(index.artifacts.map(artifact => artifact.id)).size).toBe(index.artifacts.length);
+    expect(new Set(index.artifacts.map(artifact => artifact.path)).size).toBe(index.artifacts.length);
+    for (const kind of ["inspect", "tenant"]) expect(index.artifacts.filter(artifact => artifact.command === kind)).toHaveLength(1);
+    const collectManifests = index.artifacts.filter(artifact => artifact.command === "collect");
+    expect(collectManifests).toHaveLength(5);
+    const bizIds: string[] = [];
+    const referencedData = new Set<string>();
+    for (const artifact of collectManifests) {
+      const manifest = JSON.parse(readBundleText(archive, `overview/${artifact.path}`));
+      expect(manifest.schema_version).toBe(3);
+      bizIds.push(...manifest.target.biz_ids);
+      for (const step of manifest.steps) {
+        expect(step.artifact_ids).toHaveLength(1);
+        const evidence = index.artifacts.find(artifact => artifact.id === step.artifact_ids[0])!;
+        expect(evidence.command).toBe(step.id);
+        expect(readBundleText(archive, `overview/${evidence.report}`)).toContain(`${step.id} evidence`);
+        if (step.id === "data") referencedData.add(evidence.id);
+      }
+    }
+    expect(bizIds.sort()).toEqual(["a", "b", "c", "d", "e"]);
+    expect(referencedData.size).toBe(5);
+    const agents = readBundleText(archive, "overview/AGENTS.md");
+    for (const artifact of index.artifacts) if (artifact.report) expect(agents).toContain(artifact.report);
     const html = readFileSync(output, "utf8");
     const reports: Record<string, string> = JSON.parse(html.match(/const reports=(.*);/)![1]!);
     for (const kind of ["inspect", "tenant"]) {

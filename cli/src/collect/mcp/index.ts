@@ -148,7 +148,7 @@ export async function runCollectMcp(
   resolveMcpOutputPath(opts.output, bundleName, format);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-mcp-"));
   const staging = join(stagingRoot, bundleName);
-  commandContext.artifacts.add("mcp", staging);
+  commandContext.artifacts.add({ command: "mcp", path: staging });
   const bundle = new EvidenceBundle(staging, MCP_OUTCOMES);
   const trace = traceContext();
   const requiredEvidence = new Set(["mcp-config", "mcp-tools", "gateway-logs"]);
