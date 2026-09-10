@@ -189,7 +189,7 @@ class ClientNodeLogTransport {
         rawChunks.push(chunk);
         rawBytes += Buffer.byteLength(chunk);
         if (rawBytes >= 64 * 1024) flushRaw();
-      } else output.push(rendered);
+      } else if (request.collectStdout !== false) output.push(rendered);
       recentLines.push(line);
       recentLineSet.add(line);
       if (recentLines.length > RECENT_LINE_LIMIT) {

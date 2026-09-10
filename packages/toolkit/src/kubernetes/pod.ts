@@ -4,6 +4,7 @@ export interface KubernetesPod {
   kind: "pod";
   namespace: string;
   name: string;
+  uid?: string;
   serviceAccountName: string;
   ip?: string;
   phase: string;
@@ -41,6 +42,7 @@ export interface KubernetesPodContainer {
   name: string;
   image: string;
   imageId?: string;
+  containerId?: string;
   ports?: Array<{ name?: string; containerPort: number }>;
   requests: Record<string, string>;
   limits: Record<string, string>;
@@ -65,6 +67,7 @@ interface RawContainerTermination {
 interface RawContainerStatus {
   name?: string;
   imageID?: string;
+  containerID?: string;
   ready?: boolean;
   started?: boolean;
   restartCount?: number;
@@ -78,7 +81,7 @@ interface RawContainerStatus {
 
 interface KubernetesPodList {
   items?: Array<{
-    metadata?: { namespace?: string; name?: string; labels?: Record<string, string> };
+    metadata?: { namespace?: string; name?: string; uid?: string; labels?: Record<string, string> };
     spec?: {
       serviceAccountName?: string;
       serviceAccount?: string;
@@ -153,6 +156,7 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
         name: containerName,
         image: container.image?.trim() ?? "",
         imageId: status?.imageID?.trim() || undefined,
+        ...(status?.containerID ? { containerId: status.containerID } : {}),
         ...(ports.length ? { ports } : {}),
         requests: container.resources?.requests ?? {},
         limits: container.resources?.limits ?? {},
@@ -168,6 +172,7 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
       kind: "pod",
       namespace: item.metadata?.namespace ?? defaultNamespace,
       name,
+      ...(item.metadata?.uid ? { uid: item.metadata.uid } : {}),
       serviceAccountName: item.spec?.serviceAccountName?.trim()
         || item.spec?.serviceAccount?.trim()
         || "default",
@@ -194,6 +199,7 @@ export function parsePods(raw: string, defaultNamespace: string): KubernetesPod[
           name: containerName,
           image: "",
           imageId: container.imageID?.trim() || undefined,
+          ...(container.containerID ? { containerId: container.containerID } : {}),
           requests: {},
           limits: {},
           ready: container.ready,

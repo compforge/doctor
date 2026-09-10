@@ -78,6 +78,13 @@ export function makeLogInspect(
         runtime: collectedFact("log.runtime", "log-target", { kubectlVersion }),
         servicePods: collectedFact("log.service-pods", "log-target", {
           byService: podList.byService,
+          instancesByPod: Object.fromEntries(podList.pods.map(pod => [pod.name,
+            Object.fromEntries(pod.containers.map(container => [container.name, {
+              current: pod.uid && container.containerId ? JSON.stringify([pod.uid, container.containerId]) : undefined,
+              previous: pod.uid && container.lastTermination?.containerId
+                ? JSON.stringify([pod.uid, container.lastTermination.containerId]) : undefined,
+            }])),
+          ])),
           containersByPod: Object.fromEntries(podList.pods.map((pod) => [
             pod.name,
             pod.containers.map((container) => container.name),

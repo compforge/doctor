@@ -1,11 +1,8 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
-import {
-  runPodLogCapturePlan,
-  DEFAULT_POD_LOG_CAPTURE_POLICY,
-  type PodLogCapturePlanItem,
-} from "../../../infra/k8s/log-capture-plan";
+import type { PodLogCapturePlanItem } from "../../../infra/k8s/log-capture-plan";
+import { SharedPodLogCaptures } from "../../../infra/k8s/shared-pod-log";
 import type {
   PodLogCaptureStatus,
   PodLogResult,
@@ -24,6 +21,7 @@ interface LogCaptureInput {
   pod: string;
   container: string;
   previous?: boolean;
+  instance?: string;
 }
 
 interface PreparedLogCapture {
@@ -99,21 +97,33 @@ async function captureLogPlan(
   const startedAtMs = ctx.startedAtMs ?? Date.now();
   // TODO: Evaluate time-window parallelism against single-stream capture. Pod Log API has no
   // server-side end-time filter; compare wall-clock, transferred bytes and coverage before enabling it.
-  const captures = await runPodLogCapturePlan(
-    ctx.access,
-    plan.map((input) => prepareCapture(ctx, config, input, startedAtMs)),
-    { ...DEFAULT_POD_LOG_CAPTURE_POLICY, concurrency: ctx.command.limits.podLogs.concurrency },
-    ctx.command.limits.podLogs,
-    ctx.command.signal,
-  );
-  return captures.map(({ target, capture }) => ({
-    ...target.input,
-    capture,
-    events: target.events,
-    rawFilePath: target.rawFilePath,
-    firstMatchMs: target.firstMatchMs,
-    startedAfterMs: target.startedAfterMs,
+  const sources = await ctx.command.clients.get({
+    key: "doctor:pod-log-captures",
+    createClient: signal => new SharedPodLogCaptures(ctx.command.limits.podLogs, signal),
+  });
+  const results = await Promise.allSettled(plan.map(async input => {
+    const { target, request, onStart } = prepareCapture(ctx, config, input, startedAtMs);
+    onStart?.();
+    const capture = await sources.capture(ctx.access, {
+      kubeconfig: config.kubeconfig, context: config.context, namespace: config.namespace, instance: input.instance,
+    }, request, () => ctx.log(`[collect] ${input.service}/${input.pod}/${input.container} 复用本轮 raw 日志，独立匹配 trace`));
+    return { target, capture };
   }));
+  const failure = results.find(result => result.status === "rejected");
+  if (failure?.status === "rejected" && !ctx.command.signal.aborted) throw failure.reason;
+  // Drain all readers before recording evidence, including active streams completed during cancellation.
+  return results.flatMap(result => {
+    if (result.status === "rejected" || !result.value.capture) return [];
+    const { target, capture } = result.value;
+    return [{
+      ...target.input,
+      capture,
+      events: target.events,
+      rawFilePath: target.rawFilePath,
+      firstMatchMs: target.firstMatchMs,
+      startedAfterMs: target.startedAfterMs,
+    }];
+  });
 }
 
 function recordPodLog(ctx: LogCommandContext, input: LogCaptureResult): void {
@@ -173,12 +183,14 @@ export function makeLogProbe(
             service,
             pod,
             container,
+            instance: servicePods.instancesByPod?.[pod]?.[container]?.current,
           })),
           ...(servicePods.previousContainersByPod[pod] ?? []).map((container) => ({
             service,
             pod,
             container,
             previous: true,
+            instance: servicePods.instancesByPod?.[pod]?.[container]?.previous,
           })),
         ])
       ));
@@ -210,6 +222,7 @@ export function makeLogProbe(
           service,
           capture: {
             bytesRead: serviceCaptures.reduce((sum, item) => sum + item.capture.bytesRead, 0),
+            reusedCaptureCount: serviceCaptures.filter(item => item.capture.reused).length,
             matchedPodCount: new Set(matches.map((item) => item.pod)).size,
             scannedPodCount: new Set(serviceCaptures.filter((item) => item.capture.attempts > 0).map((item) => item.pod)).size,
             firstMatchMs: matches.length ? Math.min(...matches.map((item) => item.firstMatchMs!)) : undefined,

@@ -171,26 +171,23 @@ export async function deliverCommandArtifacts(
   }
 
   if (fileFormat) {
-    const seenCommands = new Set<string>();
-    const sourceArtifacts = artifacts.filter((artifact) => {
-      if (!existsSync(join(artifact.path, FORMAT_FILES[fileFormat])) || seenCommands.has(artifact.command)) return false;
-      seenCommands.add(artifact.command);
-      return true;
-    });
+    // Identity was resolved by CommandArtifacts. A command can produce many independent artifacts.
+    const sourceArtifacts = artifacts.filter(artifact => existsSync(join(artifact.path, FORMAT_FILES[fileFormat])));
     try {
       if (!sourceArtifacts.length) throw new Error(`诊断产物缺少 ${FORMAT_FILES[fileFormat]}`);
       if (sourceArtifacts.length === 1) {
         copyFileSync(join(sourceArtifacts[0]!.path, FORMAT_FILES[fileFormat]), fileOutputPath!);
       } else if (fileFormat === "md") {
         writeFileSync(fileOutputPath!, sourceArtifacts.map((artifact) =>
-          `# ${artifact.command}\n\n${readFileSync(join(artifact.path, FORMAT_FILES.md), "utf8").trim()}\n`
+          `# ${artifact.command} (${artifact.id})\n\n${readFileSync(join(artifact.path, FORMAT_FILES.md), "utf8").trim()}\n`
         ).join("\n---\n\n"), "utf8");
       } else {
-        const commands = Object.fromEntries(sourceArtifacts.map((artifact) => [
-          artifact.command,
-          JSON.parse(readFileSync(join(artifact.path, FORMAT_FILES.json), "utf8")),
-        ]));
-        writeFileSync(fileOutputPath!, `${JSON.stringify({ commands }, null, 2)}\n`, "utf8");
+        const entries = sourceArtifacts.map(artifact => ({
+          id: artifact.id,
+          command: artifact.command,
+          diagnosis: JSON.parse(readFileSync(join(artifact.path, FORMAT_FILES.json), "utf8")),
+        }));
+        writeFileSync(fileOutputPath!, `${JSON.stringify({ artifacts: entries }, null, 2)}\n`, "utf8");
       }
       chmodSync(fileOutputPath!, 0o600);
       terminalStdout.success(`[delivery] ${fileFormat.toUpperCase()} 报告: ${fileOutputPath}\n`);

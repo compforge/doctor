@@ -333,3 +333,18 @@ describe("Pod Log upper time boundary and buffered evidence", () => {
     expect(readFileSync(rawFilePath, "utf8")).toBe(payload);
   });
 });
+
+
+test("streaming sink receives lines without a duplicate stdout buffer", async () => {
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
+    fetch: () => new Response("2026-09-10T00:00:01Z INFO trace-a\n") });
+  servers.push(server);
+  const access = accessFor(server);
+  const lines: string[] = [];
+  const result = await access.collectPodLogs({ pod: "api", container: "app", collectStdout: false,
+    onLine: line => lines.push(line) });
+  expect(result.captureStatus).toBe("complete");
+  expect(result.stdout).toBe("");
+  expect(result.bytesRead).toBeGreaterThan(0);
+  expect(lines).toEqual(["2026-09-10T00:00:01Z INFO trace-a"]);
+});

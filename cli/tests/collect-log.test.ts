@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommandContext } from "../src/command";
@@ -28,7 +28,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       maxActive = Math.max(maxActive, active);
       await Bun.sleep(request.pod === "pod-a" ? 20 : 2);
       request.onLine?.(`[pod/${request.pod}/app] 2026-08-19T01:00:00Z INFO trace-1 ok`);
-      writeFileSync(request.rawFilePath!, `${request.pod}\n`, "utf8");
+
       active -= 1;
       return {
         ok: true,
@@ -117,6 +117,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       "logs-pod-e-app-previous",
     ]);
   } finally {
+    await context.command.disposeClients();
     rmSync(root, { recursive: true, force: true });
   }
 });

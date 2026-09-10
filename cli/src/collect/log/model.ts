@@ -32,6 +32,8 @@ export interface LogInspectionFacts {
     byService: Record<string, string[]>;
     containersByPod: Record<string, string[]>;
     previousContainersByPod: Record<string, string[]>;
+    /** Pod UID + runtime container ID; absent identities are never reused. */
+    instancesByPod?: Record<string, Record<string, { current?: string; previous?: string }>>;
   }, "log.service-pods">;
 }
 
@@ -50,6 +52,7 @@ export interface PodLogObservation {
 
 export interface LogCaptureStats {
   bytesRead: number;
+  reusedCaptureCount?: number;
   matchedPodCount: number;
   scannedPodCount: number;
   /** Elapsed since log collection began (includes discovery and queueing), before content filtering. */
