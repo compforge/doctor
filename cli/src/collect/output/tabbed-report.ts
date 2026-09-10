@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { escapeHtml, serializeInlineJson } from "./html";
+import { escapeHtml } from "./html";
+import { ReportArchive, normalizeReportTabs, REPORT_ARCHIVE_SCRIPT, type ReportNavigation } from "./report-archive";
 
 interface ReportTabBase {
   key: string;
@@ -14,7 +15,7 @@ export interface ReportLeafTab extends ReportTabBase {
 }
 
 export interface ReportTabGroup extends ReportTabBase {
-  tabs: readonly ReportLeafTab[];
+  tabs: readonly ReportTab[];
   html?: never;
 }
 
@@ -31,7 +32,7 @@ function isTabGroup(tab: ReportTab): tab is ReportTabGroup {
   return Array.isArray(tab.tabs);
 }
 
-function tabButton(tab: ReportTab, index: number): string {
+function tabButton(tab: Pick<ReportNavigation, "key" | "label" | "status">, index: number): string {
   return `
     <button type="button" role="tab" data-key="${escapeHtml(tab.key)}" data-kind="${escapeHtml(tab.key)}" aria-selected="${index === 0}">
       <span class="tab-label">${escapeHtml(tab.label)}</span>
@@ -41,16 +42,14 @@ function tabButton(tab: ReportTab, index: number): string {
 
 /** Keep grouped navigation in one shell; only leaf reports enter the isolated iframe. */
 export function renderTabbedReport(input: TabbedReportInput): string {
-  const leafTabs = input.tabs.flatMap((tab) => isTabGroup(tab) ? tab.tabs : [tab]);
-  const reports = Object.fromEntries(leafTabs.map((tab) => [
-    tab.key,
-    Buffer.from(tab.html, "utf8").toString("base64"),
-  ]));
-  const childTabs = Object.fromEntries(input.tabs
-    .filter(isTabGroup)
-    .map((tab) => [tab.key, tab.tabs.map(({ key, label, status }) => ({ key, label, status }))]));
-  const buttons = input.tabs.map(tabButton).join("");
-  const singleTab = input.tabs.length === 1 ? input.tabs[0] : undefined;
+  const archive = new ReportArchive();
+  const navigation = (tab: ReportTab): ReportNavigation => ({
+    key: tab.key, label: tab.label, status: tab.status,
+    ...(isTabGroup(tab) ? { tabs: normalizeReportTabs(tab.tabs.map(navigation)) } : archive.add(tab.html)),
+  });
+  const tabs = normalizeReportTabs(input.tabs.map(navigation));
+  const buttons = tabs.map(tabButton).join("");
+  const singleTab = tabs.length === 1 ? tabs[0] : undefined;
   const context = singleTab
     ? `<div class="context"><span class="tab-label">${escapeHtml(singleTab.label)}</span><span class="status status-${singleTab.status}">${singleTab.status === "delivered" ? "已交付" : "失败"}</span></div>`
     : "";
@@ -80,37 +79,44 @@ export function renderTabbedReport(input: TabbedReportInput): string {
   <header class="header"><div class="heading"><h1>${escapeHtml(input.title)}</h1><p>${escapeHtml(input.description)}</p></div>${context}</header>
   <nav id="primary-tabs" role="tablist" aria-label="${escapeHtml(input.ariaLabel)}"${singleTab ? " hidden" : ""}>${buttons}</nav>
   <nav id="secondary-tabs" class="secondary" role="tablist" aria-label="子结果" hidden></nav>
-  <iframe title="诊断详情" sandbox="allow-scripts"></iframe>
+  <div id="report-status" role="status"></div>
+  <iframe title="诊断详情" sandbox="allow-scripts allow-downloads"></iframe>
+  ${archive.embed(tabs)}
   <script>
-    const reports=${serializeInlineJson(reports)};
-    const childTabs=${serializeInlineJson(childTabs)};
+    ${REPORT_ARCHIVE_SCRIPT}
     const frame=document.querySelector('iframe');
     const primary=[...document.querySelectorAll('#primary-tabs [role=tab]')];
     const secondary=document.querySelector('#secondary-tabs');
-    function labelOf(button){return button.querySelector('.tab-label').textContent.trim();}
-    function loadReport(key,label){
-      frame.title=label+' 诊断详情';
-      const bytes=Uint8Array.from(atob(reports[key]),char=>char.charCodeAt(0));
-      frame.srcdoc=new TextDecoder().decode(bytes);
+    const status=document.querySelector('#report-status');
+    let selection=0;
+    async function loadReport(tab){
+      const current=++selection;
+      frame.removeAttribute('srcdoc');frame.src='about:blank';frame.title=tab.label+' 诊断详情';
+      status.textContent='正在加载 '+tab.label+'…';
+      // Give navigation a paint before inflating the selected entry; stale clicks cannot replace it.
+      await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+      if(current!==selection)return;
+      try{const html=fflate.strFromU8(readReportEntry(tab.entry));if(current!==selection)return;frame.srcdoc=html;status.textContent='';}
+      catch(error){if(current===selection)status.textContent='加载失败：'+error.message;}
     }
-    function selectSecondary(button){
-      [...secondary.querySelectorAll('[role=tab]')].forEach(item=>item.setAttribute('aria-selected',String(item===button)));
-      loadReport(button.dataset.key,labelOf(button));
-    }
-    function childButton(tab,index){
-      const button=document.createElement('button');button.type='button';button.role='tab';button.dataset.key=tab.key;button.dataset.kind=tab.key;button.setAttribute('aria-selected',String(index===0));
+    function childButton(tab){
+      const button=document.createElement('button');button.type='button';button.role='tab';button.dataset.key=tab.key;button.dataset.kind=tab.key;
       const label=document.createElement('span');label.className='tab-label';label.textContent=tab.label;
-      const status=document.createElement('span');status.className='status status-'+tab.status;status.textContent=tab.status==='delivered'?'已交付':'失败';
-      button.append(label,status);button.addEventListener('click',()=>selectSecondary(button));return button;
+      const badge=document.createElement('span');badge.className='status status-'+tab.status;badge.textContent=tab.status==='delivered'?'已交付':'失败';
+      button.append(label,badge);return button;
     }
-    function selectPrimary(button){
-      primary.forEach(item=>item.setAttribute('aria-selected',String(item===button)));
-      const children=childTabs[button.dataset.key]||[];secondary.replaceChildren();
-      if(children.length){children.forEach((tab,index)=>secondary.appendChild(childButton(tab,index)));secondary.hidden=false;secondary.setAttribute('aria-label',labelOf(button)+' Trace 结果');selectSecondary(secondary.firstElementChild);}
-      else{secondary.hidden=true;loadReport(button.dataset.key,labelOf(button));}
+    function selectTab(button,tab,depth){
+      [...button.parentElement.children].forEach(item=>item.setAttribute('aria-selected',String(item===button)));
+      document.querySelectorAll('[data-report-depth]').forEach(nav=>{if(Number(nav.dataset.reportDepth)>depth)nav.remove();});
+      secondary.hidden=true;
+      if(tab.tabs&&tab.tabs.length){
+        const nav=document.createElement('nav');nav.role='tablist';nav.className='secondary';nav.dataset.reportDepth=String(depth+1);nav.setAttribute('aria-label',tab.label+' 子结果');
+        for(const child of tab.tabs){const b=childButton(child);b.onclick=()=>selectTab(b,child,depth+1);nav.appendChild(b);}
+        frame.before(nav);selectTab(nav.firstElementChild,tab.tabs[0],depth+1);
+      }else if(tab.entry){loadReport(tab);}
     }
-    primary.forEach(button=>button.addEventListener('click',()=>selectPrimary(button)));
-    if(primary[0])selectPrimary(primary[0]);
+    primary.forEach((button,index)=>button.onclick=()=>selectTab(button,reportIndex.tabs[index],0));
+    if(primary[0])selectTab(primary[0],reportIndex.tabs[0],0);
   </script>
 </body>
 </html>

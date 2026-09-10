@@ -1,3 +1,4 @@
+import { readReportArchive } from "../src/collect/output/report-archive";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -92,11 +93,11 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
     const agents = readBundleText(archive, "overview/AGENTS.md");
     for (const artifact of index.artifacts) if (artifact.report) expect(agents).toContain(artifact.report);
     const html = readFileSync(output, "utf8");
-    const reports: Record<string, string> = JSON.parse(html.match(/const reports=(.*);/)![1]!);
+    const report = readReportArchive(html)!;
     for (const kind of ["inspect", "tenant"]) {
       expect(html).toContain(`data-kind="${kind}"`);
-      expect(Object.keys(reports).filter((key) => key.startsWith(kind))).toEqual([kind]);
-      expect(Buffer.from(reports[kind]!, "base64").toString()).toContain(`${kind} evidence 1`);
+      expect(report.index.tabs.filter(tab => tab.key === kind)).toHaveLength(1);
+      expect(Buffer.from(report.entries[report.index.tabs.find(tab => tab.key === kind)!.entry!]!).toString()).toContain(`${kind} evidence 1`);
     }
   } finally {
     for (const undo of restore) undo();
