@@ -1,4 +1,3 @@
-import { inspectIndividually } from "@compforge/doctor-plugin";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { commandExitCode } from "../src/app/command";
 import { expect, spyOn, test } from "bun:test";
@@ -55,19 +54,21 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: inspectIndividually(async (_context, query) => ({
-          resolution: {
-            inputId: query.identity.value,
-            resolvedAs: "sample_id",
-            identifiers: { sample_id: query.identity.value },
+        inspect: async (_context, queries) => queries.map(query => ({
+          identity: query.identity, status: "collected" as const, result: {
+            resolution: {
+              inputId: query.identity.value,
+              resolvedAs: "sample_id",
+              identifiers: { sample_id: query.identity.value },
+            },
+            facts: ["one", "two"].map((recordId) => ({
+              factType: "record" as const,
+              kind: "sample-record",
+              schemaVersion: 1,
+              recordKey: recordId,
+              record: { id: recordId },
+            })),
           },
-          facts: ["one", "two"].map((recordId) => ({
-            factType: "record" as const,
-            kind: "sample-record",
-            schemaVersion: 1,
-            recordKey: recordId,
-            record: { id: recordId },
-          })),
         })),
       },
     },
@@ -96,13 +97,15 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: inspectIndividually(async (_context, query) => ({
-          resolution: {
-            inputId: query.identity.value,
-            resolvedAs: query.identity.kind,
-            identifiers: {},
+        inspect: async (_context, queries) => queries.map(query => ({
+          identity: query.identity, status: "collected" as const, result: {
+            resolution: {
+              inputId: query.identity.value,
+              resolvedAs: query.identity.kind,
+              identifiers: {},
+            },
+            facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
           },
-          facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
         })),
       },
     },
@@ -154,19 +157,21 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: inspectIndividually(async (_context, query) => ({
-            resolution: {
-              inputId: query.identity.value,
-              resolvedAs: query.identity.kind,
-              identifiers: {},
+          inspect: async (_context, queries) => queries.map(query => ({
+            identity: query.identity, status: "collected" as const, result: {
+              resolution: {
+                inputId: query.identity.value,
+                resolvedAs: query.identity.kind,
+                identifiers: {},
+              },
+              facts: [{ factType: "value", kind: "trace-resolution", schemaVersion: 1, value: {} }, {
+                factType: "relation",
+                kind: "resolves-to",
+                schemaVersion: 1,
+                from: query.identity,
+                to: { kind: "trace_id", value: "trace-1" },
+              }],
             },
-            facts: [{ factType: "value", kind: "trace-resolution", schemaVersion: 1, value: {} }, {
-              factType: "relation",
-              kind: "resolves-to",
-              schemaVersion: 1,
-              from: query.identity,
-              to: { kind: "trace_id", value: "trace-1" },
-            }],
           })),
         },
       },
@@ -186,9 +191,9 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: inspectIndividually(async (_context, query) => {
+          inspect: async (_context, queries) => queries.map(query => {
             const identity = query.identity;
-            return {
+            return { identity: query.identity, status: "collected" as const, result: {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
               facts: [{ factType: "value", kind: "resolution-record", schemaVersion: 1, value: {} },
                 ...(identity.kind === "biz_id" ? [{
@@ -198,7 +203,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
                     from: identity,
                     to: { kind: "message_id", value: "message-1" },
                   }] : [])],
-            };
+            } };
           }),
         },
       },
@@ -217,13 +222,13 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: inspectIndividually(async (_context, query) => {
+          inspect: async (_context, queries) => queries.map(query => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
-            return {
+            return { identity: query.identity, status: "collected" as const, result: {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
               facts: [{ factType: "value", kind: "sample-record", schemaVersion: 1, value: {} }],
-            };
+            } };
           }),
         },
       },

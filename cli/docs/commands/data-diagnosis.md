@@ -80,7 +80,7 @@ HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程�
 
 Service Inspect 接收一批 Query，每个 Query 仍只有一个 Identity；逐项返回带 identity 的 collected/failed 结果，
 不能依靠返回顺序关联。Core 按遍历轮次将同一 Service 的已知 Query 合并调用，Plugin 可按领域类型合并 SQL/API。
-不支持批量访问的 provider 使用 SDK `inspectIndividually` 适配单 Query 实现。扩展中失败的 Query 也保留结果，
+provider 始终接收 Query 列表，在批次内共享访问准备；底层需要逐条访问时，逐项保留失败结果。扩展中失败的 Query 也保留结果，
 provide 不隐式重试。同一批次的容量预算共同生效，截断明确进入证据。
 
 输入 ID 与查询 Identity 分开记录。多个输入可以共享一个后代 Query，但共享后代不会自动合并输入的诊断范围。

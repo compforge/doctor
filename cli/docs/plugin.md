@@ -396,5 +396,6 @@ Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；�
 
 `ServiceInspect.inspect(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
 collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；未找到记录仍通过 resolution 表达。
-Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。单 Query 实现通过
-`inspectIndividually(handler)` 适配，适配器按序访问并隔离单项异常，不建立额外并发池。
+Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。provider 在整批开始时准备共享
+Client / Repository，按数据源能力合并或逐条查询，并隔离各 Query 的查询失败。共享准备失败可拒绝整次调用，
+由 Core 为本批每个 Query 记录失败；取消信号继续向上传播。单 Query 是一个元素的列表，空列表不访问外部资源。
