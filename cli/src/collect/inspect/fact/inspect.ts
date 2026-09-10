@@ -12,7 +12,7 @@ import type { KubernetesWorkloadConfigSnapshot } from "../../../infra/k8s/worklo
 import type {
   KubernetesContainerState,
   KubernetesContainerTermination,
-} from "@compforge/doctor-toolkit/kubernetes/pod";
+} from "@compforge/harness-toolbox/kubernetes/pod";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type {

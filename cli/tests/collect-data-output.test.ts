@@ -15,7 +15,7 @@ import {
   runCollectData,
 } from "../src/collect/data";
 import { CommandContext } from "../src/command";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { deliverCommandArtifacts } from "../src/app/delivery";
 
 const service = "sample-api";

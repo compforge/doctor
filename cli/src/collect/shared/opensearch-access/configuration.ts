@@ -1,5 +1,5 @@
-import { KubectlExecutor, type Executor, type KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { serviceIdentity } from "@compforge/doctor-toolkit/kubernetes/service";
+import { KubectlExecutor, type Executor, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
+import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import {
   parseOpenSearchEndpoint,
   pickOpenSearchService,

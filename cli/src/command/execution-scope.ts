@@ -1,4 +1,4 @@
-import type { ClientProvider } from "@compforge/doctor-toolkit/client-manager";
+import type { ClientProvider } from "@compforge/harness-toolbox/client-manager";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 interface ExecutionScope {

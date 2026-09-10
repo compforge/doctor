@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildExecArgs, buildKubectlArgs, runArgv } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { buildExecArgs, buildKubectlArgs, runArgv } from "@compforge/harness-toolbox/kubernetes/executor";
 
 describe("buildKubectlArgs", () => {
   test("minimal", () => {

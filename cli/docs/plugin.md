@@ -325,7 +325,7 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 推导网络地址。
 
 Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收由宿主按调用或共享资源的生命周期管理，因此由
-`PluginContext` 按需提供。通用数据访问实现由独立的 `packages/toolkit` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
+`PluginContext` 按需提供。通用数据访问实现由独立的 `@compforge/harness-toolbox` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
 与协议 Client。toolkit 不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。

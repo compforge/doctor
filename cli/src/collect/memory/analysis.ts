@@ -22,7 +22,7 @@ import {
   runLocalCommand,
   type LocalContainerEngine,
 } from "../../infra/host/container-engine";
-import { spawnProcess } from "@compforge/doctor-toolkit/process/index";
+import { spawnProcess } from "@compforge/harness-toolbox/process/index";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   htmlHeading,

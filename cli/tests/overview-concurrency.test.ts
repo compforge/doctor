@@ -1,11 +1,12 @@
+import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../src/command/log-policy";
 import { expect, test } from "bun:test";
 import { CommandContext, CommandStatus, defineCommand } from "../src/command";
 import { onCommandDispose } from "../src/command/execution-scope";
 import type { CollectInput, CollectOutput } from "../src/collect/composite";
 import { collectOverviewSamples } from "../src/overview/collect";
 import { overviewCollectConcurrency } from "../src/overview/options";
-import { runPodLogCapturePlan, DEFAULT_POD_LOG_CAPTURE_POLICY } from "@compforge/doctor-toolkit/kubernetes/log-capture-plan";
-import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import { runPodLogCapturePlan } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 
 const kinds: CollectInput["kinds"] = ["data", "trace", "log"];
 const delay = () => new Promise<void>((resolve) => setTimeout(resolve, 1));

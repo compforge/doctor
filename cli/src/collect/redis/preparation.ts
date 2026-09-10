@@ -1,10 +1,10 @@
-import type { Client } from "@compforge/doctor-toolkit/client";
-import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
+import type { Client } from "@compforge/harness-toolbox/client";
+import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
 import { currentCommandClients } from "../../command/execution-scope";
-import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
-import { RedisAccess, type RedisAccessApi } from "@compforge/doctor-toolkit/redis/index";
-import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
-import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
+import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";
 import { buildRedisEnvironmentFact, buildRedisTargetFact } from "./fact/model";

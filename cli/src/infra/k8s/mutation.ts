@@ -1,4 +1,4 @@
-import type { ExecResult, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor, RunOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   inspectK8sAccess,
   type K8sAccessRule,

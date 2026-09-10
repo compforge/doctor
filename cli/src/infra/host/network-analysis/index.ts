@@ -1,5 +1,5 @@
-import type { ExecResult, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { runArgv } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, RunOptions } from "@compforge/harness-toolbox/kubernetes/executor";
+import { runArgv } from "@compforge/harness-toolbox/kubernetes/executor";
 import { createGopacketBackend } from "./gopacket";
 import { createTsharkBackend } from "./tshark";
 

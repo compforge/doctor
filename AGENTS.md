@@ -35,9 +35,10 @@ Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Ski
 | `toolkit/` | 独立版本的诊断工具、debug image 与离线系统包；按执行位置的 OS/arch 分发 |
 | `server/` | 可选 Doctor server 的宿主边界 |
 | `packages/agent/` | `@compforge/doctor-agent`：供 CLI 与 server 宿主共用的 agent loop、Skill 输入和 AgentUE 输出 |
-| `packages/toolkit/` | `@compforge/doctor-toolkit`：Core 与 Plugin 共用的基础设施与数据访问能力，不依赖命令或 Plugin 协议 |
 | `packages/plugin/` | `@compforge/doctor-plugin`：Plugin、Service Catalog、contribution 与 capability 公共协议 |
 | `plugins/example/` | 只演示协议接入的业务中立 Plugin |
+
+Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness-toolbox` 提供；根目录 `toolkit/` 仍负责诊断资源分发。
 
 更细的 CLI 分层与诊断领域索引见 `cli/AGENTS.md`。
 

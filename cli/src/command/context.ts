@@ -1,12 +1,13 @@
-import { ClientManager, type ClientProvider } from "@compforge/doctor-toolkit/client-manager";
-import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
-import { PodLogByteBudget, DEFAULT_POD_LOG_CAPTURE_POLICY } from "@compforge/doctor-toolkit/kubernetes/log-capture-plan";
+import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "./log-policy";
+import { ClientManager, type ClientProvider } from "@compforge/harness-toolbox/client-manager";
+import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
+import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import {
   createKubernetesCommandContext,
   type KubernetesCommandContext,
 } from "../infra/k8s/access";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   getDoctorHostInfo,
   type DoctorHostInfo,

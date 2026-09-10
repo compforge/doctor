@@ -5,7 +5,7 @@ import type {
   ServiceDefinition,
 } from "@compforge/doctor-plugin";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
-import type { Executor, KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import { terminalStdout } from "../terminal/output";
 import { openPluginContext, type ManagedPluginContext } from "./context";
 

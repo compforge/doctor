@@ -1,5 +1,5 @@
 import type { ApprovalContext } from "../operation";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ContainerInfo } from "../../infra/k8s/target";
 import type { CommandContext } from "../../command";
 import type { CpuConfig } from "./config";

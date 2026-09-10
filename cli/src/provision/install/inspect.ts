@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { cwd } from "node:process";
 import { infra } from "../../infra";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   discoverPackageBundles,
   inspectPackageBundles,

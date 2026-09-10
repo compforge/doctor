@@ -5,7 +5,7 @@ import {
   type ResolvedNamespace,
 } from "../infra/k8s/context";
 import { resolveWorkingProfileName } from "../app/profile";
-import { KubectlExecutor, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesAccessContext } from "../infra/k8s/access";
 import { resolvePodNamespace } from "../infra/k8s/namespace-selection";
 import {

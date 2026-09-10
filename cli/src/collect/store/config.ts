@@ -16,8 +16,8 @@ import {
   resolveKubernetesCommandContext,
   type CommandContext,
 } from "../../command";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { KubectlPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import {
   parsePodChoices,
   promptPod,

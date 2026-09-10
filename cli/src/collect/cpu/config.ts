@@ -1,5 +1,5 @@
 import { terminalStdout } from "../../terminal/output";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,

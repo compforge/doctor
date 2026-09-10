@@ -1,4 +1,4 @@
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 export function parseKubernetesServerVersion(raw: string): string | undefined {
   try {

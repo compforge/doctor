@@ -1,4 +1,4 @@
-import type { Client } from "@compforge/doctor-toolkit/client";
+import type { Client } from "@compforge/harness-toolbox/client";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
 import type { ServiceEndpoint, ServiceStoreCapabilityDependency } from "./service";

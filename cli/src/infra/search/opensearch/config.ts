@@ -1,4 +1,4 @@
-import { OpenSearchEngine, type OpenSearchAuth } from "@compforge/doctor-toolkit/opensearch/client";
+import { OpenSearchEngine, type OpenSearchAuth } from "@compforge/harness-toolbox/opensearch/client";
 
 const USER_KEYS = ["DOCTOR_OPENSEARCH_USER", "DOCTOR_OPENSEARCH_USERNAME"];
 const PASS_KEYS = ["DOCTOR_OPENSEARCH_PASSWORD"];

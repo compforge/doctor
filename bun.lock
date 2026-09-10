@@ -14,7 +14,7 @@
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
-        "@compforge/doctor-toolkit": "workspace:*",
+        "@compforge/harness-toolbox": "0.1.0",
         "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
         "@compforge/prombed": "0.0.2",
         "@compforge/spec-case": "0.0.6",
@@ -71,34 +71,18 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.22",
+      "version": "0.0.23",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
       },
       "dependencies": {
-        "@compforge/doctor-toolkit": "workspace:*",
+        "@compforge/harness-toolbox": "0.1.0",
         "@compforge/spec-case": "0.0.6",
         "@compforge/trace-harness": "0.1.0",
         "typebox": "1.3.7",
       },
       "devDependencies": {
         "@types/bun": "latest",
-        "typescript": "^5.6.0",
-      },
-    },
-    "packages/toolkit": {
-      "name": "@compforge/doctor-toolkit",
-      "version": "0.0.1",
-      "dependencies": {
-        "@kubernetes/client-node": "1.4.0",
-        "@opensearch-project/opensearch": "3.6.0",
-        "@redis/client": "6.1.0",
-        "mysql2": "3.23.1",
-        "node-fetch": "2.7.0",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "@types/node-fetch": "2.6.13",
         "typescript": "^5.6.0",
       },
     },
@@ -177,7 +161,7 @@
 
     "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
 
-    "@compforge/doctor-toolkit": ["@compforge/doctor-toolkit@workspace:packages/toolkit"],
+    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.1.0", "", { "dependencies": { "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "mysql2": "3.23.1", "node-fetch": "2.7.0" } }, "sha512-7W8F7TultgQRAtldbQiZDBDV5KvnOp1IWJBtDCCDfMepgxoGLK6FA6Pe3Ym1cDN7x/dcyQukO39aaK+f6O6VfA=="],
 
     "@compforge/perf-harness": ["@compforge/perf-harness@https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz", { "dependencies": { "@compforge/spec-case": "^0.0.4" } }, "sha512-63QyV/PDaJVkMDeJSnN1cS0Gw5nn+/xhefyCkEcz1InYzWDXkc7XHXDmLZeARExmH8uEuTNGwVnKX27F3IBYDw=="],
 

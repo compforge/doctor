@@ -1,4 +1,4 @@
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   getBucketVersioning,
   getS3ProviderBucketUsage,

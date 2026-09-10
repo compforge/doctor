@@ -1,4 +1,4 @@
-import type { ExecResult, Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   buildEphemeralContainerMutation,
   parseEphemeralContainers,

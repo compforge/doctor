@@ -4,7 +4,7 @@ import {
   parseKubernetesServerVersion,
 } from "../src/infra/k8s/version";
 import { inspectKubernetesChannel } from "../src/infra/k8s/access";
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 function result(stdout: string, ok = true): ExecResult {
   return {

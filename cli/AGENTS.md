@@ -29,7 +29,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 | `overview` | Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
 | `perf` | 对 Plugin Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
-| `infra` | 尚未提取的访问适配与工具选择；通用 DB、Redis、OpenSearch、Kubernetes 执行与转发、进程原语由 `packages/toolkit` 提供 |
+| `infra` | 尚未提取的访问适配与工具选择；通用 DB、Redis、OpenSearch、Kubernetes 执行与转发、进程原语由 `@compforge/harness-toolbox` 提供 |
 | `terminal` / `protocol` | 通用终端交互与可选远端协议 client；chat-tui 只消费 `chat` 投影 |
 
 展开的目录地图、依赖方向和领域所有权见 `docs/kernel.md`；Collect 共享协议见

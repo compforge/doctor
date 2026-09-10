@@ -1,12 +1,13 @@
+import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../../../command/log-policy";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
-import type { PodLogCapturePlanItem } from "@compforge/doctor-toolkit/kubernetes/log-capture-plan";
-import { PodLogDataSource } from "@compforge/doctor-toolkit/kubernetes/pod-log-datasource";
+import type { PodLogCapturePlanItem } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
+import { PodLogDataSource } from "@compforge/harness-toolbox/kubernetes/pod-log-datasource";
 import type {
   PodLogCaptureStatus,
   PodLogResult,
-} from "@compforge/doctor-toolkit/kubernetes/pod-log";
+} from "@compforge/harness-toolbox/kubernetes/pod-log";
 import type {
   LogCommandContext,
   LogInspectionFacts,
@@ -99,7 +100,8 @@ async function captureLogPlan(
   // server-side end-time filter; compare wall-clock, transferred bytes and coverage before enabling it.
   const sources = await ctx.command.clients.get(new PodLogDataSource({
     kubeconfig: config.kubeconfig, context: config.context, namespace: config.namespace,
-  }, ctx.command.limits.podLogs, ctx.command.limits.podLogBytes));
+  }, ctx.command.limits.podLogs, ctx.command.limits.podLogBytes,
+  { ...DEFAULT_POD_LOG_CAPTURE_POLICY, concurrency: ctx.command.limits.podLogs.concurrency }));
   const results = await Promise.allSettled(plan.map(async input => {
     const { target, request, onStart } = prepareCapture(ctx, config, input, startedAtMs);
     onStart?.();

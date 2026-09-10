@@ -4,7 +4,7 @@ import {
   resolveHttpExecutionLocation,
 } from "../src/collect/http";
 import { resolvePodHttpExecution } from "../src/collect/http/execution";
-import type { ExecResult, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor, RunOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import { inspectLocalHttpEndpoint } from "../src/infra/http";
 import {
   buildPodCurlCommand,

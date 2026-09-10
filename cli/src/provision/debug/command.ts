@@ -4,7 +4,7 @@ import {
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
 import { failReason } from "../../infra/k8s/result";
-import { findPodsForService, listServiceNetwork } from "@compforge/doctor-toolkit/kubernetes/service";
+import { findPodsForService, listServiceNetwork } from "@compforge/harness-toolbox/kubernetes/service";
 import {
   parsePodChoices,
   type PodChoice,

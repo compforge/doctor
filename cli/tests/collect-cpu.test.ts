@@ -11,7 +11,7 @@ import type {
   ExecTarget,
   Executor,
   RunOptions,
-} from "@compforge/doctor-toolkit/kubernetes/executor";
+} from "@compforge/harness-toolbox/kubernetes/executor";
 
 const POD_JSON = JSON.stringify({
   metadata: {

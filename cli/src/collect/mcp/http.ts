@@ -1,5 +1,5 @@
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import type { McpHttpRequestPlan } from "@compforge/doctor-plugin";
 import type { HttpCapture } from "./model";
 

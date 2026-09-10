@@ -1,5 +1,5 @@
 import type { Toolchain } from "@compforge/doctor-plugin";
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {

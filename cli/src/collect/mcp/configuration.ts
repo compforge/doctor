@@ -1,6 +1,6 @@
 import { terminalStdout } from "../../terminal/output";
 import { McpClient as RuntimeMcpClient, serializeMcpTranscript, type McpClient } from "../../infra/mcp";
-import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import type {
   McpConfigurationProjection,
   PluginContext,

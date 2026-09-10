@@ -1,7 +1,7 @@
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ServiceWorkloadDefinition } from "@compforge/doctor-plugin";
-import { parsePods, type KubernetesPod } from "@compforge/doctor-toolkit/kubernetes/pod";
-import { parseServices, type KubernetesService } from "@compforge/doctor-toolkit/kubernetes/service";
+import { parsePods, type KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
+import { parseServices, type KubernetesService } from "@compforge/harness-toolbox/kubernetes/service";
 
 export interface KubernetesConfigMap {
   name: string;

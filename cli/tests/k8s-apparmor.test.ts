@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { probeAppArmorUnconfinedAdmission } from "../src/infra/k8s/apparmor";
-import type { ExecResult, Executor, RunOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor, RunOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 
 function result(input: Partial<ExecResult> = {}): ExecResult {
   return {

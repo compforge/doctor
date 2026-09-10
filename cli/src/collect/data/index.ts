@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollectBatch } from "../engine";
 import type { CommandContext } from "../../command";

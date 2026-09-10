@@ -1,5 +1,5 @@
 import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
 import { runCollect } from "../../engine";

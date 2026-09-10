@@ -1,6 +1,6 @@
 import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import type { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import type { S3BucketUsage, S3Target } from "../../../infra/object-store";
 import type { EvidenceBundle } from "../../evidence";
 import type { PodStoreConfig } from "../config";
