@@ -1,4 +1,3 @@
-import { inspectIndividually } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 
 import {
@@ -74,13 +73,15 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: inspectIndividually(async (_context, query) => ({
-          resolution: {
-            inputId: query.identity.value,
-            resolvedAs: query.identity.kind,
-            identifiers: {},
+        inspect: async (_context, queries) => queries.map(query => ({
+          identity: query.identity, status: "collected" as const, result: {
+            resolution: {
+              inputId: query.identity.value,
+              resolvedAs: query.identity.kind,
+              identifiers: {},
+            },
+            facts: [],
           },
-          facts: [],
         })),
       },
       probes: [{

@@ -357,6 +357,11 @@ export type ServiceInspectQueryOutcome = { identity: Identity } & (
   | { status: "failed"; reason: string }
 );
 
+/**
+ * @spec Inspect accepts a Query list; an empty list performs no access and a singleton uses the same path
+ * @spec Each Query retains its Identity, budget and outcome; lookup failures do not discard healthy siblings
+ * @why Providers own shared preparation and source-specific access for the whole list
+ */
 export type ServiceInspectQueryHandler = (
   context: PluginContext,
   queries: readonly ServiceInspectQuery[],
