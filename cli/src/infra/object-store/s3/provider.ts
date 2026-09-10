@@ -1,4 +1,4 @@
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { S3_PROVIDER as BUILT_IN_PROVIDER } from "./minio/provider";
 
 export interface S3ProviderConnection {

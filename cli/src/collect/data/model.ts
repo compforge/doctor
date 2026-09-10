@@ -5,7 +5,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { DatabaseIdentity } from "../../infra/database";
-import type { KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 
 export type DataOutputFormat = "default" | "bundle" | "json" | "html";
 export type SupportedDataService = string;

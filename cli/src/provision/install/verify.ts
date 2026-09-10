@@ -1,5 +1,5 @@
 import { infra } from "../../infra";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 export type GdbCapabilityVerification = Awaited<
   ReturnType<typeof infra.target.debugEngine.inspectGdb>

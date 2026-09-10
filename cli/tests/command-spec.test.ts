@@ -8,7 +8,7 @@ import { commandExitCode, runCommand } from "../src/app/command";
 import { createCollectCommand } from "../src/collect/composite";
 import { createPluginContext } from "../src/plugin/context";
 import { onCommandDispose } from "../src/command/execution-scope";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

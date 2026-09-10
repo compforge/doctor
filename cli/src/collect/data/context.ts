@@ -1,6 +1,6 @@
 import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
-import { KubectlExecutor, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../evidence";
 import { resolveDataConfig } from "./config";
 import type { CollectDataCliOpts, DataConfig } from "./model";

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { OpenSearchReadApi } from "../src/infra/search/opensearch";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { runProbes } from "../src/collect/probe-engine";
 import {

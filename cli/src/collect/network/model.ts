@@ -4,7 +4,7 @@ import type {
   NetworkCaptureMetadata,
   NetworkCaptureRuntime,
 } from "../../infra/target/network-capture";
-import type { ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecTarget, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type {
   DownloadFromTargetOptions,
   DownloadFromTargetResult,

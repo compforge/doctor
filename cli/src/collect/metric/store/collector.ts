@@ -1,4 +1,4 @@
-import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
+import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { parseExposition } from "@compforge/prombed";
 import type {
   PluginDefinition,
@@ -8,21 +8,21 @@ import type {
 } from "@compforge/doctor-plugin";
 import { MysqlDatabase, parseMysqlEnvTarget } from "../../../infra/database/mysql";
 import type { DatabaseTarget } from "../../../infra/database";
-import type { Executor, ExecTarget } from "@compforge/doctor-toolkit/kubernetes/executor";
-import type { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
+import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import {
   findPodsForService,
   listServiceNetwork,
   type KubernetesService,
-} from "@compforge/doctor-toolkit/kubernetes/service";
-import type { KubernetesPod } from "@compforge/doctor-toolkit/kubernetes/pod";
+} from "@compforge/harness-toolbox/kubernetes/service";
+import type { KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
 import type { EmbeddedMetricSource, MetricFetch } from "../../../infra/metric";
 import {
   discoverRedisTopology,
   RedisAccess,
   type RedisEndpoint,
   type RedisTopology,
-} from "@compforge/doctor-toolkit/redis/index";
+} from "@compforge/harness-toolbox/redis/index";
 import { configuredValue, loadServiceRuntimeConfig } from "../../store/runtime-config";
 import {
   hasRedisStoreConfiguration,

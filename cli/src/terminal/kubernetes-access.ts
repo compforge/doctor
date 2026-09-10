@@ -6,7 +6,7 @@ import {
   type KubernetesAccessEvaluation,
   type KubernetesAccessContext,
 } from "../infra/k8s/access";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../command";
 import { terminalStdout } from "./output";
 

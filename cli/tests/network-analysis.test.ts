@@ -8,7 +8,7 @@ import {
   buildNetworkAnalysisHtml,
   buildNetworkAnalysisInspector,
 } from "../src/collect/network/analysis/render";
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { createNetworkAnalysisInfra } from "../src/infra/host/network-analysis";
 
 function result(command: string[], input: Partial<ExecResult> = {}): ExecResult {

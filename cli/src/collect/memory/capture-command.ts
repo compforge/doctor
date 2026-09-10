@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { infra } from "../../infra";
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parsePodJson, pickContainer } from "../../infra/k8s/target";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { TerminalProgressLine } from "../../terminal/progress";

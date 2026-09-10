@@ -1,6 +1,6 @@
-import { KubectlExecutor, type ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { serviceIdentity } from "@compforge/doctor-toolkit/kubernetes/service";
-import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
+import { KubectlExecutor, type ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
+import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
+import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import { inspectS3Provider, type S3Target } from "../../../../infra/object-store";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";

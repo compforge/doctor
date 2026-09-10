@@ -6,7 +6,7 @@ import {
   resolveSearchableChoice,
 } from "../../terminal/selection";
 import type { ResolvedNamespace } from "./context";
-import { KubectlExecutor, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesAccessContext } from "./access";
 import {
   recentSelectionsForInteractive,

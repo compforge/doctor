@@ -11,7 +11,7 @@ import type {
 import type { Inspect } from "./inspection";
 import { runDetectors } from "./detector-engine";
 import { freezeFacts, runInspects } from "./inspect-engine";
-import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { runProbes } from "./probe-engine";
 
 export interface CollectEngineInput<

@@ -1,6 +1,6 @@
-import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
-import { ClientManager } from "@compforge/doctor-toolkit/client-manager";
-import { KubernetesClient } from "@compforge/doctor-toolkit/kubernetes/client";
+import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import { ClientManager } from "@compforge/harness-toolbox/client-manager";
+import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import type {
   CapabilityWithAccess,
@@ -18,7 +18,7 @@ import type {
   ExecResult,
   Executor,
   KubectlOptions,
-} from "@compforge/doctor-toolkit/kubernetes/executor";
+} from "@compforge/harness-toolbox/kubernetes/executor";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 const PLUGIN_KUBERNETES_TIMEOUT_MS = 20_000;

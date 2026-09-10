@@ -4,7 +4,7 @@ import defaultBootstrapSource from "../../../assets/k8s-runtime/bootstrap.py" wi
 import { EvidenceBundle, type StepRisk } from "../../collect/evidence";
 import type { ApprovalContext } from "../../collect/operation";
 import { authorize, type Operation } from "../../collect/operation";
-import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ContainerInfo } from "./target";
 
 const BOOTSTRAP_TIMEOUT_SECONDS = 120;

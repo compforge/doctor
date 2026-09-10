@@ -1,4 +1,4 @@
-import type { ExecResult, ExecTarget, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, ExecTarget, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type {
   NetworkCaptureMetadata,
   NetworkCaptureResult,

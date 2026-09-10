@@ -1,8 +1,8 @@
-import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
-import { KubernetesClient } from "@compforge/doctor-toolkit/kubernetes/client";
-import { PortForwardTransport } from "@compforge/doctor-toolkit/transport";
+import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
+import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { MysqlClient, parseMysqlEnvTarget } from "../../../../infra/database/mysql";
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { DbCommandContext } from "../context";

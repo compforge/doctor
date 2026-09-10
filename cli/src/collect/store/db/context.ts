@@ -1,7 +1,7 @@
 import type { ServiceDatabaseStoreCapability } from "@compforge/doctor-plugin";
 import type { DatabaseTarget } from "../../../infra/database";
 import type { Database } from "../../../infra/database/mysql";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../../evidence";
 import type { PodStoreConfig } from "../config";
 import type { CommandContext } from "../../../command";

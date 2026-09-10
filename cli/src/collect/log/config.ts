@@ -1,6 +1,6 @@
-import { logTimestampNanos } from "@compforge/doctor-toolkit/kubernetes/log-timestamp";
+import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   listServiceChoices,
   rankRecentServiceChoices,

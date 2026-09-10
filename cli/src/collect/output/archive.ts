@@ -12,7 +12,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
-import { runArgv, type ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { runArgv, type ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 
 /** -o 给了就用（无 .tar.gz/.tgz 后缀时补 .tar.gz）；缺省 ./<bundleName>.tar.gz */
 export function resolveArchivePath(output: string | undefined, bundleName: string): string {

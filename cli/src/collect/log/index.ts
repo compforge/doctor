@@ -1,4 +1,4 @@
-import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
@@ -8,9 +8,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { KubectlPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
-import { ClientNodePodLogAccess } from "@compforge/doctor-toolkit/kubernetes/client-node-pod-log";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
 import { runCollectBatch } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";

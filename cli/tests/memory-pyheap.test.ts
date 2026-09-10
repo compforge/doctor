@@ -10,7 +10,7 @@ import {
   parseStrReprLen,
 } from "../src/collect/memory/capture";
 import { cgroupMemoryHint } from "../src/collect/memory/capture-risk";
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   parsePyheapPrereqs,
   resolveKubernetesPyHeapDumper,

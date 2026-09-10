@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { parsePods } from "@compforge/doctor-toolkit/kubernetes/pod";
+import { parsePods } from "@compforge/harness-toolbox/kubernetes/pod";
 import { CommandContext } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { makeLogInspect } from "../src/collect/log/fact/inspect";
 import { makeLogProbe } from "../src/collect/log/probe/service";
 import { buildLogEvidence, buildLogCoverage } from "../src/collect/log/detector";
 import type { LogCommandContext, LogProbeConfig, LogInspectionFacts } from "../src/collect/log/model";
-import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 
 test("two biz-id probes share current/previous sources, retain distinct matching and independently deliver raw evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-probe-shared-"));

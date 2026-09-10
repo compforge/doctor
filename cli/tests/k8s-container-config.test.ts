@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   loadDeclaredContainerConfig,
 } from "../src/infra/k8s/container-config";
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { confirmVdbTarget } from "../src/collect/store/vdb/configuration";
 import type { ServiceVdbStoreCapability } from "@compforge/doctor-plugin";
 

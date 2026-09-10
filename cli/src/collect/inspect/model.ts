@@ -6,7 +6,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
-import type { Executor, KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { CommandContext } from "../../command";
 import type { ResolvedNamespace } from "../../infra/k8s/context";

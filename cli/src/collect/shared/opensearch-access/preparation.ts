@@ -1,11 +1,11 @@
-import type { Client } from "@compforge/doctor-toolkit/client";
-import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
+import type { Client } from "@compforge/harness-toolbox/client";
+import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
 import { currentCommandClients } from "../../../command/execution-scope";
-import { DirectTransport } from "@compforge/doctor-toolkit/transport";
-import { openOpenSearch } from "@compforge/doctor-toolkit/opensearch";
-import { KubectlExecutor, type KubectlOptions } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/doctor-toolkit/kubernetes/service-port-forward";
-import type { SearchEngine } from "@compforge/doctor-toolkit/opensearch/types";
+import { DirectTransport } from "@compforge/harness-toolbox/transport";
+import { openOpenSearch } from "@compforge/harness-toolbox/opensearch";
+import { KubectlExecutor, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
+import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import {
   normalizeOpenSearchHost,
   probeOpenSearchUrl,

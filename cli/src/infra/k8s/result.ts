@@ -1,4 +1,4 @@
-import type { ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 
 /** Preserve the first actionable failure line without leaking transport details upstream. */
 export function failReason(result: ExecResult): string {

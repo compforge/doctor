@@ -6,7 +6,7 @@ import {
 import type {
   ExecResult,
   Executor,
-} from "@compforge/doctor-toolkit/kubernetes/executor";
+} from "@compforge/harness-toolbox/kubernetes/executor";
 
 function result(stdout = "", ok = true): ExecResult {
   return {

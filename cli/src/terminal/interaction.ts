@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { currentCommandSignal } from "../command/execution-scope";
 
 const input = new ConcurrencyPool(1);

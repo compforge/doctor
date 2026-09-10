@@ -23,7 +23,7 @@ import {
   makeProcessInspect,
   makeResourceUsageInspect,
 } from "../fact/inspect";
-import { type ExecResult, type Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import { type ExecResult, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parsePodJson, pickContainer } from "../../infra/k8s/target";
 import type { CpuDiagnosisFacts } from "./fact/model";
 import { makeCpuRuntimeInspect, makeCpuTargetInspect } from "./fact/runtime";

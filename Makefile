@@ -33,7 +33,7 @@ fix:
 	@true
 
 lint:
-	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-toolkit check-plugin-version
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin check-plugin-version
 
 lint-ci: lint
 
@@ -57,7 +57,7 @@ test:
 	bun test $(TEST_FILES)
 else
 test:
-	$(MAKE) --no-print-directory -j$(CHECK_JOBS) test-cli test-agent test-plugin-sdk test-toolkit
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) test-cli test-agent test-plugin-sdk
 endif
 
 test-cli:
@@ -95,9 +95,3 @@ install: build-local
 
 clean:
 	rm -rf $(DIST_DIR)
-
-lint-toolkit:
-	bun run typecheck:toolkit
-
-test-toolkit:
-	bun run test:toolkit

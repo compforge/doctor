@@ -1,4 +1,4 @@
-import type { ExecResult, Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parseKubernetesServerVersion } from "./version";
 import type {
   KubernetesAccessNeed,
