@@ -46,6 +46,30 @@ function budgetUnavailable(request: PodLogRequest): PodLogResult {
   };
 }
 
+/** A root-owned byte budget. Reservations are made only after obtaining a network slot. */
+export class PodLogByteBudget {
+  #available: number;
+  #reserved = 0;
+  readonly #waiters = new Set<() => void>();
+  constructor(maxBytes: number) { this.#available = maxBytes; }
+  async reserve(maxBytes: number): Promise<number> {
+    // In-flight reservations may return unused bytes. Only settled usage can exhaust the budget.
+    while (this.#available <= 0 && this.#reserved > 0) {
+      await new Promise<void>(resolve => this.#waiters.add(resolve));
+    }
+    const reserved = Math.max(0, Math.min(maxBytes, this.#available));
+    this.#available -= reserved;
+    this.#reserved += reserved;
+    return reserved;
+  }
+  settle(reserved: number, bytesRead: number): void {
+    this.#reserved -= reserved;
+    this.#available += reserved - bytesRead;
+    for (const resolve of this.#waiters) resolve();
+    this.#waiters.clear();
+  }
+}
+
 /**
  * Stern 风格的有界 fan-out：并发完成 transport，但结果严格按计划顺序返回。
  * 每个 worker 启动前预留字节预算，结束后归还未使用部分，避免并发竞争突破总上限。
@@ -56,6 +80,7 @@ export async function runPodLogCapturePlan<T>(
   policy: PodLogCapturePolicy = DEFAULT_POD_LOG_CAPTURE_POLICY,
   pool = new ConcurrencyPool(policy.concurrency),
   signal?: AbortSignal,
+  budget = new PodLogByteBudget(policy.maxTotalBytes),
 ): Promise<PodLogCapturePlanResult<T>[]> {
   if (!Number.isInteger(policy.concurrency) || policy.concurrency < 1) {
     throw new Error("Pod Log capture concurrency 必须是正整数");
@@ -65,7 +90,6 @@ export async function runPodLogCapturePlan<T>(
   }
   const results: Array<PodLogCapturePlanResult<T> | undefined> = new Array(plan.length);
   let cursor = 0;
-  let availableBytes = policy.maxTotalBytes;
 
   const worker = async () => {
     while (cursor < plan.length) {
@@ -73,8 +97,11 @@ export async function runPodLogCapturePlan<T>(
       const item = plan[index]!;
       await pool.run(async () => {
         item.onStart?.();
-        const reservedBytes = Math.min(policy.maxBytesPerCapture, availableBytes);
-        availableBytes -= reservedBytes;
+        const reservedBytes = await budget.reserve(Math.min(policy.maxBytesPerCapture, item.request.limitBytes ?? policy.maxBytesPerCapture));
+        if (signal?.aborted) {
+          budget.settle(reservedBytes, 0);
+          signal.throwIfAborted();
+        }
         if (reservedBytes <= 0) {
           results[index] = {
             target: item.target,
@@ -84,9 +111,14 @@ export async function runPodLogCapturePlan<T>(
           return;
         }
         const request = { ...item.request, limitBytes: reservedBytes };
-        const capture = await access.collectPodLogs(request);
-        availableBytes += Math.max(0, reservedBytes - capture.bytesRead);
-        results[index] = { target: item.target, request, capture };
+        let capture: PodLogResult | undefined;
+        try {
+          capture = await access.collectPodLogs(request);
+          results[index] = { target: item.target, request, capture };
+        } finally {
+          // A thrown transport error has no byte count: keep its reservation charged, but release waiters.
+          budget.settle(reservedBytes, capture?.bytesRead ?? reservedBytes);
+        }
       }, signal);
     }
   };

@@ -206,6 +206,8 @@ Delivery 为每份产物分配独立归档位置，并生成根 manifest，统�
 Collect manifest 通过 artifact_ids 引用证据；多个 Collect 可以引用同一份 Inspect/Tenant。AGENTS.md 导航
 与打包使用同一份路径映射，领域目录内部的相对路径保持不变。单次和组合命令遵循相同布局，归档路径
 不由各 command 猜测或拼接。根索引不保存 Doctor Host 的临时绝对路径。
+JSON/Markdown 同样按 Artifact 身份保留全部可呈现产物；command 仅用于分组。单份 JSON 直接呈现领域
+diagnosis，多份 JSON 使用带 ID、command 和 diagnosis 的 artifacts 列表，避免同名命令覆盖或丢失证据。
 
 默认格式、partial 报告、Evidence Bundle、失败兜底和退出码语义由
 [`collect-protocol.md`](collect-protocol.md) 统一定义。init/profile 等启动命令不要求已有 Profile。

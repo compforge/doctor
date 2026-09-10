@@ -54,7 +54,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
       if (request.pod === "slow") await gate;
       const line = `[pod/${request.pod}/app] 2026-09-09T01:00:00Z INFO trace-a found`;
       if (request.pod !== "unmatched") request.onLine?.(line);
-      writeFileSync(request.rawFilePath!, line + "\n");
+      if (request.pod === "unmatched") request.onLine?.(line.replace("trace-a", "unrelated"));
       return { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 2,
         timedOut: false, command: ["logs", request.pod], captureStatus: "complete", bytesRead: 100, attempts: 1 };
     },
@@ -70,8 +70,9 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
       previousContainersByPod: { slow: [], fast: ["app"] },
     }),
   };
+  const command = new CommandContext({});
   try {
-    const pending = makeLogProbe(config.services).run({ command: new CommandContext({}), config, access,
+    const pending = makeLogProbe(config.services).run({ command, config, access,
       bundle: new EvidenceBundle(root), startedAtMs: Date.now() - 10,
       log: (message) => { messages.push(message); if (message.includes("命中 api/fast")) notify(); },
     }, facts, config, []).then((value) => { completed = true; return value; });
@@ -99,5 +100,5 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
     writeLogHtmlReport(root, html, "test");
     expect(readFileSync(html, "utf8")).toContain("trace 命中 2 Pod");
     expect(readFileSync(html, "utf8")).toContain("until-time=2026-09-09T02:00:00Z");
-  } finally { release(); rmSync(root, { recursive: true, force: true }); }
+  } finally { release(); await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 });

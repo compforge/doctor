@@ -33,6 +33,8 @@ export interface PodLogRequest {
   /** 指定后 stdout 原样流式写入该文件，返回值不再在内存中保留 stdout。 */
   rawFilePath?: string;
   onLine?: (line: string) => void;
+  /** A streaming sink may own persistence without retaining another copy in stdout. */
+  collectStdout?: boolean;
 }
 
 export type PodLogCaptureStatus = "complete" | "partial" | "unavailable";
@@ -43,6 +45,8 @@ export interface PodLogResult extends ExecResult {
   reason?: string;
   bytesRead: number;
   attempts: number;
+  /** Replayed from another capture in this root execution; bytesRead only charges the owner. */
+  reused?: boolean;
 }
 
 /** Pod 枚举与日志读取能力；调用方决定采哪个 Pod，infra 决定如何通过 Kubernetes 采。 */
@@ -108,7 +112,7 @@ export class KubectlPodLogAccess implements KubernetesPodLogAccess {
     if (request.limitBytes !== undefined) args.push(`--limit-bytes=${request.limitBytes}`);
     if (request.sinceTime) args.push(`--since-time=${request.sinceTime}`);
     else if (request.since) args.push(`--since=${request.since}`);
-    if (!request.rawFilePath && !request.onLine) {
+    if (!request.rawFilePath && !request.onLine && request.collectStdout !== false) {
       const result = await this.executor.run(args, { timeoutMs: 60_000 });
       const bytesRead = Buffer.byteLength(result.stdout);
       return {
@@ -133,7 +137,7 @@ export class KubectlPodLogAccess implements KubernetesPodLogAccess {
     };
     const result = await this.executor.run(args, {
       timeoutMs: 60_000,
-      collectStdout: !request.rawFilePath,
+      collectStdout: !request.rawFilePath && request.collectStdout !== false,
       onStdoutBytes: (chunk) => {
         bytesRead += chunk.byteLength;
         if (fd !== undefined) writeSync(fd, chunk);

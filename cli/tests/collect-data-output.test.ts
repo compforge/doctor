@@ -311,7 +311,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
   }
 });
 
-test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
+test("doctor data 批量 JSON 保留汇总和各 biz-id 的 Artifact 身份", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-json-batch-"));
   const outputPath = join(root, "batch.json");
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -329,7 +329,12 @@ test("doctor data 批量 JSON 只写一个 groups 文件", async () => {
       .toBe(true);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
-    expect(Object.keys(report.groups)).toEqual(["biz-1", "biz-2"]);
+    expect(report.artifacts).toHaveLength(3);
+    expect(new Set(report.artifacts.map((artifact: { id: string }) => artifact.id)).size).toBe(3);
+    expect(report.artifacts.map((artifact: { command: string }) => artifact.command)).toEqual(["data", "data", "data"]);
+    expect(Object.keys(report.artifacts[0].diagnosis.groups)).toEqual(["biz-1", "biz-2"]);
+    expect(report.artifacts[1].diagnosis).toEqual(report.artifacts[0].diagnosis.groups["biz-1"]);
+    expect(report.artifacts[2].diagnosis).toEqual(report.artifacts[0].diagnosis.groups["biz-2"]);
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
     expect(stdout).not.toContain('"groups"');

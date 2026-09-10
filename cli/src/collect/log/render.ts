@@ -143,7 +143,7 @@ function failureSummary(facts: LogInspectionFacts): string | undefined {
 
 export function formatLogCaptureStats(stats: LogRenderStats): string {
   const first = stats.firstMatchMs === undefined ? "未命中" : `${(stats.firstMatchMs / 1000).toFixed(2)} s`;
-  return `候选 ${stats.podCount} Pod，扫描 ${stats.scannedPodCount} Pod，trace 命中 ${stats.matchedPodCount} Pod；下载 ${(stats.bytesRead / 1024 / 1024).toFixed(2)} MiB；首次命中 ${first}；采集 wall-clock ${(stats.wallMs / 1000).toFixed(2)} s`;
+  return `候选 ${stats.podCount} Pod，扫描 ${stats.scannedPodCount} Pod，trace 命中 ${stats.matchedPodCount} Pod；下载 ${(stats.bytesRead / 1024 / 1024).toFixed(2)} MiB；复用 ${stats.reusedCaptureCount ?? 0} 路日志；首次命中 ${first}；采集 wall-clock ${(stats.wallMs / 1000).toFixed(2)} s`;
 }
 
 export function renderLogResult(
@@ -154,6 +154,7 @@ export function renderLogResult(
   const stats = observations.reduce<LogRenderStats>((total, service) => {
     if (service.capture) {
       total.bytesRead += service.capture.bytesRead;
+      total.reusedCaptureCount = (total.reusedCaptureCount ?? 0) + (service.capture.reusedCaptureCount ?? 0);
       total.matchedPodCount += service.capture.matchedPodCount;
       total.scannedPodCount += service.capture.scannedPodCount;
       total.wallMs = Math.max(total.wallMs, service.capture.wallMs);
@@ -204,7 +205,7 @@ export function renderLogResult(
     `- 命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  部分采集 pod: ${stats.partialCount}  不可用 pod: ${stats.unavailableCount}`,
     `- ${formatLogCaptureStats(stats)}`,
     `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}${config.untilTime ? ` until-time=${config.untilTime}（含边界）` : ""}`,
-    "- 首次命中按 trace ID 统计，早于错误/内容筛选；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。",
+    "- 首次命中按 trace ID 统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。",
     `- 过滤: ${config.errorsOnly ? "errors-only" : "全部 trace 日志"}${config.pattern ? ` + /${config.pattern}/` : ""}`,
     "",
     "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
