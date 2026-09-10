@@ -59,7 +59,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
         timedOut: false, command: ["logs", request.pod], captureStatus: "complete", bytesRead: 100, attempts: 1 };
     },
   };
-  const config: LogProbeConfig = {
+  const config: LogProbeConfig = { bizId: "request",
     traceIds: ["trace-a"], namespace: "test", services: ["api"], errorsOnly: true,
     linePattern: /ERROR/, untilTime: "2026-09-09T02:00:00Z", outputDir: root,
   };

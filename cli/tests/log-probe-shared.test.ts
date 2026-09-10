@@ -36,7 +36,7 @@ test("two biz-id probes share current/previous sources, retain distinct matching
   };
   const makeContext = (id: string): LogCommandContext => {
     const path = join(root, id); mkdirSync(path);
-    const config: LogProbeConfig = { namespace: "test", services: ["api"], traceIds: [id], errorsOnly: false,
+    const config: LogProbeConfig = { bizId: "request", namespace: "test", services: ["api"], traceIds: [id], errorsOnly: false,
       sinceTime: "2026-09-10T00:00:00Z", outputDir: path };
     return { command, config, access, bundle: new EvidenceBundle(path), log: () => {} };
   };

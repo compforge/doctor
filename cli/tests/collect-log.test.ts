@@ -44,7 +44,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       };
     },
   };
-  const config: LogProbeConfig = {
+  const config: LogProbeConfig = { bizId: "request",
     traceIds: ["trace-1"],
     namespace: "default",
     services: ["service-a", "service-b", "service-c", "service-d", "service-e"],

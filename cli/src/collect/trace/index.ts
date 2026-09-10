@@ -60,9 +60,7 @@ export function traceStoreCandidates(plugin: PluginDefinition): ServiceStoreRefe
 
 export interface CollectTraceCliOpts {
   /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
-  bizIds?: string[];
-  /** @deprecated Use bizIds. */
-  bizId?: string;
+  bizIds: readonly string[];
   namespace?: string;
   service?: string;
   endpoint?: string;
@@ -184,26 +182,30 @@ export async function runCollectTrace(
   opts: CollectTraceCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<CommandResult<void | TraceOutput>> {
+): Promise<CommandResult<TraceOutput>> {
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
-    ...(opts.bizId ? [opts.bizId] : []),
   ].map((item) => item.trim()).filter(Boolean))];
+  const failure = (code: 2 | 130, reason: string): CommandResult<TraceOutput> => {
+    const result = commandOutcome(code);
+    return { ...result, output: { items: bizIds.map(bizId => ({
+      bizId, traceIds: [], status: result.status, artifacts: [], reason,
+    })) } };
+  };
   if (!bizIds.length) {
     terminalStderr.error("doctor trace 需要至少一个 biz-id\n");
-    return commandOutcome(2);
+    return failure(2, "Trace 采集准备失败");
   }
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
     terminalStderr.error(`--page-size 需要正整数: '${opts.pageSize}'\n`);
-    return commandOutcome(2);
+    return failure(2, "Trace 采集准备失败");
   }
-  let format: TraceOutputFormat;
   try {
-    format = parseTraceOutputFormat(opts.format);
+    parseTraceOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return commandOutcome(2);
+    return failure(2, "Trace 采集准备失败");
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
   let runtime: TraceKubernetesRuntime | undefined;
@@ -215,11 +217,11 @@ export async function runCollectTrace(
     );
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-    return commandOutcome(2);
+    return failure(2, "Trace 采集准备失败");
   }
   if (!runtime) {
     terminalStderr.warning("[collect] 已取消\n");
-    return commandOutcome(130);
+    return failure(130, "Trace 采集已取消");
   }
 
   const index = buildIndexExpr(opts.index, opts.indexDate);
@@ -255,7 +257,7 @@ export async function runCollectTrace(
     }, plugin, runtime.executor);
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
-    return commandOutcome(2);
+    return failure(2, "Trace 采集准备失败");
   }
   for (const trace of traces) {
     terminalStdout.write(
@@ -274,19 +276,18 @@ export async function runCollectTrace(
         : await dependencyRuntime.prepareStoreCandidates(traceStores);
     } catch (error) {
       terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-      return commandOutcome(2);
+      return failure(2, "Trace 采集准备失败");
     }
   }
 
-  const singleTrace = bizIds.length === 1 && traces.length === 1;
-  const bundleName = singleTrace
-    ? defaultTraceBundleName(traces[0]!.traceId, new Date())
-    : defaultTraceBatchName(new Date());
+  const bundleName = defaultTraceBatchName(new Date());
   // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
   const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
   const staging = join(stagingRoot, bundleName);
-  commandContext.artifacts.add({ command: "trace", path: staging });
+  const summary = commandContext.artifacts.add({ command: "trace", path: staging });
+  const bundle = new EvidenceBundle(staging);
+  const startedAt = new Date().toISOString();
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
@@ -305,22 +306,18 @@ export async function runCollectTrace(
   );
   const items: TraceOutput["items"][number][] = [];
   const groups: ReportTab[] = [];
-  const statuses: CommandStatus[] = [];
-  let exitCode = 0;
   for (const [bizIndex, bizId] of bizIds.entries()) {
-    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
     terminalStdout.warning(`\n[collect:trace] [${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}\n`);
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
-    if (!groupTraces.length) statuses.push(CommandStatus.Failed);
     const groupKey = `biz-${bizIndex + 1}`;
     const traceTabs: ReportLeafTab[] = [];
     const itemStatuses: CommandStatus[] = [];
+    const itemArtifacts: import("../../command").CommandArtifact[] = [];
     let groupCode = groupTraces.length ? 0 : 1;
     for (const [traceIndex, trace] of groupTraces.entries()) {
-      if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
-      const outputDir = singleTrace
-        ? staging
-        : join(staging, `biz-${bizIndex + 1}`, `trace-${traceIndex + 1}-${trace.traceId.slice(0, 12)}`);
+      if (commandContext.signal.aborted) { itemStatuses.push(CommandStatus.Cancelled); break; }
+      const outputDir = join(stagingRoot, `${bundleName}-biz-${bizIndex + 1}-trace-${traceIndex + 1}`);
+      itemArtifacts.push(commandContext.artifacts.add({ command: "trace", path: outputDir }));
       let code;
       try {
         code = await collectTrace(
@@ -348,6 +345,7 @@ export async function runCollectTrace(
             else terminalStdout.write(`${line}\n`);
           },
         );
+        if (code === 0) copyFileSync(join(outputDir, "trace.html"), join(outputDir, "report.html"));
       } catch (error) {
         code = 1;
         terminalStderr.error(
@@ -362,49 +360,34 @@ export async function runCollectTrace(
           ? readFileSync(join(outputDir, "trace.html"), "utf8")
           : failedReportHtml(`Trace 采集失败：${trace.traceId}`, `Biz ID ${bizId}，退出码 ${code}`),
       });
-      statuses.push(commandOutcome(code).status);
       itemStatuses.push(commandOutcome(code).status);
       groupCode = Math.max(groupCode, code);
     }
     items.push({ bizId, traceIds: groupTraces.map(trace => trace.traceId),
       status: commandContext.signal.aborted ? CommandStatus.Cancelled : itemStatuses.length ? aggregateCommandStatus(itemStatuses) : CommandStatus.Failed,
-      artifacts: commandContext.artifacts.list(), ...(!groupTraces.length ? { reason: "无法解析 trace_id" } : {}) });
+      artifacts: itemArtifacts, ...(!groupTraces.length ? { reason: "无法解析 trace_id" } : {}) });
     const group = {
       key: groupKey,
       label: bizId,
-      status: groupCode === 0 ? "delivered" as const : "failed" as const,
+      status: groupCode === 0 && !itemStatuses.includes(CommandStatus.Cancelled) ? "delivered" as const : "failed" as const,
     };
     // 保留 Biz -> Trace 的导航数据，由最外层报告统一渲染；这里嵌套报告壳会重复标题、页签和 iframe。
-    groups.push(traceTabs.length === 1
-      ? { ...group, html: traceTabs[0]!.html }
-      : { ...group, tabs: traceTabs });
-    exitCode = Math.max(exitCode, groupCode);
+    groups.push(traceTabs.length === 0
+      ? { ...group, status: "failed", html: failedReportHtml(`Trace 未完成：${bizId}`, commandContext.signal.aborted ? "采集已取消" : "无法解析 trace_id") }
+      : traceTabs.length === 1 ? { ...group, html: traceTabs[0]!.html } : { ...group, tabs: traceTabs });
   }
 
-  if (format === "html") {
-    if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), join(staging, "report.html"));
-    else {
-      writeTabbedReport(join(staging, "report.html"), {
-        title: "doctor Trace 诊断报告",
-        description: "同一批次采集，每个 Biz ID 独立分组",
-        ariaLabel: "Biz ID Trace 诊断结果",
-        tabs: groups,
-      });
-    }
-    return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: commandContext.artifacts.list() };
-  }
-
-  const reportPath = join(staging, "report.html");
-  if (singleTrace && exitCode === 0) copyFileSync(join(staging, "trace.html"), reportPath);
-  else {
-    writeTabbedReport(reportPath, {
-      title: "doctor Trace 诊断报告",
-      description: "同一批次采集，每个 Biz ID 独立分组",
-      ariaLabel: "Biz ID Trace 诊断结果",
-      tabs: groups,
-    });
-  }
-  return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: commandContext.artifacts.list() };
+  bundle.writeManifest({ doctorVersion: DOCTOR_CLI_VERSION,
+    target: { namespace: runtime.collect.kubernetes.namespace, input_ids: bizIds },
+    inspectionFacts: {}, params: { index, page_size: pageSize }, startedAt, finishedAt: new Date().toISOString() });
+  writeTabbedReport(join(staging, "report.html"), {
+    title: "doctor Trace 诊断报告", description: "按 Biz ID 独立分组", ariaLabel: "Biz ID Trace 诊断结果", tabs: groups,
+  });
+  writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
+    ...item, artifact_ids: artifacts.map(artifact => artifact.id),
+  })) }, null, 2));
+  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items },
+    artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
   } finally {
     try {
       await dependencyRuntime.close();

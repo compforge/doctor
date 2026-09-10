@@ -277,7 +277,10 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
     expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, commandExitCode(code), "doctor data"))
       .toBe(true);
 
-    const report = JSON.parse(readFileSync(outputPath, "utf8"));
+    const delivered = JSON.parse(readFileSync(outputPath, "utf8"));
+    expect(delivered.artifacts).toHaveLength(2);
+    const report = delivered.artifacts[1].diagnosis;
+    expect(delivered.artifacts[0].diagnosis.groups).toEqual({ "biz-1": report });
     expect(report).toMatchObject({
       evidence: {
         observations: [],

@@ -85,3 +85,7 @@ provide 不隐式重试。同一批次的容量预算共同生效，截断明确
 
 输入 ID 与查询 Identity 分开记录。多个输入可以共享一个后代 Query，但共享后代不会自动合并输入的诊断范围。
 每个输入只沿有向 Relation 投影自己的查询结果，再生成独立 Artifact；批次 Output 保留逐 ID 状态和产物引用。
+
+单元素列表同样经过整批 Inspect、事实投影和逐项诊断。采集引擎在共享事实冻结后推进各项的
+Detector/Coverage，投影不重新执行 Inspect，也不改变原始 Fact producer。JSON 与 Bundle 均保留
+批次汇总和逐 ID 产物，输出结构不随输入数量变化。
