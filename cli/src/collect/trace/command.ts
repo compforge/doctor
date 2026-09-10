@@ -5,7 +5,7 @@ import { runCollectTrace } from "./index";
 
 export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
 
-export const traceCommand = defineCommand<TraceInput, void | import("./index").TraceOutput>({
+export const traceCommand = defineCommand<TraceInput, import("./index").TraceOutput>({
   name: "doctor trace",
   environment: { kubernetes: true },
   plugin: PLUGIN_COMMAND_CAPABILITIES.trace,

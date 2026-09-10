@@ -6,7 +6,7 @@ import { runCollectLog } from "./index";
 
 export type LogInput = CommandInput & Omit<Parameters<typeof runCollectLog>[0], CommandHostOption>;
 
-export const logCommand = defineCommand<LogInput, void | import("./index").LogOutput>({
+export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
   name: "doctor log",
   validate: (input) => {
     try { validateLogTimeWindow(input); }

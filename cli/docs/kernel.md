@@ -329,3 +329,7 @@ Inspect、Probe 与 Renderer；契约测试至少覆盖依赖调度、能力降�
 Pod 原始日志通过 Toolkit 的 PodLogDataSource/PodLogClient 访问。根执行注入共享网络并发与字节预算，
 Client 管理快照和回放；Core Log 持有业务 ID、筛选与诊断。批量 Data 共用有界 Identity 遍历，按输入有向可达的
 Query 结果分别运行 Detector；批量执行不合并各请求的业务结论，也不改变 Artifact 身份。
+
+`runCollectBatch` 是共享采集引擎的列表入口：一次 Inspect 和 Facts checkpoint 完成后，再对各项
+投影事实并执行 Probe → Detector。单项异常和排队取消有独立结果；并发调度只决定业务项何时推进，
+实际外部访问仍受根 Context 的容量约束。投影继承原始事实身份，不通过回放 Inspect 制造另一轮采集。

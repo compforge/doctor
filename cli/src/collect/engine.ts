@@ -10,7 +10,8 @@ import type {
 } from "./protocol";
 import type { Inspect } from "./inspection";
 import { runDetectors } from "./detector-engine";
-import { runInspects } from "./inspect-engine";
+import { freezeFacts, runInspects } from "./inspect-engine";
+import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import { runProbes } from "./probe-engine";
 
 export interface CollectEngineInput<
@@ -30,6 +31,8 @@ export interface CollectEngineInput<
   /** Probe planning starts only after every Inspect has completed and Facts are deeply frozen. */
   planProbes: (
     facts: Readonly<Facts>,
+    config: Config,
+    ctx: Ctx,
   ) => readonly Probe<Observation, Facts, Config, Ctx>[];
   log: (line: string) => void;
   buildEvidence: EvidenceBuilder<Observation, Facts, DomainEvidence>;
@@ -147,11 +150,59 @@ export async function runCollect<
     ctx,
     facts: facts as Facts,
     config,
-    probes: planProbes(facts),
+    probes: planProbes(facts, config, ctx),
     log,
     buildEvidence,
     detectors,
     buildCoverage,
   });
   return { facts, diagnosis };
+}
+
+/**
+ * One acquisition snapshot, followed by independently scheduled item diagnoses.
+ *
+ * @spec Batch Collect completes and freezes Inspect once before any item plans a Probe
+ * @spec Singleton batches use the same projection and failure isolation as larger batches
+ * @why Projection belongs after acquisition: replaying Inspect would invent a second producer of the same Facts
+ */
+export async function runCollectBatch<
+  Observation extends ObservationMeta,
+  Facts extends object,
+  DomainEvidence extends Evidence<Observation, Facts>,
+  DomainFinding extends FindingMeta<string>,
+  Goal extends string,
+  Config,
+  Ctx,
+>(input: Omit<CollectEngineInput<Observation, Facts, DomainEvidence, DomainFinding, Goal, Config, Ctx>, "config"> & {
+  items: readonly {
+    ctx: Ctx;
+    config: Config;
+    projectFacts?: (facts: Readonly<Facts>) => Facts;
+  }[];
+  concurrency?: number;
+  signal?: AbortSignal;
+}): Promise<{
+  facts: Readonly<Facts>;
+  items: PromiseSettledResult<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>>[];
+}> {
+  const pool = new ConcurrencyPool(input.concurrency ?? 1);
+  input.signal?.throwIfAborted();
+  const facts = await runInspects(input.inspects, input.ctx, input.log);
+  await input.checkpointFacts?.(facts);
+  const items = await Promise.allSettled(input.items.map(item => pool.run(async () => {
+    const projected = item.projectFacts ? freezeFacts(item.projectFacts(facts)) : facts;
+    const diagnosis = await runDiagnosis({
+      ctx: item.ctx,
+      config: item.config,
+      facts: projected as Facts,
+      probes: input.planProbes(projected, item.config, item.ctx),
+      log: input.log,
+      buildEvidence: input.buildEvidence,
+      detectors: input.detectors,
+      buildCoverage: input.buildCoverage,
+    });
+    return { facts: projected, diagnosis };
+  }, input.signal)));
+  return { facts, items };
 }

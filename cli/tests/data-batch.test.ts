@@ -5,7 +5,7 @@ import { createServiceCatalog, type PluginContext, type PluginDefinition, type S
 import { CommandContext, CommandStatus } from "../src/command";
 import { runCollectData } from "../src/collect/data";
 
-test("Data prepares once, batches roots, queries a shared descendant once and isolates each diagnosis", async () => {
+for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
   let preparations = 0;
   const batches: string[][] = [];
   const plugin: PluginDefinition = { id: "batch", version: "1", services: createServiceCatalog([{
@@ -33,16 +33,16 @@ test("Data prepares once, batches roots, queries a shared descendant once and is
   }]) };
   const context = new CommandContext({});
   try {
-    const result = await runCollectData({ bizIds: ["a", "b", "missing"], services: "records", namespace: "test", format: "json" },
+    const result = await runCollectData({ bizIds: ids, services: "records", namespace: "test", format: "json" },
       plugin, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } },
       { records: {} as PluginContext });
     expect(preparations).toBe(1);
-    expect(batches).toEqual([["a", "b", "missing"], ["shared"]]);
-    expect(result.status).toBe(CommandStatus.Partial);
+    expect(batches).toEqual(ids.some(id => id !== "missing") ? [ids, ["shared"]] : [ids]);
+    expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
     const output = result.output;
     if (!output) throw new Error("missing Data output");
-    expect(output.items.map(item => [item.bizId, item.status])).toEqual([["a", "ok"], ["b", "ok"], ["missing", "failed"]]);
-    for (const item of output.items.slice(0, 2)) {
+    expect(output.items.map(item => [item.bizId, item.status])).toEqual(ids.map(id => [id, id === "missing" ? "failed" : "ok"]));
+    for (const item of output.items.filter(item => item.status === CommandStatus.Ok)) {
       expect(item.diagnosis!.evidence.facts.capabilityResults.map(query => query.identity.value)).toEqual([item.bizId, "shared"]);
       expect(item.diagnosis!.findings.every(finding => finding.message === item.bizId)).toBeTrue();
       expect(item.artifacts).toHaveLength(1);

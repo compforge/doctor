@@ -30,7 +30,7 @@ const COLLECT_LABELS: Record<CollectKind, string> = {
 };
 
 export interface CollectCliOpts {
-  bizIds: string[];
+  bizIds: readonly string[];
   itemConcurrency?: number;
   kinds: CollectKind[];
   namespace?: string;

@@ -127,11 +127,10 @@ export async function resolveDataConfig(
 ): Promise<DataConfig | undefined> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
-    ...(opts.bizId ? [opts.bizId] : []),
   ].map((bizId) => bizId.trim()).filter(Boolean))];
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
   const format = parseDataOutputFormat(opts.format);
-  const reportName = opts.reportName ?? dataReportName(new Date());
+  const reportName = dataReportName(new Date());
   const outputPath = format === "default"
     ? resolveDefaultReportPaths(opts.output, reportName).html
     : format === "html"

@@ -5,10 +5,8 @@ import type { PodLogCaptureStatus } from "@compforge/doctor-toolkit/kubernetes/p
 import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {
-  bizId?: string;
-  traceIds?: readonly string[];
-  /** @deprecated Use traceIds. */
-  traceId?: string;
+  bizId: string;
+  traceIds: readonly string[];
   namespace: string;
   kubeconfig?: string;
   context?: string;
