@@ -90,7 +90,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
         if (!kinds) return { status: CommandStatus.Cancelled, artifacts: [] };
         return collectOverviewSamples(context, bizIds, {
           namespace: kube.kubernetes.namespace, tenantId: opts.tenantId,
-          kinds, sinceTime: query.window.from,
+          kinds, sinceTime: query.window.from, untilTime: query.window.to,
         }, concurrency);
       },
     });

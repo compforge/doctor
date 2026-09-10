@@ -1,7 +1,7 @@
 import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
 import { expect, test } from "bun:test";
-import { runPodLogCapturePlan } from "../src/infra/k8s/log-capture-plan";
-import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
+import { runPodLogCapturePlan } from "@compforge/doctor-toolkit/kubernetes/log-capture-plan";
+import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 
 test("Pod Log plan 为并发任务预留总预算，耗尽后返回 unavailable", async () => {
   const limits: number[] = [];

@@ -5,7 +5,7 @@ import { runCollectData } from "./index";
 
 export type DataInput = CommandInput & Omit<Parameters<typeof runCollectData>[0], CommandHostOption>;
 
-export const dataCommand = defineCommand<DataInput, void>({
+export const dataCommand = defineCommand<DataInput, void | import("./model").DataOutput>({
   name: "doctor data",
   environment: { kubernetes: true },
   plugin: PLUGIN_COMMAND_CAPABILITIES.data,

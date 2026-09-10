@@ -27,7 +27,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   };
   const context = new CommandContext({}, undefined, { plugin });
   const restore: Array<() => void> = [];
-  function replace<Input extends CommandInput>(command: CommandSpec<Input, void>, kind: CollectKind, check?: (input: Input) => void) {
+  function replace<Input extends CommandInput>(command: CommandSpec<Input, unknown>, kind: CollectKind, check?: (input: Input) => void) {
     const replacement = defineCommand<Input, void>({ name: command.name, run: async (ctx, input) => {
       check?.(input);
       calls[kind] = (calls[kind] ?? 0) + 1;
@@ -43,7 +43,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   }
   replace(inspectCommand, "inspect");
   replace(tenantCommand, "tenant");
-  replace(dataCommand, "data");
+  replace(dataCommand, "data", input => expect(input.bizIds).toEqual(["a", "b", "c", "d", "e"]));
   replace(traceCommand, "trace");
   replace(logCommand, "log", (input) => expect(input.services).toBe("chat-server"));
   replace(metricCommand, "metric");
@@ -54,10 +54,10 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       kinds: kinds!, namespace: "ns", tenantId: "tenant-one",
     }, concurrency);
     expect(result.status).toBe(CommandStatus.Partial);
-    expect(calls).toEqual({ inspect: 1, tenant: 1, data: 5, trace: 5, log: 5, metric: 5 });
+    expect(calls).toEqual({ inspect: 1, tenant: 1, data: 1, trace: 1, log: 1, metric: 1 });
     for (const command of ["inspect", "tenant"]) expect(result.artifacts.filter((artifact) => artifact.command === command)).toHaveLength(1);
     const manifests = result.artifacts.filter((artifact) => artifact.command === "collect");
-    expect(manifests).toHaveLength(5);
+    expect(manifests).toHaveLength(1);
     for (const artifact of manifests) {
       const manifest = JSON.parse(readFileSync(artifact.path, "utf8"));
       expect(manifest.steps.map((step: { id: string }) => step.id)).toEqual([...COLLECT_KINDS]);
@@ -72,7 +72,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
     expect(new Set(index.artifacts.map(artifact => artifact.path)).size).toBe(index.artifacts.length);
     for (const kind of ["inspect", "tenant"]) expect(index.artifacts.filter(artifact => artifact.command === kind)).toHaveLength(1);
     const collectManifests = index.artifacts.filter(artifact => artifact.command === "collect");
-    expect(collectManifests).toHaveLength(5);
+    expect(collectManifests).toHaveLength(1);
     const bizIds: string[] = [];
     const referencedData = new Set<string>();
     for (const artifact of collectManifests) {
@@ -88,7 +88,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       }
     }
     expect(bizIds.sort()).toEqual(["a", "b", "c", "d", "e"]);
-    expect(referencedData.size).toBe(5);
+    expect(referencedData.size).toBe(1);
     const agents = readBundleText(archive, "overview/AGENTS.md");
     for (const artifact of index.artifacts) if (artifact.report) expect(agents).toContain(artifact.report);
     const html = readFileSync(output, "utf8");

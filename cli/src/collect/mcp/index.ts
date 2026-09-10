@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { McpClient } from "../../infra/mcp";
-import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
+import { KubectlPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   createKubernetesExecutor,

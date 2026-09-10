@@ -1,10 +1,13 @@
+import { ClientManager } from "../src/client-manager";
+import { PodLogDataSource } from "../src/kubernetes/pod-log-datasource";
+import { PodLogByteBudget } from "../src/kubernetes/log-capture-plan";
 import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
-import { SharedPodLogCaptures, type PodLogSourceScope } from "../src/infra/k8s/shared-pod-log";
-import type { KubernetesPodLogAccess, PodLogRequest, PodLogResult } from "../src/infra/k8s/pod-log";
+import { PodLogClient, type PodLogSourceScope } from "@compforge/doctor-toolkit/kubernetes/pod-log-client";
+import type { KubernetesPodLogAccess, PodLogRequest, PodLogResult } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 
 function deferred() {
   let resolve!: () => void;
@@ -24,7 +27,7 @@ function result(bytesRead = 10): PodLogResult {
 
 test("late and completed consumers replay every line in order, get early hits and keep partial raw after root disposal", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-shared-log-test-"));
-  const session = new SharedPodLogCaptures(new ConcurrencyPool(1), new AbortController().signal);
+  const session = new PodLogClient(new ConcurrencyPool(1), new AbortController().signal);
   await session.initialize();
   const started = deferred(), release = deferred(), hitA = deferred(), hitB = deferred();
   const lines = ["trace-a 开始", ...Array.from({ length: 8000 }, (_, i) => `trace-b 第 ${i} 行 多字节日志`), "trace-a 结束"];
@@ -63,7 +66,7 @@ test("late and completed consumers replay every line in order, get early hits an
 });
 
 test("network byte budget spans independent captures and exhausted budget does not block replay", async () => {
-  const session = new SharedPodLogCaptures(new ConcurrencyPool(2), new AbortController().signal,
+  const session = new PodLogClient(new ConcurrencyPool(2), new AbortController().signal,
     { concurrency: 2, maxBytesPerCapture: 8, maxTotalBytes: 10 });
   await session.initialize();
   const limits: number[] = [];
@@ -79,7 +82,7 @@ test("network byte budget spans independent captures and exhausted budget does n
 });
 
 test("source identity isolates targets, instances, windows and current/previous; relative or unidentified requests never reuse", async () => {
-  const session = new SharedPodLogCaptures(new ConcurrencyPool(2), new AbortController().signal);
+  const session = new PodLogClient(new ConcurrencyPool(2), new AbortController().signal);
   await session.initialize();
   let calls = 0;
   const transport = access(async input => { calls++; input.onLine!("line"); return result(); });
@@ -105,7 +108,7 @@ test("source identity isolates targets, instances, windows and current/previous;
 test("cancellation drains the active shared source and its readers without starting queued sources", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-shared-log-cancel-"));
   const controller = new AbortController();
-  const session = new SharedPodLogCaptures(new ConcurrencyPool(1), controller.signal);
+  const session = new PodLogClient(new ConcurrencyPool(1), controller.signal);
   await session.initialize();
   const release = deferred(), started = deferred();
   const pods: string[] = [];
@@ -128,7 +131,7 @@ test("cancellation drains the active shared source and its readers without start
 });
 
 test("reserved bytes delay another capture until unused capacity is returned", async () => {
-  const session = new SharedPodLogCaptures(new ConcurrencyPool(2), new AbortController().signal,
+  const session = new PodLogClient(new ConcurrencyPool(2), new AbortController().signal,
     { concurrency: 2, maxBytesPerCapture: 8, maxTotalBytes: 8 });
   await session.initialize();
   const release = deferred(), started = deferred();
@@ -148,4 +151,25 @@ test("reserved bytes delay another capture until unused capacity is returned", a
     expect((await Promise.all([first, second])).map(item => item?.captureStatus)).toEqual(["complete", "complete"]);
     expect(limits).toEqual([8, 6]);
   } finally { release.resolve(); await session.dispose(); }
+});
+
+test("DataSources reuse clients by target while distinct targets share the root byte budget", async () => {
+  const manager = new ClientManager();
+  const pool = new ConcurrencyPool(1);
+  const budget = new PodLogByteBudget(10);
+  const policy = { concurrency: 1, maxBytesPerCapture: 10, maxTotalBytes: 10 };
+  const source = (namespace: string) => new PodLogDataSource({ namespace }, pool, budget, policy);
+  try {
+    const a = await manager.get(source("a"));
+    expect(await manager.get(source("a"))).toBe(a);
+    const b = await manager.get(source("b"));
+    expect(b).not.toBe(a);
+    let reads = 0;
+    const transport = access(async input => { reads++; input.onLine!("trace"); return result(10); });
+    await a.capture(transport, { ...scope, namespace: "a" }, request);
+    const exhausted = await b.capture(transport, { ...scope, namespace: "b" }, request);
+    expect(exhausted?.reason).toBe("total_byte_budget");
+    expect(reads).toBe(1);
+    expect((await a.capture(transport, { ...scope, namespace: "a" }, request))?.reused).toBeTrue();
+  } finally { await manager.dispose(); await manager.dispose(); }
 });

@@ -1,5 +1,6 @@
+import { projectDataFacts } from "./projection";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
@@ -21,11 +22,13 @@ import {
 } from "./config";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataContributionInspect } from "./capability/collect";
-import { prepareDataCommand, type DataCommandContext } from "./context";
+import { prepareDataCommand, type PreparedDataCommand, type DataCommandContext } from "./context";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   CollectDataCliOpts,
   DataDiagnosis,
+  DataOutput,
+  DataServiceSelection,
   DataFacts,
 } from "./model";
 import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
@@ -59,6 +62,8 @@ function dataOutcomes(services: readonly string[], plugin: PluginDefinition): Ou
 interface DataSingleRunHooks {
   onDiagnosis?: (diagnosis: DataDiagnosis) => void;
   suppressJson?: boolean;
+  prepared?: { command: PreparedDataCommand; selections: DataServiceSelection[]; facts: DataFacts };
+  onCollected?: (prepared: { command: PreparedDataCommand; selections: DataServiceSelection[]; facts: DataFacts }) => Promise<CommandResult<void | DataOutput>>;
 }
 
 async function runCollectDataSingle(
@@ -68,11 +73,11 @@ async function runCollectDataSingle(
   injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
   hooks: DataSingleRunHooks = {},
-): Promise<CommandResult<void>> {
+): Promise<CommandResult<void | DataOutput>> {
   const startedAt = new Date().toISOString();
   let dataCommand;
   try {
-    dataCommand = await prepareDataCommand(
+    dataCommand = hooks.prepared?.command ?? await prepareDataCommand(
       opts,
       plugin.services,
       commandContext,
@@ -86,11 +91,11 @@ async function runCollectDataSingle(
     terminalStderr.warning("[collect] 已取消\n");
     return commandOutcome(130);
   }
-  const { config } = dataCommand;
+  const config = hooks.prepared ? { ...dataCommand.config, ids: opts.bizIds ?? [], reportName: opts.reportName ?? dataCommand.config.reportName, format: parseDataOutputFormat(opts.format) } : dataCommand.config;
   terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
   let selections;
   try {
-    selections = await resolveDataServiceSelection({ config, catalog: plugin.services });
+    selections = hooks.prepared?.selections ?? await resolveDataServiceSelection({ config, catalog: plugin.services });
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return commandOutcome(2);
@@ -109,7 +114,7 @@ async function runCollectDataSingle(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-"));
   const staging = join(stagingRoot, config.reportName);
-  commandContext.artifacts.add({ command: "data", path: staging });
+  if (!hooks.onCollected) commandContext.artifacts.add({ command: "data", path: staging });
   const bundle = new EvidenceBundle(
     staging,
     dataOutcomes(selections.map((item) => item.service), plugin),
@@ -159,31 +164,53 @@ async function runCollectDataSingle(
   };
 
   try {
-    access = await prepareDataAccess(
-      dataCommand,
-      selections,
-      plugin.services,
-      injectedContexts,
-    );
-    const pluginContexts = Object.fromEntries(
-      access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),
-    );
-    const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
-    const execution = await runCollect({
-      ctx,
-      config,
-      inspects: [
-        makeDataInspect(access),
-        makeDataContributionInspect({ selections, catalog: plugin.services, config }),
-      ],
-      planProbes: () => [],
-      log,
-      buildEvidence: buildDataEvidence,
-      detectors: makeDataDetectors(plugin.id, plugin.services, selections.map((selection) => selection.service)),
-      buildCoverage: buildDataCoverage,
-    });
-    facts = execution.facts;
-    diagnosis = execution.diagnosis;
+    if (hooks.prepared) {
+      facts = hooks.prepared.facts;
+      for (const selection of selections) {
+        for (const stage of ["expand", "provide"] as const) {
+          const results = facts.capabilityResults.filter(item => item.service === selection.service && item.stage === stage);
+          if (!results.length) continue;
+          bundle.fill(`data-${stage}-${selection.service}`, { status: results.every(item => item.status === "collected") ? "ok" : "partial",
+            output: JSON.stringify({ results }, null, 2), ext: "json" });
+        }
+      }
+      // Reuse the frozen acquisition facts through the same engine; projection never performs external work.
+      const projected = facts;
+      const execution = await runCollect({ ctx: undefined, config,
+        inspects: [
+          { id: "data-service-targets", run: async () => ({ services: projected.services }) },
+          { id: "data-service-contributions", dependsOn: ["data-service-targets"], run: async () => ({ capabilityResults: projected.capabilityResults }) },
+        ], planProbes: () => [], log,
+        buildEvidence: buildDataEvidence, detectors: makeDataDetectors(plugin.id, plugin.services, selections.map(item => item.service)),
+        buildCoverage: buildDataCoverage });
+      diagnosis = execution.diagnosis;
+    } else {
+      access = await prepareDataAccess(
+        dataCommand,
+        selections,
+        plugin.services,
+        injectedContexts,
+      );
+      const pluginContexts = Object.fromEntries(
+        access.confirmed.flatMap((item) => item.context ? [[item.service, item.context]] : []),
+      );
+      const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
+      const execution = await runCollect({
+        ctx,
+        config,
+        inspects: [
+          makeDataInspect(access),
+          makeDataContributionInspect({ selections, catalog: plugin.services, config }),
+        ],
+        planProbes: () => [],
+        log,
+        buildEvidence: buildDataEvidence,
+        detectors: hooks.onCollected ? [] : makeDataDetectors(plugin.id, plugin.services, selections.map((selection) => selection.service)),
+        buildCoverage: buildDataCoverage,
+      });
+      facts = execution.facts;
+      diagnosis = execution.diagnosis;
+    }
   } catch (error) {
     reportError(error, { context: "doctor data/diagnosis", summary: "Data 诊断失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
@@ -197,6 +224,11 @@ async function runCollectDataSingle(
   }
   if (diagnosisFailure || !diagnosis) return commandOutcome(await fail(diagnosisFailure ?? "Data 诊断未形成结果"));
 
+  if (hooks.onCollected) {
+    try { return await hooks.onCollected({ command: dataCommand, selections, facts }); }
+    finally { rmSync(stagingRoot, { recursive: true, force: true }); }
+  }
+
   const requirements = selections.map((selection) => (
     diagnosis.evidence.facts.capabilityResults.some((item) => (
       item.status === "collected"
@@ -205,6 +237,7 @@ async function runCollectDataSingle(
     ))
   ));
   const outcome = evaluateCollectOutcome(requirements);
+  hooks.onDiagnosis?.(diagnosis);
   if (outcome.exitCode !== 0) {
     const reason = diagnosis.coverage[0]?.missingEvidence.join("；") || "未取得所选 Service 的业务记录";
     return commandOutcome(await fail(reason));
@@ -212,7 +245,6 @@ async function runCollectDataSingle(
 
   bundle.writeSummary(buildDataSummary(diagnosis));
   writeManifest();
-  hooks.onDiagnosis?.(diagnosis);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (config.format === "json") {
     return collectCommandOutcome(outcome);
@@ -231,14 +263,14 @@ async function runCollectDataSingle(
   return collectCommandOutcome(outcome);
 }
 
-/** Batch wrapper: each biz-id runs an independent diagnosis; only the final delivery is grouped. */
+/** Collect the identity closure once, then diagnose and deliver each input projection independently. */
 export async function runCollectData(
   opts: CollectDataCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
   injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
-): Promise<CommandResult<void>> {
+): Promise<CommandResult<void | DataOutput>> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
@@ -248,100 +280,51 @@ export async function runCollectData(
     return commandOutcome(2);
   }
   if (ids.length === 1) {
-    return runCollectDataSingle(
-      { ...opts, bizIds: ids },
-      plugin,
-      commandContext,
-      injectedExecutor,
-      injectedContexts,
-    );
-  }
-
-  let format;
-  try {
-    format = parseDataOutputFormat(opts.format);
-  } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
-    return commandOutcome(2);
-  }
-  const batchName = dataReportName(new Date());
-  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-batch-"));
-  const staging = join(stagingRoot, batchName);
-  mkdirSync(staging, { recursive: true });
-  commandContext.artifacts.add({ command: "data", path: staging });
-  if (format === "json") {
-    const groups: Record<string, DataDiagnosis | { error: string }> = {};
-    const statuses: CommandStatus[] = [];
-    for (const [index, bizId] of ids.entries()) {
-      if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
-      terminalStdout.warning(`\n[collect:data] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
-      let captured: DataDiagnosis | undefined;
-      const child = await commandContext.artifacts.capture(() => runCollectDataSingle(
-        {
-          ...opts,
-          bizIds: [bizId],
-          format: "json",
-          output: undefined,
-          reportName: `${batchName}-biz-${index + 1}`,
-        },
-        plugin,
-        commandContext,
-        injectedExecutor,
-        injectedContexts,
-        { onDiagnosis: (diagnosis) => { captured = diagnosis; }, suppressJson: true },
-      ));
-      commandContext.artifacts.add(child.artifacts);
-      const result = child.value;
-      groups[bizId] = captured ?? { error: `采集未完成（${result.status}）` };
-      statuses.push(result.status);
-      if (result.status === CommandStatus.Cancelled) break;
-    }
-    writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
-    return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
-  }
-
-  const tabs = [];
-  const groups: Record<string, DataDiagnosis | { error: string }> = {};
-  const statuses: CommandStatus[] = [];
-  for (const [index, bizId] of ids.entries()) {
-    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
-    terminalStdout.warning(`\n[collect:data] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
-    let captured: DataDiagnosis | undefined;
+    let diagnosis: DataDiagnosis | undefined;
     const child = await commandContext.artifacts.capture(() => runCollectDataSingle(
-      {
-        ...opts,
-        bizIds: [bizId],
-        format: "html",
-        reportName: `${batchName}-biz-${index + 1}`,
-      },
-      plugin,
-      commandContext,
-      injectedExecutor,
-      injectedContexts,
-      { onDiagnosis: (diagnosis) => { captured = diagnosis; } },
+      { ...opts, bizIds: ids }, plugin, commandContext, injectedExecutor, injectedContexts,
+      { onDiagnosis: value => { diagnosis = value; } },
     ));
     commandContext.artifacts.add(child.artifacts);
-    const result = child.value;
-    const childArtifact = child.artifacts[0];
-    const htmlPath = childArtifact ? join(childArtifact.path, "report.html") : "";
-    groups[bizId] = captured ?? { error: `采集未完成（${result.status}）` };
-    tabs.push({
-      key: `biz-${index + 1}`,
-      label: bizId,
-      status: (result.status === CommandStatus.Ok || result.status === CommandStatus.Partial) && existsSync(htmlPath) ? "delivered" as const : "failed" as const,
-      html: (result.status === CommandStatus.Ok || result.status === CommandStatus.Partial) && existsSync(htmlPath)
-        ? readFileSync(htmlPath, "utf8")
-        : failedReportHtml(`Data 诊断失败：${bizId}`, `采集状态 ${result.status}`),
-    });
-    statuses.push(result.status);
-    if (result.status === CommandStatus.Cancelled) break;
+    return { ...child.value, artifacts: child.artifacts, output: { items: [{ bizId: ids[0]!,
+      status: child.value.status, artifacts: child.artifacts, diagnosis,
+      ...("reason" in child.value ? { reason: child.value.reason } : {}) }] } };
   }
-  writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
-  writeTabbedReport(join(staging, "report.html"), {
-    title: "doctor Data 业务数据汇集报告",
-    description: "同一批次采集，每个 Biz ID 独立诊断",
-    ariaLabel: "Biz ID 数据诊断结果",
-    tabs,
+
+  return runCollectDataSingle({ ...opts, bizIds: ids }, plugin, commandContext, injectedExecutor, injectedContexts, {
+    onCollected: async prepared => {
+      const format = parseDataOutputFormat(opts.format);
+      const batchName = dataReportName(new Date());
+      const staging = join(mkdtempSync(join(tmpdir(), "doctor-data-batch-")), batchName);
+      mkdirSync(staging, { recursive: true });
+      commandContext.artifacts.add({ command: "data", path: staging });
+      const items: DataOutput["items"][number][] = [];
+      const groups: Record<string, DataDiagnosis | { error: string }> = {};
+      const tabs = [];
+      for (const [index, bizId] of ids.entries()) {
+        terminalStdout.warning(`\n[collect:data] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
+        let diagnosis: DataDiagnosis | undefined;
+        const child = await commandContext.artifacts.capture(() => runCollectDataSingle({ ...opts, bizIds: [bizId],
+          format: format === "json" ? "json" : "html", reportName: `${batchName}-biz-${index + 1}`,
+        }, plugin, commandContext, injectedExecutor, injectedContexts, {
+          prepared: { ...prepared, facts: projectDataFacts(prepared.facts, bizId) },
+          onDiagnosis: value => { diagnosis = value; },
+        }));
+        commandContext.artifacts.add(child.artifacts);
+        const result = child.value;
+        items.push({ bizId, status: result.status, artifacts: child.artifacts, diagnosis,
+          ...("reason" in result ? { reason: result.reason } : {}) });
+        groups[bizId] = diagnosis ?? { error: `采集未完成（${result.status}）` };
+        const htmlPath = child.artifacts[0] ? join(child.artifacts[0].path, "report.html") : "";
+        tabs.push({ key: `biz-${index + 1}`, label: bizId,
+          status: existsSync(htmlPath) ? "delivered" as const : "failed" as const,
+          html: existsSync(htmlPath) ? readFileSync(htmlPath, "utf8") : failedReportHtml(`Data 诊断失败：${bizId}`, `采集状态 ${result.status}`) });
+      }
+      writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
+      if (format !== "json") writeTabbedReport(join(staging, "report.html"), {
+        title: "doctor Data 业务数据汇集报告", description: "批量采集，每个 Biz ID 独立诊断", ariaLabel: "Biz ID 数据诊断结果", tabs,
+      });
+      return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items }, artifacts: commandContext.artifacts.list() };
+    },
   });
-  return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
 }

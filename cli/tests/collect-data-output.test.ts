@@ -1,3 +1,4 @@
+import { inspectIndividually } from "@compforge/doctor-plugin";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { commandExitCode } from "../src/app/command";
 import { expect, spyOn, test } from "bun:test";
@@ -54,7 +55,7 @@ const plugin = {
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: async (_context, query) => ({
+        inspect: inspectIndividually(async (_context, query) => ({
           resolution: {
             inputId: query.identity.value,
             resolvedAs: "sample_id",
@@ -67,7 +68,7 @@ const plugin = {
             recordKey: recordId,
             record: { id: recordId },
           })),
-        }),
+        })),
       },
     },
     capabilities: {},
@@ -95,14 +96,14 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
           username: "reader",
           credentialSource: "test",
         }),
-        inspect: async (_context, query) => ({
+        inspect: inspectIndividually(async (_context, query) => ({
           resolution: {
             inputId: query.identity.value,
             resolvedAs: query.identity.kind,
             identifiers: {},
           },
           facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
-        }),
+        })),
       },
     },
     capabilities: {},
@@ -153,7 +154,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: async (_context, query) => ({
+          inspect: inspectIndividually(async (_context, query) => ({
             resolution: {
               inputId: query.identity.value,
               resolvedAs: query.identity.kind,
@@ -166,7 +167,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
               from: query.identity,
               to: { kind: "trace_id", value: "trace-1" },
             }],
-          }),
+          })),
         },
       },
       capabilities: {},
@@ -185,7 +186,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: async (_context, query) => {
+          inspect: inspectIndividually(async (_context, query) => {
             const identity = query.identity;
             return {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
@@ -198,7 +199,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
                     to: { kind: "message_id", value: "message-1" },
                   }] : [])],
             };
-          },
+          }),
         },
       },
       capabilities: {},
@@ -216,14 +217,14 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
             username: "reader",
             credentialSource: "test",
           }),
-          inspect: async (_context, query) => {
+          inspect: inspectIndividually(async (_context, query) => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
             return {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
               facts: [{ factType: "value", kind: "sample-record", schemaVersion: 1, value: {} }],
             };
-          },
+          }),
         },
       },
       capabilities: {},

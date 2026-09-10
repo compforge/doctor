@@ -1,3 +1,4 @@
+import type { PluginContext, ServiceInspectQuery, ServiceInspectQueryOutcome } from "@compforge/doctor-plugin";
 import type {
   Fact,
   Identity,
@@ -229,4 +230,23 @@ export function normalizeServiceInspectResult(input: {
       },
     } : {}),
   };
+}
+
+/** Correlate by identity, never by provider response order. A malformed response fails only its query. */
+export async function inspectServiceQueries(
+  capability: ServiceInspect, context: PluginContext, queries: readonly ServiceInspectQuery[],
+): Promise<readonly ServiceInspectQueryOutcome[]> {
+  let outcomes: readonly ServiceInspectQueryOutcome[];
+  try { outcomes = await capability.inspect(context, queries); }
+  catch (error) {
+    return queries.map(query => ({ identity: query.identity, status: "failed",
+      reason: error instanceof Error ? error.message : String(error) }));
+  }
+  return queries.map(query => {
+    const matches = outcomes.filter(item => sameIdentity(item.identity, query.identity));
+    return matches.length === 1 ? matches[0]! : {
+      identity: query.identity, status: "failed" as const,
+      reason: `Inspect returned ${matches.length} outcomes for ${query.identity.kind}:${query.identity.value}`,
+    };
+  });
 }

@@ -3,11 +3,10 @@ import type {
   RelationFact,
   ServiceCatalog,
   ServiceDefinition,
-  ServiceInspectBudget,
   ServiceInspectResult,
   ServiceWithContribution,
 } from "@compforge/doctor-plugin";
-import { normalizeServiceInspectResult } from "../../../plugin/inspect";
+import { inspectServiceQueries, normalizeServiceInspectResult } from "../../../plugin/inspect";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type { DataCommandContext } from "../context";
@@ -76,10 +75,6 @@ function resultId(stage: DataStage, service: string, identity: Identity): string
   return `data-query:${stage}:${service}:${identity.kind}:${identity.value}`;
 }
 
-function inspectBudget(remaining: RemainingFactBudget): ServiceInspectBudget | undefined {
-  if (remaining.facts < 1 || remaining.bytes < 1) return undefined;
-  return { maxFacts: remaining.facts, maxBytes: remaining.bytes };
-}
 
 function consumeBudget(remaining: RemainingFactBudget, result: ServiceInspectResult): void {
   remaining.facts -= result.facts.length;
@@ -88,63 +83,47 @@ function consumeBudget(remaining: RemainingFactBudget, result: ServiceInspectRes
   ), 0);
 }
 
-async function queryIdentity(input: {
+async function queryIdentities(input: {
   declared: ServiceWithContribution<ServiceDefinition, "inspect">;
   stage: DataStage;
-  identity: Identity;
+  identities: readonly Identity[];
   ctx: DataCommandContext;
   results: ReadonlyMap<string, readonly ServiceInspectResult[]>;
   remaining: RemainingFactBudget;
-}): Promise<DataInspectResult> {
-  const { declared, stage, identity, ctx, results, remaining } = input;
-  const id = resultId(stage, declared.name, identity);
-  const budget = inspectBudget(remaining);
-  if (!budget) {
-    return Object.assign(unavailableFact(
-      "data.inspect-result",
-      "data-service-contributions",
-      `Data Fact 总预算已耗尽（maxFacts=${MAX_DATA_FACTS}, maxBytes=${MAX_DATA_FACT_BYTES}）`,
-    ), {
-      id,
-      stage,
-      service: declared.name,
-      identity,
-    });
+}): Promise<DataInspectResult[]> {
+  const { declared, stage, identities, ctx, results, remaining } = input;
+  if (!identities.length) return [];
+  // Bound provider statements as well as retained evidence (e.g. SQL UNION/IN clauses).
+  if (identities.length > 32) {
+    const batches: DataInspectResult[] = [];
+    for (let offset = 0; offset < identities.length; offset += 32) {
+      batches.push(...await queryIdentities({ ...input, identities: identities.slice(offset, offset + 32) }));
+    }
+    return batches;
   }
   const pluginContext = ctx.pluginContexts[declared.name];
   if (!pluginContext) throw new Error(`Service '${declared.name}' Inspect contribution 缺少 PluginContext`);
-  try {
-    const capability = declared.contributions.inspect;
-    const result = normalizeServiceInspectResult({
-      value: await capability.inspect(pluginContext, { identity, results, budget }),
-      service: declared.name,
-      queryIdentity: identity,
-      capability,
-      budget,
-    });
-    consumeBudget(remaining, result);
-    return Object.assign(collectedFact(
-      "data.inspect-result",
-      "data-service-contributions",
-      { result },
-    ), {
-      id,
-      stage,
-      service: declared.name,
-      identity,
-    });
-  } catch (error) {
-    return Object.assign(failedFact(
-      "data.inspect-result",
-      "data-service-contributions",
-      error instanceof Error ? error.message : String(error),
-    ), {
-      id,
-      stage,
-      service: declared.name,
-      identity,
-    });
-  }
+  // Divide the remaining capacity before dispatch; siblings cannot each spend the whole batch budget.
+  const budget = { maxFacts: Math.floor(remaining.facts / identities.length), maxBytes: Math.floor(remaining.bytes / identities.length) };
+  const metadata = (identity: Identity) => ({ id: resultId(stage, declared.name, identity), stage, service: declared.name, identity });
+  if (budget.maxFacts < 1 || budget.maxBytes < 1) return identities.map(identity => Object.assign(
+    unavailableFact("data.inspect-result", "data-service-contributions", "Data Fact 总预算已耗尽"), metadata(identity),
+  ));
+  ctx.command.signal.throwIfAborted();
+  const capability = declared.contributions.inspect;
+  const outcomes = await inspectServiceQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget })));
+  return outcomes.map(outcome => {
+    try {
+      if (outcome.status === "failed") throw new Error(outcome.reason);
+      const result = normalizeServiceInspectResult({ value: outcome.result, service: declared.name,
+        queryIdentity: outcome.identity, capability, budget });
+      consumeBudget(remaining, result);
+      return Object.assign(collectedFact("data.inspect-result", "data-service-contributions", { result }), metadata(outcome.identity));
+    } catch (error) {
+      return Object.assign(failedFact("data.inspect-result", "data-service-contributions",
+        error instanceof Error ? error.message : String(error)), metadata(outcome.identity));
+    }
+  });
 }
 
 function recordStage(
@@ -220,34 +199,32 @@ async function collectExpansionResults(input: {
     return true;
   });
 
-  for (let cursor = 0; cursor < queue.length; cursor += 1) {
-    const current = queue[cursor]!;
+  // Breadth-first rounds expose all currently known queries to a provider at once.
+  for (let cursor = 0; cursor < queue.length;) {
+    const frontier = queue.slice(cursor);
+    cursor = queue.length;
     for (const declared of activeExpanders) {
-      if (!declared.contributions.inspect.accepts.includes(current.identity.kind)) continue;
-      const queryKey = `${declared.name}\0${identityKey(current.identity)}`;
-      if (queried.has(queryKey)) continue;
-      queried.add(queryKey);
-      const queryResult = await queryIdentity({
-        declared,
-        stage: "expand",
-        identity: current.identity,
-        ctx,
-        results: completedResults(results),
-        remaining,
+      const pending = frontier.filter(current => {
+        if (!declared.contributions.inspect.accepts.includes(current.identity.kind)) return false;
+        const key = `${declared.name}\0${identityKey(current.identity)}`;
+        if (queried.has(key)) return false;
+        queried.add(key);
+        return true;
       });
-      results.push(queryResult);
-      if (!isCollected(queryResult)) continue;
-      for (const target of relationTargets(queryResult)) {
-        const key = identityKey(target);
-        if (known.has(key)) continue;
-        if (current.depth >= MAX_DATA_RELATION_DEPTH) {
-          throw new Error(`Data Relation 扩展深度超过上限 ${MAX_DATA_RELATION_DEPTH}`);
+      const queryResults = await queryIdentities({ declared, stage: "expand", identities: pending.map(item => item.identity),
+        ctx, results: completedResults(results), remaining });
+      results.push(...queryResults);
+      for (const queryResult of queryResults) {
+        if (!isCollected(queryResult)) continue;
+        const current = pending.find(item => identityKey(item.identity) === identityKey(queryResult.identity))!;
+        for (const target of relationTargets(queryResult)) {
+          const key = identityKey(target);
+          if (known.has(key)) continue;
+          if (current.depth >= MAX_DATA_RELATION_DEPTH) throw new Error(`Data Relation 扩展深度超过上限 ${MAX_DATA_RELATION_DEPTH}`);
+          if (known.size >= MAX_DATA_IDENTITIES) throw new Error(`Data Relation Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
+          known.add(key);
+          queue.push({ identity: target, depth: current.depth + 1 });
         }
-        if (known.size >= MAX_DATA_IDENTITIES) {
-          throw new Error(`Data Relation Identity 数量超过上限 ${MAX_DATA_IDENTITIES}`);
-        }
-        known.add(key);
-        queue.push({ identity: target, depth: current.depth + 1 });
       }
     }
   }
@@ -260,7 +237,7 @@ async function collectExpansionResults(input: {
 
 /**
  * Run selected Service Inspect contributions and retain query-level results that may feed later Probes.
- * Command owns traversal and budgets; contribution implementations only answer one Query at a time.
+ * Command owns traversal and budgets; contribution implementations answer batches without owning traversal.
  */
 export async function collectDataInspectResults(input: {
   selections: readonly DataServiceSelection[];
@@ -297,21 +274,13 @@ export async function collectDataInspectResults(input: {
     const reusable = expansionResults.filter((result): result is CollectedDataInspectResult => (
       isCollected(result) && result.service === service
     ));
-    const reusedIdentities = new Set(reusable.map((result) => identityKey(result.identity)));
-    const results: DataInspectResult[] = [];
-    for (const identity of expansion.identities.filter((identity) => (
-      declared.contributions.inspect.accepts.includes(identity.kind)
-      && !reusedIdentities.has(identityKey(identity))
-    ))) {
-      results.push(await queryIdentity({
-        declared,
-        stage: "provide",
-        identity,
-        ctx,
-        results: completedExpansionResults,
-        remaining,
-      }));
-    }
+    // Failed expansion is evidence too; do not silently retry it in the provide phase.
+    const reusedIdentities = new Set(expansionResults.filter(result => result.service === service).map(result => identityKey(result.identity)));
+    const identities = expansion.identities.filter(identity => (
+      declared.contributions.inspect.accepts.includes(identity.kind) && !reusedIdentities.has(identityKey(identity))
+    ));
+    const results = await queryIdentities({ declared, stage: "provide", identities, ctx,
+      results: completedExpansionResults, remaining });
     collected.push(...results);
     recordStage(ctx, "provide", service, results, reusable);
   }

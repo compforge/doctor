@@ -34,17 +34,15 @@ profiles:
 
 采样并去重后，Core 复用 Collect 的命令选择：交互模式选择一次，非交互默认全部；`--include` 可显式
 指定 inspect、tenant、data、trace、log、metric 的子集（例如 `--include inspect,tenant,data,trace,log`）。
-Core 按 biz-id 并发调用 Collect，默认同时处理 2 个请求，每个请求内部按所选命令顺序执行。
-Inspect、Tenant 的 Input 提供幂等 key，相同环境/检查范围或相同租户/采集参数只执行一次；并发调用等待
-同一次执行，后续调用复用原状态和产物，最终报告保留 Inspect、Tenant 页签。范围改变则另行执行。
-`--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`。失败请求不阻止其它
-请求完成；取消后不启动排队任务，已启动任务响应同一取消信号，已取得的证据仍统一交付。报告按输入顺序
-合并，终端选择与确认串行执行，后台输出在交互完成后恢复。
+Core 将整批 biz-id 交给一次 Collect，各子命令接收完整列表。Inspect、Tenant、Metric 在该批次中各执行一次；
+Data 共用访问准备与 Identity 查询，Log 共用目标准备与原始日志源，每个输入仍独立诊断和保留证据。
+`--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`，控制批次内需要逐 ID 执行的日志工作，
+默认 2。失败请求不阻止其它请求完成；取消后不启动排队工作，已经取得的证据仍统一交付。
+Overview 把冻结的查询起止时间传给 Collect，日志采集沿用 Log 的包含终点时间戳语义。
 
-日志使用独立的全局预算：同一次 Doctor 运行的整个 CommandContext 命令树共享 `log.concurrency` 个
-Pod/Container 日志读取名额，默认 4。current、previous 和重试都不能绕过这个池；每项请求从开始读取到
-流关闭才归还名额。提高 Collect 并发数不会乘大日志并发数，字节预算仍按原来的单次 Log 采集计算。
-例如下列配置最多并发两个 Collect，而所有 Collect 合计最多并发读取八路 Pod 日志：
+日志网络读取使用独立的全局预算：整棵命令树共享 `log.concurrency` 个 Pod/Container 读取名额，默认 4，
+并共享总字节预算。current、previous 和重试均受约束；本地快照回放不重复消耗网络预算。
+例如下列配置最多同时处理两个 ID 的日志工作，而实际 Pod 日志读取最多八路：
 
 ```yaml
 profiles:
@@ -75,5 +73,5 @@ Identity；数据已变化时返回无样本。Core 对 biz-id 去重后调用�
 在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，通过同一根 ClientManager 复用已初始化的客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。
 
-Overview 引用各次 Collect 的独立产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
+Overview 引用批次 Collect 的产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
 统一提供 ID 到归档路径的映射，因此同名目录和多个 Collect manifest 均可保留，串行与并发采用同一规则。

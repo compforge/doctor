@@ -31,6 +31,7 @@ const COLLECT_LABELS: Record<CollectKind, string> = {
 
 export interface CollectCliOpts {
   bizIds: string[];
+  itemConcurrency?: number;
   kinds: CollectKind[];
   namespace?: string;
   tenantId?: string;
@@ -55,11 +56,11 @@ export type CollectInput = CommandInput & Omit<CollectCliOpts, CommandHostOption
 
 export interface CollectDelegateResult {
   readonly kind: CollectKind;
-  readonly result: CommandResult<void>;
+  readonly result: CommandResult<unknown>;
 }
 
 export interface CollectOutput { readonly steps: readonly CollectDelegateResult[]; }
-export type CollectDelegate = (kind: CollectKind) => Promise<CommandResult<void>>;
+export type CollectDelegate = (kind: CollectKind) => Promise<CommandResult<unknown>>;
 
 interface CollectManifestInput {
   opts: CollectInput;
@@ -214,7 +215,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         // Capability availability is broader than the Plugin's default collection scope.
         services: plugin.services.servicesWith("log")
           .filter((service) => service.capabilities.log.default).map((service) => service.name).join(","),
-        since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime,
+        since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
       case "metric": return metricCommand.run(context, {
         ...common, services: providerNames(plugin, "metric"), watch: input.watch ?? "0",

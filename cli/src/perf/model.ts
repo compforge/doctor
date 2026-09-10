@@ -52,8 +52,8 @@ export interface PerfEvidenceSample {
   firstTokenMs?: number;
   durationMs: number;
   errorKind?: string;
-  trace: CommandResult<void>;
-  log?: CommandResult<void>;
+  trace: CommandResult<unknown>;
+  log?: CommandResult<unknown>;
 }
 
 export interface PerfResult {

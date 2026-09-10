@@ -13,7 +13,7 @@ import { makeLogProbe } from "../src/collect/log/probe/service";
 import type {
   KubernetesPodLogAccess,
   PodLogResult,
-} from "../src/infra/k8s/pod-log";
+} from "@compforge/doctor-toolkit/kubernetes/pod-log";
 import { collectedFact } from "../src/collect/protocol";
 
 test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Evidence", async () => {

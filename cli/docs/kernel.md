@@ -49,7 +49,7 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 | 阶段 | Core | Plugin Service |
 |---|---|---|
 | Prepare | 解析并校验用户意图；选择 Target、Service 与 contribution；合并 Core/Plugin access needs；创建本轮上下文和清理责任 | 声明 Service、Workload、capability、dependency、access 与 contribution；校验 Plugin-owned config；不自行创建命令生命周期 |
-| Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一次业务 Inspect，返回 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
+| Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一批业务 Inspect Query，逐项返回结果与 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
 | Probe | 根据冻结 Facts 生成计划；向 Probe 注入公共 Fact；控制依赖、策略、授权、风险和资源生命周期；驱动 Core/Plugin Probe | 执行一次业务 Probe，消费 Input/Facts 并返回 Observation；不内建循环、并发或跨 Probe 调度 |
 | Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Coverage 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
 | Finalize | 驱动领域 Renderer，组装 Artifact/Bundle，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
@@ -325,3 +325,7 @@ CLI 实现。
 
 新增 Collect Command 时，先定义 Facts、Observations、Evidence、Findings/Coverage 和纯 Detector，再实现
 Inspect、Probe 与 Renderer；契约测试至少覆盖依赖调度、能力降级、授权拒绝、敏感信息边界和交付结果。
+
+Pod 原始日志通过 Toolkit 的 PodLogDataSource/PodLogClient 访问。根执行注入共享网络并发与字节预算，
+Client 管理快照和回放；Core Log 持有业务 ID、筛选与诊断。批量 Data 共用有界 Identity 遍历，按输入有向可达的
+Query 结果分别运行 Detector；批量执行不合并各请求的业务结论，也不改变 Artifact 身份。
