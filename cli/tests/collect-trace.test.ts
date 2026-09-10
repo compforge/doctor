@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { Detector } from "@compforge/trace-harness";
+import { EvidenceDependency, type Detector } from "@compforge/trace-harness";
+import { strFromU8, unzipSync } from "fflate";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { OUTCOME_UNREACHED_REASON } from "../src/collect/evidence";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
@@ -251,6 +252,14 @@ describe("collectTrace 记账", () => {
     return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
   }
 
+  function archiveOf(dir: string): Record<string, unknown> {
+    const html = readFileSync(join(dir, "trace.html"), "utf-8");
+    const encoded = html.match(/<template id="trace-archive">([^<]+)<\/template>/)?.[1];
+    if (!encoded) throw new Error("missing offline trace archive");
+    return Object.fromEntries(Object.entries(unzipSync(Buffer.from(encoded, "base64")))
+      .map(([name, bytes]) => [name, JSON.parse(strFromU8(bytes))]));
+  }
+
   test("span 数为 0 时，download 有交代且原因说得清", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
     const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ count: 0 }));
@@ -349,8 +358,81 @@ describe("collectTrace 记账", () => {
     expect(detectedCount).toBe(3);
     const html = readFileSync(join(dir, "trace.html"), "utf-8");
     expect(html).toContain("calls_until_node_end");
-    expect(html).toContain('"duration_sum_ms":240');
-    expect(html).toContain('"covered_ms":240');
+    const archivedDetails = JSON.stringify(archiveOf(dir));
+    expect(archivedDetails).toContain('"duration_sum_ms":240');
+    expect(archivedDetails).toContain('"covered_ms":240');
+  });
+
+  test("async Plugin facts use local evidence and full HTML survives lease cleanup", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-loading-"));
+    let computes = 0;
+    let remoteReads = 0;
+    let readAfterClose: (() => Promise<unknown>) | undefined;
+    const spans = [{
+      traceID: "abc123", spanID: "s1", operationName: "business-operation",
+      tags: [
+        { key: "business.payload", value: "payload for async analysis" },
+        { key: "unused.detail", value: "offline-only detail" },
+      ],
+    }];
+    const search = fakeSearch({ count: 1, spans });
+    const download = search.search.bind(search);
+    search.search = async (...args) => { remoteReads++; return download(...args); };
+    const code = await collectTrace({
+      ...traceOpts(dir),
+      contributions: {
+        factProducers: [{
+          produces: ["business.summary"],
+          applies: () => true,
+          requires: node => [new EvidenceDependency(node.span_ids, ["business.payload"])],
+          compute: (node, trace) => {
+            computes++;
+            return { "business.summary": trace.spans.get(node.primary_span_id)!.attrs["business.payload"] };
+          },
+        }],
+        detectors: [async (node, analysis) => {
+          readAfterClose = () => analysis.fact(node, "business.summary");
+          const summary = await analysis.fact(node, "business.summary");
+          expect(summary).toBe("payload for async analysis");
+          // Preparing a diagnostic field must not eagerly load unrelated span details.
+          expect(analysis.trace.spans.get(node.primary_span_id)!.attrs["unused.detail"]).toBeUndefined();
+          return [{ ref: node.node_id, source: "async-plugin", severity: "warn", note: String(summary) }];
+        }],
+      },
+    }, () => {}, search);
+    expect(code).toBe(0);
+    expect(computes).toBe(1);
+    expect(remoteReads).toBe(1);
+    expect(readAfterClose).toBeDefined();
+    await expect(readAfterClose!()).rejects.toThrow("trace lease has ended");
+    const archive = JSON.stringify(archiveOf(dir));
+    expect(archive).toContain("payload for async analysis");
+    expect(archive).toContain("async-plugin");
+    expect(archive).toContain("offline-only detail");
+    expect(readFileSync(join(dir, "spans.jsonl"), "utf-8").trim()).toBe(JSON.stringify(spans[0]));
+  });
+
+  test("failed async analysis releases its lease and keeps the downloaded evidence", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-trace-analysis-failure-"));
+    let readAfterClose: (() => Promise<unknown>) | undefined;
+    const code = await collectTrace({
+      ...traceOpts(dir),
+      contributions: {
+        detectors: [async (node, analysis) => {
+          readAfterClose = () => analysis.fact(node, "unavailable");
+          throw new Error("plugin analysis failed");
+        }],
+      },
+    }, () => {}, fakeSearch({
+      count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }],
+    }));
+    expect(code).toBe(1);
+    expect(manifestOf(dir).steps).toContainEqual(expect.objectContaining({
+      id: "render-html", status: "failed", reason: "plugin analysis failed",
+    }));
+    expect(readAfterClose).toBeDefined();
+    await expect(readAfterClose!()).rejects.toThrow("trace lease has ended");
+    expect(readFileSync(join(dir, "spans.jsonl"), "utf-8")).toContain('"spanID":"s1"');
   });
 
   test("Plugin trace analysis 只注入本次 TraceHarness", async () => {
@@ -368,6 +450,6 @@ describe("collectTrace 记账", () => {
     );
 
     expect(code).toBe(0);
-    expect(readFileSync(join(dir, "trace.html"), "utf-8")).toContain("plugin-scoped-finding");
+    expect(JSON.stringify(archiveOf(dir))).toContain("plugin-scoped-finding");
   });
 });

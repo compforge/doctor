@@ -69,7 +69,9 @@ export const workloadHealthProbe = defineServiceWorkloadProbe({
 
 `trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
 使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
-凭据和外部访问仍在进入 Trace Harness 前完成。
+凭据和外部访问仍在进入 Trace Harness 前完成。分类字段用 `structure_fields` 声明；详情与 fact
+依赖通过 `detail_fields` / `detail_facts`、FactProducer 和 `requires` 声明，由 Core 的 TraceSession
+从已下载的本地证据准备。Detector 可以异步等待 `analysis.fact()`，不自行访问远端。
 
 `case` 是 Service 的 Probe Capability，提供稳定 CaseSet 与单次请求 runner；runner 的 `run` 实现
 HTTP/SSE、鉴权和协议分类，但不拥有加压循环。`perf` 只在 CaseSet 上声明本次 Case mix 与可观测性预设，
