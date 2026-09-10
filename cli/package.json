@@ -36,7 +36,7 @@
     "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
     "@compforge/prombed": "0.0.2",
     "@compforge/spec-case": "0.0.6",
-    "@compforge/trace-harness": "0.1.0",
+    "@compforge/trace-harness": "0.2.0",
     "@earendil-works/pi-agent-core": "0.84.0",
     "@kubernetes/client-node": "1.4.0",
     "@modelcontextprotocol/sdk": "1.29.0",

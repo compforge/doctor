@@ -551,21 +551,32 @@ export async function collectTrace(
   try {
     const {
       genAiSpecs,
-      normalizeJaegerSpans,
+      JaegerFileSource,
       TraceHarness,
     } = await import("@compforge/trace-harness");
-    const spanDocuments = readFileSync(join(opts.outputDir, "spans.jsonl"), "utf-8")
-      .split("\n")
-      .filter(Boolean)
-      .map((line) => JSON.parse(line) as Record<string, unknown>);
     const harness = new TraceHarness(opts.contributions ?? { specs: genAiSpecs() });
-    const context = harness.assemble(normalizeJaegerSpans(spanDocuments));
-    const analysis = harness.analyze(context);
-    writeFileSync(
-      join(opts.outputDir, "trace.html"),
-      harness.renderInteractive(context, analysis.findings, { measurements: analysis.measurements }),
-      "utf-8",
-    );
+    // Probe owns remote reads. Analysis dependencies resolve only against the downloaded evidence.
+    const session = harness.open(new JaegerFileSource(join(opts.outputDir, "spans.jsonl")), {
+      config: { activeTraces: 1 },
+    });
+    try {
+      const dataset = await session.select({ trace_ids: [traceId], limit: 1 });
+      const lease = await session.tree(dataset, traceId);
+      try {
+        const analysis = await session.analyze(lease.analysis);
+        // The saved HTML must keep every span detail available after the session is closed.
+        await session.prepareView(analysis, { full: true });
+        writeFileSync(
+          join(opts.outputDir, "trace.html"),
+          harness.renderInteractive(analysis.trace, analysis.findings, { measurements: analysis.measurements }),
+          "utf-8",
+        );
+      } finally {
+        await lease.close();
+      }
+    } finally {
+      await session.close();
+    }
     bundle.fill("render-html", { status: "ok" });
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
