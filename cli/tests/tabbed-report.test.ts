@@ -1,3 +1,4 @@
+import { readReportArchive } from "../src/collect/output/report-archive";
 import { expect, test } from "bun:test";
 import { renderTabbedReport } from "../src/collect/output/tabbed-report";
 
@@ -50,7 +51,7 @@ test("分组报告用一层紧凑导航承载 Biz 与 Trace，不嵌套报告外
   expect(html).toContain('id="primary-tabs"');
   expect(html).toContain('id="secondary-tabs"');
   expect(html).toContain('class="context"');
-  expect(html).toContain('const childTabs={"biz-1"');
+  expect(readReportArchive(html)!.index.tabs[0]!.tabs).toHaveLength(2);
   expect(html).toContain('flex:1;min-height:0');
   expect(html).not.toContain("linear-gradient");
 });
@@ -73,7 +74,24 @@ test("分组标签安全嵌入脚本并由 DOM textContent 渲染", () => {
     }],
   });
 
-  expect(html).toContain("\\u003c/script\\u003e\\u003cscript\\u003ealert(1)");
+  expect(readReportArchive(html)!.index.tabs[0]!.tabs![0]!.label).toBe("</script><script>alert(1)</script>");
   expect(html).not.toContain("</script><script>alert(1)</script>");
   expect(html).toContain("label.textContent=tab.label");
+});
+
+test("aggregate and direct references store each leaf once and flatten navigation", () => {
+  const leaf = { key: "request", label: "请求一", status: "delivered" as const, html: `<pre>${"完整证据".repeat(100000)}</pre>` };
+  const batch = renderTabbedReport({ title: "batch", description: "", ariaLabel: "requests", tabs: [leaf] });
+  const html = renderTabbedReport({ title: "overview", description: "", ariaLabel: "commands", tabs: [{
+    key: "trace", label: "trace", status: "delivered", tabs: [
+      { key: "batch", label: "batch", status: "delivered", html: batch }, leaf,
+    ],
+  }] });
+  const archive = readReportArchive(html)!;
+  expect(Object.keys(archive.entries)).toHaveLength(1);
+  expect(archive.index.tabs[0]!.tabs).toHaveLength(1);
+  const item = archive.index.tabs[0]!.tabs![0]!.tabs![0]!;
+  expect(item.label).toBe("请求一");
+  expect(Buffer.from(archive.entries[item.entry!]!).toString()).toBe(leaf.html);
+  expect(html.length).toBeLessThan(leaf.html.length / 5);
 });

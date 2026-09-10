@@ -1,3 +1,4 @@
+import { readReportArchive } from "../src/collect/output/report-archive";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -251,8 +252,9 @@ test("delivery keeps repeated command reports under one command tab", async () =
     expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf"))
       .toBe(true);
     const html = readFileSync(output, "utf8");
-    expect(html).toContain("doctor-trace-1");
-    expect(html).toContain("doctor-trace-2");
+    const archive = readReportArchive(html)!;
+    expect(archive.index.tabs).toHaveLength(1);
+    expect(archive.index.tabs[0]!.tabs!.map(tab => tab.label)).toEqual(["doctor-trace-1", "doctor-trace-2"]);
     expect(html).toContain("secondary-tabs");
   } finally {
     rmSync(root, { recursive: true, force: true });

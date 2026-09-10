@@ -187,7 +187,7 @@ describe("Store output", () => {
     expect(html).toContain('data-kind="db"');
     expect(html).toContain('data-kind="redis"');
     expect(html).toContain("已交付");
-    expect(html).toContain("frame.srcdoc=new TextDecoder().decode(bytes)");
+    expect(html).toContain("frame.srcdoc=html");
     rmSync(root, { recursive: true, force: true });
   });
 
