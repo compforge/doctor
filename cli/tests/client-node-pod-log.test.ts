@@ -7,9 +7,8 @@ import { Response as NodeFetchResponse } from "node-fetch";
 import {
   ClientNodePodLogAccess,
   type ClientNodeFetch,
-} from "../src/infra/k8s/client-node-pod-log";
-import { inCommandScope } from "../src/command/execution-scope";
-import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
+} from "@compforge/doctor-toolkit/kubernetes/client-node-pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 
 const roots: string[] = [];
 const servers: Array<ReturnType<typeof Bun.serve>> = [];
@@ -23,7 +22,7 @@ function accessFor(
   server: ReturnType<typeof Bun.serve>,
   policy?: { idleTimeoutMs?: number; hardTimeoutMs?: number; maxAttempts?: number },
   fetchImpl?: ClientNodeFetch,
-  config: { cluster?: Record<string, string | boolean>; user?: Record<string, string> } = {},
+  config: { signal?: AbortSignal; cluster?: Record<string, string | boolean>; user?: Record<string, string> } = {},
 ): ClientNodePodLogAccess {
   const root = mkdtempSync(join(tmpdir(), "doctor-client-node-log-"));
   roots.push(root);
@@ -47,6 +46,7 @@ function accessFor(
     kubeconfig,
     policy,
     fetchImpl,
+    signal: config.signal,
   });
 }
 
@@ -261,11 +261,11 @@ test("command cancellation closes an active HTTPS log stream without retry and r
     },
   });
   servers.push(server);
-  const access = accessFor(server, { idleTimeoutMs: 2_000, hardTimeoutMs: 3_000, maxAttempts: 2 }, undefined, { cluster: trustedCluster });
+  const access = accessFor(server, { idleTimeoutMs: 2_000, hardTimeoutMs: 3_000, maxAttempts: 2 }, undefined, { cluster: trustedCluster, signal: controller.signal });
   const rawFilePath = join(roots.at(-1)!, "cancelled.log");
-  const result = await inCommandScope(controller.signal, () => access.collectPodLogs({
+  const result = await access.collectPodLogs({
     ...logRequest, rawFilePath, onLine: () => controller.abort(),
-  }));
+  });
   expect(result.captureStatus).toBe("partial");
   expect(result.reason).toBe("cancelled");
   expect(result.timedOut).toBeFalse();

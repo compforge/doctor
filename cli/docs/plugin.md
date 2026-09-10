@@ -55,7 +55,7 @@ capability 继续表达 Store、Metric、Case 等可复用业务能力；两者�
 连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
 
 Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇；Plugin Service 只是业务 contribution 的归属和
-提供单元，不形成第二条扩展流程。Service Inspect 遵循 `Query → Inspect → InspectQueryResult`：Query 由类型化 Identity
+提供单元，不形成第二条扩展流程。Service Inspect 以 Query 列表调用，逐项返回带 Identity 的状态与 InspectQueryResult：Query 由类型化 Identity
 与该 capability 的约束组成；result 以 `resolution`、`missingEvidence`、`truncated` 表达一次获取的状态，
 不把状态伪装成领域 Fact。`facts` 有三种形态：同 kind 至多一个的 `ValueFact`、用稳定 `recordKey` 区分的
 可重复 `RecordFact`，以及表示现场已确认 Identity 关系的 `RelationFact`。Fact 在本次诊断过程中足够稳定，
@@ -391,3 +391,10 @@ Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择�
 
 Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，
 不得放入命令参数。取消信号、权限检查及资源生命周期继续由宿主管理。
+
+### Inspect 批量调用
+
+`ServiceInspect.inspect(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
+collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；未找到记录仍通过 resolution 表达。
+Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。单 Query 实现通过
+`inspectIndividually(handler)` 适配，适配器按序访问并隔离单项异常，不建立额外并发池。

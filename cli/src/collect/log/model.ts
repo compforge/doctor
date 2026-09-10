@@ -1,7 +1,7 @@
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
-import type { KubernetesPodLogAccess } from "../../infra/k8s/pod-log";
-import type { PodLogCaptureStatus } from "../../infra/k8s/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import type { PodLogCaptureStatus } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {

@@ -1,3 +1,5 @@
+import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import { terminalStdout, terminalStderr } from "../../terminal/output";
 // log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
@@ -8,8 +10,8 @@ import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
-import { KubectlPodLogAccess } from "../../infra/k8s/pod-log";
-import { ClientNodePodLogAccess } from "../../infra/k8s/client-node-pod-log";
+import { KubectlPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
+import { ClientNodePodLogAccess } from "@compforge/doctor-toolkit/kubernetes/client-node-pod-log";
 import { runCollect } from "../engine";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
@@ -56,6 +58,7 @@ export * from "./probe/service";
 export * from "./render";
 export interface CollectLogCliOpts {
   bizIds?: string[];
+  itemConcurrency?: number;
   /** @deprecated Use bizIds. */
   bizId?: string;
   namespace?: string;
@@ -85,11 +88,11 @@ export function defaultLogBatchName(now: Date): string {
   return `doctor-log-batch-${ts}`;
 }
 
-async function runCollectLogSingle(
+async function prepareLogBatch(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<number> {
+) {
   let pattern: RegExp | undefined;
   let format: LogOutputFormat;
   try {
@@ -211,6 +214,32 @@ async function runCollectLogSingle(
   }
   terminalStdout.write(`[collect] services: ${services.join(", ")}\n`);
 
+  const access = new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, resolvedNamespace.namespace), {
+    namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, signal: commandContext.signal,
+  });
+  // Discovery is a batch snapshot. Each evidence bundle still records the same source facts.
+  let version: ReturnType<KubernetesPodLogAccess["clientVersion"]> | undefined;
+  let pods: ReturnType<KubernetesPodLogAccess["listServicePods"]> | undefined;
+  const sharedAccess: KubernetesPodLogAccess = {
+    clientVersion: () => version ??= access.clientVersion(),
+    listServicePods: names => pods ??= access.listServicePods(names),
+    collectPodLogs: request => access.collectPodLogs(request),
+  };
+  return { pattern, format, collect, resolved, resolvedNamespace, executor, trace, services, access: sharedAccess };
+}
+
+type PreparedLogBatch = Exclude<Awaited<ReturnType<typeof prepareLogBatch>>, number>;
+
+async function runCollectLogSingle(
+  opts: CollectLogCliOpts, plugin: PluginDefinition, commandContext: CommandContext, prepared?: PreparedLogBatch,
+): Promise<number> {
+  const preparation = prepared ?? await prepareLogBatch(opts, plugin, commandContext);
+  if (typeof preparation === "number") return preparation;
+  const { pattern, collect, resolved, resolvedNamespace, executor, services, access } = preparation;
+  const format = parseLogOutputFormat(opts.format);
+  const trace = preparation.trace.filter(item => (opts.bizIds ?? [opts.bizId]).includes(item.bizId));
+  const selected = trace[0];
+  if (!selected) return 2;
   const timeWindow = resolveLogTimeWindow({
     id: selected.bizId,
     since: opts.since,
@@ -241,7 +270,7 @@ async function runCollectLogSingle(
     commandContext,
     executor,
     (line) => terminalStdout.write(`${line}\n`),
-    pattern,
+    pattern, access,
   );
   let reportError: string | undefined;
   const reportPath = join(staging, "report.html");
@@ -264,12 +293,12 @@ async function runCollectLogSingle(
   return reportError ? 1 : code;
 }
 
-/** Batch wrapper: each biz-id keeps its own log evidence and only the delivery shell is shared. */
+/** Prepare the whole batch once; each ID independently filters the shared source snapshot. */
 export async function runCollectLog(
   opts: CollectLogCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<CommandResult<void>> {
+): Promise<CommandResult<void | LogOutput>> {
   const ids = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
@@ -279,7 +308,11 @@ export async function runCollectLog(
     return commandOutcome(2);
   }
   if (ids.length === 1) {
-    return commandOutcome(await (runCollectLogSingle({ ...opts, bizIds: ids }, plugin, commandContext)));
+    const child = await commandContext.artifacts.capture(() => runCollectLogSingle({ ...opts, bizIds: ids }, plugin, commandContext));
+    commandContext.artifacts.add(child.artifacts);
+    const result = commandOutcome(child.value);
+    return { ...result, artifacts: child.artifacts, output: { items: [{ bizId: ids[0]!, status: result.status,
+      artifacts: child.artifacts, ...("reason" in result ? { reason: result.reason } : {}) }] } };
   }
 
   let format;
@@ -289,21 +322,27 @@ export async function runCollectLog(
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
     return commandOutcome(2);
   }
+  const prepared = await prepareLogBatch({ ...opts, bizIds: ids }, plugin, commandContext);
+  if (typeof prepared === "number") return commandOutcome(prepared);
   const batchName = defaultLogBatchName(new Date());
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-tabs-"));
   const staging = join(stagingRoot, batchName);
   mkdirSync(staging, { recursive: true });
   commandContext.artifacts.add({ command: "log", path: staging });
   const tabs = [];
-  const statuses: CommandStatus[] = [];
-  for (const [index, bizId] of ids.entries()) {
-    if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
+  const items: LogOutput["items"][number][] = [];
+  const pool = new ConcurrencyPool(opts.itemConcurrency ?? 2);
+  const children = await Promise.all(ids.map((bizId, index) => pool.run(async () => {
     terminalStdout.warning(`\n[collect:log] [${index + 1}/${ids.length}] biz-id: ${bizId}\n`);
     const child = await commandContext.artifacts.capture(() => runCollectLogSingle(
       { ...opts, bizIds: [bizId], format: "html", output: undefined },
       plugin,
-      commandContext,
+      commandContext, prepared,
     ));
+    return { child, bizId, index };
+  }, commandContext.signal).catch(error => ({ bizId, index, child: { value: commandContext.signal.aborted ? 130 : 1,
+    artifacts: [] as import("../../command").CommandArtifact[] }, error }))));
+  for (const { child, bizId, index } of children) {
     commandContext.artifacts.add(child.artifacts);
     const code = child.value;
     const childArtifact = child.artifacts[0];
@@ -316,8 +355,8 @@ export async function runCollectLog(
         ? readFileSync(htmlPath, "utf8")
         : failedReportHtml(`Log 诊断失败：${bizId}`, `采集退出码 ${code}`),
     });
-    statuses.push(commandOutcome(code).status);
-    if (code === 130) break;
+    items.push({ bizId, status: commandOutcome(code).status, artifacts: child.artifacts,
+      ...(code ? { reason: prepared.trace.some(item => item.bizId === bizId) ? `日志采集未完成（exit=${code}）` : "无法解析 trace_id" } : {}) });
   }
 
   writeTabbedReport(join(staging, "report.html"), {
@@ -326,7 +365,8 @@ export async function runCollectLog(
     ariaLabel: "Biz ID 日志诊断结果",
     tabs,
   });
-  return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
+  writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({ ...item, artifact_ids: artifacts.map(artifact => artifact.id) })) }, null, 2));
+  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items }, artifacts: commandContext.artifacts.list() };
 }
 
 export async function collectLog(
@@ -335,6 +375,7 @@ export async function collectLog(
   executor: Executor,
   log: (line: string) => void,
   linePattern: RegExp | undefined = buildLogPattern(opts.errorsOnly, opts.pattern),
+  access?: KubernetesPodLogAccess,
 ): Promise<number> {
   const startedAt = new Date().toISOString();
   const bundle = new EvidenceBundle(opts.outputDir);
@@ -349,10 +390,11 @@ export async function collectLog(
     command: commandContext,
     startedAtMs: Date.parse(startedAt),
     config,
-    access: new ClientNodePodLogAccess(
+    access: access ?? new ClientNodePodLogAccess(
       new KubectlPodLogAccess(executor, opts.namespace),
       {
         namespace: opts.namespace,
+        signal: commandContext.signal,
         kubeconfig: opts.kubeconfig,
         context: opts.context,
       },
@@ -414,4 +456,9 @@ export async function collectLog(
   return evaluateCollectOutcome(
     diagnosis.coverage.map((item) => item.status === "sufficient"),
   ).exitCode;
+}
+
+export interface LogOutput {
+  readonly items: readonly { bizId: string; status: CommandStatus; reason?: string;
+    artifacts: readonly import("../../command").CommandArtifact[] }[];
 }

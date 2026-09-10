@@ -9,7 +9,7 @@ import { makeLogInspect } from "../src/collect/log/fact/inspect";
 import { makeLogProbe } from "../src/collect/log/probe/service";
 import { buildLogEvidence, buildLogCoverage } from "../src/collect/log/detector";
 import type { LogCommandContext, LogProbeConfig, LogInspectionFacts } from "../src/collect/log/model";
-import type { KubernetesPodLogAccess } from "../src/infra/k8s/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/doctor-toolkit/kubernetes/pod-log";
 
 test("two biz-id probes share current/previous sources, retain distinct matching and independently deliver raw evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-probe-shared-"));

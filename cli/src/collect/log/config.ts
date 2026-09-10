@@ -1,4 +1,4 @@
-import { logTimestampNanos } from "../../infra/k8s/log-timestamp";
+import { logTimestampNanos } from "@compforge/doctor-toolkit/kubernetes/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/doctor-toolkit/kubernetes/executor";
 import {

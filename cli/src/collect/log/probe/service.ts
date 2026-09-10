@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
-import type { PodLogCapturePlanItem } from "../../../infra/k8s/log-capture-plan";
-import { SharedPodLogCaptures } from "../../../infra/k8s/shared-pod-log";
+import type { PodLogCapturePlanItem } from "@compforge/doctor-toolkit/kubernetes/log-capture-plan";
+import { PodLogDataSource } from "@compforge/doctor-toolkit/kubernetes/pod-log-datasource";
 import type {
   PodLogCaptureStatus,
   PodLogResult,
-} from "../../../infra/k8s/pod-log";
+} from "@compforge/doctor-toolkit/kubernetes/pod-log";
 import type {
   LogCommandContext,
   LogInspectionFacts,
@@ -97,10 +97,9 @@ async function captureLogPlan(
   const startedAtMs = ctx.startedAtMs ?? Date.now();
   // TODO: Evaluate time-window parallelism against single-stream capture. Pod Log API has no
   // server-side end-time filter; compare wall-clock, transferred bytes and coverage before enabling it.
-  const sources = await ctx.command.clients.get({
-    key: "doctor:pod-log-captures",
-    createClient: signal => new SharedPodLogCaptures(ctx.command.limits.podLogs, signal),
-  });
+  const sources = await ctx.command.clients.get(new PodLogDataSource({
+    kubeconfig: config.kubeconfig, context: config.context, namespace: config.namespace,
+  }, ctx.command.limits.podLogs, ctx.command.limits.podLogBytes));
   const results = await Promise.allSettled(plan.map(async input => {
     const { target, request, onStart } = prepareCapture(ctx, config, input, startedAtMs);
     onStart?.();

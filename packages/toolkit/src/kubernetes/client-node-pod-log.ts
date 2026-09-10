@@ -1,5 +1,5 @@
-import { logTimestampNanos } from "./log-timestamp";
-import { currentCommandSignal } from "../../command/execution-scope";
+/// <reference path="./node-fetch.d.ts" />
+import { logTimestampNanos } from "@compforge/doctor-toolkit/kubernetes/log-timestamp";
 import { closeSync, openSync, writeSync } from "node:fs";
 import { KubeConfig } from "@kubernetes/client-node";
 // Bun replaces the bare node-fetch import with a shim that ignores HTTPS Agent TLS options.
@@ -12,7 +12,7 @@ import type {
   PodLogRequest,
   PodLogResult,
   ServicePodListResult,
-} from "./pod-log";
+} from "@compforge/doctor-toolkit/kubernetes/pod-log";
 
 export interface ClientNodeLogPolicy {
   idleTimeoutMs: number;
@@ -33,6 +33,7 @@ export const DEFAULT_CLIENT_NODE_LOG_POLICY: ClientNodeLogPolicy = {
 
 export interface ClientNodePodLogOptions {
   namespace: string;
+  signal?: AbortSignal;
   kubeconfig?: string;
   context?: string;
   policy?: Partial<ClientNodeLogPolicy>;
@@ -139,7 +140,7 @@ class ClientNodeLogTransport {
   }
 
   async capture(request: PodLogRequest): Promise<PodLogResult> {
-    currentCommandSignal()?.throwIfAborted();
+    this.options.signal?.throwIfAborted();
     const command = logCommand(this.options.namespace, request);
     const startedAt = Date.now();
     if (this.initializationError) {
@@ -199,7 +200,7 @@ class ClientNodeLogTransport {
 
     try {
       while (attempts < this.policy.maxAttempts) {
-        if (currentCommandSignal()?.aborted) break;
+        if (this.options.signal?.aborted) break;
         const remainingHardTimeoutMs = hardDeadline - Date.now();
         if (remainingHardTimeoutMs <= 0) {
           timedOut = true;
@@ -244,7 +245,7 @@ class ClientNodeLogTransport {
           };
         }
         errors.push(attempt.error ?? "Kubernetes Pod Log API 请求失败");
-        if (currentCommandSignal()?.aborted || !attempt.retryable || attempts >= this.policy.maxAttempts) break;
+        if (this.options.signal?.aborted || !attempt.retryable || attempts >= this.policy.maxAttempts) break;
       }
     } finally {
       try { flushRaw(); }
@@ -264,7 +265,7 @@ class ClientNodeLogTransport {
       timedOut,
       command,
       captureStatus,
-      reason: currentCommandSignal()?.aborted ? "cancelled" : byteLimitReached ? "byte_limit" : timedOut ? "timeout" : "transport_error",
+      reason: this.options.signal?.aborted ? "cancelled" : byteLimitReached ? "byte_limit" : timedOut ? "timeout" : "transport_error",
       bytesRead: totalBytesRead,
       attempts,
     };
@@ -314,7 +315,7 @@ class ClientNodeLogTransport {
 
     // Native AbortSignal retains its identity in Node bundles; node-fetch checks the constructor name.
     const controller = new AbortController();
-    const commandSignal = currentCommandSignal();
+    const commandSignal = this.options.signal;
     const abort = () => controller.abort(commandSignal?.reason);
     commandSignal?.addEventListener("abort", abort, { once: true });
     if (commandSignal?.aborted) abort();

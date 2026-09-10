@@ -30,10 +30,13 @@
   "dependencies": {
     "mysql2": "3.23.1",
     "@redis/client": "6.1.0",
-    "@opensearch-project/opensearch": "3.6.0"
+    "@opensearch-project/opensearch": "3.6.0",
+    "@kubernetes/client-node": "1.4.0",
+    "node-fetch": "2.7.0"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@types/node-fetch": "2.6.13"
   }
 }

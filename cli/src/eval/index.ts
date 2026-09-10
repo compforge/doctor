@@ -150,7 +150,7 @@ function unavailable(reason: string): EvalEvidenceResult {
   return { status: "unavailable", reason };
 }
 
-function collected(result: CommandResult<void>, context: CommandContext): EvalEvidenceResult {
+function collected(result: CommandResult<unknown>, context: CommandContext): EvalEvidenceResult {
   context.artifacts.add(result.artifacts);
   return { status: result.status, artifacts: result.artifacts,
     reason: "reason" in result ? result.reason : undefined };

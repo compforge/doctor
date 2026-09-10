@@ -25,7 +25,7 @@ Service Inspect contribution 接受由业务 Identity 与约束组成的 Query�
 ## 流程
 
 1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。多个 ID 进入同一采集批次，
-   但每个 ID 独立执行后续 expansion、provide、Detector 与 Coverage。
+   共享 expansion、provide 与访问准备，再按每个输入沿有向 Relation 可达的查询结果分别执行 Detector 与 Coverage。
 2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
    按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
@@ -55,7 +55,7 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 provide。这样 capability 无论以什么 Catalog 顺序注册，都能在其接受的 Identity 出现后运行。提供 Relation
 的 capability 也可以同时提供 Fact；它在 expansion 阶段的查询结果会被 provide 阶段复用，避免为了角色
 建模重复访问数据源。每个 Service/Identity 组合最多查询一次，扩展深度最多 8 层、Identity 最多 1000 个；
-单批次最多保留 5000 个 Fact、序列化后最多 32 MiB。Command 把剩余预算传给每次 Query，Plugin 应在数据源
+单批次最多保留 5000 个 Fact、序列化后最多 32 MiB。Command 在批量调用前给各 Query 分配剩余预算，Plugin 应在数据源
 查询处尽早限流；Core 仍在 Evidence 入口执行最终截断并记录原因，从而隔离环和异常膨胀。
 
 RelationFact 是 capability 数据结果的一部分；resolution 中的 identifier 只用于展示，不参与新 Query 的
@@ -75,3 +75,13 @@ Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命�
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
 连接凭据只存在于本轮执行态；Facts 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
 凭据来源。
+
+### 批量访问与独立诊断
+
+Service Inspect 接收一批 Query，每个 Query 仍只有一个 Identity；逐项返回带 identity 的 collected/failed 结果，
+不能依靠返回顺序关联。Core 按遍历轮次将同一 Service 的已知 Query 合并调用，Plugin 可按领域类型合并 SQL/API。
+不支持批量访问的 provider 使用 SDK `inspectIndividually` 适配单 Query 实现。扩展中失败的 Query 也保留结果，
+provide 不隐式重试。同一批次的容量预算共同生效，截断明确进入证据。
+
+输入 ID 与查询 Identity 分开记录。多个输入可以共享一个后代 Query，但共享后代不会自动合并输入的诊断范围。
+每个输入只沿有向 Relation 投影自己的查询结果，再生成独立 Artifact；批次 Output 保留逐 ID 状态和产物引用。

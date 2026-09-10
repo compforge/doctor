@@ -1,3 +1,4 @@
+import { inspectIndividually } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import type { ServiceInspect } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
@@ -13,14 +14,14 @@ const capability = {
     username: "reader",
     credentialSource: "test",
   }),
-  inspect: async (_context, query) => ({
+  inspect: inspectIndividually(async (_context, query) => ({
     resolution: {
       inputId: query.identity.value,
       resolvedAs: query.identity.kind,
       identifiers: {},
     },
     facts: [],
-  }),
+  })),
 } satisfies ServiceInspect;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };

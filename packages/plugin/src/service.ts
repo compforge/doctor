@@ -351,13 +351,19 @@ export interface ServiceInspectTarget {
   credentialSource: string;
 }
 
+/** Every requested identity has an outcome, including lookup failures. */
+export type ServiceInspectQueryOutcome = { identity: Identity } & (
+  | { status: "collected"; result: ServiceInspectResult }
+  | { status: "failed"; reason: string }
+);
+
 export type ServiceInspectQueryHandler = (
   context: PluginContext,
-  query: ServiceInspectQuery,
-) => Promise<ServiceInspectResult>;
+  queries: readonly ServiceInspectQuery[],
+) => Promise<readonly ServiceInspectQueryOutcome[]>;
 
 export interface ServiceInspect
-  extends InspectCapability<ServiceInspectQuery, Fact> {
+  extends Omit<InspectCapability<ServiceInspectQuery, Fact>, "inspect"> {
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */

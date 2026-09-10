@@ -1,4 +1,4 @@
-import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import { ConcurrencyPool } from "../concurrency";
 import type {
   KubernetesPodLogAccess,
   PodLogRequest,

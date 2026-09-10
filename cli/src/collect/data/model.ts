@@ -84,3 +84,13 @@ export type DataFinding = FindingMeta<string> & ServiceDetectorFinding;
 
 export type DataDiagnosisGoal = "business-data-relations";
 export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding, DataDiagnosisGoal>;
+
+export interface DataOutput {
+  readonly items: readonly {
+    bizId: string;
+    status: import("../../command").CommandStatus;
+    artifacts: readonly import("../../command").CommandArtifact[];
+    diagnosis?: DataDiagnosis;
+    reason?: string;
+  }[];
+}

@@ -11,7 +11,7 @@ import {
 } from "../../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
-import { normalizeServiceInspectResult } from "../../plugin/inspect";
+import { inspectServiceQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
@@ -110,8 +110,10 @@ export async function openTenantAccess(input: {
           });
           try {
             const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
+            const [outcome] = await inspectServiceQueries(capability, context, [{ identity, results: new Map(), budget }]);
+            if (!outcome || outcome.status === "failed") throw new Error(outcome?.reason ?? "Missing Inspect outcome");
             const result = normalizeServiceInspectResult({
-              value: await capability.inspect(context, { identity, results: new Map(), budget }),
+              value: outcome.result,
               service: service.name,
               queryIdentity: identity,
               capability,

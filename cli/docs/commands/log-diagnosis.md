@@ -4,7 +4,7 @@
 
 `doctor log [biz-id...]` 是按业务标识聚合多 Service 日志的确定性 collect command；业务 ID 也可通过
 重复 `--biz-id` 传入。app 注入当前 Plugin；`collect/log` 先调用 `traceId` capability，把每个业务 ID
-解析为一条或多条规范 `trace_id`，再从通用 Service Catalog 选择具备 log capability 的 Service，并读取各声明的默认主链策略。它不 import 业务 Plugin 或识别具体 Service 名。`infra/k8s` 只负责按 Kubernetes Service selector
+解析为一条或多条规范 `trace_id`，再从通用 Service Catalog 选择具备 log capability 的 Service，并读取各声明的默认主链策略。它不 import 业务 Plugin 或识别具体 Service 名。Toolkit 的 Kubernetes 访问适配负责按 Kubernetes Service selector
 解析 Running Pod，并读取 Pod 日志。
 
 采集链路包含三层用途不同的产物：
@@ -21,7 +21,7 @@
 4. Core 通过 `runCollect` 把 Inspect Facts 与全部 Service Observation 组成 Evidence；当前没有独立根因
    Detector，Coverage 按 Pod 记录 current 日志是否取得，并明确 Inspect 失败、无运行中 Pod 或读取失败等
    缺口。Render 只消费形成的 Diagnosis，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
-5. 命令默认同时交付单文件离线 HTML 和完整 Bundle；批量输入时每个 biz-id 独立采集、过滤和判定，在
+5. 命令默认同时交付单文件离线 HTML 和完整 Bundle；批量输入共享配置、Service/Pod 发现与原始日志源，每个 biz-id 独立过滤和判定，在
    交付页按 ID 分 tab。Bundle 按 ID 保存独立子证据包，各自包含 manifest、结构化时间线、聚合文本、
    `report.html`、摘要和 raw 日志。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
    单 Pod 失败只降低对应 ID 的证据完整度。
@@ -54,7 +54,7 @@ Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建�
 相同，只读取一次源日志；current/previous、重建的 Pod、重启的 Container 和不同窗口不会混用。相对时间
 起点或缺失实例身份时保持独立读取。未指定终点时，共享的是该源首次采集得到的快照，不代表持续刷新。
 
-共享源由根 ClientManager 托管，保存有界缓冲与本地 raw 文件。每个 biz-id 拥有独立读取游标和匹配器，
+`PodLogDataSource` 按 Kubernetes 访问目标提供 Toolkit `PodLogClient`，由根 ClientManager 托管。Client 保存有界缓冲与本地 raw 文件。每个 biz-id 拥有独立读取游标和匹配器，
 晚加入者先补读已有内容，再跟随新内容；无需等待网络读取结束才反馈命中。各自生成完整 raw 副本后，
 根收尾回收源文件，因此交付及失败保留不依赖另一个子命令的临时目录。partial/unavailable 的来源状态
 随快照保留，本轮不会因另一个样本需要同一源而隐式重试。复用命令结果的规则不参与日志源身份判断。
@@ -72,3 +72,7 @@ Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建�
 ### HTML 是结构化时间线的离线阅读器
 
 HTML 报告不依赖网络或外部静态资源。日志保留在页面内的结构化数据中，浏览器只挂载当前页，避免把整份日志一次性展开成大量 DOM。阅读器提供关键字搜索、常用异常关键字、Service/Pod、起止时间、可点击时间分布、命中跳转和同一容器实例的上下文查看；这些交互只改变展示，不修改或取代 `timeline.jsonl` 与 raw 证据。
+
+`PodLogDataSource` 的 key 表达访问目标，`PodLogClient` 内的 Capture key 表达 Pod/容器实例及读取窗口；
+业务 ID 与过滤条件不参与源身份。Root 向所有来源注入同一并发池和字节预算，多个 Client 不会放大总容量。
+Toolkit 显式接收取消信号，不依赖 CommandContext、Plugin、Evidence 或终端；Core 负责源选择、匹配和证据投影。

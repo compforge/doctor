@@ -2,9 +2,9 @@ import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Client } from "@compforge/doctor-toolkit/client";
-import { dataSourceKey } from "@compforge/doctor-toolkit/datasource";
-import { ConcurrencyPool } from "@compforge/doctor-toolkit/concurrency";
+import type { Client } from "../client";
+import { dataSourceKey } from "../datasource";
+import { ConcurrencyPool } from "../concurrency";
 import { LogCaptureFile } from "./log-capture-file";
 import { logTimestampNanos } from "./log-timestamp";
 import { DEFAULT_POD_LOG_CAPTURE_POLICY, PodLogByteBudget, runPodLogCapturePlan, type PodLogCapturePolicy } from "./log-capture-plan";
@@ -27,7 +27,7 @@ export interface PodLogSourceScope {
  * @spec One root execution reads an identical source/window once; each consumer owns its filtering and raw copy.
  * Network capacity and byte reservations apply before transport, never to local replay.
  */
-export class SharedPodLogCaptures implements Client {
+export class PodLogClient implements Client {
   readonly #sources = new Map<string, CaptureSource>();
   readonly #consumers = new Set<Promise<unknown>>();
   readonly #budget: PodLogByteBudget;
@@ -38,7 +38,8 @@ export class SharedPodLogCaptures implements Client {
     private readonly pool: ConcurrencyPool,
     private readonly signal: AbortSignal,
     private readonly policy: PodLogCapturePolicy = { ...DEFAULT_POD_LOG_CAPTURE_POLICY, concurrency: pool.concurrency },
-  ) { this.#budget = new PodLogByteBudget(policy.maxTotalBytes); }
+    budget = new PodLogByteBudget(policy.maxTotalBytes),
+  ) { this.#budget = budget; }
 
   async initialize(): Promise<void> {
     this.signal.throwIfAborted();

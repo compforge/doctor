@@ -184,7 +184,7 @@ export async function runCollectTrace(
   opts: CollectTraceCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
-): Promise<CommandResult<void>> {
+): Promise<CommandResult<void | TraceOutput>> {
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
@@ -303,6 +303,7 @@ export async function runCollectTrace(
     { ...plugin.trace?.analysis, specs: pluginSpecs },
     { specs: [...genAiSpecs()].filter((spec) => !overriddenKinds.has(spec.kind)) },
   );
+  const items: TraceOutput["items"][number][] = [];
   const groups: ReportTab[] = [];
   const statuses: CommandStatus[] = [];
   let exitCode = 0;
@@ -313,6 +314,7 @@ export async function runCollectTrace(
     if (!groupTraces.length) statuses.push(CommandStatus.Failed);
     const groupKey = `biz-${bizIndex + 1}`;
     const traceTabs: ReportLeafTab[] = [];
+    const itemStatuses: CommandStatus[] = [];
     let groupCode = groupTraces.length ? 0 : 1;
     for (const [traceIndex, trace] of groupTraces.entries()) {
       if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
@@ -361,8 +363,12 @@ export async function runCollectTrace(
           : failedReportHtml(`Trace 采集失败：${trace.traceId}`, `Biz ID ${bizId}，退出码 ${code}`),
       });
       statuses.push(commandOutcome(code).status);
+      itemStatuses.push(commandOutcome(code).status);
       groupCode = Math.max(groupCode, code);
     }
+    items.push({ bizId, traceIds: groupTraces.map(trace => trace.traceId),
+      status: commandContext.signal.aborted ? CommandStatus.Cancelled : itemStatuses.length ? aggregateCommandStatus(itemStatuses) : CommandStatus.Failed,
+      artifacts: commandContext.artifacts.list(), ...(!groupTraces.length ? { reason: "无法解析 trace_id" } : {}) });
     const group = {
       key: groupKey,
       label: bizId,
@@ -385,7 +391,7 @@ export async function runCollectTrace(
         tabs: groups,
       });
     }
-    return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
+    return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: commandContext.artifacts.list() };
   }
 
   const reportPath = join(staging, "report.html");
@@ -398,7 +404,7 @@ export async function runCollectTrace(
       tabs: groups,
     });
   }
-  return { status: aggregateCommandStatus(statuses), output: undefined, artifacts: commandContext.artifacts.list() };
+  return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: commandContext.artifacts.list() };
   } finally {
     try {
       await dependencyRuntime.close();
@@ -601,4 +607,9 @@ export async function collectTrace(
   );
   log(`[collect] 完成（${probe.downloaded}/${probe.count} span）。`);
   return finish(evaluateCollectOutcome([probe.complete]).exitCode, { ...confirmedTarget, base_url: baseUrl });
+}
+
+export interface TraceOutput {
+  readonly items: readonly { bizId: string; traceIds: readonly string[]; status: CommandStatus; reason?: string;
+    artifacts: readonly import("../../command").CommandArtifact[] }[];
 }
