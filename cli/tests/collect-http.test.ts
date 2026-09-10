@@ -824,7 +824,7 @@ requests:
   expect(listing).toContain("/attempts/round-001/health/default/headers.txt");
   expect(listing).toContain("/attempts/round-001/health/default/body.json");
   expect(listing).toContain("/attempts/round-001/health/default/meta.json");
-  const manifestEntry = listing.split(/\r?\n/).find((entry) => entry.endsWith("/manifest.json"));
+  const manifestEntry = listing.split(/\r?\n/).find((entry) => entry.includes("/artifacts/") && entry.endsWith("/manifest.json"));
   expect(manifestEntry).toBeDefined();
   const manifest = JSON.parse(Bun.spawnSync([
     "tar", "-xOzf", archive, manifestEntry!,

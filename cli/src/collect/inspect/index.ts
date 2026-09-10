@@ -154,7 +154,7 @@ export async function runCollectInspect(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-inspect-"));
   const staging = join(stagingRoot, config.reportName);
-  commandContext.artifacts.add("inspect", staging);
+  commandContext.artifacts.add({ command: "inspect", path: staging });
   const bundle = new EvidenceBundle(staging);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   let facts: InspectFacts | undefined;

@@ -89,17 +89,17 @@ test("parallel and repeated child calls return only their own artifacts and repo
   let started = 0;
   const child = defineCommand<CommandInput & { id: string }, string>({ name: "trace", run: async (ctx, { id }) => {
     ctx.artifacts.setReportName(id);
-    ctx.artifacts.add("trace", `/tmp/${id}`);
+    ctx.artifacts.add({ command: "trace", path: `/tmp/${id}` });
     if (++started === 2) release();
     await bothStarted;
-    expect(ctx.artifacts.list()).toEqual([{ command: "trace", path: `/tmp/${id}` }]);
+    expect(ctx.artifacts.list()).toEqual([{ id: expect.any(String), command: "trace", path: `/tmp/${id}` }]);
     return ok(id);
   } });
   const parent = defineCommand<CommandInput, string[]>({ name: "overview", run: async (ctx) => {
     ctx.artifacts.setReportName("overview");
     const children = await Promise.all([child.run(ctx, { id: "first" }), child.run(ctx, { id: "second" })]);
     expect(ctx.artifacts.list()).toEqual([]);
-    for (const result of children) ctx.artifacts.include(result.artifacts);
+    for (const result of children) ctx.artifacts.add(result.artifacts);
     expect(ctx.artifacts.reportName()).toBe("overview");
     return ok(children.map((result) => result.reportName!));
   } });
@@ -109,7 +109,7 @@ test("parallel and repeated child calls return only their own artifacts and repo
   expect(result.reportName).toBe("overview");
   expect(result.artifacts.map((artifact) => artifact.path)).toEqual(["/tmp/first", "/tmp/second"]);
   const again = await child.run(context, { id: "third" });
-  expect(again.artifacts).toEqual([{ command: "trace", path: "/tmp/third" }]);
+  expect(again.artifacts).toEqual([{ id: expect.any(String), command: "trace", path: "/tmp/third" }]);
 });
 
 test("cancelled collector stops subsequent calls and preserves completed evidence", async () => {
@@ -120,7 +120,7 @@ test("cancelled collector stops subsequent calls and preserves completed evidenc
   writeFileSync(path, "captured");
   const collect = createCollectCommand(async (kind) => {
     calls.push(kind);
-    return kind === "data" ? { ...ok(undefined), artifacts: [{ command: kind, path }] } : commandOutcome(130);
+    return kind === "data" ? { ...ok(undefined), artifacts: [context.artifacts.add({ command: kind, path })] } : commandOutcome(130);
   });
   try {
     const result = await collect.run(context, { bizIds: ["id"], kinds: ["data", "trace", "log"] });
@@ -164,7 +164,7 @@ test("parent cancellation reaches active Plugin calls and cleanup retains return
     pluginContext.onDispose(cleanup);
     ready();
     await new Promise<void>((resolve) => pluginContext.signal.addEventListener("abort", () => resolve(), { once: true }));
-    return { ...ok(undefined), artifacts: [{ command: "child", path: "/tmp/before-cancel" }] };
+    return { ...ok(undefined), artifacts: [context.artifacts.add({ command: "child", path: "/tmp/before-cancel" })] };
   } });
   const pending = child.run(context, {});
   await started;
@@ -178,11 +178,11 @@ test("parent cancellation reaches active Plugin calls and cleanup retains return
 test("cleanup failures preserve staged artifacts and surface failure", async () => {
   const command = defineCommand<CommandInput, void>({ name: "cleanup", run: async (ctx) => {
     onCommandDispose(() => { throw new Error("cannot close"); });
-    return { ...ok(undefined), artifacts: [{ command: "cleanup", path: "/tmp/retained" }] };
+    return { ...ok(undefined), artifacts: [ctx.artifacts.add({ command: "cleanup", path: "/tmp/retained" })] };
   } });
   const result = await command.run(makeContext(), {});
   expect(result.status).toBe(CommandStatus.Failed);
-  expect(result.artifacts).toEqual([{ command: "cleanup", path: "/tmp/retained" }]);
+  expect(result.artifacts).toEqual([{ id: expect.any(String), command: "cleanup", path: "/tmp/retained" }]);
   expect("reason" in result && result.reason).toContain("cleanup failed");
 });
 
@@ -196,7 +196,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
     const path = join(root, id);
     mkdirSync(path);
     writeFileSync(join(path, "report.html"), `<html>${id}</html>`);
-    ctx.artifacts.add("trace", path);
+    ctx.artifacts.add({ command: "trace", path });
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
   const parent = defineCommand<CommandInput, void>({ name: "overview", run: async (ctx) => {
@@ -212,7 +212,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
       const result = await child.run(ctx, { id });
       expect(result.status).toBe(CommandStatus.Partial);
       expect(existsSync(result.artifacts[0]!.path)).toBe(true);
-      ctx.artifacts.include(result.artifacts);
+      ctx.artifacts.add(result.artifacts);
     }
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
@@ -243,7 +243,7 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
     const artifact = join(root, "evidence");
     mkdirSync(artifact);
     writeFileSync(join(artifact, "report.html"), "<html>captured evidence</html>");
-    ctx.artifacts.add("overview", artifact);
+    ctx.artifacts.add({ command: "overview", path: artifact });
     return ok(undefined);
   } });
   try {

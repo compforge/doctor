@@ -64,7 +64,7 @@ export async function runStoreVdb(
   const bundleName = defaultStoreVdbBundleName(new Date());
   const outputPath = resolveStoreOutputPath(config.output, bundleName, storeConfig.outputFormat);
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-store-vdb-")), bundleName);
-  commandContext.artifacts.add("vdb", staging);
+  commandContext.artifacts.add({ command: "vdb", path: staging });
   const bundle = new EvidenceBundle(staging, VDB_OUTCOMES);
   const startedAt = new Date().toISOString();
   let facts: VdbInspectionFacts | undefined;

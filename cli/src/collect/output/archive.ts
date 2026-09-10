@@ -11,7 +11,7 @@ import {
   symlinkSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, normalize, resolve, sep } from "node:path";
 import { runArgv, type ExecResult } from "@compforge/doctor-toolkit/kubernetes/executor";
 
 /** -o 给了就用（无 .tar.gz/.tgz 后缀时补 .tar.gz）；缺省 ./<bundleName>.tar.gz */
@@ -44,7 +44,13 @@ export function resolveDefaultReportPaths(
  * 用系统 tar：macOS / Linux 运维机都自带，免引第三方依赖进单二进制。
  */
 export async function packBundle(bundleDir: string, archivePath: string): Promise<ExecResult> {
-  return packArtifacts([bundleDir], archivePath);
+  const path = resolve(bundleDir);
+  if (!existsSync(path)) return failedPack(`命令登记的产物不存在: ${path}`);
+  if (!lstatSync(path).isDirectory()) return failedPack(`Bundle 必须是目录: ${path}`);
+  return runArgv(
+    ["tar", "-czf", resolve(archivePath), "-C", dirname(path), basename(path)],
+    { timeoutMs: 60_000 },
+  );
 }
 
 function failedPack(stderr: string): ExecResult {
@@ -89,43 +95,34 @@ function stagePath(source: string, destination: string): void {
   }
 }
 
-/**
- * @rule 每个 tar.gz 解压后必须只产生一个顶层目录，避免多个产物和 AGENTS.md 散落到当前目录。
- */
-export async function packArtifacts(
-  artifactPaths: readonly string[],
-  archivePath: string,
-): Promise<ExecResult> {
-  if (!artifactPaths.length) return failedPack("命令没有登记可交付产物");
-  const resolvedPaths = artifactPaths.map((path) => resolve(path));
-  const missing = resolvedPaths.find((path) => !existsSync(path));
-  if (missing) return failedPack(`命令登记的产物不存在: ${missing}`);
-  const names = resolvedPaths.map((path) => basename(path));
-  if (new Set(names).size !== names.length) {
-    return failedPack(`命令登记的产物存在同名项: ${names.join(", ")}`);
-  }
-  if (resolvedPaths.length === 1 && lstatSync(resolvedPaths[0]!).isDirectory()) {
-    return runArgv(
-      ["tar", "-czf", resolve(archivePath), "-C", dirname(resolvedPaths[0]!), basename(resolvedPaths[0]!)],
-      { timeoutMs: 60_000 },
-    );
-  }
+export interface ArchiveEntry {
+  readonly source: string;
+  /** Explicit path relative to the archive's single root directory. */
+  readonly path: string;
+}
 
+/** Delivery owns layout; the archiver only stages explicit destinations and preserves directory contents. */
+export async function packArchiveEntries(entries: readonly ArchiveEntry[], archivePath: string): Promise<ExecResult> {
+  if (!entries.length) return failedPack("命令没有登记可交付产物");
+  const paths = entries.map(entry => normalize(entry.path));
+  for (const [index, path] of paths.entries()) {
+    if (isAbsolute(path) || path === "." || path === ".." || path.startsWith(`..${sep}`)) {
+      return failedPack(`无效归档路径: ${entries[index]!.path}`);
+    }
+    if (paths.some((other, otherIndex) => otherIndex !== index && (other === path || other.startsWith(`${path}${sep}`)))) {
+      return failedPack(`归档目标路径冲突: ${path}`);
+    }
+    if (!existsSync(entries[index]!.source)) return failedPack(`命令登记的产物不存在: ${entries[index]!.source}`);
+  }
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-archive-"));
   const rootName = archiveRootName(archivePath);
   const archiveRoot = join(stagingRoot, rootName);
   mkdirSync(archiveRoot);
   try {
-    const directories = resolvedPaths.filter((path) => lstatSync(path).isDirectory());
-    const flattenedDirectory = directories.length === 1 ? directories[0] : undefined;
-    for (const path of resolvedPaths) {
-      if (path === flattenedDirectory) {
-        for (const entry of readdirSync(path)) {
-          stagePath(join(path, entry), join(archiveRoot, entry));
-        }
-      } else {
-        stagePath(path, join(archiveRoot, basename(path)));
-      }
+    for (const [index, entry] of entries.entries()) {
+      const destination = join(archiveRoot, paths[index]!);
+      mkdirSync(dirname(destination), { recursive: true });
+      stagePath(entry.source, destination);
     }
     return await runArgv(
       ["tar", "-czf", resolve(archivePath), "-C", stagingRoot, rootName],
@@ -146,15 +143,4 @@ export async function packReportBundle(bundleDir: string, archivePath: string): 
     return failedPack("诊断 Bundle 缺少根目录 report.html");
   }
   return packBundle(bundleDir, archivePath);
-}
-
-export async function packReportArtifacts(
-  artifactPaths: readonly string[],
-  archivePath: string,
-): Promise<ExecResult> {
-  const root = artifactPaths[0];
-  if (!root || !existsSync(join(root, "report.html"))) {
-    return failedPack("诊断 Bundle 缺少根目录 report.html");
-  }
-  return packArtifacts(artifactPaths, archivePath);
 }

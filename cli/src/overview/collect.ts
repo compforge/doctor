@@ -19,7 +19,7 @@ export async function collectOverviewSamples(
     artifacts: [], error, reason: error instanceof Error ? error.message : String(error),
   }))));
   // Include in input order after every in-flight command has released its resources.
-  for (const result of results) context.artifacts.include(result.artifacts);
+  for (const result of results) context.artifacts.add(result.artifacts);
   const reason = results.flatMap((result, index) => "reason" in result && result.reason ? [`${bizIds[index]}: ${result.reason}`] : []).join("; ");
   return { status: aggregateCommandStatus(results.map((result) => result.status)), output: undefined,
     artifacts: context.artifacts.list(), ...(reason ? { reason } : {}) };

@@ -98,7 +98,7 @@ export async function runCollectTenant(
     const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-tenant-"));
     const staging = join(stagingRoot, reportName);
     retainedStaging = staging;
-    commandContext.artifacts.add("tenant", staging);
+    commandContext.artifacts.add({ command: "tenant", path: staging });
     const bundle = new EvidenceBundle(staging);
     const ctx: TenantCommandContext = {
       command: commandContext,

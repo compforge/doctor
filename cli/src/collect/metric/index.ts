@@ -71,7 +71,7 @@ export async function runCollectMetric(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-metric-"));
   const staging = join(stagingRoot, config.reportName);
-  commandContext.artifacts.add("metric", staging);
+  commandContext.artifacts.add({ command: "metric", path: staging });
   const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);
   const bundle = new EvidenceBundle(staging, [
     { id: "metric-window", title: "Metric 采集窗口", risk: "observe" },

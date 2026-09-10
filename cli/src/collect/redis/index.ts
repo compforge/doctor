@@ -167,7 +167,7 @@ export async function runCollectRedis(
   }
   if (keyStats) terminalStdout.write("[collect] Redis keyStats: 强制检查所有 master\n");
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-redis-")), bundleName);
-  commandContext.artifacts.add("redis", staging);
+  commandContext.artifacts.add({ command: "redis", path: staging });
   const bundle = new EvidenceBundle(staging, REDIS_OUTCOMES);
   const startedAt = new Date().toISOString();
   const ctx: RedisCommandContext = {

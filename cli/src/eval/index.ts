@@ -151,7 +151,7 @@ function unavailable(reason: string): EvalEvidenceResult {
 }
 
 function collected(result: CommandResult<void>, context: CommandContext): EvalEvidenceResult {
-  context.artifacts.include(result.artifacts);
+  context.artifacts.add(result.artifacts);
   return { status: result.status, artifacts: result.artifacts,
     reason: "reason" in result ? result.reason : undefined };
 }
@@ -285,7 +285,7 @@ export async function runEval(
     throw error;
   }
   commandContext.artifacts.setReportName(config.bundleName);
-  commandContext.artifacts.add("eval", artifact.path);
+  commandContext.artifacts.add({ command: "eval", path: artifact.path });
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
   const signal = commandContext.signal;

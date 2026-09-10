@@ -44,7 +44,7 @@ export function createStoreBundle(
     outputPath: resolveStoreOutputPath(output, bundleName, format),
     startedAt: new Date().toISOString(),
   };
-  commandContext.artifacts.add(kind, staging);
+  commandContext.artifacts.add({ command: kind, path: staging });
   return state;
 }
 

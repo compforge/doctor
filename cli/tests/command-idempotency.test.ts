@@ -19,7 +19,7 @@ test("concurrent calls share work and cleanup, and completed calls retain status
     name: "inspect",
     run: async (ctx) => {
       runs++;
-      ctx.artifacts.add("inspect", "/tmp/shared-inspect");
+      ctx.artifacts.add({ command: "inspect", path: "/tmp/shared-inspect" });
       ctx.artifacts.setReportName("shared-inspect");
       onCommandDispose(async () => { await cleanup.promise; disposals++; });
       entered.release(); await finish.promise;
@@ -41,8 +41,8 @@ test("concurrent calls share work and cleanup, and completed calls retain status
     expect(result.status).toBe(CommandStatus.Partial);
     expect(result.output).toBe("missing optional facts");
     expect(result.reportName).toBe("shared-inspect");
-    expect(result.artifacts).toEqual([{ command: "inspect", path: "/tmp/shared-inspect" }]);
-    context.artifacts.include(result.artifacts);
+    expect(result.artifacts).toEqual([{ id: expect.any(String), command: "inspect", path: "/tmp/shared-inspect" }]);
+    context.artifacts.add(result.artifacts);
   }
   expect(context.artifacts.list()).toHaveLength(1);
 });
@@ -65,7 +65,7 @@ test("failed execution shares its evidence; validation still runs before reusing
   const command = defineCommand<CommandInput & { valid: boolean }, void>({
     name: "tenant",
     validate: (input) => { if (!input.valid) throw new Error("invalid input"); },
-    run: async (ctx) => { runs++; ctx.artifacts.add("tenant", "/tmp/failed-tenant"); throw new Error("access denied"); },
+    run: async (ctx) => { runs++; ctx.artifacts.add({ command: "tenant", path: "/tmp/failed-tenant" }); throw new Error("access denied"); },
   });
   const context = new CommandContext({});
   const input = { ...keyed("tenant"), valid: true };
@@ -86,7 +86,7 @@ test("cancellation reaches shared work and waiters, drains cleanup, and override
   const command = defineCommand<CommandInput, void>({
     name: "inspect",
     run: async (ctx) => {
-      runs++; ctx.artifacts.add("inspect", "/tmp/cancelled-inspect");
+      runs++; ctx.artifacts.add({ command: "inspect", path: "/tmp/cancelled-inspect" });
       onCommandDispose(async () => { await Bun.sleep(1); disposed++; });
       const aborted = new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve(), { once: true }));
       entered.release(); await aborted;

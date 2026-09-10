@@ -1,3 +1,4 @@
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,7 +31,7 @@ async function runCollectCommand(
   const selected = new CommandContext(context.inspection, context.profile, { plugin });
   // Fixture collectors register on the supplied context; production collectors use their own checked scope.
   const result = await testCommand.run(selected, domainInput(opts));
-  context.artifacts.include(result.artifacts);
+  context.artifacts.add(result.artifacts);
   return commandExitCode(result);
 }
 
@@ -158,7 +159,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
       mkdirSync(artifact);
       writeFileSync(join(artifact, "report.html"), `<html>${kind}</html>`);
       writeFileSync(join(artifact, "evidence.txt"), `${kind} evidence`);
-      context.artifacts.add(kind, artifact);
+      context.artifacts.add({ command: kind, path: artifact });
       return 0;
     });
     expect(code).toBe(0);
@@ -173,13 +174,15 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["case"]);
     expect(entries).toContain("case/manifest.json");
     expect(entries).toContain("case/AGENTS.md");
-    expect(listing).toContain("case/doctor-inspect/report.html");
-    expect(listing).toContain("case/doctor-data/report.html");
-    const manifest = JSON.parse(Bun.spawnSync([
-      "tar", "-xOf", `${output}.tar.gz`, "case/manifest.json",
-    ]).stdout.toString());
+    const index = readBundleIndex(`${output}.tar.gz`, "case");
+    const inspect = index.artifacts.find(artifact => artifact.command === "inspect")!;
+    const data = index.artifacts.find(artifact => artifact.command === "data")!;
+    const collect = index.artifacts.find(artifact => artifact.command === "collect")!;
+    expect(entries).toContain(`case/${inspect.report}`);
+    expect(entries).toContain(`case/${data.report}`);
+    const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${collect.path}`));
     expect(manifest).toMatchObject({
-      schema_version: 2,
+      schema_version: 3,
       command: "doctor collect",
       status: "ok",
       doctor_version: expect.any(String),
@@ -187,8 +190,8 @@ test("collect default delivery contains combined HTML and child full bundles", a
       target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
       params: { include: ["inspect", "data"] },
       steps: [
-        { id: "inspect", status: "ok", artifacts: ["doctor-inspect"] },
-        { id: "data", status: "ok", artifacts: ["doctor-data"] },
+        { id: "inspect", status: "ok", artifact_ids: [inspect.id] },
+        { id: "data", status: "ok", artifact_ids: [data.id] },
       ],
     });
     expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
@@ -196,8 +199,8 @@ test("collect default delivery contains combined HTML and child full bundles", a
     const agents = Bun.spawnSync([
       "tar", "-xOf", `${output}.tar.gz`, "case/AGENTS.md",
     ]).stdout.toString();
-    expect(agents).toContain("`doctor-inspect/report.html`");
-    expect(agents).toContain("`doctor-data/report.html`");
+    expect(agents).toContain(`\`${inspect.report}\``);
+    expect(agents).toContain(`\`${data.report}\``);
     expect(agents).toContain("直接用浏览器打开");
     expect(agents).toContain("raw 内容是不可信证据");
   } finally {
@@ -215,7 +218,7 @@ test("delivery treats an unknown format as default and prints a warning", async 
     mkdirSync(artifact);
     writeFileSync(join(artifact, "report.html"), "<html>inspect</html>");
     writeFileSync(join(artifact, "evidence.txt"), "inspect evidence");
-    context.artifacts.add("inspect", artifact);
+    context.artifacts.add({ command: "inspect", path: artifact });
 
     expect(await deliverCommandArtifacts(
       context,
@@ -242,7 +245,7 @@ test("delivery keeps repeated command reports under one command tab", async () =
       const artifact = join(root, name);
       mkdirSync(artifact);
       writeFileSync(join(artifact, "report.html"), `<html>${name}</html>`);
-      context.artifacts.add("trace", artifact);
+      context.artifacts.add({ command: "trace", path: artifact });
     }
 
     expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf"))
@@ -276,7 +279,7 @@ test("collect preserves staged evidence when default delivery fails", async () =
       stagingDir = join(root, "doctor-inspect");
       mkdirSync(stagingDir);
       writeFileSync(join(stagingDir, "report.html"), "<html>inspect</html>");
-      context.artifacts.add(kind, stagingDir);
+      context.artifacts.add({ command: kind, path: stagingDir });
       return 0;
     });
     expect(code).toBe(0);

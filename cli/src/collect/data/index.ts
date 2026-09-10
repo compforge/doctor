@@ -109,7 +109,7 @@ async function runCollectDataSingle(
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-"));
   const staging = join(stagingRoot, config.reportName);
-  commandContext.artifacts.add("data", staging);
+  commandContext.artifacts.add({ command: "data", path: staging });
   const bundle = new EvidenceBundle(
     staging,
     dataOutcomes(selections.map((item) => item.service), plugin),
@@ -268,7 +268,7 @@ export async function runCollectData(
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-batch-"));
   const staging = join(stagingRoot, batchName);
   mkdirSync(staging, { recursive: true });
-  commandContext.artifacts.add("data", staging);
+  commandContext.artifacts.add({ command: "data", path: staging });
   if (format === "json") {
     const groups: Record<string, DataDiagnosis | { error: string }> = {};
     const statuses: CommandStatus[] = [];
@@ -290,7 +290,7 @@ export async function runCollectData(
         injectedContexts,
         { onDiagnosis: (diagnosis) => { captured = diagnosis; }, suppressJson: true },
       ));
-      commandContext.artifacts.include(child.artifacts);
+      commandContext.artifacts.add(child.artifacts);
       const result = child.value;
       groups[bizId] = captured ?? { error: `采集未完成（${result.status}）` };
       statuses.push(result.status);
@@ -320,7 +320,7 @@ export async function runCollectData(
       injectedContexts,
       { onDiagnosis: (diagnosis) => { captured = diagnosis; } },
     ));
-    commandContext.artifacts.include(child.artifacts);
+    commandContext.artifacts.add(child.artifacts);
     const result = child.value;
     const childArtifact = child.artifacts[0];
     const htmlPath = childArtifact ? join(childArtifact.path, "report.html") : "";

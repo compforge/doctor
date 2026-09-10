@@ -1,7 +1,7 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
 import {
   CommandStatus, CommandInputError, defineCommand, aggregateCommandStatus,
@@ -72,7 +72,7 @@ interface CollectManifestInput {
 
 export function createCollectManifest(input: CollectManifestInput): Record<string, unknown> {
   return {
-    schema_version: 2,
+    schema_version: 3,
     command: "doctor collect",
     status: aggregateCommandStatus(input.results.map((step) => step.result.status)),
     doctor_version: DOCTOR_CLI_VERSION,
@@ -103,8 +103,7 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
       title: COLLECT_LABELS[result.kind],
       status: result.result.status,
       reason: "reason" in result.result ? result.result.reason : undefined,
-      artifacts: result.result.artifacts
-        .map((artifact) => basename(artifact.path)),
+      artifact_ids: result.result.artifacts.map((artifact) => artifact.id),
     })),
   };
 }
@@ -116,7 +115,7 @@ function registerCollectManifest(input: CollectManifestInput): void {
     encoding: "utf8",
     mode: 0o600,
   });
-  input.commandContext.artifacts.add("collect", path);
+  input.commandContext.artifacts.add({ command: "collect", path });
 }
 
 export function parseCollectKinds(raw: string | undefined): CollectKind[] {
@@ -242,7 +241,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       const results = await runCollectDelegates(input.kinds, async (kind) => {
         context.signal.throwIfAborted();
         const result = await invoke(kind);
-        context.artifacts.include(result.artifacts);
+        context.artifacts.add(result.artifacts);
         return result;
       });
       registerCollectManifest({
