@@ -1,28 +1,39 @@
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import { EvidenceDependency, type Detector, type TraceContributions } from "@compforge/trace-harness";
 import { describe, expect, test } from "bun:test";
+import { strFromU8, unzipSync } from "fflate";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { EvidenceDependency, type Detector } from "@compforge/trace-harness";
-import { strFromU8, unzipSync } from "fflate";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { OUTCOME_UNREACHED_REASON } from "../src/collect/evidence";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
-import { pickOpenSearchService } from "../src/infra/search/opensearch";
-import {
-  buildIndexExpr,
-  countSpans,
-  downloadSpans,
-} from "../src/collect/trace/opensearch";
 import {
   accumulateStats,
   buildTraceSummary,
-  collectTrace,
+  collectTrace as collectTraceEvidence,
   defaultTraceBundleName,
   newTraceStats,
   parseTraceOutputFormat,
   resolveTraceHtmlPath,
   traceStoreCandidates,
 } from "../src/collect/trace";
+import {
+  buildIndexExpr,
+  countSpans,
+  downloadSpans,
+} from "../src/collect/trace/opensearch";
+import { renderTraceEvidence } from "../src/collect/trace/render";
+import { pickOpenSearchService } from "../src/infra/search/opensearch";
+
+async function collectTrace(
+  options: Parameters<typeof collectTraceEvidence>[0] & { contributions?: TraceContributions },
+  log: Parameters<typeof collectTraceEvidence>[1],
+  search?: Parameters<typeof collectTraceEvidence>[2],
+): Promise<number> {
+  const code = await collectTraceEvidence(options, log, search);
+  if (code === 0) await renderTraceEvidence(options.outputDir, options.traceId!, options.contributions);
+  return code;
+}
 
 test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target", () => {
   const plugin = {
@@ -217,7 +228,7 @@ describe("trace 输出格式", () => {
  * 所以只要假一个 SearchEngine 就能把主链路和早退路径都跑到。
  */
 describe("collectTrace 记账", () => {
-  const OUTCOME_IDS = ["resolve-id", "count", "download", "render-html"];
+  const OUTCOME_IDS = ["resolve-id", "count", "download"];
 
   function traceOpts(outputDir: string) {
     return {
@@ -415,7 +426,7 @@ describe("collectTrace 记账", () => {
   test("failed async analysis releases its lease and keeps the downloaded evidence", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-analysis-failure-"));
     let readAfterClose: (() => Promise<unknown>) | undefined;
-    const code = await collectTrace({
+    const rendering = collectTrace({
       ...traceOpts(dir),
       contributions: {
         detectors: [async (node, analysis) => {
@@ -426,10 +437,8 @@ describe("collectTrace 记账", () => {
     }, () => {}, fakeSearch({
       count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }],
     }));
-    expect(code).toBe(1);
-    expect(manifestOf(dir).steps).toContainEqual(expect.objectContaining({
-      id: "render-html", status: "failed", reason: "plugin analysis failed",
-    }));
+    await expect(rendering).rejects.toThrow("plugin analysis failed");
+    expect(manifestOf(dir).steps.find((step: { id: string }) => step.id === "download").status).toBe("ok");
     expect(readAfterClose).toBeDefined();
     await expect(readAfterClose!()).rejects.toThrow("trace lease has ended");
     expect(readFileSync(join(dir, "spans.jsonl"), "utf-8")).toContain('"spanID":"s1"');

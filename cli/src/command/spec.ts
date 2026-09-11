@@ -1,10 +1,13 @@
 import { terminalStdout } from "../terminal/output";
-import type { CommandContext, EnvironmentRequirements } from "./context";
-import type { PluginCapabilityContract } from "./plugin-capability";
 import { requirePluginCapabilities } from "../terminal/plugin-capability";
-import { CommandStatus } from "./status";
-import type { CommandResult } from "./result";
+import type { CommandContext, EnvironmentRequirements } from "./context";
 import { inCommandScope } from "./execution-scope";
+import type { PluginCapabilityContract } from "./plugin-capability";
+import type { CommandResult } from "./result";
+import { CommandStatus } from "./status";
+
+import type { RenderContext } from "../report/context";
+import type { Report } from "../report/model";
 
 type Requirement<Input, Value> = Value | ((input: Input) => Value);
 
@@ -19,6 +22,8 @@ export interface CommandSpec<Input extends CommandInput, Output> {
   readonly plugin?: Requirement<Input, PluginCapabilityContract>;
   readonly validate?: (input: Input) => void | Promise<void>;
   run(context: CommandContext, input: Input): Promise<CommandResult<Output>>;
+  /** Root finalize renders local results. Commands without a report (for example chat) omit this hook. */
+  render?(context: RenderContext, result: CommandResult<Output>): Promise<Report>;
 }
 
 /**

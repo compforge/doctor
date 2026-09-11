@@ -1,36 +1,22 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
+import type { CommandContext } from "../../command";
+import type { KubernetesCommandInput } from "../../command/kubernetes-target";
 import {
   inspectLocalHttpEndpoint,
   sendHttpRequest,
   type InspectHttpEndpoint,
 } from "../../infra/http";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-import type { CommandContext } from "../../command";
-import type { KubernetesCommandInput } from "../../command/kubernetes-target";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { writeHtmlReport } from "../output/html";
 import type { SendHttp } from "../shared/http/capture";
-import { HTTP_DEFAULTS, loadHttpScenario } from "../shared/http/config";
-import {
-  buildHttpCoverage,
-  buildHttpDiagnosis,
-  buildHttpEvidence,
-  detectHttpAttempt,
-  diagnoseHttp,
-  httpDetectors,
-} from "./detector";
-import { resolvePodHttpExecution } from "./execution";
-import {
-  resolveHttpExecutionLocation,
-} from "./execution-location";
-import { makeHttpEndpointInspect } from "./fact/inspect";
+import { loadHttpScenario } from "../shared/http/config";
 import type {
   HttpDiagnosis,
   HttpExecutionTarget,
@@ -38,34 +24,43 @@ import type {
   HttpInspectionFacts,
   HttpScenario,
 } from "../shared/http/model";
+import type { HttpCommandContext } from "./context";
+import {
+  buildHttpCoverage,
+  buildHttpDiagnosis,
+  buildHttpEvidence,
+  httpDetectors
+} from "./detector";
+import { resolvePodHttpExecution } from "./execution";
+import {
+  resolveHttpExecutionLocation,
+} from "./execution-location";
+import { makeHttpEndpointInspect } from "./fact/inspect";
 import {
   httpAttemptId,
   makeHttpRequestProbe,
   serializeHttpAttempt,
 } from "./probe/request";
-import type { HttpCommandContext } from "./context";
 import { buildHttpHtml, buildHttpMarkdown } from "./render";
 import { resolveHttpScenarioFile, resolveHttpScenarioRequests, writeHttpScenarioExample } from "./scenario-file";
 
-export { HTTP_DEFAULTS, loadHttpScenario } from "../shared/http/config";
 export { captureHttpResponse } from "../shared/http/capture";
+export { HTTP_DEFAULTS, loadHttpScenario } from "../shared/http/config";
+export type { HttpDiagnosis, HttpExecution, HttpExecutionTarget, HttpFinding, HttpScenario } from "../shared/http/model";
 export { detectHttpAttempt, diagnoseHttp } from "./detector";
+export {
+	HTTP_EXECUTION_LOCATION_CHOICES,
+	matchHttpExecutionLocation,
+	parseHttpExecutionLocation,
+	resolveHttpExecutionLocation
+} from "./execution-location";
 export { buildHttpHtml, buildHttpMarkdown, renderHttpRequestAsCurl } from "./render";
 export {
-  HTTP_EXECUTION_LOCATION_CHOICES,
-  matchHttpExecutionLocation,
-  parseHttpExecutionLocation,
-  resolveHttpExecutionLocation,
-} from "./execution-location";
-export {
-  findHttpScenarioFiles,
-  filterHttpScenarioRequests,
-  HTTP_SCENARIO_EXAMPLE,
-  resolveHttpScenarioFile,
-  resolveHttpScenarioRequests,
-  writeHttpScenarioExample,
+	filterHttpScenarioRequests, findHttpScenarioFiles, HTTP_SCENARIO_EXAMPLE,
+	resolveHttpScenarioFile,
+	resolveHttpScenarioRequests,
+	writeHttpScenarioExample
 } from "./scenario-file";
-export type { HttpDiagnosis, HttpExecution, HttpExecutionTarget, HttpFinding, HttpScenario } from "../shared/http/model";
 
 export type HttpOutputFormat = "default" | "bundle" | "html" | "md";
 
@@ -183,11 +178,11 @@ function writeHttpArtifact(
   summaryHtml: string,
 ): boolean {
   try {
-    writeHtmlReport(staging, join(staging, "report.html"), {
+    writeFileSync(join(staging, "report-input.json"), JSON.stringify({
       title: "doctor http 诊断报告",
       profileName,
       summaryHtml,
-    });
+    }), { mode: 0o600 });
     return true;
   } catch (error) {
     terminalStderr.error(`[http] 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
@@ -425,7 +420,7 @@ export async function runCollectHttp(
     )),
   );
 
-  const generated = format === "md" || writeHttpArtifact(
+  const generated = writeHttpArtifact(
     staging,
     reportProfileName,
     buildHttpHtml(diagnosis, scenario.requests, staging, executionTargetLabel(executionTarget)),

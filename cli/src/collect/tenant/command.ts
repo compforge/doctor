@@ -1,7 +1,10 @@
-import { type CommandInput, defineCommand } from "../../command";
+import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
+import { renderEvidence, writeEvidencePage } from "../../report/evidence";
 import { runCollectTenant } from "./index";
+import type { TenantDiagnosis } from "./model";
+import { buildTenantHtml, buildTenantHtmlSections } from "./render";
 
 export type TenantInput = CommandInput & Omit<Parameters<typeof runCollectTenant>[0], CommandHostOption>;
 
@@ -17,6 +20,15 @@ export function createTenantInput(input: Omit<TenantInput, "idempotencyKey">): T
 
 export const tenantCommand = defineCommand<TenantInput, void>({
   name: "doctor tenant",
+  render: async (context, result) => renderEvidence(context, result, {
+    command: "tenant", title: "Tenant", scope: "租户",
+    render: artifact => {
+      const diagnosis = context.json<TenantDiagnosis>(artifact, "diagnosis.json");
+      writeEvidencePage(context, artifact, { title: "doctor tenant",
+        summaryHtml: buildTenantHtml(diagnosis), sections: buildTenantHtmlSections(diagnosis),
+      });
+    },
+  }),
   environment: { kubernetes: true },
   plugin: PLUGIN_COMMAND_CAPABILITIES.tenant,
   run: async (context, input) => runCollectTenant(

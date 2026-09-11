@@ -1,33 +1,32 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
 import type {
   ModelCatalog,
   ModelInference,
+  TenantSummary,
 } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../../command";
-import type { TenantSummary } from "@compforge/doctor-plugin";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
+import type { CommandContext } from "../../command";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
-import { writeHtmlReport } from "../output/html";
 import { recordFailureBundle } from "../output/failure-bundle";
 import {
   buildModelCoverage,
   buildModelEvidence,
   modelDetectors,
-  modelPerformanceDecision,
   modelPerformanceAttempts,
+  modelPerformanceDecision,
   modelPerformanceSummaries,
   modelResponseObservation,
 } from "./detector";
 import { makeModelInspect } from "./fact/inspect";
 import type {
+  ModelCommandContext,
   ModelDiagnosis,
   ModelDiagnosisConfig,
-  ModelCommandContext,
   ModelFinding,
   ModelInspectionFacts,
   ModelOutputFormat,
@@ -36,15 +35,14 @@ import type {
 import type { ModelPerformanceAttempt } from "./performance";
 import {
   makeModelProbes,
+  MODEL_INFERENCE_PROBE_ID,
   MODEL_PERFORMANCE_DECISION_PROBE_ID,
   MODEL_PERFORMANCE_PROBE_ID,
-  MODEL_INFERENCE_PROBE_ID,
   MODEL_VALIDATION_PROBE_ID,
 } from "./probe";
 import {
-  buildModelDiagnosisHtml,
   buildModelMarkdown,
-  buildModelPerformanceTerminalSummary,
+  buildModelPerformanceTerminalSummary
 } from "./render";
 
 export interface RunModelDiagnosisInput {
@@ -220,13 +218,7 @@ export async function runModelDiagnosis(
     });
 
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
-    if (input.format !== "json") {
-      writeHtmlReport(staging, join(staging, "report.html"), {
-        title: "doctor model 诊断报告",
-        profileName: input.profileName,
-        summaryHtml: buildModelDiagnosisHtml(diagnosis, summaries, attempts),
-      });
-    }
+
 
     printResponseStatus("validation", diagnosis, "model-validation");
     printResponseStatus("inference", diagnosis, "model-inference");

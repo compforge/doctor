@@ -1,11 +1,11 @@
+import { caseSetToRaw, type CaseSet } from "@compforge/spec-case/model";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { caseSetToRaw, type CaseSet } from "@compforge/spec-case/model";
 import { DOCTOR_CLI_VERSION } from "../app/version";
-import { buildHtmlReport } from "../collect/output/report/shell";
 import { escapeHtml } from "../collect/output/report/components/content";
 import { htmlTable } from "../collect/output/report/components/table";
+import { buildHtmlReport } from "../collect/output/report/shell";
 import type { EvalConfig, EvalEvidenceResult, EvalRun } from "./model";
 
 export interface EvalArtifact {
@@ -24,7 +24,7 @@ function evidenceLabel(result: EvalEvidenceResult): string {
   return result.reason ? `${result.status}: ${result.reason}` : result.status;
 }
 
-function writeEvalReport(path: string, run: EvalRun, profileName: string): void {
+export function writeEvalReport(path: string, run: EvalRun, profileName: string): void {
   const successful = run.cases.filter((item) => item.protocol?.ok).length;
   const correlated = run.cases.filter((item) => item.correlation).length;
   const summaryHtml = `<h1>执行摘要</h1><p>CaseSet <code>${escapeHtml(run.caseset)}</code>：`
@@ -93,14 +93,14 @@ export function writeEvalArtifact(
   artifact: EvalArtifact,
   run: EvalRun,
   caseSet: CaseSet,
-  profileName: string,
 ): void {
   writeFileSync(join(artifact.path, "caseset.json"), `${JSON.stringify(caseSetToRaw(caseSet), null, 2)}\n`, "utf8");
-  writeFileSync(join(artifact.path, "run.json"), `${JSON.stringify(run, null, 2)}\n`, "utf8");
+  // Runtime child results retain renderer inputs; the exported run contains only durable evidence metadata.
+  const evidence = Object.fromEntries(Object.entries(run.evidence).map(([kind, { result, ...metadata }]) => [kind, metadata]));
+  writeFileSync(join(artifact.path, "run.json"), `${JSON.stringify({ ...run, evidence }, null, 2)}\n`, "utf8");
   writeFileSync(
     join(artifact.path, "observations.jsonl"),
     run.cases.map((item) => JSON.stringify(item)).join("\n") + (run.cases.length ? "\n" : ""),
     "utf8",
   );
-  writeEvalReport(artifact.path, run, profileName);
 }

@@ -1,9 +1,11 @@
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandContext, CommandStatus } from "../src/command";
 import { runCollectTrace } from "../src/collect/trace";
+import { traceCommand } from "../src/collect/trace/command";
+import { CommandContext, CommandStatus } from "../src/command";
+import { RenderContext } from "../src/report/context";
 
 for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output and per-ID artifacts: ${ids}`, async () => {
   const queries: string[] = [];
@@ -37,13 +39,18 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
       expect(item.status).toBe(item.bizId === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
       expect(item.artifacts).toHaveLength(item.bizId === "missing" ? 0 : 1);
       for (const artifact of item.artifacts) {
-        expect(existsSync(join(artifact.path, "report.html"))).toBeTrue();
+        expect(existsSync(join(artifact.path, "report.html"))).toBeFalse();
         expect(JSON.parse(readFileSync(join(artifact.path, "manifest.json"), "utf8")).target.input_id).toBe(item.bizId);
       }
     }
     expect(new Set(items.flatMap(item => item.artifacts.map(artifact => artifact.id))).size).toBe(queries.length);
     const summary = result.artifacts[0]!;
-    expect(existsSync(join(summary.path, "report.html"))).toBeTrue();
+    expect(existsSync(join(summary.path, "report.html"))).toBeFalse();
+    const renderer = new RenderContext(result.artifacts, "test");
+    const report = await renderer.render(traceCommand, result);
+    expect(renderer.failures).toHaveLength(0);
+    expect(report.sections[0]!.pages.map(page => page.subject?.key)).toEqual(ids);
+    for (const item of items) for (const artifact of item.artifacts) expect(existsSync(join(artifact.path, "report.html"))).toBeTrue();
     const saved = JSON.parse(readFileSync(join(summary.path, "diagnosis.json"), "utf8"));
     expect(saved.items.map((item: { bizId: string }) => item.bizId)).toEqual(ids);
   } finally {

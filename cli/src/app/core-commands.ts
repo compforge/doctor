@@ -1,14 +1,16 @@
-import { type CommandInput, defineCommand, commandOutcome } from "../command";
-import { commandOptions, type CommandHostOption } from "../command/options";
-import { runRepl } from "./repl";
-import type { CliFlags } from "../protocol";
-import { runDoctorImage } from "../provision/image";
-import { runDebug } from "../provision/debug";
-import { runInstall, validateInstallOptions } from "../provision/install";
-import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectCpu } from "../collect/cpu";
 import { runCollectHttp } from "../collect/http";
+import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectNetwork } from "../collect/network";
+import type { HtmlReportOptions } from "../collect/output/html";
+import { commandOutcome, defineCommand, type CommandInput } from "../command";
+import { commandOptions, type CommandHostOption } from "../command/options";
+import type { CliFlags } from "../protocol";
+import { runDebug } from "../provision/debug";
+import { runDoctorImage } from "../provision/image";
+import { runInstall, validateInstallOptions } from "../provision/install";
+import { renderEvidence, writeEvidencePage } from "../report/evidence";
+import { runRepl } from "./repl";
 
 export const chatCommand = defineCommand<CommandInput & Omit<CliFlags, CommandHostOption>, void>({
   name: "doctor chat",
@@ -58,6 +60,10 @@ export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof ru
 
 export const httpCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption>, void>({
   name: "doctor http",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "http", title: "HTTP",
+    render: artifact => writeEvidencePage(context, artifact, context.json<HtmlReportOptions>(artifact, "report-input.json")),
+  }),
   run: async (context, input) => commandOutcome(await runCollectHttp({ ...input, ...commandOptions(context) }, context)),
 });
 

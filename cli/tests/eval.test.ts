@@ -1,17 +1,15 @@
-import { readBundleIndex } from "./bundle-fixture";
-import { CommandStatus } from "../src/command";
-import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   createServiceCatalog,
   type PluginDefinition,
   type ServiceCaseRunner,
 } from "@compforge/doctor-plugin";
 import type { CaseSet } from "@compforge/spec-case/model";
+import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deliverCommandArtifacts } from "../src/app/delivery";
-import { CommandContext } from "../src/command";
+import { CommandContext, CommandStatus } from "../src/command";
 import {
   createEvalArtifact,
   evalRunName,
@@ -23,6 +21,9 @@ import {
   writeEvalArtifact,
   type EvalRun,
 } from "../src/eval";
+import { evalCommand } from "../src/eval/command";
+import { readBundleIndex } from "./bundle-fixture";
+import { renderForDelivery } from "./report-fixture";
 
 const CASE_SET: CaseSet = {
   caseset: "ordinary-chat",
@@ -138,15 +139,17 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
     },
   };
   try {
-    writeEvalArtifact(artifact, run, CASE_SET, "test");
+    writeEvalArtifact(artifact, run, CASE_SET);
     expect(readFileSync(join(artifact.path, "run.json"), "utf8")).toContain("doctor-eval/v2");
     expect(readFileSync(join(artifact.path, "caseset.json"), "utf8")).toContain("ordinary-chat");
     expect(readFileSync(join(artifact.path, "observations.jsonl"), "utf8")).toContain("trace-1");
-    expect(readFileSync(join(artifact.path, "report.html"), "utf8")).toContain("不评价回答质量");
+    expect(existsSync(join(artifact.path, "report.html"))).toBeFalse();
 
     const context = new CommandContext({});
     context.artifacts.add({ command: "eval", path: artifact.path });
-    expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor eval"))
+    const rendered = await renderForDelivery(context, evalCommand, { status: CommandStatus.Ok, output: run, artifacts: context.artifacts.list() });
+    expect(readFileSync(join(artifact.path, "report.html"), "utf8")).toContain("不评价回答质量");
+    expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor eval", rendered))
       .toBe(true);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();

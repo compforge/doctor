@@ -1,50 +1,47 @@
-import { commandOutcome, type CommandResult } from "../../command";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
-import { runCollect } from "../engine";
-import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
-import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
+import { commandOutcome, resolveKubernetesCommandContext, type CommandResult } from "../../command";
+import { immutableServiceProbeFacts } from "../../plugin/evidence";
 import {
   enforceKubernetesAccess,
   requireKubernetesChannel,
 } from "../../terminal/kubernetes-access";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { runCollect } from "../engine";
+import { EvidenceBundle } from "../evidence";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { writeHtmlReport } from "../output/html";
-import {
-  resolveInspectConfig,
-  resolveInspectDependencySelection,
-  resolveInspectDeploymentSelection,
-  resolveInspectServiceSelection,
-} from "./options";
 import {
   buildInspectCoverage,
   buildInspectEvidence,
   makeInspectDetectors,
   projectInspectServiceFacts,
 } from "./detector";
-import { immutableServiceProbeFacts } from "../../plugin/evidence";
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
   CollectInspectCliOpts,
   InspectCommandContext,
-  InspectConfig,
   InspectDiagnosis,
-  InspectFacts,
+  InspectFacts
 } from "./model";
+import {
+  resolveInspectConfig,
+  resolveInspectDependencySelection,
+  resolveInspectDeploymentSelection,
+  resolveInspectServiceSelection,
+} from "./options";
 import { makeInspectProbes } from "./probe";
-import { buildInspectHtml, buildInspectHtmlSections, buildInspectSummary } from "./render";
+import { buildInspectSummary } from "./render";
 
-export * from "./options";
 export * from "./detector";
 export * from "./model";
+export * from "./options";
 export * from "./probe";
 export * from "./render";
 
@@ -240,26 +237,5 @@ export async function runCollectInspect(
   bundle.writeSummary(buildInspectSummary(diagnosis));
   writeManifest();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
-  if (config.format === "json") {
-    return collectCommandOutcome(outcome);
-  }
-  if (config.format === "md") {
-    return collectCommandOutcome(outcome);
-  }
-  const reportPath = join(staging, "report.html");
-  try {
-    writeHtmlReport(staging, reportPath, {
-      title: "doctor Service Inspect",
-      profileName: config.profileName,
-      summaryHtml: buildInspectHtml(diagnosis),
-      sections: buildInspectHtmlSections(diagnosis),
-    });
-  } catch (error) {
-    reportError(error, { context: "doctor inspect/html-report", summary: "HTML 报告生成失败" });
-    return commandOutcome(await fail(error instanceof Error ? error.message : String(error)));
-  }
-  if (config.format === "html") {
-    return collectCommandOutcome(outcome);
-  }
   return collectCommandOutcome(outcome);
 }

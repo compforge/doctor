@@ -1,40 +1,33 @@
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { terminalStdout, terminalStderr } from "../../terminal/output";
-// trace 采集编排：通道解析（--endpoint 直连 / DOCTOR_OPENSEARCH_URL / kubectl 发现 svc +
-// port-forward）→ _count 验证 → search_after 全量下载 → spans.jsonl → HTML / 证据包。
-// 采集全程确定性只读；下载协议语义在 opensearch.ts，本文件只做编排、统计、渲染与交付。
-import { copyFileSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
+// Trace run owns ID resolution, shared access and downloading spans.jsonl.
+// Local analysis and page generation belong to render; root Delivery owns the final files.
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { TraceContributions } from "@compforge/trace-harness";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { TraceContributions } from "@compforge/trace-harness";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
+import type { CommandContext } from "../../command";
+import { resolveKubernetesCommandContext } from "../../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import {
   parseOpenSearchEndpoint,
   resolveOpenSearchAuth,
   type OpenSearchAuth,
 } from "../../infra/search/opensearch";
-import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { resolveKubernetesCommandContext } from "../../command";
-import type { CommandContext } from "../../command";
-import {
-  failedReportHtml,
-  type ReportLeafTab,
-  type ReportTab,
-  writeTabbedReport,
-} from "../output/tabbed-report";
-import { evaluateCollectOutcome } from "../outcome";
+import { resolvePluginTraceIds } from "../../plugin/trace-id";
 import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
-import { resolvePluginTraceIds } from "../../plugin/trace-id";
+import { EvidenceBundle, type OutcomeDecl } from "../evidence";
+import { evaluateCollectOutcome } from "../outcome";
 import {
   confirmOpenSearchConnection,
   prepareOpenSearchAccess,
@@ -305,12 +298,9 @@ export async function runCollectTrace(
     { specs: [...genAiSpecs()].filter((spec) => !overriddenKinds.has(spec.kind)) },
   );
   const items: TraceOutput["items"][number][] = [];
-  const groups: ReportTab[] = [];
   for (const [bizIndex, bizId] of bizIds.entries()) {
     terminalStdout.warning(`\n[collect:trace] [${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}\n`);
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
-    const groupKey = `biz-${bizIndex + 1}`;
-    const traceTabs: ReportLeafTab[] = [];
     const itemStatuses: CommandStatus[] = [];
     const itemArtifacts: import("../../command").CommandArtifact[] = [];
     let groupCode = groupTraces.length ? 0 : 1;
@@ -332,7 +322,6 @@ export async function runCollectTrace(
             kube,
             pageSize,
             outputDir,
-            contributions,
             preparedStore,
             traceIdResolution: {
               service: trace.service,
@@ -345,48 +334,28 @@ export async function runCollectTrace(
             else terminalStdout.write(`${line}\n`);
           },
         );
-        if (code === 0) copyFileSync(join(outputDir, "trace.html"), join(outputDir, "report.html"));
       } catch (error) {
         code = 1;
         terminalStderr.error(
           `[collect] trace ${trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}\n`,
         );
       }
-      traceTabs.push({
-        key: `${groupKey}-trace-${traceIndex + 1}`,
-        label: trace.sourceId ? `${trace.sourceId} · ${trace.traceId}` : trace.traceId,
-        status: code === 0 ? "delivered" as const : "failed" as const,
-        html: code === 0
-          ? readFileSync(join(outputDir, "trace.html"), "utf8")
-          : failedReportHtml(`Trace 采集失败：${trace.traceId}`, `Biz ID ${bizId}，退出码 ${code}`),
-      });
       itemStatuses.push(commandOutcome(code).status);
       groupCode = Math.max(groupCode, code);
     }
     items.push({ bizId, traceIds: groupTraces.map(trace => trace.traceId),
       status: commandContext.signal.aborted ? CommandStatus.Cancelled : itemStatuses.length ? aggregateCommandStatus(itemStatuses) : CommandStatus.Failed,
       artifacts: itemArtifacts, ...(!groupTraces.length ? { reason: "无法解析 trace_id" } : {}) });
-    const group = {
-      key: groupKey,
-      label: bizId,
-      status: groupCode === 0 && !itemStatuses.includes(CommandStatus.Cancelled) ? "delivered" as const : "failed" as const,
-    };
-    // 保留 Biz -> Trace 的导航数据，由最外层报告统一渲染；这里嵌套报告壳会重复标题、页签和 iframe。
-    groups.push(traceTabs.length === 0
-      ? { ...group, status: "failed", html: failedReportHtml(`Trace 未完成：${bizId}`, commandContext.signal.aborted ? "采集已取消" : "无法解析 trace_id") }
-      : traceTabs.length === 1 ? { ...group, html: traceTabs[0]!.html } : { ...group, tabs: traceTabs });
+
   }
 
   bundle.writeManifest({ doctorVersion: DOCTOR_CLI_VERSION,
     target: { namespace: runtime.collect.kubernetes.namespace, input_ids: bizIds },
     inspectionFacts: {}, params: { index, page_size: pageSize }, startedAt, finishedAt: new Date().toISOString() });
-  writeTabbedReport(join(staging, "report.html"), {
-    title: "doctor Trace 诊断报告", description: "按 Biz ID 独立分组", ariaLabel: "Biz ID Trace 诊断结果", tabs: groups,
-  });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
     ...item, artifact_ids: artifacts.map(artifact => artifact.id),
   })) }, null, 2));
-  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items },
+  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items, contributions },
     artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
   } finally {
     try {
@@ -418,7 +387,6 @@ export interface TraceCollectOptions {
   kube?: KubectlOptions;
   pageSize: number;
   outputDir: string;
-  contributions?: TraceContributions;
   /** Shared dependency access owned by the outer batch command. */
   preparedStore?: PreparedServiceStoreDependency;
 }
@@ -438,7 +406,6 @@ const TRACE_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "resolve-id", title: "业务 ID 到 trace_id 的 Plugin 解析", risk: "observe" },
   { id: "count", title: "span 总数查询", risk: "observe" },
   { id: "download", title: "span 全量下载", risk: "observe" },
-  { id: "render-html", title: "交互 node tree HTML", risk: "observe" },
 ];
 
 export async function collectTrace(
@@ -548,44 +515,6 @@ export async function collectTrace(
     return finish(1);
   }
 
-  try {
-    const {
-      genAiSpecs,
-      JaegerFileSource,
-      TraceHarness,
-    } = await import("@compforge/trace-harness");
-    const harness = new TraceHarness(opts.contributions ?? { specs: genAiSpecs() });
-    // Probe owns remote reads. Analysis dependencies resolve only against the downloaded evidence.
-    const session = harness.open(new JaegerFileSource(join(opts.outputDir, "spans.jsonl")), {
-      config: { activeTraces: 1 },
-    });
-    try {
-      const dataset = await session.select({ trace_ids: [traceId], limit: 1 });
-      const lease = await session.tree(dataset, traceId);
-      try {
-        const analysis = await session.analyze(lease.analysis);
-        // The saved HTML must keep every span detail available after the session is closed.
-        await session.prepareView(analysis, { full: true });
-        writeFileSync(
-          join(opts.outputDir, "trace.html"),
-          harness.renderInteractive(analysis.trace, analysis.findings, { measurements: analysis.measurements }),
-          "utf-8",
-        );
-      } finally {
-        await lease.close();
-      }
-    } finally {
-      await session.close();
-    }
-    bundle.fill("render-html", { status: "ok" });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    bundle.fill("render-html", { status: "failed", reason });
-    log(`[collect] trace HTML 渲染失败：${reason}`);
-    failSummary("trace HTML 渲染失败", reason);
-    return finish(1);
-  }
-
   bundle.writeSummary(
     buildTraceSummary({
       traceId,
@@ -604,6 +533,7 @@ export async function collectTrace(
 }
 
 export interface TraceOutput {
+  readonly contributions?: TraceContributions;
   readonly items: readonly { bizId: string; traceIds: readonly string[]; status: CommandStatus; reason?: string;
     artifacts: readonly import("../../command").CommandArtifact[] }[];
 }

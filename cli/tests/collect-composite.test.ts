@@ -1,25 +1,25 @@
-import { readReportArchive } from "../src/collect/output/report-archive";
-import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { commandExitCode } from "../src/app/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
+import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
 import {
   COLLECT_KINDS,
   collectReportName,
+  createCollectCommand,
   createCollectManifest,
   parseCollectKinds,
-  createCollectCommand,
+  runCollectDelegates,
   type CollectCliOpts,
   type CollectKind,
-  runCollectDelegates,
 } from "../src/collect/composite";
-import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandContext, CommandStatus, commandOutcome, defineCommand, type CommandResult } from "../src/command";
-import { commandExitCode } from "../src/app/command";
+import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
 import { domainInput } from "../src/command/options";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { fixtureReport, readReport } from "./report-fixture";
 
 async function runCollectCommand(
   opts: CollectCliOpts, plugin: PluginDefinition, context: CommandContext,
@@ -164,12 +164,12 @@ test("collect default delivery contains combined HTML and child full bundles", a
       return 0;
     });
     expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect")).toBe(true);
+    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect", fixtureReport(context))).toBe(true);
 
     expect(existsSync(`${output}.html`)).toBe(true);
     expect(existsSync(`${output}.tar.gz`)).toBe(true);
-    expect(readFileSync(`${output}.html`, "utf8")).toContain("inspect");
-    expect(readFileSync(`${output}.html`, "utf8")).toContain("data");
+    expect(readReport(readFileSync(`${output}.html`, "utf8")).pages).toContain("inspect");
+    expect(readReport(readFileSync(`${output}.html`, "utf8")).pages).toContain("data");
     const listing = Bun.spawnSync(["tar", "-tzf", `${output}.tar.gz`]).stdout.toString();
     const entries = listing.split(/\r?\n/).filter(Boolean);
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["case"]);
@@ -226,6 +226,7 @@ test("delivery treats an unknown format as default and prints a warning", async 
       { format: "unknown", output },
       0,
       "doctor inspect",
+      fixtureReport(context),
     )).toBe(true);
     expect(existsSync(`${output}.html`)).toBe(true);
     expect(existsSync(`${output}.tar.gz`)).toBe(true);
@@ -249,13 +250,14 @@ test("delivery keeps repeated command reports under one command tab", async () =
       context.artifacts.add({ command: "trace", path: artifact });
     }
 
-    expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf"))
+    expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf", fixtureReport(context)))
       .toBe(true);
     const html = readFileSync(output, "utf8");
-    const archive = readReportArchive(html)!;
-    expect(archive.index.tabs).toHaveLength(1);
-    expect(archive.index.tabs[0]!.tabs!.map(tab => tab.label)).toEqual(["doctor-trace-1", "doctor-trace-2"]);
-    expect(html).toContain("secondary-tabs");
+    const archive = readReport(html);
+    expect(archive.index.sections).toHaveLength(1);
+    expect(archive.index.sections[0]!.pages).toHaveLength(2);
+    expect(archive.pages).toContain("doctor-trace-1");
+    expect(archive.pages).toContain("doctor-trace-2");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -285,7 +287,7 @@ test("collect preserves staged evidence when default delivery fails", async () =
       return 0;
     });
     expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect")).toBe(false);
+    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect", fixtureReport(context))).toBe(false);
 
     const stderr = write.mock.calls.map(([chunk]) => String(chunk)).join("");
     expect(stderr).toContain("原始产物保留在");

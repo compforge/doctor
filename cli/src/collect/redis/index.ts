@@ -1,31 +1,35 @@
-import { terminalStdout, terminalStderr } from "../../terminal/output";
+import type { ServiceCatalog } from "@compforge/doctor-plugin";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reportError, writeErrorLog } from "../../app/error-log";
+import { writeErrorLog } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
+import type { CommandContext } from "../../command";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
-import type { CommandContext } from "../../command";
-import type { ServiceCatalog } from "@compforge/doctor-plugin";
+import { evaluateCollectOutcome } from "../outcome";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { evaluateCollectOutcome } from "../outcome";
-import { htmlPieCharts, htmlPieChartSection, writeHtmlReport, type HtmlPieChart } from "../output/html";
+import { htmlPieCharts, htmlPieChartSection, type HtmlPieChart } from "../output/html";
+import {
+  resolveRedisConfig,
+  type RedisOutputFormat
+} from "./config";
 import type { RedisCommandContext } from "./context";
 import { buildRedisCoverage, redisDetectors } from "./detector";
 import { makeRedisDatabaseScopeInspect } from "./fact/database-scope";
 import { makeRedisTargetInspect, sanitizeRedisTarget } from "./fact/inspect";
 import type { RedisInspectionFacts } from "./fact/model";
 import { buildRedisEvidence } from "./model";
+import { confirmRedisTarget, prepareRedisAccess } from "./preparation";
 import {
+  makeRedisKeyStatsProbe,
   makeRedisPressureProbe,
   makeRedisRuntimeProbe,
-  makeRedisKeyStatsProbe,
 } from "./probe/runtime";
-import { confirmRedisTarget, prepareRedisAccess } from "./preparation";
 import {
   buildRedisHtml,
   buildRedisKeyDistributionHtml,
@@ -35,14 +39,8 @@ import {
   buildRedisPrefixMemoryPieCharts,
   buildRedisTtlPieCharts,
 } from "./render";
-import {
-  REDIS_DEFAULTS,
-  parseRedisOutputFormat,
-  resolveRedisConfig,
-  type RedisOutputFormat,
-} from "./config";
 
-export { REDIS_DEFAULTS, parseRedisOutputFormat } from "./config";
+export { parseRedisOutputFormat, REDIS_DEFAULTS } from "./config";
 export { hasRedisStoreConfiguration, projectRedisStoreEnvironment } from "./fact/target";
 
 export interface CollectRedisCliOpts {
@@ -230,33 +228,17 @@ export async function runCollectRedis(
       recordFailureBundle({ bundleDir: staging, collectCode: code });
       return code;
     }
-    let delivered = false;
-    const writeReport = (path: string) => {
-      writeHtmlReport(staging, path, {
-        title: "doctor Redis 诊断报告",
-        profileName: config.profileName,
-        summaryHtml,
-        sections: [
-          ...(keyDistributionHtml ? [{ title: "Key 分布", html: keyDistributionHtml }] : []),
-          ...(keyStatsHtml ? [{ title: "keyStats", html: keyStatsHtml }] : []),
-          ...(prefixKeyPieCharts.length
-            ? [{ title: "前缀 Key 占比", html: htmlPieCharts(prefixKeyPieCharts) }]
-            : []),
-          ...(prefixMemoryPieCharts.length
-            ? [{ title: "前缀空间占比", html: htmlPieCharts(prefixMemoryPieCharts) }]
-            : []),
-          ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
-        ],
-      });
-    };
-    try {
-      if (format !== "md") writeReport(join(staging, "report.html"));
-      delivered = true;
-    } catch (err) {
-      reportError(err, { context: "doctor store/redis/report", summary: "[collect] 报告生成失败" });
-      recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "成功产物生成失败" });
-    }
-    return delivered ? code : 1;
+    writeFileSync(join(staging, "report-input.json"), JSON.stringify({
+      title: "doctor Redis 诊断报告", summaryHtml,
+      sections: [
+        ...(keyDistributionHtml ? [{ title: "Key 分布", html: keyDistributionHtml }] : []),
+        ...(keyStatsHtml ? [{ title: "keyStats", html: keyStatsHtml }] : []),
+        ...(prefixKeyPieCharts.length ? [{ title: "前缀 Key 占比", html: htmlPieCharts(prefixKeyPieCharts) }] : []),
+        ...(prefixMemoryPieCharts.length ? [{ title: "前缀空间占比", html: htmlPieCharts(prefixMemoryPieCharts) }] : []),
+        ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
+      ],
+    }), { mode: 0o600 });
+    return code;
   };
 
   ctx.log(

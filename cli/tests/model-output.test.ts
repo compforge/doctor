@@ -1,17 +1,19 @@
-import { expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import type {
   Model,
   ModelCatalog,
   ModelInference,
   ServiceHttpResponse,
 } from "@compforge/doctor-plugin";
-import { runModelDiagnosis } from "../src/collect/model";
-import { modelSnapshot, requireInferenceModel } from "../src/model";
-import { CommandContext } from "../src/command";
+import { expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { deliverCommandArtifacts } from "../src/app/delivery";
+import { runModelDiagnosis } from "../src/collect/model";
+import { modelCommand } from "../src/collect/model/command";
+import { CommandContext, commandOutcome } from "../src/command";
+import { modelSnapshot, requireInferenceModel } from "../src/model";
+import { renderForDelivery } from "./report-fixture";
 
 const response = (text: string): ServiceHttpResponse => ({
   ok: true,
@@ -141,6 +143,7 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
       { output: defaultOutput },
       defaultResult.exitCode,
       "doctor model",
+      await renderForDelivery(defaultContext, modelCommand, { ...commandOutcome(defaultResult.exitCode), artifacts: defaultContext.artifacts.list() }),
     )).toBe(true);
     expect(existsSync(defaultOutput)).toBe(true);
     expect(statSync(defaultOutput).mode & 0o777).toBe(0o600);

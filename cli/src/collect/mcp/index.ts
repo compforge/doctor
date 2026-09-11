@@ -1,27 +1,25 @@
-import { commandOutcome, type CommandResult } from "../../command";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { McpClient } from "../../infra/mcp";
-import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import type { CommandContext } from "../../command";
+import { commandOutcome, resolveKubernetesCommandContext, type CommandResult } from "../../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../../command";
-import type { CommandContext } from "../../command";
+import type { McpClient } from "../../infra/mcp";
+import { openPluginContext } from "../../plugin/context";
+import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
+import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { recordFailureBundle } from "../output/failure-bundle";
-import { writeHtmlReport } from "../output/html";
 import { evaluateCollectOutcome } from "../outcome";
-import { resolveApprovalGate } from "../../terminal/approval";
-import { openPluginContext } from "../../plugin/context";
+import { recordFailureBundle } from "../output/failure-bundle";
 import { makeMcpConfigurationInspect, resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
 import {
@@ -32,7 +30,7 @@ import {
 } from "./model";
 import { parseMcpOutputFormat, resolveMcpOutputPath } from "./output";
 import { mcpProbes } from "./probe";
-import { buildMcpReportHtml, renderMcpSummary } from "./render";
+import { renderMcpSummary } from "./render";
 
 export interface CollectMcpCliOptions {
   namespace?: string;
@@ -235,19 +233,7 @@ export async function runCollectMcp(
       recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "成功产物生成失败" });
       return 1;
     }
-    try {
-      writeHtmlReport(staging, join(staging, "report.html"), {
-        title: "doctor MCP 诊断报告",
-        profileName: collect.profileName,
-        summaryHtml: buildMcpReportHtml(diagnosis),
-      });
-      return 0;
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      terminalStderr.error(`[mcp] HTML 生成失败：${reason}\n`);
-      recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
-      return 1;
-    }
+    return 0;
   };
 
   try {

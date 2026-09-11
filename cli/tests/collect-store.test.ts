@@ -1,12 +1,42 @@
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { OpenSearchReadApi } from "../src/infra/search/opensearch";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { EvidenceBundle } from "../src/collect/evidence";
+import { writeHtmlReport } from "../src/collect/output/html";
 import { runProbes } from "../src/collect/probe-engine";
+import { collectedFact, unavailableFact } from "../src/collect/protocol";
+import {
+  parseStoreKinds,
+  parseStoreOutputFormat,
+  resolveStoreOutputPath,
+  resolveStoreProviderConfig,
+} from "../src/collect/store";
+import { writeStoreArtifacts } from "../src/collect/store/artifacts";
+import { storeCommand } from "../src/collect/store/command";
+import {
+  buildDbCoverage,
+  detectDbFindings,
+  makeDbProbes,
+  type DbInspectionFacts,
+} from "../src/collect/store/db";
+import {
+  buildMysqlLoadFact,
+  detectMysqlFindings,
+  parseMysqlStatusSnapshot,
+} from "../src/collect/store/mysql-diagnosis";
+import { configuredValue, parseEnvironment } from "../src/collect/store/runtime-config";
+import {
+  buildS3Coverage,
+  buildS3HtmlReport,
+  detectS3CapacityFinding,
+  detectS3Findings,
+  makeS3Probes,
+  type S3InspectionFacts,
+} from "../src/collect/store/s3";
+import { scanS3Objects, summarizeS3Objects } from "../src/collect/store/s3-inventory";
 import {
   detectVdbFindings,
   groupVdbObservations,
@@ -18,51 +48,22 @@ import {
 } from "../src/collect/store/vdb";
 import type { VdbConfig } from "../src/collect/store/vdb/config";
 import type { VdbCommandContext } from "../src/collect/store/vdb/context";
-import { CommandContext } from "../src/command";
 import type { VdbInspectionFacts } from "../src/collect/store/vdb/fact";
-import {
-  buildDbCoverage,
-  detectDbFindings,
-  makeDbProbes,
-  type DbInspectionFacts,
-} from "../src/collect/store/db";
-import {
-  buildS3HtmlReport,
-  buildS3Coverage,
-  detectS3CapacityFinding,
-  detectS3Findings,
-  makeS3Probes,
-  type S3InspectionFacts,
-} from "../src/collect/store/s3";
-import { configuredValue, parseEnvironment } from "../src/collect/store/runtime-config";
-import { scanS3Objects, summarizeS3Objects } from "../src/collect/store/s3-inventory";
+import { CommandContext, CommandStatus } from "../src/command";
 import {
   inspectS3Provider,
   parseListBucketsXml,
   parseListObjectsV2Xml,
 } from "../src/infra/object-store";
 import {
-  getMinioDriveCapacity,
   getMinioBucketUsage,
+  getMinioDriveCapacity,
   parseMinioBucketUsageMetrics,
   parseMinioDriveCapacityMetrics,
   parseMinioTenantCapacity,
 } from "../src/infra/object-store/s3/minio";
-import {
-  buildMysqlLoadFact,
-  detectMysqlFindings,
-  parseMysqlStatusSnapshot,
-} from "../src/collect/store/mysql-diagnosis";
-import {
-  parseStoreKinds,
-  parseStoreOutputFormat,
-  resolveStoreProviderConfig,
-  resolveStoreOutputPath,
-} from "../src/collect/store";
-import { writeStoreArtifacts } from "../src/collect/store/artifacts";
-import { writeTabbedStoreReport } from "../src/collect/store/tabs";
-import { writeHtmlReport } from "../src/collect/output/html";
-import { collectedFact, unavailableFact } from "../src/collect/protocol";
+import type { OpenSearchReadApi } from "../src/infra/search/opensearch";
+import { renderForDelivery } from "./report-fixture";
 
 const CORE_OBSERVATION_META = {
   schemaVersion: 1,
@@ -167,27 +168,14 @@ describe("Store output", () => {
       profileName: "test",
       summary,
     });
+    const context = new CommandContext({});
+    const artifact = context.artifacts.add({ command: "db", path: staging });
+    await renderForDelivery(context, storeCommand, { status: CommandStatus.Ok, output: undefined, artifacts: [artifact] });
     const html = readFileSync(join(staging, "report.html"), "utf8");
     expect(prepared).toMatchObject({ ok: true, path: staging, label: "Store 诊断产物" });
     expect(html).toContain(">DB Store 诊断摘要</h1>");
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).not.toContain("<script>alert(2)</script>");
-    rmSync(root, { recursive: true, force: true });
-  });
-
-  test("多 Store HTML 汇总为隔离的 Tab 页面", () => {
-    const root = mkdtempSync(join(tmpdir(), "doctor-store-tabs-test-"));
-    const outputPath = join(root, "store.html");
-    writeTabbedStoreReport(outputPath, [
-      { kind: "db", status: "delivered", html: "<!doctype html><h1>DB report</h1>" },
-      { kind: "redis", status: "delivered", html: "<!doctype html><h1>Redis report</h1>" },
-    ]);
-    const html = readFileSync(outputPath, "utf8");
-    expect(html).toContain('role="tablist"');
-    expect(html).toContain('data-kind="db"');
-    expect(html).toContain('data-kind="redis"');
-    expect(html).toContain("已交付");
-    expect(html).toContain("frame.srcdoc=html");
     rmSync(root, { recursive: true, force: true });
   });
 

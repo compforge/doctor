@@ -1,7 +1,7 @@
-import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
+import { terminalStderr } from "../../terminal/output";
 import { REDIS_DEFAULTS, runCollectRedis } from "../redis";
 import {
   parseStoreOutputFormat,
@@ -85,5 +85,4 @@ export * from "./config";
 export * from "./db";
 export * from "./s3";
 export * from "./s3-inventory";
-export * from "./tabs";
 export * from "./vdb";

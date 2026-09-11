@@ -1,35 +1,38 @@
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { terminalStdout, terminalStderr } from "../../terminal/output";
-// log collect 编排：配置确认 → Inspect → 每 Service 一个 Probe → Render。
+import { terminalStderr, terminalStdout } from "../../terminal/output";
+// Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
-import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
-import { runCollectBatch } from "../engine";
-import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
+import { resolveKubernetesCommandContext } from "../../command";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
   type KubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import { EvidenceBundle } from "../evidence";
-import { recordFailureBundle } from "../output/failure-bundle";
-import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
+import { resolvePluginTraceIds } from "../../plugin/trace-id";
 import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
+import { runCollectBatch } from "../engine";
+import { EvidenceBundle } from "../evidence";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
+import { recordFailureBundle } from "../output/failure-bundle";
+import { ServiceDependencyRuntime } from "../shared/service-dependency";
+import { buildIndexExpr } from "../trace/opensearch";
 import {
   buildLogPattern,
-  validateLogTimeWindow,
-  resolveLogTimeWindow,
   resolveLogServiceSelection,
+  resolveLogTimeWindow,
+  validateLogTimeWindow,
 } from "./config";
 import { buildLogCoverage, buildLogEvidence, logDetectors } from "./detector";
 import { makeLogInspect } from "./fact/inspect";
@@ -38,15 +41,10 @@ import type {
   LogCommandContext,
   LogDiagnosis,
 } from "./model";
+import type { LogOutputFormat } from "./output";
+import { parseLogOutputFormat } from "./output";
 import { makeLogProbe } from "./probe/service";
 import { formatLogCaptureStats, renderLogResult, renderTimelineJsonl } from "./render";
-import { parseLogOutputFormat } from "./output";
-import type { LogOutputFormat } from "./output";
-import { writeLogHtmlReport } from "./html";
-import { resolvePluginTraceIds } from "../../plugin/trace-id";
-import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
-import { ServiceDependencyRuntime } from "../shared/service-dependency";
-import { buildIndexExpr } from "../trace/opensearch";
 
 export * from "./config";
 export * from "./detector";
@@ -252,26 +250,11 @@ export async function runCollectLog(
     line => terminalStdout.write(`${line}\n`), bundle, access, opts.itemConcurrency);
   const byId = new Map(requests.map((request, index) => [request.bizId, { request, result: results[index]!, artifact: artifacts[index]! }]));
   const items: LogOutput["items"][number][] = [];
-  const tabs = ids.map((bizId, index) => {
+  ids.forEach((bizId) => {
     const collected = byId.get(bizId);
     let status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
     let reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id" : undefined);
-    const reportPath = collected ? join(collected.request.outputDir, "report.html") : "";
-    if (collected) {
-      try { writeLogHtmlReport(collected.request.outputDir, reportPath, collect.profileName); }
-      catch (error) {
-        status = CommandStatus.Failed;
-        reason = error instanceof Error ? error.message : String(error);
-        recordFailureBundle({ bundleDir: collected.request.outputDir, collectCode: 1, reason });
-      }
-    }
     items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}) });
-    return { key: `biz-${index + 1}`, label: bizId,
-      status: existsSync(reportPath) ? "delivered" as const : "failed" as const,
-      html: existsSync(reportPath) ? readFileSync(reportPath, "utf8") : failedReportHtml(`Log 诊断失败：${bizId}`, reason ?? "未形成诊断报告") };
-  });
-  writeTabbedReport(join(staging, "report.html"), {
-    title: "doctor Log 日志报告", description: "按 Biz ID 独立筛选与诊断", ariaLabel: "Biz ID 日志诊断结果", tabs,
   });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
     ...item, artifact_ids: artifacts.map(artifact => artifact.id),

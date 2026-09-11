@@ -1,8 +1,8 @@
-import type { CommandStatus, CommandArtifact } from "../command";
 import type {
   ServiceCaseObservation,
   ServiceCaseVerdict,
 } from "@compforge/doctor-plugin";
+import type { CommandArtifact, CommandResult, CommandStatus } from "../command";
 
 export interface EvalCliOpts {
   service?: string;
@@ -46,6 +46,7 @@ export interface EvalCaseResult {
 export type EvalEvidenceStatus = CommandStatus | "unavailable";
 
 export interface EvalEvidenceResult {
+  readonly result?: CommandResult<unknown>;
   status: EvalEvidenceStatus;
   artifacts?: readonly CommandArtifact[];
   reason?: string;

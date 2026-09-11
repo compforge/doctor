@@ -1,3 +1,6 @@
+import type { TraceContributions } from "@compforge/trace-harness";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { TraceStats } from "./probe";
 
 export function buildTraceSummary(input: {
@@ -32,4 +35,36 @@ export function buildTraceSummary(input: {
   lines.push("span 原始数据见 `spans.jsonl`（每行一个 jaeger-span `_source`，可直接作 trace 离线分析输入）。");
   lines.push("交互调用栈见 `trace.html`（node tree、节点详情、span attrs 与火焰图）。");
   return lines.join("\n");
+}
+
+/** Local evidence loading stays alive until every offline detail has been prepared. */
+export async function renderTraceEvidence(outputDir: string, traceId: string, contributions?: TraceContributions): Promise<void> {
+  const {
+    genAiSpecs,
+    JaegerFileSource,
+    TraceHarness,
+  } = await import("@compforge/trace-harness");
+  const harness = new TraceHarness(contributions ?? { specs: genAiSpecs() });
+  // Probe owns remote reads. Analysis dependencies resolve only against the downloaded evidence.
+  const session = harness.open(new JaegerFileSource(join(outputDir, "spans.jsonl")), {
+    config: { activeTraces: 1 },
+  });
+  try {
+    const dataset = await session.select({ trace_ids: [traceId], limit: 1 });
+    const lease = await session.tree(dataset, traceId);
+    try {
+      const analysis = await session.analyze(lease.analysis);
+      // The saved HTML must keep every span detail available after the session is closed.
+      await session.prepareView(analysis, { full: true });
+      writeFileSync(
+        join(outputDir, "trace.html"),
+        harness.renderInteractive(analysis.trace, analysis.findings, { measurements: analysis.measurements }),
+        "utf-8",
+      );
+    } finally {
+      await lease.close();
+    }
+  } finally {
+    await session.close();
+  }
 }

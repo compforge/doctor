@@ -33,10 +33,11 @@ Execute（Core 驱动）
   → 汇总 Observations，构建 Evidence
   → Detector(Evidence) [Core Detector + Plugin Service Detector]
   → Findings / Coverage / Diagnosis
-  → Render（领域输出投影，触发位置沿用现状）
   ↓
 Finalize
-  → Artifact / Bundle
+  → 释放共享 Client
+  → 根 CommandSpec.render（本地领域页面 / 子报告组合）
+  → Report / Artifact / Bundle
   → Delivery / Cleanup / exit status
 ```
 
@@ -55,7 +56,7 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 | Finalize | 驱动领域 Renderer，组装 Artifact/Bundle，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
 
 Plugin 不必在每个阶段都有可执行逻辑。Prepare 中它主要提供声明，Execute 中贡献业务采集和判断，
-Finalize 则由 Core 收口。Renderer 的领域逻辑与当前触发位置仍归 `collect/<domain>/render`；Finalize 只消费已准备的产物。
+Finalize 则由 Core 收口。Renderer 的领域逻辑归 Command 所属模块，通过 `CommandSpec.render` 在根 Finalize 中驱动；只消费本地结果与证据。
 
 ## Execute 数据模型
 
@@ -192,6 +193,11 @@ Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束
 
 ### 结果与 Finalize
 
+每个提供报告的 Command 在 `CommandSpec<Input, Output>` 上声明
+`render(context: RenderContext, result: CommandResult<Output>): Promise<Report>`。领域 renderer 拥有页面布局，
+组合 renderer 显式调用子 renderer、组织 Report；无报告的命令可以省略 render。四种 Command / 数据场景
+及导航规则见 [Command 渲染与报告组合](rendering.md)。
+
 `CommandStatus` 统一定义 `ok / partial / failed / cancelled` 四种最终执行状态。它描述命令完成度；
 业务错误、Finding severity 和 Evidence Coverage 各自保留领域含义。父命令依据自己的目标汇总子结果：
 部分采集失败但仍形成有效结果时为 partial；用户只看 Overview 并拒绝可选采集属于正常完成。
@@ -199,10 +205,18 @@ Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束
 根 CLI 将结果映射为退出码：ok 和 partial 为 0，failed 为非零，cancelled 为 130。子命令不设置
 进程退出码，也不调用根入口的最终交付。
 
-Finalize 只执行一次，先销毁共享 Client；清理失败记录错误，仍继续交付证据。随后消费根结果纳入的 Artifacts，统一处理路径、格式、Bundle、Delivery 和临时产物
-清理。报告名称由相应调用拥有，最外层决定最终交付名称。交付失败时保留源产物以便恢复。
+Finalize 只执行一次，先销毁共享 Client；清理失败记录错误，仍继续渲染与交付。HTML / Bundle 通过根
+CommandSpec.render 生成显式 Report，JSON / Markdown 直接交付结构化证据。RenderContext 只提供本地
+读写和子报告渲染；同一执行结果的并发引用共用一次 render，同一 Artifact 的同一页面只生成一次。
+它不提供远端 Client 或命令执行入口。子 renderer 失败仍保留采集状态，单独记录报告错误，其他页面
+继续交付。渲染或交付失败时保留源产物，根退出码非零；取消优先返回 130。
+
+Delivery 根据 Report 的 Command section、可选业务对象和 Artifact 页面引用，生成一个离线 HTML；
+不按目录名猜测导航，也不反解析子 HTML。归档、路径、格式和临时产物清理由根 Delivery 统一负责。
+报告名称由相应调用拥有，最外层决定最终交付名称。
 
 Delivery 为每份产物分配独立归档位置，并生成根 manifest，统一记录 Artifact ID 与 Bundle 相对路径。
+Bundle 根 `report.html` 与外置 HTML 使用同一份完整报告；根 manifest 和 AGENTS.md 都指向它。
 Collect manifest 通过 artifact_ids 引用证据；多个 Collect 可以引用同一份 Inspect/Tenant。AGENTS.md 导航
 与打包使用同一份路径映射，领域目录内部的相对路径保持不变。单次和组合命令遵循相同布局，归档路径
 不由各 command 猜测或拼接。根索引不保存 Doctor Host 的临时绝对路径。
@@ -273,6 +287,7 @@ Model discovery、Case、Trace、Store 等能力可以被多个主路径复用�
 ```text
 cli/src/
 ├── app/                 Prepare / Execute / Finalize composition root
+├── report/              Report、RenderContext、单文件阅读容器
 ├── command/             CommandContext、Target、access 与审批契约
 ├── collect/
 │   ├── protocol.ts      Fact、Observation、Finding、Coverage 共享协议

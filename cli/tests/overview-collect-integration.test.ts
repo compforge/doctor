@@ -1,20 +1,20 @@
-import { readReportArchive } from "../src/collect/output/report-archive";
-import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandContext, CommandStatus, defineCommand, type CommandInput, type CommandSpec } from "../src/command";
-import { collectOverviewSamples } from "../src/overview/collect";
-import { COLLECT_KINDS, resolveCollectKinds, type CollectKind } from "../src/collect/composite";
-import { inspectCommand } from "../src/collect/inspect/command";
-import { tenantCommand } from "../src/collect/tenant/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
+import { COLLECT_KINDS, collectCommand, resolveCollectKinds, type CollectKind } from "../src/collect/composite";
 import { dataCommand } from "../src/collect/data/command";
-import { traceCommand } from "../src/collect/trace/command";
+import { inspectCommand } from "../src/collect/inspect/command";
 import { logCommand } from "../src/collect/log/command";
 import { metricCommand } from "../src/collect/metric/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { tenantCommand } from "../src/collect/tenant/command";
+import { traceCommand } from "../src/collect/trace/command";
+import { CommandContext, CommandStatus, defineCommand, type CommandInput, type CommandSpec } from "../src/command";
+import { collectOverviewSamples } from "../src/overview/collect";
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { fixtureReport, readReport, renderForDelivery } from "./report-fixture";
 
 // Keep the real Overview -> Collect delegation and CommandSpec wrappers; only replace external work.
 test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and shared Inspect/Tenant evidence", async concurrency => {
@@ -40,7 +40,11 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       return { status: kind === "tenant" ? CommandStatus.Partial : CommandStatus.Ok, output: undefined, artifacts: [] };
     } });
     const spy = spyOn(command, "run").mockImplementation(replacement.run);
-    restore.push(() => spy.mockRestore());
+    const renderSpy = spyOn(command, "render").mockImplementation(async (_renderer, result) => {
+      const rendered = fixtureReport(context).report;
+      return { ...rendered, sections: rendered.sections.filter(section => section.id === kind).map(section => ({ ...section, status: result.status })) };
+    });
+    restore.push(() => { spy.mockRestore(); renderSpy.mockRestore(); });
   }
   replace(inspectCommand, "inspect");
   replace(tenantCommand, "tenant");
@@ -65,7 +69,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       expect(manifest.steps.find((step: { id: string }) => step.id === "tenant").status).toBe("partial");
     }
     const output = join(root, "overview.html");
-    expect(await deliverCommandArtifacts(context, { output }, 0, "doctor overview")).toBeTrue();
+    expect(await deliverCommandArtifacts(context, { output }, 0, "doctor overview", await renderForDelivery(context, collectCommand, result))).toBeTrue();
     const archive = join(root, "overview.tar.gz");
     const index = readBundleIndex(archive, "overview");
     expect(index.artifacts).toHaveLength(result.artifacts.length);
@@ -93,11 +97,10 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
     const agents = readBundleText(archive, "overview/AGENTS.md");
     for (const artifact of index.artifacts) if (artifact.report) expect(agents).toContain(artifact.report);
     const html = readFileSync(output, "utf8");
-    const report = readReportArchive(html)!;
+    const report = readReport(html);
     for (const kind of ["inspect", "tenant"]) {
-      expect(html).toContain(`data-kind="${kind}"`);
-      expect(report.index.tabs.filter(tab => tab.key === kind)).toHaveLength(1);
-      expect(Buffer.from(report.entries[report.index.tabs.find(tab => tab.key === kind)!.entry!]!).toString()).toContain(`${kind} evidence 1`);
+      expect(report.index.sections.filter(section => section.id === kind)).toHaveLength(1);
+      expect(Buffer.from(report.entries[report.index.sections.find(section => section.id === kind)!.pages[0]!.entry!]!).toString()).toContain(`${kind} evidence 1`);
     }
   } finally {
     for (const undo of restore) undo();

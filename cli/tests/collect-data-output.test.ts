@@ -1,22 +1,24 @@
-import { readBundleIndex, readBundleText } from "./bundle-fixture";
-import { commandExitCode } from "../src/app/command";
-import { expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   createServiceCatalog,
   type PluginContext,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { commandExitCode } from "../src/app/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 import {
   dataServicesForBizQuery,
   prepareDataCommand,
   runCollectData,
 } from "../src/collect/data";
+import { dataCommand } from "../src/collect/data/command";
 import { CommandContext } from "../src/command";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
+import { renderForDelivery } from "./report-fixture";
 
 const service = "sample-api";
 const plugin = {
@@ -279,7 +281,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       output: requestedOutput,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, commandExitCode(code), "doctor data"))
+    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code)))
       .toBe(true);
 
     const delivered = JSON.parse(readFileSync(outputPath, "utf8"));
@@ -334,7 +336,7 @@ test("doctor data 批量 JSON 保留汇总和各 biz-id 的 Artifact 身份", as
       output: outputPath,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, commandExitCode(code), "doctor data"))
+    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code)))
       .toBe(true);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
@@ -368,7 +370,7 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
       output,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, commandExitCode(code), "doctor data")).toBe(true);
+    expect(await deliverCommandArtifacts(context, { output }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code))).toBe(true);
 
     expect(existsSync(htmlPath)).toBe(true);
     expect(existsSync(bundlePath)).toBe(true);
@@ -377,7 +379,7 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["report"]);
     expect(entries).toContain("report/AGENTS.md");
     const index = readBundleIndex(bundlePath, "report");
-    const data = index.artifacts.find(artifact => artifact.command === "data")!;
+    const data = index.artifacts.find(artifact => artifact.command === "data" && artifact.report)!;
     expect(entries).toContain(`report/${data.report}`);
     expect(listing).toContain("/report.html");
     expect(listing).toContain("/diagnosis.json");
