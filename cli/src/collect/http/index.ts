@@ -417,7 +417,7 @@ export async function runCollectHttp(
         && observation.entrypointId === request.entrypointId
         && observation.round === round
         && observation.response.captureComplete,
-    )),
+    ) ? "sufficient" : "insufficient"),
   );
 
   const generated = writeHttpArtifact(

@@ -216,11 +216,11 @@ export async function runCollectMcp(
       startedAt,
       finishedAt: new Date().toISOString(),
     });
-    const collectCode = forcedCode ?? evaluateCollectOutcome([...requiredEvidence].map((id) =>
-      bundle.getSteps().some((step) =>
-        step.id === id && (step.status === "ok" || step.status === "unnecessary")
-      )
-    )).exitCode;
+    const collectCode = forcedCode ?? evaluateCollectOutcome([...requiredEvidence].map((id) => {
+      const status = bundle.getSteps().find((step) => step.id === id)?.status;
+      if (status === "ok" || status === "unnecessary") return "sufficient";
+      return status === "partial" ? "partial" : "insufficient";
+    })).exitCode;
     if (collectCode === 130) {
       return 130;
     }

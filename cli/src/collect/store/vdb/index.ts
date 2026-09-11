@@ -192,8 +192,8 @@ export async function runStoreVdb(
   const healthCoverage = diagnosis.coverage.find((item) => item.goal === "cluster-health");
   const capacityCoverage = diagnosis.coverage.find((item) => item.goal === "capacity");
   const outcome = evaluateCollectOutcome([
-    healthCoverage?.status === "sufficient",
-    capacityCoverage?.status !== "insufficient",
+    healthCoverage?.status ?? "insufficient",
+    capacityCoverage?.status ?? "insufficient",
   ]);
   return finish(outcome.exitCode, summary);
 }

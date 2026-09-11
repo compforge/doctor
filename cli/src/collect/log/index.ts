@@ -339,7 +339,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
     startedAt, finishedAt: new Date().toISOString(),
   });
   log(`[collect] ${config.bizId}: ${formatLogCaptureStats(rendered.stats)}`);
-  const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status === "sufficient"));
+  const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
   return { status: collectCommandOutcome(outcome).status,
     ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {}) };
 }

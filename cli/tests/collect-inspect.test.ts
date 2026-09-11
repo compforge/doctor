@@ -51,7 +51,9 @@ async function runInspectWithDelivery(
 ): Promise<number> {
   const context = createCommandContext();
   const code = await runCollectInspect(opts, plugin, context, executor);
-  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect", await renderForDelivery(context, inspectCommand, code))).toBe(true);
+  const rendered = await renderForDelivery(context, inspectCommand, code);
+  expect(rendered.context.failures).toEqual([]);
+  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect", rendered)).toBe(true);
   return commandExitCode(code);
 }
 

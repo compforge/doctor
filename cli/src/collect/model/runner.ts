@@ -227,7 +227,7 @@ export async function runModelDiagnosis(
     }
     printFindings(diagnosis.findings);
     const outcome = evaluateCollectOutcome(
-      diagnosis.coverage.map((item) => item.status === "sufficient"),
+      diagnosis.coverage.map((item) => item.status),
     );
     if (outcome.exitCode !== 0) {
       recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode });

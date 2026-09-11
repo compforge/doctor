@@ -327,8 +327,8 @@ export async function runCollectRedis(
     prefixMemoryPieCharts = buildRedisPrefixMemoryPieCharts(diagnosis);
     ttlPieCharts = buildRedisTtlPieCharts(diagnosis);
     const outcome = evaluateCollectOutcome([
-      facts.capabilities.status === "collected",
-      ...diagnosis.coverage.map((item) => item.status === "sufficient"),
+      facts.capabilities.status === "collected" ? "sufficient" : "insufficient",
+      ...diagnosis.coverage.map((item) => item.status),
     ]);
     if (outcome.evidence === "partial") {
       terminalStdout.warning("[collect] 部分完成：报告中已标明缺失证据。\n");

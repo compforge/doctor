@@ -100,9 +100,9 @@ export async function runStoreDb(
   const observations = groupDbObservations(diagnosis.evidence.observations);
   const coverage = new Map(diagnosis.coverage.map((item) => [item.goal, item.status]));
   const outcome = evaluateCollectOutcome([
-    coverage.get("health") === "sufficient",
-    coverage.get("capacity") === "sufficient",
-    coverage.get("load") === "sufficient",
+    coverage.get("health") ?? "insufficient",
+    coverage.get("capacity") ?? "insufficient",
+    coverage.get("load") ?? "insufficient",
   ]);
   return finish(outcome.exitCode, buildDbSummary(config, facts, observations));
 }

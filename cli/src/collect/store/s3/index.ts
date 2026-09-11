@@ -105,9 +105,9 @@ export async function runStoreS3(
   const observations = groupS3Observations(diagnosis.evidence.observations);
   const coverage = new Map(diagnosis.coverage.map((item) => [item.goal, item.status]));
   const outcome = evaluateCollectOutcome([
-    coverage.get("bucket-access") !== "insufficient",
-    coverage.get("capacity") !== "insufficient",
-    coverage.get("object-inventory") !== "insufficient",
+    coverage.get("bucket-access") ?? "insufficient",
+    coverage.get("capacity") ?? "insufficient",
+    coverage.get("object-inventory") ?? "insufficient",
   ]);
   return finish(
     outcome.exitCode,

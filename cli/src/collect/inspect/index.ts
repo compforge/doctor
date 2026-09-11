@@ -187,9 +187,9 @@ export async function runCollectInspect(
     finishedAt: new Date().toISOString(),
   });
 
-  const fail = async (reason: string): Promise<number> => {
+  const fail = (reason: string): number => {
     bundle.settle(reason);
-    bundle.writeSummary(diagnosis ? buildInspectSummary(diagnosis) : `# Service Inspect 失败\n\n${reason}\n`);
+    bundle.writeSummary(`# Service Inspect 失败\n\n${reason}\n`);
     writeManifest();
     recordFailureBundle({
       bundleDir: staging,
@@ -226,16 +226,15 @@ export async function runCollectInspect(
     reportError(error, { context: "doctor inspect/diagnosis", summary: "Service Inspect 失败" });
     diagnosisFailure = error instanceof Error ? error.message : String(error);
   }
-  if (diagnosisFailure || !diagnosis) return commandOutcome(await fail(diagnosisFailure ?? "配置诊断未形成结果"));
+  if (diagnosisFailure || !diagnosis) return commandOutcome(fail(diagnosisFailure ?? "配置诊断未形成结果"));
 
-  const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status === "sufficient"));
-  if (outcome.exitCode !== 0) {
-    const reason = diagnosis.coverage.flatMap((item) => item.missingEvidence).join("；") || "未取得完整配置证据";
-    return commandOutcome(await fail(reason));
-  }
-
+  const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
   bundle.writeSummary(buildInspectSummary(diagnosis));
   writeManifest();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
+  if (outcome.exitCode !== 0) {
+    const reason = diagnosis.coverage.flatMap((item) => item.missingEvidence).join("；") || "未取得完整配置证据";
+    recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode, reason });
+  }
   return collectCommandOutcome(outcome);
 }
