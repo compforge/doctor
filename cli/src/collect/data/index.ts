@@ -1,38 +1,36 @@
-import { projectDataFacts } from "./projection";
-import { CommandInputError, CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { CommandContext } from "../../command";
+import { CommandInputError, CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollectBatch } from "../engine";
-import type { CommandContext } from "../../command";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { writeHtmlReport } from "../output/html";
-import { failedReportHtml, writeTabbedReport } from "../output/tabbed-report";
-import { resolveDataServiceSelection } from "./config";
-import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataContributionInspect } from "./capability/collect";
+import { resolveDataServiceSelection } from "./config";
 import { prepareDataCommand, type DataCommandContext } from "./context";
+import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   CollectDataCliOpts,
-  DataDiagnosis,
-  DataOutput,
   DataConfig,
+  DataDiagnosis,
   DataFacts,
+  DataOutput,
 } from "./model";
 import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
-import { buildDataHtml, buildDataSummary } from "./render";
+import { projectDataFacts } from "./projection";
+import { buildDataSummary } from "./render";
 
+export * from "./capability/collect";
 export * from "./config";
 export * from "./context";
-export * from "./capability/collect";
 export * from "./detector";
 export * from "./model";
 
@@ -128,7 +126,6 @@ export async function runCollectData(
 
   const items: DataOutput["items"][number][] = [];
   const groups: Record<string, DataDiagnosis | { error: string }> = {};
-  const tabs = [];
   for (const [index, target] of targets.entries()) {
     const result = diagnoses[index]!;
     const diagnosis = result.status === "fulfilled" ? result.value.diagnosis : undefined;
@@ -150,17 +147,12 @@ export async function runCollectData(
     }
     items.push({ bizId: target.bizId, status, artifacts: [target.artifact], diagnosis, ...(reason ? { reason } : {}) });
     groups[target.bizId] = diagnosis ?? { error: reason ?? "未形成诊断结果" };
-    const html = join(target.artifact.path, "report.html");
-    tabs.push({ key: `biz-${index + 1}`, label: target.bizId,
-      status: existsSync(html) ? "delivered" as const : "failed" as const,
-      html: existsSync(html) ? readFileSync(html, "utf8") : failedReportHtml(`Data 诊断失败：${target.bizId}`, reason ?? "未形成诊断报告") });
+
   }
   writeDataManifest(bundle, config, plugin, services, facts, startedAt);
   bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n`);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
-  if (config.format !== "json") writeTabbedReport(join(staging, "report.html"), {
-    title: "doctor Data 业务数据汇集报告", description: "按 Biz ID 独立诊断", ariaLabel: "Biz ID 数据诊断结果", tabs,
-  });
+
   return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items },
     artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
 }
@@ -199,7 +191,5 @@ function writeDataEvidence(
   writeDataManifest(bundle, config, plugin, services, facts, startedAt);
   if (diagnosis) writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (reason) recordFailureBundle({ bundleDir: bundle.dir, collectCode: 1, reason });
-  else if (diagnosis && config.format !== "json") writeHtmlReport(bundle.dir, join(bundle.dir, "report.html"), {
-    title: "doctor Data 业务数据汇集报告", profileName: config.profileName, summaryHtml: buildDataHtml(diagnosis),
-  });
+
 }

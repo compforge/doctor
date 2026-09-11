@@ -1,6 +1,6 @@
-import { CommandStatus, commandOutcome } from "../src/command";
-import { expect, mock, test } from "bun:test";
 import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResult, type OverviewQuery } from "@compforge/doctor-plugin";
+import { expect, mock, test } from "bun:test";
+import { CommandStatus, commandOutcome } from "../src/command";
 import { runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
 import { overviewWindow, selectOverviewFacet } from "../src/overview/selection";
 import type { promptListedChoice } from "../src/terminal/selection";
@@ -137,7 +137,7 @@ test("overview capability validates static facet identity before accessing the t
 
 test("report preserves source IDs, text data and failed providers and escapes HTML", async () => {
   const { CommandContext } = await import("../src/command");
-  const { writeOverviewReport } = await import("../src/overview/report");
+  const { writeOverviewEvidence, buildOverviewHtml } = await import("../src/overview/report");
   const { readFileSync, rmSync } = await import("node:fs");
   const { join } = await import("node:path");
   const result = await runOverviewSession([provider("api")], query, actions({
@@ -147,11 +147,11 @@ test("report preserves source IDs, text data and failed providers and escapes HT
     sample: async () => ({ bizId: "trace-1", source: { kind: "message_id", value: "m1" } }),
   }));
   const context = new CommandContext({});
-  const directory = writeOverviewReport(result, context);
+  const directory = writeOverviewEvidence(result, context);
   try {
-    writeOverviewReport(result, context, directory);
+    writeOverviewEvidence(result, context, directory);
     expect(context.artifacts.list()).toHaveLength(1);
-    const html = readFileSync(join(directory, "report.html"), "utf8");
+    const html = buildOverviewHtml(result);
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
     expect(html).toContain("message_id: m1");

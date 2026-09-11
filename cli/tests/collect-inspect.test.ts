@@ -1,8 +1,3 @@
-import { commandExitCode } from "../src/app/command";
-import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import {
   createServiceCatalog,
   defineObservation,
@@ -11,22 +6,29 @@ import {
   type PluginDefinition,
   type ServiceEvidenceFact,
 } from "@compforge/doctor-plugin";
+import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { expect, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { examplePlugin } from "../../plugins/example/src";
+import { commandExitCode } from "../src/app/command";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 import {
   makeInspectDetectors,
   projectInspectServiceFacts,
-  resolveInspectDeploymentSelection,
   resolveInspectDependencySelection,
+  resolveInspectDeploymentSelection,
   runCollectInspect,
   type InspectConfig,
   type InspectEvidence,
   type InspectFacts,
 } from "../src/collect/inspect";
-import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { inspectCommand } from "../src/collect/inspect/command";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
-import { CommandContext } from "../src/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
+import { CommandContext } from "../src/command";
+import { renderForDelivery } from "./report-fixture";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -49,7 +51,7 @@ async function runInspectWithDelivery(
 ): Promise<number> {
   const context = createCommandContext();
   const code = await runCollectInspect(opts, plugin, context, executor);
-  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect")).toBe(true);
+  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect", await renderForDelivery(context, inspectCommand, code))).toBe(true);
   return commandExitCode(code);
 }
 

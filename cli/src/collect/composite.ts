@@ -4,10 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
 import {
-  CommandStatus, CommandInputError, defineCommand, aggregateCommandStatus,
-  type CommandInput, type CommandContext, type CommandResult,
+  aggregateCommandStatus,
+  CommandInputError,
+  CommandStatus,
+  defineCommand,
+  type CommandContext,
+  type CommandInput,
+  type CommandResult,
 } from "../command";
 import type { CommandHostOption } from "../command/options";
+import { failureReport } from "../report/context";
+import { composeReports } from "../report/model";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { dataCommand } from "./data/command";
 import { createInspectInput, inspectCommand } from "./inspect/command";
@@ -229,6 +236,21 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
 export function createCollectCommand(delegate?: CollectDelegate) {
   return defineCommand<CollectInput, CollectOutput>({
     name: "doctor collect",
+    render: async (context, result) => {
+      if (!result.output) return failureReport("doctor collect", result);
+      const reports = [];
+      for (const step of result.output?.steps ?? []) {
+        switch (step.kind) {
+          case "inspect": reports.push(await context.render(inspectCommand, step.result)); break;
+          case "tenant": reports.push(await context.render(tenantCommand, step.result)); break;
+          case "data": reports.push(await context.render(dataCommand, step.result)); break;
+          case "trace": reports.push(await context.render(traceCommand, step.result)); break;
+          case "log": reports.push(await context.render(logCommand, step.result)); break;
+          case "metric": reports.push(await context.render(metricCommand, step.result)); break;
+        }
+      }
+      return composeReports("doctor collect", reports);
+    },
     plugin: { command: "doctor collect", needs: [] },
     validate: (input) => {
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {

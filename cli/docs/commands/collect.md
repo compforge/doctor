@@ -21,11 +21,11 @@ Application 数据按查询粒度进入不同数据面：Tenant 承载 tenant-id
 
 1. 接收采集面需要的作用域参数：Data/Trace/Log 使用一个或多个业务 ID，Tenant 使用 tenant ID/name；
    交互终端缺省时多选采集命令，非交互模式默认选择全部，也可用 `--include` 显式指定。
-2. 合并所选命令的 Plugin capability contract，并在访问目标环境前完成检查。
+2. 各子命令按自己的 Plugin capability contract 检查前提，单个采集面不可用不阻断其它采集面。
 3. 依次调用所选的 Inspect、Tenant、Data、Trace、Log 和 Metric collector。集合层不读取外部资源，也不实现
    降级查询。
-4. 每个 collector 按本次 format 准备并注册自己的 Artifacts。集合层只触发调用；统一 Delivery 把多个
-   command 的 HTML 合成顶部 Tab，并把全部 artifact 目录压入同一个 Bundle。单项失败不会丢弃其它产物。
+4. 每个 collector 注册自己的 Artifacts 并返回结构化结果。根 Finalize 调用 Collect renderer，显式组合
+   子 Command 的 Report；Delivery 生成离线 HTML 并将报告和全部 Artifacts 放入一个 Bundle。
 
 ## 关键设计
 
@@ -62,12 +62,15 @@ Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、
 ### 部分成功仍然交付
 
 只要至少一个所选 collector 形成报告，集合命令即可进入统一 Delivery；全部数据面都未形成报告时才返回
-失败。未指定 `--format` 时同时输出组合 HTML 和 `tar.gz`：HTML 的 Tab 由 Delivery 根据各 command 注册的
-报告生成，Bundle 根目录的 `manifest.json` 记录 Doctor/Plugin 版本、采集目标、安全参数、时间范围和各
-collector 的终态，Inspect/Tenant/Data/Trace/Log/Metric 的完整 artifact 目录则保留各自 Evidence。每个 Tab
+失败。未指定 `--format` 时同时输出组合 HTML 和 `tar.gz`：HTML 导航由 Collect renderer 显式组合，
+Command tabs 与业务对象选择联动；共享环境、租户和时间窗口各自保留作用域。Bundle 根 `report.html`
+是完整报告，根 `manifest.json` 定位 Artifact；Collect 自己的 manifest 记录采集目标、参数、窗口和各
+collector 的终态，领域 Artifact 目录保留各自 Evidence。每个 Tab
 内的 Finding、Coverage 和完整度仍由原 collector 负责；集合 manifest 仅提供机器分析入口，不增加 HTML
 汇总页。
 
 单个 biz-id 的默认文件名为 `doctor-collect-<safe-biz-id>-<timestamp>.html/.tar.gz`；多个 biz-id 或不使用
 biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`。组合命令只向 Artifact 注册表
 提供该 basename，最终路径与格式仍由统一 Delivery 决定；自动化调用可用 `--output` 指定稳定前缀。
+
+渲染契约与四种阅读场景见 [Command 渲染与报告组合](../rendering.md)。

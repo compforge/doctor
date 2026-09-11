@@ -1,19 +1,18 @@
-import { commandOutcome, type CommandResult } from "../../command";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { commandOutcome, type CommandResult } from "../../command";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { writeHtmlReport } from "../output/html";
 import { resolveMetricConfig } from "./config";
 import { buildMetricCoverage, buildMetricEvidence, metricDetectors } from "./detector";
 import { makeMetricSourceInspect } from "./fact/inspect";
@@ -23,12 +22,11 @@ import type {
   MetricConfig,
   MetricDiagnosis,
   MetricInspectionFacts,
-  MetricWindowObservation,
   MetricRunControl,
+  MetricWindowObservation,
 } from "./model";
 import { prepareMetricSource, type MetricSourcePreparation } from "./preparation";
 import { makeMetricProbes } from "./probe";
-import { buildMetricSections, buildMetricSummary } from "./render";
 import { selectedMetricStoreKinds } from "./store/collector";
 
 export * from "./config";
@@ -169,24 +167,6 @@ export async function runCollectMetric(
   bundle.writeSummary("# Metric diagnosis\n");
   writeMetricManifest(bundle, config, facts, diagnosis);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
-  const reportPath = join(staging, "report.html");
-  try {
-    writeHtmlReport(bundle.dir, reportPath, {
-      title: "doctor Metric 诊断报告",
-      profileName: config.profileName,
-      summaryHtml: buildMetricSummary(diagnosis),
-      sections: buildMetricSections(diagnosis),
-    });
-  } catch (error) {
-    reportError(error, { context: "doctor metric/html-report", summary: "Metric HTML 报告生成失败" });
-    const reason = error instanceof Error ? error.message : String(error);
-    recordFailureBundle({
-      bundleDir: staging,
-      collectCode: 1,
-      reason,
-    });
-    return commandOutcome(1);
-  }
   const outcome = evaluateCollectOutcome(
     diagnosis.coverage.map((item) => item.status === "sufficient"),
   );

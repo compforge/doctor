@@ -1,8 +1,8 @@
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CommandContext } from "../command";
 import { escapeHtml } from "../collect/output/report/components/content";
+import type { CommandContext } from "../command";
 import { terminalStdout } from "../terminal/output";
 import type { OverviewResult } from "./flow";
 
@@ -20,11 +20,16 @@ export function printOverview(result: OverviewResult): void {
   }
 }
 
-export function writeOverviewReport(
+export function writeOverviewEvidence(
   result: OverviewResult, context: CommandContext,
   directory = mkdtempSync(join(tmpdir(), "doctor-overview-")),
 ): string {
   writeFileSync(join(directory, "diagnosis.json"), JSON.stringify(result, null, 2), { mode: 0o600 });
+  context.artifacts.add({ command: "overview", path: directory });
+  return directory;
+}
+
+export function buildOverviewHtml(result: OverviewResult): string {
   const sections = result.services.map((service) => `<h2>${escapeHtml(service.service)}</h2>`
     + (service.error ? `<p>查询失败：${escapeHtml(service.error)}</p>` : "")
     + service.facets.map((facet) => `<h3>${escapeHtml(facet.facetId)}</h3><p>${escapeHtml(facet.description)}</p>`
@@ -35,10 +40,8 @@ export function writeOverviewReport(
         return `<tr><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.data)} ${escapeHtml(entry.unit ?? "")}</td>`
           + `<td>${escapeHtml(sample?.bizId ?? sample?.error ?? (entry.canSample ? "未采集" : "不支持采样"))}${sample?.source ? `<br>${escapeHtml(sample.source.kind)}: ${escapeHtml(sample.source.value)}` : ""}</td></tr>`;
       }).join("") + `</table>${facet.entries.length ? "" : "<p>无值得注意的条目</p>"}`).join("")).join("");
-  writeFileSync(join(directory, "report.html"), `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Overview</title>
+  return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Overview</title>
 <style>body{font:15px system-ui;margin:32px;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:10px;text-align:left;overflow-wrap:anywhere}h2{margin-top:32px}</style>
 <h1>Doctor Overview</h1><p>${escapeHtml(result.query.window.from)} → ${escapeHtml(result.query.window.to)} [from, to)</p>
-<p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · 采集状态: ${escapeHtml(result.collection)} ${escapeHtml(result.collectionError ?? "")}</p>${sections}</html>`, { mode: 0o600 });
-  context.artifacts.add({ command: "overview", path: directory });
-  return directory;
+<p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · 采集状态: ${escapeHtml(result.collection)} ${escapeHtml(result.collectionError ?? "")}</p>${sections}</html>`;
 }

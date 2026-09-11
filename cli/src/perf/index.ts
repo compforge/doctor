@@ -1,5 +1,10 @@
-import { join } from "node:path";
-import { copyFileSync } from "node:fs";
+import type {
+  PluginDefinition,
+  ServiceCaseObservation,
+  ServiceCaseRunner,
+  ServiceDefinition,
+  ServiceRequestIdentity,
+} from "@compforge/doctor-plugin";
 import {
   Engine,
   rampHold,
@@ -11,24 +16,17 @@ import {
   type TimedOutcome,
   type Workload,
 } from "@compforge/perf-harness";
-import type {
-  PluginDefinition,
-  ServiceCaseObservation,
-  ServiceCaseRunner,
-  ServiceDefinition,
-  ServiceRequestIdentity,
-} from "@compforge/doctor-plugin";
-import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
+import { resolveCaseRequestIdentity } from "../case";
+import { logCommand } from "../collect/log/command";
+import { metricCommand } from "../collect/metric/command";
+import { traceCommand } from "../collect/trace/command";
+import { CommandStatus, aggregateCommandStatus, resolveKubernetesCommandContext, type CommandContext, type CommandResult } from "../command";
+import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../command/kubernetes-target";
-import { logCommand } from "../collect/log/command";
-import { metricCommand } from "../collect/metric/command";
-import { traceCommand } from "../collect/trace/command";
 import { openPluginContext } from "../plugin/context";
-import { resolveKubernetesCommandContext } from "../command";
-import { approvalDeniedReason } from "../command/approval";
 import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
 import { promptListedChoice } from "../terminal/selection";
@@ -37,10 +35,8 @@ import {
   perfLevelsThrough,
   resolvePerfConfig,
 } from "./config";
-import { resolveCaseRequestIdentity } from "../case";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
 import { createPerfArtifact } from "./output";
-import { writePerfReport } from "./report";
 
 export * from "./config";
 export * from "./model";
@@ -505,8 +501,6 @@ export async function runPerf(
     samples,
     caseFacets: caseSet.facets,
   };
-  const reportPath = writePerfReport(result);
-  copyFileSync(reportPath, join(outputDir, "report.html"));
   const statuses = [run.passed ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
     [sample.trace.status, ...(sample.log ? [sample.log.status] : [])]
   ))];

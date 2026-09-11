@@ -37,6 +37,7 @@ export async function runCommand<Input extends CommandInput, Output>(
       if (result.reportName) context.artifacts.setReportName(result.reportName);
       process.exitCode = await finalizeCommand({
         command: spec.name, context, delivery: opts, code: commandExitCode(result),
+        render: renderer => renderer.render(spec, result),
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {

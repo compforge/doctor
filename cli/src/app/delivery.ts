@@ -1,17 +1,18 @@
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import type { CommandContext } from "../command";
 import {
   packArchiveEntries,
   resolveArchivePath,
   resolveDefaultReportPaths,
 } from "../collect/output/archive";
-import { writeTabbedReport } from "../collect/output/tabbed-report";
-import type { ReportTab } from "../collect/output/tabbed-report";
+import type { CommandContext } from "../command";
+import type { RenderContext } from "../report/context";
+import { renderReportHtml } from "../report/html";
+import type { Report } from "../report/model";
 import { terminalStderr, terminalStdout } from "../terminal/output";
-import { createBundleManifest, planBundleArtifacts } from "./bundle-layout";
 import { writeBundleAgents } from "./bundle-agents";
+import { createBundleManifest, planBundleArtifacts } from "./bundle-layout";
 
 export interface CommandDeliveryOptions {
   format?: string;
@@ -81,6 +82,7 @@ export async function deliverCommandArtifacts(
   options: CommandDeliveryOptions,
   commandCode: number,
   commandName?: string,
+  rendered?: { report: Report; context: RenderContext; preserveArtifacts?: boolean },
 ): Promise<boolean> {
   const artifacts = commandContext.artifacts.list();
   if (!artifacts.length) return true;
@@ -122,51 +124,22 @@ export async function deliverCommandArtifacts(
   }
   let ok = true;
 
+  let html: string | undefined;
+  if ((needsHtml || needsBundle) && rendered?.report.sections.length) {
+    try { html = renderReportHtml(rendered.report, rendered.context); }
+    catch (error) {
+      ok = false;
+      terminalStderr.error(`[delivery] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
+    }
+  }
   if (needsHtml) {
     try {
-      const reports = artifacts.filter((artifact) => existsSync(join(artifact.path, "report.html")));
-      if (!reports.length) throw new Error("诊断产物缺少 report.html");
-      if (reports.length === 1) {
-        copyFileSync(join(reports[0]!.path, "report.html"), htmlOutputPath!);
-      } else {
-        const grouped = new Map<string, typeof reports>();
-        for (const artifact of reports) {
-          grouped.set(artifact.command, [...(grouped.get(artifact.command) ?? []), artifact]);
-        }
-        const tabs: ReportTab[] = [...grouped].map(([command, commandArtifacts]) =>
-          commandArtifacts.length === 1
-            ? {
-                key: command,
-                label: command,
-                status: "delivered" as const,
-                html: readFileSync(join(commandArtifacts[0]!.path, "report.html"), "utf8"),
-              }
-            : {
-                key: command,
-                label: command,
-                status: "delivered" as const,
-                tabs: commandArtifacts.map((artifact, index) => ({
-                  key: `${command}-${index + 1}`,
-                  label: basename(artifact.path),
-                  status: "delivered" as const,
-                  html: readFileSync(join(artifact.path, "report.html"), "utf8"),
-                })),
-              },
-        );
-        writeTabbedReport(htmlOutputPath!, {
-          title: commandName ?? "doctor diagnosis",
-          description: "由 Delivery 汇总各 command 的 HTML 诊断产物",
-          ariaLabel: "诊断命令",
-          tabs,
-        });
-      }
-      chmodSync(htmlOutputPath!, 0o600);
+      if (!html) throw new Error("Command 未提供可阅读的报告");
+      writeFileSync(htmlOutputPath!, html, { mode: 0o600 });
       terminalStdout.success(`[delivery] HTML 报告: ${htmlOutputPath}\n`);
     } catch (error) {
       ok = false;
-      terminalStderr.error(
-        `[delivery] HTML 交付失败：${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      terminalStderr.error(`[delivery] HTML 交付失败：${error instanceof Error ? error.message : String(error)}\n`);
     }
   }
 
@@ -207,15 +180,19 @@ export async function deliverCommandArtifacts(
       const layout = planBundleArtifacts(artifacts);
       indexDirectory = mkdtempSync(join(tmpdir(), "doctor-delivery-index-"));
       const indexPath = join(indexDirectory, "manifest.json");
-      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout), null, 2)}\n`, { mode: 0o600 });
+      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout, html ? "report.html" : undefined), null, 2)}\n`, { mode: 0o600 });
       agentsPath = writeBundleAgents({
         command: commandName ?? "doctor diagnosis",
         commandCode,
         artifacts: layout,
+        report: html ? "report.html" : undefined,
       });
+      const reportPath = join(indexDirectory, "report.html");
+      if (html) writeFileSync(reportPath, html, { mode: 0o600 });
       packed = await packArchiveEntries(
         [...layout.map(({ artifact, path }) => ({ source: artifact.path, path })),
-          { source: indexPath, path: "manifest.json" }, { source: agentsPath, path: "AGENTS.md" }],
+          { source: indexPath, path: "manifest.json" }, { source: agentsPath, path: "AGENTS.md" },
+          ...(html ? [{ source: reportPath, path: "report.html" }] : [])],
         archivePath!,
       );
     } catch (error) {
@@ -234,7 +211,7 @@ export async function deliverCommandArtifacts(
     }
   }
 
-  if (ok) cleanupTemporaryArtifacts(artifacts.map((artifact) => artifact.path));
+  if (ok && !rendered?.preserveArtifacts) cleanupTemporaryArtifacts(artifacts.map((artifact) => artifact.path));
   else terminalStderr.error(`[delivery] 原始产物保留在: ${artifacts.map((artifact) => artifact.path).join(", ")}\n`);
   return ok;
 }

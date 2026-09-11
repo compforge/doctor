@@ -11,8 +11,9 @@ export function renderBundleAgents(input: {
   command: string;
   commandCode: number;
   artifacts: readonly BundleArtifact[];
+  report?: string;
 }): string {
-  const reports = input.artifacts.flatMap(artifact => artifact.report ? [artifact.report] : []);
+  const reports = [...(input.report ? [input.report] : []), ...input.artifacts.flatMap(artifact => artifact.report ? [artifact.report] : [])];
   const reportGuide = reports.length
     ? [
         "解压后可直接用浏览器打开以下完整相对路径；这是面向人的首选入口：",

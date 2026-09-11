@@ -2,6 +2,8 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { httpCommand } from "../src/app/core-commands";
+import { deliverCommandArtifacts } from "../src/app/delivery";
 import {
   captureHttpResponse,
   defaultHttpBundleName,
@@ -11,9 +13,9 @@ import {
   loadHttpScenario,
   parseHttpOutputFormat,
   renderHttpRequestAsCurl,
+  resolveHttpOutputPath,
   resolveHttpScenarioFile,
   resolveHttpScenarioRequests,
-  resolveHttpOutputPath,
   runCollectHttp,
   writeHttpScenarioExample,
 } from "../src/collect/http";
@@ -27,13 +29,13 @@ import type {
   HttpResponseObservation,
   SseResponseObservation,
 } from "../src/collect/shared/http/model";
+import { CommandContext, commandOutcome } from "../src/command";
 import {
   sendHttpRequest,
   type HttpTransportResponse,
   type InspectHttpEndpoint,
 } from "../src/infra/http";
-import { CommandContext } from "../src/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { readReport, renderForDelivery } from "./report-fixture";
 
 const encoder = new TextEncoder();
 
@@ -62,7 +64,7 @@ async function deliverHttp(
   options: { format?: string; output?: string },
   code: number,
 ): Promise<void> {
-  expect(await deliverCommandArtifacts(context, options, code, "doctor http")).toBe(true);
+  expect(await deliverCommandArtifacts(context, options, code, "doctor http", await renderForDelivery(context, httpCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }))).toBe(true);
 }
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
@@ -672,7 +674,7 @@ requests:
 
   expect(code).toBe(0);
   expect(call).toBe(2);
-  const html = readFileSync(`${output}.html`, "utf-8");
+  const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("doctor http 诊断报告");
   expect(html).toContain("执行位置：local");
   expect(html).toContain("存在偶现失败");
@@ -753,7 +755,7 @@ requests:
 
   expect(code).toBe(0);
   expect(call).toBe(3);
-  const html = readFileSync(`${output}.html`, "utf-8");
+  const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("从 edge-gateway 到 proxy 开始出现响应差异");
   expect(html).not.toContain("从 proxy 到 frontend 开始出现响应差异");
 });
@@ -790,7 +792,7 @@ requests:
 
   expect(code).toBe(1);
   expect(calls).toBe(0);
-  const html = readFileSync(`${output}.html`, "utf-8");
+  const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("missing.example.test:8080");
   expect(html).toContain("DNS 阶段不可达");
   expect(html).toContain("HTTP response observations: 0/1");

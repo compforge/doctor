@@ -1,26 +1,25 @@
-import { randomUUID } from "node:crypto";
-import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type {
   PluginDefinition,
   ServiceCaseObservation,
   ServiceCaseRunner,
   ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
-import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
+import type { Case, CaseSet } from "@compforge/spec-case/model";
+import { randomUUID } from "node:crypto";
+import { resolveCaseRequestIdentity } from "../case";
+import { dataServicesForBizQuery } from "../collect/data";
+import { dataCommand } from "../collect/data/command";
+import { logCommand } from "../collect/log/command";
+import { traceCommand } from "../collect/trace/command";
+import { aggregateCommandStatus, CommandStatus, resolveKubernetesCommandContext, type CommandContext, type CommandResult } from "../command";
+import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../command";
-import { approvalDeniedReason } from "../command/approval";
+import { openPluginContext } from "../plugin/context";
 import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
-import { openPluginContext } from "../plugin/context";
-import { resolveCaseRequestIdentity } from "../case";
-import { traceCommand } from "../collect/trace/command";
-import { logCommand } from "../collect/log/command";
-import { dataServicesForBizQuery } from "../collect/data";
-import { dataCommand } from "../collect/data/command";
 import {
   resolveEvalConfig,
   selectEvalCases,
@@ -152,7 +151,7 @@ function unavailable(reason: string): EvalEvidenceResult {
 
 function collected(result: CommandResult<unknown>, context: CommandContext): EvalEvidenceResult {
   context.artifacts.add(result.artifacts);
-  return { status: result.status, artifacts: result.artifacts,
+  return { result, status: result.status, artifacts: result.artifacts,
     reason: "reason" in result ? result.reason : undefined };
 }
 
@@ -335,7 +334,7 @@ export async function runEval(
     cases: results,
     evidence,
   };
-  writeEvalArtifact(artifact, run, caseSet, kube.profileName);
+  writeEvalArtifact(artifact, run, caseSet);
   if (signal.aborted) return { status: CommandStatus.Cancelled, output: run, artifacts: commandContext.artifacts.list() };
   const statuses = results.map((item) => item.observation ? CommandStatus.Ok : CommandStatus.Failed);
   if (lifecycleError || results.length !== cases.length) statuses.push(CommandStatus.Failed);

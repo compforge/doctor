@@ -1,16 +1,15 @@
-import { commandOutcome, type CommandResult } from "../../command";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
+import { commandOutcome, type CommandResult } from "../../command";
 import { resolveTenant } from "../../model";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
-import { evaluateCollectOutcome, collectCommandOutcome } from "../outcome";
-import { writeHtmlReport } from "../output/html";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { openTenantAccess } from "./access";
 import {
   parseTenantOutputFormat,
@@ -26,9 +25,7 @@ import type {
   TenantFacts,
 } from "./model";
 import {
-  buildTenantHtml,
-  buildTenantHtmlSections,
-  buildTenantSummary,
+  buildTenantSummary
 } from "./render";
 
 export * from "./access";
@@ -137,14 +134,6 @@ export async function runCollectTenant(
     });
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
 
-    if (format !== "json") {
-      writeHtmlReport(staging, join(staging, "report.html"), {
-        title: "doctor tenant",
-        profileName: config.profileName,
-        summaryHtml: buildTenantHtml(diagnosis),
-        sections: buildTenantHtmlSections(diagnosis),
-      });
-    }
     const outcome = evaluateCollectOutcome(
       diagnosis.coverage.map((item) => item.status !== "insufficient"),
     );

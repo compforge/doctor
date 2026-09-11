@@ -1,17 +1,19 @@
-import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { expect, mock, test } from "bun:test";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { commandExitCode, runCommand } from "../src/app/command";
+import { createCollectCommand } from "../src/collect/composite";
 import {
   CommandContext, CommandInputError, CommandStatus, commandOutcome, defineCommand,
   type CommandInput, type CommandResult, type EnvironmentRequirements,
 } from "../src/command";
-import { commandExitCode, runCommand } from "../src/app/command";
-import { createCollectCommand } from "../src/collect/composite";
-import { createPluginContext } from "../src/plugin/context";
 import { onCommandDispose } from "../src/command/execution-scope";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { createPluginContext } from "../src/plugin/context";
+import { composeReports } from "../src/report/model";
+import { readReport } from "./report-fixture";
 
 const plugin: PluginDefinition = { id: "test", version: "1.0.0", services: createServiceCatalog([]) };
 const makeContext = () => new CommandContext({}, undefined, { plugin });
@@ -191,20 +193,32 @@ test("only the root delivers and cleans child artifacts, including partial resul
   const output = join(root, "report.html");
   const previousExit = process.exitCode;
   let resourceClosed = false;
-  const child = defineCommand<CommandInput & { id: string }, void>({ name: "trace", run: async (ctx, { id }) => {
+  const child = defineCommand<CommandInput & { id: string }, void>({ name: "trace",
+    render: async (renderer, result) => {
+      expect(resourceClosed).toBeTrue();
+      return { title: "Trace", sections: [{ id: "trace", title: "Trace", status: result.status,
+        pages: result.artifacts.map(artifact => {
+          renderer.write(artifact, renderer.read(artifact, "evidence.html"));
+          return renderer.page(artifact, { title: "Trace", status: result.status });
+        }),
+      }] };
+    }, run: async (ctx, { id }) => {
     expect(existsSync(output)).toBe(false);
     const path = join(root, id);
     mkdirSync(path);
-    writeFileSync(join(path, "report.html"), `<html>${id}</html>`);
+    writeFileSync(join(path, "evidence.html"), `<html>${id}</html>`);
     ctx.artifacts.add({ command: "trace", path });
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
-  const parent = defineCommand<CommandInput, void>({ name: "overview", run: async (ctx) => {
+  const children: CommandResult<void>[] = [];
+  const parent = defineCommand<CommandInput, void>({ name: "overview",
+    render: async renderer => composeReports("Overview", await Promise.all(children.map(result => renderer.render(child, result)))),
+    run: async (ctx) => {
     await ctx.clients.get({ key: "shared", createClient: () => ({
       initialize: async () => {},
       dispose: async () => {
-        expect(existsSync(join(root, "first", "report.html"))).toBe(true);
-        expect(existsSync(join(root, "second", "report.html"))).toBe(true);
+        expect(existsSync(join(root, "first", "evidence.html"))).toBe(true);
+        expect(existsSync(join(root, "second", "evidence.html"))).toBe(true);
         resourceClosed = true;
       },
     }) });
@@ -213,6 +227,8 @@ test("only the root delivers and cleans child artifacts, including partial resul
       expect(result.status).toBe(CommandStatus.Partial);
       expect(existsSync(result.artifacts[0]!.path)).toBe(true);
       ctx.artifacts.add(result.artifacts);
+      children.push(result);
+      expect(existsSync(join(result.artifacts[0]!.path, "report.html"))).toBeFalse();
     }
     return { status: CommandStatus.Partial, output: undefined, artifacts: [] };
   } });
@@ -220,7 +236,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
     await runCommand(parent, { config: join(root, "absent.yaml"), output, format: "html" }, {}, { printProfile: false });
     expect(process.exitCode).toBe(0);
     expect(resourceClosed).toBe(true);
-    const report = readFileSync(output, "utf8");
+    const report = readReport(readFileSync(output, "utf8")).pages;
     expect(report).toContain("first");
     expect(report).toContain("second");
     expect(existsSync(join(root, "first"))).toBe(false);
@@ -236,7 +252,11 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-finalize-failure-"));
   const output = join(root, "report.html");
   const previousExit = process.exitCode;
-  const command = defineCommand<CommandInput, void>({ name: "overview", run: async ctx => {
+  const command = defineCommand<CommandInput, void>({ name: "overview",
+    render: async (renderer, result) => ({ title: "Overview", sections: [{ id: "overview", title: "Overview", status: result.status,
+      pages: result.artifacts.map(artifact => renderer.page(artifact, { title: "Overview", status: result.status })),
+    }] }),
+    run: async ctx => {
     await ctx.clients.get({ key: "broken-close", createClient: () => ({
       initialize: async () => {}, dispose: async () => { throw new Error("close failed"); },
     }) });
@@ -249,6 +269,6 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
   try {
     await runCommand(command, { config: join(root, "absent.yaml"), output, format: "html" }, {}, { printProfile: false });
     expect(process.exitCode).toBe(1);
-    expect(readFileSync(output, "utf8")).toContain("captured evidence");
+    expect(readReport(readFileSync(output, "utf8")).pages).toContain("captured evidence");
   } finally { process.exitCode = previousExit; rmSync(root, { recursive: true, force: true }); }
 });

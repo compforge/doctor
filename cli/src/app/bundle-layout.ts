@@ -23,12 +23,13 @@ export function planBundleArtifacts(artifacts: readonly CommandArtifact[]): read
   });
 }
 
-export function createBundleManifest(command: string, commandCode: number, layout: readonly BundleArtifact[]) {
+export function createBundleManifest(command: string, commandCode: number, layout: readonly BundleArtifact[], report?: string) {
   return {
     schema_version: 1,
     kind: "doctor.bundle",
     command,
     exit_code: commandCode,
+    report,
     artifacts: layout.map(({ artifact, path, report }) => ({ id: artifact.id, command: artifact.command, path, report })),
   };
 }

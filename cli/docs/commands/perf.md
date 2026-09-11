@@ -43,7 +43,7 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
 4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
    阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
 5. 负载结束后封口 Metric 报告，从各 Trial 选择慢请求/错误请求的关联 ID，复用 Trace 与 Log 采集。
-6. Perf 通过统一 CommandSpec 调用 Metric/Trace/Log，显式汇总每次调用的状态和 Artifacts；统一 Delivery 汇总 HTML，并在
+6. Perf 通过统一 CommandSpec 调用 Metric/Trace/Log，显式汇总每次调用的状态和 Artifacts；根 Finalize 调用 Perf renderer 组合子 Report，Delivery 生成离线 HTML，并在
    `--format bundle` 时把完整目录一次性压成 `.tar.gz`。Perf 目录保留 `run.json`、`outcomes.jsonl` 和
    `verdict.json` 等 Harness 契约产物。
 

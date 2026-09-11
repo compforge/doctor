@@ -1,16 +1,18 @@
-import { collectOverviewSamples } from "./collect";
-import { overviewSampleCount, overviewCollectConcurrency } from "./options";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import { defineCommand, CommandStatus, aggregateCommandStatus, type CommandInput, type CommandContext, type CommandResult } from "../command";
+import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
+import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
+import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
-import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
-import { parseCollectOutputFormat, parseCollectKinds, resolveCollectKinds } from "../collect/composite";
+import { renderEvidence } from "../report/evidence";
+import { composeReports } from "../report/model";
 import { terminalStdout } from "../terminal/output";
+import { collectOverviewSamples } from "./collect";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
+import { overviewCollectConcurrency, overviewSampleCount } from "./options";
+import { buildOverviewHtml, printOverview, writeOverviewEvidence } from "./report";
 import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
-import { printOverview, writeOverviewReport } from "./report";
 
 export interface OverviewCliOpts extends KubernetesCommandInput {
   since?: string;
@@ -33,7 +35,7 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
   overviewCollectConcurrency(opts.collectConcurrency);
 }
 
-async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewResult>> {
+async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewOutput>> {
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
   const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
@@ -64,6 +66,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   // Freeze after target selection, before the first provider query; sampling reuses these exact instants.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
   context.artifacts.setReportName(`doctor-overview-${query.window.to.replace(/[:.]/g, "-")}`);
+  let collectionResult: CommandResult<CollectOutput> | undefined;
   let snapshot: OverviewResult | undefined;
   let reportDirectory: string | undefined;
   let result: OverviewResult;
@@ -82,21 +85,22 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
       show: (result) => {
         snapshot = result;
         printOverview(result);
-        // Register the dashboard before child artifacts so it is the first report tab.
-        reportDirectory = writeOverviewReport(result, context);
+        // Preserve the overview snapshot before optional collection; render owns reading order.
+        reportDirectory = writeOverviewEvidence(result, context);
       },
       collect: async (bizIds) => {
         const kinds = await resolveCollectKinds(opts.include, interactive);
         if (!kinds) return { status: CommandStatus.Cancelled, artifacts: [] };
-        return collectOverviewSamples(context, bizIds, {
+        collectionResult = await collectOverviewSamples(context, bizIds, {
           namespace: kube.kubernetes.namespace, tenantId: opts.tenantId,
           kinds, sinceTime: query.window.from, untilTime: query.window.to,
         }, concurrency);
+        return collectionResult;
       },
     });
   } finally {
     // The dashboard remains deliverable even if optional selection or collection fails.
-    if (snapshot) writeOverviewReport(snapshot, context, reportDirectory);
+    if (snapshot) writeOverviewEvidence(snapshot, context, reportDirectory);
   }
   for (const sample of result.samples) {
     terminalStdout.write(`[overview] ${sample.service}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}\n`);
@@ -104,12 +108,22 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   const statuses: CommandStatus[] = result.services.map((service) => service.error ? CommandStatus.Failed : CommandStatus.Ok);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
-  return { status: aggregateCommandStatus(statuses), output: result, artifacts: context.artifacts.list() };
+  return { status: aggregateCommandStatus(statuses), output: { ...result, collectionResult }, artifacts: context.artifacts.list() };
 }
 
+export interface OverviewOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
+
 export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
-export const overviewCommand = defineCommand<OverviewInput, OverviewResult>({
+export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
   name: "doctor overview",
+  render: async (context, result) => {
+    const dashboard = await renderEvidence(context, result, {
+      command: "overview", title: "Overview", scope: "概览 / 采样窗口",
+      render: artifact => context.write(artifact, buildOverviewHtml(context.json<OverviewResult>(artifact, "diagnosis.json"))),
+    });
+    const collected = result.output?.collectionResult;
+    return composeReports("doctor overview", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
+  },
   environment: { kubernetes: true },
   plugin: PLUGIN_COMMAND_CAPABILITIES.overview,
   validate: validateOverviewOptions,

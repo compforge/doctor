@@ -1,13 +1,13 @@
-import { mkdtempSync } from "node:fs";
+import { marked, Renderer } from "marked";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { marked, Renderer } from "marked";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { terminalStderr } from "../../terminal/output";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { escapeHtml, writeHtmlReport, type HtmlReportOptions } from "../output/html";
+import { escapeHtml, type HtmlReportOptions } from "../output/html";
 import { resolveStoreOutputPath, type StoreConfig, type StoreOutputFormat } from "./config";
 
 export type StoreHtmlReportOptions = Pick<
@@ -65,18 +65,13 @@ export async function writeStoreArtifacts(input: {
     return { ok: true, path: input.staging, label: "失败诊断产物" };
   }
   try {
-    const writeReport = (path: string) => {
-      const renderer = new Renderer();
-      renderer.html = ({ text }) => escapeHtml(text);
-      writeHtmlReport(input.staging, path, {
-        ...input.htmlReport,
-        title: input.title,
-        profileName: input.profileName,
-        // Markdown inline/code 由 marked 自身转义；raw HTML 单独收口，避免现场文本注入报告。
-        summaryHtml: marked.parse(input.summary, { async: false, renderer }) as string,
-      });
-    };
-    if (input.format !== "md") writeReport(join(input.staging, "report.html"));
+    const renderer = new Renderer();
+    renderer.html = ({ text }) => escapeHtml(text);
+    writeFileSync(join(input.staging, "report-input.json"), JSON.stringify({
+      ...input.htmlReport, title: input.title,
+      // Escape raw HTML from field evidence before storing the local presentation projection.
+      summaryHtml: marked.parse(input.summary, { async: false, renderer }),
+    }), { mode: 0o600 });
     return { ok: true, path: input.staging, label: "Store 诊断产物" };
   } catch (error) {
     terminalStderr.error(`[collect] Store 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
