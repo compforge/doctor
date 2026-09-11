@@ -37,6 +37,8 @@ export interface OverviewFacetResult {
 export interface OverviewSampleQuery extends OverviewQuery {
   facetId: string;
   entryKey: string;
+  /** Positive per-Entry budget assigned by Core. Providers must not return more samples. */
+  limit: number;
 }
 
 export interface OverviewSample {
@@ -49,6 +51,6 @@ export interface OverviewSample {
 export interface ServiceOverviewCapability extends CapabilityWithAccess {
   facets: readonly OverviewFacet[];
   summarize(context: PluginContext, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
-  /** Return no sample if the matching data disappeared; never substitute an unrelated request. */
-  sample(context: PluginContext, query: OverviewSampleQuery): Promise<OverviewSample | undefined>;
+  /** Return an empty list if matching data disappeared; never substitute an unrelated request. */
+  sample(context: PluginContext, query: OverviewSampleQuery): Promise<readonly OverviewSample[]>;
 }

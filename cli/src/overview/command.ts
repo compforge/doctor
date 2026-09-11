@@ -10,7 +10,7 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("--services <names>", "逗号分隔的 Service；默认全部 overview provider")
     .option("--tenant-id <id>", "只查看该租户")
     .option("--facet <id>", "选择待采集的 Facet；本身不触发采集")
-    .option("--sample-count <number>", "默认采样 Entry 数（默认 5；交互模式可调整选择）", Number)
+    .option("--sample-count <number>", "代表请求的总采样上限（默认 5）", Number)
     .option("--collect-concurrency <number>", "批次内逐 ID 工作并发（默认 2；Pod 日志共享独立限额）", Number)
     .option("--include <commands>", "采集命令，逗号分隔；同 doctor collect，默认全部")
     .option("--collect", "确认采集所选 Entry 的代表请求")
