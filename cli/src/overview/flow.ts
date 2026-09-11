@@ -24,9 +24,17 @@ export interface OverviewSampleResult {
   error?: string;
 }
 
+export interface OverviewSampleAllocation {
+  service: string;
+  facetId: string;
+  entryKey: string;
+  count: number;
+}
+
 export interface OverviewResult {
   query: OverviewQuery;
   services: OverviewServiceResult[];
+  sampleAllocations: OverviewSampleAllocation[];
   samples: OverviewSampleResult[];
   collectionError?: string;
   collection: "not-requested" | "no-samples" | CommandStatus;
@@ -42,12 +50,13 @@ export interface OverviewActions {
   sampleCount?: number;
   selectEntries?(entries: readonly OverviewEntryChoice[], defaultCount: number): Promise<readonly OverviewEntryChoice[] | undefined>;
   summarize(provider: OverviewProvider, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
-  sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<OverviewSample | undefined>;
+  sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<readonly OverviewSample[]>;
   /** Undefined means overview only. Even one Facet must be explicitly confirmed. */
   select(facets: readonly OverviewFacet[]): Promise<string | undefined>;
   collect(bizIds: string[]): Promise<CommandResult<unknown>>;
   signal?: AbortSignal;
   show(result: OverviewResult): void;
+  warn?(message: string): void;
 }
 
 function errorMessage(error: unknown): string {
@@ -77,11 +86,29 @@ function checkedFacets(provider: OverviewProvider, results: readonly OverviewFac
   return facets;
 }
 
+/** Split one hard sample budget as evenly as possible while preserving dashboard order. */
+export function allocateOverviewSamples(
+  entries: readonly OverviewEntryChoice[], sampleCount: number,
+): OverviewSampleAllocation[] {
+  const budget = overviewSampleCount(sampleCount);
+  if (!entries.length) return [];
+  const base = Math.floor(budget / entries.length);
+  const remainder = budget % entries.length;
+  return entries.map((choice, index) => ({
+    service: choice.service,
+    facetId: choice.facetId,
+    entryKey: choice.entry.key,
+    count: base + (index < remainder ? 1 : 0),
+  }));
+}
+
 /** Core owns ordering, consent, provenance and deduplication; providers own matching semantics. */
 export async function runOverviewSession(
   providers: readonly OverviewProvider[], query: OverviewQuery, actions: OverviewActions,
 ): Promise<OverviewResult> {
-  const result: OverviewResult = { query, services: [], samples: [], collection: "not-requested" };
+  const result: OverviewResult = {
+    query, services: [], sampleAllocations: [], samples: [], collection: "not-requested",
+  };
   // Sequential provider calls keep external-resource concurrency bounded across customer environments.
   for (const provider of providers) {
     actions.signal?.throwIfAborted();
@@ -108,8 +135,7 @@ export async function runOverviewSession(
   const selected = await actions.select([...eligible.values()]);
   if (!selected) return result;
   if (!eligible.has(selected)) throw new Error(`Facet '${selected}' 没有可采集的 Entry`);
-  // The default budget spans all Services in the selected Facet. Entry data may be text,
-  // so retain dashboard/provider ordering instead of inventing a numeric ranking.
+  // Entry data may be text, so retain dashboard/provider ordering instead of inventing a numeric ranking.
   const candidates = result.services.flatMap((service) => (
     service.facets.find((facet) => facet.facetId === selected)?.entries
       .filter((entry) => entry.canSample)
@@ -118,22 +144,43 @@ export async function runOverviewSession(
   const count = overviewSampleCount(actions.sampleCount);
   const entries = actions.selectEntries
     ? await actions.selectEntries(candidates, count)
-    : candidates.slice(0, count);
+    : candidates;
   if (!entries?.length) return result;
-  for (const choice of entries) {
+  result.sampleAllocations = allocateOverviewSamples(entries, count);
+  for (const allocation of result.sampleAllocations.filter((item) => item.count === 0)) {
+    actions.warn?.(
+      `${allocation.service}/${allocation.facetId}/${allocation.entryKey}: 配额为 0（未采集）`,
+    );
+  }
+  for (const allocation of result.sampleAllocations) {
+    if (allocation.count === 0) continue;
     actions.signal?.throwIfAborted();
-    const provider = providers.find((item) => item.name === choice.service)!;
-    const source = { service: choice.service, facetId: choice.facetId, entryKey: choice.entry.key };
+    const provider = providers.find((item) => item.name === allocation.service)!;
+    const source = {
+      service: allocation.service, facetId: allocation.facetId, entryKey: allocation.entryKey,
+    };
     try {
-      const sample = await actions.sample(provider, { ...query, facetId: choice.facetId, entryKey: choice.entry.key });
-      result.samples.push(sample?.bizId.trim()
-        ? { ...source, bizId: sample.bizId.trim(), source: sample.source }
-        : { ...source, error: "没有可用样本（数据可能已变化）" });
+      const samples = await actions.sample(provider, {
+        ...query, facetId: allocation.facetId, entryKey: allocation.entryKey, limit: allocation.count,
+      });
+      if (!Array.isArray(samples)) throw new Error("Overview provider 未返回样本数组");
+      if (samples.length > allocation.count) {
+        throw new Error(`Overview provider 返回 ${samples.length} 个样本，超过分配配额 ${allocation.count}`);
+      }
+      if (!samples.length) {
+        result.samples.push({ ...source, error: "没有可用样本（数据可能已变化）" });
+      }
+      for (const sample of samples) {
+        result.samples.push(sample.bizId.trim()
+          ? { ...source, bizId: sample.bizId.trim(), source: sample.source }
+          : { ...source, source: sample.source, error: "Overview provider 返回了空 biz-id" });
+      }
     } catch (error) {
       result.samples.push({ ...source, error: errorMessage(error) });
     }
   }
-  const bizIds = [...new Set(result.samples.flatMap((sample) => sample.bizId ? [sample.bizId] : []))];
+  // Provider validation and this final slice jointly keep collection within the user-visible hard budget.
+  const bizIds = [...new Set(result.samples.flatMap((sample) => sample.bizId ? [sample.bizId] : []))].slice(0, count);
   result.collection = "no-samples";
   if (bizIds.length) {
     try {

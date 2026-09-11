@@ -1,7 +1,7 @@
 import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResult, type OverviewQuery } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { CommandStatus, commandOutcome } from "../src/command";
-import { runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
+import { allocateOverviewSamples, runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
 import { overviewWindow, selectOverviewFacet } from "../src/overview/selection";
 import type { promptListedChoice } from "../src/terminal/selection";
 
@@ -11,7 +11,7 @@ const query: OverviewQuery = {
 };
 function provider(name: string): OverviewProvider {
   return { name, workloads: [], capabilities: { overview: {
-    access: {}, facets: [facet], summarize: async () => [], sample: async () => undefined,
+    access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
   } } };
 }
 const summary: OverviewFacetResult[] = [{ facetId: "errors", description: "created_at", entries: [
@@ -19,12 +19,12 @@ const summary: OverviewFacetResult[] = [{ facetId: "errors", description: "creat
   { key: "E2", label: "E2", data: "upstream unavailable", canSample: true },
 ] }];
 function actions(overrides: Partial<OverviewActions> = {}): OverviewActions {
-  return { summarize: async () => summary, sample: async () => ({ bizId: "trace-1" }),
+  return { summarize: async () => summary, sample: async () => [{ bizId: "trace-1" }],
     select: async () => undefined, collect: async () => commandOutcome(0), show: () => {}, ...overrides };
 }
 
 test("overview shows text and numeric entries without sampling on decline", async () => {
-  const sample = mock(async () => ({ bizId: "trace-1" }));
+  const sample = mock(async () => [{ bizId: "trace-1" }]);
   const collect = mock(async () => commandOutcome(0));
   const order: string[] = [];
   const result = await runOverviewSession([provider("chat")], query, actions({ sample, collect,
@@ -37,16 +37,16 @@ test("overview shows text and numeric entries without sampling on decline", asyn
   expect(result.collection).toBe("not-requested");
 });
 
-test("one sample per eligible entry retains provenance and deduplicates collect IDs across services", async () => {
+test("sampling retains provenance and deduplicates collect IDs across services", async () => {
   const sampleQueries: unknown[] = [];
   const batches: string[][] = [];
   const result = await runOverviewSession([provider("chat"), provider("plan")], query, actions({
     select: async (facets) => { expect(facets).toEqual([facet]); return "errors"; },
-    sample: async (_provider, input) => { sampleQueries.push(input); return { bizId: "trace-1", source: { kind: "message_id", value: "m1" } }; },
+    sample: async (_provider, input) => { sampleQueries.push(input); return [{ bizId: "trace-1", source: { kind: "message_id", value: "m1" } }]; },
     collect: async (ids) => { batches.push(ids); return commandOutcome(0); },
   }));
   expect(sampleQueries).toHaveLength(4);
-  expect(sampleQueries[0]).toEqual({ ...query, facetId: "errors", entryKey: "E1" });
+  expect(sampleQueries[0]).toEqual({ ...query, facetId: "errors", entryKey: "E1", limit: 2 });
   expect(batches).toEqual([["trace-1"]]);
   expect(result.samples.map((item) => item.service)).toEqual(["chat", "chat", "plan", "plan"]);
   expect(result.samples[0]?.source?.value).toBe("m1");
@@ -56,7 +56,7 @@ test("provider failures and disappeared samples are visible while other services
   const result = await runOverviewSession([provider("down"), provider("chat")], query, actions({
     summarize: async (service) => { if (service.name === "down") throw new Error("DB timeout"); return summary; },
     select: async () => "errors",
-    sample: async (_service, input) => { if (input.entryKey === "E1") throw new Error("sample timeout"); return undefined; },
+    sample: async (_service, input) => { if (input.entryKey === "E1") throw new Error("sample timeout"); return []; },
   }));
   expect(result.services[0]?.error).toBe("DB timeout");
   expect(result.services[0]?.facets).toEqual([]);
@@ -144,7 +144,10 @@ test("report preserves source IDs, text data and failed providers and escapes HT
     summarize: async () => [{ facetId: "errors", description: "created_at", entries: [
       { key: "E1", label: "<error>", data: "<script>alert(1)</script>", canSample: true },
     ] }], select: async () => "errors",
-    sample: async () => ({ bizId: "trace-1", source: { kind: "message_id", value: "m1" } }),
+    sample: async () => [
+      { bizId: "trace-1", source: { kind: "message_id", value: "m1" } },
+      { bizId: "trace-2", source: { kind: "message_id", value: "m2" } },
+    ],
   }));
   const context = new CommandContext({});
   const directory = writeOverviewEvidence(result, context);
@@ -155,6 +158,8 @@ test("report preserves source IDs, text data and failed providers and escapes HT
     expect(html).toContain("&lt;script&gt;");
     expect(html).not.toContain("<script>");
     expect(html).toContain("message_id: m1");
+    expect(html).toContain("trace-2");
+    expect(html).toContain("分配 5 个样本");
     expect(JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8")).samples[0].bizId).toBe("trace-1");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
@@ -173,27 +178,32 @@ test("overview preserves partial collection status and cancellation", async () =
 
 test("default sampling selects five entries across Services without truncating the dashboard", async () => {
   const batches: string[][] = [];
+  const warnings: string[] = [];
   const result = await runOverviewSession([provider("a"), provider("b"), provider("c")], query, actions({
     select: async () => "errors",
-    sample: async (service, input) => ({ bizId: `${service.name}/${input.entryKey}` }),
+    sample: async (service, input) => [{ bizId: `${service.name}/${input.entryKey}` }],
     collect: async ids => { batches.push(ids); return commandOutcome(0); },
+    warn: message => { warnings.push(message); },
   }));
   expect(result.services.flatMap(service => service.facets[0]!.entries)).toHaveLength(6);
   expect(batches).toEqual([["a/E1", "a/E2", "b/E1", "b/E2", "c/E1"]]);
   expect(result.samples).toHaveLength(5);
+  expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([1, 1, 1, 1, 1, 0]);
+  expect(warnings).toEqual(["c/errors/E2: 配额为 0（未采集）"]);
 });
 
 test("configured sample count limits calls; failure does not backfill with unselected entries", async () => {
   const result = await runOverviewSession([provider("a"), provider("b")], query, actions({
     select: async () => "errors", sampleCount: 1,
-    sample: async () => undefined,
+    sample: async () => [],
   }));
   expect(result.samples).toHaveLength(1);
+  expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([1, 0, 0, 0]);
   expect(result.collection).toBe("no-samples");
 });
 
 test("Entry selection can choose later entries and cancelling leaves overview read-only", async () => {
-  const sample = mock(async () => ({ bizId: "trace-1" }));
+  const sample = mock(async () => [{ bizId: "trace-1" }]);
   const collect = mock(async () => commandOutcome(0));
   const result = await runOverviewSession([provider("a"), provider("b")], query, actions({
     select: async () => "errors", sampleCount: 1,
@@ -212,7 +222,7 @@ test("Entry selection can choose later entries and cancelling leaves overview re
   }
 });
 
-test("Entry multiselect preselects five, distinguishes Services and permits explicit larger selections", async () => {
+test("Entry multiselect preselects the budget, distinguishes Services and permits explicit larger selections", async () => {
   const { selectOverviewEntries } = await import("../src/overview/selection");
   const entries = Array.from({ length: 6 }, (_, i) => ({ service: `service-${i}`, facetId: "errors", entry: summary[0]!.entries[0]! }));
   let asked = 0;
@@ -225,9 +235,34 @@ test("Entry multiselect preselects five, distinguishes Services and permits expl
   expect(chosen).toHaveLength(6);
   expect(asked).toBe(1);
   const noPrompt = async () => { throw new Error("unexpected prompt"); };
-  expect(await selectOverviewEntries(entries, 5, false, noPrompt)).toEqual(entries.slice(0, 5));
-  expect(await selectOverviewEntries(entries.slice(0, 5), 5, true, noPrompt)).toEqual(entries.slice(0, 5));
+  expect(await selectOverviewEntries(entries, 5, false, noPrompt)).toEqual(entries);
+  expect(await selectOverviewEntries(entries.slice(0, 1), 5, true, noPrompt)).toEqual(entries.slice(0, 1));
   expect(await selectOverviewEntries(entries, 5, true, async () => undefined)).toBeUndefined();
+});
+
+test("sample budget is evenly distributed and later selected entries receive zero when entries exceed it", () => {
+  const entries = Array.from({ length: 6 }, (_, index) => ({
+    service: "chat", facetId: "errors", entry: { ...summary[0]!.entries[0]!, key: `E${index + 1}` },
+  }));
+  expect(allocateOverviewSamples(entries.slice(0, 1), 5).map(item => item.count)).toEqual([5]);
+  expect(allocateOverviewSamples(entries.slice(0, 2), 5).map(item => item.count)).toEqual([3, 2]);
+  expect(allocateOverviewSamples(entries.slice(0, 3), 5).map(item => item.count)).toEqual([2, 2, 1]);
+  expect(allocateOverviewSamples(entries, 5).map(item => item.count)).toEqual([1, 1, 1, 1, 1, 0]);
+});
+
+test("a single selected Entry receives the entire sample budget", async () => {
+  const limits: number[] = [];
+  const result = await runOverviewSession([provider("chat")], query, actions({
+    summarize: async () => [{ ...summary[0]!, entries: [summary[0]!.entries[0]!] }],
+    select: async () => "errors",
+    sample: async (_provider, input) => {
+      limits.push(input.limit);
+      return Array.from({ length: input.limit }, (_, index) => ({ bizId: `trace-${index + 1}` }));
+    },
+  }));
+  expect(limits).toEqual([5]);
+  expect(result.samples).toHaveLength(5);
+  expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([5]);
 });
 
 test("sample count honors CLI over profile and rejects invalid numbers", async () => {

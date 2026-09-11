@@ -194,7 +194,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 7,
+  "pluginApiVersion": 8,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",

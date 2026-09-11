@@ -16,13 +16,16 @@ doctor overview --since 1h --collect --facet errors --sample-count 5
 一个 Facet 并确认采集。只有一个可采集 Facet 时省略选择，仍需确认，默认不采集。非交互模式默认近 1h，
 只有显式 `--collect` 才采集；多个可采集 Facet 时还需指定 `--facet`。`--facet` 本身不触发采集。
 
-选定 Facet 后，默认采样前 5 个可采样 Entry，这个数量跨 Service 合计。大盘展示不受影响；默认顺序
-沿用大盘中的 Service / Entry 顺序，不按数值重新排序，因为 Entry data 也可以是文字。超过默认数量时，
-交互模式显示 Entry 多选列表，预选前 5 项，允许增减后确认采集；按 Esc 取消后不采样、不 collect。
-非交互模式只采前 5 项，每项至多一个代表请求；样本缺失或失败不自动补选其他 Entry。
+选定 Facet 后，交互模式在可采样 Entry 多于一个时显示多选列表；只有一个时直接选中，不额外询问。
+列表默认预选采样预算范围内的前几项，允许增减后确认；按 Esc 取消后不采样、不 collect。非交互模式选中
+全部可采样 Entry。默认顺序沿用大盘中的 Service / Entry 顺序，不按 data 重新排序，因为 data 也可以是文字。
 
-`--sample-count` 覆盖 profile 的 `overview.sample_count`，未配置时为 5，必须是正整数。它控制默认选择
-数量，交互模式的显式选择可以超过该数量：
+`--sample-count` 覆盖 profile 的 `overview.sample_count`，未配置时为 5，必须是正整数。它控制代表请求的全局硬上限，
+不是 Entry 选择数。Core 在所选 Entry 间按大盘顺序尽量平均分配：每项先分配
+`floor(sample-count / Entry 数)`，余数再从前往后每项加一。例如预算 5 且选择 1、2、3 项时，配额分别为
+`[5]`、`[3,2]`、`[2,2,1]`。选择 6 项时分配为 `[1,1,1,1,1,0]`，Core 为每个配额为 0 的 Entry 分别输出
+黄色“配额为 0（未采集）”提示，保留选择与配额记录并继续执行。样本缺失、去重或失败会使实际数量少于预算，
+不跨 Entry 补位：
 
 ```yaml
 profiles:
@@ -68,8 +71,9 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 时间字段，在 description 中说明统计口径，并在查询处限制结果数、声明截断。查询失败与“没有条目”是
 不同状态；某个 Service 失败不会阻止其它 Service 展示结果。
 
-确认后，仅对选中的 Entry 各查询一个代表请求。Plugin 应返回最精确的 collect biz-id，并可提供源记录
-Identity；数据已变化时返回无样本。Core 对 biz-id 去重后调用所选 Collect 子命令。采样失败保留
+确认后，Core 把每个选中 Entry 的正整数 `limit` 传给 Plugin。Plugin 返回不超过该配额的代表请求列表；
+配额为 0 的 Entry 不调用 Plugin。Plugin 应返回最精确的 collect biz-id，并可提供源记录 Identity；数据已变化时
+返回空列表。Core 校验返回数量，对 biz-id 去重并再次应用总上限后调用所选 Collect 子命令。采样失败保留
 在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，通过同一根 ClientManager 复用已初始化的客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。
 

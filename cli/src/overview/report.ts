@@ -36,9 +36,22 @@ export function buildOverviewHtml(result: OverviewResult): string {
       + (facet.truncated ? `<p>已截断：${escapeHtml(facet.truncated.reason)}</p>` : "")
       + `<table><tr><th>Entry</th><th>数据</th><th>代表请求 / 采样结果</th></tr>`
       + facet.entries.map((entry) => {
-        const sample = result.samples.find((item) => item.service === service.service && item.facetId === facet.facetId && item.entryKey === entry.key);
+        const matches = (item: { service: string; facetId: string; entryKey: string }) => (
+          item.service === service.service && item.facetId === facet.facetId && item.entryKey === entry.key
+        );
+        const allocation = result.sampleAllocations.find(matches);
+        const samples = result.samples.filter(matches);
+        const sampled = samples.map((sample) => (
+          `${escapeHtml(sample.bizId ?? sample.error ?? "未知结果")}`
+          + (sample.source ? `<br>${escapeHtml(sample.source.kind)}: ${escapeHtml(sample.source.value)}` : "")
+        )).join("<br><br>");
+        const sampling = !allocation
+          ? (entry.canSample ? "未采集" : "不支持采样")
+          : allocation.count === 0
+          ? "配额为 0（未采集）"
+          : `分配 ${allocation.count} 个样本<br>${sampled || "无采样结果"}`;
         return `<tr><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.data)} ${escapeHtml(entry.unit ?? "")}</td>`
-          + `<td>${escapeHtml(sample?.bizId ?? sample?.error ?? (entry.canSample ? "未采集" : "不支持采样"))}${sample?.source ? `<br>${escapeHtml(sample.source.kind)}: ${escapeHtml(sample.source.value)}` : ""}</td></tr>`;
+          + `<td>${sampling}</td></tr>`;
       }).join("") + `</table>${facet.entries.length ? "" : "<p>无值得注意的条目</p>"}`).join("")).join("");
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Overview</title>
 <style>body{font:15px system-ui;margin:32px;color:#172033}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:10px;text-align:left;overflow-wrap:anywhere}h2{margin-top:32px}</style>

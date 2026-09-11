@@ -57,13 +57,13 @@ export async function selectOverviewEntries(
   prompt: typeof promptMultiSelect = promptMultiSelect,
 ): Promise<readonly OverviewEntryChoice[] | undefined> {
   const defaults = entries.slice(0, defaultCount);
-  if (!interactive || entries.length <= defaultCount) return defaults;
+  if (!interactive || entries.length === 1) return entries;
   const choices = entries.map((choice) => ({
     ...choice, name: JSON.stringify([choice.service, choice.facetId, choice.entry.key]),
   }));
   const selected = await prompt({
     choices, defaults: choices.slice(0, defaultCount).map((choice) => choice.name),
-    title: `选择要采集的 Entry（默认前 ${defaultCount} 个；确认后每项采集一个代表请求）`,
+    title: `选择要采集的 Entry（总采样上限 ${defaultCount}；确认后在所选 Entry 之间平均分配）`,
     renderChoice: (choice) => `${choice.service} · ${choice.entry.label}: ${choice.entry.data}${choice.entry.unit ? ` ${choice.entry.unit}` : ""}`,
   });
   if (!selected) return undefined;

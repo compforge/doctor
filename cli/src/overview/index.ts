@@ -82,6 +82,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
         provider.capabilities.overview.sample(managed, input)
       )),
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
+      warn: (message) => terminalStdout.warning(`[overview] ${message}\n`),
       show: (result) => {
         snapshot = result;
         printOverview(result);
