@@ -189,7 +189,7 @@ test("default sampling selects five entries across Services without truncating t
   expect(batches).toEqual([["a/E1", "a/E2", "b/E1", "b/E2", "c/E1"]]);
   expect(result.samples).toHaveLength(5);
   expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([1, 1, 1, 1, 1, 0]);
-  expect(warnings[0]).toContain("配额为 0");
+  expect(warnings).toEqual(["c/errors/E2: 配额为 0（未采集）"]);
 });
 
 test("configured sample count limits calls; failure does not backfill with unselected entries", async () => {

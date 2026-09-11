@@ -48,7 +48,7 @@ export function buildOverviewHtml(result: OverviewResult): string {
         const sampling = !allocation
           ? (entry.canSample ? "未采集" : "不支持采样")
           : allocation.count === 0
-          ? "已选择；本轮采样配额为 0"
+          ? "配额为 0（未采集）"
           : `分配 ${allocation.count} 个样本<br>${sampled || "无采样结果"}`;
         return `<tr><td>${escapeHtml(entry.label)}</td><td>${escapeHtml(entry.data)} ${escapeHtml(entry.unit ?? "")}</td>`
           + `<td>${sampling}</td></tr>`;

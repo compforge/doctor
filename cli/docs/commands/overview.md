@@ -23,8 +23,9 @@ doctor overview --since 1h --collect --facet errors --sample-count 5
 `--sample-count` 覆盖 profile 的 `overview.sample_count`，未配置时为 5，必须是正整数。它控制代表请求的全局硬上限，
 不是 Entry 选择数。Core 在所选 Entry 间按大盘顺序尽量平均分配：每项先分配
 `floor(sample-count / Entry 数)`，余数再从前往后每项加一。例如预算 5 且选择 1、2、3 项时，配额分别为
-`[5]`、`[3,2]`、`[2,2,1]`。选择 6 项时分配为 `[1,1,1,1,1,0]`，Core 输出黄色提示，但仍保留全部
-选择与配额记录并继续执行。样本缺失、去重或失败会使实际数量少于预算，不跨 Entry 补位：
+`[5]`、`[3,2]`、`[2,2,1]`。选择 6 项时分配为 `[1,1,1,1,1,0]`，Core 为每个配额为 0 的 Entry 分别输出
+黄色“配额为 0（未采集）”提示，保留选择与配额记录并继续执行。样本缺失、去重或失败会使实际数量少于预算，
+不跨 Entry 补位：
 
 ```yaml
 profiles:

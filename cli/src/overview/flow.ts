@@ -147,11 +147,9 @@ export async function runOverviewSession(
     : candidates;
   if (!entries?.length) return result;
   result.sampleAllocations = allocateOverviewSamples(entries, count);
-  const zeroAllocations = result.sampleAllocations.filter((allocation) => allocation.count === 0);
-  if (zeroAllocations.length) {
+  for (const allocation of result.sampleAllocations.filter((item) => item.count === 0)) {
     actions.warn?.(
-      `已选择 ${entries.length} 个 Entry，sample-count=${count}；按概览顺序前 ${count} 个各分配 1 个样本，`
-      + `其余 ${zeroAllocations.length} 个本轮配额为 0`,
+      `${allocation.service}/${allocation.facetId}/${allocation.entryKey}: 配额为 0（未采集）`,
     );
   }
   for (const allocation of result.sampleAllocations) {
