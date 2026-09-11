@@ -17,8 +17,9 @@ import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import { runCollect } from "../engine";
-import { EvidenceBundle, type OutcomeDecl } from "../evidence";
+import { EvidenceBundle, type EvidenceStatus, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
+import type { CoverageStatus } from "../protocol";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { makeMcpConfigurationInspect, resolveMcpConfiguration } from "./configuration";
 import { buildMcpCoverage, mcpDetectors } from "./detector";
@@ -89,6 +90,21 @@ function failedSummary(traceId: string, reason: string): string {
     "已取得的原始证据与失败步骤见 manifest.json 和 raw/。",
     "",
   ].join("\n");
+}
+
+function coverageFromEvidenceStatus(status: EvidenceStatus | undefined): CoverageStatus {
+  switch (status) {
+    case "ok":
+    case "unnecessary":
+      return "sufficient";
+    case "partial":
+      return "partial";
+    case "failed":
+    case "skipped":
+    case "unavailable":
+    case undefined:
+      return "insufficient";
+  }
 }
 
 export async function runCollectMcp(
@@ -216,11 +232,10 @@ export async function runCollectMcp(
       startedAt,
       finishedAt: new Date().toISOString(),
     });
-    const collectCode = forcedCode ?? evaluateCollectOutcome([...requiredEvidence].map((id) =>
-      bundle.getSteps().some((step) =>
-        step.id === id && (step.status === "ok" || step.status === "unnecessary")
-      )
-    )).exitCode;
+    const collectCode = forcedCode ?? evaluateCollectOutcome([...requiredEvidence].map((id) => {
+      const status = bundle.getSteps().find((step) => step.id === id)?.status;
+      return coverageFromEvidenceStatus(status);
+    })).exitCode;
     if (collectCode === 130) {
       return 130;
     }

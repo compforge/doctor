@@ -134,7 +134,8 @@ export async function runCollectData(
     let status = commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed;
     if (diagnosis) {
       const outcome = evaluateCollectOutcome(services.map(service => projected.capabilityResults.some(item =>
-        item.status === "collected" && item.service === service && item.result.resolution.resolvedAs !== "unresolved")));
+        item.status === "collected" && item.service === service && item.result.resolution.resolvedAs !== "unresolved")
+        ? "sufficient" : "insufficient"));
       status = collectCommandOutcome(outcome).status;
       if (outcome.exitCode) reason = diagnosis.coverage[0]?.missingEvidence.join("；") || "未取得所选 Service 的业务记录";
     }

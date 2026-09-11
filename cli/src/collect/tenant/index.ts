@@ -135,7 +135,7 @@ export async function runCollectTenant(
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
 
     const outcome = evaluateCollectOutcome(
-      diagnosis.coverage.map((item) => item.status !== "insufficient"),
+      diagnosis.coverage.map((item) => item.status),
     );
     return collectCommandOutcome(outcome);
   } catch (error) {

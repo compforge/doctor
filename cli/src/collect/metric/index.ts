@@ -168,7 +168,7 @@ export async function runCollectMetric(
   writeMetricManifest(bundle, config, facts, diagnosis);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   const outcome = evaluateCollectOutcome(
-    diagnosis.coverage.map((item) => item.status === "sufficient"),
+    diagnosis.coverage.map((item) => item.status),
   );
   if (config.format === "html") {
     return collectCommandOutcome(outcome);
