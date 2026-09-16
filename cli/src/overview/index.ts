@@ -42,7 +42,8 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
   const providers = plugin.services.servicesWith("overview");
-  const requested = opts.services?.split(",").map((name) => name.trim()).filter(Boolean);
+  const requested = opts.services === undefined ? undefined
+    : plugin.services.resolveNames(opts.services.split(",").map((name) => name.trim()).filter(Boolean));
   for (const name of requested ?? []) {
     if (!providers.some((provider) => provider.name === name)) throw new Error(`Service '${name}' 未声明 overview capability`);
   }

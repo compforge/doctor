@@ -22,10 +22,24 @@ export type ServiceWithContribution<
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
+  private readonly identities = new Map<string, T>();
+
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
+    for (const service of services) this.identities.set(service.name, service);
     for (const service of services) {
+      if (service.aliases !== undefined && !Array.isArray(service.aliases)) {
+        throw new Error(`Service '${service.name}'.aliases must be an array`);
+      }
+      for (const alias of service.aliases ?? []) {
+        if (typeof alias !== "string" || !alias || /[\s,]/.test(alias)) {
+          throw new Error(`Service '${service.name}'.aliases must contain non-empty names without whitespace or commas`);
+        }
+        const owner = this.identities.get(alias);
+        if (owner) throw new Error(`Service alias '${alias}' for '${service.name}' conflicts with '${owner.name}'`);
+        this.identities.set(alias, service);
+      }
       const workloads = service.workloads.map((workload) => workload.name);
       if (new Set(workloads).size !== workloads.length) {
         throw new Error(`Service '${service.name}' 包含重复 Workload 名称`);
@@ -34,7 +48,16 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   }
 
   find(name: string): T | undefined {
-    return this.services.find((service) => service.name === name);
+    return this.identities.get(name);
+  }
+
+  /** Resolve input synonyms and deduplicate by canonical identity before scheduling or recording evidence. */
+  resolveNames(names: readonly string[]): string[] {
+    return [...new Set(names.map(name => {
+      const service = this.find(name);
+      if (!service) throw new Error(`Unknown Service '${name}'`);
+      return service.name;
+    }))];
   }
 
   findWith<K extends ServiceCapabilityName>(
@@ -77,7 +100,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 }
 
 /**
- * @spec 构造保留 Service 原始类型的 Catalog，并拒绝重复的 Service name
+ * @spec 构造保留 Service 原始类型的 Catalog，标准名和 aliases 共享无歧义的命名空间
  * @case id=unique_service_names,desc=`注册重名 Service`,input=`两个相同 name 的 Service`,expect=`构造失败`,forbid=`静默覆盖已有 Service`
  * @see {@link packages/plugin/tests/service.test.ts}
  * @rule Service name 是 Plugin 内稳定身份，不能用数组顺序消解冲突

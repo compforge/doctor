@@ -69,7 +69,7 @@ export function parseMetricServices(raw: string | undefined, catalog: ServiceCat
   if (!services.length) throw new Error("--services 未解析出任何 Service");
   const unsupported = services.filter((service) => !catalog.findWith(service, "metric"));
   if (unsupported.length) throw new Error(`Doctor 未注册以下 Service 的 metric capability：${unsupported.join(", ")}`);
-  return services;
+  return catalog.resolveNames(services);
 }
 
 export async function resolveMetricConfig(

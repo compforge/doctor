@@ -500,6 +500,8 @@ export interface ServiceRelationship {
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
+  /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */
+  aliases?: readonly string[];
   /** Logical service responsibility; must not contain credentials or runtime configuration. */
   description?: string;
   /** Explicit deployment topology. An empty list means this Service has no runtime workload. */

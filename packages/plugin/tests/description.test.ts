@@ -75,7 +75,7 @@ test("explicit projection excludes credentials, configuration and functions even
 
 test("old Services and empty declarations stay discoverable without invented capabilities", () => {
   const result = describeService({ name: "legacy", workloads: [], capabilities: {} });
-  expect(result).toEqual({ name: "legacy", description: undefined, capabilities: [], contributions: [],
+  expect(result).toEqual({ name: "legacy", aliases: [], description: undefined, capabilities: [], contributions: [],
     details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] } });
   const withoutExplanation = { ...service.contributions!.inspect!, description: undefined, limitations: undefined };
   expect(describeService({ ...service, contributions: { inspect: withoutExplanation } }).details.inspect)

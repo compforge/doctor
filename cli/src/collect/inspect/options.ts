@@ -31,7 +31,7 @@ export function parseInspectServices(raw: string, catalog: ServiceCatalog): stri
   if (unsupported.length) {
     throw new Error(`Doctor Plugin 未注册以下 Service：${unsupported.join(", ")}`);
   }
-  return services;
+  return catalog.resolveNames(services);
 }
 
 export function parseInspectOutputFormat(value: string | undefined): InspectOutputFormat {

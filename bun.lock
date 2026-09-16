@@ -73,7 +73,7 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.25",
+      "version": "0.0.26",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
       },

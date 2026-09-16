@@ -3,6 +3,7 @@ import type { ServiceDescription } from "@compforge/doctor-plugin";
 /** Text and JSON share the same declaration projection; rendering never inspects a live Service. */
 export function formatServiceDescription(service: ServiceDescription): string {
   const lines = [`  Service: ${service.name}`, `    说明：${service.description ?? "未提供"}`];
+  lines.push(`    Aliases：${service.aliases.join(", ") || "无"}`);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
     lines.push("    数据查询（Inspect contribution，不是同名 CLI 命令）",

@@ -16,7 +16,7 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
         let plugins = await listPlugins(plugin);
         if (opts.service !== undefined) {
           plugins = plugins.map(item => ({
-            ...item, services: item.services.filter(service => service.name === opts.service),
+            ...item, services: item.services.filter(service => service.name === opts.service || service.aliases.includes(opts.service!)),
           })).filter(item => item.services.length > 0);
           if (!plugins.length) throw new Error(`Unknown Service '${opts.service}' in the active Plugin`);
         }
@@ -34,7 +34,7 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
           for (const service of item.services) {
             terminalStdout.write(opts.service !== undefined
               ? formatServiceDescription(service)
-              : `  ${service.name}${service.description ? ` — ${service.description}` : ""}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
+              : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
           }
         }
       });

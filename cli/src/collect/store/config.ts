@@ -174,7 +174,7 @@ async function resolveService(
   interactive: boolean,
 ): Promise<string | undefined> {
   const providers = servicesWithDataSource(plugin.services, kind);
-  const explicit = requested?.trim();
+  const explicit = requested?.trim() ? plugin.services.find(requested.trim())?.name ?? requested.trim() : undefined;
   if (explicit && providers.some((service) => (
     service.name === explicit
     && serviceDataSources(plugin.services, service.name, kind).some(
