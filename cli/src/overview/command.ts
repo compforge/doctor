@@ -15,13 +15,12 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("--include <commands>", "采集命令，逗号分隔；同 doctor collect，默认全部")
     .option("--collect", "确认采集所选 Entry 的代表请求")
     .option("-n, --namespace <ns>", "目标 namespace")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "使用指定 profile")
     .option("--config <path>", "config 文件路径")
     .option("-f, --format <format>", "html 或 bundle；默认 HTML + Bundle")
     .option("-o, --output <path>", "报告 basename/路径")
-    .action(async (opts: OverviewCliOpts) => {
+    .action(async (opts: OverviewCliOpts, command: Command) => {
+      opts = command.optsWithGlobals();
       await runCommand(overviewCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
     });
 }

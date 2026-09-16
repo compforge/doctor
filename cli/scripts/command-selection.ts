@@ -2,7 +2,7 @@ import { createDoctorProgram } from "../src/app/main";
 
 /** Validate against the actual Commander catalog before producing any build artifact. */
 export function commandSelectionDefine(selection: string): Record<string, string> {
-  createDoctorProgram(undefined, selection);
+  createDoctorProgram({ commands: selection });
   return { __DOCTOR_COMMANDS__: JSON.stringify(selection) };
 }
 

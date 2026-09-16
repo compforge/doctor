@@ -415,7 +415,8 @@ describe("CLI command routing", () => {
     expect(neta.stdout).toContain("Usage: doctor neta [options] [input]");
     expect(neta.stdout).toContain("--trace-id <ids>");
     expect(neta.stdout).toContain("Markdown、HTML 与 JSON");
-    expect(neta.stdout).not.toContain("--kubeconfig");
+    expect(neta.stdout).toContain("Global Options:");
+    expect(neta.stdout).toContain("--kubeconfig");
   });
 
   test("net 在非交互环境未指定 YAML 时给出明确指引", () => {
@@ -494,7 +495,7 @@ describe("CLI command routing", () => {
     }
   });
 
-  test("image publication and debug deployment have separate command scopes", () => {
+  test("image publication exposes registry and source options", () => {
     const result = runCli("image", "--help");
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor image [options] [image]");
@@ -507,6 +508,9 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--profile <name>");
     expect(result.stdout).not.toContain("--arch <arch>");
     expect(result.stdout).not.toContain("--engine <engine>");
+  });
+
+  test("debug deployment has its own command scope", () => {
     const debug = runCli("debug", "--help");
     expect(debug.stdout).toContain("Usage: doctor debug [options]");
     expect(debug.stdout).toContain("--image <image>");
@@ -514,6 +518,9 @@ describe("CLI command routing", () => {
     expect(debug.stdout).toContain("--services <names>");
     expect(debug.stdout).not.toContain("GDB 安装");
     expect(debug.stdout).not.toContain("--debug-container <name>");
+  });
+
+  test("debug rejects the removed deploy subcommand", () => {
     const removed = runCli("debug", "deploy");
     expect(removed.exitCode).not.toBe(0);
     expect(removed.stderr).toContain("too many arguments");
@@ -532,9 +539,15 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("--yes");
     expect(result.stdout).not.toContain("debug container");
+  });
+
+  test("install rejects unsupported programs", () => {
     const unsupported = runCli("install", "--program", "strace");
     expect(unsupported.exitCode).not.toBe(0);
     expect(unsupported.stderr).toContain("目前仅支持安装 gdb");
+  });
+
+  test("install requires an explicit program without a terminal", () => {
     const missingProgram = runCli("install");
     expect(missingProgram.exitCode).not.toBe(0);
     expect(missingProgram.stderr).toContain("非交互终端；请显式指定 --program gdb");

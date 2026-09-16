@@ -4,8 +4,13 @@
 BIN_DIR ?= $(HOME)/.local/bin
 DIST_DIR ?= dist
 DOCTOR_ENTRY ?= $(abspath src/app/entry.ts)
+DOCTOR_NODE_OUTFILE ?= $(DIST_DIR)/doctor.mjs
 DOCTOR_COMMANDS ?= all
 export DOCTOR_COMMANDS
+BUNDLE_RUNTIME ?= true
+ifeq ($(filter $(BUNDLE_RUNTIME),true false),)
+$(error BUNDLE_RUNTIME must be true or false)
+endif
 DOCTOR_CLI_VERSION ?= $(shell sed -n 's/^export const DOCTOR_CLI_VERSION = "\([^"]*\)";/\1/p' src/app/version.ts)
 DOCTOR_ARTIFACT_PREFIX := doctor-$(DOCTOR_CLI_VERSION)
 TEST_FILES ?=
@@ -18,9 +23,10 @@ bump-version:
 	bun scripts/bump-version.ts $(VERSION)
 
 # 编译并安装到本机 PATH：make install && doctor version
-install: build-mac
+install: $(if $(filter true,$(BUNDLE_RUNTIME)),build-mac,build-node)
 	@mkdir -p $(BIN_DIR)
 	install -m 755 $(DIST_DIR)/doctor $(BIN_DIR)/doctor
+	$(if $(filter false,$(BUNDLE_RUNTIME)),install -m 644 $(DIST_DIR)/doctor.mjs $(BIN_DIR)/doctor.mjs,@true)
 	@echo "installed: $(BIN_DIR)/doctor"
 
 dev:
@@ -29,7 +35,11 @@ dev:
 # Core 只构建 CLI；诊断工具、image 与系统包由根目录 toolkit/ 独立发布。
 build:
 	rm -rf $(DIST_DIR)
-	$(MAKE) build-all
+	$(MAKE) $(if $(filter true,$(BUNDLE_RUNTIME)),build-all,build-node)
+
+.PHONY: build-node
+build-node: prepare-dist
+	bun scripts/build-node-doctor.ts --entry $(DOCTOR_ENTRY) --outfile $(DOCTOR_NODE_OUTFILE) --commands '$(DOCTOR_COMMANDS)'
 
 prepare-dist:
 	@mkdir -p $(DIST_DIR)

@@ -18,10 +18,15 @@ Inspect → Probe → Detector 推进；Core 与 Plugin Service 在同一流程�
 
 ## Collect Command Kernel
 
-CLI composition root 先构造完整 Commander 命令目录，再通过 `addCommand` 装配入口。构建参数
-`DOCTOR_COMMANDS` 只决定各顶层命令的 `hidden` 标记，帮助与版本始终可见；默认全部可见。
+CLI composition root 接收可选的 `Distribution`，再构造完整 Commander 命令目录，通过
+`addCommand` 装配入口。发行配置拥有名称、描述与命令展示，Plugin 继续独立拥有业务能力。
+发行配置的 `commands` 或构建参数 `DOCTOR_COMMANDS` 只决定顶层命令的 `hidden` 标记；显式发行配置
+优先，帮助与版本始终可见，未指定时全部可见。发行装配与身份边界见 [发行版](distribution.md)。
 该选择固化在发行物中，独立于 Plugin capability 与环境可用性。隐藏不限制直接调用，也不改变
 组合命令内部的执行能力；它是帮助展示策略，不是权限或代码裁剪边界。
+
+Kubernetes 连接参数在根命令统一声明，通过 Commander 全局选项传入 CommandContext；子命令不重复
+声明，不借进程环境变量传播目标。参数解析和 Help 构造不触发环境访问。
 
 ### 三阶段生命周期
 

@@ -120,6 +120,14 @@ Set `DOCTOR_COMMANDS=inspect,data,trace,log` on either build command to choose t
 shown in help (default: `all`). `help` and `version` stay visible; hidden commands remain callable.
 See [CLI build options](cli/README.md#本地构建) for details.
 
+Doctor supports custom distributions with their own CLI name, description, command visibility and
+optional embedded Plugin. Distributions share the upstream execution contracts; they are not separate
+Plugin identities. See [distribution composition](cli/docs/distribution.md).
+
+Set `BUNDLE_RUNTIME=false` on `make build`, `make build-local` or `make install` to use the customer's
+Node >= 22.23.1 instead of embedding a runtime. Ship the generated launcher and `.mjs` together;
+application dependencies are bundled, so no customer-side npm install is required.
+
 Build a Toolkit slice for one execution platform, all slices separately, or one combined archive:
 
 ```bash

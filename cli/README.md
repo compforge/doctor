@@ -4,11 +4,36 @@ Doctor 是面向应用与基础设施的诊断客户端。直接运行 `doctor` 
 `doctor <command> --help` 查看某条命令的参数。默认显示全部命令；当前 Plugin 缺少 required
 capability 时，CLI 会在访问环境前说明具体缺口。
 
+## 选择 Kubernetes 环境
+
+`--kubeconfig` 与 `--context` 是全局选项，根 Help 和子命令 Help 都会展示。参数可放在子命令前后：
+
+```bash
+doctor --kubeconfig /path/to/config --context staging inspect --services api -n app
+doctor inspect --kubeconfig /path/to/config --context staging --services api -n app
+```
+
+显式 `--kubeconfig` 优先于 profile 的 `kube.kubeconfig_path`；同一选项重复传入时最后一个生效。
+这些参数只在命令需要 Kubernetes 时使用，查看 Help 或 `plugin` 列表不连接目标环境。
+`--config` 仍表示 Doctor 的配置文件，与 kubeconfig 不同。
+
 ## 本地构建
 
 ```bash
 make build
 ```
+
+默认内嵌运行时，接收方无需安装 Node。已有 Node >= 22.23.1 时可交付不带运行时的 bundle：
+
+```bash
+make build BUNDLE_RUNTIME=false
+# 或从仓库根目录：make build-local BUNDLE_RUNTIME=false
+./dist/doctor --help
+```
+
+无运行时模式输出 `doctor` 启动脚本与 `doctor.mjs`，两者必须放在同一目录；应用依赖已打包，客户无需
+安装 npm 包。`make install BUNDLE_RUNTIME=false` 会安装这两个文件。该开关独立于 Plugin 和命令展示，
+不改变业务能力授权，也不改变 Toolkit 的单独交付约定。
 
 构建时可用 `DOCTOR_COMMANDS` 指定帮助中可见的顶层命令，逗号分隔，默认 `all`：
 
@@ -21,6 +46,9 @@ make -C .. build-local DOCTOR_COMMANDS=inspect,data,trace,log
 `help`、`version` 始终可见。其它命令使用 Commander 的 `hidden` 标记隐藏，仍可直接调用并查看
 自身的 `--help`；此选项不禁用功能、不裁剪代码，也不是权限边界。拼错命令名会使构建失败。
 可见性写入 Bun executable 与 Node SEA 产物，运行时设置同名环境变量不会改变它。
+
+Doctor 也支持以独立名称交付的[发行版](docs/distribution.md)：发行入口可以配置名称、描述和默认命令展示，
+并独立选择内置 Plugin；没有发行配置时保持原生 Doctor 行为。
 
 Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、fork-pyheap 等诊断工具。fork-pyheap dumper、GDB 等
 可选组件与 debug image 统一由根目录 `toolkit/` 独立版本和构建；具体命令只准备本次诊断所需组件：

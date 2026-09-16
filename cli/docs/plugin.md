@@ -392,6 +392,9 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 `cli/Makefile` 的 `DOCTOR_ENTRY` 构建。本仓根 `make build/install` 始终构建不带具体 Plugin 的通用 CLI。
 两种形态共用 `PluginDefinition` 与 capability，差别只在启动时如何取得 Plugin。
 
+定制 CLI 的名称、描述和命令展示由 [Distribution](distribution.md) 表达，通过 `startDoctor`
+的发行配置注入；它属于发行装配，不进入 Plugin 业务协议。
+
 ### Service Overview
 
 `capabilities.overview` 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或

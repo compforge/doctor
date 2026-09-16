@@ -11,6 +11,10 @@ PLUGIN_VERSION_TOOL := $(ROOT_DIR)/packages/plugin/scripts/version.ts
 PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION),)
 CHECK_JOBS ?= 4
 TEST_FILES ?=
+BUNDLE_RUNTIME ?= true
+ifeq ($(filter $(BUNDLE_RUNTIME),true false),)
+$(error BUNDLE_RUNTIME must be true or false)
+endif
 
 deps:
 	bun install --frozen-lockfile
@@ -69,15 +73,15 @@ test-agent:
 test-plugin-sdk:
 	bun run test:plugin-sdk
 
-build: build-deps check-plugin-version
+build: $(if $(filter true,$(BUNDLE_RUNTIME)),build-deps,deps) check-plugin-version
 	rm -rf $(DIST_DIR)
 	@mkdir -p $(DIST_DIR)
-	$(MAKE) -C cli build-all DIST_DIR=$(DIST_DIR)
+	$(MAKE) -C cli $(if $(filter true,$(BUNDLE_RUNTIME)),build-all,build-node) DIST_DIR=$(DIST_DIR)
 
 build-local: deps check-plugin-version
 	rm -rf $(DIST_DIR)
 	@mkdir -p $(DIST_DIR)
-	$(MAKE) -C cli build-mac DIST_DIR=$(DIST_DIR)
+	$(MAKE) -C cli $(if $(filter true,$(BUNDLE_RUNTIME)),build-mac,build-node) DIST_DIR=$(DIST_DIR)
 
 toolkit:
 	$(MAKE) -C toolkit build $(if $(OS),OS=$(OS)) $(if $(ARCH),ARCH=$(ARCH)) DIST_DIR=$(DIST_DIR)
@@ -91,6 +95,7 @@ toolkit-matrix:
 install: build-local
 	@mkdir -p $(BIN_DIR)
 	install -m 755 $(DIST_DIR)/doctor $(BIN_DIR)/doctor
+	$(if $(filter false,$(BUNDLE_RUNTIME)),install -m 644 $(DIST_DIR)/doctor.mjs $(BIN_DIR)/doctor.mjs,@true)
 	@echo "installed: $(BIN_DIR)/doctor"
 
 clean:
