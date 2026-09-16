@@ -45,7 +45,7 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
 ## 关键约定
 
 1. **Core/Plugin 共用一条 Collect 流程**：Core 通过 Service contribution 统一驱动
-   Inspect → Probe → Detector，通过 capability 复用 Store、Model、Case 等业务能力；access、类型化 data、
+   Inspect → Probe → Detector，通过 capability 复用 DataSource、Model、Case 等业务能力；access、类型化 data、
    Target-scoped infra 与 profile config 只支撑 contribution/capability 的准备和调用，不形成平行生命周期。
    私有业务实现不进入 CLI/SDK。
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service

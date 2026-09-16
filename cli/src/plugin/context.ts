@@ -1,5 +1,5 @@
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
-import { ClientManager } from "@compforge/harness-toolbox/client-manager";
+import { dataSourceKey } from "@compforge/harness-common";
+import { ClientManager, type ClientProvider } from "@compforge/harness-common";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import type {
@@ -149,6 +149,8 @@ function createKubernetesAccess(
 export type ManagedPluginContext = PluginContext & { dispose(): Promise<void> };
 
 interface PluginContextOptions {
+  /** An explicitly supplied root owner is useful outside the command async scope. */
+  clients?: ClientProvider;
   env: string;
   config?: Readonly<Record<string, unknown>>;
   databaseIdentity?: DatabaseIdentity;
@@ -176,7 +178,7 @@ export function createPluginContext(
   const controller = new AbortController();
   const parentSignal = currentCommandSignal();
   const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
-  const root = currentCommandClients();
+  const root = options.clients ?? currentCommandClients();
   const local = root ? undefined : new ClientManager(parentSignal);
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);

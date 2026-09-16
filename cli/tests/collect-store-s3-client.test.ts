@@ -1,4 +1,4 @@
-import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
+import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { S3ObjectPage, S3Target } from "@compforge/harness-toolbox/s3";
@@ -23,7 +23,7 @@ function context(target: S3Target, command = new CommandContext({})): S3CommandC
   const dir = mkdtempSync(join(tmpdir(), "doctor-s3-client-"));
   cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
   cleanups.push(() => command.disposeClients());
-  const capability: ServiceS3StoreCapability = {
+  const capability: ServiceS3DataSource = {
     id: "objects", kind: "s3", backend: "s3-compatible",
     environment: { endpoint: "S3_ENDPOINT", bucket: "S3_BUCKET", region: "S3_REGION",
       accessKey: "S3_ACCESS_KEY", secretKey: "S3_SECRET_KEY" },

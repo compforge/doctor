@@ -64,11 +64,11 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
 
 test("text reports VDB access under its Store identity", () => {
   const text = formatServiceDescription(describeService({ name: "search", workloads: [], capabilities: {
-    stores: [{ id: "index", kind: "vdb", backend: "opensearch", access: { kubernetes: [{
+    dataSources: [{ id: "index", kind: "vdb", backend: "opensearch", access: { kubernetes: [{
       rule: { verb: "get", resource: "configmaps", resourceName: "search-config" },
       requirement: "required", purpose: "Locate search storage",
     }] } }],
   } }));
-  expect(text).toContain("capabilities.stores.index:");
+  expect(text).toContain("capabilities.dataSources.index:");
   expect(text).toContain("required: get configmaps/search-config — Locate search storage");
 });

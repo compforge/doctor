@@ -19,7 +19,7 @@ span。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
    重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。provider Service
    声明 capability 依赖时，Core 在调用前将其解析为受限运行时 handle。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
-   未提供时优先使用 `PluginDefinition.trace.source.store` 引用的业务 Service Store，再按 Service Catalog
+   未提供时优先使用 `PluginDefinition.trace.source.dataSource` 引用的业务 Service Store，再按 Service Catalog
    顺序尝试其余 OpenSearch VDB Store；每个 Store 都独立解析 endpoint、backend Service 和 namespace。
 3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期；
    ID 解析与 span 下载命中同一 Store 时复用同一连接。

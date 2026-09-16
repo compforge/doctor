@@ -1,5 +1,5 @@
-import type { Client } from "@compforge/harness-toolbox/client";
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import type { Client } from "@compforge/harness-common";
+import { dataSourceKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../command/execution-scope";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis/index";

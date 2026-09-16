@@ -18,7 +18,7 @@ Plugin version 后重新封存。
 协议返回值既可以是可持久化数据，也可以是临时 capability handle。后者只暴露 Core 需要的规范化身份
 和操作方法，适合让原始凭据、厂商字段与请求拼装始终留在 Plugin 内。
 
-Core 通过 contribution 发现和驱动 Inspect、Probe、Detector，通过 capability 复用 Store、Metric、Case 等
+Core 通过 contribution 发现和驱动 Inspect、Probe、Detector，通过 capability 复用 DataSource、Metric、Case 等
 业务能力。access 声明、调用时交换的类型化 data、Core 注入的 Target-scoped infra，以及 profile 中
 不透明透传的 Plugin config 都只支撑当前贡献或能力调用，不形成平行的扩展生命周期。config 的 schema 与解释权归 Plugin；
 kubeconfig、context 等 Core-owned 连接信息不会伪装成 Plugin config。
@@ -67,7 +67,7 @@ export const workloadHealthProbe = defineServiceWorkloadProbe({
 深冻结并进入 Evidence。每个 object schema 都必须显式声明 `additionalProperties`，不允许远程 `$ref`。
 `Type.Any/Unknown`、`Type.Refine/Codec/Unsafe` 等无法完整表达为可移植 JSON Schema 的逃生口不可用。
 
-`trace` 是一个 Plugin-level capability：`source` 声明 Core 采集 trace 所需的业务 Store，`analysis` 直接
+`trace` 是一个 Plugin-level capability：`source.dataSource` 引用 Service 声明的数据源，`analysis` 直接
 使用 trace-harness 定义的 `TraceContributions`。分析扩展只能消费已标准化的 Trace IR/Facts；采集、配置、
 凭据和外部访问仍在进入 Trace Harness 前完成。分类字段用 `structure_fields` 声明；详情与 fact
 依赖通过 `detail_fields` / `detail_facts`、FactProducer 和 `requires` 声明，由 Core 的 TraceSession

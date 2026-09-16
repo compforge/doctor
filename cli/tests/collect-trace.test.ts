@@ -41,32 +41,32 @@ test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target",
     version: "0.0.1",
     trace: {
       analysis: {},
-      source: { store: { service: "jaeger-collector", store: "trace" } },
+      source: { dataSource: { service: "jaeger-collector", dataSource: "trace" } },
     },
     services: createServiceCatalog([{
       name: "kb-server",
       workloads: [],
       capabilities: {
-        stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "jaeger-collector",
       workloads: [],
       capabilities: {
-        stores: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
+        dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "chat-server",
       workloads: [],
       capabilities: {
-        stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
+        dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
       },
     }]),
   } satisfies PluginDefinition;
 
   expect(traceStoreCandidates(plugin)).toEqual([
-    { service: "jaeger-collector", store: "trace" },
-    { service: "kb-server", store: "vdb" },
+    { service: "jaeger-collector", dataSource: "trace" },
+    { service: "kb-server", dataSource: "vdb" },
   ]);
 });
 

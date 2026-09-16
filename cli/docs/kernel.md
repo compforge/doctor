@@ -187,6 +187,10 @@ Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本
 执行树，停止后续工作，并保留已生成证据。
 
 共享基础设施由根 CommandContext 的 ClientManager 持有，命令通过只提供 get 的 `clients` 视图借用。
+Service 的 `capabilities.dataSources` 是访问声明的唯一清单，store 只是消费它的诊断视角，
+db 与业务 Inspect 不依赖 Store 命令。声明自描述保持离线，运行时 DataSource 不作为 Fact 持久化。
+中立生命周期归 TypeScript harness-common；协议 Client 与 Transport 归 toolbox。
+
 DataSource 标识目标与访问配置并构造 Client；Client.initialize 按需解析配置、选择 Transport、准备连接，
 Client.dispose 幂等回收自己拥有的资源。构造函数不执行外部操作，查询及其结果仍属于各次领域调用。
 普通领域数据保存在相应模块中，不进入通用 Context 缓存。

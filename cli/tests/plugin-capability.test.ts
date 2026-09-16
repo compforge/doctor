@@ -259,8 +259,8 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
   const dependency = {
     id: "trace-store",
     service: "kb-server",
-    capability: "stores" as const,
-    store: "vdb",
+    capability: "dataSources" as const,
+    dataSource: "vdb",
   };
   const search = { search: async () => ({ hits: { hits: [] } }) };
   const tracePlugin = {
@@ -270,7 +270,7 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
       name: "kb-server",
       workloads: [],
       capabilities: {
-        stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
     }, {
       name: "opensearch",

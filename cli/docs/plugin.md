@@ -40,7 +40,7 @@ Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访�
 Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
 
 Service 通过 `contributions.inspect / probes / detectors` 统一注册 Collect Execute 三阶段的业务贡献。
-capability 继续表达 Store、Metric、Case 等可复用业务能力；两者都不拥有 Command 生命周期。跨边界契约为：
+capability 继续表达 DataSource、Metric、Case 等可复用业务能力；两者都不拥有 Command 生命周期。跨边界契约为：
 
 | 协议面 | 方向 | 所有权 |
 |---|---|---|
@@ -111,7 +111,7 @@ capability。依赖因此挂在消费方 Service，而不是塞进某个 capabil
 Core 在调用 capability 前解析依赖，只向 `PluginContext` 注入受限的操作 handle；凭据、
 port-forward 和清理仍归 Core 拥有。
 
-Trace Capability 把采集定位和纯分析明确分开：`trace.source.store` 引用 Service Catalog 中的首选 Store；
+Trace Capability 把采集定位和纯分析明确分开：`trace.source.dataSource` 引用 Service Catalog 中的首选 Store；
 Core 在运行时解析实际 OpenSearch target，并在首选项不可用时尝试 Catalog 中其余 OpenSearch VDB Store。
 `trace.analysis` 直接采用 trace-harness 的
 `TraceContributions`，只对已标准化的 Trace IR/Facts 做确定性 fact transform、measure、detect 与 render 扩展。它不读取
@@ -194,7 +194,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 8,
+  "pluginApiVersion": 9,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -339,8 +339,20 @@ capability 实际需要的业务输入。`PluginContext` 可以携带 profile �
 当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
 `inNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
 access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
-例如 VDB Store capability 可由 `inspectTarget(context)` 自行定位配置来源，再向 Core 返回统一的
+例如 VDB DataSource 可由 `inspectTarget(context)` 自行定位配置来源，再向 Core 返回统一的
 `ServiceVdbTarget`；Core 只消费这个结果完成标准 VDB 诊断。
+
+Service 使用 `capabilities.dataSources[]` 声明数据源的 id、类型、用途与访问方式。
+它是访问能力，不是业务 Fact；声明中的工厂、凭据与运行时对象不会进入自描述或 Evidence。
+DB source 使用 `PluginDataSource<MysqlClient>`，与标准 `envPrefix` 简写互斥；
+可用 SDK 的 `mysqlDataSource(key, resolve)` 构造 source，配置解析在 Client 初始化时执行，
+回调收到根执行生命周期内的上下文，不能捕获短生命周期的 capability context。
+多个数据库目标声明多个 dataSources；库表通过 Client 实时发现，不由 Plugin 重复维护清单。
+`store`、`db` 与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
+跨 Service 依赖通过 `{ service, capability: "dataSources", dataSource }` 引用声明；
+引用本身不授予额外权限，也不保证不同权限作用域会合并连接。当前跨 Service 运行时依赖 handle
+实现的是受限 OpenSearch search；数据库消费者可共享声明中的 source 工厂。
+详见 [数据库取证](commands/db.md)。
 
 网络 endpoint 跟随实际消费它的 capability 声明，不放在 Service 根上假设一个全局端口。同一 Service
 可以分别为 tenant directory、model catalog、inference、MCP 或 metrics 提供不同 endpoint；命令只为
@@ -348,8 +360,9 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 推导网络地址。
 
 Kubernetes 传输以及 port-forward 的本地端口分配、取消和回收由宿主按调用或共享资源的生命周期管理，因此由
-`PluginContext` 按需提供。通用数据访问实现由独立的 `@compforge/harness-toolbox` 提供，Core 和业务 Plugin 均可复用其 DataSource、Transport
-与协议 Client。toolkit 不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
+`PluginContext` 按需提供。中立 Client、DataSource 与 ClientManager 契约由 TypeScript
+`@compforge/harness-common` 提供；`@compforge/harness-toolbox` 提供 Transport 与具体协议 Client。
+common 与 toolbox 都不依赖 Plugin 协议或命令上下文；Plugin 通过宿主提供的受权限约束接口使用
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
 

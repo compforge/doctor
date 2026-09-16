@@ -52,7 +52,7 @@ describe("Plugin discovery", () => {
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
       services: [{ name: "api", capabilities: ["log", "traceId"], contributions: ["inspect"],
-        details: { workloads: [], dependencies: [], stores: [],
+        details: { workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
           access: [
             { owner: "contributions.inspect", requirements: { kubernetes: [] } },
@@ -71,10 +71,10 @@ describe("Plugin discovery", () => {
     await installPlugin(archive, installRoot);
     const result = await listPlugins(undefined, installRoot);
     expect(result).toMatchObject([{
-      id: "example", version: "0.0.6", source: "installed",
+      id: "example", version: "0.0.7", source: "installed",
       services: [
         { name: "example-api", capabilities: ["config", "log"], contributions: [] },
-        { name: "example-worker", capabilities: ["log", "stores"], contributions: [] },
+        { name: "example-worker", capabilities: ["log", "dataSources"], contributions: [] },
       ],
     }]);
   });
@@ -112,8 +112,8 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout.toString())).toEqual({ plugins: [{
       id: "test", version: "0.0.1", source: "injected",
-      services: [{ name: "test-store", capabilities: ["stores"], contributions: [],
-        details: { workloads: [], dependencies: [], stores: [{ id: "cache", kind: "redis" }], access: [] },
+      services: [{ name: "test-store", capabilities: ["dataSources"], contributions: [],
+        details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
       }],
     }] });
     expect(result.stderr.toString()).toBe("");
@@ -129,7 +129,7 @@ describe("doctor plugin CLI", () => {
     const result = run("plugin", "--service", "test-store");
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain("Service: test-store");
-    expect(result.stdout.toString()).toContain("cache (redis)");
+    expect(result.stdout.toString()).toContain("cache (redis/redis)");
     expect(result.stdout.toString()).toContain("尚未检查目标环境");
   });
 
@@ -138,7 +138,7 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     const services = JSON.parse(result.stdout.toString()).plugins[0].services;
     expect(services).toHaveLength(1);
-    expect(services[0].details.stores).toEqual([{ id: "cache", kind: "redis" }]);
+    expect(services[0].details.dataSources).toEqual([{ id: "cache", kind: "redis", backend: "redis" }]);
   });
 
   test("unknown Service fails without returning a misleading empty catalog", () => {

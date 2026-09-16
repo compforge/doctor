@@ -67,6 +67,7 @@ import { inspectCommand } from "../collect/inspect/command";
 import { tenantCommand } from "../collect/tenant/command";
 import { metricCommand } from "../collect/metric/command";
 import { storeCommand } from "../collect/store/command";
+import { withDbOptions } from "../collect/db/options";
 import { mcpCommand } from "../collect/mcp/command";
 import { modelCommand } from "../collect/model/command";
 import { collectCommand } from "../collect/composite";
@@ -605,6 +606,13 @@ export function createDoctorProgram(
     opts = command.optsWithGlobals();
     await runCommand(storeCommand, opts, domainInput(opts), { plugin });
   });
+  withDbOptions(catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL"))
+    .action(async (_opts, command: CommandT) => {
+      const opts = command.optsWithGlobals();
+      // SQL parsing belongs to db execution; help and unrelated commands do not load its grammar.
+      const { dbCommand } = await import("../collect/db/command");
+      await runCommand(dbCommand, opts, domainInput(opts), { plugin });
+    });
   withLogOptions(
     catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace（只读）"),
     "",

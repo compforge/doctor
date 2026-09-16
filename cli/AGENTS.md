@@ -30,6 +30,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 | `overview` | Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
 | `perf` | 对 Plugin Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
+| `datasource` | Service 数据源的共享配置与访问准备，不属于某个诊断命令 |
 | `infra` | 尚未提取的访问适配与工具选择；通用 DB、Redis、OpenSearch、Kubernetes 执行与转发、进程原语由 `@compforge/harness-toolbox` 提供 |
 | `terminal` / `protocol` | 通用终端交互与可选远端协议 client；chat-tui 只消费 `chat` 投影 |
 
@@ -78,5 +79,6 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 - `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
+- `docs/commands/db.md` — Service DB 目标、交互参数与有界只读 SQL 取证
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
 - `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计

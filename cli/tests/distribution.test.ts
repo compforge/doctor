@@ -76,7 +76,7 @@ describe("Doctor distributions", () => {
 });
 
 describe("global Kubernetes options", () => {
-  for (const name of ["inspect", "data", "trace", "log", "metric", "tenant", "collect", "overview", "image", "debug", "install", "mem", "cpu", "http", "net", "store", "model", "mcp", "eval", "perf"]) {
+  for (const name of ["inspect", "data", "trace", "log", "metric", "tenant", "collect", "overview", "image", "debug", "install", "mem", "cpu", "http", "net", "store", "db", "model", "mcp", "eval", "perf"]) {
     for (const position of ["before", "after"] as const) {
       test(`${name} forwards target options ${position} the command`, async () => {
         const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);

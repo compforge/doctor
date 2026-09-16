@@ -35,9 +35,9 @@ import {
 } from "../shared/opensearch-access";
 import {
   ServiceDependencyRuntime,
-  openSearchStoreCandidates,
-  type PreparedServiceStoreDependency,
-  type ServiceStoreReference,
+  openSearchDataSourceCandidates,
+  type PreparedServiceDataSourceDependency,
+  type ServiceDataSourceReference,
 } from "../shared/service-dependency";
 import { buildIndexExpr } from "./opensearch";
 import { probeTrace } from "./probe";
@@ -47,8 +47,8 @@ export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
 
 /** Plugin trace source is preferred; the remaining OpenSearch VDB capabilities are fallbacks. */
-export function traceStoreCandidates(plugin: PluginDefinition): ServiceStoreReference[] {
-  return openSearchStoreCandidates(plugin, plugin.trace?.source?.store);
+export function traceStoreCandidates(plugin: PluginDefinition): ServiceDataSourceReference[] {
+  return openSearchDataSourceCandidates(plugin, plugin.trace?.source?.dataSource);
 }
 
 export interface CollectTraceCliOpts {
@@ -206,7 +206,7 @@ export async function runCollectTrace(
     runtime = await prepareTraceKubernetes(
       opts,
       commandContext,
-      !endpoint && !plugin.trace?.source?.store,
+      !endpoint && !plugin.trace?.source?.dataSource,
     );
   } catch (err) {
     terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
@@ -261,12 +261,12 @@ export async function runCollectTrace(
   }
 
   const traceStores = traceStoreCandidates(plugin);
-  let preparedStore: PreparedServiceStoreDependency | undefined;
+  let preparedStore: PreparedServiceDataSourceDependency | undefined;
   if (traceStores.length) {
     try {
       preparedStore = endpoint
-        ? await dependencyRuntime.prepareStore(traceStores[0]!.service, traceStores[0]!.store)
-        : await dependencyRuntime.prepareStoreCandidates(traceStores);
+        ? await dependencyRuntime.prepareDataSource(traceStores[0]!.service, traceStores[0]!.dataSource)
+        : await dependencyRuntime.prepareDataSourceCandidates(traceStores);
     } catch (error) {
       terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
       return failure(2, "Trace 采集准备失败");
@@ -388,7 +388,7 @@ export interface TraceCollectOptions {
   pageSize: number;
   outputDir: string;
   /** Shared dependency access owned by the outer batch command. */
-  preparedStore?: PreparedServiceStoreDependency;
+  preparedStore?: PreparedServiceDataSourceDependency;
 }
 
 /**

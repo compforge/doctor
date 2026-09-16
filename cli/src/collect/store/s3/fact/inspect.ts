@@ -1,4 +1,4 @@
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import { dataSourceKey } from "@compforge/harness-common";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
@@ -6,7 +6,7 @@ import { S3DataSource, type S3Target } from "@compforge/harness-toolbox/s3";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { inspectS3Provider } from "../../../../infra/object-store";
 import type { Inspect } from "../../../inspection";
-import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
+import { configuredValue, loadServiceRuntimeConfig } from "../../../../datasource/runtime-config";
 import type { S3CommandContext } from "../context";
 import type { S3InspectionFacts } from "./model";
 import { collectedFact, failedFact, unavailableFact } from "../../../protocol";

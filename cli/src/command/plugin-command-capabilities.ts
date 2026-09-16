@@ -19,7 +19,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor store",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "stores" },
+      capability: { scope: "service", name: "dataSources" },
       purpose: "定位业务 Store 并解释其运行时配置",
     }],
   },

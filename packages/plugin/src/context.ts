@@ -1,21 +1,21 @@
-import type { Client } from "@compforge/harness-toolbox/client";
+import type { Client, DataSource } from "@compforge/harness-common";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
-import type { ServiceEndpoint, ServiceStoreCapabilityDependency } from "./service";
+import type { ServiceEndpoint, ServiceDataSourceDependency } from "./service";
 
 export interface PluginSearchAccess {
   /** The host binds the index and owns connection/auth/cleanup. */
   search(body: Readonly<Record<string, unknown>>): Promise<Record<string, unknown>>;
 }
 
-export interface ResolvedServiceStoreDependency extends ServiceStoreCapabilityDependency {
+export interface ResolvedServiceDataSourceDependency extends ServiceDataSourceDependency {
   access: {
     kind: "opensearch";
     search: PluginSearchAccess;
   };
 }
 
-export type ResolvedServiceCapabilityDependency = ResolvedServiceStoreDependency;
+export type ResolvedServiceCapabilityDependency = ResolvedServiceDataSourceDependency;
 
 /**
  * Doctor 在一次 capability 调用中确认的运行态事实。
@@ -48,7 +48,7 @@ export interface PluginClientContext {
   signal: AbortSignal;
 }
 
-export interface PluginDataSource<C extends Client> {
+export interface PluginDataSource<C extends Client> extends Pick<DataSource<C>, "key"> {
   /** The host additionally namespaces this key by target, configuration and declared access. */
   readonly key: string;
   createClient(context: PluginClientContext): C;

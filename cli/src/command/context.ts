@@ -1,5 +1,5 @@
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "./log-policy";
-import { ClientManager, type ClientProvider } from "@compforge/harness-toolbox/client-manager";
+import { ClientManager, type ClientProvider } from "@compforge/harness-common";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
