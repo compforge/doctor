@@ -30,7 +30,7 @@ const services = createServiceCatalog([
     },
     capabilities: {
       log: { default: false },
-      stores: [{
+      dataSources: [{
         id: "primary-database",
         kind: "db",
         backend: "mysql",

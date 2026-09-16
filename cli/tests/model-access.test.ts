@@ -290,7 +290,7 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
         name: "trace-store",
         workloads: [],
         capabilities: {
-          stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+          dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
         },
       }],
     },
@@ -300,33 +300,33 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
     ...base,
     trace: {
       ...base.trace,
-      source: { store: { service: "trace-store", store: "vdb" } },
+      source: { dataSource: { service: "trace-store", dataSource: "vdb" } },
     },
-  }, manifest).trace?.source?.store).toEqual({ service: "trace-store", store: "vdb" });
+  }, manifest).trace?.source?.dataSource).toEqual({ service: "trace-store", dataSource: "vdb" });
 
   expect(() => validatePluginDefinition({
     ...base,
     trace: {
       ...base.trace,
-      source: { store: { service: "missing", store: "vdb" } },
+      source: { dataSource: { service: "missing", dataSource: "vdb" } },
     },
-  }, manifest)).toThrow("trace.source.store references unknown Service 'missing'");
+  }, manifest)).toThrow("trace.source.dataSource references unknown Service 'missing'");
 
   expect(() => validatePluginDefinition({
     ...base,
     trace: {
       ...base.trace,
-      source: { store: { service: "trace-store", store: "missing" } },
+      source: { dataSource: { service: "trace-store", dataSource: "missing" } },
     },
-  }, manifest)).toThrow("trace.source.store references unknown Store 'trace-store/missing'");
+  }, manifest)).toThrow("trace.source.dataSource references unknown Store 'trace-store/missing'");
 });
 
 test("Service capability dependency 必须引用另一 Service 已声明的 Store", () => {
   const dependency = {
     id: "trace-store",
     service: "kb-server",
-    capability: "stores",
-    store: "vdb",
+    capability: "dataSources",
+    dataSource: "vdb",
   } as const;
   const base = {
     id: "test",
@@ -336,7 +336,7 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
         name: "kb-server",
         workloads: [],
         capabilities: {
-          stores: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
+          dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
         },
       }, {
         name: "opensearch",
@@ -358,8 +358,8 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
         dependencies: [{
           id: "trace-store",
           service: "kb-server",
-          capability: "stores",
-          store: "missing",
+          capability: "dataSources",
+          dataSource: "missing",
         }],
       }],
     },
@@ -385,11 +385,11 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
         name: "kb-server",
         workloads: [],
         capabilities: {
-          stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
+          dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
         },
       }, {
         ...base.services.services[1],
-        dependencies: [{ ...dependency, store: "database" }],
+        dependencies: [{ ...dependency, dataSource: "database" }],
       }],
     },
   }, manifest)).toThrow("当前只支持 OpenSearch VDB");

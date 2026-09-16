@@ -1,5 +1,6 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
+import type { ServiceDataSource } from "./datasource";
 import type {
   Fact,
   Identity,
@@ -379,8 +380,8 @@ export interface ServiceInspect
   provides: readonly string[];
   /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
   expands?: readonly string[];
-  /** 直接访问 Store 时声明 Store ID；通过 Service API 查询时可省略。 */
-  store?: string;
+  /** 直接访问数据源时声明 DataSource ID；通过 Service API 查询时可省略。 */
+  dataSource?: string;
   resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
   inspect: ServiceInspectQueryHandler;
 }
@@ -418,102 +419,6 @@ export interface ServiceTraceIdCapability extends CapabilityWithAccess {
   ): Promise<ServiceTraceIdResolutionResult | undefined>;
 }
 
-export type ServiceStoreKind = "db" | "vdb" | "s3" | "redis";
-
-interface ServiceStoreCapabilityBase {
-  id: string;
-  kind: ServiceStoreKind;
-}
-
-export interface ServiceDatabaseStoreCapability extends ServiceStoreCapabilityBase {
-  kind: "db";
-  backend: "mysql";
-  envPrefix: string;
-}
-
-export interface ServiceVdbTarget {
-  backend: string;
-  store: string;
-  endpoint?: string;
-  username?: string;
-  password?: string;
-  configurationKind: string;
-  configPath?: string;
-  source?: {
-    namespace?: string;
-    pod?: string;
-    container?: string;
-  };
-}
-
-export interface ServiceVdbConfigurationInput {
-  environment: Readonly<Record<string, string>>;
-  file?: {
-    path: string;
-    content: string;
-  };
-}
-
-export interface ServiceVdbConfiguration {
-  /** Doctor 负责读取文件；路径规则及文件内容语义由 Plugin 拥有。 */
-  file?: {
-    pathEnvironment: string;
-    defaultPath: string;
-  };
-  resolve(
-    input: ServiceVdbConfigurationInput,
-  ): ServiceVdbTarget | Promise<ServiceVdbTarget>;
-}
-
-export interface ServiceVdbStoreCapability extends ServiceStoreCapabilityBase {
-  kind: "vdb";
-  backend: "opensearch";
-  store?: string;
-  /** Plugin 自行发现配置来源并投影出统一 VDB target；Core 只提供受控上下文。 */
-  inspectTarget?(context: PluginContext): Promise<ServiceVdbTarget>;
-  access?: CapabilityWithAccess["access"];
-  /** 非标准 VDB 配置由 Plugin 投影为 Doctor 可消费的统一 target。 */
-  configuration?: ServiceVdbConfiguration;
-}
-
-export interface ServiceS3StoreCapability extends ServiceStoreCapabilityBase {
-  kind: "s3";
-  backend: "s3-compatible";
-  environment: {
-    endpoint: string;
-    bucket: string;
-    region: string;
-    accessKey: string;
-    secretKey: string;
-    bucketPrefix?: string;
-    addressStyle?: string;
-  };
-}
-
-export interface ServiceRedisStoreCapability extends ServiceStoreCapabilityBase {
-  kind: "redis";
-  backend: "redis";
-  environment: {
-    address: string;
-    port?: string;
-    database?: string;
-    username?: string;
-    password?: string;
-    useSsl?: string;
-    clusterType?: string;
-    sentinels?: string;
-    sentinelMasterName?: string;
-    sentinelUsername?: string;
-    sentinelPassword?: string;
-    timeout?: string;
-  };
-}
-
-export type ServiceStoreCapability =
-  | ServiceDatabaseStoreCapability
-  | ServiceVdbStoreCapability
-  | ServiceS3StoreCapability
-  | ServiceRedisStoreCapability;
 
 /** Service 构建与运行所使用的稳定工具链声明；现场版本仍由 Doctor 从 Target 观测。 */
 export interface Toolchain {
@@ -558,7 +463,7 @@ export function isToolchain(value: unknown): value is Toolchain {
 
 export interface ServiceCapabilities {
   overview?: ServiceOverviewCapability;
-  stores?: readonly ServiceStoreCapability[];
+  dataSources?: readonly ServiceDataSource[];
   config?: Record<string, never>;
   log?: {
     default: boolean;
@@ -575,17 +480,17 @@ export interface ServiceCapabilities {
 
 export type ServiceCapabilityName = keyof ServiceCapabilities;
 
-/** A Service-level dependency on one Store capability exposed by another Service. */
-export interface ServiceStoreCapabilityDependency {
+/** A Service-level reference to a DataSource declared by another Service. */
+export interface ServiceDataSourceDependency {
   /** Stable local name used by this Service to consume the resolved dependency. */
   id: string;
   service: string;
-  capability: "stores";
-  store: string;
+  capability: "dataSources";
+  dataSource: string;
 }
 
 /** Extend this union when another capability gains a concrete runtime dependency contract. */
-export type ServiceCapabilityDependency = ServiceStoreCapabilityDependency;
+export type ServiceCapabilityDependency = ServiceDataSourceDependency;
 
 export interface ServiceRelationship {
   kind: "managed-by";

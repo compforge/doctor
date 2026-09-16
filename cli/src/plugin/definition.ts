@@ -115,7 +115,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       nonEmptyString(dependency.id, `${service.name}.dependencies[${dependencyIndex}].id`);
       nonEmptyString(dependency.service, `${service.name}.dependencies[${dependencyIndex}].service`);
       nonEmptyString(dependency.capability, `${service.name}.dependencies[${dependencyIndex}].capability`);
-      nonEmptyString(dependency.store, `${service.name}.dependencies[${dependencyIndex}].store`);
+      nonEmptyString(dependency.dataSource, `${service.name}.dependencies[${dependencyIndex}].store`);
     }
   }
   const contributions = service.contributions === undefined
@@ -190,6 +190,27 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
+  if ("stores" in capabilities) throw new Error(`${service.name}.capabilities.stores is unsupported; declare dataSources`);
+  if (capabilities.dataSources !== undefined) {
+    const dataSources = uniqueIdRecords(capabilities.dataSources, `${service.name}.dataSources`);
+    for (const [id, store] of dataSources) {
+      if (store.description !== undefined) nonEmptyString(store.description, `${service.name}.dataSources.${id}.description`);
+      if (store.kind !== "db") continue;
+      const label = `${service.name}.dataSources.${id}`;
+      if (store.backend !== "mysql") throw new Error(`${label}.backend must be mysql`);
+      const env = store.envPrefix !== undefined;
+      const resolver = store.source !== undefined;
+      if (env === resolver) throw new Error(`${label} must declare exactly one of envPrefix / source`);
+      if (env) nonEmptyString(store.envPrefix, `${label}.envPrefix`);
+      if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
+      if (resolver) {
+        const source = record(store.source, `${label}.source`);
+        nonEmptyString(source.key, `${label}.source.key`);
+        if (typeof source.createClient !== "function") throw new Error(`${label}.source.createClient must be a function`);
+      }
+      if (store.access !== undefined) record(store.access, `${label}.access`);
+    }
+  }
   for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case", "metric"] as const) {
     const capability = capabilities[name];
     if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
@@ -353,7 +374,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         throw new Error(`${service.name}.dependencies contains duplicate id '${id}'`);
       }
       dependencyIds.add(id);
-      if (dependency.capability !== "stores") {
+      if (dependency.capability !== "dataSources") {
         throw new Error(`${service.name}.dependencies '${id}' uses unsupported capability '${String(dependency.capability)}'`);
       }
       const providerName = nonEmptyString(
@@ -365,10 +386,10 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         throw new Error(`${service.name}.dependencies '${id}' references unknown Service '${providerName}'`);
       }
       const storeId = nonEmptyString(
-        dependency.store,
-        `${service.name}.dependencies.${id}.store`,
+        dependency.dataSource,
+        `${service.name}.dependencies.${id}.dataSource`,
       );
-      const store = provider.capabilities.stores?.find((candidate) => candidate.id === storeId);
+      const store = provider.capabilities.dataSources?.find((candidate) => candidate.id === storeId);
       if (!store) {
         throw new Error(
           `${service.name}.dependencies '${id}' references unknown Store '${providerName}/${storeId}'`,
@@ -409,14 +430,14 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
     record(trace.analysis, "Plugin trace.analysis");
     if (trace.source !== undefined) {
       const source = record(trace.source, "trace.source");
-      const target = record(source.store, "trace.source.store");
-      const serviceName = nonEmptyString(target.service, "trace.source.store.service");
-      const storeId = nonEmptyString(target.store, "trace.source.store.store");
+      const target = record(source.dataSource, "trace.source.dataSource");
+      const serviceName = nonEmptyString(target.service, "trace.source.dataSource.service");
+      const storeId = nonEmptyString(target.dataSource, "trace.source.dataSource.dataSource");
       const service = catalog.find(serviceName);
-      if (!service) throw new Error(`trace.source.store references unknown Service '${serviceName}'`);
-      if (!service.capabilities.stores?.some((store) => store.id === storeId)) {
+      if (!service) throw new Error(`trace.source.dataSource references unknown Service '${serviceName}'`);
+      if (!service.capabilities.dataSources?.some((store) => store.id === storeId)) {
         throw new Error(
-          `trace.source.store references unknown Store '${serviceName}/${storeId}'`,
+          `trace.source.dataSource references unknown Store '${serviceName}/${storeId}'`,
         );
       }
     }

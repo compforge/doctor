@@ -1,5 +1,5 @@
-import type { Client } from "@compforge/harness-toolbox/client";
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import type { Client } from "@compforge/harness-common";
+import { dataSourceKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../../command/execution-scope";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import { openOpenSearch } from "@compforge/harness-toolbox/opensearch";

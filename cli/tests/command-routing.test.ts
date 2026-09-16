@@ -636,19 +636,22 @@ describe("CLI command routing", () => {
     expect(positional.stderr).toContain("contribution.inspect");
   });
 
-  test("standalone db and redis commands have been removed", () => {
-    for (const command of ["db", "redis"]) {
-      const result = runCli(command);
-      expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain(`unknown command '${command}'`);
-    }
+  test("db exposes Service-scoped operations while redis remains under store", () => {
+    const db = runCli("db", "--help");
+    expect(db.exitCode).toBe(0);
+    expect(db.stdout).toContain("--show-databases");
+    expect(db.stdout).not.toContain("--no-interactive");
+    expect(db.stdout).not.toContain("--store");
+    const redis = runCli("redis");
+    expect(redis.exitCode).not.toBe(0);
+    expect(redis.stderr).toContain("unknown command 'redis'");
   });
 
-  test("commands with selectable output format expose -f shorthand", () => {
-    for (const command of ["data", "store", "http", "mcp", "trace"]) {
+  for (const command of ["data", "store", "db", "http", "mcp", "trace"]) {
+    test(`${command} exposes -f shorthand`, () => {
       const result = runCli(command, "--help");
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("-f, --format <format>");
-    }
-  }, 10_000);
+    });
+  }
 });

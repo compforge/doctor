@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import type { RedisProfileConfig } from "../../../app/config/model";
-import type { ServiceRedisStoreCapability } from "@compforge/doctor-plugin";
+import type { ServiceRedisDataSource } from "@compforge/doctor-plugin";
 
 /** 本轮 Redis 连接目标；包含凭据，只能停留在 Inspect / Probe 执行链内。 */
 export interface RedisTarget {
@@ -47,12 +47,12 @@ const REDIS_CANONICAL_ENV = {
 
 export function projectRedisStoreEnvironment(
   raw: string,
-  capability: ServiceRedisStoreCapability,
+  capability: ServiceRedisDataSource,
 ): string {
   const source = parseEnv(raw);
   const projected = new Map<string, string>();
   for (const [field, canonicalName] of Object.entries(REDIS_CANONICAL_ENV)) {
-    const sourceName = capability.environment[field as keyof ServiceRedisStoreCapability["environment"]];
+    const sourceName = capability.environment[field as keyof ServiceRedisDataSource["environment"]];
     const value = sourceName ? source.get(sourceName)?.trim() : undefined;
     if (value) projected.set(canonicalName, value);
   }
@@ -64,7 +64,7 @@ export function projectRedisStoreEnvironment(
 
 export function hasRedisStoreConfiguration(
   raw: string,
-  capability: ServiceRedisStoreCapability,
+  capability: ServiceRedisDataSource,
 ): boolean {
   return !!parseEnv(raw).get(capability.environment.address)?.trim();
 }
@@ -168,7 +168,7 @@ export function resolveRedisTarget(
   rawEnv: string,
   profile: RedisProfileConfig | undefined,
   flagUrl?: string,
-  capability?: ServiceRedisStoreCapability,
+  capability?: ServiceRedisDataSource,
 ): RedisTarget {
   const env = parseEnv(capability ? projectRedisStoreEnvironment(rawEnv, capability) : rawEnv);
   const selectedUrl = flagUrl?.trim() || profile?.url?.trim();

@@ -29,7 +29,7 @@ export interface PrometheusProfileConfig {
 }
 
 export interface PluginProfileConfig {
-  /** Opaque Plugin-owned config; Core stores and forwards it without interpreting the schema. */
+  /** Opaque Plugin-owned config; Core dataSources and forwards it without interpreting the schema. */
   config?: Readonly<Record<string, unknown>>;
 }
 

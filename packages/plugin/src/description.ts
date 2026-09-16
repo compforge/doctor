@@ -1,5 +1,6 @@
 import type { CapabilityAccess } from "./kubernetes";
-import type { ServiceDefinition, ServiceInspect, ServiceStoreKind } from "./service";
+import type { ServiceDefinition, ServiceInspect } from "./service";
+import type { ServiceDataSourceKind } from "./datasource";
 import type { ServiceWorkloadDefinition } from "./workload";
 
 /** A serializable declaration view, never a report of observed availability. */
@@ -10,9 +11,9 @@ export interface ServiceDescription {
   contributions: string[];
   details: {
     workloads: ServiceWorkloadDefinition[];
-    dependencies: { id: string; service: string; capability: "stores"; store: string }[];
-    stores: { id: string; kind: ServiceStoreKind }[];
-    inspect?: Pick<ServiceInspect, "description" | "limitations" | "accepts" | "provides" | "expands" | "store">;
+    dependencies: { id: string; service: string; capability: "dataSources"; dataSource: string }[];
+    dataSources: { id: string; kind: ServiceDataSourceKind; backend: string; description?: string }[];
+    inspect?: Pick<ServiceInspect, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
     access: { owner: string; requirements: CapabilityAccess }[];
   };
 }
@@ -44,9 +45,9 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     const capability = service.capabilities[name];
     if (capability) access.push({ owner: `capabilities.${name}`, requirements: describeAccess(capability.access) });
   }
-  for (const store of service.capabilities.stores ?? []) {
-    if (store.kind === "vdb" && store.access !== undefined) {
-      access.push({ owner: `capabilities.stores.${store.id}`, requirements: describeAccess(store.access) });
+  for (const dataSource of service.capabilities.dataSources ?? []) {
+    if (dataSource.access !== undefined) {
+      access.push({ owner: `capabilities.dataSources.${dataSource.id}`, requirements: describeAccess(dataSource.access) });
     }
   }
   for (const probe of service.contributions?.probes ?? []) {
@@ -66,15 +67,15 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
           ? { kind: discovery.kind, service: discovery.service }
           : { kind: discovery.kind, labels: { ...discovery.labels } },
       })),
-      dependencies: (service.dependencies ?? []).map(({ id, service, capability, store }) => ({ id, service, capability, store })),
-      stores: (service.capabilities.stores ?? []).map(({ id, kind }) => ({ id, kind })),
+      dependencies: (service.dependencies ?? []).map(({ id, service, capability, dataSource }) => ({ id, service, capability, dataSource })),
+      dataSources: (service.capabilities.dataSources ?? []).map(({ id, kind, backend, description }) => ({ id, kind, backend, description })),
       inspect: inspect ? {
         description: inspect.description,
         limitations: [...(inspect.limitations ?? [])],
         accepts: [...inspect.accepts],
         provides: [...inspect.provides],
         expands: [...(inspect.expands ?? [])],
-        store: inspect.store,
+        dataSource: inspect.dataSource,
       } : undefined,
       access,
     },

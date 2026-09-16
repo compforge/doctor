@@ -140,7 +140,7 @@ describe("metric Store observability", () => {
         name: "chat-server",
         workloads: [],
         capabilities: {
-          stores: [
+          dataSources: [
             { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
             { id: "database", kind: "db" as const, backend: "mysql" as const, envPrefix: "DB" },
           ],
@@ -150,7 +150,7 @@ describe("metric Store observability", () => {
         name: "unrelated-server",
         workloads: [],
         capabilities: {
-          stores: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }],
+          dataSources: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }],
         },
       },
     ]);
@@ -173,7 +173,7 @@ describe("metric Store observability", () => {
       name: "app",
       workloads: [],
       capabilities: {
-        stores: [{
+        dataSources: [{
           id: "redis",
           kind: "redis" as const,
           backend: "redis" as const,

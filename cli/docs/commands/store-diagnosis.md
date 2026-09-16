@@ -3,14 +3,14 @@
 ## 理念 / 概念
 
 `doctor store` 统一诊断 DB、VDB、S3 与 Redis 的健康和容量。一次运行可选择一个或多个 Store 类型，
-随后分别选择提供配置的业务 Service；Store 的访问身份来自所选 Service Pod，不由 doctor profile
-另配一套凭据。
+随后分别选择贡献数据源的业务 Service；Store 的访问身份来自 Service 的 DataSource 声明与运行时解析，
+不由 doctor profile 另配一套凭据。自有配置可以由客户端工厂解析，不要求逻辑 Service 在当前 namespace 同名部署。
 
-Service Catalog 的 `stores` 描述“这个 Service 可能提供哪些 Store 配置契约”，用于生成候选和解释
+Service Catalog 的 `dataSources` 描述“这个 Service 可能提供哪些 Store 配置契约”，用于生成候选和解释
 环境变量；它不代表当前部署已启用该能力。只有运行时 endpoint、目标名和凭据等必需值完整时才连接
 Store。配置缺失或空值表示当前未启用，Evidence 记录为 `unavailable`，不会被误判为凭据错误或健康故障。
 
-`doctor data` 负责按业务 ID 汇集数据；其 Service Inspect contribution 引用同一份 DB Store capability，
+`doctor data` 负责按业务 ID 汇集数据；其 Service Inspect contribution 引用同一份 DB DataSource，
 避免业务数据查询与设施诊断各自维护环境变量前缀。
 
 Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力窗口与 keyStats 探测链。S3 对象画像只
@@ -20,10 +20,10 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
 ## 流程
 
 1. 交互多选 DB、VDB、S3 或 Redis；自动化调用用逗号分隔的 `--type` 指定。
-2. 从 Service Catalog 中筛出声明该类 Store 的 Service，并与当前 Namespace 中已部署的 Service 取交集。
-3. 选择 Service、Store capability 和 Running Pod/container。
+2. 从 Service Catalog 中筛出声明该类 DataSource 的 Service；使用标准 Pod 配置的声明再检查部署候选。
+3. 选择 Service 与 DataSource，只有需要从 Pod 读取配置时才选择 Running Pod/container。
 4. 优先读取所选 Container 明确引用的 ConfigMap、Secret、env 与挂载配置；声明配置不足时才回退
-   `pods/exec env`，并在内存中拼出运行时连接身份。
+   `pods/exec env`，并在内存中拼出运行时连接身份。自定义 DB source 则通过受控上下文初始化共享 Client。
 5. Inspect 将脱敏配置和访问通道固化为 Facts；必需配置不完整时结束为“当前未启用”。配置完整时，
    各 Store Probe 通过 Doctor Host 到后端的只读通道产出健康、容量、负载或数据画像 Observations。
 6. Detector 只基于 Facts/Observations 生成 Findings，Coverage 独立说明本轮各诊断目标的证据是否充分；
@@ -38,7 +38,7 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
 
 ### Catalog 声明契约，运行时决定状态
 
-Store capability 归 Service Catalog，因为“哪个 Service 用什么配置契约访问哪类存储”是稳定的 Plugin 知识。
+DataSource 归 Service Catalog，因为“哪个 Service 用什么配置契约访问哪类存储”是稳定的 Plugin 知识。
 是否启用则属于具体部署的运行时事实。这个边界允许 Service 始终声明 S3 契约，同时用
 空配置明确表示数据持久化未开启。
 
@@ -143,7 +143,7 @@ VDB 的业务配置是“该 Service 实际连接哪个 VDB”的 target Fact；
 如何访问它的通道准备。OpenSearch 通道与 Trace 共用 `collect/shared/opensearch-access`，但两个领域互不
 依赖；配置中的 endpoint namespace、port 与 scheme 保持权威。
 
-标准部署直接读取 `OPENSEARCH_*` 环境变量。Plugin 使用自有挂载文件或配置结构时，由 VDB Store capability
+标准部署直接读取 `OPENSEARCH_*` 环境变量。Plugin 使用自有挂载文件或配置结构时，由 VDB DataSource
 声明文件定位规则并把内容投影成统一 target；Doctor 只负责从所选 Service Pod 取得配置材料，不理解 Plugin
 配置 schema。这样固定路径、字段和选择规则留在具体 Plugin，后续增加 Plugin 不会继续扩张 CLI 分支。
 

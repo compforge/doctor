@@ -10,18 +10,18 @@ const service: ServiceDefinition = {
     name: "worker", lifecycle: "ephemeral", container: "app",
     discovery: { kind: "kubernetes-pods", labels: { app: "worker" } },
   }],
-  dependencies: [{ id: "records", service: "storage", capability: "stores", store: "main" }],
+  dependencies: [{ id: "records", service: "storage", capability: "dataSources", dataSource: "main" }],
   capabilities: {
     log: { default: false },
     traceId: { access: {}, endpoint: { host: "private-host", port: 80 }, resolve: noAccess },
-    stores: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" }],
+    dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" }],
     metric: undefined,
   },
   contributions: {
     inspect: {
       description: "Find persisted sessions and runs",
       limitations: ["Only retained records can be returned"],
-      accepts: ["conversation_id"], provides: ["runtime-record"], expands: ["run_id"], store: "database",
+      accepts: ["conversation_id"], provides: ["runtime-record"], expands: ["run_id"], dataSource: "database",
       access: { kubernetes: [{
         rule: { verb: "get", resource: "configmaps", resourceName: "runtime", allNamespaces: true },
         requirement: "required", purpose: "Locate storage",
@@ -36,16 +36,16 @@ test("description projects the execution declaration without confusing inputs an
   const result = describeService(service);
   expect(result.name).toBe("runtime");
   expect(result.description).toBe("Session and run evidence");
-  expect(result.capabilities).toEqual(["log", "traceId", "stores"]);
+  expect(result.capabilities).toEqual(["log", "traceId", "dataSources"]);
   expect(result.contributions).toEqual(["inspect", "detectors"]);
   expect(result.details.inspect).toEqual({
     description: "Find persisted sessions and runs", limitations: ["Only retained records can be returned"],
-    accepts: ["conversation_id"], provides: ["runtime-record"], expands: ["run_id"], store: "database",
+    accepts: ["conversation_id"], provides: ["runtime-record"], expands: ["run_id"], dataSource: "database",
   });
   expect(result.details.inspect?.accepts).not.toContain("run_id");
   expect(service.workloads).toEqual(result.details.workloads);
   expect(service.dependencies!).toEqual(result.details.dependencies);
-  expect(result.details.stores).toEqual([{ id: "database", kind: "db" }]);
+  expect(result.details.dataSources).toEqual([{ id: "database", kind: "db", backend: "mysql", description: undefined }]);
   expect(result.details.access).toEqual([
     { owner: "contributions.inspect", requirements: service.contributions!.inspect!.access },
     { owner: "capabilities.traceId", requirements: { kubernetes: [] } },
@@ -76,14 +76,14 @@ test("explicit projection excludes credentials, configuration and functions even
 test("old Services and empty declarations stay discoverable without invented capabilities", () => {
   const result = describeService({ name: "legacy", workloads: [], capabilities: {} });
   expect(result).toEqual({ name: "legacy", description: undefined, capabilities: [], contributions: [],
-    details: { workloads: [], dependencies: [], stores: [], inspect: undefined, access: [] } });
+    details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] } });
   const withoutExplanation = { ...service.contributions!.inspect!, description: undefined, limitations: undefined };
   expect(describeService({ ...service, contributions: { inspect: withoutExplanation } }).details.inspect)
     .toMatchObject({ description: undefined, limitations: [] });
 });
 
 test("VDB Store access is projected per Store without resolving targets or exposing configuration", () => {
-  const result = describeService({ name: "storage", workloads: [], capabilities: { stores: [
+  const result = describeService({ name: "storage", workloads: [], capabilities: { dataSources: [
     { id: "primary", kind: "vdb", backend: "opensearch", inspectTarget: noAccess,
       access: { kubernetes: [{ rule: { verb: "get", resource: "configmaps" },
         requirement: "required", purpose: "Locate primary storage" }] },
@@ -98,14 +98,14 @@ test("VDB Store access is projected per Store without resolving targets or expos
     { id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" },
   ] } });
   expect(result.details.access).toEqual([
-    { owner: "capabilities.stores.primary", requirements: { kubernetes: [{
+    { owner: "capabilities.dataSources.primary", requirements: { kubernetes: [{
       rule: { verb: "get", resource: "configmaps" }, requirement: "required", purpose: "Locate primary storage",
     }] } },
-    { owner: "capabilities.stores.archive", requirements: { kubernetes: [{
+    { owner: "capabilities.dataSources.archive", requirements: { kubernetes: [{
       rule: { verb: "create", resource: "pods/portforward" }, requirement: "preferred",
       purpose: "Reach archive", fallback: "Direct connection",
     }] } },
-    { owner: "capabilities.stores.empty", requirements: { kubernetes: [] } },
+    { owner: "capabilities.dataSources.empty", requirements: { kubernetes: [] } },
   ]);
   for (const excluded of ["PRIVATE_CONFIG", "/private/config", "PRIVATE_DB", "inspectTarget", "configuration"]) {
     expect(JSON.stringify(result)).not.toContain(excluded);

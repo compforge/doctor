@@ -1,0 +1,160 @@
+import type { ServiceCatalog } from "./catalog";
+import type { ServiceDefinition } from "./service";
+import type { DatabaseTarget } from "./database";
+import type { PluginContext, PluginClientContext, PluginDataSource } from "./context";
+import type { CapabilityWithAccess } from "./kubernetes";
+import { MysqlClient } from "@compforge/harness-toolbox/mysql";
+import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+
+export type ServiceDataSourceKind = "db" | "vdb" | "s3" | "redis";
+
+interface ServiceDataSourceBase {
+  id: string;
+  kind: ServiceDataSourceKind;
+  description?: string;
+  access?: CapabilityWithAccess["access"];
+}
+
+export interface ServiceDatabaseTarget extends DatabaseTarget {
+  /** Configuration provenance only; no credentials or raw configuration. */
+  source?: { namespace?: string; pod?: string; container?: string; path?: string };
+}
+
+/**
+ * @spec Service declares access, not query results; clients are borrowed from the root lifecycle.
+ * @why A shared source lets db, store and business Inspect reuse access without depending on each other.
+ */
+export type ServiceDatabaseDataSource = ServiceDataSourceBase & {
+  kind: "db";
+  backend: "mysql";
+} & ({
+  envPrefix: string;
+  source?: never;
+} | {
+  envPrefix?: never;
+  source: PluginDataSource<MysqlClient<ServiceDatabaseTarget>>;
+});
+
+export interface ServiceVdbTarget {
+  backend: string;
+  store: string;
+  endpoint?: string;
+  username?: string;
+  password?: string;
+  configurationKind: string;
+  configPath?: string;
+  source?: {
+    namespace?: string;
+    pod?: string;
+    container?: string;
+  };
+}
+
+export interface ServiceVdbConfigurationInput {
+  environment: Readonly<Record<string, string>>;
+  file?: {
+    path: string;
+    content: string;
+  };
+}
+
+export interface ServiceVdbConfiguration {
+  /** Doctor 负责读取文件；路径规则及文件内容语义由 Plugin 拥有。 */
+  file?: {
+    pathEnvironment: string;
+    defaultPath: string;
+  };
+  resolve(
+    input: ServiceVdbConfigurationInput,
+  ): ServiceVdbTarget | Promise<ServiceVdbTarget>;
+}
+
+export interface ServiceVdbDataSource extends ServiceDataSourceBase {
+  kind: "vdb";
+  backend: "opensearch";
+  store?: string;
+  /** Plugin 自行发现配置来源并投影出统一 VDB target；Core 只提供受控上下文。 */
+  inspectTarget?(context: PluginContext): Promise<ServiceVdbTarget>;
+  access?: CapabilityWithAccess["access"];
+  /** 非标准 VDB 配置由 Plugin 投影为 Doctor 可消费的统一 target。 */
+  configuration?: ServiceVdbConfiguration;
+}
+
+export interface ServiceS3DataSource extends ServiceDataSourceBase {
+  kind: "s3";
+  backend: "s3-compatible";
+  environment: {
+    endpoint: string;
+    bucket: string;
+    region: string;
+    accessKey: string;
+    secretKey: string;
+    bucketPrefix?: string;
+    addressStyle?: string;
+  };
+}
+
+export interface ServiceRedisDataSource extends ServiceDataSourceBase {
+  kind: "redis";
+  backend: "redis";
+  environment: {
+    address: string;
+    port?: string;
+    database?: string;
+    username?: string;
+    password?: string;
+    useSsl?: string;
+    clusterType?: string;
+    sentinels?: string;
+    sentinelMasterName?: string;
+    sentinelUsername?: string;
+    sentinelPassword?: string;
+    timeout?: string;
+  };
+}
+
+export type ServiceDataSource =
+  | ServiceDatabaseDataSource
+  | ServiceVdbDataSource
+  | ServiceS3DataSource
+  | ServiceRedisDataSource;
+
+/** Factory resolution receives root-owned access, never captures a short-lived capability context. */
+export function mysqlDataSource(
+  key: string,
+  resolve: (context: PluginClientContext) => Promise<ServiceDatabaseTarget>,
+): PluginDataSource<MysqlClient<ServiceDatabaseTarget>> {
+  return {
+    key,
+    createClient: context => new MysqlClient({
+      resolve: () => resolve(context),
+      transports: [new PortForwardTransport(endpoint => context.infra.kubernetes.portForward(endpoint))],
+    }, { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
+  };
+}
+
+export function serviceDataSources(
+  catalog: ServiceCatalog,
+  service: string,
+  kind?: ServiceDataSourceKind,
+): readonly ServiceDataSource[] {
+  const dataSources = catalog.findWith(service, "dataSources")?.capabilities.dataSources ?? [];
+  return kind ? dataSources.filter((store) => store.kind === kind) : dataSources;
+}
+
+export function findServiceDataSource(
+  catalog: ServiceCatalog,
+  service: string,
+  sourceId: string,
+): ServiceDataSource | undefined {
+  return serviceDataSources(catalog, service).find((source) => source.id === sourceId);
+}
+
+export function servicesWithDataSource<T extends ServiceDefinition>(
+  catalog: ServiceCatalog<T>,
+  kind?: ServiceDataSourceKind,
+): T[] {
+  return catalog.servicesWith("dataSources").filter((service) =>
+    service.capabilities.dataSources.some((store) => !kind || store.kind === kind)
+  );
+}

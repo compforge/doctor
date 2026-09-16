@@ -4,7 +4,7 @@ import {
 } from "../src/infra/k8s/container-config";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { confirmVdbTarget } from "../src/collect/store/vdb/configuration";
-import type { ServiceVdbStoreCapability } from "@compforge/doctor-plugin";
+import type { ServiceVdbDataSource } from "@compforge/doctor-plugin";
 
 function result(command: string[], stdout: string, ok = true): ExecResult {
   return {
@@ -83,7 +83,7 @@ describe("declared Container config", () => {
         throw new Error("declared config must not use pods/exec");
       },
     };
-    const capability: ServiceVdbStoreCapability = {
+    const capability: ServiceVdbDataSource = {
       id: "search",
       kind: "vdb",
       backend: "opensearch",

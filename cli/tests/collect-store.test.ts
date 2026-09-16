@@ -27,7 +27,7 @@ import {
   detectMysqlFindings,
   parseMysqlStatusSnapshot,
 } from "../src/collect/store/mysql-diagnosis";
-import { configuredValue, parseEnvironment } from "../src/collect/store/runtime-config";
+import { configuredValue, parseEnvironment } from "../src/datasource/runtime-config";
 import {
   buildS3Coverage,
   buildS3HtmlReport,
@@ -97,7 +97,7 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
       name: "logical-opensearch-provider",
       workloads: [],
       capabilities: {
-        stores: [{
+        dataSources: [{
           id: "trace",
           kind: "vdb",
           backend: "opensearch",

@@ -41,6 +41,7 @@ import {
 } from "../terminal/selection-context";
 
 export interface KubernetesCommandInput {
+  interactive?: boolean;
   namespace?: string;
   kubeconfig?: string;
   context?: string;
@@ -112,6 +113,7 @@ export async function resolveKubernetesCommandConfig(
       executor: channelExecutor,
       access: kubernetes.access,
       plugins: commandContext?.pluginServices(),
+      interactive: input.interactive,
     });
     return namespace;
   };

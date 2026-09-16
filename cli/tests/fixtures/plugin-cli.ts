@@ -8,7 +8,7 @@ const plugin = {
     name: "test-store",
     workloads: [],
     capabilities: {
-      stores: [{
+      dataSources: [{
         id: "cache",
         kind: "redis",
         backend: "redis",

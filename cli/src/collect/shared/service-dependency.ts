@@ -2,9 +2,9 @@ import type {
   PluginDefinition,
   ResolvedServiceCapabilityDependency,
   ServiceDefinition,
-  ServiceStoreCapabilityDependency,
+  ServiceDataSourceDependency,
 } from "@compforge/doctor-plugin";
-import { serviceStores, servicesWithStore } from "@compforge/doctor-plugin";
+import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
@@ -26,7 +26,7 @@ import {
   type OpenSearchAccessPreparation,
 } from "./opensearch-access";
 
-export interface PreparedServiceStoreDependency {
+export interface PreparedServiceDataSourceDependency {
   search: SearchEngine;
   preparation: OpenSearchAccessPreparation;
   steps: readonly StepInput[];
@@ -35,34 +35,34 @@ export interface PreparedServiceStoreDependency {
   auth: OpenSearchAuth;
 }
 
-export interface ServiceStoreReference {
+export interface ServiceDataSourceReference {
   service: string;
-  store: string;
+  dataSource: string;
 }
 
 /** Declared Store is preferred; remaining Plugin OpenSearch VDB Stores are ordered fallbacks. */
-export function openSearchStoreCandidates(
+export function openSearchDataSourceCandidates(
   plugin: PluginDefinition,
-  preferred?: ServiceStoreReference,
-): ServiceStoreReference[] {
-  const candidates: ServiceStoreReference[] = preferred ? [{ ...preferred }] : [];
-  const seen = new Set(candidates.map(({ service, store }) => `${service}\0${store}`));
-  for (const service of servicesWithStore(plugin.services, "vdb")) {
-    for (const store of serviceStores(plugin.services, service.name, "vdb")) {
-      if (store.kind !== "vdb" || store.backend !== "opensearch") continue;
-      const key = `${service.name}\0${store.id}`;
+  preferred?: ServiceDataSourceReference,
+): ServiceDataSourceReference[] {
+  const candidates: ServiceDataSourceReference[] = preferred ? [{ ...preferred }] : [];
+  const seen = new Set(candidates.map(({ service, dataSource }) => `${service}\0${dataSource}`));
+  for (const service of servicesWithDataSource(plugin.services, "vdb")) {
+    for (const dataSource of serviceDataSources(plugin.services, service.name, "vdb")) {
+      if (dataSource.kind !== "vdb" || dataSource.backend !== "opensearch") continue;
+      const key = `${service.name}\0${dataSource.id}`;
       if (seen.has(key)) continue;
       seen.add(key);
-      candidates.push({ service: service.name, store: store.id });
+      candidates.push({ service: service.name, dataSource: dataSource.id });
     }
   }
   return candidates;
 }
 
-export async function prepareFirstAvailableStore<T>(
-  candidates: readonly ServiceStoreReference[],
-  prepare: (candidate: ServiceStoreReference) => Promise<T>,
-  onFailure: (candidate: ServiceStoreReference, reason: string) => void,
+export async function prepareFirstAvailableDataSource<T>(
+  candidates: readonly ServiceDataSourceReference[],
+  prepare: (candidate: ServiceDataSourceReference) => Promise<T>,
+  onFailure: (candidate: ServiceDataSourceReference, reason: string) => void,
 ): Promise<T> {
   const failures: string[] = [];
   for (const candidate of candidates) {
@@ -70,7 +70,7 @@ export async function prepareFirstAvailableStore<T>(
       return await prepare(candidate);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      failures.push(`${candidate.service}/${candidate.store}: ${reason}`);
+      failures.push(`${candidate.service}/${candidate.dataSource}: ${reason}`);
       onFailure(candidate, reason);
     }
   }
@@ -104,7 +104,7 @@ function safeEndpoint(value: string): string {
  * credentials, port-forward and cleanup; Plugin code only receives an index-bound search function.
  */
 export class ServiceDependencyRuntime {
-  private readonly stores = new Map<string, Promise<PreparedServiceStoreDependency>>();
+  private readonly dataSources = new Map<string, Promise<PreparedServiceDataSourceDependency>>();
   private accessPrepared = false;
 
   constructor(private readonly options: ServiceDependencyRuntimeOptions) {}
@@ -114,37 +114,37 @@ export class ServiceDependencyRuntime {
   ): Promise<Readonly<Record<string, ResolvedServiceCapabilityDependency>>> {
     const resolved: Record<string, ResolvedServiceCapabilityDependency> = {};
     for (const dependency of service.dependencies ?? []) {
-      resolved[dependency.id] = await this.resolveStore(dependency);
+      resolved[dependency.id] = await this.resolveDataSource(dependency);
     }
     return resolved;
   }
 
-  async prepareStore(service: string, store: string): Promise<PreparedServiceStoreDependency> {
-    const key = `${service}\0${store}`;
-    let prepared = this.stores.get(key);
+  async prepareDataSource(service: string, dataSource: string): Promise<PreparedServiceDataSourceDependency> {
+    const key = `${service}\0${dataSource}`;
+    let prepared = this.dataSources.get(key);
     if (!prepared) {
-      prepared = this.openStore(service, store);
-      this.stores.set(key, prepared);
+      prepared = this.openDataSource(service, dataSource);
+      this.dataSources.set(key, prepared);
     }
     return prepared;
   }
 
-  async prepareStoreCandidates(
-    candidates: readonly ServiceStoreReference[],
-  ): Promise<PreparedServiceStoreDependency> {
-    return prepareFirstAvailableStore(
+  async prepareDataSourceCandidates(
+    candidates: readonly ServiceDataSourceReference[],
+  ): Promise<PreparedServiceDataSourceDependency> {
+    return prepareFirstAvailableDataSource(
       candidates,
-      ({ service, store }) => this.prepareStore(service, store),
-      ({ service, store }, reason) => this.options.log(
-        `[collect] OpenSearch Store ${service}/${store} 不可用，尝试下一个 target：${reason}`,
+      ({ service, dataSource }) => this.prepareDataSource(service, dataSource),
+      ({ service, dataSource }, reason) => this.options.log(
+        `[collect] OpenSearch Store ${service}/${dataSource} 不可用，尝试下一个 target：${reason}`,
         "warning",
       ),
     );
   }
 
   async close(): Promise<void> {
-    const stores = await Promise.allSettled(this.stores.values());
-    const preparations = stores.flatMap((result) => (
+    const dataSources = await Promise.allSettled(this.dataSources.values());
+    const preparations = dataSources.flatMap((result) => (
       result.status === "fulfilled" ? [result.value.preparation] : []
     ));
     const closed = await Promise.allSettled(preparations.map((preparation) => preparation.close()));
@@ -152,12 +152,12 @@ export class ServiceDependencyRuntime {
     if (failure?.status === "rejected") throw failure.reason;
   }
 
-  private async resolveStore(
-    dependency: ServiceStoreCapabilityDependency,
+  private async resolveDataSource(
+    dependency: ServiceDataSourceDependency,
   ): Promise<ResolvedServiceCapabilityDependency> {
-    const prepared = await this.prepareStoreCandidates(openSearchStoreCandidates(
+    const prepared = await this.prepareDataSourceCandidates(openSearchDataSourceCandidates(
       this.options.plugin,
-      { service: dependency.service, store: dependency.store },
+      { service: dependency.service, dataSource: dependency.dataSource },
     ));
     return {
       ...dependency,
@@ -189,10 +189,10 @@ export class ServiceDependencyRuntime {
     );
   }
 
-  private async openStore(
+  private async openDataSource(
     service: string,
-    store: string,
-  ): Promise<PreparedServiceStoreDependency> {
+    dataSource: string,
+  ): Promise<PreparedServiceDataSourceDependency> {
     await this.prepareKubernetesAccess();
     let configuredEndpoint: string | undefined;
     let configuredAuth: OpenSearchAuth = {};
@@ -201,11 +201,11 @@ export class ServiceDependencyRuntime {
       const resolved = await resolveStoreProviderConfig({
         type: "vdb",
         service,
-        store,
+        store: dataSource,
       }, this.options.plugin, this.options.collect, this.options.executor, this.options.commandContext);
-      if (!resolved) throw new Error(`Store capability '${service}/${store}' 未选择运行目标`);
+      if (!resolved) throw new Error(`Store capability '${service}/${dataSource}' 未选择运行目标`);
       if (resolved.config.capability.kind !== "vdb") {
-        throw new Error(`Store capability '${service}/${store}' 不是 VDB`);
+        throw new Error(`Store capability '${service}/${dataSource}' 不是 VDB`);
       }
       const confirmed = resolved.config.vdbTarget
         ? confirmInspectedVdbTarget(resolved.config.vdbTarget)
@@ -215,10 +215,10 @@ export class ServiceDependencyRuntime {
               resolved.config.target,
               resolved.config.capability,
             )
-          : { captures: [], reason: `Store capability '${service}/${store}' 未提供 VDB target` };
+          : { captures: [], reason: `Store capability '${service}/${dataSource}' 未提供 VDB target` };
       if (confirmed.connection?.type !== "opensearch") {
         throw new Error(
-          confirmed.reason ?? `Store capability '${service}/${store}' 未提供 OpenSearch 连接`,
+          confirmed.reason ?? `Store capability '${service}/${dataSource}' 未提供 OpenSearch 连接`,
         );
       }
       configuredEndpoint = confirmed.connection.endpoint;
@@ -230,7 +230,7 @@ export class ServiceDependencyRuntime {
       }
       if (configuredEndpoint) {
         terminalStdout.write(
-          `[collect] Service ${service}（Store ${store}）提供配置：OpenSearch endpoint=${safeEndpoint(configuredEndpoint)}\n`,
+          `[collect] Service ${service}（Store ${dataSource}）提供配置：OpenSearch endpoint=${safeEndpoint(configuredEndpoint)}\n`,
         );
       } else {
         this.options.log(

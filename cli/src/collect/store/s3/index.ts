@@ -1,4 +1,4 @@
-import type { ServiceS3StoreCapability } from "@compforge/doctor-plugin";
+import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../../../command";
 import { terminalStdout } from "../../../terminal/output";
@@ -33,7 +33,7 @@ export async function runStoreS3(
   commandContext: CommandContext,
   executor: Executor,
 ): Promise<number> {
-  const capability = config.capability as ServiceS3StoreCapability;
+  const capability = config.capability as ServiceS3DataSource;
   const state = createStoreBundle("s3", config.output, config.outputFormat, S3_OUTCOMES, commandContext);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   const ctx: S3CommandContext = {

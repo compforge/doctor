@@ -1,7 +1,7 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { serviceStores, servicesWithStore } from "@compforge/doctor-plugin";
+import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import type {
-  ServiceStoreCapability,
+  ServiceDataSource,
   ServiceVdbTarget,
 } from "@compforge/doctor-plugin";
 import {
@@ -17,11 +17,7 @@ import {
   type CommandContext,
 } from "../../command";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
-import {
-  parsePodChoices,
-  promptPod,
-} from "../../infra/k8s/pod-selection";
+import { resolveDataSourcePod } from "../../datasource/workload";
 import { listServiceChoices } from "../../infra/k8s/service-selection";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import {
@@ -30,11 +26,7 @@ import {
   promptListedChoice,
 } from "../../terminal/selection";
 import { terminalStdout } from "../../terminal/output";
-import {
-  resolveUserSelection,
-  selectionCandidateLabel,
-  type SelectionContext,
-} from "../../terminal/selection-context";
+import type { SelectionContext } from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { openPluginContext } from "../../plugin/context";
 import { resolveArchivePath } from "../output/archive";
@@ -71,7 +63,7 @@ export interface CollectStoreCliOpts extends KubernetesCommandInput {
 export interface StoreConfig {
   collect: KubernetesCommandConfig;
   service: string;
-  capability: ServiceStoreCapability;
+  capability: ServiceDataSource;
   target?: PodTarget;
   vdbTarget?: ServiceVdbTarget;
   backendService?: string;
@@ -161,7 +153,7 @@ export async function resolveStoreKinds(
   const explicit = parseStoreKinds(requested);
   if (explicit.length) return explicit;
   const choices = STORE_KINDS
-    .filter((kind) => servicesWithStore(plugin.services, kind).length)
+    .filter((kind) => servicesWithDataSource(plugin.services, kind).length)
     .map((name) => ({ name }));
   if (!interactive) throw new Error(`非交互终端请用 --type <${choices.map((item) => item.name).join(",")}> 指定 Store 类型`);
   const selected = await promptNamedChoices({
@@ -181,19 +173,19 @@ async function resolveService(
   namespace: string,
   interactive: boolean,
 ): Promise<string | undefined> {
-  const providers = servicesWithStore(plugin.services, kind);
+  const providers = servicesWithDataSource(plugin.services, kind);
   const explicit = requested?.trim();
   if (explicit && providers.some((service) => (
     service.name === explicit
-    && serviceStores(plugin.services, service.name, kind).some(
-      (store) => store.kind === "vdb" && store.inspectTarget,
+    && serviceDataSources(plugin.services, service.name, kind).some(
+      (store) => store.kind === "vdb" ? store.inspectTarget : store.kind === "db" && store.source,
     )
   ))) return explicit;
 
   const deployed = new Set((await listServiceChoices(executor, namespace)).map((service) => service.name));
   const choices = providers
-    .filter((service) => deployed.has(service.name) || serviceStores(plugin.services, service.name, kind).some(
-      (store) => store.kind === kind && store.kind === "vdb" && store.inspectTarget,
+    .filter((service) => deployed.has(service.name) || serviceDataSources(plugin.services, service.name, kind).some(
+      (store) => store.kind === "vdb" ? store.inspectTarget : store.kind === "db" && store.source,
     ))
     .map((service) => ({ name: service.name }));
   if (!choices.length) throw new Error(`namespace '${namespace}' 中没有声明且已部署的 ${kind} Store Service`);
@@ -217,8 +209,8 @@ async function resolveCapability(
   requested: string | undefined,
   plugin: PluginDefinition,
   interactive: boolean,
-): Promise<ServiceStoreCapability | undefined> {
-  const choices = serviceStores(plugin.services, service, kind);
+): Promise<ServiceDataSource | undefined> {
+  const choices = serviceDataSources(plugin.services, service, kind);
   const explicit = requested?.trim();
   if (explicit) {
     const capability = choices.find((choice) => choice.id === explicit);
@@ -235,47 +227,6 @@ async function resolveCapability(
   return choices.find((choice) => choice.id === selected);
 }
 
-async function resolveServicePod(input: {
-  service: string;
-  pod?: string;
-  executor: Executor;
-  namespace: string;
-  interactive: boolean;
-  commandContext: CommandContext;
-  selection: SelectionContext;
-}): Promise<string | undefined> {
-  const access = new KubectlPodLogAccess(input.executor, input.namespace);
-  const listed = await access.listServicePods([input.service]);
-  if (!listed.serviceCapture.ok || !listed.podCapture.ok || listed.parseError) {
-    const reason = listed.parseError
-      ?? (!listed.serviceCapture.ok ? listed.serviceCapture.stderr : listed.podCapture.stderr).trim();
-    throw new Error(`读取 Service/Pod 候选失败：${reason || "unknown error"}`);
-  }
-  const names = listed.byService[input.service] ?? [];
-  const choices = parsePodChoices(listed.podCapture.stdout).filter((pod) => names.includes(pod.name));
-  const explicit = input.pod?.trim();
-  if (explicit) {
-    if (!names.includes(explicit)) throw new Error(`Service '${input.service}' 的 Running Pod 中不存在 '${explicit}'`);
-    return explicit;
-  }
-  if (!choices.length) throw new Error(`Service '${input.service}' 没有 Running Pod`);
-  if (choices.length === 1) {
-    terminalStdout.write(
-      `[collect] ${selectionCandidateLabel(input.selection, "Pod")}: ${choices[0]!.name}`
-      + "（唯一 Running Pod，自动选择）\n",
-    );
-    return choices[0]!.name;
-  }
-  if (!input.interactive) throw new Error(`Service '${input.service}' 有多个 Running Pod；请用 --pod <pod> 指定`);
-  const selectPod = () => promptPod(choices, { selection: input.selection });
-  return resolveUserSelection(
-    input.commandContext,
-    input.selection,
-    "Pod",
-    [input.namespace],
-    selectPod,
-  );
-}
 
 export async function resolveStoreConfig(
   opts: CollectStoreCliOpts,
@@ -290,11 +241,10 @@ export async function resolveStoreConfig(
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   const [kind] = parseStoreKinds(opts.type);
-  const capabilityOwnsTarget = kind === "vdb" && !!opts.service?.trim()
-    && serviceStores(plugin.services, opts.service.trim(), kind).some((store) => (
+  const capabilityOwnsTarget = (kind === "vdb" || kind === "db") && !!opts.service?.trim()
+    && serviceDataSources(plugin.services, opts.service.trim(), kind).some((store) => (
       (!opts.store?.trim() || store.id === opts.store.trim())
-      && store.kind === "vdb"
-      && !!store.inspectTarget
+      && (store.kind === "vdb" ? !!store.inspectTarget : store.kind === "db" && !!store.source)
     ));
   if (!capabilityOwnsTarget) await enforceKubernetesAccess(access, {
     command: "doctor store",
@@ -321,7 +271,7 @@ export async function resolveStoreProviderConfig(
   const outputFormat = resolvedOutputFormat ?? parseStoreOutputFormat(opts.format);
   resolveStoreOutputPath(opts.output, "doctor-store", outputFormat);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
-  const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = opts.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   const [kind] = parseStoreKinds(opts.type);
   if (!kind || kind === "redis") throw new Error("resolveStoreConfig 只处理 db、vdb、s3 单个 Store");
   const namespace = collect.kubernetes.namespace;
@@ -349,13 +299,13 @@ export async function resolveStoreProviderConfig(
     } finally {
       await context.dispose();
     }
-  } else {
+  } else if (!(capability.kind === "db" && capability.source)) {
     const selection: SelectionContext = {
       candidateRole: "配置来源",
       purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
       effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
     };
-    const pod = await resolveServicePod({
+    const pod = await resolveDataSourcePod({
       service,
       pod: opts.pod,
       executor,

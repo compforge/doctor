@@ -104,9 +104,9 @@ export interface TraceCapability {
   analysis: TraceContributions;
   /** Core 采集 trace 时使用的业务数据源声明。 */
   source?: {
-    store: {
+    dataSource: {
       service: string;
-      store: string;
+      dataSource: string;
     };
   };
 }

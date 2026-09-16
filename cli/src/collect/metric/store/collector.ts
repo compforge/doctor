@@ -3,8 +3,8 @@ import { parseExposition } from "@compforge/prombed";
 import type {
   PluginDefinition,
   ServiceCatalog,
-  ServiceDatabaseStoreCapability,
-  ServiceRedisStoreCapability,
+  ServiceDatabaseDataSource,
+  ServiceRedisDataSource,
 } from "@compforge/doctor-plugin";
 import { MysqlDatabase, parseMysqlEnvTarget } from "../../../infra/database/mysql";
 import type { DatabaseTarget } from "../../../infra/database";
@@ -23,7 +23,7 @@ import {
   type RedisEndpoint,
   type RedisTopology,
 } from "@compforge/harness-toolbox/redis/index";
-import { configuredValue, loadServiceRuntimeConfig } from "../../store/runtime-config";
+import { configuredValue, loadServiceRuntimeConfig } from "../../../datasource/runtime-config";
 import {
   hasRedisStoreConfiguration,
   resolveRedisTarget,
@@ -93,7 +93,7 @@ function environmentText(environment: ReadonlyMap<string, string>): string {
 
 function mysqlConfigurationComplete(
   environment: Map<string, string>,
-  capability: ServiceDatabaseStoreCapability,
+  capability: ServiceDatabaseDataSource,
 ): boolean {
   const prefix = capability.envPrefix;
   return !!(
@@ -179,7 +179,7 @@ export function redisInfoExposition(info: Record<string, unknown>, endpoint: Red
 
 function redisSampler(
   service: string,
-  store: ServiceRedisStoreCapability,
+  store: ServiceRedisDataSource,
   target: RedisTarget,
   forwarder: ServicePortForwarder,
 ): StoreMetricSampler {
@@ -242,7 +242,7 @@ export function mysqlStatusExposition(rows: readonly Record<string, unknown>[]):
 
 function mysqlSampler(
   service: string,
-  store: ServiceDatabaseStoreCapability,
+  store: ServiceDatabaseDataSource,
   target: DatabaseTarget,
   database: MysqlDatabase,
 ): StoreMetricSampler {
@@ -285,14 +285,14 @@ async function prepareDirectSamplers(input: {
     queryTimeoutMs: 15_000,
   });
   for (const serviceName of input.services) {
-    const service = input.plugin.services.findWith(serviceName, "stores");
+    const service = input.plugin.services.findWith(serviceName, "dataSources");
     if (!service) continue;
     const namespace = input.networkServices.find((item) => item.name === serviceName)?.namespace
       ?? input.pods[0]?.namespace
       ?? "";
     const pod = findPodsForService(input.networkServices, input.pods, serviceName, namespace)[0];
     if (!pod) {
-      for (const store of service.capabilities.stores) {
+      for (const store of service.capabilities.dataSources) {
         if (store.kind === "redis") {
           errors.push({ kind: "redis", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
         } else if (store.kind === "db" && store.backend === "mysql") {
@@ -301,7 +301,7 @@ async function prepareDirectSamplers(input: {
       }
       continue;
     }
-    for (const store of service.capabilities.stores) {
+    for (const store of service.capabilities.dataSources) {
       try {
         if (store.kind === "redis") {
           const runtime = await runtimeEnvironment(
@@ -317,6 +317,10 @@ async function prepareDirectSamplers(input: {
           const key = targetKey("redis", target);
           if (!samplers.has(key)) samplers.set(key, redisSampler(serviceName, store, target, input.forwarder));
         } else if (store.kind === "db" && store.backend === "mysql") {
+          if (!store.envPrefix) {
+            errors.push({ kind: "mysql", message: `${serviceName}/${store.id} Metric 直采需要 envPrefix；自定义 DB 目标请使用 doctor store/db` });
+            continue;
+          }
           const runtime = await runtimeEnvironment(
             input.executor,
             pod,
@@ -437,7 +441,7 @@ export async function prepareStoreMetricCollection(input: {
   const network = await listServiceNetwork(input.executor, input.namespace);
   const kinds = new Set<MetricStoreKind>();
   for (const serviceName of input.services) {
-    for (const store of input.plugin.services.findWith(serviceName, "stores")?.capabilities.stores ?? []) {
+    for (const store of input.plugin.services.findWith(serviceName, "dataSources")?.capabilities.dataSources ?? []) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }
@@ -553,7 +557,7 @@ export function selectedMetricStoreKinds(
 ): MetricStoreKind[] {
   const kinds = new Set<MetricStoreKind>();
   for (const service of services) {
-    for (const store of catalog.findWith(service, "stores")?.capabilities.stores ?? []) {
+    for (const store of catalog.findWith(service, "dataSources")?.capabilities.dataSources ?? []) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }

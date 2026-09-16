@@ -94,7 +94,7 @@ export async function resolveMetricConfig(
   const configuredPrometheus = resolvedProfile.profile.prometheus;
   const services = parseMetricServices(opts.services, catalog);
   const hasStoreMetrics = services.some((service) => (
-    catalog.findWith(service, "stores")?.capabilities.stores.some((store) => (
+    catalog.findWith(service, "dataSources")?.capabilities.dataSources.some((store) => (
       store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
     ))
   ));

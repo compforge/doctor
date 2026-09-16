@@ -13,8 +13,8 @@ import { resolveKubernetesCommandContext } from "../../command";
 import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import { serviceStores, servicesWithStore } from "@compforge/doctor-plugin";
-import type { ServiceRedisStoreCapability } from "@compforge/doctor-plugin";
+import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
+import type { ServiceRedisDataSource } from "@compforge/doctor-plugin";
 import { listServiceChoices } from "../../infra/k8s/service-selection";
 import {
   matchListedChoice,
@@ -42,7 +42,7 @@ export interface RedisConfig {
   profileName: string;
   profile?: RedisProfileConfig;
   service?: string;
-  store?: ServiceRedisStoreCapability;
+  store?: ServiceRedisDataSource;
   url?: string;
   requestedDatabase?: number;
   scan: {
@@ -85,13 +85,13 @@ async function resolveRedisCatalogStore(input: {
   catalog?: ServiceCatalog;
   executor: Executor;
   namespace: string;
-}): Promise<{ service: string; store: ServiceRedisStoreCapability } | undefined> {
+}): Promise<{ service: string; store: ServiceRedisDataSource } | undefined> {
   if (!input.catalog) return undefined;
   const explicitService = input.requestedService?.trim();
   const deployed = new Set(
     (await listServiceChoices(input.executor, input.namespace)).map((service) => service.name),
   );
-  const candidates = servicesWithStore(input.catalog, "redis")
+  const candidates = servicesWithDataSource(input.catalog, "redis")
     .filter((service) => deployed.has(service.name))
     .map((service) => ({ name: service.name }));
   if (candidates.length === 0) {
@@ -119,18 +119,18 @@ async function resolveRedisCatalogStore(input: {
     });
     if (!service) return undefined;
   }
-  const stores = serviceStores(input.catalog, service, "redis") as readonly ServiceRedisStoreCapability[];
+  const dataSources = serviceDataSources(input.catalog, service, "redis") as readonly ServiceRedisDataSource[];
   const requestedStore = input.requestedStore?.trim();
-  let store = requestedStore ? stores.find((candidate) => candidate.id === requestedStore) : undefined;
+  let store = requestedStore ? dataSources.find((candidate) => candidate.id === requestedStore) : undefined;
   if (requestedStore && !store) {
     throw new Error(`Service '${service}' 未声明 Redis Store '${requestedStore}'`);
   }
-  if (!store && stores.length === 1) store = stores[0];
+  if (!store && dataSources.length === 1) store = dataSources[0];
   if (!store) {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       throw new Error(`Service '${service}' 声明了多个 Redis Store；请用 --store <id> 指定`);
     }
-    const choices = stores.map((candidate) => ({ name: candidate.id }));
+    const choices = dataSources.map((candidate) => ({ name: candidate.id }));
     printNumberedChoices(choices, `[collect] Service '${service}' 的 Redis Store：`, (candidate) => candidate.name);
     const selected = await promptListedChoice({
       question: "请选择 Redis Store（序号或名称，q 取消）：",
@@ -142,7 +142,7 @@ async function resolveRedisCatalogStore(input: {
       ),
       invalidMessage: "请输入有效的序号或名称。",
     });
-    store = stores.find((candidate) => candidate.id === selected);
+    store = dataSources.find((candidate) => candidate.id === selected);
   }
   return store ? { service, store } : undefined;
 }

@@ -1,7 +1,7 @@
 import {
   loadDeclaredContainerConfig,
   type DeclaredContainerConfig,
-} from "../../infra/k8s/container-config";
+} from "../infra/k8s/container-config";
 import type { ExecResult, ExecTarget, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 export interface ServiceRuntimeConfig {
@@ -30,7 +30,7 @@ function failedExecReason(capture: ExecResult): string {
 }
 
 /**
- * Catalog 声明 Service 可能提供某类 Store 配置；是否启用由本次运行时配置决定。
+ * Catalog 声明 Service 可能提供某类 DataSource 配置；是否启用由本次运行时配置决定。
  * 声明值不足时才读取 Container env，空值保持为 unavailable，不能误当成坏凭据。
  */
 export async function loadServiceRuntimeConfig(

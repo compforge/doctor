@@ -1,17 +1,9 @@
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
-import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
-import { MysqlClient, parseMysqlEnvTarget } from "../../../../infra/database/mysql";
+import { borrowDatabase, resolveDatabaseTarget } from "../../../../datasource/database";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { Inspect } from "../../../inspection";
-import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { DbCommandContext } from "../context";
 import type { DbInspectionFacts } from "./model";
 import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
-
-function environmentText(environment: Map<string, string>): string {
-  return [...environment].map(([name, value]) => `${name}=${value}`).join("\n");
-}
 
 function captureReason(capture: ExecResult): string | undefined {
   return capture.ok ? undefined : capture.stderr.trim().split("\n")[0] || `exit=${capture.exitCode}`;
@@ -21,14 +13,7 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbComma
   return {
     id: "db-configuration",
     run: async (ctx) => {
-      const prefix = ctx.capability.envPrefix;
-      const required = (environment: Map<string, string>) => !!(
-        configuredValue(environment, `${prefix}_HOST`)
-        && (configuredValue(environment, `${prefix}_DATABASE`) || configuredValue(environment, `${prefix}_NAME`))
-        && (configuredValue(environment, `${prefix}_USERNAME`) || configuredValue(environment, `${prefix}_USER`))
-        && configuredValue(environment, `${prefix}_PASSWORD`)
-      );
-      const runtime = await loadServiceRuntimeConfig(ctx.executor, ctx.config.target, required);
+      const runtime = await resolveDatabaseTarget({ ...ctx.config, capability: ctx.capability }, ctx.executor, ctx.command);
       for (const [index, capture] of runtime.captures.entries()) {
         ctx.bundle.addStep({
           id: `db-config-source-${index + 1}`,
@@ -41,16 +26,13 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbComma
           durationMs: capture.durationMs,
         });
       }
-      if (!required(runtime.environment)) {
+      if (!runtime.target) {
         const reason = runtime.reason
-          ?? `Service '${ctx.config.service}' 当前未提供完整的 ${prefix}_* 配置，DB Store 未启用`;
+          ?? `Service '${ctx.config.service}' DB Store 未启用`;
         ctx.bundle.fill("runtime-config", { status: "unavailable", reason });
         return { configuration: unavailableFact("store.db.configuration", "db-configuration", reason) };
       }
-      ctx.target = parseMysqlEnvTarget(environmentText(runtime.environment), {
-        label: ctx.config.service,
-        prefix,
-      });
+      ctx.target = runtime.target;
       const configuration = {
         backend: ctx.capability.backend,
         endpoint: `${ctx.target.host}:${ctx.target.port}`,
@@ -58,6 +40,10 @@ export function makeDbConfigurationInspect(): Inspect<DbInspectionFacts, DbComma
         username: ctx.target.user,
         credentials: "configured" as const,
         source: runtime.source,
+        provenance: runtime.target.source ? {
+          namespace: runtime.target.source.namespace, pod: runtime.target.source.pod,
+          container: runtime.target.source.container, path: runtime.target.source.path,
+        } : undefined,
       };
       ctx.bundle.fill("runtime-config", {
         status: "ok",
@@ -82,22 +68,7 @@ export function makeDbAccessInspect(): Inspect<DbInspectionFacts, DbCommandConte
         return { access: unavailableFact("store.db.access", "db-access", reason) };
       }
       try {
-        const kube = {
-          namespace: ctx.config.collect.kubernetes.namespace,
-          kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
-          context: ctx.config.collect.kubernetes.context,
-        };
-        const kubernetes = await ctx.command.clients.get({
-          key: dataSourceKey("kubernetes", kube),
-          createClient: signal => new KubernetesClient(kube, signal, ctx.executor),
-        });
-        const target = ctx.target;
-        const client = await ctx.command.clients.get({
-          key: dataSourceKey("mysql", { kube, target }),
-          createClient: signal => new MysqlClient({ resolve: async () => target,
-            transports: [new PortForwardTransport(endpoint => kubernetes.forward(kube.namespace, endpoint))],
-          }, { signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
-        });
+        const client = await borrowDatabase(ctx.command, { ...ctx.config, capability: ctx.capability }, ctx.executor, ctx.target);
         ctx.database = client.database;
         const access = { backend: "mysql" as const, channel: "service-port-forward" as const };
         ctx.bundle.fill("access-preparation", {

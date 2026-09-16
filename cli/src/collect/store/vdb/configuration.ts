@@ -1,6 +1,6 @@
 import type {
   ServiceVdbConfiguration,
-  ServiceVdbStoreCapability,
+  ServiceVdbDataSource,
   ServiceVdbTarget,
 } from "@compforge/doctor-plugin";
 import type { ExecResult, ExecTarget, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -88,7 +88,7 @@ export function confirmInspectedVdbTarget(target: ServiceVdbTarget): VdbTargetCo
 }
 
 async function resolveVdbConnection(
-  capability: ServiceVdbStoreCapability,
+  capability: ServiceVdbDataSource,
   environment: Map<string, string>,
   configSource: VdbConnectionBase["configSource"],
   file?: { path: string; content: string },
@@ -162,7 +162,7 @@ export function parseVdbConnection(
 export async function confirmVdbTarget(
   executor: Executor,
   target: ExecTarget,
-  capability: ServiceVdbStoreCapability,
+  capability: ServiceVdbDataSource,
 ): Promise<VdbTargetConfirmation> {
   const declared = await loadDeclaredContainerConfig(executor, target);
   const declaredPath = configurationPath(capability.configuration, declared.environment);
