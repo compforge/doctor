@@ -1,4 +1,5 @@
 import type { Command } from "commander";
+import { commandOptionsWithSources } from "../app/option-sources";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { runCommand } from "../app/command";
 import { deliveryFormatOption } from "../app/command-defaults";
@@ -21,7 +22,7 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-o, --output <path>", "报告 basename/路径")
     .action(async (opts: OverviewCliOpts, command: Command) => {
-      opts = command.optsWithGlobals();
+      opts = commandOptionsWithSources(command);
       await runCommand(overviewCommand, opts, domainInput(opts), { plugin });
     });
 }

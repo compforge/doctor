@@ -28,6 +28,33 @@ CLI composition root 接收可选的 `Distribution`，再构造完整 Commander 
 Kubernetes 连接参数在根命令统一声明，通过 Commander 全局选项传入 CommandContext；子命令不重复
 声明，不借进程环境变量传播目标。参数解析和 Help 构造不触发环境访问。
 
+### 全局配置优先级
+
+所有 Command 对同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。
+CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可复用的运行配置；默认值补齐两者都未指定的项。
+高优先级值覆盖低优先级值是正常选择，不作为配置冲突拒绝执行，也不修改持久化的 profile。
+
+- 按配置项确定有效值；未提供某个 CLI 参数时，仍可使用该项的 profile 配置。
+- 保留“显式提供”与“自动填入默认值”的区别。Commander 或 Distribution 提供的默认值属于默认层，
+  不能因为已经出现在解析结果里就覆盖 profile。是否提供参数不能用 truthiness 判断；合法的 `false`
+  或 `0` 也表达用户意图，空值是否合法由该参数的契约决定。
+- 优先级只决定取值来源，不是失败重试顺序。选定值无效、目标不可达或执行失败时，应报告对应错误，
+  不自动尝试低优先级的配置。配置结构校验、参数约束与权限校验仍须执行。
+
+例如，显式 `--kubeconfig` 覆盖 profile 中的 kubeconfig；该文件不存在或解析失败时直接报错，
+不能改用 profile 或默认集群。只有上层未指定时，才进入该参数已有的默认查找规则。
+这条约定适用于所有配置项，不限于 Kubernetes；不要求每个 CLI 参数都新增对应的 profile 字段。
+
+CLI adapter 保留 Commander 参数来源，在共享 Command 准备入口消除被 profile 覆盖的默认值；
+领域 resolver 仍负责字段校验与来源记录。新增 profile-backed 参数时，应同步更新入口的字段映射。
+Chat 校验、Skill 目标注入和远端 kubeconfig 上传使用本次调用的有效目标，不直接复用原始 profile。
+本地 Skill 可读取 `TARGET_KUBE_CONTEXT` 并作为 `--context` 传给 Doctor/kubectl。
+远端 Chat 协议不携带 context，因此显式 `--context` 会报错；可传入已设置 `current-context` 的 kubeconfig。
+
+宿主或 Skill 将业务环境名解析为通用参数后交给 Doctor；Core 负责应用同一优先级与校验规则，
+不解释 AS 等产品的环境名。目标选择与后续访问应使用同一份有效配置，目标展示应能说明实际值及来源，
+便于使用者确认本次访问对象。
+
 ### 三阶段生命周期
 
 ```text

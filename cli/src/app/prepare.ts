@@ -1,5 +1,6 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { reportError } from "./error-log";
+import { withoutShadowedDefaults } from "./option-sources";
 import { CommandContext } from "../command";
 import { loadActivePlugin } from "../plugin";
 import { terminalStdout } from "../terminal/output";
@@ -14,6 +15,7 @@ export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
 /** Only the root resolves profile and host settings; each spec prepares its own requirements. */
 export function prepareCommand(opts: CommandOptions, printProfile: boolean, plugin?: PluginDefinition): CommandContext {
   const resolved = resolveWorkingProfile(opts);
+  opts = withoutShadowedDefaults(opts, resolved.profile);
   if (printProfile) terminalStdout.warning(`profile: ${resolved.name}\n`);
   const context = new CommandContext({}, {
     name: resolved.name, configPath: resolved.configPath, value: resolved.profile,
