@@ -18,6 +18,8 @@ Command 决定如何组织子 Command 的报告。命令调用树表达执行依
 
 HTML 是报告的呈现格式；`tar.gz` 是承载报告与证据的交付容器。Command 不各自实现打包函数，
 聚合 Command 也不把子命令的 tar 包再次套进父包。归档布局继续由 Delivery 根据 Artifact 引用统一决定。
+`manifest` 格式跳过报告渲染，交付未压缩证据目录及机器索引，状态与保留边界见
+[机器可读取证交付](manifest.md)。
 
 ## Command 与数据的四种场景
 

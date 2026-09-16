@@ -42,6 +42,8 @@ export interface StepRecord {
   exit_code?: number | null;
   duration_ms?: number;
   raw_file?: string;
+  /** Persistence truncation is independent of whether the remote step itself succeeded. */
+  truncation?: { reason: "raw_byte_limit"; original_bytes: number; limit_bytes: number };
 }
 
 /**
@@ -138,6 +140,8 @@ export class EvidenceBundle {
       const name = `${String(this.seq).padStart(2, "0")}-${input.id}.${input.ext ?? "txt"}`;
       writeFileSync(join(this.dir, "raw", name), truncateRaw(body), "utf-8");
       record.raw_file = `raw/${name}`;
+      const bytes = Buffer.byteLength(body, "utf8");
+      if (bytes > RAW_CAP_BYTES) record.truncation = { reason: "raw_byte_limit", original_bytes: bytes, limit_bytes: RAW_CAP_BYTES };
     }
     this.steps.push(record);
     return record;

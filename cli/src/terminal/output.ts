@@ -1,4 +1,21 @@
 import { writeTerminalOutput } from "./interaction";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+const machineOutput = new AsyncLocalStorage<boolean>();
+
+/** Machine delivery owns stdout; diagnostics and interactive prompts use stderr in this invocation. */
+export function withMachineOutput<T>(enabled: boolean, work: () => T): T {
+  return machineOutput.run(enabled, work);
+}
+
+export function terminalOutputStream(): NodeJS.WriteStream {
+  return machineOutput.getStore() ? process.stderr : process.stdout;
+}
+
+/** Final machine result bypasses diagnostic routing but keeps writes behind the terminal boundary. */
+export function writeMachineResult(value: unknown): void {
+  writeTerminalOutput(process.stdout, `${JSON.stringify(value, null, 2)}\n`);
+}
 // 非 chat command 的统一终端输出边界：业务代码不要直接写 process.stdout/stderr。
 // 子进程、协议 body 等原始数据用 write 原样透传；面向人的状态使用语义方法，确保
 // 颜色策略、TTY/重定向判断与 NO_COLOR 支持始终只在这一层演进。
@@ -56,7 +73,7 @@ export class TerminalOutput {
   ) {}
 
   write(chunk: string | Uint8Array): boolean {
-    return writeTerminalOutput(this.stream, chunk);
+    return writeTerminalOutput(this.stream === process.stdout ? terminalOutputStream() : this.stream, chunk);
   }
 
   info(text: string): boolean {
@@ -87,7 +104,7 @@ export class TerminalOutput {
     return styleTerminalText(
       text,
       tone,
-      supportsTerminalColor(this.stream, this.environment()),
+      supportsTerminalColor(this.stream === process.stdout ? terminalOutputStream() : this.stream, this.environment()),
     );
   }
 

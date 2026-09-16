@@ -1,6 +1,7 @@
 import { existsSync, statSync } from "node:fs";
 import { basename, join, posix } from "node:path";
 import type { CommandArtifact } from "../command/artifacts";
+import type { CommandStatus } from "../command/status";
 
 export interface BundleArtifact {
   readonly artifact: CommandArtifact;
@@ -23,12 +24,14 @@ export function planBundleArtifacts(artifacts: readonly CommandArtifact[]): read
   });
 }
 
-export function createBundleManifest(command: string, commandCode: number, layout: readonly BundleArtifact[], report?: string) {
+export function createBundleManifest(command: string, commandCode: number, layout: readonly BundleArtifact[], report?: string,
+  result?: { status: CommandStatus; reason?: string }) {
   return {
     schema_version: 1,
     kind: "doctor.bundle",
     command,
     exit_code: commandCode,
+    ...(result ? { status: result.status, reason: result.reason } : {}),
     report,
     artifacts: layout.map(({ artifact, path, report }) => ({ id: artifact.id, command: artifact.command, path, report })),
   };

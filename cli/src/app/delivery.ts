@@ -6,13 +6,14 @@ import {
   resolveArchivePath,
   resolveDefaultReportPaths,
 } from "../collect/output/archive";
-import type { CommandContext } from "../command";
+import { CommandStatus, type CommandContext } from "../command";
 import type { RenderContext } from "../report/context";
 import { renderReportHtml } from "../report/html";
 import type { Report } from "../report/model";
 import { terminalStderr, terminalStdout } from "../terminal/output";
 import { writeBundleAgents } from "./bundle-agents";
 import { createBundleManifest, planBundleArtifacts } from "./bundle-layout";
+import { deliverManifest, type ManifestResult } from "./manifest-delivery";
 
 export interface CommandDeliveryOptions {
   format?: string;
@@ -20,9 +21,9 @@ export interface CommandDeliveryOptions {
 }
 
 type FileDeliveryFormat = "html" | "json" | "md";
-type DeliveryFormat = "default" | FileDeliveryFormat | "bundle";
+type DeliveryFormat = "default" | FileDeliveryFormat | "bundle" | "manifest";
 
-const DELIVERY_FORMATS: readonly DeliveryFormat[] = ["default", "html", "json", "md", "bundle"];
+const DELIVERY_FORMATS: readonly DeliveryFormat[] = ["default", "html", "json", "md", "bundle", "manifest"];
 
 const FORMAT_FILES: Record<FileDeliveryFormat, string> = {
   html: "report.html",
@@ -83,7 +84,15 @@ export async function deliverCommandArtifacts(
   commandCode: number,
   commandName?: string,
   rendered?: { report: Report; context: RenderContext; preserveArtifacts?: boolean },
+  result?: ManifestResult,
 ): Promise<boolean> {
+  const format = resolveDeliveryFormat(options.format);
+  if (format === "manifest") {
+    return deliverManifest({ command: commandName ?? "doctor diagnosis", code: commandCode,
+      result: result ?? { status: commandCode === 130 ? CommandStatus.Cancelled : commandCode === 0 ? CommandStatus.Ok : CommandStatus.Failed },
+      context: commandContext, output: options.output,
+    }).delivered;
+  }
   const artifacts = commandContext.artifacts.list();
   if (!artifacts.length) return true;
 
@@ -93,7 +102,6 @@ export async function deliverCommandArtifacts(
     ?? (commandSlug && (commands.length > 1 || commands[0] !== commandSlug)
       ? `doctor-${commandSlug}-${timestamp()}`
       : basename(artifacts[0]!.path));
-  const format = resolveDeliveryFormat(options.format);
   const defaultPaths = resolveDefaultReportPaths(options.output, reportName);
   const fileFormat = format === "json" || format === "md"
     ? format
@@ -180,7 +188,7 @@ export async function deliverCommandArtifacts(
       const layout = planBundleArtifacts(artifacts);
       indexDirectory = mkdtempSync(join(tmpdir(), "doctor-delivery-index-"));
       const indexPath = join(indexDirectory, "manifest.json");
-      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout, html ? "report.html" : undefined), null, 2)}\n`, { mode: 0o600 });
+      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout, html ? "report.html" : undefined, result), null, 2)}\n`, { mode: 0o600 });
       agentsPath = writeBundleAgents({
         command: commandName ?? "doctor diagnosis",
         commandCode,

@@ -24,6 +24,10 @@ const distribution = {
   name: "samplectl",
   description: "Sample application diagnostics powered by Doctor",
   plugin,
+  commandDefaults: {
+    inspect: { format: "manifest" },
+    log: { format: "manifest", since: "30m" },
+  },
 } satisfies Distribution;
 
 startDoctor(distribution);
@@ -40,6 +44,16 @@ make -C cli build-mac DOCTOR_ENTRY=/path/to/entry.ts DOCTOR_COMMANDS=inspect,dat
 命令列表的发行方应省略 `commands`，只传名称与描述。`help/version` 始终可见。
 
 ## 关键设计
+
+### 命令默认值属于发行体验
+
+`commandDefaults` 按 Command 名和参数的 camelCase 名配置默认值，只能引用命令已经声明的参数。
+参数解析与可选值检查复用 CLI 声明，Help 显示发行版实际默认值；显式 CLI 参数和 Commander 的环境变量
+绑定优先。未配置的命令继续沿用 Core 默认行为，不修改共享 Command 的运行逻辑或子命令交付流程。
+
+例如 `log.format = "manifest"` 让 `samplectl log` 默认交付机器可读索引，
+`samplectl log --format html` 仍显式选择 HTML。`manifest` 的证据目录与输出契约见
+[机器可读取证交付](manifest.md)。
 
 ### 展示不是权限边界
 

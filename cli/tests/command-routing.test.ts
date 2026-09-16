@@ -154,7 +154,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--trace-samples <n>");
     expect(result.stdout).toContain('(default: "10")');
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("html 或 bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
     expect(result.stdout).toContain("-y, --yes");
   });
 
@@ -166,7 +166,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--cases <ids>");
     expect(result.stdout).toContain("每个执行一次");
     expect(result.stdout).toContain("不做质量评分");
-    expect(result.stdout).toContain("html 或 bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
     expect(result.stdout).toContain("-y, --yes");
   });
 
@@ -191,9 +191,9 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("[biz-ids...]");
     expect(result.stdout).not.toContain("--id <id>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("html 或 bundle");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时同时输出 HTML 和完整 Bundle");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("JSONL、raw");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("新建证据目录");
     expect(result.stdout).toContain("basename/路径");
   });
 
@@ -218,8 +218,8 @@ describe("CLI command routing", () => {
     expect(result.stdout).not.toContain("--tenant-id <id>");
     expect(result.stdout).not.toContain("--tenant-config-service <name>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("bundle、json、html 或 md");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("未指定时输出 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "md", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
   });
 
   test("tenant exposes tenant-scoped data collection", () => {
@@ -361,8 +361,8 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--max-size <mib>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("--kubeconfig <path>");
-    expect(result.stdout).toContain("bundle（含 HTML 和原始响应）、html 或 md");
-    expect(result.stdout).toContain("未指定时输出 HTML");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("basename/路径");
   });
@@ -437,7 +437,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).not.toContain("--model-catalog-service <name>");
     expect(result.stdout).toContain("-y, --yes");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("未指定时同时输出 HTML 和完整 Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("同名 .html 与 .tar.gz");
   });
@@ -458,7 +458,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--repeat <n>");
     expect(result.stdout).toContain("--max-output-tokens <n>");
     expect(result.stdout).toContain("-f, --format <format>");
-    expect(result.stdout).toContain("Bundle（JSON、HTML、Evidence）");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain("同名 .html 与 .tar.gz");
   });
@@ -599,8 +599,8 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("--no-show-key-names");
     expect(result.stdout).toContain("隐藏完整 key 名并使用哈希摘要");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("bundle、html 或 md");
-    expect(result.stdout).toContain("未指定时同时输出 HTML 和完整 Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("同名 .html 与 .tar.gz");
   });
@@ -625,8 +625,8 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("Usage: doctor data [options] [biz-ids...]");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout).toContain("输出格式：bundle、json 或 html");
-    expect(result.stdout).toContain("JSON、HTML、Evidence");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("新建证据目录");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("同名 .html 与 .tar.gz");
 
