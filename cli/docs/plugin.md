@@ -265,6 +265,20 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 capability/contribution
 名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
 
+`doctor plugin --service <name>` 按逻辑 Service 身份筛选并展示详情；未知 Service 报错，不返回伪装成功的
+空目录。JSON 保留名称数组，增加 `description` 与 `details`；概览和详情使用 SDK `describeService`
+对同一份执行声明的显式投影，不维护平行的能力清单。没有说明的 Plugin 仍可发现，展示“未提供”而不补造含义。
+
+Service 的 `description` 解释职责；Inspect 的 `description` 和 `limitations` 解释查询用途和证据盲区。
+每个 Query 使用一个 Identity，`accepts` 是它可接受的种类，不是多个必填参数；`provides` 和 `expands`
+分别声明可能得到的 Fact 与关联 ID，不保证每次都返回，更不能反推输出 ID 也可直接查询。
+限制说明不执行预算或授权；实际边界继续由查询预算、access 和既有执行契约约束。
+
+离线投影只提取静态 Workload、Store 身份、依赖和访问需求等允许公开的字段，不序列化 endpoint、配置或函数，
+也不调用 resolver、factory 或诊断 handler。访问需求只是 Plugin 声明，不是 Core 合成的完整访问计划。
+说明文字由 Plugin 作者负责保持无敏感信息；加载 Plugin 仍执行受信任模块的导入，并非不可信代码沙箱。
+CLI 的命令与发行名称归 composition root，Service 不保存可执行命令字符串。
+
 CLI composition root 从 Doctor Host 的 active state 加载精确 Plugin 版本：
 
 1. 校验 active ref 的版本仍存在，并加载 Plugin 代码与 Skill；

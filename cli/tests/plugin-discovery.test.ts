@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildPluginArchive } from "../../packages/plugin/scripts/pack";
@@ -45,13 +45,21 @@ describe("Plugin discovery", () => {
     expect(await listPlugins(undefined, temporaryRoot())).toEqual([]);
   });
 
-  test("injected Plugin wins over Host state and only declaration names are exposed", async () => {
+  test("injected Plugin wins over Host state and only safe declarations are exposed", async () => {
     const root = temporaryRoot();
     writeFileSync(join(root, "active.json"), "invalid host state");
     const result = await listPlugins(injected, root);
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
-      services: [{ name: "api", capabilities: ["log", "traceId"], contributions: ["inspect"] }],
+      services: [{ name: "api", capabilities: ["log", "traceId"], contributions: ["inspect"],
+        details: { workloads: [], dependencies: [], stores: [],
+          inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
+          access: [
+            { owner: "contributions.inspect", requirements: { kubernetes: [] } },
+            { owner: "capabilities.traceId", requirements: { kubernetes: [] } },
+          ],
+        },
+      }],
     }]);
     expect(JSON.stringify(result)).not.toContain("private-target");
   });
@@ -80,10 +88,16 @@ describe("Plugin discovery", () => {
 
 describe("doctor plugin CLI", () => {
   function run(...args: string[]) {
-    return Bun.spawnSync({
+    const root = temporaryRoot();
+    writeFileSync(join(root, "config.yaml"), "profiles: [invalid");
+    writeFileSync(join(root, "kubectl"), '#!/bin/sh\ntouch "$DOCTOR_HOME/kubectl-called"\nexit 99\n', { mode: 0o755 });
+    const result = Bun.spawnSync({
       cmd: [process.execPath, "run", resolve(import.meta.dir, "fixtures/plugin-cli.ts"), ...args],
-      cwd: temporaryRoot(), stdout: "pipe", stderr: "pipe",
+      cwd: root, stdout: "pipe", stderr: "pipe",
+      env: { ...process.env, DOCTOR_HOME: root, DOCTOR_CONFIG: join(root, "config.yaml"), PATH: `${root}:${process.env.PATH}` },
     });
+    expect(existsSync(join(root, "kubectl-called"))).toBe(false);
+    return result;
   }
 
   test("bare plugin displays the injected Plugin and Services", () => {
@@ -98,7 +112,9 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout.toString())).toEqual({ plugins: [{
       id: "test", version: "0.0.1", source: "injected",
-      services: [{ name: "test-store", capabilities: ["stores"], contributions: [] }],
+      services: [{ name: "test-store", capabilities: ["stores"], contributions: [],
+        details: { workloads: [], dependencies: [], stores: [{ id: "cache", kind: "redis" }], access: [] },
+      }],
     }] });
     expect(result.stderr.toString()).toBe("");
   });
@@ -107,6 +123,29 @@ describe("doctor plugin CLI", () => {
     const result = run("plugin", "--format", "xml");
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr.toString()).toContain("Allowed choices are text, json");
+  });
+
+  test("service filter renders offline details for legacy Services", () => {
+    const result = run("plugin", "--service", "test-store");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.toString()).toContain("Service: test-store");
+    expect(result.stdout.toString()).toContain("cache (redis)");
+    expect(result.stdout.toString()).toContain("尚未检查目标环境");
+  });
+
+  test("service filter keeps JSON directly consumable", () => {
+    const result = run("plugin", "--service", "test-store", "-f", "json");
+    expect(result.exitCode).toBe(0);
+    const services = JSON.parse(result.stdout.toString()).plugins[0].services;
+    expect(services).toHaveLength(1);
+    expect(services[0].details.stores).toEqual([{ id: "cache", kind: "redis" }]);
+  });
+
+  test("unknown Service fails without returning a misleading empty catalog", () => {
+    const result = run("plugin", "--service", "missing", "-f", "json");
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr.toString()).toContain("Unknown Service 'missing'");
+    expect(result.stdout.toString()).not.toContain('"plugins"');
   });
 
   test("install and uninstall remain subcommands", () => {
