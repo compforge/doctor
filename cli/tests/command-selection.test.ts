@@ -12,7 +12,7 @@ describe("build-time command visibility", () => {
   });
 
   test("arbitrary command selections affect both help entrypoints", async () => {
-    const program = createDoctorProgram(undefined, "inspect, perf,inspect");
+    const program = createDoctorProgram({ commands: "inspect, perf,inspect" });
     let output = "";
     program.configureOutput({ writeOut: text => { output += text; } });
     await program.parseAsync(["help"], { from: "user" });
@@ -27,7 +27,7 @@ describe("build-time command visibility", () => {
   });
 
   test("hidden commands remain registered and directly callable", async () => {
-    const program = createDoctorProgram(undefined, "inspect,data");
+    const program = createDoctorProgram({ commands: "inspect,data" });
     const chat = program.commands.find(command => command.name() === "chat")!;
     let output = "";
     chat.configureOutput({ writeOut: text => { output += text; } }).exitOverride();
@@ -38,7 +38,7 @@ describe("build-time command visibility", () => {
   });
 
   test("selection preserves nested command registration and parent", () => {
-    const program = createDoctorProgram(undefined, "plugin");
+    const program = createDoctorProgram({ commands: "plugin" });
     const plugin = program.commands.find(command => command.name() === "plugin")!;
     expect(plugin.parent).toBe(program);
     expect(plugin.commands.map(command => command.name())).toEqual(["install", "uninstall"]);

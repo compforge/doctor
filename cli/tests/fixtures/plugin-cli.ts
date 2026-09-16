@@ -18,4 +18,4 @@ const plugin = {
   }]),
 } satisfies PluginDefinition;
 
-startDoctor(plugin);
+startDoctor({ plugin });

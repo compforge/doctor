@@ -26,7 +26,8 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor init              → 首次初始化 local profile
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
-import { Command, type Command as CommandT } from "commander";
+import { Command, CommanderError, type Command as CommandT } from "commander";
+import type { Distribution } from "./distribution";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
 import { formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
@@ -111,8 +112,6 @@ function withK8sProcessTargetOptions(cmd: CommandT): CommandT {
         "影响等级：observe、overhead 或 disrupt（缺省时交互选择；关键写操作需 [y/N] 确认）",
       ),
   )
-    .option("--kubeconfig <path>", "kubeconfig 路径（缺省走 kubectl 默认查找）")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）");
 }
@@ -134,8 +133,6 @@ function withMemOptions(cmd: CommandT): CommandT {
       .option("--transfer-chunk-size <size>", "回传分块大小：1m、2m 或 4m", "2m")
       .option("--cleanup-remote", "heap 成功回传后删除执行容器内临时文件", false),
   )
-    .option("--kubeconfig <path>", "kubeconfig 路径（缺省走 kubectl 默认查找）")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
     .option("-o, --output <path>", "本机 heap 输出路径（默认 ./doctor-mem-<pod>-pid<pid>-<时间戳>.pyheap）");
@@ -163,8 +160,6 @@ function withTraceOptions(cmd: CommandT): CommandT {
     .option("--password <pass>", "OpenSearch 密码（缺省读 DOCTOR_OPENSEARCH_PASSWORD）")
     .option("--page-size <n>", "分页拉取批大小", "1000")
     .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
-    .option("--kubeconfig <path>", "kubeconfig 路径（缺省走 kubectl 默认查找）")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -192,8 +187,6 @@ function withStoreOptions(cmd: CommandT): CommandT {
     .option("--show-key-names", "Redis TopN 显示完整 key 名", REDIS_DEFAULTS.showKeyNames)
     .option("--no-show-key-names", "Redis TopN 隐藏完整 key 名并使用哈希摘要")
     .option("-f, --format <format>", "输出格式：bundle、html 或 md；未指定时同时输出 HTML 和完整 Bundle")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -213,8 +206,6 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     .option("--errors-only", "ID 过滤后只保留常见错误日志", false)
     .option("--pattern <regex>", "ID 过滤后继续按正则筛选")
     .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle（HTML、JSONL、raw）")
-    .option("--kubeconfig <path>", "kubeconfig 路径（缺省走 kubectl 默认查找）")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -231,8 +222,6 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
     )
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle（JSON、HTML、Evidence）")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 kubeconfig；数据源身份仅作服务运行时配置的兜底")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option(
@@ -256,8 +245,6 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
     .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
     .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Prometheus")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "集合报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -270,8 +257,6 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--dependencies", "确认进入业务 Container 采集应用依赖；交互模式缺省时询问")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("-f, --format <format>", "输出格式：bundle、json、html 或 md；未指定时输出 HTML + Bundle")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -284,8 +269,6 @@ function withTenantOptions(cmd: CommandT): CommandT {
     .option("--tenant-name <name>", "通过租户目录精确解析租户名")
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle")
@@ -307,8 +290,6 @@ function withHttpOptions(cmd: CommandT): CommandT {
     .option("--inspect-timeout <seconds>", "每个 URL host:port 的 DNS/TCP Inspect 超时", "3")
     .option("--max-size <mib>", "覆盖文件中的单响应最大采集容量")
     .option("-f, --format <format>", "输出格式：bundle（含 HTML 和原始响应）、html 或 md；未指定时输出 HTML + Bundle")
-    .option("--kubeconfig <path>", "Pod 执行位置使用的 kubeconfig 路径")
-    .option("--context <name>", "Pod 执行位置使用的 kubeconfig context")
     .option("--profile <name>", "Pod 执行位置从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -325,8 +306,6 @@ function withNetworkOptions(cmd: CommandT): CommandT {
     .option("--max-response-size <mib>", "响应体最大采集容量", String(NETWORK_DEFAULTS.maxResponseMiB))
     .option("--filter <bpf>", "覆盖按 Service 端口生成的 tcpdump BPF 粗过滤条件")
     .option("--cleanup-remote", "PCAP 成功回传并校验后清理 Pod 内本次抓包", false)
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "NetBundle 输出路径（默认 ./doctor-net-<时间戳>.tar.gz）");
@@ -343,8 +322,6 @@ function withMcpOptions(cmd: CommandT): CommandT {
       .option("--timeout <seconds>", "单步请求超时（1..600 秒）", "60")
       .option("--gateway-service <name>", "提供 MCP capability 的 Kubernetes Service；缺省由 Plugin Catalog 唯一推断"),
   )
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-f, --format <format>", "输出格式：bundle 或 html；未指定时同时输出 HTML 和完整 Bundle")
@@ -370,8 +347,6 @@ function withModelOptions(cmd: CommandT): CommandT {
     .option("--model-catalog-port <port>", "模型目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle（JSON、HTML、Evidence）")
@@ -389,8 +364,6 @@ function withMetricOptions(cmd: CommandT): CommandT {
     .option("--prometheus <url>", "Prometheus 地址；优先于 profile.prometheus.url")
     .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
     .option("-n, --namespace <ns>", "未配置 Prometheus 时，目标 Service 所在 namespace")
-    .option("--kubeconfig <path>", "未配置 Prometheus 时使用的 kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 Prometheus 或 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -412,8 +385,6 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--interval <duration>", "内嵌 Prombed 的 metric 抓取间隔", "5s")
     .option("--prometheus <url>", "Prometheus 地址；缺省使用内嵌 Prombed")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
@@ -427,55 +398,65 @@ function withEvalOptions(cmd: CommandT): CommandT {
     .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
     .option("--request-timeout <seconds>", "单个 Case 请求超时", "180")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
-async function resolveVersionPlugin(plugin: PluginDefinition | undefined): Promise<PluginDefinition | undefined> {
-  if (plugin) return plugin;
-  return process.argv.slice(2).some((argument) => argument === "--version" || argument === "-V")
-    ? loadActivePlugin()
-    : undefined;
-}
-
-function resolveKubernetesVersion(): Promise<string | undefined> {
-  return getKubernetesServerVersion(new KubectlExecutor({}));
+async function showVersion(plugin: PluginDefinition | undefined, options: { kubeconfig?: string; context?: string }): Promise<void> {
+  const [activePlugin, kubernetesVersion] = await Promise.all([
+    plugin ?? loadActivePlugin(),
+    getKubernetesServerVersion(new KubectlExecutor(options)),
+  ]);
+  terminalStdout.info(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), kubernetesVersion)}\n`);
 }
 
 /** Build the CLI surface without loading a profile or contacting a target. */
 export function createDoctorProgram(
-  plugin?: PluginDefinition,
-  commands: string = DOCTOR_COMMANDS,
-  version: string = formatDoctorVersion(plugin),
+  distribution: Distribution = {},
 ): Command {
+  const { plugin } = distribution;
   const program = new Command();
   program
-    .name("doctor")
-    .description([
+    .name(distribution.name ?? "doctor")
+    .description(distribution.description ?? [
       "面向应用与基础设施的本地诊断工具。",
       "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
     ].join("\n"))
-    .version(version)
-    .option("--debug", "错误时将完整技术详情同时输出到 stderr", false);
+    .option("-V, --version", "显示 Doctor、Plugin 与运行环境版本")
+    .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
+    .option("--kubeconfig <path>", "Kubernetes 配置路径，优先于 profile；仅访问 Kubernetes 时使用")
+    .option("--context <name>", "Kubernetes context；未指定时使用 kubeconfig 当前 context")
+    .configureHelp({ showGlobalOptions: true })
+    .action(() => {
+      // A root action handles global-only invocations, but must not swallow unknown commands.
+      if (program.args.length) program.error(`unknown command '${program.args[0]}'`, { code: "commander.unknownCommand" });
+      program.outputHelp();
+    })
+    .hook("preAction", async (_root, command) => {
+      if (!program.opts().version) return;
+      // Parse the complete argv before probing: -V must honor target flags on either side of a command.
+      await showVersion(plugin, command.optsWithGlobals());
+      throw new CommanderError(0, "doctor.versionDisplayed", "");
+    });
 
   const catalog = new Command().copyInheritedSettings(program);
 
   withReplOptions(
     catalog.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     const flags = toReplFlags(opts);
-    await runCommand(chatCommand, flags, domainInput(flags), { plugin });
+    await runCommand(chatCommand, { ...opts, ...flags }, domainInput(flags), { plugin });
   });
 
   catalog
     .command("init")
     .description("首次初始化 local profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
-    .action(async (opts) => {
+    .action(async (opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runStandaloneCommand("doctor init", () => runInit(opts));
     });
 
@@ -483,21 +464,16 @@ export function createDoctorProgram(
     .command("profile [name]")
     .description("交互选择 profile，或指定名称并持久为默认 profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
-    .action(async (name, opts) => {
+    .action(async (name, opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runStandaloneCommand("doctor profile", () => runProfile(name, opts));
     });
 
   catalog
     .command("version")
     .description("显示版本信息")
-    .action(async () => {
-      const [activePlugin, kubernetesVersion] = await Promise.all([
-        plugin ?? loadActivePlugin(),
-        resolveKubernetesVersion(),
-      ]);
-      terminalStdout.info(
-        `${formatDoctorVersion(activePlugin, getDoctorHostInfo(), kubernetesVersion)}\n`,
-      );
+    .action(async (_opts, command) => {
+      await showVersion(plugin, command.optsWithGlobals());
     });
 
   const pluginCommand = catalog.command("plugin");
@@ -530,11 +506,10 @@ export function createDoctorProgram(
     .option("--registry", "发布到 Target Registry")
     .option("--host", "load 到 Doctor Host")
     .option("-y, --yes", "未显式指定落点时，自动确认可选的 Doctor Host load", false)
-    .option("--kubeconfig <path>", "发现 registry 候选使用的 kubeconfig 路径")
-    .option("--context <name>", "发现 registry 候选使用的 kubeconfig context")
     .option("--profile <name>", "从 profile 取 kubeconfig 和 registry 凭据")
     .option("--config <path>", "config 文件路径")
-    .action(async (image, opts) => {
+    .action(async (image, opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runCommand(imageCommand, opts, { ...domainInput(opts), image }, { plugin });
     });
 
@@ -551,12 +526,11 @@ export function createDoctorProgram(
       "--capabilities <names>",
       "逗号分隔的显式权限：SYS_PTRACE、NET_RAW",
     )
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace、kubeconfig 或 kube.debug_image")
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认 Pod mutation", false)
-    .action(async (opts) => {
+    .action(async (opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runCommand(debugCommand, opts, domainInput(opts), { plugin });
     });
 
@@ -571,28 +545,30 @@ export function createDoctorProgram(
     .option("--tar <path>", "指定与 Target 平台和 kernel 兼容的 doctor-packages/v1 离线 tar")
     .option("-f, --format <format>", "输出 GDB 兼容性报告：md 或 json")
     .option("-o, --output <path>", "兼容性报告路径；未指定 --format 时按 .json 后缀推断，否则使用 md")
-    .option("--kubeconfig <path>", "kubeconfig 路径")
-    .option("--context <name>", "kubeconfig context")
     .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
     .option("--config <path>", "config 文件路径")
     .option("-y, --yes", "自动确认修改目标 container 可写层", false)
-    .action(async (opts) => {
+    .action(async (opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
     });
 
   withMemOptions(
     catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(memCommand, opts, domainInput(opts), { plugin });
   });
   withMemaOptions(
     catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
-  ).action(async (inputs, opts) => {
+  ).action(async (inputs, opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, { plugin });
   });
   withCpuOptions(
     catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(cpuCommand, opts, domainInput(opts), { plugin });
   });
   registerOverviewCommand(catalog, plugin);
@@ -604,7 +580,9 @@ export function createDoctorProgram(
   ).action(async (
     positionalBizIds,
     opts: Omit<CollectCliOpts, "bizIds" | "kinds"> & { bizId?: string[]; include?: string },
+    command: CommandT,
   ) => {
+    opts = command.optsWithGlobals();
     const kinds = await resolveCollectKinds(opts.include);
     if (!kinds) {
       process.exitCode = 130;
@@ -615,47 +593,55 @@ export function createDoctorProgram(
   });
   withTraceOptions(
     catalog.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
+    opts = command.optsWithGlobals();
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, { plugin });
   });
   withStoreOptions(
     catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(storeCommand, opts, domainInput(opts), { plugin });
   });
   withLogOptions(
     catalog.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
     "",
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>, command: CommandT) => {
+    opts = command.optsWithGlobals();
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withDataOptions(
     catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
     [],
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>, command: CommandT) => {
+    opts = command.optsWithGlobals();
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(dataCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withInspectOptions(
     catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(inspectCommand, opts, domainInput(opts), { plugin });
   });
   withTenantOptions(
     catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
-  ).action(async (opts: CollectTenantCliOptions) => {
+  ).action(async (opts: CollectTenantCliOptions, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(tenantCommand, opts, domainInput(opts), { plugin });
   });
   withHttpOptions(
     catalog.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
-  ).action(async (opts: CollectHttpCliOpts) => {
+  ).action(async (opts: CollectHttpCliOpts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(httpCommand, opts, domainInput(opts), { plugin, printProfile: opts.example === undefined });
   });
   withNetworkOptions(
     catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
-  ).action(async (opts: CollectNetworkCliOpts) => {
+  ).action(async (opts: CollectNetworkCliOpts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(netCommand, opts, domainInput(opts), { plugin });
   });
   catalog
@@ -664,63 +650,65 @@ export function createDoctorProgram(
     .option("--trace-id <ids>", "逗号分隔的一个或多个 trace ID（缺省读取 NetBundle）")
     .option("--capture-id <id>", "覆盖 NetBundle 中的染色 ID")
     .option("-o, --output <path>", "报告输出路径或前缀；生成同名 Markdown、HTML 与 JSON")
-    .action(async (input, opts) => {
+    .action(async (input, opts, command: CommandT) => {
+      opts = command.optsWithGlobals();
       await runStandaloneCommand("doctor neta", () => runAnalyzeNetwork(input, opts));
     });
   withMcpOptions(
     catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(mcpCommand, opts, domainInput(opts), { plugin });
   });
   withModelOptions(
     catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(modelCommand, opts, domainInput(opts), { plugin });
   });
   withMetricOptions(
     catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(metricCommand, opts, domainInput(opts), { plugin });
   });
   withEvalOptions(
     catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(evalCommand, opts, domainInput(opts), { plugin });
   });
   withPerfOptions(
     catalog.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
-  ).action(async (opts) => {
+  ).action(async (opts, command: CommandT) => {
+    opts = command.optsWithGlobals();
     await runCommand(perfCommand, opts, domainInput(opts), { plugin });
   });
 
-  const visibleCommands = new Set(selectVisibleCommands(catalog.commands, commands));
+  const visibleCommands = new Set(selectVisibleCommands(catalog.commands, distribution.commands ?? DOCTOR_COMMANDS));
   for (const command of catalog.commands) {
     program.addCommand(command, { hidden: !visibleCommands.has(command) });
   }
   return program;
 }
 
-export async function main(plugin?: PluginDefinition) {
-  const rootVersionRequested = process.argv.slice(2).some(
-    (argument) => argument === "--version" || argument === "-V",
-  );
-  const [versionPlugin, versionKubernetes] = await Promise.all([
-    resolveVersionPlugin(plugin),
-    rootVersionRequested ? resolveKubernetesVersion() : undefined,
-  ]);
-  const versionHost = rootVersionRequested ? getDoctorHostInfo() : undefined;
-  const program = createDoctorProgram(
-    plugin, DOCTOR_COMMANDS, formatDoctorVersion(versionPlugin, versionHost, versionKubernetes),
-  );
+export async function main(distribution: Distribution = {}) {
+  const program = createDoctorProgram(distribution);
 
   if (process.argv.length === 2) {
     program.outputHelp();
     return;
   }
-  await program.parseAsync(process.argv);
+  try {
+    await program.parseAsync(process.argv);
+  } catch (error) {
+    if (error instanceof CommanderError && error.code === "doctor.versionDisplayed") return;
+    throw error;
+  }
 }
 
-export function startDoctor(plugin?: PluginDefinition): void {
+export function startDoctor(distribution: Distribution = {}): void {
+  const { plugin } = distribution;
   const pluginIdentity = plugin ? `${plugin.id}@${plugin.version}` : undefined;
   process.once("uncaughtException", (error) => {
     reportError(error, {
@@ -738,7 +726,7 @@ export function startDoctor(plugin?: PluginDefinition): void {
     });
     process.exit(1);
   });
-  main(plugin).catch((err) => {
+  main(distribution).catch((err) => {
     reportError(err, {
       context: "doctor main",
       summary: "fatal",

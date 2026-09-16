@@ -72,6 +72,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/rendering.md` — Command 渲染与报告组合契约、单/多 Command × 单/多数据场景
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- `docs/distribution.md` — Doctor 发行版的身份、命令展示与 Plugin 装配边界
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
