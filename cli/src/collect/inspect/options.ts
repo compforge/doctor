@@ -15,7 +15,7 @@ import {
   type NamedChoiceSelectionInput,
 } from "../../terminal/service-selection";
 import { prepareTerminalInput } from "../../terminal/input";
-import { terminalStdout } from "../../terminal/output";
+import { terminalOutputStream, terminalStdout } from "../../terminal/output";
 import type {
   CollectInspectCliOpts,
   InspectConfig,
@@ -111,7 +111,7 @@ async function promptOptionalCollection(input: {
   terminalStdout.write(`[collect] ${input.title}\n`);
   terminalStdout.warning(`[collect] ${input.warning}\n`);
   prepareTerminalInput();
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  const readline = createInterface({ input: process.stdin, output: terminalOutputStream() });
   try {
     return ["y", "yes"].includes(
       (await readline.question(input.question)).trim().toLowerCase(),

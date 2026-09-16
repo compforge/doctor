@@ -25,6 +25,7 @@ import {
 } from "../terminal/kubernetes-access";
 import {
   defineCommandDecision,
+  defineExecutionRecord,
   resolveKubernetesCommandContext,
   type CommandContext,
 } from "./context";
@@ -58,6 +59,9 @@ export interface KubernetesCommandConfig {
     namespaceSource: ResolvedNamespace["source"];
   };
 }
+
+/** Resolved targets are recorded where selection occurs, never reconstructed by Delivery. */
+export const kubernetesTargetRecord = defineExecutionRecord<KubernetesCommandConfig["kubernetes"]>("kubernetes.targets");
 
 /** Composite commands reuse one namespace decision; each collector still owns its domain Config. */
 const kubernetesNamespaceDecision = defineCommandDecision<ResolvedNamespace | undefined>(
@@ -121,7 +125,7 @@ export async function resolveKubernetesCommandConfig(
       ], resolveNamespace)
     : await resolveNamespace();
   if (!namespace) return undefined;
-  return {
+  const resolved: KubernetesCommandConfig = {
     profileName,
     kubernetes: {
       kubeconfig: kube.kubeconfig,
@@ -131,6 +135,8 @@ export async function resolveKubernetesCommandConfig(
       namespaceSource: namespace.source,
     },
   };
+  commandContext?.record(kubernetesTargetRecord, [], resolved.kubernetes);
+  return resolved;
 }
 
 export function createKubernetesExecutor(

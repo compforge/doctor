@@ -229,7 +229,9 @@ Delivery 为每份产物分配独立归档位置，并生成根 manifest，统�
 Bundle 根 `report.html` 与外置 HTML 使用同一份完整报告；根 manifest 和 AGENTS.md 都指向它。
 Collect manifest 通过 artifact_ids 引用证据；多个 Collect 可以引用同一份 Inspect/Tenant。AGENTS.md 导航
 与打包使用同一份路径映射，领域目录内部的相对路径保持不变。单次和组合命令遵循相同布局，归档路径
-不由各 command 猜测或拼接。根索引不保存 Doctor Host 的临时绝对路径。
+不由各 command 猜测或拼接。压缩 Bundle 的根索引不保存 Doctor Host 的临时绝对路径。
+`--format manifest` 则保留未压缩证据目录，stdout 输出带本地根目录和执行状态的机器索引；进度走 stderr，
+不生成 HTML、不清理交付目录。内部仍使用相同 Artifact 相对路径，细节见 [Manifest](manifest.md)。
 JSON/Markdown 同样按 Artifact 身份保留全部可呈现产物；command 仅用于分组。单份 JSON 直接呈现领域
 diagnosis，多份 JSON 使用带 ID、command 和 diagnosis 的 artifacts 列表，避免同名命令覆盖或丢失证据。
 

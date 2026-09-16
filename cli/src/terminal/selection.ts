@@ -1,6 +1,6 @@
 import { currentCommandSignal } from "../command/execution-scope";
 import { withTerminalInput } from "./interaction";
-import { terminalStdout } from "./output";
+import { terminalOutputStream, terminalStdout } from "./output";
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "./input";
 
@@ -27,7 +27,7 @@ export async function promptListedChoice<Value>(input: {
 }): Promise<Value | undefined> {
   return withTerminalInput(async () => {
     prepareTerminalInput();
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    const readline = createInterface({ input: process.stdin, output: terminalOutputStream() });
     try {
       while (true) {
         const answer = (await readline.question(input.question, { signal: currentCommandSignal() })).trim();
@@ -54,7 +54,7 @@ export async function promptEnter(input: {
 }): Promise<EnterPromptResult> {
   return withTerminalInput(async () => {
     prepareTerminalInput();
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    const readline = createInterface({ input: process.stdin, output: terminalOutputStream() });
     const controller = new AbortController();
     const signal = input.signal && currentCommandSignal()
       ? AbortSignal.any([input.signal, currentCommandSignal()!]) : input.signal ?? currentCommandSignal();
@@ -150,7 +150,7 @@ export async function promptSearchableChoice<Value, Choice>(input: {
 }): Promise<Value | undefined> {
   return withTerminalInput(async () => {
     prepareTerminalInput();
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    const readline = createInterface({ input: process.stdin, output: terminalOutputStream() });
     let numberedChoices = input.numberedChoices
       ? [...input.numberedChoices]
       : input.choicesAreListed

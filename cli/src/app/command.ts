@@ -3,6 +3,8 @@ import { CommandInputError, CommandStatus, type CommandInput, type CommandResult
 import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
+import { withMachineOutput } from "../terminal/output";
+import { deliverManifest } from "./manifest-delivery";
 
 export type { CommandSpec } from "../command";
 
@@ -22,6 +24,13 @@ export async function runCommand<Input extends CommandInput, Output>(
   input: Input,
   runtime: { plugin?: PluginDefinition; printProfile?: boolean } = {},
 ): Promise<void> {
+  return withMachineOutput(opts.format?.trim() === "manifest", () => executeCommand(spec, opts, input, runtime));
+}
+
+async function executeCommand<Input extends CommandInput, Output>(
+  spec: CommandSpec<Input, Output>, opts: CommandOptions, input: Input,
+  runtime: { plugin?: PluginDefinition; printProfile?: boolean },
+): Promise<void> {
   try {
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
@@ -37,12 +46,16 @@ export async function runCommand<Input extends CommandInput, Output>(
       if (result.reportName) context.artifacts.setReportName(result.reportName);
       process.exitCode = await finalizeCommand({
         command: spec.name, context, delivery: opts, code: commandExitCode(result),
+        result: { status: result.status, reason: "reason" in result ? result.reason : undefined },
         render: renderer => renderer.render(spec, result),
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
     reportError(error, { context: spec.name, summary: "fatal" });
-    process.exitCode = 1;
+    process.exitCode = opts.format?.trim() === "manifest"
+      ? deliverManifest({ command: spec.name, code: 1, output: opts.output,
+          result: { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) } }).code
+      : 1;
   }
 }
 

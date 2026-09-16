@@ -28,6 +28,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
 import { Command, CommanderError, type Command as CommandT } from "commander";
 import type { Distribution } from "./distribution";
+import { applyCommandDefaults, deliveryFormatOption } from "./command-defaults";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
 import { formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
@@ -159,7 +160,7 @@ function withTraceOptions(cmd: CommandT): CommandT {
     .option("--username <user>", "OpenSearch 用户名（缺省读 DOCTOR_OPENSEARCH_USERNAME）")
     .option("--password <pass>", "OpenSearch 密码（缺省读 DOCTOR_OPENSEARCH_PASSWORD）")
     .option("--page-size <n>", "分页拉取批大小", "1000")
-    .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -186,7 +187,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
     .option("--top <n>", "Redis 各类 TopN 条目数", String(REDIS_DEFAULTS.top))
     .option("--show-key-names", "Redis TopN 显示完整 key 名", REDIS_DEFAULTS.showKeyNames)
     .option("--no-show-key-names", "Redis TopN 隐藏完整 key 名并使用哈希摘要")
-    .option("-f, --format <format>", "输出格式：bundle、html 或 md；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["bundle", "html", "md"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -205,7 +206,7 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
     .option("--errors-only", "只保留常见错误日志（有业务 ID 时先按 trace 过滤）", false)
     .option("--pattern <regex>", "按正则筛选日志（有业务 ID 时先按 trace 过滤）")
-    .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle（HTML、JSONL、raw）")
+    .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -221,7 +222,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       `逗号分隔、提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
-    .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle（JSON、HTML、Evidence）")
+    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
     .option("--profile <name>", "从 profile 取 kubeconfig；数据源身份仅作服务运行时配置的兜底")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option(
@@ -244,7 +245,7 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--watch <duration>", "传给 doctor metric 的采集窗口；默认 0")
     .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
     .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
-    .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Prometheus")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "集合报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -256,7 +257,7 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--deployment-config", "确认采集 Deployment Env/ConfigMap；交互模式缺省时询问")
     .option("--dependencies", "确认进入业务 Container 采集应用依赖；交互模式缺省时询问")
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace（profile 配置兜底，默认 default）")
-    .option("-f, --format <format>", "输出格式：bundle、json、html 或 md；未指定时输出 HTML + Bundle")
+    .addOption(deliveryFormatOption(["bundle", "json", "html", "md"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -271,7 +272,7 @@ function withTenantOptions(cmd: CommandT): CommandT {
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle")
+    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
@@ -289,7 +290,7 @@ function withHttpOptions(cmd: CommandT): CommandT {
     .option("--timeout <seconds>", "覆盖文件中的单请求超时")
     .option("--inspect-timeout <seconds>", "每个 URL host:port 的 DNS/TCP Inspect 超时", "3")
     .option("--max-size <mib>", "覆盖文件中的单响应最大采集容量")
-    .option("-f, --format <format>", "输出格式：bundle（含 HTML 和原始响应）、html 或 md；未指定时输出 HTML + Bundle")
+    .addOption(deliveryFormatOption(["bundle", "html", "md"]))
     .option("--profile <name>", "Pod 执行位置从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -324,7 +325,7 @@ function withMcpOptions(cmd: CommandT): CommandT {
   )
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-f, --format <format>", "输出格式：bundle 或 html；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["bundle", "html"]))
     .option(
       "-o, --output <path>",
       "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）",
@@ -349,7 +350,7 @@ function withModelOptions(cmd: CommandT): CommandT {
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("-f, --format <format>", "输出格式：bundle、json 或 html；未指定时输出 HTML + Bundle（JSON、HTML、Evidence）")
+    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
     .option(
       "-o, --output <path>",
       "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）",
@@ -362,7 +363,7 @@ function withMetricOptions(cmd: CommandT): CommandT {
     .option("--watch <duration>", "采集窗口：0、1m、2m、5m、10m 或 until-interrupt；非交互默认 0")
     .option("--interval <duration>", "内嵌 Prombed 抓取间隔（500ms..60s）", "5s")
     .option("--prometheus <url>", "Prometheus 地址；优先于 profile.prometheus.url")
-    .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-n, --namespace <ns>", "未配置 Prometheus 时，目标 Service 所在 namespace")
     .option("--profile <name>", "从 profile 取 Prometheus 或 namespace / kubeconfig")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
@@ -387,7 +388,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"], "--format <format>"))
     .option("-o, --output <path>", "HTML 产物目录或 Bundle 路径（默认 ./doctor-perf-<时间戳>）");
 }
 
@@ -400,7 +401,7 @@ function withEvalOptions(cmd: CommandT): CommandT {
     .option("-n, --namespace <ns>", "目标 Service 所在 namespace")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml）")
-    .option("--format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"], "--format <format>"))
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
@@ -689,6 +690,7 @@ export function createDoctorProgram(
   for (const command of catalog.commands) {
     program.addCommand(command, { hidden: !visibleCommands.has(command) });
   }
+  applyCommandDefaults(program, distribution.commandDefaults);
   return program;
 }
 

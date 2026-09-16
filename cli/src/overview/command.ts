@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { runCommand } from "../app/command";
+import { deliveryFormatOption } from "../app/command-defaults";
 import { domainInput } from "../command/options";
 import { overviewCommand, type OverviewCliOpts } from "./index";
 
@@ -17,10 +18,10 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("-n, --namespace <ns>", "目标 namespace")
     .option("--profile <name>", "使用指定 profile")
     .option("--config <path>", "config 文件路径")
-    .option("-f, --format <format>", "html 或 bundle；默认 HTML + Bundle")
+    .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-o, --output <path>", "报告 basename/路径")
     .action(async (opts: OverviewCliOpts, command: Command) => {
       opts = command.optsWithGlobals();
-      await runCommand(overviewCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
+      await runCommand(overviewCommand, opts, domainInput(opts), { plugin });
     });
 }

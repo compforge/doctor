@@ -8,7 +8,7 @@ import {
   type ApprovalRequest,
 } from "../command/approval";
 import { prepareTerminalInput } from "./input";
-import { terminalStderr, terminalStdout } from "./output";
+import { terminalOutputStream, terminalStderr, terminalStdout } from "./output";
 
 export interface ApprovalCliOptions {
   yes?: boolean;
@@ -42,7 +42,7 @@ export async function promptForApproval(
     prepareTerminalInput();
     const readline = createInterface({
       input: process.stdin,
-      output: process.stdout,
+      output: terminalOutputStream(),
     });
     try {
       const approved = isApprovalAnswer(
