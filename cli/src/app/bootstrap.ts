@@ -84,7 +84,14 @@ export async function bootstrap(
   }
   if (!profileName) throw new Error("failed to resolve the working profile");
 
+  // Apply this invocation's target before validation or upload; never mutate the saved profile.
+  const environment = commandContext?.options.environment;
+  profile = effectiveAgentProfile(profile, environment);
+
   const remote = !!(flags.server || resumeConversationId);
+  if (remote && environment?.context !== undefined) {
+    throw new Error("远端 chat 暂不支持 --context；请使用 current-context 已选定的 --kubeconfig 文件");
+  }
   const validation = validateProfile(profile, { requireServerLlm: remote });
   if (validation.errors.length) throw new Error(validation.errors.join("\n"));
 
@@ -123,7 +130,7 @@ export async function bootstrap(
 
   const localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
   try {
-    const localContext = await prepareLocalAgentContext(profileName, profile, plugin);
+    const localContext = await prepareLocalAgentContext(profileName, profile, plugin, environment?.context);
     const agent = new LocalAgent({
       llm: localModel.llm,
       env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: localContext.shellEnv }),
@@ -147,8 +154,15 @@ export async function bootstrap(
   }
 }
 
-/** Bind local Skill execution to the infrastructure target already selected by the profile. */
-export function createLocalAgentContext(profileName: string, profile: Profile): LocalAgentContext {
+export function effectiveAgentProfile(profile: Profile, environment?: { kubeconfig?: string }): Profile {
+  if (environment?.kubeconfig === undefined) return profile;
+  if (!environment.kubeconfig.trim()) throw new Error("--kubeconfig 不能为空");
+  return { ...profile, kube: { ...profile.kube, kubeconfig_path: environment.kubeconfig } };
+}
+
+/** Bind Skills to the effective invocation target, not just the saved profile. */
+export function createLocalAgentContext(profileName: string, profile: Profile, context?: string): LocalAgentContext {
+  if (context !== undefined && !context.trim()) throw new Error("--context 不能为空");
   const kubeconfig = profile.kube?.kubeconfig_path
     ? expandHome(profile.kube.kubeconfig_path)
     : undefined;
@@ -157,20 +171,24 @@ export function createLocalAgentContext(profileName: string, profile: Profile): 
     TARGET_ACCESS_MODE: "remote",
     TARGET_READONLY: String(profile.readonly),
     ...(kubeconfig ? { TARGET_KUBECONFIG: kubeconfig } : {}),
+    ...(context !== undefined ? { TARGET_KUBE_CONTEXT: context } : {}),
     ...(profile.namespace ? { TARGET_NAMESPACE: profile.namespace } : {}),
   };
   const target = [
     `profile=${JSON.stringify(profileName)}`,
     kubeconfig ? `kubeconfig=${JSON.stringify(kubeconfig)}` : undefined,
+    context !== undefined ? `context=${JSON.stringify(context)}` : undefined,
     profile.namespace ? `namespace=${JSON.stringify(profile.namespace)}` : undefined,
     `readonly=${profile.readonly}`,
   ].filter(Boolean).join(", ");
   const contextPrompt = [
     `The Doctor host has already bound this session to one infrastructure target (${target}).`,
     "The profile name is the selected environment identifier. Skill scripts can use the injected "
-      + "TARGET_ENV, TARGET_KUBECONFIG, TARGET_NAMESPACE, TARGET_READONLY, and TARGET_ACCESS_MODE variables.",
+      + "TARGET_ENV, TARGET_KUBECONFIG, TARGET_KUBE_CONTEXT, TARGET_NAMESPACE, TARGET_READONLY, and TARGET_ACCESS_MODE variables. "
+      + "Pass TARGET_KUBECONFIG and TARGET_KUBE_CONTEXT as --kubeconfig and --context when invoking Doctor or kubectl.",
     "Do not ask the user to choose an environment merely because a Skill contains a multi-environment catalog. "
-      + "Use the active profile context; if the user requests another environment, ask them to switch Doctor profile.",
+      + "Use this invocation's target; explicit CLI options override the saved profile. "
+      + "To change target, start a new invocation with explicit target options or another profile.",
   ].join("\n");
   return { contextPrompt, shellEnv };
 }
@@ -180,8 +198,9 @@ export async function prepareLocalAgentContext(
   profileName: string,
   profile: Profile,
   plugin?: PluginDefinition,
+  context?: string,
 ): Promise<LocalAgentContext> {
-  const profileContext = createLocalAgentContext(profileName, profile);
+  const profileContext = createLocalAgentContext(profileName, profile, context);
   const prepared = await plugin?.prepareSkillContext?.({
     env: profileName,
     namespace: profile.namespace,

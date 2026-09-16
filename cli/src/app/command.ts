@@ -5,6 +5,7 @@ import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
 import { withMachineOutput } from "../terminal/output";
 import { deliverManifest } from "./manifest-delivery";
+import { withoutShadowedDefaults } from "./option-sources";
 
 export type { CommandSpec } from "../command";
 
@@ -33,6 +34,7 @@ async function executeCommand<Input extends CommandInput, Output>(
 ): Promise<void> {
   try {
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
+    input = withoutShadowedDefaults(input, context.profile.value);
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
     process.once("SIGINT", interrupt);
     let result: CommandResult<Output>;

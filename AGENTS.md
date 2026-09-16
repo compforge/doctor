@@ -69,6 +69,11 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
    正常新增或修改；这不意味着必须更新索引。`specgen` / `specgen:check` 及 `spec.json` 生成只在维护者
    明确要求时执行，agent 不因普通代码、文档或 mark 变更主动触发。
 
+9. **全局配置优先级**：同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。
+   CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可复用配置，默认值只补齐未指定项。
+   CLI 库填入的默认值不算显式参数；选定值无效或执行失败时应报错，不回退到低优先级配置。
+   配置来源与宿主边界见 `cli/docs/kernel.md` 的“全局配置优先级”。
+
 ## References
 
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
