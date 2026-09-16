@@ -1,9 +1,17 @@
-import {
-  listObjectsV2,
-  type S3ObjectMetadata,
-  type S3ObjectPage,
-  type S3Target,
-} from "../../infra/object-store";
+import type { S3Client } from "@compforge/harness-toolbox/s3";
+
+interface S3ObjectMetadata {
+  key: string;
+  size: number;
+  lastModified: Date;
+}
+
+interface S3ObjectPage {
+  objects: S3ObjectMetadata[];
+  commonPrefixes: string[];
+  isTruncated: boolean;
+  nextContinuationToken?: string;
+}
 
 const AGE_THRESHOLDS_DAYS = [7, 30, 90, 365] as const;
 const AGE_RANGES = ["<7d", "7-30d", "30-90d", "90-365d", ">=365d"] as const;
@@ -276,7 +284,8 @@ export function summarizeS3Objects(input: {
 }
 
 export async function scanS3Objects(input: {
-  target: S3Target;
+  client: Pick<S3Client, "listObjects" | "signal">;
+  bucket: string;
   prefix?: string;
   priorityPrefix?: string;
   maxObjects: number;
@@ -311,14 +320,30 @@ export async function scanS3Objects(input: {
       stoppedReason = "time-limit";
       return undefined;
     }
+    const signal = AbortSignal.timeout(Math.min(10_000, remainingMs));
     try {
-      return await listObjectsV2(input.target, {
+      const page = await input.client.listObjects(input.bucket, {
         ...options,
         maxKeys: Math.min(options.maxKeys ?? 1000, remaining),
-        timeoutMs: Math.min(10_000, remainingMs),
+        signal,
       });
+      // SDK metadata is optional; incomplete values must not become a complete capacity result.
+      const objects = page.objects.map(({ key, size, lastModified }) => {
+        if (size === undefined || !Number.isFinite(size) || size < 0
+          || !lastModified || Number.isNaN(lastModified.getTime())) {
+          throw new Error("ListObjectsV2 Contents 缺少有效 Key/Size/LastModified");
+        }
+        return { key, size, lastModified };
+      });
+      if (page.truncated && !page.continuationToken) {
+        throw new Error("ListObjectsV2 响应已截断但缺少 NextContinuationToken");
+      }
+      return { objects, commonPrefixes: page.prefixes, isTruncated: page.truncated,
+        nextContinuationToken: page.continuationToken };
     } catch (error) {
-      if (!(error instanceof Error && error.name === "AbortError")) throw error;
+      // Root cancellation is not a scan-budget limit and must not turn into a successful partial scan.
+      input.client.signal.throwIfAborted();
+      if (!signal.aborted && !(error instanceof Error && error.name === "AbortError")) throw error;
       stoppedReason = "time-limit";
       return undefined;
     }
