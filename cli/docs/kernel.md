@@ -18,6 +18,11 @@ Inspect → Probe → Detector 推进；Core 与 Plugin Service 在同一流程�
 
 ## Collect Command Kernel
 
+CLI composition root 先构造完整 Commander 命令目录，再通过 `addCommand` 装配入口。构建参数
+`DOCTOR_COMMANDS` 只决定各顶层命令的 `hidden` 标记，帮助与版本始终可见；默认全部可见。
+该选择固化在发行物中，独立于 Plugin capability 与环境可用性。隐藏不限制直接调用，也不改变
+组合命令内部的执行能力；它是帮助展示策略，不是权限或代码裁剪边界。
+
 ### 三阶段生命周期
 
 ```text

@@ -1,7 +1,7 @@
 # Doctor CLI
 
 Doctor 是面向应用与基础设施的诊断客户端。直接运行 `doctor` 查看能力索引，使用
-`doctor <command> --help` 查看某条命令的参数。Plugin 命令始终可见；当前 Plugin 缺少 required
+`doctor <command> --help` 查看某条命令的参数。默认显示全部命令；当前 Plugin 缺少 required
 capability 时，CLI 会在访问环境前说明具体缺口。
 
 ## 本地构建
@@ -9,6 +9,18 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 ```bash
 make build
 ```
+
+构建时可用 `DOCTOR_COMMANDS` 指定帮助中可见的顶层命令，逗号分隔，默认 `all`：
+
+```bash
+make build-mac DOCTOR_COMMANDS=inspect,data,trace,log
+# 从仓库根目录构建：
+make -C .. build-local DOCTOR_COMMANDS=inspect,data,trace,log
+```
+
+`help`、`version` 始终可见。其它命令使用 Commander 的 `hidden` 标记隐藏，仍可直接调用并查看
+自身的 `--help`；此选项不禁用功能、不裁剪代码，也不是权限边界。拼错命令名会使构建失败。
+可见性写入 Bun executable 与 Node SEA 产物，运行时设置同名环境变量不会改变它。
 
 Doctor CLI 不内嵌 `regctl`、`doctor-pcap`、fork-pyheap 等诊断工具。fork-pyheap dumper、GDB 等
 可选组件与 debug image 统一由根目录 `toolkit/` 独立版本和构建；具体命令只准备本次诊断所需组件：
@@ -27,8 +39,21 @@ make -C ../toolkit build-all
 
 ## 命令
 
+用 `doctor plugin` 离线查看当前生效的 Plugin、版本、加载来源及其声明的 Service。
+`doctor plugin --format json` 返回 `{ "plugins": [...] }`，每个 Service 包含 `name`、
+`capabilities` 和 `contributions`。例如提取可传给 `inspect --services` 的名称：
+
+```bash
+doctor plugin --format json | jq -r '.plugins[].services[].name'
+```
+
+入口注入的 Plugin 优先于本机激活版本；没有生效 Plugin 时列表为空。输出是 Catalog 声明，
+不表示目标环境中的服务已部署、健康或可达，也不表示每个 Service 支持全部采集命令。
+本机其它已安装但未激活的版本不进入此列表。安装与卸载仍使用 `doctor plugin install/uninstall`。
+
 | 命令 | 用途 |
 |---|---|
+| `doctor plugin` | 展示当前生效的 Plugin 与 Service 声明；`--format json` 供脚本消费 |
 | `doctor chat` | 进入交互式 AI 问诊 |
 | `doctor cpu` | 对目标 Pod 做 Python CPU、卡顿与线程栈取证 |
 | `doctor mem` | 使用 fork-pyheap attach 并回传对象堆；余量不足时按安全进程拓扑准备 Headroom |

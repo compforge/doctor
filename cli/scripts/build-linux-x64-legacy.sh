@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-$ROOT_DIR/dist/doctor-debian-x64-kernel-3.10-glibc-2.17}"
 DOCTOR_ENTRY="${DOCTOR_ENTRY:-$ROOT_DIR/src/app/entry.ts}"
+COMMAND_DEFINE="$(bun "$ROOT_DIR/scripts/command-selection.ts" "${DOCTOR_COMMANDS-all}")"
 WORK_DIR="$ROOT_DIR/dist/.linux-x64-legacy"
 NODE_VERSION="22.23.1"
 NODE_ARCHIVE="node-v${NODE_VERSION}-linux-x64-glibc-217.tar.xz"
@@ -26,6 +27,7 @@ bun build "$DOCTOR_ENTRY" \
   --format=esm \
   --outdir="$WORK_DIR/core" \
   --entry-naming=doctor-core.mjs \
+  --define "$COMMAND_DEFINE" \
   --define 'import.meta.url="file:///__doctor_sea__/doctor-core.mjs"'
 
 cat > "$WORK_DIR/bootstrap.cjs" <<'EOF'

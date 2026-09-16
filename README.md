@@ -116,6 +116,10 @@ Build only the local macOS binary:
 make build-local
 ```
 
+Set `DOCTOR_COMMANDS=inspect,data,trace,log` on either build command to choose the top-level commands
+shown in help (default: `all`). `help` and `version` stay visible; hidden commands remain callable.
+See [CLI build options](cli/README.md#本地构建) for details.
+
 Build a Toolkit slice for one execution platform, all slices separately, or one combined archive:
 
 ```bash

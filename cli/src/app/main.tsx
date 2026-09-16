@@ -25,8 +25,9 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor install           → 向选定 Pod container 安装 GDB
 //   doctor init              → 首次初始化 local profile
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
-// CLI 是多能力入口，bare `doctor` 显示 core 与当前注入 Plugin 提供的全部子命令帮助。
+// CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
 import { Command, type Command as CommandT } from "commander";
+import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
 import { formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
 import { type CollectTraceCliOpts } from "../collect/trace";
@@ -48,7 +49,7 @@ import { reportError } from "./error-log";
 import { runInit } from "./init";
 import { runProfile } from "./profile";
 import { loadActivePlugin } from "../plugin";
-import { runPluginInstall, runPluginUninstall } from "./plugin";
+import { registerPluginInfo, runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
@@ -445,17 +446,13 @@ function resolveKubernetesVersion(): Promise<string | undefined> {
   return getKubernetesServerVersion(new KubectlExecutor({}));
 }
 
-export async function main(plugin?: PluginDefinition) {
-  const rootVersionRequested = process.argv.slice(2).some(
-    (argument) => argument === "--version" || argument === "-V",
-  );
-  const [versionPlugin, versionKubernetes] = await Promise.all([
-    resolveVersionPlugin(plugin),
-    rootVersionRequested ? resolveKubernetesVersion() : undefined,
-  ]);
-  const versionHost = rootVersionRequested ? getDoctorHostInfo() : undefined;
+/** Build the CLI surface without loading a profile or contacting a target. */
+export function createDoctorProgram(
+  plugin?: PluginDefinition,
+  commands: string = DOCTOR_COMMANDS,
+  version: string = formatDoctorVersion(plugin),
+): Command {
   const program = new Command();
-  const version = formatDoctorVersion(versionPlugin, versionHost, versionKubernetes);
   program
     .name("doctor")
     .description([
@@ -465,14 +462,16 @@ export async function main(plugin?: PluginDefinition) {
     .version(version)
     .option("--debug", "错误时将完整技术详情同时输出到 stderr", false);
 
+  const catalog = new Command().copyInheritedSettings(program);
+
   withReplOptions(
-    program.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
+    catalog.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
   ).action(async (opts) => {
     const flags = toReplFlags(opts);
     await runCommand(chatCommand, flags, domainInput(flags), { plugin });
   });
 
-  program
+  catalog
     .command("init")
     .description("首次初始化 local profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
@@ -480,7 +479,7 @@ export async function main(plugin?: PluginDefinition) {
       await runStandaloneCommand("doctor init", () => runInit(opts));
     });
 
-  program
+  catalog
     .command("profile [name]")
     .description("交互选择 profile，或指定名称并持久为默认 profile")
     .option("-c, --config <path>", "config file path (default: ~/.doctor/config.yaml)")
@@ -488,7 +487,7 @@ export async function main(plugin?: PluginDefinition) {
       await runStandaloneCommand("doctor profile", () => runProfile(name, opts));
     });
 
-  program
+  catalog
     .command("version")
     .description("显示版本信息")
     .action(async () => {
@@ -501,7 +500,8 @@ export async function main(plugin?: PluginDefinition) {
       );
     });
 
-  const pluginCommand = program.command("plugin").description("安装和卸载 Doctor Plugin");
+  const pluginCommand = catalog.command("plugin");
+  registerPluginInfo(pluginCommand, plugin);
   pluginCommand
     .command("install <archive>")
     .description("安装并加载 Plugin 归档")
@@ -511,14 +511,14 @@ export async function main(plugin?: PluginDefinition) {
     .description("卸载精确 plugin@version")
     .action(runPluginUninstall);
 
-  program
+  catalog
     .command("help")
     .description("显示帮助信息")
     .action(() => {
       program.outputHelp();
     });
 
-  program
+  catalog
     .command("image [image]")
     .description("将 image tar 发布到 Target Registry 和/或 load 到 Doctor Host")
     .option(
@@ -538,7 +538,7 @@ export async function main(plugin?: PluginDefinition) {
       await runCommand(imageCommand, opts, { ...domainInput(opts), image }, { plugin });
     });
 
-  program
+  catalog
     .command("debug")
     .allowExcessArguments(false)
     .description("为目标 Pod 启动或复用具备 ptrace 权限的 debug 临时容器")
@@ -560,7 +560,7 @@ export async function main(plugin?: PluginDefinition) {
       await runCommand(debugCommand, opts, domainInput(opts), { plugin });
     });
 
-  program
+  catalog
     .command("install")
     .allowExcessArguments(false)
     .description("向目标 Pod container 安装排查程序；首版支持 GDB")
@@ -581,24 +581,24 @@ export async function main(plugin?: PluginDefinition) {
     });
 
   withMemOptions(
-    program.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
+    catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
   ).action(async (opts) => {
     await runCommand(memCommand, opts, domainInput(opts), { plugin });
   });
   withMemaOptions(
-    program.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
+    catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
   ).action(async (inputs, opts) => {
     await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, { plugin });
   });
   withCpuOptions(
-    program.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
+    catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
   ).action(async (opts) => {
     await runCommand(cpuCommand, opts, domainInput(opts), { plugin });
   });
-  registerOverviewCommand(program, plugin);
+  registerOverviewCommand(catalog, plugin);
 
   withCollectOptions(
-    program.command("collect").description(
+    catalog.command("collect").description(
       "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
     ),
   ).action(async (
@@ -614,51 +614,51 @@ export async function main(plugin?: PluginDefinition) {
     await runCommand(collectCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withTraceOptions(
-    program.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
+    catalog.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, { plugin });
   });
   withStoreOptions(
-    program.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
+    catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
   ).action(async (opts) => {
     await runCommand(storeCommand, opts, domainInput(opts), { plugin });
   });
   withLogOptions(
-    program.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
+    catalog.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
     "",
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withDataOptions(
-    program.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
+    catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
     [],
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>) => {
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
     await runCommand(dataCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withInspectOptions(
-    program.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
+    catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
   ).action(async (opts) => {
     await runCommand(inspectCommand, opts, domainInput(opts), { plugin });
   });
   withTenantOptions(
-    program.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
+    catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
   ).action(async (opts: CollectTenantCliOptions) => {
     await runCommand(tenantCommand, opts, domainInput(opts), { plugin });
   });
   withHttpOptions(
-    program.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
+    catalog.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
   ).action(async (opts: CollectHttpCliOpts) => {
     await runCommand(httpCommand, opts, domainInput(opts), { plugin, printProfile: opts.example === undefined });
   });
   withNetworkOptions(
-    program.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
+    catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
   ).action(async (opts: CollectNetworkCliOpts) => {
     await runCommand(netCommand, opts, domainInput(opts), { plugin });
   });
-  program
+  catalog
     .command("neta [input]")
     .description("纯离线分析 NetBundle，重建业务调用并生成 Findings、Coverage 与可视化报告")
     .option("--trace-id <ids>", "逗号分隔的一个或多个 trace ID（缺省读取 NetBundle）")
@@ -668,30 +668,50 @@ export async function main(plugin?: PluginDefinition) {
       await runStandaloneCommand("doctor neta", () => runAnalyzeNetwork(input, opts));
     });
   withMcpOptions(
-    program.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
+    catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
   ).action(async (opts) => {
     await runCommand(mcpCommand, opts, domainInput(opts), { plugin });
   });
   withModelOptions(
-    program.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
+    catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
   ).action(async (opts) => {
     await runCommand(modelCommand, opts, domainInput(opts), { plugin });
   });
   withMetricOptions(
-    program.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
+    catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
   ).action(async (opts) => {
     await runCommand(metricCommand, opts, domainInput(opts), { plugin });
   });
   withEvalOptions(
-    program.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
+    catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
   ).action(async (opts) => {
     await runCommand(evalCommand, opts, domainInput(opts), { plugin });
   });
   withPerfOptions(
-    program.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
+    catalog.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
   ).action(async (opts) => {
     await runCommand(perfCommand, opts, domainInput(opts), { plugin });
   });
+
+  const visibleCommands = new Set(selectVisibleCommands(catalog.commands, commands));
+  for (const command of catalog.commands) {
+    program.addCommand(command, { hidden: !visibleCommands.has(command) });
+  }
+  return program;
+}
+
+export async function main(plugin?: PluginDefinition) {
+  const rootVersionRequested = process.argv.slice(2).some(
+    (argument) => argument === "--version" || argument === "-V",
+  );
+  const [versionPlugin, versionKubernetes] = await Promise.all([
+    resolveVersionPlugin(plugin),
+    rootVersionRequested ? resolveKubernetesVersion() : undefined,
+  ]);
+  const versionHost = rootVersionRequested ? getDoctorHostInfo() : undefined;
+  const program = createDoctorProgram(
+    plugin, DOCTOR_COMMANDS, formatDoctorVersion(versionPlugin, versionHost, versionKubernetes),
+  );
 
   if (process.argv.length === 2) {
     program.outputHelp();

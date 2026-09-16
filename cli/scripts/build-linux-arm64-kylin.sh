@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT="${1:-$ROOT_DIR/dist/doctor-kylin-arm64-kernel-4.19-glibc-2.28}"
 DOCTOR_ENTRY="${DOCTOR_ENTRY:-$ROOT_DIR/src/app/entry.ts}"
+COMMAND_DEFINE="$(bun "$ROOT_DIR/scripts/command-selection.ts" "${DOCTOR_COMMANDS-all}")"
 WORK_DIR="$ROOT_DIR/dist/.linux-arm64-kylin"
 NODE_VERSION="22.23.1"
 NODE_ARCHIVE="node-v${NODE_VERSION}-linux-arm64.tar.xz"
@@ -26,6 +27,7 @@ bun build "$DOCTOR_ENTRY" \
   --format=esm \
   --outdir="$WORK_DIR/core" \
   --entry-naming=doctor-core.mjs \
+  --define "$COMMAND_DEFINE" \
   --define 'import.meta.url="file:///__doctor_sea__/doctor-core.mjs"'
 
 cat > "$WORK_DIR/bootstrap.cjs" <<'EOF'
