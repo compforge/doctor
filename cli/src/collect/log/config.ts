@@ -100,7 +100,7 @@ export function resolveLogServices(raw: string, catalog: ServiceCatalog): string
   if (unsupported.length) {
     throw new Error(`Doctor 未注册以下 Service 的日志采集能力：${unsupported.join(", ")}`);
   }
-  return services;
+  return catalog.resolveNames(services);
 }
 
 export interface LogServiceSelectionInput {

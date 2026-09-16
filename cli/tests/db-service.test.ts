@@ -1,10 +1,13 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, describeService, type PluginDefinition, type PluginDataSource, type ServiceDatabaseDataSource, type ServiceDatabaseTarget } from "@compforge/doctor-plugin";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext, resolveKubernetesCommandContext } from "../src/command";
 import { resolveStoreProviderConfig } from "../src/collect/store/config";
 import { borrowDatabase, resolveDatabaseTarget } from "../src/datasource/database";
+import * as databaseAccess from "../src/datasource/database";
+import { resolveDbProviders } from "../src/collect/db/providers";
+import { resolveDbRequest } from "../src/collect/db/input";
 import { openPluginContext } from "../src/plugin/context";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
@@ -34,18 +37,27 @@ test("store, db and business consumers share one Service datasource client and r
   const capability: ServiceDatabaseDataSource = { id: "primary", kind: "db", backend: "mysql", access: {}, source };
   const plugin: PluginDefinition = {
     id: "test", version: "0.0.1", services: createServiceCatalog([{
-      name: "logical-api", workloads: [], capabilities: { dataSources: [capability] },
+      name: "logical-api", aliases: ["api"], workloads: [], capabilities: { dataSources: [capability] },
     }]),
   };
   const command = new CommandContext({}, undefined, { plugin });
   try {
-    const resolved = await resolveStoreProviderConfig({ type: "db", service: "logical-api", interactive: false }, plugin,
+    const resolved = await resolveStoreProviderConfig({ type: "db", service: "api", interactive: false }, plugin,
       collect, executor, command);
     expect(resolved?.config.target).toBeUndefined();
+    expect(resolved?.config.service).toBe("logical-api");
     const config = { ...resolved!.config, capability };
     const db = await resolveDatabaseTarget(config, executor, command);
     expect(db.target).toEqual(target);
     const first = await borrowDatabase(command, config, executor, db.target);
+    const access = spyOn(databaseAccess, "resolveDatabaseConfig").mockResolvedValue({ config, executor });
+    try {
+      const providers = await resolveDbProviders(command, await resolveDbRequest({ service: "api", showDatabases: true }));
+      expect(providers.service).toBe("logical-api");
+      expect(providers.providers).toHaveLength(1);
+      expect(providers.failures).toEqual([]);
+      expect(access.mock.calls[0]![2]).toBe("logical-api");
+    } finally { access.mockRestore(); }
     const business = await openPluginContext(executor, { namespace: "app" }, {
       clients: command.clients, env: "default", config: command.profile.pluginConfig,
       service: { name: "logical-api" }, command: "doctor data", capability: { access: {} },

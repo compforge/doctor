@@ -2,6 +2,20 @@
 
 ## 理念 / 概念
 
+### Service 身份与别名
+
+Service 的 `name` 是稳定身份，`aliases` 是可选的输入同义名称。例如
+`{ name: "api-server", aliases: ["api"], ... }` 允许通过任一名称选择同一个 Service。
+Catalog 按大小写精确匹配；标准名与别名共享唯一命名空间，重复、冲突、空名称以及含空白或逗号的别名在注册时拒绝。
+采集选择在执行前归一为标准名并去重，Evidence 与结果仍使用标准身份。
+
+`doctor plugin` 的文本与 JSON 输出展示 aliases，`--service` 筛选同时接受标准名和别名。
+Skill 可以保留自己的 Service 台账与简称，aliases 用于方便对齐，不要求台账与 Catalog 使用相同命名。
+别名指向完整的逻辑 Service，不代表它的部分 Workload；Workload、Kubernetes 资源名与 telemetry 名
+不会被自动注册为别名，资源选择参数也不会按逻辑 Service 别名重写。
+
+### Plugin 边界
+
 Doctor Core 保持开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
 Plugin 通过版本化、自包含、可离线交付的归档分发这些业务扩展，同一份交付物同时贡献：
 

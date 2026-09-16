@@ -14,7 +14,8 @@ export interface ProviderResolution {
 
 export async function resolveDbProviders(context: CommandContext, request: DbRequest): Promise<ProviderResolution> {
   const services = servicesWithDataSource(context.plugin.services, "db").map(service => service.name);
-  const service = request.input.service ?? await chooseParameter("--service", services, request.interactive);
+  const requested = request.input.service ?? await chooseParameter("--service", services, request.interactive);
+  const service = context.plugin.services.find(requested)?.name ?? requested;
   if (!services.includes(service)) throw new CommandInputError(`Service '${service}' 未声明 DB capability`);
   const providers: DbProvider[] = [];
   const failures: ProviderResolution["failures"] = [];

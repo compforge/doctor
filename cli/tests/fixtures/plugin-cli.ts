@@ -6,6 +6,7 @@ const plugin = {
   version: "0.0.1",
   services: createServiceCatalog([{
     name: "test-store",
+    aliases: ["store"],
     workloads: [],
     capabilities: {
       dataSources: [{

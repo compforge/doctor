@@ -51,7 +51,7 @@ describe("Plugin discovery", () => {
     const result = await listPlugins(injected, root);
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
-      services: [{ name: "api", capabilities: ["log", "traceId"], contributions: ["inspect"],
+      services: [{ name: "api", aliases: [], capabilities: ["log", "traceId"], contributions: ["inspect"],
         details: { workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
           access: [
@@ -105,6 +105,7 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain("test@0.0.1 (injected)");
     expect(result.stdout.toString()).toContain("test-store");
+    expect(result.stdout.toString()).toContain("aliases: store");
   });
 
   test("JSON is directly consumable without profile or target preparation", () => {
@@ -112,7 +113,7 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     expect(JSON.parse(result.stdout.toString())).toEqual({ plugins: [{
       id: "test", version: "0.0.1", source: "injected",
-      services: [{ name: "test-store", capabilities: ["dataSources"], contributions: [],
+      services: [{ name: "test-store", aliases: ["store"], capabilities: ["dataSources"], contributions: [],
         details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
       }],
     }] });
@@ -134,10 +135,12 @@ describe("doctor plugin CLI", () => {
   });
 
   test("service filter keeps JSON directly consumable", () => {
-    const result = run("plugin", "--service", "test-store", "-f", "json");
+    const result = run("plugin", "--service", "store", "-f", "json");
     expect(result.exitCode).toBe(0);
     const services = JSON.parse(result.stdout.toString()).plugins[0].services;
     expect(services).toHaveLength(1);
+    expect(services[0].name).toBe("test-store");
+    expect(services[0].aliases).toEqual(["store"]);
     expect(services[0].details.dataSources).toEqual([{ id: "cache", kind: "redis", backend: "redis" }]);
   });
 

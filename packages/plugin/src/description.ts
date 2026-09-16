@@ -6,6 +6,7 @@ import type { ServiceWorkloadDefinition } from "./workload";
 /** A serializable declaration view, never a report of observed availability. */
 export interface ServiceDescription {
   name: string;
+  aliases: string[];
   description?: string;
   capabilities: string[];
   contributions: string[];
@@ -57,6 +58,7 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
   }
   return {
     name: service.name,
+    aliases: [...(service.aliases ?? [])],
     description: service.description,
     capabilities: Object.entries(service.capabilities).filter(([, value]) => value !== undefined).map(([name]) => name),
     contributions: Object.entries(service.contributions ?? {}).filter(([, value]) => value !== undefined).map(([name]) => name),

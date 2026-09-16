@@ -83,7 +83,7 @@ export function parseDataServices(raw: string | undefined, catalog: ServiceCatal
   if (unsupported.length) {
     throw new Error(`Doctor 未注册以下 Service 的 Inspect contribution：${unsupported.join(", ")}`);
   }
-  return services;
+  return catalog.resolveNames(services);
 }
 
 export interface DataServiceSelectionInput {

@@ -7,6 +7,37 @@ import {
   type Toolchain,
 } from "../src";
 
+test("Service aliases resolve one canonical identity without inferring Workload names", () => {
+  const service = {
+    name: "runtime", aliases: ["rt", "engine"],
+    workloads: [{ name: "worker", lifecycle: "persistent", discovery: { kind: "kubernetes-service", service: "runtime-worker" } }],
+    capabilities: { log: { default: true } },
+  } satisfies ServiceDefinition;
+  const catalog = createServiceCatalog([service]);
+  expect(catalog.find("rt")).toBe(service);
+  expect(catalog.findWith("engine", "log")).toBe(service);
+  expect(catalog.resolveNames(["rt", "runtime", "engine"])).toEqual(["runtime"]);
+  expect(catalog.servicesWith("log")).toEqual([service]);
+  expect(catalog.find("worker")).toBeUndefined();
+  expect(catalog.find("runtime-worker")).toBeUndefined();
+  expect(catalog.find("RT")).toBeUndefined();
+  expect(() => catalog.resolveNames(["missing"])).toThrow("Unknown Service");
+});
+
+test("Catalog rejects alias collisions regardless of declaration order", () => {
+  const service = (name: string, aliases: string[]): ServiceDefinition => ({ name, aliases, workloads: [], capabilities: {} });
+  for (const entries of [
+    [service("api", ["same"]), service("worker", ["same"])],
+    [service("api", ["worker"]), service("worker", [])],
+    [service("worker", []), service("api", ["worker"])],
+    [service("api", ["api"])],
+    [service("api", ["short", "short"])],
+  ]) expect(() => createServiceCatalog(entries)).toThrow("conflicts");
+  for (const alias of ["", " ", " a", "a b", "a,b"]) {
+    expect(() => createServiceCatalog([service("api", [alias])])).toThrow("aliases");
+  }
+});
+
 test("Service Catalog 保留 Plugin 声明的 Toolchain", () => {
   const toolchain: Toolchain = {
     language: "typescript",
