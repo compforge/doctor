@@ -82,6 +82,36 @@ test("old Services and empty declarations stay discoverable without invented cap
     .toMatchObject({ description: undefined, limitations: [] });
 });
 
+test("VDB Store access is projected per Store without resolving targets or exposing configuration", () => {
+  const result = describeService({ name: "storage", workloads: [], capabilities: { stores: [
+    { id: "primary", kind: "vdb", backend: "opensearch", inspectTarget: noAccess,
+      access: { kubernetes: [{ rule: { verb: "get", resource: "configmaps" },
+        requirement: "required", purpose: "Locate primary storage" }] },
+      configuration: { file: { pathEnvironment: "PRIVATE_CONFIG", defaultPath: "/private/config" }, resolve: noAccess },
+    },
+    { id: "archive", kind: "vdb", backend: "opensearch", inspectTarget: noAccess,
+      access: { kubernetes: [{ rule: { verb: "create", resource: "pods/portforward" },
+        requirement: "preferred", purpose: "Reach archive", fallback: "Direct connection" }] },
+    },
+    { id: "empty", kind: "vdb", backend: "opensearch", access: {} },
+    { id: "legacy", kind: "vdb", backend: "opensearch" },
+    { id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" },
+  ] } });
+  expect(result.details.access).toEqual([
+    { owner: "capabilities.stores.primary", requirements: { kubernetes: [{
+      rule: { verb: "get", resource: "configmaps" }, requirement: "required", purpose: "Locate primary storage",
+    }] } },
+    { owner: "capabilities.stores.archive", requirements: { kubernetes: [{
+      rule: { verb: "create", resource: "pods/portforward" }, requirement: "preferred",
+      purpose: "Reach archive", fallback: "Direct connection",
+    }] } },
+    { owner: "capabilities.stores.empty", requirements: { kubernetes: [] } },
+  ]);
+  for (const excluded of ["PRIVATE_CONFIG", "/private/config", "PRIVATE_DB", "inspectTarget", "configuration"]) {
+    expect(JSON.stringify(result)).not.toContain(excluded);
+  }
+});
+
 test("description follows declaration changes and projects Kubernetes Service workloads", () => {
   const result = describeService({ ...service,
     workloads: [{ name: "api", lifecycle: "persistent", discovery: { kind: "kubernetes-service", service: "api-svc" } }],

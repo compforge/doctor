@@ -44,6 +44,11 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     const capability = service.capabilities[name];
     if (capability) access.push({ owner: `capabilities.${name}`, requirements: describeAccess(capability.access) });
   }
+  for (const store of service.capabilities.stores ?? []) {
+    if (store.kind === "vdb" && store.access !== undefined) {
+      access.push({ owner: `capabilities.stores.${store.id}`, requirements: describeAccess(store.access) });
+    }
+  }
   for (const probe of service.contributions?.probes ?? []) {
     if (probe.kind === "workload") {
       access.push({ owner: `contributions.probes.${probe.id}`, requirements: describeAccess(probe.access) });
