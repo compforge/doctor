@@ -5,7 +5,8 @@ import type { PodLogCaptureStatus } from "@compforge/harness-toolbox/kubernetes/
 import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {
-  bizId: string;
+  /** Absent for Service/time-window collection; never invent a business ID for that mode. */
+  bizId?: string;
   traceIds: readonly string[];
   namespace: string;
   kubeconfig?: string;
