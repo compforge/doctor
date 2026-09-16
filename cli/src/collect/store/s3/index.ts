@@ -48,7 +48,6 @@ export async function runStoreS3(
   let diagnosis: S3Diagnosis | undefined;
 
   const finish = async (code: number, summary: string, htmlReport?: StoreHtmlReportOptions) => {
-    ctx.forwarder?.stop();
     return finishStoreBundle({
       state,
       config,

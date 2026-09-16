@@ -52,8 +52,6 @@ import type { VdbInspectionFacts } from "../src/collect/store/vdb/fact";
 import { CommandContext, CommandStatus } from "../src/command";
 import {
   inspectS3Provider,
-  parseListBucketsXml,
-  parseListObjectsV2Xml,
 } from "../src/infra/object-store";
 import {
   getMinioBucketUsage,
@@ -64,6 +62,7 @@ import {
 } from "../src/infra/object-store/s3/minio";
 import type { OpenSearchReadApi } from "../src/infra/search/opensearch";
 import { renderForDelivery } from "./report-fixture";
+import { startS3Fixture } from "./s3-fixture";
 
 const CORE_OBSERVATION_META = {
   schemaVersion: 1,
@@ -609,37 +608,7 @@ describe("Store capability runtime state", () => {
     expect(findings[0]?.summary).toContain("XMinioStorageFull");
   });
 
-  test("ListObjectsV2 解析对象 metadata 与翻页 token", () => {
-    const page = parseListObjectsV2Xml(`<?xml version="1.0" encoding="UTF-8"?>
-      <ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-        <IsTruncated>true</IsTruncated>
-        <NextContinuationToken>next&amp;token</NextContinuationToken>
-        <Contents>
-          <Key>knowledge/tenant-a/a&amp;b.txt</Key>
-          <LastModified>2026-07-01T00:00:00.000Z</LastModified>
-          <Size>1024</Size>
-        </Contents>
-      </ListBucketResult>`);
-    expect(page).toEqual({
-      objects: [{
-        key: "knowledge/tenant-a/a&b.txt",
-        size: 1024,
-        lastModified: new Date("2026-07-01T00:00:00.000Z"),
-      }],
-      commonPrefixes: [],
-      isTruncated: true,
-      nextContinuationToken: "next&token",
-    });
-  });
-
-  test("ListBuckets 和 MinIO Bucket Usage Metrics 解析凭证可见容量", () => {
-    expect(parseListBucketsXml(`<?xml version="1.0"?>
-      <ListAllMyBucketsResult><Buckets>
-        <Bucket><Name>xai-test</Name></Bucket>
-        <Bucket><Name>archive&amp;cold</Name></Bucket>
-      </Buckets></ListAllMyBucketsResult>`)).toEqual({
-      buckets: ["xai-test", "archive&cold"],
-    });
+  test("MinIO Bucket Usage Metrics 解析凭证可见容量", () => {
     expect(parseMinioBucketUsageMetrics(`
       # HELP minio_cluster_usage_buckets_total_bytes total bytes
       minio_cluster_usage_buckets_total_bytes{bucket="xai-test"} 49531715584
@@ -749,7 +718,6 @@ describe("Store capability runtime state", () => {
   });
 
   test("全 Bucket 扫描先覆盖 Service Prefix，再公平推进其它顶层 Prefix", async () => {
-    const originalFetch = globalThis.fetch;
     const prefixes: string[] = [];
     const fakeFetch = async (input: string | URL | Request): Promise<Response> => {
       const url = new URL(String(input));
@@ -766,17 +734,11 @@ describe("Store capability runtime state", () => {
         <Key>${key}</Key><LastModified>2026-08-01T00:00:00.000Z</LastModified><Size>10</Size>
       </Contents></ListBucketResult>`);
     };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
+    const fixture = await startS3Fixture(fakeFetch);
     try {
       const inventory = await scanS3Objects({
-        target: {
-          endpoint: "http://s3.example.com",
-          bucket: "xai-test",
-          region: "us-east-1",
-          accessKey: "access",
-          secretKey: "secret",
-          pathStyle: true,
-        },
+        client: fixture.client,
+        bucket: "xai-test",
         priorityPrefix: "knowledge",
         maxObjects: 2,
         timeoutMs: 10_000,
@@ -788,12 +750,11 @@ describe("Store capability runtime state", () => {
         "knowledge/focus.bin",
       ]);
     } finally {
-      globalThis.fetch = originalFetch;
+      await fixture.close();
     }
   });
 
   test("Prefix 公平扫描继续发现次级目录，避免大目录藏在较小兄弟目录之后", async () => {
-    const originalFetch = globalThis.fetch;
     const prefixes: string[] = [];
     const fakeFetch = async (input: string | URL | Request): Promise<Response> => {
       const url = new URL(String(input));
@@ -820,17 +781,11 @@ describe("Store capability runtime state", () => {
         <Key>${key}</Key><LastModified>2026-08-01T00:00:00.000Z</LastModified><Size>${size}</Size>
       </Contents></ListBucketResult>`);
     };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
+    const fixture = await startS3Fixture(fakeFetch);
     try {
       const inventory = await scanS3Objects({
-        target: {
-          endpoint: "http://s3.example.com",
-          bucket: "xai-test",
-          region: "us-east-1",
-          accessKey: "access",
-          secretKey: "secret",
-          pathStyle: true,
-        },
+        client: fixture.client,
+        bucket: "xai-test",
         priorityPrefix: "knowledge",
         maxObjects: 3,
         timeoutMs: 10_000,
@@ -844,12 +799,11 @@ describe("Store capability runtime state", () => {
       ]);
       expect(inventory.topObjects[0]).toMatchObject({ key: "artifact/s/large.bin", bytes: 10_000 });
     } finally {
-      globalThis.fetch = originalFetch;
+      await fixture.close();
     }
   });
 
   test("一级 Prefix 超过阈值时公平采样并只返回样本容量 Top 10", async () => {
-    const originalFetch = globalThis.fetch;
     const requestedPrefixes: string[] = [];
     const rootPrefixes = Array.from({ length: 21 }, (_, index) => `prefix-${index.toString().padStart(2, "0")}/`);
     const fakeFetch = async (input: string | URL | Request): Promise<Response> => {
@@ -866,17 +820,11 @@ describe("Store capability runtime state", () => {
         <Key>${prefix}sample-${index}.zip</Key><LastModified>2026-08-01T00:00:00.000Z</LastModified><Size>${index + 1}</Size>
       </Contents></ListBucketResult>`);
     };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
+    const fixture = await startS3Fixture(fakeFetch);
     try {
       const inventory = await scanS3Objects({
-        target: {
-          endpoint: "http://s3.example.com",
-          bucket: "xai-test",
-          region: "us-east-1",
-          accessKey: "access",
-          secretKey: "secret",
-          pathStyle: true,
-        },
+        client: fixture.client,
+        bucket: "xai-test",
         priorityPrefix: "prefix-20",
         maxObjects: 100,
         timeoutMs: 10_000,
@@ -905,7 +853,7 @@ describe("Store capability runtime state", () => {
         { extension: ".zip", objects: 1, bytes: 21 },
       ]);
     } finally {
-      globalThis.fetch = originalFetch;
+      await fixture.close();
     }
   });
 
@@ -1044,47 +992,32 @@ describe("Store capability runtime state", () => {
   });
 
   test("对象画像分页超时后保留已扫描结果", async () => {
-    const originalFetch = globalThis.fetch;
     let requests = 0;
-    const fakeFetch = async (_input: string | URL | Request, _init?: RequestInit): Promise<Response> => {
-      requests += 1;
-      if (requests > 1) throw new DOMException("The operation was aborted.", "AbortError");
-      return new Response(`<?xml version="1.0" encoding="UTF-8"?>
-        <ListBucketResult>
-          <IsTruncated>true</IsTruncated>
-          <NextContinuationToken>next</NextContinuationToken>
-          <Contents>
-            <Key>knowledge/tenant-a/a.txt</Key>
-            <LastModified>2026-08-01T00:00:00.000Z</LastModified>
-            <Size>10</Size>
-          </Contents>
-        </ListBucketResult>`);
-    };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
-    try {
-      const inventory = await scanS3Objects({
-        target: {
-          endpoint: "http://s3.example.com",
-          bucket: "bucket",
-          region: "cn-beijing",
-          accessKey: "access",
-          secretKey: "secret",
-          pathStyle: true,
+    const inventory = await scanS3Objects({
+      client: {
+        signal: new AbortController().signal,
+        listObjects: async () => {
+          requests += 1;
+          if (requests > 1) throw new DOMException("The operation was aborted.", "AbortError");
+          return {
+            objects: [{ key: "knowledge/tenant-a/a.txt", size: 10,
+              lastModified: new Date("2026-08-01T00:00:00.000Z") }],
+            prefixes: [], truncated: true, continuationToken: "next",
+          };
         },
-        prefix: "knowledge",
-        maxObjects: 100_000,
-        timeoutMs: 120_000,
-      });
-      expect(inventory).toMatchObject({
-        status: "partial",
-        stoppedReason: "time-limit",
-        pages: 1,
-        objects: 1,
-        bytes: 10,
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+      },
+      bucket: "bucket",
+      prefix: "knowledge",
+      maxObjects: 100_000,
+      timeoutMs: 120_000,
+    });
+    expect(inventory).toMatchObject({
+      status: "partial",
+      stoppedReason: "time-limit",
+      pages: 1,
+      objects: 1,
+      bytes: 10,
+    });
   });
 });
 

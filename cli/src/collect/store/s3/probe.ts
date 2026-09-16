@@ -1,12 +1,9 @@
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
-  getBucketVersioning,
   getS3ProviderBucketUsage,
   getS3ProviderDriveCapacity,
   getS3ProviderHealth,
   getS3ProviderPhysicalCapacity,
-  headBucket,
-  listBuckets,
 } from "../../../infra/object-store";
 import { terminalStdout } from "../../../terminal/output";
 import type { Probe } from "../../protocol";
@@ -64,18 +61,19 @@ const BUCKET_ACCESS_PROBE: S3Probe = {
       let buckets: string[];
       let discovery: "list-buckets" | "configured-bucket-fallback" = "list-buckets";
       let discoveryReason: string | undefined;
-      let httpStatus = 200;
       try {
-        buckets = (await listBuckets({ ...ctx.target!, endpoint: ctx.preparedEndpoint! })).buckets;
+        const page = await ctx.client!.listBuckets({ maxBuckets: 10_000 });
+        // Do not claim complete account discovery when the bounded response is truncated.
+        if (page.continuationToken) throw new Error("ListBuckets 超过单次发现预算，仅检查 Service 配置的 Bucket");
+        buckets = page.buckets.map(bucket => bucket.name);
       } catch (error) {
+        ctx.command.signal.throwIfAborted();
         discovery = "configured-bucket-fallback";
         discoveryReason = errorReason(error);
-        const access = await headBucket({ ...ctx.target!, endpoint: ctx.preparedEndpoint! });
-        httpStatus = access.status;
-        if (!access.ok) throw error;
-        buckets = [ctx.target!.bucket];
+        await ctx.client!.headBucket(ctx.serviceBucket!);
+        buckets = [ctx.serviceBucket!];
       }
-      if (!buckets.includes(ctx.target!.bucket)) buckets.unshift(ctx.target!.bucket);
+      if (!buckets.includes(ctx.serviceBucket!)) buckets.unshift(ctx.serviceBucket!);
       ctx.accessibleBuckets = [...new Set(buckets)];
       const observation = {
         id: "s3-bucket-access" as const,
@@ -83,7 +81,7 @@ const BUCKET_ACCESS_PROBE: S3Probe = {
         schemaVersion: 1,
         producer: { origin: "core" as const, id: "bucket-access" },
         ok: true,
-        httpStatus,
+        httpStatus: 200,
         buckets: ctx.accessibleBuckets,
         discovery,
         discoveryReason,
@@ -108,7 +106,7 @@ const INVENTORY_PROBE: S3Probe = {
   onUnavailable: unavailable("object-inventory"),
   run: async (ctx, _facts, config) => {
     try {
-      const discovered = ctx.accessibleBuckets ?? [ctx.target!.bucket];
+      const discovered = ctx.accessibleBuckets ?? [ctx.serviceBucket!];
       const usage = new Map((ctx.bucketUsage ?? []).map((row) => [row.bucket, row.bytes]));
       const buckets = [...discovered].sort((left, right) => {
         if (left === ctx.serviceBucket) return -1;
@@ -131,20 +129,24 @@ const INVENTORY_PROBE: S3Probe = {
           serviceFocus && remainingBuckets > 1 ? remainingMs / 2 : remainingMs / remainingBuckets,
         ));
         terminalStdout.write(`[collect] 扫描 Bucket ${index + 1}/${buckets.length}：${bucket}${serviceFocus && ctx.servicePrefix ? `（优先 Prefix ${ctx.servicePrefix}）` : ""}\n`);
-        const target = { ...ctx.target!, endpoint: ctx.preparedEndpoint!, bucket };
+        const bucketDeadline = Date.now() + timeBudget;
         let versioning: "enabled" | "suspended" | "disabled" | "unavailable" = "unavailable";
         let versioningReason: string | undefined;
         try {
-          versioning = await getBucketVersioning(target);
+          versioning = await ctx.client!.getBucketVersioning(bucket, {
+            signal: AbortSignal.timeout(Math.min(10_000, timeBudget)),
+          });
         } catch (error) {
+          ctx.command.signal.throwIfAborted();
           versioningReason = errorReason(error);
         }
         const inventory = await scanS3Objects({
-          target,
+          client: ctx.client!,
+          bucket,
           prefix: ctx.inventoryPrefix,
           priorityPrefix: serviceFocus ? ctx.servicePrefix : undefined,
           maxObjects: objectBudget,
-          timeoutMs: timeBudget,
+          timeoutMs: Math.max(0, bucketDeadline - Date.now()),
           onProgress: (objects, pages) => {
             if (pages === 1 || pages % 10 === 0) terminalStdout.write(`[collect] ${bucket}：已扫描 ${objects} 个对象（${pages} pages）\n`);
           },
@@ -186,7 +188,7 @@ const PROVIDER_HEALTH_PROBE: S3Probe = {
     if (provider.status !== "collected") return [];
     const health = await getS3ProviderHealth(provider.providerId, {
       endpoint: ctx.preparedEndpoint!,
-      credentials: { accessKey: ctx.target!.accessKey, secretKey: ctx.target!.secretKey },
+      credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
     });
     const observation = {
       id: "s3-provider-health" as const,
@@ -212,7 +214,7 @@ const BUCKET_USAGE_PROBE: S3Probe = {
       if (provider.status !== "collected") return [];
       const usage = await getS3ProviderBucketUsage(provider.providerId, {
         endpoint: ctx.preparedEndpoint!,
-        credentials: { accessKey: ctx.target!.accessKey, secretKey: ctx.target!.secretKey },
+        credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       ctx.bucketUsage = usage.buckets;
       const observation = {
@@ -244,7 +246,7 @@ const DRIVE_CAPACITY_PROBE: S3Probe = {
       if (provider.status !== "collected") return [];
       const capacity = await getS3ProviderDriveCapacity(provider.providerId, {
         endpoint: ctx.preparedEndpoint!,
-        credentials: { accessKey: ctx.target!.accessKey, secretKey: ctx.target!.secretKey },
+        credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       const observation = {
         id: "s3-drive-capacity" as const,

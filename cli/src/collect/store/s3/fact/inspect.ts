@@ -1,7 +1,10 @@
-import { KubectlExecutor, type ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
+import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
-import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
-import { inspectS3Provider, type S3Target } from "../../../../infra/object-store";
+import { S3DataSource, type S3Target } from "@compforge/harness-toolbox/s3";
+import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { inspectS3Provider } from "../../../../infra/object-store";
 import type { Inspect } from "../../../inspection";
 import { configuredValue, loadServiceRuntimeConfig } from "../../runtime-config";
 import type { S3CommandContext } from "../context";
@@ -53,24 +56,25 @@ export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3Comma
         : undefined;
       const target: S3Target = {
         endpoint: originalEndpoint.toString(),
-        bucket: configuredValue(runtime.environment, names.bucket)!,
         region: configuredValue(runtime.environment, names.region) ?? "us-east-1",
-        accessKey: configuredValue(runtime.environment, names.accessKey)!,
-        secretKey: configuredValue(runtime.environment, names.secretKey)!,
-        pathStyle: addressStyle === "path" || addressStyle === "true" || addressStyle === undefined,
+        credentials: {
+          accessKeyId: configuredValue(runtime.environment, names.accessKey)!,
+          secretAccessKey: configuredValue(runtime.environment, names.secretKey)!,
+        },
+        forcePathStyle: addressStyle === "path" || addressStyle === "true" || addressStyle === undefined,
       };
       ctx.originalEndpoint = originalEndpoint;
       ctx.target = target;
       ctx.inventoryPrefix = ctx.config.s3Prefix ?? "";
-      ctx.serviceBucket = target.bucket;
+      ctx.serviceBucket = configuredValue(runtime.environment, names.bucket)!;
       ctx.servicePrefix = bucketPrefix;
       const configuration = {
         backend: ctx.capability.backend,
         endpoint: originalEndpoint.toString(),
-        bucket: target.bucket,
+        bucket: ctx.serviceBucket,
         bucketPrefix,
         region: target.region,
-        addressStyle: target.pathStyle ? "path" as const : "virtual" as const,
+        addressStyle: target.forcePathStyle ? "path" as const : "virtual" as const,
         credentials: "configured" as const,
         source: runtime.source,
       };
@@ -89,7 +93,7 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
     id: "s3-access",
     dependsOn: ["s3-configuration"],
     run: async (ctx, facts) => {
-      if (facts.configuration?.status !== "collected" || !ctx.originalEndpoint) {
+      if (facts.configuration?.status !== "collected" || !ctx.originalEndpoint || !ctx.target) {
         const reason = facts.configuration?.status === "collected"
           ? "S3 endpoint 未解析"
           : facts.configuration?.reason ?? "S3 配置未确认";
@@ -101,27 +105,38 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
         const identity = serviceIdentity(endpoint.hostname, ctx.config.collect.kubernetes.namespace);
         let preparedEndpoint = endpoint.toString();
         let channel: "direct" | "service-port-forward" = "direct";
+        let route: ConstructorParameters<typeof S3DataSource>[2];
         if (identity) {
-          const executor = new KubectlExecutor({
+          const kube = {
             namespace: identity.namespace,
             kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
             context: ctx.config.collect.kubernetes.context,
-          });
-          ctx.forwarder = await ServicePortForwarder.create(executor, {
-            namespace: identity.namespace,
-            kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
-            context: ctx.config.collect.kubernetes.context,
+          };
+          const key = dataSourceKey("kubernetes", kube);
+          const kubernetes = await ctx.command.clients.get({
+            key,
+            createClient: signal => new KubernetesClient(kube, signal),
           });
           const port = endpoint.port ? Number(endpoint.port) : endpoint.protocol === "https:" ? 443 : 80;
-          const mapped = await ctx.forwarder.forward({ host: endpoint.hostname, port });
+          const mapped = await kubernetes.forward(kube.namespace, { host: endpoint.hostname, port });
           if (mapped.host !== endpoint.hostname || mapped.port !== port) {
             const local = new URL(endpoint);
             local.hostname = mapped.host;
             local.port = String(mapped.port);
             preparedEndpoint = local.toString();
           }
+          route = { key, transport: new PortForwardTransport(
+            remote => kubernetes.forward(kube.namespace, remote),
+          ) };
           channel = "service-port-forward";
         }
+        // Only the TCP route changes: keep the original Host for SigV4 and TLS validation.
+        // Root CommandContext owns both clients; Store invocations only borrow them.
+        ctx.client = await ctx.command.clients.get(new S3DataSource(ctx.target, {
+          concurrency: 4,
+          connectTimeoutMs: 10_000,
+          requestTimeoutMs: 10_000,
+        }, route));
         ctx.preparedEndpoint = preparedEndpoint;
         const access = { channel, endpoint: preparedEndpoint };
         ctx.bundle.fill("access-preparation", {
@@ -154,7 +169,7 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
       const provider = await inspectS3Provider({
         endpoint: ctx.preparedEndpoint,
         credentials: ctx.target
-          ? { accessKey: ctx.target.accessKey, secretKey: ctx.target.secretKey }
+          ? { accessKey: ctx.target.credentials.accessKeyId, secretKey: ctx.target.credentials.secretAccessKey }
           : undefined,
       });
       ctx.bundle.fill("provider-detection", {

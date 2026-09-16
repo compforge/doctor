@@ -99,6 +99,14 @@ AWS S3 API 是对象存储诊断的共同协议基线：endpoint、region、访�
 MinIO、Ceph RGW、Cloudflare R2、Backblaze B2、DigitalOcean Spaces 等实现都可先走这条主链；未识别出
 具体厂商只表示没有可用的扩展 Adapter，不表示标准 S3 能力不可用。
 
+标准 S3 访问由 `@compforge/harness-toolbox` 的 `S3DataSource` / `S3Client` 提供；Doctor 只负责
+解析 Service 配置、分配扫描预算和解释证据。Client 与 Kubernetes 转发由根 CommandContext 统一持有，
+子采集只借用，不单独销毁共享连接。转发只改变 TCP 连接目标，签名 Host 与 TLS 校验仍使用原始 endpoint；
+转发通道要求 path-style，直连可按配置使用 virtual-hosted-style。
+
+Bucket 发现请求有界；缺少 ListBuckets 权限或发现响应截断时，回退到配置 Bucket 的 HeadBucket，
+并在证据中保留回退原因。对象扫描达到时间预算时保留已采集结果；根调用取消与扫描预算耗尽分开处理。
+
 “兼容 S3”不等于所有管理面能力一致。不同 Provider 对 ListBuckets 权限、versioning、path-style 与
 virtual-hosted-style、region 语义及部分 API 的支持范围可能不同；物理集群容量、健康端点、Bucket Usage
 Metrics 等更不属于通用 S3 数据面。Inspect 因此把 Provider 身份和扩展能力固化为 Facts，Probe 只调用
