@@ -94,7 +94,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor collect [id...]` | 集合选择并汇总 Data、Trace、Log、Metric；自身不实现具体采集 |
 | `doctor trace` | 从 OpenSearch 下载 trace 并生成逻辑节点树 / 火焰图 HTML；bundle 模式保留原始 span |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
-| `doctor log [id...]` | 通过 Plugin traceId capability 解析 trace ID，再按业务 ID 分组聚合服务日志 |
+| `doctor log [id...]` | 不带 ID 按 Service / 时间范围采集日志；带 ID 则解析 trace 并分组聚合关联日志 |
 | `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
 | `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
 | `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |

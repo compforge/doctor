@@ -48,7 +48,7 @@ export interface TraceLineCollector {
   push(line: string): void;
 }
 
-/** 匹配异常首行后继续接收常见 Python/JavaScript/Java/Go 堆栈续行。 */
+/** Empty traceIds selects the time-window logs; matching errors retain their stack continuation. */
 export function createTraceLineCollector(
   traceIds: string | readonly string[],
   pattern?: RegExp,
@@ -77,7 +77,7 @@ export function createTraceLineCollector(
         events[events.length - 1] += `\n${line}`;
         return;
       }
-      const selected = matchesTrace && (!pattern || pattern.test(line));
+      const selected = (ids.length === 0 || matchesTrace) && (!pattern || pattern.test(line));
       if (selected) {
         lines.push(line);
         events.push(line);
@@ -149,7 +149,7 @@ export function buildLogPattern(errorsOnly: boolean, pattern?: string): RegExp |
 
 /** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */
 export function resolveLogTimeWindow(input: {
-  id: string;
+  id?: string;
   since?: string;
   sinceTime?: string;
   now?: Date;
@@ -157,7 +157,7 @@ export function resolveLogTimeWindow(input: {
   if (input.sinceTime) return { sinceTime: input.sinceTime };
   if (input.since) return { since: input.since };
 
-  const compact = input.id.replaceAll("-", "");
+  const compact = input.id?.replaceAll("-", "") ?? "";
   if (!COMPACT_UUID_V7.test(compact)) return { since: DEFAULT_LOG_SINCE };
   const timestampMs = Number.parseInt(compact.slice(0, 12), 16);
   const nowMs = (input.now ?? new Date()).getTime();

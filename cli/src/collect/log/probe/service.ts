@@ -62,11 +62,12 @@ function prepareCapture(
     `.capture-${input.service}-${input.pod}-${input.container}${suffix}.log`,
   );
   const target: PreparedLogCapture = { input, events: [], rawFilePath, startedAfterMs: 0 };
-  const collector = createTraceLineCollector(config.traceIds, config.linePattern, (traceId) => {
+  const noteMatch = (label: string) => {
     const elapsed = Date.now() - startedAtMs;
     target.firstMatchMs ??= elapsed;
-    ctx.log(`[collect] 命中 ${input.service}/${input.pod}/${input.container}${suffix}：${traceId}（${elapsed} ms；继续搜索全部 Pod）`);
-  });
+    ctx.log(`[collect] 命中 ${input.service}/${input.pod}/${input.container}${suffix}：${label}（${elapsed} ms；继续搜索全部 Pod）`);
+  };
+  const collector = createTraceLineCollector(config.traceIds, config.linePattern, noteMatch);
   target.events = collector.events;
   return {
     target,
@@ -79,7 +80,10 @@ function prepareCapture(
       sinceTime: config.sinceTime,
       untilTime: config.untilTime,
       rawFilePath,
-      onLine: collector.push,
+      onLine: line => {
+        if (!config.traceIds.length && target.firstMatchMs === undefined) noteMatch("时间范围内日志");
+        collector.push(line);
+      },
     },
     onStart: () => {
       target.startedAfterMs = Date.now() - startedAtMs;
@@ -107,7 +111,7 @@ async function captureLogPlan(
     onStart?.();
     const capture = await sources.capture(ctx.access, {
       kubeconfig: config.kubeconfig, context: config.context, namespace: config.namespace, instance: input.instance,
-    }, request, () => ctx.log(`[collect] ${input.service}/${input.pod}/${input.container} 复用本轮 raw 日志，独立匹配 trace`));
+    }, request, () => ctx.log(`[collect] ${input.service}/${input.pod}/${input.container} 复用本轮 raw 日志，独立筛选`));
     return { target, capture };
   }));
   const failure = results.find(result => result.status === "rejected");
@@ -134,8 +138,8 @@ function recordPodLog(ctx: LogCommandContext, input: LogCaptureResult): void {
   ctx.bundle.addStep({
     id: `logs-${input.pod}-${input.container}${previousSuffix}`,
     title: input.previous
-      ? `${input.pod}/${input.container} 上一次重启前 trace 日志`
-      : `${input.pod}/${input.container} trace 日志`,
+      ? `${input.pod}/${input.container} 上一次重启前日志`
+      : `${input.pod}/${input.container} 日志`,
     risk: "observe",
     status: capture.captureStatus === "partial"
       ? "partial"

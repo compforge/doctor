@@ -10,7 +10,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 //   doctor cpu               → 无 server 直连采集：pod Python CPU 线程栈证据包（collect/）
 //   doctor trace             → 无 server 直连采集：OpenSearch 下载 trace 全量 span（collect/）
 //   doctor store             → 从 Service Pod 提取 Store 配置并诊断 DB/VDB/S3/Redis（collect/）
-//   doctor log               → 无 server 直连采集：按 biz ID 解析 trace 并聚合服务 pod 日志（collect/）
+//   doctor log               → 按 Service / 时间范围采集 Pod 日志；可选 biz ID 关联 trace（collect/）
 //   doctor data              → 先扩展业务 ID，再汇集各 Service 声明的数据（collect/）
 //   doctor tenant            → 汇总租户配置与可用模型目录（collect/）
 //   doctor collect           → 集合命令：选择并编排具体 collector，自身不实现具体采集
@@ -194,7 +194,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
 
 function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
   const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
-  return withBizIdInputs(cmd, "用于解析 trace_id 的业务 ID；可重复传入（trace_id / message_id / conversation_id 等）")
+  return withBizIdInputs(cmd, "可选业务 ID；提供时解析 trace_id，省略时按 Service / 时间范围采集；可重复传入")
     .option("-n, --namespace <ns>", "目标服务所在 namespace（缺省时按 profile 或交互选择，非交互默认 default）")
     .option(
       "--services <names>",
@@ -202,9 +202,9 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     )
     .option("--since <duration>", "kubectl 日志回看窗口（缺省时优先从 UUIDv7 ID 推导，否则为 6h）")
     .option("--since-time <timestamp>", "从指定时间开始，优先于 --since")
-    .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；读过终点即停止")
-    .option("--errors-only", "ID 过滤后只保留常见错误日志", false)
-    .option("--pattern <regex>", "ID 过滤后继续按正则筛选")
+    .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
+    .option("--errors-only", "只保留常见错误日志（有业务 ID 时先按 trace 过滤）", false)
+    .option("--pattern <regex>", "按正则筛选日志（有业务 ID 时先按 trace 过滤）")
     .option("-f, --format <format>", "输出格式：html 或 bundle；未指定时同时输出 HTML 和完整 Bundle（HTML、JSONL、raw）")
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("--config <path>", "config 文件路径（默认 ~/.doctor/config.yaml，仅 --profile 时读取）")
@@ -605,7 +605,7 @@ export function createDoctorProgram(
     await runCommand(storeCommand, opts, domainInput(opts), { plugin });
   });
   withLogOptions(
-    catalog.command("log").description("按业务 ID 解析 trace 并聚合各服务 pod 日志（只读，无 server 直连）"),
+    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace（只读）"),
     "",
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>, command: CommandT) => {
     opts = command.optsWithGlobals();

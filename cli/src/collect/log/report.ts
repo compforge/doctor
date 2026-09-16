@@ -9,8 +9,8 @@ export async function renderLogReport(context: RenderContext, result: CommandRes
   if (!result.output) return failureReport("doctor log", result);
   const pages: ReportPage[] = [];
   for (const item of result.output.items) {
-    const subject = { key: item.bizId, label: item.bizId };
-    if (!item.artifacts.length) pages.push({ id: `log:${item.bizId}`, title: "Log", subject, status: item.status, reason: item.reason });
+    const subject = { key: item.bizId ?? "service-logs", label: item.bizId ?? "Service 日志" };
+    if (!item.artifacts.length) pages.push({ id: `log:${subject.key}`, title: "Log", subject, status: item.status, reason: item.reason });
     for (const artifact of item.artifacts) pages.push(await evidencePage(context, artifact,
       { title: "Log", subject, status: item.status, reason: item.reason }, () =>
         writeLogHtmlReport(artifact.path, context.path(artifact, "report.html"), context.profileName)));
