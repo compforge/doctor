@@ -197,6 +197,7 @@ export function renderLogResult(
   const failed = failureSummary(facts);
   if (failed) return { timeline, serviceLogs, summary: failed, stats };
 
+  const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "全部 trace 日志";
   const lines = [
     `# log 采集摘要：${config.bizId === undefined ? "Service / 时间范围" : config.traceIds.join(", ")}`,
     "",
@@ -206,7 +207,7 @@ export function renderLogResult(
     `- ${formatLogCaptureStats(stats, config.bizId === undefined)}`,
     `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}${config.untilTime ? ` until-time=${config.untilTime}（含边界）` : ""}`,
     `- 首次命中按${config.bizId === undefined ? "窗口内日志" : " trace ID "}统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。`,
-    `- 过滤: ${config.errorsOnly ? "errors-only" : config.bizId === undefined ? "全部窗口日志" : "全部 trace 日志"}${config.pattern ? ` + /${config.pattern}/` : ""}`,
+    `- 过滤: ${config.errorsOnly ? "errors-only" : scopeLabel}${config.pattern ? ` + /${config.pattern}/` : ""}`,
     "",
     "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
   ];
