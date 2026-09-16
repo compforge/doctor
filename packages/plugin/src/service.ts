@@ -369,6 +369,10 @@ export type ServiceInspectQueryHandler = (
 
 export interface ServiceInspect
   extends Omit<InspectCapability<ServiceInspectQuery, Fact>, "inspect"> {
+  /** Business meaning of the lookup and the evidence it can supply; safe for offline discovery. */
+  description?: string;
+  /** Evidence caveats, not executable limits or guarantees of runtime availability. */
+  limitations?: readonly string[];
   /** Identity kinds accepted by this capability. Commands use this for capability selection. */
   accepts: readonly string[];
   /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
@@ -591,6 +595,8 @@ export interface ServiceRelationship {
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
 export interface ServiceDefinition {
   name: string;
+  /** Logical service responsibility; must not contain credentials or runtime configuration. */
+  description?: string;
   /** Explicit deployment topology. An empty list means this Service has no runtime workload. */
   workloads: readonly ServiceWorkloadDefinition[];
   relationships?: readonly ServiceRelationship[];

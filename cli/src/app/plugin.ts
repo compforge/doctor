@@ -3,15 +3,23 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { terminalStdout } from "../terminal/output";
 import { installPlugin, listPlugins, uninstallPlugin } from "../plugin";
 import { runStandaloneCommand } from "./command";
+import { formatServiceDescription } from "./plugin-description";
 
 export function registerPluginInfo(command: Command, plugin?: PluginDefinition): void {
   command.description("展示当前 Plugin 与 Service 声明，或安装/卸载 Plugin")
     .allowExcessArguments(false)
+    .option("--service <name>", "按逻辑 Service 名称展示诊断能力详情（离线声明，不探测现场）")
     .addOption(new Option("-f, --format <format>", "输出格式")
       .choices(["text", "json"]).default("text"))
-    .action(async (opts: { format: "text" | "json" }) => {
+    .action(async (opts: { format: "text" | "json"; service?: string }) => {
       await runStandaloneCommand("doctor plugin", async () => {
-        const plugins = await listPlugins(plugin);
+        let plugins = await listPlugins(plugin);
+        if (opts.service !== undefined) {
+          plugins = plugins.map(item => ({
+            ...item, services: item.services.filter(service => service.name === opts.service),
+          })).filter(item => item.services.length > 0);
+          if (!plugins.length) throw new Error(`Unknown Service '${opts.service}' in the active Plugin`);
+        }
         if (opts.format === "json") {
           terminalStdout.write(`${JSON.stringify({ plugins }, null, 2)}\n`);
           return;
@@ -24,7 +32,9 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
           terminalStdout.write(`${item.id}@${item.version} (${item.source})\n`);
           if (item.services.length === 0) terminalStdout.write("  (no declared Services)\n");
           for (const service of item.services) {
-            terminalStdout.write(`  ${service.name}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
+            terminalStdout.write(opts.service !== undefined
+              ? formatServiceDescription(service)
+              : `  ${service.name}${service.description ? ` — ${service.description}` : ""}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
           }
         }
       });

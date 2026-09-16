@@ -72,6 +72,7 @@ function uniqueNonEmptyStrings(value: unknown, label: string): void {
 function validateService(value: unknown, index: number): ServiceDefinition {
   const service = record(value, `Plugin Service[${index}]`);
   nonEmptyString(service.name, `Plugin Service[${index}].name`);
+  if (service.description !== undefined) nonEmptyString(service.description, `${service.name}.description`);
   if (!Array.isArray(service.workloads)) {
     throw new Error(`Plugin Service '${String(service.name)}'.workloads must be an array`);
   }
@@ -166,6 +167,16 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   }
   if (contributions.inspect !== undefined) {
     const inspect = record(contributions.inspect, `${service.name}.contributions.inspect`);
+    if (inspect.description !== undefined) {
+      nonEmptyString(inspect.description, `${service.name}.contributions.inspect.description`);
+    }
+    if (inspect.limitations !== undefined) {
+      if (!Array.isArray(inspect.limitations)) {
+        throw new Error(`${service.name}.contributions.inspect.limitations must be an array`);
+      }
+      inspect.limitations.forEach((item, index) =>
+        nonEmptyString(item, `${service.name}.contributions.inspect.limitations[${index}]`));
+    }
     uniqueNonEmptyStrings(inspect.accepts, `${service.name}.contributions.inspect.accepts`);
     uniqueNonEmptyStrings(inspect.provides, `${service.name}.contributions.inspect.provides`);
     if (inspect.expands !== undefined) {

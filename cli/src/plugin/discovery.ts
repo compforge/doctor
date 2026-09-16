@@ -1,15 +1,11 @@
-import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { describeService, type PluginDefinition, type ServiceDescription } from "@compforge/doctor-plugin";
 import { loadActivePlugin, pluginInstallRoot } from "./loader";
 
 export interface PluginSummary {
   id: string;
   version: string;
   source: "injected" | "installed";
-  services: {
-    name: string;
-    capabilities: string[];
-    contributions: string[];
-  }[];
+  services: ServiceDescription[];
 }
 
 /**
@@ -27,12 +23,6 @@ export async function listPlugins(
     version: plugin.version,
     // 注入也可能来自调用方的动态加载，不能推断它一定是内嵌代码。
     source: injected ? "injected" : "installed",
-    services: plugin.services.services.map(service => ({
-      name: service.name,
-      capabilities: Object.entries(service.capabilities)
-        .filter(([, value]) => value !== undefined).map(([name]) => name),
-      contributions: Object.entries(service.contributions ?? {})
-        .filter(([, value]) => value !== undefined).map(([name]) => name),
-    })),
+    services: plugin.services.services.map(describeService),
   }];
 }

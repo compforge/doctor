@@ -69,7 +69,9 @@ make -C ../toolkit build-all
 
 用 `doctor plugin` 离线查看当前生效的 Plugin、版本、加载来源及其声明的 Service。
 `doctor plugin --format json` 返回 `{ "plugins": [...] }`，每个 Service 包含 `name`、
-`capabilities` 和 `contributions`。例如提取可传给 `inspect --services` 的名称：
+`capabilities` 和 `contributions` 名称数组，以及可选说明和 `details` 诊断声明。
+用 `doctor plugin --service <name>` 查看一个逻辑 Service 的输入 ID、可能产出、限制、Workload 与依赖；
+加 `-f json` 可供 Agent 读取同一份结构化详情。例如提取可传给 `inspect --services` 的名称：
 
 ```bash
 doctor plugin --format json | jq -r '.plugins[].services[].name'
