@@ -4,6 +4,8 @@
 BIN_DIR ?= $(HOME)/.local/bin
 DIST_DIR ?= dist
 DOCTOR_ENTRY ?= $(abspath src/app/entry.ts)
+DOCTOR_COMMANDS ?= all
+export DOCTOR_COMMANDS
 DOCTOR_CLI_VERSION ?= $(shell sed -n 's/^export const DOCTOR_CLI_VERSION = "\([^"]*\)";/\1/p' src/app/version.ts)
 DOCTOR_ARTIFACT_PREFIX := doctor-$(DOCTOR_CLI_VERSION)
 TEST_FILES ?=
@@ -33,16 +35,16 @@ prepare-dist:
 	@mkdir -p $(DIST_DIR)
 
 build-mac: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-arm64 --outfile $(DIST_DIR)/doctor
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-arm64 --outfile $(DIST_DIR)/doctor --commands '$(DOCTOR_COMMANDS)'
 
 # 一键产出全部受支持平台的独立 binary，文件名可直接区分 OS / arch 后分发。
 build-all: build-darwin-arm64 build-darwin-x64 build-linux build-kylin
 
 build-darwin-arm64: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-darwin-arm64
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-darwin-arm64 --commands '$(DOCTOR_COMMANDS)'
 
 build-darwin-x64: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-x64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-darwin-x64
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-darwin-x64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-darwin-x64 --commands '$(DOCTOR_COMMANDS)'
 
 # doctor collect 面向客户现场运维机（多为 Linux），交叉编译产出独立 binary。
 build-linux: build-linux-x64 build-linux-arm64
@@ -50,13 +52,13 @@ build-linux: build-linux-x64 build-linux-arm64
 build-linux-x64: build-linux-x64-modern build-linux-x64-legacy
 
 build-linux-x64-modern: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-x64-baseline --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-5.6-glibc-2.25
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-x64-baseline --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-5.6-glibc-2.25 --commands '$(DOCTOR_COMMANDS)'
 
 build-linux-x64-legacy: prepare-dist
 	DOCTOR_ENTRY=$(DOCTOR_ENTRY) bash scripts/build-linux-x64-legacy.sh $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-3.10-glibc-2.17
 
 build-linux-arm64: prepare-dist
-	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-5.6-glibc-2.25
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --target bun-linux-arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-5.6-glibc-2.25 --commands '$(DOCTOR_COMMANDS)'
 
 # 银河麒麟 V10（kernel 4.19 / glibc 2.28）直接交付产物。
 build-kylin: build-kylin-arm64 build-kylin-x86-64

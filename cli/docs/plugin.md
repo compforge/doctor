@@ -259,6 +259,12 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 
 ### 命令运行
 
+`doctor plugin` 是离线发现入口，展示采集命令实际使用的 Plugin 与 Service Catalog，支持 text/json。
+它复用“入口注入优先，否则加载 Host active 版本”的规则，不扫描未激活版本，也不准备 profile、
+调用业务 capability 或访问目标环境。来源 `injected` 表示由 composition root 提供（通常是内嵌，
+也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 capability/contribution
+名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
+
 CLI composition root 从 Doctor Host 的 active state 加载精确 Plugin 版本：
 
 1. 校验 active ref 的版本仍存在，并加载 Plugin 代码与 Skill；

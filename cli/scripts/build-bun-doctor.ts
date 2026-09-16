@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import { commandSelectionDefine } from "./command-selection";
 
 function argument(name: string): string {
   const index = Bun.argv.indexOf(name);
@@ -10,9 +11,11 @@ function argument(name: string): string {
 const target = argument("--target");
 const outfile = resolve(argument("--outfile"));
 const main = resolve(argument("--entry"));
+const commands = Bun.argv.includes("--commands") ? argument("--commands") : "all";
 
 const result = await Bun.build({
   entrypoints: [main],
+  define: commandSelectionDefine(commands),
   compile: {
     target: target as Bun.Build.CompileTarget,
     outfile,
@@ -24,4 +27,4 @@ if (!result.success) {
   process.exit(1);
 }
 
-process.stdout.write(`built: ${outfile} (${target}; external Doctor Toolkit)\n`);
+process.stdout.write(`built: ${outfile} (${target}; visible commands: ${commands}; external Doctor Toolkit)\n`);
