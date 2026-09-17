@@ -57,7 +57,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   const db = context.profile.value.db;
   const invoke = async <T>(provider: OverviewProvider, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
     const managed = await openPluginContext(executor, kube.kubernetes, {
-      env: kube.profileName, config: context.profile.pluginConfig,
+      config: context.profile.pluginConfig,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
       service: provider, capability: provider.capabilities.overview,
       command: "doctor overview", authorization: context.kubernetes(executor).access,

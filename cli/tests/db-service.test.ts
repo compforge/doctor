@@ -16,7 +16,10 @@ const manifest = { id: "test", version: "0.0.1" } as PluginManifest;
 const target = { host: "mysql.storage", port: 3306, database: "app", user: "reader", password: "hidden", source: { namespace: "storage", path: "/config/db.yaml" } };
 const collect = { profileName: "default", kubernetes: { namespace: "app", namespaceSource: "flag" as const, kubeconfigSource: "flag" as const } };
 const executor: Executor = {
-  run: async () => { throw new Error("unexpected kubectl access"); },
+  run: async args => {
+    if (args[0] !== "config") throw new Error("unexpected kubectl access");
+    return { ok: true, exitCode: 0, stdout: "test\nhttps://cluster.test", stderr: "", durationMs: 1, timedOut: false, command: args };
+  },
   exec: async () => { throw new Error("unexpected Pod exec"); },
 };
 
@@ -59,7 +62,7 @@ test("store, db and business consumers share one Service datasource client and r
       expect(access.mock.calls[0]![2]).toBe("logical-api");
     } finally { access.mockRestore(); }
     const business = await openPluginContext(executor, { namespace: "app" }, {
-      clients: command.clients, env: "default", config: command.profile.pluginConfig,
+      clients: command.clients, config: command.profile.pluginConfig,
       service: { name: "logical-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, command: "doctor data", capability: { access: {} },
       authorization: resolveKubernetesCommandContext(executor, command).access,
     });

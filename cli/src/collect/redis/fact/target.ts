@@ -15,8 +15,8 @@ export interface RedisTarget {
   sentinelMasterName: string;
   sentinelUsername?: string;
   sentinelPassword?: string;
-  endpointSource: "flag" | "profile" | "service-env" | "default";
-  credentialSource: "url" | "profile" | "service-env" | "none";
+  endpointSource: "flag" | "profile" | "service-env" | "default" | "plugin";
+  credentialSource: "url" | "profile" | "service-env" | "none" | "plugin";
 }
 
 const REDIS_ENV_SECRET_NAME = /(PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|AUTH|URL|URI|DSN)/i;
@@ -50,13 +50,15 @@ export function projectRedisStoreEnvironment(
   capability: ServiceRedisDataSource,
 ): string {
   const source = parseEnv(raw);
+  const names = capability.environment;
+  if (!names) throw new Error("Redis DataSource 未声明环境变量映射");
   const projected = new Map<string, string>();
   for (const [field, canonicalName] of Object.entries(REDIS_CANONICAL_ENV)) {
-    const sourceName = capability.environment[field as keyof ServiceRedisDataSource["environment"]];
+    const sourceName = names[field as keyof typeof names];
     const value = sourceName ? source.get(sourceName)?.trim() : undefined;
     if (value) projected.set(canonicalName, value);
   }
-  if (!capability.environment.sentinels && projected.get("REDIS_HOST")) {
+  if (!names.sentinels && projected.get("REDIS_HOST")) {
     projected.set("REDIS_SENTINELS", projected.get("REDIS_HOST")!);
   }
   return [...projected].map(([name, value]) => `${name}=${value}`).join("\n");
@@ -66,7 +68,7 @@ export function hasRedisStoreConfiguration(
   raw: string,
   capability: ServiceRedisDataSource,
 ): boolean {
-  return !!parseEnv(raw).get(capability.environment.address)?.trim();
+  return !!capability.environment && !!parseEnv(raw).get(capability.environment.address)?.trim();
 }
 
 function parseBoolean(value: string | undefined, fallback = false): boolean {

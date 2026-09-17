@@ -87,7 +87,7 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
     command,
   };
   const executor: Executor = {
-    run: async () => result,
+    run: async args => args[0] === "config" ? { ...result, stdout: "test\nhttps://cluster.test" } : result,
     exec: async () => { throw new Error("Core 不应读取配置来源 Pod"); },
   };
   const plugin = {

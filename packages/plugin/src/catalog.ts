@@ -41,6 +41,14 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         this.identities.set(alias, service);
       }
       const workloads = service.workloads.map((workload) => workload.name);
+      for (const source of service.capabilities.dataSources ?? []) {
+        if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
+          throw new Error(`${service.name}/${source.id}: source 与 environment 配置映射必须且只能声明一个`);
+        }
+        if (source.kind === "vdb" && source.source && (source.inspectTarget || source.configuration)) {
+          throw new Error(`${service.name}/${source.id}: source 不能同时声明其它配置解析入口`);
+        }
+      }
       if (new Set(workloads).size !== workloads.length) {
         throw new Error(`Service '${service.name}' 包含重复 Workload 名称`);
       }

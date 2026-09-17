@@ -16,10 +16,13 @@ import type {
   ServiceLogObservation,
 } from "../model";
 import { createTraceLineCollector } from "../config";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { instanceLogAccess } from "../../../infra/k8s/instance-log";
 
 interface LogCaptureInput {
   service: string;
   pod: string;
+  uid: string;
   container: string;
   previous?: boolean;
   instance?: string;
@@ -98,6 +101,7 @@ async function captureLogPlan(
   ctx: LogCommandContext,
   config: LogProbeConfig,
   plan: readonly LogCaptureInput[],
+  executor: Executor,
 ): Promise<LogCaptureResult[]> {
   const startedAtMs = ctx.startedAtMs ?? Date.now();
   // TODO: Evaluate time-window parallelism against single-stream capture. Pod Log API has no
@@ -109,9 +113,13 @@ async function captureLogPlan(
   const results = await Promise.allSettled(plan.map(async input => {
     const { target, request, onStart } = prepareCapture(ctx, config, input, startedAtMs);
     onStart?.();
-    const capture = await sources.capture(ctx.access, {
+    const capture = await sources.capture(instanceLogAccess(ctx.access, executor, input, ctx.command.signal), {
       kubeconfig: config.kubeconfig, context: config.context, namespace: config.namespace, instance: input.instance,
     }, request, () => ctx.log(`[collect] ${input.service}/${input.pod}/${input.container} 复用本轮 raw 日志，独立筛选`));
+    if (capture?.captureStatus === "unavailable") {
+      target.events.length = 0;
+      target.firstMatchMs = undefined;
+    }
     return { target, capture };
   }));
   const failure = results.find(result => result.status === "rejected");
@@ -173,6 +181,7 @@ function podCaptureStatus(captures: readonly LogCaptureResult[]): PodLogCaptureS
  */
 export function makeLogProbe(
   services: readonly string[],
+  executor: Executor,
 ): Probe<ServiceLogObservation, LogInspectionFacts, LogProbeConfig, LogCommandContext> {
   return {
     id: "service-logs",
@@ -188,13 +197,13 @@ export function makeLogProbe(
         const selected = new Map<string, LogCaptureInput>();
         for (const target of servicePods.byService[service] ?? []) {
           const { pod, container, uid } = target.instance;
-          selected.set(JSON.stringify([pod, uid, container, false]), { service, pod, container, instance: target.current });
+          selected.set(JSON.stringify([pod, uid, container, false]), { service, pod, uid, container, instance: target.current });
           if (target.hasPrevious) selected.set(JSON.stringify([pod, uid, container, true]),
-            { service, pod, container, previous: true, instance: target.previous });
+            { service, pod, uid, container, previous: true, instance: target.previous });
         }
         return [...selected.values()];
       });
-      const captures = await captureLogPlan(ctx, config, plan);
+      const captures = await captureLogPlan(ctx, config, plan, executor);
       const currentByTarget = new Map<string, LogCaptureResult[]>();
       const previousByTarget = new Map<string, PreviousContainerLogObservation[]>();
       for (const captured of captures) {

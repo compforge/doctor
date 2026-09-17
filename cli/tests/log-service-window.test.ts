@@ -49,6 +49,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     const discovery = podDiscoveryExecutor(pods, () => { discoveries++; });
     const exec = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async args => {
       if (args[0] === "auth") return { ...ok, stdout: "yes\n" };
+      if (args[0] === "config" || args[2] === "pod-1") return discovery.run(args);
       expect(args).toEqual(["get", "pods", "-l", `app=${variant === "explicit" ? "worker" : "api"}`, "-o", "json"]);
       return discovery.run(args);
     });

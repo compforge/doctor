@@ -63,12 +63,12 @@ export async function runCollectStore(
         return commandOutcome(130);
       }
       const { config, executor } = resolved;
-      if (config.capability.kind !== "vdb" && !config.target && !(config.capability.kind === "db" && config.capability.source)) {
+      if (config.capability.kind !== "vdb" && !config.target && !config.capability.source) {
         throw new Error(`Store capability '${config.service}/${config.capability.id}' 未提供配置来源 Pod`);
       }
       if (config.capability.kind === "db") code = await runStoreDb(config, commandContext, executor);
       else if (config.capability.kind === "vdb") code = await runStoreVdb(config, commandContext, executor);
-      else code = await runStoreS3({ ...config, target: config.target! }, commandContext, executor);
+      else code = await runStoreS3(config, commandContext, executor);
     }
     if (code === 130) {
       return commandOutcome(code);

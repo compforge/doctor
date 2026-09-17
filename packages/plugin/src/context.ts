@@ -24,6 +24,7 @@ export type ResolvedServiceCapabilityDependency = ResolvedServiceDataSourceDepen
  * Plugin 仍是同进程受信任代码，这个接口是职责边界而不是安全沙箱。
  */
 export interface PluginTarget {
+  /** Effective Environment identity, never a profile display name. */
   env: string;
   namespace: string;
   service: Service;

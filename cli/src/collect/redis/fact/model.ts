@@ -9,13 +9,13 @@ export interface RedisFactTarget {
   username?: string;
   useSsl: boolean;
   clusterType: "single" | "sentinel" | "cluster";
-  endpointSource: "flag" | "profile" | "service-env" | "default";
-  credentialSource: "url" | "profile" | "service-env" | "none";
+  endpointSource: "flag" | "profile" | "service-env" | "default" | "plugin";
+  credentialSource: "url" | "profile" | "service-env" | "none" | "plugin";
 }
 
 export type RedisExecutionFact = Fact<{
   namespace: string;
-  pod: string;
+  pod?: string;
   container?: string;
   client: "@redis/client";
 }, "redis.execution">;
@@ -69,7 +69,7 @@ function displayHost(host: string): string {
 }
 
 export function buildRedisExecutionFact(
-  execution: { namespace: string; pod: string; container?: string },
+  execution: { namespace: string; pod?: string; container?: string },
 ): RedisExecutionFact {
   return collectedFact("redis.execution", "redis-target", {
     ...execution,

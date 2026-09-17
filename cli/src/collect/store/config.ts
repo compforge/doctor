@@ -7,7 +7,6 @@ import type {
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
-  resolvePodTarget,
   type KubernetesCommandConfig,
   type KubernetesCommandInput,
   type PodTarget,
@@ -17,8 +16,7 @@ import {
   type CommandContext,
 } from "../../command";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { resolveDataSourcePod } from "../../datasource/workload";
-import { listServiceChoices } from "../../infra/k8s/service-selection";
+import { resolveDataSourceTarget } from "../../datasource/workload";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import {
   matchListedChoice,
@@ -169,29 +167,16 @@ async function resolveService(
   requested: string | undefined,
   kind: NativeStoreKind,
   plugin: PluginDefinition,
-  executor: Executor,
-  namespace: string,
   interactive: boolean,
 ): Promise<string | undefined> {
   const providers = servicesWithDataSource(plugin.services, kind);
   const explicit = requested?.trim() ? plugin.services.find(requested.trim())?.name ?? requested.trim() : undefined;
-  if (explicit && providers.some((service) => (
-    service.name === explicit
-    && serviceDataSources(plugin.services, service.name, kind).some(
-      (store) => store.kind === "vdb" ? store.inspectTarget : store.kind === "db" && store.source,
-    )
-  ))) return explicit;
-
-  const deployed = new Set((await listServiceChoices(executor, namespace)).map((service) => service.name));
-  const choices = providers
-    .filter((service) => deployed.has(service.name) || serviceDataSources(plugin.services, service.name, kind).some(
-      (store) => store.kind === "vdb" ? store.inspectTarget : store.kind === "db" && store.source,
-    ))
-    .map((service) => ({ name: service.name }));
-  if (!choices.length) throw new Error(`namespace '${namespace}' 中没有声明且已部署的 ${kind} Store Service`);
+  // Catalog declares capability; availability is established by the selected source, not a name join.
+  const choices = providers.map((service) => ({ name: service.name }));
+  if (!choices.length) throw new Error(`Plugin 中没有声明 ${kind} Store 的 Service`);
   if (explicit) {
     if (!choices.some((choice) => choice.name === explicit)) {
-      throw new Error(`Service '${explicit}' 未部署或未声明 ${kind} Store capability`);
+      throw new Error(`Service '${explicit}' 未声明 ${kind} Store capability`);
     }
     return explicit;
   }
@@ -241,16 +226,14 @@ export async function resolveStoreConfig(
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   const [kind] = parseStoreKinds(opts.type);
-  const capabilityOwnsTarget = (kind === "vdb" || kind === "db") && !!opts.service?.trim()
+  const capabilityOwnsTarget = !!opts.service?.trim()
     && serviceDataSources(plugin.services, opts.service.trim(), kind).some((store) => (
       (!opts.store?.trim() || store.id === opts.store.trim())
-      && (store.kind === "vdb" ? !!store.inspectTarget : store.kind === "db" && !!store.source)
+      && (!!store.source || (store.kind === "vdb" && !!store.inspectTarget))
     ));
   if (!capabilityOwnsTarget) await enforceKubernetesAccess(access, {
     command: "doctor store",
     needs: [
-      { requirement: "required", rule: { verb: "list", resource: "services" }, purpose: "选择 Store 配置来源 Service" },
-      { requirement: "required", rule: { verb: "list", resource: "pods" }, purpose: "选择 Service 的 Running Pod" },
       { requirement: "preferred", rule: { verb: "get", resource: "configmaps" }, purpose: "读取 Service 声明引用的 Store 配置", fallback: "回退读取 Container 运行时 env" },
       { requirement: "preferred", rule: { verb: "get", resource: "secrets" }, purpose: "读取 Service 声明引用的 Store 凭据", fallback: "回退读取 Container 运行时 env" },
       { requirement: "preferred", rule: { verb: "create", resource: "pods/exec" }, purpose: "声明配置不足时读取 Container 运行时 env", fallback: "配置不足时标记 Store unavailable" },
@@ -275,7 +258,7 @@ export async function resolveStoreProviderConfig(
   const [kind] = parseStoreKinds(opts.type);
   if (!kind || kind === "redis") throw new Error("resolveStoreConfig 只处理 db、vdb、s3 单个 Store");
   const namespace = collect.kubernetes.namespace;
-  const service = await resolveService(opts.service, kind, plugin, executor, namespace, interactive);
+  const service = await resolveService(opts.service, kind, plugin, interactive);
   if (!service) return undefined;
   const capability = await resolveCapability(service, kind, opts.store, plugin, interactive);
   if (!capability) return undefined;
@@ -287,7 +270,6 @@ export async function resolveStoreProviderConfig(
       kubeconfig: collect.kubernetes.kubeconfig,
       context: collect.kubernetes.context,
     }, {
-      env: collect.profileName,
       config: commandContext.profile.pluginConfig,
       service: plugin.services.find(service)!,
       command: "doctor store",
@@ -299,30 +281,19 @@ export async function resolveStoreProviderConfig(
     } finally {
       await context.dispose();
     }
-  } else if (!(capability.kind === "db" && capability.source)) {
+  } else if (!capability.source) {
     const selection: SelectionContext = {
       candidateRole: "配置来源",
       purpose: `读取 Service '${service}' 的 ${kind} Store '${capability.id}' 运行时配置`,
       effect: "该选择用于读取 Store 运行时配置，不代表仅分析该 Pod 自身的数据。",
     };
-    const pod = await resolveDataSourcePod({
-      service,
+    target = await resolveDataSourceTarget({
+      service: plugin.services.find(service)!,
       pod: opts.pod,
+      container: opts.container,
       executor,
       namespace,
       interactive,
-      commandContext,
-      selection,
-    });
-    if (!pod) return undefined;
-    target = await resolvePodTarget({
-      config: collect,
-      executor,
-      pod,
-      container: opts.container,
-      selectContainer: true,
-      interactive,
-      access,
       commandContext,
       selection,
     });

@@ -81,7 +81,6 @@ async function resolveEvalRequestIdentity(input: {
     kubeconfig: input.kubeconfig,
     context: input.context,
   }, {
-    env: input.profileName,
     config: input.commandContext.profile.pluginConfig,
     service: directoryService,
     endpoint: directoryService.capabilities.tenantDirectory.endpoint,
@@ -266,7 +265,6 @@ export async function runEval(
     kubeconfig: kube.kubernetes.kubeconfig,
     context: kube.kubernetes.context,
   }, {
-    env: kube.profileName,
     config: commandContext.profile.pluginConfig,
     service: provider,
     endpoint: provider.capabilities.case.endpoint,

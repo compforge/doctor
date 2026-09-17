@@ -8,6 +8,7 @@ export interface VdbConfig {
   capability: ServiceVdbDataSource;
   store?: string;
   service?: string;
+  sourceService: string;
   endpoint?: string;
   output?: string;
 }
@@ -21,6 +22,7 @@ export function vdbConfigFromStore(config: StoreConfig): VdbConfig {
     capability,
     store: capability.store,
     service: config.backendService,
+    sourceService: config.service,
     endpoint: config.endpoint,
     output: config.output,
   };

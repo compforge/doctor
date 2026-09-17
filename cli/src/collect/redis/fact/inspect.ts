@@ -10,7 +10,7 @@ import {
 
 export type RedisSanitizedTarget = {
   namespace: string;
-  pod: string;
+  pod?: string;
   container?: string;
   endpoint: string;
   endpoint_source: string;
@@ -28,8 +28,8 @@ export function sanitizeRedisTarget(
   if (target.status !== "collected") {
     return {
       namespace: config.collect.kubernetes.namespace,
-      pod: config.target.pod,
-      container: config.target.container,
+      pod: config.target?.pod,
+      container: config.target?.container,
       endpoint: "(unresolved)",
       endpoint_source: "unavailable",
       username: "(unknown)",
@@ -41,8 +41,8 @@ export function sanitizeRedisTarget(
   }
   return {
     namespace: config.collect.kubernetes.namespace,
-    pod: config.target.pod,
-    container: config.target.container,
+    pod: config.target?.pod,
+    container: config.target?.container,
     endpoint: target.endpoint,
     endpoint_source: target.endpointSource,
     username: target.username,
@@ -61,8 +61,8 @@ export function makeRedisTargetInspect(
       const { config } = ctx;
       const execution = buildRedisExecutionFact({
         namespace: config.collect.kubernetes.namespace,
-        pod: config.target.pod,
-        container: config.target.container,
+        pod: config.target?.pod,
+        container: config.target?.container,
       });
       let available = false;
       let reason = confirmed.reason ?? "Redis 采集准备未完成";

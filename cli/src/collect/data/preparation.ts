@@ -58,7 +58,6 @@ export async function prepareDataAccess(
     let managed: ManagedPluginContext | undefined;
     if (!context) {
       managed = await openPluginContext(executor, config.kube, {
-        env: config.profileName,
         config: command.profile.pluginConfig,
         databaseIdentity: config.fallbackIdentity,
         service: declared,

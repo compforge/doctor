@@ -47,7 +47,6 @@ export function makePluginWorkloadProbe(
     }),
     run: async (ctx, facts, config) => {
       const managed = await openPluginContext(ctx.executor, config.kube, {
-        env: config.profileName,
         config: ctx.command.profile.pluginConfig,
         service: service,
         capability: declaration,

@@ -10,6 +10,12 @@ import {
 } from "../src/command/plugin-capability";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../src/app/plugin-command-capabilities";
 import { resolvePluginTraceId, resolvePluginTraceIds } from "../src/plugin/trace-id";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+
+const localEnvironment: Executor["run"] = async args => {
+  if (args[0] !== "config") throw new Error("unexpected cluster resource access");
+  return { ok: true, exitCode: 0, stdout: "test-context\nhttps://cluster.test", stderr: "", durationMs: 1, timedOut: false, command: args };
+};
 
 const plugin = {
   id: "sample",
@@ -165,7 +171,7 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
           resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
             expect(context).toMatchObject({
               target: {
-                env: "test",
+                env: context.target.service.environment.name,
                 namespace: "default",
                 service: { name: "trace-api" },
               },
@@ -188,7 +194,7 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
     profileName: "test",
     command: "doctor trace",
   }, tracePlugin, {
-    run: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },
+    run: localEnvironment,
     exec: async () => { throw new Error("Core traceId resolver should not access Kubernetes"); },
   })).toEqual({
     bizId: "biz-1",
@@ -228,7 +234,7 @@ test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace"
     profileName: "test",
     command: "doctor trace",
   }, tracePlugin, {
-    run: async () => { throw new Error("unexpected Kubernetes access"); },
+    run: localEnvironment,
     exec: async () => { throw new Error("unexpected Kubernetes access"); },
   })).toEqual([
     {
@@ -307,7 +313,7 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
       };
     },
   }, tracePlugin, {
-    run: async () => { throw new Error("unexpected Kubernetes access"); },
+    run: localEnvironment,
     exec: async () => { throw new Error("unexpected Kubernetes access"); },
   })).toMatchObject({
     traceId: "trace-from-version",
@@ -323,7 +329,7 @@ test("trace batch keeps resolvable samples when another message has no trace", a
       resolve: async (_context, { bizId }) => bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" },
     } },
   }]) };
-  const executor = { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } };
+  const executor = { run: localEnvironment, exec: async () => { throw new Error("unexpected access"); } };
   const opts = { namespace: "default", profileName: "test", command: "doctor trace" as const };
   expect(await resolvePluginTraceIds({ ...opts, bizIds: ["t1", "missing"] }, plugin, executor))
     .toEqual([{ bizId: "t1", traceId: "t1", service: "chat", resolvedAs: "trace_id", sourceId: undefined }]);

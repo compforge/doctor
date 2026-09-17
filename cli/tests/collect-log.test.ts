@@ -1,4 +1,4 @@
-import { logTarget } from "./log-fixture";
+import { logTarget, logIdentityExecutor } from "./log-fixture";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,7 +70,7 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
   };
 
   try {
-    const probe = makeLogProbe(config.services);
+    const probe = makeLogProbe(config.services, logIdentityExecutor);
     const siblingRoot = mkdtempSync(join(root, "sibling-"));
     const siblingConfig = { ...config, outputDir: siblingRoot };
     const [observations, siblingObservations] = await Promise.all([

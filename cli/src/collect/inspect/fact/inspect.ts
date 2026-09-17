@@ -210,11 +210,12 @@ export function makeServiceTargetsInspect(
       }
       ctx.workloadConfig = snapshot;
       const resolvedWorkloads = new Map<string, ResolvedKubernetesWorkload>();
+      const { environment } = await ctx.command.environment(ctx.executor);
       for (const serviceName of config.services) {
         for (const definition of catalog.find(serviceName)!.workloads) {
           let captureIndex = 0;
           resolvedWorkloads.set(JSON.stringify([serviceName, definition.name]), await resolveKubernetesWorkload(
-            snapshot, definition, ctx.executor, config.namespace, config.profileName,
+            snapshot, definition, ctx.executor, config.namespace, environment.name,
             (result) => ctx.bundle.addStep({
               id: `inspect-workload-${serviceName}-${definition.name}-${++captureIndex}`,
               title: `${serviceName}/${definition.name} Workload 定位`,
