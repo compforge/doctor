@@ -62,6 +62,15 @@ const POD_TABLE_HEADERS = [
   "Memory limit",
 ] as const;
 
+function workloadRows(diagnosis: InspectDiagnosis): string[][] {
+  if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
+  return Object.values(diagnosis.evidence.facts.serviceTargets.services)
+    .sort((left, right) => left.service.localeCompare(right.service))
+    .flatMap((service) => Object.values(service.workloads).map((workload) => [
+      service.service, workload.name, workload.description ?? "—",
+    ]));
+}
+
 function podStatus(pod: InspectPodRuntimeFact): string {
   const conditions = pod.conditions
     .filter((condition) => condition.type === "Ready" || condition.status !== "True")
@@ -327,6 +336,10 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     "",
     "## Workload",
     "",
+    "### 声明",
+    "",
+    ...markdownTable(["Service", "Workload", "说明"], workloadRows(diagnosis)),
+    "",
     "### Pod 运行态",
     "",
     ...markdownTable(POD_TABLE_HEADERS, podRows(diagnosis)),
@@ -393,6 +406,10 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
 
 export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlReportSection[] {
   return [
+    {
+      title: "Workload / 声明",
+      html: htmlTable(["Service", "Workload", "说明"], workloadRows(diagnosis)),
+    },
     {
       title: "Workload / Pod 运行态",
       html: htmlTable(POD_TABLE_HEADERS, podRows(diagnosis)),

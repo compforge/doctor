@@ -12,6 +12,7 @@ import * as providers from "../src/collect/db/providers";
 import { canPrompt } from "../src/terminal/parameters";
 import { withMachineOutput } from "../src/terminal/output";
 import { createDoctorProgram } from "../src/app/main";
+import { databaseDiscoverySummary } from "../src/collect/db/summary";
 
 const directories: string[] = [];
 afterEach(() => { for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -21,7 +22,7 @@ const request = (extra: Partial<DbRequest> = {}): DbRequest => ({
 });
 const result = (rows: Record<string, unknown>[], truncated = false) => ({ rows, columns: [], bytes: 10, truncated });
 function provider(id = "primary"): DbProvider {
-  return { id, source: "plugin", target: { host: id, port: 3306, database: "app", user: "reader", password: "never-output" },
+  return { id, dataSources: [{ id, description: `${id} records` }], source: "plugin", target: { host: id, port: 3306, database: "app", user: "reader", password: "never-output" },
     query: async () => result([{ database_name: "app", table_name: "messages" }]),
   };
 }
@@ -146,4 +147,42 @@ test("command preserves bounded results, status and sanitized target in Evidence
     expect(manifest).toContain('"status": "partial"');
     expect(JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8")).results.at(-1).rows).toEqual([{ id: "message:1" }]);
   } finally { resolve.mockRestore(); environment.mockRestore(); await context.disposeClients(); }
+});
+
+test("database discovery preserves source descriptions in report, manifest and structured rows", async () => {
+  const primary = provider();
+  const runtime = provider("runtime");
+  primary.query = async () => result([{ Database: "canonical" }]);
+  runtime.query = async () => result([{ Database: "agent_runtime" }]);
+  const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({ service: "api", providers: [primary, runtime],
+    failures: [{ id: "archive", description: "Old records", reason: "unavailable" }] });
+  const context = new CommandContext({}, undefined, { plugin: { id: "test", version: "0.0.1", services: createServiceCatalog([
+    { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [],
+      capabilities: { dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }] } },
+  ]) } });
+  const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
+  try {
+    const outcome = await dbCommand.run(context, { service: "api", showDatabases: true, interactive: false });
+    expect(outcome.status).toBe(CommandStatus.Partial);
+    const directory = outcome.artifacts[0]!.path; directories.push(directory);
+    const summary = readFileSync(join(directory, "summary.md"), "utf8");
+    expect(summary).toContain("| primary | canonical | primary records | ok |");
+    expect(summary).toContain("| runtime | agent_runtime | runtime records | ok |");
+    expect(summary).toContain("| archive | — | Old records | unavailable |");
+    const diagnosis = JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8"));
+    expect(diagnosis.results[1]).toMatchObject({ target: "runtime", dataSources: [{ id: "runtime", description: "runtime records" }], rows: [{ Database: "agent_runtime" }] });
+    const manifest = readFileSync(join(directory, "manifest.json"), "utf8");
+    expect(manifest).toContain("runtime records");
+    expect(manifest).toContain("Old records");
+    expect(manifest).not.toContain("never-output");
+  } finally { resolve.mockRestore(); environment.mockRestore(); await context.disposeClients(); }
+});
+
+test("discovery summary handles omitted descriptions, empty results and truncation", () => {
+  const first = provider();
+  first.dataSources = [{ id: "primary" }, { id: "alias", description: "notes | line\nbreak" }];
+  const summary = databaseDiscoverySummary([{ provider: first, result: result([{ Database: "app" }], true) }], []);
+  expect(summary).toContain("| primary | app | — | partial");
+  expect(summary).toContain("notes \\| line break");
+  expect(databaseDiscoverySummary([{ provider: first, result: result([]) }], [])).toContain("未发现可见数据库");
 });

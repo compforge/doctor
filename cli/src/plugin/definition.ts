@@ -91,6 +91,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     workloadNames.add(name);
     const label = service.name + ".workloads." + name;
     if (workload.platform !== "kubernetes") throw new Error(label + ".platform must be kubernetes");
+    if (workload.description !== undefined) nonEmptyString(workload.description, label + ".description");
     if (workload.namespace !== undefined) nonEmptyString(workload.namespace, label + ".namespace");
     if (workload.container !== undefined) nonEmptyString(workload.container, label + ".container");
     const location = record(workload.location, label + ".location");

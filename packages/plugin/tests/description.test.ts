@@ -7,7 +7,7 @@ const service: ServiceDefinition = { component: { name: "fixture", repository: {
   name: "runtime",
   description: "Session and run evidence",
   workloads: [{
-    name: "worker", container: "app",
+    name: "worker", description: "Handles session runs", container: "app",
     platform: "kubernetes", location: { kind: "labels", labels: { app: "worker" } },
   }],
   dependencies: [{ id: "records", service: "storage", capability: "dataSources", dataSource: "main" }],

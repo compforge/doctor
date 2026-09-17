@@ -29,7 +29,7 @@
     "yaml": "^2.5.1"
   },
   "dependencies": {
-    "@compforge/harness-common": "0.3.0",
+    "@compforge/harness-common": "0.3.2",
     "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
     "@compforge/doctor-agent": "workspace:*",
     "@compforge/doctor-plugin": "workspace:*",

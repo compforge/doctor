@@ -50,6 +50,18 @@ test("text uses the same projection and distinguishes possible output from accep
   expect(text).not.toContain("输入 ID（每个 Query 选一种）：run_id");
 });
 
+test("Workload explanation appears in offline Service text and JSON projection", () => {
+  const described = describeService({ ...service, workloads: [{
+    name: "worker", description: "Handles session runs", platform: "kubernetes",
+    location: { kind: "service", name: "worker-service" },
+  }] });
+  expect(described.details.workloads[0]?.description).toBe("Handles session runs");
+  expect(formatServiceDescription(described)).toContain("worker: service/worker-service — Handles session runs");
+  expect(() => validate({ ...service, workloads: [{
+    name: "worker", description: " ", platform: "kubernetes", location: { kind: "service", name: "worker-service" },
+  }] })).toThrow("api.workloads.worker.description");
+});
+
 test("text distinguishes absent declarations and absent explanatory prose", () => {
   const legacy = formatServiceDescription(describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "legacy", workloads: [], capabilities: {} }));
   expect(legacy).toContain("说明：未提供");

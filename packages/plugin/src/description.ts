@@ -63,8 +63,8 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     capabilities: Object.entries(service.capabilities).filter(([, value]) => value !== undefined).map(([name]) => name),
     contributions: Object.entries(service.contributions ?? {}).filter(([, value]) => value !== undefined).map(([name]) => name),
     details: {
-      workloads: service.workloads.map(({ name, platform, namespace, location, container }) => ({
-        name, platform, namespace, container,
+      workloads: service.workloads.map(({ name, description, platform, namespace, location, container }) => ({
+        name, description, platform, namespace, container,
         location: location.kind === "labels"
           ? { kind: location.kind, labels: { ...location.labels } }
           : location.kind === "resource"

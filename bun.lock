@@ -14,7 +14,7 @@
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
-        "@compforge/harness-common": "0.3.0",
+        "@compforge/harness-common": "0.3.2",
         "@compforge/harness-toolbox": "0.3.1",
         "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
         "@compforge/prombed": "0.0.2",
@@ -73,12 +73,12 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.27",
+      "version": "0.0.28",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
       },
       "dependencies": {
-        "@compforge/harness-common": "0.3.0",
+        "@compforge/harness-common": "0.3.2",
         "@compforge/harness-toolbox": "0.3.1",
         "@compforge/spec-case": "0.0.6",
         "@compforge/trace-harness": "0.2.0",
@@ -91,7 +91,7 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.7",
+      "version": "0.0.8",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
       },
@@ -170,7 +170,7 @@
 
     "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
 
-    "@compforge/harness-common": ["@compforge/harness-common@0.3.0", "", {}, "sha512-EC1iZVZZR/cp5b9b0PNWlE2frN/Id94AvpquV3bnbiA4s647B1reA3+xq7KQmdNJfD0NSdRX1c9J38L04tGYnA=="],
+    "@compforge/harness-common": ["@compforge/harness-common@0.3.2", "", {}, "sha512-fHfNmcBV1TJNEKFSUwVw7dODvh4b0WFAIS8JvlJACWX8qzPvic4Kw76Wih8wkGKavJQArrml2OT20pbrky+j1g=="],
 
     "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.3.1", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@compforge/harness-common": "0.3.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0" } }, "sha512-OlJvt8daPbFCd7vSpllvCmEHqTvq49X5KAhKcAtsWbFlyVCyWgrIQyYl2KYdhuxJX7lt8J/XDXLI5dmDhycV6w=="],
 
@@ -841,6 +841,8 @@
     "@aws-sdk/signature-v4-multi-region/@aws-sdk/types": ["@aws-sdk/types@3.974.5", "", { "dependencies": { "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-LkwLL2BLbC6wNNm4JaH9mbEqBMdOZCct6VAYqhdN4U1xrWM+fUJQEfbHwQgDypapOWTRtlk25akb5afM0P8CIQ=="],
 
     "@aws-sdk/signature-v4-multi-region/@smithy/types": ["@smithy/types@4.18.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-CgB6HHWer/vrKps24ulRIbpcpb7K4xAU7SkZ7YHzBPlwHsvsrCJFEXK421s+cJzX+ZrqtA/TuU5w1HzI7k9N8A=="],
+
+    "@compforge/harness-toolbox/@compforge/harness-common": ["@compforge/harness-common@0.3.0", "", {}, "sha512-EC1iZVZZR/cp5b9b0PNWlE2frN/Id94AvpquV3bnbiA4s647B1reA3+xq7KQmdNJfD0NSdRX1c9J38L04tGYnA=="],
 
     "@compforge/harness-toolbox/@smithy/node-http-handler": ["@smithy/node-http-handler@4.12.1", "", { "dependencies": { "@smithy/core": "^3.33.3", "@smithy/types": "^4.18.0", "tslib": "^2.6.2" } }, "sha512-ThMkboGeONWXAelq9FvGsuJC4rOi+qyC4/zhUF58xYpxUg5sQKx2VXZYJmtNjr4dSuBJ1HeJXETQILCz3wOHvw=="],
 

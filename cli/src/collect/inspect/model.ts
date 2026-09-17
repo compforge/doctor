@@ -95,6 +95,7 @@ export interface InspectPodRuntimeFact {
 
 export interface InspectWorkloadTargetFact {
   name: string;
+  description?: string;
   location: Workload["location"];
   probes: string[];
   deployments: InspectDeploymentTarget[];
