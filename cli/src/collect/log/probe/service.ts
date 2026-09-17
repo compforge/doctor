@@ -136,7 +136,7 @@ function recordPodLog(ctx: LogCommandContext, input: LogCaptureResult): void {
   const previousSuffix = input.previous ? "-previous" : "";
   const partial = capture.captureStatus === "partial";
   ctx.bundle.addStep({
-    id: `logs-${input.pod}-${input.container}${previousSuffix}`,
+    id: `logs-${input.service}-${input.pod}-${input.container}${previousSuffix}`,
     title: input.previous
       ? `${input.pod}/${input.container} 上一次重启前日志`
       : `${input.pod}/${input.container} 日志`,
@@ -182,23 +182,18 @@ export function makeLogProbe(
     run: async (ctx, facts, config) => {
       const servicePods = facts.servicePods;
       if (servicePods.status !== "collected") return [];
-      const plan = services.flatMap((service) => (
-        (servicePods.byService[service] ?? []).flatMap((pod): LogCaptureInput[] => [
-          ...(servicePods.containersByPod[pod] ?? []).map((container) => ({
-            service,
-            pod,
-            container,
-            instance: servicePods.instancesByPod?.[pod]?.[container]?.current,
-          })),
-          ...(servicePods.previousContainersByPod[pod] ?? []).map((container) => ({
-            service,
-            pod,
-            container,
-            previous: true,
-            instance: servicePods.instancesByPod?.[pod]?.[container]?.previous,
-          })),
-        ])
-      ));
+      // Multiple declarations may select the same container. Keep every Workload identity in
+      // Facts, but read a source only once per Service; separate Services keep their own evidence.
+      const plan = services.flatMap(service => {
+        const selected = new Map<string, LogCaptureInput>();
+        for (const target of servicePods.byService[service] ?? []) {
+          const { pod, container, uid } = target.instance;
+          selected.set(JSON.stringify([pod, uid, container, false]), { service, pod, container, instance: target.current });
+          if (target.hasPrevious) selected.set(JSON.stringify([pod, uid, container, true]),
+            { service, pod, container, previous: true, instance: target.previous });
+        }
+        return [...selected.values()];
+      });
       const captures = await captureLogPlan(ctx, config, plan);
       const currentByTarget = new Map<string, LogCaptureResult[]>();
       const previousByTarget = new Map<string, PreviousContainerLogObservation[]>();
@@ -233,7 +228,7 @@ export function makeLogProbe(
             firstMatchMs: matches.length ? Math.min(...matches.map((item) => item.firstMatchMs!)) : undefined,
             wallMs: serviceCaptures.reduce((max, item) => Math.max(max, item.startedAfterMs + item.capture.durationMs), 0),
           },
-          pods: (servicePods.byService[service] ?? []).map((pod) => {
+          pods: [...new Set((servicePods.byService[service] ?? []).map(target => target.instance.pod))].map((pod) => {
             const key = targetKey(service, pod);
             const current = currentByTarget.get(key) ?? [];
             const captureStatus = podCaptureStatus(current);

@@ -31,14 +31,21 @@ export function buildLogCoverage(
     return [insufficient("log:service-pods", evidence.facts.servicePods.reason)];
   }
 
+  const targets = evidence.facts.servicePods;
   const coverage = evidence.observations.flatMap((observation) => {
+    const gaps = targets.missing[observation.service] ?? [];
+    const discovery: DiagnosisCoverage<LogDiagnosisGoal>[] = gaps.length ? [{
+      goal: `log:service:${observation.service}`,
+      status: observation.pods.some(pod => pod.captureStatus !== "unavailable") ? "partial" : "insufficient",
+      missingEvidence: gaps,
+    }] : [];
     if (!observation.pods.length) {
-      return [insufficient(
+      return discovery.length ? discovery : [insufficient(
         `log:service:${observation.service}`,
         `Service ${observation.service} 没有可采集日志的运行中 Pod`,
       )];
     }
-    return observation.pods.map((pod): DiagnosisCoverage<LogDiagnosisGoal> => {
+    return [...discovery, ...observation.pods.map((pod): DiagnosisCoverage<LogDiagnosisGoal> => {
       if (pod.captureStatus === "complete") {
         return {
           goal: `log:pod:${observation.service}:${pod.pod}`,
@@ -53,7 +60,7 @@ export function buildLogCoverage(
           ? `Pod ${pod.pod} 只取得部分 current 日志`
           : `Pod ${pod.pod} 的 current 日志不可用`],
       };
-    });
+    })];
   });
 
   return coverage.length

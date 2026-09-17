@@ -1,3 +1,4 @@
+import { logPlugin, podDiscoveryExecutor } from "./log-fixture";
 import { expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernet
 
 test("two biz-id probes share current/previous sources, retain distinct matching and independently deliver raw evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-probe-shared-"));
-  const command = new CommandContext({});
+  const command = new CommandContext({}, undefined, { plugin: logPlugin() });
   const ok = { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, command: [] };
   const pods = parsePods(JSON.stringify({ items: [{
     metadata: { name: "api", uid: "uid-1" },
@@ -42,11 +43,11 @@ test("two biz-id probes share current/previous sources, retain distinct matching
   };
   const a = makeContext("trace-a"), b = makeContext("trace-b");
   try {
-    const inspected = await makeLogInspect(["api"]).run(a, {});
+    const inspected = await makeLogInspect(["api"], podDiscoveryExecutor(pods)).run(a, {});
     const facts: LogInspectionFacts = { runtime: inspected.runtime!, servicePods: inspected.servicePods! };
     expect(facts.servicePods.status).toBe("collected");
     if (facts.servicePods.status !== "collected") throw new Error("expected collected pod identity");
-    expect(facts.servicePods.instancesByPod?.api?.app).toEqual({
+    expect(facts.servicePods.byService.api?.[0]).toMatchObject({
       current: JSON.stringify(["uid-1", "container-2"]), previous: JSON.stringify(["uid-1", "container-1"]),
     });
     const probe = makeLogProbe(["api"]);

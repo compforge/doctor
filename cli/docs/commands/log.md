@@ -1,6 +1,6 @@
 # Log 采集
 
-Doctor 使用现有 Kubernetes Service、Pod 和 pods/log 访问权限采集服务日志。不带业务 ID 时采集时间窗口内的日志，不调用 trace resolver 或准备其业务依赖；带 ID 时搜索关联 trace 日志，解析失败不会降级成无过滤采集。某个 Pod 命中只触发即时反馈，不减少其他 Pod 的覆盖；current 与可用的 previous 容器日志都保留来源。
+Doctor 从 Plugin Service 的 Workload 声明定位日志实例，再通过共享 Client 读取 Pod 日志；逻辑 Service 名不作为 Kubernetes 资源名。不带业务 ID 时采集时间窗口内的日志，不调用 trace resolver 或准备其业务依赖；带 ID 时搜索关联 trace 日志，解析失败不会降级成无过滤采集。某个 Pod 命中只触发即时反馈，不减少其他 Pod 的覆盖；current 与可用的 previous 容器日志都保留来源。
 
 ```bash
 doctor log                         # 默认 Service / 时间窗口；交互时可选择 Service
@@ -10,6 +10,17 @@ doctor log <biz-id> --since 15m      # 保留 trace 关联模式
 ```
 
 `--services` 和时间起点都可省略：非交互使用 Plugin 的默认日志 Service，交互沿用 Service 多选；无 ID 默认回看 6 小时。`--errors-only` 和 `--pattern` 在两种模式下均可用。
+
+## Workload 与采集范围
+
+Service 可以声明多个 Workload，位置可以是 Kubernetes Service、labels 或具体资源。Core 解析其 Running Pod，
+并按声明的 container 采集；未限定 container 时采集 Pod 的 application containers。交互候选来自 Plugin Catalog，
+不要求逻辑名称与集群 Service 同名。没有 Workload 声明、没有实例或定位失败都形成明确的证据缺口，
+不回退为同名资源查询，也不抹掉其它 Workload 已取得的日志。
+
+每次命令仍限定一个 namespace。Workload 声明其它 namespace 时提示用 `--namespace` 单独采集，
+不会静默切换目标。Manifest 的 Inspect Facts 保留 Service → WorkloadInstance 关联和定位缺口，
+包括环境、namespace、Pod UID 与 container；重叠声明保留各自来源，读取计划按实际容器去重。
 
 ## 时间范围与读取
 

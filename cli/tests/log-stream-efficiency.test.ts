@@ -1,3 +1,4 @@
+import { logTarget } from "./log-fixture";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -66,8 +67,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
   const facts: LogInspectionFacts = {
     runtime: collectedFact("log.runtime", "log-target", {}),
     servicePods: collectedFact("log.service-pods", "log-target", {
-      byService: { api: ["slow", "fast", "unmatched"] }, containersByPod: { slow: ["app"], fast: ["app"], unmatched: ["app"] },
-      previousContainersByPod: { slow: [], fast: ["app"] },
+      byService: { api: [logTarget("slow"), logTarget("fast", true), logTarget("unmatched")] }, missing: {},
     }),
   };
   const command = new CommandContext({});

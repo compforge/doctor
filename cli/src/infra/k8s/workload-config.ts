@@ -1,8 +1,6 @@
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { resolveWorkload } from "@compforge/harness-toolbox/kubernetes/workload";
-import { currentCommandSignal } from "../../command/execution-scope";
-import type { Resource } from "@compforge/harness-toolbox/kubernetes/resources";
-import type { Workload, WorkloadInstance } from "@compforge/doctor-plugin";
+import { discoverKubernetesWorkload, type DiscoveredKubernetesWorkload } from "./workload";
+import type { Workload } from "@compforge/doctor-plugin";
 import { parsePods, type KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
 import { parseServices, type KubernetesService } from "@compforge/harness-toolbox/kubernetes/service";
 
@@ -175,16 +173,11 @@ function selectorMatches(labels: Readonly<Record<string, string>>, selector: Rea
   return entries.length > 0 && entries.every(([name, value]) => labels[name] === value);
 }
 
-export interface ResolvedKubernetesWorkload {
-  definition: Workload;
-  instances: WorkloadInstance[];
-  service?: KubernetesService;
+export interface ResolvedKubernetesWorkload extends DiscoveredKubernetesWorkload {
   deployments: KubernetesDeploymentConfig[];
-  pods: KubernetesPod[];
-  unavailableReason?: string;
 }
 
-/** Resolve one declared Workload without assuming any relationship between its Service and Kubernetes names. */
+/** Add independently captured Deployment configuration to the common runtime discovery. */
 export async function resolveKubernetesWorkload(
   snapshot: KubernetesWorkloadConfigSnapshot,
   definition: Workload,
@@ -193,46 +186,15 @@ export async function resolveKubernetesWorkload(
   environment: string,
   recordCapture: (result: ExecResult) => void,
 ): Promise<ResolvedKubernetesWorkload> {
-  const selectedNamespace = definition.namespace ?? namespace;
-  // Inspect's configuration snapshot and access scope are namespace-bound. Never execute
-  // probes against a different namespace merely because a declaration points there.
-  if (selectedNamespace !== namespace) return {
-    definition, deployments: [], pods: [], instances: [],
-    unavailableReason: `Workload 位于 namespace '${selectedNamespace}'；请使用 --namespace ${selectedNamespace} 单独采集`,
-  };
-  const signal = currentCommandSignal();
-  const pods = new Map<string, KubernetesPod>();
-  let service: KubernetesService | undefined;
-  const deployments = () => definition.location.kind === "resource"
-    ? snapshot.deployments.filter(item => definition.location.kind === "resource"
-      && definition.location.resource_kind === "Deployment" && item.name === definition.location.name)
-    : snapshot.deployments.filter(item => selectorMatches(item.labels, service?.selector
-      ?? (definition.location.kind === "labels" ? definition.location.labels : {})));
-  try {
-    const instances = await resolveWorkload({
-      get: async (ns, resource, name, selector) => {
-        const args = ["get", resource, ...(name ? [name] : []), ...(selector ? ["-l", selector] : []), "-o", "json"];
-        if (ns !== namespace) args.push("--namespace", ns);
-        const result = await executor.run(args, { timeoutMs: 30_000, signal });
-        recordCapture(result);
-        if (!result.ok) throw new Error(result.stderr.trim() || "Workload discovery failed");
-        const raw = JSON.parse(result.stdout) as Resource;
-        const list = name ? JSON.stringify({ items: [raw] }) : result.stdout;
-        if (resource === "pods") for (const pod of parsePods(list, ns)) pods.set(pod.name, pod);
-        if (resource === "services") service = parseServices(list, ns)[0];
-        return raw;
-      },
-    }, definition, selectedNamespace, environment);
-    return {
-      definition, service, instances,
-      pods: instances.map(instance => pods.get(instance.pod)!),
-      deployments: deployments(),
-    };
-  } catch (error) {
-    signal?.throwIfAborted();
-    return { definition, service, deployments: deployments(), pods: [], instances: [],
-      unavailableReason: error instanceof Error ? error.message : String(error) };
-  }
+  const resolved = await discoverKubernetesWorkload(definition, executor, namespace, environment, recordCapture);
+  const deployments = definition.namespace && definition.namespace !== namespace ? []
+    : definition.location.kind === "resource"
+      ? snapshot.deployments.filter(item => definition.location.kind === "resource"
+        && definition.location.resource_kind === "Deployment" && item.name === definition.location.name)
+      : snapshot.deployments.filter(item => selectorMatches(item.labels, resolved.service?.selector
+        ?? (definition.location.kind === "labels" ? definition.location.labels : {})));
+  // Pod access failure must not erase already collected configuration evidence.
+  return { ...resolved, deployments };
 }
 
 export function selectWorkloadPodContainer(
