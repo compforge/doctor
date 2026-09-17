@@ -15,5 +15,6 @@ export * from "./probe";
 export * from "./service";
 export * from "./skill";
 export * from "./datasource";
+export * from "./datasource-clients";
 export * from "./workload";
 export type { Service, Environment, Component, Repository, Forge, Host, HostEnvironment } from "@compforge/harness-common";

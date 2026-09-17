@@ -350,6 +350,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
   let admissionUnavailable = false;
   const executor: Executor = {
     run: async (args) => {
+      if (args[0] === "config") return result("test\nhttps://cluster.test");
       if (args[0] === "create" && args.includes("--dry-run=server")) {
         admissionCalls += 1;
         if (admissionUnavailable) throw new Error("impersonation unavailable");

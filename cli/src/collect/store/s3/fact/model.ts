@@ -11,7 +11,7 @@ export interface S3ConfigurationFact {
   source: string;
 }
 export interface S3AccessFact {
-  channel: "direct" | "service-port-forward";
+  channel: "direct" | "service-port-forward" | "plugin";
   endpoint: string;
 }
 export interface S3ProviderFact {

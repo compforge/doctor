@@ -30,6 +30,12 @@ async function capture(services: ServiceDefinition[], responses: Record<string, 
   const executor: Executor = {
     run: async args => {
       const key = args.join(" "); calls.push(key);
+      if (args[0] === "config") return { ...ok, stdout: "test\nhttps://cluster.test", command: args };
+      if (args[1] === "pods" && args[2] && !args[2].startsWith("-")) {
+        const found = Object.values(responses).flatMap(value => (value as { items?: ReturnType<typeof pod>[] }).items ?? [])
+          .find(item => item.metadata.name === args[2]);
+        if (found) return { ...ok, stdout: JSON.stringify(found), command: args };
+      }
       if (!(key in responses)) throw new Error("Unexpected resource access: " + key);
       const value = responses[key];
       if (value instanceof Error) return { ...ok, ok: false, exitCode: 1, stderr: value.message, command: args };
@@ -105,7 +111,7 @@ test("failed and cross-namespace Workloads leave coverage gaps without suppressi
 test("no Workload declaration never falls back to a same-name Kubernetes Service", async () => {
   const result = await capture([{ ...logService(), workloads: [] }], {});
   expect(result.results[0]?.status).toBe(CommandStatus.Failed);
-  expect(result.calls).toEqual([]);
+  expect(result.calls.filter(call => !call.startsWith("config view "))).toEqual([]);
   expect(result.reads).toEqual([]);
   expect(result.manifest.inspection_facts.servicePods.missing.api[0]).toContain("未声明");
 });

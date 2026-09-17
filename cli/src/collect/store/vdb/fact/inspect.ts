@@ -11,6 +11,7 @@ import {
 import type { VdbCommandContext } from "../context";
 import type { VdbConfigurationFact, VdbInspectionFacts } from "./model";
 import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
+import { borrowServiceClient } from "../../../../datasource/client";
 
 function captureReason(ok: boolean, stderr: string, exitCode: number | null): string | undefined {
   return ok ? undefined : stderr.trim().split("\n")[0] || `exit=${exitCode}`;
@@ -22,7 +23,11 @@ export function makeVdbConfigurationInspect(
   return {
     id: "vdb-configuration",
     run: async (ctx) => {
-      const confirmed = config.inspectedTarget
+      const supplied = config.capability.source
+        ? await borrowServiceClient(ctx.command, config.collect, ctx.executor, config.sourceService,
+          config.capability, config.capability.source) : undefined;
+      if (supplied) ctx.search = supplied.access;
+      const confirmed = supplied ? confirmInspectedVdbTarget(supplied.target) : config.inspectedTarget
         ? confirmInspectedVdbTarget(config.inspectedTarget)
         : ctx.execTarget
           ? await confirmVdbTarget(ctx.executor, ctx.execTarget, config.capability)
@@ -101,6 +106,12 @@ export function makeVdbAccessInspect(
         return { access: unavailableFact("store.vdb.access", "vdb-access", reason) };
       }
       ctx.openSearchConnection = ctx.connection;
+      if (config.capability.source && ctx.search) {
+        ctx.channel = "plugin";
+        const access = { backend: "opensearch" as const, channel: "plugin", endpoint: ctx.connection.endpoint };
+        ctx.bundle.fill("access-preparation", { status: "ok", output: JSON.stringify(access), ext: "json" });
+        return { access: collectedFact("store.vdb.access", "vdb-access", access) };
+      }
       const confirmation = await confirmOpenSearchConnection({
         endpoint: config.endpoint,
         configuredEndpoint: ctx.connection.endpoint,

@@ -3,10 +3,10 @@ import { clientKey } from "@compforge/harness-common";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parseMysqlEnvTarget, type MysqlClient } from "../infra/database/mysql";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
-import { createKubernetesExecutor, resolveKubernetesCommandConfig, resolvePodTarget, type KubernetesCommandConfig, type KubernetesCommandInput, type PodTarget } from "../command/kubernetes-target";
-import { openPluginContext } from "../plugin/context";
+import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandConfig, type KubernetesCommandInput, type PodTarget } from "../command/kubernetes-target";
+import { borrowServiceClient } from "./client";
 import { configuredValue, loadServiceRuntimeConfig } from "./runtime-config";
-import { resolveDataSourcePod } from "./workload";
+import { resolveDataSourceTarget } from "./workload";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 import { ParameterCancelled } from "../terminal/parameters";
 
@@ -40,22 +40,15 @@ export async function resolveDatabaseConfig(
   await enforceKubernetesAccess(access, {
     command: "doctor · database",
     needs: [
-      { requirement: "required", rule: { verb: "list", resource: "services" }, purpose: "定位数据源配置来源 Service" },
-      { requirement: "required", rule: { verb: "list", resource: "pods" }, purpose: "定位数据源配置来源 Pod" },
       { requirement: "preferred", rule: { verb: "get", resource: "configmaps" }, purpose: "读取数据库配置", fallback: "读取 Container env" },
       { requirement: "preferred", rule: { verb: "get", resource: "secrets" }, purpose: "读取数据库凭据", fallback: "读取 Container env" },
       { requirement: "preferred", rule: { verb: "create", resource: "pods/exec" }, purpose: "补充数据库运行时配置", fallback: "标记数据源 unavailable" },
     ],
   });
   const selection = { candidateRole: "配置来源", purpose: `读取 Service '${service}' 的数据库配置`, effect: "配置来源不限定 SQL 查询范围。" };
-  const pod = await resolveDataSourcePod({
-    service, pod: input.pod, executor, namespace: collect.kubernetes.namespace,
+  config.target = await resolveDataSourceTarget({
+    service: command.plugin.services.find(service)!, pod: input.pod, container: input.container, executor, namespace: collect.kubernetes.namespace,
     interactive, commandContext: command, selection,
-  });
-  if (!pod) throw new ParameterCancelled();
-  config.target = await resolvePodTarget({
-    config: collect, executor, pod, container: input.container, selectContainer: true,
-    interactive, access, commandContext: command, selection,
   });
   if (!config.target) throw new ParameterCancelled();
   return { config, executor };
@@ -99,21 +92,9 @@ export async function borrowDatabase(
     ? mysqlDataSource(clientKey("mysql", target), async () => target)
     : undefined);
   if (!source) throw new Error("DB DataSource 未提供访问目标");
-  const context = await openPluginContext(executor, {
-    namespace: config.collect.kubernetes.namespace,
-    kubeconfig: config.collect.kubernetes.kubeconfig,
-    context: config.collect.kubernetes.context,
-  }, {
-    clients: command.clients,
-    env: config.collect.profileName,
-    config: command.profile.pluginConfig,
-    service: command.plugin.services.find(config.service)!,
-    command: "doctor · database",
-    capability: { access: config.capability.source ? config.capability.access ?? {} : {
+  return borrowServiceClient(command, config.collect, executor, config.service, {
+    access: config.capability.source ? config.capability.access ?? {} : {
       kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/portforward" }, purpose: "访问 Service 声明的数据库" }],
-    } },
-    authorization: resolveKubernetesCommandContext(executor, command).access,
-  });
-  try { return await context.clients.get(source); }
-  finally { await context.dispose(); }
+    },
+  }, source);
 }

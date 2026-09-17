@@ -50,7 +50,7 @@ test("two biz-id probes share current/previous sources, retain distinct matching
     expect(facts.servicePods.byService.api?.[0]).toMatchObject({
       current: JSON.stringify(["uid-1", "container-2"]), previous: JSON.stringify(["uid-1", "container-1"]),
     });
-    const probe = makeLogProbe(["api"]);
+    const probe = makeLogProbe(["api"], podDiscoveryExecutor(pods));
     const [one, two] = await Promise.all([probe.run(a, facts, a.config, []), probe.run(b, facts, b.config, [])]);
     expect(reads.sort()).toEqual(["current", "previous"]);
     expect(one[0]!.pods[0]!.events.join("\n")).toContain('File "worker.py"');

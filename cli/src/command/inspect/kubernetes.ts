@@ -1,4 +1,5 @@
 import type { WorkingProfileOptions } from "../../app/profile";
+import { resolveKubernetesEnvironment } from "../../infra/k8s/environment";
 import {
   inspectKubernetesChannel,
   type KubernetesChannelFact,
@@ -54,9 +55,10 @@ export async function inspectKubernetes(
     kubeconfig: kubeconfig.kubeconfig,
     context: opts.context,
   });
+  const environment = await resolveKubernetesEnvironment(executor);
   return {
     kubeconfig,
-    context: opts.context,
+    context: environment.context,
     channel: await inspectKubernetesChannel(executor),
   };
 }

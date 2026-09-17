@@ -1,4 +1,4 @@
-import { logTarget } from "./log-fixture";
+import { logTarget, logIdentityExecutor } from "./log-fixture";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -72,7 +72,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
   };
   const command = new CommandContext({});
   try {
-    const pending = makeLogProbe(config.services).run({ command, config, access,
+    const pending = makeLogProbe(config.services, logIdentityExecutor).run({ command, config, access,
       bundle: new EvidenceBundle(root), startedAtMs: Date.now() - 10,
       log: (message) => { messages.push(message); if (message.includes("命中 api/fast")) notify(); },
     }, facts, config, []).then((value) => { completed = true; return value; });

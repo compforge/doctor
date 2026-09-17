@@ -1,5 +1,6 @@
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "./log-policy";
-import { ClientManager } from "@compforge/harness-common";
+import { ClientManager, EnvironmentContext } from "@compforge/harness-common";
+import { resolveKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -123,6 +124,11 @@ export class CommandContext {
 
   /** Root finalize owns this operation; child commands only borrow clients. */
   disposeClients(): Promise<void> { return this.#clients.dispose(); }
+
+  /** Environment identity and client lifetime are shared; profile remains configuration provenance. */
+  async environment(executor: Executor): Promise<EnvironmentContext<ResolvedKubernetesEnvironment>> {
+    return new EnvironmentContext(await resolveKubernetesEnvironment(executor, this.signal), this.clients, Infinity);
+  }
 
   get plugin(): PluginDefinition {
     if (!this.#plugin) throw new Error("This command requires a loaded Plugin");

@@ -55,6 +55,17 @@ Chat 校验、Skill 目标注入和远端 kubeconfig 上传使用本次调用的
 不解释 AS 等产品的环境名。目标选择与后续访问应使用同一份有效配置，目标展示应能说明实际值及来源，
 便于使用者确认本次访问对象。
 
+### Environment 与配置来源
+
+先按 `CLI kubeconfig > profile kubeconfig > 默认 kubeconfig` 选定访问配置，再用显式 context 或
+该配置的 current-context 确定 Environment。profile 是配置来源，不是环境身份；不同 profile 指向
+相同 cluster/context 时可得到同一环境身份，同一 profile 被 CLI 覆盖到其它集群时必须得到不同身份。
+无效的高优先级配置直接失败，不尝试其它集群。
+
+Core 只从选定配置读取 context 与 cluster endpoint，生成不含凭据的身份，并固定本轮使用的 context。
+Command 的 EnvironmentContext 借用根 ClientManager；Service 绑定、WorkloadInstance 证据与 Plugin
+客户端作用域使用这个身份。namespace 是环境内的访问范围，不作为 profile 名的替身。
+
 ### 三阶段生命周期
 
 ```text

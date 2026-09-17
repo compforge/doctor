@@ -37,6 +37,7 @@ export function makeLogInspect(
       }
 
       const byService: Record<string, LogWorkloadTarget[]> = {};
+      const { environment } = await ctx.command.environment(executor);
       const missing: Record<string, string[]> = {};
       for (const serviceName of services) {
         ctx.command.signal.throwIfAborted();
@@ -51,7 +52,7 @@ export function makeLogInspect(
           ctx.log(`[collect] 定位 ${serviceName}/${workload.name} 的日志实例…`);
           let captureIndex = 0;
           const resolved = await discoverKubernetesWorkload(
-            workload, executor, ctx.config.namespace, ctx.command.profile.name,
+            workload, executor, ctx.config.namespace, environment.name,
             result => ctx.bundle.addStep({
               id: `workload-${serviceName}-${workload.name}-${++captureIndex}`,
               title: `${serviceName}/${workload.name} Workload 定位`,

@@ -11,7 +11,7 @@ export interface RedisCommandContext {
   command: CommandContext;
   config: RedisConfig;
   exec: Executor;
-  execTarget: ExecTarget;
+  execTarget?: ExecTarget;
   /** 包含凭据的本轮执行态；只供 Inspect/Probe 使用，不进入 Facts 或证据包。 */
   redisTarget?: RedisTarget;
   /** 采集准备阶段建立的本机 Redis 访问面。 */

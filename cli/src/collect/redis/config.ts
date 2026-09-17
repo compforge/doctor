@@ -14,8 +14,9 @@ import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
-import type { ServiceRedisDataSource } from "@compforge/doctor-plugin";
-import { listServiceChoices } from "../../infra/k8s/service-selection";
+import type { ServiceRedisDataSource, ServiceRedisClient } from "@compforge/doctor-plugin";
+import { borrowServiceClient } from "../../datasource/client";
+import { resolveDataSourceTarget } from "../../datasource/workload";
 import {
   matchListedChoice,
   printNumberedChoices,
@@ -38,7 +39,8 @@ export type RedisOutputFormat = "default" | "bundle" | "html" | "md";
 
 export interface RedisConfig {
   collect: KubernetesCommandConfig;
-  target: PodTarget;
+  target?: PodTarget;
+  client?: ServiceRedisClient;
   profileName: string;
   profile?: RedisProfileConfig;
   service?: string;
@@ -87,20 +89,17 @@ async function resolveRedisCatalogStore(input: {
   namespace: string;
 }): Promise<{ service: string; store: ServiceRedisDataSource } | undefined> {
   if (!input.catalog) return undefined;
-  const explicitService = input.requestedService?.trim();
-  const deployed = new Set(
-    (await listServiceChoices(input.executor, input.namespace)).map((service) => service.name),
-  );
+  const requested = input.requestedService?.trim();
+  const explicitService = requested ? input.catalog.find(requested)?.name ?? requested : undefined;
   const candidates = servicesWithDataSource(input.catalog, "redis")
-    .filter((service) => deployed.has(service.name))
     .map((service) => ({ name: service.name }));
   if (candidates.length === 0) {
-    throw new Error(`namespace '${input.namespace}' 中没有已部署且声明 Redis Store capability 的 Service`);
+    throw new Error("Plugin 中没有声明 Redis Store capability 的 Service");
   }
   let service = explicitService;
   if (service) {
     if (!candidates.some((candidate) => candidate.name === service)) {
-      throw new Error(`Service '${service}' 未部署或未声明 Redis Store capability`);
+      throw new Error(`Service '${service}' 未声明 Redis Store capability`);
     }
   } else {
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -243,14 +242,6 @@ export async function resolveRedisConfig(
   );
   const executor = injectedExecutor ?? createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
-  await enforceKubernetesAccess(access, {
-    command: "doctor store",
-    needs: [{
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/exec" },
-      purpose: "读取目标 Container 的 Redis 运行时配置",
-    }],
-  });
   const catalogStore = await resolveRedisCatalogStore({
     requestedService: input.service,
     requestedStore: input.store,
@@ -263,8 +254,21 @@ export async function resolveRedisConfig(
     throw new Error("doctor store 的 Redis 访问地址与凭据来自所选 Service；不支持 --url 覆盖");
   }
   if (catalog && !catalogStore) return undefined;
-  podKeyword ||= catalogStore?.service;
-  const target = await resolvePodTarget({
+  if (!catalogStore?.store.source) await enforceKubernetesAccess(access, {
+    command: "doctor store", needs: [{ requirement: "required",
+      rule: { verb: "create", resource: "pods/exec" }, purpose: "读取目标 Container 的 Redis 运行时配置" }],
+  });
+  const client = catalogStore?.store.source ? await borrowServiceClient(commandContext, collect, executor,
+    catalogStore.service, catalogStore.store, catalogStore.store.source) : undefined;
+  const selection = {
+    candidateRole: "配置来源", purpose: "读取 Redis 运行时配置",
+    effect: "该选择用于读取 Redis 运行时配置，不代表仅分析该 Pod 自身的数据。",
+  };
+  const target = client ? undefined : catalogStore ? await resolveDataSourceTarget({
+    service: catalog!.find(catalogStore.service)!, pod: podKeyword, container: input.container,
+    executor, namespace: collect.kubernetes.namespace,
+    interactive: input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY), commandContext, selection,
+  }) : await resolvePodTarget({
     config: collect,
     executor,
     pod: podKeyword,
@@ -278,12 +282,13 @@ export async function resolveRedisConfig(
       effect: "该选择用于读取 Redis 运行时配置，不代表仅分析该 Pod 自身的数据。",
     },
   });
-  if (!target) return undefined;
+  if (!target && !client) return undefined;
 
   return {
     config: {
       collect,
       target,
+      client,
       profileName: resolvedProfile.name,
       profile: catalogStore ? undefined : redisProfile,
       service: catalogStore?.service,

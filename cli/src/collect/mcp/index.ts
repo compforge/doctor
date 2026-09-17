@@ -175,7 +175,6 @@ export async function runCollectMcp(
     kubeconfig: collect.kubernetes.kubeconfig,
     context: collect.kubernetes.context,
   }, {
-    env: collect.profileName,
     config: commandContext?.profile.pluginConfig,
     service,
     endpoint: capability.endpoint,

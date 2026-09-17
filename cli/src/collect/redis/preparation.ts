@@ -34,9 +34,14 @@ export interface PreparedRedisAccess {
 /** 配置确认只决定“访问谁”，不建立连接或 port-forward。 */
 export async function confirmRedisTarget(
   executor: Executor,
-  execTarget: ExecTarget,
+  execTarget: ExecTarget | undefined,
   config: RedisConfig,
 ): Promise<ConfirmedRedisTarget> {
+  if (config.client) {
+    const target: RedisTarget = { ...config.client.target, endpointSource: "plugin", credentialSource: "plugin" };
+    return { target, targetFact: buildRedisTargetFact(target), environmentFact: buildRedisEnvironmentFact({}) };
+  }
+  if (!execTarget) throw new Error("Redis DataSource 未提供 source 或配置来源 Workload");
   const envResult = await executor.exec(execTarget, ["env"], { timeoutMs: 20_000 });
   const environmentFact: RedisEnvironmentFact = envResult.ok
     ? buildRedisEnvironmentFact(extractRedisEnvironment(envResult.stdout))
@@ -61,7 +66,7 @@ export async function confirmRedisTarget(
     && !config.profile?.url
     && !hasRedisStoreConfiguration(envResult.stdout, config.store)
   ) {
-    const reason = `Service '${config.service}' 当前未提供有效 ${config.store.environment.address}，Redis Store 未启用`;
+    const reason = `Service '${config.service}' 当前未提供有效 ${config.store.environment?.address}，Redis Store 未启用`;
     return {
       targetFact: unavailableFact("redis.target", "redis-target", reason),
       environmentFact,
@@ -137,6 +142,7 @@ export async function prepareRedisAccess(
   target: RedisTarget,
   injectedAccess?: RedisAccessApi,
 ): Promise<PreparedRedisAccess> {
+  if (config.client) return { access: config.client.access, forwards: [], close: async () => {} };
   if (injectedAccess) return { access: injectedAccess, forwards: [], close: () => injectedAccess.close() };
   const clients = currentCommandClients();
   let local: RedisAccessClient | undefined;

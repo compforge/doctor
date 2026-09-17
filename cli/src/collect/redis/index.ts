@@ -144,8 +144,8 @@ export async function runCollectRedis(
   }
   const { config, executor } = resolved;
   const namespace = config.collect.kubernetes.namespace;
-  const pod = config.target.pod;
-  const container = config.target.container;
+  const pod = config.target?.pod;
+  const container = config.target?.container;
   const { mode, maxKeys, maxKeysPerSecond, top, keyStats } = config.scan;
   const format = config.outputFormat;
   const bundleName = redisBundleName(new Date());
@@ -172,7 +172,7 @@ export async function runCollectRedis(
     command: commandContext,
     config,
     exec: executor,
-    execTarget: { pod, container },
+    execTarget: config.target,
     bundle,
     log: (line) => terminalStdout.write(`${line}\n`),
   };
@@ -242,8 +242,8 @@ export async function runCollectRedis(
   };
 
   ctx.log(
-    `[collect] 从 pod/${config.target.pod}`
-    + `${config.target.container ? ` container/${config.target.container}` : ""} 确认 Redis 配置…`,
+    `[collect] 从 ${config.client ? "Plugin DataSource" : `pod/${config.target?.pod}`}`
+    + `${config.target?.container ? ` container/${config.target?.container}` : ""} 确认 Redis 配置…`,
   );
   const confirmed = await confirmRedisTarget(executor, ctx.execTarget, config);
   if (confirmed.target) {

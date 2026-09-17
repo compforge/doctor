@@ -3,13 +3,13 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
 import type { S3BucketUsage } from "../../../infra/object-store";
 import type { EvidenceBundle } from "../../evidence";
-import type { PodStoreConfig } from "../config";
+import type { StoreConfig } from "../config";
 import type { CommandContext } from "../../../command";
 
 export interface S3CommandContext {
   command: CommandContext;
   executor: Executor;
-  config: PodStoreConfig;
+  config: StoreConfig;
   capability: ServiceS3DataSource;
   bundle: EvidenceBundle;
   originalEndpoint?: URL;

@@ -62,6 +62,7 @@ function connectionFromTarget(
   target: ServiceVdbTarget,
   configSource: VdbConnectionBase["configSource"],
 ): VdbConnection {
+  const endpoint = target.backend === "opensearch" && target.endpoint ? parseOpenSearchEndpoint(target.endpoint) : undefined;
   const common = {
     store: target.store,
     configSource,
@@ -73,9 +74,9 @@ function connectionFromTarget(
     ? {
         ...common,
         type: "opensearch",
-        endpoint: target.endpoint,
-        username: target.username,
-        password: target.password,
+        endpoint: endpoint?.safeEndpoint,
+        username: target.username ?? endpoint?.username,
+        password: target.password ?? endpoint?.password,
       }
     : { ...common, type: "unsupported", backend: target.backend };
 }

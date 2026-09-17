@@ -1,5 +1,6 @@
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
+import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -150,9 +151,9 @@ function createKubernetesAccess(
 export type ManagedPluginContext = PluginContext & { dispose(): Promise<void> };
 
 interface PluginContextOptions {
+  environment: ResolvedKubernetesEnvironment;
   /** An explicitly supplied root owner is useful outside the command async scope. */
   clients?: Pick<ClientManager, "get">;
-  env: string;
   config?: Readonly<Record<string, unknown>>;
   databaseIdentity?: DatabaseIdentity;
   service: ServiceDefinition;
@@ -166,7 +167,7 @@ function clientNamespace(kube: KubectlOptions, options: PluginContextOptions): s
   const access = (options.capability.access.kubernetes ?? []).map(need => need.rule)
     .sort((a, b) => clientKey("rule", a).localeCompare(clientKey("rule", b)));
   return clientKey("plugin", {
-    kube, env: options.env, service: options.service.name, endpoint: options.endpoint,
+    kube, environment: options.environment.name, service: options.service.name, endpoint: options.endpoint,
     config: options.config ?? {}, databaseIdentity: options.databaseIdentity, access,
   });
 }
@@ -176,6 +177,9 @@ export function createPluginContext(
   kube: KubectlOptions & { namespace: string },
   options: PluginContextOptions,
 ): ManagedPluginContext {
+  if (kube.context && kube.context !== options.environment.context) throw new Error("Kubernetes context 与已解析的 Environment 不一致");
+  // Caller config may carry profile/source annotations; only actual access parameters enter reuse identity.
+  kube = { namespace: kube.namespace, kubeconfig: kube.kubeconfig, context: options.environment.context };
   const controller = new AbortController();
   const parentSignal = currentCommandSignal();
   const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
@@ -188,7 +192,7 @@ export function createPluginContext(
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
-    target: { env: options.env, namespace: kube.namespace, service: bindService(options.service, { name: options.env, kind: "kubernetes" }), endpoint: options.endpoint },
+    target: { env: options.environment.name, namespace: kube.namespace, service: bindService(options.service, options.environment), endpoint: options.endpoint },
     config: options.config ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
@@ -232,7 +236,8 @@ export function createPluginContext(
 export async function openPluginContext(
   executor: Executor,
   kube: KubectlOptions & { namespace: string },
-  options: PluginContextOptions & {
+  options: Omit<PluginContextOptions, "environment"> & {
+    environment?: ResolvedKubernetesEnvironment;
     command: string;
     authorization: KubernetesAccessContext;
   },
@@ -242,5 +247,6 @@ export async function openPluginContext(
     namespace: kube.namespace,
     needs: capabilityAccessNeeds(options.capability),
   });
-  return createPluginContext(executor, kube, options);
+  const environment = options.environment ?? await resolveKubernetesEnvironment(executor);
+  return createPluginContext(executor, bindKubernetesEnvironment(kube, environment), { ...options, environment });
 }

@@ -205,18 +205,26 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const dataSources = uniqueIdRecords(capabilities.dataSources, `${service.name}.dataSources`);
     for (const [id, store] of dataSources) {
       if (store.description !== undefined) nonEmptyString(store.description, `${service.name}.dataSources.${id}.description`);
-      if (store.kind !== "db") continue;
       const label = `${service.name}.dataSources.${id}`;
-      if (store.backend !== "mysql") throw new Error(`${label}.backend must be mysql`);
-      const env = store.envPrefix !== undefined;
       const resolver = store.source !== undefined;
-      if (env === resolver) throw new Error(`${label} must declare exactly one of envPrefix / source`);
-      if (env) nonEmptyString(store.envPrefix, `${label}.envPrefix`);
-      if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
       if (resolver) {
         const source = record(store.source, `${label}.source`);
         nonEmptyString(source.clientKey, `${label}.source.clientKey`);
         if (typeof source.createClient !== "function") throw new Error(`${label}.source.createClient must be a function`);
+      }
+      if (store.kind === "db") {
+        if (store.backend !== "mysql") throw new Error(`${label}.backend must be mysql`);
+        const env = store.envPrefix !== undefined;
+        if (env === resolver) throw new Error(`${label} must declare exactly one of envPrefix / source`);
+        if (env) nonEmptyString(store.envPrefix, `${label}.envPrefix`);
+        if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
+      }
+      if (store.kind === "s3" || store.kind === "redis") {
+        if (resolver === (store.environment !== undefined)) throw new Error(`${label} must declare exactly one of environment / source`);
+        if (!resolver) record(store.environment, `${label}.environment`);
+      }
+      if (store.kind === "vdb" && resolver && (store.inspectTarget !== undefined || store.configuration !== undefined)) {
+        throw new Error(`${label}.source cannot be combined with inspectTarget / configuration`);
       }
       if (store.access !== undefined) record(store.access, `${label}.access`);
     }

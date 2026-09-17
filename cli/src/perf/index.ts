@@ -313,7 +313,6 @@ export async function runPerf(
         kubeconfig: kube.kubernetes.kubeconfig,
         context: kube.kubernetes.context,
       }, {
-        env: kube.profileName,
         config: commandContext.profile.pluginConfig,
         service: directoryService,
         endpoint: directoryService.capabilities.tenantDirectory.endpoint,
@@ -365,7 +364,6 @@ export async function runPerf(
     kubeconfig: kube.kubernetes.kubeconfig,
     context: kube.kubernetes.context,
   }, {
-    env: kube.profileName,
     config: commandContext.profile.pluginConfig,
     service: provider,
     endpoint: provider.capabilities.case.endpoint,

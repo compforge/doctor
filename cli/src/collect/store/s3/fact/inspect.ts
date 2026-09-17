@@ -10,6 +10,7 @@ import { configuredValue, loadServiceRuntimeConfig } from "../../../../datasourc
 import type { S3CommandContext } from "../context";
 import type { S3InspectionFacts } from "./model";
 import { collectedFact, failedFact, unavailableFact } from "../../../protocol";
+import { borrowServiceClient } from "../../../../datasource/client";
 
 function captureReason(capture: ExecResult): string | undefined {
   return capture.ok ? undefined : capture.stderr.trim().split("\n")[0] || `exit=${capture.exitCode}`;
@@ -19,7 +20,25 @@ export function makeS3ConfigurationInspect(): Inspect<S3InspectionFacts, S3Comma
   return {
     id: "s3-configuration",
     run: async (ctx) => {
+      if (ctx.capability.source) {
+        const client = await borrowServiceClient(ctx.command, ctx.config.collect, ctx.executor,
+          ctx.config.service, ctx.capability, ctx.capability.source);
+        ctx.client = client.access;
+        ctx.target = client.target;
+        ctx.originalEndpoint = new URL(client.target.endpoint);
+        ctx.originalEndpoint.username = ""; ctx.originalEndpoint.password = "";
+        ctx.serviceBucket = client.target.bucket;
+        ctx.servicePrefix = client.target.bucketPrefix;
+        ctx.inventoryPrefix = ctx.config.s3Prefix ?? "";
+        const configuration = { backend: ctx.capability.backend, endpoint: ctx.originalEndpoint.toString(),
+          bucket: ctx.serviceBucket, bucketPrefix: ctx.servicePrefix, region: client.target.region,
+          addressStyle: client.target.forcePathStyle ? "path" as const : "virtual" as const,
+          credentials: "configured" as const, source: "plugin" };
+        ctx.bundle.fill("runtime-config", { status: "ok", output: JSON.stringify(configuration), ext: "json" });
+        return { configuration: collectedFact("store.s3.configuration", "s3-configuration", configuration) };
+      }
       const names = ctx.capability.environment;
+      if (!names || !ctx.config.target) throw new Error("S3 DataSource 必须提供 source 或 Workload 配置映射");
       const complete = (environment: Map<string, string>) => !!(
         configuredValue(environment, names.endpoint)
         && configuredValue(environment, names.bucket)
@@ -101,6 +120,11 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
         return { access: unavailableFact("store.s3.access", "s3-access", reason) };
       }
       try {
+        if (ctx.capability.source && ctx.client) {
+          const access = { channel: "plugin" as const, endpoint: ctx.originalEndpoint.toString() };
+          ctx.bundle.fill("access-preparation", { status: "ok", output: JSON.stringify(access), ext: "json" });
+          return { access: collectedFact("store.s3.access", "s3-access", access) };
+        }
         const endpoint = ctx.originalEndpoint;
         const identity = serviceIdentity(endpoint.hostname, ctx.config.collect.kubernetes.namespace);
         let preparedEndpoint = endpoint.toString();
@@ -159,6 +183,12 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
     id: "s3-provider",
     dependsOn: ["s3-access"],
     run: async (ctx, facts) => {
+      if (ctx.capability.source) {
+        // Provider-specific HTTP probes cannot bypass a contributed client's transport/access policy.
+        const reason = "Plugin DataSource 仅提供 S3 协议访问，不探测额外的 Provider HTTP 接口";
+        ctx.bundle.fill("provider-detection", { status: "unavailable", reason });
+        return { provider: unavailableFact("store.s3.provider", "s3-provider", reason) };
+      }
       if (facts.access?.status !== "collected" || !ctx.preparedEndpoint) {
         const reason = facts.access && facts.access.status !== "collected"
           ? facts.access.reason

@@ -296,14 +296,15 @@ export async function collectLog(
   if (!requests.length) return [];
   const startedAt = new Date().toISOString();
   const first = requests[0]!;
+  const { environment } = await commandContext.environment(executor);
   const source = access ?? new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, first.namespace), {
-    namespace: first.namespace, signal: commandContext.signal, kubeconfig: first.kubeconfig, context: first.context,
+    namespace: first.namespace, signal: commandContext.signal, kubeconfig: first.kubeconfig, context: environment.context,
   });
   const contexts: LogCommandContext[] = requests.map(opts => {
     validateLogTimeWindow(opts);
     if (opts.bizId !== undefined && !opts.traceIds.length) throw new Error("按业务 ID 采集需要至少一个 trace_id");
     return { command: commandContext, startedAtMs: Date.parse(startedAt),
-      config: { ...opts, linePattern: buildLogPattern(opts.errorsOnly, opts.pattern) },
+      config: { ...opts, context: environment.context, linePattern: buildLogPattern(opts.errorsOnly, opts.pattern) },
       access: source, bundle: new EvidenceBundle(opts.outputDir), log };
   });
   let executions: PromiseSettledResult<{ diagnosis: LogDiagnosis }>[];
@@ -317,7 +318,7 @@ export async function collectLog(
         terminalStdout.warning(config.bizId === undefined
           ? "\n[collect:log] 按 Service / 时间范围采集（不按业务 ID 过滤）\n"
           : `\n[collect:log] biz-id: ${config.bizId}\n`);
-        return [makeLogProbe(config.services)];
+        return [makeLogProbe(config.services, executor)];
       }, log,
       buildEvidence: buildLogEvidence, detectors: logDetectors, buildCoverage: buildLogCoverage,
       checkpointFacts: facts => bundle.writeManifest({

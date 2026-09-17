@@ -367,7 +367,7 @@ Kubernetes 资源名。profile 切换后，Doctor 在下一次调用中注入新
 或旧环境选择。
 
 Service capability 的输入只由两部分组成：Core 已知且受控的 `PluginContext`，以及该
-capability 实际需要的业务输入。`PluginContext` 可以携带 profile 环境、当前 Target namespace、
+capability 实际需要的业务输入。`PluginContext` 可以携带有效 Environment、当前 Target namespace、
 已选逻辑 Service、Plugin-owned config 和受 access 约束的 infra。Core 只在执行 Workload-scoped capability
 时按声明解析 Instance 并传入；其它 capability 不会收到与其无关的 Pod 或部署细节。
 
@@ -384,6 +384,19 @@ DB source 使用 `PluginDataSource<MysqlClient>`，与标准 `envPrefix` 简写�
 回调收到根执行生命周期内的上下文，不能捕获短生命周期的 capability context。
 多个数据库目标声明多个 dataSources；库表通过 Client 实时发现，不由 Plugin 重复维护清单。
 `store`、`db` 与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
+
+DB、VDB、S3、Redis 都可通过 `source` 贡献实现 initialize/dispose 的类型化 Client，由同一根
+ClientManager 初始化、复用和释放。SDK 的 `mysqlDataSource`、`vdbDataSource`、`s3DataSource` 和
+`redisDataSource` 把配置解析接到 toolbox Client；Plugin 可从配置 API、文件或声明的 Kubernetes
+访问取得连接信息，无需把配置伪装成 Pod 环境变量。协议操作仍由各类 Client 表达，不提供万能 execute。
+
+环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
+定位实际 Pod/container，不要求业务 Service 与 Kubernetes Service 同名；定位失败或来源有歧义时
+明确报错。使用 source 时不要求存在配置来源 Pod，也不额外探测 source 未提供的 Provider HTTP 接口。
+
+Workload 日志读取在流开始、结束时核对 Pod UID 和已知的 runtime container ID。实例变化或验证失败
+时保留原始证据并标记 unavailable，不将内容投影成原实例的正常日志；缺少 runtime ID 时标记 partial。
+边界校验用于发现替换，不承诺 Kubernetes 日志流具备原子快照语义。
 跨 Service 依赖通过 `{ service, capability: "dataSources", dataSource }` 引用声明；
 引用本身不授予额外权限，也不保证不同权限作用域会合并连接。当前跨 Service 运行时依赖 handle
 实现的是受限 OpenSearch search；数据库消费者可共享声明中的 source 工厂。

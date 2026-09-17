@@ -5,6 +5,10 @@ import type { PluginContext, PluginClientContext, PluginDataSource } from "./con
 import type { CapabilityWithAccess } from "./kubernetes";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import type { Client } from "@compforge/harness-common";
+import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
+import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
+import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch/client";
 
 export type ServiceDataSourceKind = "db" | "vdb" | "s3" | "redis";
 
@@ -73,6 +77,7 @@ export interface ServiceVdbDataSource extends ServiceDataSourceBase {
   kind: "vdb";
   backend: "opensearch";
   store?: string;
+  source?: PluginDataSource<ServiceVdbClient>;
   /** Plugin 自行发现配置来源并投影出统一 VDB target；Core 只提供受控上下文。 */
   inspectTarget?(context: PluginContext): Promise<ServiceVdbTarget>;
   access?: CapabilityWithAccess["access"];
@@ -80,9 +85,11 @@ export interface ServiceVdbDataSource extends ServiceDataSourceBase {
   configuration?: ServiceVdbConfiguration;
 }
 
-export interface ServiceS3DataSource extends ServiceDataSourceBase {
+export type ServiceS3DataSource = ServiceDataSourceBase & {
   kind: "s3";
   backend: "s3-compatible";
+} & ({ source: PluginDataSource<ServiceS3Client>; environment?: never } | {
+  source?: never;
   environment: {
     endpoint: string;
     bucket: string;
@@ -92,11 +99,13 @@ export interface ServiceS3DataSource extends ServiceDataSourceBase {
     bucketPrefix?: string;
     addressStyle?: string;
   };
-}
+});
 
-export interface ServiceRedisDataSource extends ServiceDataSourceBase {
+export type ServiceRedisDataSource = ServiceDataSourceBase & {
   kind: "redis";
   backend: "redis";
+} & ({ source: PluginDataSource<ServiceRedisClient>; environment?: never } | {
+  source?: never;
   environment: {
     address: string;
     port?: string;
@@ -111,6 +120,37 @@ export interface ServiceRedisDataSource extends ServiceDataSourceBase {
     sentinelPassword?: string;
     timeout?: string;
   };
+});
+
+/** Protocol clients retain their typed operations; configuration provenance is not evidence. */
+export interface ServiceS3Client extends Client {
+  readonly target: S3Target & { bucket: string; bucketPrefix?: string };
+  readonly access: S3Client;
+}
+
+export interface ServiceVdbClient extends Client {
+  readonly target: ServiceVdbTarget;
+  readonly access: OpenSearchReadApi;
+}
+
+export interface ServiceRedisTarget {
+  endpoints: Array<[host: string, port: number]>;
+  database: number;
+  username?: string;
+  password?: string;
+  useSsl: boolean;
+  clusterType: "single" | "sentinel" | "cluster";
+  /** Connection and command timeout in seconds, matching the Redis collection configuration. */
+  timeout: number;
+  sentinelHosts: Array<[string, number]>;
+  sentinelMasterName: string;
+  sentinelUsername?: string;
+  sentinelPassword?: string;
+}
+
+export interface ServiceRedisClient extends Client {
+  readonly target: ServiceRedisTarget;
+  readonly access: RedisAccessApi;
 }
 
 export type ServiceDataSource =

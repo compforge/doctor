@@ -17,6 +17,7 @@ import {
 } from "../../infra/search/opensearch";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { terminalStdout } from "../../terminal/output";
+import { borrowServiceClient } from "../../datasource/client";
 import type { StepInput } from "../evidence";
 import { resolveStoreProviderConfig } from "../store/config";
 import { confirmInspectedVdbTarget, confirmVdbTarget } from "../store/vdb/configuration";
@@ -193,6 +194,18 @@ export class ServiceDependencyRuntime {
     service: string,
     dataSource: string,
   ): Promise<PreparedServiceDataSourceDependency> {
+    const capability = serviceDataSources(this.options.plugin.services, service, "vdb").find(item => item.id === dataSource);
+    if (!this.options.endpoint && capability?.kind === "vdb" && capability.source) {
+      const client = await borrowServiceClient(this.options.commandContext, this.options.collect,
+        this.options.executor, service, capability, capability.source);
+      const endpoint = client.target.endpoint ? safeEndpoint(client.target.endpoint) : undefined;
+      // The root owns this client; closing a dependency view cannot close sibling consumers.
+      const evidenceTarget = { service, dataSource, endpoint, channel: "plugin" };
+      const preparation: OpenSearchAccessPreparation = { search: client.access, channel: "plugin", baseUrl: endpoint,
+        evidenceTarget, steps: [], close: async () => {} };
+      return { search: client.access, preparation, steps: [], configuredEndpoint: endpoint, auth: {},
+        evidenceTarget };
+    }
     await this.prepareKubernetesAccess();
     let configuredEndpoint: string | undefined;
     let configuredAuth: OpenSearchAuth = {};

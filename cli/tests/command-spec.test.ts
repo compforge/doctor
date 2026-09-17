@@ -24,7 +24,7 @@ const executor: Executor = {
 };
 function managed() {
   return createPluginContext(executor, { namespace: "test" }, {
-    env: "test", service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, capability: { access: {} },
+    environment: { name: "cluster-test", kind: "kubernetes", context: "test", server: "https://cluster.test/" }, service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, capability: { access: {} },
   });
 }
 

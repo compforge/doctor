@@ -67,7 +67,6 @@ export async function openTenantAccess(input: {
       }
     : undefined;
   const directoryContext = await openPluginContext(executor, kube, {
-    env: commandContext.profile.name,
     config: commandContext.profile.pluginConfig,
     databaseIdentity,
     service: directoryProvider,
@@ -96,7 +95,6 @@ export async function openTenantAccess(input: {
         query: async (identity) => {
           const capability = service.contributions.inspect;
           const context = await openPluginContext(executor, kube, {
-            env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
             databaseIdentity,
             service: service,
@@ -136,7 +134,6 @@ export async function openTenantAccess(input: {
         query: async (identity) => {
           const capability = service.capabilities.modelCatalog;
           const context = await openPluginContext(executor, kube, {
-            env: commandContext.profile.name,
             config: commandContext.profile.pluginConfig,
             databaseIdentity,
             service: service,
