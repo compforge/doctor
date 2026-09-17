@@ -40,6 +40,7 @@ export function accumulateStats(stats: TraceStats, sources: Array<Record<string,
 
 export interface TraceProbeOptions {
   traceId: string;
+  spanId?: string;
   index: string;
   pageSize: number;
   outputDir: string;
@@ -72,7 +73,7 @@ export async function probeTrace(
   log(`[collect] 查询 span 总数（trace_id=${traceId}，index=${opts.index}）…`);
   let count: number;
   try {
-    count = await countSpans(search, opts.index, traceId);
+    count = await countSpans(search, opts.index, traceId, opts.spanId);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.fill("count", { status: "failed", reason });
@@ -81,7 +82,7 @@ export async function probeTrace(
   }
   bundle.fill("count", { status: "ok", output: String(count) });
   if (count === 0) {
-    const reason = `index '${opts.index}' 中没有该 trace 的 span；确认 --index-date 与目标环境`;
+    const reason = `index '${opts.index}' 中没有该 trace${opts.spanId ? ` / span ${opts.spanId}` : ""} 的 span；确认 --index-date 与目标环境`;
     log(`[collect] index '${opts.index}' 中没有 trace_id=${traceId} 的 span（已过保留期 / index 或环境不对）`);
     return { ok: false, title: "span 总数为 0", reason, traceId };
   }
@@ -94,7 +95,7 @@ export async function probeTrace(
     downloaded = await downloadSpans(search, opts.index, traceId, opts.pageSize, (sources) => {
       appendFileSync(spansPath, `${sources.map((source) => JSON.stringify(source)).join("\n")}\n`, "utf-8");
       accumulateStats(stats, sources);
-    });
+    }, opts.spanId);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.fill("download", { status: "failed", reason });

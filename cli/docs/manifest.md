@@ -32,6 +32,8 @@ doctor inspect --format manifest --output ./inspection-evidence
 - Artifact 的 `target` 来自已有 Evidence manifest；`evidence_gaps` 投影已有步骤状态，`truncations`
   记录 Evidence 文本落盘时的字节截断。详细 Coverage、查询分页、采集上限与业务状态仍以该 Artifact
   的 `diagnosis.json` 和领域 manifest 为准，不能把步骤缺口列表为空当作完整覆盖。
+- Artifact 可用 `files` 暴露领域证据入口；根 manifest 将路径转换为相对 Bundle 根目录，例如 Trace 的
+  `tree`、`analysis`、`findings`、`spans`、`selection`。它们索引已保存文件，不把大段证据塞进 stdout。
 
 失败、取消或没有 Artifact 的命令仍交付结构化结果。Profile 等执行准备失败也返回失败 manifest；
 CLI 语法解析错误、进程强制终止或 stdout 本身写入失败不保证能输出完整 JSON。

@@ -19,7 +19,7 @@ export interface CommandInput {
 export interface CommandSpec<Input extends CommandInput, Output> {
   readonly name: string;
   readonly environment?: Requirement<Input, EnvironmentRequirements>;
-  readonly plugin?: Requirement<Input, PluginCapabilityContract>;
+  readonly plugin?: Requirement<Input, PluginCapabilityContract | undefined>;
   readonly validate?: (input: Input) => void | Promise<void>;
   run(context: CommandContext, input: Input): Promise<CommandResult<Output>>;
   /** Root finalize renders local results. Commands without a report (for example chat) omit this hook. */
@@ -41,7 +41,7 @@ export function defineCommand<Input extends CommandInput, Output>(spec: CommandS
               context.signal.throwIfAborted();
               if (spec.plugin) {
                 const contract = typeof spec.plugin === "function" ? spec.plugin(input) : spec.plugin;
-                requirePluginCapabilities(await context.resolvePlugin(), contract);
+                if (contract) requirePluginCapabilities(await context.resolvePlugin(), contract);
               }
               const environment = typeof spec.environment === "function" ? spec.environment(input) : spec.environment;
               await context.ensureEnvironment(environment ?? {});

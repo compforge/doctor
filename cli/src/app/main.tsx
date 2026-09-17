@@ -153,6 +153,9 @@ function withCpuOptions(cmd: CommandT): CommandT {
 
 function withTraceOptions(cmd: CommandT): CommandT {
   return withBizIdInputs(cmd, "业务 ID；可重复传入，Plugin traceId capability 先解析为 trace_id")
+    .option("--from <manifest>", "仅使用已下载的 manifest 证据，不访问 Kubernetes / OpenSearch")
+    .option("--span <span-id>", "在线只采集指定 span；离线查看该 span 的完整证据")
+    .option("--node <node-id>", "离线查看 node 及其关联 spans（需要 --from）")
     .option("-n, --namespace <ns>", "业务 Service 所在 namespace（profile 配置兜底，默认 default）")
     .option("--service <name>", "OpenSearch backend service 覆盖值")
     .option("--endpoint <url>", "Doctor Host 直连 OpenSearch 的地址；缺省也读 DOCTOR_OPENSEARCH_URL")
@@ -595,7 +598,7 @@ export function createDoctorProgram(
     await runCommand(collectCommand, commandOpts, domainInput(commandOpts), { plugin });
   });
   withTraceOptions(
-    catalog.command("trace").description("从 OpenSearch 下载 trace 全量 span，产出交互 node tree HTML 或证据包"),
+    catalog.command("trace").description("按业务 ID 采集 trace/span，或离线下钻证据；输出 manifest、HTML 或证据包"),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);

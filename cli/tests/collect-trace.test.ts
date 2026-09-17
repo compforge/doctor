@@ -31,7 +31,7 @@ async function collectTrace(
   search?: Parameters<typeof collectTraceEvidence>[2],
 ): Promise<number> {
   const code = await collectTraceEvidence(options, log, search);
-  if (code === 0) await renderTraceEvidence(options.outputDir, options.traceId!, options.contributions);
+  if (code === 0) await renderTraceEvidence(options.outputDir, options.contributions);
   return code;
 }
 
@@ -437,7 +437,10 @@ describe("collectTrace 记账", () => {
     }, () => {}, fakeSearch({
       count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }],
     }));
-    await expect(rendering).rejects.toThrow("plugin analysis failed");
+    expect(await rendering).toBe(1);
+    expect(manifestOf(dir).steps.find((step: { id: string }) => step.id === "analysis")).toMatchObject({
+      status: "failed", reason: "plugin analysis failed",
+    });
     expect(manifestOf(dir).steps.find((step: { id: string }) => step.id === "download").status).toBe("ok");
     expect(readAfterClose).toBeDefined();
     await expect(readAfterClose!()).rejects.toThrow("trace lease has ended");

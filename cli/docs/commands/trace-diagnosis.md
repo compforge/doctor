@@ -2,15 +2,28 @@
 
 ## 理念 / 概念
 
-`doctor trace` 从 SearchEngine 下载 trace 的完整 span 证据，并在 Doctor Host 本地生成可交互
-HTML。命令接收一个或多个业务 ID，先调用 Plugin `traceId` capability；每个 ID 可解析为一条或多条规范
+`doctor trace` 从 SearchEngine 下载 trace 或指定 span 的证据，在 Doctor Host 保存机器可读节点树，
+并支持纯离线下钻和可交互 HTML。在线命令接收一个或多个业务 ID，先调用 Plugin `traceId` capability；每个 ID 可解析为一条或多条规范
 trace_id。领域层负责确认、计数、
 分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
 默认同时交付自包含 HTML 和完整 Bundle。HTML 提供逻辑节点树、火焰图、节点摘要和物理 span 溯源；
 Bundle 同时包含根 `report.html`、完整 `spans.jsonl`、摘要和 Evidence Worksheet，摘要不能替代原始
-span。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
+span。显式 `--format html`、`--format bundle` 或 `--format manifest` 时只交付所选格式。
+
+```bash
+doctor trace <biz_id> --format manifest
+doctor trace <biz_id> --span <span_id> --format manifest
+doctor trace --from <manifest路径> --node <node_id> --format manifest
+doctor trace --from <manifest路径> --span <span_id> --format manifest
+doctor trace --from <manifest路径> --format html
+doctor trace --from <manifest路径> --format bundle
+```
+
+Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时目录（也可用 `--output` 指定新目录），
+`artifacts[].files` 索引 tree、analysis、findings、spans 以及下钻的 selection 文件。
+这些路径相对于根 Bundle；Artifact 自己的 `manifest.json` 中 `files` 则相对于该 Artifact。
 
 ## 流程
 
@@ -23,17 +36,47 @@ span。显式 `--format html` 或 `--format bundle` 时只交付所选格式。
    顺序尝试其余 OpenSearch VDB Store；每个 Store 都独立解析 endpoint、backend Service 和 namespace。
 3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期；
    ID 解析与 span 下载命中同一 Store 时复用同一连接。
-4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不再用任意 span tag 猜测业务 ID 关系。
-5. trace 存在时用稳定排序和 `search_after` 分页下载全量 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
-6. Render 使用 TypeScript trace-harness 的 `JaegerFileSource` 读取已落盘的 `spans.jsonl`，通过
+4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不用任意 span tag 猜测业务 ID 关系。
+   `--span` 同时限定 traceID 和 spanID，count 与下载使用同一过滤条件；业务 ID 解析出多条不同 trace 时
+   报歧义，要求用明确 trace ID 重试，不先下载整条 trace 再过滤。
+5. 用稳定排序和 `search_after` 下载所选范围的 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
+6. 采集后使用 TypeScript trace-harness 的 `JaegerFileSource` 读取已落盘的 `spans.jsonl`，通过
    TraceSession 为当前 trace 获取 lease、归一化并组装逻辑节点树。异步分析按 Plugin 声明的字段和 fact
    依赖准备本地证据，再执行 transforms / measurers / detectors；渲染前以 `prepareView({ full: true })`
-   补齐展示与原始 span 详情，将同一次分析的 Findings 与 Measurements 写入自包含 HTML。
+   补齐展示与原始 span 详情，将同一次分析的 Node、归一化 span、Findings 与 Measurements 保存为 JSON。
+   单 span 或不完整采集不运行全 trace Detector / Measurement，避免将未采集误判为业务缺失。
    成功或失败都会释放 lease、关闭 session，清理临时索引和缓存；原始采集产物继续保留。
-7. Evidence Worksheet 分别记录 ID 确认、计数、下载和 HTML 渲染状态；批量 HTML 按 biz-id 分顶层
+7. Evidence Worksheet 分别记录 ID 确认、计数、下载和分析投影状态；Render 消费已保存的分析，不重复
+   执行 Detector。批量 HTML 按 biz-id 分顶层
    tab，同一 biz-id 的多条 trace 再按来源 message/trace 分子 tab。各组只共享交付壳，不混合 span、
    Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
-8. 交付结束后关闭 SearchEngine、回收 forward；下载中断时保留已经落盘的 span 和失败上下文。
+8. 根入口释放 SearchEngine / forward 并按 format 交付；下载中断时保留已经落盘的 span 和失败上下文，
+   尽力为已下载部分建立本地索引，不能把索引成功当作下载完整。
+
+## 离线证据与下钻
+
+`--from` 接受根 Bundle manifest 或某条 trace 的 Artifact manifest。它不加载 Plugin、不准备 Kubernetes，
+也不访问 OpenSearch；不能与业务 ID、在线查询参数同时使用，`--node` 只用于离线，且不能与 `--span` 同用。
+Bundle 搬迁后以 manifest 实际所在目录解析路径，拒绝越界路径和符号链接。
+
+- `tree.json`：版本化的轻量索引，包含 `roots[]`、父子节点 ID、类型、服务、时间和 node → span 映射。
+- `analysis.json`：采集时冻结的节点事实、完整归一化 span 属性、Measurements 与 Agent Run 投影。
+  不保存可执行 Plugin 代码或 harness 临时缓存路径。
+- `findings.json`：确定性诊断结果；不是 AI 的根因结论。
+- `spans.jsonl`：下载的原始 Jaeger `_source`，不经终端 raw 文本截断。
+- `selection.json`：指定 node 及其直接拥有的 spans，或指定 span 的属性与原始记录；不隐式展开子树。
+
+Node 不等于 span，一个 node 可以拥有多个 spans。下钻以保存的映射为准，不因当前 Plugin 升级而重算
+node ID。一个 ID 在多个 Artifact 中命中时，要求改用具体 Artifact manifest，不静默取第一条。
+找不到时只报告“本地证据未包含”，不会补采；缺失关联 raw span 也会报错。
+
+`collection.scope` 区分整条 trace 与单 span，`collection.complete` 只说明该查询范围是否下载完整，
+不能把完整的单 span 查询当作完整 trace。源步骤失败、截断和采集来源随证据保留。
+离线操作在新目录复制证据、添加选择结果，既不修改输入目录，也不在交付清理时删除输入。
+
+离线 HTML 使用保存的节点、事实、Findings 和 Measurements 与 harness 通用 viewer，不重新加载业务
+Plugin 的自定义展示函数；在线 HTML 仍可使用本轮 Plugin 的 facets。HTML 与 Bundle 均复用根交付流程。
+旧证据缺少分析索引时不能 node/span 下钻；原始文件可归档保留，但不会静默按新 Plugin 重新解释。
 
 ## 关键设计
 
@@ -64,7 +107,7 @@ fact 转换、Measurement、业务判读和展示意图；Core 为每次 trace �
 从本地证据完成，不读取 Plugin config、infra 或外部资源。
 
 每个 Session 只处理一条 trace，`activeTraces` 设为 1，其余加载预算沿用 harness 默认值
-（单 trace 64 MiB、缓存 128 MiB）。超出预算时 HTML 渲染记录失败，完整 `spans.jsonl` 仍保留在
+（单 trace 64 MiB、缓存 128 MiB）。超出预算时分析投影记录失败，完整 `spans.jsonl` 仍保留在
 Evidence 中；不通过截断 span 生成看似完整的诊断结果。
 
 ### 累计调用统计解释慢在哪里
