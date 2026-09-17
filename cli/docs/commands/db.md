@@ -24,6 +24,9 @@ CLI 校验输入 → 选择 Service → 解析访问目标 → 借用根 Client 
 database/table 后仍然存在同名目标，也必须失败；不暴露 `--store`，不广播 SQL。
 
 `--show-databases` 表示当前账号可见的数据库，不保证拥有其中所有表的读取权限。
+发现结果保留 Service 声明的 DataSource ID、可选 `description` 与实际可见的库名，供人和 AI 区分用途。
+同一连接的多条声明即使合并查询，说明仍全部保留；说明只是声明元数据，不参与路由或连接身份，
+也不能证明数据存在或账号拥有权限。不要在 description 中填写凭据。
 表名用于选择目标，并非 SQL 模板变量，不改写用户 SQL，也不把查询限制为只访问该表。
 选定同一连接后，SQL 可按账号权限引用其它库或表。
 
@@ -84,5 +87,6 @@ envPrefix，自定义 source 的宏观检查使用 store。
 JSON、HTML、Bundle、Manifest 共用 Evidence 与根交付流程。取证记录目标来源、选择结果、执行时间、
 缺失项和截断原因；连接密码不落盘，driver 原始错误不回显 SQL 或业务值。
 SQL、绑定参数和结果保存在受限临时目录的原始证据中，可能包含敏感业务信息，应按取证数据管理。
-终端只输出状态与产物位置，不要求 AI 解析展示文本。Distribution 可通过已有 commandDefaults 设置
+`--show-databases` 在终端和报告显示数据源、说明、库名与发现状态；JSON 结果和 manifest 的目标信息
+保留相同数据源元数据，AI 无需解析展示表格。其它操作输出状态与产物位置。Distribution 可通过已有 commandDefaults 设置
 db 的 format，db 不另建发行版默认值机制。

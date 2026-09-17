@@ -1,4 +1,4 @@
-import type { ServiceDatabaseTarget } from "@compforge/doctor-plugin";
+import type { ServiceDatabaseDataSource, ServiceDatabaseTarget } from "@compforge/doctor-plugin";
 import type { DatabaseQueryLimits, DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
 import { CommandInputError } from "../../command";
 import { chooseParameter } from "../../terminal/parameters";
@@ -6,6 +6,8 @@ import type { DbRequest } from "./input";
 
 export interface DbProvider {
   id: string;
+  /** Preserve every declaration when several sources share one SQL routing target. */
+  dataSources: Pick<ServiceDatabaseDataSource, "id" | "description">[];
   target: ServiceDatabaseTarget;
   source: string;
   query(sql: string, values: readonly unknown[], limits: DatabaseQueryLimits, database?: string): Promise<DatabaseQueryResult>;

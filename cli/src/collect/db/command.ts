@@ -12,6 +12,7 @@ import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
 import { resolveDbProviders } from "./providers";
 import { databaseFailure, discoverDatabases, selectDatabaseTarget } from "./discovery";
 import { quoteIdentifier } from "./sql";
+import { databaseDiscoverySummary } from "./summary";
 
 export const dbCommand = defineCommand<DbInput, void>({
   name: "doctor db",
@@ -39,22 +40,25 @@ export const dbCommand = defineCommand<DbInput, void>({
     const targets: Record<string, unknown>[] = [];
     let selection: Record<string, unknown> | undefined;
     const results: Record<string, unknown>[] = [];
+    let discoverySummary = "";
     try {
       const resolved = await resolveDbProviders(context, request);
       service = resolved.service;
       for (const provider of resolved.providers) {
-        targets.push({ id: provider.id, backend: "mysql", host: provider.target.host, port: provider.target.port,
+        targets.push({ id: provider.id, dataSources: provider.dataSources, backend: "mysql", host: provider.target.host, port: provider.target.port,
           database: provider.target.database, source: provider.source, provenance: provider.target.source ? {
             namespace: provider.target.source.namespace, pod: provider.target.source.pod,
             container: provider.target.source.container, path: provider.target.source.path,
           } : undefined });
       }
       for (const failure of resolved.failures) {
+        targets.push({ id: failure.id, dataSources: [{ id: failure.id, description: failure.description }], error: failure.reason });
         bundle.addStep({ id: `target-${resolved.failures.indexOf(failure)}`, title: `解析 DB ${failure.id}`, risk: "observe", status: "failed", reason: failure.reason });
       }
       const discovery = await discoverDatabases(request, resolved.providers);
+      if (request.action === "databases") discoverySummary = databaseDiscoverySummary(discovery, resolved.failures);
       for (const [index, item] of discovery.entries()) {
-        const record = { target: item.provider.id, ...item.result, error: item.error };
+        const record = { target: item.provider.id, dataSources: item.provider.dataSources, ...item.result, error: item.error };
         results.push(record);
         // Structured JSON must remain valid; the query has already applied its row/byte bounds.
         const path = join(directory, `discovery-${index}.json`);
@@ -67,7 +71,7 @@ export const dbCommand = defineCommand<DbInput, void>({
       if (request.action === "query" || request.action === "create-table") {
         if (resolved.failures.length) throw new CommandInputError("部分 Service 数据库目标无法解析，不能确认唯一查询目标；未执行 SQL");
         const selected = await selectDatabaseTarget(request, discovery);
-        selection = { target: selected.provider.id, database: selected.database, table: selected.table };
+        selection = { target: selected.provider.id, dataSources: selected.provider.dataSources, database: selected.database, table: selected.table };
         const sql = request.action === "query" ? request.sql!
           : `SHOW CREATE TABLE ${quoteIdentifier(selected.database)}.${quoteIdentifier(selected.table!)}`;
         const before = Date.now();
@@ -99,12 +103,13 @@ export const dbCommand = defineCommand<DbInput, void>({
       reason = error instanceof Error ? error.message : "数据库取证失败";
       bundle.addStep({ id: "operation", title: "完成数据库操作", risk: "observe", status: "failed", reason });
     }
-    const summary = `# 数据库取证\n\nService: ${service ?? "未选择"}\n操作: ${request.action}\n状态: ${status}\n${reason ?? ""}\n\n详细结果见 raw/ JSON 文件。\n`;
+    const summary = `# 数据库取证\n\nService: ${service ?? "未选择"}\n操作: ${request.action}\n状态: ${status}\n${reason ?? ""}\n\n${discoverySummary}\n\n详细结果见 raw/ JSON 文件。\n`;
     bundle.writeSummary(summary);
     bundle.writeManifest({ doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
       params: { action: request.action, database: request.database, table: request.table, limits: request.limits },
       startedAt, finishedAt: new Date().toISOString() });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });
+    if (discoverySummary) terminalStdout.write(`${discoverySummary}\n`);
     terminalStdout.write(`[db] ${status}；证据目录：${directory}\n`);
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },

@@ -307,7 +307,8 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 空目录。JSON 保留名称数组，增加 `description` 与 `details`；概览和详情使用 SDK `describeService`
 对同一份执行声明的显式投影，不维护平行的能力清单。没有说明的 Plugin 仍可发现，展示“未提供”而不补造含义。
 
-Service 的 `description` 解释职责；Inspect 的 `description` 和 `limitations` 解释查询用途和证据盲区。
+Service 的 `description` 解释职责，Workload 的 `description` 解释运行负载的用途；Inspect 的
+`description` 和 `limitations` 解释查询用途和证据盲区。
 每个 Query 使用一个 Identity，`accepts` 是它可接受的种类，不是多个必填参数；`provides` 和 `expands`
 分别声明可能得到的 Fact 与关联 ID，不保证每次都返回，更不能反推输出 ID 也可直接查询。
 限制说明不执行预算或授权；实际边界继续由查询预算、access 和既有执行契约约束。

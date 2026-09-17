@@ -264,6 +264,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       service.name === "example-api"
         ? {
             ...service,
+            workloads: service.workloads.map((workload) => ({ ...workload, description: "Handles API requests" })),
             contributions: {
               probes: [{
                 id: "apparmor-unconfined",
@@ -388,6 +389,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       output: completeOutput,
     }, pluginWithEnvironmentProbes, executor)).toBe(0);
     const complete = readFileSync(completeOutput, "utf-8");
+    expect(complete).toContain("| example-api | main | Handles API requests |");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
     expect(complete).toContain("250m");
@@ -417,6 +419,8 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(Object.isFrozen(
       workloadProbeFacts?.find((fact) => fact.kind === "inspect.service-targets")?.value,
     )).toBe(true);
+    expect(JSON.stringify(workloadProbeFacts?.find((fact) => fact.kind === "inspect.service-targets")?.value))
+      .toContain('"description":"Handles API requests"');
 
     const defaultOutput = join(dir, "default.tar.gz");
     expect(await runInspectWithDelivery({

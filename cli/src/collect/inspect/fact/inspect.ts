@@ -260,6 +260,7 @@ export function makeServiceTargetsInspect(
             ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
           workloads[definition.name] = {
             name: definition.name,
+            description: definition.description,
             location: definition.location,
             probes: declaredService.contributions?.probes
               ?.filter((probe) => probe.kind === "workload")

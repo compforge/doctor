@@ -37,15 +37,15 @@ test("store, db and business consumers share one Service datasource client and r
       return new FakeClient({ resolve: async () => target, transports: [] }, { signal: context.signal, connectTimeoutMs: 100, queryTimeoutMs: 100 });
     },
   };
-  const capability: ServiceDatabaseDataSource = { id: "primary", kind: "db", backend: "mysql", access: {}, source };
+  const capability: ServiceDatabaseDataSource = { id: "primary", description: "Canonical records", kind: "db", backend: "mysql", access: {}, source };
   const plugin: PluginDefinition = {
     id: "test", version: "0.0.1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "logical-api", aliases: ["api"], workloads: [], capabilities: { dataSources: [capability] },
+      name: "logical-api", aliases: ["api"], workloads: [], capabilities: { dataSources: [capability, { ...capability, id: "history", description: "Historical records on the same connection" }] },
     }]),
   };
   const command = new CommandContext({}, undefined, { plugin });
   try {
-    const resolved = await resolveStoreProviderConfig({ type: "db", service: "api", interactive: false }, plugin,
+    const resolved = await resolveStoreProviderConfig({ type: "db", service: "api", store: "primary", interactive: false }, plugin,
       collect, executor, command);
     expect(resolved?.config.target).toBeUndefined();
     expect(resolved?.config.service).toBe("logical-api");
@@ -58,6 +58,10 @@ test("store, db and business consumers share one Service datasource client and r
       const providers = await resolveDbProviders(command, await resolveDbRequest({ service: "api", showDatabases: true }));
       expect(providers.service).toBe("logical-api");
       expect(providers.providers).toHaveLength(1);
+      expect(providers.providers[0]!.dataSources).toEqual([
+        { id: "primary", description: "Canonical records" },
+        { id: "history", description: "Historical records on the same connection" },
+      ]);
       expect(providers.failures).toEqual([]);
       expect(access.mock.calls[0]![2]).toBe("logical-api");
     } finally { access.mockRestore(); }

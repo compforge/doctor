@@ -26,7 +26,8 @@ export function formatServiceDescription(service: ServiceDescription): string {
       : location.kind === "resource" ? location.resource_kind + "/" + location.name : "service/" + location.name;
     lines.push("      " + workload.name + ": " + target
       + (workload.namespace ? "; namespace=" + workload.namespace : "")
-      + (workload.container ? "; container=" + workload.container : ""));
+      + (workload.container ? "; container=" + workload.container : "")
+      + (workload.description ? ` — ${workload.description}` : ""));
   }
   if (!workloads.length) lines.push("      无运行时 Workload");
   lines.push("    依赖：");
