@@ -132,7 +132,7 @@ test("command preserves bounded results, status and sanitized target in Evidence
     ? result([{ database_name: "app", table_name: "messages" }]) : result([{ id: "message:1" }], true);
   const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({ service: "chat", providers: [first], failures: [] });
   const context = new CommandContext({}, undefined, { plugin: { id: "test", version: "0.0.1", services: createServiceCatalog([
-    { name: "chat", workloads: [], capabilities: { dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }] } },
+    { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }] } },
   ]) } });
   const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
   try {

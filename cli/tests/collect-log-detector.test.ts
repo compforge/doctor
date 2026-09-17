@@ -13,9 +13,7 @@ import { collectedFact, failedFact, unavailableFact } from "../src/collect/proto
 const collectedFacts: LogInspectionFacts = {
   runtime: collectedFact("log.runtime", "log-target", { kubectlVersion: "v1.31.0" }),
   servicePods: collectedFact("log.service-pods", "log-target", {
-    byService: { api: ["api-0", "api-1"], worker: [] },
-    containersByPod: {},
-    previousContainersByPod: {},
+    byService: {}, missing: {},
   }),
 };
 
@@ -88,4 +86,17 @@ describe("Log diagnosis", () => {
       missingEvidence: ["Pod api-2 的 current 日志不可用"],
     }]);
   });
+});
+
+test("discovery gaps cannot turn a wholly unavailable capture into partial success", () => {
+  const facts: LogInspectionFacts = {
+    ...collectedFacts,
+    servicePods: collectedFact("log.service-pods", "log-target", {
+      byService: {}, missing: { api: ["another Workload is unavailable"] },
+    }),
+  };
+  const coverage = buildLogCoverage(buildLogEvidence([observation("api", [
+    { pod: "api-0", events: [], captureStatus: "unavailable" },
+  ])], facts));
+  expect(coverage.map(item => item.status)).toEqual(["insufficient", "insufficient"]);
 });

@@ -3,12 +3,12 @@ import { describeService, type ServiceDefinition } from "../src";
 
 function noAccess(): never { throw new Error("offline discovery must not execute a handler"); }
 
-const service: ServiceDefinition = {
+const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
   name: "runtime",
   description: "Session and run evidence",
   workloads: [{
-    name: "worker", lifecycle: "ephemeral", container: "app",
-    discovery: { kind: "kubernetes-pods", labels: { app: "worker" } },
+    name: "worker", container: "app",
+    platform: "kubernetes", location: { kind: "labels", labels: { app: "worker" } },
   }],
   dependencies: [{ id: "records", service: "storage", capability: "dataSources", dataSource: "main" }],
   capabilities: {
@@ -57,7 +57,7 @@ test("explicit projection excludes credentials, configuration and functions even
   const source = {
     ...service, config: { password: secret },
     workloads: service.workloads.map(workload => ({ ...workload, password: secret,
-      discovery: { ...workload.discovery, password: secret } })),
+      location: { ...workload.location, password: secret } })),
     dependencies: service.dependencies!.map(dependency => ({ ...dependency, password: secret })),
     contributions: { inspect: {
       ...service.contributions!.inspect!, password: secret,
@@ -74,7 +74,7 @@ test("explicit projection excludes credentials, configuration and functions even
 });
 
 test("old Services and empty declarations stay discoverable without invented capabilities", () => {
-  const result = describeService({ name: "legacy", workloads: [], capabilities: {} });
+  const result = describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "legacy", workloads: [], capabilities: {} });
   expect(result).toEqual({ name: "legacy", aliases: [], description: undefined, capabilities: [], contributions: [],
     details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] } });
   const withoutExplanation = { ...service.contributions!.inspect!, description: undefined, limitations: undefined };
@@ -83,7 +83,7 @@ test("old Services and empty declarations stay discoverable without invented cap
 });
 
 test("VDB Store access is projected per Store without resolving targets or exposing configuration", () => {
-  const result = describeService({ name: "storage", workloads: [], capabilities: { dataSources: [
+  const result = describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "storage", workloads: [], capabilities: { dataSources: [
     { id: "primary", kind: "vdb", backend: "opensearch", inspectTarget: noAccess,
       access: { kubernetes: [{ rule: { verb: "get", resource: "configmaps" },
         requirement: "required", purpose: "Locate primary storage" }] },
@@ -114,10 +114,10 @@ test("VDB Store access is projected per Store without resolving targets or expos
 
 test("description follows declaration changes and projects Kubernetes Service workloads", () => {
   const result = describeService({ ...service,
-    workloads: [{ name: "api", lifecycle: "persistent", discovery: { kind: "kubernetes-service", service: "api-svc" } }],
+    workloads: [{ name: "api", platform: "kubernetes", location: { kind: "service", name: "api-svc" } }],
     contributions: { inspect: { ...service.contributions!.inspect!, accepts: ["tenant_id"], provides: ["tenant-record"] } },
   });
   expect(result.details.inspect?.accepts).toEqual(["tenant_id"]);
   expect(result.details.inspect?.provides).toEqual(["tenant-record"]);
-  expect(result.details.workloads[0]?.discovery).toEqual({ kind: "kubernetes-service", service: "api-svc" });
+  expect(result.details.workloads[0]?.location).toEqual({ kind: "service", name: "api-svc" });
 });

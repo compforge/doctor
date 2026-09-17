@@ -1,3 +1,4 @@
+import { logService, podDiscoveryExecutor } from "./log-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -13,8 +14,8 @@ import { createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/l
 import { writeLogHtmlReport } from "../src/collect/log/html";
 
 const plugin: PluginDefinition = { id: "log-only", version: "1.0.0", services: createServiceCatalog([
-  { name: "api", workloads: [], capabilities: { log: { default: true } } },
-  { name: "worker", workloads: [], capabilities: { log: { default: false } } },
+  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: logService("api").workloads, capabilities: { log: { default: true } } },
+  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "worker", workloads: logService("worker").workloads, capabilities: { log: { default: false } } },
 ]) };
 const ok = { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, command: [] };
 const pods = parsePods(JSON.stringify({ items: [{
@@ -30,7 +31,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     writeFileSync(kubeconfig, "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n");
     let resolutions = 0;
     const activePlugin: PluginDefinition = variant === "trace-provider" || variant === "unresolved" ? {
-      ...plugin, services: createServiceCatalog([{ name: "api", workloads: [], capabilities: {
+      ...plugin, services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: logService("api").workloads, capabilities: {
         log: { default: true }, traceId: { access: {}, endpoint: { host: "unused", port: 80 }, resolve: async () => {
           resolutions++;
           if (variant === "trace-provider") throw new Error("No-ID collection must not resolve traces");
@@ -44,15 +45,15 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       name: "test", configPath: "", value: { readonly: true, namespace: "test", kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {},
     }, { plugin: activePlugin });
     const ensure = spyOn(context, "ensureEnvironment").mockResolvedValue(undefined);
+    let discoveries = 0;
+    const discovery = podDiscoveryExecutor(pods, () => { discoveries++; });
     const exec = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async args => {
       if (args[0] === "auth") return { ...ok, stdout: "yes\n" };
-      throw new Error(`unexpected remote call: ${args.join(" ")}`);
+      expect(args).toEqual(["get", "pods", "-l", `app=${variant === "explicit" ? "worker" : "api"}`, "-o", "json"]);
+      return discovery.run(args);
     });
     const version = spyOn(ClientNodePodLogAccess.prototype, "clientVersion").mockResolvedValue(ok);
-    const discover = spyOn(ClientNodePodLogAccess.prototype, "listServicePods").mockImplementation(async services => {
-      expect(services).toEqual([variant === "explicit" ? "worker" : "api"]);
-      return { serviceCapture: ok, podCapture: ok, byService: { [services[0]!]: ["pod-1"] }, pods };
-    });
+
     const requests: PodLogRequest[] = [];
     const logs = spyOn(ClientNodePodLogAccess.prototype, "collectPodLogs").mockImplementation(async request => {
       requests.push(request);
@@ -74,7 +75,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       if (variant === "unresolved") {
         expect(result.status).toBe(CommandStatus.Failed);
         expect(resolutions).toBe(1);
-        expect(discover).not.toHaveBeenCalled();
+        expect(discoveries).toBe(0);
         expect(logs).not.toHaveBeenCalled();
         return;
       }
@@ -86,7 +87,9 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(item.bizId).toBeUndefined();
       outputDir = item.artifacts[0]!.path;
       expect(requests.map(request => !!request.previous).sort()).toEqual([false, true]);
-      expect(discover).toHaveBeenCalledTimes(1);
+      expect(discoveries).toBe(1);
+      expect(exec.mock.calls.filter(([args]) => args[0] === "auth").map(([args]) => args.join(" ")))
+        .toEqual(["auth can-i get pods/log", "auth can-i list pods"]);
       for (const request of requests) {
         if (variant === "explicit") {
           expect(request.sinceTime).toBe(input.sinceTime);
@@ -113,7 +116,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(readFileSync(html, "utf8")).not.toContain("trace 命中");
     } finally {
       await context.disposeClients();
-      for (const mock of [ensure, exec, version, discover, logs]) mock.mockRestore();
+      for (const mock of [ensure, exec, version, logs]) mock.mockRestore();
       if (outputDir) rmSync(dirname(outputDir), { recursive: true, force: true });
       rmSync(root, { recursive: true, force: true });
     }

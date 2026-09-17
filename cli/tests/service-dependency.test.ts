@@ -15,13 +15,13 @@ test("Service Store dependency 以声明项为首选并补齐其它 VDB target",
   const plugin = {
     id: "multi-vdb",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
       capabilities: {
         dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "jaeger-collector",
       workloads: [],
       capabilities: {

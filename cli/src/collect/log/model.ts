@@ -1,3 +1,4 @@
+import type { WorkloadInstance } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
@@ -25,14 +26,19 @@ export interface LogProbeConfig extends Omit<LogCollectOptions, "traceIds"> {
   linePattern?: RegExp;
 }
 
+export interface LogWorkloadTarget {
+  instance: WorkloadInstance & { container: string };
+  /** Runtime container identity is optional; without it raw captures are not shared. */
+  current?: string;
+  previous?: string;
+  hasPrevious: boolean;
+}
+
 export interface LogInspectionFacts {
   runtime: Fact<{ kubectlVersion?: string }, "log.runtime">;
   servicePods: Fact<{
-    byService: Record<string, string[]>;
-    containersByPod: Record<string, string[]>;
-    previousContainersByPod: Record<string, string[]>;
-    /** Pod UID + runtime container ID; absent identities are never reused. */
-    instancesByPod?: Record<string, Record<string, { current?: string; previous?: string }>>;
+    byService: Record<string, LogWorkloadTarget[]>;
+    missing: Record<string, string[]>;
   }, "log.service-pods">;
 }
 

@@ -8,7 +8,7 @@ import {
   selectWorkloadDeploymentContainer,
   selectWorkloadPodContainer,
 } from "../../../infra/k8s/workload-config";
-import type { KubernetesWorkloadConfigSnapshot } from "../../../infra/k8s/workload-config";
+import type { ResolvedKubernetesWorkload } from "../../../infra/k8s/workload-config";
 import type {
   KubernetesContainerState,
   KubernetesContainerTermination,
@@ -59,7 +59,7 @@ export function inspectContainerStateFact(
 
 function dependencyTargets(
   config: InspectConfig,
-  snapshot: KubernetesWorkloadConfigSnapshot,
+  resolved: Map<string, ResolvedKubernetesWorkload>,
   catalog: ServiceCatalog,
 ): Extract<InspectFacts["dependencyTargets"], { status: "collected" }> {
   const targets: Extract<InspectFacts["dependencyTargets"], { status: "collected" }>["targets"] = [];
@@ -73,7 +73,7 @@ function dependencyTargets(
     }
     let selectedCount = 0;
     for (const definition of service?.workloads ?? []) {
-      const workload = resolveKubernetesWorkload(snapshot, definition);
+      const workload = resolved.get(JSON.stringify([serviceName, definition.name]))!;
       const pods = workload.pods.filter((pod) => pod.phase === "Running");
       if (!pods.length) {
         missing.push(`${serviceName}/${definition.name}: ${workload.unavailableReason ?? "没有 Running Pod"}`);
@@ -127,7 +127,7 @@ export function makeServiceTargetsInspect(
         config.namespace,
         config.includeDeploymentConfig,
         config.services.some((name) => catalog.find(name)?.workloads.some(
-          (workload) => workload.discovery.kind === "kubernetes-service",
+          (workload) => workload.location.kind === "service",
         )),
       );
       const deploymentReasons = config.includeDeploymentConfig ? [
@@ -209,11 +209,27 @@ export function makeServiceTargetsInspect(
         };
       }
       ctx.workloadConfig = snapshot;
+      const resolvedWorkloads = new Map<string, ResolvedKubernetesWorkload>();
+      for (const serviceName of config.services) {
+        for (const definition of catalog.find(serviceName)!.workloads) {
+          let captureIndex = 0;
+          resolvedWorkloads.set(JSON.stringify([serviceName, definition.name]), await resolveKubernetesWorkload(
+            snapshot, definition, ctx.executor, config.namespace, config.profileName,
+            (result) => ctx.bundle.addStep({
+              id: `inspect-workload-${serviceName}-${definition.name}-${++captureIndex}`,
+              title: `${serviceName}/${definition.name} Workload 定位`,
+              risk: "observe", status: result.ok ? "ok" : "failed",
+              reason: commandReason(result.ok, result.stderr),
+              command: result.command, durationMs: result.durationMs,
+            }),
+          ));
+        }
+      }
       const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !config.includeDependencies
         ? unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON)
         : dependencyTargetsFailure
           ? failedFact("inspect.dependency-targets", "service-targets", dependencyTargetsFailure)
-          : dependencyTargets(config, snapshot, catalog);
+          : dependencyTargets(config, resolvedWorkloads, catalog);
 
       const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
@@ -221,7 +237,7 @@ export function makeServiceTargetsInspect(
         const configurationSupported = !!catalog.findWith(serviceName, "config");
         const workloads: InspectServiceTargetFact["workloads"] = {};
         for (const definition of declaredService.workloads) {
-          const resolved = resolveKubernetesWorkload(snapshot, definition);
+          const resolved = resolvedWorkloads.get(JSON.stringify([serviceName, definition.name]))!;
           const deployments = [] as typeof workloads[string]["deployments"];
           const unavailableDeployments = [] as typeof workloads[string]["unavailableDeployments"];
           if (configurationSupported) {
@@ -243,8 +259,7 @@ export function makeServiceTargetsInspect(
             ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
           workloads[definition.name] = {
             name: definition.name,
-            lifecycle: definition.lifecycle,
-            discovery: definition.discovery,
+            location: definition.location,
             probes: declaredService.contributions?.probes
               ?.filter((probe) => probe.kind === "workload")
               .filter((probe) => probe.workload === definition.name)
@@ -257,6 +272,7 @@ export function makeServiceTargetsInspect(
                 ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
                 : collectedFact("inspect.workload-pods", "service-targets", {
                     pods: resolved.pods.map((pod) => ({
+                      instance: resolved.instances.find(instance => instance.pod === pod.name)!,
                       pod: pod.name,
                       serviceAccountName: pod.serviceAccountName,
                       phase: pod.phase,

@@ -59,7 +59,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
     const managed = await openPluginContext(executor, kube.kubernetes, {
       env: kube.profileName, config: context.profile.pluginConfig,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      service: { name: provider.name }, capability: provider.capabilities.overview,
+      service: provider, capability: provider.capabilities.overview,
       command: "doctor overview", authorization: context.kubernetes(executor).access,
     });
     try { return await work(managed); } finally { await managed.dispose(); }

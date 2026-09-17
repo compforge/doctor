@@ -1,5 +1,5 @@
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
-import { dataSourceKey } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
 import { CommandInputError, type CommandContext } from "../../command";
 import { chooseParameter, ParameterCancelled } from "../../terminal/parameters";
 import { borrowDatabase, resolveDatabaseConfig, resolveDatabaseTarget } from "../../datasource/database";
@@ -34,9 +34,9 @@ export async function resolveDbProviders(context: CommandContext, request: DbReq
         throw new CommandInputError("Service 返回了无效的数据库目标");
       }
       // Multiple declarations of the same account/instance are one SQL routing target.
-      const identity = dataSourceKey("db-routing", {
+      const identity = clientKey("db-routing", {
         host: target.host, port: target.port, user: target.user, password: target.password,
-        source: capability.source?.key, access: capability.access, kube: resolved.config.collect.kubernetes,
+        source: capability.source?.clientKey, access: capability.access, kube: resolved.config.collect.kubernetes,
       });
       if (identities.has(identity)) continue;
       const client = await borrowDatabase(context, resolved.config, resolved.executor, target);

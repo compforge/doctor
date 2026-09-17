@@ -82,9 +82,7 @@ export async function resolvePluginTraceIds(
       managed = await openPluginContext(executor, kube, {
         env: opts.profileName,
         config: opts.commandContext?.profile.pluginConfig,
-        service: {
-          name: provider.name,
-        },
+        service: provider,
         endpoint: provider.capabilities.traceId.endpoint,
         command: opts.command,
         capability: provider.capabilities.traceId,

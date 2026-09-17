@@ -2,6 +2,27 @@
 
 ## 理念 / 概念
 
+### Service 与 Workload 的公共模型
+
+Service、Workload 和 WorkloadInstance 的基础语义来自 `@compforge/harness-common`。
+Doctor 的 `ServiceDefinition extends Omit<Service, "environment">` 只增加诊断声明：
+Catalog 保留 Component/Repository 归属、Workload 和 capability，不绑定某个现场环境。
+调用时 Core 用 `bindService` 注入当前 profile 对应的 Environment，形成
+`context.target.service: Service`；实际连接与 namespace 仍由本次有效参数及受限 infra 管理。
+环境名是逻辑 profile 身份，不是集群唯一标识，连接缓存仍按实际 Kubernetes 配置隔离。
+
+Workload 直接使用 common 的 `platform / location / namespace / container`；
+location 支持 Kubernetes Service、labels 或明确的 Deployment/StatefulSet/DaemonSet/Pod。
+Inspect 复用 toolbox 定位实例，不根据逻辑 Service 名猜资源名。
+Inspect 的 Fact、Workload Probe 输入和 Evidence 都保留 common WorkloadInstance 的
+environment、workload、namespace、pod、uid 和可选 container；缺少 UID 不伪造实例身份。
+Inspect 仍按一次一个 namespace 执行；声明指定其它 namespace 时记录 unavailable 并提示
+使用 `--namespace` 单独采集，不跨目标复用权限预检或配置快照。
+
+Plugin API 10 不兼容旧 Service/Workload 声明：Service 必须声明 component，
+旧 discovery 改为公共 location，移除 lifecycle；DataSource 的 key 改为 clientKey。
+外部 Plugin 需同步迁移、提升自己的版本并重新构建归档；不提供旧模型适配层。
+
 ### Service 身份与别名
 
 Service 的 `name` 是稳定身份，`aliases` 是可选的输入同义名称。例如
@@ -208,7 +229,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 9,
+  "pluginApiVersion": 10,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -380,9 +401,9 @@ common 与 toolbox 都不依赖 Plugin 协议或命令上下文；Plugin 通过�
 Kubernetes Transport，不能绕过 capability access 检查。协议不注入 Core 私有客户端实现。Workload discovery 规则、
 API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查询、port-forward 和资源回收由 Core 执行。
 
-Service 通过 `context.clients.get(dataSource)` 获取已初始化的 Client。DataSource 的 key 表达 Plugin 内的
+Service 通过 `context.clients.get(dataSource)` 获取已初始化的 Client。DataSource 的 `clientKey` 表达 Plugin 内的
 目标及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、配置、数据库身份与声明的
-access 隔离。同一 key 必须对应同一种 Client。配置身份只保留内存摘要，不输出凭据；每次 capability
+access 隔离。同一 `clientKey` 必须对应同一种 Client。配置身份只保留内存摘要，不输出凭据；每次 capability
 调用仍先通过自己的 access 预检，客户端复用不扩大权限。
 
 DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dispose 的 Client。工厂只构造对象，

@@ -78,6 +78,7 @@ function detectorEvidence(): InspectEvidence {
     }, {
       id: "plugin-workload-bedbox-main-health-bedbox-0",
       kind: "plugin-workload",
+      instance: { platform: "kubernetes", environment: "default", workload: "main", namespace: "demo", pod: "bedbox-0", uid: "bedbox-uid" },
       schemaVersion: 1,
       producer: { origin: "core", id: "plugin-workload-adapter" },
       observationKind: "hostel-health",
@@ -93,11 +94,11 @@ function detectorEvidence(): InspectEvidence {
 }
 
 test("Service Evidence detector 可关联跨 Service Observation", () => {
-  const catalog = createServiceCatalog([{
+  const catalog = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "sandbox-server",
     workloads: [],
     capabilities: {},
-  }, {
+  }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "bedbox",
     workloads: [],
     contributions: {
@@ -154,7 +155,7 @@ test("Service Evidence detector 可关联跨 Service Observation", () => {
 });
 
 test("Service Evidence detector 不能引用本次 Evidence 之外的对象", () => {
-  const catalog = createServiceCatalog([{
+  const catalog = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "bedbox",
     workloads: [],
     contributions: {
@@ -305,7 +306,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       data: { REQUEST_TIMEOUT: "30" },
     }] }),
     pods: JSON.stringify({ items: [{
-      metadata: { namespace: "demo", name: "example-api-0", labels: { app: "example-api" } },
+      metadata: { namespace: "demo", uid: "api-uid", name: "example-api-0", labels: { app: "example-api" } },
       spec: { serviceAccountName: "example-api", containers: [{
         name: "example-api",
         image: "example.test/example-api:v1.2.3",
@@ -356,7 +357,12 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
       }
       const resource = args[1];
       if (resource) queriedResources.push(resource);
-      if (resource && resource in resources) return result(resources[resource as keyof typeof resources]);
+      if (resource && resource in resources) {
+        const raw = resources[resource as keyof typeof resources];
+        return result(args[2] && !args[2].startsWith("-")
+          ? JSON.stringify(JSON.parse(raw).items.find((item: { metadata: { name: string } }) => item.metadata.name === args[2]))
+          : raw);
+      }
       throw new Error(`unexpected kubectl: ${args.join(" ")}`);
     },
     exec: async (_target, command) => {
@@ -466,7 +472,7 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
 
     const pluginWithoutToolchain = {
       ...examplePlugin,
-      services: createServiceCatalog([{
+      services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "example-api",
         workloads: examplePlugin.services.find("example-api")!.workloads,
         capabilities: {

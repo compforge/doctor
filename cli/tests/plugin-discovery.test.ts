@@ -19,7 +19,7 @@ afterEach(() => {
 const injected: PluginDefinition = {
   id: "discovery-test", version: "1.0.0",
   validateConfig: () => { throw new Error("Discovery must not validate runtime configuration"); },
-  services: createServiceCatalog([{
+  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api", workloads: [],
     capabilities: {
       log: { default: true },
@@ -71,7 +71,7 @@ describe("Plugin discovery", () => {
     await installPlugin(archive, installRoot);
     const result = await listPlugins(undefined, installRoot);
     expect(result).toMatchObject([{
-      id: "example", version: "0.0.7", source: "installed",
+      id: "example", version: "0.0.8", source: "installed",
       services: [
         { name: "example-api", capabilities: ["config", "log"], contributions: [] },
         { name: "example-worker", capabilities: ["log", "dataSources"], contributions: [] },

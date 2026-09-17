@@ -49,7 +49,7 @@ export function makePluginWorkloadProbe(
       const managed = await openPluginContext(ctx.executor, config.kube, {
         env: config.profileName,
         config: ctx.command.profile.pluginConfig,
-        service: { name: service.name },
+        service: service,
         capability: declaration,
         command: "doctor inspect",
         authorization: ctx.authorization,
@@ -61,12 +61,7 @@ export function makePluginWorkloadProbe(
           const stepId = `${id}-${pod.pod}`;
           try {
             const observed = await declaration.probe(managed, {
-              instance: {
-                kind: "kubernetes-pod",
-                namespace: config.namespace,
-                pod: pod.pod,
-                container: definition.container,
-              },
+              instance: pod.instance,
               facts: probeFacts,
             });
             const value = validateObservationValue(
@@ -77,6 +72,7 @@ export function makePluginWorkloadProbe(
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
+              instance: pod.instance,
               schemaVersion: 1,
               producer: { origin: "core", id: "plugin-workload-adapter" },
               observationKind: declaration.produces.kind,

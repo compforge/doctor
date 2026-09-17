@@ -1,3 +1,4 @@
+import { logTarget } from "./log-fixture";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -62,27 +63,9 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
   const facts: LogInspectionFacts = {
     runtime: collectedFact("log.runtime", "log-target", {}),
     servicePods: collectedFact("log.service-pods", "log-target", {
-      byService: {
-        "service-a": ["pod-a"],
-        "service-b": ["pod-b"],
-        "service-c": ["pod-c"],
-        "service-d": ["pod-d"],
-        "service-e": ["pod-e"],
-      },
-      containersByPod: {
-        "pod-a": ["app"],
-        "pod-b": ["app"],
-        "pod-c": ["app"],
-        "pod-d": ["app"],
-        "pod-e": ["app"],
-      },
-      previousContainersByPod: {
-        "pod-a": ["app"],
-        "pod-b": ["app"],
-        "pod-c": ["app"],
-        "pod-d": ["app"],
-        "pod-e": ["app"],
-      },
+      byService: Object.fromEntries(["a", "b", "c", "d", "e"].map(letter =>
+        [`service-${letter}`, [logTarget(`pod-${letter}`, true, "default")]])),
+      missing: {},
     }),
   };
 
@@ -105,16 +88,16 @@ test("Log Probe 跨 Service 有界并发抓取 Pod，并按计划顺序记录 Ev
       "service-e",
     ]);
     expect(bundle.getSteps().map((step) => step.id)).toEqual([
-      "logs-pod-a-app",
-      "logs-pod-a-app-previous",
-      "logs-pod-b-app",
-      "logs-pod-b-app-previous",
-      "logs-pod-c-app",
-      "logs-pod-c-app-previous",
-      "logs-pod-d-app",
-      "logs-pod-d-app-previous",
-      "logs-pod-e-app",
-      "logs-pod-e-app-previous",
+      "logs-service-a-pod-a-app",
+      "logs-service-a-pod-a-app-previous",
+      "logs-service-b-pod-b-app",
+      "logs-service-b-pod-b-app-previous",
+      "logs-service-c-pod-c-app",
+      "logs-service-c-pod-c-app-previous",
+      "logs-service-d-pod-d-app",
+      "logs-service-d-pod-d-app-previous",
+      "logs-service-e-pod-e-app",
+      "logs-service-e-pod-e-app-previous",
     ]);
   } finally {
     await context.command.disposeClients();

@@ -2,7 +2,6 @@ import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-tim
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
-  listServiceChoices,
   rankRecentServiceChoices,
   recordRecentServiceTargets,
   type ServiceChoice,
@@ -125,11 +124,10 @@ export async function resolveLogServiceSelection(
     .map((service) => service.name);
   const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
   if (!interactive) return defaults;
-  const listed = (await listServiceChoices(input.executor, input.namespace))
-    .filter((choice) => input.catalog.findWith(choice.name, "log"));
+  const listed = input.catalog.servicesWith("log").map(service => ({ name: service.name }));
   const choices = rankRecentServiceChoices(listed, input);
   if (!choices.length) {
-    throw new Error(`namespace '${input.namespace}' 中没有具备日志采集能力的 Service`);
+    throw new Error(`namespace '${input.namespace}' 的 Plugin Catalog 中没有具备日志采集能力的 Service`);
   }
   const selected = await (input.prompt ?? promptNamedChoices)({
     choices,

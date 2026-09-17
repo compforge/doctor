@@ -24,7 +24,7 @@ const executor: Executor = {
 };
 function managed() {
   return createPluginContext(executor, { namespace: "test" }, {
-    env: "test", service: { name: "api" }, capability: { access: {} },
+    env: "test", service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, capability: { access: {} },
   });
 }
 
@@ -214,7 +214,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   const parent = defineCommand<CommandInput, void>({ name: "overview",
     render: async renderer => composeReports("Overview", await Promise.all(children.map(result => renderer.render(child, result)))),
     run: async (ctx) => {
-    await ctx.clients.get({ key: "shared", createClient: () => ({
+    await ctx.clients.get({ clientKey: "shared", createClient: () => ({
       initialize: async () => {},
       dispose: async () => {
         expect(existsSync(join(root, "first", "evidence.html"))).toBe(true);
@@ -257,7 +257,7 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
       pages: result.artifacts.map(artifact => renderer.page(artifact, { title: "Overview", status: result.status })),
     }] }),
     run: async ctx => {
-    await ctx.clients.get({ key: "broken-close", createClient: () => ({
+    await ctx.clients.get({ clientKey: "broken-close", createClient: () => ({
       initialize: async () => {}, dispose: async () => { throw new Error("close failed"); },
     }) });
     const artifact = join(root, "evidence");

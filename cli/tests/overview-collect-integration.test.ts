@@ -22,7 +22,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   const calls: Record<string, number> = {};
   const plugin: PluginDefinition = {
     id: "test", version: "1.0.0",
-    services: createServiceCatalog(["chat-server", "asclaw-server", "canvas-server"].map((name) => ({
+    services: createServiceCatalog(["chat-server", "asclaw-server", "canvas-server"].map((name) => ({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name, workloads: [], capabilities: { log: { default: name === "chat-server" } },
     }))),
   };

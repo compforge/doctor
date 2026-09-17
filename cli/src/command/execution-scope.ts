@@ -1,9 +1,9 @@
-import type { ClientProvider } from "@compforge/harness-common";
+import type { ClientManager } from "@compforge/harness-common";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 interface ExecutionScope {
   signal: AbortSignal;
-  clients?: ClientProvider;
+  clients?: Pick<ClientManager, "get">;
   disposers: Set<() => void | Promise<void>>;
 }
 
@@ -14,7 +14,7 @@ export function currentCommandSignal(): AbortSignal | undefined {
   return execution.getStore()?.signal;
 }
 
-export function currentCommandClients(): ClientProvider | undefined {
+export function currentCommandClients(): Pick<ClientManager, "get"> | undefined {
   return execution.getStore()?.clients;
 }
 
@@ -24,7 +24,7 @@ export function onCommandDispose(dispose: () => void | Promise<void>): () => voi
   return () => { scope?.disposers.delete(dispose); };
 }
 
-export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: ClientProvider): Promise<T> {
+export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get">): Promise<T> {
   const scope: ExecutionScope = { signal, clients, disposers: new Set() };
   return execution.run(scope, async () => {
     let failed = false;

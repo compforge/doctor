@@ -289,7 +289,7 @@ export async function resolveStoreProviderConfig(
     }, {
       env: collect.profileName,
       config: commandContext.profile.pluginConfig,
-      service: { name: service },
+      service: plugin.services.find(service)!,
       command: "doctor store",
       capability: { access: capability.access ?? {} },
       authorization: access,

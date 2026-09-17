@@ -1,7 +1,7 @@
 import type { CapabilityAccess } from "./kubernetes";
 import type { ServiceDefinition, ServiceInspect } from "./service";
 import type { ServiceDataSourceKind } from "./datasource";
-import type { ServiceWorkloadDefinition } from "./workload";
+import type { Workload } from "./workload";
 
 /** A serializable declaration view, never a report of observed availability. */
 export interface ServiceDescription {
@@ -11,7 +11,7 @@ export interface ServiceDescription {
   capabilities: string[];
   contributions: string[];
   details: {
-    workloads: ServiceWorkloadDefinition[];
+    workloads: Workload[];
     dependencies: { id: string; service: string; capability: "dataSources"; dataSource: string }[];
     dataSources: { id: string; kind: ServiceDataSourceKind; backend: string; description?: string }[];
     inspect?: Pick<ServiceInspect, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
@@ -63,11 +63,13 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     capabilities: Object.entries(service.capabilities).filter(([, value]) => value !== undefined).map(([name]) => name),
     contributions: Object.entries(service.contributions ?? {}).filter(([, value]) => value !== undefined).map(([name]) => name),
     details: {
-      workloads: service.workloads.map(({ name, lifecycle, discovery, container }) => ({
-        name, lifecycle, container,
-        discovery: discovery.kind === "kubernetes-service"
-          ? { kind: discovery.kind, service: discovery.service }
-          : { kind: discovery.kind, labels: { ...discovery.labels } },
+      workloads: service.workloads.map(({ name, platform, namespace, location, container }) => ({
+        name, platform, namespace, container,
+        location: location.kind === "labels"
+          ? { kind: location.kind, labels: { ...location.labels } }
+          : location.kind === "resource"
+            ? { kind: location.kind, resource_kind: location.resource_kind, name: location.name }
+            : { kind: location.kind, name: location.name },
       })),
       dependencies: (service.dependencies ?? []).map(({ id, service, capability, dataSource }) => ({ id, service, capability, dataSource })),
       dataSources: (service.capabilities.dataSources ?? []).map(({ id, kind, backend, description }) => ({ id, kind, backend, description })),

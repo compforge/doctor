@@ -136,12 +136,7 @@ export function projectInspectServiceEvidence(
           kind: observation.observationKind,
           schemaVersion: observation.observationSchemaVersion,
           workload: observation.workload,
-          instance: {
-            kind: "kubernetes-pod",
-            namespace: observation.namespace,
-            pod: observation.pod,
-            container: observation.container,
-          },
+          instance: observation.instance,
           value: observation.value,
         })];
       }

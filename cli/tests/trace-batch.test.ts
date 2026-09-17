@@ -20,7 +20,7 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
     ] } });
     return new Response("unexpected request", { status: 500 });
   } });
-  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{
+  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api", workloads: [], capabilities: { traceId: { endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) =>
       bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" } } },
   }]) };

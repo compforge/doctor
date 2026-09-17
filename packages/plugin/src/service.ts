@@ -22,7 +22,7 @@ import type {
   ObservationValue,
 } from "./observation";
 import type { ProbeCapability, ProbeRunner } from "./probe";
-import type { ServiceWorkloadDefinition, WorkloadInstance } from "./workload";
+import type { Environment, Service, WorkloadInstance } from "@compforge/harness-common";
 
 export interface ServiceEndpoint {
   /** Explicit network host; a logical Service name is never treated as transport identity. */
@@ -498,14 +498,11 @@ export interface ServiceRelationship {
 }
 
 /** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
-export interface ServiceDefinition {
-  name: string;
+export interface ServiceDefinition extends Omit<Service, "environment"> {
   /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */
   aliases?: readonly string[];
   /** Logical service responsibility; must not contain credentials or runtime configuration. */
   description?: string;
-  /** Explicit deployment topology. An empty list means this Service has no runtime workload. */
-  workloads: readonly ServiceWorkloadDefinition[];
   relationships?: readonly ServiceRelationship[];
   toolchain?: Toolchain;
   /**
@@ -516,4 +513,15 @@ export interface ServiceDefinition {
   /** Inspect, Probe and Detector contributions selected and driven by Core Collect commands. */
   contributions?: ServiceContributions;
   capabilities: ServiceCapabilities;
+}
+
+/**
+ * Bind an offline declaration to the environment selected for this invocation.
+ * @rule Catalog discovery performs no I/O and never pins a profile or access credential.
+ * @why Runtime Services use common's identity; only diagnostic extensions belong to Doctor.
+ */
+export function bindService<T extends ServiceDefinition, E extends Environment>(
+  definition: T, environment: E,
+): T & Service<E> {
+  return { ...definition, environment };
 }

@@ -123,22 +123,6 @@ async function prepareLogBatch(
   terminalStdout.write(`[collect] namespace: ${resolvedNamespace.namespace}（${resolvedNamespace.source}）\n`);
 
   const executor = createKubernetesExecutor(collect);
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
-    command: "doctor log",
-    needs: [{
-      requirement: "required",
-      rule: { verb: "list", resource: "services" },
-      purpose: "解析待采集日志的 Service",
-    }, {
-      requirement: "required",
-      rule: { verb: "list", resource: "pods" },
-      purpose: "定位每个 Service 的 Running Pod",
-    }, {
-      requirement: "required",
-      rule: { verb: "get", resource: "pods/log" },
-      purpose: "读取 current/previous Container 日志",
-    }],
-  });
   let trace: ResolvedPluginTraceId[] = [];
   // No-ID collection must not resolve business IDs or prepare their database/store dependencies.
   if (opts.bizIds.length) {
@@ -209,6 +193,31 @@ async function prepareLogBatch(
     return 2;
   }
   terminalStdout.write(`[collect] services: ${services.join(", ")}\n`);
+
+  const selected = services.flatMap(name => plugin.services.findWith(name, "log")!.workloads)
+    .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
+  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+    command: "doctor log",
+    needs: [{
+      requirement: "required", rule: { verb: "get", resource: "pods/log" },
+      purpose: "读取 current/previous Container 日志",
+    }, ...selected.flatMap(workload => {
+      const location = workload.location;
+      const needs: import("@compforge/doctor-plugin").KubernetesAccessNeed[] = [];
+      if (location.kind !== "resource" || location.resource_kind !== "Pod") needs.push({
+        requirement: "preferred", rule: { verb: "list", resource: "pods" },
+        purpose: "定位 Workload 的 Running Pod", fallback: "记录对应 Workload 的证据缺口",
+      });
+      if (location.kind !== "labels") needs.push({
+        requirement: "preferred",
+        rule: { verb: "get", resourceName: location.name, resource: location.kind === "service" ? "services" : {
+          Deployment: "deployments.apps", StatefulSet: "statefulsets.apps", DaemonSet: "daemonsets.apps", Pod: "pods",
+        }[location.resource_kind] },
+        purpose: `解析 Workload '${workload.name}' 的资源位置`, fallback: "其它 Workload 继续采集",
+      });
+      return needs;
+    })],
+  });
 
   const access = new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, resolvedNamespace.namespace), {
     namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, signal: commandContext.signal,
@@ -301,7 +310,7 @@ export async function collectLog(
   try {
     const execution = await runCollectBatch({
       ctx: { ...contexts[0]!, bundle },
-      inspects: [makeLogInspect(first.services)],
+      inspects: [makeLogInspect(first.services, executor)],
       items: contexts.map(ctx => ({ ctx, config: ctx.config })),
       concurrency, signal: commandContext.signal,
       planProbes: (_facts, config) => {

@@ -1,8 +1,8 @@
 import type {
   JsonObject,
   Toolchain,
-  WorkloadDiscovery,
-  WorkloadLifecycle,
+  Workload,
+  WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
@@ -83,6 +83,7 @@ export interface InspectPodConditionFact {
 }
 
 export interface InspectPodRuntimeFact {
+  instance: WorkloadInstance;
   pod: string;
   serviceAccountName: string;
   phase: string;
@@ -94,8 +95,7 @@ export interface InspectPodRuntimeFact {
 
 export interface InspectWorkloadTargetFact {
   name: string;
-  lifecycle: WorkloadLifecycle;
-  discovery: WorkloadDiscovery;
+  location: Workload["location"];
   probes: string[];
   deployments: InspectDeploymentTarget[];
   unavailableDeployments: Array<{ deployment: string; reason: string }>;
@@ -168,6 +168,7 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
 
 export interface PluginWorkloadObservation extends ObservationMeta {
   kind: "plugin-workload";
+  instance: WorkloadInstance;
   observationKind: string;
   observationSchemaVersion: number;
   service: string;

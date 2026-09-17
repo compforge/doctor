@@ -1,5 +1,5 @@
 import { mysqlDataSource, type ServiceDatabaseDataSource, type ServiceDatabaseTarget } from "@compforge/doctor-plugin";
-import { dataSourceKey } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parseMysqlEnvTarget, type MysqlClient } from "../infra/database/mysql";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
@@ -96,7 +96,7 @@ export async function borrowDatabase(
   command: CommandContext, config: DatabaseSourceConfig, executor: Executor, target?: ServiceDatabaseTarget,
 ): Promise<MysqlClient<ServiceDatabaseTarget>> {
   const source = config.capability.source ?? (target
-    ? mysqlDataSource(dataSourceKey("mysql", target), async () => target)
+    ? mysqlDataSource(clientKey("mysql", target), async () => target)
     : undefined);
   if (!source) throw new Error("DB DataSource 未提供访问目标");
   const context = await openPluginContext(executor, {
@@ -107,7 +107,7 @@ export async function borrowDatabase(
     clients: command.clients,
     env: config.collect.profileName,
     config: command.profile.pluginConfig,
-    service: { name: config.service },
+    service: command.plugin.services.find(config.service)!,
     command: "doctor · database",
     capability: { access: config.capability.source ? config.capability.access ?? {} : {
       kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/portforward" }, purpose: "访问 Service 声明的数据库" }],

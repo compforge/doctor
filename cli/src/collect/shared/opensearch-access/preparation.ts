@@ -1,5 +1,5 @@
 import type { Client } from "@compforge/harness-common";
-import { dataSourceKey } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../../command/execution-scope";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import { openOpenSearch } from "@compforge/harness-toolbox/opensearch";
@@ -170,7 +170,7 @@ export async function prepareOpenSearchAccess(
   let local: OpenSearchAccessClient | undefined;
   try {
     const client = clients
-      ? await clients.get({ key: dataSourceKey("opensearch-access", opts), createClient: signal => new OpenSearchAccessClient(opts, log, signal) })
+      ? await clients.get({ clientKey: clientKey("opensearch-access", opts), createClient: (_clients, signal) => new OpenSearchAccessClient(opts, log, signal) })
       : (local = new OpenSearchAccessClient(opts, log, undefined, injectedSearch));
     if (local) await local.initialize();
     return { ...client.preparation, close: local ? () => client.dispose() : async () => {} };

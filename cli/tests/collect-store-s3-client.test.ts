@@ -1,5 +1,5 @@
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
-import { dataSourceKey } from "@compforge/harness-toolbox/datasource";
+import { clientKey } from "@compforge/harness-toolbox/datasource";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { S3ObjectPage, S3Target } from "@compforge/harness-toolbox/s3";
 import { afterEach, expect, spyOn, test } from "bun:test";
@@ -101,7 +101,7 @@ test("Kubernetes 转发保留 S3 原始 Host 与签名，复用根 Kubernetes Cl
   const ctx = context({ ...fixture.target, endpoint: "http://minio.test.svc.cluster.local:9000" });
   const kube = { namespace: "test", kubeconfig: undefined, context: undefined };
   const kubernetes = await ctx.command.clients.get({
-    key: dataSourceKey("kubernetes", kube), createClient: signal => new KubernetesClient(kube, signal),
+    clientKey: clientKey("kubernetes", kube), createClient: (_clients, signal) => new KubernetesClient(kube, signal),
   });
   const forward = spyOn(kubernetes, "forward").mockResolvedValue({
     host: "127.0.0.1", port: Number(new URL(fixture.target.endpoint).port),

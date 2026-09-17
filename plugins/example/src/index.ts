@@ -8,6 +8,7 @@ import pluginPackage from "../package.json" with { type: "json" };
 const services = createServiceCatalog([
   {
     name: "example-api",
+    component: { name: "example-api", repository: { forge: { name: "github" }, path: "compforge/doctor" } },
     workloads: [kubernetesServiceWorkload("example-api")],
     toolchain: {
       language: "typescript",
@@ -22,6 +23,7 @@ const services = createServiceCatalog([
   },
   {
     name: "example-worker",
+    component: { name: "example-worker", repository: { forge: { name: "github" }, path: "compforge/doctor" } },
     workloads: [kubernetesServiceWorkload("example-worker")],
     toolchain: {
       language: "python",

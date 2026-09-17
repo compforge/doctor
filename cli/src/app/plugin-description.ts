@@ -21,10 +21,12 @@ export function formatServiceDescription(service: ServiceDescription): string {
     `    DataSources：${dataSources.map(source => `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
     "    Workloads：");
   for (const workload of workloads) {
-    const target = workload.discovery.kind === "kubernetes-service"
-      ? `service/${workload.discovery.service}`
-      : `pods ${JSON.stringify(workload.discovery.labels)}`;
-    lines.push(`      ${workload.name} (${workload.lifecycle}): ${target}${workload.container ? `; container=${workload.container}` : ""}`);
+    const location = workload.location;
+    const target = location.kind === "labels" ? "pods " + JSON.stringify(location.labels)
+      : location.kind === "resource" ? location.resource_kind + "/" + location.name : "service/" + location.name;
+    lines.push("      " + workload.name + ": " + target
+      + (workload.namespace ? "; namespace=" + workload.namespace : "")
+      + (workload.container ? "; container=" + workload.container : ""));
   }
   if (!workloads.length) lines.push("      无运行时 Workload");
   lines.push("    依赖：");

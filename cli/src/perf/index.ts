@@ -315,9 +315,7 @@ export async function runPerf(
       }, {
         env: kube.profileName,
         config: commandContext.profile.pluginConfig,
-        service: {
-          name: directoryService.name,
-        },
+        service: directoryService,
         endpoint: directoryService.capabilities.tenantDirectory.endpoint,
         capability: directoryService.capabilities.tenantDirectory,
         command: "doctor perf identity",
@@ -369,7 +367,7 @@ export async function runPerf(
   }, {
     env: kube.profileName,
     config: commandContext.profile.pluginConfig,
-    service: { name: provider.name },
+    service: provider,
     endpoint: provider.capabilities.case.endpoint,
     capability: provider.capabilities.case,
     command: "doctor perf",

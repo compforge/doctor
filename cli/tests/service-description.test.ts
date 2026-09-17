@@ -4,7 +4,7 @@ import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { formatServiceDescription } from "../src/app/plugin-description";
 
-const service: ServiceDefinition = {
+const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
   name: "api", description: "Business API", workloads: [], capabilities: {},
   contributions: { inspect: {
     description: "Read a request record", limitations: ["Retained records only"],
@@ -24,7 +24,7 @@ function validate(candidate: unknown) {
 
 test("Plugin loading validates optional description fields without executing them", () => {
   expect(validate(service).services.find("api")?.description).toBe("Business API");
-  expect(validate({ name: "legacy", workloads: [], capabilities: {} }).services.find("legacy")).toBeDefined();
+  expect(validate({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "legacy", workloads: [], capabilities: {} }).services.find("legacy")).toBeDefined();
   expect(() => validate({ ...service, description: 42 })).toThrow("api.description");
   expect(() => validate({ ...service, description: " " })).toThrow("api.description");
   for (const [field, value] of [["description", ""], ["description", {}], ["limitations", "text"], ["limitations", [42]], ["limitations", [""]]] as const) {
@@ -51,7 +51,7 @@ test("text uses the same projection and distinguishes possible output from accep
 });
 
 test("text distinguishes absent declarations and absent explanatory prose", () => {
-  const legacy = formatServiceDescription(describeService({ name: "legacy", workloads: [], capabilities: {} }));
+  const legacy = formatServiceDescription(describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "legacy", workloads: [], capabilities: {} }));
   expect(legacy).toContain("说明：未提供");
   expect(legacy).toContain("未声明 Inspect contribution");
   expect(legacy).toContain("Capabilities：无");
@@ -63,7 +63,7 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
 });
 
 test("text reports VDB access under its Store identity", () => {
-  const text = formatServiceDescription(describeService({ name: "search", workloads: [], capabilities: {
+  const text = formatServiceDescription(describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "search", workloads: [], capabilities: {
     dataSources: [{ id: "index", kind: "vdb", backend: "opensearch", access: { kubernetes: [{
       rule: { verb: "get", resource: "configmaps", resourceName: "search-config" },
       requirement: "required", purpose: "Locate search storage",
