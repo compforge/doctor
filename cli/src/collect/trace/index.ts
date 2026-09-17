@@ -1,12 +1,12 @@
-import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
+import { CommandInputError, CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
-// Trace run owns ID resolution, shared access and downloading spans.jsonl.
-// Local analysis and page generation belong to render; root Delivery owns the final files.
+// Trace run owns ID resolution, acquisition and persisted deterministic analysis.
+// Render consumes that evidence; root Delivery owns the final files and their lifetime.
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import type { TraceContributions } from "@compforge/trace-harness";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
@@ -42,6 +42,7 @@ import {
 import { buildIndexExpr } from "./opensearch";
 import { probeTrace } from "./probe";
 import { buildTraceSummary } from "./render";
+import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
 
 export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
@@ -54,6 +55,9 @@ export function traceStoreCandidates(plugin: PluginDefinition): ServiceDataSourc
 export interface CollectTraceCliOpts {
   /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
   bizIds: readonly string[];
+  from?: string;
+  span?: string;
+  node?: string;
   namespace?: string;
   service?: string;
   endpoint?: string;
@@ -180,9 +184,10 @@ export async function runCollectTrace(
     ...(opts.bizIds ?? []),
   ].map((item) => item.trim()).filter(Boolean))];
   const failure = (code: 2 | 130, reason: string): CommandResult<TraceOutput> => {
-    const result = commandOutcome(code);
-    return { ...result, output: { items: bizIds.map(bizId => ({
-      bizId, traceIds: [], status: result.status, artifacts: [], reason,
+    const status = code === 130 ? CommandStatus.Cancelled : CommandStatus.Failed;
+    return { status, reason, artifacts: [], error: code === 2 ? new CommandInputError(reason) : undefined,
+      output: { items: bizIds.map(bizId => ({
+      bizId, traceIds: [], status, artifacts: [], reason,
     })) } };
   };
   if (!bizIds.length) {
@@ -260,6 +265,10 @@ export async function runCollectTrace(
     );
   }
 
+  if (opts.span && new Set(traces.map(trace => trace.traceId)).size > 1) {
+    return failure(2, "--span 的业务 ID 解析出多条 trace；请改用明确的 trace ID 再查询，不能仅凭 span ID 选择 trace");
+  }
+
   const traceStores = traceStoreCandidates(plugin);
   let preparedStore: PreparedServiceDataSourceDependency | undefined;
   if (traceStores.length) {
@@ -313,6 +322,8 @@ export async function runCollectTrace(
         code = await collectTrace(
           {
             traceId: trace.traceId,
+            spanId: opts.span,
+            contributions,
             bizId,
             index,
             auth: preparedStore?.auth ?? explicitAuth,
@@ -371,6 +382,8 @@ export async function runCollectTrace(
 export interface TraceCollectOptions {
   /** 已由 Plugin traceId capability 解析的规范 trace_id。 */
   traceId: string;
+  spanId?: string;
+  contributions?: TraceContributions;
   bizId: string;
   traceIdResolution: {
     service: string;
@@ -405,7 +418,8 @@ export interface TraceCollectOptions {
 const TRACE_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "resolve-id", title: "业务 ID 到 trace_id 的 Plugin 解析", risk: "observe" },
   { id: "count", title: "span 总数查询", risk: "observe" },
-  { id: "download", title: "span 全量下载", risk: "observe" },
+  { id: "download", title: "所选范围的 span 下载", risk: "observe" },
+  { id: "analysis", title: "离线 tree / node 证据投影", risk: "observe" },
 ];
 
 export async function collectTrace(
@@ -421,16 +435,20 @@ export async function collectTrace(
   let channel = "";
   let confirmedTarget: Record<string, unknown> = {};
   const traceId = opts.traceId;
+  let exported = false;
 
   const finish = async (code: number, target: Record<string, unknown> = {}) => {
     if (ownsPreparation) await preparation?.close();
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
-      target: { input_id: opts.bizId, trace_id: traceId, index: opts.index, ...target },
+      target: { ...confirmedTarget, input_id: opts.bizId, trace_id: traceId, span_id: opts.spanId,
+        scope: opts.spanId ? "span" : "trace", index: opts.index, ...target },
+      files: exported ? TRACE_FILES : existsSync(join(opts.outputDir, "spans.jsonl")) ? { spans: TRACE_FILES.spans } : undefined,
       inspectionFacts: {},
       params: {
         index: opts.index,
         page_size: opts.pageSize,
+        span_id: opts.spanId,
         endpoint: safeOpenSearchEndpoint(opts.endpoint),
         configured_endpoint: safeOpenSearchEndpoint(opts.configuredEndpoint),
         service: opts.service,
@@ -506,10 +524,25 @@ export async function collectTrace(
 
   const probe = await probeTrace(search, {
     traceId,
+    spanId: opts.spanId,
     index: opts.index,
     pageSize: opts.pageSize,
     outputDir: opts.outputDir,
   }, bundle, log);
+  // Even interrupted downloads keep a usable local index; incompleteness must remain visible.
+  if (existsSync(join(opts.outputDir, "spans.jsonl"))) {
+    try {
+      await exportTraceSnapshot(opts.outputDir, traceId, {
+        scope: opts.spanId ? "span" : "trace", span_id: opts.spanId, complete: probe.ok && probe.complete,
+      }, opts.contributions);
+      exported = true;
+      bundle.fill("analysis", { status: "ok" });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      bundle.fill("analysis", { status: "failed", reason });
+      log(`[collect] 原始 spans 已保留，tree 投影失败：${reason}`, "warning");
+    }
+  }
   if (!probe.ok) {
     failSummary(probe.title, probe.reason);
     return finish(1);
@@ -529,7 +562,7 @@ export async function collectTrace(
     }),
   );
   log(`[collect] 完成（${probe.downloaded}/${probe.count} span）。`);
-  return finish(evaluateCollectOutcome([probe.complete ? "sufficient" : "insufficient"]).exitCode,
+  return finish(evaluateCollectOutcome([probe.complete && exported ? "sufficient" : "insufficient"]).exitCode,
     { ...confirmedTarget, base_url: baseUrl });
 }
 

@@ -17,7 +17,7 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
         const manifest = context.json<BundleManifest>(artifact, "manifest.json");
         const traceId = String(manifest.target?.trace_id ?? "");
         if (!traceId) throw new Error("Trace 证据缺少 trace_id");
-        await renderTraceEvidence(artifact.path, traceId, result.output!.contributions);
+        await renderTraceEvidence(artifact.path, result.output!.contributions);
         context.write(artifact, context.read(artifact, "trace.html"));
       }));
   }

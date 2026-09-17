@@ -100,7 +100,7 @@ export interface TenantCapability {
 }
 
 export interface TraceCapability {
-  /** Trace Harness 原生的业务分析扩展；只能消费 Trace IR，不参与 Target 访问。 */
+  /** 本地 span 归一化、分类/融合及 Trace IR 分析扩展；不参与 Target 访问或远端采集。 */
   analysis: TraceContributions;
   /** Core 采集 trace 时使用的业务数据源声明。 */
   source?: {

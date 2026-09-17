@@ -7,8 +7,9 @@ export function buildIndexExpr(index?: string, indexDate?: string): string {
   return "jaeger-span-*";
 }
 
-function termQuery(traceId: string): Record<string, unknown> {
-  return { term: { traceID: traceId } };
+function termQuery(traceId: string, spanId?: string): Record<string, unknown> {
+  const trace = { term: { traceID: traceId } };
+  return spanId ? { bool: { filter: [trace, { term: { spanID: spanId } }] } } : trace;
 }
 
 /** _count 先行：既是连通性/鉴权验证，也决定后续下载是否有必要 */
@@ -16,8 +17,9 @@ export async function countSpans(
   search: SearchEngine,
   index: string,
   traceId: string,
+  spanId?: string,
 ): Promise<number> {
-  return search.count(index, termQuery(traceId));
+  return search.count(index, termQuery(traceId, spanId));
 }
 
 /** search_after 分页拉全量 span，每页把 hits 的 _source 交给 onPage；返回实际下载条数 */
@@ -27,6 +29,7 @@ export async function downloadSpans(
   traceId: string,
   pageSize: number,
   onPage: (sources: Record<string, unknown>[]) => void,
+  spanId?: string,
 ): Promise<number> {
   let total = 0;
   let searchAfter: unknown = undefined;
@@ -35,7 +38,7 @@ export async function downloadSpans(
       size: pageSize,
       track_total_hits: true,
       sort: [{ startTimeMillis: { order: "asc" } }, { spanID: { order: "asc" } }],
-      query: termQuery(traceId),
+      query: termQuery(traceId, spanId),
     };
     if (searchAfter !== undefined) payload.search_after = searchAfter;
     const result = await search.search(index, payload);

@@ -18,12 +18,13 @@ function evidenceIndex(entry: BundleArtifact) {
   const manifest = join(entry.artifact.path, "manifest.json");
   const diagnosis = join(entry.artifact.path, "diagnosis.json");
   const meta = existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")) as {
-    target?: unknown; steps?: StepRecord[];
+    target?: unknown; steps?: StepRecord[]; files?: Record<string, string>;
   } : undefined;
   return {
     manifest: meta ? posix.join(entry.path, "manifest.json") : undefined,
     diagnosis: existsSync(diagnosis) ? posix.join(entry.path, "diagnosis.json") : undefined,
     target: meta?.target,
+    files: meta?.files && Object.fromEntries(Object.entries(meta.files).map(([name, path]) => [name, posix.join(entry.path, path)])),
     // Preserve the producer's reasons; do not infer completeness by parsing prose or raw logs.
     evidence_gaps: meta?.steps?.filter(step => ["partial", "failed", "skipped", "unavailable"].includes(step.status))
       .map(step => ({ id: step.id, status: step.status, reason: step.reason })),

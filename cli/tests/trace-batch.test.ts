@@ -22,7 +22,7 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
   } });
   const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api", workloads: [], capabilities: { traceId: { endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) =>
-      bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" } } },
+      bizId === "missing" ? undefined : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId } } },
   }]) };
   const context = new CommandContext({ kubernetes: {
     kubeconfig: { source: "test" }, channel: { available: true, client: {
@@ -32,7 +32,7 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
   try {
     const result = await runCollectTrace({ bizIds: ids, namespace: "test", endpoint: server.url.href, pageSize: "100" }, plugin, context);
     expect(result.status).toBe(ids.length === 1 ? CommandStatus.Ok : CommandStatus.Partial);
-    expect(queries).toEqual(ids.filter(id => id !== "missing"));
+    expect(queries).toEqual(ids.filter(id => id !== "missing").map(id => `trace-${id}`));
     const items = result.output!.items;
     expect(items.map(item => item.bizId)).toEqual(ids);
     for (const item of items) {
@@ -41,6 +41,7 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
       for (const artifact of item.artifacts) {
         expect(existsSync(join(artifact.path, "report.html"))).toBeFalse();
         expect(JSON.parse(readFileSync(join(artifact.path, "manifest.json"), "utf8")).target.input_id).toBe(item.bizId);
+        expect(JSON.parse(readFileSync(join(artifact.path, "tree.json"), "utf8")).trace_id).toBe(`trace-${item.bizId}`);
       }
     }
     expect(new Set(items.flatMap(item => item.artifacts.map(artifact => artifact.id))).size).toBe(queries.length);
@@ -57,4 +58,30 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
     await context.disposeClients(); server.stop(true);
     for (const root of new Set(context.artifacts.list().map(artifact => dirname(artifact.path)))) rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("online span rejects a biz-id resolving multiple traces before any span download", async () => {
+  let remoteReads = 0;
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => {
+    remoteReads++;
+    return Response.json({});
+  } });
+  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    name: "api", workloads: [], capabilities: { traceId: { endpoint: { host: "test", port: 80 }, access: {},
+      resolve: async () => ["t1", "t2"].map(traceId => ({ traceId, resolvedAs: "conversation_id" })) } },
+  }]) };
+  const context = new CommandContext({ kubernetes: {
+    kubeconfig: { source: "test" }, channel: { available: true, client: {
+      ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [],
+    } },
+  } });
+  try {
+    const result = await runCollectTrace({ bizIds: ["conversation"], span: "shared-span-id", namespace: "test",
+      endpoint: server.url.href, pageSize: "100" }, plugin, context);
+    expect(result.status).toBe(CommandStatus.Failed);
+    if (result.status === CommandStatus.Failed) expect(result.reason).toContain("多条 trace");
+    expect(remoteReads).toBe(0);
+    expect(result.artifacts).toHaveLength(0);
+  } finally { await context.disposeClients(); server.stop(true); }
 });

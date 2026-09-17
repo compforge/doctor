@@ -74,6 +74,8 @@ export type OutcomeFill =
 export const OUTCOME_UNREACHED_REASON = "采集流程未到达该步骤（doctor 未记录原因）";
 
 export interface ManifestMeta {
+  /** Domain evidence entrypoints, relative to this artifact directory. */
+  files?: Readonly<Record<string, string>>;
   doctorVersion: string;
   kubectlVersion?: string;
   target: Record<string, unknown>;
@@ -205,6 +207,7 @@ export class EvidenceBundle {
     // 凡是"要记得做"的记账，早晚会忘。
     this.settle();
     const manifest = {
+      files: meta.files,
       doctor_version: meta.doctorVersion,
       kubectl_version: meta.kubectlVersion,
       target: meta.target,
