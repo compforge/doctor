@@ -24,7 +24,7 @@ const service = "sample-api";
 const plugin = {
   id: "sample",
   version: "0.0.1",
-  services: createServiceCatalog([{
+  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: service,
     workloads: [],
     contributions: {
@@ -85,7 +85,7 @@ const executor: Executor = {
 const contexts = { [service]: {} as PluginContext };
 
 test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
-  const tenantOnly = {
+  const tenantOnly = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "tenant-api",
     workloads: [],
     contributions: {
@@ -143,7 +143,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
   const relationPlugin = {
     id: "sample-relations",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       // Deliberately declared first: it can only run after the later resolver discovers message_id.
       name: traceResolver,
       workloads: [],
@@ -178,7 +178,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
         },
       },
       capabilities: {},
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: resolver,
       workloads: [],
       contributions: {
@@ -210,7 +210,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
         },
       },
       capabilities: {},
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: records,
       workloads: [],
       contributions: {

@@ -14,7 +14,7 @@ import { resolvePluginTraceId, resolvePluginTraceIds } from "../src/plugin/trace
 const plugin = {
   id: "sample",
   version: "0.0.1",
-  services: createServiceCatalog([{
+  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "sample-api",
     workloads: [],
     capabilities: { log: { default: true } },
@@ -120,7 +120,7 @@ test("traceId capability 以 Service provider 为单位发现", () => {
   const tracePlugin = {
     id: "trace-sample",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
       capabilities: {
@@ -149,13 +149,13 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
   const tracePlugin = {
     id: "trace-sample",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "first-api",
       workloads: [],
       capabilities: {
         traceId: { endpoint: { host: "test-service", port: 8080 }, access: {}, resolve: async () => undefined },
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
       capabilities: {
@@ -202,7 +202,7 @@ test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace"
   const tracePlugin = {
     id: "trace-batch",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
       capabilities: {
@@ -266,13 +266,13 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
   const tracePlugin = {
     id: "trace-dependency",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
       capabilities: {
         dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "opensearch",
       workloads: [],
       dependencies: [dependency],
@@ -317,7 +317,7 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
 });
 
 test("trace batch keeps resolvable samples when another message has no trace", async () => {
-  const plugin: PluginDefinition = { id: "partial-traces", version: "0.0.1", services: createServiceCatalog([{
+  const plugin: PluginDefinition = { id: "partial-traces", version: "0.0.1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "chat", workloads: [], capabilities: { traceId: {
       endpoint: { host: "chat", port: 8001 }, access: {},
       resolve: async (_context, { bizId }) => bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" },

@@ -1,5 +1,5 @@
 import type { Client } from "@compforge/harness-common";
-import { dataSourceKey } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../command/execution-scope";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
@@ -143,8 +143,8 @@ export async function prepareRedisAccess(
   try {
     const client = clients
       ? await clients.get({
-          key: dataSourceKey("redis-access", { kubernetes: config.collect.kubernetes, target }),
-          createClient: signal => new RedisAccessClient(executor, config, target, signal),
+          clientKey: clientKey("redis-access", { kubernetes: config.collect.kubernetes, target }),
+          createClient: (_clients, signal) => new RedisAccessClient(executor, config, target, signal),
         })
       : (local = new RedisAccessClient(executor, config, target));
     if (local) await local.initialize();

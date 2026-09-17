@@ -141,7 +141,7 @@ async function prepareModelDiscovery(
     const context = await openPluginContext(executor, kube, {
       env: options.commandContext?.profile.name ?? config.profileName,
       config: options.commandContext?.profile.pluginConfig,
-      service: { name: service.name },
+      service: service,
       endpoint,
       command: options.command,
       capability,

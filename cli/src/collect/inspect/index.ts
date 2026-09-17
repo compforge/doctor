@@ -138,13 +138,26 @@ export async function runCollectInspect(
         fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
       },
       ...(selectedDefinitions.some((service) => service.workloads.some(
-        (workload) => workload.discovery.kind === "kubernetes-service",
+        (workload) => workload.location.kind === "service",
       )) ? [{
         requirement: "preferred" as const,
         rule: { verb: "list" as const, resource: "services" },
         purpose: "解析所选 Workload 声明的 Kubernetes Service",
         fallback: "仅 Pod selector Workload 可继续解析",
       }] : []),
+      ...selectedDefinitions.flatMap(service => service.workloads.flatMap(workload => {
+        if (workload.location.kind === "labels" || (workload.namespace && workload.namespace !== config.namespace)) return [];
+        const resource = workload.location.kind === "service" ? "services" : {
+          Deployment: "deployments.apps", StatefulSet: "statefulsets.apps",
+          DaemonSet: "daemonsets.apps", Pod: "pods",
+        }[workload.location.resource_kind];
+        return [{
+          requirement: "preferred" as const,
+          rule: { verb: "get" as const, resource, resourceName: workload.location.name },
+          purpose: `解析 ${service.name}/${workload.name} 声明的资源`,
+          fallback: "目标不可读时记录 Workload unavailable",
+        }];
+      })),
       ...dependencyNeeds,
     ],
   });

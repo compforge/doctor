@@ -1,4 +1,4 @@
-import { dataSourceKey } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
@@ -112,10 +112,10 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
             kubeconfig: ctx.config.collect.kubernetes.kubeconfig,
             context: ctx.config.collect.kubernetes.context,
           };
-          const key = dataSourceKey("kubernetes", kube);
+          const key = clientKey("kubernetes", kube);
           const kubernetes = await ctx.command.clients.get({
-            key,
-            createClient: signal => new KubernetesClient(kube, signal),
+            clientKey: key,
+            createClient: (_clients, signal) => new KubernetesClient(kube, signal),
           });
           const port = endpoint.port ? Number(endpoint.port) : endpoint.protocol === "https:" ? 443 : 80;
           const mapped = await kubernetes.forward(kube.namespace, { host: endpoint.hostname, port });

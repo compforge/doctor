@@ -1,5 +1,5 @@
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "./log-policy";
-import { ClientManager, type ClientProvider } from "@compforge/harness-common";
+import { ClientManager } from "@compforge/harness-common";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -91,7 +91,7 @@ export class CommandContext {
   #kubernetesPromise?: Promise<KubernetesInspection>;
   #plugin?: PluginDefinition;
   readonly signal: AbortSignal;
-  readonly clients: ClientProvider;
+  readonly clients: Pick<ClientManager, "get">;
   readonly #clients: ClientManager;
 
   /** One budget for the entire command tree, independent of the number of child collects. */

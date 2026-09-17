@@ -13,8 +13,8 @@ import { createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/l
 import { writeLogHtmlReport } from "../src/collect/log/html";
 
 const plugin: PluginDefinition = { id: "log-only", version: "1.0.0", services: createServiceCatalog([
-  { name: "api", workloads: [], capabilities: { log: { default: true } } },
-  { name: "worker", workloads: [], capabilities: { log: { default: false } } },
+  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: [], capabilities: { log: { default: true } } },
+  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "worker", workloads: [], capabilities: { log: { default: false } } },
 ]) };
 const ok = { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, command: [] };
 const pods = parsePods(JSON.stringify({ items: [{
@@ -30,7 +30,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     writeFileSync(kubeconfig, "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n");
     let resolutions = 0;
     const activePlugin: PluginDefinition = variant === "trace-provider" || variant === "unresolved" ? {
-      ...plugin, services: createServiceCatalog([{ name: "api", workloads: [], capabilities: {
+      ...plugin, services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: [], capabilities: {
         log: { default: true }, traceId: { access: {}, endpoint: { host: "unused", port: 80 }, resolve: async () => {
           resolutions++;
           if (variant === "trace-provider") throw new Error("No-ID collection must not resolve traces");

@@ -8,7 +8,7 @@ import { runCollectData } from "../src/collect/data";
 for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
   let preparations = 0;
   const batches: string[][] = [];
-  const plugin: PluginDefinition = { id: "batch", version: "1", services: createServiceCatalog([{
+  const plugin: PluginDefinition = { id: "batch", version: "1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "records", workloads: [], capabilities: {}, contributions: {
       inspect: { access: {}, accepts: ["biz_id", "conversation_id"], provides: ["record"], expands: ["conversation_id"],
         resolveTarget: async () => { preparations++; return { endpoint: "test", database: "test", username: "test", credentialSource: "test" }; },

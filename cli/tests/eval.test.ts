@@ -45,7 +45,7 @@ function testPlugin(): PluginDefinition {
   return {
     id: "test",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {

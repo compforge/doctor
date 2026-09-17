@@ -83,9 +83,7 @@ async function resolveEvalRequestIdentity(input: {
   }, {
     env: input.profileName,
     config: input.commandContext.profile.pluginConfig,
-    service: {
-      name: directoryService.name,
-    },
+    service: directoryService,
     endpoint: directoryService.capabilities.tenantDirectory.endpoint,
     capability: directoryService.capabilities.tenantDirectory,
     command: "doctor eval identity",
@@ -270,7 +268,7 @@ export async function runEval(
   }, {
     env: kube.profileName,
     config: commandContext.profile.pluginConfig,
-    service: { name: provider.name },
+    service: provider,
     endpoint: provider.capabilities.case.endpoint,
     capability: provider.capabilities.case,
     command: "doctor eval",

@@ -43,19 +43,19 @@ test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target",
       analysis: {},
       source: { dataSource: { service: "jaeger-collector", dataSource: "trace" } },
     },
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
       capabilities: {
         dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "jaeger-collector",
       workloads: [],
       capabilities: {
         dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat-server",
       workloads: [],
       capabilities: {

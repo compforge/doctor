@@ -1,4 +1,4 @@
-import type { Client, DataSource } from "@compforge/harness-common";
+import type { Client, DataSource, Service } from "@compforge/harness-common";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
 import type { ServiceEndpoint, ServiceDataSourceDependency } from "./service";
@@ -26,9 +26,7 @@ export type ResolvedServiceCapabilityDependency = ResolvedServiceDataSourceDepen
 export interface PluginTarget {
   env: string;
   namespace: string;
-  service: {
-    name: string;
-  };
+  service: Service;
   /** Capability-owned transport endpoint, independent of the logical Service identity. */
   endpoint?: ServiceEndpoint;
 }
@@ -48,9 +46,9 @@ export interface PluginClientContext {
   signal: AbortSignal;
 }
 
-export interface PluginDataSource<C extends Client> extends Pick<DataSource<C>, "key"> {
+export interface PluginDataSource<C extends Client> extends Pick<DataSource<C>, "clientKey"> {
   /** The host additionally namespaces this key by target, configuration and declared access. */
-  readonly key: string;
+  readonly clientKey: string;
   createClient(context: PluginClientContext): C;
 }
 

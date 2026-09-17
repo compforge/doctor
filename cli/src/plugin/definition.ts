@@ -76,28 +76,38 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   if (!Array.isArray(service.workloads)) {
     throw new Error(`Plugin Service '${String(service.name)}'.workloads must be an array`);
   }
+  const component = record(service.component, service.name + ".component");
+  nonEmptyString(component.name, service.name + ".component.name");
+  const repository = record(component.repository, service.name + ".component.repository");
+  nonEmptyString(repository.path, service.name + ".component.repository.path");
+  const forge = record(repository.forge, service.name + ".component.repository.forge");
+  nonEmptyString(forge.name, service.name + ".component.repository.forge.name");
+  if (service.environment !== undefined) throw new Error(service.name + ".environment is bound by Doctor, not the Catalog");
   const workloadNames = new Set<string>();
   for (const [workloadIndex, value] of service.workloads.entries()) {
     const workload = record(value, `${service.name}.workloads[${workloadIndex}]`);
     const name = nonEmptyString(workload.name, `${service.name}.workloads[${workloadIndex}].name`);
     if (workloadNames.has(name)) throw new Error(`${service.name}.workloads contains duplicate name '${name}'`);
     workloadNames.add(name);
-    if (workload.lifecycle !== "persistent" && workload.lifecycle !== "ephemeral") {
-      throw new Error(`${service.name}.workloads.${name}.lifecycle must be persistent or ephemeral`);
-    }
-    if (workload.container !== undefined) nonEmptyString(workload.container, `${service.name}.workloads.${name}.container`);
-    const discovery = record(workload.discovery, `${service.name}.workloads.${name}.discovery`);
-    if (discovery.kind === "kubernetes-service") {
-      nonEmptyString(discovery.service, `${service.name}.workloads.${name}.discovery.service`);
-    } else if (discovery.kind === "kubernetes-pods") {
-      const labels = record(discovery.labels, `${service.name}.workloads.${name}.discovery.labels`);
-      if (!Object.keys(labels).length) throw new Error(`${service.name}.workloads.${name}.discovery.labels must not be empty`);
-      for (const [label, labelValue] of Object.entries(labels)) {
-        nonEmptyString(label, `${service.name}.workloads.${name}.discovery.labels key`);
-        nonEmptyString(labelValue, `${service.name}.workloads.${name}.discovery.labels.${label}`);
+    const label = service.name + ".workloads." + name;
+    if (workload.platform !== "kubernetes") throw new Error(label + ".platform must be kubernetes");
+    if (workload.namespace !== undefined) nonEmptyString(workload.namespace, label + ".namespace");
+    if (workload.container !== undefined) nonEmptyString(workload.container, label + ".container");
+    const location = record(workload.location, label + ".location");
+    if (location.kind === "service" || location.kind === "resource") {
+      nonEmptyString(location.name, label + ".location.name");
+      if (location.kind === "resource" && !["Deployment", "StatefulSet", "DaemonSet", "Pod"].includes(String(location.resource_kind))) {
+        throw new Error(label + ".location.resource_kind is unsupported");
+      }
+    } else if (location.kind === "labels") {
+      const labels = record(location.labels, label + ".location.labels");
+      if (!Object.keys(labels).length) throw new Error(label + ".location.labels must not be empty");
+      for (const [key, value] of Object.entries(labels)) {
+        nonEmptyString(key, label + ".location.labels key");
+        if (typeof value !== "string") throw new Error(label + ".location.labels." + key + " must be a string");
       }
     } else {
-      throw new Error(`${service.name}.workloads.${name}.discovery.kind is unsupported`);
+      throw new Error(label + ".location.kind is unsupported");
     }
   }
   if (service.toolchain !== undefined && !isToolchain(service.toolchain)) {
@@ -205,7 +215,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
       if (resolver) {
         const source = record(store.source, `${label}.source`);
-        nonEmptyString(source.key, `${label}.source.key`);
+        nonEmptyString(source.clientKey, `${label}.source.clientKey`);
         if (typeof source.createClient !== "function") throw new Error(`${label}.source.createClient must be a function`);
       }
       if (store.access !== undefined) record(store.access, `${label}.access`);

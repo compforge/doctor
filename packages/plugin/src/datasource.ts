@@ -125,7 +125,7 @@ export function mysqlDataSource(
   resolve: (context: PluginClientContext) => Promise<ServiceDatabaseTarget>,
 ): PluginDataSource<MysqlClient<ServiceDatabaseTarget>> {
   return {
-    key,
+    clientKey: key,
     createClient: context => new MysqlClient({
       resolve: () => resolve(context),
       transports: [new PortForwardTransport(endpoint => context.infra.kubernetes.portForward(endpoint))],

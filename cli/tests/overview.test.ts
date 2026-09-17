@@ -10,7 +10,7 @@ const query: OverviewQuery = {
   window: overviewWindow("1h", new Date("2026-09-09T10:00:00Z")), tenantId: "tenant-1", maxEntries: 2,
 };
 function provider(name: string): OverviewProvider {
-  return { name, workloads: [], capabilities: { overview: {
+  return { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name, workloads: [], capabilities: { overview: {
     access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
   } } };
 }

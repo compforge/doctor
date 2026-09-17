@@ -25,7 +25,7 @@ test("Plugin Inspect contribution 必须提供 inspect", () => {
   const definition = (inspect: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "records", workloads: [], contributions: { inspect }, capabilities: {} }] },
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "records", workloads: [], contributions: { inspect }, capabilities: {} }] },
   });
 
   expect(validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
@@ -41,7 +41,7 @@ test("Plugin tenant capability 只绑定租户目录", () => {
     id: "test",
     version: "0.0.1",
     tenant: { directoryService: "iam" },
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "iam",
       workloads: [],
       capabilities: {
@@ -72,7 +72,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
       catalogService: "model-catalog",
       inferenceService: "inference",
     },
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "tenant-directory",
       workloads: [],
       capabilities: {
@@ -85,7 +85,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
           }),
         },
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "model-catalog",
       workloads: [],
       capabilities: {
@@ -98,7 +98,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
           }),
         },
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "inference",
       workloads: [],
       capabilities: {
@@ -125,7 +125,7 @@ test("Plugin model capability supports discovery without inference", async () =>
       tenantDirectoryService: "tenant-directory",
       catalogService: "model-catalog",
     },
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "tenant-directory",
       workloads: [],
       capabilities: {
@@ -138,7 +138,7 @@ test("Plugin model capability supports discovery without inference", async () =>
           }),
         },
       },
-    }, {
+    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "model-catalog",
       workloads: [],
       capabilities: {
@@ -168,14 +168,14 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   const base = {
     id: "test",
     version: "0.0.1",
-    services: { services: [{ name: "api", workloads: [], capabilities: {} }] },
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: [], capabilities: {} }] },
   };
   expect(validatePluginDefinition(base, manifest).services.find("api")?.toolchain).toBeUndefined();
 
   expect(() => validatePluginDefinition({
     ...base,
     services: {
-      services: [{
+      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "api",
         workloads: [],
         toolchain: { language: "python", executionPlatform: "unknown" },
@@ -195,7 +195,7 @@ test("Service probes 只接受 Core 支持的声明式共同 Probe", () => {
   const plugin = (candidate: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "runtime-api",
       workloads: [],
       contributions: { probes: [candidate] },
@@ -218,7 +218,7 @@ test("Service detector 必须有唯一 id 与纯 detect 入口", () => {
   const definition = (detectors: unknown) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "runtime-api",
       workloads: [],
       contributions: { detectors },
@@ -242,12 +242,11 @@ test("Workload Probe 在执行前声明完整 Observation contract", () => {
   const definition = (produces: unknown) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "runtime-api",
       workloads: [{
         name: "main",
-        lifecycle: "persistent",
-        discovery: { kind: "kubernetes-service", service: "runtime-api" },
+        platform: "kubernetes", location: { kind: "service", name: "runtime-api" },
       }],
       contributions: { probes: [{
         id: "health",
@@ -286,7 +285,7 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
     version: "0.0.1",
     trace: { analysis: {} },
     services: {
-      services: [{
+      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "trace-store",
         workloads: [],
         capabilities: {
@@ -332,13 +331,13 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
     id: "test",
     version: "0.0.1",
     services: {
-      services: [{
+      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "kb-server",
         workloads: [],
         capabilities: {
           dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
         },
-      }, {
+      }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "opensearch",
         workloads: [],
         dependencies: [dependency],
@@ -381,7 +380,7 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
   expect(() => validatePluginDefinition({
     ...base,
     services: {
-      services: [{
+      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "kb-server",
         workloads: [],
         capabilities: {
@@ -399,7 +398,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   const base = {
     id: "test",
     version: "0.0.1",
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {
@@ -445,7 +444,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   const caseSet = caseCapability.caseSets[0];
   expect(() => validatePluginDefinition({
     ...base,
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {
@@ -460,7 +459,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
 
   expect(() => validatePluginDefinition({
     ...base,
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {
@@ -481,7 +480,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
 
   expect(() => validatePluginDefinition({
     ...base,
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {
@@ -493,7 +492,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
 
   expect(() => validatePluginDefinition({
     ...base,
-    services: { services: [{
+    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
       capabilities: {
@@ -510,7 +509,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
 });
 
 test("Plugin Case request identity references a tenant directory provider", () => {
-  const caseService = {
+  const caseService = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "chat",
     workloads: [],
     capabilities: {
@@ -540,7 +539,7 @@ test("Plugin Case request identity references a tenant directory provider", () =
   expect(validatePluginDefinition({
     id: "test",
     version: "0.0.1",
-    services: { services: [caseService, {
+    services: { services: [caseService, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "iam",
       workloads: [],
       capabilities: {

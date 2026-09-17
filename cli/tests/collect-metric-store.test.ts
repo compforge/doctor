@@ -19,7 +19,7 @@ import { CommandContext } from "../src/command";
 
 describe("metric Store observability", () => {
   test("bundle 输出拒绝 HTML/Markdown 后缀", async () => {
-    const services = createServiceCatalog([{
+    const services = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "app",
       workloads: [],
       capabilities: {
@@ -136,7 +136,7 @@ describe("metric Store observability", () => {
 
   test("limits Store metric collection to selected Service dependencies", () => {
     const catalog = createServiceCatalog([
-      {
+      { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "chat-server",
         workloads: [],
         capabilities: {
@@ -146,7 +146,7 @@ describe("metric Store observability", () => {
           ],
         },
       },
-      {
+      { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "unrelated-server",
         workloads: [],
         capabilities: {
@@ -169,7 +169,7 @@ describe("metric Store observability", () => {
   });
 
   test("keeps remote Service and Store queries usable when the selected profile has no kubeconfig", async () => {
-    const services = createServiceCatalog([{
+    const services = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "app",
       workloads: [],
       capabilities: {

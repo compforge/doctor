@@ -61,7 +61,7 @@ export async function prepareDataAccess(
         env: config.profileName,
         config: command.profile.pluginConfig,
         databaseIdentity: config.fallbackIdentity,
-        service: { name: selection.service },
+        service: declared,
         command: "doctor data",
         capability: declared.contributions.inspect,
         authorization: resolveKubernetesCommandContext(executor, command).access,

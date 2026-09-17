@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 
 import {
+  bindService,
   createServiceCatalog,
   isToolchain,
   type ServiceDefinition,
@@ -8,9 +9,9 @@ import {
 } from "../src";
 
 test("Service aliases resolve one canonical identity without inferring Workload names", () => {
-  const service = {
+  const service = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "runtime", aliases: ["rt", "engine"],
-    workloads: [{ name: "worker", lifecycle: "persistent", discovery: { kind: "kubernetes-service", service: "runtime-worker" } }],
+    workloads: [{ name: "worker", platform: "kubernetes", location: { kind: "service", name: "runtime-worker" } }],
     capabilities: { log: { default: true } },
   } satisfies ServiceDefinition;
   const catalog = createServiceCatalog([service]);
@@ -25,7 +26,7 @@ test("Service aliases resolve one canonical identity without inferring Workload 
 });
 
 test("Catalog rejects alias collisions regardless of declaration order", () => {
-  const service = (name: string, aliases: string[]): ServiceDefinition => ({ name, aliases, workloads: [], capabilities: {} });
+  const service = (name: string, aliases: string[]): ServiceDefinition => ({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name, aliases, workloads: [], capabilities: {} });
   for (const entries of [
     [service("api", ["same"]), service("worker", ["same"])],
     [service("api", ["worker"]), service("worker", [])],
@@ -45,7 +46,7 @@ test("Service Catalog 保留 Plugin 声明的 Toolchain", () => {
     dependencyManager: "pnpm",
     buildTool: "tsc",
   };
-  const catalog = createServiceCatalog([{
+  const catalog = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api",
     workloads: [],
     toolchain,
@@ -56,7 +57,7 @@ test("Service Catalog 保留 Plugin 声明的 Toolchain", () => {
 });
 
 test("Service 不声明 Toolchain 仍可注册其它 capability", () => {
-  const service: ServiceDefinition = {
+  const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "legacy-api",
     workloads: [],
     capabilities: { log: { default: true } },
@@ -74,23 +75,21 @@ test("Toolchain runtime validator 只校验已提供的声明", () => {
 });
 
 test("Service Catalog 拒绝同一 Service 内重复 Workload 身份", () => {
-  expect(() => createServiceCatalog([{
+  expect(() => createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api",
     workloads: [{
       name: "main",
-      lifecycle: "persistent",
-      discovery: { kind: "kubernetes-service", service: "api-v1" },
+      platform: "kubernetes", location: { kind: "service", name: "api-v1" },
     }, {
       name: "main",
-      lifecycle: "persistent",
-      discovery: { kind: "kubernetes-service", service: "api-v2" },
+      platform: "kubernetes", location: { kind: "service", name: "api-v2" },
     }],
     capabilities: {},
   }])).toThrow("重复 Workload 名称");
 });
 
 test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", () => {
-  const service: ServiceDefinition = {
+  const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api",
     workloads: [],
     contributions: {
@@ -133,4 +132,20 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
     .toBe("apparmor");
   expect(catalog.servicesWithContribution("detectors").map(({ name }) => name))
     .toEqual(["api"]);
+});
+
+test("Catalog declaration binds directly to the common Service without mutating its environment", () => {
+  const definition: ServiceDefinition = {
+    name: "api", component: { name: "api", repository: { forge: { name: "github" }, path: "sample/api" } },
+    workloads: [{ name: "main", platform: "kubernetes", location: { kind: "resource", resource_kind: "Deployment", name: "api-v2" } }],
+    capabilities: {},
+  };
+  const first = bindService(definition, { name: "test", kind: "kubernetes" });
+  const second = bindService(definition, { name: "prod", kind: "kubernetes" });
+  const shared: import("@compforge/harness-common").Service = first;
+  expect(shared.component).toBe(definition.component);
+  expect(shared.workloads).toBe(definition.workloads);
+  expect(first.environment.name).toBe("test");
+  expect(second.environment.name).toBe("prod");
+  expect(definition).not.toHaveProperty("environment");
 });

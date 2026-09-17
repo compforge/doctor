@@ -4,7 +4,7 @@ import { startDoctor } from "doctor-cli/embed";
 const plugin = {
   id: "test",
   version: "0.0.1",
-  services: createServiceCatalog([{
+  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "test-store",
     aliases: ["store"],
     workloads: [],

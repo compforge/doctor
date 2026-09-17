@@ -8,7 +8,7 @@ import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { formatServiceDescription } from "../src/app/plugin-description";
 
-const service: ServiceDefinition = {
+const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
   name: "api-server", aliases: ["api"], workloads: [],
   capabilities: {
     log: { default: true },

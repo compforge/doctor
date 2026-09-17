@@ -1,7 +1,8 @@
-import { dataSourceKey } from "@compforge/harness-common";
-import { ClientManager, type ClientProvider } from "@compforge/harness-common";
+import { clientKey } from "@compforge/harness-common";
+import { ClientManager } from "@compforge/harness-common";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
+import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
@@ -150,11 +151,11 @@ export type ManagedPluginContext = PluginContext & { dispose(): Promise<void> };
 
 interface PluginContextOptions {
   /** An explicitly supplied root owner is useful outside the command async scope. */
-  clients?: ClientProvider;
+  clients?: Pick<ClientManager, "get">;
   env: string;
   config?: Readonly<Record<string, unknown>>;
   databaseIdentity?: DatabaseIdentity;
-  service: PluginContext["target"]["service"];
+  service: ServiceDefinition;
   endpoint?: PluginContext["target"]["endpoint"];
   capability: CapabilityWithAccess;
   dependencies?: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
@@ -163,9 +164,9 @@ interface PluginContextOptions {
 /** Stable configuration identity stays in memory as a digest; credentials never enter logs or keys. */
 function clientNamespace(kube: KubectlOptions, options: PluginContextOptions): string {
   const access = (options.capability.access.kubernetes ?? []).map(need => need.rule)
-    .sort((a, b) => dataSourceKey("rule", a).localeCompare(dataSourceKey("rule", b)));
-  return dataSourceKey("plugin", {
-    kube, env: options.env, service: options.service, endpoint: options.endpoint,
+    .sort((a, b) => clientKey("rule", a).localeCompare(clientKey("rule", b)));
+  return clientKey("plugin", {
+    kube, env: options.env, service: options.service.name, endpoint: options.endpoint,
     config: options.config ?? {}, databaseIdentity: options.databaseIdentity, access,
   });
 }
@@ -182,12 +183,12 @@ export function createPluginContext(
   const local = root ? undefined : new ClientManager(parentSignal);
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);
-  const clusterKey = dataSourceKey("kubernetes", kube);
-  const cluster = () => clients.get({ key: clusterKey, createClient: rootSignal => new KubernetesClient(kube, rootSignal, executor) });
+  const clusterKey = clientKey("kubernetes", kube);
+  const cluster = () => clients.get({ clientKey: clusterKey, createClient: (_clients, rootSignal) => new KubernetesClient(kube, rootSignal, executor) });
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
-    target: { env: options.env, namespace: kube.namespace, service: options.service, endpoint: options.endpoint },
+    target: { env: options.env, namespace: kube.namespace, service: bindService(options.service, { name: options.env, kind: "kubernetes" }), endpoint: options.endpoint },
     config: options.config ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
@@ -217,8 +218,8 @@ export function createPluginContext(
         const kubernetes = await cluster();
         signal.throwIfAborted();
         return clients.get({
-          key: `${namespace}:${source.key}`,
-          createClient: rootSignal => source.createClient(access(rootSignal, kubernetes)),
+          clientKey: `${namespace}:${source.clientKey}`,
+          createClient: (_clients, rootSignal) => source.createClient(access(rootSignal, kubernetes)),
         });
       },
     },

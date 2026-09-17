@@ -93,7 +93,7 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
   const plugin = {
     id: "test",
     version: "0.0.1",
-    services: createServiceCatalog([{
+    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "logical-opensearch-provider",
       workloads: [],
       capabilities: {
