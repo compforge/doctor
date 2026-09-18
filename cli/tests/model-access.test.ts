@@ -1,8 +1,9 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import { DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
 import type { PluginManifest } from "../src/plugin/manifest";
-import { openModelAccess } from "../src/model";
+import { openModelAccess, openModelDiscoveryAccess } from "../src/model";
+import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 const manifest: PluginManifest = {
   manifestVersion: 1,
@@ -555,3 +556,62 @@ test("Plugin Case request identity references a tenant directory provider", () =
     }] },
   }, manifest).services.find("chat")?.capabilities.case?.requestIdentity?.directoryService).toBe("iam");
 });
+
+
+for (const requirement of [undefined, "preferred", "required"] as const) {
+  test(`model discovery respects capability access: ${requirement ?? "none"}`, async () => {
+    const checks: string[] = [];
+    let created = 0;
+    const run = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async command => {
+      let stdout: string;
+      if (command[0] === "auth") {
+        checks.push(command.slice(2).join(" "));
+        stdout = "no";
+      } else if (command[0] === "config") {
+        stdout = "test-context\nhttps://cluster.test/";
+      } else if (command[0] === "version" || command.join(" ") === "get --raw=/version") {
+        stdout = '{"gitVersion":"v1.30.0"}';
+      } else {
+        throw new Error(`Unexpected Kubernetes call: ${command.join(" ")}`);
+      }
+      return { command, stdout, stderr: "", ok: stdout !== "no", exitCode: stdout === "no" ? 1 : 0,
+        durationMs: 0, timedOut: false };
+    });
+    const access = requirement ? { kubernetes: [{
+      rule: { verb: "create", resource: "pods/portforward" }, requirement, purpose: "访问目录",
+    }] } : {};
+    const service = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [] };
+    const plugin = validatePluginDefinition({
+      id: "test", version: "0.0.1",
+      model: { tenantDirectoryService: "directory", catalogService: "catalog" },
+      services: { services: [{ ...service, name: "directory", capabilities: {
+        tenantDirectory: { endpoint: { host: "directory", port: 8080 }, access, create: () => {
+          created++;
+          return { listActive: async () => [], getByName: async () => undefined };
+        } },
+      } }, { ...service, name: "catalog", capabilities: {
+        modelCatalog: { endpoint: { host: "catalog", port: 8081 }, access, create: () => {
+          created++;
+          return { query: async () => [], getBackend: async () => undefined };
+        } },
+      } }] },
+    }, manifest);
+    try {
+      const opening = openModelDiscoveryAccess({ command: "doctor model", plugin,
+        namespace: "test", context: "test-context", kubeconfig: "/tmp/model-access-test", interactive: false });
+      if (requirement === "required") {
+        await expect(opening).rejects.toThrow("缺少必须的 Kubernetes 权限");
+        expect(created).toBe(0);
+      } else {
+        const discovery = await opening;
+        try {
+          expect(discovery).toBeDefined();
+          expect(await discovery!.directory.listActive()).toEqual([]);
+          expect(created).toBe(2);
+        } finally { await discovery?.dispose(); }
+      }
+      expect([...new Set(checks)].sort()).toEqual(requirement
+        ? ["create pods/portforward", "list pods", "list services"] : []);
+    } finally { run.mockRestore(); }
+  });
+}
