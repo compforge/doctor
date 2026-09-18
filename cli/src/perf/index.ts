@@ -33,6 +33,7 @@ import { terminalStderr, terminalStdout } from "../terminal/output";
 import { promptListedChoice } from "../terminal/selection";
 import {
   PERF_MAX_CONCURRENCY_OPTIONS,
+  perfServiceProviders,
   perfLevelsThrough,
   resolvePerfConfig,
 } from "./config";
@@ -71,9 +72,7 @@ function selectProvider(plugin: PluginDefinition, requested: string | undefined)
     if (!service.capabilities.case) throw new Error(`Service '${requested}' 未声明 case capability`);
     return service as PerfProvider;
   }
-  const providers = plugin.services.servicesWith("perf").filter(
-    (service) => service.capabilities.case !== undefined,
-  );
+  const providers = perfServiceProviders(plugin.services);
   if (providers.length !== 1) {
     throw new Error(`当前 Plugin 有 ${providers.length} 个同时声明 case/perf 的 provider；请使用 --service 指定`);
   }

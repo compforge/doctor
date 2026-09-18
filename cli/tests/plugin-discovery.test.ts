@@ -87,18 +87,29 @@ describe("Plugin discovery", () => {
 });
 
 describe("doctor plugin CLI", () => {
-  function run(...args: string[]) {
+  function runWithCommands(commands: string | undefined, ...args: string[]) {
     const root = temporaryRoot();
     writeFileSync(join(root, "config.yaml"), "profiles: [invalid");
     writeFileSync(join(root, "kubectl"), '#!/bin/sh\ntouch "$DOCTOR_HOME/kubectl-called"\nexit 99\n', { mode: 0o755 });
     const result = Bun.spawnSync({
       cmd: [process.execPath, "run", resolve(import.meta.dir, "fixtures/plugin-cli.ts"), ...args],
       cwd: root, stdout: "pipe", stderr: "pipe",
-      env: { ...process.env, DOCTOR_HOME: root, DOCTOR_CONFIG: join(root, "config.yaml"), PATH: `${root}:${process.env.PATH}` },
+      env: { ...process.env, TEST_VISIBLE_COMMANDS: commands, DOCTOR_HOME: root, DOCTOR_CONFIG: join(root, "config.yaml"), PATH: `${root}:${process.env.PATH}` },
     });
     expect(existsSync(join(root, "kubectl-called"))).toBe(false);
     return result;
   }
+  const run = (...args: string[]) => runWithCommands(undefined, ...args);
+
+  test("command discovery follows Distribution visibility in JSON and text", () => {
+    const json = runWithCommands("plugin,db", "plugin", "-f", "json");
+    expect(json.exitCode).toBe(0);
+    expect(JSON.parse(json.stdout.toString()).plugins[0].services[0].commands).toEqual([]);
+    const text = runWithCommands("plugin,db", "plugin", "--service", "store");
+    expect(text.exitCode).toBe(0);
+    expect(text.stdout.toString()).not.toContain("store：");
+    expect(text.stdout.toString()).toContain("当前发行版未发现适配的诊断入口");
+  });
 
   test("bare plugin displays the injected Plugin and Services", () => {
     const result = run("plugin");
@@ -114,6 +125,7 @@ describe("doctor plugin CLI", () => {
     expect(JSON.parse(result.stdout.toString())).toEqual({ plugins: [{
       id: "test", version: "0.0.1", source: "injected",
       services: [{ name: "test-store", aliases: ["store"], capabilities: ["dataSources"], contributions: [],
+        commands: [{ name: "store", purposes: ["定位业务 Store 并解释其运行时配置"], missingRequirements: [] }],
         details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
       }],
     }] });

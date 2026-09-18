@@ -1,6 +1,6 @@
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
-import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
+import { logPluginCapabilities } from "../../command/plugin-command-capabilities";
 import { validateLogTimeWindow } from "./config";
 import { runCollectLog } from "./index";
 import { renderLogReport } from "./report";
@@ -15,10 +15,7 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
     catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },
   environment: { kubernetes: true },
-  plugin: input => input.bizIds.some(id => id.trim())
-    ? PLUGIN_COMMAND_CAPABILITIES.log
-    : { ...PLUGIN_COMMAND_CAPABILITIES.log,
-      needs: PLUGIN_COMMAND_CAPABILITIES.log.needs.filter(need => need.capability.name !== "traceId") },
+  plugin: input => logPluginCapabilities(input.bizIds.some(id => id.trim())),
   run: async (context, input) => runCollectLog(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),

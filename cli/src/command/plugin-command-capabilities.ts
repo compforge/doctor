@@ -23,6 +23,10 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "定位业务 Store 并解释其运行时配置",
     }],
   },
+  db: {
+    command: "doctor db",
+    needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }],
+  },
   log: {
     command: "doctor log",
     needs: [{
@@ -160,6 +164,14 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     }],
   },
 } as const satisfies Record<string, PluginCapabilityContract>;
+
+/** Service/time-window logs do not depend on a business-ID trace resolver. */
+export function logPluginCapabilities(withBusinessIds: boolean): PluginCapabilityContract {
+  return withBusinessIds ? PLUGIN_COMMAND_CAPABILITIES.log : {
+    ...PLUGIN_COMMAND_CAPABILITIES.log,
+    needs: PLUGIN_COMMAND_CAPABILITIES.log.needs.filter(need => need.capability.name !== "traceId"),
+  };
+}
 
 /** collect 只组合所选具体命令的 capability contract，不拥有新的业务能力。 */
 export function collectPluginCapabilities(kinds: readonly CollectKind[]): PluginCapabilityContract {

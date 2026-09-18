@@ -12,12 +12,13 @@ import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
 import { resolveDbProviders } from "./providers";
 import { databaseFailure, discoverDatabases, selectDatabaseTarget } from "./discovery";
 import { quoteIdentifier } from "./sql";
+import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { databaseDiscoverySummary } from "./summary";
 
 export const dbCommand = defineCommand<DbInput, void>({
   name: "doctor db",
   validate: validateDbInput,
-  plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] },
+  plugin: PLUGIN_COMMAND_CAPABILITIES.db,
   render: (context, result) => renderEvidence(context, result, { command: "db", title: "数据库取证",
     render: artifact => writeEvidencePage(context, artifact, { title: "数据库取证", summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
   }),

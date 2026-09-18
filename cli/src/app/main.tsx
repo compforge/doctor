@@ -451,7 +451,7 @@ export function createDoctorProgram(
     .action(() => showVersion(distribution));
 
   const pluginCommand = catalog.command("plugin");
-  registerPluginInfo(pluginCommand, plugin);
+  registerPluginInfo(pluginCommand, plugin, () => new Set([...visibleCommands].map(command => command.name())));
   pluginCommand
     .command("install <archive>")
     .description("安装并加载 Plugin 归档")

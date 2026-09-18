@@ -12,6 +12,7 @@ import {
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
 import { inspectServiceQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
+import { tenantInspectServices } from "./services";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
@@ -85,9 +86,7 @@ export async function openTenantAccess(input: {
 
   try {
     const directory = directoryProvider.capabilities.tenantDirectory.create(directoryContext);
-    const capabilities: TenantCapabilityCollector[] = plugin.services
-      .servicesWithContribution("inspect")
-      .filter((service) => service.contributions.inspect.accepts.includes("tenant_id"))
+    const capabilities: TenantCapabilityCollector[] = tenantInspectServices(plugin.services)
       .map((service) => ({
         id: `inspect:${service.name}`,
         service: service.name,

@@ -1,9 +1,18 @@
 import type { ServiceDescription } from "@compforge/doctor-plugin";
+import type { ServiceCommandDescription } from "./service-commands";
 
 /** Text and JSON share the same declaration projection; rendering never inspects a live Service. */
-export function formatServiceDescription(service: ServiceDescription): string {
+export function formatServiceDescription(service: ServiceDescription & { commands?: ServiceCommandDescription[] }): string {
   const lines = [`  Service: ${service.name}`, `    说明：${service.description ?? "未提供"}`];
   lines.push(`    Aliases：${service.aliases.join(", ") || "无"}`);
+  if (service.commands) {
+    lines.push("    命令适配（参与取证，不代表现场可用）：");
+    for (const command of service.commands) {
+      lines.push(`      ${command.name}：${command.purposes.join("；")}`);
+      if (command.missingRequirements.length) lines.push(`        缺少声明依赖：${command.missingRequirements.join(", ")}`);
+    }
+    if (!service.commands.length) lines.push("      当前发行版未发现适配的诊断入口");
+  }
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
     lines.push("    数据查询（Inspect contribution，不是同名 CLI 命令）",
@@ -16,8 +25,8 @@ export function formatServiceDescription(service: ServiceDescription): string {
   } else {
     lines.push("    数据查询：未声明 Inspect contribution");
   }
-  lines.push(`    Capabilities：${service.capabilities.join(", ") || "无"}`,
-    `    Contributions：${service.contributions.join(", ") || "无"}`,
+  lines.push(`    访问能力（Capabilities）：${service.capabilities.join(", ") || "无"}`,
+    `    诊断贡献（Contributions）：${service.contributions.join(", ") || "无"}`,
     `    DataSources：${dataSources.map(source => `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
     "    Workloads：");
   for (const workload of workloads) {

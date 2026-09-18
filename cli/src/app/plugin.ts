@@ -1,11 +1,12 @@
 import { Option, type Command } from "commander";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { describeService, type PluginDefinition } from "@compforge/doctor-plugin";
 import { terminalStdout } from "../terminal/output";
 import { installPlugin, listPlugins, uninstallPlugin } from "../plugin";
 import { runStandaloneCommand } from "./command";
 import { formatServiceDescription } from "./plugin-description";
+import { describeServiceCommands } from "./service-commands";
 
-export function registerPluginInfo(command: Command, plugin?: PluginDefinition): void {
+export function registerPluginInfo(command: Command, plugin?: PluginDefinition, visibleCommands?: () => ReadonlySet<string>): void {
   command.description("展示当前 Plugin 与 Service 声明，或安装/卸载 Plugin")
     .allowExcessArguments(false)
     .option("--service <name>", "按逻辑 Service 名称展示诊断能力详情（离线声明，不探测现场）")
@@ -13,7 +14,12 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
       .choices(["text", "json"]).default("text"))
     .action(async (opts: { format: "text" | "json"; service?: string }) => {
       await runStandaloneCommand("doctor plugin", async () => {
-        let plugins = await listPlugins(plugin);
+        let plugins = await listPlugins(plugin, undefined, active => {
+          const commands = describeServiceCommands(active, visibleCommands?.());
+          return active.services.services.map(service => ({
+            ...describeService(service), commands: commands.get(service.name) ?? [],
+          }));
+        });
         if (opts.service !== undefined) {
           plugins = plugins.map(item => ({
             ...item, services: item.services.filter(service => service.name === opts.service || service.aliases.includes(opts.service!)),
@@ -34,9 +40,10 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
           for (const service of item.services) {
             terminalStdout.write(opts.service !== undefined
               ? formatServiceDescription(service)
-              : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
+              : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  commands: ${service.commands.map(item => item.name + (item.missingRequirements.length ? " (缺少声明依赖)" : "")).join(", ") || "-"}\n`);
           }
         }
+        if (opts.service === undefined) terminalStdout.write("命令适配为离线声明，未检查目标环境；用 --service <name> 查看用途、访问能力与诊断贡献。\n");
       });
     });
 }

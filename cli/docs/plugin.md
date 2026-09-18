@@ -303,6 +303,14 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 capability/contribution
 名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
 
+CLI 另外生成 Service 的 `commands` 视图，说明它可参与哪些诊断入口及其用途；只展示当前
+Distribution 可见的命令，不要求 Plugin 再维护命令名。映射复用 Core 的命令能力契约与领域选择条件：
+业务 ID 可达的 Inspect contribution 参与 data，仅接受 tenant_id 的查询参与 tenant，DB 数据源参与 db，
+Workload 支持通用 inspect，日志的 Service/时间窗模式不要求 traceId capability。
+每项包含 `name`、`purposes` 与 `missingRequirements`；后者只反映缺失的必要静态声明，
+为空也不保证运行时权限、连接或资源可用。参与命令不代表该命令都支持 `--service`，具体参数仍以 help 为准。
+collect 等组合入口复用子命令，不作为独立 Service 能力重复列出。
+
 `doctor plugin --service <name>` 按逻辑 Service 身份筛选并展示详情；未知 Service 报错，不返回伪装成功的
 空目录。JSON 保留名称数组，增加 `description` 与 `details`；概览和详情使用 SDK `describeService`
 对同一份执行声明的显式投影，不维护平行的能力清单。没有说明的 Plugin 仍可发现，展示“未提供”而不补造含义。

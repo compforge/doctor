@@ -171,6 +171,10 @@ export async function resolveInspectDependencySelection(
   return interactive && await (input.prompt ?? promptDependencyCollection)();
 }
 
+export function inspectServiceCandidates(catalog: ServiceCatalog) {
+  return catalog.services.filter(service => service.workloads.length > 0);
+}
+
 export interface InspectServiceSelectionInput {
   config: InspectConfig;
   catalog: ServiceCatalog;
@@ -189,8 +193,7 @@ export async function resolveInspectServiceSelection(
   if (!interactive) {
     throw new CommandInputError("非交互模式需要 --services 指定要检查的 Service");
   }
-  const listed = input.catalog.services
-    .filter((service) => service.workloads.length > 0)
+  const listed = inspectServiceCandidates(input.catalog)
     .map((service) => ({ name: service.name }));
   const recentInput = {
     namespace: input.config.namespace,

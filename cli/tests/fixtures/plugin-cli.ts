@@ -19,4 +19,4 @@ const plugin = {
   }]),
 } satisfies PluginDefinition;
 
-startDoctor({ plugin });
+startDoctor({ plugin, commands: process.env.TEST_VISIBLE_COMMANDS });

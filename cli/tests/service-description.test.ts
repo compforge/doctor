@@ -66,7 +66,7 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
   const legacy = formatServiceDescription(describeService({ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "legacy", workloads: [], capabilities: {} }));
   expect(legacy).toContain("说明：未提供");
   expect(legacy).toContain("未声明 Inspect contribution");
-  expect(legacy).toContain("Capabilities：无");
+  expect(legacy).toContain("访问能力（Capabilities）：无");
   const missing = formatServiceDescription(describeService({ ...service, contributions: { inspect: {
     ...service.contributions!.inspect!, description: undefined, limitations: undefined,
   } } }));

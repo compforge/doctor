@@ -1,8 +1,13 @@
 import { join } from "node:path";
+import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { PerfCliOpts, PerfConfig, PerfOutputFormat } from "./model";
 
 export const PERF_MAX_CONCURRENCY_OPTIONS = [1, 5, 10, 20, 50] as const;
 export const MAX_PERF_CONCURRENCY = 50;
+
+export function perfServiceProviders(catalog: ServiceCatalog) {
+  return catalog.servicesWith("perf").filter(service => service.capabilities.case !== undefined);
+}
 
 function integer(value: string | undefined, fallback: number, label: string, minimum: number): number {
   const parsed = Number(value ?? fallback);
