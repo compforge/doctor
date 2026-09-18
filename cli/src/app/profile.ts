@@ -32,6 +32,10 @@ export function resolveWorkingProfileName(
   opts: WorkingProfileOptions,
   statePath = join(homedir(), ".doctor", "state.yaml"),
 ): string {
+  if (resolveConfigPath(opts.config) === "") {
+    assertConfigurationOptions(opts);
+    return "";
+  }
   if (opts.profile && opts.resume !== undefined) {
     throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
   }
@@ -49,6 +53,9 @@ export interface ResolvedWorkingProfile {
 
 export function resolveWorkingProfile(opts: WorkingProfileOptions): ResolvedWorkingProfile {
   const configPath = resolveConfigPath(opts.config);
+  assertConfigurationOptions(opts);
+  // An empty entry disables profile lookup, not just the default filename. Keep only runtime defaults.
+  if (configPath === "") return { name: "", configPath, profile: { readonly: true } };
   if (opts.profile && opts.resume !== undefined) {
     throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
   }
@@ -60,6 +67,13 @@ export function resolveWorkingProfile(opts: WorkingProfileOptions): ResolvedWork
     : opts.profile;
   // Loading once makes the validated profile the command's immutable configuration snapshot.
   return { ...resolveProfile(loadConfig(configPath), requested), configPath };
+}
+
+/** @spec Empty config disables all profile selection, including conversation-bound profiles. */
+export function assertConfigurationOptions(opts: WorkingProfileOptions): void {
+  if (resolveConfigPath(opts.config) !== "") return;
+  if (opts.profile !== undefined) throw new Error('--profile cannot be used with --config=""');
+  if (opts.resume !== undefined) throw new Error('--resume cannot be used with --config=""');
 }
 
 function hasPersistedProfiles(raw: string): boolean {
@@ -117,6 +131,7 @@ async function selectProfile(config: Config, current: string | undefined): Promi
 
 export async function runProfile(name: string | undefined, opts: ProfileCommandOptions): Promise<void> {
   const configPath = resolveConfigPath(opts.config);
+  if (configPath === "") throw new Error('profile is unavailable with --config=""');
   const config = loadConfig(configPath);
   const configuredDefault = config.default_profile;
   let current: string | undefined;

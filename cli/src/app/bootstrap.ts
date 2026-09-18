@@ -59,6 +59,7 @@ export async function bootstrap(
 ): Promise<BootstrapResult> {
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
+  if (configPath === "") throw new Error('chat requires profile configuration; --config="" disables it');
   const statePath = join(home, ".doctor", "state.yaml");
   const state = loadState(statePath);
 

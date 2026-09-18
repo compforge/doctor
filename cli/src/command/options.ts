@@ -14,7 +14,7 @@ export function domainInput<Input extends object>(options: Input): Omit<Input, C
 export function commandOptions(context: CommandContext) {
   return {
     ...context.options.environment,
-    profile: context.profile.name,
+    profile: context.profile.configPath ? context.profile.name : undefined,
     config: context.profile.configPath,
     // Manifest is a root delivery format: collectors prepare ordinary Bundle evidence, not HTML.
     format: context.options.format?.trim() === "manifest" ? "bundle" : context.options.format,

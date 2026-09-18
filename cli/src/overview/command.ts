@@ -16,9 +16,7 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("--collect-concurrency <number>", "批次内逐 ID 工作并发（默认 2；Pod 日志共享独立限额）", Number)
     .option("--include <commands>", "采集命令，逗号分隔；同 doctor collect，默认全部")
     .option("--collect", "确认采集所选 Entry 的代表请求")
-    .option("-n, --namespace <ns>", "目标 namespace")
     .option("--profile <name>", "使用指定 profile")
-    .option("--config <path>", "config 文件路径")
     .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-o, --output <path>", "报告 basename/路径")
     .action(async (opts: OverviewCliOpts, command: Command) => {

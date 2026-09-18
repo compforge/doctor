@@ -7,6 +7,12 @@ type SourcedOptions = { [defaultOptions]?: { command: string; keys: ReadonlySet<
 /** Preserve Commander provenance across the plain-object CLI adapter, without loading a profile. */
 export function commandOptionsWithSources<T extends OptionValues = OptionValues>(command: Command): T {
   const options = command.optsWithGlobals<T>();
+  // Legacy chat/init/profile -c belongs to the subcommand (-c means container elsewhere).
+  // Commander globals overwrite locals, but a distribution default must not erase explicit -c.
+  if (command.getOptionValueSource("config") === "cli"
+      && command.getOptionValueSourceWithGlobals("config") === "default") {
+    Object.assign(options, { config: command.opts().config });
+  }
   const defaults = new Set(Object.keys(options).filter(
     key => command.getOptionValueSourceWithGlobals(key) === "default",
   ));

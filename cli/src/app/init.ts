@@ -58,6 +58,7 @@ export async function runInit(
   prompt: PromptKubeconfigPath = promptKubeconfigPath,
 ): Promise<void> {
   const configPath = resolveConfigPath(opts.config);
+  if (configPath === "") throw new Error('init is unavailable with --config=""');
   if (hasLocalConfig(configPath)) {
     terminalStdout.warning(`config 已存在，跳过初始化: ${configPath}\n`);
     return;
