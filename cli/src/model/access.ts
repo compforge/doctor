@@ -19,7 +19,6 @@ import {
 } from "../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../command";
 import { openPluginContext, type ManagedPluginContext } from "../plugin/context";
-import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 export interface OpenModelAccessOptions extends KubernetesCommandInput {
   command: string;
@@ -111,22 +110,6 @@ async function prepareModelDiscovery(
   if (!config) return undefined;
   const executor = createKubernetesExecutor(config);
   const authorization = resolveKubernetesCommandContext(executor, options.commandContext).access;
-  await enforceKubernetesAccess(authorization, {
-    command: options.command,
-    needs: [{
-      requirement: "required",
-      rule: { verb: "list", resource: "services" },
-      purpose: "解析租户目录与模型目录 Service",
-    }, {
-      requirement: "required",
-      rule: { verb: "list", resource: "pods" },
-      purpose: "选择 Service 对应的 Running Pod",
-    }, {
-      requirement: "required",
-      rule: { verb: "create", resource: "pods/portforward" },
-      purpose: "从 Doctor Host 调用模型域相关 endpoint",
-    }],
-  });
   const kube = {
     namespace: config.kubernetes.namespace,
     kubeconfig: config.kubernetes.kubeconfig,
@@ -138,6 +121,7 @@ async function prepareModelDiscovery(
     capability: CapabilityWithAccess,
     endpoint?: ServiceEndpoint,
   ) => {
+    // Each capability owns its access requirements, including optional port-forward access.
     const context = await openPluginContext(executor, kube, {
       config: options.commandContext?.profile.pluginConfig,
       service: service,
