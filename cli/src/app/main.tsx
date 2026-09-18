@@ -3,7 +3,6 @@ import { commandOptionsWithSources } from "./option-sources";
 import type { CollectHttpCliOpts } from "../collect/http";
 import type { CollectNetworkCliOpts } from "../collect/network";
 import { terminalStdout } from "../terminal/output";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
 // 入口只做子命令路由：
 //   doctor chat              → 默认本地 Agent；--server 显式选择远端 Agent（app/repl.tsx）
 //   doctor mem               → 选择后端、attach Python 进程并回传对象堆（collect/）
@@ -31,7 +30,7 @@ import { Command, CommanderError, type Command as CommandT } from "commander";
 import type { Distribution } from "./distribution";
 import { applyCommandDefaults, deliveryFormatOption } from "./command-defaults";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
-import { formatDoctorVersion } from "./version";
+import { formatDistributionVersion, formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
 import { type CollectTraceCliOpts } from "../collect/trace";
 import { type CollectLogCliOpts } from "../collect/log";
@@ -58,8 +57,6 @@ import { registerPluginInfo, runPluginInstall, runPluginUninstall } from "./plug
 import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
-import { getKubernetesServerVersion } from "../infra/k8s/version";
-import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 
 import { domainInput } from "../command/options";
 import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, httpCommand, netCommand } from "./core-commands";
@@ -380,12 +377,10 @@ function withEvalOptions(cmd: CommandT): CommandT {
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
-async function showVersion(plugin: PluginDefinition | undefined, options: { kubeconfig?: string; context?: string }): Promise<void> {
-  const [activePlugin, kubernetesVersion] = await Promise.all([
-    plugin ?? loadActivePlugin(),
-    getKubernetesServerVersion(new KubectlExecutor(options)),
-  ]);
-  terminalStdout.info(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), kubernetesVersion)}\n`);
+/** @spec Release inspection reads local composition only, never a diagnostic target. */
+async function showVersion(distribution: Distribution): Promise<void> {
+  const activePlugin = distribution.plugin ?? await loadActivePlugin();
+  terminalStdout.info(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), distribution)}\n`);
 }
 
 /** Build the CLI surface without loading a profile or contacting a target. */
@@ -400,7 +395,7 @@ export function createDoctorProgram(
       "面向应用与基础设施的本地诊断工具。",
       "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
     ].join("\n"))
-    .option("-V, --version", "显示 Doctor、Plugin 与运行环境版本")
+    .option("-V, --version", "显示发行版名称与版本（离线）")
     .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
     .option("--config <path>", 'Doctor 配置路径（默认 ~/.doctor/config.yaml；空字符串禁用外部配置）')
     .option("-n, --namespace <ns>", "目标 namespace（业务采集为业务 Service 所在 namespace，默认 default）")
@@ -412,10 +407,10 @@ export function createDoctorProgram(
       if (program.args.length) program.error(`unknown command '${program.args[0]}'`, { code: "commander.unknownCommand" });
       program.outputHelp();
     })
-    .hook("preAction", async (_root, command) => {
+    .hook("preAction", () => {
       if (!program.opts().version) return;
-      // Parse the complete argv before probing: -V must honor target flags on either side of a command.
-      await showVersion(plugin, commandOptionsWithSources(command));
+      // A version flag must not load the Plugin or enter a diagnostic command's action.
+      terminalStdout.info(`${formatDistributionVersion(distribution)}\n`);
       throw new CommanderError(0, "doctor.versionDisplayed", "");
     });
 
@@ -449,10 +444,8 @@ export function createDoctorProgram(
 
   catalog
     .command("version")
-    .description("显示版本信息")
-    .action(async (_opts, command) => {
-      await showVersion(plugin, commandOptionsWithSources(command));
-    });
+    .description("显示发行版、Doctor Core、Plugin 与本机信息（离线）")
+    .action(() => showVersion(distribution));
 
   const pluginCommand = catalog.command("plugin");
   registerPluginInfo(pluginCommand, plugin);

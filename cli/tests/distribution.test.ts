@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import * as execution from "../src/app/command";
 import { createDoctorProgram } from "../src/app/main";
 import { prepareCommand } from "../src/app/prepare";
 import { resolveCollectKubeconfig } from "../src/infra/k8s/context";
+import { DOCTOR_CLI_VERSION } from "../src/app/version";
 
 const roots: string[] = [];
 function temporaryRoot(): string {
@@ -115,17 +116,25 @@ describe("global Kubernetes options", () => {
     await program.parseAsync(["--kubeconfig", "/first", "--context", "first", "inspect", "--kubeconfig", "/last", "--context", "last"], { from: "user" });
   });
 
-  for (const args of [["-V"], ["version"], ["inspect", "--version"]]) {
-    test(`${args.join(" ")} probes only the explicitly selected Kubernetes target`, () => {
-      const root = temporaryRoot();
-      writeFileSync(join(root, "kubectl"), '#!/bin/sh\nprintf "%s\\n" "$@" >> "$DOCTOR_TEST_KUBECTL_LOG"\nprintf \'{"gitVersion":"v1.32.3"}\\n\'\n', { mode: 0o755 });
-      const output = runDistribution(root, [...args, "--kubeconfig", "/explicit/config", "--context", "chosen"]);
-      expect(output).toContain("doctor ");
-      expect(output).toContain("plugin sample@1.0.0");
-      expect(output).toContain("kubernetes v1.32.3");
-      const calls = readFileSync(join(root, "kubectl.log"), "utf8");
-      expect(calls.match(/--kubeconfig\n\/explicit\/config/g)).toHaveLength(1);
-      expect(calls.match(/--context\nchosen/g)).toHaveLength(1);
-    });
+});
+
+describe("offline distribution versions", () => {
+  for (const args of [["-V"], ["--version"], ["version"], ["inspect", "--version"], ["--version", "inspect"]]) {
+    for (const target of [[], ["--kubeconfig", "/missing/config", "--context", "chosen"]]) {
+      test(`${[...args, ...target].join(" ")} never accesses a target or profile`, () => {
+        const root = temporaryRoot();
+        writeFileSync(join(root, "invalid-config.yaml"), "profiles: [broken");
+        writeFileSync(join(root, "kubectl"), '#!/bin/sh\necho unexpected >> "$DOCTOR_TEST_KUBECTL_LOG"\nexit 99\n', { mode: 0o755 });
+        const output = runDistribution(root, [...args, ...target]);
+        if (args[0] === "version") {
+          expect(output).toStartWith(`samplectl 2.3.4\ndoctor ${DOCTOR_CLI_VERSION}\nplugin sample@1.0.0\n`);
+          expect(output).toContain(`os ${process.platform} `);
+          expect(output).not.toContain("kubernetes");
+        } else {
+          expect(output).toBe("samplectl 2.3.4\n");
+        }
+        expect(existsSync(join(root, "kubectl.log"))).toBe(false);
+      });
+    }
   }
 });

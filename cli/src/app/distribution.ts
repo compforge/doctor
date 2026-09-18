@@ -6,6 +6,8 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
  */
 export interface Distribution {
   name?: string;
+  /** User-facing release version; defaults to the embedded Doctor Core version. */
+  version?: string;
   description?: string;
   /** Visible top-level commands, comma-separated; defaults to the build's DOCTOR_COMMANDS. */
   commands?: string;

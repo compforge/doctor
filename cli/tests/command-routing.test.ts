@@ -81,6 +81,14 @@ describe("CLI command routing", () => {
     expect(distribution.stdout).toContain("plugin test@0.0.1");
   });
 
+  test("version flags report only the default distribution identity", () => {
+    for (const flag of ["--version", "-V"]) {
+      const result = runCoreCli(flag);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe(`doctor ${DOCTOR_CLI_VERSION}\n`);
+    }
+  });
+
   test("loaded Plugin missing a required capability reports that capability", () => {
     const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
