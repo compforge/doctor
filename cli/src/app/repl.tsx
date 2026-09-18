@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 
@@ -13,7 +14,7 @@ export async function runRepl(
   plugin: PluginDefinition | undefined,
   commandContext: CommandContext,
 ): Promise<void> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!isInteractive()) {
     process.stderr.write(
       "doctor chat 仅支持交互式终端（非交互采集请用 doctor cpu / doctor mem / doctor trace）\n",
     );

@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -165,7 +166,7 @@ export async function resolveNetworkScenarioFile(input: {
   prompt?: (files: readonly string[]) => Promise<string | null | undefined>;
 }): Promise<string | null | undefined> {
   if (input.file?.trim()) return input.file;
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) {
     throw new Error("缺少 --file；非交互环境请显式指定 YAML");
   }
@@ -231,7 +232,7 @@ export async function resolveNetworkRequest(
 ): Promise<HttpRequestPlan | undefined> {
   if (requests.length === 1) return requests[0];
 
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) {
     throw new Error(`doctor net 要求场景恰好解析出一个 HTTP 请求，实际为 ${requests.length} 个`);
   }
@@ -253,7 +254,7 @@ export async function resolveNetworkServiceScope(input: {
 }): Promise<string[] | undefined> {
   if (input.services?.trim()) return parseNetworkServices(input.services);
 
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) {
     throw new Error("缺少 --services；非交互环境请显式指定本次抓包范围");
   }

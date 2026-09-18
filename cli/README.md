@@ -17,6 +17,12 @@ doctor inspect --kubeconfig /path/to/config --context staging --services api -n 
 这些参数只在命令需要 Kubernetes 时使用，查看 Help 或 `plugin` 列表不连接目标环境。
 `--config` 仍表示 Doctor 的配置文件，与 kubeconfig 不同。
 
+`-y/--yes` 是全局参数：不询问，使用已解析的参数与默认值，预先批准已选操作；
+缺少必要信息时直接报错（参数错误退出码 2），不会自动选择不明确的目标。
+默认 Doctor 保留交互补参；Distribution 可设置 `optionDefaults.yes = true`，显式
+`--no-yes` 可覆盖。`inspect -y --services api` 默认只采集基础信息，可选配置与依赖分别用
+`--deployment-config` / `--dependencies` 开启，或用对应 `--no-*` 显式关闭。
+
 ## 本地构建
 
 ```bash

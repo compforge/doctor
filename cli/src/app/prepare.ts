@@ -8,6 +8,7 @@ import type { CommandDeliveryOptions } from "./delivery";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 
 export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
+  yes?: boolean;
   kubeconfig?: string;
   context?: string;
   namespace?: string;
@@ -24,7 +25,7 @@ export function prepareCommand(opts: CommandOptions, printProfile: boolean, plug
   }, {
     plugin, loadPlugin: loadActivePlugin,
     environment: { kubeconfig: opts.kubeconfig, context: opts.context },
-    format: opts.format, output: opts.output,
+    format: opts.format, output: opts.output, yes: opts.yes,
     onError: (error, command) => reportError(error, { context: command, summary: "fatal", plugin: context.pluginIdentity }),
   });
   return context;

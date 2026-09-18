@@ -1,3 +1,5 @@
+import { requireInteractive } from "./policy";
+
 type ResumableTerminalInput = Pick<NodeJS.ReadStream, "ref" | "resume">;
 
 /**
@@ -7,6 +9,7 @@ type ResumableTerminalInput = Pick<NodeJS.ReadStream, "ref" | "resume">;
 export function prepareTerminalInput(
   input: ResumableTerminalInput = process.stdin,
 ): void {
+  requireInteractive();
   input.ref();
   input.resume();
 }

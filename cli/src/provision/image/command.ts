@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { resolveImageTarget } from "../../app/image-target";
 import type { CommandContext } from "../../command";
 import {
@@ -41,7 +42,7 @@ export async function runDoctorImage(
   opts: ImageCliOpts,
   commandContext: CommandContext,
 ): Promise<number> {
-  const interactive = process.stdin.isTTY && process.stdout.isTTY;
+  const interactive = isInteractive();
   const destinations = resolveImageDestinations(targetImage, opts);
   if (destinations.registry && !targetImage && !interactive) {
     await resolveImageTarget(

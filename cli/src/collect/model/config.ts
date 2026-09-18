@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import type { ModelType } from "@compforge/doctor-plugin";
 import type { SelectedInferenceModel } from "../../model";
 import { promptListedChoice } from "../../terminal/selection";
@@ -72,7 +73,7 @@ export async function resolveModelPerformanceEnabled(input: {
   prompt?: (repeat: number) => Promise<boolean>;
 }): Promise<boolean> {
   if (input.enabled !== undefined) return input.enabled;
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) return false;
   return (input.prompt ?? promptModelPerformance)(input.repeat);
 }

@@ -96,8 +96,8 @@ export async function runCollectInspect(
   config = { ...config, includeDeploymentConfig };
   terminalStdout.write(
     includeDeploymentConfig
-      ? "[collect] Deployment Env/ConfigMap：已确认采集\n"
-      : "[collect] Deployment Env/ConfigMap：已跳过（未确认采集）\n",
+      ? "[collect] Deployment Env/ConfigMap：纳入采集\n"
+      : "[collect] Deployment Env/ConfigMap：未纳入本次采集范围\n",
   );
   const includeDependencies = await resolveInspectDependencySelection({ config });
   if (includeDependencies === undefined) {
@@ -107,8 +107,8 @@ export async function runCollectInspect(
   config = { ...config, includeDependencies };
   terminalStdout.write(
     includeDependencies
-      ? "[collect] 应用依赖及版本：已确认采集\n"
-      : "[collect] 应用依赖及版本：已跳过（未确认进入业务 Container）\n",
+      ? "[collect] 应用依赖及版本：纳入采集\n"
+      : "[collect] 应用依赖及版本：未纳入本次采集范围\n",
   );
   const deploymentNeeds = includeDeploymentConfig ? [{
     requirement: "preferred" as const,
@@ -231,7 +231,7 @@ export async function runCollectInspect(
       log,
       buildEvidence: buildInspectEvidence,
       detectors: makeInspectDetectors(plugin.id, plugin.services, config.services),
-      buildCoverage: buildInspectCoverage,
+      buildCoverage: (evidence) => buildInspectCoverage(evidence, config),
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;

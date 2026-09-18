@@ -57,6 +57,9 @@ export function validateDbInput(input: DbInput): void {
   if (input.params !== undefined && input.execute === undefined && input.file === undefined) throw new CommandInputError("--params 必须与 --execute 或 --file 一起使用");
   tableScope(input.database, input.table);
   queryLimits(input);
+  if (!actions.some(Boolean) && !canPrompt({ interactive: input.interactive })) {
+    throw new CommandInputError("缺少数据库操作：请指定 --show-databases / --show-tables / --show-create-table / -e / --file");
+  }
 }
 
 function queryLimits(input: DbInput) {

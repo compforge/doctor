@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { writeFileSync } from "node:fs";
 import { findSelectableFiles, resolveFileSelection } from "../../terminal/file-selection";
 import {
@@ -121,7 +122,7 @@ export async function resolveHttpScenarioRequests(
     return filterHttpScenarioRequests(scenario, input.request.split(","));
   }
 
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive || scenario.requests.length === 1) return scenario;
 
   const choices = scenario.requests.map((request) => ({ name: request.id }));

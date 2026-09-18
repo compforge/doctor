@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import {
   RecentStore,
   type ImageRecentTarget,
@@ -328,7 +329,7 @@ export function recentSelectionsForInteractive(
   injected?: RecentSelections,
 ): RecentSelections | undefined {
   if (injected) return injected;
-  const terminalIsInteractive = !!(process.stdin.isTTY && process.stdout.isTTY);
+  const terminalIsInteractive = isInteractive();
   return (interactive ?? terminalIsInteractive) && terminalIsInteractive
     ? new RecentSelections()
     : undefined;

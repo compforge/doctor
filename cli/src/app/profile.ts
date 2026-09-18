@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import { terminalStdout } from "../terminal/output";
 import {
   existsSync,
@@ -121,7 +122,7 @@ async function selectProfile(config: Config, current: string | undefined): Promi
   printNumberedChoices(names, "Profiles（* = 当前）:", (name) =>
     profileSummary(name, config.profiles[name]!, current),
   );
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return undefined;
+  if (!isInteractive()) return undefined;
   return promptListedChoice({
     question: "选择 profile（序号/名称，q 取消）: ",
     match: (answer) => matchListedChoice(names, answer, (name) => name, (name) => name),

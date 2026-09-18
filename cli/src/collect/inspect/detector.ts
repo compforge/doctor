@@ -207,6 +207,7 @@ export function makeInspectDetectors(
 
 export function buildInspectCoverage(
   evidence: InspectEvidence,
+  scope?: { includeDeploymentConfig?: boolean; includeDependencies?: boolean },
 ): DiagnosisCoverage<InspectDiagnosisGoal>[] {
   const environmentMissing: string[] = [];
   if (evidence.facts.deploymentConfiguration.status !== "collected") {
@@ -333,5 +334,8 @@ export function buildInspectCoverage(
       : collectedDependencies > 0 ? "partial" : "insufficient",
     missingEvidence: dependencyMissing,
   });
-  return coverage;
+  // Coverage measures the requested scope, not optional collection the caller never selected.
+  return coverage.filter(({ goal }) => !scope
+    || (goal !== "environment-config" || scope.includeDeploymentConfig)
+      && (goal !== "runtime-dependencies" || scope.includeDependencies));
 }

@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
   ServiceCaseObservation,
@@ -66,7 +67,7 @@ async function resolveEvalRequestIdentity(input: {
   const tenantId = configured.tenantId?.trim();
   const userId = configured.userId?.trim();
   if (tenantId && userId) return { tenantId, userId };
-  if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+  if (!(isInteractive())) {
     throw new Error("非交互环境的 Eval Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
   }
   const directoryService = input.plugin.services.findWith(

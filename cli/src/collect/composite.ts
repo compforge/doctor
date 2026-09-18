@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -139,7 +140,7 @@ export function parseCollectKinds(raw: string | undefined): CollectKind[] {
 
 export async function resolveCollectKinds(
   raw: string | undefined,
-  interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
+  interactive = isInteractive(),
 ): Promise<CollectKind[] | undefined> {
   if (raw !== undefined || !interactive) return parseCollectKinds(raw);
   const selected = await promptMultiSelect({

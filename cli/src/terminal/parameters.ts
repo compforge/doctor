@@ -3,12 +3,13 @@ import { currentCommandSignal } from "../command/execution-scope";
 import { CommandInputError } from "../command";
 import { withTerminalInput } from "./interaction";
 import { terminalOutputStream } from "./output";
+import { isInteractive } from "./policy";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "./selection";
 
 /** Explicit false wins even inside a PTY; a data-owned stdin never becomes a prompt channel. */
 export function canPrompt(options: { interactive?: boolean; stdinOwned?: boolean } = {}): boolean {
-  return options.interactive !== false && !options.stdinOwned
-    && !!process.stdin.isTTY && !!terminalOutputStream().isTTY;
+  return isInteractive() && options.interactive !== false && !options.stdinOwned
+    && !!terminalOutputStream().isTTY;
 }
 
 export async function chooseParameter(

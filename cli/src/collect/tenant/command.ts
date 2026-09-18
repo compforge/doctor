@@ -1,4 +1,5 @@
-import { defineCommand, type CommandInput } from "../../command";
+import { CommandInputError, defineCommand, type CommandInput } from "../../command";
+import { isInteractive } from "../../terminal/policy";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { renderEvidence, writeEvidencePage } from "../../report/evidence";
@@ -20,6 +21,11 @@ export function createTenantInput(input: Omit<TenantInput, "idempotencyKey">): T
 
 export const tenantCommand = defineCommand<TenantInput, void>({
   name: "doctor tenant",
+  validate: (input) => {
+    if (!isInteractive() && !input.tenantId?.trim() && !input.tenantName?.trim()) {
+      throw new CommandInputError("非交互模式需要 --tenant-id 或 --tenant-name 显式指定租户");
+    }
+  },
   render: async (context, result) => renderEvidence(context, result, {
     command: "tenant", title: "Tenant", scope: "租户",
     render: artifact => {

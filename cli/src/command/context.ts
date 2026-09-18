@@ -75,6 +75,7 @@ function commandScopeKey(scope: CommandScope): string {
  * Root-owned configuration for one execution tree. Domain inputs and per-call results stay outside it.
  */
 export interface CommandContextOptions {
+  yes?: boolean;
   format?: string;
   output?: string;
   plugin?: PluginDefinition;

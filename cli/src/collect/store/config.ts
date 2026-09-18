@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import type {
@@ -254,7 +255,7 @@ export async function resolveStoreProviderConfig(
   const outputFormat = resolvedOutputFormat ?? parseStoreOutputFormat(opts.format);
   resolveStoreOutputPath(opts.output, "doctor-store", outputFormat);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
-  const interactive = opts.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(opts.interactive);
   const [kind] = parseStoreKinds(opts.type);
   if (!kind || kind === "redis") throw new Error("resolveStoreConfig 只处理 db、vdb、s3 单个 Store");
   const namespace = collect.kubernetes.namespace;

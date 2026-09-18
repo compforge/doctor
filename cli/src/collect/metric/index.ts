@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -49,10 +50,10 @@ export async function runCollectMetric(
     opts,
     plugin.services,
     commandContext,
-    !!(process.stdin.isTTY && process.stdout.isTTY),
+    isInteractive(),
   );
   if (!config) return commandOutcome(130);
-  if (!config.servicesExplicit && process.stdin.isTTY && process.stdout.isTTY) {
+  if (!config.servicesExplicit && isInteractive()) {
     const selected = await promptNamedChoices({
       choices: plugin.services.servicesWith("metric").map((service) => ({ name: service.name })),
       defaults: config.services,

@@ -6,6 +6,7 @@ import { prepareCommand, type CommandOptions } from "./prepare";
 import { withMachineOutput } from "../terminal/output";
 import { deliverManifest } from "./manifest-delivery";
 import { withoutShadowedDefaults } from "./option-sources";
+import { withInteractionOptions } from "../terminal/policy";
 
 export type { CommandSpec } from "../command";
 
@@ -25,7 +26,8 @@ export async function runCommand<Input extends CommandInput, Output>(
   input: Input,
   runtime: { plugin?: PluginDefinition; printProfile?: boolean } = {},
 ): Promise<void> {
-  return withMachineOutput(opts.format?.trim() === "manifest", () => executeCommand(spec, opts, input, runtime));
+  return withInteractionOptions(opts, () =>
+    withMachineOutput(opts.format?.trim() === "manifest", () => executeCommand(spec, opts, input, runtime)));
 }
 
 async function executeCommand<Input extends CommandInput, Output>(
@@ -70,6 +72,6 @@ export async function runStandaloneCommand(
     if (typeof code === "number") process.exitCode = code;
   } catch (error) {
     reportError(error, { context, summary: "fatal" });
-    process.exitCode = 1;
+    process.exitCode = error instanceof CommandInputError ? 2 : 1;
   }
 }

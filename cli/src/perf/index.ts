@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
   ServiceCaseObservation,
@@ -263,7 +264,7 @@ export async function runPerf(
     weight: selection.weight ?? 1,
   }));
 
-  if (!opts.levels?.trim() && process.stdin.isTTY && process.stdout.isTTY) {
+  if (!opts.levels?.trim() && isInteractive()) {
     terminalStdout.info(
       `[perf] 可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）\n`,
     );
@@ -296,7 +297,7 @@ export async function runPerf(
     if (tenantId && userId) {
       requestIdentity = { tenantId, userId };
     } else {
-      if (!(process.stdin.isTTY && process.stdout.isTTY)) {
+      if (!(isInteractive())) {
         throw new Error("非交互环境的 Perf Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
       }
       const directoryService = plugin.services.findWith(

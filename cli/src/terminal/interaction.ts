@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { currentCommandSignal } from "../command/execution-scope";
+import { requireInteractive } from "./policy";
 
 const input = new ConcurrencyPool(1);
 const owner = new AsyncLocalStorage<object>();
@@ -9,6 +10,7 @@ const pendingOutput: Array<() => void> = [];
 
 /** One stdin owner; background command output waits until that interaction is complete. */
 export function withTerminalInput<T>(work: () => Promise<T>): Promise<T> {
+  requireInteractive();
   return input.run(async () => {
     const token = {};
     active = token;

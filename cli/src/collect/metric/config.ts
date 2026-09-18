@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { resolveCollectNamespace } from "../../infra/k8s/context";
@@ -76,7 +77,7 @@ export async function resolveMetricConfig(
   opts: CollectMetricCliOpts,
   catalog: ServiceCatalog,
   commandContext: CommandContext,
-  interactive = !!(process.stdin.isTTY && process.stdout.isTTY),
+  interactive = isInteractive(),
 ): Promise<MetricConfig | undefined> {
   const resolvedProfile = {
     name: commandContext.profile.name,

@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { terminalStdout } from "../../terminal/output";
 import { prepareTerminalInput } from "../../terminal/input";
 import { readFileSync } from "node:fs";
@@ -30,7 +31,7 @@ export async function resolveToolArgs(opts: McpSelectionOptions, tool: McpToolDe
   if (opts.args && opts.argsFile) throw new Error("--args 与 --args-file 不能同时使用");
   if (opts.argsFile) return parseArgsJson(readFileSync(resolve(opts.argsFile), "utf-8"), "--args-file");
   if (opts.args) return parseArgsJson(opts.args, "--args");
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!isInteractive()) {
     const required = (tool.args ?? []).filter((arg) => arg.required && arg.default === undefined);
     if (required.length) throw new Error(`当前为非交互终端；请用 --args 提供必填参数：${required.map((arg) => arg.name).join(", ")}`);
     return {};
@@ -90,7 +91,7 @@ export async function selectServer(
     if (!matched.length) throw new Error(`找不到 MCP server：${query}`);
     throw new Error(`MCP server '${query}' 不唯一：${matched.map((item) => item.id).join(", ")}`);
   }
-  if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("当前为非交互终端；请显式指定 --server");
+  if (!isInteractive()) throw new Error("当前为非交互终端；请显式指定 --server");
   printNumberedChoices(choices, "[mcp] 可用 MCP servers：", (choice) => choice.displayName);
   return promptListedChoice({
     question: "[mcp] 选择 server（序号或完整 tenant/name，q 退出）：",
@@ -110,7 +111,7 @@ export async function selectTool(
     if (!matched.length) throw new Error(`MCP 配置中找不到 tool：${query}`);
     throw new Error(`tool '${query}' 不唯一：${matched.map((item) => item.name).join(", ")}`);
   }
-  if (!process.stdin.isTTY || !process.stdout.isTTY) throw new Error("当前为非交互终端；请显式指定 --tool");
+  if (!isInteractive()) throw new Error("当前为非交互终端；请显式指定 --tool");
   const live = new Set(runtimeTools.map((tool) => tool.name));
   printNumberedChoices(tools, "[mcp] server tools：", (tool) => `${tool.name} · runtime=${live.has(tool.name) ? "yes" : "no"}`);
   return promptListedChoice({

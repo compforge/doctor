@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { terminalStdout } from "../../terminal/output";
 import {
   matchListedChoice,
@@ -65,9 +66,8 @@ export async function resolveHttpExecutionLocation(input: {
   if (explicit) return explicit;
   if (hasPodTarget) return "pod";
 
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) return "local";
   printHttpExecutionLocationChoices();
   return (input.prompt ?? promptHttpExecutionLocation)();
 }
-

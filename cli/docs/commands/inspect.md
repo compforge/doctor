@@ -17,10 +17,14 @@
 1. app 注入当前 `PluginDefinition`；Service 选择从 Plugin Catalog 与当前 Namespace 实际 Service 求交集。Service 选择完成后，交互分别询问是否采集 Deployment Env/ConfigMap 和应用依赖；非交互命令只有显式传入对应 flag 才采集。
 2. `service-targets` Inspect 始终读取 Namespace 中的 Service 和 Pod。只有用户确认后才读取 Deployment 和 ConfigMap；只有声明 `config` capability 的 Service 进入配置检查，Service selector 同时定位其当前 Pod 和对应 Deployment。
 3. Inspect 将每个所选 Service 的 Pod、Container 状态、重启/终止原因、镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 Coverage 中标明缺口。
-4. 用户确认时，Env Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。用户跳过时不发起这两类 Kubernetes 查询，并明确记录 skipped 步骤和不足的 Env Coverage。
+4. 用户确认时，Env Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。未选择时不发起这两类 Kubernetes 查询，标为未纳入范围，不计入缺失证据或不足的 Coverage。
 5. 用户确认依赖采集时，Inspect 用 Service selector 与 port 定位业务 Container，按实际 `imageID` 去重后每个镜像选择一个 Running Pod。Core 根据 Toolchain 执行有界只读采集，只保存归一化后的包名、版本和现场 runtime version；拒绝后不申请 `pods/exec` 权限。
 6. HTML 和 Markdown 分别展示 Workload 声明、Pod、Toolchain、应用依赖与 Service 配置；Workload 说明和 Toolchain 明确标为声明，依赖与 runtime version 明确标为本次现场观测。
-7. 用户选择只采集 Pod 运行态时，报告按 partial 正常交付；完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
+7. 报告状态按本次选择的范围计算；只采集 Pod 运行态不因未开启可选项而变为 partial。已选择的目标采集不足仍保留真实缺口。完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
+
+`-y/--yes` 禁止全部交互，包括 Service 选择与可选采集询问；缺少 `--services` 时在 Plugin
+加载和环境连接前报参数错误。`-y` 不开启可选采集，需显式传 `--deployment-config` 或
+`--dependencies`；对应 `--no-*` 表示明确关闭，即使恢复交互也不再询问该项。
 
 ## 关键设计
 
@@ -30,7 +34,7 @@
 
 ### 为什么 Env/ConfigMap 需要单独确认
 
-Pod 数量、镜像和资源声明是常规工作负载事实；Deployment env 与 ConfigMap 则可能直接包含密码、密钥等业务数据。Doctor 在 Service 选择后单独确认，只有用户明确需要时才申请相关读取权限并采集。拒绝后已有 Pod 事实仍可交付，但报告必须把 Env 目标标为不充分，从而保留“用户只要求一部分”的真实范围。
+Pod 数量、镜像和资源声明是常规工作负载事实；Deployment env 与 ConfigMap 则可能直接包含密码、密钥等业务数据。Doctor 在 Service 选择后单独确认，只有用户明确需要时才申请相关读取权限并采集。未选择的 Env 目标不计入 Coverage；已请求但失败的采集仍标为不充分，避免把范围选择混为执行失败。
 
 ### 为什么 Toolchain 由 Plugin 声明、依赖由 Core 采集
 

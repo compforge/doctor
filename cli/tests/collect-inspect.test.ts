@@ -222,8 +222,8 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
     namespaceSource: "default",
     services: ["example-api"],
     servicesExplicit: true,
-    includeDeploymentConfig: false,
-    includeDependencies: false,
+    includeDeploymentConfig: undefined,
+    includeDependencies: undefined,
     format: "html",
     reportName: "doctor-inspect-test",
     profileName: "default",
@@ -447,9 +447,9 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
     expect(queriedResources).not.toContain("configmaps");
     const partial = readFileSync(partialOutput, "utf-8");
     expect(partial).toContain("Deployment Env/ConfigMap：未采集");
-    expect(partial).toContain("environment-config：insufficient");
+    expect(partial).not.toContain("environment-config：insufficient");
     expect(partial).toContain("workload-runtime：sufficient");
-    expect(partial).toContain("用户未确认采集 Deployment Env/ConfigMap");
+    expect(partial).toContain("Deployment Env/ConfigMap 未纳入本次采集范围");
     expect(partial).toContain("AppArmor Unconfined：未探测到（best effort）");
     admissionUnavailable = false;
 

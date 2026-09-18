@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -281,7 +282,7 @@ export async function confirmHeapCapture(input: HeapCaptureConfirmation): Promis
   if (input.strReprLen !== -1) {
     terminalStdout.write("[collect] - heap 会包含对象字符串表示，可能带入业务数据\n");
   }
-  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+  if (!isInteractive()) {
     terminalStderr.warning(
       "[collect] 当前为非交互终端，无法取得 attach 确认；已停止（可用 -y/--yes 预先确认）\n",
     );
