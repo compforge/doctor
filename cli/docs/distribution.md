@@ -3,14 +3,14 @@
 ## 理念与边界
 
 Doctor 是上游通用诊断 CLI。发行版复用同一套 Command、环境访问与 Evidence 生命周期，面向某类使用者
-选择入口名称、说明、命令展示和内置 Plugin，不复制 Core，也不建立另一套命令执行流程。
+选择入口名称、发行版本、说明、命令展示和内置 Plugin，不复制 Core，也不建立另一套命令执行流程。
 
 - **Core** 拥有命令与执行契约、通用连接参数、Help 生成和版本报告。
 - **Distribution** 拥有用户看到的 CLI 身份及命令展示策略，由发行方的 composition entry 固定。
 - **Plugin** 拥有 Service、业务能力和 Skills。Plugin 的身份与版本不因发行版名称改变。
 
 Plugin 与发行版是两个独立维度：同一 Plugin 可以被不同发行版内置，发行版也可以不内置 Plugin，
-继续使用 Doctor 的 Host Plugin 加载机制。没有发行配置时，名称为 `doctor`，保留通用描述。
+继续使用 Doctor 的 Host Plugin 加载机制。没有发行配置时，名称为 `doctor`，版本沿用 Doctor Core，保留通用描述。
 
 ## 装配流程
 
@@ -22,6 +22,7 @@ import plugin from "./plugin";
 
 const distribution = {
   name: "samplectl",
+  version: "2.3.4",
   description: "Sample application diagnostics powered by Doctor",
   plugin,
   optionDefaults: { config: "" },
@@ -74,14 +75,20 @@ Help 根据有效入口隐藏 profile 相关选项和 `init/profile` 命令，�
 
 `--config`、`--namespace/-n`、`--kubeconfig` 与 `--context` 在根命令统一声明，子命令通过 Commander 的全局选项合并取得它们，
 再进入现有 CommandContext；不放进 Plugin config，不修改进程级环境变量或 kubeconfig 当前 context。
-Help 和 Plugin 信息展示保持离线。版本命令需要探测 Kubernetes 时，同样使用显式传入的目标。
+Help、Plugin 信息与版本展示保持离线，不因传入目标参数而连接 Kubernetes。
 namespace 的默认值仍为 `default`；解析器提供的默认值不覆盖 profile 中的 namespace。
 配置关闭时不选择 profile，只使用显式参数和运行默认值。
 
-### 保留上游版本来源
+### 发行版本与内嵌组件版本独立
 
-发行名称不是新的 Core 版本号。`version/-V` 继续报告 Doctor Core、当前 Plugin 和运行环境版本，
-便于识别实际执行代码；不把 Plugin 版本当成发行版或 Doctor Core 版本。
+`Distribution.version` 是面向用户的发行版本，未指定时使用 Doctor Core 版本；名称与版本可独立设置。
+发行方从自己的发布元数据注入版本，不修改内嵌 Core 或 Plugin 的版本事实源。
+
+- `--version/-V` 只输出发行名称与版本，不加载 Plugin 或准备诊断目标。
+- `version` 先输出发行身份，再报告 Doctor Core、当前 Plugin 和本机信息；发行身份与 Core 相同时不重复输出。
+- 两种入口都只读本地信息，不加载诊断 profile、不探测 Kubernetes；目标运行状态由诊断命令采集。
+
+这样用户可确认安装的发行包，排障时也能追溯实际内嵌组件；Plugin 版本不能代替发行版本。
 
 ### 运行时是构建选择
 
