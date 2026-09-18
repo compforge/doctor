@@ -24,6 +24,7 @@ const distribution = {
   name: "samplectl",
   description: "Sample application diagnostics powered by Doctor",
   plugin,
+  optionDefaults: { config: "" },
   commandDefaults: {
     inspect: { format: "manifest" },
     log: { format: "manifest", since: "30m" },
@@ -47,6 +48,15 @@ make -C cli build-mac DOCTOR_ENTRY=/path/to/entry.ts DOCTOR_COMMANDS=inspect,dat
 
 ### 命令默认值属于发行体验
 
+`optionDefaults` 设置根参数默认值，`commandDefaults` 设置各命令自己的参数默认值；
+二者共用参数声明与校验。发行默认值不是权限限制，显式参数仍可覆盖。
+
+`optionDefaults.config = ""` 让发行版默认不读取 Doctor 配置，包括 `DOCTOR_CONFIG` 指向的文件。
+普通 Doctor 未设置此默认值，仍按 `--config`、`DOCTOR_CONFIG`、`~/.doctor/config.yaml`
+解析配置入口。显式非空 `--config` 可以重新启用配置；空字符串不能被当作未指定。
+Help 根据有效入口隐藏 profile 相关选项和 `init/profile` 命令，直接调用依赖配置的入口会报错。
+这不限制显式 kubeconfig、SQL 文件或离线证据的读取。
+
 `commandDefaults` 按 Command 名和参数的 camelCase 名配置默认值，只能引用命令已经声明的参数。
 参数解析与可选值检查复用 CLI 声明，Help 显示发行版实际默认值；显式 CLI 参数和 Commander 的环境变量
 绑定优先。未配置的命令继续沿用 Core 默认行为，不修改共享 Command 的运行逻辑或子命令交付流程。
@@ -62,9 +72,11 @@ make -C cli build-mac DOCTOR_ENTRY=/path/to/entry.ts DOCTOR_COMMANDS=inspect,dat
 
 ### 目标配置归宿主
 
-`--kubeconfig` 与 `--context` 在根命令统一声明，子命令通过 Commander 的全局选项合并取得它们，
+`--config`、`--namespace/-n`、`--kubeconfig` 与 `--context` 在根命令统一声明，子命令通过 Commander 的全局选项合并取得它们，
 再进入现有 CommandContext；不放进 Plugin config，不修改进程级环境变量或 kubeconfig 当前 context。
 Help 和 Plugin 信息展示保持离线。版本命令需要探测 Kubernetes 时，同样使用显式传入的目标。
+namespace 的默认值仍为 `default`；解析器提供的默认值不覆盖 profile 中的 namespace。
+配置关闭时不选择 profile，只使用显式参数和运行默认值。
 
 ### 保留上游版本来源
 

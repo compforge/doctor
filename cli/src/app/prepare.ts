@@ -10,13 +10,14 @@ import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
   kubeconfig?: string;
   context?: string;
+  namespace?: string;
 };
 
 /** Only the root resolves profile and host settings; each spec prepares its own requirements. */
 export function prepareCommand(opts: CommandOptions, printProfile: boolean, plugin?: PluginDefinition): CommandContext {
   const resolved = resolveWorkingProfile(opts);
   opts = withoutShadowedDefaults(opts, resolved.profile);
-  if (printProfile) terminalStdout.warning(`profile: ${resolved.name}\n`);
+  if (printProfile && resolved.configPath) terminalStdout.warning(`profile: ${resolved.name}\n`);
   const context = new CommandContext({}, {
     name: resolved.name, configPath: resolved.configPath, value: resolved.profile,
     pluginConfig: resolved.profile.plugin?.config ?? {},

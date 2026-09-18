@@ -1,9 +1,7 @@
 import { terminalStdout } from "../terminal/output";
 import { prepareTerminalInput } from "../terminal/input";
 import { createInterface, emitKeypressEvents } from "node:readline";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { loadConfig, resolveProfile } from "./config/config";
+import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 import { infra } from "../infra";
 import type {
   ImagePlatform,
@@ -12,10 +10,7 @@ import type {
   RegistryTagListResult,
 } from "../infra/image";
 
-export interface RegistryAuthOpts {
-  profile?: string;
-  config?: string;
-}
+export type RegistryAuthOpts = WorkingProfileOptions;
 
 export type RegistryAuthPurpose = "list-tags" | "inspect-image" | "publish-image";
 
@@ -35,8 +30,7 @@ export function resolveProfileRegistryCredentials(
   image: string,
   opts: RegistryAuthOpts,
 ): RegistryCredentials | undefined {
-  const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
-  const { profile } = resolveProfile(loadConfig(configPath), opts.profile);
+  const { profile } = resolveWorkingProfile(opts);
   const username = profile.registry?.username?.trim();
   const password = profile.registry?.password;
   if (!username && !password) return undefined;

@@ -115,6 +115,8 @@ function parseConfig(data: unknown, path: string): Config {
 }
 
 export function loadConfig(path: string): Config {
+  // Empty config is an explicit opt-out, not a missing file eligible for a synthetic profile.
+  if (path === "") return { profiles: {} };
   if (!existsSync(path)) return defaultConfig();
   const raw = readFileSync(path, "utf8");
   const data = parseYaml(raw) as unknown;
