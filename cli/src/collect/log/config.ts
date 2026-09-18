@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -122,7 +123,7 @@ export async function resolveLogServiceSelection(
   const defaults = input.catalog.servicesWith("log")
     .filter((service) => service.capabilities.log.default)
     .map((service) => service.name);
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) return defaults;
   const listed = input.catalog.servicesWith("log").map(service => ({ name: service.name }));
   const choices = rankRecentServiceChoices(listed, input);

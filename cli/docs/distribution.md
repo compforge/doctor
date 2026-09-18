@@ -25,7 +25,7 @@ const distribution = {
   version: "2.3.4",
   description: "Sample application diagnostics powered by Doctor",
   plugin,
-  optionDefaults: { config: "" },
+  optionDefaults: { config: "", yes: true },
   commandDefaults: {
     inspect: { format: "manifest" },
     log: { format: "manifest", since: "30m" },
@@ -51,6 +51,11 @@ make -C cli build-mac DOCTOR_ENTRY=/path/to/entry.ts DOCTOR_COMMANDS=inspect,dat
 
 `optionDefaults` 设置根参数默认值，`commandDefaults` 设置各命令自己的参数默认值；
 二者共用参数声明与校验。发行默认值不是权限限制，显式参数仍可覆盖。
+
+`optionDefaults.yes = true` 使发行版默认启用 `-y/--yes`：整个调用树不询问，
+使用显式参数、已有配置和已声明默认值；必要信息仍无法确定时以参数错误退出，不能猜选目标。
+`-y` 预先批准已选操作，不自动开启可选采集；例如 inspect 的配置与依赖采集仍需
+`--deployment-config` / `--dependencies`。显式 `--no-yes` 可恢复 Doctor 原有的交互终端体验。
 
 `optionDefaults.config = ""` 让发行版默认不读取 Doctor 配置，包括 `DOCTOR_CONFIG` 指向的文件。
 普通 Doctor 未设置此默认值，仍按 `--config`、`DOCTOR_CONFIG`、`~/.doctor/config.yaml`

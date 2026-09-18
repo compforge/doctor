@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -318,7 +319,7 @@ export async function runDebug(
   commandContext: CommandContext,
 ): Promise<number> {
   if (opts.services) return runDebugServices(opts, commandContext);
-  if (!opts.pod?.trim() && process.stdin.isTTY && process.stdout.isTTY) {
+  if (!opts.pod?.trim() && isInteractive()) {
     return runDebugPods(opts, commandContext);
   }
   return runDebugTarget(opts, commandContext);

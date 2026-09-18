@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import { terminalStdout } from "../terminal/output";
 import {
   resolveCollectKubeconfig,
@@ -223,7 +224,7 @@ export async function resolvePodTarget(input: {
         : `namespace '${namespace}' 中没有可选 Pod`,
     );
   }
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   let selected = keyword && matches.length === 1 ? matches[0] : undefined;
   let selectedInteractively = false;
   if (selected) {
@@ -347,7 +348,7 @@ async function resolveExplicitPodTarget(input: {
 recent = recentSelectionsForInteractive(input.interactive, input.recent),
 recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
 ): Promise<PodTarget | undefined> {
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   let pod = input.pod?.trim();
   let selectedInteractively = false;
   if (!pod) {

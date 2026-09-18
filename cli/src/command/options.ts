@@ -1,5 +1,6 @@
 import type { CommandInput } from "./spec";
 import type { CommandContext } from "./context";
+import { assumesYes } from "../terminal/policy";
 
 /** CLI/profile and final delivery settings do not belong to a domain command's input. */
 export type CommandHostOption = "profile" | "config" | "kubeconfig" | "context" | "output" | "format" | "debug" | "version";
@@ -13,6 +14,7 @@ export function domainInput<Input extends object>(options: Input): Omit<Input, C
 
 export function commandOptions(context: CommandContext) {
   return {
+    yes: assumesYes(),
     ...context.options.environment,
     profile: context.profile.configPath ? context.profile.name : undefined,
     config: context.profile.configPath,

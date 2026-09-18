@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
@@ -18,7 +19,7 @@ export async function runCollectStore(
   plugin: PluginDefinition,
   commandContext: CommandContext,
 ): Promise<CommandResult<void>> {
-  const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive();
   let kinds;
   try {
     kinds = await resolveStoreKinds(opts.type, plugin, interactive);

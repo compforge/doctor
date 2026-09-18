@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type {
   ImagePlatform,
   RegistryCredentials,
@@ -112,7 +113,7 @@ export async function resolveDebugImage(
     return { image: configured.image, source: configured.source };
   }
   const repository = inferDebugImageRepository(targetImage);
-  const interactive = options.interactive ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(options.interactive);
   if (!interactive) {
     return {
       image: inferDebugImage(targetImage, DOCTOR_DEBUG_IMAGE_VERSION),

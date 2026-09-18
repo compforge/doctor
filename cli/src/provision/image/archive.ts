@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -131,8 +132,7 @@ export async function resolveImageArchive(
     );
     return candidates[0]!.path;
   }
-  const interactive = options.interactive
-    ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(options.interactive);
   if (!interactive) {
     throw new Error("当前目录找到多个 image tar，非交互环境请用 --tar 明确指定");
   }
@@ -232,8 +232,7 @@ export async function resolveSourceImage(
     );
     return archive.images[0];
   }
-  const interactive = options.interactive
-    ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(options.interactive);
   if (!interactive) {
     throw new Error(
       "tar 中包含多个 image，非交互环境请用 --source-image 明确指定："

@@ -27,6 +27,7 @@ import { terminalStdout } from "../terminal/output";
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
 import { Command, CommanderError, type Command as CommandT } from "commander";
+import { CliCommand } from "./cli-command";
 import type { Distribution } from "./distribution";
 import { applyCommandDefaults, deliveryFormatOption } from "./command-defaults";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
@@ -98,12 +99,8 @@ function toReplFlags(opts: Record<string, unknown>): CliFlags {
 
 // 采集命令是顶层短命令（doctor mem / doctor trace / doctor log，对齐 perf record 一类手感）；
 // 选项多，抽成 withXxxOptions 保持 main() 里只剩路由结构。
-function withApprovalOptions(cmd: CommandT): CommandT {
-  return cmd.option("-y, --yes", "自动确认本次命令的所有高风险操作", false);
-}
-
 function withK8sProcessTargetOptions(cmd: CommandT): CommandT {
-  return withApprovalOptions(
+  return (
     cmd
       .option("-p, --pod <pod>", "目标 pod 名或关键词（缺省时列出候选）")
       .option("-c, --container <name>", "多容器 pod 时指定容器")
@@ -111,13 +108,13 @@ function withK8sProcessTargetOptions(cmd: CommandT): CommandT {
       .option(
         "--mode <mode>",
         "影响等级：observe、overhead 或 disrupt（缺省时交互选择；关键写操作需 [y/N] 确认）",
-      ),
+      )
   )
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）");
 }
 
 function withMemOptions(cmd: CommandT): CommandT {
-  return withApprovalOptions(
+  return (
     cmd
       .option("-p, --pod <pod>", "目标 pod 名或关键词（缺省时列出候选）")
       .option("-c, --container <name>", "多容器 pod 时指定容器")
@@ -130,7 +127,7 @@ function withMemOptions(cmd: CommandT): CommandT {
         "auto",
       )
       .option("--transfer-chunk-size <size>", "回传分块大小：1m、2m 或 4m", "2m")
-      .option("--cleanup-remote", "heap 成功回传后删除执行容器内临时文件", false),
+      .option("--cleanup-remote", "heap 成功回传后删除执行容器内临时文件", false)
   )
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("-o, --output <path>", "本机 heap 输出路径（默认 ./doctor-mem-<pod>-pid<pid>-<时间戳>.pyheap）");
@@ -228,8 +225,10 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--include <kinds>", "要编排的命令：inspect、tenant、data、trace、log、metric；逗号分隔，交互模式缺省时多选")
     .option("--tenant-id <id>", "传给 doctor tenant 的租户 ID")
     .option("--tenant-name <name>", "传给 doctor tenant 的租户名")
-    .option("--deployment-config", "传给 doctor inspect：确认采集 Deployment Env/ConfigMap")
-    .option("--dependencies", "传给 doctor inspect：确认进入业务 Container 采集依赖及版本")
+    .option("--deployment-config", "传给 inspect：采集 Deployment Env/ConfigMap")
+    .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
+    .option("--dependencies", "传给 inspect：采集应用依赖及版本")
+    .option("--no-dependencies", "不采集应用依赖及版本")
     .option("--since <duration>", "传给 doctor log 的日志回看窗口")
     .option("--since-time <timestamp>", "传给 doctor log 的日志起始时间，优先于 --since")
     .option("--until-time <timestamp>", "传给 doctor log 的日志截止时间（RFC3339，包含边界）")
@@ -244,8 +243,10 @@ function withCollectOptions(cmd: CommandT): CommandT {
 function withInspectOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--services <names>", "逗号分隔的 Kubernetes Service；缺省时交互多选，非交互必须指定")
-    .option("--deployment-config", "确认采集 Deployment Env/ConfigMap；交互模式缺省时询问")
-    .option("--dependencies", "确认进入业务 Container 采集应用依赖；交互模式缺省时询问")
+    .option("--deployment-config", "采集 Deployment Env/ConfigMap；交互模式未指定时询问，-y 默认不采集")
+    .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
+    .option("--dependencies", "进入业务 Container 采集应用依赖；交互模式未指定时询问，-y 默认不采集")
+    .option("--no-dependencies", "不采集应用依赖")
     .addOption(deliveryFormatOption(["bundle", "json", "html", "md"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -295,14 +296,14 @@ function withNetworkOptions(cmd: CommandT): CommandT {
 }
 
 function withMcpOptions(cmd: CommandT): CommandT {
-  return withApprovalOptions(
+  return (
     cmd
       .option("--server <name>", "MCP server：server name 或 tenant/server；缺省时交互选择")
       .option("--tool <name>", "MCP tool name；缺省时交互选择")
       .option("--args <json>", "tool arguments JSON object")
       .option("--args-file <path>", "从文件读取 tool arguments JSON object")
       .option("--timeout <seconds>", "单步请求超时（1..600 秒）", "60")
-      .option("--gateway-service <name>", "提供 MCP capability 的 Kubernetes Service；缺省由 Plugin Catalog 唯一推断"),
+      .option("--gateway-service <name>", "提供 MCP capability 的 Kubernetes Service；缺省由 Plugin Catalog 唯一推断")
   )
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .addOption(deliveryFormatOption(["bundle", "html"]))
@@ -347,7 +348,7 @@ function withMetricOptions(cmd: CommandT): CommandT {
 }
 
 function withPerfOptions(cmd: CommandT): CommandT {
-  return withApprovalOptions(cmd)
+  return cmd
     .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
     .option("--scenario <id>", "Plugin 声明的业务压测场景；默认第一个")
     .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
@@ -367,7 +368,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
 }
 
 function withEvalOptions(cmd: CommandT): CommandT {
-  return withApprovalOptions(cmd)
+  return cmd
     .option("--service <name>", "提供 case capability 的 Service；仅一个 provider 时自动选择")
     .option("--caseset <id>", "要执行的 canonical CaseSet；仅一个 CaseSet 时自动选择")
     .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
@@ -388,7 +389,7 @@ export function createDoctorProgram(
   distribution: Distribution = {},
 ): Command {
   const { plugin } = distribution;
-  const program = new Command();
+  const program = new CliCommand();
   program
     .name(distribution.name ?? "doctor")
     .description(distribution.description ?? [
@@ -397,6 +398,8 @@ export function createDoctorProgram(
     ].join("\n"))
     .option("-V, --version", "显示发行版名称与版本（离线）")
     .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
+    .option("-y, --yes", "不询问，使用已解析的参数和默认值并确认所选操作；缺少必要参数时报错", false)
+    .option("--no-yes", "关闭自动确认，允许交互终端补齐参数")
     .option("--config <path>", 'Doctor 配置路径（默认 ~/.doctor/config.yaml；空字符串禁用外部配置）')
     .option("-n, --namespace <ns>", "目标 namespace（业务采集为业务 Service 所在 namespace，默认 default）")
     .option("--kubeconfig <path>", "Kubernetes 配置路径，优先于 profile；仅访问 Kubernetes 时使用")
@@ -414,7 +417,7 @@ export function createDoctorProgram(
       throw new CommanderError(0, "doctor.versionDisplayed", "");
     });
 
-  const catalog = new Command().copyInheritedSettings(program);
+  const catalog = new CliCommand().copyInheritedSettings(program);
 
   withReplOptions(
     catalog.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
@@ -476,7 +479,6 @@ export function createDoctorProgram(
     .option("--source-image <image>", "tar 包含多个 image 时指定要发布的源 image")
     .option("--registry", "发布到 Target Registry")
     .option("--host", "load 到 Doctor Host")
-    .option("-y, --yes", "未显式指定落点时，自动确认可选的 Doctor Host load", false)
     .option("--profile <name>", "从 profile 取 kubeconfig 和 registry 凭据")
     .action(async (image, opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
@@ -496,7 +498,6 @@ export function createDoctorProgram(
       "逗号分隔的显式权限：SYS_PTRACE、NET_RAW",
     )
     .option("--profile <name>", "从 profile 取 namespace、kubeconfig 或 kube.debug_image")
-    .option("-y, --yes", "自动确认 Pod mutation", false)
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
       await runCommand(debugCommand, opts, domainInput(opts), { plugin });
@@ -513,7 +514,6 @@ export function createDoctorProgram(
     .option("-f, --format <format>", "输出 GDB 兼容性报告：md 或 json")
     .option("-o, --output <path>", "兼容性报告路径；未指定 --format 时按 .json 后缀推断，否则使用 md")
     .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
-    .option("-y, --yes", "自动确认修改目标 container 可写层", false)
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
       await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });

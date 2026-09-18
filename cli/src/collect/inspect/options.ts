@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -21,7 +22,7 @@ import type {
   InspectConfig,
   InspectOutputFormat,
 } from "./model";
-import type { CommandContext } from "../../command";
+import { CommandInputError, type CommandContext } from "../../command";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
 export function parseInspectServices(raw: string, catalog: ServiceCatalog): string[] {
@@ -70,6 +71,7 @@ export async function resolveInspectConfig(
   commandContext: CommandContext,
   executor?: Executor,
 ): Promise<InspectConfig | undefined> {
+  validateInspectInput(opts);
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
   const reportName = inspectReportName(new Date());
@@ -89,8 +91,8 @@ export async function resolveInspectConfig(
     namespaceSource: collect.kubernetes.namespaceSource,
     services: opts.services === undefined ? [] : parseInspectServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
-    includeDeploymentConfig: opts.deploymentConfig === true,
-    includeDependencies: opts.dependencies === true,
+    includeDeploymentConfig: opts.deploymentConfig,
+    includeDependencies: opts.dependencies,
     format,
     outputPath,
     reportName,
@@ -149,8 +151,8 @@ export interface InspectDeploymentSelectionInput {
 export async function resolveInspectDeploymentSelection(
   input: InspectDeploymentSelectionInput,
 ): Promise<boolean | undefined> {
-  if (input.config.includeDeploymentConfig) return true;
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  if (input.config.includeDeploymentConfig !== undefined) return input.config.includeDeploymentConfig;
+  const interactive = isInteractive(input.interactive);
   return interactive && await (input.prompt ?? promptDeploymentConfigCollection)();
 }
 
@@ -164,8 +166,8 @@ export interface InspectDependencySelectionInput {
 export async function resolveInspectDependencySelection(
   input: InspectDependencySelectionInput,
 ): Promise<boolean | undefined> {
-  if (input.config.includeDependencies) return true;
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  if (input.config.includeDependencies !== undefined) return input.config.includeDependencies;
+  const interactive = isInteractive(input.interactive);
   return interactive && await (input.prompt ?? promptDependencyCollection)();
 }
 
@@ -183,9 +185,9 @@ export async function resolveInspectServiceSelection(
   input: InspectServiceSelectionInput,
 ): Promise<string[] | undefined> {
   if (input.config.servicesExplicit) return input.config.services;
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) {
-    throw new Error("非交互环境必须通过 --services 显式指定要统计的 Service");
+    throw new CommandInputError("非交互模式需要 --services 指定要检查的 Service");
   }
   const listed = input.catalog.services
     .filter((service) => service.workloads.length > 0)
@@ -209,4 +211,14 @@ export async function resolveInspectServiceSelection(
   });
   if (selected) recordRecentServiceTargets(selected, recentInput);
   return selected;
+}
+
+/** Fail before Plugin loading or cluster access; target discovery is not a substitute for user intent. */
+export function validateInspectInput(input: Pick<CollectInspectCliOpts, "services">): void {
+  if (input.services !== undefined && !input.services.split(",").some(value => value.trim())) {
+    throw new CommandInputError("--services 不能为空");
+  }
+  if (!isInteractive() && input.services === undefined) {
+    throw new CommandInputError("非交互模式需要 --services 指定要检查的 Service");
+  }
 }

@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import { terminalStdout } from "../terminal/output";
 import { prepareTerminalInput } from "../terminal/input";
 import { createInterface, emitKeypressEvents } from "node:readline";
@@ -115,7 +116,7 @@ export async function inspectRegistryAccess(
   const registry = registryFromImage(image);
   let credentials = resolveProfileRegistryCredentials(image, opts);
   let state = infra.image.inspect(image, credentials, platform);
-  if (state !== "unauthorized" || !process.stdin.isTTY || !process.stdout.isTTY) {
+  if (state !== "unauthorized" || !isInteractive()) {
     return { state, credentials };
   }
   const prompted = await promptRegistryCredentials(registry, image, purpose, credentials?.username);
@@ -136,8 +137,7 @@ export async function listRegistryTagsWithAuth(
   if (
     result.state !== "unauthorized"
     || options.promptIfUnauthorized === false
-    || !process.stdin.isTTY
-    || !process.stdout.isTTY
+    || !isInteractive()
   ) {
     return { ...result, credentials };
   }

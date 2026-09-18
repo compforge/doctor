@@ -5,6 +5,7 @@ import { renderEvidence, writeEvidencePage } from "../../report/evidence";
 import { runCollectInspect } from "./index";
 import type { InspectDiagnosis } from "./model";
 import { buildInspectHtml, buildInspectHtmlSections } from "./render";
+import { validateInspectInput } from "./options";
 
 export type InspectInput = CommandInput & Omit<Parameters<typeof runCollectInspect>[0], CommandHostOption>;
 
@@ -20,6 +21,7 @@ export function createInspectInput(input: Omit<InspectInput, "idempotencyKey">):
 
 export const inspectCommand = defineCommand<InspectInput, void>({
   name: "doctor inspect",
+  validate: validateInspectInput,
   render: async (context, result) => renderEvidence(context, result, {
     command: "inspect", title: "Inspect", scope: "环境 / Service",
     render: artifact => {

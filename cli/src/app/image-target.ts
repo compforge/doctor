@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "../terminal/input";
 import { terminalStdout } from "../terminal/output";
@@ -220,7 +221,7 @@ export async function resolveImageTarget(
     terminalStdout.info(`[image] target: ${explicit}（命令参数）\n`);
     return explicit;
   }
-  const interactive = options.interactive ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(options.interactive);
   if (!interactive) {
     throw new Error("未指定目标 registry image；请传 doctor image <image>");
   }

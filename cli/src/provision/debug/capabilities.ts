@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import type { DebugCapability } from "../../infra/target/debug";
 import {
   defineCommandDecision,
@@ -51,7 +52,7 @@ const debugCapabilities = defineCommandDecision<readonly DebugCapability[] | und
 );
 
 async function promptDebugCapabilities(): Promise<readonly DebugCapability[] | undefined> {
-  if (!process.stdin.isTTY || !process.stdout.isTTY) return DEFAULT_DEBUG_CAPABILITIES;
+  if (!isInteractive()) return DEFAULT_DEBUG_CAPABILITIES;
 
   printNumberedChoices(
     DEBUG_CAPABILITY_CHOICES,

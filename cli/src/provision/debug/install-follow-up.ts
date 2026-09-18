@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { cwd } from "node:process";
 import {
   type CommandContext,
@@ -60,7 +61,7 @@ export async function offerDebugInstall(
   const directory = cwd();
   const bundles = discoverPackageBundles(directory);
   const followUp = resolveDebugInstallFollowUp({
-    interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+    interactive: isInteractive(),
     bundles,
     opts,
     commandContext,

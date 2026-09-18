@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { terminalStdout } from "../../terminal/output";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
@@ -35,7 +36,7 @@ export async function resolveCpuConfig(
   commandContext: CommandContext,
 ): Promise<{ config: CpuConfig; executor: Executor } | undefined> {
   let mode = input.mode?.trim() ? parseInspectionMode(input.mode) : undefined;
-  const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive();
   if (!mode && !interactive) {
     throw new Error("当前为非交互终端；请显式指定 --mode observe、overhead 或 disrupt");
   }

@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
@@ -51,7 +52,7 @@ export function validateInstallOptions(opts: InstallCliOpts): void {
     throw new Error(`--format 只支持 md 或 json：'${opts.format}'`);
   }
   const configuredProgram = opts.program ? parseInstallProgram(opts.program) : undefined;
-  if (!configuredProgram && (!process.stdin.isTTY || !process.stdout.isTTY)) {
+  if (!configuredProgram && (!isInteractive())) {
     throw new Error("当前为非交互终端；请显式指定 --program gdb");
   }
 }

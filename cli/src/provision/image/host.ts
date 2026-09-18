@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { createInterface } from "node:readline/promises";
 import { infra } from "../../infra";
 import {
@@ -51,8 +52,7 @@ export async function prepareImageOnDoctorHost(
     );
     return false;
   }
-  const interactive = options.interactive
-    ?? (process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(options.interactive);
   const approved = options.assumeYes
     || (
       interactive

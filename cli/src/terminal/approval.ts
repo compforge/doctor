@@ -1,3 +1,4 @@
+import { assumesYes, isInteractive } from "./policy";
 import { currentCommandSignal } from "../command/execution-scope";
 import { withTerminalInput } from "./interaction";
 import { createInterface } from "node:readline/promises";
@@ -21,6 +22,7 @@ export function isApprovalAnswer(answer: string): boolean {
 export async function promptForApproval(
   request: ApprovalRequest,
 ): Promise<ApprovalDecision> {
+  if (assumesYes()) return approveAll();
   return withTerminalInput(async () => {
     terminalStdout.warning(`\n[operation] 操作确认：${request.title}\n`);
     if (request.purpose) {
@@ -31,7 +33,7 @@ export async function promptForApproval(
       terminalStdout.write(`[operation] - ${impact}\n`);
     }
 
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!isInteractive()) {
       terminalStderr.warning(
         "[operation] 当前为非交互终端，无法取得确认；"
         + "已取消该操作（可用 -y/--yes 预先批准）\n",
@@ -60,5 +62,5 @@ export async function promptForApproval(
 export function resolveApprovalGate(
   opts: ApprovalCliOptions,
 ): ApprovalGate {
-  return opts.yes ? approveAll : promptForApproval;
+  return (opts.yes ?? assumesYes()) ? approveAll : promptForApproval;
 }

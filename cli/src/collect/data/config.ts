@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import {
@@ -97,7 +98,7 @@ export interface DataServiceSelectionInput {
 export async function resolveDataServiceSelection(
   input: DataServiceSelectionInput,
 ): Promise<DataServiceSelection[] | undefined> {
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   let services = input.config.services;
   if (!input.config.services.length) {
     services = dataServicesForBizQuery(input.catalog);

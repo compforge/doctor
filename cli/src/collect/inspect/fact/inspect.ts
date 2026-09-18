@@ -28,8 +28,8 @@ function commandReason(ok: boolean, stderr: string): string | undefined {
   return ok ? undefined : stderr.trim().split("\n")[0] || "kubectl 读取失败";
 }
 
-const DEPLOYMENT_CONFIG_SKIPPED_REASON = "用户未确认采集 Deployment Env/ConfigMap";
-const DEPENDENCIES_SKIPPED_REASON = "用户未确认进入业务 Container 采集应用依赖";
+const DEPLOYMENT_CONFIG_SKIPPED_REASON = "Deployment Env/ConfigMap 未纳入本次采集范围";
+const DEPENDENCIES_SKIPPED_REASON = "应用依赖未纳入本次采集范围";
 
 function sameToolchain(left: Toolchain, right: Toolchain): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
@@ -125,7 +125,7 @@ export function makeServiceTargetsInspect(
       const capture = await captureKubernetesWorkloadConfig(
         ctx.executor,
         config.namespace,
-        config.includeDeploymentConfig,
+        config.includeDeploymentConfig === true,
         config.services.some((name) => catalog.find(name)?.workloads.some(
           (workload) => workload.location.kind === "service",
         )),
@@ -173,24 +173,6 @@ export function makeServiceTargetsInspect(
           command: result.command,
           durationMs: result.durationMs,
           // Pod spec、Deployment 与 ConfigMap 都可能包含凭据，只落解析后的脱敏 Fact。
-        });
-      }
-      if (!config.includeDeploymentConfig) {
-        ctx.bundle.addStep({
-          id: "inspect-deployment-environment",
-          title: "Deployment Env/ConfigMap",
-          risk: "observe",
-          status: "skipped",
-          reason: DEPLOYMENT_CONFIG_SKIPPED_REASON,
-        });
-      }
-      if (!config.includeDependencies) {
-        ctx.bundle.addStep({
-          id: "inspect-runtime-dependencies",
-          title: "应用依赖及版本",
-          risk: "observe",
-          status: "skipped",
-          reason: DEPENDENCIES_SKIPPED_REASON,
         });
       }
       const snapshot = capture.snapshot;

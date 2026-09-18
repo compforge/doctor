@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type {
   Model,
   TenantDirectory,
@@ -42,7 +43,7 @@ export async function resolveTenant(input: {
     if (tenantId) return { id: tenantId, name: tenantId, displayName: tenantId };
     if (tenantName) return input.directory.getByName(tenantName);
 
-    const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+    const interactive = isInteractive(input.interactive);
     if (!interactive) {
       throw new Error("非交互环境必须通过 --tenant-id 或 --tenant-name 显式指定租户");
     }
@@ -159,7 +160,7 @@ export async function selectModel(input: {
     }
     throw new Error(`模型目录中找不到 --model '${query}'`);
   }
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) throw new Error("非交互环境必须通过 --model <id|name> 显式指定模型");
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
   const recentScope = input.profileName && input.tenantId

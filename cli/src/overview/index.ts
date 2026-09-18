@@ -1,3 +1,4 @@
+import { isInteractive } from "../terminal/policy";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
@@ -38,7 +39,7 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
 async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewOutput>> {
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
-  const interactive = !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive();
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
   const providers = plugin.services.servicesWith("overview");

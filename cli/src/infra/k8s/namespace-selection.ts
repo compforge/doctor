@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
 import {
   matchSearchableChoices,
@@ -188,7 +189,7 @@ export interface PodNamespaceSelection {
 export async function resolvePodNamespace(
   input: PodNamespaceSelection,
 ): Promise<ResolvedNamespace | undefined> {
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (input.resolved.source !== "default" || !interactive) return input.resolved;
   const recent = recentSelectionsForInteractive(input.interactive, input.recent);
   const recentScope = resolveKubernetesRecentScope(input);

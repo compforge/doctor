@@ -1,3 +1,4 @@
+import { isInteractive } from "./policy";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { terminalStdout } from "./output";
@@ -46,7 +47,7 @@ export async function resolveFileSelection(
 ): Promise<string | undefined> {
   if (input.file?.trim()) return input.file;
 
-  const interactive = input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY);
+  const interactive = isInteractive(input.interactive);
   if (!interactive) throw new Error(input.missingFileMessage);
 
   const directory = input.directory ?? ".";

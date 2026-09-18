@@ -34,8 +34,8 @@ export interface InspectConfig {
   namespaceSource: ResolvedNamespace["source"];
   services: string[];
   servicesExplicit: boolean;
-  includeDeploymentConfig: boolean;
-  includeDependencies: boolean;
+  includeDeploymentConfig?: boolean;
+  includeDependencies?: boolean;
   format: InspectOutputFormat;
   outputPath?: string;
   reportName: string;

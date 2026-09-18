@@ -5,6 +5,7 @@ import { inCommandScope } from "./execution-scope";
 import type { PluginCapabilityContract } from "./plugin-capability";
 import type { CommandResult } from "./result";
 import { CommandStatus } from "./status";
+import { withInteractionOptions } from "../terminal/policy";
 
 import type { RenderContext } from "../report/context";
 import type { Report } from "../report/model";
@@ -12,6 +13,7 @@ import type { Report } from "../report/model";
 type Requirement<Input, Value> = Value | ((input: Input) => Value);
 
 export interface CommandInput {
+  yes?: boolean;
   /** Same command/key share one execution within a Context; omit for independent calls. */
   idempotencyKey?(): string;
 }
@@ -33,7 +35,7 @@ export interface CommandSpec<Input extends CommandInput, Output> {
 export function defineCommand<Input extends CommandInput, Output>(spec: CommandSpec<Input, Output>): CommandSpec<Input, Output> {
   return {
     ...spec,
-    run: async (context, input) => {
+    run: (context, input) => withInteractionOptions({ yes: input.yes ?? context.options.yes }, async (): Promise<CommandResult<Output>> => {
       const execute = async () => {
         const captured = await context.artifacts.capture(async (): Promise<CommandResult<Output>> => {
           try {
@@ -78,6 +80,6 @@ export function defineCommand<Input extends CommandInput, Output>(spec: CommandS
           artifacts: [], error, reason: error instanceof Error ? error.message : String(error),
         };
       }
-    },
+    }),
   };
 }

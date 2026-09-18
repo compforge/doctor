@@ -12,12 +12,14 @@ import { dirname } from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { expandHome } from "./config/config";
 import { resolveConfigPath } from "./profile";
+import { assumesYes } from "../terminal/policy";
 
 const INITIAL_PROFILE = "local";
 const DEFAULT_KUBECONFIG_PATH = "~/.kube/config";
 
 export interface InitCommandOptions {
   config?: string;
+  kubeconfig?: string;
 }
 
 type PromptKubeconfigPath = (defaultPath: string) => Promise<string>;
@@ -64,7 +66,8 @@ export async function runInit(
     return;
   }
 
-  const kubeconfigPath = await prompt(DEFAULT_KUBECONFIG_PATH);
+  const kubeconfigPath = opts.kubeconfig ?? (assumesYes()
+    ? DEFAULT_KUBECONFIG_PATH : await prompt(DEFAULT_KUBECONFIG_PATH));
   if (!existsSync(expandHome(kubeconfigPath))) {
     throw new Error(`kubeconfig path not found: ${kubeconfigPath}`);
   }

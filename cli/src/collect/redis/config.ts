@@ -1,3 +1,4 @@
+import { isInteractive } from "../../terminal/policy";
 import { terminalStdout } from "../../terminal/output";
 import type { RedisProfileConfig } from "../../app/config/model";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -102,7 +103,7 @@ async function resolveRedisCatalogStore(input: {
       throw new Error(`Service '${service}' 未声明 Redis Store capability`);
     }
   } else {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!isInteractive()) {
       throw new Error("非交互终端请用 --service <name> 或 --pod <pod> 指定 Redis 配置来源");
     }
     printNumberedChoices(candidates, "[collect] 可提供 Redis 配置的 Service：", (candidate) => candidate.name);
@@ -126,7 +127,7 @@ async function resolveRedisCatalogStore(input: {
   }
   if (!store && dataSources.length === 1) store = dataSources[0];
   if (!store) {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    if (!isInteractive()) {
       throw new Error(`Service '${service}' 声明了多个 Redis Store；请用 --store <id> 指定`);
     }
     const choices = dataSources.map((candidate) => ({ name: candidate.id }));
@@ -166,7 +167,7 @@ export async function selectRedisDatabaseScope(
   discoveredDatabases: readonly number[],
   clusterType: "single" | "sentinel" | "cluster",
   requestedDatabase?: number,
-  interactive = process.stdin.isTTY && process.stdout.isTTY,
+  interactive = isInteractive(),
 ): Promise<RedisDatabaseScope | undefined> {
   if (clusterType === "cluster") {
     if (requestedDatabase !== undefined && requestedDatabase !== 0) {
@@ -267,7 +268,7 @@ export async function resolveRedisConfig(
   const target = client ? undefined : catalogStore ? await resolveDataSourceTarget({
     service: catalog!.find(catalogStore.service)!, pod: podKeyword, container: input.container,
     executor, namespace: collect.kubernetes.namespace,
-    interactive: input.interactive ?? !!(process.stdin.isTTY && process.stdout.isTTY), commandContext, selection,
+    interactive: isInteractive(input.interactive), commandContext, selection,
   }) : await resolvePodTarget({
     config: collect,
     executor,
