@@ -6,12 +6,10 @@ import { CommandContext, CommandStatus } from "../src/command";
 import { runCollectData } from "../src/collect/data";
 
 for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
-  let preparations = 0;
   const batches: string[][] = [];
   const plugin: PluginDefinition = { id: "batch", version: "1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "records", workloads: [], capabilities: {}, contributions: {
       inspect: { access: {}, accepts: ["biz_id", "conversation_id"], provides: ["record"], expands: ["conversation_id"],
-        resolveTarget: async () => { preparations++; return { endpoint: "test", database: "test", username: "test", credentialSource: "test" }; },
         inspect: async (_context, queries: readonly ServiceInspectQuery[]) => {
           batches.push(queries.map(query => query.identity.value));
           // Return reversed results deliberately: identity, not response position, controls attribution.
@@ -36,7 +34,6 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
     const result = await runCollectData({ bizIds: ids, services: "records", namespace: "test", format: "json" },
       plugin, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } },
       { records: {} as PluginContext });
-    expect(preparations).toBe(1);
     expect(batches).toEqual(ids.some(id => id !== "missing") ? [ids, ["shared"]] : [ids]);
     expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
     const output = result.output;

@@ -18,5 +18,5 @@ export function projectDataFacts(facts: DataFacts, bizId: string): DataFacts {
       }
     }
   }
-  return { services: facts.services, capabilityResults: facts.capabilityResults.filter(query => reachable.has(key(query.identity))) };
+  return { ...facts, capabilityResults: facts.capabilityResults.filter(query => reachable.has(key(query.identity))) };
 }

@@ -1,6 +1,7 @@
 import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
+  JsonObject,
   ServiceInspectResult,
 } from "@compforge/doctor-plugin";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
@@ -40,17 +41,9 @@ export interface DataServiceSelection {
   service: string;
 }
 
-export interface DataTargetFact {
-  service: string;
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
-}
-
 export interface DataServiceFacts {
-  target: Fact<DataTargetFact, "data.service-target">;
-  inspect: Fact<{ queryable: true }, "data.inspect-capability">;
+  /** Context preparation only; query-level results establish whether business data was obtained. */
+  access: Fact<{ ready: true }, "data.service-access">;
 }
 
 export interface DataInspectionFacts {
@@ -71,6 +64,8 @@ export type DataInspectResult = DataInspectResultIdentity & Fact<{
 export type CollectedDataInspectResult = Extract<DataInspectResult, { status: "collected" }>;
 
 export interface DataFacts extends DataInspectionFacts {
+  /** Produced after Inspect borrows clients; absent if acquisition aborted before completing the phase. */
+  dataSources?: Record<string, Fact<{ targets: readonly JsonObject[] }, "data.sources">>;
   capabilityResults: readonly DataInspectResult[];
 }
 

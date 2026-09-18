@@ -1,4 +1,4 @@
-import type { Client } from "@compforge/harness-common";
+import type { DataSourceClient, JsonObject } from "@compforge/harness-common";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import type { PluginClientContext, PluginDataSource } from "./context";
@@ -10,15 +10,17 @@ function kubernetesTransport(context: PluginClientContext): PortForwardTransport
 }
 
 /** Keep resolved target metadata with its typed client, under the host's single lifecycle. */
-function configuredSource<T, C extends Client, A>(key: string,
+function configuredSource<T, C extends DataSourceClient, A>(key: string,
   resolve: (context: PluginClientContext) => Promise<T>,
   connect: (target: T, context: PluginClientContext) => C | Promise<C>,
   access: (client: C) => A,
-): PluginDataSource<Client & { readonly target: T; readonly access: A }> {
+  mask: (client: C, target: T) => JsonObject = client => client.mask(),
+): PluginDataSource<DataSourceClient & { readonly target: T; readonly access: A }> {
   return { clientKey: key, createClient: context => {
     let target: T;
     let client: C;
     return {
+      mask() { return mask(client, target); },
       get target() { return target; },
       get access() { return access(client); },
       async initialize() {
@@ -37,7 +39,8 @@ export function s3DataSource(key: string, resolve: (context: PluginClientContext
     return new S3Client({ resolve: async () => target,
       transports: [kubernetesTransport(context)],
     }, { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000 }, { signal: context.signal });
-  }, client => client);
+  }, client => client, (client, target) => ({ ...client.mask(), bucket: target.bucket,
+    ...(target.bucketPrefix === undefined ? {} : { bucketPrefix: target.bucketPrefix }) }));
 }
 
 export function vdbDataSource(key: string, resolve: (context: PluginClientContext) => Promise<ServiceVdbClient["target"]>): PluginDataSource<ServiceVdbClient> {

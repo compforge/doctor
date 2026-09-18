@@ -27,7 +27,7 @@ Service Inspect contribution 接受由业务 Identity 与约束组成的 Query�
 1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。多个 ID 进入同一采集批次，
    共享 expansion、provide 与访问准备，再按每个输入沿有向 Relation 可达的查询结果分别执行 Detector 与 Coverage。
 2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
-   按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
+   按需 port-forward。此阶段只确认访问准备，不据此认定业务数据可查询。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
    Relation provider；新的 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
    扩展时取得的 query result 同时作为该 Service 的数据贡献。
@@ -73,8 +73,11 @@ RelationFact 是 capability 数据结果的一部分；resolution 中的 identif
 
 Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命周期；Plugin 决定如何定位运行实例、解释配置、使用哪套
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
-连接凭据只存在于本轮执行态；Facts 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
-凭据来源。
+Inspect 不再实现独立的 `resolveTarget()`。它通过 `context.clients.get(source)` 借用共享数据源客户端，
+Doctor 使用已初始化客户端的 `mask()` 收集实际目标的脱敏表示，并在 Inspect 完成后写入 `data.sources`
+Facts。该方法无 I/O、不修改原始配置，也不会为摘要重复解析或连接；原始 target 与凭据不进入 Evidence。
+直接调用业务 API、没有 DataSource 的 Inspect 可以没有数据源 Facts。访问准备成功不表示查询成功，
+Coverage 仍以每条 Inspect Query 的实际结果为准。
 
 ### 批量访问与独立诊断
 

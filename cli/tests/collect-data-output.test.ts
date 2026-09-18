@@ -3,6 +3,8 @@ import {
   type PluginContext,
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
+import { ClientManager, type DataSourceClient } from "@compforge/harness-common";
+import type { PluginClientContext, PluginDataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -50,12 +52,6 @@ const plugin = {
         access: {},
         accepts: ["biz_id"],
         provides: ["sample-record"],
-        resolveTarget: async () => ({
-          endpoint: "http://sample-api",
-          database: "sample",
-          username: "reader",
-          credentialSource: "test",
-        }),
         inspect: async (_context, queries) => queries.map(query => ({
           identity: query.identity, status: "collected" as const, result: {
             resolution: {
@@ -93,12 +89,6 @@ test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
         access: {},
         accepts: ["tenant_id"],
         provides: ["tenant-record"],
-        resolveTarget: async () => ({
-          endpoint: "http://tenant-api",
-          database: "tenant",
-          username: "reader",
-          credentialSource: "test",
-        }),
         inspect: async (_context, queries) => queries.map(query => ({
           identity: query.identity, status: "collected" as const, result: {
             resolution: {
@@ -153,12 +143,6 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
           accepts: ["message_id"],
           provides: ["trace-resolution"],
           expands: ["trace_id"],
-          resolveTarget: async () => ({
-            endpoint: "http://trace-resolver",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
           inspect: async (_context, queries) => queries.map(query => ({
             identity: query.identity, status: "collected" as const, result: {
               resolution: {
@@ -187,12 +171,6 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
           accepts: ["biz_id"],
           provides: ["resolution-record"],
           expands: ["message_id"],
-          resolveTarget: async () => ({
-            endpoint: "http://sample-resolver",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
           inspect: async (_context, queries) => queries.map(query => {
             const identity = query.identity;
             return { identity: query.identity, status: "collected" as const, result: {
@@ -218,12 +196,6 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
           access: {},
           accepts: ["trace_id"],
           provides: ["sample-record"],
-          resolveTarget: async () => ({
-            endpoint: "http://sample-records",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
           inspect: async (_context, queries) => queries.map(query => {
             const identity = query.identity;
             seen.push(`${identity.kind}:${identity.value}`);
@@ -287,6 +259,9 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
     const delivered = JSON.parse(readFileSync(outputPath, "utf8"));
     expect(delivered.artifacts).toHaveLength(2);
     const report = delivered.artifacts[1].diagnosis;
+    expect(report.evidence.facts.dataSources).toEqual({});
+    expect(report.evidence.facts.services[service]).not.toHaveProperty("target");
+    expect(report.evidence.facts.services[service]).not.toHaveProperty("inspect");
     expect(delivered.artifacts[0].diagnosis.groups).toEqual({ "biz-1": report });
     expect(report).toMatchObject({
       evidence: {
@@ -399,4 +374,59 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+
+for (const fail of [false, true]) test(`Inspect records client masks without eager resolution; query failure=${fail}`, async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-data-mask-"));
+  const outputPath = join(root, "masked.json");
+  let initialized = 0;
+  let disposed = 0;
+  const client: DataSourceClient & { target: { password: string } } = {
+    target: { password: "never-persist-this" },
+    initialize: async () => { initialized++; },
+    dispose: async () => { disposed++; },
+    mask: () => ({ kind: "db", host: "db", database: "records" }),
+  };
+  const source: PluginDataSource<typeof client> = { clientKey: "records", createClient: () => client };
+  const owner = new ClientManager();
+  const injected = { clients: { get: <C extends DataSourceClient>(value: PluginDataSource<C>) => owner.get({
+    clientKey: value.clientKey, createClient: () => value.createClient({} as PluginClientContext),
+  }) } } as PluginContext;
+  const original = plugin.services.services[0]!;
+  const definition: PluginDefinition = { ...plugin, services: createServiceCatalog([{
+    ...original, contributions: { ...original.contributions, inspect: {
+      ...original.contributions.inspect,
+      inspect: async (context, queries) => {
+        const borrowed = await context.clients.get(source);
+        expect(await context.clients.get(source)).toBe(borrowed);
+        expect(disposed).toBe(0);
+        if (fail) return queries.map(query => ({ identity: query.identity, status: "failed", reason: "query unavailable" }));
+        return original.contributions.inspect.inspect(context, queries);
+      },
+    } },
+  }]) };
+  const command = new CommandContext({});
+  try {
+    const result = await runCollectData({ bizIds: ["biz-1"], services: service,
+      config: join(root, "missing.yaml"), format: "json", output: outputPath,
+    }, definition, command, executor, { [service]: injected });
+    expect(commandExitCode(result)).toBe(fail ? 1 : 0);
+    expect(initialized).toBe(1);
+    const diagnosis = result.output!.items[0]!.diagnosis!;
+    expect(diagnosis.evidence.facts.dataSources?.[service]).toMatchObject({
+      status: "collected", targets: [{ kind: "db", host: "db", database: "records" }],
+    });
+    expect(diagnosis.evidence.facts.capabilityResults[0]!.status).toBe(fail ? "failed" : "collected");
+    expect(JSON.stringify(diagnosis)).not.toContain("never-persist-this");
+    expect(await deliverCommandArtifacts(command, { format: "json", output: outputPath }, commandExitCode(result),
+      "doctor data", await renderForDelivery(command, dataCommand, result))).toBe(true);
+    expect(readFileSync(outputPath, "utf8")).not.toContain("never-persist-this");
+    expect(client.target.password).toBe("never-persist-this");
+  } finally {
+    await owner.dispose();
+    await command.disposeClients();
+    rmSync(root, { recursive: true, force: true });
+  }
+  expect(disposed).toBe(1);
 });

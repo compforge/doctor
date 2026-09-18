@@ -1,4 +1,4 @@
-import type { Client, DataSource, Service } from "@compforge/harness-common";
+import type { DataSourceClient, DataSource, Service } from "@compforge/harness-common";
 import type { DatabaseIdentity } from "./database";
 import type { KubernetesAccess } from "./kubernetes";
 import type { ServiceEndpoint, ServiceDataSourceDependency } from "./service";
@@ -47,14 +47,14 @@ export interface PluginClientContext {
   signal: AbortSignal;
 }
 
-export interface PluginDataSource<C extends Client> extends Pick<DataSource<C>, "clientKey"> {
+export interface PluginDataSource<C extends DataSourceClient> extends Pick<DataSource<C>, "clientKey"> {
   /** The host additionally namespaces this key by target, configuration and declared access. */
   readonly clientKey: string;
   createClient(context: PluginClientContext): C;
 }
 
 export interface PluginClients {
-  get<C extends Client>(source: PluginDataSource<C>): Promise<C>;
+  get<C extends DataSourceClient>(source: PluginDataSource<C>): Promise<C>;
 }
 
 export interface PluginContext extends PluginClientContext {

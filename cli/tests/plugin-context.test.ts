@@ -256,7 +256,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
   } as const;
   const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", run: async (_root, input) => {
     const context = createPluginContext(executor, { namespace: "test" }, options);
-    const client = await context.clients.get({ clientKey: "db", createClient: resource => ({
+    const client = await context.clients.get({ clientKey: "db", createClient: resource => ({ mask: () => ({}),
       initialize: async () => { discoveries++; },
       dispose: async () => { closed++; },
       query: async (id: string) => {
@@ -285,7 +285,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
     ];
     for (const variant of variants) {
       const ctx = createPluginContext(executor, variant.kube, variant.options);
-      const distinct = await ctx.clients.get({ clientKey: "db", createClient: resource => ({ resource, initialize: async () => {}, dispose: async () => {} }) });
+      const distinct = await ctx.clients.get({ clientKey: "db", createClient: resource => ({ mask: () => ({}), resource, initialize: async () => {}, dispose: async () => {} }) });
       expect(distinct).toHaveProperty("resource");
       if (!("kubernetes" in variant.options.capability.access)) {
         await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");

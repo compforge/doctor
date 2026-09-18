@@ -16,7 +16,6 @@ const service: ServiceDefinition = { component: { name: "fixture", repository: {
   },
   contributions: { inspect: {
     access: {}, accepts: ["biz_id"], provides: ["record"],
-    resolveTarget: async () => { throw new Error("offline"); },
     inspect: async () => { throw new Error("offline"); },
   } },
 };

@@ -99,7 +99,7 @@ export async function runCollectData(
   try {
     access = await prepareDataAccess(dataCommand, selections, plugin.services, injectedContexts);
     const pluginContexts = Object.fromEntries(access.confirmed.flatMap(item => item.context ? [[item.service, item.context]] : []));
-    const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
+    const ctx: DataCommandContext = { ...dataCommand, pluginContexts, dataSources: access.dataSources, bundle, log };
     const execution = await runCollectBatch({
       ctx,
       inspects: [makeDataInspect(access), makeDataContributionInspect({ selections, catalog: plugin.services, config })],

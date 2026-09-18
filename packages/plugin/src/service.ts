@@ -344,14 +344,6 @@ export interface ServiceInspectQuery extends Query<Identity> {
   results: ReadonlyMap<string, readonly ServiceInspectResult[]>;
 }
 
-/** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
-export interface ServiceInspectTarget {
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
-}
-
 /** Every requested identity has an outcome, including lookup failures. */
 export type ServiceInspectQueryOutcome = { identity: Identity } & (
   | { status: "collected"; result: ServiceInspectResult }
@@ -382,7 +374,6 @@ export interface ServiceInspect
   expands?: readonly string[];
   /** 直接访问数据源时声明 DataSource ID；通过 Service API 查询时可省略。 */
   dataSource?: string;
-  resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
   inspect: ServiceInspectQueryHandler;
 }
 

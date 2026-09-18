@@ -33,7 +33,6 @@ const injected: PluginDefinition = {
     contributions: {
       inspect: {
         access: {}, accepts: ["message_id"], provides: ["message"],
-        resolveTarget: async () => { throw new Error("Discovery must not resolve access credentials"); },
         inspect: async () => { throw new Error("Discovery must not inspect the target"); },
       },
     },

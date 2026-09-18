@@ -20,7 +20,6 @@ test("Plugin Inspect contribution 必须提供 inspect", () => {
     access: {},
     accepts: ["biz_id"],
     provides: ["record"],
-    resolveTarget: async () => ({}),
   };
   const definition = (inspect: Record<string, unknown>) => ({
     id: "test",

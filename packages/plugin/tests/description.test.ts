@@ -26,7 +26,7 @@ const service: ServiceDefinition = { component: { name: "fixture", repository: {
         rule: { verb: "get", resource: "configmaps", resourceName: "runtime", allNamespaces: true },
         requirement: "required", purpose: "Locate storage",
       }] },
-      resolveTarget: noAccess, inspect: noAccess,
+      inspect: noAccess,
     },
     detectors: [{ id: "state", detect: noAccess }],
   },

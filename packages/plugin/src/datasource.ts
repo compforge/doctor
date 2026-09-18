@@ -5,7 +5,7 @@ import type { PluginContext, PluginClientContext, PluginDataSource } from "./con
 import type { CapabilityWithAccess } from "./kubernetes";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
-import type { Client } from "@compforge/harness-common";
+import type { DataSourceClient } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
 import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
 import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch/client";
@@ -123,12 +123,12 @@ export type ServiceRedisDataSource = ServiceDataSourceBase & {
 });
 
 /** Protocol clients retain their typed operations; configuration provenance is not evidence. */
-export interface ServiceS3Client extends Client {
+export interface ServiceS3Client extends DataSourceClient {
   readonly target: S3Target & { bucket: string; bucketPrefix?: string };
   readonly access: S3Client;
 }
 
-export interface ServiceVdbClient extends Client {
+export interface ServiceVdbClient extends DataSourceClient {
   readonly target: ServiceVdbTarget;
   readonly access: OpenSearchReadApi;
 }
@@ -148,7 +148,7 @@ export interface ServiceRedisTarget {
   sentinelPassword?: string;
 }
 
-export interface ServiceRedisClient extends Client {
+export interface ServiceRedisClient extends DataSourceClient {
   readonly target: ServiceRedisTarget;
   readonly access: RedisAccessApi;
 }

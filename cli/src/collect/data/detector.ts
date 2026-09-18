@@ -58,12 +58,8 @@ export function buildDataCoverage(
   let resolved = 0;
   const services = Object.entries(evidence.facts.services);
   for (const [service, serviceFacts] of services) {
-    if (serviceFacts.target.status !== "collected") {
-      missingEvidence.push(`${service} 目标不可用：${serviceFacts.target.reason}`);
-      continue;
-    }
-    if (serviceFacts.inspect.status !== "collected") {
-      missingEvidence.push(`${service} 数据库不可查询：${serviceFacts.inspect.reason}`);
+    if (serviceFacts.access.status !== "collected") {
+      missingEvidence.push(`${service} 访问准备失败：${serviceFacts.access.reason}`);
       continue;
     }
     const results = evidence.facts.capabilityResults.filter((item): item is CollectedDataInspectResult => (

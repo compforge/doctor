@@ -7,12 +7,6 @@ const capability = {
   accepts: ["tenant_id"],
   provides: ["intention", "tenant-configuration"],
   expands: ["bot_id"],
-  resolveTarget: async () => ({
-    endpoint: "http://control",
-    database: "control",
-    username: "reader",
-    credentialSource: "test",
-  }),
   inspect: async (_context, queries) => queries.map(query => ({
     identity: query.identity, status: "collected" as const, result: {
       resolution: {

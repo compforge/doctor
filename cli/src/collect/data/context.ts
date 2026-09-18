@@ -1,4 +1,4 @@
-import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
+import type { JsonObject, PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../evidence";
@@ -15,6 +15,7 @@ export interface PreparedDataCommand {
 /** Data command 的完整执行作用域；同一个对象继续交给 Capability、Inspect 与 Probe。 */
 export interface DataCommandContext extends PreparedDataCommand {
   pluginContexts: Readonly<Record<string, PluginContext>>;
+  dataSources(service: string): readonly JsonObject[];
   bundle: EvidenceBundle;
   log: (line: string) => void;
 }

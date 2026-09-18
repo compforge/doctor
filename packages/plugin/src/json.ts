@@ -1,14 +1,7 @@
-/** Values that can cross the Plugin boundary without lossy JavaScript-to-JSON conversion. */
-export type JsonPrimitive = null | boolean | number | string;
+import type { JsonObject, JsonValue } from "@compforge/harness-common";
+export type { JsonObject, JsonValue } from "@compforge/harness-common";
 
-export type JsonValue =
-  | JsonPrimitive
-  | readonly JsonValue[]
-  | JsonObject;
-
-export type JsonObject = {
-  readonly [key: string]: JsonValue;
-};
+export type JsonPrimitive = Extract<JsonValue, null | boolean | number | string>;
 
 type IsAny<Value> = 0 extends (1 & Value) ? true : false;
 type JsonPropertyValue<Value extends object, Key extends keyof Value> =

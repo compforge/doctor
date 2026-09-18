@@ -80,3 +80,10 @@ HTTP/SSE、鉴权和协议分类，但不拥有加压循环。`perf` 只在 Case
 `PluginSkill` 是 runtime 视图，不规定归档或磁盘布局。Plugin loader 或定制发行入口负责读取
 `SKILL.md`，并把内容及可由宿主 `ExecutionEnv` 访问的绝对路径注入对应 `PluginDefinition`。Skill 因此
 跟随 Plugin 安装、选择、信任与升级，同时不让 Plugin SDK 依赖具体 agent framework。
+
+Inspect implementations return business Facts without a separate `resolveTarget()` method. Clients returned by
+`PluginDataSource.createClient` implement common's `DataSourceClient.mask(): JsonObject`: a fresh allowlisted
+representation of the resolved target, with no credentials, runtime handles, extra I/O or source mutation.
+The data command records these masks when Inspect borrows clients through `context.clients.get(source)`.
+API-only Inspect implementations need no artificial database target. Existing custom data clients must add
+`mask()` when upgrading this SDK; obsolete `ServiceInspectTarget` implementations can be removed.

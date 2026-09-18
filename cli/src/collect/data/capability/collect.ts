@@ -63,11 +63,9 @@ function relationTargets(result: CollectedDataInspectResult): readonly Identity[
 }
 
 function dataServiceUnavailable(service: string, facts: DataInspectionFacts): string | undefined {
-  const target = facts.services[service]?.target;
-  if (!target) return `未选择 ${service}`;
-  if (target.status !== "collected") return target.reason;
-  const capability = facts.services[service]?.inspect;
-  if (capability?.status !== "collected") return capability?.reason ?? `${service} 数据不可查询`;
+  const access = facts.services[service]?.access;
+  if (!access) return `未选择 ${service}`;
+  if (access.status !== "collected") return access.reason;
   return undefined;
 }
 
@@ -296,17 +294,21 @@ export function makeDataContributionInspect(input: {
 }): Inspect<DataFacts, DataCommandContext> {
   return {
     id: "data-service-contributions",
-    dependsOn: ["data-service-targets"],
+    dependsOn: ["data-service-access"],
     run: async (ctx, facts) => {
       if (!facts.services) {
-        throw new Error("data-service-contributions requires data-service-targets Facts");
+        throw new Error("data-service-contributions requires data-service-access Facts");
       }
       const capabilityResults = await collectDataInspectResults({
         ...input,
         inspectionFacts: { services: facts.services },
         ctx,
       });
-      return { capabilityResults };
+      const dataSources = Object.fromEntries(input.selections.flatMap(({ service }) => {
+        const targets = ctx.dataSources(service);
+        return targets.length ? [[service, collectedFact("data.sources", "data-service-contributions", { targets })]] : [];
+      }));
+      return { capabilityResults, dataSources };
     },
   };
 }

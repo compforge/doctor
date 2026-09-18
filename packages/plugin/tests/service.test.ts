@@ -97,12 +97,6 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
         access: {},
         accepts: ["biz_id"],
         provides: ["record"],
-        resolveTarget: async () => ({
-          endpoint: "http://api",
-          database: "api",
-          username: "reader",
-          credentialSource: "test",
-        }),
         inspect: async (_context, queries) => queries.map(query => ({
           identity: query.identity, status: "collected" as const, result: {
             resolution: {

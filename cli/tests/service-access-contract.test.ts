@@ -153,6 +153,7 @@ test("Redis source needs neither same-name K8s Service nor Pod exec and never cl
   const f = executor();
   let starts = 0, closes = 0;
   const client: ServiceRedisClient = {
+    mask: () => ({ kind: "redis" }),
     target: { endpoints: [["redis.example.org", 6379]], database: 0, useSsl: false, timeout: 1000,
       clusterType: "single", sentinelHosts: [], sentinelMasterName: "" },
     access: { connection: async () => { throw new Error("No protocol calls in preparation"); }, close: async () => { throw new Error("Borrower cannot close"); } },
@@ -203,6 +204,7 @@ test("Redis source helper preserves the collection timeout unit at the toolbox b
 test("VDB source supplies typed access to the existing Collect flow without disclosing endpoint credentials", async () => {
   const f = executor();
   const client: ServiceVdbClient = {
+    mask: () => ({ kind: "vdb" }),
     target: { backend: "opensearch", store: "search", endpoint: "https://reader:private-password@search.example.org",
       configurationKind: "api" },
     access: { count: async () => 0, search: async () => ({ hits: { hits: [] } }),

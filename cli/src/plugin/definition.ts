@@ -193,9 +193,6 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     if (inspect.expands !== undefined) {
       uniqueNonEmptyStrings(inspect.expands, `${service.name}.contributions.inspect.expands`);
     }
-    if (typeof inspect.resolveTarget !== "function") {
-      throw new Error(`${service.name}.contributions.inspect.resolveTarget must be a function`);
-    }
     if (typeof inspect.inspect !== "function") {
       throw new Error(`${service.name}.contributions.inspect.inspect must be a function`);
     }

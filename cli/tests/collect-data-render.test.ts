@@ -13,14 +13,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
     facts: {
       services: {
         sample: {
-          target: collectedFact("data.service-target", "data-service-targets", {
-            service: "sample",
-            endpoint: "http://sample",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
-          inspect: collectedFact("data.inspect-capability", "data-service-targets", { queryable: true }),
+          access: collectedFact("data.service-access", "data-service-access", { ready: true }),
         },
       },
       capabilityResults: [{

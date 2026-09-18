@@ -1,4 +1,4 @@
-import type { Client } from "@compforge/harness-common";
+import type { DataSourceClient } from "@compforge/harness-common";
 import type { PluginDataSource, ServiceDataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
@@ -6,7 +6,7 @@ import type { KubernetesCommandConfig } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
 
 /** @spec Every Service source borrows a typed client from the root lifecycle under declared access. */
-export async function borrowServiceClient<C extends Client>(
+export async function borrowServiceClient<C extends DataSourceClient>(
   command: CommandContext, collect: KubernetesCommandConfig, executor: Executor,
   service: string, capability: Pick<ServiceDataSource, "access">, source: PluginDataSource<C>,
 ): Promise<C> {
