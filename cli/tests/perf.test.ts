@@ -1,9 +1,9 @@
-import { readBundleIndex } from "./bundle-fixture";
+import { readBundleExecutions } from "./bundle-fixture";
 import { commandOutcome } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Run, TrialContext } from "@compforge/perf-harness";
 import {
   parsePerfLevels,
@@ -24,7 +24,7 @@ import {
 } from "../src/case";
 import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
 import { CommandContext } from "../src/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeFixture } from "./report-fixture";
 
 test("perf defaults scan concurrency 5 through 20 with bounded requests", () => {
   const config = resolvePerfConfig({}, new Date("2026-01-02T03:04:05"));
@@ -76,15 +76,17 @@ test("Perf bundle archives the complete linked report directory", async () => {
     context.artifacts.add({ command: "metric", path: metricDir });
     context.artifacts.add({ command: "trace", path: traceDir });
     context.artifacts.add({ command: "log", path: logDir });
-    expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor perf"))
-      .toBe(true);
+    expect(await finalizeFixture(context, { format: "bundle", output: archive }, 0, "doctor perf"))
+      .toBe(0);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     const entries = listing.split(/\r?\n/).filter(Boolean);
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["perf"]);
-    const index = readBundleIndex(archive, "perf");
+    const executions = readBundleExecutions(archive, "perf");
+    expect(executions).toHaveLength(4);
     for (const command of ["perf", "metric", "trace", "log"]) {
-      expect(listing).toContain(`perf/${index.artifacts.find(artifact => artifact.command === command)!.report}`);
+      const execution = executions.find(entry => entry.manifest.command === command)!;
+      expect(listing).toContain(`perf/${join(dirname(execution.path), execution.manifest.files.report!.path)}`);
     }
     expect(existsSync(artifact.temporaryRoot)).toBe(false);
   } finally {

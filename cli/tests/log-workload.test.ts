@@ -59,7 +59,8 @@ async function capture(services: ServiceDefinition[], responses: Record<string, 
     }], command, executor, () => {}, new EvidenceBundle(join(root, "sources")), access);
     const manifest = JSON.parse(readFileSync(join(root, "sources", "manifest.json"), "utf8"));
     const itemManifest = JSON.parse(readFileSync(join(root, "item", "manifest.json"), "utf8"));
-    return { results, calls, reads, manifest, itemManifest };
+    const facts = JSON.parse(readFileSync(join(root, "sources", manifest.files.facts), "utf8"));
+    return { results, calls, reads, manifest, itemManifest, facts };
   } finally { await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 }
 
@@ -79,7 +80,7 @@ test("logical Service resolves service/resource/labels Workloads and reads decla
   expect(result.reads.map(request => [request.pod, request.container, !!request.previous])).toEqual([
     ["web-1", "app", false], ["web-1", "app", true], ["worker-1", "app", false], ["worker-1", "app", true],
   ]);
-  const facts = result.manifest.inspection_facts.servicePods;
+  const facts = result.facts.servicePods;
   expect(facts.schemaVersion).toBe(2);
   expect(facts.byService["logical-api"].map((target: { instance: { workload: string } }) => target.instance.workload))
     .toEqual(["front", "jobs", "physical"]);
@@ -101,7 +102,7 @@ test("failed and cross-namespace Workloads leave coverage gaps without suppressi
   });
   expect(result.results[0]?.status).toBe(CommandStatus.Partial);
   expect(result.reads).toHaveLength(2);
-  const missing: string[] = result.manifest.inspection_facts.servicePods.missing.api;
+  const missing: string[] = result.facts.servicePods.missing.api;
   expect(missing.join("\n")).toContain("api/denied: pods forbidden");
   expect(missing.join("\n")).toContain("--namespace other");
   expect(missing.join("\n")).toContain("api/empty: 没有 Running Pod");
@@ -113,7 +114,7 @@ test("no Workload declaration never falls back to a same-name Kubernetes Service
   expect(result.results[0]?.status).toBe(CommandStatus.Failed);
   expect(result.calls.filter(call => !call.startsWith("config view "))).toEqual([]);
   expect(result.reads).toEqual([]);
-  expect(result.manifest.inspection_facts.servicePods.missing.api[0]).toContain("未声明");
+  expect(result.facts.servicePods.missing.api[0]).toContain("未声明");
 });
 
 test("overlapping Services retain separate source associations and reuse one bounded raw stream", async () => {
@@ -134,7 +135,7 @@ test("container mismatch is visible instead of broadening to sidecars", async ()
     { "get pods -l app=only -o json": { items: [pod("only-1")] } });
   expect(result.results[0]?.status).toBe(CommandStatus.Failed);
   expect(result.reads).toEqual([]);
-  expect(result.manifest.inspection_facts.servicePods.missing.api[0]).toContain("container");
+  expect(result.facts.servicePods.missing.api[0]).toContain("container");
 });
 
 test("interactive Service choices come from Catalog without accessing Kubernetes resource names", async () => {
@@ -153,6 +154,6 @@ test("Pod replacement during overlapping discovery is a gap, not a misleading so
   });
   expect(result.results[0]?.status).toBe(CommandStatus.Failed);
   expect(result.reads).toEqual([]);
-  expect(result.manifest.inspection_facts.servicePods.byService.api).toEqual([]);
-  expect(result.manifest.inspection_facts.servicePods.missing.api.join("\n")).toContain("Pod UID");
+  expect(result.facts.servicePods.byService.api).toEqual([]);
+  expect(result.facts.servicePods.missing.api.join("\n")).toContain("Pod UID");
 });

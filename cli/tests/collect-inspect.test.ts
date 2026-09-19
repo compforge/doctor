@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { examplePlugin } from "../../plugins/example/src";
 import { commandExitCode } from "../src/app/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeResult } from "./report-fixture";
 import {
   makeInspectDetectors,
   projectInspectServiceFacts,
@@ -28,7 +28,6 @@ import { inspectCommand } from "../src/collect/inspect/command";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
 import { CommandContext } from "../src/command";
-import { renderForDelivery } from "./report-fixture";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -51,9 +50,7 @@ async function runInspectWithDelivery(
 ): Promise<number> {
   const context = createCommandContext();
   const code = await runCollectInspect(opts, plugin, context, executor);
-  const rendered = await renderForDelivery(context, inspectCommand, code);
-  expect(rendered.context.failures).toEqual([]);
-  expect(await deliverCommandArtifacts(context, opts, commandExitCode(code), "doctor inspect", rendered)).toBe(true);
+  expect(await finalizeResult(context, inspectCommand, { ...code, artifacts: context.artifacts.list() }, opts)).toBe(commandExitCode(code));
   return commandExitCode(code);
 }
 

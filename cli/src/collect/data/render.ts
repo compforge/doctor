@@ -69,7 +69,7 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
     `- 状态：${coverage?.status ?? "insufficient"}`,
     ...((coverage?.missingEvidence ?? []).map((item) => `- 缺失：${item}`)),
     "",
-    "完整业务记录与解析结果见 raw 目录。",
+    "完整业务记录按 manifest.json 的 files.facts 索引读取；采集步骤见 raw 目录。",
   ].join("\n");
 }
 

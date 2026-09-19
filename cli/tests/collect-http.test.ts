@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { httpCommand } from "../src/app/core-commands";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeResult } from "./report-fixture";
 import {
   captureHttpResponse,
   defaultHttpBundleName,
@@ -35,7 +35,7 @@ import {
   type HttpTransportResponse,
   type InspectHttpEndpoint,
 } from "../src/infra/http";
-import { readReport, renderForDelivery } from "./report-fixture";
+import { readReport } from "./report-fixture";
 
 const encoder = new TextEncoder();
 
@@ -64,7 +64,7 @@ async function deliverHttp(
   options: { format?: string; output?: string },
   code: number,
 ): Promise<void> {
-  expect(await deliverCommandArtifacts(context, options, code, "doctor http", await renderForDelivery(context, httpCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }))).toBe(true);
+  expect(await finalizeResult(context, httpCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }, options)).toBe(code);
 }
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
@@ -826,16 +826,19 @@ requests:
   expect(listing).toContain("/attempts/round-001/health/default/headers.txt");
   expect(listing).toContain("/attempts/round-001/health/default/body.json");
   expect(listing).toContain("/attempts/round-001/health/default/meta.json");
-  const manifestEntry = listing.split(/\r?\n/).find((entry) => entry.includes("/artifacts/") && entry.endsWith("/manifest.json"));
+  const manifestEntry = listing.split(/\r?\n/).find((entry) => entry.endsWith("/manifest.json") && entry.split("/").length === 2);
   expect(manifestEntry).toBeDefined();
   const manifest = JSON.parse(Bun.spawnSync([
     "tar", "-xOzf", archive, manifestEntry!,
   ]).stdout.toString()) as {
-    inspection_facts: { endpoints: { status: string; items: unknown[] } };
+    files: { facts: { path: string } };
     steps: Array<{ id: string; status: string }>;
   };
-  expect(manifest.inspection_facts.endpoints).toMatchObject({ status: "collected" });
-  expect(manifest.inspection_facts.endpoints.items).toHaveLength(1);
+  const facts = JSON.parse(Bun.spawnSync(["tar", "-xOzf", archive,
+    manifestEntry!.replace(/manifest\.json$/, manifest.files.facts.path),
+  ]).stdout.toString());
+  expect(facts.endpoints).toMatchObject({ status: "collected" });
+  expect(facts.endpoints.items).toHaveLength(1);
   expect(manifest.steps).toContainEqual(expect.objectContaining({
     id: "http-endpoint-connectivity",
     status: "ok",

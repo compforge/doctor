@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -9,6 +10,7 @@ import { runCollectStore } from "./index";
 export type StoreInput = CommandInput & Omit<Parameters<typeof runCollectStore>[0], CommandHostOption>;
 
 export const storeCommand = defineCommand<StoreInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor store",
   render: async (context, result) => composeReports("doctor store", await Promise.all(
     [...new Set(result.artifacts.map(artifact => artifact.command))].map(command => renderEvidence(context, result, {

@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../collect/serialize";
 import { runCollectCpu } from "../collect/cpu";
 import { runCollectHttp } from "../collect/http";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
@@ -43,23 +44,27 @@ export const installCommand = defineCommand<CommandInput & Omit<Parameters<typeo
 
 export const memCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemory>[0], CommandHostOption>, void>({
   name: "doctor mem",
+  serialize: serializeEvidenceResult,
   environment: { kubernetes: true },
   run: async (context, input) => commandOutcome(await runCollectMemory({ ...input, ...commandOptions(context), output: context.options.output }, context)),
 });
 
 export const memaCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemoryAnalysis>[0], CommandHostOption>, void>({
   name: "doctor mema",
+  serialize: serializeEvidenceResult,
   run: async (context, input) => commandOutcome(await runCollectMemoryAnalysis({ ...input, ...commandOptions(context), output: context.options.output }, context)),
 });
 
 export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectCpu>[0], CommandHostOption>, void>({
   name: "doctor cpu",
+  serialize: serializeEvidenceResult,
   environment: { kubernetes: true },
   run: async (context, input) => commandOutcome(await runCollectCpu({ ...input, ...commandOptions(context) }, context)),
 });
 
 export const httpCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption>, void>({
   name: "doctor http",
+  serialize: serializeEvidenceResult,
   render: (context, result) => renderEvidence(context, result, {
     command: "http", title: "HTTP",
     render: artifact => writeEvidencePage(context, artifact, context.json<HtmlReportOptions>(artifact, "report-input.json")),
@@ -69,6 +74,7 @@ export const httpCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
 
 export const netCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectNetwork>[0], CommandHostOption>, void>({
   name: "doctor net",
+  serialize: serializeEvidenceResult,
   environment: { kubernetes: true },
   run: async (context, input) => commandOutcome(await runCollectNetwork({ ...input, ...commandOptions(context) }, context)),
 });

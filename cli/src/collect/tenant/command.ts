@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { isInteractive } from "../../terminal/policy";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -20,6 +21,7 @@ export function createTenantInput(input: Omit<TenantInput, "idempotencyKey">): T
 }
 
 export const tenantCommand = defineCommand<TenantInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor tenant",
   validate: (input) => {
     if (!isInteractive() && !input.tenantId?.trim() && !input.tenantName?.trim()) {

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test } from "bun:test";
@@ -30,12 +30,19 @@ function row(fields: Record<number, string>): string {
   return values.join("\t");
 }
 
+function writeNetworkManifest(root: string, input: { facts?: unknown; [key: string]: unknown }): void {
+  const { facts, ...manifest } = input;
+  mkdirSync(join(root, "raw"), { recursive: true });
+  writeFileSync(join(root, "raw/facts.json"), JSON.stringify(facts ?? {}));
+  writeFileSync(join(root, "manifest.json"), JSON.stringify({ ...manifest, files: { facts: "raw/facts.json" } }));
+}
+
 test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-neta-test-"));
   const pcap = Buffer.from("fake-pcap");
   const pcapPath = join(root, "capture.pcap");
   writeFileSync(pcapPath, pcap);
-  writeFileSync(join(root, "manifest.json"), JSON.stringify({
+  writeNetworkManifest(root, {
     target: {
       namespace: "default",
       services: ["frontend"],
@@ -45,7 +52,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
     params: {
       capture_mode: "tracking",
     },
-    inspection_facts: {
+    facts: {
       topology: {
         services: [{
           name: "frontend",
@@ -68,7 +75,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
         window_complete: true,
       }],
     },
-  }));
+  });
   const requestBody = JSON.stringify({ message: "hi" });
   const responseBody = JSON.stringify({ error: "closed" });
   const tsharkOutput = [
@@ -171,11 +178,12 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
   expect(inspector).toContain("HTTP 499");
   expect(inspector).toContain("application/json");
 
-  const limitedManifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf-8"));
-  limitedManifest.inspection_facts.capture_artifacts[0].window_complete = false;
-  limitedManifest.inspection_facts.capture_artifacts[0].reason =
+  const limitedIndex = JSON.parse(readFileSync(join(root, "manifest.json"), "utf-8"));
+  const limitedFacts = JSON.parse(readFileSync(join(root, limitedIndex.files.facts), "utf8"));
+  limitedFacts.capture_artifacts[0].window_complete = false;
+  limitedFacts.capture_artifacts[0].reason =
     "达到容量上限后提前停止；停止后的流量缺失";
-  writeFileSync(join(root, "manifest.json"), JSON.stringify(limitedManifest));
+  writeFileSync(join(root, limitedIndex.files.facts), JSON.stringify(limitedFacts));
   const limited = await analyzeNetworkBundle(root, {}, dependencies);
   expect(limited.analysis.diagnosis.coverage).toContainEqual({
     goal: "capture-scope",
@@ -253,7 +261,7 @@ test("doctor neta 对守候模式 NetBundle 重建窗口内的可见 HTTP 请求
     params: {
       capture_mode: "watch",
     },
-    inspection_facts: {
+    facts: {
       topology: {
         services: [{
           name: "frontend",
@@ -277,7 +285,7 @@ test("doctor neta 对守候模式 NetBundle 重建窗口内的可见 HTTP 请求
       }],
     },
   };
-  writeFileSync(join(root, "manifest.json"), JSON.stringify(manifest));
+  writeNetworkManifest(root, manifest);
   const tsharkOutput = [
     row({
       0: "1.000",

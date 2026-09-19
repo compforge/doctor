@@ -1,7 +1,11 @@
 import { strFromU8, unzipSync } from "fflate";
 import type { CommandContext, CommandInput, CommandResult, CommandSpec } from "../src/command";
-import { CommandStatus } from "../src/command";
+import { CommandStatus, commandOutcome } from "../src/command";
 import { RenderContext } from "../src/report/context";
+import { finalizeCommand } from "../src/app/finalize";
+import { commandExitCode } from "../src/app/command";
+import { serializeEvidence } from "../src/collect/serialize";
+import type { CommandDeliveryOptions } from "../src/app/delivery";
 import type { Report } from "../src/report/model";
 
 export async function renderForDelivery<Input extends CommandInput, Output>(context: CommandContext,
@@ -32,4 +36,29 @@ export function readReport(html: string) {
     version: 2; sections: Array<{ id: string; pages: Array<{ id: string; entry?: string; title: string; subject?: { key: string }; reason?: string; renderError?: string; status: CommandStatus }> }>;
   };
   return { index, entries, pages: Object.entries(entries).filter(([name]) => name.endsWith(".html")).map(([, bytes]) => strFromU8(bytes)).join("\n") };
+}
+
+export function finalizeResult<Input extends CommandInput, Output>(context: CommandContext,
+  spec: CommandSpec<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions): Promise<number> {
+  return finalizeCommand({ context, spec, result, delivery, code: commandExitCode(result) });
+}
+
+/** A file-delivery test declares one execution per fixture; no production command or renderer is inferred. */
+export function finalizeFixture(context: CommandContext, delivery: CommandDeliveryOptions,
+  code = 0, name = "doctor fixture"): Promise<number> {
+  const command = name.replace(/^doctor /, "");
+  const artifacts = context.artifacts.list();
+  const own = artifacts.filter(artifact => artifact.command === command);
+  const children = artifacts.filter(artifact => artifact.command !== command).map(artifact => ({
+    spec: { name: `doctor ${artifact.command}`, serialize: async (writer: import("../src/command").SerializeContext) => serializeEvidence(writer, [artifact]) },
+    result: { ...commandOutcome(code), artifacts: [artifact] },
+  }));
+  const result = { ...commandOutcome(code), artifacts };
+  const spec: CommandSpec<CommandInput, void> = {
+    name, run: async () => result,
+    serialize: async writer => ({ ...serializeEvidence(writer, own),
+      children: await Promise.all(children.map(child => writer.serialize(child.spec, child.result))) }),
+    render: async () => fixtureReport(context).report,
+  };
+  return finalizeCommand({ context, spec, result, delivery, code });
 }

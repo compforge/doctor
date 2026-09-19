@@ -98,12 +98,11 @@ test("yes does not select optional inspect collection; explicit false never prom
   expect(await resolveInspectDependencySelection({ config: { ...config, includeDependencies: false }, interactive: true, prompt })).toBe(false);
 });
 
-test("TTY distribution CLI returns a failed manifest without prompting or contacting Kubernetes", () => {
+test.each(["inspect", "db"])("TTY distribution %s returns a failed manifest without prompting or contacting Kubernetes", (command) => {
   const root = mkdtempSync(join(tmpdir(), "doctor-yes-cli-"));
   try {
     const called = join(root, "kubectl-called");
     writeFileSync(join(root, "kubectl"), '#!/bin/sh\ntouch "$DOCTOR_TEST_CALLED"\nexit 99\n', { mode: 0o755 });
-    for (const command of ["inspect", "db"]) {
       const result = Bun.spawnSync({
         cmd: [process.execPath, join(import.meta.dir, "fixtures/noninteractive-cli.ts"), command, "--output", join(root, command)],
         env: { ...process.env, PATH: `${root}:${process.env.PATH}`, DOCTOR_TEST_CALLED: called, DOCTOR_CONFIG: "/missing/config" },
@@ -113,6 +112,5 @@ test("TTY distribution CLI returns a failed manifest without prompting or contac
       const manifest = JSON.parse(result.stdout.toString());
       expect(manifest.status).toBe("failed");
       expect(existsSync(called)).toBe(false);
-    }
   } finally { rmSync(root, { recursive: true, force: true }); }
-});
+}, 15_000);

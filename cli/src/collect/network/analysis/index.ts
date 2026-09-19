@@ -2,6 +2,7 @@ import {
   chmodSync,
   existsSync,
   mkdtempSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
   rmSync,
@@ -19,6 +20,7 @@ import type {
 import { runArgv } from "@compforge/harness-toolbox/kubernetes/executor";
 import { findSelectableFiles, resolveFileSelection } from "../../../terminal/file-selection";
 import { terminalStderr, terminalStdout } from "../../../terminal/output";
+import { readFacts } from "../../evidence-reader";
 import { runCollect } from "../../engine";
 import { writeHtmlReport } from "../../output/html";
 import {
@@ -105,6 +107,7 @@ interface PreparedBundle {
 }
 
 interface NetManifest {
+  files?: Record<string, string>;
   started_at?: string;
   finished_at?: string;
   target?: {
@@ -116,36 +119,37 @@ interface NetManifest {
   params?: {
     capture_mode?: NetworkCaptureMode;
   };
-  inspection_facts?: {
-    topology?: {
-      services?: Array<{
-        name?: string;
-        clusterIp?: string;
-        ports?: number[];
-        pods?: string[];
-      }>;
-      targets?: Array<{
-        pod?: string;
-        podIp?: string;
-        services?: string[];
-      }>;
-    };
-    capture_artifacts?: Array<{
-      pod?: string;
-      services?: string[];
-      file?: string;
-      sha256?: string;
-      verified?: boolean;
-      window_complete?: boolean;
-      reason?: string;
+}
+
+interface NetInspectionFacts {
+  topology?: {
+    services?: Array<{
+      name?: string;
+      clusterIp?: string;
+      ports?: number[];
+      pods?: string[];
     }>;
-    response?: {
-      status_code?: number;
-      content_type?: string;
-      body_bytes?: number;
-      response_ended_at?: string;
-      termination_reason?: string;
-    };
+    targets?: Array<{
+      pod?: string;
+      podIp?: string;
+      services?: string[];
+    }>;
+  };
+  capture_artifacts?: Array<{
+    pod?: string;
+    services?: string[];
+    file?: string;
+    sha256?: string;
+    verified?: boolean;
+    window_complete?: boolean;
+    reason?: string;
+  }>;
+  response?: {
+    status_code?: number;
+    content_type?: string;
+    body_bytes?: number;
+    response_ended_at?: string;
+    termination_reason?: string;
   };
 }
 
@@ -204,6 +208,7 @@ async function prepareBundle(input: string, runner: CommandRunner): Promise<Prep
 function buildNetworkAnalysisFacts(
   input: string,
   manifest: NetManifest,
+  facts: NetInspectionFacts,
   opts: NetworkAnalyzeCliOpts,
   config: NetworkAnalysisConfig,
 ): NetworkAnalysisFacts {
@@ -221,7 +226,7 @@ function buildNetworkAnalysisFacts(
   if (config.mode === "tracking" && !identifiers.length) {
     throw new Error("跟踪模式 NetBundle 和命令参数都没有 capture ID / trace ID");
   }
-  const artifacts = (manifest.inspection_facts?.capture_artifacts ?? [])
+  const artifacts = (facts.capture_artifacts ?? [])
     .filter((item): item is typeof item & { pod: string; file: string } => !!item.pod && !!item.file)
     .map((item) => ({
       pod: item.pod,
@@ -232,7 +237,7 @@ function buildNetworkAnalysisFacts(
       reason: item.reason,
     }));
   if (!artifacts.length) throw new Error("NetBundle 没有可分析的 PCAP artifact");
-  const topology = manifest.inspection_facts?.topology;
+  const topology = facts.topology;
   return { bundle: collectedFact("network.bundle", "network-bundle", {
     sourceBundle: basename(input),
     namespace: manifest.target?.namespace,
@@ -258,13 +263,13 @@ function buildNetworkAnalysisFacts(
         services: item.services ?? [],
       })),
     artifacts,
-    triggerResponse: manifest.inspection_facts?.response
+    triggerResponse: facts.response
       ? {
-          statusCode: manifest.inspection_facts.response.status_code,
-          contentType: manifest.inspection_facts.response.content_type,
-          bodyBytes: manifest.inspection_facts.response.body_bytes,
-          endedAt: manifest.inspection_facts.response.response_ended_at,
-          terminationReason: manifest.inspection_facts.response.termination_reason,
+          statusCode: facts.response.status_code,
+          contentType: facts.response.content_type,
+          bodyBytes: facts.response.body_bytes,
+          endedAt: facts.response.response_ended_at,
+          terminationReason: facts.response.termination_reason,
         }
       : undefined,
   }) };
@@ -288,6 +293,8 @@ function writeNetworkAnalysisHtml(
   const staging = mkdtempSync(join(tmpdir(), "doctor-network-analysis-report-"));
   const facts = document.diagnosis.evidence.facts.bundle;
   try {
+    mkdirSync(join(staging, "raw"));
+    writeFileSync(join(staging, "raw/facts.json"), `${JSON.stringify(facts, null, 2)}\n`, "utf8");
     writeFileSync(join(staging, "manifest.json"), `${JSON.stringify({
       doctor_version: DOCTOR_CLI_VERSION,
       target: {
@@ -295,7 +302,7 @@ function writeNetworkAnalysisHtml(
         services: facts.requestedServices.join(","),
         capture_id: facts.captureId,
       },
-      inspection_facts: facts,
+      files: { facts: "raw/facts.json" },
       params: {
         command: "neta",
         source_bundle: facts.sourceBundle,
@@ -329,6 +336,7 @@ export async function analyzeNetworkBundle(
   const prepared = await prepareBundle(input, dependencies.runner);
   try {
     const manifest = JSON.parse(readFileSync(join(prepared.root, "manifest.json"), "utf-8")) as NetManifest;
+    const inspectionFacts = readFacts<NetInspectionFacts>(prepared.root, manifest);
     const config = buildNetworkAnalysisConfig(manifest);
     const execution = await runCollect({
       ctx: {
@@ -338,7 +346,7 @@ export async function analyzeNetworkBundle(
       config,
       inspects: [{
         id: "network-bundle",
-        run: async () => buildNetworkAnalysisFacts(input, manifest, opts, config),
+        run: async () => buildNetworkAnalysisFacts(input, manifest, inspectionFacts, opts, config),
       }],
       planProbes: () => [networkPcapProbe],
       log: dependencies.log ?? (() => undefined),

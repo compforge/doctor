@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../src/collect/serialize";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,10 +7,12 @@ import { CommandContext, CommandStatus, defineCommand } from "../src/command";
 import { commandOptions } from "../src/command/options";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { finalizeCommand } from "../src/app/finalize";
-import { deliverManifest } from "../src/app/manifest-delivery";
+import { finalizeResult } from "./report-fixture";
 import { runCommand } from "../src/app/command";
 import { terminalStdout, withMachineOutput } from "../src/terminal/output";
 
+const evidenceSpec = defineCommand({ name: "doctor log", serialize: serializeEvidenceResult,
+  run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), "doctor-manifest-test-")); roots.push(path); return path; };
 afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -35,27 +38,27 @@ for (const status of [CommandStatus.Ok, CommandStatus.Partial, CommandStatus.Fai
     const output = captureOutput();
     try {
       const code = status === CommandStatus.Cancelled ? 130 : status === CommandStatus.Failed ? 1 : 0;
-      expect(await finalizeCommand({ command: "doctor log", code, result: { status }, context, delivery: { format: "manifest" }, render })).toBe(code);
+      expect(await finalizeCommand({ spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, delivery: { format: "manifest" } })).toBe(code);
       const manifest = output.json();
       roots.push(manifest.bundle_root);
       expect(manifest.status).toBe(status);
       expect(manifest.exit_code).toBe(code);
-      expect(manifest.artifacts).toHaveLength(1);
-      const artifact = manifest.artifacts[0];
+      expect(manifest.children).toEqual([]);
+      const artifact = manifest;
       expect(artifact.target).toEqual({ namespace: "test", services: ["api"] });
-      expect(artifact.evidence_gaps[0].reason).toBe("permission denied");
-      expect(artifact.truncations[0].reason).toBe("raw_byte_limit");
-      expect(readFileSync(join(manifest.bundle_root, artifact.diagnosis), "utf8")).toContain("insufficient");
+      expect(artifact.steps[0].reason).toBe("permission denied");
+      expect(artifact.steps[1].truncation.reason).toBe("raw_byte_limit");
+      expect(readFileSync(join(manifest.bundle_root, artifact.files["diagnosis.json"].path), "utf8")).toContain("insufficient");
       expect(statSync(manifest.bundle_root).mode & 0o777).toBe(0o700);
-      expect(statSync(join(manifest.bundle_root, artifact.manifest)).mode & 0o777).toBe(0o600);
+      expect(statSync(join(manifest.bundle_root, "manifest.json")).mode & 0o777).toBe(0o600);
       expect(JSON.parse(readFileSync(join(manifest.bundle_root, "manifest.json"), "utf8"))).toEqual(manifest);
       expect(existsSync(join(manifest.bundle_root, "report.html"))).toBeFalse();
-      expect(existsSync(source)).toBeTrue();
+      expect(existsSync(source)).toBe(code !== 0);
     } finally { output.restore(); await context.disposeClients(); }
   });
 }
 
-test("explicit output, missing artifact and collisions preserve evidence and return JSON failures", () => {
+test("explicit output, missing artifact and collisions preserve evidence and return JSON failures", async () => {
   const directory = root();
   const context = new CommandContext({});
   const source = join(directory, "source"); mkdirSync(source); writeFileSync(join(source, "raw.txt"), "evidence");
@@ -63,27 +66,30 @@ test("explicit output, missing artifact and collisions preserve evidence and ret
   context.artifacts.add({ command: "log", path: join(directory, "missing") });
   let output = captureOutput();
   try {
-    expect(deliverManifest({ command: "doctor log", code: 0, context, result: { status: CommandStatus.Partial }, output: join(directory, "result") })).toEqual({ code: 1, delivered: false });
-    expect(output.json().artifacts).toHaveLength(1);
-    expect(output.json().retained_artifacts).toHaveLength(1);
+    expect(await finalizeResult(context, evidenceSpec, { status: CommandStatus.Partial, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output: join(directory, "result") })).toBe(1);
+    const manifest = output.json();
+    expect(manifest.serialization.status).toBe("failed");
+    expect(manifest.retained_artifacts).toHaveLength(2);
+    const raw = Object.values(manifest.files).find((file: any) => file.path.endsWith("/raw.txt")) as { path: string };
+    expect(readFileSync(join(manifest.bundle_root, raw.path), "utf8")).toBe("evidence");
     expect(output.json().execution.status).toBe("partial");
   } finally { output.restore(); }
   output = captureOutput();
   try {
-    expect(deliverManifest({ command: "doctor log", code: 0, context, result: { status: CommandStatus.Ok }, output: source })).toEqual({ code: 1, delivered: false });
+    expect(await finalizeResult(context, evidenceSpec, { status: CommandStatus.Ok, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output: source })).toBe(1);
     expect(output.json().delivery.status).toBe("failed");
     expect(readFileSync(join(source, "raw.txt"), "utf8")).toBe("evidence");
   } finally { output.restore(); }
 });
 
-test("manifest refuses external symlinks without changing their target permissions", () => {
+test("manifest refuses external symlinks without changing their target permissions", async () => {
   const directory = root();
   const secret = join(directory, "secret"); writeFileSync(secret, "private", { mode: 0o640 });
   const source = join(directory, "source"); mkdirSync(source); symlinkSync(secret, join(source, "link"));
   const context = new CommandContext({}); context.artifacts.add({ command: "log", path: source });
   const output = captureOutput();
   try {
-    expect(deliverManifest({ command: "doctor log", code: 0, context, result: { status: CommandStatus.Ok }, output: join(directory, "result") })).toEqual({ code: 1, delivered: false });
+    expect(await finalizeResult(context, evidenceSpec, { status: CommandStatus.Ok, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output: join(directory, "result") })).toBe(1);
     expect(output.json().retained_artifacts).toHaveLength(1);
     expect(statSync(secret).mode & 0o777).toBe(0o640);
   } finally { output.restore(); }
@@ -109,7 +115,9 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
     try {
       await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {});
       expect(output.json().status).toBe(invalid ? "failed" : "partial");
-      expect(output.json().artifacts).toEqual([]);
+      expect(output.json().children).toEqual([]);
+      expect(output.json().schemaVersion).toBe(1);
+      expect(output.json().executionId).toEqual(expect.any(String));
       expect(process.exitCode).toBe(invalid ? 1 : 0);
     } finally { output.restore(); process.exitCode = oldCode; }
   }

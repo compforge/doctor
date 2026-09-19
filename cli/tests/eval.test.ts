@@ -8,7 +8,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeResult, readReport } from "./report-fixture";
 import { CommandContext, CommandStatus } from "../src/command";
 import {
   createEvalArtifact,
@@ -22,8 +22,7 @@ import {
   type EvalRun,
 } from "../src/eval";
 import { evalCommand } from "../src/eval/command";
-import { readBundleIndex } from "./bundle-fixture";
-import { renderForDelivery } from "./report-fixture";
+import { readBundleIndex, readBundleText } from "./bundle-fixture";
 
 const CASE_SET: CaseSet = {
   caseset: "ordinary-chat",
@@ -147,16 +146,14 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
 
     const context = new CommandContext({});
     context.artifacts.add({ command: "eval", path: artifact.path });
-    const rendered = await renderForDelivery(context, evalCommand, { status: CommandStatus.Ok, output: run, artifacts: context.artifacts.list() });
-    expect(readFileSync(join(artifact.path, "report.html"), "utf8")).toContain("不评价回答质量");
-    expect(await deliverCommandArtifacts(context, { format: "bundle", output: archive }, 0, "doctor eval", rendered))
-      .toBe(true);
+    expect(await finalizeResult(context, evalCommand, { status: CommandStatus.Ok, output: run, artifacts: context.artifacts.list() },
+      { format: "bundle", output: archive })).toBe(0);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     const index = readBundleIndex(archive, "eval");
-    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.report}`);
-    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.path}/caseset.json`);
-    expect(listing).toContain(`eval/${index.artifacts.find(artifact => artifact.command === "eval")!.path}/observations.jsonl`);
+    expect(index.command).toBe("eval");
+    for (const key of ["report", "caseset.json", "observations.jsonl"]) expect(listing).toContain(`eval/${index.files[key]!.path}`);
+    expect(readReport(readBundleText(archive, `eval/${index.files.report!.path}`)).pages).toContain("不评价回答质量");
   } finally {
     rmSync(parent, { recursive: true, force: true });
     rmSync(artifact.temporaryRoot, { recursive: true, force: true });

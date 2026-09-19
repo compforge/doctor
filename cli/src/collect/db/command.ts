@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -15,6 +16,7 @@ import { quoteIdentifier } from "./sql";
 import { databaseDiscoverySummary } from "./summary";
 
 export const dbCommand = defineCommand<DbInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor db",
   validate: validateDbInput,
   plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] },

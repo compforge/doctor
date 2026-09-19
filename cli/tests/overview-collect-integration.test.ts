@@ -3,7 +3,8 @@ import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeResult } from "./report-fixture";
+import { serializeEvidenceResult } from "../src/collect/serialize";
 import { COLLECT_KINDS, collectCommand, resolveCollectKinds, type CollectKind } from "../src/collect/composite";
 import { dataCommand } from "../src/collect/data/command";
 import { inspectCommand } from "../src/collect/inspect/command";
@@ -13,8 +14,8 @@ import { tenantCommand } from "../src/collect/tenant/command";
 import { traceCommand } from "../src/collect/trace/command";
 import { CommandContext, CommandStatus, defineCommand, type CommandInput, type CommandSpec } from "../src/command";
 import { collectOverviewSamples } from "../src/overview/collect";
-import { readBundleIndex, readBundleText } from "./bundle-fixture";
-import { fixtureReport, readReport, renderForDelivery } from "./report-fixture";
+import { readBundleIndex, readBundleText, readBundleExecutions } from "./bundle-fixture";
+import { fixtureReport, readReport } from "./report-fixture";
 
 // Keep the real Overview -> Collect delegation and CommandSpec wrappers; only replace external work.
 test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and shared Inspect/Tenant evidence", async concurrency => {
@@ -40,11 +41,12 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       return { status: kind === "tenant" ? CommandStatus.Partial : CommandStatus.Ok, output: undefined, artifacts: [] };
     } });
     const spy = spyOn(command, "run").mockImplementation(replacement.run);
+    const serializeSpy = spyOn(command, "serialize").mockImplementation(serializeEvidenceResult);
     const renderSpy = spyOn(command, "render").mockImplementation(async (_renderer, result) => {
       const rendered = fixtureReport(context).report;
       return { ...rendered, sections: rendered.sections.filter(section => section.id === kind).map(section => ({ ...section, status: result.status })) };
     });
-    restore.push(() => { spy.mockRestore(); renderSpy.mockRestore(); });
+    restore.push(() => { spy.mockRestore(); renderSpy.mockRestore(); serializeSpy.mockRestore(); });
   }
   replace(inspectCommand, "inspect");
   replace(tenantCommand, "tenant");
@@ -69,33 +71,28 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       expect(manifest.steps.find((step: { id: string }) => step.id === "tenant").status).toBe("partial");
     }
     const output = join(root, "overview.html");
-    expect(await deliverCommandArtifacts(context, { output }, 0, "doctor overview", await renderForDelivery(context, collectCommand, result))).toBeTrue();
+    expect(await finalizeResult(context, collectCommand, result, { output })).toBe(0);
     const archive = join(root, "overview.tar.gz");
     const index = readBundleIndex(archive, "overview");
-    expect(index.artifacts).toHaveLength(result.artifacts.length);
-    expect(new Set(index.artifacts.map(artifact => artifact.id)).size).toBe(index.artifacts.length);
-    expect(new Set(index.artifacts.map(artifact => artifact.path)).size).toBe(index.artifacts.length);
-    for (const kind of ["inspect", "tenant"]) expect(index.artifacts.filter(artifact => artifact.command === kind)).toHaveLength(1);
-    const collectManifests = index.artifacts.filter(artifact => artifact.command === "collect");
-    expect(collectManifests).toHaveLength(1);
-    const bizIds: string[] = [];
-    const referencedData = new Set<string>();
-    for (const artifact of collectManifests) {
-      const manifest = JSON.parse(readBundleText(archive, `overview/${artifact.path}`));
-      expect(manifest.schema_version).toBe(3);
-      bizIds.push(...manifest.target.biz_ids);
-      for (const step of manifest.steps) {
-        expect(step.artifact_ids).toHaveLength(1);
-        const evidence = index.artifacts.find(artifact => artifact.id === step.artifact_ids[0])!;
-        expect(evidence.command).toBe(step.id);
-        expect(readBundleText(archive, `overview/${evidence.report}`)).toContain(`${step.id} evidence`);
-        if (step.id === "data") referencedData.add(evidence.id);
-      }
+    expect(index.command).toBe("collect");
+    const executions = readBundleExecutions(archive, "overview");
+    expect(executions).toHaveLength(COLLECT_KINDS.length + 1);
+    expect(new Set(executions.map(entry => entry.manifest.executionId)).size).toBe(executions.length);
+    expect(new Set(executions.map(entry => entry.path)).size).toBe(executions.length);
+    for (const kind of ["inspect", "tenant", "data"]) expect(executions.filter(entry => entry.manifest.command === kind)).toHaveLength(1);
+    const manifest = JSON.parse(readBundleText(archive, "overview/manifest.json"));
+    expect(manifest.target.biz_ids).toEqual(["a", "b", "c", "d", "e"]);
+    const diagnosis = JSON.parse(readBundleText(archive, `overview/${manifest.files.diagnosis.path}`));
+    expect(diagnosis.steps.map((step: { kind: string }) => step.kind)).toEqual([...COLLECT_KINDS]);
+    for (const step of diagnosis.steps) {
+      const evidence = executions.find(entry => entry.manifest.executionId === step.result.executionId)!;
+      expect(evidence.manifest.command).toBe(step.kind);
+      expect(step.result.manifest).toBe(evidence.path);
+      expect(readBundleText(archive, `overview/${join(dirname(evidence.path), evidence.manifest.files.report!.path)}`)).toContain(`${step.kind} evidence`);
     }
-    expect(bizIds.sort()).toEqual(["a", "b", "c", "d", "e"]);
-    expect(referencedData.size).toBe(1);
     const agents = readBundleText(archive, "overview/AGENTS.md");
-    for (const artifact of index.artifacts) if (artifact.report) expect(agents).toContain(artifact.report);
+    expect(agents).toContain("children");
+    expect(agents).toContain("`report.html`");
     const html = readFileSync(output, "utf8");
     const report = readReport(html);
     for (const kind of ["inspect", "tenant"]) {

@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../src/collect/serialize";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { expect, mock, test } from "bun:test";
@@ -194,6 +195,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   const previousExit = process.exitCode;
   let resourceClosed = false;
   const child = defineCommand<CommandInput & { id: string }, void>({ name: "trace",
+    serialize: serializeEvidenceResult,
     render: async (renderer, result) => {
       expect(resourceClosed).toBeTrue();
       return { title: "Trace", sections: [{ id: "trace", title: "Trace", status: result.status,
@@ -212,6 +214,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   } });
   const children: CommandResult<void>[] = [];
   const parent = defineCommand<CommandInput, void>({ name: "overview",
+    serialize: async context => ({ files: {}, children: await Promise.all(children.map(result => context.serialize(child, result))) }),
     render: async renderer => composeReports("Overview", await Promise.all(children.map(result => renderer.render(child, result)))),
     run: async (ctx) => {
     await ctx.clients.get({ clientKey: "shared", createClient: () => ({
@@ -253,6 +256,7 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
   const output = join(root, "report.html");
   const previousExit = process.exitCode;
   const command = defineCommand<CommandInput, void>({ name: "overview",
+    serialize: serializeEvidenceResult,
     render: async (renderer, result) => ({ title: "Overview", sections: [{ id: "overview", title: "Overview", status: result.status,
       pages: result.artifacts.map(artifact => renderer.page(artifact, { title: "Overview", status: result.status })),
     }] }),

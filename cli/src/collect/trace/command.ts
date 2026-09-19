@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -8,6 +9,7 @@ import { runOfflineTrace } from "./offline";
 export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
 
 export const traceCommand = defineCommand<TraceInput, import("./index").TraceOutput>({
+  serialize: serializeEvidenceResult,
   name: "doctor trace",
   render: renderTraceReport,
   environment: input => ({ kubernetes: !input.from }),

@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../src/collect/serialize";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,6 +81,7 @@ test("renderer failure preserves evidence and delivers successful siblings with 
     render: async () => { throw new Error("cannot render trace"); },
   });
   const rootCommand = defineCommand<CommandInput, void>({ name: "doctor collect",
+    serialize: serializeEvidenceResult,
     run: async context => {
       mkdirSync(source); writeFileSync(join(source, "raw.txt"), "retained raw evidence");
       return ok([context.artifacts.add({ command: "log", path: source })]);
@@ -109,6 +111,7 @@ test("raw JSON delivery never invokes the renderer", async () => {
   const previous = process.exitCode;
   let rendered = false;
   const command = defineCommand<CommandInput, void>({ name: "doctor raw",
+    serialize: serializeEvidenceResult,
     run: async context => {
       const source = join(root, "evidence"); mkdirSync(source); writeFileSync(join(source, "diagnosis.json"), '{"data":1}');
       return ok([context.artifacts.add({ command: "raw", path: source })]);
@@ -119,7 +122,9 @@ test("raw JSON delivery never invokes the renderer", async () => {
     const output = join(root, "result.json");
     await runCommand(command, { config: join(root, "absent.yaml"), format: "json", output }, {}, { printProfile: false });
     expect(rendered).toBeFalse(); expect(process.exitCode).toBe(0);
-    expect(JSON.parse(readFileSync(output, "utf8"))).toEqual({ data: 1 });
+    const exported = JSON.parse(readFileSync(output, "utf8"));
+    expect(exported.result).toEqual({ data: 1 });
+    expect(JSON.parse(readFileSync(exported.manifest, "utf8")).files["diagnosis.json"].path).toBe("diagnosis.json");
   } finally { process.exitCode = previous ?? 0; rmSync(root, { recursive: true, force: true }); }
 });
 

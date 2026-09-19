@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -20,6 +21,7 @@ export function createInspectInput(input: Omit<InspectInput, "idempotencyKey">):
 }
 
 export const inspectCommand = defineCommand<InspectInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor inspect",
   validate: validateInspectInput,
   render: async (context, result) => renderEvidence(context, result, {

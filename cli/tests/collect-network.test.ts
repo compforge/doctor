@@ -431,9 +431,10 @@ requests:
     expect(collected.traceIds).toEqual(["trace-1"]);
     expect(seenHeaders[0]?.["X-Doctor-Capture-ID"]).toBe("doctor-test");
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
     expect(manifest.target.capture_id).toBe("doctor-test");
     expect(manifest.target.trace_ids).toEqual(["trace-1"]);
-    expect(manifest.inspection_facts.capture_artifacts).toHaveLength(3);
+    expect(inspectionFacts.capture_artifacts).toHaveLength(3);
   });
 
   test("守候模式等待用户操作完成后停止抓包，不主动发起 HTTP 请求", async () => {
@@ -505,11 +506,12 @@ requests:
       complete: true,
     });
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
     expect(manifest.params.capture_mode).toBe("watch");
-    expect(manifest.inspection_facts.capture_artifacts[0]).toHaveProperty("window_complete");
-    expect(manifest.inspection_facts.capture_artifacts[0]).not.toHaveProperty("complete");
+    expect(inspectionFacts.capture_artifacts[0]).toHaveProperty("window_complete");
+    expect(inspectionFacts.capture_artifacts[0]).not.toHaveProperty("complete");
     expect(manifest.target.capture_mode).toBeUndefined();
-    expect(manifest.inspection_facts.response).toBeUndefined();
+    expect(inspectionFacts.response).toBeUndefined();
     expect(manifest.params.http_file).toBeUndefined();
   });
 });

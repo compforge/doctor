@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -8,6 +9,7 @@ import { renderLogReport } from "./report";
 export type LogInput = CommandInput & Omit<Parameters<typeof runCollectLog>[0], CommandHostOption>;
 
 export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
+  serialize: serializeEvidenceResult,
   name: "doctor log",
   render: renderLogReport,
   validate: (input) => {

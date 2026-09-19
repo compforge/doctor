@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -9,6 +10,7 @@ import { buildMcpReportHtml } from "./render";
 export type McpInput = CommandInput & Omit<Parameters<typeof runCollectMcp>[0], CommandHostOption>;
 
 export const mcpCommand = defineCommand<McpInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor mcp",
   render: (context, result) => renderEvidence(context, result, {
     command: "mcp", title: "MCP",

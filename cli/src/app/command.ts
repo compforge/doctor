@@ -4,7 +4,7 @@ import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
 import { withMachineOutput } from "../terminal/output";
-import { deliverManifest } from "./manifest-delivery";
+import { deliverPreparationFailure } from "./preparation-failure";
 import { withoutShadowedDefaults } from "./option-sources";
 import { withInteractionOptions } from "../terminal/policy";
 
@@ -49,16 +49,13 @@ async function executeCommand<Input extends CommandInput, Output>(
       context.artifacts.add(result.artifacts);
       if (result.reportName) context.artifacts.setReportName(result.reportName);
       process.exitCode = await finalizeCommand({
-        command: spec.name, context, delivery: opts, code: commandExitCode(result),
-        result: { status: result.status, reason: "reason" in result ? result.reason : undefined },
-        render: renderer => renderer.render(spec, result),
+        spec, result, context, delivery: opts, code: commandExitCode(result),
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
     reportError(error, { context: spec.name, summary: "fatal" });
     process.exitCode = opts.format?.trim() === "manifest"
-      ? deliverManifest({ command: spec.name, code: 1, output: opts.output,
-          result: { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) } }).code
+      ? await deliverPreparationFailure(spec.name, error instanceof Error ? error.message : String(error), opts.output)
       : 1;
   }
 }

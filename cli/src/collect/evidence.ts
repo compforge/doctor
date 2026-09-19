@@ -1,5 +1,6 @@
 // Evidence Bundle：一次采集的完整产物目录。
 //   <dir>/manifest.json   身份/参数/时间窗/每步状态——机器可消费
+//   <dir>/raw/facts.json  结构化 Facts；manifest 只索引，不内嵌
 //   <dir>/raw/NN-<id>.*   每步原始 stdout（stderr 非空时并入，带分隔标记）
 //   <dir>/summary.md      规则层事实摘要——给人看
 // 原则：失败步骤也留上下文；原始证据与结论分开（分析产物后续单独落 analysis.md，不覆盖事实）。
@@ -206,12 +207,14 @@ export class EvidenceBundle {
     // 写盘前兜底收尾。放这里而不是靠调用方记得调 settle()——理由跟整个 worksheet 一样：
     // 凡是"要记得做"的记账，早晚会忘。
     this.settle();
+    // Facts have already passed collection budgets; text truncation would corrupt their JSON.
+    const factsFile = "raw/facts.json";
+    writeFileSync(join(this.dir, factsFile), `${JSON.stringify(meta.inspectionFacts, null, 2)}\n`, "utf-8");
     const manifest = {
-      files: meta.files,
+      files: { ...meta.files, facts: factsFile },
       doctor_version: meta.doctorVersion,
       kubectl_version: meta.kubectlVersion,
       target: meta.target,
-      inspection_facts: meta.inspectionFacts,
       params: meta.params,
       started_at: meta.startedAt,
       finished_at: meta.finishedAt,
