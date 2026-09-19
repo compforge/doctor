@@ -1,14 +1,16 @@
 import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../../command";
+import { CommandInputError, type CommandContext } from "../../command";
+import { terminalStderr } from "../../terminal/output";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../evidence";
-import { resolveDataConfig } from "./config";
-import type { CollectDataCliOpts, DataConfig } from "./model";
+import { resolveDataConfig, resolveDataServiceSelection } from "./config";
+import type { CollectDataCliOpts, DataConfig, DataServiceSelection } from "./model";
 
-/** Config 决议后、领域资源准备前的内部结果；不形成第三种 Context。 */
+/** Command-owned selection of Service declarations; acquiring their evidence remains in Execute. */
 export interface PreparedDataCommand {
   command: CommandContext;
   config: DataConfig;
+  selections: readonly DataServiceSelection[];
   executor: Executor;
 }
 
@@ -29,11 +31,19 @@ export async function prepareDataCommand(
   command: CommandContext,
   injectedExecutor?: Executor,
 ): Promise<PreparedDataCommand | undefined> {
-  const config = await resolveDataConfig(opts, catalog, command, injectedExecutor);
-  if (!config) return undefined;
-  return {
-    command,
-    config,
-    executor: injectedExecutor ?? new KubectlExecutor(config.kube),
-  };
+  try {
+    const config = await resolveDataConfig(opts, catalog, command, injectedExecutor);
+    const selections = config ? await resolveDataServiceSelection({ config, catalog }) : undefined;
+    if (!config || !selections) {
+      terminalStderr.warning("[collect] 已取消\n");
+      return undefined;
+    }
+    return {
+      command, config, selections,
+      executor: injectedExecutor ?? new KubectlExecutor(config.kube),
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new CommandInputError(reason, { cause: error });
+  }
 }

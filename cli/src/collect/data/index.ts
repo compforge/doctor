@@ -1,24 +1,20 @@
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { CommandContext } from "../../command";
-import { CommandInputError, CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
+import { terminalStdout } from "../../terminal/output";
 import { runCollectBatch } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { makeDataContributionInspect } from "./capability/collect";
-import { resolveDataServiceSelection } from "./config";
-import { prepareDataCommand, type DataCommandContext } from "./context";
+import type { PreparedDataCommand, DataCommandContext } from "./context";
 import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataInspect } from "./fact/inspect";
 import type {
-  CollectDataCliOpts,
   DataConfig,
   DataDiagnosis,
   DataFacts,
@@ -57,27 +53,11 @@ function dataOutcomes(services: readonly string[], plugin: PluginDefinition): Ou
  * @why Per-ID diagnosis must not observe sibling roots or perform another Inspect pass
  */
 export async function runCollectData(
-  opts: CollectDataCliOpts,
+  dataCommand: PreparedDataCommand,
   plugin: PluginDefinition,
-  commandContext: CommandContext,
-  injectedExecutor?: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
 ): Promise<CommandResult<DataOutput>> {
-  let dataCommand;
-  let selections;
-  try {
-    dataCommand = await prepareDataCommand(opts, plugin.services, commandContext, injectedExecutor);
-    if (dataCommand) selections = await resolveDataServiceSelection({ config: dataCommand.config, catalog: plugin.services });
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    terminalStderr.error(`${reason}\n`);
-    return { status: CommandStatus.Failed, reason, error: new CommandInputError(reason), artifacts: [] };
-  }
-  if (!dataCommand || !selections) {
-    terminalStderr.warning("[collect] 已取消\n");
-    return { status: CommandStatus.Cancelled, artifacts: [] };
-  }
-  const { config } = dataCommand;
+  const { config, selections, command: commandContext } = dataCommand;
   const services = selections.map(item => item.service);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   log(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）`);

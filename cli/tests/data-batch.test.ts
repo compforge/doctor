@@ -3,7 +3,7 @@ import { rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { createServiceCatalog, type PluginContext, type PluginDefinition, type ServiceInspectQuery } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
-import { runCollectData } from "../src/collect/data";
+import { prepareDataCommand, runCollectData } from "../src/collect/data";
 
 for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
   let preparations = 0;
@@ -33,9 +33,10 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
   }]) };
   const context = new CommandContext({});
   try {
-    const result = await runCollectData({ bizIds: ids, services: "records", namespace: "test", format: "json" },
-      plugin, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } },
-      { records: {} as PluginContext });
+    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json" },
+      plugin.services, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } });
+    expect(prepared).toBeDefined();
+    const result = await runCollectData(prepared!, plugin, { records: {} as PluginContext });
     expect(preparations).toBe(1);
     expect(batches).toEqual(ids.some(id => id !== "missing") ? [ids, ["shared"]] : [ids]);
     expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
