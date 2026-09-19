@@ -88,7 +88,7 @@ export interface ObservationMeta extends EvidenceSchemaMeta {
 /**
  * Finding 的依据来源。两种：
  *   observation —— 采到的证据，指 ObservationMeta.id
- *   fact        —— Inspect 取得的环境事实，指 manifest.json 里 inspection_facts 下的
+ *   fact        —— Inspect 取得的环境事实，指 manifest.json 的 files.facts 所索引的 Facts 文档内
  *                  路径（如 "pythonProcess.tracemallocStartup"）
  *
  * Facts 也要能被引用：detector 说"定位不到具体对象**因为目标进程没开 tracemalloc**"时，

@@ -64,7 +64,6 @@ export function writeEvalReport(path: string, run: EvalRun, profileName: string)
       duration_ms: item.observation?.durationMs,
     })),
   };
-  writeFileSync(join(path, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
   writeFileSync(join(path, "report.html"), buildHtmlReport(manifest, {
     title: "doctor eval 数据采集报告",
     profileName,

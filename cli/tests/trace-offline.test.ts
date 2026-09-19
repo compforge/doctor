@@ -7,7 +7,7 @@ import { collectTrace } from "../src/collect/trace";
 import { traceCommand, type TraceInput } from "../src/collect/trace/command";
 import { readTraceSnapshot } from "../src/collect/trace/snapshot";
 import { CommandContext, CommandStatus } from "../src/command";
-import { deliverManifest } from "../src/app/manifest-delivery";
+import { finalizeResult } from "./report-fixture";
 import { RenderContext } from "../src/report/context";
 
 const roots: string[] = [];
@@ -100,11 +100,11 @@ test("delivered manifest indexes tree/details, survives relocation, and can be r
   let stdout = "";
   const write = spyOn(process.stdout, "write").mockImplementation(chunk => { stdout += String(chunk); return true; });
   try {
-    expect(deliverManifest({ command: "doctor trace", code: 0, result: { status: CommandStatus.Ok }, context, output }).delivered).toBeTrue();
+    expect(await finalizeResult(context, traceCommand, { status: CommandStatus.Ok, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output })).toBe(0);
   } finally { write.mockRestore(); }
   const delivered = JSON.parse(stdout);
-  expect(existsSync(join(output, delivered.artifacts[0].files.tree))).toBeTrue();
-  expect(existsSync(join(output, delivered.artifacts[0].files.analysis))).toBeTrue();
+  expect(existsSync(join(output, delivered.files.tree.path))).toBeTrue();
+  expect(existsSync(join(output, delivered.files.analysis.path))).toBeTrue();
   const moved = root();
   cpSync(output, moved, { recursive: true });
   // The embedded absolute bundle_root deliberately still points to the original location.
@@ -114,7 +114,7 @@ test("delivered manifest indexes tree/details, survives relocation, and can be r
   await render.render(traceCommand, result);
   expect(render.failures).toHaveLength(0);
   expect(readFileSync(join(result.artifacts[0]!.path, "trace.html"), "utf8")).toContain("trace-archive");
-  expect(existsSync(join(moved, delivered.artifacts[0].path, "trace.html"))).toBeFalse();
+  expect(existsSync(join(moved, "trace.html"))).toBeFalse();
 });
 
 test("offline retains incomplete acquisition and truncation reasons instead of upgrading evidence to complete", async () => {
@@ -152,8 +152,8 @@ test("manifest cannot escape its bundle through traversal or symlinks", async ()
   const { dir } = await fixture();
   for (const relativePath of ["../outside/manifest.json", dir]) {
     const container = root();
-    writeFileSync(join(container, "manifest.json"), JSON.stringify({ kind: "doctor.bundle", schema_version: 1,
-      artifacts: [{ command: "trace", path: relativePath, manifest: relativePath }] }));
+    writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 1,
+      children: [{ command: "trace", manifest: relativePath }] }));
     expect((await offline(join(container, "manifest.json"))).result.status).toBe(CommandStatus.Failed);
   }
   symlinkSync(join(dir, "spans.jsonl"), join(dir, "unsafe-link"));
@@ -165,8 +165,8 @@ test("ambiguous local span requires a per-trace artifact manifest", async () => 
   const container = root();
   cpSync(dir, join(container, "a"), { recursive: true });
   cpSync(dir, join(container, "b"), { recursive: true });
-  writeFileSync(join(container, "manifest.json"), JSON.stringify({ kind: "doctor.bundle", schema_version: 1,
-    artifacts: ["a", "b"].map(path => ({ command: "trace", path })) }));
+  writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 1,
+    children: ["a", "b"].map(path => ({ command: "trace", manifest: `${path}/manifest.json` })) }));
   const { result } = await offline(join(container, "manifest.json"), { span: "child" });
   expect(result.status).toBe(CommandStatus.Failed);
   if (result.status === CommandStatus.Failed) expect(result.reason).toContain("歧义");
@@ -196,7 +196,7 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
   if (format === "manifest") {
     const result = JSON.parse(stdout);
     expect(result.status).toBe("ok");
-    expect(result.artifacts[0].files.tree).toBeDefined();
+    expect(result.files.tree).toBeDefined();
   } else if (format === "bundle") {
     const files = Bun.spawnSync({ cmd: ["tar", "-tzf", output], stdout: "pipe" });
     expect(files.exitCode).toBe(0);

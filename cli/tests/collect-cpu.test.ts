@@ -220,20 +220,21 @@ describe("collectCpu", () => {
     expect(exec.execCalls.flat().join(" ")).not.toContain("tracemalloc");
 
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
-    expect(manifest.inspection_facts.resourceUsage.cpu.ratio).toBeCloseTo(0.1);
-    expect(manifest.inspection_facts.resourceUsage.memory.ratio).toBeCloseTo(0.125);
-    expect(manifest.inspection_facts.container).toMatchObject({
+    const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
+    expect(inspectionFacts.resourceUsage.cpu.ratio).toBeCloseTo(0.1);
+    expect(inspectionFacts.resourceUsage.memory.ratio).toBeCloseTo(0.125);
+    expect(inspectionFacts.container).toMatchObject({
       kind: "target.container-capabilities",
       producer: { origin: "core", id: "container-capabilities" },
       python3: true,
       gdb: true,
       proc: true,
     });
-    expect(manifest.inspection_facts.debug).toMatchObject({
+    expect(inspectionFacts.debug).toMatchObject({
       environments: [],
       reason: expect.stringContaining("doctor debug"),
     });
-    expect(manifest.inspection_facts.platform).toMatchObject({
+    expect(inspectionFacts.platform).toMatchObject({
       kind: "target.platform",
       producer: { origin: "core", id: "platform" },
       machine: "arm64",
@@ -241,7 +242,7 @@ describe("collectCpu", () => {
       glibcVersion: "2.36",
       osRelease: { id: "debian", versionId: "12", prettyName: "Debian GNU/Linux 12" },
     });
-    expect(manifest.inspection_facts).not.toHaveProperty("pySpyRecovery");
+    expect(inspectionFacts).not.toHaveProperty("pySpyRecovery");
   });
 
   test("高负载 Fact 在 py-spy probe 前触发确认，拒绝后不 attach", async () => {

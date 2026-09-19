@@ -370,7 +370,6 @@ function writeAnalysisReport(
     writeFileSync(join(staging, "manifest.json"), `${JSON.stringify({
       doctor_version: DOCTOR_CLI_VERSION,
       target: { kind: "python-heap-analysis", source_count: items.length },
-      inspection_facts: {},
       params: {
         command: "mema",
         analyzer_version: PYDUMP_ANALYSIS_VERSION,

@@ -1,64 +1,14 @@
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import {
-  packArchiveEntries,
-  resolveArchivePath,
-  resolveDefaultReportPaths,
-} from "../collect/output/archive";
-import { CommandStatus, type CommandContext } from "../command";
-import type { RenderContext } from "../report/context";
-import { renderReportHtml } from "../report/html";
-import type { Report } from "../report/model";
-import { terminalStderr, terminalStdout } from "../terminal/output";
-import { writeBundleAgents } from "./bundle-agents";
-import { createBundleManifest, planBundleArtifacts } from "./bundle-layout";
-import { deliverManifest, type ManifestResult } from "./manifest-delivery";
+import { packArchiveEntries, resolveArchivePath, resolveDefaultReportPaths } from "../collect/output/archive";
+import type { CommandManifest } from "../command/serialization/model";
 
-export interface CommandDeliveryOptions {
-  format?: string;
-  output?: string;
-}
+import { terminalStderr, terminalStdout, writeMachineResult } from "../terminal/output";
 
-type FileDeliveryFormat = "html" | "json" | "md";
-type DeliveryFormat = "default" | FileDeliveryFormat | "bundle" | "manifest";
+export interface CommandDeliveryOptions { format?: string; output?: string }
 
-const DELIVERY_FORMATS: readonly DeliveryFormat[] = ["default", "html", "json", "md", "bundle", "manifest"];
-
-const FORMAT_FILES: Record<FileDeliveryFormat, string> = {
-  html: "report.html",
-  json: "diagnosis.json",
-  md: "summary.md",
-};
-
-function resolveFileOutputPath(
-  output: string | undefined,
-  reportName: string,
-  format: FileDeliveryFormat,
-): string {
-  const candidate = output?.trim() || reportName;
-  return resolve(candidate.toLowerCase().endsWith(`.${format}`) ? candidate : `${candidate}.${format}`);
-}
-
-function assertOutputDoesNotExist(path: string): void {
-  if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
-}
-
-function resolveDeliveryFormat(value: string | undefined): DeliveryFormat {
-  const format = value?.trim();
-  if (!format) return "default";
-  if (DELIVERY_FORMATS.includes(format as DeliveryFormat)) return format as DeliveryFormat;
-  terminalStderr.warning(`[delivery] 未识别 format '${format}'，按 default 交付 HTML + Bundle\n`);
-  return "default";
-}
-
-function timestamp(now = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-    + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
-function cleanupTemporaryArtifacts(paths: readonly string[]): void {
+export function cleanupTemporaryArtifacts(paths: readonly string[]): void {
   const temporaryRoot = `${resolve(tmpdir())}${sep}`;
   for (const path of paths) {
     const absolutePath = resolve(path);
@@ -74,152 +24,84 @@ function cleanupTemporaryArtifacts(paths: readonly string[]): void {
   }
 }
 
-/**
- * @rule A top-level command delivers all paths explicitly registered in its shared CommandContext once.
- * Nested commands only register artifacts; they never compress or clean them independently.
- */
-export async function deliverCommandArtifacts(
-  commandContext: CommandContext,
-  options: CommandDeliveryOptions,
-  commandCode: number,
-  commandName?: string,
-  rendered?: { report: Report; context: RenderContext; preserveArtifacts?: boolean },
-  result?: ManifestResult,
-): Promise<boolean> {
-  const format = resolveDeliveryFormat(options.format);
-  if (format === "manifest") {
-    return deliverManifest({ command: commandName ?? "doctor diagnosis", code: commandCode,
-      result: result ?? { status: commandCode === 130 ? CommandStatus.Cancelled : commandCode === 0 ? CommandStatus.Ok : CommandStatus.Failed },
-      context: commandContext, output: options.output,
-    }).delivered;
+/** Delivery consumes an already serialized, portable directory. It never reconstructs domain results. */
+export async function deliverSerialized(input: { directory: string; options: CommandDeliveryOptions;
+  code: number; reportName: string }): Promise<boolean> {
+  const { directory, options, code, reportName } = input;
+  const manifestPath = join(directory, "manifest.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as CommandManifest;
+  let format = options.format?.trim() || "default";
+  if (!["default", "html", "json", "md", "bundle", "manifest"].includes(format)) {
+    terminalStderr.warning(`[delivery] 未识别 format '${format}'，按 default 交付 HTML + Bundle\n`);
+    format = "default";
   }
-  const artifacts = commandContext.artifacts.list();
-  if (!artifacts.length) return true;
-
-  const commands = [...new Set(artifacts.map((artifact) => artifact.command))];
-  const commandSlug = commandName?.replace(/^doctor\s+/, "").trim().replace(/\s+/g, "-");
-  const reportName = commandContext.artifacts.reportName()
-    ?? (commandSlug && (commands.length > 1 || commands[0] !== commandSlug)
-      ? `doctor-${commandSlug}-${timestamp()}`
-      : basename(artifacts[0]!.path));
-  const defaultPaths = resolveDefaultReportPaths(options.output, reportName);
-  const fileFormat = format === "json" || format === "md"
-    ? format
-    : undefined;
-  const needsHtml = format === "default" || format === "html";
-  const needsBundle = format === "default" || format === "bundle";
-  const htmlOutputPath = needsHtml
-    ? format === "default"
-      ? defaultPaths.html
-      : resolveFileOutputPath(options.output, reportName, "html")
-    : undefined;
-  const fileOutputPath = fileFormat
-    ? resolveFileOutputPath(options.output, reportName, fileFormat)
-    : undefined;
-  const archivePath = needsBundle
-    ? format === "default"
-      ? defaultPaths.bundle
-      : resolveArchivePath(options.output, reportName)
-    : undefined;
+  const errors: string[] = [];
+  let root = directory;
+  const publish = (path: string, action: () => void) => {
+    if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+    action();
+  };
+  const metadata = { ...manifest, status: code === 130 ? "cancelled" : code !== 0 ? "failed" : manifest.status, exit_code: code, execution: { status: manifest.status, reason: manifest.reason },
+    delivery: { status: "ok", errors } };
   try {
-    for (const path of [htmlOutputPath, fileOutputPath, archivePath]) {
-      if (path) assertOutputDoesNotExist(path);
-    }
-  } catch (error) {
-    terminalStderr.error(`[delivery] ${error instanceof Error ? error.message : String(error)}\n`);
-    terminalStderr.error(`[delivery] 原始产物保留在: ${artifacts.map((artifact) => artifact.path).join(", ")}\n`);
-    return false;
-  }
-  let ok = true;
-
-  let html: string | undefined;
-  if ((needsHtml || needsBundle) && rendered?.report.sections.length) {
-    try { html = renderReportHtml(rendered.report, rendered.context); }
-    catch (error) {
-      ok = false;
-      terminalStderr.error(`[delivery] HTML 生成失败：${error instanceof Error ? error.message : String(error)}\n`);
-    }
-  }
-  if (needsHtml) {
-    try {
-      if (!html) throw new Error("Command 未提供可阅读的报告");
-      writeFileSync(htmlOutputPath!, html, { mode: 0o600 });
-      terminalStdout.success(`[delivery] HTML 报告: ${htmlOutputPath}\n`);
-    } catch (error) {
-      ok = false;
-      terminalStderr.error(`[delivery] HTML 交付失败：${error instanceof Error ? error.message : String(error)}\n`);
-    }
-  }
-
-  if (fileFormat) {
-    // Identity was resolved by CommandArtifacts. A command can produce many independent artifacts.
-    const sourceArtifacts = artifacts.filter(artifact => existsSync(join(artifact.path, FORMAT_FILES[fileFormat])));
-    try {
-      if (!sourceArtifacts.length) throw new Error(`诊断产物缺少 ${FORMAT_FILES[fileFormat]}`);
-      if (sourceArtifacts.length === 1) {
-        copyFileSync(join(sourceArtifacts[0]!.path, FORMAT_FILES[fileFormat]), fileOutputPath!);
-      } else if (fileFormat === "md") {
-        writeFileSync(fileOutputPath!, sourceArtifacts.map((artifact) =>
-          `# ${artifact.command} (${artifact.id})\n\n${readFileSync(join(artifact.path, FORMAT_FILES.md), "utf8").trim()}\n`
-        ).join("\n---\n\n"), "utf8");
-      } else {
-        const entries = sourceArtifacts.map(artifact => ({
-          id: artifact.id,
-          command: artifact.command,
-          diagnosis: JSON.parse(readFileSync(join(artifact.path, FORMAT_FILES.json), "utf8")),
-        }));
-        writeFileSync(fileOutputPath!, `${JSON.stringify({ artifacts: entries }, null, 2)}\n`, "utf8");
+    if (format === "manifest") {
+      if (options.output) {
+        root = resolve(options.output);
+        publish(root, () => { mkdirSync(root, { mode: 0o700 }); cpSync(directory, root, { recursive: true }); });
       }
-      chmodSync(fileOutputPath!, 0o600);
-      terminalStdout.success(`[delivery] ${fileFormat.toUpperCase()} 报告: ${fileOutputPath}\n`);
-    } catch (error) {
-      ok = false;
-      terminalStderr.error(
-        `[delivery] ${fileFormat.toUpperCase()} 交付失败：${error instanceof Error ? error.message : String(error)}\n`,
-      );
+    } else {
+      const paths = resolveDefaultReportPaths(options.output, reportName);
+      const filePath = (extension: string) => {
+        const path = options.output?.trim() || reportName;
+        return resolve(path.endsWith(`.${extension}`) ? path : `${path}.${extension}`);
+      };
+      const files: { source: string; destination: string }[] = [];
+      if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
+      if (format === "json" || format === "md") files.push({ source: format === "json" ? "diagnosis.json" : "summary.md", destination: filePath(format) });
+      const archive = format === "default" ? paths.bundle : format === "bundle" ? resolveArchivePath(options.output, reportName) : undefined;
+      // Validate every destination before publishing any output.
+      for (const path of [...files.map(file => file.destination), ...(archive ? [archive] : [])]) {
+        if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+      }
+      for (const file of files) {
+        try {
+          if (format === "json") {
+            const result = existsSync(join(directory, file.source)) ? JSON.parse(readFileSync(join(directory, file.source), "utf8")) : undefined;
+            // The exported JSON lives outside the execution directory; make its relative evidence references resolvable.
+            writeFileSync(file.destination, `${JSON.stringify({ manifest: manifestPath, result }, null, 2)}\n`, { mode: 0o600 });
+          } else if (format === "md") {
+            const summary = existsSync(join(directory, file.source)) ? readFileSync(join(directory, file.source), "utf8") : `# ${manifest.command}\n\n${manifest.status}\n`;
+            writeFileSync(file.destination, `${summary}\n[完整执行结果](${manifestPath})\n`, { mode: 0o600 });
+          } else {
+            if (!existsSync(join(directory, file.source))) throw new Error(`Serialized result has no ${file.source}`);
+            copyFileSync(join(directory, file.source), file.destination);
+            chmodSync(file.destination, 0o600);
+          }
+          terminalStdout.success(`[delivery] ${file.source}: ${file.destination}\n`);
+        } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
+      }
+      if (errors.length) {
+        metadata.delivery.status = "failed";
+        metadata.exit_code = code === 130 ? 130 : 1;
+        metadata.status = code === 130 ? "cancelled" : "failed";
+      }
+      if (archive) {
+        writeFileSync(manifestPath, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
+        const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), archive);
+        if (!packed.ok) throw new Error(packed.stderr);
+        chmodSync(archive, 0o600);
+        terminalStdout.success(`[delivery] Evidence Bundle: ${archive}\n`);
+      }
     }
-  }
-
-  if (needsBundle) {
-    let packed;
-    let agentsPath: string | undefined;
-    let indexDirectory: string | undefined;
-    try {
-      const layout = planBundleArtifacts(artifacts);
-      indexDirectory = mkdtempSync(join(tmpdir(), "doctor-delivery-index-"));
-      const indexPath = join(indexDirectory, "manifest.json");
-      writeFileSync(indexPath, `${JSON.stringify(createBundleManifest(commandName ?? "doctor diagnosis", commandCode, layout, html ? "report.html" : undefined, result), null, 2)}\n`, { mode: 0o600 });
-      agentsPath = writeBundleAgents({
-        command: commandName ?? "doctor diagnosis",
-        commandCode,
-        artifacts: layout,
-        report: html ? "report.html" : undefined,
-      });
-      const reportPath = join(indexDirectory, "report.html");
-      if (html) writeFileSync(reportPath, html, { mode: 0o600 });
-      packed = await packArchiveEntries(
-        [...layout.map(({ artifact, path }) => ({ source: artifact.path, path })),
-          { source: indexPath, path: "manifest.json" }, { source: agentsPath, path: "AGENTS.md" },
-          ...(html ? [{ source: reportPath, path: "report.html" }] : [])],
-        archivePath!,
-      );
-    } catch (error) {
-      packed = { ok: false, exitCode: 1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
-    } finally {
-      if (agentsPath) cleanupTemporaryArtifacts([agentsPath]);
-      if (indexDirectory) cleanupTemporaryArtifacts([indexDirectory]);
-    }
-    if (packed.ok) {
-      chmodSync(archivePath!, 0o600);
-      terminalStdout.result(commandCode === 0, `[delivery] Evidence Bundle: ${archivePath}\n`);
-    }
-    else {
-      ok = false;
-      terminalStderr.error(`[delivery] Bundle 打包失败：${packed.stderr.trim().split("\n")[0]}\n`);
-    }
-  }
-
-  if (ok && !rendered?.preserveArtifacts) cleanupTemporaryArtifacts(artifacts.map((artifact) => artifact.path));
-  else terminalStderr.error(`[delivery] 原始产物保留在: ${artifacts.map((artifact) => artifact.path).join(", ")}\n`);
-  return ok;
+  } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); root = directory; }
+  metadata.delivery.status = errors.length ? "failed" : "ok";
+  metadata.exit_code = code === 130 ? 130 : errors.length ? 1 : code;
+  if (errors.length && code !== 130) metadata.status = "failed";
+  const record = { ...metadata, bundle_root: root, manifest: "manifest.json" };
+  writeFileSync(join(root, "manifest.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
+  if (format === "manifest") writeMachineResult(record);
+  for (const error of errors) terminalStderr.error(`[delivery] ${error}\n`);
+  if (errors.length || !["manifest", "bundle", "default"].includes(format)) terminalStderr.info(`[delivery] Evidence: ${root}\n`);
+  if (!errors.length && root !== directory) cleanupTemporaryArtifacts([directory]);
+  return errors.length === 0;
 }

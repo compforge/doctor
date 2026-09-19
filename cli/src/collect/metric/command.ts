@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -9,6 +10,7 @@ import { buildMetricSections, buildMetricSummary } from "./render";
 export type MetricInput = CommandInput & Omit<Parameters<typeof runCollectMetric>[0], CommandHostOption> & { window?: MetricRunControl };
 
 export const metricCommand = defineCommand<MetricInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor metric",
   render: async (context, result) => renderEvidence(context, result, {
     command: "metric", title: "Metric", scope: "Service / 时间窗口",

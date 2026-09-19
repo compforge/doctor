@@ -13,9 +13,9 @@ interface TraceManifest {
   schema_version?: number;
   status?: CommandStatus;
   target?: Record<string, unknown>;
-  files?: Record<string, string>;
+  files?: Record<string, string | { path: string }>;
+  children?: { manifest: string }[];
   steps?: StepRecord[];
-  artifacts?: { command: string; path: string; manifest?: string }[];
 }
 
 interface LocalTrace {
@@ -43,20 +43,32 @@ function localTraces(from: string): { traces: LocalTrace[]; sourceStatus?: Comma
   const path = realpathSync(resolve(from));
   const root = dirname(path);
   const source = readManifest(path);
-  let paths: string[];
-  if (source.kind === "doctor.bundle") {
-    if (source.schema_version !== 1 || !Array.isArray(source.artifacts)) throw new Error("不支持的 Bundle manifest");
-    paths = source.artifacts.filter(artifact => artifact.command === "trace")
-      .map(artifact => containedPath(root, artifact.manifest ?? join(artifact.path, "manifest.json")));
-  } else paths = [path];
+  const paths: string[] = [];
+  const visited = new Set<string>();
+  const visit = (manifestPath: string) => {
+    if (visited.has(manifestPath)) return;
+    visited.add(manifestPath);
+    const manifest = readManifest(manifestPath);
+    if (manifest.target?.trace_id) { paths.push(manifestPath); return; }
+    const references = [
+      ...(manifest.children ?? []).map(child => child.manifest),
+      ...Object.values(manifest.files ?? {}).map(file => typeof file === "string" ? file : file.path)
+        .filter(file => file.endsWith("/manifest.json")),
+    ];
+    for (const ref of references) {
+      if (isAbsolute(ref)) throw new Error(`证据路径必须是相对路径：${ref}`);
+      visit(containedPath(root, relative(root, resolve(dirname(manifestPath), ref))));
+    }
+  };
+  visit(path);
   const traces = paths.flatMap(manifestPath => {
     const manifest = readManifest(manifestPath);
     if (!manifest.target?.trace_id) return [];
     const dir = dirname(manifestPath);
     // Validate referenced files before reading. Copying below also rejects any unreferenced symlinks.
-    for (const file of Object.values(manifest.files ?? {})) containedPath(dir, file);
+    for (const file of Object.values(manifest.files ?? {})) containedPath(dir, typeof file === "string" ? file : file.path);
     if (manifest.files?.analysis) for (const [key, path] of Object.entries(TRACE_FILES)) {
-      if (manifest.files[key] !== path) throw new Error(`不支持的 trace 证据布局：${key}`);
+      if ((typeof manifest.files[key] === "string" ? manifest.files[key] : manifest.files[key]?.path) !== path) throw new Error(`不支持的 trace 证据布局：${key}`);
       containedPath(dir, path);
     }
     const snapshot = manifest.files?.analysis

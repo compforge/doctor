@@ -1,3 +1,4 @@
+import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
@@ -119,6 +120,11 @@ export interface OverviewOutput extends OverviewResult { readonly collectionResu
 export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
 export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
   name: "doctor overview",
+  serialize: async (context, result) => {
+    const own = serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "overview"));
+    const collected = result.output?.collectionResult;
+    return { ...own, children: collected ? [await context.serialize(collectCommand, collected)] : [] };
+  },
   render: async (context, result) => {
     const dashboard = await renderEvidence(context, result, {
       command: "overview", title: "Overview", scope: "概览 / 采样窗口",

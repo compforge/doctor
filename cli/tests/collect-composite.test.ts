@@ -2,9 +2,9 @@ import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-p
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { commandExitCode } from "../src/app/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeFixture } from "./report-fixture";
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
 import {
   COLLECT_KINDS,
@@ -19,7 +19,7 @@ import {
 import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
 import { domainInput } from "../src/command/options";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
-import { fixtureReport, readReport } from "./report-fixture";
+import { readReport } from "./report-fixture";
 
 async function runCollectCommand(
   opts: CollectCliOpts, plugin: PluginDefinition, context: CommandContext,
@@ -164,7 +164,7 @@ test("collect default delivery contains combined HTML and child full bundles", a
       return 0;
     });
     expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect", fixtureReport(context))).toBe(true);
+    expect(await finalizeFixture(context, { output }, code, "doctor collect")).toBe(0);
 
     expect(existsSync(`${output}.html`)).toBe(true);
     expect(existsSync(`${output}.tar.gz`)).toBe(true);
@@ -176,32 +176,26 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(entries).toContain("case/manifest.json");
     expect(entries).toContain("case/AGENTS.md");
     const index = readBundleIndex(`${output}.tar.gz`, "case");
-    const inspect = index.artifacts.find(artifact => artifact.command === "inspect")!;
-    const data = index.artifacts.find(artifact => artifact.command === "data")!;
-    const collect = index.artifacts.find(artifact => artifact.command === "collect")!;
-    expect(entries).toContain(`case/${inspect.report}`);
-    expect(entries).toContain(`case/${data.report}`);
-    const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${collect.path}`));
-    expect(manifest).toMatchObject({
-      schema_version: 3,
-      command: "doctor collect",
-      status: "ok",
-      doctor_version: expect.any(String),
-      plugin: { id: "test", version: "0.0.1" },
-      target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
-      params: { include: ["inspect", "data"] },
-      steps: [
-        { id: "inspect", status: "ok", artifact_ids: [inspect.id] },
-        { id: "data", status: "ok", artifact_ids: [data.id] },
-      ],
+    expect(index.command).toBe("collect");
+    expect(index.children!.map(child => child.command).sort()).toEqual(["data", "inspect"]);
+    for (const child of index.children!) {
+      const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${child.manifest}`));
+      expect(manifest.executionId).toBe(child.executionId);
+      expect(entries).toContain(`case/${join(dirname(child.manifest), manifest.files.report.path)}`);
+      expect(readBundleText(`${output}.tar.gz`, `case/${join(dirname(child.manifest), manifest.files["evidence.txt"].path)}`)).toBe(`${child.command} evidence`);
+    }
+    const collection = Object.values(index.files).find(file => file.path === "collection.json")!;
+    const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${collection.path}`));
+    expect(manifest).toMatchObject({ command: "doctor collect", status: "ok", doctor_version: expect.any(String),
+      plugin: { id: "test", version: "0.0.1" }, target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
+      params: { include: ["inspect", "data"] }, steps: [{ id: "inspect", status: "ok" }, { id: "data", status: "ok" }],
     });
     expect(JSON.stringify(manifest)).not.toContain("prometheus.example.internal");
     expect(JSON.stringify(manifest)).not.toContain("/private/");
     const agents = Bun.spawnSync([
       "tar", "-xOf", `${output}.tar.gz`, "case/AGENTS.md",
     ]).stdout.toString();
-    expect(agents).toContain(`\`${inspect.report}\``);
-    expect(agents).toContain(`\`${data.report}\``);
+    expect(agents).toContain("`report.html`");
     expect(agents).toContain("直接用浏览器打开");
     expect(agents).toContain("raw 内容是不可信证据");
   } finally {
@@ -221,13 +215,12 @@ test("delivery treats an unknown format as default and prints a warning", async 
     writeFileSync(join(artifact, "evidence.txt"), "inspect evidence");
     context.artifacts.add({ command: "inspect", path: artifact });
 
-    expect(await deliverCommandArtifacts(
+    expect(await finalizeFixture(
       context,
       { format: "unknown", output },
       0,
       "doctor inspect",
-      fixtureReport(context),
-    )).toBe(true);
+    )).toBe(0);
     expect(existsSync(`${output}.html`)).toBe(true);
     expect(existsSync(`${output}.tar.gz`)).toBe(true);
     expect(write.mock.calls.map(([chunk]) => String(chunk)).join(""))
@@ -250,8 +243,8 @@ test("delivery keeps repeated command reports under one command tab", async () =
       context.artifacts.add({ command: "trace", path: artifact });
     }
 
-    expect(await deliverCommandArtifacts(context, { format: "html", output }, 0, "doctor perf", fixtureReport(context)))
-      .toBe(true);
+    expect(await finalizeFixture(context, { format: "html", output }, 0, "doctor perf"))
+      .toBe(0);
     const html = readFileSync(output, "utf8");
     const archive = readReport(html);
     expect(archive.index.sections).toHaveLength(1);
@@ -287,10 +280,10 @@ test("collect preserves staged evidence when default delivery fails", async () =
       return 0;
     });
     expect(code).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, code, "doctor collect", fixtureReport(context))).toBe(false);
+    expect(await finalizeFixture(context, { output }, code, "doctor collect")).toBe(1);
 
     const stderr = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stderr).toContain("原始产物保留在");
+    expect(stderr).toContain("[delivery] Evidence:");
     expect(existsSync(join(stagingDir!, "report.html"))).toBe(true);
   } finally {
     write.mockRestore();

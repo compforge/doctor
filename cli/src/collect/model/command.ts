@@ -1,3 +1,4 @@
+import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
@@ -10,6 +11,7 @@ import { buildModelDiagnosisHtml } from "./render";
 export type ModelInput = CommandInput & Omit<CollectModelCliOptions, CommandHostOption>;
 
 export const modelCommand = defineCommand<ModelInput, void>({
+  serialize: serializeEvidenceResult,
   name: "doctor model",
   render: (context, result) => renderEvidence(context, result, {
     command: "model", title: "Model",

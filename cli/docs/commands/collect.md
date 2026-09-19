@@ -64,8 +64,8 @@ Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、
 只要至少一个所选 collector 形成报告，集合命令即可进入统一 Delivery；全部数据面都未形成报告时才返回
 失败。未指定 `--format` 时同时输出组合 HTML 和 `tar.gz`：HTML 导航由 Collect renderer 显式组合，
 Command tabs 与业务对象选择联动；共享环境、租户和时间窗口各自保留作用域。Bundle 根 `report.html`
-是完整报告，根 `manifest.json` 定位 Artifact；Collect 自己的 manifest 记录采集目标、参数、窗口和各
-collector 的终态，领域 Artifact 目录保留各自 Evidence。每个 Tab
+是完整报告。Collect manifest 保存目标、参数、窗口，并通过 children 引用直接子执行；diagnosis 的步骤
+摘要关联各子结果，子执行 manifest 保留其状态和 Evidence 索引。聚合命令可以继续嵌套，共享子结果只落盘一份。每个 Tab
 内的 Finding、Coverage 和完整度仍由原 collector 负责；集合 manifest 仅提供机器分析入口，不增加 HTML
 汇总页。
 
@@ -73,4 +73,4 @@ collector 的终态，领域 Artifact 目录保留各自 Evidence。每个 Tab
 biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`。组合命令只向 Artifact 注册表
 提供该 basename，最终路径与格式仍由统一 Delivery 决定；自动化调用可用 `--output` 指定稳定前缀。
 
-渲染契约与四种阅读场景见 [Command 渲染与报告组合](../rendering.md)。
+渲染契约与四种阅读场景见 [HTML 报告渲染](../rendering.md)。

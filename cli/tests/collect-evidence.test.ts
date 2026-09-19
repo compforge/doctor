@@ -72,7 +72,7 @@ describe("EvidenceBundle", () => {
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
     expect(manifest.doctor_version).toBe("0.0.1");
     expect(manifest.target.pod).toBe("p");
-    expect(manifest.inspection_facts).toEqual({ canExec: true });
+    expect(JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"))).toEqual({ canExec: true });
     expect(manifest.steps).toHaveLength(1);
     expect(manifest.steps[0]).toMatchObject({
       id: "a",
@@ -176,7 +176,7 @@ describe("EvidenceBundle worksheet", () => {
     bundle.addStep({ id: "a", title: "A", risk: "observe", status: "ok" });
     bundle.writeManifest(META);
     const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
-    expect(manifest.inspection_facts).toEqual({});
+    expect(JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"))).toEqual({});
     expect(manifest.steps.map((s: any) => s.id)).toEqual(["a"]);
   });
 

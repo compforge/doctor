@@ -34,7 +34,7 @@ export function buildHtmlReport(manifest: BundleManifest, options: HtmlReportOpt
     </tr>`).join("");
   const summary = renderSummary(options.summaryHtml);
   const renderedSections = renderReportSections(sections);
-  const renderedInspectionFacts = renderInspectionFacts(manifest.inspection_facts);
+  const renderedInspectionFacts = renderInspectionFacts(options.inspectionFacts);
   const navigation = renderNavigation(
     summary.headings,
     sections,

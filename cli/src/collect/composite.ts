@@ -1,6 +1,8 @@
+import type { StoredResultRef } from "../command/serialization/model";
+import type { CommandSpec } from "../command/spec";
 import { isInteractive } from "../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../app/version";
@@ -237,6 +239,24 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
 export function createCollectCommand(delegate?: CollectDelegate) {
   return defineCommand<CollectInput, CollectOutput>({
     name: "doctor collect",
+    serialize: async (context, result) => {
+      const commands: Record<CollectKind, Pick<CommandSpec<CommandInput, unknown>, "name" | "serialize">> = {
+        inspect: inspectCommand, tenant: tenantCommand, data: dataCommand,
+        trace: traceCommand, log: logCommand, metric: metricCommand,
+      };
+      const children: StoredResultRef[] = [];
+      for (const step of result.output?.steps ?? []) children.push(await context.serialize(commands[step.kind], step.result));
+      const source = result.artifacts.find(artifact => artifact.command === "collect");
+      const staged = source ? JSON.parse(readFileSync(source.path, "utf8")) : {};
+      const { steps: _steps, schema_version: _schema, command: _command, status: _status, ...metadata } = staged;
+      const steps = (result.output?.steps ?? []).map((step, index) => ({
+        kind: step.kind, status: step.result.status, result: children[index],
+      }));
+      return { metadata, children, files: {
+        diagnosis: context.writeJson("diagnosis.json", { steps }),
+        summary: context.writeText("summary.md", `# Collect\n\n${steps.map(step => `- ${step.kind}: ${step.status}`).join("\n")}\n`),
+      } };
+    },
     render: async (context, result) => {
       if (!result.output) return failureReport("doctor collect", result);
       const reports = [];

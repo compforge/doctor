@@ -64,17 +64,19 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 9. **默认交付兼顾阅读与完整取证**：诊断命令未指定 `--format` 时，同时交付外置 HTML 和完整
    `tar.gz`；Bundle 解压后只产生一个顶层目录，首选根 `report.html` 阅读完整报告，通过根 manifest 定位各 Artifact 的领域 JSON、原始 Evidence 与附件；
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。
-   显式指定已有 format 时只交付该格式，不改变其既有语义。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
-   根入口统一 finalize 和 Delivery。单次调用的临时资源与产物独立，环境、决策、共享基础设施资源及取消信号在整轮内共享。
+   显式 format 选择交付视图，不改变采集范围。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
+   根与 Artifact manifest 只保存元数据和证据索引，不重复内嵌 raw 正文；Render 按索引读取，约束见
+   `docs/command-output.md` 的“证据与清单”。
+   根入口统一 finalize：释放 Client 后调用 CommandSpec.serialize，再按需 render 和 Delivery；序列化只处理本地结果与显式子引用。单次调用的临时资源与产物独立，环境、决策、共享基础设施资源及取消信号在整轮内共享。
 
 ## References
 
 - `docs/kernel.md` — CLI 核心分层、Collect/Evidence、Doctor Host/Target 与授权契约
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
-- `docs/rendering.md` — Command 渲染与报告组合契约、单/多 Command × 单/多数据场景
+- `docs/rendering.md` — 基于 Command Output 的 HTML 页面组织、交互导航与离线加载
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `docs/distribution.md` — Doctor 发行版的身份、命令展示与 Plugin 装配边界
-- `docs/manifest.md` — 机器可读结果、未压缩证据目录、状态与保留契约
+- `docs/command-output.md` — Command 输出数据的规范与组织：执行结果、Evidence 保存、manifest 清单与交付
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排

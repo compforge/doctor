@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync } from "node:fs";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CommandArtifact } from "../command/artifacts";
 import type { CommandResult } from "../command/result";
 import type { CommandInput, CommandSpec } from "../command/spec";
@@ -32,7 +32,15 @@ export class RenderContext {
   }
 
   read(artifact: CommandArtifact, file: string): string { return readFileSync(this.path(artifact, file), "utf8"); }
-  json<T>(artifact: CommandArtifact, file: string): T { return JSON.parse(this.read(artifact, file)) as T; }
+  json<T>(artifact: CommandArtifact, file: string): T {
+    const value = JSON.parse(this.read(artifact, file));
+    if (file === "diagnosis.json" && value.evidence?.facts?.file) {
+      const read = (ref: { file: string }) => JSON.parse(this.read(artifact, join(dirname(file), ref.file)));
+      value.evidence = { ...(value.evidence.derived ? read(value.evidence.derived) : {}),
+        facts: read(value.evidence.facts), observations: read(value.evidence.observations) };
+    }
+    return value as T;
+  }
 
   page(artifact: CommandArtifact, page: Omit<ReportPage, "id" | "source">, file = "report.html"): ReportPage {
     this.path(artifact, file);

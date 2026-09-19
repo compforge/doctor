@@ -84,7 +84,8 @@ Execute（Core 驱动）
   ↓
 Finalize
   → 释放共享 Client
-  → 根 CommandSpec.render（本地领域页面 / 子报告组合）
+  → 根 CommandSpec.serialize（本地持久化 / 显式子执行引用）
+  → 按格式触发 CommandSpec.render（本地领域页面 / 子报告组合）
   → Report / Artifact / Bundle
   → Delivery / Cleanup / exit status
 ```
@@ -101,7 +102,7 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 | Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一批业务 Inspect Query，逐项返回结果与 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
 | Probe | 根据冻结 Facts 生成计划；向 Probe 注入公共 Fact；控制依赖、策略、授权、风险和资源生命周期；驱动 Core/Plugin Probe | 执行一次业务 Probe，消费 Input/Facts 并返回 Observation；不内建循环、并发或跨 Probe 调度 |
 | Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Coverage 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
-| Finalize | 驱动领域 Renderer，组装 Artifact/Bundle，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
+| Finalize | 释放 Client，序列化结果，按需驱动 Renderer，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
 
 Plugin 不必在每个阶段都有可执行逻辑。Prepare 中它主要提供声明，Execute 中贡献业务采集和判断，
 Finalize 则由 Core 收口。Renderer 的领域逻辑归 Command 所属模块，通过 `CommandSpec.render` 在根 Finalize 中驱动；只消费本地结果与证据。
@@ -153,6 +154,8 @@ object schema 同时驱动 TypeScript payload 推导和 Core 的 Draft 2020-12 �
 补默认值或删字段。
 
 ### Evidence、Detector 与 Diagnosis
+
+Evidence 的持久化布局、清单与正文边界见 [Command 输出规范](command-output.md)。
 
 Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答“已有证据说明什么”：
 
@@ -245,37 +248,23 @@ Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束
 
 ### 结果与 Finalize
 
-每个提供报告的 Command 在 `CommandSpec<Input, Output>` 上声明
-`render(context: RenderContext, result: CommandResult<Output>): Promise<Report>`。领域 renderer 拥有页面布局，
-组合 renderer 显式调用子 renderer、组织 Report；无报告的命令可以省略 render。四种 Command / 数据场景
-及导航规则见 [Command 渲染与报告组合](rendering.md)。
+CommandSpec 将 run、serialize 和 render 绑定到同一种领域 Output。run 取得数据与诊断结论；serialize
+将完整 CommandResult 投影为本地文件和子执行引用；render 根据结果及已落盘证据生成阅读结构。
+没有持久化结果或报告的命令可省略对应入口。聚合命令显式组合子执行及子报告，框架不猜测领域字段。
 
-`CommandStatus` 统一定义 `ok / partial / failed / cancelled` 四种最终执行状态。它描述命令完成度；
-业务错误、Finding severity 和 Evidence Coverage 各自保留领域含义。父命令依据自己的目标汇总子结果：
-部分采集失败但仍形成有效结果时为 partial；用户只看 Overview 并拒绝可选采集属于正常完成。
+`CommandStatus` 统一定义 `ok / partial / failed / cancelled` 四种执行状态，描述命令完成度；业务错误、
+Finding severity 和 Evidence Coverage 保留领域含义。根 CLI 映射退出码：ok/partial 为 0，failed 为非零，
+cancelled 为 130。子命令不设置进程退出码，也不单独执行最终交付。
 
-根 CLI 将结果映射为退出码：ok 和 partial 为 0，failed 为非零，cancelled 为 130。子命令不设置
-进程退出码，也不调用根入口的最终交付。
+Finalize 只执行一次：先释放共享 Client，再调用根 serialize，按输出格式选择 render，最后交付整个目录。
+SerializeContext 和 RenderContext 只允许本地操作，不能重新取得远端 Client 或执行采集。
+同一 spec 的同一结果对象在本轮内共享序列化与渲染；独立结果即使内容相同也保留各自身份。
+清理、序列化或渲染失败仍继续保留可用证据，阶段错误与原执行状态分别记录，取消优先返回 130。
 
-Finalize 只执行一次，先销毁共享 Client；清理失败记录错误，仍继续渲染与交付。HTML / Bundle 通过根
-CommandSpec.render 生成显式 Report，JSON / Markdown 直接交付结构化证据。RenderContext 只提供本地
-读写和子报告渲染；同一执行结果的并发引用共用一次 render，同一 Artifact 的同一页面只生成一次。
-它不提供远端 Client 或命令执行入口。子 renderer 失败仍保留采集状态，单独记录报告错误，其他页面
-继续交付。渲染或交付失败时保留源产物，根退出码非零；取消优先返回 130。
-
-Delivery 根据 Report 的 Command section、可选业务对象和 Artifact 页面引用，生成一个离线 HTML；
-不按目录名猜测导航，也不反解析子 HTML。归档、路径、格式和临时产物清理由根 Delivery 统一负责。
-报告名称由相应调用拥有，最外层决定最终交付名称。
-
-Delivery 为每份产物分配独立归档位置，并生成根 manifest，统一记录 Artifact ID 与 Bundle 相对路径。
-Bundle 根 `report.html` 与外置 HTML 使用同一份完整报告；根 manifest 和 AGENTS.md 都指向它。
-Collect manifest 通过 artifact_ids 引用证据；多个 Collect 可以引用同一份 Inspect/Tenant。AGENTS.md 导航
-与打包使用同一份路径映射，领域目录内部的相对路径保持不变。单次和组合命令遵循相同布局，归档路径
-不由各 command 猜测或拼接。压缩 Bundle 的根索引不保存 Doctor Host 的临时绝对路径。
-`--format manifest` 则保留未压缩证据目录，stdout 输出带本地根目录和执行状态的机器索引；进度走 stderr，
-不生成 HTML、不清理交付目录。内部仍使用相同 Artifact 相对路径，细节见 [Manifest](manifest.md)。
-JSON/Markdown 同样按 Artifact 身份保留全部可呈现产物；command 仅用于分组。单份 JSON 直接呈现领域
-diagnosis，多份 JSON 使用带 ID、command 和 diagnosis 的 artifacts 列表，避免同名命令覆盖或丢失证据。
+SerializeContext 分配执行目录与清单引用。HTML 生成器消费显式 Report，按 Command section、业务对象和
+页面引用组合离线 HTML；不按目录名猜测导航，不反解析子 HTML。Delivery 交付已序列化的目录及阅读文件，
+不再重建调用关系。最外层决定报告名称与最终格式，路径、文件索引、失败保留和 JSON/Manifest 输出契约见
+[Command 输出规范](command-output.md)，页面布局与导航见 [HTML 报告渲染](rendering.md)。
 
 默认格式、partial 报告、Evidence Bundle、失败兜底和退出码语义由
 [`collect-protocol.md`](collect-protocol.md) 统一定义。init/profile 等启动命令不要求已有 Profile。

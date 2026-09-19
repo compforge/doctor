@@ -13,7 +13,7 @@ export async function renderLogReport(context: RenderContext, result: CommandRes
     if (!item.artifacts.length) pages.push({ id: `log:${subject.key}`, title: "Log", subject, status: item.status, reason: item.reason });
     for (const artifact of item.artifacts) pages.push(await evidencePage(context, artifact,
       { title: "Log", subject, status: item.status, reason: item.reason }, () =>
-        writeLogHtmlReport(artifact.path, context.path(artifact, "report.html"), context.profileName)));
+        writeLogHtmlReport(context.artifact(artifact.id).path, context.path(artifact, "report.html"), context.profileName)));
   }
   return { title: "doctor log", sections: [{ id: "log", title: "Log", status: result.status, pages }] };
 }

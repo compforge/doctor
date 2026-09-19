@@ -7,9 +7,9 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { commandExitCode } from "../src/app/command";
-import { deliverCommandArtifacts } from "../src/app/delivery";
+import { finalizeResult } from "./report-fixture";
 import {
   dataServicesForBizQuery,
   prepareDataCommand,
@@ -18,7 +18,6 @@ import {
 import { dataCommand } from "../src/collect/data/command";
 import { CommandContext } from "../src/command";
 import { readBundleIndex, readBundleText } from "./bundle-fixture";
-import { renderForDelivery } from "./report-fixture";
 
 const service = "sample-api";
 const plugin = {
@@ -253,12 +252,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     });
 
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(
-      context,
-      { format: "json", output: join(root, "result.json") },
-      commandExitCode(code),
-      "doctor data",
-    )).toBe(true);
+    expect(await finalizeResult(context, dataCommand, code, { format: "json", output: join(root, "result.json") })).toBe(0);
     expect(seen).toEqual(["trace_id:trace-1"]);
     expect(seen).not.toContain("message_id:presentation-only");
   } finally {
@@ -281,40 +275,30 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       output: requestedOutput,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: requestedOutput }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code)))
-      .toBe(true);
+    expect(await finalizeResult(context, dataCommand, code, { format: "json", output: requestedOutput }))
+      .toBe(0);
 
     const delivered = JSON.parse(readFileSync(outputPath, "utf8"));
-    expect(delivered.artifacts).toHaveLength(2);
-    const report = delivered.artifacts[1].diagnosis;
-    expect(delivered.artifacts[0].diagnosis.groups).toEqual({ "biz-1": report });
-    expect(report).toMatchObject({
-      evidence: {
-        observations: [],
-        facts: {
-          capabilityResults: [{
-            status: "collected",
-            service,
-            result: {
-              resolution: { inputId: "biz-1", resolvedAs: "sample_id" },
-              facts: [{ factType: "record", recordKey: "one" }, { factType: "record", recordKey: "two" }],
-            },
-          }],
-        },
-      },
-      findings: [{
-        id: `service-detector:${service}:sample-records:sample-record-collected`,
-        evidence: [
-          { factPath: "capabilityResults.0.result.facts.0", role: "supporting" },
-          { factPath: "capabilityResults.0.result.facts.1", role: "supporting" },
-        ],
-      }],
-    });
-    expect(report.evidence.facts.capabilityResults.map((result: { id: string }) => result.id)).toEqual([
-      `data-query:provide:${service}:biz_id:biz-1`,
-    ]);
+    const manifest = JSON.parse(readFileSync(delivered.manifest, "utf8"));
+    const facts = JSON.parse(readFileSync(join(dirname(delivered.manifest), manifest.files.facts.path), "utf8"));
+    expect(delivered.result.items).toHaveLength(1);
+    const report = delivered.result.items[0];
+    expect(report).toMatchObject({ bizId: "biz-1", findings: [{
+      id: `service-detector:${service}:sample-records:sample-record-collected`,
+      evidence: [
+        { factPath: "capabilityResults.0.result.facts.0", role: "supporting" },
+        { factPath: "capabilityResults.0.result.facts.1", role: "supporting" },
+      ],
+    }] });
+    expect(report).not.toHaveProperty("evidence");
+    expect(facts.capabilityResults).toMatchObject([{ status: "collected", service,
+      result: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" },
+        facts: [{ factType: "record", recordKey: "one" }, { factType: "record", recordKey: "two" }] },
+    }]);
+    expect(report.selection.queryIds).toEqual([`data-query:provide:${service}:biz_id:biz-1`]);
+    expect(facts.capabilityResults.map((query: { id: string }) => query.id)).toEqual(report.selection.queryIds);
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
+    expect(stdout).toContain(`[delivery] diagnosis.json: ${outputPath}`);
     expect(stdout).not.toContain('"evidence"');
   } finally {
     write.mockRestore();
@@ -322,7 +306,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
   }
 });
 
-test("doctor data 批量 JSON 保留汇总和各 biz-id 的 Artifact 身份", async () => {
+test("doctor data 批量 JSON 保留各 biz-id 的选择和覆盖度，Facts 只保存一份", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-data-json-batch-"));
   const outputPath = join(root, "batch.json");
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
@@ -336,18 +320,22 @@ test("doctor data 批量 JSON 保留汇总和各 biz-id 的 Artifact 身份", as
       output: outputPath,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { format: "json", output: outputPath }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code)))
-      .toBe(true);
+    expect(await finalizeResult(context, dataCommand, code, { format: "json", output: outputPath }))
+      .toBe(0);
 
     const report = JSON.parse(readFileSync(outputPath, "utf8"));
-    expect(report.artifacts).toHaveLength(3);
-    expect(new Set(report.artifacts.map((artifact: { id: string }) => artifact.id)).size).toBe(3);
-    expect(report.artifacts.map((artifact: { command: string }) => artifact.command)).toEqual(["data", "data", "data"]);
-    expect(Object.keys(report.artifacts[0].diagnosis.groups)).toEqual(["biz-1", "biz-2"]);
-    expect(report.artifacts[1].diagnosis).toEqual(report.artifacts[0].diagnosis.groups["biz-1"]);
-    expect(report.artifacts[2].diagnosis).toEqual(report.artifacts[0].diagnosis.groups["biz-2"]);
+    expect(report.result.items.map((item: { bizId: string }) => item.bizId)).toEqual(["biz-1", "biz-2"]);
+    const manifest = JSON.parse(readFileSync(report.manifest, "utf8"));
+    expect(manifest.children).toEqual([]);
+    const facts = JSON.parse(readFileSync(join(dirname(report.manifest), manifest.files.facts.path), "utf8"));
+    for (const item of report.result.items) {
+      expect(item.selection.queryIds).toEqual([`data-query:provide:${service}:biz_id:${item.bizId}`]);
+      expect(item.coverage).toEqual(expect.any(Array));
+      for (const id of item.selection.queryIds) expect(facts.capabilityResults.some((query: { id: string }) => query.id === id)).toBe(true);
+      expect(item).not.toHaveProperty("evidence");
+    }
     const stdout = write.mock.calls.map(([chunk]) => String(chunk)).join("");
-    expect(stdout).toContain(`[delivery] JSON 报告: ${outputPath}`);
+    expect(stdout).toContain(`[delivery] diagnosis.json: ${outputPath}`);
     expect(stdout).not.toContain('"groups"');
   } finally {
     write.mockRestore();
@@ -370,7 +358,7 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
       output,
     }, plugin, context, executor, contexts);
     expect(commandExitCode(code)).toBe(0);
-    expect(await deliverCommandArtifacts(context, { output }, commandExitCode(code), "doctor data", await renderForDelivery(context, dataCommand, code))).toBe(true);
+    expect(await finalizeResult(context, dataCommand, code, { output })).toBe(0);
 
     expect(existsSync(htmlPath)).toBe(true);
     expect(existsSync(bundlePath)).toBe(true);
@@ -379,22 +367,19 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["report"]);
     expect(entries).toContain("report/AGENTS.md");
     const index = readBundleIndex(bundlePath, "report");
-    const data = index.artifacts.find(artifact => artifact.command === "data" && artifact.report)!;
-    expect(entries).toContain(`report/${data.report}`);
-    expect(listing).toContain("/report.html");
-    expect(listing).toContain("/diagnosis.json");
-    expect(listing).toContain("/manifest.json");
-    expect(listing).toContain("/raw/");
-    const manifest = JSON.parse(
-      readBundleText(bundlePath, `report/${data.path}/manifest.json`),
-    );
+    expect(index.command).toBe("data");
+    expect(index.children).toEqual([]);
+    expect(entries).toContain(`report/${index.files.report!.path}`);
+    expect(entries).toContain(`report/${index.files.diagnosis!.path}`);
+    expect(entries).toContain(`report/${index.files.facts!.path}`);
+    const manifest = JSON.parse(readBundleText(bundlePath, "report/manifest.json"));
     expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
     expect(manifest.params).not.toHaveProperty("data_capabilities");
-    expect(manifest.inspection_facts.capabilityResults).toMatchObject([
+    expect(JSON.parse(readBundleText(bundlePath, `report/${manifest.files.facts.path}`)).capabilityResults).toMatchObject([
       { status: "collected", service, result: { facts: [{ recordKey: "one" }, { recordKey: "two" }] } },
     ]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();
-    expect(agents).toContain(`\`${data.report}\``);
+    expect(agents).toContain("`report.html`");
   } finally {
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });

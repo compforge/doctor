@@ -75,12 +75,14 @@ export interface HtmlReportOptions {
   overlay?: HtmlReportOverlay;
   /** 领域特有的离线交互资产；shell 负责安全内嵌，但不理解其业务语义。 */
   assets?: { styles?: string; script?: string };
+  /** Loaded from the artifact facts index; this is render input, not manifest content. */
+  inspectionFacts?: Record<string, unknown>;
 }
 
 export interface BundleManifest {
   doctor_version?: string;
   target?: Record<string, unknown>;
-  inspection_facts?: Record<string, unknown>;
+  files?: Readonly<Record<string, string>>;
   params?: Record<string, unknown>;
   started_at?: string;
   finished_at?: string;
