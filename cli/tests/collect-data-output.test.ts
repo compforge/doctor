@@ -239,13 +239,15 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
 
   try {
     const context = new CommandContext({});
-    const code = await runCollectData({
+    const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
       services: `${traceResolver},${resolver},${records}`,
       namespace: "vke-system",
       format: "json",
       output: join(root, "result.json"),
-    }, relationPlugin, context, executor, {
+    }, relationPlugin.services, context, executor);
+    expect(prepared).toBeDefined();
+    const code = await runCollectData(prepared!, relationPlugin, {
       [resolver]: {} as PluginContext,
       [traceResolver]: {} as PluginContext,
       [records]: {} as PluginContext,
@@ -267,13 +269,15 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
     const context = new CommandContext({});
-    const code = await runCollectData({
+    const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: requestedOutput,
-    }, plugin, context, executor, contexts);
+    }, plugin.services, context, executor);
+    expect(prepared).toBeDefined();
+    const code = await runCollectData(prepared!, plugin, contexts);
     expect(commandExitCode(code)).toBe(0);
     expect(await finalizeResult(context, dataCommand, code, { format: "json", output: requestedOutput }))
       .toBe(0);
@@ -312,13 +316,15 @@ test("doctor data 批量 JSON 保留各 biz-id 的选择和覆盖度，Facts 只
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
     const context = new CommandContext({});
-    const code = await runCollectData({
+    const prepared = await prepareDataCommand({
       bizIds: ["biz-1", "biz-2"],
       services: service,
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: outputPath,
-    }, plugin, context, executor, contexts);
+    }, plugin.services, context, executor);
+    expect(prepared).toBeDefined();
+    const code = await runCollectData(prepared!, plugin, contexts);
     expect(commandExitCode(code)).toBe(0);
     expect(await finalizeResult(context, dataCommand, code, { format: "json", output: outputPath }))
       .toBe(0);
@@ -351,12 +357,14 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
     const context = new CommandContext({});
-    const code = await runCollectData({
+    const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
       output,
-    }, plugin, context, executor, contexts);
+    }, plugin.services, context, executor);
+    expect(prepared).toBeDefined();
+    const code = await runCollectData(prepared!, plugin, contexts);
     expect(commandExitCode(code)).toBe(0);
     expect(await finalizeResult(context, dataCommand, code, { output })).toBe(0);
 

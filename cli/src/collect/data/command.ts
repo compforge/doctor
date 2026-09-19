@@ -3,11 +3,13 @@ import { CommandInputError, defineCommand, type CommandInput } from "../../comma
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { runCollectData } from "./index";
+import { prepareDataCommand, type PreparedDataCommand } from "./context";
+import type { CollectDataCliOpts, DataOutput } from "./model";
 import { renderDataReport } from "./report";
 
-export type DataInput = CommandInput & Omit<Parameters<typeof runCollectData>[0], CommandHostOption>;
+export type DataInput = CommandInput & Omit<CollectDataCliOpts, CommandHostOption>;
 
-export const dataCommand = defineCommand<DataInput, import("./model").DataOutput>({
+export const dataCommand = defineCommand<DataInput, DataOutput, PreparedDataCommand>({
   serialize: serializeData,
   name: "doctor data",
   validate: (input) => {
@@ -16,7 +18,8 @@ export const dataCommand = defineCommand<DataInput, import("./model").DataOutput
   render: renderDataReport,
   environment: { kubernetes: true },
   plugin: PLUGIN_COMMAND_CAPABILITIES.data,
-  run: async (context, input) => runCollectData(
-    { ...input, ...commandOptions(context) }, context.plugin, context,
+  prepare: (context, input) => prepareDataCommand(
+    { ...input, ...commandOptions(context) }, context.plugin.services, context,
   ),
+  run: (context, prepared) => runCollectData(prepared, context.plugin),
 });

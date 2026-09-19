@@ -94,6 +94,24 @@ Inspect 与 Probe 之间存在阶段屏障：选中的 Inspect 全部收敛并�
 Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service 只注册 contribution；阶段推进、
 调度、失败隔离和收尾始终由 Core 控制。
 
+### Command 的准备扩展点
+
+`defineCommand` 是独立命令和聚合子命令共用的调用入口。输入校验、Plugin 能力存在性检查和环境准备
+完成后，调用可选的 `CommandSpec.prepare`，再把其类型化结果传给领域 `run`。无需额外准备的命令直接
+消费输入；调用者始终传入原始 Input，不自行调用 prepare 或构造准备结果。
+
+prepare 根据本次输入选择并绑定资源和能力，Service 则提供 Workload、DataSource、capability 与 access
+声明及实现。Service 不接收 Command DTO，也不根据命令名切换业务行为。内置工作和 Service contribution
+通过相同的执行契约进入系列引擎；Plugin 适配层保留来源、受限上下文与结果校验。
+
+准备结果属于命令内部，可以包含运行时 handle，不要求可序列化。prepare 与 run 处于同一个调用资源
+作用域和幂等复用单元：准备失败时保留已登记产物并释放局部资源；prepare 返回 undefined 表示取消，
+中止本轮且不进入 run。共享客户端仍由根 Finalize 回收。准备期间的外部访问同样必须先检查 access；
+需要作为 Evidence 留存的现场获取结果继续通过 Inspect 等取证流程处理。
+
+Execute 的内部流程由命令系列决定；Collect 使用 Inspect → Probe → Detector，Provision 等系列保留
+自身领域流程。Finalize 统一消费 CommandResult，通过 serialize/render 完成本地持久化与交付。
+
 ### Core 与 Plugin Service 分工
 
 | 阶段 | Core | Plugin Service |
