@@ -1,4 +1,4 @@
-import type { ServiceMetricCapability } from "@compforge/doctor-plugin";
+import type { MetricConfiguration } from "@compforge/doctor-plugin";
 
 export type MetricStoreKind = "redis" | "mysql";
 
@@ -40,7 +40,7 @@ export const STORE_METRIC_NAMES: Record<MetricStoreKind, readonly string[]> = {
   ],
 };
 
-export const STORE_METRIC_CAPABILITIES: Record<MetricStoreKind, ServiceMetricCapability> = {
+export const STORE_METRIC_CAPABILITIES: Record<MetricStoreKind, MetricConfiguration> = {
   redis: {
     endpoint: { host: "redis-exporter", port: 9121, path: "/metrics" },
     metricNames: STORE_METRIC_NAMES.redis,

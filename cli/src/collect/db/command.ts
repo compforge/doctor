@@ -22,11 +22,12 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
   serialize: serializeEvidenceResult,
   name: "doctor db",
   validate: validateDbInput,
-  render: (context, result) => renderEvidence(context, result, { command: "db", title: "数据库取证",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "db", title: "数据库取证",
     render: artifact => writeEvidencePage(context, artifact, { title: "数据库取证", summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
   }),
   prepare: async (context, input) => {
-    await prepareCommandRequirements(context, { plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] } });
+    await prepareCommandRequirements(context, { plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "resource", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] } });
     // Resolve syntax/input before environment access; a SQL file is not a script runner.
     let request;
     try { request = await resolveDbRequest(input); }
@@ -53,11 +54,13 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       const resolved = await resolveDbProviders(context, request);
       service = resolved.service;
       for (const provider of resolved.providers) {
-        targets.push({ id: provider.id, dataSources: provider.dataSources, backend: "mysql", host: provider.target.host, port: provider.target.port,
+        targets.push({
+          id: provider.id, dataSources: provider.dataSources, backend: "mysql", host: provider.target.host, port: provider.target.port,
           database: provider.target.database, source: provider.source, provenance: provider.target.source ? {
             namespace: provider.target.source.namespace, pod: provider.target.source.pod,
             container: provider.target.source.container, path: provider.target.source.path,
-          } : undefined });
+          } : undefined
+        });
       }
       for (const failure of resolved.failures) {
         targets.push({ id: failure.id, dataSources: [{ id: failure.id, description: failure.description }], error: failure.reason });
@@ -71,9 +74,11 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
         // Structured JSON must remain valid; the query has already applied its row/byte bounds.
         const path = join(directory, `discovery-${index}.json`);
         writeFileSync(path, JSON.stringify(record, null, 2), { mode: 0o600 });
-        bundle.addStep({ id: `discovery-${index}`, title: `发现 DB ${item.provider.id}`, risk: "observe",
+        bundle.addStep({
+          id: `discovery-${index}`, title: `发现 DB ${item.provider.id}`, risk: "observe",
           status: item.error ? "failed" : item.result?.truncated ? "partial" : "ok",
-          reason: item.error ?? item.result?.truncation, rawFilePath: path, ext: "json" });
+          reason: item.error ?? item.result?.truncation, rawFilePath: path, ext: "json"
+        });
       }
       const incomplete = resolved.failures.length > 0 || discovery.some(item => item.error || item.result?.truncated);
       if (request.action === "query" || request.action === "create-table") {
@@ -92,8 +97,10 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
           const record = { ...selection, ...result, durationMs: Date.now() - before };
           const path = join(directory, "query.json");
           writeFileSync(path, JSON.stringify(record, null, 2), { mode: 0o600 });
-          bundle.addStep({ id: "query", title: "执行有界只读 SQL", risk: "observe", status: result.truncated ? "partial" : "ok",
-            reason: result.truncation, durationMs: Date.now() - before, rawFilePath: path, ext: "json" });
+          bundle.addStep({
+            id: "query", title: "执行有界只读 SQL", risk: "observe", status: result.truncated ? "partial" : "ok",
+            reason: result.truncation, durationMs: Date.now() - before, rawFilePath: path, ext: "json"
+          });
           results.push(record);
           if (result.truncated) status = CommandStatus.Partial;
         } catch (error) {
@@ -113,9 +120,11 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     }
     const summary = `# 数据库取证\n\nService: ${service ?? "未选择"}\n操作: ${request.action}\n状态: ${status}\n${reason ?? ""}\n\n${discoverySummary}\n\n详细结果见 raw/ JSON 文件。\n`;
     bundle.writeSummary(summary);
-    bundle.writeManifest({ doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
+    bundle.writeManifest({
+      doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
       params: { action: request.action, database: request.database, table: request.table, limits: request.limits },
-      startedAt, finishedAt: new Date().toISOString() });
+      startedAt, finishedAt: new Date().toISOString()
+    });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });
     if (discoverySummary) terminalStdout.write(`${discoverySummary}\n`);
     terminalStdout.write(`[db] ${status}；证据目录：${directory}\n`);

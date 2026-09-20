@@ -4,8 +4,10 @@ import {
   type ModelBackendInspectExtension, type ModelBackendValidateExtension,
   type ModelInvokeExtension, type ModelStreamExtension, type ServiceHttpResponse,
 } from "@compforge/doctor-plugin";
-import { extensionModelCatalog, extensionModelInference, modelCatalogExtensions, modelInferenceExtensions,
-  type ModelExtensionContext } from "../src/model/extensions";
+import {
+  extensionModelCatalog, extensionModelInference, modelCatalogExtensions, modelInferenceExtensions,
+  type ModelExtensionContext
+} from "../src/model/extensions";
 import type { ManagedPluginContext } from "../src/plugin/context";
 
 const endpoint = { host: "models", port: 8080 };
@@ -13,18 +15,25 @@ const target = { baseUrl: "http://models/v1", model: "test-model" };
 const model: Model = { id: "m", name: "model", type: "llm", provider: "test" };
 const response: ServiceHttpResponse = { ok: true, statusCode: 200, statusText: "OK", headers: {}, text: "{}", durationMs: 1 };
 const query: ModelQueryExtension = { id: "query", kind: "model.query", endpoint, access: {}, run: async () => [model] };
-const inspect: ModelBackendInspectExtension = { id: "inspect", kind: "model.backend.inspect", endpoint, access: {},
-  run: async () => ({ modelId: "m", modelName: "model", model: "m", type: "llm", provider: "test" }) };
-const validate: ModelBackendValidateExtension = { id: "validate", kind: "model.backend.validate", endpoint,
+const inspect: ModelBackendInspectExtension = {
+  id: "inspect", kind: "model.backend.inspect", endpoint, access: {},
+  run: async () => ({ modelId: "m", modelName: "model", model: "m", type: "llm", provider: "test" })
+};
+const validate: ModelBackendValidateExtension = {
+  id: "validate", kind: "model.backend.validate", endpoint,
   access: { kubernetes: [{ requirement: "required", rule: { verb: "get", resource: "secrets" }, purpose: "backend validation" }] },
-  run: async () => response };
+  run: async () => response
+};
 const invoke: ModelInvokeExtension = { id: "invoke", kind: "model.invoke", endpoint, access: {}, run: async () => response };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
-  name: "models", component: { name: "test", repository: { forge: { name: "test" }, path: "test" } }, workloads: [], capabilities: {}, extensions,
+  name: "models",
+  component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
+  workloads: [],
+  extensions
 });
 function contexts() {
   const controller = new AbortController();
-  const dispose = mock(async () => {});
+  const dispose = mock(async () => { });
   const open = mock(async () => ({ signal: controller.signal, dispose } as unknown as ManagedPluginContext));
   return { controller, dispose, open };
 }
@@ -103,7 +112,7 @@ for (const reason of ["cancel", "request-abort", "parent-abort", "source-error"]
     const { open, dispose, controller } = contexts();
     const request = new AbortController();
     let source!: ReadableStreamDefaultController<Uint8Array>;
-    const cancel = mock(() => {});
+    const cancel = mock(() => { });
     const body = new ReadableStream<Uint8Array>({ start(value) { source = value; }, cancel });
     const inference = streaming(async () => ({ statusCode: 200, statusText: "OK", headers: {}, body }), open);
     const reader = (await inference.invokeStream("/chat/completions", {}, request.signal)).body!.getReader();

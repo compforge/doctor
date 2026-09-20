@@ -61,9 +61,7 @@ function relationTargets(result: CollectedDataInspectResult): readonly Identity[
 }
 
 function dataServiceUnavailable(service: string, facts: DataInspectionFacts): string | undefined {
-  const target = facts.services[service]?.target;
-  if (!target) return `未选择 ${service}`;
-  if (target.status !== "collected") return target.reason;
+  if (!facts.services[service]) return `未选择 ${service}`;
   const capability = facts.services[service]?.inspect;
   if (capability?.status !== "collected") return capability?.reason ?? `${service} 数据不可查询`;
   return undefined;
@@ -113,8 +111,10 @@ async function queryIdentities(input: {
   return outcomes.map(outcome => {
     try {
       if (outcome.status === "failed") throw new Error(outcome.reason);
-      const result = normalizeServiceInspectResult({ value: outcome.result, service: declared.name,
-        queryIdentity: outcome.identity, capability, budget });
+      const result = normalizeServiceInspectResult({
+        value: outcome.result, service: declared.name,
+        queryIdentity: outcome.identity, capability, budget
+      });
       consumeBudget(remaining, result);
       return Object.assign(collectedFact("data.inspect-result", "data-service-contributions", { result }), metadata(outcome.identity));
     } catch (error) {
@@ -137,20 +137,20 @@ function recordStage(
   const status = !results.length && !reused.length
     ? "unavailable"
     : !incomplete.length
-    ? "ok"
-    : hasEvidence
-    ? "partial"
-    : incomplete.some((result) => result.status === "failed")
-    ? "failed"
-    : "unavailable";
+      ? "ok"
+      : hasEvidence
+        ? "partial"
+        : incomplete.some((result) => result.status === "failed")
+          ? "failed"
+          : "unavailable";
   const reason = !results.length && !reused.length
     ? `${service} 没有接受本轮已知 Identity`
     : incomplete.length
-    ? `${stage === "expand" ? "扩展" : "查询"} ${service} ${hasEvidence ? "部分" : ""}业务数据未取得：`
+      ? `${stage === "expand" ? "扩展" : "查询"} ${service} ${hasEvidence ? "部分" : ""}业务数据未取得：`
       + incomplete.map((result) => (
         `${result.identity.kind}:${result.identity.value}: ${result.reason}`
       )).join("；")
-    : undefined;
+      : undefined;
   ctx.bundle.fill(dataOutcomeId(stage, service), {
     status,
     reason,
@@ -209,8 +209,10 @@ async function collectExpansionResults(input: {
         queried.add(key);
         return true;
       });
-      const queryResults = await queryIdentities({ declared, stage: "expand", identities: pending.map(item => item.identity),
-        ctx, results: completedResults(results), remaining });
+      const queryResults = await queryIdentities({
+        declared, stage: "expand", identities: pending.map(item => item.identity),
+        ctx, results: completedResults(results), remaining
+      });
       results.push(...queryResults);
       for (const queryResult of queryResults) {
         if (!isCollected(queryResult)) continue;
@@ -276,8 +278,10 @@ export async function collectDataInspectResults(input: {
     const identities = expansion.identities.filter(identity => (
       declared.extension.accepts.includes(identity.kind) && !reusedIdentities.has(identityKey(identity))
     ));
-    const results = await queryIdentities({ declared, stage: "provide", identities, ctx,
-      results: completedExpansionResults, remaining });
+    const results = await queryIdentities({
+      declared, stage: "provide", identities, ctx,
+      results: completedExpansionResults, remaining
+    });
     collected.push(...results);
     recordStage(ctx, "provide", service, results, reusable);
   }

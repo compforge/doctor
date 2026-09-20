@@ -133,13 +133,13 @@ export function makeServiceTargetsInspect(
       );
       const deploymentReasons = config.includeDeploymentConfig ? [
         capture.deploymentParseError
-          ?? (capture.deploymentCapture
-            ? commandReason(capture.deploymentCapture.ok, capture.deploymentCapture.stderr)
-            : "Deployment 未读取"),
+        ?? (capture.deploymentCapture
+          ? commandReason(capture.deploymentCapture.ok, capture.deploymentCapture.stderr)
+          : "Deployment 未读取"),
         capture.configMapParseError
-          ?? (capture.configMapCapture
-            ? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
-            : "ConfigMap 未读取"),
+        ?? (capture.configMapCapture
+          ? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
+          : "ConfigMap 未读取"),
       ].filter((reason): reason is string => !!reason) : [];
       const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
         ? unavailableFact("inspect.deployment-configuration", "service-targets", DEPLOYMENT_CONFIG_SKIPPED_REASON)
@@ -218,7 +218,7 @@ export function makeServiceTargetsInspect(
       const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
         const declaredService = catalog.find(serviceName)!;
-        const configurationSupported = !!catalog.findWith(serviceName, "config");
+        const configurationSupported = !!catalog.find(serviceName)?.configurationInspection;
         const workloads: InspectServiceTargetFact["workloads"] = {};
         for (const definition of declaredService.workloads) {
           const resolved = resolvedWorkloads.get(JSON.stringify([serviceName, definition.name]))!;
@@ -255,29 +255,29 @@ export function makeServiceTargetsInspect(
               : resolved.unavailableReason
                 ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
                 : collectedFact("inspect.workload-pods", "service-targets", {
-                    pods: resolved.pods.map((pod) => ({
-                      instance: resolved.instances.find(instance => instance.pod === pod.name)!,
-                      pod: pod.name,
-                      serviceAccountName: pod.serviceAccountName,
-                      phase: pod.phase,
-                      reason: pod.reason,
-                      message: pod.message,
-                      conditions: pod.conditions.map((condition) => ({ ...condition })),
-                      containers: pod.containers.map((container) => ({
-                        name: container.name,
-                        image: container.image,
-                        imageId: container.imageId,
-                        requests: { cpu: container.requests.cpu, memory: container.requests.memory },
-                        limits: { cpu: container.limits.cpu, memory: container.limits.memory },
-                        ready: container.ready,
-                        restartCount: container.restartCount,
-                        state: inspectContainerStateFact(container.state),
-                        lastTermination: container.lastTermination
-                          ? terminationFact(container.lastTermination)
-                          : undefined,
-                      })),
+                  pods: resolved.pods.map((pod) => ({
+                    instance: resolved.instances.find(instance => instance.pod === pod.name)!,
+                    pod: pod.name,
+                    serviceAccountName: pod.serviceAccountName,
+                    phase: pod.phase,
+                    reason: pod.reason,
+                    message: pod.message,
+                    conditions: pod.conditions.map((condition) => ({ ...condition })),
+                    containers: pod.containers.map((container) => ({
+                      name: container.name,
+                      image: container.image,
+                      imageId: container.imageId,
+                      requests: { cpu: container.requests.cpu, memory: container.requests.memory },
+                      limits: { cpu: container.limits.cpu, memory: container.limits.memory },
+                      ready: container.ready,
+                      restartCount: container.restartCount,
+                      state: inspectContainerStateFact(container.state),
+                      lastTermination: container.lastTermination
+                        ? terminationFact(container.lastTermination)
+                        : undefined,
                     })),
-                  }),
+                  })),
+                }),
           };
         }
         services[serviceName] = {

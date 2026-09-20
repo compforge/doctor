@@ -1,3 +1,4 @@
+import { selectExtension } from "./select-extension";
 import {
   TENANT_LIST_KIND, TENANT_RESOLVE_KIND, USER_SEARCH_KIND,
   requireTenantListExtension, requireTenantResolveExtension, requireUserSearchExtension,
@@ -51,7 +52,39 @@ export function extensionTenantDirectory(
   return {
     listActive: async () => tenantListOutput(await run(list ?? missing(TENANT_LIST_KIND), undefined)),
     getByName: async name => tenantResolveOutput(await run(resolve ?? missing(TENANT_RESOLVE_KIND), { name })),
-    ...(search ? { searchActiveUsers: async (input: Parameters<NonNullable<TenantDirectory["searchActiveUsers"]>>[0]) =>
-      userSearchOutput(await run(search, input)) } : {}),
+    ...(search ? {
+      searchActiveUsers: async (input: Parameters<NonNullable<TenantDirectory["searchActiveUsers"]>>[0]) =>
+        userSearchOutput(await run(search, input))
+    } : {}),
+  };
+}
+
+
+/** Discover only the operation the caller actually needs, without a Plugin-level directory binding. */
+export function discoverTenantDirectory(
+  catalog: ServiceCatalog,
+  contextFor: Parameters<typeof extensionTenantDirectory>[1],
+  options: Parameters<typeof selectExtension>[2] = {},
+): TenantDirectory {
+  const selections = new Map<string, ReturnType<typeof selectExtension>>();
+  async function directory(kind: string) {
+    let selection = selections.get(kind);
+    if (!selection) { selection = selectExtension(catalog, kind, options); selections.set(kind, selection); }
+    const selected = await selection;
+    const extension = selected.extension;
+    return extensionTenantDirectory({
+      service: selected.service,
+      list: kind === TENANT_LIST_KIND ? requireTenantListExtension(extension) : undefined,
+      resolve: kind === TENANT_RESOLVE_KIND ? requireTenantResolveExtension(extension) : undefined,
+      search: kind === USER_SEARCH_KIND ? requireUserSearchExtension(extension) : undefined,
+    }, contextFor);
+  }
+  return {
+    listActive: async () => (await directory(TENANT_LIST_KIND)).listActive(),
+    getByName: async name => (await directory(TENANT_RESOLVE_KIND)).getByName(name),
+    ...(catalog.extensions(USER_SEARCH_KIND).some(item => !options.service || item.service === catalog.find(options.service.split("/")[0]!)) ? {
+      searchActiveUsers: async (input: Parameters<NonNullable<TenantDirectory["searchActiveUsers"]>>[0]) =>
+        (await directory(USER_SEARCH_KIND)).searchActiveUsers!(input),
+    } : {}),
   };
 }

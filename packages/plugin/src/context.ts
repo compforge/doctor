@@ -15,7 +15,6 @@ export interface ResolvedServiceDataSourceDependency extends ServiceDataSourceDe
   };
 }
 
-export type ResolvedServiceCapabilityDependency = ResolvedServiceDataSourceDependency;
 
 /**
  * Doctor 在一次 capability 调用中确认的运行态事实。
@@ -59,7 +58,7 @@ export interface PluginClients {
 
 export interface PluginContext extends PluginClientContext {
   /** Dependencies belong to this capability call and cannot enter shared client factories. */
-  dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
+  dependencies: Readonly<Record<string, ResolvedServiceDataSourceDependency>>;
   clients: PluginClients;
   onDispose(disposer: () => void | Promise<void>): void;
 }

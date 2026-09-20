@@ -1,3 +1,4 @@
+import { inspectExtension, traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -19,24 +20,21 @@ afterEach(() => {
 const injected: PluginDefinition = {
   id: "discovery-test", version: "1.0.0",
   validateConfig: () => { throw new Error("Discovery must not validate runtime configuration"); },
-  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-    name: "api", workloads: [],
-    capabilities: {
-      log: { default: true },
-      traceId: {
-        access: {},
-        endpoint: { host: "private-target", port: 80 },
-        resolve: async () => { throw new Error("Discovery must not access the target"); },
-      },
-      metric: undefined,
-    },
-    contributions: {
-      inspect: {
-        access: {}, accepts: ["message_id"], provides: ["message"],
-        resolveTarget: async () => { throw new Error("Discovery must not resolve access credentials"); },
-        inspect: async () => { throw new Error("Discovery must not inspect the target"); },
-      },
-    },
+  services: createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    name: "api",
+    workloads: [],
+    logs: { default: true },
+    extensions: [traceExtension({
+      access: {},
+      endpoint: { host: "private-target", port: 80 },
+      resolve: async () => { throw new Error("Discovery must not access the target"); },
+    }),
+    inspectExtension({
+      access: {}, accepts: ["message_id"], provides: ["message"],
+      resolveTarget: async () => { throw new Error("Discovery must not resolve access credentials"); },
+      inspect: async () => { throw new Error("Discovery must not inspect the target"); },
+    })]
   }]),
 };
 
@@ -51,12 +49,14 @@ describe("Plugin discovery", () => {
     const result = await listPlugins(injected, root);
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
-      services: [{ name: "api", aliases: [], capabilities: ["log", "traceId"], contributions: ["inspect"],
-        details: { workloads: [], dependencies: [], dataSources: [],
+      services: [{
+        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "facts.inspect" }],
+        details: {
+          workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
           access: [
-            { owner: "contributions.inspect", requirements: { kubernetes: [] } },
-            { owner: "capabilities.traceId", requirements: { kubernetes: [] } },
+            { owner: "extensions.trace.resolve", requirements: { kubernetes: [] } },
+            { owner: "extensions.inspect", requirements: { kubernetes: [] } },
           ],
         },
       }],
@@ -71,10 +71,10 @@ describe("Plugin discovery", () => {
     await installPlugin(archive, installRoot);
     const result = await listPlugins(undefined, installRoot);
     expect(result).toMatchObject([{
-      id: "example", version: "0.0.8", source: "installed",
+      id: "example", version: "0.0.9", source: "installed",
       services: [
-        { name: "example-api", capabilities: ["config", "log"], contributions: [] },
-        { name: "example-worker", capabilities: ["log", "dataSources"], contributions: [] },
+        { name: "example-api", detectors: [], environmentProbes: [] },
+        { name: "example-worker", detectors: [], environmentProbes: [] },
       ],
     }]);
   });
@@ -111,12 +111,15 @@ describe("doctor plugin CLI", () => {
   test("JSON is directly consumable without profile or target preparation", () => {
     const result = run("plugin", "--format", "json");
     expect(result.exitCode).toBe(0);
-    expect(JSON.parse(result.stdout.toString())).toEqual({ plugins: [{
-      id: "test", version: "0.0.1", source: "injected",
-      services: [{ name: "test-store", aliases: ["store"], capabilities: ["dataSources"], contributions: [],
-        details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
-      }],
-    }] });
+    expect(JSON.parse(result.stdout.toString())).toEqual({
+      plugins: [{
+        id: "test", version: "0.0.1", source: "injected",
+        services: [{
+          name: "test-store", aliases: ["store"], detectors: [], environmentProbes: [],
+          details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
+        }],
+      }]
+    });
     expect(result.stderr.toString()).toBe("");
   });
 

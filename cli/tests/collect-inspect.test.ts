@@ -1,8 +1,7 @@
 import {
   createServiceCatalog,
-  serviceExtensions,
   defineObservation,
-  defineServiceWorkloadProbe,
+  defineWorkloadProbeExtension,
   Type,
   type PluginDefinition,
   type ServiceEvidenceFact,
@@ -92,17 +91,17 @@ function detectorEvidence(): InspectEvidence {
 }
 
 test("Service Evidence detector 可关联跨 Service Observation", () => {
-  const catalog = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  const catalog = createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "sandbox-server",
-    workloads: [],
-    capabilities: {},
-  }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    workloads: []
+  }, {
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "bedbox",
     workloads: [],
-    contributions: {
-      detectors: [{
-        id: "suite-isolation",
-        detect: (evidence) => {
+    detectors: [{
+      id: "suite-isolation",
+      detect: (evidence) => {
         const appArmor = evidence.observations.find((item) => (
           item.services.includes("sandbox-server")
           && item.kind === "kubernetes-apparmor-unconfined-admission"
@@ -124,10 +123,8 @@ test("Service Evidence detector 可关联跨 Service Observation", () => {
             { observationId: health.id, role: "supporting" },
           ],
         }] : [];
-        },
-      }],
-    },
-    capabilities: {},
+      },
+    }]
   }]);
 
   const findings = makeInspectDetectors("agentsphere", catalog, ["sandbox-server", "bedbox"])
@@ -153,13 +150,13 @@ test("Service Evidence detector 可关联跨 Service Observation", () => {
 });
 
 test("Service Evidence detector 不能引用本次 Evidence 之外的对象", () => {
-  const catalog = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  const catalog = createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "bedbox",
     workloads: [],
-    contributions: {
-      detectors: [{
-        id: "invalid-reference",
-        detect: () => [{
+    detectors: [{
+      id: "invalid-reference",
+      detect: () => [{
         id: "invalid",
         kind: "invalid",
         schemaVersion: 1,
@@ -167,10 +164,8 @@ test("Service Evidence detector 不能引用本次 Evidence 之外的对象", ()
         confidence: "high",
         message: "invalid evidence reference",
         evidence: [{ observationId: "missing", role: "supporting" }],
-        }],
       }],
-    },
-    capabilities: {},
+    }]
   }]);
 
   expect(() => makeInspectDetectors("agentsphere", catalog, ["bedbox"])[0]!(detectorEvidence()))
@@ -261,28 +256,27 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     services: createServiceCatalog(examplePlugin.services.services.map((service) => (
       service.name === "example-api"
         ? {
-            ...service,
-            workloads: service.workloads.map((workload) => ({ ...workload, description: "Handles API requests" })),
-            contributions: {
-              probes: [{
-                id: "apparmor-unconfined",
-                kind: "kubernetes.apparmor-unconfined-admission",
-                schemaVersion: 1,
-                subject: "workload-service-account",
-              }, defineServiceWorkloadProbe({
-                id: "core-facts",
-                kind: "workload",
-                schemaVersion: 1,
-                access: {},
-                workload: "main",
-                produces: coreFactsVisible,
-                probe: async (_context, input) => {
-                  workloadProbeFacts = input.facts;
-                  return { pod: input.instance.pod };
-                },
-              })],
+          ...service,
+          workloads: service.workloads.map((workload) => ({ ...workload, description: "Handles API requests" })),
+          environmentProbes: [{
+            id: "apparmor-unconfined",
+            kind: "kubernetes.apparmor-unconfined-admission",
+            schemaVersion: 1,
+            subject: "workload-service-account",
+          }],
+          extensions: [defineWorkloadProbeExtension({
+            id: "core-facts",
+            kind: "workload.probe",
+
+            access: {},
+            workload: "main",
+            produces: coreFactsVisible,
+            run: async (_context, input) => {
+              workloadProbeFacts = input.facts;
+              return { pod: input.instance.pod };
             },
-          }
+          })]
+        }
         : service
     ))),
   } satisfies PluginDefinition;
@@ -290,66 +284,83 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     ...legacyPlugin,
     services: createServiceCatalog(legacyPlugin.services.services.map(service => ({
       ...service,
-      extensions: serviceExtensions(service).filter(extension => extension.kind === "workload.probe"),
-      contributions: { ...service.contributions, probes: service.contributions?.probes?.filter(probe => probe.kind !== "workload") },
+      extensions: (service.extensions ?? []).filter(extension => extension.kind === "workload.probe"),
     }))),
   };
   const resources = {
-    services: JSON.stringify({ items: [{
-      metadata: { name: "example-api", namespace: "demo" },
-      spec: { selector: { app: "example-api" }, ports: [{ port: 8080, targetPort: 8080 }] },
-    }] }),
-    deployments: JSON.stringify({ items: [{
-      metadata: { name: "example-api" },
-      spec: { template: { metadata: { labels: { app: "example-api" } }, spec: { containers: [{
-        name: "example-api",
-        ports: [{ containerPort: 8080 }],
-        envFrom: [{ configMapRef: { name: "example-api" } }],
-        env: [{ name: "LOG_LEVEL", value: "debug" }],
-      }] } } },
-    }] }),
-    configmaps: JSON.stringify({ items: [{
-      metadata: { name: "example-api" },
-      data: { REQUEST_TIMEOUT: "30" },
-    }] }),
-    pods: JSON.stringify({ items: [{
-      metadata: { namespace: "demo", uid: "api-uid", name: "example-api-0", labels: { app: "example-api" } },
-      spec: { serviceAccountName: "example-api", containers: [{
-        name: "example-api",
-        image: "example.test/example-api:v1.2.3",
-        resources: {
-          requests: { cpu: "250m", memory: "256Mi" },
-          limits: { cpu: "1", memory: "1Gi" },
+    services: JSON.stringify({
+      items: [{
+        metadata: { name: "example-api", namespace: "demo" },
+        spec: { selector: { app: "example-api" }, ports: [{ port: 8080, targetPort: 8080 }] },
+      }]
+    }),
+    deployments: JSON.stringify({
+      items: [{
+        metadata: { name: "example-api" },
+        spec: {
+          template: {
+            metadata: { labels: { app: "example-api" } }, spec: {
+              containers: [{
+                name: "example-api",
+                ports: [{ containerPort: 8080 }],
+                envFrom: [{ configMapRef: { name: "example-api" } }],
+                env: [{ name: "LOG_LEVEL", value: "debug" }],
+              }]
+            }
+          }
         },
-      }] },
-      status: {
-        phase: "Running",
-        conditions: [{
-          type: "Ready",
-          status: "False",
-          reason: "ContainersNotReady",
-          message: "containers with unready status: [example-api]",
-        }],
-        containerStatuses: [{
-          name: "example-api",
-          imageID: "example.test/example-api@sha256:1234",
-          ready: false,
-          restartCount: 12,
-          state: {
-            waiting: {
-              reason: "CrashLoopBackOff",
-              message: "back-off restarting failed container example-api",
+      }]
+    }),
+    configmaps: JSON.stringify({
+      items: [{
+        metadata: { name: "example-api" },
+        data: { REQUEST_TIMEOUT: "30" },
+      }]
+    }),
+    pods: JSON.stringify({
+      items: [{
+        metadata: { namespace: "demo", uid: "api-uid", name: "example-api-0", labels: { app: "example-api" } },
+        spec: {
+          serviceAccountName: "example-api", containers: [{
+            name: "example-api",
+            image: "example.test/example-api:v1.2.3",
+            resources: {
+              requests: { cpu: "250m", memory: "256Mi" },
+              limits: { cpu: "1", memory: "1Gi" },
             },
-          },
-          lastState: { terminated: {
-            containerID: "containerd://previous",
-            exitCode: 137,
-            reason: "OOMKilled",
-            finishedAt: "2026-08-19T02:00:00Z",
-          } },
-        }],
-      },
-    }] }),
+          }]
+        },
+        status: {
+          phase: "Running",
+          conditions: [{
+            type: "Ready",
+            status: "False",
+            reason: "ContainersNotReady",
+            message: "containers with unready status: [example-api]",
+          }],
+          containerStatuses: [{
+            name: "example-api",
+            imageID: "example.test/example-api@sha256:1234",
+            ready: false,
+            restartCount: 12,
+            state: {
+              waiting: {
+                reason: "CrashLoopBackOff",
+                message: "back-off restarting failed container example-api",
+              },
+            },
+            lastState: {
+              terminated: {
+                containerID: "containerd://previous",
+                exitCode: 137,
+                reason: "OOMKilled",
+                finishedAt: "2026-08-19T02:00:00Z",
+              }
+            },
+          }],
+        },
+      }]
+    }),
   };
   const queriedResources: string[] = [];
   const dependencyCommands: string[][] = [];
@@ -483,12 +494,11 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
 
     const pluginWithoutToolchain = {
       ...examplePlugin,
-      services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      services: createServiceCatalog([{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "example-api",
         workloads: examplePlugin.services.find("example-api")!.workloads,
-        capabilities: {
-          log: { default: true },
-        },
+        logs: { default: true }
       }]),
     } satisfies PluginDefinition;
     const unavailableOutput = join(dir, "dependencies-without-toolchain.md");

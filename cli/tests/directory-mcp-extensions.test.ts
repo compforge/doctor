@@ -20,20 +20,24 @@ const endpoint = { host: "directory", port: 80 };
 const tenant = { id: "t", name: "tenant", displayName: "Tenant" };
 const list: TenantListExtension = { id: "list", kind: "tenant.list", access: {}, endpoint, run: async () => [tenant] };
 const resolve: TenantResolveExtension = { id: "resolve", kind: "tenant.resolve", access: {}, endpoint, run: async () => tenant };
-const search: UserSearchExtension = { id: "search", kind: "user.search", endpoint,
+const search: UserSearchExtension = {
+  id: "search", kind: "user.search", endpoint,
   access: { kubernetes: [{ requirement: "required", purpose: "user lookup", rule: { verb: "get", resource: "configmaps" } }] },
   run: async () => ({ users: [], total: 0 }),
 };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
-  name: "directory", aliases: ["iam"], component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
-  workloads: [], capabilities: {}, extensions,
+  name: "directory",
+  aliases: ["iam"],
+  component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
+  workloads: [],
+  extensions
 });
 const context = (dispose: () => Promise<void>): ManagedPluginContext => ({ signal: new AbortController().signal, dispose } as ManagedPluginContext);
 
 test("directory discovery validates native bindings without calling an extension", () => {
   const run = mock(list.run);
   const services = createServiceCatalog([service([{ ...list, run }, resolve])]);
-  const plugin = validatePluginDefinition({ id: "test", version: "1", tenant: { directoryService: "directory" }, services }, {
+  const plugin = validatePluginDefinition({ id: "test", version: "1", services }, {
     manifestVersion: 1, pluginApiVersion: DOCTOR_PLUGIN_API_VERSION, id: "test", version: "1",
     requiresDoctor: ">=0.1.0", contentDigest: `sha256:${"0".repeat(64)}`, main: "./plugin.mjs", skills: [],
   });
@@ -47,7 +51,7 @@ test("directory operations isolate access and release contexts on success, failu
   const searchRun = mock(search.run);
   const providers = tenantDirectoryExtensions(createServiceCatalog([service([list, resolve, { ...search, run: searchRun }])]), "directory");
   const accesses: unknown[] = [];
-  const dispose = mock(async () => {});
+  const dispose = mock(async () => { });
   const directory = extensionTenantDirectory(providers, async (_service, extension) => {
     accesses.push(extension.access);
     if (extension.kind === "user.search") throw new Error("search access denied");
@@ -71,14 +75,16 @@ test("directory operations isolate access and release contexts on success, failu
 
 test("user-only provider can serve configured-tenant identity selection", async () => {
   const provider = tenantDirectoryExtensions(createServiceCatalog([service([search])]), "directory");
-  const directory = extensionTenantDirectory(provider, async () => context(async () => {}));
+  const directory = extensionTenantDirectory(provider, async () => context(async () => { }));
   expect(await directory.searchActiveUsers!({ tenantId: "t", page: 1, pageSize: 10 })).toEqual({ users: [], total: 0 });
   await expect(directory.listActive()).rejects.toThrow("missing tenant.list");
 });
 
 test("MCP provider selection respects aliases and rejects duplicate implementations", () => {
-  const extension: McpConfigurationExtension = { id: "config", kind: "mcp.configuration", access: {}, endpoint,
-    run: async () => ({ sourceKind: "fixture", servers: [] }) };
+  const extension: McpConfigurationExtension = {
+    id: "config", kind: "mcp.configuration", access: {}, endpoint,
+    run: async () => ({ sourceKind: "fixture", servers: [] })
+  };
   const catalog = createServiceCatalog([service([extension])]);
   expect(mcpConfigurationProvider(catalog, "iam").extension).toBe(extension);
   expect(evaluatePluginCapabilities({ id: "test", version: "1", services: catalog }, PLUGIN_COMMAND_CAPABILITIES.mcp).runnable).toBe(true);
@@ -89,15 +95,17 @@ test("MCP provider selection respects aliases and rejects duplicate implementati
 test("MCP configuration uses the native operation while gateway access stays with the command", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-mcp-extension-"));
   const bundle = new EvidenceBundle(root, ["mcp-config", "mcp-tools", "http-curl"].map(id => ({ id, title: id, risk: "observe" })));
-  const run = mock(async () => ({ sourceKind: "native", servers: [{
-    id: "server", name: "server", tenant: "tenant", displayName: "Server",
-    connection: { transport: "sse" as const, path: "/sse" }, tools: [{ name: "tool" }],
-  }] }));
+  const run = mock(async () => ({
+    sourceKind: "native", servers: [{
+      id: "server", name: "server", tenant: "tenant", displayName: "Server",
+      connection: { transport: "sse" as const, path: "/sse" }, tools: [{ name: "tool" }],
+    }]
+  }));
   const extension: McpConfigurationExtension = { id: "config", kind: "mcp.configuration", access: {}, endpoint, run };
   const capture = { ok: true, command: [], stdout: "", stderr: "", durationMs: 0, exitCode: 0, timedOut: false };
   const forwardGateway = mock(async (): Promise<{ host: string; port: number }> => { throw new Error("gateway unavailable"); });
   const input: McpConfigurationInput = {
-    namespace: "test", gatewayService: "gateway", extension, pluginContext: context(async () => {}), bundle,
+    namespace: "test", gatewayService: "gateway", extension, pluginContext: context(async () => { }), bundle,
     selection: { server: "server", tool: "tool", args: "{}" }, timeoutMs: 1000, traceId: "trace", traceparent: "parent",
     podLogs: { listServicePods: async () => ({ podCapture: capture, serviceCapture: capture, byService: { gateway: ["pod"] } }) } as unknown as McpConfigurationInput["podLogs"],
     forwardGateway, writeArtifact: name => name,

@@ -27,7 +27,7 @@ describe("Plugin archive lifecycle", () => {
 
     const installRoot = join(root, "plugins");
     const result = await installPlugin(first, installRoot);
-    expect(result).toMatchObject({ ref: "example@0.0.8", installed: true });
+    expect(result).toMatchObject({ ref: "example@0.0.9", installed: true });
     expect(existsSync(join(result.path, "plugin.json"))).toBe(true);
     expect(existsSync(join(result.path, "plugin.mjs"))).toBe(true);
     expect(existsSync(join(result.path, ".doctor-install.json"))).toBe(true);
@@ -35,12 +35,12 @@ describe("Plugin archive lifecycle", () => {
 
     const plugin = await loadInstalledPlugin(result.ref, installRoot);
     expect(plugin.id).toBe("example");
-    expect(plugin.version).toBe("0.0.8");
-    expect(plugin.services.servicesWith("log").length).toBeGreaterThan(0);
+    expect(plugin.version).toBe("0.0.9");
+    expect(plugin.services.services.filter(item => item.logs).length).toBeGreaterThan(0);
     expect((await loadActivePlugin(installRoot))?.id).toBe("example");
 
     expect(await installPlugin(second, installRoot)).toMatchObject({
-      ref: "example@0.0.8",
+      ref: "example@0.0.9",
       installed: false,
     });
     uninstallPlugin(result.ref, installRoot);

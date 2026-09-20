@@ -57,14 +57,12 @@ test("collect capability contract is the union of selected concrete commands", (
   expect(contract.command).toBe("doctor collect");
   expect(contract.needs.map((need) => `${need.capability.scope}.${need.capability.name}`))
     .toEqual([
-      "plugin.tenant",
       "extension.tenant.list",
       "extension.tenant.resolve",
-      "plugin.model",
       "extension.model.query",
       "extension.facts.inspect",
       "extension.trace.resolve",
-      "service.log",
+      "resource.logs",
     ]);
   expect(contract.needs.find(need => need.capability.scope === "extension" && need.capability.name === "facts.inspect")?.requirement).toBe("required");
 });
@@ -185,7 +183,8 @@ test("collect default delivery contains combined HTML and child full bundles", a
     }
     const collection = Object.values(index.files).find(file => file.path === "collection.json")!;
     const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${collection.path}`));
-    expect(manifest).toMatchObject({ command: "doctor collect", status: "ok", doctor_version: expect.any(String),
+    expect(manifest).toMatchObject({
+      command: "doctor collect", status: "ok", doctor_version: expect.any(String),
       plugin: { id: "test", version: "0.0.1" }, target: { biz_ids: ["biz-1"], namespace: "doctor-system" },
       params: { include: ["inspect", "data"] }, steps: [{ id: "inspect", status: "ok" }, { id: "data", status: "ok" }],
     });

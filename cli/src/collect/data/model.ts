@@ -40,16 +40,7 @@ export interface DataServiceSelection {
   service: string;
 }
 
-export interface DataTargetFact {
-  service: string;
-  endpoint?: string;
-  database?: string;
-  username?: string;
-  credentialSource?: string;
-}
-
 export interface DataServiceFacts {
-  target: Fact<DataTargetFact, "data.service-target">;
   inspect: Fact<{ queryable: true }, "data.inspect-capability">;
 }
 

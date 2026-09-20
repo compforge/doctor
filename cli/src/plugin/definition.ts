@@ -1,18 +1,12 @@
 import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
-import { caseRunnerProvider } from "../case/extensions";
-import { modelCatalogExtensions, modelInferenceExtensions } from "../model/extensions";
-import { tenantDirectoryExtensions } from "./tenant-directory";
 import {
-  CASE_RUNNER_CREATE_KIND,
   createServiceCatalog,
   isToolchain,
   type PluginDefinition,
   type ServiceDefinition,
 } from "@compforge/doctor-plugin";
-import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
 import type { PluginManifest } from "./manifest";
-import { validateObservationSchema } from "./observation";
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -24,21 +18,6 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function nonEmptyString(value: unknown, label: string): string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be a non-empty string`);
   return value;
-}
-
-function positiveInteger(value: unknown, label: string): number {
-  if (!Number.isInteger(value) || Number(value) < 1) {
-    throw new Error(`${label} must be a positive integer`);
-  }
-  return Number(value);
-}
-
-function endpointPort(capability: Record<string, unknown>, label: string): void {
-  const endpoint = record(capability.endpoint, `${label}.endpoint`);
-  nonEmptyString(endpoint.host, `${label}.endpoint.host`);
-  if (!Number.isInteger(endpoint.port) || Number(endpoint.port) < 1 || Number(endpoint.port) > 65_535) {
-    throw new Error(`${label}.endpoint.port must be an integer in 1..65535`);
-  }
 }
 
 function nonEmptyArray(value: unknown, label: string): unknown[] {
@@ -57,21 +36,6 @@ function uniqueIdRecords(value: unknown, label: string): Map<string, Record<stri
     result.set(id, candidate);
   }
   return result;
-}
-
-function nonEmptyStrings(value: unknown, label: string): void {
-  for (const [index, item] of nonEmptyArray(value, label).entries()) {
-    nonEmptyString(item, `${label}[${index}]`);
-  }
-}
-
-function uniqueNonEmptyStrings(value: unknown, label: string): void {
-  const seen = new Set<string>();
-  for (const [index, item] of nonEmptyArray(value, label).entries()) {
-    const text = nonEmptyString(item, `${label}[${index}]`);
-    if (seen.has(text)) throw new Error(`${label} contains duplicate value '${text}'`);
-    seen.add(text);
-  }
 }
 
 function validateService(value: unknown, index: number): ServiceDefinition {
@@ -130,29 +94,31 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       );
       nonEmptyString(dependency.id, `${service.name}.dependencies[${dependencyIndex}].id`);
       nonEmptyString(dependency.service, `${service.name}.dependencies[${dependencyIndex}].service`);
-      nonEmptyString(dependency.capability, `${service.name}.dependencies[${dependencyIndex}].capability`);
       nonEmptyString(dependency.dataSource, `${service.name}.dependencies[${dependencyIndex}].store`);
     }
   }
-  const contributions = service.contributions === undefined
-    ? {}
-    : record(service.contributions, `Plugin Service '${String(service.name)}'.contributions`);
-  if (contributions.detectors !== undefined) {
+  if (service.capabilities !== undefined || service.contributions !== undefined) throw new Error(`${service.name}: unsupported Service API; declare extensions, dataSources and detectors`);
+  if (service.configurationInspection !== undefined && typeof service.configurationInspection !== "boolean") throw new Error(`${service.name}.configurationInspection must be a boolean`);
+  if (service.logs !== undefined) {
+    const logs = record(service.logs, `${service.name}.logs`);
+    if (typeof logs.default !== "boolean") throw new Error(`${service.name}.logs.default must be a boolean`);
+  }
+  if (service.detectors !== undefined) {
     for (const [detectorId, detector] of uniqueIdRecords(
-      contributions.detectors,
-      `${service.name}.contributions.detectors`,
+      service.detectors,
+      `${service.name}.detectors`,
     )) {
       if (typeof detector.detect !== "function") {
-        throw new Error(`${service.name}.contributions.detectors.${detectorId}.detect must be a function`);
+        throw new Error(`${service.name}.detectors.${detectorId}.detect must be a function`);
       }
     }
   }
-  if (contributions.probes !== undefined) {
+  if (service.environmentProbes !== undefined) {
     for (const [probeId, probe] of uniqueIdRecords(
-      contributions.probes,
-      `${service.name}.contributions.probes`,
+      service.environmentProbes,
+      `${service.name}.environmentProbes`,
     )) {
-      const label = `${service.name}.contributions.probes.${probeId}`;
+      const label = `${service.name}.environmentProbes.${probeId}`;
       if (probe.kind === "kubernetes.apparmor-unconfined-admission") {
         if (probe.schemaVersion !== 1) {
           throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
@@ -160,55 +126,13 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         if (probe.subject !== "workload-service-account") {
           throw new Error(`${label} uses unsupported subject '${String(probe.subject)}'`);
         }
-      } else if (probe.kind === "workload") {
-        if (probe.schemaVersion !== 1) {
-          throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
-        }
-        const workloadName = nonEmptyString(probe.workload, `${label}.workload`);
-        if (!workloadNames.has(workloadName)) {
-          throw new Error(`${label} references unknown Workload '${workloadName}'`);
-        }
-        record(probe.access, `${label}.access`);
-        if (typeof probe.probe !== "function") {
-          throw new Error(`${label}.probe must be a function`);
-        }
-        const observation = record(probe.produces, `${label}.produces`);
-        nonEmptyString(observation.kind, `${label}.produces.kind`);
-        positiveInteger(observation.schemaVersion, `${label}.produces.schemaVersion`);
-        validateObservationSchema(observation.schema, `${label}.produces.schema`);
       } else {
         throw new Error(`${label} uses unsupported kind '${String(probe.kind)}'`);
       }
     }
   }
-  if (contributions.inspect !== undefined) {
-    const inspect = record(contributions.inspect, `${service.name}.contributions.inspect`);
-    if (inspect.description !== undefined) {
-      nonEmptyString(inspect.description, `${service.name}.contributions.inspect.description`);
-    }
-    if (inspect.limitations !== undefined) {
-      if (!Array.isArray(inspect.limitations)) {
-        throw new Error(`${service.name}.contributions.inspect.limitations must be an array`);
-      }
-      inspect.limitations.forEach((item, index) =>
-        nonEmptyString(item, `${service.name}.contributions.inspect.limitations[${index}]`));
-    }
-    uniqueNonEmptyStrings(inspect.accepts, `${service.name}.contributions.inspect.accepts`);
-    uniqueNonEmptyStrings(inspect.provides, `${service.name}.contributions.inspect.provides`);
-    if (inspect.expands !== undefined) {
-      uniqueNonEmptyStrings(inspect.expands, `${service.name}.contributions.inspect.expands`);
-    }
-    if (typeof inspect.resolveTarget !== "function") {
-      throw new Error(`${service.name}.contributions.inspect.resolveTarget must be a function`);
-    }
-    if (typeof inspect.inspect !== "function") {
-      throw new Error(`${service.name}.contributions.inspect.inspect must be a function`);
-    }
-  }
-  const capabilities = record(service.capabilities, `Plugin Service '${String(service.name)}'.capabilities`);
-  if ("stores" in capabilities) throw new Error(`${service.name}.capabilities.stores is unsupported; declare dataSources`);
-  if (capabilities.dataSources !== undefined) {
-    const dataSources = uniqueIdRecords(capabilities.dataSources, `${service.name}.dataSources`);
+  if (service.dataSources !== undefined) {
+    const dataSources = uniqueIdRecords(service.dataSources, `${service.name}.dataSources`);
     for (const [id, store] of dataSources) {
       if (store.description !== undefined) nonEmptyString(store.description, `${service.name}.dataSources.${id}.description`);
       const label = `${service.name}.dataSources.${id}`;
@@ -229,123 +153,10 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         if (resolver === (store.environment !== undefined)) throw new Error(`${label} must declare exactly one of environment / source`);
         if (!resolver) record(store.environment, `${label}.environment`);
       }
-      if (store.kind === "vdb" && resolver && (store.inspectTarget !== undefined || store.configuration !== undefined)) {
+      if (store.kind === "vdb" && resolver && (store.configuration !== undefined)) {
         throw new Error(`${label}.source cannot be combined with inspectTarget / configuration`);
       }
       if (store.access !== undefined) record(store.access, `${label}.access`);
-    }
-  }
-  for (const name of ["traceId", "tenantDirectory", "modelCatalog", "inference", "mcp", "case", "metric"] as const) {
-    const capability = capabilities[name];
-    if (capability !== undefined) endpointPort(record(capability, `${service.name}.${name}`), `${service.name}.${name}`);
-  }
-  if (capabilities.overview !== undefined) {
-    const label = `${service.name}.overview`;
-    const overview = record(capabilities.overview, label);
-    record(overview.access, `${label}.access`);
-    const facets = uniqueIdRecords(overview.facets, `${label}.facets`);
-    if (!facets.size) throw new Error(`${label}.facets must not be empty`);
-    for (const [id, facet] of facets) {
-      nonEmptyString(facet.title, `${label}.facets.${id}.title`);
-      nonEmptyString(facet.description, `${label}.facets.${id}.description`);
-    }
-    for (const method of ["summarize", "sample"] as const) {
-      if (typeof overview[method] !== "function") throw new Error(`${label}.${method} must be a function`);
-    }
-  }
-  const serviceCase = capabilities.case;
-  let caseSets = new Map<string, Record<string, unknown>>();
-  if (serviceCase !== undefined) {
-    const caseCapability = record(serviceCase, `${service.name}.case`);
-    if (typeof caseCapability.createRunner !== "function") {
-      throw new Error(`${service.name}.case.createRunner must be a function`);
-    }
-    if (caseCapability.requestIdentity !== undefined) {
-      const identity = record(caseCapability.requestIdentity, `${service.name}.case.requestIdentity`);
-      nonEmptyString(identity.directoryService, `${service.name}.case.requestIdentity.directoryService`);
-      if (typeof identity.configured !== "function") {
-        throw new Error(`${service.name}.case.requestIdentity.configured must be a function`);
-      }
-    }
-    for (const [index, value] of nonEmptyArray(
-      caseCapability.caseSets,
-      `${service.name}.case.caseSets`,
-    ).entries()) {
-      const label = `${service.name}.case.caseSets[${index}]`;
-      const raw = record(value, label);
-      let caseSet;
-      try {
-        caseSet = caseSetFromRaw(raw);
-        validateCaseSet(caseSet);
-      } catch (error) {
-        throw new Error(`${label} is not a valid canonical CaseSet: ${String(error)}`);
-      }
-      if (!caseSet.cases.length) throw new Error(`${label} must contain at least one Case`);
-      if (caseSets.has(caseSet.caseset)) {
-        throw new Error(`${service.name}.case.caseSets contains duplicate CaseSet '${caseSet.caseset}'`);
-      }
-      caseSets.set(caseSet.caseset, raw);
-    }
-  }
-  const perf = capabilities.perf;
-  if (perf !== undefined) {
-    if (serviceCase === undefined) {
-      throw new Error(`${service.name}.perf requires a case capability`);
-    }
-    const scenarios = uniqueIdRecords(
-      record(perf, `${service.name}.perf`).scenarios,
-      `${service.name}.perf.scenarios`,
-    );
-    for (const [scenarioId, scenario] of scenarios) {
-      nonEmptyString(scenario.title, `${service.name}.perf.scenarios.${scenarioId}.title`);
-      nonEmptyString(scenario.description, `${service.name}.perf.scenarios.${scenarioId}.description`);
-      const caseSetId = nonEmptyString(
-        scenario.caseSetId,
-        `${service.name}.perf.scenarios.${scenarioId}.caseSetId`,
-      );
-      const caseSet = caseSets.get(caseSetId);
-      if (!caseSet) {
-        throw new Error(`${service.name}.perf scenario '${scenarioId}' references unknown CaseSet '${caseSetId}'`);
-      }
-      const availableCases = uniqueIdRecords(
-        caseSet.cases,
-        `${service.name}.case.caseSets.${caseSetId}.cases`,
-      );
-      let positiveWeight = false;
-      const selections = nonEmptyArray(
-        scenario.cases,
-        `${service.name}.perf.scenarios.${scenarioId}.cases`,
-      );
-      const selected = new Set<string>();
-      for (const [index, value] of selections.entries()) {
-        const selection = record(value, `${service.name}.perf.scenarios.${scenarioId}.cases[${index}]`);
-        const caseId = nonEmptyString(
-          selection.caseId,
-          `${service.name}.perf.scenarios.${scenarioId}.cases[${index}].caseId`,
-        );
-        if (!availableCases.has(caseId)) {
-          throw new Error(`${service.name}.perf scenario '${scenarioId}' references unknown Case '${caseId}'`);
-        }
-        if (selected.has(caseId)) {
-          throw new Error(`${service.name}.perf scenario '${scenarioId}' selects duplicate Case '${caseId}'`);
-        }
-        selected.add(caseId);
-        const weight = selection.weight ?? 1;
-        if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
-          throw new Error(`${service.name}.perf scenario '${scenarioId}' has invalid weight for Case '${caseId}'`);
-        }
-        positiveWeight ||= weight > 0;
-      }
-      if (!positiveWeight) {
-        throw new Error(`${service.name}.perf scenario '${scenarioId}' requires a positive Case weight`);
-      }
-      const observability = record(
-        scenario.observability,
-        `${service.name}.perf.scenarios.${scenarioId}.observability`,
-      );
-      nonEmptyStrings(observability.metricServices, `${service.name}.perf.scenarios.${scenarioId}.observability.metricServices`);
-      nonEmptyStrings(observability.logServices, `${service.name}.perf.scenarios.${scenarioId}.observability.logServices`);
-      nonEmptyStrings(observability.correlationKeys, `${service.name}.perf.scenarios.${scenarioId}.observability.correlationKeys`);
     }
   }
   return service as unknown as ServiceDefinition;
@@ -386,9 +197,6 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         throw new Error(`${service.name}.dependencies contains duplicate id '${id}'`);
       }
       dependencyIds.add(id);
-      if (dependency.capability !== "dataSources") {
-        throw new Error(`${service.name}.dependencies '${id}' uses unsupported capability '${String(dependency.capability)}'`);
-      }
       const providerName = nonEmptyString(
         dependency.service,
         `${service.name}.dependencies.${id}.service`,
@@ -401,7 +209,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         dependency.dataSource,
         `${service.name}.dependencies.${id}.dataSource`,
       );
-      const store = provider.capabilities.dataSources?.find((candidate) => candidate.id === storeId);
+      const store = provider.dataSources?.find((candidate) => candidate.id === storeId);
       if (!store) {
         throw new Error(
           `${service.name}.dependencies '${id}' references unknown Store '${providerName}/${storeId}'`,
@@ -414,25 +222,10 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         );
       }
     }
-    const hasCaseRunner = catalog.extensions(CASE_RUNNER_CREATE_KIND).some(item => item.service.name === service.name);
-    const requirement = hasCaseRunner ? caseRunnerProvider(catalog, service.name).extension.requestIdentity : undefined;
-    if (requirement) {
-      tenantDirectoryExtensions(catalog, nonEmptyString(requirement.directoryService, `${service.name}.case.requestIdentity.directoryService`));
-    }
+
   }
 
-  if (definition.model !== undefined) {
-    const model = record(definition.model, "Plugin model capability");
-    tenantDirectoryExtensions(catalog, nonEmptyString(model.tenantDirectoryService, "model.tenantDirectoryService"));
-    modelCatalogExtensions(catalog, nonEmptyString(model.catalogService, "model.catalogService"));
-    if (model.inferenceService !== undefined) {
-      modelInferenceExtensions(catalog, nonEmptyString(model.inferenceService, "model.inferenceService"));
-    }
-  }
-  if (definition.tenant !== undefined) {
-    const tenant = record(definition.tenant, "Plugin tenant capability");
-    tenantDirectoryExtensions(catalog, nonEmptyString(tenant.directoryService, "tenant.directoryService"));
-  }
+  if (definition.model !== undefined || definition.tenant !== undefined) throw new Error("Unsupported Plugin bindings; Commands select Service Extensions by kind");
   if (definition.trace !== undefined) {
     const trace = record(definition.trace, "Plugin trace capability");
     record(trace.analysis, "Plugin trace.analysis");
@@ -443,7 +236,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
       const storeId = nonEmptyString(target.dataSource, "trace.source.dataSource.dataSource");
       const service = catalog.find(serviceName);
       if (!service) throw new Error(`trace.source.dataSource references unknown Service '${serviceName}'`);
-      if (!service.capabilities.dataSources?.some((store) => store.id === storeId)) {
+      if (!service.dataSources?.some((store) => store.id === storeId)) {
         throw new Error(
           `trace.source.dataSource references unknown Store '${serviceName}/${storeId}'`,
         );

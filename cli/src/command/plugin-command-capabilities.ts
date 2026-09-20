@@ -20,7 +20,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor store",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "dataSources" },
+      capability: { scope: "resource", name: "dataSources" },
       purpose: "定位业务 Store 并解释其运行时配置",
     }],
   },
@@ -28,7 +28,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor log",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "log" },
+      capability: { scope: "resource", name: "logs" },
       purpose: "声明需要采集日志的业务 Service",
     }, {
       requirement: "required",
@@ -51,22 +51,13 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   tenant: {
     command: "doctor tenant",
     needs: [{
-      requirement: "required",
-      capability: { scope: "plugin", name: "tenant" },
-      purpose: "声明租户身份解析入口",
-    }, {
-      requirement: "required",
+      requirement: "preferred",
       capability: { scope: "extension", name: "tenant.list" },
       purpose: "列出可诊断租户",
     }, {
-      requirement: "required",
+      requirement: "preferred",
       capability: { scope: "extension", name: "tenant.resolve" },
       purpose: "按名称解析要 Inspect 的租户",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "plugin", name: "model" },
-      purpose: "声明可复用的模型目录",
-      fallback: "仅汇总接受 tenant_id 的业务数据",
     }, {
       requirement: "preferred",
       capability: { scope: "extension", name: "model.query" },
@@ -90,25 +81,17 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   model: {
     command: "doctor model",
     needs: [{
-      requirement: "required",
-      capability: { scope: "plugin", name: "model" },
-      purpose: "声明租户目录、模型目录和推理服务",
-    }, {
-      requirement: "required",
+      requirement: "preferred",
       capability: { scope: "extension", name: "tenant.list" },
       purpose: "列出可诊断租户",
     }, {
-      requirement: "required",
+      requirement: "preferred",
       capability: { scope: "extension", name: "tenant.resolve" },
       purpose: "按名称解析可诊断租户",
     }, {
       requirement: "required",
       capability: { scope: "extension", name: "model.query" },
       purpose: "发现可用模型",
-    }, {
-      requirement: "required",
-      capability: { scope: "extension", name: "model.invoke" },
-      purpose: "执行模型验证和推理",
     }],
   },
   metric: {
@@ -132,7 +115,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "只保留 Case Observation，不采集 Trace/Log",
     }, {
       requirement: "preferred",
-      capability: { scope: "service", name: "log" },
+      capability: { scope: "resource", name: "logs" },
       purpose: "采集 Case 关联的业务日志",
       fallback: "跳过 Log 证据",
     }, {
@@ -164,7 +147,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     }, {
       requirement: "preferred",
       fallback: "保留压测结果和其它已取得证据",
-      capability: { scope: "service", name: "log" },
+      capability: { scope: "resource", name: "logs" },
       purpose: "复用 doctor log 收集代表请求的日志证据",
     }],
   },

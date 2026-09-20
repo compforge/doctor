@@ -1,6 +1,5 @@
 import type { TraceContributions } from "@compforge/trace-harness";
 import type { Identity, Query } from "./capability";
-import type { PluginContext } from "./context";
 import type {
   ServiceHttpResponse,
 } from "./http";
@@ -82,23 +81,6 @@ export interface ModelInference {
   ): Promise<HttpTransportResponse>;
 }
 
-/**
- * Plugin-level model domain binding shared by model discovery and active model consumers.
- * Discovery only needs the directory and catalog; active inference is optional.
- *
- * @see {@link cli/docs/commands/model-diagnosis.md}
- */
-export interface ModelCapability {
-  tenantDirectoryService: string;
-  catalogService: string;
-  inferenceService?: string;
-}
-
-/** Plugin-level binding for resolving tenant identities. */
-export interface TenantCapability {
-  directoryService: string;
-}
-
 export interface TraceCapability {
   /** 本地 span 归一化、分类/融合及 Trace IR 分析扩展；不参与 Target 访问或远端采集。 */
   analysis: TraceContributions;
@@ -110,15 +92,6 @@ export interface TraceCapability {
     };
   };
 }
-
-/** 不属于单个 Service、但仍由 Plugin 提供的业务语义。 */
-export interface PluginLevelCapabilities {
-  tenant?: TenantCapability;
-  model?: ModelCapability;
-  trace?: TraceCapability;
-}
-
-export type PluginLevelCapabilityName = keyof PluginLevelCapabilities;
 
 /** Plugin identity names one immutable code-and-Skills distribution. */
 export interface PluginIdentity {
@@ -134,9 +107,10 @@ export interface PluginIdentity {
  * @see {@link cli/docs/plugin.md}
  * @rule 新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期
  */
-export interface PluginDefinition extends PluginIdentity, PluginLevelCapabilities {
+export interface PluginDefinition extends PluginIdentity {
   /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;
+  trace?: TraceCapability;
   /** Runtime-resolved Skills from the same exact Plugin version. */
   skills?: readonly PluginSkill[];
   /** Validate the opaque profile config before Doctor prepares target access for a command. */

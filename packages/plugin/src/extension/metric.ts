@@ -1,10 +1,9 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ServiceMetricCapability } from "../service";
+import type { MetricConfiguration } from "../service";
 
 export const METRIC_CONFIGURATION_KIND = "metric.configuration";
 
 /** Scraping and PromQL evaluation belong to the consumer of this configuration. */
-export type MetricConfiguration = ServiceMetricCapability;
 export interface MetricConfigurationExtension extends Extension<void, MetricConfiguration> {
   readonly kind: typeof METRIC_CONFIGURATION_KIND;
 }

@@ -96,7 +96,7 @@ export function resolveLogServices(raw: string, catalog: ServiceCatalog): string
     if (service && !services.includes(service)) services.push(service);
   }
   if (!services.length) throw new Error("--services 未解析出任何服务");
-  const unsupported = services.filter((service) => !catalog.findWith(service, "log"));
+  const unsupported = services.filter((service) => !catalog.find(service)?.logs);
   if (unsupported.length) {
     throw new Error(`Doctor 未注册以下 Service 的日志采集能力：${unsupported.join(", ")}`);
   }
@@ -120,12 +120,12 @@ export async function resolveLogServiceSelection(
   input: LogServiceSelectionInput,
 ): Promise<string[] | undefined> {
   if (input.raw !== undefined) return resolveLogServices(input.raw, input.catalog);
-  const defaults = input.catalog.servicesWith("log")
-    .filter((service) => service.capabilities.log.default)
+  const defaults = input.catalog.services.filter(service => service.logs !== undefined)
+    .filter((service) => service.logs!.default)
     .map((service) => service.name);
   const interactive = isInteractive(input.interactive);
   if (!interactive) return defaults;
-  const listed = input.catalog.servicesWith("log").map(service => ({ name: service.name }));
+  const listed = input.catalog.services.filter(service => service.logs !== undefined).map(service => ({ name: service.name }));
   const choices = rankRecentServiceChoices(listed, input);
   if (!choices.length) {
     throw new Error(`namespace '${input.namespace}' 的 Plugin Catalog 中没有具备日志采集能力的 Service`);

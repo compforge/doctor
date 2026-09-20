@@ -1,6 +1,3 @@
-import type { PluginContext } from "./context";
-import type { CapabilityWithAccess } from "./kubernetes";
-import type { ServiceEndpoint } from "./service";
 
 export interface McpArgumentDefinition {
   name: string;
@@ -47,12 +44,4 @@ export interface McpServerDefinition {
 export interface McpConfigurationProjection {
   sourceKind: string;
   servers: readonly McpServerDefinition[];
-}
-
-export interface ServiceMcpCapability extends CapabilityWithAccess {
-  endpoint: ServiceEndpoint;
-  loadConfiguration(
-    context: PluginContext,
-    input: { timeoutMs: number },
-  ): Promise<McpConfigurationProjection>;
 }

@@ -20,8 +20,8 @@ export function makeInspectProbes(
 ): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> {
   const serviceProbes = config.services.flatMap((serviceName) => {
     const service = catalog.find(serviceName);
-    const environment = service?.contributions?.probes?.filter(probe => probe.kind !== "workload")
-      .map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
+    const environment = service?.environmentProbes
+      ?.map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
     const workloads = workloadProbeProviders(catalog, serviceName)
       .map(({ service, extension }) => makePluginWorkloadProbe(service, extension, probeFacts));
     return [...environment, ...workloads];

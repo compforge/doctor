@@ -19,10 +19,6 @@ environment、workload、namespace、pod、uid 和可选 container；缺少 UID 
 Inspect 仍按一次一个 namespace 执行；声明指定其它 namespace 时记录 unavailable 并提示
 使用 `--namespace` 单独采集，不跨目标复用权限预检或配置快照。
 
-Plugin API 10 不兼容旧 Service/Workload 声明：Service 必须声明 component，
-旧 discovery 改为公共 location，移除 lifecycle；DataSource 的 key 改为 clientKey。
-外部 Plugin 需同步迁移、提升自己的版本并重新构建归档；不提供旧模型适配层。
-
 ### Service 身份与别名
 
 Service 的 `name` 是稳定身份，`aliases` 是可选的输入同义名称。例如
@@ -40,7 +36,7 @@ Skill 可以保留自己的 Service 台账与简称，aliases 用于方便对齐
 Doctor Core 保持开源，但具体 Plugin 的 Service Catalog、固定查询和排障知识可能属于企业内部资产。
 Plugin 通过版本化、自包含、可离线交付的归档分发这些业务扩展，同一份交付物同时贡献：
 
-- **PluginDefinition**：向确定性诊断提供 Service Catalog 和插件级 capability，并在运行时携带同版本
+- **PluginDefinition**：向确定性诊断提供 Service Catalog 和Trace 分析与资源引用，并在运行时携带同版本
   已解析的 `PluginSkill`；
 - **Skill 资源**：采用标准 `SKILL.md` 目录，供本地 `doctor chat` 的 agent loop 渐进加载业务知识和脚本。
 
@@ -50,7 +46,7 @@ Service Catalog 可包含组成同一应用的多个 Service，每个 Service �
 以及对其它 Service capability 的运行时依赖；
 同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
-例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `traceId` capability 声明：一个业务 ID 可返回一条
+例如业务 ID 到规范 `trace_id` 的转换由 Service 的 `trace.resolve` Extension 声明：一个业务 ID 可返回一条
 或多条 trace resolution，并可携带直接承载 trace 的来源 ID。`trace`/`log` 只消费其约定结果，不通过
 通用 data 查询或 span tag 猜测业务关系；命令批量输入的调度和按 ID 分组交付仍由 Core 负责。
 
@@ -66,124 +62,19 @@ plugins/<plugin>/            可独立构建、归档和分发的具体 Plugin �
 `PluginDefinition`，不引用具体 Plugin；根目录发行构建和 Host loader 分别负责在编译期、运行期
 取得具体实现，collect 不感知来源。
 
-Doctor 与 Plugin 的运行边界围绕 capability 调用展开：Plugin 声明自己能提供哪些 capability；Doctor 在每次调用时
-告知当前 profile 选择的 Target 和 Target-scoped access；Plugin 返回对应 capability 约定的结果，使
-Doctor 能够统一串联、诊断和展示。Core 负责通用 Host/Target 访问和 Doctor-owned operation，Plugin
-负责业务目标与数据语义；业务 HTTP/数据库协议仍属于 Plugin，但 Kubernetes 传输和 port-forward
-生命周期不由 Plugin 重建。
-当操作依赖原始凭据或厂商私有配置时，Plugin 可以返回“规范化身份 + 操作方法”的临时 handle；
-Core 只持有并调用 handle，不要求 Plugin 把敏感配置翻译成公共字段再传出。
+Service 的对外操作统一通过 Extension 注册；kind 契约由 SDK 定义，Command 选择和组合实现。
+调用权限、输入输出、流式生命周期以及 Collect 的 Fact / Observation / Detector 边界见 [Extension](extension.md)。
 
-Service 通过 `contributions.inspect / probes / detectors` 统一注册 Collect Execute 三阶段的业务贡献。
-capability 继续表达 DataSource、Metric、Case 等可复用业务能力；两者都不拥有 Command 生命周期。跨边界契约为：
+资源声明与调用协议分别建模：`dataSources` 保存可复用访问资源，`dependencies` 通过
+Service 与 dataSource ID 引用其它 Service 的资源。宿主解析依赖并注入受限 handle，管理共享 Client
+及其清理。`detectors` 是只消费 Evidence 的纯分析函数；`environmentProbes` 是 Core 执行的环境检查声明。
 
-| 协议面 | 方向 | 所有权 |
-|---|---|---|
-| access | Plugin capability → Core | Plugin 声明最小需求，Core 合并、预检并执行策略 |
-| dependencies | Service → Core | Service 引用同一 Plugin 中其它 Service 的 capability，Core 验证并准备运行时 handle |
-| data | Core ↔ Plugin capability | 公共包定义类型化输入输出；Plugin-owned Observation schema 随契约交给 Core 验证 |
-| contributions | Plugin Service → Core | Service 统一注册 Inspect、Probe 和 Detector；Core 选择、驱动并校验结果 |
-| infra | Core → Plugin context | 当前 Target 的 Kubernetes access、取消与资源生命周期等运行便利 |
-| config | profile/Core → Plugin context | Core 不透明保存和透传，schema、校验和解释归 Plugin |
+`trace.analysis` 采用 Trace Harness 的纯分析扩展；`trace.source.dataSource` 是首选存储资源引用。
+TraceSession 从已经下载的本地证据准备分析依赖，结束后保存机器证据供离线渲染。
+这两项分别属于分析与资源关系，不决定其它 Command 的领域提供方。
 
-这些协议面不能互相代替：infra access 不代表 capability 已获授权；config 不承载 kubeconfig 等 Core-owned
-连接状态；data 返回值也不用于把 Plugin 私有配置整包泄露给 Core。
-
-Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇；Plugin Service 只是业务 contribution 的归属和
-提供单元，不形成第二条扩展流程。Service Inspect 以 Query 列表调用，逐项返回带 Identity 的状态与 InspectQueryResult：Query 由类型化 Identity
-与该 capability 的约束组成；result 以 `resolution`、`missingEvidence`、`truncated` 表达一次获取的状态，
-不把状态伪装成领域 Fact。`facts` 有三种形态：同 kind 至多一个的 `ValueFact`、用稳定 `recordKey` 区分的
-可重复 `RecordFact`，以及表示现场已确认 Identity 关系的 `RelationFact`。Fact 在本次诊断过程中足够稳定，
-可作为后续 Probe 输入；Observation 只代表具体探测时间点或时间窗口。Record 内部结构仍由 Plugin 拥有，
-列表型业务数据因此可以逐条进入 Evidence，由 Command 统一分页、检索和展示。
-Inspect contribution 不归属某个 command，同一份 Fact 可以被多个诊断入口消费；是否沿 Relation 继续查询、
-查询边界以及如何组织 Evidence 始终由 Core Command 拥有。resolution 的展示 identifier 不能参与 Query 调度。
-
-Service Probe 遵循 `Input → Probe → Observation`，提供业务协议的一次执行原语。调用方每调度一次，
-runner 执行一次；循环、并发、依赖、预算、停止条件、Operation 授权和 Evidence 均由 Command 或 Harness
-拥有。Command 内部的 Probe 调度节点既可使用 Core 通用实现，也可适配 Plugin 的 Probe contribution；主动
-inference、Case 和运行时取证因此返回 Observation 或临时 handle，不伪装成 Fact。
-Core 必须等本轮 Inspect 收敛后再进入 Probe。当前 `ServiceProbeInput.facts` 注入本轮全部已公开 Fact，
-不按 Service、producer 或 kind 过滤；Service Probe 因而可以通过 `kind + schemaVersion + producer` 读取
-Core Inspect 的基础信息，也可以读取其它选中 Service 的 Fact。该列表由 Core 做 JSON 投影并深冻结，
-Plugin 只能消费，不能补写或修改 Fact。本阶段不声明 `requires`，后续若证据规模或最小披露需要收紧，
-再在 Core 侧增加选择规则，不改变 Inspect → Probe 的所有权。
-公开范围、Service scope、`factPath` 与 value shape 由领域 projector 显式决定；共享 adapter 只保留 Core
-Fact 的 canonical identity，或为 Plugin 本地 schema 统一补 namespace 与 producer。它不反射遍历整个
-Evidence，也不把 payload 子对象派生成独立 Fact，避免扩大披露范围或产生脱离持久化 Evidence 的 identity。
-Service Inspect 必须通过 `accepts` 声明可消费的 Identity kind；Command 据此选择 contribution，不能通过
-试调用或解析展示结果猜测兼容性。一次 Query 只携带一个 Identity，批量、遍历和失败隔离属于 Command。
-
-`contributions.detectors` 贡献业务判断，与 Inspect/Probe producer 分离。Core 在完成当前 Command 的
-Inspect 与 Probe 后，把可供 Plugin 分析的 Service Fact/Observation 投影为 `ServiceEvidence`，再调用本次
-选中 Service 的 Detector。一个 Detector 因而可以关联多个 producer 或多个 Service 的证据，例如同时判断
-平台准入 Observation 与业务 workload health Observation。Detector 只接收可序列化 Evidence，不接收
-`PluginContext`、infra handle 或 profile config，也不能发起 I/O。返回的每个 Finding 必须至少引用一个
-现有 `factPath` 或 `observationId`；Core 校验引用、补充 owner Service 与 detector ID 后才进入 Diagnosis。
-Inspect 与 Probe 自身只负责采集，不再内嵌 `detect` 回调。
-
-Plugin Service 注册这三类 contribution，但不拥有命令生命周期。Core 统一驱动
-`Prepare → Execute（Inspect → Probe → Detector）→ Finalize`：Execute 阶段同时调度 Core 自有 contribution 与
-本次选中 Plugin Service 注册的 contribution；Render 保持领域归属和当前触发位置，Finalize 负责 Delivery 与 Cleanup。Service 不能
-自行提前执行 Detector，也不能在 Detector 后直接渲染或交付结果。
-
-Detector 依赖的是 Evidence schema，而不是 producer 的实现细节。Service Inspect 返回的每个 Fact 必须携带
-本地 `kind` 与正整数 `schemaVersion`；Workload Probe 用 `produces: ObservationDefinition` 预先声明
-`kind + schemaVersion + schema`，`workload.probe` Extension 的 `run` 返回由 schema 推导的 payload。TypeBox 作为 Plugin 作者侧的单一类型来源；
-Core 在加载时用 JSON Schema Draft 2020-12 编译契约，调用后把 ESM 边界返回值当作 `unknown`
-执行无 coercion 校验，再复制和深冻结。开放 object schema、远程 `$ref`、非有限数字和其它非 JSON 值都会被拒绝。
-`Any/Unknown` 与仅依赖本地函数的 `Refine/Codec/Unsafe` 也不是可移植 schema。
-Service Detector 返回的 Finding
-同样携带本地 `kind + schemaVersion`。Core 把 Plugin 本地 kind 规范化为
-`plugin/<plugin-id>/<service>/<local-kind>`，并写入 `{ origin: "plugin", plugin, service, id }` producer；
-Core 自有 schema 使用保留短 kind 与 `{ origin: "core", id }`。Plugin immutable version 加 Service/contribution
-id 标识规则实现版本，`schemaVersion` 只在 payload 契约不兼容时递增，两者不能合并成一个含义模糊的 version。
-上述 identity 规范化只由 `cli/src/plugin/evidence.ts` 完成；各 Command 的领域 projector 不重复构造。
-
-Service dependency 用于 capability 归属和访问信息归属不同的场景。例如一个逻辑 OpenSearch
-Service 可以提供业务查询 capability，但实际 endpoint 和凭据来自另一个业务 Service 的 Store
-capability。依赖因此挂在消费方 Service，而不是塞进某个 capability 实现或复制一份连接配置。
-Core 在调用 capability 前解析依赖，只向 `PluginContext` 注入受限的操作 handle；凭据、
-port-forward 和清理仍归 Core 拥有。
-
-Trace Capability 把采集定位和纯分析明确分开：`trace.source.dataSource` 引用 Service Catalog 中的首选 Store；
-Core 在运行时解析实际 OpenSearch target，并在首选项不可用时尝试 Catalog 中其余 OpenSearch VDB Store。
-`trace.analysis` 直接采用 trace-harness 的
-`TraceContributions`：通过 `normalizeSpan` / `fieldAliases` / `prepareSpans` 适配本地 span，
-通过 `specs` 的 `matches` / `claims` / `build` 声明节点分类、span 融合与节点事实；harness 统一组装 node/tree，
-再执行 fact transform、measure、detect 与 render 扩展。它不读取 profile config，不持有 infra，也不访问外部资源。
-分类与融合所需字段声明为 `structure_fields`；
-详情与 fact 依赖通过 `detail_fields` / `detail_facts`、FactProducer 和 `requires` 声明，异步 Detector
-可调用 `analysis.fact()` 等入口。Core 用 TraceSession 从已下载的本地证据准备这些依赖，并在输出
-节点、span 属性与 Findings 等机器证据后关闭 session，HTML 复用保存结果；`trace --from` 不加载 Plugin 或
-重算节点映射。诊断流程和资源生命周期仍由 Core 拥有。
-
-Model Capability 是 Plugin 对模型域的聚合声明：tenant directory 与 model catalog 构成模型消费者共用的
-发现能力，`inferenceService` 只在 Plugin 支持主动模型调用时声明。Chat 用它选择并调用 LLM，
-`doctor model` 在同一数据契约上执行 validation、performance 和 Evidence 编排。Core 在调用前
-检查 Kubernetes access 并提供 port-forward，Plugin 持有业务路由与凭据；inference factory 只有在
-所需连通性准备完成后才返回 handle，因此 Chat 不会在首轮请求时才发现连接尚未建立。
-
-Tenant Capability 只绑定租户目录，不再定义 Command-specific contribution。`doctor tenant` 解析
-`tenant_id` 后直接复用 Model Catalog，并选择 `accepts` 包含 `tenant_id` 的 Service Inspect；
-返回的 Model 或 `ServiceInspectResult` 进入 Tenant Evidence。相同 Inspect 仍可被其它 Command 复用，
-Tenant Command 只拥有本次选择、失败隔离、Coverage 和展示。
-
-公共 `Model` 是可落盘的安全模型清单：可承载身份、可用性、规格、capacities/features、计费摘要和时间
-信息，但不承载 API key、AK/SK、access token、额外请求头/请求体或厂商私有原始配置。Plugin 应只映射
-公共字段，Core 在写 Evidence 前还会按同一白名单重新投影，防止 runtime 对象的额外属性随结构赋值泄漏。
-
-Case Capability 为 Probe contribution 提供稳定请求资产与单次执行协议。它暴露一个或多个 CaseSet，以及并发安全的
-单次 Case runner；Case 与 CaseSet 的 canonical schema、校验和类型均归 spec-case，Doctor Plugin SDK
-直接引用该资产模型，不复制子集或维护第二套 schema。环境地址、身份和凭据由 runner 从 Plugin context
-取得，不写入 Case。`doctor eval` 顺序调用 runner 的 `run` 并采集每次 Observation 的关联证据；`doctor perf`
-在 Perf Harness 的 dispatch 点并发调用同一 runner。Capability 不为任一 Command 内建隐藏循环。
-
-Perf Capability 是其上的场景预设，只选择 CaseSet 中的一个或多个 Case、声明本次权重、业务关联键
-优先级和 Metric/Log Service。权重属于本次 Experiment，不属于 Case。并发模型、dispatch、
-Stage/Window、请求预算、熔断、Outcome IR、`by_case` 统计和报告编排由 Core 与共享 Perf Harness 拥有。
-Core 在每个调度点调用一次 runner，Plugin 决定这次调用如何变成真实 HTTP/SSE 请求，可以持有 Trial 级
-setup/deactivate/cleanup，但不得另起不可记账的发压循环。这样 runner 还能被单 Case 调试等入口复用。
+模型和租户 Command 按所需 kind 发现候选。唯一候选可直接选用，多候选由显式参数或交互选择决定；
+非交互调用遇到歧义会列出候选并报错。公共 Model 只携带可落盘的安全身份和规格，厂商配置与凭据留在实现内。
 
 持久化模型只包含两个事实：
 
@@ -232,7 +123,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 10,
+  "pluginApiVersion": 11,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -300,7 +191,7 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 `doctor plugin` 是离线发现入口，展示采集命令实际使用的 Plugin 与 Service Catalog，支持 text/json。
 它复用“入口注入优先，否则加载 Host active 版本”的规则，不扫描未激活版本，也不准备 profile、
 调用业务 capability 或访问目标环境。来源 `injected` 表示由 composition root 提供（通常是内嵌，
-也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 capability/contribution
+也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 Extension/Detector
 名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
 
 `doctor plugin --service <name>` 按逻辑 Service 身份筛选并展示详情；未知 Service 报错，不返回伪装成功的
@@ -378,10 +269,10 @@ capability 实际需要的业务输入。`PluginContext` 可以携带有效 Envi
 当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
 `inNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
 access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
-例如 VDB DataSource 可由 `inspectTarget(context)` 自行定位配置来源，再向 Core 返回统一的
+例如 VDB DataSource 可由 `datasource.vdb.inspect` Extension 自行定位配置来源，再向 Core 返回统一的
 `ServiceVdbTarget`；Core 只消费这个结果完成标准 VDB 诊断。
 
-Service 使用 `capabilities.dataSources[]` 声明数据源的 id、类型、用途与访问方式。
+Service 使用 `dataSources[]` 声明数据源的 id、类型、用途与访问方式。
 它是访问能力，不是业务 Fact；声明中的工厂、凭据与运行时对象不会进入自描述或 Evidence。
 DB source 使用 `PluginDataSource<MysqlClient>`，与标准 `envPrefix` 简写互斥；
 可用 SDK 的 `mysqlDataSource(key, resolve)` 构造 source，配置解析在 Client 初始化时执行，
@@ -476,7 +367,7 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 
 ### Service Overview
 
-`capabilities.overview` 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
+`overview.summarize` 与 `overview.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
 文字，`canSample` 决定是否可进入可选采集。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
 Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。详见 [Overview](commands/overview.md)。
 
@@ -490,13 +381,11 @@ Service.extensions 提供开放 kind 的 Extension；Extension、kind 标识及�
 Data 使用 facts.inspect，prepare 先检查所选实现权限，run 再通过宿主的受限上下文取数。输入是 Query
 列表，输出逐 Identity 关联，复用既有 Fact 与预算校验；它无需数据库式 resolveTarget。
 
-Service 的其它 kind 不扩大 Data 的权限范围。现有 Inspect contribution 通过单一适配入口提供同一 kind，
-不能与原生 facts.inspect 重复声明；当前 Data 每个 Service 只接受一个 facts.inspect 实现。其它命令沿用
-原有协议。通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
+Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 facts.inspect 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
 
 ### Inspect 批量调用
 
-`ServiceInspect.inspect(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
+`FactsInspectExtension.run(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
 collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；未找到记录仍通过 resolution 表达。
 Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。provider 在整批开始时准备共享
 Client / Repository，按数据源能力合并或逐条查询，并隔离各 Query 的查询失败。共享准备失败可拒绝整次调用，

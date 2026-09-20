@@ -34,7 +34,7 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
           for (const service of item.services) {
             terminalStdout.write(opts.service !== undefined
               ? formatServiceDescription(service)
-              : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  capabilities: ${service.capabilities.join(", ") || "-"}; contributions: ${service.contributions.join(", ") || "-"}\n`);
+              : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  extensions: ${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "-"}\n`);
           }
         }
       });

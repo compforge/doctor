@@ -39,8 +39,12 @@ test("store, db and business consumers share one Service datasource client and r
   };
   const capability: ServiceDatabaseDataSource = { id: "primary", description: "Canonical records", kind: "db", backend: "mysql", access: {}, source };
   const plugin: PluginDefinition = {
-    id: "test", version: "0.0.1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "logical-api", aliases: ["api"], workloads: [], capabilities: { dataSources: [capability, { ...capability, id: "history", description: "Historical records on the same connection" }] },
+    id: "test", version: "0.0.1", services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "logical-api",
+      aliases: ["api"],
+      workloads: [],
+      dataSources: [capability, { ...capability, id: "history", description: "Historical records on the same connection" }]
     }]),
   };
   const command = new CommandContext({}, undefined, { plugin });
@@ -67,7 +71,11 @@ test("store, db and business consumers share one Service datasource client and r
     } finally { access.mockRestore(); }
     const business = await openPluginContext(executor, { namespace: "app" }, {
       clients: command.clients, config: command.profile.pluginConfig,
-      service: { name: "logical-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, command: "doctor data", capability: { access: {} },
+      service: {
+        name: "logical-api",
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        workloads: []
+      }, command: "doctor data", capability: { access: {} },
       authorization: resolveKubernetesCommandContext(executor, command).access,
     });
     try { expect(await business.clients.get(source)).toBe(first); }
@@ -80,10 +88,21 @@ test("store, db and business consumers share one Service datasource client and r
 
 test("Plugin loader validates datasource declarations; describe never constructs clients", () => {
   let called = false;
-  const declaration = { id: "primary", kind: "db", backend: "mysql", access: {}, source: {
-    clientKey: "primary", createClient: () => { called = true; throw new Error("must not run"); },
-  } };
-  const plugin = (dataSource: unknown) => ({ id: "test", version: "0.0.1", services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { dataSources: [dataSource] } }] } });
+  const declaration = {
+    id: "primary", kind: "db", backend: "mysql", access: {}, source: {
+      clientKey: "primary", createClient: () => { called = true; throw new Error("must not run"); },
+    }
+  };
+  const plugin = (dataSource: unknown) => ({
+    id: "test", version: "0.0.1", services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "chat",
+        workloads: [],
+        dataSources: [dataSource]
+      }]
+    }
+  });
   const loaded = validatePluginDefinition(plugin(declaration), manifest);
   const description = describeService(loaded.services.services[0]!);
   expect(description.details.dataSources).toEqual([{ id: "primary", kind: "db", backend: "mysql", description: undefined }]);
@@ -94,5 +113,5 @@ test("Plugin loader validates datasource declarations; describe never constructs
   expect(() => validatePluginDefinition(plugin({ ...declaration, source: { clientKey: "primary" } }), manifest)).toThrow("createClient");
   expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }), manifest)).not.toThrow();
   const old = { id: "test", version: "0.0.1", services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { stores: [declaration] } }] } };
-  expect(() => validatePluginDefinition(old, manifest)).toThrow("declare dataSources");
+  expect(() => validatePluginDefinition(old, manifest)).toThrow("unsupported Service API");
 });

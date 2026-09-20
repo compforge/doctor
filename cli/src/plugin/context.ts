@@ -11,7 +11,7 @@ import type {
   KubernetesAccess,
   PluginContext,
   PluginClientContext,
-  ResolvedServiceCapabilityDependency,
+  ResolvedServiceDataSourceDependency,
 } from "@compforge/doctor-plugin";
 import type {
   KubernetesAccessContext,
@@ -161,7 +161,7 @@ interface PluginContextOptions {
   service: ServiceDefinition;
   endpoint?: PluginContext["target"]["endpoint"];
   capability: CapabilityWithAccess;
-  dependencies?: Readonly<Record<string, ResolvedServiceCapabilityDependency>>;
+  dependencies?: Readonly<Record<string, ResolvedServiceDataSourceDependency>>;
 }
 
 /** Stable configuration identity stays in memory as a digest; credentials never enter logs or keys. */

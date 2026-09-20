@@ -22,7 +22,8 @@ const request = (extra: Partial<DbRequest> = {}): DbRequest => ({
 });
 const result = (rows: Record<string, unknown>[], truncated = false) => ({ rows, columns: [], bytes: 10, truncated });
 function provider(id = "primary"): DbProvider {
-  return { id, dataSources: [{ id, description: `${id} records` }], source: "plugin", target: { host: id, port: 3306, database: "app", user: "reader", password: "never-output" },
+  return {
+    id, dataSources: [{ id, description: `${id} records` }], source: "plugin", target: { host: id, port: 3306, database: "app", user: "reader", password: "never-output" },
     query: async () => result([{ database_name: "app", table_name: "messages" }]),
   };
 }
@@ -132,9 +133,18 @@ test("command preserves bounded results, status and sanitized target in Evidence
   first.query = async () => ++calls === 1
     ? result([{ database_name: "app", table_name: "messages" }]) : result([{ id: "message:1" }], true);
   const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({ service: "chat", providers: [first], failures: [] });
-  const context = new CommandContext({}, undefined, { plugin: { id: "test", version: "0.0.1", services: createServiceCatalog([
-    { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }] } },
-  ]) } });
+  const context = new CommandContext({}, undefined, {
+    plugin: {
+      id: "test", version: "0.0.1", services: createServiceCatalog([
+        {
+          component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+          name: "chat",
+          workloads: [],
+          dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }]
+        },
+      ])
+    }
+  });
   const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
   try {
     const outcome = await dbCommand.run(context, { service: "chat", table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
@@ -154,12 +164,22 @@ test("database discovery preserves source descriptions in report, manifest and s
   const runtime = provider("runtime");
   primary.query = async () => result([{ Database: "canonical" }]);
   runtime.query = async () => result([{ Database: "agent_runtime" }]);
-  const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({ service: "api", providers: [primary, runtime],
-    failures: [{ id: "archive", description: "Old records", reason: "unavailable" }] });
-  const context = new CommandContext({}, undefined, { plugin: { id: "test", version: "0.0.1", services: createServiceCatalog([
-    { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [],
-      capabilities: { dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }] } },
-  ]) } });
+  const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({
+    service: "api", providers: [primary, runtime],
+    failures: [{ id: "archive", description: "Old records", reason: "unavailable" }]
+  });
+  const context = new CommandContext({}, undefined, {
+    plugin: {
+      id: "test", version: "0.0.1", services: createServiceCatalog([
+        {
+          name: "api",
+          component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+          workloads: [],
+          dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }]
+        },
+      ])
+    }
+  });
   const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
   try {
     const outcome = await dbCommand.run(context, { service: "api", showDatabases: true, interactive: false });

@@ -1,6 +1,5 @@
-import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
-import type { ServiceMetricCapability } from "@compforge/doctor-plugin";
+import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import {
   PROBE_RUNNABLE,
   probeUnavailable,
@@ -145,7 +144,7 @@ function serviceProbeId(service: string): string {
 
 function makeMetricServiceProbe(
   service: string,
-  capability: ServiceMetricCapability,
+  capability: MetricConfiguration,
   sourceKind: "service" | "store" = "service",
 ): Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCommandContext> {
   const id = serviceProbeId(service);
@@ -172,15 +171,15 @@ function makeMetricServiceProbe(
           const source = sourceKind === "store" ? ctx.storeSource ?? ctx.source : ctx.source;
           const series = plan.queryKind === "range"
             ? matrixMetricSeries((await source.queryRange(
-                plan.expression,
-                window.startedAt,
-                window.finishedAt,
-                config.intervalMs,
-              )).data.result)
+              plan.expression,
+              window.startedAt,
+              window.finishedAt,
+              config.intervalMs,
+            )).data.result)
             : instantMetricSeries(
-                (await source.query(plan.expression, window.finishedAt)).data,
-                window.finishedAt,
-              );
+              (await source.query(plan.expression, window.finishedAt)).data,
+              window.finishedAt,
+            );
           return {
             ...plan,
             kind: "metric-query",

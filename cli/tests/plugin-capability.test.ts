@@ -1,3 +1,4 @@
+import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import {
   createServiceCatalog,
@@ -20,10 +21,11 @@ const localEnvironment: Executor["run"] = async args => {
 const plugin = {
   id: "sample",
   version: "0.0.1",
-  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  services: createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "sample-api",
     workloads: [],
-    capabilities: { log: { default: true } },
+    logs: { default: true }
   }]),
 } satisfies PluginDefinition;
 
@@ -41,7 +43,7 @@ test("required Plugin capability 缺失时阻止命令并保留 provider", () =>
     command: "doctor data",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "log" },
+      capability: { scope: "resource", name: "logs" },
       purpose: "选择日志 Service",
     }, {
       requirement: "required",
@@ -62,7 +64,7 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
     command: "doctor inspect",
     needs: [{
       requirement: "preferred",
-      capability: { scope: "plugin", name: "tenant" },
+      capability: { scope: "extension", name: "tenant.list" },
       purpose: "补充租户配置",
       fallback: "只交付部署配置",
     }],
@@ -74,20 +76,16 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
 
 test("model command 不依赖租户配置采集能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.model.needs.map((need) => need.capability)).toEqual([
-    { scope: "plugin", name: "model" },
     { scope: "extension", name: "tenant.list" },
     { scope: "extension", name: "tenant.resolve" },
     { scope: "extension", name: "model.query" },
-    { scope: "extension", name: "model.invoke" },
   ]);
 });
 
 test("tenant command 组合租户身份、模型与通用 Inspect contribution", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
-    { scope: "plugin", name: "tenant" },
     { scope: "extension", name: "tenant.list" },
     { scope: "extension", name: "tenant.resolve" },
-    { scope: "plugin", name: "model" },
     { scope: "extension", name: "model.query" },
     { scope: "extension", name: "facts.inspect" },
   ]);
@@ -99,7 +97,7 @@ test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
     { scope: "extension", name: "case.runner.create" },
     { scope: "extension", name: "metric.configuration" },
     { scope: "extension", name: "trace.resolve" },
-    { scope: "service", name: "log" },
+    { scope: "resource", name: "logs" },
   ]);
 });
 
@@ -115,7 +113,7 @@ test("eval command 只强依赖 Case，并把关联证据能力作为可降级�
     }),
     expect.objectContaining({
       requirement: "preferred",
-      capability: { scope: "service", name: "log" },
+      capability: { scope: "resource", name: "logs" },
     }),
     expect.objectContaining({
       requirement: "preferred",
@@ -128,23 +126,22 @@ test("traceId capability 以 Service provider 为单位发现", () => {
   const tracePlugin = {
     id: "trace-sample",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
-      capabilities: {
-        traceId: {
-          endpoint: { host: "test-service", port: 8080 },
-          access: {},
-          resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
-        },
-      },
+      extensions: [traceExtension({
+        endpoint: { host: "test-service", port: 8080 },
+        access: {},
+        resolve: async () => ({ traceId: "trace-1", resolvedAs: "request_id" }),
+      })]
     }]),
   } satisfies PluginDefinition;
   const evaluation = evaluatePluginCapabilities(tracePlugin, {
     command: "doctor trace",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
       purpose: "解析 trace_id",
     }],
   });
@@ -157,34 +154,32 @@ test("traceId resolver 按 Catalog 顺序尝试 provider，返回实际命中的
   const tracePlugin = {
     id: "trace-sample",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "first-api",
       workloads: [],
-      capabilities: {
-        traceId: { endpoint: { host: "test-service", port: 8080 }, access: {}, resolve: async () => undefined },
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      extensions: [traceExtension({ endpoint: { host: "test-service", port: 8080 }, access: {}, resolve: async () => undefined })]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
-      capabilities: {
-        traceId: {
-          endpoint: { host: "test-service", port: 8080 },
-          access: {},
-          resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
-            expect(context).toMatchObject({
-              target: {
-                env: context.target.service.environment.name,
-                namespace: "default",
-                service: { name: "trace-api" },
-              },
-            });
-            expect(context.infra.kubernetes).toBeDefined();
-            expect(context.infra.databaseIdentity).toBeUndefined();
-            context.onDispose(() => { throw new Error("cleanup failed"); });
-            return { traceId: `trace-${bizId}`, resolvedAs: "request_id" };
-          },
+      extensions: [traceExtension({
+        endpoint: { host: "test-service", port: 8080 },
+        access: {},
+        resolve: async (context: PluginContext, { bizId }: { bizId: string }) => {
+          expect(context).toMatchObject({
+            target: {
+              env: context.target.service.environment.name,
+              namespace: "default",
+              service: { name: "trace-api" },
+            },
+          });
+          expect(context.infra.kubernetes).toBeDefined();
+          expect(context.infra.databaseIdentity).toBeUndefined();
+          context.onDispose(() => { throw new Error("cleanup failed"); });
+          return { traceId: `trace-${bizId}`, resolvedAs: "request_id" };
         },
-      },
+      })]
     }]),
   } satisfies PluginDefinition;
 
@@ -210,23 +205,22 @@ test("traceId resolver 按 biz-id 分组保留 capability 返回的多条 trace"
   const tracePlugin = {
     id: "trace-batch",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "trace-api",
       workloads: [],
-      capabilities: {
-        traceId: {
-          endpoint: { host: "test-service", port: 8080 },
-          access: {},
-          resolve: async (_context: PluginContext, { bizId }: { bizId: string }) => (
-            bizId === "conversation"
-              ? [
-                  { traceId: "trace-1", resolvedAs: "conversation_id", sourceId: "message-1" },
-                  { traceId: "trace-2", resolvedAs: "conversation_id", sourceId: "message-2" },
-                ]
-              : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId }
-          ),
-        },
-      },
+      extensions: [traceExtension({
+        endpoint: { host: "test-service", port: 8080 },
+        access: {},
+        resolve: async (_context: PluginContext, { bizId }: { bizId: string }) => (
+          bizId === "conversation"
+            ? [
+              { traceId: "trace-1", resolvedAs: "conversation_id", sourceId: "message-1" },
+              { traceId: "trace-2", resolvedAs: "conversation_id", sourceId: "message-2" },
+            ]
+            : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId }
+        ),
+      })]
     }]),
   } satisfies PluginDefinition;
 
@@ -267,36 +261,33 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
   const dependency = {
     id: "trace-store",
     service: "kb-server",
-    capability: "dataSources" as const,
     dataSource: "vdb",
   };
   const search = { search: async () => ({ hits: { hits: [] } }) };
   const tracePlugin = {
     id: "trace-dependency",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "opensearch",
       workloads: [],
       dependencies: [dependency],
-      capabilities: {
-        traceId: {
-          endpoint: { host: "test-service", port: 9200 },
-          access: {},
-          resolve: async (context: PluginContext) => {
-            expect(context.dependencies["trace-store"]).toEqual({
-              ...dependency,
-              access: { kind: "opensearch", search },
-            });
-            return { traceId: "trace-from-version", resolvedAs: "skill_version_id" };
-          },
+      extensions: [traceExtension({
+        endpoint: { host: "test-service", port: 9200 },
+        access: {},
+        resolve: async (context: PluginContext) => {
+          expect(context.dependencies["trace-store"]).toEqual({
+            ...dependency,
+            access: { kind: "opensearch", search },
+          });
+          return { traceId: "trace-from-version", resolvedAs: "skill_version_id" };
         },
-      },
+      })]
     }]),
   } satisfies PluginDefinition;
 
@@ -325,12 +316,17 @@ test("traceId resolver 把 Service 声明的 capability 依赖注入 PluginConte
 });
 
 test("trace batch keeps resolvable samples when another message has no trace", async () => {
-  const plugin: PluginDefinition = { id: "partial-traces", version: "0.0.1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-    name: "chat", workloads: [], capabilities: { traceId: {
-      endpoint: { host: "chat", port: 8001 }, access: {},
-      resolve: async (_context, { bizId }) => bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" },
-    } },
-  }]) };
+  const plugin: PluginDefinition = {
+    id: "partial-traces", version: "0.0.1", services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "chat",
+      workloads: [],
+      extensions: [traceExtension({
+        endpoint: { host: "chat", port: 8001 }, access: {},
+        resolve: async (_context, { bizId }) => bizId === "missing" ? undefined : { traceId: bizId, resolvedAs: "trace_id" },
+      })]
+    }])
+  };
   const executor = { run: localEnvironment, exec: async () => { throw new Error("unexpected access"); } };
   const opts = { namespace: "default", profileName: "test", command: "doctor trace" as const };
   expect(await resolvePluginTraceIds({ ...opts, bizIds: ["t1", "missing"] }, plugin, executor))

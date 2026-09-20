@@ -2,7 +2,7 @@ import { TRACE_RESOLVE_KIND, requireTraceResolveExtension, traceResolveOutput } 
 import type {
   PluginContext,
   PluginDefinition,
-  ResolvedServiceCapabilityDependency,
+  ResolvedServiceDataSourceDependency,
   ServiceDefinition,
 } from "@compforge/doctor-plugin";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
@@ -22,7 +22,7 @@ export interface ResolvePluginTraceIdOptions {
   commandContext?: CommandContext;
   resolveDependencies?: (
     service: ServiceDefinition,
-  ) => Promise<Readonly<Record<string, ResolvedServiceCapabilityDependency>>>;
+  ) => Promise<Readonly<Record<string, ResolvedServiceDataSourceDependency>>>;
 }
 
 export interface ResolvedPluginTraceId {
@@ -73,7 +73,7 @@ export async function resolvePluginTraceIds(
     let context = injectedContexts?.[provider.name];
     let managed: ManagedPluginContext | undefined;
     if (!context) {
-      let dependencies: Readonly<Record<string, ResolvedServiceCapabilityDependency>> = {};
+      let dependencies: Readonly<Record<string, ResolvedServiceDataSourceDependency>> = {};
       if (provider.dependencies?.length) {
         if (!opts.resolveDependencies) {
           throw new Error(`Service '${provider.name}' 声明了 capability 依赖，但 Core 未提供依赖解析器`);

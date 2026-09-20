@@ -194,10 +194,8 @@ export async function runCollectDelegates(
 }
 
 function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string {
-  const services = capability === "inspect"
-    ? plugin.services.servicesWithContribution("inspect")
-    : plugin.services.servicesWith(capability);
-  return services.map((service) => service.name).join(",");
+  const kind = capability === "inspect" ? "facts.inspect" : "metric.configuration";
+  return [...new Set(plugin.services.extensions(kind).map(({ service }) => service.name))].join(",");
 }
 
 /** biz-id 不能推导 Service 范围；组合执行时显式采用 Plugin 声明的完整业务 Service 边界。 */
@@ -224,8 +222,8 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
       case "log": return logCommand.run(context, {
         ...common, bizIds: input.bizIds,
         // Capability availability is broader than the Plugin's default collection scope.
-        services: plugin.services.servicesWith("log")
-          .filter((service) => service.capabilities.log.default).map((service) => service.name).join(","),
+        services: plugin.services.services.filter(service => service.logs !== undefined)
+          .filter((service) => service.logs!.default).map((service) => service.name).join(","),
         since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
       case "metric": return metricCommand.run(context, {
@@ -253,10 +251,12 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       const steps = (result.output?.steps ?? []).map((step, index) => ({
         kind: step.kind, status: step.result.status, result: children[index],
       }));
-      return { metadata, children, files: {
-        diagnosis: context.writeJson("diagnosis.json", { steps }),
-        summary: context.writeText("summary.md", `# Collect\n\n${steps.map(step => `- ${step.kind}: ${step.status}`).join("\n")}\n`),
-      } };
+      return {
+        metadata, children, files: {
+          diagnosis: context.writeJson("diagnosis.json", { steps }),
+          summary: context.writeText("summary.md", `# Collect\n\n${steps.map(step => `- ${step.kind}: ${step.status}`).join("\n")}\n`),
+        }
+      };
     },
     render: async (context, result) => {
       if (!result.output) return failureReport("doctor collect", result);

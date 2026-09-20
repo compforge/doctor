@@ -16,10 +16,8 @@ const services = createServiceCatalog([
       dependencyManager: "npm",
       buildTool: "tsc",
     },
-    capabilities: {
-      config: {},
-      log: { default: true },
-    },
+    configurationInspection: true,
+    logs: { default: true }
   },
   {
     name: "example-worker",
@@ -30,15 +28,13 @@ const services = createServiceCatalog([
       executionPlatform: "python",
       dependencyManager: "uv",
     },
-    capabilities: {
-      log: { default: false },
-      dataSources: [{
-        id: "primary-database",
-        kind: "db",
-        backend: "mysql",
-        envPrefix: "DATABASE_",
-      }],
-    },
+    logs: { default: false },
+    dataSources: [{
+      id: "primary-database",
+      kind: "db",
+      backend: "mysql",
+      envPrefix: "DATABASE_",
+    }]
   },
 ] as const);
 

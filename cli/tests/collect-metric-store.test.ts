@@ -1,3 +1,4 @@
+import { metricExtension } from "../../packages/plugin/tests/extension-fixture";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,16 +20,15 @@ import { CommandContext } from "../src/command";
 
 describe("metric Store observability", () => {
   test("bundle 输出拒绝 HTML/Markdown 后缀", async () => {
-    const services = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    const services = createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "app",
       workloads: [],
-      capabilities: {
-        metric: {
-          endpoint: { host: "test-service", port: 8080, path: "/metrics" },
-          metricNames: ["requests_total"],
-          charts: [],
-        },
-      },
+      extensions: [metricExtension({
+        endpoint: { host: "test-service", port: 8080, path: "/metrics" },
+        metricNames: ["requests_total"],
+        charts: [],
+      })]
     }]);
     await expect(resolveMetricConfig({
       services: "app",
@@ -136,22 +136,20 @@ describe("metric Store observability", () => {
 
   test("limits Store metric collection to selected Service dependencies", () => {
     const catalog = createServiceCatalog([
-      { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "chat-server",
         workloads: [],
-        capabilities: {
-          dataSources: [
-            { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
-            { id: "database", kind: "db" as const, backend: "mysql" as const, envPrefix: "DB" },
-          ],
-        },
+        dataSources: [
+          { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
+          { id: "database", kind: "db" as const, backend: "mysql" as const, envPrefix: "DB" },
+        ]
       },
-      { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "unrelated-server",
         workloads: [],
-        capabilities: {
-          dataSources: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }],
-        },
+        dataSources: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }]
       },
     ]);
 
@@ -169,22 +167,21 @@ describe("metric Store observability", () => {
   });
 
   test("keeps remote Service and Store queries usable when the selected profile has no kubeconfig", async () => {
-    const services = createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    const services = createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "app",
       workloads: [],
-      capabilities: {
-        dataSources: [{
-          id: "redis",
-          kind: "redis" as const,
-          backend: "redis" as const,
-          environment: { address: "REDIS_HOST" },
-        }],
-        metric: {
-          endpoint: { host: "test-service", port: 8080, path: "/metrics" },
-          metricNames: ["requests_total"],
-          charts: [],
-        },
-      },
+      dataSources: [{
+        id: "redis",
+        kind: "redis" as const,
+        backend: "redis" as const,
+        environment: { address: "REDIS_HOST" },
+      }],
+      extensions: [metricExtension({
+        endpoint: { host: "test-service", port: 8080, path: "/metrics" },
+        metricNames: ["requests_total"],
+        charts: [],
+      })]
     }]);
     const plugin = { id: "example", version: "0.0.1", services } as PluginDefinition;
     const directory = mkdtempSync(join(tmpdir(), "doctor-metric-remote-store-"));

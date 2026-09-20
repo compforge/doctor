@@ -1,5 +1,7 @@
-import { modelCatalogExtensions, modelInferenceExtensions, extensionModelCatalog, extensionModelInference } from "./extensions";
-import { tenantDirectoryExtensions, extensionTenantDirectory, type TenantDirectoryExtensions } from "../plugin/tenant-directory";
+import { requireModelInvokeExtension, requireModelStreamExtension } from "@compforge/doctor-plugin";
+import { selectExtension } from "../plugin/select-extension";
+import { modelCatalogExtensions, extensionModelCatalog, extensionModelInference } from "./extensions";
+import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import type {
   CapabilityWithAccess,
   ModelCatalog,
@@ -25,6 +27,10 @@ export interface OpenModelAccessOptions extends KubernetesCommandInput {
   command: string;
   plugin: PluginDefinition;
   commandContext?: CommandContext;
+  /** Logical provider identity, independent of endpoint host overrides. */
+  modelProvider?: string;
+  inferenceProvider?: string;
+  directoryProvider?: string;
   modelCatalogService?: string;
   modelCatalogPort?: string;
   tenantDirectoryService?: string;
@@ -43,9 +49,7 @@ export interface ModelAccess extends ModelDiscoveryAccess {
 }
 
 interface ModelProviders {
-  directory: TenantDirectoryExtensions;
   catalog: ReturnType<typeof modelCatalogExtensions>;
-  inferenceService?: string;
 }
 
 interface PreparedModelDiscovery {
@@ -57,33 +61,17 @@ interface PreparedModelDiscovery {
   ): Promise<ManagedPluginContext>;
 }
 
-function resolveModelProviders(plugin: PluginDefinition): ModelProviders {
-  const declaration = plugin.model;
-  if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 model capability`);
-  return {
-    directory: tenantDirectoryExtensions(plugin.services, declaration.tenantDirectoryService),
-    catalog: modelCatalogExtensions(plugin.services, declaration.catalogService),
-    inferenceService: declaration.inferenceService?.trim() || undefined,
-  };
-}
-
-function requireInferenceProvider(
-  plugin: PluginDefinition,
-  providers: ModelProviders,
-) {
-  if (!providers.inferenceService) {
-    throw new Error(
-      `Plugin '${plugin.id}' 的 model capability 未声明 inferenceService；主动模型调用需要 inference 能力`,
-    );
-  }
-  return modelInferenceExtensions(plugin.services, providers.inferenceService);
+async function resolveModelProviders(options: OpenModelAccessOptions): Promise<ModelProviders> {
+  const selected = await selectExtension(options.plugin.services, "model.query", {
+    service: options.modelProvider, commandContext: options.commandContext,
+  });
+  return { catalog: modelCatalogExtensions(options.plugin.services, selected.service.name, selected.extension.id) };
 }
 
 async function prepareModelDiscovery(
   options: OpenModelAccessOptions,
   providers: ModelProviders,
 ): Promise<PreparedModelDiscovery | undefined> {
-  const tenantService = providers.directory;
   const catalogService = providers.catalog;
   if (options.tenantDirectoryPort !== undefined) parseModelPort(options.tenantDirectoryPort, 1, "--tenant-directory-port");
   const catalogPort = parseModelPort(
@@ -115,9 +103,11 @@ async function prepareModelDiscovery(
       capability,
       authorization,
     });
-    const managed: ManagedPluginContext = { ...context, dispose: async () => {
-      try { await context.dispose(); } finally { contexts.delete(managed); }
-    } };
+    const managed: ManagedPluginContext = {
+      ...context, dispose: async () => {
+        try { await context.dispose(); } finally { contexts.delete(managed); }
+      }
+    };
     contexts.add(managed);
     return managed;
   };
@@ -126,7 +116,7 @@ async function prepareModelDiscovery(
   };
 
   try {
-    const directory = extensionTenantDirectory(tenantService, (service, extension) => openPluginContext(executor, kube, {
+    const directory = discoverTenantDirectory(options.plugin.services, (service, extension) => openPluginContext(executor, kube, {
       config: options.commandContext?.profile.pluginConfig,
       service,
       endpoint: {
@@ -136,7 +126,7 @@ async function prepareModelDiscovery(
       command: options.command,
       capability: extension,
       authorization,
-    }));
+    }), { service: options.directoryProvider, commandContext: options.commandContext });
     const catalog = extensionModelCatalog(catalogService, (service, extension) => contextFor(service, extension, {
       host: options.modelCatalogService?.trim() || extension.endpoint.host,
       port: options.modelCatalogPort === undefined ? extension.endpoint.port : catalogPort,
@@ -161,19 +151,40 @@ async function prepareModelDiscovery(
 export async function openModelDiscoveryAccess(
   options: OpenModelAccessOptions,
 ): Promise<ModelDiscoveryAccess | undefined> {
-  const providers = resolveModelProviders(options.plugin);
+  const providers = await resolveModelProviders(options);
   return (await prepareModelDiscovery(options, providers))?.access;
 }
 
 export async function openModelAccess(options: OpenModelAccessOptions): Promise<ModelAccess | undefined> {
-  const providers = resolveModelProviders(options.plugin);
-  const inference = requireInferenceProvider(options.plugin, providers);
+  const providers = await resolveModelProviders(options);
   const prepared = await prepareModelDiscovery(options, providers);
   if (!prepared) return undefined;
   return {
     ...prepared.access,
-    createInference: async (target, timeoutMs) => extensionModelInference(inference, target, timeoutMs,
-      (service, extension) => prepared.contextFor(service, extension, extension.endpoint)),
+    createInference: async (target, timeoutMs) => {
+      const selections = new Map<string, ReturnType<typeof selectExtension>>();
+      const inference = async (kind: "model.invoke" | "model.stream") => {
+        let selection = selections.get(kind);
+        if (!selection) {
+          selection = selectExtension(options.plugin.services, kind, {
+            service: options.inferenceProvider, commandContext: options.commandContext,
+          });
+          selections.set(kind, selection);
+        }
+        const selected = await selection;
+        const provider = {
+          service: selected.service,
+          invoke: kind === "model.invoke" ? requireModelInvokeExtension(selected.extension) : undefined,
+          stream: kind === "model.stream" ? requireModelStreamExtension(selected.extension) : undefined,
+        };
+        return extensionModelInference(provider, target, timeoutMs,
+          (service, extension) => prepared.contextFor(service, extension, extension.endpoint));
+      };
+      return {
+        invoke: async (path, body) => (await inference("model.invoke")).invoke(path, body),
+        invokeStream: async (path, body, signal) => (await inference("model.stream")).invokeStream(path, body, signal),
+      };
+    },
   };
 }
 

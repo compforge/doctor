@@ -1,3 +1,4 @@
+import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
   type PluginContext,
@@ -23,57 +24,55 @@ const service = "sample-api";
 const plugin = {
   id: "sample",
   version: "0.0.1",
-  services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  services: createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: service,
     workloads: [],
-    contributions: {
-      detectors: [{
-        id: "sample-records",
-        detect: (evidence) => {
-          const facts = evidence.facts.filter((item) => item.services.includes(service));
-          return facts.length ? [{
-            id: "sample-record-collected",
-            kind: "record-collected",
-            schemaVersion: 1,
-            severity: "info",
-            confidence: "high",
-            message: `collected ${facts[0]!.query!.value}`,
-            evidence: facts.map((item) => ({
-              factPath: item.factPath,
-              role: "supporting" as const,
-            })),
-          }] : [];
-        },
-      }],
-      inspect: {
-        access: {},
-        accepts: ["biz_id"],
-        provides: ["sample-record"],
-        resolveTarget: async () => ({
-          endpoint: "http://sample-api",
-          database: "sample",
-          username: "reader",
-          credentialSource: "test",
-        }),
-        inspect: async (_context, queries) => queries.map(query => ({
-          identity: query.identity, status: "collected" as const, result: {
-            resolution: {
-              inputId: query.identity.value,
-              resolvedAs: "sample_id",
-              identifiers: { sample_id: query.identity.value },
-            },
-            facts: ["one", "two"].map((recordId) => ({
-              factType: "record" as const,
-              kind: "sample-record",
-              schemaVersion: 1,
-              recordKey: recordId,
-              record: { id: recordId },
-            })),
-          },
-        })),
+    detectors: [{
+      id: "sample-records",
+      detect: (evidence) => {
+        const facts = evidence.facts.filter((item) => item.services.includes(service));
+        return facts.length ? [{
+          id: "sample-record-collected",
+          kind: "record-collected",
+          schemaVersion: 1,
+          severity: "info",
+          confidence: "high",
+          message: `collected ${facts[0]!.query!.value}`,
+          evidence: facts.map((item) => ({
+            factPath: item.factPath,
+            role: "supporting" as const,
+          })),
+        }] : [];
       },
-    },
-    capabilities: {},
+    }],
+    extensions: [inspectExtension({
+      access: {},
+      accepts: ["biz_id"],
+      provides: ["sample-record"],
+      resolveTarget: async () => ({
+        endpoint: "http://sample-api",
+        database: "sample",
+        username: "reader",
+        credentialSource: "test",
+      }),
+      inspect: async (_context, queries) => queries.map(query => ({
+        identity: query.identity, status: "collected" as const, result: {
+          resolution: {
+            inputId: query.identity.value,
+            resolvedAs: "sample_id",
+            identifiers: { sample_id: query.identity.value },
+          },
+          facts: ["one", "two"].map((recordId) => ({
+            factType: "record" as const,
+            kind: "sample-record",
+            schemaVersion: 1,
+            recordKey: recordId,
+            record: { id: recordId },
+          })),
+        },
+      })),
+    })]
   }]),
 } satisfies PluginDefinition;
 
@@ -84,33 +83,31 @@ const executor: Executor = {
 const contexts = { [service]: { signal: new AbortController().signal } as PluginContext };
 
 test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
-  const tenantOnly = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  const tenantOnly = {
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "tenant-api",
     workloads: [],
-    contributions: {
-      inspect: {
-        access: {},
-        accepts: ["tenant_id"],
-        provides: ["tenant-record"],
-        resolveTarget: async () => ({
-          endpoint: "http://tenant-api",
-          database: "tenant",
-          username: "reader",
-          credentialSource: "test",
-        }),
-        inspect: async (_context, queries) => queries.map(query => ({
-          identity: query.identity, status: "collected" as const, result: {
-            resolution: {
-              inputId: query.identity.value,
-              resolvedAs: query.identity.kind,
-              identifiers: {},
-            },
-            facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
+    extensions: [inspectExtension({
+      access: {},
+      accepts: ["tenant_id"],
+      provides: ["tenant-record"],
+      resolveTarget: async () => ({
+        endpoint: "http://tenant-api",
+        database: "tenant",
+        username: "reader",
+        credentialSource: "test",
+      }),
+      inspect: async (_context, queries) => queries.map(query => ({
+        identity: query.identity, status: "collected" as const, result: {
+          resolution: {
+            inputId: query.identity.value,
+            resolvedAs: query.identity.kind,
+            identifiers: {},
           },
-        })),
-      },
-    },
-    capabilities: {},
+          facts: [{ factType: "value", kind: "tenant-record", schemaVersion: 1, value: {} }],
+        },
+      })),
+    })]
   } satisfies PluginDefinition["services"]["services"][number];
 
   expect(dataServicesForBizQuery(createServiceCatalog([
@@ -142,98 +139,95 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
   const relationPlugin = {
     id: "sample-relations",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      // Deliberately declared first: it can only run after the later resolver discovers message_id.
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: traceResolver,
       workloads: [],
-      contributions: {
-        inspect: {
-          access: {},
-          accepts: ["message_id"],
-          provides: ["trace-resolution"],
-          expands: ["trace_id"],
-          resolveTarget: async () => ({
-            endpoint: "http://trace-resolver",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
-          inspect: async (_context, queries) => queries.map(query => ({
-            identity: query.identity, status: "collected" as const, result: {
-              resolution: {
-                inputId: query.identity.value,
-                resolvedAs: query.identity.kind,
-                identifiers: {},
-              },
-              facts: [{ factType: "value", kind: "trace-resolution", schemaVersion: 1, value: {} }, {
-                factType: "relation",
-                kind: "resolves-to",
-                schemaVersion: 1,
-                from: query.identity,
-                to: { kind: "trace_id", value: "trace-1" },
-              }],
+      extensions: [inspectExtension({
+        access: {},
+        accepts: ["message_id"],
+        provides: ["trace-resolution"],
+        expands: ["trace_id"],
+        resolveTarget: async () => ({
+          endpoint: "http://trace-resolver",
+          database: "sample",
+          username: "reader",
+          credentialSource: "test",
+        }),
+        inspect: async (_context, queries) => queries.map(query => ({
+          identity: query.identity, status: "collected" as const, result: {
+            resolution: {
+              inputId: query.identity.value,
+              resolvedAs: query.identity.kind,
+              identifiers: {},
             },
-          })),
-        },
-      },
-      capabilities: {},
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+            facts: [{ factType: "value", kind: "trace-resolution", schemaVersion: 1, value: {} }, {
+              factType: "relation",
+              kind: "resolves-to",
+              schemaVersion: 1,
+              from: query.identity,
+              to: { kind: "trace_id", value: "trace-1" },
+            }],
+          },
+        })),
+      })]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: resolver,
       workloads: [],
-      contributions: {
-        inspect: {
-          access: {},
-          accepts: ["biz_id"],
-          provides: ["resolution-record"],
-          expands: ["message_id"],
-          resolveTarget: async () => ({
-            endpoint: "http://sample-resolver",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
-          inspect: async (_context, queries) => queries.map(query => {
-            const identity = query.identity;
-            return { identity: query.identity, status: "collected" as const, result: {
+      extensions: [inspectExtension({
+        access: {},
+        accepts: ["biz_id"],
+        provides: ["resolution-record"],
+        expands: ["message_id"],
+        resolveTarget: async () => ({
+          endpoint: "http://sample-resolver",
+          database: "sample",
+          username: "reader",
+          credentialSource: "test",
+        }),
+        inspect: async (_context, queries) => queries.map(query => {
+          const identity = query.identity;
+          return {
+            identity: query.identity, status: "collected" as const, result: {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
               facts: [{ factType: "value", kind: "resolution-record", schemaVersion: 1, value: {} },
-                ...(identity.kind === "biz_id" ? [{
-                  factType: "relation" as const,
-                    kind: "resolves-to",
-                    schemaVersion: 1,
-                    from: identity,
-                    to: { kind: "message_id", value: "message-1" },
-                  }] : [])],
-            } };
-          }),
-        },
-      },
-      capabilities: {},
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+              ...(identity.kind === "biz_id" ? [{
+                factType: "relation" as const,
+                kind: "resolves-to",
+                schemaVersion: 1,
+                from: identity,
+                to: { kind: "message_id", value: "message-1" },
+              }] : [])],
+            }
+          };
+        }),
+      })]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: records,
       workloads: [],
-      contributions: {
-        inspect: {
-          access: {},
-          accepts: ["trace_id"],
-          provides: ["sample-record"],
-          resolveTarget: async () => ({
-            endpoint: "http://sample-records",
-            database: "sample",
-            username: "reader",
-            credentialSource: "test",
-          }),
-          inspect: async (_context, queries) => queries.map(query => {
-            const identity = query.identity;
-            seen.push(`${identity.kind}:${identity.value}`);
-            return { identity: query.identity, status: "collected" as const, result: {
+      extensions: [inspectExtension({
+        access: {},
+        accepts: ["trace_id"],
+        provides: ["sample-record"],
+        resolveTarget: async () => ({
+          endpoint: "http://sample-records",
+          database: "sample",
+          username: "reader",
+          credentialSource: "test",
+        }),
+        inspect: async (_context, queries) => queries.map(query => {
+          const identity = query.identity;
+          seen.push(`${identity.kind}:${identity.value}`);
+          return {
+            identity: query.identity, status: "collected" as const, result: {
               resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
               facts: [{ factType: "value", kind: "sample-record", schemaVersion: 1, value: {} }],
-            } };
-          }),
-        },
-      },
-      capabilities: {},
+            }
+          };
+        }),
+      })]
     }]),
   } satisfies PluginDefinition;
 
@@ -287,17 +281,22 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
     const facts = JSON.parse(readFileSync(join(dirname(delivered.manifest), manifest.files.facts.path), "utf8"));
     expect(delivered.result.items).toHaveLength(1);
     const report = delivered.result.items[0];
-    expect(report).toMatchObject({ bizId: "biz-1", findings: [{
-      id: `service-detector:${service}:sample-records:sample-record-collected`,
-      evidence: [
-        { factPath: "capabilityResults.0.result.facts.0", role: "supporting" },
-        { factPath: "capabilityResults.0.result.facts.1", role: "supporting" },
-      ],
-    }] });
+    expect(report).toMatchObject({
+      bizId: "biz-1", findings: [{
+        id: `service-detector:${service}:sample-records:sample-record-collected`,
+        evidence: [
+          { factPath: "capabilityResults.0.result.facts.0", role: "supporting" },
+          { factPath: "capabilityResults.0.result.facts.1", role: "supporting" },
+        ],
+      }]
+    });
     expect(report).not.toHaveProperty("evidence");
-    expect(facts.capabilityResults).toMatchObject([{ status: "collected", service,
-      result: { resolution: { inputId: "biz-1", resolvedAs: "sample_id" },
-        facts: [{ factType: "record", recordKey: "one" }, { factType: "record", recordKey: "two" }] },
+    expect(facts.capabilityResults).toMatchObject([{
+      status: "collected", service,
+      result: {
+        resolution: { inputId: "biz-1", resolvedAs: "sample_id" },
+        facts: [{ factType: "record", recordKey: "one" }, { factType: "record", recordKey: "two" }]
+      },
     }]);
     expect(report.selection.queryIds).toEqual([`data-query:provide:${service}:biz_id:biz-1`]);
     expect(facts.capabilityResults.map((query: { id: string }) => query.id)).toEqual(report.selection.queryIds);

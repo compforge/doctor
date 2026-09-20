@@ -1,19 +1,13 @@
 import { expect, test } from "bun:test";
-import type { ServiceInspect } from "@compforge/doctor-plugin";
+import type { FactsInspectExtension } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
 
 const capability = {
-  access: {},
+  id: "inspect", kind: "facts.inspect", access: {},
   accepts: ["tenant_id"],
   provides: ["intention", "tenant-configuration"],
   expands: ["bot_id"],
-  resolveTarget: async () => ({
-    endpoint: "http://control",
-    database: "control",
-    username: "reader",
-    credentialSource: "test",
-  }),
-  inspect: async (_context, queries) => queries.map(query => ({
+  run: async (_context, queries) => queries.map(query => ({
     identity: query.identity, status: "collected" as const, result: {
       resolution: {
         inputId: query.identity.value,
@@ -23,7 +17,7 @@ const capability = {
       facts: [],
     },
   })),
-} satisfies ServiceInspect;
+} satisfies FactsInspectExtension;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
 const budget = { maxFacts: 10, maxBytes: 1024 * 1024 };
@@ -76,7 +70,7 @@ test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
       facts: [{ factType: "value", kind: "intention", schemaVersion: 1, value: "one" },
-        { factType: "value", kind: "intention", schemaVersion: 1, value: "two" }],
+      { factType: "value", kind: "intention", schemaVersion: 1, value: "two" }],
     },
     service: "control",
     queryIdentity: identity,
@@ -88,7 +82,7 @@ test("Inspect query 拒绝重复 ValueFact 与 RecordFact key", () => {
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
       facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} },
-        { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} }],
+      { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} }],
     },
     service: "control",
     queryIdentity: identity,
@@ -145,7 +139,7 @@ test("Core 按预算截断 query result", () => {
     value: {
       resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
       facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one", record: {} },
-        { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "two", record: {} }],
+      { factType: "record", kind: "intention", schemaVersion: 1, recordKey: "two", record: {} }],
     },
     service: "control",
     queryIdentity: identity,

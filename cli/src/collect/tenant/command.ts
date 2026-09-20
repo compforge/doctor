@@ -16,7 +16,7 @@ export function createTenantInput(input: Omit<TenantInput, "idempotencyKey">): T
   return {
     ...input,
     idempotencyKey() {
-      return JSON.stringify([this.namespace ?? null, this.tenantId ?? null, this.tenantName ?? null, this.tenantDirectoryService ?? null, this.tenantDirectoryPort ?? null]);
+      return JSON.stringify([this.namespace ?? null, this.tenantId ?? null, this.tenantName ?? null, this.directoryProvider ?? null, this.tenantDirectoryService ?? null, this.tenantDirectoryPort ?? null]);
     },
   };
 }
@@ -33,7 +33,8 @@ export const tenantCommand = defineCommand<TenantInput, void>({
     command: "tenant", title: "Tenant", scope: "租户",
     render: artifact => {
       const diagnosis = context.json<TenantDiagnosis>(artifact, "diagnosis.json");
-      writeEvidencePage(context, artifact, { title: "doctor tenant",
+      writeEvidencePage(context, artifact, {
+        title: "doctor tenant",
         summaryHtml: buildTenantHtml(diagnosis), sections: buildTenantHtmlSections(diagnosis),
       });
     },

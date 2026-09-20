@@ -1,4 +1,4 @@
-import type { ServiceMetricCapability, ServiceMetricQuery } from "@compforge/doctor-plugin";
+import type { MetricConfiguration, ServiceMetricQuery } from "@compforge/doctor-plugin";
 import {
   prometheusDuration,
   type PrometheusQueryData,
@@ -17,7 +17,7 @@ export function metricExpression(query: ServiceMetricQuery, watched: boolean, wi
 
 export function buildMetricQueryPlans(input: {
   service: string;
-  capability: ServiceMetricCapability;
+  capability: MetricConfiguration;
   startedAt: number;
   finishedAt: number;
   intervalMs: number;

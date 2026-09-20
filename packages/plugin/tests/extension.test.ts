@@ -1,17 +1,24 @@
+import { inspectExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, describeService, FACTS_INSPECT_KIND, requireFactsInspectExtension,
-  type Extension, type FactsInspectExtension, type ServiceDefinition } from "../src";
+import {
+  createServiceCatalog, describeService, FACTS_INSPECT_KIND, requireFactsInspectExtension,
+  type Extension, type FactsInspectExtension, type ServiceDefinition
+} from "../src";
 
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
-  name: "records", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
-  workloads: [], capabilities: {}, extensions,
+  name: "records",
+  component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
+  workloads: [],
+  extensions
 });
 
 test("Catalog discovers multiple open kinds without invoking them or imposing a global input/output map", () => {
   const run = mock(async () => ["worker"]);
   const data: Extension<void, string[]> = { id: "workloads", kind: "workload.describe", access: {}, run };
-  const inspect: FactsInspectExtension = { id: "records", kind: FACTS_INSPECT_KIND, access: {},
-    accepts: ["biz_id"], provides: ["record"], run: async () => [] };
+  const inspect: FactsInspectExtension = {
+    id: "records", kind: FACTS_INSPECT_KIND, access: {},
+    accepts: ["biz_id"], provides: ["record"], run: async () => []
+  };
   const declared = service([data, inspect]);
   const catalog = createServiceCatalog([declared]);
   expect(catalog.extensions("workload.describe")[0]?.extension).toBe(data);
@@ -34,15 +41,20 @@ test("Catalog rejects malformed common declarations and duplicate IDs; the domai
 });
 
 test("Inspect adaptation has one source of truth and cannot coexist with a second facts.inspect declaration", () => {
-  const inspect = { access: {}, accepts: ["biz_id"], provides: ["record"],
+  const inspect = {
+    access: {}, accepts: ["biz_id"], provides: ["record"],
     resolveTarget: mock(async () => ({ endpoint: "", database: "", username: "", credentialSource: "" })),
-    inspect: mock(async () => []) };
-  const declared = { ...service([]), contributions: { inspect } };
+    inspect: mock(async () => [])
+  };
+  const declared = {
+    ...service([]),
+    extensions: [inspectExtension(inspect)]
+  };
   const catalog = createServiceCatalog([declared]);
   const extension = requireFactsInspectExtension(catalog.extensions(FACTS_INSPECT_KIND)[0]!.extension);
   expect(extension.id).toBe("inspect");
   expect(extension.access).toBe(inspect.access);
   expect(inspect.inspect).not.toHaveBeenCalled();
   expect(inspect.resolveTarget).not.toHaveBeenCalled();
-  expect(() => createServiceCatalog([{ ...declared, extensions: [extension] }])).toThrow("not both");
+  expect(() => createServiceCatalog([{ ...declared, extensions: [extension, extension] }])).toThrow("duplicate");
 });

@@ -1,3 +1,4 @@
+import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
   type PluginDefinition,
@@ -44,20 +45,19 @@ function testPlugin(): PluginDefinition {
   return {
     id: "test",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
-      capabilities: {
-        case: {
-          endpoint: { host: "test-service", port: 8080 },
-          access: {},
-          caseSets: [CASE_SET],
-          createRunner: async () => ({
-            run: async () => ({ status: 200, durationMs: 10 }),
-            classify: () => ({ ok: true }),
-          }),
-        },
-      },
+      extensions: [caseExtension({
+        endpoint: { host: "test-service", port: 8080 },
+        access: {},
+        caseSets: [CASE_SET],
+        createRunner: async () => ({
+          run: async () => ({ status: 200, durationMs: 10 }),
+          classify: () => ({ ok: true }),
+        }),
+      })]
     }]),
   };
 }

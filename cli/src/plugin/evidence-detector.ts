@@ -143,7 +143,7 @@ export function makeServiceEvidenceDetectors<DomainEvidence extends Evidence<Obs
   const selected = new Set(input.services);
   const declarations = input.catalog.services.flatMap((service) => (
     selected.has(service.name)
-      ? (service.contributions?.detectors ?? []).map((detector) => ({ service: service.name, detector }))
+      ? (service?.detectors ?? []).map((detector) => ({ service: service.name, detector }))
       : []
   ));
   if (!declarations.length) return [];

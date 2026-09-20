@@ -1,6 +1,6 @@
 import type {
   PluginDefinition,
-  ResolvedServiceCapabilityDependency,
+  ResolvedServiceDataSourceDependency,
   ServiceDefinition,
   ServiceDataSourceDependency,
 } from "@compforge/doctor-plugin";
@@ -108,12 +108,12 @@ export class ServiceDependencyRuntime {
   private readonly dataSources = new Map<string, Promise<PreparedServiceDataSourceDependency>>();
   private accessPrepared = false;
 
-  constructor(private readonly options: ServiceDependencyRuntimeOptions) {}
+  constructor(private readonly options: ServiceDependencyRuntimeOptions) { }
 
   async resolve(
     service: ServiceDefinition,
-  ): Promise<Readonly<Record<string, ResolvedServiceCapabilityDependency>>> {
-    const resolved: Record<string, ResolvedServiceCapabilityDependency> = {};
+  ): Promise<Readonly<Record<string, ResolvedServiceDataSourceDependency>>> {
+    const resolved: Record<string, ResolvedServiceDataSourceDependency> = {};
     for (const dependency of service.dependencies ?? []) {
       resolved[dependency.id] = await this.resolveDataSource(dependency);
     }
@@ -155,7 +155,7 @@ export class ServiceDependencyRuntime {
 
   private async resolveDataSource(
     dependency: ServiceDataSourceDependency,
-  ): Promise<ResolvedServiceCapabilityDependency> {
+  ): Promise<ResolvedServiceDataSourceDependency> {
     const prepared = await this.prepareDataSourceCandidates(openSearchDataSourceCandidates(
       this.options.plugin,
       { service: dependency.service, dataSource: dependency.dataSource },
@@ -201,10 +201,14 @@ export class ServiceDependencyRuntime {
       const endpoint = client.target.endpoint ? safeEndpoint(client.target.endpoint) : undefined;
       // The root owns this client; closing a dependency view cannot close sibling consumers.
       const evidenceTarget = { service, dataSource, endpoint, channel: "plugin" };
-      const preparation: OpenSearchAccessPreparation = { search: client.access, channel: "plugin", baseUrl: endpoint,
-        evidenceTarget, steps: [], close: async () => {} };
-      return { search: client.access, preparation, steps: [], configuredEndpoint: endpoint, auth: {},
-        evidenceTarget };
+      const preparation: OpenSearchAccessPreparation = {
+        search: client.access, channel: "plugin", baseUrl: endpoint,
+        evidenceTarget, steps: [], close: async () => { }
+      };
+      return {
+        search: client.access, preparation, steps: [], configuredEndpoint: endpoint, auth: {},
+        evidenceTarget
+      };
     }
     await this.prepareKubernetesAccess();
     let configuredEndpoint: string | undefined;
@@ -224,10 +228,10 @@ export class ServiceDependencyRuntime {
         ? confirmInspectedVdbTarget(resolved.config.vdbTarget)
         : resolved.config.target
           ? await confirmVdbTarget(
-              this.options.executor,
-              resolved.config.target,
-              resolved.config.capability,
-            )
+            this.options.executor,
+            resolved.config.target,
+            resolved.config.capability,
+          )
           : { captures: [], reason: `Store capability '${service}/${dataSource}' 未提供 VDB target` };
       if (confirmed.connection?.type !== "opensearch") {
         throw new Error(

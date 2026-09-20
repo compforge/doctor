@@ -194,7 +194,7 @@ async function prepareLogBatch(
   }
   terminalStdout.write(`[collect] services: ${services.join(", ")}\n`);
 
-  const selected = services.flatMap(name => plugin.services.findWith(name, "log")!.workloads)
+  const selected = services.flatMap(name => plugin.services.find(name)!.workloads)
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
   await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor log",
@@ -210,9 +210,11 @@ async function prepareLogBatch(
       });
       if (location.kind !== "labels") needs.push({
         requirement: "preferred",
-        rule: { verb: "get", resourceName: location.name, resource: location.kind === "service" ? "services" : {
-          Deployment: "deployments.apps", StatefulSet: "statefulsets.apps", DaemonSet: "daemonsets.apps", Pod: "pods",
-        }[location.resource_kind] },
+        rule: {
+          verb: "get", resourceName: location.name, resource: location.kind === "service" ? "services" : {
+            Deployment: "deployments.apps", StatefulSet: "statefulsets.apps", DaemonSet: "daemonsets.apps", Pod: "pods",
+          }[location.resource_kind]
+        },
         purpose: `解析 Workload '${workload.name}' 的资源位置`, fallback: "其它 Workload 继续采集",
       });
       return needs;
@@ -240,9 +242,13 @@ export async function runCollectLog(
   const prepared = await prepareLogBatch({ ...opts, bizIds: ids, untilTime }, plugin, commandContext);
   if (typeof prepared === "number") {
     const failure = commandOutcome(prepared);
-    return { ...failure, output: { items: requestIds.map(bizId => ({
-      bizId, status: failure.status, artifacts: [], reason: "日志采集准备未完成",
-    })) } };
+    return {
+      ...failure, output: {
+        items: requestIds.map(bizId => ({
+          bizId, status: failure.status, artifacts: [], reason: "日志采集准备未完成",
+        }))
+      }
+    };
   }
   const { collect, resolvedNamespace, resolved, executor, services, access } = prepared;
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-"));
@@ -256,7 +262,8 @@ export async function runCollectLog(
     if (!opts.since && !opts.sinceTime && timeWindow.sinceTime) {
       terminalStdout.write(`[collect] ${bizId} 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}\n`);
     }
-    return [{ bizId, traceIds: traces.map(trace => trace.traceId), namespace: resolvedNamespace.namespace,
+    return [{
+      bizId, traceIds: traces.map(trace => trace.traceId), namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services,
       since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime,
       errorsOnly: !!opts.errorsOnly, pattern: opts.pattern,
@@ -275,9 +282,11 @@ export async function runCollectLog(
     let reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id" : undefined);
     items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}) });
   });
-  writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
-    ...item, artifact_ids: artifacts.map(artifact => artifact.id),
-  })) }, null, 2));
+  writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({
+    items: items.map(({ artifacts, ...item }) => ({
+      ...item, artifact_ids: artifacts.map(artifact => artifact.id),
+    }))
+  }, null, 2));
   return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items }, artifacts: [summary, ...artifacts] };
 }
 
@@ -303,9 +312,11 @@ export async function collectLog(
   const contexts: LogCommandContext[] = requests.map(opts => {
     validateLogTimeWindow(opts);
     if (opts.bizId !== undefined && !opts.traceIds.length) throw new Error("按业务 ID 采集需要至少一个 trace_id");
-    return { command: commandContext, startedAtMs: Date.parse(startedAt),
+    return {
+      command: commandContext, startedAtMs: Date.parse(startedAt),
       config: { ...opts, context: environment.context, linePattern: buildLogPattern(opts.errorsOnly, opts.pattern) },
-      access: source, bundle: new EvidenceBundle(opts.outputDir), log };
+      access: source, bundle: new EvidenceBundle(opts.outputDir), log
+    };
   });
   let executions: PromiseSettledResult<{ diagnosis: LogDiagnosis }>[];
   try {
@@ -362,11 +373,15 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   });
   log(`[collect] ${config.bizId ?? "Service 日志"}: ${formatLogCaptureStats(rendered.stats, config.bizId === undefined)}`);
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
-  return { status: collectCommandOutcome(outcome).status,
-    ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {}) };
+  return {
+    status: collectCommandOutcome(outcome).status,
+    ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {})
+  };
 }
 
 export interface LogOutput {
-  readonly items: readonly { bizId?: string; status: CommandStatus; reason?: string;
-    artifacts: readonly import("../../command").CommandArtifact[] }[];
+  readonly items: readonly {
+    bizId?: string; status: CommandStatus; reason?: string;
+    artifacts: readonly import("../../command").CommandArtifact[]
+  }[];
 }
