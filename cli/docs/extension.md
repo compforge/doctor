@@ -4,7 +4,7 @@
 
 Extension 是 Service 向 Command 提供数据或执行能力的通用协议，服务于所有 Command 系列。
 Command 拥有自己的执行流程，在需要外部数据或能力的位置选择并调用 Extension；Service 自由实现内部
-逻辑，通过 Extension 暴露双方约定的函数。Data 是首个接入点，不决定 Extension 的通用接口或生命周期。
+逻辑，通过 Extension 暴露双方约定的函数。
 
 一个 Service 可以提供多个 kind 的 Extension，一个 Command 可以使用多个 kind；同一个 kind 也可以被
 不同 Command 复用。kind 按领域操作划分，不与 CLI 命令一一对应。
@@ -72,7 +72,7 @@ prepare 确定已知的权限范围，不要求预先列出完整执行路径。
 检查；已有候选检查通过，不代表后续任意调用都已获准。
 
 不同 Command 系列保持自己的执行模型。Collect 的 Inspect、Probe、Detector、Evidence 与预算由 Collect
-拥有；其它系列无需进入 Collect 流程即可使用 Extension。
+拥有。
 
 ## 权限、上下文与资源
 
@@ -87,16 +87,14 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 
 ## 接入示例：Data 使用 facts.inspect
 
-Data 首先用 [facts.inspect](../../packages/plugin/src/extension/facts-inspect.ts) 验证这套协议：
+Data 使用 [facts.inspect](../../packages/plugin/src/extension/facts-inspect.ts) 接入这套协议：
 
 - input 是 Query 列表，每个 Query 保留 Identity、约束和预算；output 按 Identity 返回 collected / failed outcome。
 - accepts、provides、expands 描述此 kind 的输入匹配和可能产出的 Fact / Relation 类型。
 - Data 的 CommandSpec.prepare 选择实现并检查权限，run 才创建受限上下文和调用取数。
 - Data 继续负责批量、Relation 遍历、预算、逐项失败隔离、结果投影与诊断；原生扩展无需数据库式 target。
 
-Data 当前按 Service 归属查询与结果，因此每个 Service 只选择一个 facts.inspect 实现，多个实现会报歧义。
-这是 Data 的消费规则，不是 Extension 通用协议对每个 kind 的数量限制。其它 Command 接入时选择自己的
-领域 kind 和调用规则，不复制 Data 的查询结构或遍历流程。
+Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 facts.inspect 实现，多个实现会报歧义。
 
 Data 的具体行为见 [Data 汇集诊断](commands/data-diagnosis.md)；Plugin 的加载、分发与信任边界见
 [Plugin](plugin.md)，Command 生命周期见 [Kernel](kernel.md)。
