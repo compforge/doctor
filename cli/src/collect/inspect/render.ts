@@ -117,6 +117,121 @@ function containerStatus(container: InspectPodContainerFact): string {
   ].filter((line): line is string => !!line).join("\n");
 }
 
+function podReady(pod: InspectPodRuntimeFact): boolean {
+  return pod.phase === "Running"
+    && pod.conditions.some((condition) => condition.type === "Ready" && condition.status === "True")
+    && pod.containers.length > 0
+    && pod.containers.every((container) => container.ready === true);
+}
+
+function compactPodStatus(pod: InspectPodRuntimeFact): string {
+  const ready = pod.conditions.find((condition) => condition.type === "Ready");
+  return [
+    `phase=${pod.phase}`,
+    pod.reason ? `reason=${pod.reason}` : undefined,
+    ready ? `Ready=${ready.status}${ready.reason ? `(${ready.reason})` : ""}` : "Ready=unknown",
+  ].filter((value): value is string => Boolean(value)).join("; ");
+}
+
+function compactContainerStatus(container: InspectPodContainerFact): string {
+  const state = container.state?.kind === "waiting"
+    ? `waiting=${container.state.reason ?? "unknown"}`
+    : container.state?.kind === "terminated"
+      ? `state=${terminationStatus(container.state)}`
+      : container.state?.kind === "running"
+        ? "running"
+        : "state=unknown";
+  return [
+    `ready=${container.ready ?? "unknown"}`,
+    `restarts=${container.restartCount}`,
+    state,
+    container.lastTermination ? `last=${terminationStatus(container.lastTermination)}` : undefined,
+  ].filter((value): value is string => Boolean(value)).join("; ");
+}
+
+interface RuntimeSummaryIssue {
+  service: string;
+  workload: string;
+  pod?: InspectPodRuntimeFact;
+  container?: InspectPodContainerFact;
+  reason?: string;
+}
+
+function runtimeSummaryIssues(diagnosis: InspectDiagnosis): RuntimeSummaryIssue[] {
+  if (diagnosis.evidence.facts.serviceTargets.status !== "collected") {
+    return [{ service: "—", workload: "—", reason: diagnosis.evidence.facts.serviceTargets.reason }];
+  }
+  return Object.values(diagnosis.evidence.facts.serviceTargets.services).flatMap<RuntimeSummaryIssue>((service) => (
+    Object.values(service.workloads).flatMap<RuntimeSummaryIssue>((workload) => {
+      if (workload.podRuntime.status !== "collected") {
+        return [{ service: service.service, workload: workload.name, reason: workload.podRuntime.reason }];
+      }
+      if (!workload.podRuntime.pods.length) return [{ service: service.service, workload: workload.name, reason: "没有发现 Pod" }];
+      return workload.podRuntime.pods.flatMap<RuntimeSummaryIssue>((pod) => {
+        const podIssue = !podReady(pod);
+        const containers = pod.containers.filter((container) => container.ready !== true || container.restartCount > 0 || container.lastTermination !== undefined || container.state?.kind !== "running");
+        if (!podIssue && !containers.length) return [];
+        return containers.length
+          ? containers.map((container) => ({ service: service.service, workload: workload.name, pod, container }))
+          : [{ service: service.service, workload: workload.name, pod }];
+      });
+    })
+  ));
+}
+
+/** Concise runtime projection for terminal triage; the Markdown summary remains the complete human-readable evidence. */
+export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis): string {
+  const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
+    ? Object.values(diagnosis.evidence.facts.serviceTargets.services)
+    : [];
+  const workloads = services.flatMap((service) => Object.values(service.workloads));
+  // Workload selectors may overlap; count physical Pods while retaining each Workload association below.
+  const pods = [...new Map(workloads.flatMap((workload) => workload.podRuntime.status === "collected"
+    ? workload.podRuntime.pods.map((pod) => [
+      JSON.stringify([pod.instance.environment, pod.instance.namespace, pod.instance.uid || pod.pod]), pod,
+    ] as const)
+    : [])).values()];
+  const readyPods = pods.filter(podReady).length;
+  const issues = runtimeSummaryIssues(diagnosis);
+  const missing = [
+    ...diagnosis.coverage.filter((item) => item.status !== "sufficient")
+      .map((item) => `${item.goal}: ${item.status}${item.missingEvidence.length ? ` — ${item.missingEvidence.join("；")}` : ""}`),
+    ...services.filter((service) => !Object.keys(service.workloads).length)
+      .map((service) => `${service.service}: 未声明 Workload，无法判断运行状态`),
+    ...issues.filter((issue) => !issue.pod).map((issue) => `${issue.service}/${issue.workload}: ${issue.reason}`),
+  ];
+  if (!services.length && !missing.length) missing.push("未取得 Service 运行证据");
+  const degraded = pods.some((pod) => !podReady(pod)
+    || pod.containers.some((container) => container.state?.kind !== "running"))
+    || diagnosis.findings.some((finding) => finding.severity !== "info");
+  // Historical restarts remain visible but do not rewrite current readiness; missing evidence cannot prove health.
+  const status = degraded ? "degraded" : missing.length ? "unknown" : issues.length ? "warning" : "healthy";
+  return [
+    "Service Inspect 摘要",
+    `Service：${services.map((service) => service.service).join(", ") || "—"}`,
+    `Workload：${workloads.length}`,
+    `Pod：${pods.length} total，${readyPods} ready`,
+    `状态：${status}`,
+    `证据：${missing.length ? "incomplete" : "complete"}`,
+    "",
+    "异常实例 / 历史提醒：",
+    ...(issues.length ? issues.flatMap((issue) => [
+      `- ${issue.service}/${issue.workload}${issue.pod ? `/${issue.pod.pod}` : ""}${issue.container ? ` / ${issue.container.name}` : ""}`,
+      ...(issue.reason ? [`  原因：${issue.reason}`] : []),
+      ...(issue.pod ? [`  Pod：${compactPodStatus(issue.pod)}`] : []),
+      ...(issue.container ? [
+        `  Container：${compactContainerStatus(issue.container)}`,
+        `  Image：${issue.container.image || "—"}`,
+        `  Memory：request=${issue.container.requests.memory ?? "—"}，limit=${issue.container.limits.memory ?? "—"}`,
+      ] : []),
+    ]) : ["- 无"]),
+    ...(missing.length ? ["", "证据缺口：", ...missing.map((item) => `- ${item}`)] : []),
+    ...(diagnosis.findings.length ? ["", "诊断发现：", ...diagnosis.findings.map((finding) =>
+      `- [${finding.severity}] ${finding.service}/${finding.kind}: ${finding.message}`)] : []),
+    "",
+  ].join("\n");
+}
+
 function podRows(diagnosis: InspectDiagnosis): string[][] {
   if (diagnosis.evidence.facts.serviceTargets.status !== "collected") return [];
   return Object.values(diagnosis.evidence.facts.serviceTargets.services)

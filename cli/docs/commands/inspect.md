@@ -26,6 +26,22 @@
 加载和环境连接前报参数错误。`-y` 不开启可选采集，需显式传 `--deployment-config` 或
 `--dependencies`；对应 `--no-*` 表示明确关闭，即使恢复交互也不再询问该项。
 
+## 终端运行摘要
+
+使用 `doctor inspect --services api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的
+Evidence 目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用相同的采集范围。
+
+Pod 总数按环境、namespace 和 UID 去重，异常明细保留 Service/Workload 关联。Ready 数量只表示
+当前就绪状态，历史重启或 OOM 不减少 Ready 数量。状态含义如下：
+
+- `degraded`：存在当前 Pod/Container 异常，或 Detector 给出了 warning/critical 发现。
+- `unknown`：尚未观察到上述异常，但本次请求范围内的证据不完整，或没有可判断的 Workload。
+- `warning`：当前实例正常、证据完整，但存在历史重启或终止记录。
+- `healthy`：证据完整，且未发现上述异常或历史提醒。
+
+摘要单独显示证据完整性及缺口，因此已知异常和缺失证据可以同时呈现；Detector 发现也会列出。
+未启用的可选配置、依赖采集不计入证据缺口。内存 request/limit 是资源声明，不是当前使用量。
+
 ## 关键设计
 
 ### 为什么不读取 Pod env 或 Settings

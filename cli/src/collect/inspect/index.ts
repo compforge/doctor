@@ -37,7 +37,7 @@ import {
   resolveInspectServiceSelection,
 } from "./options";
 import { makeInspectProbes } from "./probe";
-import { buildInspectSummary } from "./render";
+import { buildInspectRuntimeSummary, buildInspectSummary } from "./render";
 
 export * from "./detector";
 export * from "./model";
@@ -203,6 +203,7 @@ export async function runCollectInspect(
   const fail = (reason: string): number => {
     bundle.settle(reason);
     bundle.writeSummary(`# Service Inspect 失败\n\n${reason}\n`);
+    writeFileSync(join(staging, "runtime-summary.txt"), `Service Inspect 摘要\n状态：failed\n原因：${reason}\n`, "utf8");
     writeManifest();
     recordFailureBundle({
       bundleDir: staging,
@@ -243,6 +244,7 @@ export async function runCollectInspect(
 
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
   bundle.writeSummary(buildInspectSummary(diagnosis));
+  writeFileSync(join(staging, "runtime-summary.txt"), buildInspectRuntimeSummary(diagnosis), "utf8");
   writeManifest();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (outcome.exitCode !== 0) {

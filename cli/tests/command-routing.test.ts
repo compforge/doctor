@@ -226,7 +226,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).not.toContain("--tenant-id <id>");
     expect(result.stdout).not.toContain("--tenant-config-service <name>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "md", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "md", "summary", "manifest"');
     expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
   });
 
