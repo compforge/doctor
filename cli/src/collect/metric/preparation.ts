@@ -1,3 +1,5 @@
+import { loadMetricConfigurations } from "./extensions";
+import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -51,6 +53,7 @@ export async function prepareMetricSource(
   plugin: PluginDefinition,
   commandContext: CommandContext,
   injectedExecutor?: Executor,
+  configurations?: ReadonlyMap<string, MetricConfiguration>,
 ): Promise<MetricSourcePreparation> {
   const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);
   if (config.prometheus && storeKinds.length === 0) {
@@ -111,10 +114,11 @@ export async function prepareMetricSource(
 
     forwarder = await ServicePortForwarder.create(executor, config.kube);
     const targets: EmbeddedMetricTarget[] = [];
+    const resolved = configurations ?? await loadMetricConfigurations(config, plugin.services, commandContext, executor);
     if (!config.prometheus) {
       for (const serviceName of config.services) {
-        const service = plugin.services.findWith(serviceName, "metric")!;
-        const capability = service.capabilities.metric;
+        const capability = resolved.get(serviceName);
+        if (!capability) throw new Error(`Missing metric configuration for ${serviceName}`);
         const endpoints = await forwarder.forwardServiceTargets({
           host: capability.endpoint.host,
           port: capability.endpoint.port,
@@ -123,8 +127,8 @@ export async function prepareMetricSource(
           targets.push({
             url: `http://${endpoint.host}:${endpoint.port}${capability.endpoint.path}`,
             labels: {
-              doctor_service: service.name,
-              app_kubernetes_io_name: service.name,
+              doctor_service: serviceName,
+              app_kubernetes_io_name: serviceName,
               ...(endpoint.pod ? { pod: endpoint.pod } : {}),
             },
             metricNames: [...capability.metricNames],

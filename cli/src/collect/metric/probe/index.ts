@@ -1,3 +1,4 @@
+import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { ServiceMetricCapability } from "@compforge/doctor-plugin";
 import {
@@ -219,13 +220,14 @@ function makeMetricServiceProbe(
 export function makeMetricProbes(
   services: readonly string[],
   catalog: ServiceCatalog,
+  configurations: ReadonlyMap<string, MetricConfiguration>,
 ): Array<Probe<MetricObservation, MetricInspectionFacts, MetricConfig, MetricCommandContext>> {
   return [
     makeMetricWindowProbe(),
     ...services.map((service) => {
-      const declared = catalog.findWith(service, "metric");
-      if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 metric capability`);
-      return makeMetricServiceProbe(service, declared.capabilities.metric);
+      const declared = configurations.get(service);
+      if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 metric.configuration`);
+      return makeMetricServiceProbe(service, declared);
     }),
     ...selectedMetricStoreKinds(catalog, services).map((kind) => (
       makeMetricServiceProbe(`${kind}-store`, STORE_METRIC_CAPABILITIES[kind], "store")

@@ -1,3 +1,4 @@
+import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
@@ -151,7 +152,8 @@ function createKubernetesAccess(
 export type ManagedPluginContext = PluginContext & { dispose(): Promise<void> };
 
 interface PluginContextOptions {
-  environment: ResolvedKubernetesEnvironment;
+  signal?: AbortSignal;
+  environment: ResolvedKubernetesEnvironment | { readonly kind: "host"; readonly name: string };
   /** An explicitly supplied root owner is useful outside the command async scope. */
   clients?: Pick<ClientManager, "get">;
   config?: Readonly<Record<string, unknown>>;
@@ -173,22 +175,25 @@ function clientNamespace(kube: KubectlOptions, options: PluginContextOptions): s
 }
 
 export function createPluginContext(
-  executor: Executor,
+  executor: Executor | undefined,
   kube: KubectlOptions & { namespace: string },
   options: PluginContextOptions,
 ): ManagedPluginContext {
-  if (kube.context && kube.context !== options.environment.context) throw new Error("Kubernetes context 与已解析的 Environment 不一致");
+  if (options.environment.kind === "kubernetes" && kube.context && kube.context !== options.environment.context) throw new Error("Kubernetes context 与已解析的 Environment 不一致");
   // Caller config may carry profile/source annotations; only actual access parameters enter reuse identity.
-  kube = { namespace: kube.namespace, kubeconfig: kube.kubeconfig, context: options.environment.context };
+  kube = { namespace: kube.namespace, kubeconfig: kube.kubeconfig, context: options.environment.kind === "kubernetes" ? options.environment.context : undefined };
   const controller = new AbortController();
-  const parentSignal = currentCommandSignal();
+  const parentSignal = options.signal ?? currentCommandSignal();
   const signal = parentSignal ? AbortSignal.any([parentSignal, controller.signal]) : controller.signal;
   const root = options.clients ?? currentCommandClients();
   const local = root ? undefined : new ClientManager(parentSignal);
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);
   const clusterKey = clientKey("kubernetes", kube);
-  const cluster = () => clients.get({ clientKey: clusterKey, createClient: (_clients, rootSignal) => new KubernetesClient(kube, rootSignal, executor) });
+  const cluster = () => {
+    if (options.environment.kind !== "kubernetes" || !executor) throw new Error("This Extension context has no Kubernetes target");
+    return clients.get({ clientKey: clusterKey, createClient: (_clients, rootSignal) => new KubernetesClient(kube, rootSignal, executor) });
+  };
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
@@ -219,7 +224,7 @@ export function createPluginContext(
       get: async source => {
         signal.throwIfAborted();
         // Acquire dependencies first; finalization then closes consumers before Kubernetes transports.
-        const kubernetes = await cluster();
+        const kubernetes = options.environment.kind === "kubernetes" ? await cluster() : undefined;
         signal.throwIfAborted();
         return clients.get({
           clientKey: `${namespace}:${source.clientKey}`,
@@ -255,4 +260,16 @@ export async function openPluginContext(
   await preflightPluginAccess(options.authorization, `${options.command} · ${options.service.name}`, kube.namespace, options.capability);
   const environment = options.environment ?? await resolveKubernetesEnvironment(executor);
   return createPluginContext(executor, bindKubernetesEnvironment(kube, environment), { ...options, environment });
+}
+
+/** Host-only providers still use the common access, client ownership and disposal machinery. */
+export function createHostPluginContext(
+  options: Omit<PluginContextOptions, "environment"> & { namespace?: string },
+): ManagedPluginContext {
+  if (options.capability.access.kubernetes?.length) {
+    throw new Error("Host Extension context cannot grant Kubernetes access");
+  }
+  return createPluginContext(undefined, { namespace: options.namespace ?? "" }, {
+    ...options, environment: { kind: "host", name: clientKey("doctor-host", hostname()) },
+  });
 }

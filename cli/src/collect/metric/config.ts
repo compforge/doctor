@@ -1,3 +1,4 @@
+import { metricConfigurationProviders } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -65,11 +66,11 @@ export function parseMetricInterval(raw: string | undefined): number {
 }
 
 export function parseMetricServices(raw: string | undefined, catalog: ServiceCatalog): string[] {
-  const defaults = catalog.servicesWith("metric").map((service) => service.name);
+  const defaults = metricConfigurationProviders(catalog).map(({ service }) => service.name);
   const services = [...new Set((raw ?? defaults.join(",")).split(",").map((item) => item.trim()).filter(Boolean))];
   if (!services.length) throw new Error("--services 未解析出任何 Service");
-  const unsupported = services.filter((service) => !catalog.findWith(service, "metric"));
-  if (unsupported.length) throw new Error(`Doctor 未注册以下 Service 的 metric capability：${unsupported.join(", ")}`);
+  const unsupported = services.filter((service) => !defaults.includes(catalog.find(service)?.name ?? ""));
+  if (unsupported.length) throw new Error(`Doctor 未注册以下 Service 的 metric.configuration Extension：${unsupported.join(", ")}`);
   return catalog.resolveNames(services);
 }
 
@@ -94,6 +95,9 @@ export async function resolveMetricConfig(
   const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
   const configuredPrometheus = resolvedProfile.profile.prometheus;
   const services = parseMetricServices(opts.services, catalog);
+  const configurationNeedsKubernetes = metricConfigurationProviders(catalog).some(({ service, extension }) => (
+    services.includes(service.name) && Boolean(extension.access.kubernetes?.length)
+  ));
   const hasStoreMetrics = services.some((service) => (
     catalog.findWith(service, "dataSources")?.capabilities.dataSources.some((store) => (
       store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
@@ -103,11 +107,11 @@ export async function resolveMetricConfig(
   let kubeContext = opts.context;
   let profileName = resolvedProfile.name;
   let storeSupplementUnavailableReason: string | undefined;
-  if (!prometheusUrl || hasStoreMetrics) {
+  if (!prometheusUrl || hasStoreMetrics || configurationNeedsKubernetes) {
     try {
       const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
       if (!collect) {
-        if (!prometheusUrl) return undefined;
+        if (!prometheusUrl || configurationNeedsKubernetes) return undefined;
         storeSupplementUnavailableReason = "Kubernetes target selection cancelled";
       } else {
         profileName = collect.profileName;
@@ -119,7 +123,7 @@ export async function resolveMetricConfig(
         kubeContext = collect.kubernetes.context;
       }
     } catch (error) {
-      if (!prometheusUrl) throw error;
+      if (!prometheusUrl || configurationNeedsKubernetes) throw error;
       // Remote Prometheus is the primary source. A missing Kubernetes channel only disables
       // the optional live Store supplement; Store probes can still query exporter metrics remotely.
       storeSupplementUnavailableReason = error instanceof Error ? error.message : String(error);
