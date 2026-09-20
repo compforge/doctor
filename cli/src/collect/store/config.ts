@@ -1,3 +1,4 @@
+import { vdbTargetProvider, inspectVdbTarget } from "../../datasource/vdb-extension";
 import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
@@ -230,7 +231,7 @@ export async function resolveStoreConfig(
   const capabilityOwnsTarget = !!opts.service?.trim()
     && serviceDataSources(plugin.services, opts.service.trim(), kind).some((store) => (
       (!opts.store?.trim() || store.id === opts.store.trim())
-      && (!!store.source || (store.kind === "vdb" && !!store.inspectTarget))
+      && (!!store.source || (store.kind === "vdb" && !!vdbTargetProvider(plugin.services, opts.service!.trim(), store.id)))
     ));
   if (!capabilityOwnsTarget) await enforceKubernetesAccess(access, {
     command: "doctor store",
@@ -265,8 +266,9 @@ export async function resolveStoreProviderConfig(
   if (!capability) return undefined;
   let target: PodTarget | undefined;
   let vdbTarget: ServiceVdbTarget | undefined;
-  if (capability.kind === "vdb" && capability.inspectTarget) {
-    const context = await openPluginContext(executor, {
+  const provider = capability.kind === "vdb" ? vdbTargetProvider(plugin.services, service, capability.id) : undefined;
+  if (provider) {
+    vdbTarget = await inspectVdbTarget(provider.extension, () => openPluginContext(executor, {
       namespace,
       kubeconfig: collect.kubernetes.kubeconfig,
       context: collect.kubernetes.context,
@@ -274,14 +276,10 @@ export async function resolveStoreProviderConfig(
       config: commandContext.profile.pluginConfig,
       service: plugin.services.find(service)!,
       command: "doctor store",
-      capability: { access: capability.access ?? {} },
+      capability: provider.extension,
+      signal: commandContext.signal,
       authorization: access,
-    });
-    try {
-      vdbTarget = await capability.inspectTarget(context);
-    } finally {
-      await context.dispose();
-    }
+    }));
   } else if (!capability.source) {
     const selection: SelectionContext = {
       candidateRole: "配置来源",

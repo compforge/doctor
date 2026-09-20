@@ -42,3 +42,4 @@ export * from "./metric";
 export * from "./perf";
 export * from "./case";
 export * from "./workload";
+export * from "./vdb";

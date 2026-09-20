@@ -1,3 +1,4 @@
+import { VDB_TARGET_INSPECT_KIND, type VdbTargetInspectExtension } from "./vdb";
 import { WORKLOAD_PROBE_KIND, type WorkloadProbeExtension } from "./workload";
 import { CASE_RUNNER_CREATE_KIND, type CaseRunnerCreateExtension } from "./case";
 import { PERF_SCENARIOS_KIND, type PerfScenariosExtension } from "./perf";
@@ -67,6 +68,19 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     add({ id: "overview.sample", kind: OVERVIEW_SAMPLE_KIND, access: overview.access,
       run: (context, input) => overview.sample(context, input),
     } satisfies OverviewSampleExtension);
+  }
+  for (const source of service.capabilities.dataSources ?? []) {
+    if (source.kind !== "vdb" || !source.inspectTarget) continue;
+    if (explicit.some(extension => extension.kind === VDB_TARGET_INSPECT_KIND
+      && (extension as VdbTargetInspectExtension).dataSource === source.id)) {
+      throw new Error(`${service.name}/${source.id}: declare datasource.vdb.inspect either as an Extension or inspectTarget, not both`);
+    }
+    const inspectTarget = source.inspectTarget.bind(source);
+    const extension: VdbTargetInspectExtension = {
+      id: `${VDB_TARGET_INSPECT_KIND}:${source.id}`, kind: VDB_TARGET_INSPECT_KIND,
+      dataSource: source.id, access: source.access ?? {}, run: context => inspectTarget(context),
+    };
+    explicit.push(extension);
   }
   const probes = service.contributions?.probes?.filter(probe => probe.kind === "workload") ?? [];
   if (probes.length && explicit.some(extension => extension.kind === WORKLOAD_PROBE_KIND)) {

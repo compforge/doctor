@@ -1,4 +1,4 @@
-import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, serviceExtensions, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ test("Store 类型支持一次选择多个并保持首次出现顺序", () => {
   expect(() => parseStoreKinds("db,k8s")).toThrow("只支持 db、vdb、s3、redis");
 });
 
-test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod 已部署", async () => {
+test.each(["legacy", "native"] as const)("VDB target provider 不要求同名 Service/Pod 已部署 (%s)", async mode => {
   const command = ["get", "services", "-o", "json"];
   const result: ExecResult = {
     ok: true,
@@ -90,7 +90,7 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
     run: async args => args[0] === "config" ? { ...result, stdout: "test\nhttps://cluster.test" } : result,
     exec: async () => { throw new Error("Core 不应读取配置来源 Pod"); },
   };
-  const plugin = {
+  const legacyPlugin: PluginDefinition = {
     id: "test",
     version: "0.0.1",
     services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
@@ -112,6 +112,18 @@ test("VDB capability 自行贡献 target 时 Core 不要求同名 Service/Pod �
       },
     }]),
   } satisfies PluginDefinition;
+  const plugin: PluginDefinition = mode === "legacy" ? legacyPlugin : {
+    ...legacyPlugin,
+    services: createServiceCatalog(legacyPlugin.services.services.map(service => ({
+      ...service,
+      extensions: serviceExtensions(service),
+      capabilities: { dataSources: service.capabilities.dataSources?.map(source => {
+        if (source.kind !== "vdb") return source;
+        const { inspectTarget: _inspectTarget, ...declaration } = source;
+        return declaration;
+      }) },
+    }))),
+  };
 
   const resolved = await resolveStoreProviderConfig({
     type: "vdb",
