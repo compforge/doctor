@@ -37,3 +37,4 @@ export * from "./overview";
 export { serviceExtensions } from "./service-extensions";
 export * from "./tenant";
 export * from "./mcp";
+export * from "./model";

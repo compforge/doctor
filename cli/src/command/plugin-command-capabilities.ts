@@ -69,7 +69,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "仅汇总接受 tenant_id 的业务数据",
     }, {
       requirement: "preferred",
-      capability: { scope: "service", name: "modelCatalog" },
+      capability: { scope: "extension", name: "model.query" },
       purpose: "查询租户可用模型 Facts",
       fallback: "跳过模型目录",
     }, {
@@ -103,11 +103,11 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "按名称解析可诊断租户",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "modelCatalog" },
+      capability: { scope: "extension", name: "model.query" },
       purpose: "发现可用模型",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "inference" },
+      capability: { scope: "extension", name: "model.invoke" },
       purpose: "执行模型验证和推理",
     }],
   },

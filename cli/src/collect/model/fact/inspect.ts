@@ -34,7 +34,7 @@ export function makeModelInspect(
             backend: unavailableFact("model.backend", "model-target", `模型目录 backend 中不包含模型 ${model.id}`),
           };
         }
-        // Plugin handle 可能持有 credentials，因此只持久化规范化身份。
+        // 持久化公共身份，主动校验入口只留在本次运行上下文。
         ctx.backend = backend;
         return {
           target,

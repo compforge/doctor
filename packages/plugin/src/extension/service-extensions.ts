@@ -1,3 +1,4 @@
+import { adaptModelExtensions } from "./model-adapters";
 import { TENANT_LIST_KIND, TENANT_RESOLVE_KIND, USER_SEARCH_KIND, type TenantListExtension, type TenantResolveExtension, type UserSearchExtension } from "./tenant";
 import { MCP_CONFIGURATION_KIND, type McpConfigurationExtension } from "./mcp";
 import type { RegisteredExtension } from "./index";
@@ -15,6 +16,7 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     }
     explicit.push(extension);
   };
+  for (const extension of adaptModelExtensions(service)) add(extension);
   const directory = service.capabilities.tenantDirectory;
   if (directory) {
     add({ id: TENANT_LIST_KIND, kind: TENANT_LIST_KIND, access: directory.access, endpoint: directory.endpoint,

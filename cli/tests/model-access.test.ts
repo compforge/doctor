@@ -599,17 +599,18 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
     try {
       const opening = openModelDiscoveryAccess({ command: "doctor model", plugin,
         namespace: "test", context: "test-context", kubeconfig: "/tmp/model-access-test", interactive: false });
-      if (requirement === "required") {
-        await expect(opening).rejects.toThrow("缺少必须的 Kubernetes 权限");
-        expect(created).toBe(0);
-      } else {
-        const discovery = await opening;
-        try {
-          expect(discovery).toBeDefined();
+      const discovery = await opening;
+      expect(created).toBe(0);
+      try {
+        if (requirement === "required") {
+          await expect(discovery!.catalog.query({ identity: { kind: "tenant_id", value: "tenant" } })).rejects.toThrow("缺少必须的 Kubernetes 权限");
+          expect(created).toBe(0);
+        } else {
           expect(await discovery!.directory.listActive()).toEqual([]);
+          expect(await discovery!.catalog.query({ identity: { kind: "tenant_id", value: "tenant" } })).toEqual([]);
           expect(created).toBe(2);
-        } finally { await discovery?.dispose(); }
-      }
+        }
+      } finally { await discovery?.dispose(); }
       expect([...new Set(checks)].sort()).toEqual(requirement
         ? ["create pods/portforward", "list pods", "list services"] : []);
     } finally { run.mockRestore(); }

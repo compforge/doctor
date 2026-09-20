@@ -1,3 +1,4 @@
+import { modelCatalogExtensions, modelInferenceExtensions, extensionModelCatalog, extensionModelInference } from "./extensions";
 import { tenantDirectoryExtensions, extensionTenantDirectory, type TenantDirectoryExtensions } from "../plugin/tenant-directory";
 import type {
   CapabilityWithAccess,
@@ -7,7 +8,6 @@ import type {
   PluginDefinition,
   ServiceDefinition,
   ServiceEndpoint,
-  ServiceWithCapability,
   TenantDirectory,
 } from "@compforge/doctor-plugin";
 
@@ -42,21 +42,9 @@ export interface ModelAccess extends ModelDiscoveryAccess {
   createInference(target: ModelInferenceTarget, timeoutMs: number): Promise<ModelInference>;
 }
 
-function requireService<C extends "modelCatalog" | "inference">(
-  plugin: PluginDefinition,
-  name: string,
-  capability: C,
-): ServiceWithCapability<ServiceDefinition, C> {
-  const service = plugin.services.findWith(name, capability);
-  if (!service) {
-    throw new Error(`Plugin '${plugin.id}' 的 Service '${name}' 未声明 ${capability} 能力`);
-  }
-  return service;
-}
-
 interface ModelProviders {
   directory: TenantDirectoryExtensions;
-  catalog: ServiceWithCapability<ServiceDefinition, "modelCatalog">;
+  catalog: ReturnType<typeof modelCatalogExtensions>;
   inferenceService?: string;
 }
 
@@ -74,7 +62,7 @@ function resolveModelProviders(plugin: PluginDefinition): ModelProviders {
   if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 model capability`);
   return {
     directory: tenantDirectoryExtensions(plugin.services, declaration.tenantDirectoryService),
-    catalog: requireService(plugin, declaration.catalogService, "modelCatalog"),
+    catalog: modelCatalogExtensions(plugin.services, declaration.catalogService),
     inferenceService: declaration.inferenceService?.trim() || undefined,
   };
 }
@@ -82,13 +70,13 @@ function resolveModelProviders(plugin: PluginDefinition): ModelProviders {
 function requireInferenceProvider(
   plugin: PluginDefinition,
   providers: ModelProviders,
-): ServiceWithCapability<ServiceDefinition, "inference"> {
+) {
   if (!providers.inferenceService) {
     throw new Error(
       `Plugin '${plugin.id}' 的 model capability 未声明 inferenceService；主动模型调用需要 inference 能力`,
     );
   }
-  return requireService(plugin, providers.inferenceService, "inference");
+  return modelInferenceExtensions(plugin.services, providers.inferenceService);
 }
 
 async function prepareModelDiscovery(
@@ -100,7 +88,7 @@ async function prepareModelDiscovery(
   if (options.tenantDirectoryPort !== undefined) parseModelPort(options.tenantDirectoryPort, 1, "--tenant-directory-port");
   const catalogPort = parseModelPort(
     options.modelCatalogPort,
-    catalogService.capabilities.modelCatalog.endpoint.port,
+    catalogService.query.endpoint.port,
     "--model-catalog-port",
   );
   const config = await resolveKubernetesCommandConfig(options, undefined, options.commandContext);
@@ -112,7 +100,7 @@ async function prepareModelDiscovery(
     kubeconfig: config.kubernetes.kubeconfig,
     context: config.kubernetes.context,
   };
-  const contexts: ManagedPluginContext[] = [];
+  const contexts = new Set<ManagedPluginContext>();
   const contextFor = async (
     service: ServiceDefinition,
     capability: CapabilityWithAccess,
@@ -127,11 +115,14 @@ async function prepareModelDiscovery(
       capability,
       authorization,
     });
-    contexts.push(context);
-    return context;
+    const managed: ManagedPluginContext = { ...context, dispose: async () => {
+      try { await context.dispose(); } finally { contexts.delete(managed); }
+    } };
+    contexts.add(managed);
+    return managed;
   };
   const dispose = async () => {
-    await Promise.allSettled(contexts.reverse().map((context) => context.dispose()));
+    await Promise.allSettled([...contexts].reverse().map((context) => context.dispose()));
   };
 
   try {
@@ -146,15 +137,10 @@ async function prepareModelDiscovery(
       capability: extension,
       authorization,
     }));
-    const catalog = catalogService.capabilities.modelCatalog.create(await contextFor(
-      catalogService,
-      catalogService.capabilities.modelCatalog,
-      {
-        host: options.modelCatalogService?.trim()
-          || catalogService.capabilities.modelCatalog.endpoint.host,
-        port: catalogPort,
-      },
-    ));
+    const catalog = extensionModelCatalog(catalogService, (service, extension) => contextFor(service, extension, {
+      host: options.modelCatalogService?.trim() || extension.endpoint.host,
+      port: options.modelCatalogPort === undefined ? extension.endpoint.port : catalogPort,
+    }));
     const access: ModelDiscoveryAccess = {
       config,
       directory,
@@ -186,15 +172,8 @@ export async function openModelAccess(options: OpenModelAccessOptions): Promise<
   if (!prepared) return undefined;
   return {
     ...prepared.access,
-    createInference: async (target, timeoutMs) => await inference.capabilities.inference.create(
-      await prepared.contextFor(
-        inference,
-        inference.capabilities.inference,
-        inference.capabilities.inference.endpoint,
-      ),
-      target,
-      timeoutMs,
-    ),
+    createInference: async (target, timeoutMs) => extensionModelInference(inference, target, timeoutMs,
+      (service, extension) => prepared.contextFor(service, extension, extension.endpoint)),
   };
 }
 

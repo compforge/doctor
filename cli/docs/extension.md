@@ -33,6 +33,7 @@ packages/plugin/src/
 │   ├── overview.ts       # overview.summarize / overview.sample 的领域契约
 │   ├── tenant.ts         # tenant.list / tenant.resolve / user.search 的领域契约
 │   ├── mcp.ts            # mcp.configuration 的领域契约
+│   ├── model.ts          # 模型目录、Backend 与推理的领域契约
 │   └── service-extensions.ts # Service 声明的统一发现视图
 └── kubernetes.ts         # 复用现有 CapabilityAccess
 ```
@@ -102,6 +103,11 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
 | mcp.configuration | 超时预算 → MCP server、工具与连接配置投影 | MCP |
+| model.query | 租户 Identity、模型类型 → 模型列表 | Model、Chat、Tenant |
+| model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
+| model.backend.validate | 模型、超时预算 → 校验响应 | Model |
+| model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
+| model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
 Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Overview 按 Service
 关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 可以独立展示概览。
@@ -112,6 +118,14 @@ Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 I
 MCP 配置扩展负责把私有来源投影为公共 server/tool 契约，Command 根据投影完成目标选择与协议探测。
 配置读取与 gateway 探测使用各自的权限上下文，避免把 Command 的访问需求扩散给配置提供方。
 目录和 MCP 均按 Service 选择每个操作的唯一实现，重复实现报告歧义。
+
+模型目录、Backend 信息读取、主动校验与推理分别选择实现、检查访问权限。Backend Inspect 只返回公共
+身份；验证调用在 Probe 中执行，厂商配置与凭据由 Service 自己解析。Command 可把独立操作组合成本地
+使用接口，跨 Service 接缝传递的仍是对应 kind 的输入输出。
+
+流式响应以 body 的终态作为调用结束：宿主在收到响应头后继续保留受限上下文，逐次读取上游流以
+保留背压，并显式传递读取错误和取消信号。正常结束、消费方取消、请求取消及父命令取消都会触发资源释放；普通
+查询和非流式调用在结果返回后释放。只提供流式或非流式推理的 Service 可供相应消费路径单独使用。
 
 ## 接入示例：Data 使用 facts.inspect
 
