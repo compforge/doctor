@@ -1,23 +1,24 @@
+import { caseRunnerProvider } from "../case/extensions";
 import {
   PERF_SCENARIOS_KIND, requirePerfScenariosExtension, perfScenariosOutput,
-  type ServiceCatalog, type ServiceCaseCapability,
+  CASE_RUNNER_CREATE_KIND, type ServiceCatalog, type CaseRunnerCreateExtension,
 } from "@compforge/doctor-plugin";
 import { invokeExtension } from "../plugin/extension";
 import type { ManagedPluginContext } from "../plugin/context";
 
 export function selectPerfProvider(catalog: ServiceCatalog, requested?: string) {
+  const caseServices = new Set(catalog.extensions(CASE_RUNNER_CREATE_KIND).map(item => item.service.name));
   const canonical = requested === undefined ? undefined : catalog.find(requested)?.name;
   const matches = catalog.extensions(PERF_SCENARIOS_KIND).filter(({ service }) => (
-    requested === undefined ? service.capabilities.case !== undefined : service.name === canonical
+    requested === undefined ? caseServices.has(service.name) : service.name === canonical
   ));
   if (matches.length !== 1) {
     throw new Error(matches.length
       ? "Ambiguous perf.scenarios Extension; use --service to select one Service"
-      : `No perf.scenarios Extension${requested ? ` for Service '${requested}'` : " with a case capability"}`);
+      : `No perf.scenarios Extension${requested ? ` for Service '${requested}'` : " with a case.runner.create Extension"}`);
   }
   const { service, extension } = matches[0]!;
-  if (!service.capabilities.case) throw new Error(`Service '${service.name}' 未声明 case capability`);
-  return { service, cases: service.capabilities.case, extension: requirePerfScenariosExtension(extension) };
+  return { service, cases: caseRunnerProvider(catalog, service.name).extension, extension: requirePerfScenariosExtension(extension) };
 }
 
 /** Validate references before creating a runner or asking approval to generate load. */
@@ -37,7 +38,7 @@ export async function loadPerfScenarios(
 
 function validateScenarioCases(
   scenarios: ReturnType<typeof perfScenariosOutput>,
-  capability: ServiceCaseCapability,
+  capability: CaseRunnerCreateExtension,
 ): void {
   for (const scenario of scenarios) {
     const cases = capability.caseSets.find(item => item.caseset === scenario.caseSetId);

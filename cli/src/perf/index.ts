@@ -1,3 +1,4 @@
+import { createCaseRunner } from "../case/extensions";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
 import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
@@ -70,6 +71,21 @@ function toObservation(outcome: Outcome): ServiceCaseObservation {
     metrics: outcome.metrics,
     meta: outcome.meta,
     errorKind: outcome.error_kind,
+  };
+}
+
+/** Acquire request resources inside the Harness lifecycle, which guarantees cleanup after setup. */
+export function workloadFromCaseFactory(create: () => Promise<ServiceCaseRunner>): Workload {
+  let workload: Workload | undefined;
+  return {
+    setup: async context => {
+      workload ??= workloadFromCaseRunner(await create());
+      await workload.setup?.(context);
+    },
+    fire: input => workload!.fire(input),
+    judge: outcome => workload!.judge!(outcome),
+    deactivate: async context => { await workload?.deactivate?.(context); },
+    cleanup: async context => { await workload?.cleanup?.(context); },
   };
 }
 
@@ -349,17 +365,6 @@ export async function runPerf(
     command: "doctor perf",
     authorization,
   });
-  let runner: ServiceCaseRunner;
-  try {
-    runner = await selected.cases.createRunner(managed, {
-      caseSetId: caseSet.caseset,
-      timeoutMs: config.requestTimeoutMs,
-      requestIdentity,
-    });
-  } catch (error) {
-    await managed.dispose();
-    throw error;
-  }
 
   const unknownMetric = declaredScenario.observability.metricServices.filter(
     (service) => !plugin.services.extensions(METRIC_CONFIGURATION_KIND).some(provider => provider.service.name === plugin.services.find(service)?.name),
@@ -425,7 +430,11 @@ export async function runPerf(
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
-      workload: workloadFromCaseRunner(runner),
+      workload: workloadFromCaseFactory(() => createCaseRunner(selected.cases, managed, {
+        caseSetId: caseSet.caseset,
+        timeoutMs: config.requestTimeoutMs,
+        requestIdentity,
+      })),
       caseSet,
       caseMix,
       loads: config.levels.map((level) => rampHold("closed", level, config.rampSeconds, config.holdSeconds, {

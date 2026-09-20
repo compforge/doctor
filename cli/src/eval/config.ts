@@ -1,11 +1,9 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
-import type { PluginDefinition, ServiceDefinition } from "@compforge/doctor-plugin";
+import { caseRunnerProvider } from "../case/extensions";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { EvalCliOpts, EvalConfig } from "./model";
 
-export type EvalProvider = ServiceDefinition & {
-  capabilities: ServiceDefinition["capabilities"]
-    & Required<Pick<ServiceDefinition["capabilities"], "case">>;
-};
+export type EvalProvider = ReturnType<typeof caseRunnerProvider>;
 
 function positiveInteger(value: string | undefined, fallback: number, label: string): number {
   const parsed = Number(value ?? fallback);
@@ -44,16 +42,7 @@ export function selectEvalProvider(
   plugin: PluginDefinition,
   requested: string | undefined,
 ): EvalProvider {
-  if (requested) {
-    const service = plugin.services.findWith(requested, "case");
-    if (!service) throw new Error(`Service '${requested}' 未声明 case capability`);
-    return service as EvalProvider;
-  }
-  const providers = plugin.services.servicesWith("case");
-  if (providers.length !== 1) {
-    throw new Error(`当前 Plugin 有 ${providers.length} 个 case provider；请使用 --service 指定`);
-  }
-  return providers[0] as EvalProvider;
+  return caseRunnerProvider(plugin.services, requested);
 }
 
 export function selectEvalCaseSet(
@@ -61,13 +50,13 @@ export function selectEvalCaseSet(
   requested: string | undefined,
 ): CaseSet {
   if (requested) {
-    const caseSet = provider.capabilities.case.caseSets.find((item) => item.caseset === requested);
-    if (!caseSet) throw new Error(`Service '${provider.name}' 未声明 CaseSet '${requested}'`);
+    const caseSet = provider.extension.caseSets.find((item) => item.caseset === requested);
+    if (!caseSet) throw new Error(`Service '${provider.service.name}' 未声明 CaseSet '${requested}'`);
     return caseSet;
   }
-  const caseSets = provider.capabilities.case.caseSets;
+  const caseSets = provider.extension.caseSets;
   if (caseSets.length !== 1) {
-    throw new Error(`Service '${provider.name}' 有 ${caseSets.length} 个 CaseSet；请使用 --caseset 指定`);
+    throw new Error(`Service '${provider.service.name}' 有 ${caseSets.length} 个 CaseSet；请使用 --caseset 指定`);
   }
   return caseSets[0]!;
 }

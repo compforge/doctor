@@ -1,3 +1,4 @@
+import { createCaseRunner } from "../case/extensions";
 import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
@@ -62,7 +63,7 @@ async function resolveEvalRequestIdentity(input: {
   profileName: string;
   commandContext: CommandContext;
 }): Promise<ServiceRequestIdentity | undefined> {
-  const requirement = input.provider.capabilities.case.requestIdentity;
+  const requirement = input.provider.extension.requestIdentity;
   if (!requirement) return undefined;
   const configured = requirement.configured(input.commandContext.profile.pluginConfig);
   const tenantId = configured.tenantId?.trim();
@@ -227,7 +228,7 @@ export async function runEval(
     profileName: kube.profileName,
     commandContext,
   });
-  if (provider.capabilities.case.requestIdentity && !requestIdentity) {
+  if (provider.extension.requestIdentity && !requestIdentity) {
     terminalStderr.warning("[eval] 已取消身份选择\n");
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
@@ -237,7 +238,7 @@ export async function runEval(
     risk: "disrupt",
     title: `执行 CaseSet ${caseSet.caseset}`,
     purpose: caseSet.focus ?? "按 canonical CaseSet 触发真实业务请求并采集关联证据",
-    target: `${kube.profileName}/${kube.kubernetes.namespace}/${provider.name}`,
+    target: `${kube.profileName}/${kube.kubernetes.namespace}/${provider.service.name}`,
     impact: [
       `顺序发起 ${cases.length} 个真实业务请求，每个 Case 执行一次`,
       "请求可能写入业务数据库、日志和 trace，并可能产生模型调用费用",
@@ -255,9 +256,9 @@ export async function runEval(
     context: kube.kubernetes.context,
   }, {
     config: commandContext.profile.pluginConfig,
-    service: provider,
-    endpoint: provider.capabilities.case.endpoint,
-    capability: provider.capabilities.case,
+    service: provider.service,
+    endpoint: provider.extension.endpoint,
+    capability: provider.extension,
     command: "doctor eval",
     authorization: resolveKubernetesCommandContext(executor, commandContext).access,
   });
@@ -277,7 +278,7 @@ export async function runEval(
   let results: EvalCaseResult[] = [];
   let lifecycleError: string | undefined;
   try {
-    runner = await provider.capabilities.case.createRunner(managed, {
+    runner = await createCaseRunner(provider.extension, managed, {
       caseSetId: caseSet.caseset,
       timeoutMs: config.requestTimeoutMs,
       requestIdentity,
@@ -289,6 +290,10 @@ export async function runEval(
   } finally {
     try {
       await runner?.deactivate?.({ runId, signal: signal });
+    } catch (error) {
+      lifecycleError ??= error instanceof Error ? error.message : String(error);
+    }
+    try {
       await runner?.cleanup?.({ runId, signal: signal });
     } catch (error) {
       lifecycleError ??= error instanceof Error ? error.message : String(error);
@@ -312,7 +317,7 @@ export async function runEval(
     schema: "doctor-eval/v2",
     runId,
     plugin: `${plugin.id}@${plugin.version}`,
-    service: provider.name,
+    service: provider.service.name,
     caseset: caseSet.caseset,
     startedAt,
     finishedAt: new Date().toISOString(),

@@ -1,3 +1,4 @@
+import { CASE_RUNNER_CREATE_KIND, type CaseRunnerCreateExtension } from "./case";
 import { PERF_SCENARIOS_KIND, type PerfScenariosExtension } from "./perf";
 import { METRIC_CONFIGURATION_KIND, type MetricConfigurationExtension } from "./metric";
 import { adaptModelExtensions } from "./model-adapters";
@@ -19,6 +20,11 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     explicit.push(extension);
   };
   for (const extension of adaptModelExtensions(service)) add(extension);
+  const cases = service.capabilities.case;
+  if (cases) add({ id: CASE_RUNNER_CREATE_KIND, kind: CASE_RUNNER_CREATE_KIND,
+    access: cases.access, endpoint: cases.endpoint, caseSets: cases.caseSets, requestIdentity: cases.requestIdentity,
+    run: (context, input) => cases.createRunner(context, input),
+  } satisfies CaseRunnerCreateExtension);
   const perf = service.capabilities.perf;
   if (perf) add({ id: PERF_SCENARIOS_KIND, kind: PERF_SCENARIOS_KIND, access: {},
     run: async () => perf.scenarios,

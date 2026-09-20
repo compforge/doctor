@@ -32,7 +32,7 @@ test("Perf requires one implementation and an associated Case capability", () =>
   const duplicate = createServiceCatalog([{ ...service, extensions: [extension, { ...extension, id: "second" }] }]);
   expect(() => selectPerfProvider(duplicate, "app")).toThrow("Ambiguous");
   const missing = createServiceCatalog([{ ...service, capabilities: {}, extensions: [extension] }]);
-  expect(() => selectPerfProvider(missing, "app")).toThrow("case capability");
+  expect(() => selectPerfProvider(missing, "app")).toThrow("case.runner.create");
   expect(() => selectPerfProvider(missing, "unknown")).toThrow("No perf.scenarios");
 });
 
