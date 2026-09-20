@@ -483,6 +483,17 @@ Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择�
 Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，
 不得放入命令参数。取消信号、权限检查及资源生命周期继续由宿主管理。
 
+### Extension 与 Data 接入
+
+Service.extensions 提供开放 kind 的 Extension；Extension、kind 标识及各 kind 的输入输出契约统一定义在
+`packages/plugin`。Catalog 按 kind 离线发现，不调用实现；Extension.access 声明实际访问需求。
+Data 使用 facts.inspect，prepare 先检查所选实现权限，run 再通过宿主的受限上下文取数。输入是 Query
+列表，输出逐 Identity 关联，复用既有 Fact 与预算校验；它无需数据库式 resolveTarget。
+
+Service 的其它 kind 不扩大 Data 的权限范围。现有 Inspect contribution 通过单一适配入口提供同一 kind，
+不能与原生 facts.inspect 重复声明；当前 Data 每个 Service 只接受一个 facts.inspect 实现。其它命令沿用
+原有协议。通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
+
 ### Inspect 批量调用
 
 `ServiceInspect.inspect(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个

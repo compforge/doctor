@@ -10,6 +10,7 @@ export interface ServiceDescription {
   description?: string;
   capabilities: string[];
   contributions: string[];
+  extensions?: { id: string; kind: string; description?: string }[];
   details: {
     workloads: Workload[];
     dependencies: { id: string; service: string; capability: "dataSources"; dataSource: string }[];
@@ -41,6 +42,9 @@ function describeAccess(access: CapabilityAccess): CapabilityAccess {
 export function describeService(service: ServiceDefinition): ServiceDescription {
   const inspect = service.contributions?.inspect;
   const access: ServiceDescription["details"]["access"] = [];
+  for (const extension of service.extensions ?? []) {
+    access.push({ owner: `extensions.${extension.id}`, requirements: describeAccess(extension.access) });
+  }
   if (inspect) access.push({ owner: "contributions.inspect", requirements: describeAccess(inspect.access) });
   for (const name of ["overview", "traceId", "tenantDirectory", "modelCatalog", "inference", "case", "mcp"] as const) {
     const capability = service.capabilities[name];
@@ -62,6 +66,7 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     description: service.description,
     capabilities: Object.entries(service.capabilities).filter(([, value]) => value !== undefined).map(([name]) => name),
     contributions: Object.entries(service.contributions ?? {}).filter(([, value]) => value !== undefined).map(([name]) => name),
+    ...(service.extensions?.length ? { extensions: service.extensions.map(({ id, kind, description }) => ({ id, kind, description })) } : {}),
     details: {
       workloads: service.workloads.map(({ name, description, platform, namespace, location, container }) => ({
         name, description, platform, namespace, container,

@@ -5,9 +5,10 @@
 `doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
 `--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
-`inspect` capability，声明 `provides` 数据类型，并拥有 ID 解析、固定只读查询和确定性判读。
+`facts.inspect` Extension，声明 `accepts` Identity 类型、`provides` Fact 类型及访问权限。Extension 接口、kind
+及输入输出契约定义在 `packages/plugin`，业务解析与查询实现归 Service。
 
-Service Inspect contribution 接受由业务 Identity 与约束组成的 Query，并返回一个 query-level result。result 的
+facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected / failed outcome。成功 result 的
 `resolution`、`missingEvidence` 与 `truncated` 表达本次获取状态；`facts` 承载可独立消费的稳定信息：
 
 - `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。
@@ -24,10 +25,11 @@ Service Inspect contribution 接受由业务 Identity 与约束组成的 Query�
 
 ## 流程
 
-1. 读取命令行传入的 biz ID，并从 Catalog 选择本次参与的数据 Service。多个 ID 进入同一采集批次，
-   共享 expansion、provide 与访问准备，再按每个输入沿有向 Relation 可达的查询结果分别执行 Detector 与 Coverage。
-2. Doctor 为每个 Service 准备 `PluginContext`，只注入选中的 kubeconfig、Namespace、Service 身份和
-   按需 port-forward。Plugin 自行定位运行态、解释配置并返回脱敏的数据源状态。
+1. `CommandSpec.prepare` 解析 biz ID 和 Service 范围，按 kind 选择 Extension，检查命令自身的环境访问
+   与所选 Extension.access。此阶段不调用扩展 run，不查询业务数据、不初始化业务 Client。
+2. `CommandSpec.run` 为各扩展建立独立的受限上下文，并调用 `run(context, queries)`。多个 ID 共享批次
+   访问和扩展遍历，再按每个输入沿有向 Relation 可达的结果分别执行 Detector 与 Coverage。原生扩展自行
+   取得数据，不要求声明或返回数据库连接目标。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
    Relation provider；新的 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
    扩展时取得的 query result 同时作为该 Service 的数据贡献。
@@ -43,11 +45,15 @@ Service Inspect contribution 接受由业务 Identity 与约束组成的 Query�
 
 ## 关键设计
 
-### Catalog 声明 Capability，编排器不认识业务名
+### Catalog 按 kind 发现 Extension，编排器不认识业务名
 
-`collect/data` 只解释阶段和 capability 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
+`collect/data` 只解释阶段和 facts.inspect 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
 Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schema、关联键、连接规则和固定查询图留在
 具体 Plugin。新增 Plugin 或 Service 不需要修改通用 data 编排器。
+
+一个 Service 可以提供多个 kind，Data 只选择 facts.inspect。当前结果按 Service 归属，因此每个 Service
+只接受一个该 kind 的实现，多个实现明确报歧义。尚未迁移的 Inspect contribution 由适配入口生成同一
+Extension 视图；不能与原生 facts.inspect 重复注册。其它命令不必同时迁移。
 
 ### Relation 是确定性的两阶段依赖
 
@@ -73,8 +79,9 @@ RelationFact 是 capability 数据结果的一部分；resolution 中的 identif
 
 Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命周期；Plugin 决定如何定位运行实例、解释配置、使用哪套
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
-连接凭据只存在于本轮执行态；Facts 和报告只保留 Plugin 返回的脱敏 endpoint、用户名和
-凭据来源。
+每个上下文只拥有对应 Extension 的声明权限，prepare 的汇总检查不会合并扩展权限。连接凭据只存在于
+执行态；Inspect 适配入口仍可保留脱敏 target 描述，原生 Extension 不要求数据库字段。扩展的临时资源
+随调用作用域回收，共享 Client 由根 finalize 关闭。
 
 ### 批量访问与独立诊断
 

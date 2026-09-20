@@ -42,10 +42,10 @@ export interface DataServiceSelection {
 
 export interface DataTargetFact {
   service: string;
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
+  endpoint?: string;
+  database?: string;
+  username?: string;
+  credentialSource?: string;
 }
 
 export interface DataServiceFacts {
@@ -60,6 +60,8 @@ export interface DataInspectionFacts {
 export interface DataInspectResultIdentity {
   id: string;
   stage: "expand" | "provide";
+  /** Specific Extension producer; older stored results use inspect. */
+  extension?: string;
   service: string;
   identity: Identity;
 }

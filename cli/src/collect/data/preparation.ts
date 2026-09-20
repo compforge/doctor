@@ -2,11 +2,11 @@ import type {
   PluginContext,
   ServiceCatalog,
 } from "@compforge/doctor-plugin";
+import { findDataProvider } from "./extensions";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import type { PreparedDataCommand } from "./context";
 import type {
-  DataServiceSelection,
   DataTargetFact,
   SupportedDataService,
 } from "./model";
@@ -15,7 +15,7 @@ export function isSupportedDataService(
   service: string,
   catalog: ServiceCatalog,
 ): service is SupportedDataService {
-  return catalog.findWithContribution(service, "inspect") !== undefined;
+  return findDataProvider(catalog, service) !== undefined;
 }
 
 export interface ConfirmedDataServiceTarget {
@@ -34,42 +34,32 @@ export interface DataAccessPreparation {
 /** Doctor 只注入当前环境与 Service 身份；运行态定位和数据源访问由 Plugin 持有。 */
 export async function prepareDataAccess(
   dataCommand: PreparedDataCommand,
-  selections: readonly DataServiceSelection[],
-  catalog: ServiceCatalog,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
 ): Promise<DataAccessPreparation> {
   const { command, config, executor } = dataCommand;
   const confirmed: ConfirmedDataServiceTarget[] = [];
   const managedContexts: ManagedPluginContext[] = [];
 
-  for (const selection of selections) {
-    const declared = catalog.findWithContribution(selection.service, "inspect");
-    if (!declared) {
-      confirmed.push({
-        ...selection,
-        targetFact: {
-          status: "unavailable",
-          reason: `Doctor 未注册 Service '${selection.service}' 的 Inspect contribution`,
-        },
-      });
-      continue;
-    }
+  for (const declared of dataCommand.providers) {
+    const selection = { service: declared.name };
     let context = injectedContexts?.[selection.service];
     let managed: ManagedPluginContext | undefined;
-    if (!context) {
-      managed = await openPluginContext(executor, config.kube, {
-        config: command.profile.pluginConfig,
-        databaseIdentity: config.fallbackIdentity,
-        service: declared,
-        command: "doctor data",
-        capability: declared.contributions.inspect,
-        authorization: resolveKubernetesCommandContext(executor, command).access,
-      });
-      context = managed;
-    }
-
     try {
-      const target = await declared.contributions.inspect.resolveTarget(context);
+      command.signal.throwIfAborted();
+      if (!context) {
+        managed = await openPluginContext(executor, config.kube, {
+          config: command.profile.pluginConfig,
+          databaseIdentity: config.fallbackIdentity,
+          service: declared.service,
+          command: "doctor data",
+          capability: declared.extension,
+          authorization: resolveKubernetesCommandContext(executor, command).access,
+        });
+        context = managed;
+      }
+      // Only the transitional Inspect adapter has a database-shaped target resolver.
+      // Native Extensions own their resource preparation inside run.
+      const target = await declared.service.contributions?.inspect?.resolveTarget(context);
       if (managed) managedContexts.push(managed);
       confirmed.push({
         ...selection,

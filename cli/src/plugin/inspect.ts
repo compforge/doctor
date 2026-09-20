@@ -1,3 +1,5 @@
+import { invokeExtension } from "./extension";
+import type { FactsInspectExtension, FactsInspectInput, FactsInspectOutput } from "@compforge/doctor-plugin";
 import type { PluginContext, ServiceInspectQuery, ServiceInspectQueryOutcome } from "@compforge/doctor-plugin";
 import type {
   Fact,
@@ -38,7 +40,7 @@ function validateRelation(input: {
   fact: Record<string, unknown>;
   label: string;
   queryIdentity: Identity;
-  capability: ServiceInspect;
+  capability: Pick<ServiceInspect, "provides" | "expands">;
 }): RelationFact {
   const { fact, label, queryIdentity, capability } = input;
   const from = identity(fact.from, `${label}.from`);
@@ -59,7 +61,7 @@ function validateFact(input: {
   index: number;
   service: string;
   queryIdentity: Identity;
-  capability: ServiceInspect;
+  capability: Pick<ServiceInspect, "provides" | "expands">;
   valueKinds: Set<string>;
   recordKeys: Set<string>;
   relationKeys: Set<string>;
@@ -144,7 +146,7 @@ export function normalizeServiceInspectResult(input: {
   value: unknown;
   service: string;
   queryIdentity: Identity;
-  capability: ServiceInspect;
+  capability: Pick<ServiceInspect, "provides" | "expands">;
   budget: ServiceInspectBudget;
 }): ServiceInspectResult {
   const { service, queryIdentity, capability, budget } = input;
@@ -234,7 +236,7 @@ export function normalizeServiceInspectResult(input: {
 
 /** Correlate by identity, never by provider response order. A malformed response fails only its query. */
 export async function inspectServiceQueries(
-  capability: ServiceInspect, context: PluginContext, queries: readonly ServiceInspectQuery[],
+  capability: Pick<ServiceInspect, "inspect">, context: PluginContext, queries: readonly ServiceInspectQuery[],
 ): Promise<readonly ServiceInspectQueryOutcome[]> {
   let outcomes: readonly ServiceInspectQueryOutcome[];
   try { outcomes = await capability.inspect(context, queries); }
@@ -242,11 +244,22 @@ export async function inspectServiceQueries(
     return queries.map(query => ({ identity: query.identity, status: "failed",
       reason: error instanceof Error ? error.message : String(error) }));
   }
+  if (!Array.isArray(outcomes)) return queries.map(query => ({
+    identity: query.identity, status: "failed", reason: "Inspect must return an outcome array",
+  }));
   return queries.map(query => {
-    const matches = outcomes.filter(item => sameIdentity(item.identity, query.identity));
+    const matches = outcomes.filter(item => item && typeof item === "object" && item.identity
+      && sameIdentity(item.identity, query.identity));
     return matches.length === 1 ? matches[0]! : {
       identity: query.identity, status: "failed" as const,
       reason: `Inspect returned ${matches.length} outcomes for ${query.identity.kind}:${query.identity.value}`,
     };
   });
+}
+
+/** Same query isolation as Inspect, with the function supplied by the facts.inspect contract. */
+export async function inspectExtensionQueries(
+  extension: FactsInspectExtension, context: PluginContext, queries: FactsInspectInput,
+): Promise<FactsInspectOutput> {
+  return inspectServiceQueries({ inspect: (ctx, input) => invokeExtension(extension, ctx, input) }, context, queries);
 }

@@ -62,12 +62,14 @@ test("collect capability contract is the union of selected concrete commands", (
       "plugin.model",
       "service.modelCatalog",
       "contribution.inspect",
+      "extension.facts.inspect",
       "service.traceId",
       "service.log",
     ]);
   expect(contract.needs.find((need) => (
     need.capability.scope === "contribution" && need.capability.name === "inspect"
-  ))?.requirement).toBe("required");
+  ))?.requirement).toBe("preferred");
+  expect(contract.needs.find(need => need.capability.scope === "extension" && need.capability.name === "facts.inspect")?.requirement).toBe("required");
 });
 
 test("collect delegates concrete work and continues after one command fails", async () => {

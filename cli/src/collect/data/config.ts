@@ -1,3 +1,4 @@
+import { dataProviders, findDataProvider } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -48,13 +49,14 @@ export function dataReportName(now: Date): string {
 
 /** Providers reachable from a biz_id Query through declared Relation expansions. */
 export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
+  const providers = dataProviders(catalog);
   const reachable = new Set(["biz_id"]);
   const selected = new Set<string>();
   let changed = true;
   while (changed) {
     changed = false;
-    for (const service of catalog.servicesWithContribution("inspect")) {
-      const capability = service.contributions.inspect;
+    for (const service of providers) {
+      const capability = service.extension;
       if (!capability.accepts.some((kind) => reachable.has(kind))) continue;
       if (!selected.has(service.name)) {
         selected.add(service.name);
@@ -67,22 +69,21 @@ export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
       }
     }
   }
-  return catalog.servicesWithContribution("inspect")
+  return providers
     .map((service) => service.name)
     .filter((service) => selected.has(service));
 }
 
 export function parseDataServices(raw: string | undefined, catalog: ServiceCatalog): string[] {
-  const defaults = dataServicesForBizQuery(catalog);
-  const values = (raw ?? defaults.join(","))
+  const values = (raw ?? dataServicesForBizQuery(catalog).join(","))
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
   const services = [...new Set(values)];
   if (!services.length) throw new Error("--services 未解析出任何 Service");
-  const unsupported = services.filter((service) => !catalog.findWithContribution(service, "inspect"));
+  const unsupported = services.filter((service) => !findDataProvider(catalog, service));
   if (unsupported.length) {
-    throw new Error(`Doctor 未注册以下 Service 的 Inspect contribution：${unsupported.join(", ")}`);
+    throw new Error(`Doctor 未注册以下 Service 的 facts.inspect Extension：${unsupported.join(", ")}`);
   }
   return catalog.resolveNames(services);
 }
@@ -106,7 +107,7 @@ export async function resolveDataServiceSelection(
   if (interactive && !input.config.servicesExplicit) {
     const choices = dataServicesForBizQuery(input.catalog).map((name) => ({ name }));
     if (!choices.length) {
-      throw new Error("当前 Plugin 未声明 Inspect contribution");
+      throw new Error("当前 Plugin 未声明 facts.inspect Extension");
     }
     const selected = await (input.promptServices ?? promptNamedChoices)({
       choices,

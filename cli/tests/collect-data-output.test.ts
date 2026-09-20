@@ -81,7 +81,7 @@ const executor: Executor = {
   run: async () => { throw new Error("unexpected Kubernetes access"); },
   exec: async () => { throw new Error("unexpected Kubernetes access"); },
 };
-const contexts = { [service]: {} as PluginContext };
+const contexts = { [service]: { signal: new AbortController().signal } as PluginContext };
 
 test("doctor data 默认不选择仅接受 tenant_id 的 capability", () => {
   const tenantOnly = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
@@ -248,9 +248,9 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     }, relationPlugin.services, context, executor);
     expect(prepared).toBeDefined();
     const code = await runCollectData(prepared!, relationPlugin, {
-      [resolver]: {} as PluginContext,
-      [traceResolver]: {} as PluginContext,
-      [records]: {} as PluginContext,
+      [resolver]: { signal: new AbortController().signal } as PluginContext,
+      [traceResolver]: { signal: new AbortController().signal } as PluginContext,
+      [records]: { signal: new AbortController().signal } as PluginContext,
     });
 
     expect(commandExitCode(code)).toBe(0);

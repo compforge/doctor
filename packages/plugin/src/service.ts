@@ -1,5 +1,6 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
+import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
 import type {
   Fact,
@@ -512,6 +513,8 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
   dependencies?: readonly ServiceCapabilityDependency[];
   /** Inspect, Probe and Detector contributions selected and driven by Core Collect commands. */
   contributions?: ServiceContributions;
+  /** Open, kind-based functions. A Service may provide several kinds. */
+  extensions?: readonly RegisteredExtension[];
   capabilities: ServiceCapabilities;
 }
 

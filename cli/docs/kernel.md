@@ -392,6 +392,7 @@ CLI 实现。
 
 - [`collect-protocol.md`](collect-protocol.md)：Collect 调度、partial、Coverage、授权、交付与退出码。
 - [`plugin.md`](plugin.md)：Plugin capability、Context、分发和信任边界。
+- [`extension.md`](extension.md)：面向各类 Command 的 Extension 协议、权限与调用边界。
 - [`commands/collect.md`](commands/collect.md)：集合命令如何组合多个 Collect 入口。
 - [`commands/tenant.md`](commands/tenant.md) 与
   [`commands/data-diagnosis.md`](commands/data-diagnosis.md)：Application 数据的 Query 作用域。
