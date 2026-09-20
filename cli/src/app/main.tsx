@@ -247,7 +247,7 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
     .option("--dependencies", "进入业务 Container 采集应用依赖；交互模式未指定时询问，-y 默认不采集")
     .option("--no-dependencies", "不采集应用依赖")
-    .addOption(deliveryFormatOption(["bundle", "json", "html", "md"]))
+    .addOption(deliveryFormatOption(["bundle", "json", "html", "md", "summary"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }

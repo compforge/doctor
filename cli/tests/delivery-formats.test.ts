@@ -1,9 +1,12 @@
-import { expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CommandContext } from "../src/command";
-import { finalizeFixture } from "./report-fixture";
+import { finalizeFixture, finalizeResult } from "./report-fixture";
+import { inspectCommand } from "../src/collect/inspect/command";
+import { CommandStatus } from "../src/command";
+import { terminalStdout, terminalStderr } from "../src/terminal/output";
 
 for (const format of ["json", "md"] as const) {
   test(`${format} retains distinct artifacts with the same command and deduplicates shared references`, async () => {
@@ -49,4 +52,40 @@ test("single JSON export carries the domain diagnosis and its evidence manifest"
     expect(exported.result).toEqual({ facts: [1] });
     expect(JSON.parse(readFileSync(exported.manifest, "utf8")).children).toEqual([]);
   } finally { await context.disposeClients(); rmSync(root, { recursive: true, force: true }); }
+});
+
+test("summary finalization serializes evidence and skips the HTML renderer", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-delivery-summary-"));
+  const context = new CommandContext({});
+  const output = spyOn(terminalStdout, "write").mockImplementation(() => true);
+  const evidenceOutput = spyOn(terminalStderr, "info").mockImplementation(() => true);
+  const render = spyOn(inspectCommand, "render");
+  let directory: string | undefined;
+  try {
+    const source = join(root, "source"); mkdirSync(source);
+    const summary = "Service Inspect 摘要\n状态：degraded\n";
+    writeFileSync(join(source, "runtime-summary.txt"), summary);
+    writeFileSync(join(source, "summary.md"), "# Full evidence");
+    const artifact = context.artifacts.add({ command: "inspect", path: source });
+    expect(await finalizeResult(context, inspectCommand, {
+      status: CommandStatus.Ok, output: undefined, artifacts: [artifact],
+    }, { format: "summary" })).toBe(0);
+    expect(render).not.toHaveBeenCalled();
+    expect(output).toHaveBeenCalledWith(summary);
+    directory = evidenceOutput.mock.calls.map(([line]) => line)
+      .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+    expect(directory).toBeDefined();
+    const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
+    expect(manifest.delivery.status).toBe("ok");
+    expect(readFileSync(join(directory!, manifest.files["runtime-summary.txt"].path), "utf8")).toBe(summary);
+    expect(readFileSync(join(directory!, manifest.files["summary.md"].path), "utf8")).toBe("# Full evidence");
+    expect(existsSync(join(directory!, "report.html"))).toBeFalse();
+  } finally {
+    render.mockRestore();
+    output.mockRestore();
+    evidenceOutput.mockRestore();
+    await context.disposeClients();
+    if (directory) rmSync(directory, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+  }
 });

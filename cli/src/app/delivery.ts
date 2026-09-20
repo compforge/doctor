@@ -31,7 +31,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
   const manifestPath = join(directory, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as CommandManifest;
   let format = options.format?.trim() || "default";
-  if (!["default", "html", "json", "md", "bundle", "manifest"].includes(format)) {
+  if (!["default", "html", "json", "md", "summary", "bundle", "manifest"].includes(format)) {
     terminalStderr.warning(`[delivery] 未识别 format '${format}'，按 default 交付 HTML + Bundle\n`);
     format = "default";
   }
@@ -55,6 +55,11 @@ export async function deliverSerialized(input: { directory: string; options: Com
         const path = options.output?.trim() || reportName;
         return resolve(path.endsWith(`.${extension}`) ? path : `${path}.${extension}`);
       };
+      if (format === "summary") {
+        const summaryPath = join(directory, "runtime-summary.txt");
+        if (!existsSync(summaryPath)) throw new Error("Serialized result has no runtime-summary.txt");
+        terminalStdout.write(readFileSync(summaryPath, "utf8"));
+      }
       const files: { source: string; destination: string }[] = [];
       if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
       if (format === "json" || format === "md") files.push({ source: format === "json" ? "diagnosis.json" : "summary.md", destination: filePath(format) });

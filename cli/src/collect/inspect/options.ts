@@ -37,8 +37,8 @@ export function parseInspectServices(raw: string, catalog: ServiceCatalog): stri
 
 export function parseInspectOutputFormat(value: string | undefined): InspectOutputFormat {
   const format = value?.trim() || "default";
-  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "md") {
-    throw new Error(`--format 只支持 bundle、json、html 或 md: '${format}'`);
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "md" && format !== "summary") {
+    throw new Error(`--format 只支持 bundle、json、html、md 或 summary: '${format}'`);
   }
   return format;
 }
@@ -74,6 +74,7 @@ export async function resolveInspectConfig(
   validateInspectInput(opts);
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
+  if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
   const reportName = inspectReportName(new Date());
   const outputPath = format === "default"
     ? resolveDefaultReportPaths(opts.output, reportName).html

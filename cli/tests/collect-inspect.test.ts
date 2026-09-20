@@ -16,11 +16,14 @@ import { commandExitCode } from "../src/app/command";
 import { finalizeResult } from "./report-fixture";
 import {
   makeInspectDetectors,
+  parseInspectOutputFormat,
   projectInspectServiceFacts,
   resolveInspectDependencySelection,
   resolveInspectDeploymentSelection,
   runCollectInspect,
+  buildInspectRuntimeSummary,
   type InspectConfig,
+  type InspectDiagnosis,
   type InspectEvidence,
   type InspectFacts,
 } from "../src/collect/inspect";
@@ -207,6 +210,146 @@ test("terminated state 只投影 Inspect Fact 声明的字段", () => {
 
   expect(state).toMatchObject({ kind: "terminated", reason: "OOMKilled", exitCode: 137 });
   expect(state).not.toHaveProperty("containerId");
+});
+
+test("inspect 接受终端 summary 格式", () => {
+  expect(parseInspectOutputFormat("summary")).toBe("summary");
+  expect(() => parseInspectOutputFormat("table")).toThrow("summary");
+});
+
+function runtimeSummaryDiagnosis(): InspectDiagnosis {
+  const evidence = detectorEvidence();
+  return {
+    findings: [],
+    coverage: [{ goal: "workload-runtime", status: "sufficient", missingEvidence: [] }],
+    evidence: {
+      ...evidence,
+      facts: {
+        ...evidence.facts,
+        serviceTargets: collectedFact("inspect.service-targets", "service-targets", {
+          services: {
+            "planit-server": {
+              service: "planit-server",
+              configurationSupported: false,
+              workloads: {
+                main: {
+                  name: "main",
+                  location: { kind: "labels", labels: { app: "planit-server" } },
+                  probes: [],
+                  deployments: [],
+                  unavailableDeployments: [],
+                  podRuntime: collectedFact("inspect.workload-pods", "service-targets", {
+                    pods: [{
+                      instance: { platform: "kubernetes", environment: "default", workload: "main", namespace: "demo", pod: "planit-server-0", uid: "pod-uid" },
+                      pod: "planit-server-0",
+                      serviceAccountName: "planit-server",
+                      phase: "Running",
+                      conditions: [{ type: "Ready", status: "False", reason: "ContainersNotReady" }],
+                      containers: [{
+                        name: "agent",
+                        image: "example.test/planit:v1",
+                        requests: { memory: "1Gi" },
+                        limits: { memory: "2Gi" },
+                        ready: false,
+                        restartCount: 3,
+                        state: { kind: "waiting", reason: "CrashLoopBackOff" },
+                        lastTermination: { reason: "OOMKilled", exitCode: 137 },
+                      }],
+                    }],
+                  }),
+                },
+              },
+            },
+          },
+        }),
+      },
+    },
+  };
+}
+
+test("运行摘要突出异常 Pod、重启、OOM 与内存声明", () => {
+  const summary = buildInspectRuntimeSummary(runtimeSummaryDiagnosis());
+  expect(summary).toContain("Service：planit-server");
+  expect(summary).toContain("Pod：1 total，0 ready");
+  expect(summary).toContain("状态：degraded");
+  expect(summary).toContain("planit-server/main/planit-server-0 / agent");
+  expect(summary).toContain("restarts=3");
+  expect(summary).toContain("last=terminated: OOMKilled, exit=137");
+  expect(summary).toContain("Memory：request=1Gi，limit=2Gi");
+});
+
+function readyRuntimeFixture() {
+  const diagnosis = runtimeSummaryDiagnosis();
+  const targets = diagnosis.evidence.facts.serviceTargets;
+  if (targets.status !== "collected") throw new Error("fixture requires collected targets");
+  const service = targets.services["planit-server"]!;
+  const workload = service.workloads.main!;
+  if (workload.podRuntime.status !== "collected") throw new Error("fixture requires collected pods");
+  const pod = workload.podRuntime.pods[0]!;
+  pod.conditions = [{ type: "Ready", status: "True" }];
+  pod.containers[0]!.ready = true;
+  pod.containers[0]!.state = { kind: "running" };
+  return { diagnosis, service, workload, pod };
+}
+
+test("恢复后的 Pod 仍计入 Ready，历史 OOM 作为提醒", () => {
+  const { diagnosis } = readyRuntimeFixture();
+  const summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("Pod：1 total，1 ready");
+  expect(summary).toContain("状态：warning");
+  expect(summary).toContain("last=terminated: OOMKilled, exit=137");
+});
+
+test("缺失探测结果不宣称健康，也保留 Detector 发现", () => {
+  const { diagnosis, pod } = readyRuntimeFixture();
+  pod.containers[0]!.restartCount = 0;
+  delete pod.containers[0]!.lastTermination;
+  diagnosis.coverage = [{ goal: "workload-observations", status: "insufficient",
+    missingEvidence: ["planit-server/main: 未取得 health"] }];
+  let summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("状态：unknown");
+  expect(summary).toContain("证据：incomplete");
+  expect(summary).toContain("未取得 health");
+  diagnosis.findings = [{ id: "health-1", kind: "health.failed", schemaVersion: 1,
+    severity: "critical", confidence: "high", message: "health check failed", evidence: [],
+    service: "planit-server", detector: "health",
+    producer: { origin: "plugin", plugin: "fixture", service: "planit-server", id: "health" } }];
+  summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("状态：degraded");
+  expect(summary).toContain("[critical] planit-server/health.failed: health check failed");
+  expect(summary).toContain("证据：incomplete");
+});
+
+test("Service 没有 Workload 时状态未知", () => {
+  const { diagnosis, service } = readyRuntimeFixture();
+  service.workloads = {};
+  expect(buildInspectRuntimeSummary(diagnosis)).toContain("状态：unknown");
+  expect(buildInspectRuntimeSummary(diagnosis)).toContain("未声明 Workload");
+});
+
+test("共享 Pod 按环境和 namespace 内的 UID 去重，关联仍可见", () => {
+  const { diagnosis, service, workload, pod } = readyRuntimeFixture();
+  service.workloads.alias = { ...workload, name: "alias" };
+  let summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("Workload：2");
+  expect(summary).toContain("Pod：1 total，1 ready");
+  expect(summary).toContain("planit-server/main/planit-server-0");
+  expect(summary).toContain("planit-server/alias/planit-server-0");
+  service.workloads.other = { ...workload, name: "other",
+    podRuntime: collectedFact("inspect.workload-pods", "service-targets", {
+      pods: [{ ...pod, instance: { ...pod.instance, namespace: "other" } }],
+    }) };
+  summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("Pod：2 total，2 ready");
+});
+
+test("健康 Pod 且证据完整时才输出 healthy", () => {
+  const { diagnosis, pod } = readyRuntimeFixture();
+  pod.containers[0]!.restartCount = 0;
+  delete pod.containers[0]!.lastTermination;
+  const summary = buildInspectRuntimeSummary(diagnosis);
+  expect(summary).toContain("状态：healthy");
+  expect(summary).toContain("证据：complete");
 });
 
 test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () => {
