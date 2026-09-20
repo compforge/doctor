@@ -122,7 +122,7 @@ for (const nested of [false, true]) test(`Data checked entry point preflights be
   } }, undefined, { plugin: configured });
   const scoped = context.kubernetes(denied);
   context.kubernetes = () => scoped;
-  const parent = defineCommand<DataInput, unknown>({ name: "parent", run: (ctx, input) => dataCommand.run(ctx, input) });
+  const parent = defineCommand<DataInput, unknown>({ name: "parent", prepare: async (_context, input) => input, run: (ctx, input) => dataCommand.run(ctx, input) });
   try {
     const result = await (nested ? parent : dataCommand).run(context, args);
     expect(result.status).toBe(CommandStatus.Failed);

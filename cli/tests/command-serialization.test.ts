@@ -20,16 +20,16 @@ const ok = <T>(output: T): CommandResult<T> => ({ status: CommandStatus.Ok, outp
 
 test("nested aggregates retain direct edges, reuse the same result and remain portable", async () => {
   let calls = 0;
-  const leaf = defineCommand({ name: "doctor data", run: async () => ok({ value: "body" }),
+  const leaf = defineCommand({ name: "doctor data", prepare: async (_context, input) => input, run: async () => ok({ value: "body" }),
     serialize: async (context, result) => {
       calls++;
       return { files: { facts: context.writeJson("raw/facts.json", result.output) } };
     } });
   const shared = ok({ value: "body" });
   const separate = ok({ value: "body" });
-  const aggregate = defineCommand({ name: "doctor collect", run: async () => ok([shared]),
+  const aggregate = defineCommand({ name: "doctor collect", prepare: async (_context, input) => input, run: async () => ok([shared]),
     serialize: async (context, result) => ({ files: {}, children: await Promise.all((result.output ?? []).map(child => context.serialize(leaf, child))) }) });
-  const root = defineCommand({ name: "doctor overview", run: async () => ok([ok([shared]), ok([shared, separate])]),
+  const root = defineCommand({ name: "doctor overview", prepare: async (_context, input) => input, run: async () => ok([ok([shared]), ok([shared, separate])]),
     serialize: async (context, result) => ({ files: {}, children: await Promise.all((result.output ?? []).map(child => context.serialize(aggregate, child))) }) });
   const source = temporary();
   await SerializeContext.create(source, root, ok([ok([shared]), ok([shared, separate])]));
@@ -55,15 +55,15 @@ test("nested aggregates retain direct edges, reuse the same result and remain po
 });
 
 test("serialization failure keeps successful files and sibling results, and never publishes broken JSONL", async () => {
-  const failed = defineCommand({ name: "doctor log", run: async () => ok(undefined),
+  const failed = defineCommand({ name: "doctor log", prepare: async (_context, input) => input, run: async () => ok(undefined),
     serialize: async context => {
       context.writeJson("raw/facts.json", { saved: true });
       await context.writeJsonl("raw/records.jsonl", [{ valid: true }, BigInt(1)]);
       return { files: {} };
     } });
-  const good = defineCommand({ name: "doctor trace", run: async () => ok(undefined),
+  const good = defineCommand({ name: "doctor trace", prepare: async (_context, input) => input, run: async () => ok(undefined),
     serialize: async context => ({ files: { facts: context.writeJson("raw/facts.json", {}) } }) });
-  const parent = defineCommand({ name: "doctor collect", run: async () => ok(undefined),
+  const parent = defineCommand({ name: "doctor collect", prepare: async (_context, input) => input, run: async () => ok(undefined),
     serialize: async context => ({ files: {}, children: [await context.serialize(failed, ok(undefined)), await context.serialize(good, ok(undefined))] }) });
   const dir = temporary();
   const writer = await SerializeContext.create(dir, parent, ok(undefined));
@@ -84,7 +84,7 @@ test("diagnosis body is externalized and render rehydrates it from relocated evi
   writeFileSync(join(source, "diagnosis.json"), JSON.stringify({ evidence: { facts, observations: [{ id: "one", value: 1 }] }, findings: [], coverage: [] }));
   const artifact = { id: "a", command: "inspect", path: source };
   const result = { ...ok(undefined), artifacts: [artifact] };
-  const spec = defineCommand({ name: "doctor inspect", run: async () => result, serialize: serializeEvidenceResult });
+  const spec = defineCommand({ name: "doctor inspect", prepare: async (_context, input) => input, run: async () => result, serialize: serializeEvidenceResult });
   const saved = await SerializeContext.create(destination, spec, result);
   rmSync(source, { recursive: true });
   expect(readFileSync(join(destination, "diagnosis.json"), "utf8")).not.toContain("large-body");
@@ -105,7 +105,7 @@ test("Data serializes multiple input selections without copying Facts into diagn
     diagnosis: { evidence: { facts: { services: {}, capabilityResults: [query] }, observations: [] },
       findings: [{ id: `finding-${index}`, evidence: [{ factPath: "capabilityResults.0", role: "supporting" }] }], coverage: [] } }));
   const result = { ...ok({ items } as unknown as DataOutput), artifacts: [artifact] };
-  const spec = defineCommand({ name: "doctor data", run: async () => result, serialize: serializeData });
+  const spec = defineCommand({ name: "doctor data", prepare: async (_context, input) => input, run: async () => result, serialize: serializeData });
   const dir = temporary();
   await SerializeContext.create(dir, spec, result);
   const manifest = read(join(dir, "manifest.json"));
@@ -117,7 +117,6 @@ test("Data serializes multiple input selections without copying Facts into diagn
   expect(diagnosis.items[1].selection.queryIds).toEqual(["second"]);
   expect(diagnosis.items[0]).not.toHaveProperty("evidence");
 });
-
 
 test("a missing staged source does not discard the other items of an execution", async () => {
   const source = temporary(), destination = temporary();
@@ -147,14 +146,13 @@ test("Finalize indexing records every local page with private permissions", asyn
   }
 });
 
-
 test("HTML assembly failure still delivers serialized evidence in the Bundle", async () => {
   const source = temporary(), destination = temporary();
   writeFileSync(join(source, "raw.txt"), "retained after HTML failure");
   const context = new CommandContext({});
   const artifact = context.artifacts.add({ id: "source", command: "test", path: source });
   const result = { ...ok(undefined), artifacts: [artifact] };
-  const spec = defineCommand({ name: "doctor test", run: async () => result, serialize: serializeEvidenceResult,
+  const spec = defineCommand({ name: "doctor test", prepare: async (_context, input) => input, run: async () => result, serialize: serializeEvidenceResult,
     render: async (renderer) => ({ title: "test", sections: [{ id: "test", title: "test", status: CommandStatus.Ok,
       pages: [renderer.page(artifact, { title: "Missing page", status: CommandStatus.Ok }, "absent.html")] }] }),
   });

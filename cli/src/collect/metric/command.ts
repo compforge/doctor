@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -21,7 +22,10 @@ export const metricCommand = defineCommand<MetricInput, void>({
       });
     },
   }),
-  plugin: PLUGIN_COMMAND_CAPABILITIES.metric,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.metric });
+    return input;
+  },
   run: (context, { window, ...input }) => runCollectMetric(
     { ...input, ...commandOptions(context) }, context.plugin, context, undefined, {
       signal: window?.signal ? AbortSignal.any([context.signal, window.signal]) : context.signal,

@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -19,8 +20,10 @@ export const mcpCommand = defineCommand<McpInput, void>({
       writeEvidencePage(context, artifact, { title: "doctor mcp", summaryHtml: buildMcpReportHtml(diagnosis) });
     },
   }),
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.mcp,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.mcp, environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => runCollectMcp(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),

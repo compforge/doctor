@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,23 +16,28 @@ import { databaseFailure, discoverDatabases, selectDatabaseTarget } from "./disc
 import { quoteIdentifier } from "./sql";
 import { databaseDiscoverySummary } from "./summary";
 
-export const dbCommand = defineCommand<DbInput, void>({
+type PreparedDb = { input: DbInput; request: Awaited<ReturnType<typeof resolveDbRequest>> };
+
+export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
   serialize: serializeEvidenceResult,
   name: "doctor db",
   validate: validateDbInput,
-  plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] },
   render: (context, result) => renderEvidence(context, result, { command: "db", title: "数据库取证",
     render: artifact => writeEvidencePage(context, artifact, { title: "数据库取证", summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
   }),
-  run: async (context, input) => {
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "service", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] } });
     // Resolve syntax/input before environment access; a SQL file is not a script runner.
     let request;
     try { request = await resolveDbRequest(input); }
     catch (error) {
-      if (error instanceof ParameterCancelled) return { status: CommandStatus.Cancelled, artifacts: [] };
+      if (error instanceof ParameterCancelled) return undefined;
       throw error;
     }
     await context.ensureEnvironment({ kubernetes: true });
+    return { input, request };
+  },
+  run: async (context, { input, request }) => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-db-"));
     const bundle = new EvidenceBundle(directory);
     context.artifacts.add({ command: "db", path: directory });

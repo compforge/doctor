@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../src/command/prepare";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import {
@@ -9,16 +10,17 @@ import { commandExitCode } from "../src/app/command";
 
 const ok = <T>(output: T): CommandResult<T> => ({ status: CommandStatus.Ok, output, artifacts: [] });
 
-test("direct and nested calls prepare after requirements and execute with the typed prepared value", async () => {
+test("direct and nested calls check requirements in prepare and execute with the typed prepared value", async () => {
   for (const nested of [false, true]) {
     const order: string[] = [];
     const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([]) };
     const context = new CommandContext({}, undefined, { loadPlugin: async () => { order.push("plugin"); return plugin; } });
     context.ensureEnvironment = async requirements => { if (requirements.host) order.push("environment"); };
     const child = defineCommand<CommandInput & { name: string }, number, { length: number }>({
-      name: "child", environment: { host: true }, plugin: { command: "child", needs: [] },
+      name: "child",
       validate: () => { order.push("validate"); },
       prepare: async (ctx, input) => {
+        await prepareCommandRequirements(ctx, { plugin: { command: "child", needs: [] }, environment: { host: true } });
         expect(ctx.plugin).toBe(plugin);
         order.push("prepare");
         ctx.artifacts.add({ command: "child", path: "/tmp/prepare-evidence" });
@@ -28,7 +30,7 @@ test("direct and nested calls prepare after requirements and execute with the ty
       run: async (_ctx, prepared) => { order.push("run"); return ok(prepared.length); },
     });
     const parent = defineCommand<CommandInput & { name: string }, number>({
-      name: "parent", run: (ctx, input) => child.run(ctx, input),
+      name: "parent", prepare: async (_context, input) => input, run: (ctx, input) => child.run(ctx, input),
     });
     const result = await (nested ? parent : child).run(context, { name: "hello" });
     expect(result.output).toBe(5);
@@ -38,16 +40,21 @@ test("direct and nested calls prepare after requirements and execute with the ty
   }
 });
 
-test("invalid input and missing capabilities do not enter prepare", async () => {
+test("invalid input and missing capabilities prevent binding and execution", async () => {
   const prepare = mock(async () => ({ ready: true }));
   const run = mock(async () => ok(1));
   const invalid = defineCommand<CommandInput, number, { ready: boolean }>({
     name: "invalid", validate: () => { throw new CommandInputError("invalid"); }, prepare, run,
   });
   const unavailable = defineCommand<CommandInput, number, { ready: boolean }>({
-    name: "unavailable", plugin: { command: "unavailable", needs: [{
-      capability: { scope: "contribution", name: "inspect" }, requirement: "required", purpose: "test",
-    }] }, prepare, run,
+    name: "unavailable",
+    prepare: async (context) => {
+      await prepareCommandRequirements(context, { plugin: { command: "unavailable", needs: [{
+        capability: { scope: "contribution", name: "inspect" }, requirement: "required", purpose: "test",
+      }] } });
+      return prepare();
+    },
+    run,
   });
   expect(commandExitCode(await invalid.run(new CommandContext({}), {}))).toBe(2);
   expect((await unavailable.run(new CommandContext({}), {})).status).toBe(CommandStatus.Failed);
@@ -72,7 +79,7 @@ test("prepare failure preserves evidence, releases resources and leaves sibling 
   expect(result.artifacts.map(item => item.path)).toEqual(["/tmp/failed-prepare-evidence"]);
   expect(dispose).toHaveBeenCalledTimes(1);
   expect(run).not.toHaveBeenCalled();
-  const sibling = defineCommand<CommandInput, number>({ name: "sibling", run: async () => ok(2) });
+  const sibling = defineCommand<CommandInput, number>({ name: "sibling", prepare: async (_context, input) => input, run: async () => ok(2) });
   expect((await sibling.run(context, {})).output).toBe(2);
 });
 

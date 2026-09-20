@@ -2,7 +2,7 @@ import { renderBundleAgents } from "./bundle-agents";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type CommandContext, type CommandInput, type CommandResult, type CommandSpec } from "../command";
+import { type CommandContext, type CommandInput, type CommandResult, type Command } from "../command";
 import { SerializeContext } from "../command/serialization/context";
 import { RenderContext } from "../report/context";
 import { renderReportHtml } from "../report/html";
@@ -12,7 +12,7 @@ import { kubernetesTargetRecord } from "../command/kubernetes-target";
 import { reportError } from "./error-log";
 
 export interface FinalizeCommandInput<Input extends CommandInput, Output> {
-  spec: CommandSpec<Input, Output>;
+  spec: Command<Input, Output>;
   result: CommandResult<Output>;
   context: CommandContext;
   delivery: CommandDeliveryOptions;

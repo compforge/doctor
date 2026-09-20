@@ -12,12 +12,12 @@ import { logCommand } from "../src/collect/log/command";
 import { metricCommand } from "../src/collect/metric/command";
 import { tenantCommand } from "../src/collect/tenant/command";
 import { traceCommand } from "../src/collect/trace/command";
-import { CommandContext, CommandStatus, defineCommand, type CommandInput, type CommandSpec } from "../src/command";
+import { CommandContext, CommandStatus, defineCommand, type CommandInput, type Command } from "../src/command";
 import { collectOverviewSamples } from "../src/overview/collect";
 import { readBundleIndex, readBundleText, readBundleExecutions } from "./bundle-fixture";
 import { fixtureReport, readReport } from "./report-fixture";
 
-// Keep the real Overview -> Collect delegation and CommandSpec wrappers; only replace external work.
+// Keep the real Overview -> Collect delegation and Command wrappers; only replace external work.
 test.each([1, 2])("overview with collect concurrency %i delivers same-named artifacts and shared Inspect/Tenant evidence", async concurrency => {
   const root = mkdtempSync(join(tmpdir(), "doctor-overview-idempotency-"));
   const calls: Record<string, number> = {};
@@ -29,8 +29,8 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   };
   const context = new CommandContext({}, undefined, { plugin });
   const restore: Array<() => void> = [];
-  function replace<Input extends CommandInput>(command: CommandSpec<Input, unknown>, kind: CollectKind, check?: (input: Input) => void) {
-    const replacement = defineCommand<Input, void>({ name: command.name, run: async (ctx, input) => {
+  function replace<Input extends CommandInput>(command: Command<Input, unknown>, kind: CollectKind, check?: (input: Input) => void) {
+    const replacement = defineCommand<Input, void>({ name: command.name, prepare: async (_context, input) => input, run: async (ctx, input) => {
       check?.(input);
       calls[kind] = (calls[kind] ?? 0) + 1;
       const path = join(root, `${kind}-${calls[kind]}`, `doctor-${kind}-same-second`);

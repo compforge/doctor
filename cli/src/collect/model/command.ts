@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -20,8 +21,10 @@ export const modelCommand = defineCommand<ModelInput, void>({
       writeEvidencePage(context, artifact, { title: "doctor model", summaryHtml: buildModelDiagnosisHtml(diagnosis, modelPerformanceSummaries(diagnosis.evidence), modelPerformanceAttempts(diagnosis.evidence)) });
     },
   }),
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.model,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.model, environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => runCollectModel(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),

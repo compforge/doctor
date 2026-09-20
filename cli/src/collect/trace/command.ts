@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -12,8 +13,6 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
   serialize: serializeEvidenceResult,
   name: "doctor trace",
   render: renderTraceReport,
-  environment: input => ({ kubernetes: !input.from }),
-  plugin: input => input.from ? undefined : PLUGIN_COMMAND_CAPABILITIES.trace,
   validate: (input) => {
     for (const key of ["from", "node", "span"] as const) {
       if (input[key] !== undefined && !input[key]!.trim()) throw new CommandInputError(`--${key} 不能为空`);
@@ -29,6 +28,13 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     if (input.pageSize !== undefined && (!Number.isInteger(input.pageSize) || input.pageSize <= 0)) {
       throw new CommandInputError("--page-size 必须为正整数");
     }
+  },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, {
+      plugin: input.from ? undefined : PLUGIN_COMMAND_CAPABILITIES.trace,
+      environment: { kubernetes: !input.from },
+    });
+    return input;
   },
   run: async (context, input) => input.from
     ? runOfflineTrace({ from: input.from, node: input.node, span: input.span }, context)

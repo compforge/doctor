@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../command/prepare";
 import type { StoredResultRef } from "../command/serialization/model";
 import type { CommandSpec } from "../command/spec";
 import { isInteractive } from "../terminal/policy";
@@ -272,11 +273,14 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       }
       return composeReports("doctor collect", reports);
     },
-    plugin: { command: "doctor collect", needs: [] },
     validate: (input) => {
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
         throw new CommandInputError("doctor collect 需要至少一个 biz-id");
       }
+    },
+    prepare: async (context, input) => {
+      await prepareCommandRequirements(context, { plugin: { command: "doctor collect", needs: [] } });
+      return input;
     },
     run: async (context, input) => {
       context.artifacts.setReportName(collectReportName(input.bizIds));

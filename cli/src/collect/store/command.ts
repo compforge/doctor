@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -18,8 +19,10 @@ export const storeCommand = defineCommand<StoreInput, void>({
       render: artifact => writeEvidencePage(context, artifact, context.json<Omit<HtmlReportOptions, "profileName">>(artifact, "report-input.json")),
     })),
   )),
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.store,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.store, environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => runCollectStore(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),
