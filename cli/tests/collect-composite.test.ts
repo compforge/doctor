@@ -61,7 +61,7 @@ test("collect capability contract is the union of selected concrete commands", (
       "extension.tenant.list",
       "extension.tenant.resolve",
       "plugin.model",
-      "service.modelCatalog",
+      "extension.model.query",
       "extension.facts.inspect",
       "extension.trace.resolve",
       "service.log",

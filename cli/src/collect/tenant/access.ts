@@ -1,7 +1,7 @@
+import { modelCatalogExtensions, extensionModelCatalog } from "../../model/extensions";
 import { dataProviders } from "../data/extensions";
 import { tenantDirectoryExtensions, extensionTenantDirectory } from "../../plugin/tenant-directory";
 import type {
-  ModelCatalog,
   PluginDefinition,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
@@ -106,33 +106,21 @@ export async function openTenantAccess(input: {
     }));
   const model = plugin.model;
   if (model) {
-    const service = plugin.services.findWith(model.catalogService, "modelCatalog");
-    if (!service) {
-      throw new Error(
-        `Plugin '${plugin.id}' 的 Service '${model.catalogService}' 未声明 modelCatalog 能力`,
-      );
-    }
+    const provider = modelCatalogExtensions(plugin.services, model.catalogService);
+    const { service } = provider;
     capabilities.unshift({
       id: "models",
       service: service.name,
       capability: "modelCatalog",
       query: async (identity) => {
-        const capability = service.capabilities.modelCatalog;
-        const context = await openPluginContext(executor, kube, {
+        const catalog = extensionModelCatalog(provider, (service, extension) => openPluginContext(executor, kube, {
           config: commandContext.profile.pluginConfig,
           databaseIdentity,
-          service: service,
-          endpoint: capability.endpoint,
+          service, endpoint: extension.endpoint,
           command: "doctor tenant · model catalog",
-          capability,
-          authorization,
-        });
-        try {
-          const catalog: ModelCatalog = capability.create(context);
-          return [{ kind: "models", models: await catalog.query({ identity }) }];
-        } finally {
-          await context.dispose();
-        }
+          capability: extension, authorization,
+        }));
+        return [{ kind: "models", models: await catalog.query({ identity }) }];
       },
     });
   }

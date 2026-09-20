@@ -1,9 +1,9 @@
+import { modelCatalogExtensions, modelInferenceExtensions } from "../model/extensions";
 import { tenantDirectoryExtensions } from "./tenant-directory";
 import {
   createServiceCatalog,
   isToolchain,
   type PluginDefinition,
-  type ServiceCapabilityName,
   type ServiceDefinition,
 } from "@compforge/doctor-plugin";
 import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
@@ -347,20 +347,6 @@ function validateService(value: unknown, index: number): ServiceDefinition {
   return service as unknown as ServiceDefinition;
 }
 
-function requireProvider(
-  services: readonly ServiceDefinition[],
-  serviceName: unknown,
-  capability: ServiceCapabilityName,
-  label: string,
-): void {
-  const name = nonEmptyString(serviceName, label);
-  const service = services.find((candidate) => candidate.name === name);
-  if (!service) throw new Error(`${label} references unknown Service '${name}'`);
-  if (service.capabilities[capability] === undefined) {
-    throw new Error(`${label} references Service '${name}' without ${capability} capability`);
-  }
-}
-
 /** Validate and canonicalize the untyped ESM boundary before Core consumes a Plugin. */
 export function validatePluginDefinition(value: unknown, manifest: PluginManifest): PluginDefinition {
   const definition = record(value, `Plugin ${manifest.id}@${manifest.version} definition`);
@@ -431,9 +417,9 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (definition.model !== undefined) {
     const model = record(definition.model, "Plugin model capability");
     tenantDirectoryExtensions(catalog, nonEmptyString(model.tenantDirectoryService, "model.tenantDirectoryService"));
-    requireProvider(services, model.catalogService, "modelCatalog", "model.catalogService");
+    modelCatalogExtensions(catalog, nonEmptyString(model.catalogService, "model.catalogService"));
     if (model.inferenceService !== undefined) {
-      requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
+      modelInferenceExtensions(catalog, nonEmptyString(model.inferenceService, "model.inferenceService"));
     }
   }
   if (definition.tenant !== undefined) {

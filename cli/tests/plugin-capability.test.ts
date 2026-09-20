@@ -77,8 +77,8 @@ test("model command 不依赖租户配置采集能力", () => {
     { scope: "plugin", name: "model" },
     { scope: "extension", name: "tenant.list" },
     { scope: "extension", name: "tenant.resolve" },
-    { scope: "service", name: "modelCatalog" },
-    { scope: "service", name: "inference" },
+    { scope: "extension", name: "model.query" },
+    { scope: "extension", name: "model.invoke" },
   ]);
 });
 
@@ -88,7 +88,7 @@ test("tenant command 组合租户身份、模型与通用 Inspect contribution",
     { scope: "extension", name: "tenant.list" },
     { scope: "extension", name: "tenant.resolve" },
     { scope: "plugin", name: "model" },
-    { scope: "service", name: "modelCatalog" },
+    { scope: "extension", name: "model.query" },
     { scope: "extension", name: "facts.inspect" },
   ]);
 });
