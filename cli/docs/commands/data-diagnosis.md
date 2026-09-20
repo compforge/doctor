@@ -43,6 +43,16 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
    批量 HTML 仅在最外层用 tab 组合独立报告。JSON 写入本地文件，并用 `groups` 按原始 ID 分组。
 7. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
 
+## 终端运行摘要
+
+使用 `doctor data <biz-id...> -f summary` 直接打印批量业务数据诊断的紧凑摘要，完整 Facts、
+逐业务 ID 的诊断和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；
+它与其它格式使用相同的采集范围。
+
+摘要显示输入业务 ID 数、已完整解析数量、总体状态，以及异常业务 ID 对应的状态、Coverage 缺口和
+Detector 原因。摘要用于快速判断本次批量采集是否完整，详细业务记录仍从 Evidence 的
+`manifest.json` 和 Facts 索引读取。
+
 ## 关键设计
 
 ### Catalog 按 kind 发现 Extension，编排器不认识业务名
