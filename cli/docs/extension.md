@@ -107,6 +107,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
 | model.backend.validate | 模型、超时预算 → 校验响应 | Model |
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
+| perf.scenarios | 无入参 → 场景、Case 组合和可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
@@ -145,3 +146,6 @@ Data 的具体行为见 [Data 汇集诊断](commands/data-diagnosis.md)；Plugin
 Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共用该快照。配置函数的访问权限与
 Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需求的函数使用 Host 上下文，
 保留共享 Client、取消和清理机制；声明 Kubernetes 访问需求的函数使用解析后的集群上下文。
+
+Perf 按 Service 选择唯一的场景扩展，校验场景 ID、Case 权重和 CaseSet/Case 引用后再申请施压审批。
+场景读取有独立的权限和调用上下文，读取完成即释放；请求 runner 的创建、调度和清理由 Command 管理。

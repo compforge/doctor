@@ -1,3 +1,4 @@
+import { PERF_SCENARIOS_KIND, type PerfScenariosExtension } from "./perf";
 import { METRIC_CONFIGURATION_KIND, type MetricConfigurationExtension } from "./metric";
 import { adaptModelExtensions } from "./model-adapters";
 import { TENANT_LIST_KIND, TENANT_RESOLVE_KIND, USER_SEARCH_KIND, type TenantListExtension, type TenantResolveExtension, type UserSearchExtension } from "./tenant";
@@ -18,6 +19,10 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     explicit.push(extension);
   };
   for (const extension of adaptModelExtensions(service)) add(extension);
+  const perf = service.capabilities.perf;
+  if (perf) add({ id: PERF_SCENARIOS_KIND, kind: PERF_SCENARIOS_KIND, access: {},
+    run: async () => perf.scenarios,
+  } satisfies PerfScenariosExtension);
   const metric = service.capabilities.metric;
   if (metric) add({ id: METRIC_CONFIGURATION_KIND, kind: METRIC_CONFIGURATION_KIND, access: {},
     run: async () => metric,
