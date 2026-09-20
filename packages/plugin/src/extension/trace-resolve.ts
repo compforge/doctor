@@ -1,3 +1,4 @@
+import { requireExtensionEndpoint } from "./endpoint";
 import type { Extension, RegisteredExtension } from "./index";
 import type { ServiceEndpoint, ServiceTraceIdInput, ServiceTraceIdResolution, ServiceTraceIdResolutionResult } from "../service";
 
@@ -9,12 +10,9 @@ export interface TraceResolveExtension extends Extension<ServiceTraceIdInput, Se
 }
 
 export function requireTraceResolveExtension(extension: RegisteredExtension): TraceResolveExtension {
-  const value = extension as TraceResolveExtension;
-  if (value.kind !== TRACE_RESOLVE_KIND || !value.endpoint || typeof value.endpoint.host !== "string"
-    || !value.endpoint.host.trim() || !Number.isInteger(value.endpoint.port) || value.endpoint.port < 1 || value.endpoint.port > 65535) {
-    throw new Error(`${extension.id}: invalid trace.resolve endpoint`);
-  }
-  return value;
+  if (extension.kind !== TRACE_RESOLVE_KIND) throw new Error(`Expected ${TRACE_RESOLVE_KIND}, got ${extension.kind}`);
+  requireExtensionEndpoint(extension);
+  return extension as TraceResolveExtension;
 }
 
 /** Normalize one-or-many resolutions before Core attributes or combines provider results. */

@@ -1,3 +1,4 @@
+import { mcpConfigurationProvider } from "./extensions";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { randomBytes } from "node:crypto";
@@ -12,7 +13,7 @@ import {
   resolveKubernetesCommandConfig,
 } from "../../command/kubernetes-target";
 import type { McpClient } from "../../infra/mcp";
-import { openPluginContext } from "../../plugin/context";
+import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { terminalStderr, terminalStdout } from "../../terminal/output";
@@ -114,19 +115,8 @@ export async function runCollectMcp(
 ): Promise<CommandResult<void>> {
   const timeoutMs = parseTimeout(opts.timeout);
   const format = parseMcpOutputFormat(opts.format);
-  const mcpServices = plugin.services.servicesWith("mcp");
-  const service = opts.gatewayService
-    ? plugin.services.findWith(opts.gatewayService, "mcp")
-    : mcpServices.length === 1 ? mcpServices[0] : undefined;
-  if (!service) {
-    if (opts.gatewayService) {
-      throw new Error(`Plugin '${plugin.id}' 的 Service '${opts.gatewayService}' 未声明 mcp 能力`);
-    }
-    if (!mcpServices.length) throw new Error(`Plugin '${plugin.id}' 未声明 mcp 能力`);
-    throw new Error(`Plugin '${plugin.id}' 声明了多个 mcp Service，请通过 --gateway-service 指定`);
-  }
+  const { service, extension } = mcpConfigurationProvider(plugin.services, opts.gatewayService);
   const gatewayService = service.name;
-  const capability = service.capabilities.mcp;
   const collect = await resolveKubernetesCommandConfig(
     opts,
     undefined,
@@ -177,9 +167,9 @@ export async function runCollectMcp(
   }, {
     config: commandContext?.profile.pluginConfig,
     service,
-    endpoint: capability.endpoint,
+    endpoint: extension.endpoint,
     command: "doctor mcp",
-    capability,
+    capability: extension,
     authorization: access,
   });
   let configSourceKind: string | undefined;
@@ -187,15 +177,16 @@ export async function runCollectMcp(
   let diagnosis: McpDiagnosis | undefined;
   let failureReason: string | undefined;
   let client: McpClient | undefined;
+  let gatewayContext: ManagedPluginContext | undefined;
 
   const finish = async (forcedCode?: number) => {
     await client?.close();
-    try {
-      await pluginContext.dispose();
-    } catch (error) {
-      terminalStderr.warning(
-        `[mcp] Plugin context 清理失败：${error instanceof Error ? error.message : String(error)}\n`,
-      );
+    for (const context of [pluginContext, gatewayContext]) {
+      try {
+        await context?.dispose();
+      } catch (error) {
+        terminalStderr.warning(`[mcp] Context 清理失败：${error instanceof Error ? error.message : String(error)}\n`);
+      }
     }
     bundle.writeSummary(
       diagnosis
@@ -258,7 +249,22 @@ export async function runCollectMcp(
       bundle,
       selection: opts,
       gatewayService,
-      capability,
+      extension,
+      // Gateway probing is Command-owned access; configuration providers receive only their own grant.
+      forwardGateway: async () => {
+        gatewayContext = await openPluginContext(executor, {
+          namespace: collect.kubernetes.namespace,
+          kubeconfig: collect.kubernetes.kubeconfig,
+          context: collect.kubernetes.context,
+        }, {
+          service, command: "doctor mcp gateway", authorization: access,
+          capability: { access: { kubernetes: [{
+            requirement: "required", rule: { verb: "create", resource: "pods/portforward" },
+            purpose: "连接 MCP gateway 执行协议探测",
+          }] } },
+        });
+        return gatewayContext.infra.kubernetes.portForward(extension.endpoint);
+      },
       timeoutMs,
       traceId: trace.traceId,
       traceparent: trace.traceparent,

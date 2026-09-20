@@ -1,3 +1,4 @@
+import { tenantDirectoryExtensions } from "./tenant-directory";
 import {
   createServiceCatalog,
   isToolchain,
@@ -423,18 +424,13 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
     }
     const requirement = service.capabilities.case?.requestIdentity;
     if (requirement) {
-      requireProvider(
-        services,
-        requirement.directoryService,
-        "tenantDirectory",
-        `${service.name}.case.requestIdentity.directoryService`,
-      );
+      tenantDirectoryExtensions(catalog, nonEmptyString(requirement.directoryService, `${service.name}.case.requestIdentity.directoryService`));
     }
   }
 
   if (definition.model !== undefined) {
     const model = record(definition.model, "Plugin model capability");
-    requireProvider(services, model.tenantDirectoryService, "tenantDirectory", "model.tenantDirectoryService");
+    tenantDirectoryExtensions(catalog, nonEmptyString(model.tenantDirectoryService, "model.tenantDirectoryService"));
     requireProvider(services, model.catalogService, "modelCatalog", "model.catalogService");
     if (model.inferenceService !== undefined) {
       requireProvider(services, model.inferenceService, "inference", "model.inferenceService");
@@ -442,7 +438,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   }
   if (definition.tenant !== undefined) {
     const tenant = record(definition.tenant, "Plugin tenant capability");
-    requireProvider(services, tenant.directoryService, "tenantDirectory", "tenant.directoryService");
+    tenantDirectoryExtensions(catalog, nonEmptyString(tenant.directoryService, "tenant.directoryService"));
   }
   if (definition.trace !== undefined) {
     const trace = record(definition.trace, "Plugin trace capability");

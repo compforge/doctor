@@ -58,17 +58,14 @@ test("collect capability contract is the union of selected concrete commands", (
   expect(contract.needs.map((need) => `${need.capability.scope}.${need.capability.name}`))
     .toEqual([
       "plugin.tenant",
-      "service.tenantDirectory",
+      "extension.tenant.list",
+      "extension.tenant.resolve",
       "plugin.model",
       "service.modelCatalog",
-      "contribution.inspect",
       "extension.facts.inspect",
       "extension.trace.resolve",
       "service.log",
     ]);
-  expect(contract.needs.find((need) => (
-    need.capability.scope === "contribution" && need.capability.name === "inspect"
-  ))?.requirement).toBe("preferred");
   expect(contract.needs.find(need => need.capability.scope === "extension" && need.capability.name === "facts.inspect")?.requirement).toBe("required");
 });
 

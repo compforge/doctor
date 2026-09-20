@@ -535,7 +535,7 @@ test("Plugin Case request identity references a tenant directory provider", () =
     id: "test",
     version: "0.0.1",
     services: { services: [caseService] },
-  }, manifest)).toThrow("references unknown Service 'iam'");
+  }, manifest)).toThrow("unknown Service 'iam'");
 
   expect(validatePluginDefinition({
     id: "test",

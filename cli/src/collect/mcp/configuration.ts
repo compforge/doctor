@@ -1,10 +1,12 @@
+import { mcpConfigurationOutput } from "@compforge/doctor-plugin";
+import { invokeExtension } from "../../plugin/extension";
 import { terminalStdout } from "../../terminal/output";
 import { McpClient as RuntimeMcpClient, serializeMcpTranscript, type McpClient } from "../../infra/mcp";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import type {
   McpConfigurationProjection,
   PluginContext,
-  ServiceMcpCapability,
+  McpConfigurationExtension,
 } from "@compforge/doctor-plugin";
 import type { EvidenceBundle } from "../evidence";
 import type { Inspect } from "../inspection";
@@ -20,7 +22,8 @@ export interface McpConfigurationInput {
   bundle: EvidenceBundle;
   selection: McpSelectionOptions;
   gatewayService: string;
-  capability: ServiceMcpCapability;
+  forwardGateway(): Promise<{ host: string; port: number }>;
+  extension: McpConfigurationExtension;
   timeoutMs: number;
   traceId: string;
   traceparent: string;
@@ -71,7 +74,7 @@ export async function resolveMcpConfiguration(
 ): Promise<ResolvedMcpConfiguration | undefined> {
   const {
     bundle,
-    capability,
+    extension,
     gatewayService,
     namespace,
     podLogs,
@@ -85,12 +88,12 @@ export async function resolveMcpConfiguration(
 
   terminalStdout.write(
     `[mcp] namespace: ${namespace}\n`
-    + `[mcp] 通过 ${gatewayService} Plugin capability 加载 MCP 配置…\n`,
+    + `[mcp] 通过 ${gatewayService} Extension 加载 MCP 配置…\n`,
   );
   const configStartedAt = Date.now();
   let projection: McpConfigurationProjection;
   try {
-    projection = await capability.loadConfiguration(pluginContext, { timeoutMs });
+    projection = mcpConfigurationOutput(await invokeExtension(extension, pluginContext, { timeoutMs }));
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.fill("mcp-config", { status: "failed", reason });
@@ -144,10 +147,7 @@ export async function resolveMcpConfiguration(
   let runtimeToolsError: string | undefined;
   let gatewayEndpoint;
   try {
-    gatewayEndpoint = await pluginContext.infra.kubernetes.portForward({
-      host: gatewayService,
-      port: capability.endpoint.port,
-    });
+    gatewayEndpoint = await input.forwardGateway();
   } catch (error) {
     runtimeToolsError = error instanceof Error ? error.message : String(error);
   }

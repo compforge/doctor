@@ -1,3 +1,4 @@
+import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
@@ -300,37 +301,22 @@ export async function runPerf(
       if (!(isInteractive())) {
         throw new Error("非交互环境的 Perf Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
       }
-      const directoryService = plugin.services.findWith(
-        identityRequirement.directoryService,
-        "tenantDirectory",
-      );
-      if (!directoryService) {
-        throw new Error(
-          `Service '${identityRequirement.directoryService}' 未声明 tenantDirectory capability`,
-        );
-      }
-      const directoryContext = await openPluginContext(executor, {
+      const provider = tenantDirectoryExtensions(plugin.services, identityRequirement.directoryService);
+      const directory = extensionTenantDirectory(provider, (service, extension) => openPluginContext(executor, {
         namespace: kube.kubernetes.namespace,
         kubeconfig: kube.kubernetes.kubeconfig,
         context: kube.kubernetes.context,
       }, {
         config: commandContext.profile.pluginConfig,
-        service: directoryService,
-        endpoint: directoryService.capabilities.tenantDirectory.endpoint,
-        capability: directoryService.capabilities.tenantDirectory,
+        service,
+        endpoint: extension.endpoint,
+        capability: extension,
         command: "doctor perf identity",
         authorization,
+      }));
+      requestIdentity = await resolveCaseRequestIdentity({
+        configured: { tenantId, userId }, directory, commandLabel: "Perf", logPrefix: "perf",
       });
-      try {
-        requestIdentity = await resolveCaseRequestIdentity({
-          configured: { tenantId, userId },
-          directory: directoryService.capabilities.tenantDirectory.create(directoryContext),
-          commandLabel: "Perf",
-          logPrefix: "perf",
-        });
-      } finally {
-        await directoryContext.dispose();
-      }
       if (!requestIdentity) {
         terminalStderr.warning("[perf] 已取消身份选择\n");
         return { status: CommandStatus.Cancelled, artifacts: [] };

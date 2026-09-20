@@ -1,3 +1,4 @@
+import { tenantDirectoryExtensions, extensionTenantDirectory, type TenantDirectoryExtensions } from "../plugin/tenant-directory";
 import type {
   CapabilityWithAccess,
   ModelCatalog,
@@ -41,7 +42,7 @@ export interface ModelAccess extends ModelDiscoveryAccess {
   createInference(target: ModelInferenceTarget, timeoutMs: number): Promise<ModelInference>;
 }
 
-function requireService<C extends "tenantDirectory" | "modelCatalog" | "inference">(
+function requireService<C extends "modelCatalog" | "inference">(
   plugin: PluginDefinition,
   name: string,
   capability: C,
@@ -54,7 +55,7 @@ function requireService<C extends "tenantDirectory" | "modelCatalog" | "inferenc
 }
 
 interface ModelProviders {
-  directory: ServiceWithCapability<ServiceDefinition, "tenantDirectory">;
+  directory: TenantDirectoryExtensions;
   catalog: ServiceWithCapability<ServiceDefinition, "modelCatalog">;
   inferenceService?: string;
 }
@@ -72,7 +73,7 @@ function resolveModelProviders(plugin: PluginDefinition): ModelProviders {
   const declaration = plugin.model;
   if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 model capability`);
   return {
-    directory: requireService(plugin, declaration.tenantDirectoryService, "tenantDirectory"),
+    directory: tenantDirectoryExtensions(plugin.services, declaration.tenantDirectoryService),
     catalog: requireService(plugin, declaration.catalogService, "modelCatalog"),
     inferenceService: declaration.inferenceService?.trim() || undefined,
   };
@@ -96,11 +97,7 @@ async function prepareModelDiscovery(
 ): Promise<PreparedModelDiscovery | undefined> {
   const tenantService = providers.directory;
   const catalogService = providers.catalog;
-  const tenantPort = parseModelPort(
-    options.tenantDirectoryPort,
-    tenantService.capabilities.tenantDirectory.endpoint.port,
-    "--tenant-directory-port",
-  );
+  if (options.tenantDirectoryPort !== undefined) parseModelPort(options.tenantDirectoryPort, 1, "--tenant-directory-port");
   const catalogPort = parseModelPort(
     options.modelCatalogPort,
     catalogService.capabilities.modelCatalog.endpoint.port,
@@ -138,15 +135,17 @@ async function prepareModelDiscovery(
   };
 
   try {
-    const directory = tenantService.capabilities.tenantDirectory.create(await contextFor(
-      tenantService,
-      tenantService.capabilities.tenantDirectory,
-      {
-        host: options.tenantDirectoryService?.trim()
-          || tenantService.capabilities.tenantDirectory.endpoint.host,
-        port: tenantPort,
+    const directory = extensionTenantDirectory(tenantService, (service, extension) => openPluginContext(executor, kube, {
+      config: options.commandContext?.profile.pluginConfig,
+      service,
+      endpoint: {
+        host: options.tenantDirectoryService?.trim() || extension.endpoint.host,
+        port: parseModelPort(options.tenantDirectoryPort, extension.endpoint.port, "--tenant-directory-port"),
       },
-    ));
+      command: options.command,
+      capability: extension,
+      authorization,
+    }));
     const catalog = catalogService.capabilities.modelCatalog.create(await contextFor(
       catalogService,
       catalogService.capabilities.modelCatalog,
