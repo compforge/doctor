@@ -1,3 +1,4 @@
+import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
 import { caseRunnerProvider } from "../case/extensions";
 import { modelCatalogExtensions, modelInferenceExtensions } from "../model/extensions";
@@ -364,6 +365,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   const services = sourceCatalog.services.map(validateService);
   const catalog = createServiceCatalog(services);
   workloadProbeProviders(catalog);
+  vdbTargetProviders(catalog);
 
   for (const service of services) {
     for (const [index, value] of (service.relationships ?? []).entries()) {
