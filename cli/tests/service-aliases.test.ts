@@ -34,7 +34,7 @@ test("alias resolution retains contribution checks and self-description", () => 
   const description = describeService(service);
   expect(description.aliases).toEqual(["api"]);
   expect(formatServiceDescription(description)).toContain("Aliases：api");
-  expect(() => parseDataServices("api", createServiceCatalog([{ ...service, contributions: undefined }]))).toThrow("Inspect contribution");
+  expect(() => parseDataServices("api", createServiceCatalog([{ ...service, contributions: undefined }]))).toThrow("facts.inspect Extension");
 });
 
 test("runtime Plugin loading validates aliases and reconstructs the alias-aware Catalog", () => {

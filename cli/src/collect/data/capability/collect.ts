@@ -1,12 +1,10 @@
 import type {
   Identity,
   RelationFact,
-  ServiceCatalog,
-  ServiceDefinition,
   ServiceInspectResult,
-  ServiceWithContribution,
 } from "@compforge/doctor-plugin";
-import { inspectServiceQueries, normalizeServiceInspectResult } from "../../../plugin/inspect";
+import type { DataProvider } from "../extensions";
+import { inspectExtensionQueries, normalizeServiceInspectResult } from "../../../plugin/inspect";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type { DataCommandContext } from "../context";
@@ -84,7 +82,7 @@ function consumeBudget(remaining: RemainingFactBudget, result: ServiceInspectRes
 }
 
 async function queryIdentities(input: {
-  declared: ServiceWithContribution<ServiceDefinition, "inspect">;
+  declared: DataProvider;
   stage: DataStage;
   identities: readonly Identity[];
   ctx: DataCommandContext;
@@ -102,16 +100,16 @@ async function queryIdentities(input: {
     return batches;
   }
   const pluginContext = ctx.pluginContexts[declared.name];
-  if (!pluginContext) throw new Error(`Service '${declared.name}' Inspect contribution 缺少 PluginContext`);
+  if (!pluginContext) throw new Error(`Service '${declared.name}' facts.inspect Extension 缺少 PluginContext`);
   // Divide the remaining capacity before dispatch; siblings cannot each spend the whole batch budget.
   const budget = { maxFacts: Math.floor(remaining.facts / identities.length), maxBytes: Math.floor(remaining.bytes / identities.length) };
-  const metadata = (identity: Identity) => ({ id: resultId(stage, declared.name, identity), stage, service: declared.name, identity });
+  const metadata = (identity: Identity) => ({ id: resultId(stage, declared.name, identity), stage, service: declared.name, extension: declared.extension.id, identity });
   if (budget.maxFacts < 1 || budget.maxBytes < 1) return identities.map(identity => Object.assign(
     unavailableFact("data.inspect-result", "data-service-contributions", "Data Fact 总预算已耗尽"), metadata(identity),
   ));
   ctx.command.signal.throwIfAborted();
-  const capability = declared.contributions.inspect;
-  const outcomes = await inspectServiceQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget })));
+  const capability = declared.extension;
+  const outcomes = await inspectExtensionQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget })));
   return outcomes.map(outcome => {
     try {
       if (outcome.status === "failed") throw new Error(outcome.reason);
@@ -173,7 +171,7 @@ interface QueuedIdentity {
  * @see {@link ../../../../docs/kernel.md}
  */
 async function collectExpansionResults(input: {
-  expanders: readonly ServiceWithContribution<ServiceDefinition, "inspect">[];
+  expanders: readonly DataProvider[];
   inspectionFacts: DataInspectionFacts;
   config: DataConfig;
   ctx: DataCommandContext;
@@ -205,7 +203,7 @@ async function collectExpansionResults(input: {
     cursor = queue.length;
     for (const declared of activeExpanders) {
       const pending = frontier.filter(current => {
-        if (!declared.contributions.inspect.accepts.includes(current.identity.kind)) return false;
+        if (!declared.extension.accepts.includes(current.identity.kind)) return false;
         const key = `${declared.name}\0${identityKey(current.identity)}`;
         if (queried.has(key)) return false;
         queried.add(key);
@@ -236,26 +234,25 @@ async function collectExpansionResults(input: {
 }
 
 /**
- * Run selected Service Inspect contributions and retain query-level results that may feed later Probes.
+ * Run selected Service facts.inspect Extensions and retain query-level results that may feed later Probes.
  * Command owns traversal and budgets; contribution implementations answer batches without owning traversal.
  */
 export async function collectDataInspectResults(input: {
   selections: readonly DataServiceSelection[];
-  catalog: ServiceCatalog;
   inspectionFacts: DataInspectionFacts;
   config: DataConfig;
   ctx: DataCommandContext;
 }): Promise<readonly DataInspectResult[]> {
-  const { selections, catalog, inspectionFacts, config, ctx } = input;
+  const { selections, inspectionFacts, config, ctx } = input;
   const collected: DataInspectResult[] = [];
   const remaining = { facts: MAX_DATA_FACTS, bytes: MAX_DATA_FACT_BYTES };
   const declaredServices = selections.map(({ service }) => {
-    const declared = catalog.findWithContribution(service, "inspect");
-    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 Inspect contribution`);
+    const declared = ctx.providers.find(provider => provider.name === service);
+    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 facts.inspect Extension`);
     return declared;
   });
   const expansion = await collectExpansionResults({
-    expanders: declaredServices.filter(({ contributions }) => !!contributions.inspect.expands?.length),
+    expanders: declaredServices.filter(({ extension }) => !!extension.expands?.length),
     inspectionFacts,
     config,
     ctx,
@@ -277,7 +274,7 @@ export async function collectDataInspectResults(input: {
     // Failed expansion is evidence too; do not silently retry it in the provide phase.
     const reusedIdentities = new Set(expansionResults.filter(result => result.service === service).map(result => identityKey(result.identity)));
     const identities = expansion.identities.filter(identity => (
-      declared.contributions.inspect.accepts.includes(identity.kind) && !reusedIdentities.has(identityKey(identity))
+      declared.extension.accepts.includes(identity.kind) && !reusedIdentities.has(identityKey(identity))
     ));
     const results = await queryIdentities({ declared, stage: "provide", identities, ctx,
       results: completedExpansionResults, remaining });
@@ -288,10 +285,9 @@ export async function collectDataInspectResults(input: {
   return collected;
 }
 
-/** Adapt the selected Plugin Service Inspect contributions into Core's Inspect phase. */
+/** Adapt the selected Plugin Service facts.inspect Extensions into Core's Inspect phase. */
 export function makeDataContributionInspect(input: {
   selections: readonly DataServiceSelection[];
-  catalog: ServiceCatalog;
   config: DataConfig;
 }): Inspect<DataFacts, DataCommandContext> {
   return {

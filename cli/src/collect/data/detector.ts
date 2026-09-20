@@ -26,7 +26,7 @@ export function projectDataServiceEvidence(evidence: DataEvidence, plugin: strin
         ? result.result.facts.map((fact, factIndex) => projectPluginServiceEvidenceFact({
           plugin,
           service: result.service,
-          producerId: "inspect",
+          producerId: result.extension ?? "inspect",
           factPath: `capabilityResults.${resultIndex}.result.facts.${factIndex}`,
           fact,
           query: result.identity,
@@ -63,7 +63,7 @@ export function buildDataCoverage(
       continue;
     }
     if (serviceFacts.inspect.status !== "collected") {
-      missingEvidence.push(`${service} 数据库不可查询：${serviceFacts.inspect.reason}`);
+      missingEvidence.push(`${service} 数据不可查询：${serviceFacts.inspect.reason}`);
       continue;
     }
     const results = evidence.facts.capabilityResults.filter((item): item is CollectedDataInspectResult => (

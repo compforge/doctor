@@ -20,6 +20,7 @@ import type {
   DataFacts,
   DataOutput,
 } from "./model";
+import type { DataProvider } from "./extensions";
 import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
 import { projectDataFacts } from "./projection";
 import { buildDataSummary } from "./render";
@@ -30,9 +31,8 @@ export * from "./context";
 export * from "./detector";
 export * from "./model";
 
-function dataOutcomes(services: readonly string[], plugin: PluginDefinition): OutcomeDecl[] {
-  return services.flatMap((service) => {
-    const capability = plugin.services.findWithContribution(service, "inspect")!.contributions.inspect;
+function dataOutcomes(providers: readonly DataProvider[]): OutcomeDecl[] {
+  return providers.flatMap(({ name: service, extension: capability }) => {
     return [
       ...(capability.expands?.length ? [{
         id: `data-expand-${service}`,
@@ -61,7 +61,7 @@ export async function runCollectData(
   const services = selections.map(item => item.service);
   const log = (line: string) => terminalStdout.write(`${line}\n`);
   log(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）`);
-  const outcomes = dataOutcomes(services, plugin);
+  const outcomes = dataOutcomes(dataCommand.providers);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-"));
   const staging = join(stagingRoot, config.reportName);
   const summary = commandContext.artifacts.add({ command: "data", path: staging });
@@ -77,12 +77,12 @@ export async function runCollectData(
   let diagnoses: PromiseSettledResult<{ facts: Readonly<DataFacts>; diagnosis: DataDiagnosis }>[];
   let access: DataAccessPreparation | undefined;
   try {
-    access = await prepareDataAccess(dataCommand, selections, plugin.services, injectedContexts);
+    access = await prepareDataAccess(dataCommand, injectedContexts);
     const pluginContexts = Object.fromEntries(access.confirmed.flatMap(item => item.context ? [[item.service, item.context]] : []));
     const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
     const execution = await runCollectBatch({
       ctx,
-      inspects: [makeDataInspect(access), makeDataContributionInspect({ selections, catalog: plugin.services, config })],
+      inspects: [makeDataInspect(access), makeDataContributionInspect({ selections, config })],
       items: targets.map(target => ({
         ctx: { ...ctx, config: target.config, bundle: target.bundle }, config: target.config,
         projectFacts: (snapshot: Readonly<DataFacts>) => projectDataFacts(snapshot, target.bizId),
@@ -120,7 +120,7 @@ export async function runCollectData(
       if (outcome.exitCode) reason = diagnosis.coverage[0]?.missingEvidence.join("；") || "未取得所选 Service 的业务记录";
     }
     try {
-      writeDataEvidence(target.bundle, target.config, plugin, services, projected, startedAt, diagnosis, reason);
+      writeDataEvidence(target.bundle, target.config, dataCommand.providers, services, projected, startedAt, diagnosis, reason);
     } catch (error) {
       reason = error instanceof Error ? error.message : String(error);
       status = CommandStatus.Failed;
@@ -130,7 +130,7 @@ export async function runCollectData(
     groups[target.bizId] = diagnosis ?? { error: reason ?? "未形成诊断结果" };
 
   }
-  writeDataManifest(bundle, config, plugin, services, facts, startedAt);
+  writeDataManifest(bundle, config, dataCommand.providers, services, facts, startedAt);
   bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n`);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
 
@@ -139,7 +139,7 @@ export async function runCollectData(
 }
 
 function writeDataManifest(
-  bundle: EvidenceBundle, config: DataConfig, plugin: PluginDefinition, services: readonly string[],
+  bundle: EvidenceBundle, config: DataConfig, providers: readonly DataProvider[], services: readonly string[],
   facts: Readonly<DataFacts>, startedAt: string,
 ): void {
   bundle.writeManifest({
@@ -147,7 +147,7 @@ function writeDataManifest(
     target: { namespace: config.namespace, input_ids: config.ids, services },
     inspectionFacts: facts,
     params: { services, inspect_capabilities: Object.fromEntries(services.map(service => {
-      const capability = plugin.services.findWithContribution(service, "inspect")!.contributions.inspect;
+      const capability = providers.find(provider => provider.name === service)!.extension;
       return [service, { provides: capability.provides, expands: capability.expands ?? [] }];
     })), output_format: config.format },
     startedAt, finishedAt: new Date().toISOString(),
@@ -155,7 +155,7 @@ function writeDataManifest(
 }
 
 function writeDataEvidence(
-  bundle: EvidenceBundle, config: DataConfig, plugin: PluginDefinition, services: readonly string[],
+  bundle: EvidenceBundle, config: DataConfig, providers: readonly DataProvider[], services: readonly string[],
   facts: Readonly<DataFacts>, startedAt: string, diagnosis?: DataDiagnosis, reason?: string,
 ): void {
   for (const service of services) {
@@ -169,7 +169,7 @@ function writeDataEvidence(
   }
   if (reason) bundle.settle(reason);
   bundle.writeSummary(diagnosis ? buildDataSummary(diagnosis) : `# 业务数据汇集诊断失败\n\n${reason}\n`);
-  writeDataManifest(bundle, config, plugin, services, facts, startedAt);
+  writeDataManifest(bundle, config, providers, services, facts, startedAt);
   if (diagnosis) writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (reason) recordFailureBundle({ bundleDir: bundle.dir, collectCode: 1, reason });
 

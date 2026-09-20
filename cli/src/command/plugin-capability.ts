@@ -10,7 +10,8 @@ export type PluginCapabilityRequirement = "required" | "preferred";
 export type PluginCapabilityReference =
   | { scope: "plugin"; name: PluginLevelCapabilityName }
   | { scope: "service"; name: ServiceCapabilityName }
-  | { scope: "contribution"; name: ServiceContributionName };
+  | { scope: "contribution"; name: ServiceContributionName }
+  | { scope: "extension"; name: string };
 
 export interface PluginCapabilityNeed {
   capability: PluginCapabilityReference;
@@ -50,6 +51,7 @@ function capabilityProviders(
   if (capability.scope === "plugin") {
     return plugin[capability.name] === undefined ? [] : [plugin.id];
   }
+  if (capability.scope === "extension") return [...new Set(plugin.services.extensions(capability.name).map(item => item.service.name))];
   if (capability.scope === "contribution") {
     return plugin.services.servicesWithContribution(capability.name).map((service) => service.name);
   }

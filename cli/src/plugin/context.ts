@@ -232,6 +232,16 @@ export function createPluginContext(
   };
 }
 
+/** Check declarations only; prepare must not execute capability code or initialize clients. */
+export async function preflightPluginAccess(
+  authorization: KubernetesAccessContext,
+  command: string,
+  namespace: string,
+  capability: CapabilityWithAccess,
+): Promise<void> {
+  await enforceKubernetesAccess(authorization, { command, namespace, needs: capabilityAccessNeeds(capability) });
+}
+
 /** Authorize the selected capability before exposing its target-scoped transport. */
 export async function openPluginContext(
   executor: Executor,
@@ -242,11 +252,7 @@ export async function openPluginContext(
     authorization: KubernetesAccessContext;
   },
 ): Promise<ManagedPluginContext> {
-  await enforceKubernetesAccess(options.authorization, {
-    command: `${options.command} · ${options.service.name}`,
-    namespace: kube.namespace,
-    needs: capabilityAccessNeeds(options.capability),
-  });
+  await preflightPluginAccess(options.authorization, `${options.command} · ${options.service.name}`, kube.namespace, options.capability);
   const environment = options.environment ?? await resolveKubernetesEnvironment(executor);
   return createPluginContext(executor, bindKubernetesEnvironment(kube, environment), { ...options, environment });
 }

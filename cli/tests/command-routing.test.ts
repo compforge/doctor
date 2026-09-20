@@ -92,7 +92,7 @@ describe("CLI command routing", () => {
   test("loaded Plugin missing a required capability reports that capability", () => {
     const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("contribution.inspect");
+    expect(result.stderr).toContain("extension.facts.inspect");
     expect(result.stderr).toContain("Plugin 'test'");
     expect(result.stderr).toContain("Plugin test@0.0.1");
     expect(result.stderr).not.toContain("Kubernetes");
@@ -641,7 +641,7 @@ describe("CLI command routing", () => {
     const positional = runCli("data", "biz-1");
     expect(positional.exitCode).not.toBe(0);
     expect(positional.stderr).not.toContain("required option '--biz-id <id>' not specified");
-    expect(positional.stderr).toContain("contribution.inspect");
+    expect(positional.stderr).toContain("extension.facts.inspect");
   });
 
   test("db exposes Service-scoped operations while redis remains under store", () => {

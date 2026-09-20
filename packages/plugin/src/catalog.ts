@@ -1,3 +1,5 @@
+import { validateExtension, type RegisteredExtension } from "./extension";
+import { serviceExtensions } from "./extension/facts-inspect";
 import type {
   ServiceCapabilityName,
   ServiceCapabilities,
@@ -40,6 +42,13 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         if (owner) throw new Error(`Service alias '${alias}' for '${service.name}' conflicts with '${owner.name}'`);
         this.identities.set(alias, service);
       }
+      if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
+      const extensionIds = new Set<string>();
+      for (const extension of serviceExtensions(service)) {
+        validateExtension(extension);
+        if (extensionIds.has(extension.id)) throw new Error(`${service.name}: duplicate Extension id '${extension.id}'`);
+        extensionIds.add(extension.id);
+      }
       const workloads = service.workloads.map((workload) => workload.name);
       for (const source of service.capabilities.dataSources ?? []) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
@@ -53,6 +62,13 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         throw new Error(`Service '${service.name}' 包含重复 Workload 名称`);
       }
     }
+  }
+
+  /** Open discovery; the consumer owns domain validation and multi-provider selection. */
+  extensions(kind: string): { service: T; extension: RegisteredExtension }[] {
+    return this.services.flatMap(service => serviceExtensions(service)
+      .filter(extension => extension.kind === kind)
+      .map(extension => ({ service, extension })));
   }
 
   find(name: string): T | undefined {

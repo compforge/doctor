@@ -36,7 +36,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
     const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json" },
       plugin.services, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } });
     expect(prepared).toBeDefined();
-    const result = await runCollectData(prepared!, plugin, { records: {} as PluginContext });
+    const result = await runCollectData(prepared!, plugin, { records: { signal: new AbortController().signal } as PluginContext });
     expect(preparations).toBe(1);
     expect(batches).toEqual(ids.some(id => id !== "missing") ? [ids, ["shared"]] : [ids]);
     expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
