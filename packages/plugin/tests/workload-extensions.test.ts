@@ -1,17 +1,29 @@
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, defineObservation, defineServiceWorkloadProbe, defineWorkloadProbeExtension,
-  requireWorkloadProbeExtension, Type, type ServiceDefinition } from "../src";
+import {
+  createServiceCatalog, defineObservation, defineWorkloadProbeExtension,
+  requireWorkloadProbeExtension, Type, type ServiceDefinition
+} from "../src";
 const produces = defineObservation({ kind: "health", schemaVersion: 1, schema: Type.Object({ ready: Type.Boolean() }, { additionalProperties: false }) });
-const service: ServiceDefinition = { name: "app", component: { name: "test", repository: { forge: { name: "test" }, path: "test" } }, workloads: [], capabilities: {} };
+const service: ServiceDefinition = {
+  name: "app",
+  component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
+  workloads: []
+};
 const native = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => ({ ready: true }) });
 
-test("multiple legacy workload probes adapt independently without invocation", () => {
+test("multiple workload extensions register independently without invocation", () => {
   const probe = mock(async () => ({ ready: true }));
-  const first = defineServiceWorkloadProbe({ id: "health", kind: "workload", schemaVersion: 1, workload: "main", produces, access: {}, probe });
-  const catalog = createServiceCatalog([{ ...service, contributions: { probes: [first, { ...first, id: "health-2" }] } }]);
+  const first = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: probe });
+  const catalog = createServiceCatalog([{
+    ...service,
+    extensions: [first, { ...first, id: "health-2" }]
+  }]);
   expect(catalog.extensions("workload.probe").map(item => item.extension.id)).toEqual(["health", "health-2"]);
   expect(probe).not.toHaveBeenCalled();
-  expect(() => createServiceCatalog([{ ...service, extensions: [native], contributions: { probes: [first] } }])).toThrow("not both");
+  expect(() => createServiceCatalog([{
+    ...service,
+    extensions: [first, native]
+  }])).toThrow("duplicate");
 });
 
 test("workload extension preserves schema types and checks discovery metadata", () => {

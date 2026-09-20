@@ -1,3 +1,4 @@
+import { inspectExtension, metricExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { parseInspectServices } from "../src/collect/inspect/options";
@@ -8,17 +9,18 @@ import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { formatServiceDescription } from "../src/app/plugin-description";
 
-const service: ServiceDefinition = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-  name: "api-server", aliases: ["api"], workloads: [],
-  capabilities: {
-    log: { default: true },
-    metric: { endpoint: { host: "api-server", port: 80, path: "/metrics" }, metricNames: [], charts: [] },
-  },
-  contributions: { inspect: {
+const service: ServiceDefinition = {
+  component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  name: "api-server",
+  aliases: ["api"],
+  workloads: [],
+  logs: { default: true },
+  extensions: [metricExtension({ endpoint: { host: "api-server", port: 80, path: "/metrics" }, metricNames: [], charts: [] }),
+  inspectExtension({
     access: {}, accepts: ["biz_id"], provides: ["record"],
     resolveTarget: async () => { throw new Error("offline"); },
     inspect: async () => { throw new Error("offline"); },
-  } },
+  })]
 };
 const catalog = createServiceCatalog([service]);
 
@@ -30,11 +32,11 @@ for (const [name, parse] of Object.entries({ inspect: parseInspectServices, data
 }
 
 test("alias resolution retains contribution checks and self-description", () => {
-  expect(catalog.findWithContribution("api", "inspect")?.name).toBe("api-server");
+  expect(catalog.find("api")?.name).toBe("api-server");
   const description = describeService(service);
   expect(description.aliases).toEqual(["api"]);
   expect(formatServiceDescription(description)).toContain("Aliases：api");
-  expect(() => parseDataServices("api", createServiceCatalog([{ ...service, contributions: undefined }]))).toThrow("facts.inspect Extension");
+  expect(() => parseDataServices("api", createServiceCatalog([{ ...service, extensions: undefined }]))).toThrow("facts.inspect Extension");
 });
 
 test("runtime Plugin loading validates aliases and reconstructs the alias-aware Catalog", () => {

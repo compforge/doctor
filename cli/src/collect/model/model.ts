@@ -28,6 +28,9 @@ export interface CollectModelCliOptions extends KubernetesCommandInput {
   model?: string;
   type?: string;
   timeout?: string;
+  modelProvider?: string;
+  inferenceProvider?: string;
+  directoryProvider?: string;
   modelCatalogService?: string;
   modelCatalogPort?: string;
   tenantDirectoryService?: string;

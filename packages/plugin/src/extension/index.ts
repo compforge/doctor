@@ -26,7 +26,7 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
   for (const field of ["id", "kind"] as const) {
     if (typeof item[field] !== "string" || !item[field].trim()) throw new Error(`Extension.${field} must be a non-empty string`);
   }
-  if (item.description !== undefined && typeof item.description !== "string") throw new Error("Extension.description must be a string");
+  if (item.description !== undefined && (typeof item.description !== "string" || !item.description.trim())) throw new Error("Extension.description must be a non-empty string");
   if (!item.access || typeof item.access !== "object" || Array.isArray(item.access)) throw new Error("Extension.access must be an object");
   if (typeof item.run !== "function") throw new Error("Extension.run must be a function");
 }
@@ -34,7 +34,6 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
 export * from "./facts-inspect";
 export * from "./trace-resolve";
 export * from "./overview";
-export { serviceExtensions } from "./service-extensions";
 export * from "./tenant";
 export * from "./mcp";
 export * from "./model";

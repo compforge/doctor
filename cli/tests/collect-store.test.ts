@@ -1,4 +1,4 @@
-import { createServiceCatalog, serviceExtensions, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -75,7 +75,7 @@ test("Store 类型支持一次选择多个并保持首次出现顺序", () => {
   expect(() => parseStoreKinds("db,k8s")).toThrow("只支持 db、vdb、s3、redis");
 });
 
-test.each(["legacy", "native"] as const)("VDB target provider 不要求同名 Service/Pod 已部署 (%s)", async mode => {
+test("VDB target provider 不要求同名 Service/Pod 已部署", async () => {
   const command = ["get", "services", "-o", "json"];
   const result: ExecResult = {
     ok: true,
@@ -90,40 +90,30 @@ test.each(["legacy", "native"] as const)("VDB target provider 不要求同名 Se
     run: async args => args[0] === "config" ? { ...result, stdout: "test\nhttps://cluster.test" } : result,
     exec: async () => { throw new Error("Core 不应读取配置来源 Pod"); },
   };
-  const legacyPlugin: PluginDefinition = {
+  const plugin: PluginDefinition = {
     id: "test",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "logical-opensearch-provider",
       workloads: [],
-      capabilities: {
-        dataSources: [{
-          id: "trace",
-          kind: "vdb",
+      dataSources: [{
+        id: "trace",
+        kind: "vdb",
+        backend: "opensearch",
+        access: {},
+      }],
+      extensions: [{
+        id: "trace-target", kind: "datasource.vdb.inspect", dataSource: "trace", access: {},
+        run: async () => ({
           backend: "opensearch",
-          access: {},
-          inspectTarget: async () => ({
-            backend: "opensearch",
-            store: "opensearch",
-            endpoint: "http://opensearch.storage:9200",
-            configurationKind: "plugin",
-          }),
-        }],
-      },
+          store: "opensearch",
+          endpoint: "http://opensearch.storage:9200",
+          configurationKind: "plugin",
+        }),
+      }]
     }]),
   } satisfies PluginDefinition;
-  const plugin: PluginDefinition = mode === "legacy" ? legacyPlugin : {
-    ...legacyPlugin,
-    services: createServiceCatalog(legacyPlugin.services.services.map(service => ({
-      ...service,
-      extensions: serviceExtensions(service),
-      capabilities: { dataSources: service.capabilities.dataSources?.map(source => {
-        if (source.kind !== "vdb") return source;
-        const { inspectTarget: _inspectTarget, ...declaration } = source;
-        return declaration;
-      }) },
-    }))),
-  };
 
   const resolved = await resolveStoreProviderConfig({
     type: "vdb",
@@ -1012,8 +1002,10 @@ describe("Store capability runtime state", () => {
           requests += 1;
           if (requests > 1) throw new DOMException("The operation was aborted.", "AbortError");
           return {
-            objects: [{ key: "knowledge/tenant-a/a.txt", size: 10,
-              lastModified: new Date("2026-08-01T00:00:00.000Z") }],
+            objects: [{
+              key: "knowledge/tenant-a/a.txt", size: 10,
+              lastModified: new Date("2026-08-01T00:00:00.000Z")
+            }],
             prefixes: [], truncated: true, continuationToken: "next",
           };
         },
@@ -1146,7 +1138,7 @@ describe("OpenSearch VDB probe", () => {
       kube: { namespace: "ns" },
       bundle,
       search,
-      log: () => {},
+      log: () => { },
     } satisfies VdbCommandContext;
     const collected = await runProbes(
       makeVdbProbes(),

@@ -1,5 +1,5 @@
 import { createCaseRunner } from "../case/extensions";
-import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
+import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
@@ -72,8 +72,7 @@ async function resolveEvalRequestIdentity(input: {
   if (!(isInteractive())) {
     throw new Error("非交互环境的 Eval Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
   }
-  const provider = tenantDirectoryExtensions(input.plugin.services, requirement.directoryService);
-  const directory = extensionTenantDirectory(provider, (service, extension) => openPluginContext(input.executor, {
+  const directory = discoverTenantDirectory(input.plugin.services, (service, extension) => openPluginContext(input.executor, {
     namespace: input.namespace,
     kubeconfig: input.kubeconfig,
     context: input.context,
@@ -138,8 +137,10 @@ function unavailable(reason: string): EvalEvidenceResult {
 
 function collected(result: CommandResult<unknown>, context: CommandContext): EvalEvidenceResult {
   context.artifacts.add(result.artifacts);
-  return { result, status: result.status, artifacts: result.artifacts,
-    reason: "reason" in result ? result.reason : undefined };
+  return {
+    result, status: result.status, artifacts: result.artifacts,
+    reason: "reason" in result ? result.reason : undefined
+  };
 }
 
 async function collectEvalEvidence(input: {
@@ -171,8 +172,8 @@ async function collectEvalEvidence(input: {
     }
   }
 
-  const logServices = input.plugin.services.servicesWith("log")
-    .filter((service) => service.capabilities.log.default)
+  const logServices = input.plugin.services.services.filter(service => service.logs !== undefined)
+    .filter((service) => service.logs!.default)
     .map((service) => service.name);
   if (!input.commandContext.signal.aborted && input.plugin.services.extensions("trace.resolve").length && logServices.length) {
     try {

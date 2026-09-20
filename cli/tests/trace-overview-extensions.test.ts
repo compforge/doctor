@@ -1,14 +1,18 @@
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, type ServiceDefinition, type TraceResolveExtension, type PluginContext,
-  type OverviewSummarizeExtension, type OverviewSampleExtension } from "@compforge/doctor-plugin";
+import {
+  createServiceCatalog, type ServiceDefinition, type TraceResolveExtension, type PluginContext,
+  type OverviewSummarizeExtension, type OverviewSampleExtension
+} from "@compforge/doctor-plugin";
 import { resolvePluginTraceIds } from "../src/plugin/trace-id";
 import { overviewProviders } from "../src/overview/extensions";
 import { evaluatePluginCapabilities } from "../src/command/plugin-capability";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../src/command/plugin-command-capabilities";
 
 const service = (name: string, extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
-  name, component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
-  workloads: [], capabilities: {}, extensions,
+  name,
+  component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } },
+  workloads: [],
+  extensions
 });
 const trace = (run: TraceResolveExtension["run"]): TraceResolveExtension => ({
   id: "trace", kind: "trace.resolve", endpoint: { host: "test", port: 80 }, access: {}, run,
@@ -18,8 +22,12 @@ const summarize: OverviewSummarizeExtension = {
   id: "summary", kind: "overview.summarize", access: {}, facets: [facet], run: async () => [],
 };
 const sample: OverviewSampleExtension = {
-  id: "sample", kind: "overview.sample", access: { kubernetes: [{ requirement: "required",
-    purpose: "sample", rule: { verb: "get", resource: "configmaps" } }] }, run: async () => [],
+  id: "sample", kind: "overview.sample", access: {
+    kubernetes: [{
+      requirement: "required",
+      purpose: "sample", rule: { verb: "get", resource: "configmaps" }
+    }]
+  }, run: async () => [],
 };
 
 test("native trace extensions resolve batches with fallback, provenance and deduplication", async () => {

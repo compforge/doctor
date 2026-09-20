@@ -43,24 +43,21 @@ test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target",
       analysis: {},
       source: { dataSource: { service: "jaeger-collector", dataSource: "trace" } },
     },
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "jaeger-collector",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat-server",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
-      },
+      dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }]
     }]),
   } satisfies PluginDefinition;
 
@@ -273,7 +270,7 @@ describe("collectTrace 记账", () => {
 
   test("span 数为 0 时，download 有交代且原因说得清", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
-    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({ count: 0 }));
+    const code = await collectTrace(traceOpts(dir), () => { }, fakeSearch({ count: 0 }));
     expect(code).toBe(1);
     const byId = new Map(manifestOf(dir).steps.map((s: any) => [s.id, s]));
     expect(byId.get("count")).toMatchObject({ status: "ok" });
@@ -285,7 +282,7 @@ describe("collectTrace 记账", () => {
 
   test("count 查询失败时，download 有交代", async () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
-    const code = await collectTrace(traceOpts(dir), () => {}, fakeSearch({}));
+    const code = await collectTrace(traceOpts(dir), () => { }, fakeSearch({}));
     expect(code).toBe(1);
     const byId = new Map(manifestOf(dir).steps.map((s: any) => [s.id, s]));
     expect(byId.get("count")).toMatchObject({ status: "failed" });
@@ -313,7 +310,7 @@ describe("collectTrace 记账", () => {
         configuredEndpoint: "https://os.example:9200",
         auth: { username: "u", password: "p" },
       },
-    }, () => {});
+    }, () => { });
 
     expect(code).toBe(1);
     expect(closeCount).toBe(0);
@@ -323,7 +320,7 @@ describe("collectTrace 记账", () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-trace-"));
     const code = await collectTrace(
       traceOpts(dir),
-      () => {},
+      () => { },
       fakeSearch({ count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }] }),
     );
     expect(code).toBe(0);
@@ -357,13 +354,13 @@ describe("collectTrace 记账", () => {
         references: [{ refType: "CHILD_OF", spanID: "root" }],
         startTime: 1000000 + index * 100000, duration: 80000,
         tags: [{ key: "span.kind", value: "client" }, { key: "http.method", value: "POST" },
-          { key: "http.url", value: "http://api.example/configs" }],
+        { key: "http.url", value: "http://api.example/configs" }],
       })),
     ];
     const { genAiSpecs } = await import("@compforge/trace-harness");
     const code = await collectTrace(
       { ...traceOpts(dir), contributions: { specs: genAiSpecs(), detectors: [detector] } },
-      () => {}, fakeSearch({ count: spans.length, spans }),
+      () => { }, fakeSearch({ count: spans.length, spans }),
     );
     expect(code).toBe(0);
     expect(detectedCount).toBe(3);
@@ -410,7 +407,7 @@ describe("collectTrace 记账", () => {
           return [{ ref: node.node_id, source: "async-plugin", severity: "warn", note: String(summary) }];
         }],
       },
-    }, () => {}, search);
+    }, () => { }, search);
     expect(code).toBe(0);
     expect(computes).toBe(1);
     expect(remoteReads).toBe(1);
@@ -432,9 +429,9 @@ describe("collectTrace 记账", () => {
         detectors: [async (node, analysis) => {
           readAfterClose = () => analysis.fact(node, "unavailable");
           throw new Error("plugin analysis failed");
-        }],
-      },
-    }, () => {}, fakeSearch({
+        }]
+      }
+    }, () => { }, fakeSearch({
       count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }],
     }));
     expect(await rendering).toBe(1);
@@ -456,8 +453,11 @@ describe("collectTrace 记账", () => {
       note: "plugin-scoped-finding",
     }];
     const code = await collectTrace(
-      { ...traceOpts(dir), contributions: { detectors: [pluginDetector] } },
-      () => {},
+      {
+        ...traceOpts(dir),
+        contributions: { detectors: [pluginDetector] }
+      },
+      () => { },
       fakeSearch({ count: 1, spans: [{ traceID: "abc123", spanID: "s1", operationName: "op" }] }),
     );
 

@@ -1,6 +1,4 @@
 import type { Identity } from "./capability";
-import type { PluginContext } from "./context";
-import type { CapabilityWithAccess } from "./kubernetes";
 
 /** A named lens over notable data. The same id across Services must have the same meaning. */
 export interface OverviewFacet {
@@ -46,11 +44,4 @@ export interface OverviewSample {
   bizId: string;
   /** Record from which the representative request was selected. */
   source?: Identity;
-}
-
-export interface ServiceOverviewCapability extends CapabilityWithAccess {
-  facets: readonly OverviewFacet[];
-  summarize(context: PluginContext, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
-  /** Return an empty list if matching data disappeared; never substitute an unrelated request. */
-  sample(context: PluginContext, query: OverviewSampleQuery): Promise<readonly OverviewSample[]>;
 }

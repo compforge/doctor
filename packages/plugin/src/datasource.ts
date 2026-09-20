@@ -1,7 +1,7 @@
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDefinition } from "./service";
 import type { DatabaseTarget } from "./database";
-import type { PluginContext, PluginClientContext, PluginDataSource } from "./context";
+import type { PluginClientContext, PluginDataSource } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
@@ -78,8 +78,6 @@ export interface ServiceVdbDataSource extends ServiceDataSourceBase {
   backend: "opensearch";
   store?: string;
   source?: PluginDataSource<ServiceVdbClient>;
-  /** Plugin 自行发现配置来源并投影出统一 VDB target；Core 只提供受控上下文。 */
-  inspectTarget?(context: PluginContext): Promise<ServiceVdbTarget>;
   access?: CapabilityWithAccess["access"];
   /** 非标准 VDB 配置由 Plugin 投影为 Doctor 可消费的统一 target。 */
   configuration?: ServiceVdbConfiguration;
@@ -178,7 +176,7 @@ export function serviceDataSources(
   service: string,
   kind?: ServiceDataSourceKind,
 ): readonly ServiceDataSource[] {
-  const dataSources = catalog.findWith(service, "dataSources")?.capabilities.dataSources ?? [];
+  const dataSources = catalog.find(service)?.dataSources ?? [];
   return kind ? dataSources.filter((store) => store.kind === kind) : dataSources;
 }
 
@@ -194,7 +192,7 @@ export function servicesWithDataSource<T extends ServiceDefinition>(
   catalog: ServiceCatalog<T>,
   kind?: ServiceDataSourceKind,
 ): T[] {
-  return catalog.servicesWith("dataSources").filter((service) =>
-    service.capabilities.dataSources.some((store) => !kind || store.kind === kind)
+  return catalog.services.filter((service) =>
+    service.dataSources?.some((store) => !kind || store.kind === kind)
   );
 }

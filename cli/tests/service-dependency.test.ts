@@ -15,18 +15,16 @@ test("Service Store dependency 以声明项为首选并补齐其它 VDB target",
   const plugin = {
     id: "multi-vdb",
     version: "0.0.1",
-    services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "kb-server",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }]
+    }, {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "jaeger-collector",
       workloads: [],
-      capabilities: {
-        dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }],
-      },
+      dataSources: [{ id: "trace", kind: "vdb", backend: "opensearch" }]
     }]),
   } satisfies PluginDefinition;
 
@@ -55,7 +53,7 @@ test("所有 OpenSearch Store target 失败时汇总原因", async () => {
   expect(prepareFirstAvailableDataSource(
     candidates,
     async ({ service }) => { throw new Error(`${service} unavailable`); },
-    () => {},
+    () => { },
   )).rejects.toThrow(
     "jaeger-collector/trace: jaeger-collector unavailable；kb-server/vdb: kb-server unavailable",
   );

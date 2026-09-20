@@ -1,5 +1,5 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ServiceInspect, ServiceInspectQuery, ServiceInspectQueryOutcome } from "../service";
+import type { ServiceInspectQuery, ServiceInspectQueryOutcome } from "../service";
 
 export const FACTS_INSPECT_KIND = "facts.inspect";
 export type FactsInspectInput = readonly ServiceInspectQuery[];
@@ -29,14 +29,4 @@ export function requireFactsInspectExtension(extension: RegisteredExtension): Fa
   }
   if (item.dataSource !== undefined && typeof item.dataSource !== "string") throw new Error(`${extension.id}.dataSource must be a string`);
   return extension as FactsInspectExtension;
-}
-
-/** One declaration remains the source of truth while other consumers still use ServiceInspect. */
-export function adaptServiceInspect(inspect: ServiceInspect): FactsInspectExtension {
-  return {
-    id: "inspect", kind: FACTS_INSPECT_KIND, access: inspect.access,
-    description: inspect.description, accepts: inspect.accepts, provides: inspect.provides,
-    expands: inspect.expands, limitations: inspect.limitations, dataSource: inspect.dataSource,
-    run: (context, queries) => inspect.inspect(context, queries),
-  };
 }

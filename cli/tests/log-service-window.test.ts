@@ -1,3 +1,4 @@
+import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { logService, podDiscoveryExecutor } from "./log-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -13,16 +14,34 @@ import { logCommand, type LogInput } from "../src/collect/log/command";
 import { createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/log/config";
 import { writeLogHtmlReport } from "../src/collect/log/html";
 
-const plugin: PluginDefinition = { id: "log-only", version: "1.0.0", services: createServiceCatalog([
-  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: logService("api").workloads, capabilities: { log: { default: true } } },
-  { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "worker", workloads: logService("worker").workloads, capabilities: { log: { default: false } } },
-]) };
+const plugin: PluginDefinition = {
+  id: "log-only", version: "1.0.0", services: createServiceCatalog([
+    {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "api",
+      workloads: logService("api").workloads,
+      logs: { default: true }
+    },
+    {
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "worker",
+      workloads: logService("worker").workloads,
+      logs: { default: false }
+    },
+  ])
+};
 const ok = { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, command: [] };
-const pods = parsePods(JSON.stringify({ items: [{
-  metadata: { name: "pod-1", uid: "uid-1" }, spec: { containers: [{ name: "app" }] },
-  status: { phase: "Running", containerStatuses: [{ name: "app", containerID: "current", restartCount: 1,
-    lastState: { terminated: { containerID: "previous" } } }] },
-}] }), "test");
+const pods = parsePods(JSON.stringify({
+  items: [{
+    metadata: { name: "pod-1", uid: "uid-1" }, spec: { containers: [{ name: "app" }] },
+    status: {
+      phase: "Running", containerStatuses: [{
+        name: "app", containerID: "current", restartCount: 1,
+        lastState: { terminated: { containerID: "previous" } }
+      }]
+    },
+  }]
+}), "test");
 
 for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unresolved"] as const) {
   test(`log command: ${variant}, bounded collection and trace resolution isolation`, async () => {
@@ -31,17 +50,25 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     writeFileSync(kubeconfig, "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []\n");
     let resolutions = 0;
     const activePlugin: PluginDefinition = variant === "trace-provider" || variant === "unresolved" ? {
-      ...plugin, services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: logService("api").workloads, capabilities: {
-        log: { default: true }, traceId: { access: {}, endpoint: { host: "unused", port: 80 }, resolve: async () => {
-          resolutions++;
-          if (variant === "trace-provider") throw new Error("No-ID collection must not resolve traces");
-          return undefined;
-        } },
-      } }]),
+      ...plugin, services: createServiceCatalog([{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "api",
+        workloads: logService("api").workloads,
+        logs: { default: true },
+        extensions: [traceExtension({
+          access: {}, endpoint: { host: "unused", port: 80 }, resolve: async () => {
+            resolutions++;
+            if (variant === "trace-provider") throw new Error("No-ID collection must not resolve traces");
+            return undefined;
+          }
+        })]
+      }]),
     } : plugin;
-    const context = new CommandContext({ kubernetes: {
-      kubeconfig: { kubeconfig, source: "flag" }, channel: { available: true, client: ok },
-    } }, {
+    const context = new CommandContext({
+      kubernetes: {
+        kubeconfig: { kubeconfig, source: "flag" }, channel: { available: true, client: ok },
+      }
+    }, {
       name: "test", configPath: "", value: { readonly: true, namespace: "test", kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {},
     }, { plugin: activePlugin });
     const ensure = spyOn(context, "ensureEnvironment").mockResolvedValue(undefined);
@@ -63,12 +90,16 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:01Z INFO unrelated request");
       request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:02Z ERROR database failed");
       request.onLine?.('2026-09-16T01:00:02Z   File "app.py", line 3');
-      return { ...ok, captureStatus: variant === "partial" ? "partial" : "complete", bytesRead: 200, attempts: 1,
-        stderr: variant === "partial" ? "capture byte limit" : "" };
+      return {
+        ...ok, captureStatus: variant === "partial" ? "partial" : "complete", bytesRead: 200, attempts: 1,
+        stderr: variant === "partial" ? "capture byte limit" : ""
+      };
     });
-    const input: LogInput = { bizIds: variant === "unresolved" ? ["unknown-request"] : [], ...(variant === "explicit" ? {
-      services: "worker", sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", errorsOnly: true,
-    } : {}) };
+    const input: LogInput = {
+      bizIds: variant === "unresolved" ? ["unknown-request"] : [], ...(variant === "explicit" ? {
+        services: "worker", sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", errorsOnly: true,
+      } : {})
+    };
     const started = Date.now();
     let outputDir: string | undefined;
     try {

@@ -7,7 +7,6 @@ import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import type { PreparedDataCommand } from "./context";
 import type {
-  DataTargetFact,
   SupportedDataService,
 } from "./model";
 
@@ -21,9 +20,9 @@ export function isSupportedDataService(
 export interface ConfirmedDataServiceTarget {
   service: string;
   context?: PluginContext;
-  targetFact:
-    | ({ status: "collected" } & DataTargetFact)
-    | { status: "unavailable" | "failed"; reason: string };
+  access:
+  | { status: "collected" }
+  | { status: "unavailable" | "failed"; reason: string };
 }
 
 export interface DataAccessPreparation {
@@ -57,24 +56,19 @@ export async function prepareDataAccess(
         });
         context = managed;
       }
-      // Only the transitional Inspect adapter has a database-shaped target resolver.
-      // Native Extensions own their resource preparation inside run.
-      const target = await declared.service.contributions?.inspect?.resolveTarget(context);
       if (managed) managedContexts.push(managed);
       confirmed.push({
         ...selection,
         context,
-        targetFact: {
+        access: {
           status: "collected",
-          service: selection.service,
-          ...target,
         },
       });
     } catch (error) {
       await Promise.allSettled(managed ? [managed.dispose()] : []);
       confirmed.push({
         ...selection,
-        targetFact: {
+        access: {
           status: "failed",
           reason: error instanceof Error ? error.message : String(error),
         },

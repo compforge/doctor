@@ -32,7 +32,11 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
       return result(command, "A=B\n");
     },
   };
-  const service = { name: "sample-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} };
+  const service = {
+    name: "sample-api",
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    workloads: []
+  };
   const context = createPluginContext(executor, {
     kubeconfig: "/tmp/test-kubeconfig",
     context: "test-context",
@@ -89,7 +93,11 @@ test("Plugin Kubernetes access normalizes command failures", async () => {
   };
   const context = createPluginContext(executor, { namespace: "default" }, {
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: { name: "sample-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    service: {
+      name: "sample-api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     capability: {
       access: {
         kubernetes: [{
@@ -117,7 +125,11 @@ test("Plugin access preflight only includes the selected Service capability", as
   };
   const context = await openPluginContext(executor, { namespace: "default" }, {
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: { name: "selected-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    service: {
+      name: "selected-api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     command: "doctor data",
     capability: {
       access: {
@@ -146,7 +158,11 @@ test("Core expands port-forward into its Kubernetes transport requirements", asy
   };
   const context = await openPluginContext(executor, { namespace: "default" }, {
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: { name: "selected-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    service: {
+      name: "selected-api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     command: "doctor model",
     capability: {
       access: {
@@ -175,7 +191,11 @@ test("Plugin Kubernetes helper rejects undeclared operations", async () => {
   };
   const context = createPluginContext(executor, { namespace: "default" }, {
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: { name: "selected-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    service: {
+      name: "selected-api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     capability: { access: {} },
   });
 
@@ -193,7 +213,11 @@ test("Plugin Kubernetes access enforces the Core output limit", async () => {
   };
   const context = createPluginContext(executor, { namespace: "default" }, {
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: { name: "sample-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    service: {
+      name: "sample-api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     capability: {
       access: {
         kubernetes: [{
@@ -220,7 +244,11 @@ test("Plugin exec forwards stdin under access checks and caps timeout without ex
     },
   };
   const context = createPluginContext(executor, { namespace: "default" }, {
-    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: { name: "sample", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: {
+      name: "sample",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     capability: { access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec" }, purpose: "query" }] } },
   });
   await expect(context.infra.kubernetes.exec({ pod: "sample-0" }, ["python", "-c", "private-script"], { stdin: "secret", timeoutMs: 60_000 }))
@@ -230,7 +258,11 @@ test("Plugin exec forwards stdin under access checks and caps timeout without ex
   expect(calls[0]?.signal?.aborted).toBe(false);
   await context.dispose();
   const denied = createPluginContext(executor, { namespace: "default" }, {
-    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: { name: "sample", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, capability: { access: {} },
+    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: {
+      name: "sample",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    }, capability: { access: {} },
   });
   await expect(denied.infra.kubernetes.exec({ pod: "sample-0" }, ["python"], { stdin: "secret" })).rejects.toThrow("未声明");
   expect(calls).toHaveLength(1);
@@ -251,48 +283,62 @@ test("siblings share resources after the first PluginContext is disposed, but ne
     exec: async (_target, command) => result(command),
   };
   const options = {
-    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
+    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: {
+      name: "api",
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: []
+    },
     capability: { access: { kubernetes: [{ rule: { verb: "get", resource: "services" }, requirement: "required", purpose: "discover" }] } },
   } as const;
-  const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", prepare: async (_context, input) => input, run: async (_root, input) => {
-    const context = createPluginContext(executor, { namespace: "test" }, options);
-    const client = await context.clients.get({ clientKey: "db", createClient: resource => ({
-      initialize: async () => { discoveries++; },
-      dispose: async () => { closed++; },
-      query: async (id: string) => {
-        await resource.infra.kubernetes.get("services", "api");
-        return id;
-      },
-    }) });
-    await context.dispose();
-    expect(context.signal.aborted).toBe(true);
-    return { status: CommandStatus.Ok, artifacts: [], output: await client.query(input.id) };
-  } });
+  const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({
+    name: "sample", prepare: async (_context, input) => input, run: async (_root, input) => {
+      const context = createPluginContext(executor, { namespace: "test" }, options);
+      const client = await context.clients.get({
+        clientKey: "db", createClient: resource => ({
+          initialize: async () => { discoveries++; },
+          dispose: async () => { closed++; },
+          query: async (id: string) => {
+            await resource.infra.kubernetes.get("services", "api");
+            return id;
+          },
+        })
+      });
+      await context.dispose();
+      expect(context.signal.aborted).toBe(true);
+      return { status: CommandStatus.Ok, artifacts: [], output: await client.query(input.id) };
+    }
+  });
   const first = await query.run(root, { id: "summary" });
   const siblings = await Promise.all([query.run(root, { id: "a" }), query.run(root, { id: "b" })]);
   expect([first, ...siblings].map(r => r.output)).toEqual(["summary", "a", "b"]);
   expect(discoveries).toBe(1);
   expect(closed).toBe(0);
 
-  const isolation = defineCommand({ name: "isolation", prepare: async (_context, input) => input, run: async () => {
-    const variants = [
-      { kube: { namespace: "other" }, options },
-      { kube: { namespace: "test" }, options: { ...options, config: { tenant: "other" } } },
-      { kube: { namespace: "test" }, options: { ...options, databaseIdentity: { user: "other", password: "secret" } } },
-      { kube: { namespace: "test", context: "other-cluster" }, options: { ...options,
-        environment: { ...options.environment, name: "other-cluster", context: "other-cluster" } } },
-      { kube: { namespace: "test" }, options: { ...options, capability: { access: {} } } },
-    ];
-    for (const variant of variants) {
-      const ctx = createPluginContext(executor, variant.kube, variant.options);
-      const distinct = await ctx.clients.get({ clientKey: "db", createClient: resource => ({ resource, initialize: async () => {}, dispose: async () => {} }) });
-      expect(distinct).toHaveProperty("resource");
-      if (!("kubernetes" in variant.options.capability.access)) {
-        await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");
+  const isolation = defineCommand({
+    name: "isolation", prepare: async (_context, input) => input, run: async () => {
+      const variants = [
+        { kube: { namespace: "other" }, options },
+        { kube: { namespace: "test" }, options: { ...options, config: { tenant: "other" } } },
+        { kube: { namespace: "test" }, options: { ...options, databaseIdentity: { user: "other", password: "secret" } } },
+        {
+          kube: { namespace: "test", context: "other-cluster" }, options: {
+            ...options,
+            environment: { ...options.environment, name: "other-cluster", context: "other-cluster" }
+          }
+        },
+        { kube: { namespace: "test" }, options: { ...options, capability: { access: {} } } },
+      ];
+      for (const variant of variants) {
+        const ctx = createPluginContext(executor, variant.kube, variant.options);
+        const distinct = await ctx.clients.get({ clientKey: "db", createClient: resource => ({ resource, initialize: async () => { }, dispose: async () => { } }) });
+        expect(distinct).toHaveProperty("resource");
+        if (!("kubernetes" in variant.options.capability.access)) {
+          await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");
+        }
       }
+      return { status: CommandStatus.Ok, artifacts: [], output: undefined };
     }
-    return { status: CommandStatus.Ok, artifacts: [], output: undefined };
-  } });
+  });
   expect((await isolation.run(root, {})).status).toBe(CommandStatus.Ok);
   await root.disposeClients();
   expect(closed).toBe(1);
@@ -316,7 +362,11 @@ test("repeated successful access prints once, and reuse never bypasses a caller'
     expect(output).toHaveBeenCalledTimes(1);
     const denied = new KubernetesAccessContext({ ...executor, run: async command => result(command, "no", false) });
     await expect(openPluginContext(executor, { namespace: "test" }, {
-      environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} }, command: "sample", authorization: denied,
+      environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: {
+        name: "api",
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        workloads: []
+      }, command: "sample", authorization: denied,
       capability: { access: { kubernetes: [need] } },
     })).rejects.toThrow("缺少必须");
   } finally { output.mockRestore(); }

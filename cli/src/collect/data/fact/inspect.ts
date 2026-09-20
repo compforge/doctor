@@ -12,30 +12,19 @@ export function makeDataInspect(
     run: async (ctx) => {
       const services: Record<string, DataServiceFacts> = {};
       for (const confirmed of prepared.confirmed) {
-        const inspect: DataServiceFacts["inspect"] = confirmed.targetFact.status === "collected"
+        const inspect: DataServiceFacts["inspect"] = confirmed.access.status === "collected"
           ? collectedFact("data.inspect-capability", "data-service-targets", { queryable: true })
-          : confirmed.targetFact.status === "failed"
-            ? failedFact("data.inspect-capability", "data-service-targets", confirmed.targetFact.reason)
-            : unavailableFact("data.inspect-capability", "data-service-targets", confirmed.targetFact.reason);
+          : confirmed.access.status === "failed"
+            ? failedFact("data.inspect-capability", "data-service-targets", confirmed.access.reason)
+            : unavailableFact("data.inspect-capability", "data-service-targets", confirmed.access.reason);
         ctx.bundle.addStep({
           id: `data-inspect-${confirmed.service}`,
-          title: `${confirmed.service} Inspect contribution`,
+          title: `${confirmed.service} facts.inspect Extension`,
           risk: "observe",
           status: inspect.status === "collected" ? "ok" : inspect.status,
           reason: inspect.status === "collected" ? undefined : inspect.reason,
         });
-        const target = confirmed.targetFact.status === "collected"
-          ? collectedFact("data.service-target", "data-service-targets", {
-              service: confirmed.targetFact.service,
-              endpoint: confirmed.targetFact.endpoint,
-              database: confirmed.targetFact.database,
-              username: confirmed.targetFact.username,
-              credentialSource: confirmed.targetFact.credentialSource,
-            })
-          : confirmed.targetFact.status === "failed"
-            ? failedFact("data.service-target", "data-service-targets", confirmed.targetFact.reason)
-            : unavailableFact("data.service-target", "data-service-targets", confirmed.targetFact.reason);
-        services[confirmed.service] = { target, inspect };
+        services[confirmed.service] = { inspect };
       }
       return { services };
     },

@@ -1,6 +1,7 @@
+import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
-import { DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
+import { requireWorkloadProbeExtension, requireCaseRunnerCreateExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { openModelAccess, openModelDiscoveryAccess } from "../src/model";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -26,15 +27,22 @@ test("Plugin Inspect contribution 必须提供 inspect", () => {
   const definition = (inspect: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "records", workloads: [], contributions: { inspect }, capabilities: {} }] },
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "records",
+        workloads: [],
+        extensions: [{ id: "inspect", kind: "facts.inspect", ...inspect }]
+      }]
+    },
   });
 
-  expect(validatePluginDefinition(definition({ ...base, inspect: async () => ({}) }), manifest))
+  expect(validatePluginDefinition(definition({ ...base, run: async () => ({}) }), manifest))
     .toBeDefined();
   expect(() => validatePluginDefinition(definition({ ...base, query: async () => ({}) }), manifest))
-    .toThrow("records.contributions.inspect.inspect must be a function");
+    .toThrow("run");
   expect(() => validatePluginDefinition(definition(base), manifest))
-    .toThrow("records.contributions.inspect.inspect must be a function");
+    .toThrow("run");
 });
 
 test("Plugin tenant capability 只绑定租户目录", () => {
@@ -42,145 +50,129 @@ test("Plugin tenant capability 只绑定租户目录", () => {
     id: "test",
     version: "0.0.1",
     tenant: { directoryService: "iam" },
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "iam",
-      workloads: [],
-      capabilities: {
-        tenantDirectory: {
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "iam",
+        workloads: [],
+        extensions: [...directoryExtensions({
           endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
             getByName: async (name: string) => ({ id: name, name, displayName: name }),
           }),
-        },
-      },
-    }] },
+        })]
+      }]
+    },
   };
-  expect(validatePluginDefinition(valid, manifest).tenant).toEqual({ directoryService: "iam" });
-  expect(() => validatePluginDefinition({
-    ...valid,
-    services: { services: [] },
-  }, manifest)).toThrow("unknown Service 'iam'");
+  expect(() => validatePluginDefinition(valid, manifest)).toThrow("Unsupported Plugin bindings");
+  const { tenant: _, ...native } = valid;
+  expect(validatePluginDefinition(native, manifest).services.extensions("tenant.list")).toHaveLength(1);
 });
 
 test("Plugin model capability requires an endpoint on each declared provider", () => {
   const plugin = {
     id: "test",
     version: "0.0.1",
-    model: {
-      tenantDirectoryService: "tenant-directory",
-      catalogService: "model-catalog",
-      inferenceService: "inference",
-    },
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "tenant-directory",
-      workloads: [],
-      capabilities: {
-        tenantDirectory: {
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "tenant-directory",
+        workloads: [],
+        extensions: [...directoryExtensions({
           endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
             getByName: async (name: string) => ({ id: name, name, displayName: name }),
           }),
-        },
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "model-catalog",
-      workloads: [],
-      capabilities: {
-        modelCatalog: {
+        })]
+      }, {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "model-catalog",
+        workloads: [],
+        extensions: [...catalogExtensions({
           endpoint: { host: "test-service", port: 8081 },
           access: {},
           create: () => ({
             query: async () => [],
             getBackend: async () => undefined,
           }),
-        },
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "inference",
-      workloads: [],
-      capabilities: {
-        inference: {
-          access: {},
-          create: async () => {
-            throw new Error("inference factory must not run");
-          },
-        },
-      },
-    }] },
+        })]
+      }, {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "inference",
+        workloads: [],
+        extensions: [{ id: "invoke", kind: "model.invoke", access: {}, run: async () => { throw new Error("must not run"); } }]
+      }]
+    },
   };
 
-  expect(() => validatePluginDefinition(plugin, manifest)).toThrow(
-    "inference.endpoint must be an object",
-  );
+  const validated = validatePluginDefinition(plugin, manifest);
+  expect(() => requireModelInvokeExtension(validated.services.extensions("model.invoke")[0]!.extension)).toThrow("endpoint");
 });
 
 test("Plugin model capability supports discovery without inference", async () => {
   const plugin = {
     id: "test",
     version: "0.0.1",
-    model: {
-      tenantDirectoryService: "tenant-directory",
-      catalogService: "model-catalog",
-    },
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "tenant-directory",
-      workloads: [],
-      capabilities: {
-        tenantDirectory: {
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "tenant-directory",
+        workloads: [],
+        extensions: [...directoryExtensions({
           endpoint: { host: "test-service", port: 8080 },
           access: {},
           create: () => ({
             listActive: async () => [],
             getByName: async (name: string) => ({ id: name, name, displayName: name }),
           }),
-        },
-      },
-    }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "model-catalog",
-      workloads: [],
-      capabilities: {
-        modelCatalog: {
+        })]
+      }, {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "model-catalog",
+        workloads: [],
+        extensions: [...catalogExtensions({
           endpoint: { host: "test-service", port: 8081 },
           access: {},
           create: () => ({
             query: async () => [],
             getBackend: async () => undefined,
           }),
-        },
-      },
-    }] },
+        })]
+      }]
+    },
   };
 
   const validated = validatePluginDefinition(plugin, manifest);
-  expect(validated.model).toEqual({
-    tenantDirectoryService: "tenant-directory",
-    catalogService: "model-catalog",
-  });
-  await expect(openModelAccess({ command: "doctor model", plugin: validated })).rejects.toThrow(
-    "model capability 未声明 inferenceService",
-  );
+  expect(validated.services.extensions("model.query")).toHaveLength(1);
+  expect(validated.services.extensions("model.invoke")).toHaveLength(0);
 });
 
 test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   const base = {
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "api", workloads: [], capabilities: {} }] },
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "api",
+        workloads: []
+      }]
+    },
   };
   expect(validatePluginDefinition(base, manifest).services.find("api")?.toolchain).toBeUndefined();
 
   expect(() => validatePluginDefinition({
     ...base,
     services: {
-      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "api",
         workloads: [],
-        toolchain: { language: "python", executionPlatform: "unknown" },
-        capabilities: {},
+        toolchain: { language: "python", executionPlatform: "unknown" }
       }],
     },
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
@@ -196,16 +188,18 @@ test("Service probes 只接受 Core 支持的声明式共同 Probe", () => {
   const plugin = (candidate: Record<string, unknown>) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "runtime-api",
-      workloads: [],
-      contributions: { probes: [candidate] },
-      capabilities: {},
-    }] },
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "runtime-api",
+        workloads: [],
+        environmentProbes: [candidate]
+      }]
+    },
   });
 
   expect(validatePluginDefinition(plugin(probe), manifest).services
-    .findWithContribution("runtime-api", "probes")?.contributions.probes)
+    .find("runtime-api")?.environmentProbes)
     .toEqual([probe]);
   expect(() => validatePluginDefinition(plugin({ ...probe, kind: "custom.exec" }), manifest))
     .toThrow("uses unsupported kind 'custom.exec'");
@@ -219,47 +213,51 @@ test("Service detector 必须有唯一 id 与纯 detect 入口", () => {
   const definition = (detectors: unknown) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "runtime-api",
-      workloads: [],
-      contributions: { detectors },
-      capabilities: {},
-    }] },
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "runtime-api",
+        workloads: [],
+        detectors: detectors
+      }]
+    },
   });
   const detector = { id: "runtime-health", detect: () => [] };
 
   expect(validatePluginDefinition(definition([detector]), manifest).services
-    .find("runtime-api")?.contributions?.detectors?.[0]?.id).toBe("runtime-health");
+    .find("runtime-api")?.detectors?.[0]?.id).toBe("runtime-health");
   expect(() => validatePluginDefinition(definition([
     detector,
     { ...detector },
-  ]), manifest)).toThrow("runtime-api.contributions.detectors contains duplicate id 'runtime-health'");
+  ]), manifest)).toThrow("runtime-api.detectors contains duplicate id 'runtime-health'");
   expect(() => validatePluginDefinition(definition([{
     id: "runtime-health",
-  }]), manifest)).toThrow("runtime-api.contributions.detectors.runtime-health.detect must be a function");
+  }]), manifest)).toThrow("runtime-api.detectors.runtime-health.detect must be a function");
 });
 
 test("Workload Probe 在执行前声明完整 Observation contract", () => {
   const definition = (produces: unknown) => ({
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "runtime-api",
-      workloads: [{
-        name: "main",
-        platform: "kubernetes", location: { kind: "service", name: "runtime-api" },
-      }],
-      contributions: { probes: [{
-        id: "health",
-        kind: "workload",
-        schemaVersion: 1,
-        access: {},
-        workload: "main",
-        produces,
-        probe: async () => ({}),
-      }] },
-      capabilities: {},
-    }] },
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "runtime-api",
+        workloads: [{
+          name: "main",
+          platform: "kubernetes", location: { kind: "service", name: "runtime-api" },
+        }],
+        extensions: [{
+          id: "health",
+          kind: "workload.probe",
+
+          access: {},
+          workload: "main",
+          produces,
+          run: async () => ({}),
+        }]
+      }]
+    },
   });
 
   const validated = validatePluginDefinition(definition({
@@ -271,13 +269,13 @@ test("Workload Probe 在执行前声明完整 Observation contract", () => {
       required: ["ready"],
       additionalProperties: false,
     },
-  }), manifest).services.find("runtime-api")?.contributions?.probes?.[0];
-  expect(validated?.kind).toBe("workload");
-  expect(validated?.kind === "workload" ? validated.produces.kind : undefined).toBe("health");
+  }), manifest).services.extensions("workload.probe")[0]!.extension;
+  expect(validated.kind).toBe("workload.probe");
+  expect(requireWorkloadProbeExtension(validated).produces.kind).toBe("health");
   expect(() => validatePluginDefinition(definition({ schemaVersion: 1 }), manifest))
-    .toThrow("runtime-api.contributions.probes.health.produces.kind must be a non-empty string");
+    .toThrow("Observation");
   expect(() => validatePluginDefinition(definition({ kind: "health", schemaVersion: 0 }), manifest))
-    .toThrow("runtime-api.contributions.probes.health.produces.schemaVersion must be a positive integer");
+    .toThrow("Observation");
 });
 
 test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
@@ -286,12 +284,11 @@ test("Plugin trace source 必须引用 Catalog 中已声明的 Store", () => {
     version: "0.0.1",
     trace: { analysis: {} },
     services: {
-      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "trace-store",
         workloads: [],
-        capabilities: {
-          dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
-        },
+        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }]
       }],
     },
   };
@@ -325,24 +322,23 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
   const dependency = {
     id: "trace-store",
     service: "kb-server",
-    capability: "dataSources",
+
     dataSource: "vdb",
   } as const;
   const base = {
     id: "test",
     version: "0.0.1",
     services: {
-      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "kb-server",
         workloads: [],
-        capabilities: {
-          dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }],
-        },
-      }, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        dataSources: [{ id: "vdb", kind: "vdb", backend: "opensearch" }]
+      }, {
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "opensearch",
         workloads: [],
-        dependencies: [dependency],
-        capabilities: {},
+        dependencies: [dependency]
       }],
     },
   };
@@ -358,7 +354,7 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
         dependencies: [{
           id: "trace-store",
           service: "kb-server",
-          capability: "dataSources",
+
           dataSource: "missing",
         }],
       }],
@@ -381,12 +377,11 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
   expect(() => validatePluginDefinition({
     ...base,
     services: {
-      services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "kb-server",
         workloads: [],
-        capabilities: {
-          dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }],
-        },
+        dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }]
       }, {
         ...base.services.services[1],
         dependencies: [{ ...dependency, dataSource: "database" }],
@@ -399,11 +394,12 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   const base = {
     id: "test",
     version: "0.0.1",
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "chat",
-      workloads: [],
-      capabilities: {
-        case: {
+    services: {
+      services: [{
+        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        name: "chat",
+        workloads: [],
+        extensions: [caseExtension({
           endpoint: { host: "test-service", port: 8000 },
           access: {},
           caseSets: [{
@@ -420,8 +416,8 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
             }],
           }],
           createRunner: async () => { throw new Error("factory must not run"); },
-        },
-        perf: {
+        }),
+        perfExtension({
           scenarios: [{
             id: "ordinary-chat",
             title: "普通 Chat",
@@ -434,127 +430,54 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
               correlationKeys: ["message_id"],
             },
           }],
-        },
-      },
-    }] },
+        })]
+      }]
+    },
   };
-  expect(validatePluginDefinition(base, manifest).services.find("chat")?.capabilities.perf)
-    .toBeDefined();
+  const validated = validatePluginDefinition(base, manifest);
+  expect(validated.services.extensions("perf.scenarios")).toHaveLength(1);
+  const runner = requireCaseRunnerCreateExtension(validated.services.extensions("case.runner.create")[0]!.extension);
+  const caseSet = runner.caseSets[0]!;
+  expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, { caseSets: [{ ...caseSet, facets: undefined }] })))
+    .toThrow("unknown facet 'difficulty'");
+  expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, {
+    caseSets: [{
+      ...caseSet,
+      cases: [{ ...caseSet.cases[0]!, facets: { difficulty: "medium" } }],
+    }]
+  }))).toThrow("facet difficulty='medium' not in declared values");
+  // Scenario output and cross-Case references are validated when the Command loads them;
+  // perf-extensions.test exercises this boundary with real scoped execution.
 
-  const caseCapability = base.services.services[0].capabilities.case;
-  const caseSet = caseCapability.caseSets[0];
-  expect(() => validatePluginDefinition({
-    ...base,
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "chat",
-      workloads: [],
-      capabilities: {
-        ...base.services.services[0].capabilities,
-        case: {
-          ...caseCapability,
-          caseSets: [{ ...caseSet, facets: undefined }],
-        },
-      },
-    }] },
-  }, manifest)).toThrow("unknown facet 'difficulty'");
-
-  expect(() => validatePluginDefinition({
-    ...base,
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "chat",
-      workloads: [],
-      capabilities: {
-        ...base.services.services[0].capabilities,
-        case: {
-          ...caseCapability,
-          caseSets: [{
-            ...caseSet,
-            cases: [{
-              ...caseSet.cases[0],
-              facets: { difficulty: "medium" },
-            }],
-          }],
-        },
-      },
-    }] },
-  }, manifest)).toThrow("facet difficulty='medium' not in declared values");
-
-  expect(() => validatePluginDefinition({
-    ...base,
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "chat",
-      workloads: [],
-      capabilities: {
-        case: base.services.services[0].capabilities.case,
-        perf: { ...base.services.services[0].capabilities.perf, scenarios: [] },
-      },
-    }] },
-  }, manifest)).toThrow("chat.perf.scenarios must be a non-empty array");
-
-  expect(() => validatePluginDefinition({
-    ...base,
-    services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "chat",
-      workloads: [],
-      capabilities: {
-        ...base.services.services[0].capabilities,
-        perf: {
-          scenarios: [{
-            ...base.services.services[0].capabilities.perf.scenarios[0],
-            cases: [{ caseId: "missing" }],
-          }],
-        },
-      },
-    }] },
-  }, manifest)).toThrow("references unknown Case 'missing'");
 });
 
 test("Plugin Case request identity references a tenant directory provider", () => {
-  const caseService = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+  const caseService = {
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "chat",
     workloads: [],
-    capabilities: {
-      case: {
-        endpoint: { host: "test-service", port: 8000 },
-        access: {},
-        caseSets: [{
-          caseset: "chat",
-          focus: "Chat Cases",
-          schema_version: 1,
-          cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
-        }],
-        requestIdentity: {
-          directoryService: "iam",
-          configured: () => ({}),
-        },
-        createRunner: async () => { throw new Error("factory must not run"); },
+    extensions: [caseExtension({
+      endpoint: { host: "test-service", port: 8000 },
+      access: {},
+      caseSets: [{
+        caseset: "chat",
+        focus: "Chat Cases",
+        schema_version: 1,
+        cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
+      }],
+      requestIdentity: {
+        configured: () => ({}),
       },
-    },
+      createRunner: async () => { throw new Error("factory must not run"); },
+    })]
   };
-  expect(() => validatePluginDefinition({
-    id: "test",
-    version: "0.0.1",
-    services: { services: [caseService] },
-  }, manifest)).toThrow("unknown Service 'iam'");
+  const validated = validatePluginDefinition({
+    id: "test", version: "0.0.1", services: { services: [caseService] },
+  }, manifest);
+  const runner = requireCaseRunnerCreateExtension(validated.services.extensions("case.runner.create")[0]!.extension);
+  expect(runner.requestIdentity?.configured({})).toEqual({});
+  expect(validated.services.extensions("tenant.list")).toHaveLength(0);
 
-  expect(validatePluginDefinition({
-    id: "test",
-    version: "0.0.1",
-    services: { services: [caseService, { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      name: "iam",
-      workloads: [],
-      capabilities: {
-        tenantDirectory: {
-          endpoint: { host: "test-service", port: 8001 },
-          access: {},
-          create: () => ({
-            listActive: async () => [],
-            getByName: async (name: string) => ({ id: name, name, displayName: name }),
-          }),
-        },
-      },
-    }] },
-  }, manifest).services.find("chat")?.capabilities.case?.requestIdentity?.directoryService).toBe("iam");
 });
 
 
@@ -574,31 +497,46 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
       } else {
         throw new Error(`Unexpected Kubernetes call: ${command.join(" ")}`);
       }
-      return { command, stdout, stderr: "", ok: stdout !== "no", exitCode: stdout === "no" ? 1 : 0,
-        durationMs: 0, timedOut: false };
+      return {
+        command, stdout, stderr: "", ok: stdout !== "no", exitCode: stdout === "no" ? 1 : 0,
+        durationMs: 0, timedOut: false
+      };
     });
-    const access = requirement ? { kubernetes: [{
-      rule: { verb: "create", resource: "pods/portforward" }, requirement, purpose: "访问目录",
-    }] } : {};
+    const access = requirement ? {
+      kubernetes: [{
+        rule: { verb: "create", resource: "pods/portforward" }, requirement, purpose: "访问目录",
+      }]
+    } : {};
     const service = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [] };
     const plugin = validatePluginDefinition({
       id: "test", version: "0.0.1",
-      model: { tenantDirectoryService: "directory", catalogService: "catalog" },
-      services: { services: [{ ...service, name: "directory", capabilities: {
-        tenantDirectory: { endpoint: { host: "directory", port: 8080 }, access, create: () => {
-          created++;
-          return { listActive: async () => [], getByName: async () => undefined };
-        } },
-      } }, { ...service, name: "catalog", capabilities: {
-        modelCatalog: { endpoint: { host: "catalog", port: 8081 }, access, create: () => {
-          created++;
-          return { query: async () => [], getBackend: async () => undefined };
-        } },
-      } }] },
+      services: {
+        services: [{
+          ...service,
+          name: "directory",
+          extensions: [...directoryExtensions({
+            endpoint: { host: "directory", port: 8080 }, access, create: () => {
+              created++;
+              return { listActive: async () => [], getByName: async name => ({ id: name, name, displayName: name }) };
+            }
+          })]
+        }, {
+          ...service,
+          name: "catalog",
+          extensions: [...catalogExtensions({
+            endpoint: { host: "catalog", port: 8081 }, access, create: () => {
+              created++;
+              return { query: async () => [], getBackend: async () => undefined };
+            }
+          })]
+        }]
+      },
     }, manifest);
     try {
-      const opening = openModelDiscoveryAccess({ command: "doctor model", plugin,
-        namespace: "test", context: "test-context", kubeconfig: "/tmp/model-access-test", interactive: false });
+      const opening = openModelDiscoveryAccess({
+        command: "doctor model", plugin,
+        namespace: "test", context: "test-context", kubeconfig: "/tmp/model-access-test", interactive: false
+      });
       const discovery = await opening;
       expect(created).toBe(0);
       try {

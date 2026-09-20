@@ -1,26 +1,5 @@
 import { validateExtension, type RegisteredExtension } from "./extension";
-import { serviceExtensions } from "./extension/service-extensions";
-import type {
-  ServiceCapabilityName,
-  ServiceCapabilities,
-  ServiceContributionName,
-  ServiceContributions,
-  ServiceDefinition,
-} from "./service";
-
-export type ServiceWithCapability<
-  T extends ServiceDefinition,
-  K extends ServiceCapabilityName,
-> = T & {
-  capabilities: T["capabilities"] & Required<Pick<ServiceCapabilities, K>>;
-};
-
-export type ServiceWithContribution<
-  T extends ServiceDefinition,
-  K extends ServiceContributionName,
-> = T & {
-  contributions: ServiceContributions & Required<Pick<ServiceContributions, K>>;
-};
+import type { ServiceDefinition } from "./service";
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
@@ -44,17 +23,17 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       }
       if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
       const extensionIds = new Set<string>();
-      for (const extension of serviceExtensions(service)) {
+      for (const extension of (service.extensions ?? [])) {
         validateExtension(extension);
         if (extensionIds.has(extension.id)) throw new Error(`${service.name}: duplicate Extension id '${extension.id}'`);
         extensionIds.add(extension.id);
       }
       const workloads = service.workloads.map((workload) => workload.name);
-      for (const source of service.capabilities.dataSources ?? []) {
+      for (const source of service.dataSources ?? []) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
           throw new Error(`${service.name}/${source.id}: source 与 environment 配置映射必须且只能声明一个`);
         }
-        if (source.kind === "vdb" && source.source && (source.inspectTarget || source.configuration)) {
+        if (source.kind === "vdb" && source.source && (source.configuration)) {
           throw new Error(`${service.name}/${source.id}: source 不能同时声明其它配置解析入口`);
         }
       }
@@ -66,7 +45,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   /** Open discovery; the consumer owns domain validation and multi-provider selection. */
   extensions(kind: string): { service: T; extension: RegisteredExtension }[] {
-    return this.services.flatMap(service => serviceExtensions(service)
+    return this.services.flatMap(service => (service.extensions ?? [])
       .filter(extension => extension.kind === kind)
       .map(extension => ({ service, extension })));
   }
@@ -84,43 +63,6 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
     }))];
   }
 
-  findWith<K extends ServiceCapabilityName>(
-    name: string,
-    capability: K,
-  ): ServiceWithCapability<T, K> | undefined {
-    const service = this.find(name);
-    return service?.capabilities[capability] !== undefined
-      ? service as ServiceWithCapability<T, K>
-      : undefined;
-  }
-
-  servicesWith<K extends ServiceCapabilityName>(
-    capability: K,
-  ): ServiceWithCapability<T, K>[] {
-    return this.services.filter(
-      (service): service is ServiceWithCapability<T, K> =>
-        service.capabilities[capability] !== undefined,
-    );
-  }
-
-  findWithContribution<K extends ServiceContributionName>(
-    name: string,
-    contribution: K,
-  ): ServiceWithContribution<T, K> | undefined {
-    const service = this.find(name);
-    return service?.contributions?.[contribution] !== undefined
-      ? service as ServiceWithContribution<T, K>
-      : undefined;
-  }
-
-  servicesWithContribution<K extends ServiceContributionName>(
-    contribution: K,
-  ): ServiceWithContribution<T, K>[] {
-    return this.services.filter(
-      (service): service is ServiceWithContribution<T, K> =>
-        service.contributions?.[contribution] !== undefined,
-    );
-  }
 }
 
 /**

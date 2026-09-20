@@ -28,16 +28,22 @@ import { ServiceDependencyRuntime } from "../src/collect/shared/service-dependen
 const ok = { ok: true, exitCode: 0, stderr: "", durationMs: 1, timedOut: false, command: [] };
 function executor(environment = "dev\nhttps://cluster-a.test", uid = "uid-a") {
   const calls: string[][] = [];
-  const pod = { metadata: { name: "physical-0", uid, namespace: "demo" }, spec: { containers: [{ name: "app" }, { name: "sidecar" }] },
-    status: { phase: "Running", containerStatuses: [{ name: "app", containerID: "runtime-a" }] } };
+  const pod = {
+    metadata: { name: "physical-0", uid, namespace: "demo" }, spec: { containers: [{ name: "app" }, { name: "sidecar" }] },
+    status: { phase: "Running", containerStatuses: [{ name: "app", containerID: "runtime-a" }] }
+  };
   const exec: Executor = {
     run: async args => {
       calls.push(args);
       if (args[0] === "config") return { ...ok, command: args, stdout: environment };
-      if (args[1] === "pods") return { ...ok, command: args,
-        stdout: JSON.stringify(args[2] === "physical-0" ? pod : { items: [pod] }) };
-      if (args.join(" ") === "get services physical-v2 -o json") return { ...ok, command: args,
-        stdout: JSON.stringify({ metadata: { name: "physical-v2" }, spec: { selector: { app: "physical" } } }) };
+      if (args[1] === "pods") return {
+        ...ok, command: args,
+        stdout: JSON.stringify(args[2] === "physical-0" ? pod : { items: [pod] })
+      };
+      if (args.join(" ") === "get services physical-v2 -o json") return {
+        ...ok, command: args,
+        stdout: JSON.stringify({ metadata: { name: "physical-v2" }, spec: { selector: { app: "physical" } } })
+      };
       throw new Error("Unexpected access: " + args.join(" "));
     },
     exec: async () => { throw new Error("No exec during selection"); },
@@ -48,18 +54,28 @@ function executor(environment = "dev\nhttps://cluster-a.test", uid = "uid-a") {
 test("DataSource resolves declared physical resource and container, not logical name or sidecar", async () => {
   const f = executor();
   const command = new CommandContext({});
-  const service = { ...logService("logical"), workloads: [{ name: "api", platform: "kubernetes" as const,
-    location: { kind: "service" as const, name: "physical-v2" }, container: "app" }] };
-  const input = { service, executor: f.exec, namespace: "demo", interactive: false, commandContext: command,
-    selection: { purpose: "configuration" } };
+  const service = {
+    ...logService("logical"), workloads: [{
+      name: "api", platform: "kubernetes" as const,
+      location: { kind: "service" as const, name: "physical-v2" }, container: "app"
+    }]
+  };
+  const input = {
+    service, executor: f.exec, namespace: "demo", interactive: false, commandContext: command,
+    selection: { purpose: "configuration" }
+  };
   try {
     expect(await resolveDataSourceTarget(input)).toEqual({ pod: "physical-0", container: "app" });
     expect(f.calls.some(args => args.includes("logical"))).toBeFalse();
     await expect(resolveDataSourceTarget({ ...input, container: "sidecar" })).rejects.toThrow("未声明 Container");
     await expect(resolveDataSourceTarget({ ...input, service: { ...service, workloads: [] } })).rejects.toThrow("没有匹配");
-    await expect(resolveDataSourceTarget({ ...input, service: { ...service, workloads: [
-      { ...service.workloads[0]!, namespace: "other" },
-    ] } })).rejects.toThrow("--namespace other");
+    await expect(resolveDataSourceTarget({
+      ...input, service: {
+        ...service, workloads: [
+          { ...service.workloads[0]!, namespace: "other" },
+        ]
+      }
+    })).rejects.toThrow("--namespace other");
   } finally { await command.disposeClients(); }
 });
 
@@ -75,8 +91,12 @@ test("Environment is effective cluster/context; profile labels and config paths 
 });
 
 test("Explicit kubeconfig chooses Environment even when profile kubeconfig is invalid", () => {
-  const profile = { name: "saved", configPath: "", value: { readonly: true,
-    kube: { kubeconfig_path: "/does-not-exist/profile-kubeconfig" } }, pluginConfig: {} };
+  const profile = {
+    name: "saved", configPath: "", value: {
+      readonly: true,
+      kube: { kubeconfig_path: "/does-not-exist/profile-kubeconfig" }
+    }, pluginConfig: {}
+  };
   expect(resolveCollectKubeconfig({ kubeconfig: "/selected-kubeconfig" }, profile))
     .toEqual({ kubeconfig: "/selected-kubeconfig", source: "flag" });
   expect(() => resolveCollectKubeconfig({}, profile)).toThrow("path not found");
@@ -88,8 +108,10 @@ test("Log reads reject a replacement before capture and mark an in-stream replac
   const access: KubernetesPodLogAccess = {
     clientVersion: async () => ({ ...ok, stdout: "test" }),
     listServicePods: async () => { throw new Error("No name-based discovery"); },
-    collectPodLogs: async () => { reads++; f.pod.metadata.uid = "replacement";
-      return { ...ok, stdout: "foreign logs", captureStatus: "complete", bytesRead: 12, attempts: 1 }; },
+    collectPodLogs: async () => {
+      reads++; f.pod.metadata.uid = "replacement";
+      return { ...ok, stdout: "foreign logs", captureStatus: "complete", bytesRead: 12, attempts: 1 };
+    },
   };
   const expected = { pod: "physical-0", container: "app", uid: "uid-a", instance: JSON.stringify(["uid-a", "runtime-a"]) };
   const guarded = instanceLogAccess(access, f.exec, expected);
@@ -118,12 +140,18 @@ test("S3 source resolves once through root ClientManager without a configuration
   const source = s3DataSource("archive", async context => {
     resolves++;
     expect(context.target.service.environment.name).toBe((await resolveKubernetesEnvironment(f.exec)).name);
-    return { endpoint: "http://127.0.0.1:9000", region: "test", forcePathStyle: true,
-      credentials: { accessKeyId: "test", secretAccessKey: "test" }, bucket: "archive" };
+    return {
+      endpoint: "http://127.0.0.1:9000", region: "test", forcePathStyle: true,
+      credentials: { accessKeyId: "test", secretAccessKey: "test" }, bucket: "archive"
+    };
   });
-  const service = { ...logService(), workloads: [], capabilities: { dataSources: [
-    { id: "archive", kind: "s3" as const, backend: "s3-compatible" as const, source },
-  ] } };
+  const service = {
+    ...logService(),
+    workloads: [],
+    dataSources: [
+      { id: "archive", kind: "s3" as const, backend: "s3-compatible" as const, source },
+    ]
+  };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   const root = mkdtempSync(join(tmpdir(), "doctor-s3-source-"));
   const collect = { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default" as const, kubeconfigSource: "flag" } };
@@ -136,9 +164,11 @@ test("S3 source resolves once through root ClientManager without a configuration
     const selected = await resolveStoreProviderConfig({ type: "s3", service: service.name, interactive: false },
       command.plugin, collect, f.exec, command);
     expect(selected!.config.target).toBeUndefined();
-    const ctx: S3CommandContext = { command, executor: f.exec, config: selected!.config,
-      capability: service.capabilities.dataSources[0]!, bundle: new EvidenceBundle(root,
-        ["runtime-config", "access-preparation", "provider-detection"].map(id => ({ id, title: id, risk: "observe" }))), log: () => {} };
+    const ctx: S3CommandContext = {
+      command, executor: f.exec, config: selected!.config,
+      capability: service.dataSources[0]!, bundle: new EvidenceBundle(root,
+        ["runtime-config", "access-preparation", "provider-detection"].map(id => ({ id, title: id, risk: "observe" }))), log: () => { }
+    };
     const facts = await makeS3ConfigurationInspect().run(ctx, {});
     expect(facts.configuration).toMatchObject({ status: "collected", bucket: "archive", source: "plugin" });
     expect((await makeS3AccessInspect().run(ctx, facts)).access).toMatchObject({ status: "collected", channel: "plugin" });
@@ -153,14 +183,20 @@ test("Redis source needs neither same-name K8s Service nor Pod exec and never cl
   const f = executor();
   let starts = 0, closes = 0;
   const client: ServiceRedisClient = {
-    target: { endpoints: [["redis.example.org", 6379]], database: 0, useSsl: false, timeout: 1000,
-      clusterType: "single", sentinelHosts: [], sentinelMasterName: "" },
+    target: {
+      endpoints: [["redis.example.org", 6379]], database: 0, useSsl: false, timeout: 1000,
+      clusterType: "single", sentinelHosts: [], sentinelMasterName: ""
+    },
     access: { connection: async () => { throw new Error("No protocol calls in preparation"); }, close: async () => { throw new Error("Borrower cannot close"); } },
     initialize: async () => { starts++; }, dispose: async () => { closes++; },
   };
-  const service = { ...logService(), workloads: [], capabilities: { dataSources: [{
-    id: "cache", kind: "redis" as const, backend: "redis" as const, source: { clientKey: "cache", createClient: () => client },
-  }] } };
+  const service = {
+    ...logService(),
+    workloads: [],
+    dataSources: [{
+      id: "cache", kind: "redis" as const, backend: "redis" as const, source: { clientKey: "cache", createClient: () => client },
+    }]
+  };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   try {
     const result = await resolveRedisConfig({ namespace: "demo", service: service.name, maxKeys: "1", maxKeysPerSecond: "1", top: "1" },
@@ -185,11 +221,17 @@ test("Redis source helper preserves the collection timeout unit at the toolbox b
     await initialize.call(this);
     timeoutMs = this.target.timeoutMs;
   });
-  const source = redisDataSource("cache", async () => ({ endpoints: [["redis.example.org", 6379]],
-    database: 0, useSsl: false, timeout: 2, clusterType: "single", sentinelHosts: [], sentinelMasterName: "" }));
-  const service = { ...logService(), workloads: [], capabilities: { dataSources: [{
-    id: "cache", kind: "redis" as const, backend: "redis" as const, source,
-  }] } };
+  const source = redisDataSource("cache", async () => ({
+    endpoints: [["redis.example.org", 6379]],
+    database: 0, useSsl: false, timeout: 2, clusterType: "single", sentinelHosts: [], sentinelMasterName: ""
+  }));
+  const service = {
+    ...logService(),
+    workloads: [],
+    dataSources: [{
+      id: "cache", kind: "redis" as const, backend: "redis" as const, source,
+    }]
+  };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   try {
     await borrowServiceClient(command, { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default", kubeconfigSource: "default" } },
@@ -203,15 +245,23 @@ test("Redis source helper preserves the collection timeout unit at the toolbox b
 test("VDB source supplies typed access to the existing Collect flow without disclosing endpoint credentials", async () => {
   const f = executor();
   const client: ServiceVdbClient = {
-    target: { backend: "opensearch", store: "search", endpoint: "https://reader:private-password@search.example.org",
-      configurationKind: "api" },
-    access: { count: async () => 0, search: async () => ({ hits: { hits: [] } }),
-      request: async () => ({}), close: async () => {} },
-    initialize: async () => {}, dispose: async () => {},
+    target: {
+      backend: "opensearch", store: "search", endpoint: "https://reader:private-password@search.example.org",
+      configurationKind: "api"
+    },
+    access: {
+      count: async () => 0, search: async () => ({ hits: { hits: [] } }),
+      request: async () => ({}), close: async () => { }
+    },
+    initialize: async () => { }, dispose: async () => { },
   };
-  const service = { ...logService(), workloads: [], capabilities: { dataSources: [{
-    id: "search", kind: "vdb" as const, backend: "opensearch" as const, source: { clientKey: "search", createClient: () => client },
-  }] } };
+  const service = {
+    ...logService(),
+    workloads: [],
+    dataSources: [{
+      id: "search", kind: "vdb" as const, backend: "opensearch" as const, source: { clientKey: "search", createClient: () => client },
+    }]
+  };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   const root = mkdtempSync(join(tmpdir(), "doctor-vdb-source-"));
   const collect = { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default" as const, kubeconfigSource: "flag" } };
@@ -220,15 +270,19 @@ test("VDB source supplies typed access to the existing Collect flow without disc
       command.plugin, collect, f.exec, command);
     expect(selected!.config.target).toBeUndefined();
     const config = vdbConfigFromStore(selected!.config);
-    const ctx: VdbCommandContext = { command, executor: f.exec, config, kube: collect.kubernetes,
-      bundle: new EvidenceBundle(root, ["runtime-config", "access-preparation"].map(id => ({ id, title: id, risk: "observe" }))), log: () => {} };
+    const ctx: VdbCommandContext = {
+      command, executor: f.exec, config, kube: collect.kubernetes,
+      bundle: new EvidenceBundle(root, ["runtime-config", "access-preparation"].map(id => ({ id, title: id, risk: "observe" }))), log: () => { }
+    };
     const facts = await makeVdbConfigurationInspect(config).run(ctx, {});
     expect(facts.configuration).toMatchObject({ status: "collected", endpoint: "https://search.example.org" });
     expect(JSON.stringify(facts)).not.toContain("private-password");
     expect((await makeVdbAccessInspect(config).run(ctx, facts)).access).toMatchObject({ status: "collected", channel: "plugin" });
     expect(ctx.search).toBe(client.access);
-    const dependencies = new ServiceDependencyRuntime({ plugin: command.plugin, collect, executor: f.exec,
-      command: "doctor trace", commandContext: command, index: "traces", log: () => {} });
+    const dependencies = new ServiceDependencyRuntime({
+      plugin: command.plugin, collect, executor: f.exec,
+      command: "doctor trace", commandContext: command, index: "traces", log: () => { }
+    });
     const prepared = await dependencies.prepareDataSource(service.name, "search");
     expect(prepared.search).toBe(client.access);
     expect(JSON.stringify(prepared.evidenceTarget)).not.toContain("private-password");

@@ -34,7 +34,7 @@ packages/plugin/src/
 │   ├── tenant.ts         # tenant.list / tenant.resolve / user.search 的领域契约
 │   ├── mcp.ts            # mcp.configuration 的领域契约
 │   ├── model.ts          # 模型目录、Backend 与推理的领域契约
-│   └── service-extensions.ts # Service 声明的统一发现视图
+│   └── workload.ts       # workload.probe 的领域契约
 └── kubernetes.ts         # 复用现有 CapabilityAccess
 ```
 
@@ -80,7 +80,7 @@ prepare 确定已知的权限范围，不要求预先列出完整执行路径。
 不同 Command 系列保持自己的执行模型。Collect 的 Inspect、Probe、Detector、Evidence 与预算由 Collect
 拥有。
 
-## 权限、上下文与资源
+Service 的可调用操作统一注册在 `extensions`。数据源直接注册在 `dataSources`；纯 Evidence 分析放在\n`detectors`，由 Core 实现的声明式环境检查放在 `environmentProbes`。配置和日志采集通过\n`configurationInspection`、`logs` 显式加入 Core 通用采集，不形成第二份操作注册表。\n\n## 权限、上下文与资源
 
 CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数即可读取。命令按本次实际选择的扩展
 及自身动作检查权限，同一 Service 或 Plugin 中未参与的扩展不会扩大检查范围。
@@ -122,7 +122,7 @@ Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 I
 用户选择属于 Command：Plugin 返回租户或用户候选，Command 决定提示、分页和取消。
 MCP 配置扩展负责把私有来源投影为公共 server/tool 契约，Command 根据投影完成目标选择与协议探测。
 配置读取与 gateway 探测使用各自的权限上下文，避免把 Command 的访问需求扩散给配置提供方。
-目录和 MCP 均按 Service 选择每个操作的唯一实现，重复实现报告歧义。
+目录按所需操作发现候选，支持显式 Service/Extension ID 选择；MCP 按 Service 选择唯一配置实现。
 
 模型目录、Backend 信息读取、主动校验与推理分别选择实现、检查访问权限。Backend Inspect 只返回公共
 身份；验证调用在 Probe 中执行，厂商配置与凭据由 Service 自己解析。Command 可把独立操作组合成本地

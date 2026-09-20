@@ -1,13 +1,15 @@
-import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
+import { caseSetFromRaw, validateCaseSet, type CaseSet } from "@compforge/spec-case/model";
 import type { Extension, RegisteredExtension } from "./index";
 import { requireExtensionEndpoint } from "./endpoint";
-import type { ServiceCaseCapability, ServiceCaseProbeOptions, ServiceCaseRunner } from "../service";
+import type { ServiceEndpoint, ServiceCaseIdentityRequirement, ServiceCaseProbeOptions, ServiceCaseRunner } from "../service";
 
 export const CASE_RUNNER_CREATE_KIND = "case.runner.create";
 
 /** Canonical assets and identity requirements are discoverable before creating request resources. */
-export interface CaseRunnerCreateExtension extends Extension<ServiceCaseProbeOptions, ServiceCaseRunner>,
-  Pick<ServiceCaseCapability, "endpoint" | "caseSets" | "requestIdentity"> {
+export interface CaseRunnerCreateExtension extends Extension<ServiceCaseProbeOptions, ServiceCaseRunner> {
+  readonly endpoint: ServiceEndpoint;
+  readonly caseSets: readonly CaseSet[];
+  readonly requestIdentity?: ServiceCaseIdentityRequirement;
   readonly kind: typeof CASE_RUNNER_CREATE_KIND;
 }
 
@@ -24,8 +26,7 @@ export function requireCaseRunnerCreateExtension(extension: RegisteredExtension)
     names.add(cases.caseset);
   }
   const identity = declared.requestIdentity;
-  if (identity !== undefined && (!identity || typeof identity.directoryService !== "string"
-    || !identity.directoryService.trim() || typeof identity.configured !== "function")) {
+  if (identity !== undefined && (!identity || typeof identity.configured !== "function")) {
     throw new Error(`${extension.id}: invalid Case requestIdentity`);
   }
   return declared;

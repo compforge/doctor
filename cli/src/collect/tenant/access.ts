@@ -1,6 +1,6 @@
 import { modelCatalogExtensions, extensionModelCatalog } from "../../model/extensions";
 import { dataProviders } from "../data/extensions";
-import { tenantDirectoryExtensions, extensionTenantDirectory } from "../../plugin/tenant-directory";
+import { discoverTenantDirectory } from "../../plugin/tenant-directory";
 import type {
   PluginDefinition,
 } from "@compforge/doctor-plugin";
@@ -18,12 +18,6 @@ import type {
   TenantCapabilityCollector,
 } from "./model";
 
-function tenantDirectoryProvider(plugin: PluginDefinition) {
-  const declaration = plugin.tenant;
-  if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 tenant capability`);
-  return tenantDirectoryExtensions(plugin.services, declaration.directoryService);
-}
-
 function tenantDirectoryPort(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   const port = Number(value);
@@ -40,7 +34,6 @@ export async function openTenantAccess(input: {
   commandContext: CommandContext;
 }): Promise<TenantAccess | undefined> {
   const { options, plugin, commandContext } = input;
-  const directoryProvider = tenantDirectoryProvider(plugin);
   const config = await resolveKubernetesCommandConfig(options, undefined, commandContext);
   if (!config) return undefined;
 
@@ -52,14 +45,14 @@ export async function openTenantAccess(input: {
     context: config.kubernetes.context,
   };
   const databaseIdentity = commandContext.profile.value.db?.user
-      && commandContext.profile.value.db.password
+    && commandContext.profile.value.db.password
     ? {
-        user: commandContext.profile.value.db.user,
-        password: commandContext.profile.value.db.password,
-      }
+      user: commandContext.profile.value.db.user,
+      password: commandContext.profile.value.db.password,
+    }
     : undefined;
   if (options.tenantDirectoryPort !== undefined) tenantDirectoryPort(options.tenantDirectoryPort, 1);
-  const directory = extensionTenantDirectory(directoryProvider, (service, extension) => openPluginContext(executor, kube, {
+  const directory = discoverTenantDirectory(plugin.services, (service, extension) => openPluginContext(executor, kube, {
     config: commandContext.profile.pluginConfig,
     databaseIdentity,
     service,
@@ -70,7 +63,7 @@ export async function openTenantAccess(input: {
     command: "doctor tenant",
     capability: extension,
     authorization,
-  }));
+  }), { service: options.directoryProvider, commandContext });
   const capabilities: TenantCapabilityCollector[] = dataProviders(plugin.services)
     .filter(provider => provider.extension.accepts.includes("tenant_id"))
     .map(({ service, extension }) => ({
@@ -104,12 +97,11 @@ export async function openTenantAccess(input: {
         }
       },
     }));
-  const model = plugin.model;
-  if (model) {
-    const provider = modelCatalogExtensions(plugin.services, model.catalogService);
+  for (const { service: declared, extension: query } of plugin.services.extensions("model.query")) {
+    const provider = modelCatalogExtensions(plugin.services, declared.name, query.id);
     const { service } = provider;
     capabilities.unshift({
-      id: "models",
+      id: `models:${service.name}/${query.id}`,
       service: service.name,
       capability: "modelCatalog",
       query: async (identity) => {
@@ -128,6 +120,6 @@ export async function openTenantAccess(input: {
     config,
     directory,
     capabilities,
-    dispose: async () => {},
+    dispose: async () => { },
   };
 }

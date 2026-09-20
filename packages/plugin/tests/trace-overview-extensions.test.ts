@@ -1,8 +1,15 @@
+import { traceExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, requireTraceResolveExtension, traceResolveOutput,
-  type ServiceDefinition, type TraceResolveExtension } from "../src";
+import {
+  createServiceCatalog, requireTraceResolveExtension, traceResolveOutput,
+  type ServiceDefinition, type TraceResolveExtension
+} from "../src";
 
-const base: ServiceDefinition = { name: "test", component: { name: "test", repository: { forge: { name: "test" }, path: "test" } }, workloads: [], capabilities: {} };
+const base: ServiceDefinition = {
+  name: "test",
+  component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
+  workloads: []
+};
 const trace: TraceResolveExtension = { id: "trace", kind: "trace.resolve", access: {}, endpoint: { host: "test", port: 80 }, run: async () => undefined };
 
 test("discovery exposes trace and overview operations without executing a provider", () => {
@@ -13,9 +20,12 @@ test("discovery exposes trace and overview operations without executing a provid
 });
 
 test("legacy declaration adaptation rejects competing explicit implementations", () => {
-  const service = { ...base, capabilities: { traceId: { access: {}, endpoint: trace.endpoint, resolve: trace.run } } };
+  const service = {
+    ...base,
+    extensions: [traceExtension({ access: {}, endpoint: trace.endpoint, resolve: trace.run })]
+  };
   expect(createServiceCatalog([service]).extensions("trace.resolve")).toHaveLength(1);
-  expect(() => createServiceCatalog([{ ...service, extensions: [trace] }])).toThrow("not both");
+  expect(() => createServiceCatalog([{ ...service, extensions: [trace, trace] }])).toThrow("duplicate");
 });
 
 test("trace domain rejects invalid endpoints and untyped results before consumers use them", () => {

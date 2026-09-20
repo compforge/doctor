@@ -6,7 +6,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
   lines.push(`    Aliases：${service.aliases.join(", ") || "无"}`);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
-    lines.push("    数据查询（Inspect contribution，不是同名 CLI 命令）",
+    lines.push("    数据查询（facts.inspect Extension，不是同名 CLI 命令）",
       `      用途：${inspect.description ?? "未提供"}`,
       `      输入 ID（每个 Query 选一种）：${inspect.accepts.join(" / ")}`,
       `      可能提供的事实：${inspect.provides.join(", ")}`,
@@ -14,10 +14,10 @@ export function formatServiceDescription(service: ServiceDescription): string {
     if (inspect.dataSource) lines.push(`      DataSource：${inspect.dataSource}`);
     lines.push(`      限制说明：${inspect.limitations?.join("；") || "未提供（不代表无限制）"}`);
   } else {
-    lines.push("    数据查询：未声明 Inspect contribution");
+    lines.push("    数据查询：未声明 facts.inspect Extension");
   }
-  lines.push(`    Capabilities：${service.capabilities.join(", ") || "无"}`,
-    `    Contributions：${service.contributions.join(", ") || "无"}`,
+  lines.push(`    Extensions：${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "无"}`,
+    `    Detectors：${service.detectors.join(", ") || "无"}`,
     `    DataSources：${dataSources.map(source => `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
     "    Workloads：");
   for (const workload of workloads) {
@@ -32,7 +32,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
   if (!workloads.length) lines.push("      无运行时 Workload");
   lines.push("    依赖：");
   for (const dependency of dependencies) {
-    lines.push(`      ${dependency.id}: ${dependency.service}/${dependency.capability}/${dependency.dataSource}`);
+    lines.push(`      ${dependency.id}: ${dependency.service}/${dependency.dataSource}`);
   }
   if (!dependencies.length) lines.push("      未声明");
   lines.push("    访问需求（Plugin 静态声明，不包含 Core 的完整访问计划）：");

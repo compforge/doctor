@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import {
   defineObservation,
-  defineServiceWorkloadProbe,
+  defineWorkloadProbeExtension,
   Type,
   type ObservationValue,
 } from "../src";
@@ -42,17 +42,16 @@ defineObservation({
 });
 
 test("ObservationDefinition 是 Probe payload 的单一类型与 schema 来源", async () => {
-  const probe = defineServiceWorkloadProbe({
+  const probe = defineWorkloadProbeExtension({
     id: "health",
-    kind: "workload",
-    schemaVersion: 1,
+    kind: "workload.probe",
     workload: "main",
     access: {},
     produces: HealthObservation,
-    probe: async () => ({ ready: true, details: { latencyMs: 12 } }),
+    run: async () => ({ ready: true, details: { latencyMs: 12 } }),
   });
 
   expect(probe.produces).toBe(HealthObservation);
-  expect(await probe.probe({} as never, { facts: [], instance: {} as never }))
+  expect(await probe.run({} as never, { facts: [], instance: {} as never }))
     .toEqual({ ready: true, details: { latencyMs: 12 } });
 });

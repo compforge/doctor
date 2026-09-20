@@ -1,28 +1,15 @@
-import type { Case, CaseSet } from "@compforge/spec-case/model";
+import type { Case } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
 import type {
   Fact,
   Identity,
-  InspectCapability,
   InspectQueryResult,
   Query,
 } from "./capability";
-import type {
-  ModelCatalog,
-  ModelInference,
-  ModelInferenceTarget,
-} from "./definition";
-import type { ServiceOverviewCapability } from "./overview";
-import type { ServiceMcpCapability } from "./mcp";
-import type { CapabilityWithAccess } from "./kubernetes";
 import type { JsonObject } from "./json";
-import type {
-  ObservationDefinition,
-  ObservationValue,
-} from "./observation";
-import type { ProbeCapability, ProbeRunner } from "./probe";
+import type { ProbeRunner } from "./probe";
 import type { Environment, Service, WorkloadInstance } from "@compforge/harness-common";
 
 export interface ServiceEndpoint {
@@ -60,26 +47,6 @@ export interface TenantDirectory {
   getByName(name: string): Promise<TenantSummary>;
   /** Optional because tenant-only directory providers do not need to expose users. */
   searchActiveUsers?(input: UserDirectorySearch): Promise<UserDirectorySearchResult>;
-}
-
-export interface ServiceTenantDirectoryCapability extends CapabilityWithAccess {
-  endpoint: ServiceEndpoint;
-  create(context: PluginContext): TenantDirectory;
-}
-
-export interface ServiceModelCatalogCapability extends CapabilityWithAccess {
-  endpoint: ServiceEndpoint;
-  create(context: PluginContext): ModelCatalog;
-}
-
-export interface ServiceInferenceCapability extends CapabilityWithAccess {
-  endpoint: ServiceEndpoint;
-  /** Resolve only after required connectivity, including any port-forward, is ready for use. */
-  create(
-    context: PluginContext,
-    target: ModelInferenceTarget,
-    timeoutMs: number,
-  ): Promise<ModelInference>;
 }
 
 export interface ServiceMetricQuery {
@@ -128,7 +95,7 @@ export interface KubernetesAppArmorUnconfinedInspectionProbe extends ServiceProb
 export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProbe;
 
 /** Service-owned Prometheus contract consumed by doctor metric. */
-export interface ServiceMetricCapability {
+export interface MetricConfiguration {
   endpoint: ServiceEndpoint & { path: string };
   /** Limits embedded scraping to the metric families required by this declaration. */
   metricNames: readonly string[];
@@ -162,7 +129,6 @@ export interface ServiceRequestIdentity {
  * The Plugin owns its profile schema; Core only fills missing identity interactively.
  */
 export interface ServiceCaseIdentityRequirement {
-  directoryService: string;
   configured(config: Readonly<Record<string, unknown>>): Partial<ServiceRequestIdentity>;
 }
 
@@ -180,19 +146,6 @@ export interface ServiceCaseProbeOptions {
   caseSetId: string;
   timeoutMs: number;
   requestIdentity?: ServiceRequestIdentity;
-}
-
-/** Service-owned single-Case Probe Capability consumed by Eval and Perf Harness callers. */
-export interface ServiceCaseCapability
-  extends ProbeCapability<Case, ServiceCaseObservation, ServiceCaseProbeOptions> {
-  endpoint: ServiceEndpoint;
-  /** Canonical assets owned and validated by spec-case; commands only select and execute them. */
-  caseSets: readonly CaseSet[];
-  requestIdentity?: ServiceCaseIdentityRequirement;
-  createRunner(
-    context: PluginContext,
-    input: ServiceCaseProbeOptions,
-  ): Promise<ServiceCaseRunner>;
 }
 
 export interface ServicePerfObservability {
@@ -214,11 +167,6 @@ export interface ServicePerfScenario {
   caseSetId: string;
   cases: readonly ServicePerfCaseSelection[];
   observability: ServicePerfObservability;
-}
-
-/** Service-owned Perf presets; Core owns scheduling and the Case capability owns request protocol. */
-export interface ServicePerfCapability {
-  scenarios: readonly ServicePerfScenario[];
 }
 
 export interface ServiceInspectResolution {
@@ -320,37 +268,9 @@ export interface ServiceWorkloadProbeInput extends ServiceProbeInput {
   instance: WorkloadInstance;
 }
 
-export interface ServiceWorkloadProbe<
-  Definition extends ObservationDefinition = ObservationDefinition,
-> extends ServiceProbe {
-  kind: "workload";
-  schemaVersion: 1;
-  /** Stable WorkloadDefinition.name owned by this Service. */
-  workload: string;
-  /** Access is declared per Probe so unrelated probes do not inherit a broader capability grant. */
-  access: CapabilityWithAccess["access"];
-  /** Observation contract declared before Core schedules this Probe. */
-  produces: Definition;
-  probe(
-    context: PluginContext,
-    input: ServiceWorkloadProbeInput,
-  ): Promise<ObservationValue<Definition>>;
-}
-
-/** Supported Probe forms at the untyped Plugin boundary. */
-export type ServiceProbeDefinition = ServiceEnvironmentProbe | ServiceWorkloadProbe;
-
 export interface ServiceInspectQuery extends Query<Identity> {
   budget: ServiceInspectBudget;
   results: ReadonlyMap<string, readonly ServiceInspectResult[]>;
-}
-
-/** Plugin 返回给 Doctor 展示和判定数据访问是否可用的脱敏结果。 */
-export interface ServiceInspectTarget {
-  endpoint: string;
-  database: string;
-  username: string;
-  credentialSource: string;
 }
 
 /** Every requested identity has an outcome, including lookup failures. */
@@ -369,33 +289,6 @@ export type ServiceInspectQueryHandler = (
   queries: readonly ServiceInspectQuery[],
 ) => Promise<readonly ServiceInspectQueryOutcome[]>;
 
-export interface ServiceInspect
-  extends Omit<InspectCapability<ServiceInspectQuery, Fact>, "inspect"> {
-  /** Business meaning of the lookup and the evidence it can supply; safe for offline discovery. */
-  description?: string;
-  /** Evidence caveats, not executable limits or guarantees of runtime availability. */
-  limitations?: readonly string[];
-  /** Identity kinds accepted by this capability. Commands use this for capability selection. */
-  accepts: readonly string[];
-  /** 此 Service 可共享的稳定业务数据类型，用于 Catalog 展示与能力发现。 */
-  provides: readonly string[];
-  /** 存在时表示此 Service 还可提供目标为这些 Identity kind 的 Relation。 */
-  expands?: readonly string[];
-  /** 直接访问数据源时声明 DataSource ID；通过 Service API 查询时可省略。 */
-  dataSource?: string;
-  resolveTarget(context: PluginContext): Promise<ServiceInspectTarget>;
-  inspect: ServiceInspectQueryHandler;
-}
-
-/** The three Plugin-side contributions that participate in Collect execute. */
-export interface ServiceContributions {
-  inspect?: ServiceInspect;
-  probes?: readonly ServiceProbeDefinition[];
-  detectors?: readonly ServiceDetector[];
-}
-
-export type ServiceContributionName = keyof ServiceContributions;
-
 export interface ServiceTraceIdInput {
   bizId: string;
 }
@@ -411,30 +304,20 @@ export type ServiceTraceIdResolutionResult =
   | ServiceTraceIdResolution
   | readonly ServiceTraceIdResolution[];
 
-/** 把一个 Plugin 业务 ID 解析为 Doctor trace/log 消费的一条或多条规范 trace_id。 */
-export interface ServiceTraceIdCapability extends CapabilityWithAccess {
-  endpoint: ServiceEndpoint;
-  resolve(
-    context: PluginContext,
-    input: ServiceTraceIdInput,
-  ): Promise<ServiceTraceIdResolutionResult | undefined>;
-}
-
-
 /** Service 构建与运行所使用的稳定工具链声明；现场版本仍由 Doctor 从 Target 观测。 */
 export interface Toolchain {
   language: "python" | "go" | "javascript" | "typescript" | "java" | "kotlin";
   executionPlatform: "python" | "go-native" | "node" | "jvm";
   dependencyManager?:
-    | "pip"
-    | "poetry"
-    | "uv"
-    | "go-modules"
-    | "npm"
-    | "pnpm"
-    | "yarn"
-    | "maven"
-    | "gradle";
+  | "pip"
+  | "poetry"
+  | "uv"
+  | "go-modules"
+  | "npm"
+  | "pnpm"
+  | "yarn"
+  | "maven"
+  | "gradle";
   buildTool?: "go" | "tsc" | "vite" | "webpack" | "maven" | "gradle";
 }
 
@@ -462,36 +345,14 @@ export function isToolchain(value: unknown): value is Toolchain {
       || (typeof candidate.buildTool === "string" && TOOLCHAIN_VALUES.buildTool.has(candidate.buildTool)));
 }
 
-export interface ServiceCapabilities {
-  overview?: ServiceOverviewCapability;
-  dataSources?: readonly ServiceDataSource[];
-  config?: Record<string, never>;
-  log?: {
-    default: boolean;
-  };
-  traceId?: ServiceTraceIdCapability;
-  tenantDirectory?: ServiceTenantDirectoryCapability;
-  modelCatalog?: ServiceModelCatalogCapability;
-  inference?: ServiceInferenceCapability;
-  case?: ServiceCaseCapability;
-  perf?: ServicePerfCapability;
-  metric?: ServiceMetricCapability;
-  mcp?: ServiceMcpCapability;
-}
-
-export type ServiceCapabilityName = keyof ServiceCapabilities;
-
 /** A Service-level reference to a DataSource declared by another Service. */
 export interface ServiceDataSourceDependency {
   /** Stable local name used by this Service to consume the resolved dependency. */
   id: string;
   service: string;
-  capability: "dataSources";
   dataSource: string;
 }
 
-/** Extend this union when another capability gains a concrete runtime dependency contract. */
-export type ServiceCapabilityDependency = ServiceDataSourceDependency;
 
 export interface ServiceRelationship {
   kind: "managed-by";
@@ -510,12 +371,18 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
    * Runtime capabilities this Service requires from other Services in the same Plugin.
    * This stays Service-scoped because capability ownership and connection-config ownership may differ.
    */
-  dependencies?: readonly ServiceCapabilityDependency[];
-  /** Inspect, Probe and Detector contributions selected and driven by Core Collect commands. */
-  contributions?: ServiceContributions;
+  dependencies?: readonly ServiceDataSourceDependency[];
+  /** Pure rules over the evidence selected by Collect. */
+  detectors?: readonly ServiceDetector[];
+  /** Declarations executed by Core environment probes. */
+  environmentProbes?: readonly ServiceEnvironmentProbe[];
   /** Open, kind-based functions. A Service may provide several kinds. */
   extensions?: readonly RegisteredExtension[];
-  capabilities: ServiceCapabilities;
+  dataSources?: readonly ServiceDataSource[];
+  /** Explicit opt-in to configuration inspection. */
+  configurationInspection?: boolean;
+  /** Presence enables log collection; default selects the implicit collection scope. */
+  logs?: { default: boolean };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
@@ -9,26 +10,43 @@ import { RenderContext } from "../src/report/context";
 
 for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output and per-ID artifacts: ${ids}`, async () => {
   const queries: string[] = [];
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
-    const path = new URL(request.url).pathname;
-    if (path === "/") return Response.json({ version: { number: "2.0.0" } });
-    const body = await request.json() as { query: { term: { traceID: string } } };
-    const traceId = body.query.term.traceID;
-    if (path.endsWith("/_count")) { queries.push(traceId); return Response.json({ count: 1 }); }
-    if (path.endsWith("/_search")) return Response.json({ hits: { hits: [
-      { _source: { traceID: traceId, spanID: "s1", operationName: `op-${traceId}` }, sort: [1] },
-    ] } });
-    return new Response("unexpected request", { status: 500 });
-  } });
-  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-    name: "api", workloads: [], capabilities: { traceId: { endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) =>
-      bizId === "missing" ? undefined : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId } } },
-  }]) };
-  const context = new CommandContext({ kubernetes: {
-    kubeconfig: { source: "test" }, channel: { available: true, client: {
-      ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [],
-    } },
-  } });
+  const server = Bun.serve({
+    hostname: "127.0.0.1", port: 0, fetch: async request => {
+      const path = new URL(request.url).pathname;
+      if (path === "/") return Response.json({ version: { number: "2.0.0" } });
+      const body = await request.json() as { query: { term: { traceID: string } } };
+      const traceId = body.query.term.traceID;
+      if (path.endsWith("/_count")) { queries.push(traceId); return Response.json({ count: 1 }); }
+      if (path.endsWith("/_search")) return Response.json({
+        hits: {
+          hits: [
+            { _source: { traceID: traceId, spanID: "s1", operationName: `op-${traceId}` }, sort: [1] },
+          ]
+        }
+      });
+      return new Response("unexpected request", { status: 500 });
+    }
+  });
+  const plugin: PluginDefinition = {
+    id: "test", version: "1", services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "api",
+      workloads: [],
+      extensions: [traceExtension({
+        endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) =>
+          bizId === "missing" ? undefined : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId }
+      })]
+    }])
+  };
+  const context = new CommandContext({
+    kubernetes: {
+      kubeconfig: { source: "test" }, channel: {
+        available: true, client: {
+          ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [],
+        }
+      },
+    }
+  });
   try {
     const result = await runCollectTrace({ bizIds: ids, namespace: "test", endpoint: server.url.href, pageSize: "100" }, plugin, context);
     expect(result.status).toBe(ids.length === 1 ? CommandStatus.Ok : CommandStatus.Partial);
@@ -62,23 +80,37 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
 
 test("online span rejects a biz-id resolving multiple traces before any span download", async () => {
   let remoteReads = 0;
-  const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => {
-    remoteReads++;
-    return Response.json({});
-  } });
-  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{
-    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-    name: "api", workloads: [], capabilities: { traceId: { endpoint: { host: "test", port: 80 }, access: {},
-      resolve: async () => ["t1", "t2"].map(traceId => ({ traceId, resolvedAs: "conversation_id" })) } },
-  }]) };
-  const context = new CommandContext({ kubernetes: {
-    kubeconfig: { source: "test" }, channel: { available: true, client: {
-      ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [],
-    } },
-  } });
+  const server = Bun.serve({
+    hostname: "127.0.0.1", port: 0, fetch: () => {
+      remoteReads++;
+      return Response.json({});
+    }
+  });
+  const plugin: PluginDefinition = {
+    id: "test", version: "1", services: createServiceCatalog([{
+      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      name: "api",
+      workloads: [],
+      extensions: [traceExtension({
+        endpoint: { host: "test", port: 80 }, access: {},
+        resolve: async () => ["t1", "t2"].map(traceId => ({ traceId, resolvedAs: "conversation_id" }))
+      })]
+    }])
+  };
+  const context = new CommandContext({
+    kubernetes: {
+      kubeconfig: { source: "test" }, channel: {
+        available: true, client: {
+          ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [],
+        }
+      },
+    }
+  });
   try {
-    const result = await runCollectTrace({ bizIds: ["conversation"], span: "shared-span-id", namespace: "test",
-      endpoint: server.url.href, pageSize: "100" }, plugin, context);
+    const result = await runCollectTrace({
+      bizIds: ["conversation"], span: "shared-span-id", namespace: "test",
+      endpoint: server.url.href, pageSize: "100"
+    }, plugin, context);
     expect(result.status).toBe(CommandStatus.Failed);
     if (result.status === CommandStatus.Failed) expect(result.reason).toContain("多条 trace");
     expect(remoteReads).toBe(0);

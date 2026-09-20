@@ -10,25 +10,27 @@ import {
 import { invokeExtension } from "../plugin/extension";
 import type { ManagedPluginContext } from "../plugin/context";
 
-function operations(catalog: ServiceCatalog, name: string) {
+function operations(catalog: ServiceCatalog, name: string, selection: Record<string, string> = {}) {
   const service = catalog.find(name);
   if (!service) throw new Error(`Unknown Service '${name}'`);
-  return { service, find(kind: string) {
-    const matches = catalog.extensions(kind).filter(item => item.service === service);
-    if (matches.length > 1) throw new Error(`${service.name}: ambiguous ${kind} Extension`);
-    return matches[0]?.extension;
-  } };
+  return {
+    service, find(kind: string) {
+      const matches = catalog.extensions(kind).filter(item => item.service === service && (selection[kind] === undefined || item.extension.id === selection[kind]));
+      if (matches.length > 1) throw new Error(`${service.name}: ambiguous ${kind} Extension`);
+      return matches[0]?.extension;
+    }
+  };
 }
 
-export function modelCatalogExtensions(catalog: ServiceCatalog, name: string) {
-  const { service, find } = operations(catalog, name);
+export function modelCatalogExtensions(catalog: ServiceCatalog, name: string, queryId?: string) {
+  const { service, find } = operations(catalog, name, queryId ? { [MODEL_QUERY_KIND]: queryId } : {});
   const query = find(MODEL_QUERY_KIND);
   if (!query) throw new Error(`${service.name}: missing ${MODEL_QUERY_KIND} Extension`);
-  const inspect = find(MODEL_BACKEND_INSPECT_KIND);
-  const validate = find(MODEL_BACKEND_VALIDATE_KIND);
-  return { service, query: requireModelQueryExtension(query),
-    inspect: inspect ? requireModelBackendInspectExtension(inspect) : undefined,
-    validate: validate ? requireModelBackendValidateExtension(validate) : undefined };
+  return {
+    service, query: requireModelQueryExtension(query),
+    get inspect() { const extension = find(MODEL_BACKEND_INSPECT_KIND); return extension ? requireModelBackendInspectExtension(extension) : undefined; },
+    get validate() { const extension = find(MODEL_BACKEND_VALIDATE_KIND); return extension ? requireModelBackendValidateExtension(extension) : undefined; }
+  };
 }
 
 export function modelInferenceExtensions(catalog: ServiceCatalog, name: string) {
@@ -36,8 +38,10 @@ export function modelInferenceExtensions(catalog: ServiceCatalog, name: string) 
   const invoke = find(MODEL_INVOKE_KIND);
   const stream = find(MODEL_STREAM_KIND);
   if (!invoke && !stream) throw new Error(`${service.name}: missing model.invoke or model.stream Extension`);
-  return { service, invoke: invoke ? requireModelInvokeExtension(invoke) : undefined,
-    stream: stream ? requireModelStreamExtension(stream) : undefined };
+  return {
+    service, invoke: invoke ? requireModelInvokeExtension(invoke) : undefined,
+    stream: stream ? requireModelStreamExtension(stream) : undefined
+  };
 }
 
 export type ModelExtensionContext = (
@@ -53,17 +57,21 @@ async function call<Input, Output>(service: ServiceDefinition, extension: Extens
 
 /** Command-local facade: catalog results contain data, and active validation has its own access boundary. */
 export function extensionModelCatalog(provider: ReturnType<typeof modelCatalogExtensions>, contextFor: ModelExtensionContext): ModelCatalog {
-  const { service, query, inspect, validate } = provider;
+  const { service, query } = provider;
   return {
     query: async input => modelQueryOutput(await call(service, query, input, contextFor)),
     getBackend: async model => {
+      const inspect = provider.inspect;
       if (!inspect) return undefined;
       const backend = modelBackendOutput(await call(service, inspect, { model }, contextFor));
       if (!backend) return undefined;
-      return { ...backend, validate: async timeoutMs => {
-        if (!validate) throw new Error(`${service.name}: missing ${MODEL_BACKEND_VALIDATE_KIND} Extension`);
-        return modelResponseOutput(await call(service, validate, { model, timeoutMs }, contextFor));
-      } };
+      return {
+        ...backend, validate: async timeoutMs => {
+          const validate = provider.validate;
+          if (!validate) throw new Error(`${service.name}: missing ${MODEL_BACKEND_VALIDATE_KIND} Extension`);
+          return modelResponseOutput(await call(service, validate, { model, timeoutMs }, contextFor));
+        }
+      };
     },
   };
 }

@@ -99,7 +99,7 @@ export async function resolveMetricConfig(
     services.includes(service.name) && Boolean(extension.access.kubernetes?.length)
   ));
   const hasStoreMetrics = services.some((service) => (
-    catalog.findWith(service, "dataSources")?.capabilities.dataSources.some((store) => (
+    catalog.find(service)?.dataSources?.some((store) => (
       store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
     ))
   ));

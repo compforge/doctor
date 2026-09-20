@@ -14,6 +14,7 @@ export interface CollectTenantCliOptions {
   namespace?: string;
   tenantId?: string;
   tenantName?: string;
+  directoryProvider?: string;
   tenantDirectoryService?: string;
   tenantDirectoryPort?: string;
   kubeconfig?: string;

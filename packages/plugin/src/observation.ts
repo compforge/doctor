@@ -4,7 +4,6 @@ import type {
   JsonCompatible,
   JsonObject,
 } from "./json";
-import type { ServiceWorkloadProbe } from "./service";
 
 export { Type };
 
@@ -21,8 +20,8 @@ type StaticObservationValue<Definition extends ObservationDefinition> =
 /** The deeply read-only payload inferred from an ObservationDefinition's JSON Schema. */
 export type ObservationValue<Definition extends ObservationDefinition> =
   StaticObservationValue<Definition> extends JsonObject
-    ? DeepReadonlyJson<StaticObservationValue<Definition>>
-    : never;
+  ? DeepReadonlyJson<StaticObservationValue<Definition>>
+  : never;
 
 type JsonObjectSchema<Schema extends TObject> =
   [JsonCompatible<Static<Schema>>] extends [never] ? never : Schema;
@@ -39,11 +38,4 @@ export function defineObservation<const Schema extends TObject>(definition: {
   readonly schema: JsonObjectSchema<Schema>;
 }): ObservationDefinition<Schema> {
   return definition;
-}
-
-/** Preserve the ObservationDefinition-to-payload relationship while authoring a workload Probe. */
-export function defineServiceWorkloadProbe<const Definition extends ObservationDefinition>(
-  probe: ServiceWorkloadProbe<Definition>,
-): ServiceWorkloadProbe<Definition> {
-  return probe;
 }

@@ -1,3 +1,4 @@
+import { overviewExtensions } from "../../packages/plugin/tests/extension-fixture";
 import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResult, type OverviewQuery } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { CommandStatus, commandOutcome } from "../src/command";
@@ -11,25 +12,35 @@ const query: OverviewQuery = {
   window: overviewWindow("1h", new Date("2026-09-09T10:00:00Z")), tenantId: "tenant-1", maxEntries: 2,
 };
 function provider(name: string) {
-  const service = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name, workloads: [], capabilities: { overview: {
-    access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
-  } } };
+  const service = {
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    name,
+    workloads: [],
+    extensions: [...overviewExtensions({
+      access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
+    })]
+  };
   return { ...service, ...overviewProviders(createServiceCatalog([service]))[0]! };
 }
-const summary: OverviewFacetResult[] = [{ facetId: "errors", description: "created_at", entries: [
-  { key: "E1", label: "E1", data: 8, unit: "requests", canSample: true },
-  { key: "E2", label: "E2", data: "upstream unavailable", canSample: true },
-] }];
+const summary: OverviewFacetResult[] = [{
+  facetId: "errors", description: "created_at", entries: [
+    { key: "E1", label: "E1", data: 8, unit: "requests", canSample: true },
+    { key: "E2", label: "E2", data: "upstream unavailable", canSample: true },
+  ]
+}];
 function actions(overrides: Partial<OverviewActions> = {}): OverviewActions {
-  return { summarize: async () => summary, sample: async () => [{ bizId: "trace-1" }],
-    select: async () => undefined, collect: async () => commandOutcome(0), show: () => {}, ...overrides };
+  return {
+    summarize: async () => summary, sample: async () => [{ bizId: "trace-1" }],
+    select: async () => undefined, collect: async () => commandOutcome(0), show: () => { }, ...overrides
+  };
 }
 
 test("overview shows text and numeric entries without sampling on decline", async () => {
   const sample = mock(async () => [{ bizId: "trace-1" }]);
   const collect = mock(async () => commandOutcome(0));
   const order: string[] = [];
-  const result = await runOverviewSession([provider("chat")], query, actions({ sample, collect,
+  const result = await runOverviewSession([provider("chat")], query, actions({
+    sample, collect,
     show: () => { order.push("show"); }, select: async () => { order.push("confirm"); return undefined; },
   }));
   expect(order).toEqual(["show", "confirm"]);
@@ -130,10 +141,10 @@ test("overview capability validates static facet identity before accessing the t
     id: "test", version: "0.0.1", requiresDoctor: ">=0.1.81",
     contentDigest: `sha256:${"0".repeat(64)}`, main: "./plugin.mjs", skills: [],
   };
-  expect(validatePluginDefinition(valid, manifest).services.findWith("api", "overview")).toBeDefined();
+  expect(validatePluginDefinition(valid, manifest).services.find("api")).toBeDefined();
   const invalid = provider("bad");
-  invalid.capabilities.overview.facets = [facet, facet];
-  expect(() => validatePluginDefinition({ ...valid, services: createServiceCatalog([invalid]) }, manifest))
+  invalid.extensions = invalid.extensions.map(extension => extension.kind === "overview.summarize" ? { ...extension, facets: [facet, facet] } : extension);
+  expect(() => overviewProviders(createServiceCatalog([invalid])))
     .toThrow("duplicate");
 });
 
@@ -143,9 +154,11 @@ test("report preserves source IDs, text data and failed providers and escapes HT
   const { readFileSync, rmSync } = await import("node:fs");
   const { join } = await import("node:path");
   const result = await runOverviewSession([provider("api")], query, actions({
-    summarize: async () => [{ facetId: "errors", description: "created_at", entries: [
-      { key: "E1", label: "<error>", data: "<script>alert(1)</script>", canSample: true },
-    ] }], select: async () => "errors",
+    summarize: async () => [{
+      facetId: "errors", description: "created_at", entries: [
+        { key: "E1", label: "<error>", data: "<script>alert(1)</script>", canSample: true },
+      ]
+    }], select: async () => "errors",
     sample: async () => [
       { bizId: "trace-1", source: { kind: "message_id", value: "m1" } },
       { bizId: "trace-2", source: { kind: "message_id", value: "m2" } },

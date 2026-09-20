@@ -1,7 +1,7 @@
 import { createCaseRunner } from "../case/extensions";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
-import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
+import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
@@ -308,8 +308,7 @@ export async function runPerf(
       if (!(isInteractive())) {
         throw new Error("非交互环境的 Perf Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
       }
-      const provider = tenantDirectoryExtensions(plugin.services, identityRequirement.directoryService);
-      const directory = extensionTenantDirectory(provider, (service, extension) => openPluginContext(executor, {
+      const directory = discoverTenantDirectory(plugin.services, (service, extension) => openPluginContext(executor, {
         namespace: kube.kubernetes.namespace,
         kubeconfig: kube.kubernetes.kubeconfig,
         context: kube.kubernetes.context,
@@ -370,7 +369,7 @@ export async function runPerf(
     (service) => !plugin.services.extensions(METRIC_CONFIGURATION_KIND).some(provider => provider.service.name === plugin.services.find(service)?.name),
   );
   const unknownLog = declaredScenario.observability.logServices.filter(
-    (service) => !plugin.services.findWith(service, "log"),
+    (service) => !plugin.services.find(service)?.logs,
   );
   if (unknownMetric.length || unknownLog.length) {
     await managed.dispose();

@@ -1,16 +1,9 @@
-import type {
-  PluginLevelCapabilityName,
-  PluginDefinition,
-  ServiceCapabilityName,
-  ServiceContributionName,
-} from "@compforge/doctor-plugin";
+import type { PluginDefinition } from "@compforge/doctor-plugin";
 
 export type PluginCapabilityRequirement = "required" | "preferred";
 
 export type PluginCapabilityReference =
-  | { scope: "plugin"; name: PluginLevelCapabilityName }
-  | { scope: "service"; name: ServiceCapabilityName }
-  | { scope: "contribution"; name: ServiceContributionName }
+  | { scope: "resource"; name: "dataSources" | "logs" }
   | { scope: "extension"; name: string };
 
 export interface PluginCapabilityNeed {
@@ -48,14 +41,8 @@ function capabilityProviders(
   capability: PluginCapabilityReference,
 ): readonly string[] {
   if (!plugin) return [];
-  if (capability.scope === "plugin") {
-    return plugin[capability.name] === undefined ? [] : [plugin.id];
-  }
   if (capability.scope === "extension") return [...new Set(plugin.services.extensions(capability.name).map(item => item.service.name))];
-  if (capability.scope === "contribution") {
-    return plugin.services.servicesWithContribution(capability.name).map((service) => service.name);
-  }
-  return plugin.services.servicesWith(capability.name).map((service) => service.name);
+  return plugin.services.services.filter(service => capability.name === "dataSources" ? Boolean(service.dataSources?.length) : service.logs !== undefined).map(service => service.name);
 }
 
 export function evaluatePluginCapabilities(

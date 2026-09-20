@@ -16,11 +16,18 @@ const need = (resource: string) => ({ rule: { verb: "get", resource }, requireme
 const extension = (overrides: Partial<FactsInspectExtension> = {}): FactsInspectExtension => ({
   id: "records", kind: FACTS_INSPECT_KIND, access: { kubernetes: [need("configmaps")] },
   accepts: ["biz_id"], provides: ["record"], run: async (_context, queries) => queries.map(({ identity }) => ({
-    identity, status: "collected", result: { resolution: { inputId: identity.value, resolvedAs: "record", identifiers: {} },
-      facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: { id: identity.value } }] },
+    identity, status: "collected", result: {
+      resolution: { inputId: identity.value, resolvedAs: "record", identifiers: {} },
+      facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: { id: identity.value } }]
+    },
   })), ...overrides,
 });
-const service = (name: string, ext: FactsInspectExtension): ServiceDefinition => ({ name, component, workloads: [], capabilities: {}, extensions: [ext] });
+const service = (name: string, ext: FactsInspectExtension): ServiceDefinition => ({
+  name,
+  component,
+  workloads: [],
+  extensions: [...[ext]]
+});
 const plugin = (services: ServiceDefinition[]): PluginDefinition => ({ id: "extensions", version: "1", services: createServiceCatalog(services) });
 const args = { bizIds: ["a", "b"], namespace: "test", services: "records", format: "json" };
 function executor(events: string[], allowed = true): Executor {
@@ -41,19 +48,21 @@ async function cleanup(context: CommandContext) {
 
 test("Data prepares only selected Extension access, then invokes native facts.inspect with scoped context and producer identity", async () => {
   const events: string[] = [];
-  const dispose = mock(() => {});
+  const dispose = mock(() => { });
   const otherKind = mock(async () => ["static"]);
   let calls = 0;
   const base = extension();
-  const records = service("records", extension({ run: async (context, queries) => {
-    calls++;
-    events.push("extension.run");
-    expect(events[0]).toBe("auth can-i get configmaps");
-    expect(context.target.service.name).toBe("records");
-    await expect(context.infra.kubernetes.list("secrets")).rejects.toThrow("未声明");
-    context.onDispose(dispose);
-    return [...await base.run(context, queries)].reverse();
-  } }));
+  const records = service("records", extension({
+    run: async (context, queries) => {
+      calls++;
+      events.push("extension.run");
+      expect(events[0]).toBe("auth can-i get configmaps");
+      expect(context.target.service.name).toBe("records");
+      await expect(context.infra.kubernetes.list("secrets")).rejects.toThrow("未声明");
+      context.onDispose(dispose);
+      return [...await base.run(context, queries)].reverse();
+    }
+  }));
   records.extensions = [...records.extensions!, { id: "static", kind: "custom.describe", access: { kubernetes: [need("secrets")] }, run: otherKind }];
   const configured = plugin([records, service("unselected", extension({ access: { kubernetes: [need("secrets")] } }))]);
   expect(evaluatePluginCapabilities(configured, PLUGIN_COMMAND_CAPABILITIES.data).runnable).toBeTrue();
@@ -71,8 +80,8 @@ test("Data prepares only selected Extension access, then invokes native facts.in
     expect(events.some(item => item.includes("secrets"))).toBeFalse();
     for (const item of result.output!.items) {
       const facts = item.diagnosis!.evidence.facts;
-      expect(facts.services.records!.target).toMatchObject({ status: "collected", service: "records" });
-      expect(facts.services.records!.target).not.toHaveProperty("database", expect.any(String));
+      expect(facts.services.records!.inspect).toMatchObject({ status: "collected", queryable: true });
+      expect(facts.services.records).not.toHaveProperty("target");
       expect(facts.capabilityResults[0]).toMatchObject({ extension: "records", identity: { value: item.bizId } });
       expect(projectDataServiceEvidence(item.diagnosis!.evidence, configured.id).facts[0]?.producer)
         .toEqual({ origin: "plugin", plugin: configured.id, service: "records", id: "records" });
@@ -92,12 +101,22 @@ test("required access denial stops prepare before any provider execution or outp
 });
 
 test("Data validates a malformed outcome per query and retains a healthy sibling", async () => {
-  const configured = plugin([service("records", extension({ access: {}, run: async (_context, queries) => [
-    { identity: queries[0]!.identity, status: "collected", result: { resolution: { inputId: "a", resolvedAs: "record", identifiers: {} },
-      facts: [{ factType: "value", kind: "undeclared", schemaVersion: 1, value: "bad" }] } },
-    { identity: queries[1]!.identity, status: "collected", result: { resolution: { inputId: "b", resolvedAs: "record", identifiers: {} },
-      facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: "good" }] } },
-  ] }))]);
+  const configured = plugin([service("records", extension({
+    access: {}, run: async (_context, queries) => [
+      {
+        identity: queries[0]!.identity, status: "collected", result: {
+          resolution: { inputId: "a", resolvedAs: "record", identifiers: {} },
+          facts: [{ factType: "value", kind: "undeclared", schemaVersion: 1, value: "bad" }]
+        }
+      },
+      {
+        identity: queries[1]!.identity, status: "collected", result: {
+          resolution: { inputId: "b", resolvedAs: "record", identifiers: {} },
+          facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: "good" }]
+        }
+      },
+    ]
+  }))]);
   const context = new CommandContext({});
   try {
     const prepared = await prepareDataCommand(args, configured.services, context, executor([]));
@@ -117,9 +136,12 @@ for (const nested of [false, true]) test(`Data checked entry point preflights be
   const run = mock(async () => []);
   const configured = plugin([service("records", extension({ run }))]);
   const denied = executor([], false);
-  const context = new CommandContext({ kubernetes: { kubeconfig: { source: "test" }, context: "test-context",
-    channel: { available: true, client: { ok: true, stdout: "", stderr: "", exitCode: 0, durationMs: 0, timedOut: false, command: [] } },
-  } }, undefined, { plugin: configured });
+  const context = new CommandContext({
+    kubernetes: {
+      kubeconfig: { source: "test" }, context: "test-context",
+      channel: { available: true, client: { ok: true, stdout: "", stderr: "", exitCode: 0, durationMs: 0, timedOut: false, command: [] } },
+    }
+  }, undefined, { plugin: configured });
   const scoped = context.kubernetes(denied);
   context.kubernetes = () => scoped;
   const parent = defineCommand<DataInput, unknown>({ name: "parent", prepare: async (_context, input) => input, run: (ctx, input) => dataCommand.run(ctx, input) });

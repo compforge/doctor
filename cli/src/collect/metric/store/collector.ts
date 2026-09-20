@@ -285,14 +285,14 @@ async function prepareDirectSamplers(input: {
     queryTimeoutMs: 15_000,
   });
   for (const serviceName of input.services) {
-    const service = input.plugin.services.findWith(serviceName, "dataSources");
+    const service = input.plugin.services.find(serviceName);
     if (!service) continue;
     const namespace = input.networkServices.find((item) => item.name === serviceName)?.namespace
       ?? input.pods[0]?.namespace
       ?? "";
     const pod = findPodsForService(input.networkServices, input.pods, serviceName, namespace)[0];
     if (!pod) {
-      for (const store of service.capabilities.dataSources) {
+      for (const store of service.dataSources ?? []) {
         if (store.kind === "redis") {
           errors.push({ kind: "redis", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
         } else if (store.kind === "db" && store.backend === "mysql") {
@@ -301,7 +301,7 @@ async function prepareDirectSamplers(input: {
       }
       continue;
     }
-    for (const store of service.capabilities.dataSources) {
+    for (const store of service.dataSources ?? []) {
       try {
         if (store.kind === "redis") {
           const runtime = await runtimeEnvironment(
@@ -388,7 +388,7 @@ async function responseBody(response: Response, limit: number): Promise<string> 
   if (!reader) return "";
   const chunks: Uint8Array[] = [];
   let size = 0;
-  for (;;) {
+  for (; ;) {
     const { done, value } = await reader.read();
     if (done) break;
     size += value.byteLength;
@@ -441,7 +441,7 @@ export async function prepareStoreMetricCollection(input: {
   const network = await listServiceNetwork(input.executor, input.namespace);
   const kinds = new Set<MetricStoreKind>();
   for (const serviceName of input.services) {
-    for (const store of input.plugin.services.findWith(serviceName, "dataSources")?.capabilities.dataSources ?? []) {
+    for (const store of input.plugin.services.find(serviceName)?.dataSources ?? []) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }
@@ -557,7 +557,7 @@ export function selectedMetricStoreKinds(
 ): MetricStoreKind[] {
   const kinds = new Set<MetricStoreKind>();
   for (const service of services) {
-    for (const store of catalog.findWith(service, "dataSources")?.capabilities.dataSources ?? []) {
+    for (const store of catalog.find(service)?.dataSources ?? []) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }

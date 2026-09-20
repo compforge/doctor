@@ -49,9 +49,13 @@ test("invalid input and missing capabilities prevent binding and execution", asy
   const unavailable = defineCommand<CommandInput, number, { ready: boolean }>({
     name: "unavailable",
     prepare: async (context) => {
-      await prepareCommandRequirements(context, { plugin: { command: "unavailable", needs: [{
-        capability: { scope: "contribution", name: "inspect" }, requirement: "required", purpose: "test",
-      }] } });
+      await prepareCommandRequirements(context, {
+        plugin: {
+          command: "unavailable", needs: [{
+            capability: { scope: "extension", name: "facts.inspect" }, requirement: "required", purpose: "test",
+          }]
+        }
+      });
       return prepare();
     },
     run,
@@ -63,7 +67,7 @@ test("invalid input and missing capabilities prevent binding and execution", asy
 });
 
 test("prepare failure preserves evidence, releases resources and leaves sibling commands runnable", async () => {
-  const dispose = mock(() => {});
+  const dispose = mock(() => { });
   const run = mock(async () => ok(1));
   const failed = defineCommand<CommandInput, number, string>({
     name: "failed", prepare: async ctx => {
@@ -85,7 +89,7 @@ test("prepare failure preserves evidence, releases resources and leaves sibling 
 
 test("declined or interrupted preparation skips execution and closes acquired resources", async () => {
   for (const interrupted of [false, true]) {
-    const dispose = mock(() => {});
+    const dispose = mock(() => { });
     const run = mock(async () => ok(1));
     const context = new CommandContext({});
     const command = defineCommand<CommandInput, number, string>({
@@ -106,7 +110,7 @@ test("declined or interrupted preparation skips execution and closes acquired re
 });
 
 test("concurrent idempotent calls share preparation, execution and cleanup", async () => {
-  const dispose = mock(() => {});
+  const dispose = mock(() => { });
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const prepare = mock(async () => { onCommandDispose(dispose); await gate; return { value: 7 }; });

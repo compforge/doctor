@@ -41,7 +41,7 @@ export function makeLogInspect(
       const missing: Record<string, string[]> = {};
       for (const serviceName of services) {
         ctx.command.signal.throwIfAborted();
-        const service = ctx.command.plugin.services.findWith(serviceName, "log");
+        const service = ctx.command.plugin.services.find(serviceName);
         const targets: LogWorkloadTarget[] = byService[serviceName] = [];
         const gaps: string[] = missing[serviceName] = [];
         if (!service?.workloads.length) {
