@@ -1,8 +1,9 @@
 import type {
   ServiceDefinition,
   ServiceEvidenceFact,
-  ServiceWorkloadProbe,
+  WorkloadProbeExtension,
 } from "@compforge/doctor-plugin";
+import { invokeExtension } from "../../../plugin/extension";
 import { openPluginContext } from "../../../plugin/context";
 import { validateObservationValue } from "../../../plugin/observation";
 import type { Probe } from "../../protocol";
@@ -17,7 +18,7 @@ import type {
 
 export function makePluginWorkloadProbe(
   service: ServiceDefinition,
-  declaration: ServiceWorkloadProbe,
+  declaration: WorkloadProbeExtension,
   probeFacts: readonly ServiceEvidenceFact[],
 ): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
   const id = `plugin-workload-${service.name}-${declaration.workload}-${declaration.id}`;
@@ -48,6 +49,7 @@ export function makePluginWorkloadProbe(
     run: async (ctx, facts, config) => {
       const managed = await openPluginContext(ctx.executor, config.kube, {
         config: ctx.command.profile.pluginConfig,
+        signal: ctx.command.signal,
         service: service,
         capability: declaration,
         command: "doctor inspect",
@@ -57,9 +59,10 @@ export function makePluginWorkloadProbe(
         const definition = service.workloads.find((item) => item.name === declaration.workload)!;
         const observations: PluginWorkloadObservation[] = [];
         for (const pod of targets(facts)) {
+          managed.signal.throwIfAborted();
           const stepId = `${id}-${pod.pod}`;
           try {
-            const observed = await declaration.probe(managed, {
+            const observed = await invokeExtension(declaration, managed, {
               instance: pod.instance,
               facts: probeFacts,
             });

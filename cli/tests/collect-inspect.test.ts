@@ -1,5 +1,6 @@
 import {
   createServiceCatalog,
+  serviceExtensions,
   defineObservation,
   defineServiceWorkloadProbe,
   Type,
@@ -248,14 +249,14 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
   })).toBe(true);
 });
 
-test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage", async () => {
+test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选 Service 配置和 partial Coverage (%s)", async (mode) => {
   let workloadProbeFacts: readonly ServiceEvidenceFact[] | undefined;
   const coreFactsVisible = defineObservation({
     kind: "core-facts-visible",
     schemaVersion: 1,
     schema: Type.Object({ pod: Type.String() }, { additionalProperties: false }),
   });
-  const pluginWithEnvironmentProbes = {
+  const legacyPlugin: PluginDefinition = {
     ...examplePlugin,
     services: createServiceCatalog(examplePlugin.services.services.map((service) => (
       service.name === "example-api"
@@ -285,6 +286,14 @@ test("inspect 分别交付 workload、可选 Service 配置和 partial Coverage"
         : service
     ))),
   } satisfies PluginDefinition;
+  const pluginWithEnvironmentProbes: PluginDefinition = mode === "legacy" ? legacyPlugin : {
+    ...legacyPlugin,
+    services: createServiceCatalog(legacyPlugin.services.services.map(service => ({
+      ...service,
+      extensions: serviceExtensions(service).filter(extension => extension.kind === "workload.probe"),
+      contributions: { ...service.contributions, probes: service.contributions?.probes?.filter(probe => probe.kind !== "workload") },
+    }))),
+  };
   const resources = {
     services: JSON.stringify({ items: [{
       metadata: { name: "example-api", namespace: "demo" },

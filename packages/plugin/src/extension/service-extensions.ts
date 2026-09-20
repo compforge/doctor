@@ -1,3 +1,4 @@
+import { WORKLOAD_PROBE_KIND, type WorkloadProbeExtension } from "./workload";
 import { CASE_RUNNER_CREATE_KIND, type CaseRunnerCreateExtension } from "./case";
 import { PERF_SCENARIOS_KIND, type PerfScenariosExtension } from "./perf";
 import { METRIC_CONFIGURATION_KIND, type MetricConfigurationExtension } from "./metric";
@@ -66,6 +67,18 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     add({ id: "overview.sample", kind: OVERVIEW_SAMPLE_KIND, access: overview.access,
       run: (context, input) => overview.sample(context, input),
     } satisfies OverviewSampleExtension);
+  }
+  const probes = service.contributions?.probes?.filter(probe => probe.kind === "workload") ?? [];
+  if (probes.length && explicit.some(extension => extension.kind === WORKLOAD_PROBE_KIND)) {
+    throw new Error(`${service.name}: declare workload.probe either as Extensions or Probe contributions, not both`);
+  }
+  // Multiple named probes of the same kind are independent operations on workload instances.
+  for (const probe of probes) {
+    const extension: WorkloadProbeExtension = {
+      id: probe.id, kind: WORKLOAD_PROBE_KIND, workload: probe.workload, produces: probe.produces,
+      access: probe.access, run: (context, input) => probe.probe(context, input),
+    };
+    explicit.push(extension);
   }
   const inspect = service.contributions?.inspect;
   if (!inspect) return explicit;

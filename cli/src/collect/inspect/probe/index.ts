@@ -1,3 +1,4 @@
+import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type { Probe } from "../../protocol";
 import type { ServiceCatalog, ServiceEvidenceFact } from "@compforge/doctor-plugin";
 import type {
@@ -19,9 +20,11 @@ export function makeInspectProbes(
 ): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> {
   const serviceProbes = config.services.flatMap((serviceName) => {
     const service = catalog.find(serviceName);
-    return service?.contributions?.probes?.map((probe) => probe.kind === "workload"
-      ? makePluginWorkloadProbe(service, probe, probeFacts)
-      : makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
+    const environment = service?.contributions?.probes?.filter(probe => probe.kind !== "workload")
+      .map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
+    const workloads = workloadProbeProviders(catalog, serviceName)
+      .map(({ service, extension }) => makePluginWorkloadProbe(service, extension, probeFacts));
+    return [...environment, ...workloads];
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
