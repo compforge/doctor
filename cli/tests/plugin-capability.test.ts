@@ -96,7 +96,7 @@ test("tenant command 组合租户身份、模型与通用 Inspect contribution",
 test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
     { scope: "extension", name: "perf.scenarios" },
-    { scope: "service", name: "case" },
+    { scope: "extension", name: "case.runner.create" },
     { scope: "extension", name: "metric.configuration" },
     { scope: "extension", name: "trace.resolve" },
     { scope: "service", name: "log" },
@@ -107,7 +107,7 @@ test("eval command 只强依赖 Case，并把关联证据能力作为可降级�
   expect(PLUGIN_COMMAND_CAPABILITIES.eval.needs).toEqual([
     expect.objectContaining({
       requirement: "required",
-      capability: { scope: "service", name: "case" },
+      capability: { scope: "extension", name: "case.runner.create" },
     }),
     expect.objectContaining({
       requirement: "preferred",

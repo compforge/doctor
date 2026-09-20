@@ -14,8 +14,8 @@ canonical Case，每个 Case 只执行一次，并把 CaseSet 快照、协议 Ob
 
 - Case 与 CaseSet 的 canonical schema、校验和版本化资产归 spec-case；Eval 不复制 schema，也不把环境、
   凭据或并发参数写回 Case。
-- Service Case Capability 提供 CaseSet 和单次请求 runner，拥有具体 HTTP/SSE 协议、鉴权、业务身份和
-  协议成功判定。Runner 的一次 `trigger` 必须对应一个 Case 请求，不能自行启动隐藏循环。
+- Service `case.runner.create` Extension 声明 CaseSet 并创建单次请求 runner，拥有具体 HTTP/SSE 协议、鉴权、业务身份和
+  协议成功判定。Runner 的一次 `run` 必须对应一个 Case 请求，不能自行启动隐藏循环。
 - Doctor Core 负责选择 CaseSet/Case、顺序调度、生命周期、确认真实请求影响，以及将 Observation 的业务
   关联 ID 交给既有 Trace、Log、Data Command。
 - Trace、Log、Data 仍拥有各自的 capability、访问准备、Evidence 和报告；Eval 只组合稳定入口及产物，

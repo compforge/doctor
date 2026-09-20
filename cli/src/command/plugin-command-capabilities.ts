@@ -123,7 +123,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor eval",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "case" },
+      capability: { scope: "extension", name: "case.runner.create" },
       purpose: "提供 canonical CaseSet、单次请求触发和协议判定",
     }, {
       requirement: "preferred",
@@ -150,7 +150,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "提供 Case 组合与可观测性预设",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "case" },
+      capability: { scope: "extension", name: "case.runner.create" },
       purpose: "提供稳定 Case 资产以及单次请求触发和协议判定",
     }, {
       requirement: "required",

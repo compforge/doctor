@@ -40,3 +40,4 @@ export * from "./mcp";
 export * from "./model";
 export * from "./metric";
 export * from "./perf";
+export * from "./case";

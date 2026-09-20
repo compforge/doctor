@@ -1,6 +1,8 @@
+import { caseRunnerProvider } from "../case/extensions";
 import { modelCatalogExtensions, modelInferenceExtensions } from "../model/extensions";
 import { tenantDirectoryExtensions } from "./tenant-directory";
 import {
+  CASE_RUNNER_CREATE_KIND,
   createServiceCatalog,
   isToolchain,
   type PluginDefinition,
@@ -408,7 +410,8 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         );
       }
     }
-    const requirement = service.capabilities.case?.requestIdentity;
+    const hasCaseRunner = catalog.extensions(CASE_RUNNER_CREATE_KIND).some(item => item.service.name === service.name);
+    const requirement = hasCaseRunner ? caseRunnerProvider(catalog, service.name).extension.requestIdentity : undefined;
     if (requirement) {
       tenantDirectoryExtensions(catalog, nonEmptyString(requirement.directoryService, `${service.name}.case.requestIdentity.directoryService`));
     }

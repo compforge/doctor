@@ -107,6 +107,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
 | model.backend.validate | 模型、超时预算 → 校验响应 | Model |
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
+| case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
 | perf.scenarios | 无入参 → 场景、Case 组合和可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
@@ -149,3 +150,8 @@ Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需
 
 Perf 按 Service 选择唯一的场景扩展，校验场景 ID、Case 权重和 CaseSet/Case 引用后再申请施压审批。
 场景读取有独立的权限和调用上下文，读取完成即释放；请求 runner 的创建、调度和清理由 Command 管理。
+
+`case.runner.create` 声明端点、canonical CaseSet 清单和请求身份需求，发现时校验元数据，调用时创建
+runner。Command 在主动请求审批后调用创建函数，并持有访问上下文直到 runner 生命周期结束；
+Harness 调度 setup、逐次 run、deactivate 和 cleanup。创建期间发生取消时，已创建的 runner 仍交给
+生命周期所有者清理。
