@@ -18,6 +18,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
   }
   lines.push(`    Extensions：${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "无"}`,
     `    Detectors：${service.detectors.join(", ") || "无"}`,
+    `    EnvironmentProbes：${service.environmentProbes.join(", ") || "无"}`,
     `    DataSources：${dataSources.map(source => `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
     "    Workloads：");
   for (const workload of workloads) {

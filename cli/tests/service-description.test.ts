@@ -66,6 +66,18 @@ test("text uses the same projection and distinguishes possible output from accep
   expect(text).not.toContain("输入 ID（每个 Query 选一种）：run_id");
 });
 
+test("environment probes appear in offline Service text and JSON projection", () => {
+  const described = describeService({
+    ...service,
+    environmentProbes: [{
+      id: "apparmor-unconfined", kind: "kubernetes.apparmor-unconfined-admission",
+      schemaVersion: 1, subject: "workload-service-account",
+    }],
+  });
+  expect(described.environmentProbes).toEqual(["apparmor-unconfined"]);
+  expect(formatServiceDescription(described)).toContain("EnvironmentProbes：apparmor-unconfined");
+});
+
 test("Workload explanation appears in offline Service text and JSON projection", () => {
   const described = describeService({
     ...service, workloads: [{
@@ -91,6 +103,7 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
   expect(legacy).toContain("说明：未提供");
   expect(legacy).toContain("未声明 facts.inspect Extension");
   expect(legacy).toContain("Extensions：无");
+  expect(legacy).toContain("EnvironmentProbes：无");
   const missing = formatServiceDescription(describeService({
     ...service,
     extensions: [inspectExtension({
