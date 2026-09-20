@@ -107,6 +107,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
 | model.backend.validate | 模型、超时预算 → 校验响应 | Model |
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
+| workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
 | perf.scenarios | 无入参 → 场景、Case 组合和可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
@@ -155,3 +156,7 @@ Perf 按 Service 选择唯一的场景扩展，校验场景 ID、Case 权重和 
 runner。Command 在主动请求审批后调用创建函数，并持有访问上下文直到 runner 生命周期结束；
 Harness 调度 setup、逐次 run、deactivate 和 cleanup。创建期间发生取消时，已创建的 runner 仍交给
 生命周期所有者清理。
+
+一个 Service 可提供多个 `workload.probe`，各自声明稳定 ID、Workload 名称、Observation schema 和访问权限。
+Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变 Observation；实例探测失败独立记录，
+取消时停止后续实例。访问上下文在该探测函数的实例批次结束后释放。

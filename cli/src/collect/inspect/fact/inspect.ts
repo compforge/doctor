@@ -1,3 +1,4 @@
+import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type {
   ServiceCatalog,
   Toolchain,
@@ -244,10 +245,9 @@ export function makeServiceTargetsInspect(
             name: definition.name,
             description: definition.description,
             location: definition.location,
-            probes: declaredService.contributions?.probes
-              ?.filter((probe) => probe.kind === "workload")
-              .filter((probe) => probe.workload === definition.name)
-              .map((probe) => probe.id) ?? [],
+            probes: workloadProbeProviders(catalog, serviceName)
+              .filter(({ extension }) => extension.workload === definition.name)
+              .map(({ extension }) => extension.id),
             deployments,
             unavailableDeployments,
             podRuntime: podFailure

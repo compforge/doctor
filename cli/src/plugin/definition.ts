@@ -1,3 +1,4 @@
+import { workloadProbeProviders } from "./workload-extensions";
 import { caseRunnerProvider } from "../case/extensions";
 import { modelCatalogExtensions, modelInferenceExtensions } from "../model/extensions";
 import { tenantDirectoryExtensions } from "./tenant-directory";
@@ -362,6 +363,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (!Array.isArray(sourceCatalog.services)) throw new Error("Plugin services.services must be an array");
   const services = sourceCatalog.services.map(validateService);
   const catalog = createServiceCatalog(services);
+  workloadProbeProviders(catalog);
 
   for (const service of services) {
     for (const [index, value] of (service.relationships ?? []).entries()) {

@@ -129,7 +129,7 @@ Plugin Service 注册这三类 contribution，但不拥有命令生命周期。C
 
 Detector 依赖的是 Evidence schema，而不是 producer 的实现细节。Service Inspect 返回的每个 Fact 必须携带
 本地 `kind` 与正整数 `schemaVersion`；Workload Probe 用 `produces: ObservationDefinition` 预先声明
-`kind + schemaVersion + schema`，`probe` 直接返回由 schema 推导的 payload。TypeBox 作为 Plugin 作者侧的单一类型来源；
+`kind + schemaVersion + schema`，`workload.probe` Extension 的 `run` 返回由 schema 推导的 payload。TypeBox 作为 Plugin 作者侧的单一类型来源；
 Core 在加载时用 JSON Schema Draft 2020-12 编译契约，调用后把 ESM 边界返回值当作 `unknown`
 执行无 coercion 校验，再复制和深冻结。开放 object schema、远程 `$ref`、非有限数字和其它非 JSON 值都会被拒绝。
 `Any/Unknown` 与仅依赖本地函数的 `Refine/Codec/Unsafe` 也不是可移植 schema。
