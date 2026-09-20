@@ -1,3 +1,5 @@
+import { TENANT_LIST_KIND, TENANT_RESOLVE_KIND, USER_SEARCH_KIND, type TenantListExtension, type TenantResolveExtension, type UserSearchExtension } from "./tenant";
+import { MCP_CONFIGURATION_KIND, type McpConfigurationExtension } from "./mcp";
 import type { RegisteredExtension } from "./index";
 import type { ServiceDefinition } from "../service";
 import { FACTS_INSPECT_KIND, adaptServiceInspect } from "./facts-inspect";
@@ -13,6 +15,27 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     }
     explicit.push(extension);
   };
+  const directory = service.capabilities.tenantDirectory;
+  if (directory) {
+    add({ id: TENANT_LIST_KIND, kind: TENANT_LIST_KIND, access: directory.access, endpoint: directory.endpoint,
+      run: async context => directory.create(context).listActive(),
+    } satisfies TenantListExtension);
+    add({ id: TENANT_RESOLVE_KIND, kind: TENANT_RESOLVE_KIND, access: directory.access, endpoint: directory.endpoint,
+      run: async (context, input) => directory.create(context).getByName(input.name),
+    } satisfies TenantResolveExtension);
+    // The legacy factory exposes optional user search only after context creation.
+    add({ id: USER_SEARCH_KIND, kind: USER_SEARCH_KIND, access: directory.access, endpoint: directory.endpoint,
+      run: async (context, input) => {
+        const client = directory.create(context);
+        if (!client.searchActiveUsers) throw new Error(`${service.name}: tenantDirectory does not support user.search`);
+        return client.searchActiveUsers(input);
+      },
+    } satisfies UserSearchExtension);
+  }
+  const mcp = service.capabilities.mcp;
+  if (mcp) add({ id: MCP_CONFIGURATION_KIND, kind: MCP_CONFIGURATION_KIND, access: mcp.access, endpoint: mcp.endpoint,
+    run: (context, input) => mcp.loadConfiguration(context, input),
+  } satisfies McpConfigurationExtension);
   const trace = service.capabilities.traceId;
   if (trace) add({ id: "trace.resolve", kind: TRACE_RESOLVE_KIND, access: trace.access, endpoint: trace.endpoint,
     run: (context, input) => trace.resolve(context, input),

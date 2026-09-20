@@ -1,3 +1,4 @@
+import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
   PluginDefinition,
@@ -70,35 +71,22 @@ async function resolveEvalRequestIdentity(input: {
   if (!(isInteractive())) {
     throw new Error("非交互环境的 Eval Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
   }
-  const directoryService = input.plugin.services.findWith(
-    requirement.directoryService,
-    "tenantDirectory",
-  );
-  if (!directoryService) {
-    throw new Error(`Service '${requirement.directoryService}' 未声明 tenantDirectory capability`);
-  }
-  const managed = await openPluginContext(input.executor, {
+  const provider = tenantDirectoryExtensions(input.plugin.services, requirement.directoryService);
+  const directory = extensionTenantDirectory(provider, (service, extension) => openPluginContext(input.executor, {
     namespace: input.namespace,
     kubeconfig: input.kubeconfig,
     context: input.context,
   }, {
     config: input.commandContext.profile.pluginConfig,
-    service: directoryService,
-    endpoint: directoryService.capabilities.tenantDirectory.endpoint,
-    capability: directoryService.capabilities.tenantDirectory,
+    service,
+    endpoint: extension.endpoint,
+    capability: extension,
     command: "doctor eval identity",
     authorization: resolveKubernetesCommandContext(input.executor, input.commandContext).access,
+  }));
+  return resolveCaseRequestIdentity({
+    configured: { tenantId, userId }, directory, commandLabel: "Eval", logPrefix: "eval",
   });
-  try {
-    return await resolveCaseRequestIdentity({
-      configured: { tenantId, userId },
-      directory: directoryService.capabilities.tenantDirectory.create(managed),
-      commandLabel: "Eval",
-      logPrefix: "eval",
-    });
-  } finally {
-    await managed.dispose();
-  }
 }
 
 export async function executeEvalCases(

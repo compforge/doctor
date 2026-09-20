@@ -56,8 +56,12 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "声明租户身份解析入口",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "tenantDirectory" },
-      purpose: "解析要 Inspect 的租户",
+      capability: { scope: "extension", name: "tenant.list" },
+      purpose: "列出可诊断租户",
+    }, {
+      requirement: "required",
+      capability: { scope: "extension", name: "tenant.resolve" },
+      purpose: "按名称解析要 Inspect 的租户",
     }, {
       requirement: "preferred",
       capability: { scope: "plugin", name: "model" },
@@ -70,7 +74,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "跳过模型目录",
     }, {
       requirement: "preferred",
-      capability: { scope: "contribution", name: "inspect" },
+      capability: { scope: "extension", name: FACTS_INSPECT_KIND },
       purpose: "查询接受 tenant_id 的业务 Facts",
       fallback: "仅汇总租户身份与模型目录",
     }],
@@ -79,7 +83,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor mcp",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "mcp" },
+      capability: { scope: "extension", name: "mcp.configuration" },
       purpose: "定位业务 MCP server 并解释工具语义",
     }],
   },
@@ -91,8 +95,12 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "声明租户目录、模型目录和推理服务",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "tenantDirectory" },
-      purpose: "解析可诊断租户",
+      capability: { scope: "extension", name: "tenant.list" },
+      purpose: "列出可诊断租户",
+    }, {
+      requirement: "required",
+      capability: { scope: "extension", name: "tenant.resolve" },
+      purpose: "按名称解析可诊断租户",
     }, {
       requirement: "required",
       capability: { scope: "service", name: "modelCatalog" },
@@ -129,7 +137,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       fallback: "跳过 Log 证据",
     }, {
       requirement: "preferred",
-      capability: { scope: "contribution", name: "inspect" },
+      capability: { scope: "extension", name: FACTS_INSPECT_KIND },
       purpose: "采集 Case 关联的业务 Facts/Relations",
       fallback: "跳过业务 Data 证据",
     }],

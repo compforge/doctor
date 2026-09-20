@@ -1,8 +1,8 @@
+import { dataProviders } from "../data/extensions";
+import { tenantDirectoryExtensions, extensionTenantDirectory } from "../../plugin/tenant-directory";
 import type {
   ModelCatalog,
   PluginDefinition,
-  ServiceDefinition,
-  ServiceWithCapability,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import {
@@ -11,25 +11,17 @@ import {
 } from "../../command/kubernetes-target";
 import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
-import { inspectServiceQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
+import { inspectExtensionQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
 import type {
   CollectTenantCliOptions,
   TenantAccess,
   TenantCapabilityCollector,
 } from "./model";
 
-function tenantDirectoryProvider(
-  plugin: PluginDefinition,
-): ServiceWithCapability<ServiceDefinition, "tenantDirectory"> {
+function tenantDirectoryProvider(plugin: PluginDefinition) {
   const declaration = plugin.tenant;
   if (!declaration) throw new Error(`Plugin '${plugin.id}' 未提供 tenant capability`);
-  const service = plugin.services.findWith(declaration.directoryService, "tenantDirectory");
-  if (!service) {
-    throw new Error(
-      `Plugin '${plugin.id}' 的 Service '${declaration.directoryService}' 未声明 tenantDirectory 能力`,
-    );
-  }
-  return service;
+  return tenantDirectoryExtensions(plugin.services, declaration.directoryService);
 }
 
 function tenantDirectoryPort(value: string | undefined, fallback: number): number {
@@ -66,99 +58,88 @@ export async function openTenantAccess(input: {
         password: commandContext.profile.value.db.password,
       }
     : undefined;
-  const directoryContext = await openPluginContext(executor, kube, {
+  if (options.tenantDirectoryPort !== undefined) tenantDirectoryPort(options.tenantDirectoryPort, 1);
+  const directory = extensionTenantDirectory(directoryProvider, (service, extension) => openPluginContext(executor, kube, {
     config: commandContext.profile.pluginConfig,
     databaseIdentity,
-    service: directoryProvider,
+    service,
     endpoint: {
-      host: options.tenantDirectoryService?.trim()
-        || directoryProvider.capabilities.tenantDirectory.endpoint.host,
-      port: tenantDirectoryPort(
-        options.tenantDirectoryPort,
-        directoryProvider.capabilities.tenantDirectory.endpoint.port,
-      ),
+      host: options.tenantDirectoryService?.trim() || extension.endpoint.host,
+      port: tenantDirectoryPort(options.tenantDirectoryPort, extension.endpoint.port),
     },
     command: "doctor tenant",
-    capability: directoryProvider.capabilities.tenantDirectory,
+    capability: extension,
     authorization,
-  });
-
-  try {
-    const directory = directoryProvider.capabilities.tenantDirectory.create(directoryContext);
-    const capabilities: TenantCapabilityCollector[] = plugin.services
-      .servicesWithContribution("inspect")
-      .filter((service) => service.contributions.inspect.accepts.includes("tenant_id"))
-      .map((service) => ({
-        id: `inspect:${service.name}`,
-        service: service.name,
-        capability: "inspect" as const,
-        query: async (identity) => {
-          const capability = service.contributions.inspect;
-          const context = await openPluginContext(executor, kube, {
-            config: commandContext.profile.pluginConfig,
-            databaseIdentity,
-            service: service,
-            command: `doctor tenant · ${service.name} inspect`,
+  }));
+  const capabilities: TenantCapabilityCollector[] = dataProviders(plugin.services)
+    .filter(provider => provider.extension.accepts.includes("tenant_id"))
+    .map(({ service, extension }) => ({
+      id: `inspect:${service.name}`,
+      service: service.name,
+      capability: "inspect" as const,
+      query: async (identity) => {
+        const capability = extension;
+        const context = await openPluginContext(executor, kube, {
+          config: commandContext.profile.pluginConfig,
+          databaseIdentity,
+          service: service,
+          command: `doctor tenant · ${service.name} inspect`,
+          capability,
+          authorization,
+        });
+        try {
+          const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
+          const [outcome] = await inspectExtensionQueries(capability, context, [{ identity, results: new Map(), budget }]);
+          if (!outcome || outcome.status === "failed") throw new Error(outcome?.reason ?? "Missing Inspect outcome");
+          const result = normalizeServiceInspectResult({
+            value: outcome.result,
+            service: service.name,
+            queryIdentity: identity,
             capability,
-            authorization,
+            budget,
           });
-          try {
-            const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
-            const [outcome] = await inspectServiceQueries(capability, context, [{ identity, results: new Map(), budget }]);
-            if (!outcome || outcome.status === "failed") throw new Error(outcome?.reason ?? "Missing Inspect outcome");
-            const result = normalizeServiceInspectResult({
-              value: outcome.result,
-              service: service.name,
-              queryIdentity: identity,
-              capability,
-              budget,
-            });
-            return [{ kind: "data" as const, result }];
-          } finally {
-            await context.dispose();
-          }
-        },
-      }));
-    const model = plugin.model;
-    if (model) {
-      const service = plugin.services.findWith(model.catalogService, "modelCatalog");
-      if (!service) {
-        throw new Error(
-          `Plugin '${plugin.id}' 的 Service '${model.catalogService}' 未声明 modelCatalog 能力`,
-        );
-      }
-      capabilities.unshift({
-        id: "models",
-        service: service.name,
-        capability: "modelCatalog",
-        query: async (identity) => {
-          const capability = service.capabilities.modelCatalog;
-          const context = await openPluginContext(executor, kube, {
-            config: commandContext.profile.pluginConfig,
-            databaseIdentity,
-            service: service,
-            endpoint: capability.endpoint,
-            command: "doctor tenant · model catalog",
-            capability,
-            authorization,
-          });
-          try {
-            const catalog: ModelCatalog = capability.create(context);
-            return [{ kind: "models", models: await catalog.query({ identity }) }];
-          } finally {
-            await context.dispose();
-          }
-        },
-      });
+          return [{ kind: "data" as const, result }];
+        } finally {
+          await context.dispose();
+        }
+      },
+    }));
+  const model = plugin.model;
+  if (model) {
+    const service = plugin.services.findWith(model.catalogService, "modelCatalog");
+    if (!service) {
+      throw new Error(
+        `Plugin '${plugin.id}' 的 Service '${model.catalogService}' 未声明 modelCatalog 能力`,
+      );
     }
-    return {
-      config,
-      directory,
-      capabilities,
-      dispose: () => directoryContext.dispose(),
-    };
-  } catch (error) {
-    await directoryContext.dispose();
-    throw error;
+    capabilities.unshift({
+      id: "models",
+      service: service.name,
+      capability: "modelCatalog",
+      query: async (identity) => {
+        const capability = service.capabilities.modelCatalog;
+        const context = await openPluginContext(executor, kube, {
+          config: commandContext.profile.pluginConfig,
+          databaseIdentity,
+          service: service,
+          endpoint: capability.endpoint,
+          command: "doctor tenant · model catalog",
+          capability,
+          authorization,
+        });
+        try {
+          const catalog: ModelCatalog = capability.create(context);
+          return [{ kind: "models", models: await catalog.query({ identity }) }];
+        } finally {
+          await context.dispose();
+        }
+      },
+    });
   }
+  return {
+    config,
+    directory,
+    capabilities,
+    dispose: async () => {},
+  };
 }

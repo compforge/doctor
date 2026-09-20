@@ -31,6 +31,8 @@ packages/plugin/src/
 │   ├── facts-inspect.ts  # facts.inspect 的领域契约
 │   ├── trace-resolve.ts  # trace.resolve 的领域契约
 │   ├── overview.ts       # overview.summarize / overview.sample 的领域契约
+│   ├── tenant.ts         # tenant.list / tenant.resolve / user.search 的领域契约
+│   ├── mcp.ts            # mcp.configuration 的领域契约
 │   └── service-extensions.ts # Service 声明的统一发现视图
 └── kubernetes.ts         # 复用现有 CapabilityAccess
 ```
@@ -92,14 +94,24 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 
 | kind | 输入 → 输出 | 消费方 |
 |---|---|---|
-| facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data |
+| facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
 | trace.resolve | 业务 ID → 一条或多条 Trace 定位结果，包含来源 | Trace、Log，以及调用它们的组合命令 |
 | overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
 | overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
+| tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
+| tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
+| user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
+| mcp.configuration | 超时预算 → MCP server、工具与连接配置投影 | MCP |
 
 Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Overview 按 Service
 关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 可以独立展示概览。
 这两个领域均要求每个 Service 对同一操作提供一个实现，重复声明在消费时报告歧义。
+
+目录操作分别声明访问需求，消费方按实际需要调用，每次调用结束后释放受限上下文。
+用户选择属于 Command：Plugin 返回租户或用户候选，Command 决定提示、分页和取消。
+MCP 配置扩展负责把私有来源投影为公共 server/tool 契约，Command 根据投影完成目标选择与协议探测。
+配置读取与 gateway 探测使用各自的权限上下文，避免把 Command 的访问需求扩散给配置提供方。
+目录和 MCP 均按 Service 选择每个操作的唯一实现，重复实现报告歧义。
 
 ## 接入示例：Data 使用 facts.inspect
 
