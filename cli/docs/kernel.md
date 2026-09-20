@@ -96,9 +96,13 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 
 ### Command 的准备扩展点
 
-`defineCommand` 是独立命令和聚合子命令共用的调用入口。输入校验、Plugin 能力存在性检查和环境准备
-完成后，调用可选的 `CommandSpec.prepare`，再把其类型化结果传给领域 `run`。无需额外准备的命令直接
-消费输入；调用者始终传入原始 Input，不自行调用 prepare 或构造准备结果。
+`defineCommand` 是独立命令和聚合子命令共用的调用入口。每个 CommandSpec 必须提供 prepare 和 run；
+入口先校验输入，再调用 prepare，将其类型化结果传给领域 run。调用者通过封装后的 Command.run 传入
+原始 Input，准备结果由命令内部持有。
+
+Prepare 按输入选择本次依赖，完成 Plugin 能力存在性检查、环境准备和已选实现的访问检查。
+公共的能力与环境检查复用 prepareCommandRequirements；没有额外准备工作的命令直接返回输入。
+validate 负责不访问外部资源的输入校验，在加载 Plugin 和访问环境前拒绝无效请求。
 
 prepare 根据本次输入选择并绑定资源和能力，Service 则提供 Workload、DataSource、capability 与 access
 声明及实现。Service 不接收 Command DTO，也不根据命令名切换业务行为。内置工作和 Service contribution
@@ -108,6 +112,9 @@ prepare 根据本次输入选择并绑定资源和能力，Service 则提供 Wor
 作用域和幂等复用单元：准备失败时保留已登记产物并释放局部资源；prepare 返回 undefined 表示取消，
 中止本轮且不进入 run。共享客户端仍由根 Finalize 回收。准备期间的外部访问同样必须先检查 access；
 需要作为 Evidence 留存的现场获取结果继续通过 Inspect 等取证流程处理。
+
+Run 中才能确定的目标和能力，在实际调用前检查对应 access；准备阶段的授权只覆盖已检查的范围。
+聚合命令准备自身依赖，子命令在被调用时独立准备，以保留逐项失败隔离和部分完成结果。
 
 Execute 的内部流程由命令系列决定；Collect 使用 Inspect → Probe → Detector，Provision 等系列保留
 自身领域流程。Finalize 统一消费 CommandResult，通过 serialize/render 完成本地持久化与交付。
@@ -208,7 +215,7 @@ validate domain input
   → required Plugin capability + validated Plugin config
   → declared Host / Kubernetes environment
   → selected Target + staged access plan + permission check
-  → domain work or child CommandSpec.run calls
+  → domain work or child Command.run calls
   → invocation result + resource cleanup
 ```
 

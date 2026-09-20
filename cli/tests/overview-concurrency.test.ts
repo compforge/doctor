@@ -29,7 +29,7 @@ test("one batch uses eight global log slots regardless of item concurrency", asy
     };
     const command = defineCommand<CollectInput, CollectOutput>({
       name: "test collect",
-      run: async (ctx, input) => {
+      prepare: async (_context, input) => input, run: async (ctx, input) => {
         const id = input.bizIds.join("-");
         collecting++; peakCollect = Math.max(peakCollect, collecting);
         ctx.artifacts.add({ command: "log", path: `/tmp/${id}` });
@@ -60,7 +60,7 @@ test("cancelling overview drains the batch and preserves its partial evidence", 
   const bothStarted = new Promise<void>((resolve) => { ready = resolve; });
   const command = defineCommand<CollectInput, CollectOutput>({
     name: "test cancellable collect",
-    run: async (ctx, input) => {
+    prepare: async (_context, input) => input, run: async (ctx, input) => {
       const id = input.bizIds.join("-");
       started.push(id);
       ctx.artifacts.add({ command: "log", path: `/tmp/partial-${id}` });

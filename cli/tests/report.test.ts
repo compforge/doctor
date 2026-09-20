@@ -15,7 +15,7 @@ const ok = (artifacts: CommandResult<void>["artifacts"] = []): CommandResult<voi
 
 test("concurrent composition reuses one render per result while separate invocations stay distinct", async () => {
   let calls = 0;
-  const command = defineCommand<CommandInput, void>({ name: "test", run: async () => ok(),
+  const command = defineCommand<CommandInput, void>({ name: "test", prepare: async (_context, input) => input, run: async () => ok(),
     render: async () => { calls++; await Bun.sleep(1); return { title: "Test", sections: [] }; },
   });
   const renderer = new RenderContext([], "test");
@@ -77,12 +77,12 @@ test("renderer failure preserves evidence and delivers successful siblings with 
   const output = join(root, "result.html");
   const source = join(root, "evidence");
   const previous = process.exitCode;
-  const failure = defineCommand<CommandInput, void>({ name: "doctor trace", run: async () => ok(),
+  const failure = defineCommand<CommandInput, void>({ name: "doctor trace", prepare: async (_context, input) => input, run: async () => ok(),
     render: async () => { throw new Error("cannot render trace"); },
   });
   const rootCommand = defineCommand<CommandInput, void>({ name: "doctor collect",
     serialize: serializeEvidenceResult,
-    run: async context => {
+    prepare: async (_context, input) => input, run: async context => {
       mkdirSync(source); writeFileSync(join(source, "raw.txt"), "retained raw evidence");
       return ok([context.artifacts.add({ command: "log", path: source })]);
     },
@@ -112,7 +112,7 @@ test("raw JSON delivery never invokes the renderer", async () => {
   let rendered = false;
   const command = defineCommand<CommandInput, void>({ name: "doctor raw",
     serialize: serializeEvidenceResult,
-    run: async context => {
+    prepare: async (_context, input) => input, run: async context => {
       const source = join(root, "evidence"); mkdirSync(source); writeFileSync(join(source, "diagnosis.json"), '{"data":1}');
       return ok([context.artifacts.add({ command: "raw", path: source })]);
     },

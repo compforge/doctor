@@ -72,11 +72,11 @@ test("required inspect/db inputs fail before Plugin or environment access", asyn
 });
 
 test("programmatic parent and child inherit invocation policy", async () => {
-  const child = defineCommand({ name: "child", run: async () => {
+  const child = defineCommand({ name: "child", prepare: async (_context, input) => input, run: async () => {
     expect(isInteractive(true)).toBe(false);
     return { status: CommandStatus.Ok, artifacts: [], output: true };
   } });
-  const parent = defineCommand({ name: "parent", run: (context) => child.run(context, {}) });
+  const parent = defineCommand({ name: "parent", prepare: async (_context, input) => input, run: (context) => child.run(context, {}) });
   const context = new CommandContext({});
   try {
     expect((await parent.run(context, { yes: true })).status).toBe(CommandStatus.Ok);

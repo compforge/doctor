@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidenceResult } from "../collect/serialize";
 import { runCollectCpu } from "../collect/cpu";
 import { runCollectHttp } from "../collect/http";
@@ -15,6 +16,10 @@ import { runRepl } from "./repl";
 
 export const chatCommand = defineCommand<CommandInput & Omit<CliFlags, CommandHostOption>, void>({
   name: "doctor chat",
+  prepare: async (context, input) => {
+    await context.resolvePlugin();
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runRepl(
     { ...input, ...commandOptions(context) }, await context.resolvePlugin(), context,
   )),
@@ -23,7 +28,10 @@ export const chatCommand = defineCommand<CommandInput & Omit<CliFlags, CommandHo
 export type ImageInput = CommandInput & Omit<Parameters<typeof runDoctorImage>[1], CommandHostOption> & { image?: string };
 export const imageCommand = defineCommand<ImageInput, void>({
   name: "doctor image",
-  environment: (input) => ({ kubernetes: Boolean(input.registry || input.image || !input.host) }),
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: Boolean(input.registry || input.image || !input.host) } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runDoctorImage(input.image, {
     ...input, ...commandOptions(context),
   }, context)),
@@ -31,34 +39,47 @@ export const imageCommand = defineCommand<ImageInput, void>({
 
 export const debugCommand = defineCommand<CommandInput & Omit<Parameters<typeof runDebug>[0], CommandHostOption>, void>({
   name: "doctor debug",
-  environment: { kubernetes: true },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runDebug({ ...input, ...commandOptions(context) }, context)),
 });
 
 export const installCommand = defineCommand<CommandInput & Omit<Parameters<typeof runInstall>[0], Exclude<CommandHostOption, "format">>, void>({
   name: "doctor install",
-  environment: { kubernetes: true },
   validate: validateInstallOptions,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runInstall({ ...commandOptions(context), ...input, output: context.options.output }, context)),
 });
 
 export const memCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemory>[0], CommandHostOption>, void>({
   name: "doctor mem",
   serialize: serializeEvidenceResult,
-  environment: { kubernetes: true },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runCollectMemory({ ...input, ...commandOptions(context), output: context.options.output }, context)),
 });
 
 export const memaCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemoryAnalysis>[0], CommandHostOption>, void>({
   name: "doctor mema",
   serialize: serializeEvidenceResult,
+  prepare: async (_context, input) => input,
   run: async (context, input) => commandOutcome(await runCollectMemoryAnalysis({ ...input, ...commandOptions(context), output: context.options.output }, context)),
 });
 
 export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectCpu>[0], CommandHostOption>, void>({
   name: "doctor cpu",
   serialize: serializeEvidenceResult,
-  environment: { kubernetes: true },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runCollectCpu({ ...input, ...commandOptions(context) }, context)),
 });
 
@@ -69,12 +90,16 @@ export const httpCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
     command: "http", title: "HTTP",
     render: artifact => writeEvidencePage(context, artifact, context.json<HtmlReportOptions>(artifact, "report-input.json")),
   }),
+  prepare: async (_context, input) => input,
   run: async (context, input) => commandOutcome(await runCollectHttp({ ...input, ...commandOptions(context) }, context)),
 });
 
 export const netCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectNetwork>[0], CommandHostOption>, void>({
   name: "doctor net",
   serialize: serializeEvidenceResult,
-  environment: { kubernetes: true },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => commandOutcome(await runCollectNetwork({ ...input, ...commandOptions(context) }, context)),
 });

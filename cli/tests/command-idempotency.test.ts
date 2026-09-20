@@ -17,7 +17,7 @@ test("concurrent calls share work and cleanup, and completed calls retain status
   let runs = 0, disposals = 0;
   const command = defineCommand<CommandInput, string>({
     name: "inspect",
-    run: async (ctx) => {
+    prepare: async (_context, input) => input, run: async (ctx) => {
       runs++;
       ctx.artifacts.add({ command: "inspect", path: "/tmp/shared-inspect" });
       ctx.artifacts.setReportName("shared-inspect");
@@ -50,8 +50,8 @@ test("concurrent calls share work and cleanup, and completed calls retain status
 test("keys are scoped by command identity and Context; unkeyed calls always execute", async () => {
   let runs = 0;
   const spec = { name: "same name", run: async () => ({ status: CommandStatus.Ok as const, output: ++runs, artifacts: [] }) };
-  const a = defineCommand<CommandInput, number>({ ...spec });
-  const b = defineCommand<CommandInput, number>({ ...spec });
+  const a = defineCommand<CommandInput, number>({ ...spec, prepare: async (_context, input) => input });
+  const b = defineCommand<CommandInput, number>({ ...spec, prepare: async (_context, input) => input });
   const context = new CommandContext({});
   for (const input of [keyed("a"), keyed("a"), keyed("b"), {}, {}]) await a.run(context, input);
   expect(runs).toBe(4);
@@ -65,7 +65,7 @@ test("failed execution shares its evidence; validation still runs before reusing
   const command = defineCommand<CommandInput & { valid: boolean }, void>({
     name: "tenant",
     validate: (input) => { if (!input.valid) throw new Error("invalid input"); },
-    run: async (ctx) => { runs++; ctx.artifacts.add({ command: "tenant", path: "/tmp/failed-tenant" }); throw new Error("access denied"); },
+    prepare: async (_context, input) => input, run: async (ctx) => { runs++; ctx.artifacts.add({ command: "tenant", path: "/tmp/failed-tenant" }); throw new Error("access denied"); },
   });
   const context = new CommandContext({});
   const input = { ...keyed("tenant"), valid: true };
@@ -85,7 +85,7 @@ test("cancellation reaches shared work and waiters, drains cleanup, and override
   let runs = 0, disposed = 0;
   const command = defineCommand<CommandInput, void>({
     name: "inspect",
-    run: async (ctx) => {
+    prepare: async (_context, input) => input, run: async (ctx) => {
       runs++; ctx.artifacts.add({ command: "inspect", path: "/tmp/cancelled-inspect" });
       onCommandDispose(async () => { await Bun.sleep(1); disposed++; });
       const aborted = new Promise<void>((resolve) => ctx.signal.addEventListener("abort", () => resolve(), { once: true }));
@@ -102,7 +102,7 @@ test("cancellation reaches shared work and waiters, drains cleanup, and override
   expect(runs).toBe(1); expect(disposed).toBe(1);
   for (const result of results) { expect(result.status).toBe(CommandStatus.Cancelled); expect(result.artifacts).toHaveLength(1); }
   const doneContext = new CommandContext({});
-  const done = defineCommand<CommandInput, void>({ name: "done", run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
+  const done = defineCommand<CommandInput, void>({ name: "done", prepare: async (_context, input) => input, run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
   await done.run(doneContext, keyed("key"));
   doneContext.cancel();
   expect((await done.run(doneContext, keyed("key"))).status).toBe(CommandStatus.Cancelled);

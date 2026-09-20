@@ -1,5 +1,5 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type CommandSpec } from "../command";
+import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type Command } from "../command";
 import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
@@ -8,7 +8,7 @@ import { deliverPreparationFailure } from "./preparation-failure";
 import { withoutShadowedDefaults } from "./option-sources";
 import { withInteractionOptions } from "../terminal/policy";
 
-export type { CommandSpec } from "../command";
+export type { Command } from "../command";
 
 export function commandExitCode(result: CommandResult<unknown>): number {
   switch (result.status) {
@@ -21,7 +21,7 @@ export function commandExitCode(result: CommandResult<unknown>): number {
 
 /** The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once. */
 export async function runCommand<Input extends CommandInput, Output>(
-  spec: CommandSpec<Input, Output>,
+  spec: Command<Input, Output>,
   opts: CommandOptions,
   input: Input,
   runtime: { plugin?: PluginDefinition; printProfile?: boolean } = {},
@@ -31,7 +31,7 @@ export async function runCommand<Input extends CommandInput, Output>(
 }
 
 async function executeCommand<Input extends CommandInput, Output>(
-  spec: CommandSpec<Input, Output>, opts: CommandOptions, input: Input,
+  spec: Command<Input, Output>, opts: CommandOptions, input: Input,
   runtime: { plugin?: PluginDefinition; printProfile?: boolean },
 ): Promise<void> {
   try {

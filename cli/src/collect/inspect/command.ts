@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -33,8 +34,10 @@ export const inspectCommand = defineCommand<InspectInput, void>({
       });
     },
   }),
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.inspect,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.inspect, environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => runCollectInspect(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),

@@ -12,7 +12,7 @@ import { runCommand } from "../src/app/command";
 import { terminalStdout, withMachineOutput } from "../src/terminal/output";
 
 const evidenceSpec = defineCommand({ name: "doctor log", serialize: serializeEvidenceResult,
-  run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
+  prepare: async (_context, input) => input, run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
 const roots: string[] = [];
 const root = () => { const path = mkdtempSync(join(tmpdir(), "doctor-manifest-test-")); roots.push(path); return path; };
 afterEach(() => { for (const path of roots.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -109,7 +109,7 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
   const directory = root();
   const config = join(directory, "config.yaml"); writeFileSync(config, "profiles: [broken");
   const oldCode = process.exitCode;
-  const spec = defineCommand({ name: "doctor test", run: async () => ({ status: CommandStatus.Partial as const, output: undefined, artifacts: [] }) });
+  const spec = defineCommand({ name: "doctor test", prepare: async (_context, input) => input, run: async () => ({ status: CommandStatus.Partial as const, output: undefined, artifacts: [] }) });
   for (const invalid of [true, false]) {
     const output = captureOutput();
     try {

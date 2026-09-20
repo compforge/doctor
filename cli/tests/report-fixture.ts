@@ -1,5 +1,5 @@
 import { strFromU8, unzipSync } from "fflate";
-import type { CommandContext, CommandInput, CommandResult, CommandSpec } from "../src/command";
+import type { CommandContext, CommandInput, CommandResult, Command } from "../src/command";
 import { CommandStatus, commandOutcome } from "../src/command";
 import { RenderContext } from "../src/report/context";
 import { finalizeCommand } from "../src/app/finalize";
@@ -9,7 +9,7 @@ import type { CommandDeliveryOptions } from "../src/app/delivery";
 import type { Report } from "../src/report/model";
 
 export async function renderForDelivery<Input extends CommandInput, Output>(context: CommandContext,
-  command: CommandSpec<Input, Output>, result: CommandResult<Output>) {
+  command: Command<Input, Output>, result: CommandResult<Output>) {
   const renderer = new RenderContext(context.artifacts.list(), "test");
   const report = await renderer.render(command, result);
   return { context: renderer, report, preserveArtifacts: renderer.failures.length > 0 };
@@ -39,7 +39,7 @@ export function readReport(html: string) {
 }
 
 export function finalizeResult<Input extends CommandInput, Output>(context: CommandContext,
-  spec: CommandSpec<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions): Promise<number> {
+  spec: Command<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions): Promise<number> {
   return finalizeCommand({ context, spec, result, delivery, code: commandExitCode(result) });
 }
 
@@ -54,7 +54,7 @@ export function finalizeFixture(context: CommandContext, delivery: CommandDelive
     result: { ...commandOutcome(code), artifacts: [artifact] },
   }));
   const result = { ...commandOutcome(code), artifacts };
-  const spec: CommandSpec<CommandInput, void> = {
+  const spec: Command<CommandInput, void> = {
     name, run: async () => result,
     serialize: async writer => ({ ...serializeEvidence(writer, own),
       children: await Promise.all(children.map(child => writer.serialize(child.spec, child.result))) }),

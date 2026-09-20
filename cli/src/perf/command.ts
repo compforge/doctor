@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { logCommand } from "../collect/log/command";
 import { metricCommand } from "../collect/metric/command";
@@ -43,7 +44,10 @@ export const perfCommand = defineCommand<PerfInput, PerfResult>({
       }
     }
     return composeReports("doctor perf", reports);
-  }, environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.perf,
+  },
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf, environment: { kubernetes: true } });
+    return input;
+  },
   run: (context, input) => runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
 });

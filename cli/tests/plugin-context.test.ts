@@ -254,7 +254,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: { name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [], capabilities: {} },
     capability: { access: { kubernetes: [{ rule: { verb: "get", resource: "services" }, requirement: "required", purpose: "discover" }] } },
   } as const;
-  const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", run: async (_root, input) => {
+  const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({ name: "sample", prepare: async (_context, input) => input, run: async (_root, input) => {
     const context = createPluginContext(executor, { namespace: "test" }, options);
     const client = await context.clients.get({ clientKey: "db", createClient: resource => ({
       initialize: async () => { discoveries++; },
@@ -274,7 +274,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
   expect(discoveries).toBe(1);
   expect(closed).toBe(0);
 
-  const isolation = defineCommand({ name: "isolation", run: async () => {
+  const isolation = defineCommand({ name: "isolation", prepare: async (_context, input) => input, run: async () => {
     const variants = [
       { kube: { namespace: "other" }, options },
       { kube: { namespace: "test" }, options: { ...options, config: { tenant: "other" } } },

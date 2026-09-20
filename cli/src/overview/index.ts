@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
@@ -133,8 +134,10 @@ export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
     const collected = result.output?.collectionResult;
     return composeReports("doctor overview", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
   },
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.overview,
   validate: validateOverviewOptions,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview, environment: { kubernetes: true } });
+    return input;
+  },
   run: (context, input) => overview({ ...commandOptions(context), ...input }, context.plugin, context),
 });

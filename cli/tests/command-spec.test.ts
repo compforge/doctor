@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../src/command/prepare";
 import { serializeEvidenceResult } from "../src/collect/serialize";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -36,10 +37,15 @@ test("validation precedes Plugin loading and environment preparation for direct 
   context.ensureEnvironment = environment;
   const work = mock(async () => ok(1));
   const child = defineCommand<CommandInput & { value: number }, number>({
-    name: "child", environment: { kubernetes: true }, plugin: { command: "child", needs: [] },
-    validate: () => { throw new CommandInputError("invalid input"); }, run: work,
+    name: "child",
+    validate: () => { throw new CommandInputError("invalid input"); },
+    prepare: async (context, input) => {
+      await prepareCommandRequirements(context, { plugin: { command: "child", needs: [] }, environment: { kubernetes: true } });
+      return input;
+    },
+    run: work,
   });
-  const parent = defineCommand<CommandInput & { value: number }, number>({ name: "parent", run: (ctx, input) => child.run(ctx, input) });
+  const parent = defineCommand<CommandInput & { value: number }, number>({ name: "parent", prepare: async (_context, input) => input, run: (ctx, input) => child.run(ctx, input) });
   for (const spec of [child, parent]) {
     const result = await spec.run(context, { value: 1 });
     expect(result.status).toBe(CommandStatus.Failed);
@@ -55,7 +61,11 @@ test("Plugin loading and config validation are shared across sibling calls", asy
   const load = mock(async () => ({ ...plugin, validateConfig }));
   const context = new CommandContext({}, undefined, { loadPlugin: load });
   const command = defineCommand<CommandInput, string>({
-    name: "child", plugin: { command: "child", needs: [] },
+    name: "child",
+    prepare: async (context, input) => {
+      await prepareCommandRequirements(context, { plugin: { command: "child", needs: [] } });
+      return input;
+    },
     run: async (ctx) => ok(ctx.plugin.id),
   });
   const results = await Promise.all([command.run(context, {}), command.run(context, {})]);
@@ -68,9 +78,16 @@ test("missing child capability does not veto independent collectors", async () =
   const context = makeContext();
   const work = mock(async () => ok(undefined));
   const unavailable = defineCommand<CommandInput, void>({
-    name: "trace", environment: { kubernetes: true },
-    plugin: { command: "trace", needs: [{ requirement: "required", purpose: "test",
-      capability: { scope: "service", name: "traceId" } }] }, run: work,
+    name: "trace",
+    prepare: async (context, input) => {
+      await prepareCommandRequirements(context, {
+        plugin: { command: "trace", needs: [{ requirement: "required", purpose: "test",
+          capability: { scope: "service", name: "traceId" } }] },
+        environment: { kubernetes: true },
+      });
+      return input;
+    },
+    run: work,
   });
   const calls: string[] = [];
   const collect = createCollectCommand(async (kind) => {
@@ -90,7 +107,7 @@ test("parallel and repeated child calls return only their own artifacts and repo
   let release!: () => void;
   const bothStarted = new Promise<void>((resolve) => { release = resolve; });
   let started = 0;
-  const child = defineCommand<CommandInput & { id: string }, string>({ name: "trace", run: async (ctx, { id }) => {
+  const child = defineCommand<CommandInput & { id: string }, string>({ name: "trace", prepare: async (_context, input) => input, run: async (ctx, { id }) => {
     ctx.artifacts.setReportName(id);
     ctx.artifacts.add({ command: "trace", path: `/tmp/${id}` });
     if (++started === 2) release();
@@ -98,7 +115,7 @@ test("parallel and repeated child calls return only their own artifacts and repo
     expect(ctx.artifacts.list()).toEqual([{ id: expect.any(String), command: "trace", path: `/tmp/${id}` }]);
     return ok(id);
   } });
-  const parent = defineCommand<CommandInput, string[]>({ name: "overview", run: async (ctx) => {
+  const parent = defineCommand<CommandInput, string[]>({ name: "overview", prepare: async (_context, input) => input, run: async (ctx) => {
     ctx.artifacts.setReportName("overview");
     const children = await Promise.all([child.run(ctx, { id: "first" }), child.run(ctx, { id: "second" })]);
     expect(ctx.artifacts.list()).toEqual([]);
@@ -139,13 +156,13 @@ test("cancelled collector stops subsequent calls and preserves completed evidenc
 
 test("child cleanup disposes its Plugin contexts once and leaves the parent's resources alive", async () => {
   const cleanup = mock(() => {});
-  const child = defineCommand<CommandInput, void>({ name: "child", run: async () => {
+  const child = defineCommand<CommandInput, void>({ name: "child", prepare: async (_context, input) => input, run: async () => {
     const ctx = managed();
     ctx.onDispose(cleanup);
     await ctx.dispose();
     return ok(undefined);
   } });
-  const parent = defineCommand<CommandInput, void>({ name: "parent", run: async (ctx) => {
+  const parent = defineCommand<CommandInput, void>({ name: "parent", prepare: async (_context, input) => input, run: async (ctx) => {
     const parentPlugin = managed();
     await child.run(ctx, {});
     expect(parentPlugin.signal.aborted).toBe(false);
@@ -162,7 +179,7 @@ test("parent cancellation reaches active Plugin calls and cleanup retains return
   let ready!: () => void;
   const started = new Promise<void>((resolve) => { ready = resolve; });
   const cleanup = mock(() => {});
-  const child = defineCommand<CommandInput, void>({ name: "child", run: async () => {
+  const child = defineCommand<CommandInput, void>({ name: "child", prepare: async (_context, input) => input, run: async () => {
     const pluginContext = managed();
     pluginContext.onDispose(cleanup);
     ready();
@@ -179,7 +196,7 @@ test("parent cancellation reaches active Plugin calls and cleanup retains return
 });
 
 test("cleanup failures preserve staged artifacts and surface failure", async () => {
-  const command = defineCommand<CommandInput, void>({ name: "cleanup", run: async (ctx) => {
+  const command = defineCommand<CommandInput, void>({ name: "cleanup", prepare: async (_context, input) => input, run: async (ctx) => {
     onCommandDispose(() => { throw new Error("cannot close"); });
     return { ...ok(undefined), artifacts: [ctx.artifacts.add({ command: "cleanup", path: "/tmp/retained" })] };
   } });
@@ -204,7 +221,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
           return renderer.page(artifact, { title: "Trace", status: result.status });
         }),
       }] };
-    }, run: async (ctx, { id }) => {
+    }, prepare: async (_context, input) => input, run: async (ctx, { id }) => {
     expect(existsSync(output)).toBe(false);
     const path = join(root, id);
     mkdirSync(path);
@@ -216,7 +233,7 @@ test("only the root delivers and cleans child artifacts, including partial resul
   const parent = defineCommand<CommandInput, void>({ name: "overview",
     serialize: async context => ({ files: {}, children: await Promise.all(children.map(result => context.serialize(child, result))) }),
     render: async renderer => composeReports("Overview", await Promise.all(children.map(result => renderer.render(child, result)))),
-    run: async (ctx) => {
+    prepare: async (_context, input) => input, run: async (ctx) => {
     await ctx.clients.get({ clientKey: "shared", createClient: () => ({
       initialize: async () => {},
       dispose: async () => {
@@ -250,7 +267,6 @@ test("only the root delivers and cleans child artifacts, including partial resul
   }
 });
 
-
 test("finalize cleanup failure still delivers captured evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-finalize-failure-"));
   const output = join(root, "report.html");
@@ -260,7 +276,7 @@ test("finalize cleanup failure still delivers captured evidence", async () => {
     render: async (renderer, result) => ({ title: "Overview", sections: [{ id: "overview", title: "Overview", status: result.status,
       pages: result.artifacts.map(artifact => renderer.page(artifact, { title: "Overview", status: result.status })),
     }] }),
-    run: async ctx => {
+    prepare: async (_context, input) => input, run: async ctx => {
     await ctx.clients.get({ clientKey: "broken-close", createClient: () => ({
       initialize: async () => {}, dispose: async () => { throw new Error("close failed"); },
     }) });

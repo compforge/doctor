@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CommandArtifact } from "../command/artifacts";
 import type { CommandResult } from "../command/result";
-import type { CommandInput, CommandSpec } from "../command/spec";
+import type { CommandInput, Command } from "../command/spec";
 import type { Report, ReportPage } from "./model";
 
 /** Local evidence only: renderers cannot acquire infra clients or execute commands through this context. */
@@ -65,7 +65,7 @@ export class RenderContext {
   }
 
   /** Concurrent parents share one render of the same result; failure stays visible beside other reports. */
-  render<Input extends CommandInput, Output>(spec: CommandSpec<Input, Output>, result: CommandResult<Output>): Promise<Report> {
+  render<Input extends CommandInput, Output>(spec: Command<Input, Output>, result: CommandResult<Output>): Promise<Report> {
     let renders = this.#results.get(result);
     if (!renders) { renders = new Map(); this.#results.set(result, renders); }
     let rendering = renders.get(spec);

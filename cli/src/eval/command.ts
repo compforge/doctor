@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { dataCommand } from "../collect/data/command";
 import { logCommand } from "../collect/log/command";
@@ -34,7 +35,9 @@ export const evalCommand = defineCommand<EvalInput, EvalRun>({
     if (evidence?.data.result) reports.push(await context.render(dataCommand, evidence.data.result));
     return composeReports("doctor eval", reports);
   },
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.eval,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.eval, environment: { kubernetes: true } });
+    return input;
+  },
   run: (context, input) => runEval({ ...input, ...commandOptions(context) }, context.plugin, context),
 });

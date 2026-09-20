@@ -1,3 +1,4 @@
+import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { isInteractive } from "../../terminal/policy";
@@ -37,8 +38,10 @@ export const tenantCommand = defineCommand<TenantInput, void>({
       });
     },
   }),
-  environment: { kubernetes: true },
-  plugin: PLUGIN_COMMAND_CAPABILITIES.tenant,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.tenant, environment: { kubernetes: true } });
+    return input;
+  },
   run: async (context, input) => runCollectTenant(
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),
