@@ -115,7 +115,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor metric",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "metric" },
+      capability: { scope: "extension", name: "metric.configuration" },
       purpose: "定位指标端点并提供业务指标语义",
     }],
   },
@@ -154,7 +154,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "提供稳定 Case 资产以及单次请求触发和协议判定",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "metric" },
+      capability: { scope: "extension", name: "metric.configuration" },
       purpose: "压测窗口内复用 doctor metric 采集指标",
     }, {
       requirement: "preferred",

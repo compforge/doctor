@@ -97,7 +97,7 @@ test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
     { scope: "service", name: "perf" },
     { scope: "service", name: "case" },
-    { scope: "service", name: "metric" },
+    { scope: "extension", name: "metric.configuration" },
     { scope: "extension", name: "trace.resolve" },
     { scope: "service", name: "log" },
   ]);

@@ -107,6 +107,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
 | model.backend.validate | 模型、超时预算 → 校验响应 | Model |
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
+| metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
 Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Overview 按 Service
@@ -140,3 +141,7 @@ Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 fa
 
 Data 的具体行为见 [Data 汇集诊断](commands/data-diagnosis.md)；Plugin 的加载、分发与信任边界见
 [Plugin](plugin.md)，Command 生命周期见 [Kernel](kernel.md)。
+
+Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共用该快照。配置函数的访问权限与
+Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需求的函数使用 Host 上下文，
+保留共享 Client、取消和清理机制；声明 Kubernetes 访问需求的函数使用解析后的集群上下文。

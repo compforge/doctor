@@ -1,3 +1,4 @@
+import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
 import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
@@ -371,7 +372,7 @@ export async function runPerf(
   }
 
   const unknownMetric = declaredScenario.observability.metricServices.filter(
-    (service) => !plugin.services.findWith(service, "metric"),
+    (service) => !plugin.services.extensions(METRIC_CONFIGURATION_KIND).some(provider => provider.service.name === plugin.services.find(service)?.name),
   );
   const unknownLog = declaredScenario.observability.logServices.filter(
     (service) => !plugin.services.findWith(service, "log"),

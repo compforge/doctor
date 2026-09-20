@@ -1,3 +1,4 @@
+import { METRIC_CONFIGURATION_KIND, type MetricConfigurationExtension } from "./metric";
 import { adaptModelExtensions } from "./model-adapters";
 import { TENANT_LIST_KIND, TENANT_RESOLVE_KIND, USER_SEARCH_KIND, type TenantListExtension, type TenantResolveExtension, type UserSearchExtension } from "./tenant";
 import { MCP_CONFIGURATION_KIND, type McpConfigurationExtension } from "./mcp";
@@ -17,6 +18,10 @@ export function serviceExtensions(service: ServiceDefinition): readonly Register
     explicit.push(extension);
   };
   for (const extension of adaptModelExtensions(service)) add(extension);
+  const metric = service.capabilities.metric;
+  if (metric) add({ id: METRIC_CONFIGURATION_KIND, kind: METRIC_CONFIGURATION_KIND, access: {},
+    run: async () => metric,
+  } satisfies MetricConfigurationExtension);
   const directory = service.capabilities.tenantDirectory;
   if (directory) {
     add({ id: TENANT_LIST_KIND, kind: TENANT_LIST_KIND, access: directory.access, endpoint: directory.endpoint,

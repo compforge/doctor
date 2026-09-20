@@ -1,3 +1,4 @@
+import { loadMetricConfigurations, metricConfigurationProviders } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -55,7 +56,7 @@ export async function runCollectMetric(
   if (!config) return commandOutcome(130);
   if (!config.servicesExplicit && isInteractive()) {
     const selected = await promptNamedChoices({
-      choices: plugin.services.servicesWith("metric").map((service) => ({ name: service.name })),
+      choices: metricConfigurationProviders(plugin.services).map(({ service }) => ({ name: service.name })),
       defaults: config.services,
       candidateType: "Service",
       context: { purpose: "确定 Metric 分析范围" },
@@ -97,7 +98,8 @@ export async function runCollectMetric(
   let diagnosis: MetricDiagnosis | undefined;
   let failure: string | undefined;
   try {
-    preparation = await prepareMetricSource(config, plugin, commandContext, injectedExecutor);
+    const configurations = await loadMetricConfigurations(config, plugin.services, commandContext, injectedExecutor);
+    preparation = await prepareMetricSource(config, plugin, commandContext, injectedExecutor, configurations);
     terminalStdout.write(preparation.sourceKind === "remote"
       ? `[collect] metric source: remote Prometheus ${config.prometheus!.url}\n`
       : preparation.sourceKind === "hybrid"
@@ -135,7 +137,7 @@ export async function runCollectMetric(
       ctx,
       config,
       inspects: [makeMetricSourceInspect(preparation.targetCount)],
-      planProbes: () => makeMetricProbes(config.services, plugin.services),
+      planProbes: () => makeMetricProbes(config.services, plugin.services, configurations),
       log,
       buildEvidence: buildMetricEvidence,
       detectors: metricDetectors,
