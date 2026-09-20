@@ -96,7 +96,7 @@ test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
     { scope: "service", name: "perf" },
     { scope: "service", name: "case" },
     { scope: "service", name: "metric" },
-    { scope: "service", name: "traceId" },
+    { scope: "extension", name: "trace.resolve" },
     { scope: "service", name: "log" },
   ]);
 });
@@ -109,7 +109,7 @@ test("eval command 只强依赖 Case，并把关联证据能力作为可降级�
     }),
     expect.objectContaining({
       requirement: "preferred",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
     }),
     expect.objectContaining({
       requirement: "preferred",

@@ -131,7 +131,7 @@ test("business ID still requires traceId before any environment access", async (
     const result = await logCommand.run(context, { bizIds: ["request-1"] });
     expect(result.status).toBe(CommandStatus.Failed);
     if (result.status !== CommandStatus.Failed) throw new Error("expected failure");
-    expect(result.reason).toContain("traceId");
+    expect(result.reason).toContain("trace.resolve");
     expect(ensure).not.toHaveBeenCalled();
   } finally { ensure.mockRestore(); await context.disposeClients(); }
 });

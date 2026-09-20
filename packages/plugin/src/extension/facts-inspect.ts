@@ -1,5 +1,5 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ServiceDefinition, ServiceInspect, ServiceInspectQuery, ServiceInspectQueryOutcome } from "../service";
+import type { ServiceInspect, ServiceInspectQuery, ServiceInspectQueryOutcome } from "../service";
 
 export const FACTS_INSPECT_KIND = "facts.inspect";
 export type FactsInspectInput = readonly ServiceInspectQuery[];
@@ -39,15 +39,4 @@ export function adaptServiceInspect(inspect: ServiceInspect): FactsInspectExtens
     expands: inspect.expands, limitations: inspect.limitations, dataSource: inspect.dataSource,
     run: (context, queries) => inspect.inspect(context, queries),
   };
-}
-
-/** Offline view only: discovery must never resolve targets or query a provider. */
-export function serviceExtensions(service: ServiceDefinition): readonly RegisteredExtension[] {
-  const explicit = service.extensions ?? [];
-  const inspect = service.contributions?.inspect;
-  if (!inspect) return explicit;
-  if (explicit.some(extension => extension.kind === FACTS_INSPECT_KIND)) {
-    throw new Error(`${service.name}: declare facts.inspect either as an Extension or an Inspect contribution, not both`);
-  }
-  return [...explicit, adaptServiceInspect(inspect)];
 }

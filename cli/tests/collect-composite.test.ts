@@ -63,7 +63,7 @@ test("collect capability contract is the union of selected concrete commands", (
       "service.modelCatalog",
       "contribution.inspect",
       "extension.facts.inspect",
-      "service.traceId",
+      "extension.trace.resolve",
       "service.log",
     ]);
   expect(contract.needs.find((need) => (

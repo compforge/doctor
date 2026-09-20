@@ -171,7 +171,7 @@ async function collectEvalEvidence(input: {
   let log = unavailable("当前 Plugin 未同时声明 traceId/log capability");
   let data = unavailable("当前 Plugin 没有可从 biz_id 到达的 Inspect contribution");
 
-  if (input.plugin.services.servicesWith("traceId").length) {
+  if (input.plugin.services.extensions("trace.resolve").length) {
     try {
       trace = collected(await traceCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
@@ -185,7 +185,7 @@ async function collectEvalEvidence(input: {
   const logServices = input.plugin.services.servicesWith("log")
     .filter((service) => service.capabilities.log.default)
     .map((service) => service.name);
-  if (!input.commandContext.signal.aborted && input.plugin.services.servicesWith("traceId").length && logServices.length) {
+  if (!input.commandContext.signal.aborted && input.plugin.services.extensions("trace.resolve").length && logServices.length) {
     try {
       log = collected(await logCommand.run(input.commandContext, {
         bizIds: [...input.correlations],

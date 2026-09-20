@@ -1,5 +1,5 @@
 import { validateExtension, type RegisteredExtension } from "./extension";
-import { serviceExtensions } from "./extension/facts-inspect";
+import { serviceExtensions } from "./extension/service-extensions";
 import type {
   ServiceCapabilityName,
   ServiceCapabilities,

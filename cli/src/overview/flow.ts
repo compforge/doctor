@@ -2,12 +2,10 @@ import { overviewSampleCount } from "./options";
 import { CommandStatus, type CommandResult } from "../command";
 import type {
   OverviewEntry, OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
-  ServiceDefinition, ServiceOverviewCapability,
 } from "@compforge/doctor-plugin";
 
-export type OverviewProvider = ServiceDefinition & {
-  capabilities: ServiceDefinition["capabilities"] & { overview: ServiceOverviewCapability };
-};
+import type { OverviewProvider } from "./extensions";
+export type { OverviewProvider } from "./extensions";
 
 export interface OverviewServiceResult {
   service: string;
@@ -64,7 +62,7 @@ function errorMessage(error: unknown): string {
 }
 
 function checkedFacets(provider: OverviewProvider, results: readonly OverviewFacetResult[], limit: number) {
-  const remaining = new Set(provider.capabilities.overview.facets.map((facet) => facet.id));
+  const remaining = new Set(provider.summarize.facets.map((facet) => facet.id));
   const facets = results.map((result) => {
     if (!remaining.delete(result.facetId)) throw new Error(`未声明或重复的 Facet: ${result.facetId}`);
     const keys = new Set<string>();
@@ -127,7 +125,7 @@ export async function runOverviewSession(
     const provider = providers.find((item) => item.name === service.service)!;
     for (const facet of service.facets) {
       if (facet.entries.some((entry) => entry.canSample)) {
-        eligible.set(facet.facetId, provider.capabilities.overview.facets.find((item) => item.id === facet.facetId)!);
+        eligible.set(facet.facetId, provider.summarize.facets.find((item) => item.id === facet.facetId)!);
       }
     }
   }

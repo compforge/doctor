@@ -1,3 +1,4 @@
+import { overviewProviders } from "./extensions";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
@@ -44,25 +45,25 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   const interactive = isInteractive();
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
-  const providers = plugin.services.servicesWith("overview");
+  const providers = overviewProviders(plugin.services);
   const requested = opts.services === undefined ? undefined
     : plugin.services.resolveNames(opts.services.split(",").map((name) => name.trim()).filter(Boolean));
   for (const name of requested ?? []) {
-    if (!providers.some((provider) => provider.name === name)) throw new Error(`Service '${name}' 未声明 overview capability`);
+    if (!providers.some((provider) => provider.name === name)) throw new Error(`Service '${name}' 未声明 overview.summarize Extension`);
   }
   const selected = requested ? providers.filter((provider) => requested.includes(provider.name)) : providers;
-  if (opts.facet && !selected.some((provider) => provider.capabilities.overview.facets.some((facet) => facet.id === opts.facet))) {
+  if (opts.facet && !selected.some((provider) => provider.summarize.facets.some((facet) => facet.id === opts.facet))) {
     throw new Error(`未声明的 Facet: ${opts.facet}`);
   }
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
   const db = context.profile.value.db;
-  const invoke = async <T>(provider: OverviewProvider, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
+  const invoke = async <T>(provider: OverviewProvider, extension: OverviewProvider["summarize"] | NonNullable<OverviewProvider["sample"]>, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
     const managed = await openPluginContext(executor, kube.kubernetes, {
       config: context.profile.pluginConfig,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      service: provider, capability: provider.capabilities.overview,
+      service: provider.service, capability: extension,
       command: "doctor overview", authorization: context.kubernetes(executor).access,
     });
     try { return await work(managed); } finally { await managed.dispose(); }
@@ -79,12 +80,12 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
       signal: context.signal,
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
-      summarize: (provider, input) => invoke(provider, (managed) => (
-        provider.capabilities.overview.summarize(managed, input)
-      )),
-      sample: (provider, input) => invoke(provider, (managed) => (
-        provider.capabilities.overview.sample(managed, input)
-      )),
+      summarize: (provider, input) => invoke(provider, provider.summarize, (managed) => provider.summarize.run(managed, input)),
+      sample: (provider, input) => {
+        const extension = provider.sample;
+        if (!extension) throw new Error(`${provider.name}: missing overview.sample Extension`);
+        return invoke(provider, extension, (managed) => extension.run(managed, input));
+      },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
       warn: (message) => terminalStdout.warning(`[overview] ${message}\n`),
       show: (result) => {

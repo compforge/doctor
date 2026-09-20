@@ -1,3 +1,4 @@
+import { TRACE_RESOLVE_KIND, requireTraceResolveExtension, traceResolveOutput } from "@compforge/doctor-plugin";
 import type {
   PluginContext,
   PluginDefinition,
@@ -42,15 +43,20 @@ export async function resolvePluginTraceIds(
   executor: Executor,
   injectedContexts?: Readonly<Record<string, PluginContext>>,
 ): Promise<ResolvedPluginTraceId[]> {
-  const providers = plugin.services.servicesWith("traceId");
-  if (!providers.length) throw new Error("当前 Plugin 未声明 service.traceId capability");
+  const providers = plugin.services.extensions(TRACE_RESOLVE_KIND);
+  const seenProviders = new Set<string>();
+  for (const { service } of providers) {
+    if (seenProviders.has(service.name)) throw new Error(`${service.name}: ambiguous trace.resolve Extension`);
+    seenProviders.add(service.name);
+  }
+  if (!providers.length) throw new Error("当前 Plugin 未声明 trace.resolve Extension");
 
   const kube: KubectlOptions & { namespace: string } = {
     namespace: opts.namespace,
     kubeconfig: opts.kubeconfig,
     context: opts.context,
   };
-  const services = providers.map((provider) => provider.name);
+  const services = providers.map(({ service }) => service.name);
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
@@ -61,7 +67,8 @@ export async function resolvePluginTraceIds(
   const failures = new Map(bizIds.map((bizId) => [bizId, [] as string[]]));
 
   terminalStdout.write(`[collect] 正在通过 ${services.join(", ")} 解析 trace_id…\n`);
-  for (const provider of providers) {
+  for (const { service: provider, extension: registered } of providers) {
+    const extension = requireTraceResolveExtension(registered);
     if (!unresolved.size) break;
     let context = injectedContexts?.[provider.name];
     let managed: ManagedPluginContext | undefined;
@@ -82,9 +89,9 @@ export async function resolvePluginTraceIds(
       managed = await openPluginContext(executor, kube, {
         config: opts.commandContext?.profile.pluginConfig,
         service: provider,
-        endpoint: provider.capabilities.traceId.endpoint,
+        endpoint: extension.endpoint,
         command: opts.command,
-        capability: provider.capabilities.traceId,
+        capability: extension,
         dependencies,
         authorization: resolveKubernetesCommandContext(executor, opts.commandContext).access,
       });
@@ -94,8 +101,8 @@ export async function resolvePluginTraceIds(
     try {
       for (const bizId of [...unresolved]) {
         try {
-          const result = await provider.capabilities.traceId.resolve(context, { bizId });
-          const items = Array.isArray(result) ? result : result ? [result] : [];
+          const result = await extension.run(context, { bizId });
+          const items = traceResolveOutput(result);
           const valid = items.filter((item) => item.traceId.trim());
           if (!valid.length) {
             failures.get(bizId)!.push(`${provider.name}: 未识别 biz-id`);

@@ -6,13 +6,13 @@ import type { CollectKind } from "../collect/composite";
 export const PLUGIN_COMMAND_CAPABILITIES = {
   overview: {
     command: "doctor overview",
-    needs: [{ requirement: "required", capability: { scope: "service", name: "overview" }, purpose: "展示值得注意的 Facet / Entry，并按需采样" }],
+    needs: [{ requirement: "required", capability: { scope: "extension", name: "overview.summarize" }, purpose: "展示值得注意的 Facet / Entry，并按需采样" }],
   },
   trace: {
     command: "doctor trace",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
       purpose: "把业务 ID 解析为规范 trace_id",
     }],
   },
@@ -32,7 +32,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "声明需要采集日志的业务 Service",
     }, {
       requirement: "required",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
       purpose: "把业务 ID 解析为规范 trace_id",
     }],
   },
@@ -119,7 +119,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "提供 canonical CaseSet、单次请求触发和协议判定",
     }, {
       requirement: "preferred",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
       purpose: "把 Case Observation 的业务关联 ID 解析为 trace_id",
       fallback: "只保留 Case Observation，不采集 Trace/Log",
     }, {
@@ -151,7 +151,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     }, {
       requirement: "preferred",
       fallback: "保留压测结果，跳过不可用的 Trace/Log",
-      capability: { scope: "service", name: "traceId" },
+      capability: { scope: "extension", name: "trace.resolve" },
       purpose: "复用 doctor trace/log 收集代表请求的链路证据",
     }, {
       requirement: "preferred",

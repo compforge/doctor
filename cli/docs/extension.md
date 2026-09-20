@@ -28,7 +28,10 @@ Extension、kind 及其对应的 input / output 契约统一定义在 Plugin SDK
 packages/plugin/src/
 ├── extension/
 │   ├── index.ts          # Extension、ExtensionContext、公共声明校验与统一导出
-│   └── facts-inspect.ts  # facts.inspect 的领域契约
+│   ├── facts-inspect.ts  # facts.inspect 的领域契约
+│   ├── trace-resolve.ts  # trace.resolve 的领域契约
+│   ├── overview.ts       # overview.summarize / overview.sample 的领域契约
+│   └── service-extensions.ts # Service 声明的统一发现视图
 └── kubernetes.ts         # 复用现有 CapabilityAccess
 ```
 
@@ -84,6 +87,19 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 
 临时资源随调用作用域回收，共享 Client 由根执行生命周期管理。扩展不能关闭借用的共享 Client；失败、
 取消和正常返回都必须保留正确的资源所有权。结果归属应保留 Service 与具体实现 ID，便于追溯来源。
+
+## 领域操作
+
+| kind | 输入 → 输出 | 消费方 |
+|---|---|---|
+| facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data |
+| trace.resolve | 业务 ID → 一条或多条 Trace 定位结果，包含来源 | Trace、Log，以及调用它们的组合命令 |
+| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
+| overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
+
+Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Overview 按 Service
+关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 可以独立展示概览。
+这两个领域均要求每个 Service 对同一操作提供一个实现，重复声明在消费时报告歧义。
 
 ## 接入示例：Data 使用 facts.inspect
 
