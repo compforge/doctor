@@ -2,23 +2,23 @@
 
 ## 理念与概念
 
-Extension 是 Service 向 Command 提供数据或执行能力的通用协议，服务于所有 Command 系列。
-Command 拥有自己的执行流程，在需要外部数据或能力的位置选择并调用 Extension；Service 自由实现内部
-逻辑，通过 Extension 暴露双方约定的函数。
+Extension 是 Service 向 Command 提供数据或执行能力的通用协议，服务于所有 Command 系列。它把双方的
+接缝收敛为一个可调用函数 `run`：kind 约定函数语义、input、output 和 access。提供数据同样通过函数
+完成；静态数据可以由无业务入参的函数返回，需要查询条件的数据使用相应 input。
+
+通用协议只规范这次函数调用的发现、权限和输入输出契约。Service 自由组织资源并实现函数，Command
+拥有自己的执行流程，自由决定在何处调用、如何组合结果以及如何处理失败。
 
 一个 Service 可以提供多个 kind 的 Extension，一个 Command 可以使用多个 kind；同一个 kind 也可以被
 不同 Command 复用。kind 按领域操作划分，不与 CLI 命令一一对应。
 
 | 概念 | 职责 |
 |---|---|
-| Extension | 声明并实现一个对外函数，包含实现身份、契约身份和访问需求 |
+| Extension | 按 kind 声明并实现一个对外函数，包含实现身份和访问需求 |
 | kind | 标识领域契约，约定函数语义、input / output、权限要求及错误语义 |
 | Service | Extension 的提供方，组织业务身份、资源与具体实现 |
 | Command | Extension 的消费方，决定选择范围、调用时机及如何使用结果 |
 | Core | 提供发现、权限检查、受限上下文及资源生命周期机制 |
-
-获取数据也是执行函数。静态数据可以由无业务入参的函数返回；需要查询条件的数据使用相应 input。
-Extension 不要求结果统一为 Fact、Observation 或 CommandResult，具体 output 由 kind 约定。
 
 ## 公共契约与代码归属
 
