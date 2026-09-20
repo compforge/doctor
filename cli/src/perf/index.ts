@@ -1,3 +1,4 @@
+import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
 import { tenantDirectoryExtensions, extensionTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
@@ -5,7 +6,6 @@ import type {
   PluginDefinition,
   ServiceCaseObservation,
   ServiceCaseRunner,
-  ServiceDefinition,
   ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import {
@@ -29,7 +29,7 @@ import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../command/kubernetes-target";
-import { openPluginContext } from "../plugin/context";
+import { openPluginContext, createHostPluginContext } from "../plugin/context";
 import { resolveApprovalGate } from "../terminal/approval";
 import { terminalStderr, terminalStdout } from "../terminal/output";
 import { promptListedChoice } from "../terminal/selection";
@@ -46,11 +46,6 @@ export * from "./model";
 export * from "./output";
 export * from "./report";
 
-type PerfProvider = ServiceDefinition & {
-  capabilities: ServiceDefinition["capabilities"]
-    & Required<Pick<ServiceDefinition["capabilities"], "case" | "perf">>;
-};
-
 export function formatPerfCaseMix(
   caseSet: CaseSet,
   caseMix: readonly CaseMixEntry[],
@@ -64,22 +59,6 @@ export function formatPerfCaseMix(
       .join(", ");
     return `[perf]   case=${selectedCase.id} weight=${weight}${facets ? ` facets=${facets}` : ""}\n`;
   }).join("");
-}
-
-function selectProvider(plugin: PluginDefinition, requested: string | undefined): PerfProvider {
-  if (requested) {
-    const service = plugin.services.findWith(requested, "perf");
-    if (!service) throw new Error(`Service '${requested}' 未声明 perf capability`);
-    if (!service.capabilities.case) throw new Error(`Service '${requested}' 未声明 case capability`);
-    return service as PerfProvider;
-  }
-  const providers = plugin.services.servicesWith("perf").filter(
-    (service) => service.capabilities.case !== undefined,
-  );
-  if (providers.length !== 1) {
-    throw new Error(`当前 Plugin 有 ${providers.length} 个同时声明 case/perf 的 provider；请使用 --service 指定`);
-  }
-  return providers[0] as PerfProvider;
 }
 
 function toObservation(outcome: Outcome): ServiceCaseObservation {
@@ -251,11 +230,27 @@ export async function runPerf(
   commandContext: CommandContext,
 ): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
-  const provider = selectProvider(plugin, config.service);
-  const scenario = config.scenario ?? provider.capabilities.perf.scenarios[0]?.id;
-  const declaredScenario = provider.capabilities.perf.scenarios.find((item) => item.id === scenario);
+  const selected = selectPerfProvider(plugin.services, config.service);
+  const provider = selected.service;
+  const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
+  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
+  const executor = createKubernetesExecutor(kube);
+  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
+  const scenarios = await loadPerfScenarios(selected, () => {
+    const options = {
+      service: provider, capability: selected.extension,
+      config: commandContext.profile.pluginConfig, clients: commandContext.clients, signal: commandContext.signal,
+    };
+    return selected.extension.access.kubernetes?.length
+      ? openPluginContext(executor, {
+        namespace: kube.kubernetes.namespace, kubeconfig: kube.kubernetes.kubeconfig, context: kube.kubernetes.context,
+      }, { ...options, command: "doctor perf scenarios", authorization })
+      : createHostPluginContext({ ...options, namespace: kube.kubernetes.namespace });
+  });
+  const scenario = config.scenario ?? scenarios[0]?.id;
+  const declaredScenario = scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
-  const caseSet = provider.capabilities.case.caseSets.find(
+  const caseSet = selected.cases.caseSets.find(
     (candidate) => candidate.caseset === declaredScenario.caseSetId,
   );
   if (!caseSet) {
@@ -285,13 +280,8 @@ export async function runPerf(
     config.levels = perfLevelsThrough(maxConcurrency);
   }
 
-  const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
-  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
-
-  const executor = createKubernetesExecutor(kube);
-  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   let requestIdentity: ServiceRequestIdentity | undefined;
-  const identityRequirement = provider.capabilities.case.requestIdentity;
+  const identityRequirement = selected.cases.requestIdentity;
   if (identityRequirement) {
     const configured = identityRequirement.configured(commandContext.profile.pluginConfig);
     const tenantId = configured.tenantId?.trim();
@@ -354,14 +344,14 @@ export async function runPerf(
   }, {
     config: commandContext.profile.pluginConfig,
     service: provider,
-    endpoint: provider.capabilities.case.endpoint,
-    capability: provider.capabilities.case,
+    endpoint: selected.cases.endpoint,
+    capability: selected.cases,
     command: "doctor perf",
     authorization,
   });
   let runner: ServiceCaseRunner;
   try {
-    runner = await provider.capabilities.case.createRunner(managed, {
+    runner = await selected.cases.createRunner(managed, {
       caseSetId: caseSet.caseset,
       timeoutMs: config.requestTimeoutMs,
       requestIdentity,

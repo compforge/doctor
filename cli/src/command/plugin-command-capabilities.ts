@@ -146,7 +146,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     command: "doctor perf",
     needs: [{
       requirement: "required",
-      capability: { scope: "service", name: "perf" },
+      capability: { scope: "extension", name: "perf.scenarios" },
       purpose: "提供 Case 组合与可观测性预设",
     }, {
       requirement: "required",

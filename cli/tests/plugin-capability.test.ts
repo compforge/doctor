@@ -95,7 +95,7 @@ test("tenant command 组合租户身份、模型与通用 Inspect contribution",
 
 test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
-    { scope: "service", name: "perf" },
+    { scope: "extension", name: "perf.scenarios" },
     { scope: "service", name: "case" },
     { scope: "extension", name: "metric.configuration" },
     { scope: "extension", name: "trace.resolve" },
