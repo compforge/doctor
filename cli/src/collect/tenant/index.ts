@@ -25,7 +25,8 @@ import type {
   TenantFacts,
 } from "./model";
 import {
-  buildTenantSummary
+  buildTenantRuntimeSummary,
+  buildTenantSummary,
 } from "./render";
 
 export * from "./access";
@@ -51,6 +52,10 @@ export async function runCollectTenant(
     format = parseTenantOutputFormat(opts.format);
   } catch (error) {
     terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    return commandOutcome(2);
+  }
+  if (format === "summary" && opts.output) {
+    terminalStderr.error("--format summary 直接输出到终端，不支持 --output\n");
     return commandOutcome(2);
   }
 
@@ -117,6 +122,7 @@ export async function runCollectTenant(
     const diagnosis: TenantDiagnosis = execution.diagnosis;
 
     bundle.writeSummary(buildTenantSummary(diagnosis));
+    writeFileSync(join(staging, "runtime-summary.txt"), buildTenantRuntimeSummary(diagnosis), "utf8");
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: { tenant_id: tenant.id, tenant_name: tenant.name },
@@ -137,7 +143,9 @@ export async function runCollectTenant(
     const outcome = evaluateCollectOutcome(
       diagnosis.coverage.map((item) => item.status),
     );
-    return collectCommandOutcome(outcome);
+    // The evidence directory is registered on the shared command context; return
+    // its reference so root finalize can serialize and deliver the summary.
+    return { ...collectCommandOutcome(outcome), artifacts: commandContext.artifacts.list() };
   } catch (error) {
     const retained = retainedStaging ? `；原始证据保留在目录: ${retainedStaging}` : "";
     terminalStderr.error(

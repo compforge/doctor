@@ -5,10 +5,12 @@ import { join } from "node:path";
 import { CommandContext } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { runInspects } from "../src/collect/inspect-engine";
+import { collectedFact } from "../src/collect/protocol";
 import {
   buildTenantCoverage,
   buildTenantEvidence,
   buildTenantHtmlSections,
+  buildTenantRuntimeSummary,
   makeTenantInspects,
   safeTenantId,
   tenantReportName,
@@ -28,6 +30,36 @@ test("tenant capabilities share one generic Inspect entry", () => {
     "tenant-identity",
     "tenant-capabilities",
   ]);
+});
+
+test("Tenant terminal summary keeps capability counts and gaps compact", () => {
+  const summary = buildTenantRuntimeSummary({
+    evidence: {
+      observations: [],
+      facts: {
+        tenant: collectedFact("tenant.identity", "tenant", {
+          id: "tenant-1", name: "alpha", displayName: "Alpha",
+        }),
+        capabilityFacts: [{
+          id: "inspect:config-api",
+          service: "config-api",
+          capability: "inspect",
+          status: "collected",
+          producer: { origin: "core", id: "tenant-capabilities" },
+          kind: "tenant.capability-result",
+          schemaVersion: 1,
+          result: { resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} }, facts: [{ factType: "value", kind: "config", schemaVersion: 1, value: {} }] },
+        }],
+      },
+    },
+    findings: [],
+    coverage: [{ goal: "inspect:config-api", status: "partial", missingEvidence: ["runtime unavailable"] }],
+  });
+  expect(summary).toContain("租户：Alpha（tenant-1）");
+  expect(summary).toContain("Capability：1");
+  expect(summary).toContain("config-api · inspect：1 条 Fact");
+  expect(summary).toContain("状态：warning");
+  expect(summary).toContain("runtime unavailable");
 });
 
 test("tenant command combines model catalog and Inspect Capabilities as facts", async () => {

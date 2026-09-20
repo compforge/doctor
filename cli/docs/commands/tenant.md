@@ -23,6 +23,15 @@ Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Q
    RecordFact 进入统一的过滤、分页和详情展示，单个 Capability 失败不丢弃其它已取得事实。
 5. Command 汇总 Facts，计算 Coverage，并生成 Evidence、Markdown 与 HTML。
 
+## 终端运行摘要
+
+使用 `doctor tenant --tenant-id <id> -f summary` 直接打印租户诊断的紧凑摘要，完整 Capability Facts、
+Coverage 和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用
+相同的采集范围。
+
+摘要显示租户身份、Capability 数量、每个 Capability 的 Fact 数量或失败原因，以及证据完整性和
+Coverage 缺口。需要查看具体配置时，继续从 Evidence 的 `manifest.json` 和 Facts 索引读取。
+
 Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；
 出现真实场景后，由 Tenant Command 决定是否继续形成 Query，以及深度、数量、去重和失败预算，Capability
 不自行递归。

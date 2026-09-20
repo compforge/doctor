@@ -2,8 +2,8 @@ import type { TenantOutputFormat } from "./model";
 
 export function parseTenantOutputFormat(value: string | undefined): TenantOutputFormat {
   const format = value?.trim() || "default";
-  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html") {
-    throw new Error(`--format 只支持 bundle、json 或 html: '${format}'`);
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "summary") {
+    throw new Error(`--format 只支持 bundle、json、html 或 summary: '${format}'`);
   }
   return format;
 }

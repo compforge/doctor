@@ -3,7 +3,8 @@ import {
   buildDataCoverage,
   projectDataServiceEvidence,
 } from "../src/collect/data/detector";
-import { buildDataHtml } from "../src/collect/data/render";
+import { buildDataHtml, buildDataRuntimeSummary } from "../src/collect/data/render";
+import { CommandStatus } from "../src/command";
 import type { DataDiagnosis, DataEvidence } from "../src/collect/data";
 import { collectedFact, failedFact } from "../src/collect/protocol";
 
@@ -31,6 +32,24 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
     status: "insufficient",
     missingEvidence: ["sample 业务记录未取得：biz_id:biz-1: query timeout"],
   }]);
+});
+
+test("Data terminal summary keeps batch status and evidence gaps compact", () => {
+  const summary = buildDataRuntimeSummary([{
+    bizId: "biz-1",
+    status: CommandStatus.Partial,
+    artifacts: [],
+    reason: "records unavailable",
+    diagnosis: {
+      evidence: { observations: [], facts: { services: {}, capabilityResults: [] } },
+      findings: [],
+      coverage: [{ goal: "business-data-relations", status: "partial", missingEvidence: ["sample: timeout"] }],
+    },
+  }]);
+  expect(summary).toContain("业务 ID：1");
+  expect(summary).toContain("状态：degraded");
+  expect(summary).toContain("biz-1（partial）");
+  expect(summary).toContain("sample: timeout");
 });
 
 test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全序列化 JSON", () => {

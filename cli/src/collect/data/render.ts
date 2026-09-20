@@ -5,7 +5,7 @@ import {
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { CollectedDataInspectResult, DataDiagnosis } from "./model";
+import type { CollectedDataInspectResult, DataDiagnosis, DataOutput } from "./model";
 
 function value(value: string | undefined): string {
   return value || "未找到";
@@ -70,6 +70,33 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
     ...((coverage?.missingEvidence ?? []).map((item) => `- 缺失：${item}`)),
     "",
     "完整业务记录按 manifest.json 的 files.facts 索引读取；采集步骤见 raw 目录。",
+  ].join("\n");
+}
+
+/** Terminal projection for batch data collection; detailed facts remain in the serialized evidence. */
+export function buildDataRuntimeSummary(items: readonly DataOutput["items"][number][]): string {
+  const resolved = items.filter((item) => item.diagnosis?.coverage.every((coverage) => coverage.status === "sufficient")).length;
+  const issues = items.flatMap((item) => {
+    const coverage = item.diagnosis?.coverage.flatMap((entry) => entry.missingEvidence) ?? [];
+    const findings = item.diagnosis?.findings.filter((finding) => finding.severity !== "info").map((finding) => finding.message) ?? [];
+    const reasons = [...(item.reason ? [item.reason] : []), ...coverage, ...findings];
+    return reasons.length || item.status !== "ok"
+      ? [{ bizId: item.bizId, status: item.status, reasons: reasons.length ? reasons : ["未形成完整诊断"] }]
+      : [];
+  });
+  const status = !items.length ? "unknown" : issues.length ? "degraded" : "healthy";
+  return [
+    "业务数据摘要",
+    `业务 ID：${items.length}`,
+    `已完整解析：${resolved}`,
+    `状态：${status}`,
+    "",
+    "异常业务 ID：",
+    ...(issues.length ? issues.flatMap((issue) => [
+      `- ${issue.bizId}（${issue.status}）`,
+      ...issue.reasons.map((reason) => `  原因：${reason}`),
+    ]) : ["- 无"]),
+    "",
   ].join("\n");
 }
 

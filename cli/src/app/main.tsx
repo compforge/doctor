@@ -212,7 +212,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       "--services <names>",
       `逗号分隔、提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
-    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
+    .addOption(deliveryFormatOption(["bundle", "json", "html", "summary"]))
     .option("--profile <name>", "从 profile 取 kubeconfig；数据源身份仅作服务运行时配置的兜底")
     .option(
       "-o, --output <path>",
@@ -260,7 +260,7 @@ function withTenantOptions(cmd: CommandT): CommandT {
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
-    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
+    .addOption(deliveryFormatOption(["bundle", "json", "html", "summary"]))
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 

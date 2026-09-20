@@ -9,7 +9,7 @@ import type { CommandContext } from "../../command";
 import type { EvidenceBundle } from "../evidence";
 import type { Diagnosis, Evidence, Fact } from "../protocol";
 
-export type TenantOutputFormat = "default" | "bundle" | "json" | "html";
+export type TenantOutputFormat = "default" | "bundle" | "json" | "html" | "summary";
 export interface CollectTenantCliOptions {
   namespace?: string;
   tenantId?: string;

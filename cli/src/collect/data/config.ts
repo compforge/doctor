@@ -22,8 +22,8 @@ import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive
 
 export function parseDataOutputFormat(value: string | undefined): DataOutputFormat {
   const format = value?.trim() || "default";
-  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html") {
-    throw new Error(`--format 只支持 bundle、json 或 html: '${format}'`);
+  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "summary") {
+    throw new Error(`--format 只支持 bundle、json、html 或 summary: '${format}'`);
   }
   return format;
 }
@@ -132,6 +132,7 @@ export async function resolveDataConfig(
   ].map((bizId) => bizId.trim()).filter(Boolean))];
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
   const format = parseDataOutputFormat(opts.format);
+  if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
   const reportName = dataReportName(new Date());
   const outputPath = format === "default"
     ? resolveDefaultReportPaths(opts.output, reportName).html
@@ -139,7 +140,9 @@ export async function resolveDataConfig(
       ? resolveDataHtmlOutputPath(opts.output, reportName)
       : format === "bundle"
         ? resolveArchivePath(opts.output, reportName)
-        : resolveDataJsonOutputPath(opts.output, reportName);
+        : format === "json"
+          ? resolveDataJsonOutputPath(opts.output, reportName)
+          : undefined;
   const resolvedProfile = {
     name: commandContext.profile.name,
     profile: commandContext.profile.value,

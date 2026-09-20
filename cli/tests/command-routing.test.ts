@@ -241,6 +241,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).not.toContain("--model-catalog-service <name>");
     expect(result.stdout).toContain("--tenant-directory-service <name>");
     expect(result.stdout).toContain("--format <format>");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "summary", "manifest"');
   });
 
   test("config command is removed without a compatibility alias", () => {
@@ -633,7 +634,7 @@ describe("CLI command routing", () => {
     expect(result.stdout).toContain("Usage: doctor data [options] [biz-ids...]");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "summary", "manifest"');
     expect(result.stdout.replace(/\s+/g, " ")).toContain("新建证据目录");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("同名 .html 与 .tar.gz");
