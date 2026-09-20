@@ -4,15 +4,17 @@ import { CommandStatus, commandOutcome } from "../src/command";
 import { allocateOverviewSamples, runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
 import { overviewWindow, selectOverviewFacet } from "../src/overview/selection";
 import type { promptListedChoice } from "../src/terminal/selection";
+import { overviewProviders } from "../src/overview/extensions";
 
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
 const query: OverviewQuery = {
   window: overviewWindow("1h", new Date("2026-09-09T10:00:00Z")), tenantId: "tenant-1", maxEntries: 2,
 };
-function provider(name: string): OverviewProvider {
-  return { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name, workloads: [], capabilities: { overview: {
+function provider(name: string) {
+  const service = { component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name, workloads: [], capabilities: { overview: {
     access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
   } } };
+  return { ...service, ...overviewProviders(createServiceCatalog([service]))[0]! };
 }
 const summary: OverviewFacetResult[] = [{ facetId: "errors", description: "created_at", entries: [
   { key: "E1", label: "E1", data: 8, unit: "requests", canSample: true },

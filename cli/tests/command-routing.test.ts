@@ -101,7 +101,7 @@ describe("CLI command routing", () => {
   test("trace reports a missing traceId capability before Kubernetes access", () => {
     const result = runCli("trace", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("service.traceId");
+    expect(result.stderr).toContain("extension.trace.resolve");
     expect(result.stderr).not.toContain("Kubernetes");
   });
 
@@ -113,7 +113,7 @@ describe("CLI command routing", () => {
     const result = runCli("trace", "--biz-id", "biz-1", "--config", configPath);
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("profile 'broken'.readonly must be a boolean");
-    expect(result.stderr).not.toContain("service.traceId");
+    expect(result.stderr).not.toContain("extension.trace.resolve");
     expect(result.stderr).not.toContain("Kubernetes");
   });
 

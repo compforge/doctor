@@ -32,3 +32,6 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
 }
 
 export * from "./facts-inspect";
+export * from "./trace-resolve";
+export * from "./overview";
+export { serviceExtensions } from "./service-extensions";

@@ -22,7 +22,7 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
       environment: { kubernetes: true },
       plugin: input.bizIds.some(id => id.trim()) ? PLUGIN_COMMAND_CAPABILITIES.log : {
         ...PLUGIN_COMMAND_CAPABILITIES.log,
-        needs: PLUGIN_COMMAND_CAPABILITIES.log.needs.filter(need => need.capability.name !== "traceId"),
+        needs: PLUGIN_COMMAND_CAPABILITIES.log.needs.filter(need => need.capability.name !== "trace.resolve"),
       },
     });
     return input;
