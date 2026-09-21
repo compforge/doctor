@@ -31,6 +31,7 @@ interface LogCaptureInput {
 interface PreparedLogCapture {
   input: LogCaptureInput;
   events: string[];
+  drainTail: () => string[];
   rawFilePath: string;
   firstMatchMs?: number;
   startedAfterMs: number;
@@ -39,10 +40,15 @@ interface PreparedLogCapture {
 interface LogCaptureResult extends LogCaptureInput {
   capture: PodLogResult;
   events: string[];
+  /** 有内容筛选时 previous 容器额外保留的未过滤尾部日志；无筛选时为空（全量已在 events）。 */
+  unfilteredTail: string[];
   rawFilePath: string;
   firstMatchMs?: number;
   startedAfterMs: number;
 }
+
+/** 崩溃/被杀容器的中断点取证：筛选模式下 previous 容器保留的未过滤尾部行数。 */
+export const PREVIOUS_UNFILTERED_TAIL_LINES = 100;
 
 function collectError(result: PodLogResult): string {
   const kind = result.captureStatus === "partial" ? ": partial" : "";
@@ -64,14 +70,19 @@ function prepareCapture(
     ctx.bundle.dir,
     `.capture-${input.service}-${input.pod}-${input.container}${suffix}.log`,
   );
-  const target: PreparedLogCapture = { input, events: [], rawFilePath, startedAfterMs: 0 };
+  const target: PreparedLogCapture = { input, events: [], drainTail: () => [], rawFilePath, startedAfterMs: 0 };
   const noteMatch = (label: string) => {
     const elapsed = Date.now() - startedAtMs;
     target.firstMatchMs ??= elapsed;
     ctx.log(`[collect] 命中 ${input.service}/${input.pod}/${input.container}${suffix}：${label}（${elapsed} ms；继续搜索全部 Pod）`);
   };
-  const collector = createTraceLineCollector(config.traceIds, config.linePattern, noteMatch);
+  // 无筛选时窗口日志本就全量保留，tail 只在筛选会丢弃上下文时才启用。
+  const filterActive = config.linePattern !== undefined || config.traceIds.length > 0;
+  const collector = createTraceLineCollector(config.traceIds, config.linePattern, noteMatch, {
+    keepTail: input.previous && filterActive ? PREVIOUS_UNFILTERED_TAIL_LINES : 0,
+  });
   target.events = collector.events;
+  target.drainTail = collector.drainTail;
   return {
     target,
     request: {
@@ -132,6 +143,7 @@ async function captureLogPlan(
       ...target.input,
       capture,
       events: target.events,
+      unfilteredTail: capture.captureStatus === "unavailable" ? [] : target.drainTail(),
       rawFilePath: target.rawFilePath,
       firstMatchMs: target.firstMatchMs,
       startedAfterMs: target.startedAfterMs,
@@ -215,9 +227,9 @@ export function makeLogProbe(
           currentByTarget.set(key, current);
           continue;
         }
-        if (captured.capture.captureStatus === "unavailable" && !captured.events.length) continue;
+        if (captured.capture.captureStatus === "unavailable" && !captured.events.length && !captured.unfilteredTail.length) continue;
         const previous = previousByTarget.get(key) ?? [];
-        previous.push({ container: captured.container, events: captured.events });
+        previous.push({ container: captured.container, events: captured.events, unfilteredTail: captured.unfilteredTail });
         previousByTarget.set(key, previous);
       }
       return services.map((service) => {

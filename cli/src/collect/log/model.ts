@@ -45,6 +45,8 @@ export interface LogInspectionFacts {
 export interface PreviousContainerLogObservation {
   container: string;
   events: readonly string[];
+  /** 内容筛选生效时 previous 容器额外保留的未过滤尾部日志（被杀/崩溃容器的中断点取证）。 */
+  unfilteredTail?: readonly string[];
 }
 
 export interface PodLogObservation {
@@ -89,6 +91,8 @@ export interface LogTimelineRecord {
   pod: string;
   container?: string;
   instance: "current" | "previous";
+  /** previous 容器的未过滤尾部行（筛选生效时的中断点取证），未经过错误/内容筛选。 */
+  unfiltered?: boolean;
   timestamp?: string;
   message: string;
   sequence: number;

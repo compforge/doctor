@@ -140,8 +140,20 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(timeline).toContain("database failed");
       expect(timeline).toContain("app.py");
       expect(timeline).toContain('"instance":"previous"');
-      if (variant === "explicit") expect(timeline).not.toContain("unrelated request");
-      else expect(timeline).toContain("unrelated request");
+      const records = timeline.trim().split("\n").map((line) => JSON.parse(line));
+      const currentMessages = records.filter((record) => record.instance === "current")
+        .map((record) => record.message).join("\n");
+      const previousTail = records.filter((record) => record.instance === "previous" && record.unfiltered)
+        .map((record) => record.message).join("\n");
+      if (variant === "explicit") {
+        expect(currentMessages).not.toContain("unrelated request");
+        // errors-only 下 previous 容器保留未过滤尾部（被杀/崩溃中断点取证），current 不受影响
+        expect(previousTail).toContain("unrelated request");
+        expect(readFileSync(join(outputDir, "summary.md"), "utf8")).toContain("previous 日志");
+      } else {
+        expect(currentMessages).toContain("unrelated request");
+        expect(previousTail).toBe("");
+      }
       const html = join(root, "report.html");
       writeLogHtmlReport(outputDir, html, "test");
       expect(readFileSync(html, "utf8")).toContain("不按业务 ID 过滤");
@@ -175,4 +187,18 @@ test("no-ID defaults retain a finite window; content filters preserve error stac
   collector.push("  stack frame");
   collector.push("INFO end");
   expect(collector.events).toEqual(["ERROR failed\n  stack frame"]);
+  expect(collector.drainTail()).toEqual([]);
+});
+
+test("collector tail ring keeps recent unselected lines for crash forensics", () => {
+  const collector = createTraceLineCollector([], /ERROR/, undefined, { keepTail: 3 });
+  collector.push("INFO one");
+  collector.push("INFO two");
+  collector.push("ERROR failed");
+  collector.push("  stack frame");
+  collector.push("INFO three");
+  collector.push("INFO four");
+  expect(collector.events).toEqual(["ERROR failed\n  stack frame"]);
+  // keepTail=3 的环形缓冲最终是 [stack frame(选中), INFO three, INFO four]，只回吐未命中的行
+  expect(collector.drainTail()).toEqual(["INFO three", "INFO four"]);
 });
