@@ -156,10 +156,20 @@ export async function resolveLogServiceSelection(
   return selected;
 }
 
-export function buildLogPattern(errorsOnly: boolean, pattern?: string): RegExp | undefined {
-  const parts = errorsOnly ? [...ERROR_PATTERNS] : [];
+export function buildLogPattern(errorsOnly: boolean, pattern?: string, serviceErrorPatterns: readonly string[] = []): RegExp | undefined {
+  // Service 声明的 errorPatterns 并入 errors-only：业务错误常走 WARNING/INFO 级（如 error_type=104502），
+  // 通用正则抓不到。非 errors-only 模式不按内容过滤，servicePatterns 无意义。
+  const parts = errorsOnly ? [...ERROR_PATTERNS, ...serviceErrorPatterns] : [];
   if (pattern) parts.push(pattern);
   return parts.length ? new RegExp(parts.map((part) => `(?:${part})`).join("|")) : undefined;
+}
+
+/** 汇总所选 Service 在 Plugin 声明里的 errors-only 补充签名；未声明的 Service 不影响。 */
+export function serviceLogErrorPatterns(
+  catalog: ServiceCatalog,
+  services: readonly string[],
+): string[] {
+  return services.flatMap((name) => [...(catalog.find(name)?.logs?.errorPatterns ?? [])]);
 }
 
 /** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */

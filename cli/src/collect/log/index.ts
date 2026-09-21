@@ -33,6 +33,7 @@ import {
   buildLogPattern,
   resolveLogServiceSelection,
   resolveLogTimeWindow,
+  serviceLogErrorPatterns,
   validateLogTimeWindow,
 } from "./config";
 import { buildLogCoverage, buildLogEvidence, logDetectors } from "./detector";
@@ -313,7 +314,11 @@ export async function collectLog(
     if (opts.bizId !== undefined && !opts.traceIds.length) throw new Error("按业务 ID 采集需要至少一个 trace_id");
     return {
       command: commandContext, startedAtMs: Date.parse(startedAt),
-      config: { ...opts, context: environment.context, linePattern: buildLogPattern(opts.errorsOnly, opts.pattern) },
+      config: {
+        ...opts, context: environment.context,
+        linePattern: buildLogPattern(opts.errorsOnly, opts.pattern,
+          serviceLogErrorPatterns(commandContext.plugin.services, opts.services)),
+      },
       access: source, bundle: new EvidenceBundle(opts.outputDir), log
     };
   });

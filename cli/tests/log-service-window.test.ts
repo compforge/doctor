@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CommandContext, CommandStatus } from "../src/command";
 import { logCommand, type LogInput } from "../src/collect/log/command";
-import { createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/log/config";
+import { buildLogPattern, createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/log/config";
 import { writeLogHtmlReport } from "../src/collect/log/html";
 
 const plugin: PluginDefinition = {
@@ -201,4 +201,13 @@ test("collector tail ring keeps recent unselected lines for crash forensics", ()
   expect(collector.events).toEqual(["ERROR failed\n  stack frame"]);
   // keepTail=3 的环形缓冲最终是 [stack frame(选中), INFO three, INFO four]，只回吐未命中的行
   expect(collector.drainTail()).toEqual(["INFO three", "INFO four"]);
+});
+
+test("errors-only 合并 Service 声明的业务错误签名", () => {
+  const pattern = buildLogPattern(true, undefined, ["error_type=\\d+", "\" 5\\d\\d"]);
+  expect(pattern!.test('2026-09-21 13:08:40 | WARNING | t | sse stream failed: error_type=104500')).toBe(true);
+  expect(pattern!.test('10.0.0.1 - "POST /v1/chat HTTP/1.1" 500')).toBe(true);
+  expect(pattern!.test("INFO ordinary line")).toBe(false);
+  // 非 errors-only 不按内容过滤，Service 签名不产生意外筛选
+  expect(buildLogPattern(false, undefined, ["error_type=\\d+"])).toBeUndefined();
 });
