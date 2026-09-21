@@ -180,7 +180,7 @@ function runtimeSummaryIssues(diagnosis: InspectDiagnosis): RuntimeSummaryIssue[
 }
 
 /** Concise runtime projection for terminal triage; the Markdown summary remains the complete human-readable evidence. */
-export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis): string {
+export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespace: string): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.values(diagnosis.evidence.facts.serviceTargets.services)
     : [];
@@ -208,6 +208,7 @@ export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis): string 
   const status = degraded ? "degraded" : missing.length ? "unknown" : issues.length ? "warning" : "healthy";
   return [
     "Service Inspect 摘要",
+    `Namespace：${namespace}`,
     `Service：${services.map((service) => service.service).join(", ") || "—"}`,
     `Workload：${workloads.length}`,
     `Pod：${pods.length} total，${readyPods} ready`,
