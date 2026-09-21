@@ -1,4 +1,4 @@
-import { terminalStdout } from "../../terminal/output";
+import { useLogger } from "../../terminal/log";
 import {
   createPodHttpEndpointInspector,
   createPodHttpSender,
@@ -34,9 +34,7 @@ export async function resolvePodHttpExecution(
     commandContext,
   );
   if (!collect) return undefined;
-  terminalStdout.write(
-    `[collect] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("collect").info(`namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）`);
   const executor = injectedExecutor ?? createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(access, {
@@ -76,9 +74,7 @@ export async function resolvePodHttpExecution(
     pod: selected.pod,
     container: selected.container!,
   };
-  terminalStdout.write(
-    `[http] 请求执行位置：pod（namespace=${target.namespace}, pod=${target.pod}, container=${target.container}）\n`,
-  );
+  useLogger("http").info(`请求执行位置：pod（namespace=${target.namespace}, pod=${target.pod}, container=${target.container}）`);
   return {
     collect,
     executor,

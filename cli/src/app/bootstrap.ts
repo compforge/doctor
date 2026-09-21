@@ -23,7 +23,8 @@ import {
   selectModel,
   type SelectedInferenceModel,
 } from "../model";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { DoctorClient } from "../protocol";
 import type { CliFlags } from "../protocol";
 import {
@@ -269,7 +270,7 @@ async function resolveLocalModel(
       promptTitle: "[chat] 当前启用租户：",
     });
     if (!tenant) throw new Error("已取消租户选择");
-    terminalStdout.write(`[chat] tenant: ${tenant.name}（${tenant.id}）\n`);
+    useLogger("chat").info(`tenant: ${tenant.name}（${tenant.id}）`);
     const model = await selectChatModel(
       await access.catalog.query({
         identity: { kind: "tenant_id", value: tenant.id },
@@ -280,9 +281,7 @@ async function resolveLocalModel(
     );
     if (!model) throw new Error("已取消模型选择");
     const inference = await access.createInference(model.inference, 60_000);
-    terminalStdout.write(
-      `[chat] model: ${model.name}（provider=${model.provider}, id=${model.id}）\n`,
-    );
+    useLogger("chat").info(`model: ${model.name}（provider=${model.provider}, id=${model.id}）`);
     return {
       llm: {
         provider: "openai",

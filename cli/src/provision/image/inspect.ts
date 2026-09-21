@@ -4,7 +4,8 @@ import {
 import { resolveCollectKubeconfig } from "../../infra/k8s/context";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../../command";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { ImageCliOpts } from "./model";
 
 export async function discoverImageRegistryCatalog(
@@ -17,15 +18,13 @@ export async function discoverImageRegistryCatalog(
     context: opts.context,
   });
   const kubernetes = commandContext.kubernetes(executor);
-  terminalStdout.write(
-    `[k8s] Doctor Host -> Kubernetes: kubeconfig=${resolved.source}\n`,
-  );
+  useLogger("k8s").info(`Doctor Host -> Kubernetes: kubeconfig=${resolved.source}`);
   const channel = commandContext.inspection.kubernetes?.channel;
   if (!channel) throw new Error("doctor image requires Kubernetes startup inspection");
   if (!channel.available) {
     throw new Error(channel.reason ?? "Kubernetes 通道不可用");
   }
-  terminalStdout.success("[k8s] Kubernetes API Server 可达\n");
+  useLogger("k8s").success("Kubernetes API Server 可达");
   return discoverRegistryCatalog(opts, kubernetes.executor, {
     access: kubernetes.access,
     channelChecked: true,

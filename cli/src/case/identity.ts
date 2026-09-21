@@ -8,7 +8,7 @@ import type {
   UserSummary,
 } from "@compforge/doctor-plugin";
 import { prepareTerminalInput } from "../terminal/input";
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 import { printNumberedChoices } from "../terminal/selection";
 import { promptTenantChoice } from "../terminal/tenant-selection";
 
@@ -65,7 +65,7 @@ export async function selectUserFromSearch(
       page = 1;
     }
 
-    terminalStdout.info(`[${logPrefix}] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户（第 ${page} 页）…\n`);
+    writeOutput(`[${logPrefix}] 正在查询${query ? `匹配 '${query}' 的` : ""}启用用户（第 ${page} 页）…\n`);
     const result = await search({
       query: query || undefined,
       page,
@@ -73,7 +73,7 @@ export async function selectUserFromSearch(
     });
     const users = result.users;
     if (!users.length) {
-      terminalStdout.warning(query
+      writeOutput(query
         ? `未找到匹配 '${query}' 的启用用户。\n`
         : "当前租户没有启用用户。\n");
       query = undefined;
@@ -99,15 +99,15 @@ export async function selectUserFromSearch(
     }
     if (action.kind === "next") {
       if (page < pageCount) page += 1;
-      else terminalStdout.warning("已经是最后一页。\n");
+      else writeOutput("已经是最后一页。\n");
       continue;
     }
     if (action.kind === "previous") {
       if (page > 1) page -= 1;
-      else terminalStdout.warning("已经是第一页。\n");
+      else writeOutput("已经是第一页。\n");
       continue;
     }
-    terminalStdout.warning(action.kind === "invalid-number"
+    writeOutput(action.kind === "invalid-number"
       ? "输入的序号不在当前页候选中。\n"
       : "请输入用户序号、翻页命令或新的搜索关键词。\n");
   }

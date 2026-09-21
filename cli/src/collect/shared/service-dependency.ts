@@ -16,7 +16,8 @@ import {
   type OpenSearchAuth,
 } from "../../infra/search/opensearch";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { borrowServiceClient } from "../../datasource/client";
 import type { StepInput } from "../evidence";
 import { resolveStoreProviderConfig } from "../store/config";
@@ -246,9 +247,7 @@ export class ServiceDependencyRuntime {
         };
       }
       if (configuredEndpoint) {
-        terminalStdout.write(
-          `[collect] Service ${service}（Store ${dataSource}）提供配置：OpenSearch endpoint=${safeEndpoint(configuredEndpoint)}\n`,
-        );
+        useLogger("collect").info(`Service ${service}（Store ${dataSource}）提供配置：OpenSearch endpoint=${safeEndpoint(configuredEndpoint)}`);
       } else {
         this.options.log(
           confirmed.reason ?? "业务 Service 未提供 OpenSearch endpoint，将自动发现",

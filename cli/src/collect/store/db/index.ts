@@ -1,7 +1,8 @@
 import type { ServiceDatabaseDataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../../../command";
-import { terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import { runCollect } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
 import { evaluateCollectOutcome } from "../../outcome";
@@ -33,7 +34,7 @@ export async function runStoreDb(
 ): Promise<number> {
   const capability = config.capability as ServiceDatabaseDataSource;
   const state = createStoreBundle("db", config.output, config.outputFormat, DB_OUTCOMES, commandContext);
-  const log = (line: string) => terminalStdout.write(`${line}\n`);
+  const log = (line: string) => useLogger().info(`${line}`);
   const ctx: DbCommandContext = {
     command: commandContext,
     executor,

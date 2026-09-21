@@ -2,7 +2,8 @@ import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { terminalStderr } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { REDIS_DEFAULTS, runCollectRedis } from "../redis";
 import {
   parseStoreOutputFormat,
@@ -24,14 +25,14 @@ export async function runCollectStore(
   try {
     kinds = await resolveStoreKinds(opts.type, plugin, interactive);
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (!kinds) return commandOutcome(130);
   try {
     parseStoreOutputFormat(opts.format);
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   const statuses: CommandStatus[] = [];
@@ -54,7 +55,7 @@ export async function runCollectStore(
       try {
         resolved = await resolveStoreConfig({ ...kindOpts, type: kind }, plugin, commandContext);
       } catch (error) {
-        terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+        useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
         code = 2;
         failure ??= commandOutcome(code);
         statuses.push(commandOutcome(code).status);

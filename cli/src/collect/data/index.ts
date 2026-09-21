@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollectBatch } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
@@ -59,7 +60,7 @@ export async function runCollectData(
 ): Promise<CommandResult<DataOutput>> {
   const { config, selections, command: commandContext } = dataCommand;
   const services = selections.map(item => item.service);
-  const log = (line: string) => terminalStdout.write(`${line}\n`);
+  const log = (line: string) => useLogger().info(`${line}`);
   log(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）`);
   const outcomes = dataOutcomes(dataCommand.providers);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-"));
@@ -90,7 +91,7 @@ export async function runCollectData(
       checkpointFacts: snapshot => { facts = snapshot; },
       signal: commandContext.signal,
       planProbes: (_facts, itemConfig) => {
-        terminalStdout.warning(`\n[collect:data] biz-id: ${itemConfig.ids[0]}\n`);
+        useLogger("collect:data").warn(`biz-id: ${itemConfig.ids[0]}`);
         return [];
       }, log, buildEvidence: buildDataEvidence,
       detectors: makeDataDetectors(plugin.id, plugin.services, services), buildCoverage: buildDataCoverage,

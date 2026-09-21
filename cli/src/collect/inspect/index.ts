@@ -12,7 +12,8 @@ import {
   enforceKubernetesAccess,
   requireKubernetesChannel,
 } from "../../terminal/kubernetes-access";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
@@ -57,11 +58,11 @@ export async function runCollectInspect(
   try {
     config = await resolveInspectConfig(opts, plugin, commandContext, injectedExecutor);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (!config) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return commandOutcome(130);
   }
   const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
@@ -73,43 +74,39 @@ export async function runCollectInspect(
       commandContext,
     });
   }
-  terminalStdout.write(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）\n`);
+  useLogger("collect").info(`namespace: ${config.namespace}（${config.namespaceSource}）`);
   const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   let services;
   try {
     services = await resolveInspectServiceSelection({ config, catalog: plugin.services, executor });
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (!services) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return commandOutcome(130);
   }
   config = { ...config, services };
   const selectedDefinitions = services.map((name) => plugin.services.find(name)!);
   const includeDeploymentConfig = await resolveInspectDeploymentSelection({ config });
   if (includeDeploymentConfig === undefined) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return commandOutcome(130);
   }
   config = { ...config, includeDeploymentConfig };
-  terminalStdout.write(
-    includeDeploymentConfig
+  useLogger().info(includeDeploymentConfig
       ? "[collect] Deployment Env/ConfigMap：纳入采集\n"
-      : "[collect] Deployment Env/ConfigMap：未纳入本次采集范围\n",
-  );
+      : "[collect] Deployment Env/ConfigMap：未纳入本次采集范围");
   const includeDependencies = await resolveInspectDependencySelection({ config });
   if (includeDependencies === undefined) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return commandOutcome(130);
   }
   config = { ...config, includeDependencies };
-  terminalStdout.write(
-    includeDependencies
+  useLogger().info(includeDependencies
       ? "[collect] 应用依赖及版本：纳入采集\n"
-      : "[collect] 应用依赖及版本：未纳入本次采集范围\n",
-  );
+      : "[collect] 应用依赖及版本：未纳入本次采集范围");
   const deploymentNeeds = includeDeploymentConfig ? [{
     requirement: "preferred" as const,
     rule: { verb: "list" as const, resource: "deployments.apps" },
@@ -166,7 +163,7 @@ export async function runCollectInspect(
   const staging = join(stagingRoot, config.reportName);
   commandContext.artifacts.add({ command: "inspect", path: staging });
   const bundle = new EvidenceBundle(staging);
-  const log = (line: string) => terminalStdout.write(`${line}\n`);
+  const log = (line: string) => useLogger().info(`${line}`);
   let facts: InspectFacts | undefined;
   let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;

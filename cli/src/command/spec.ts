@@ -1,4 +1,4 @@
-import { terminalStdout } from "../terminal/output";
+import { useLogger } from "../terminal/log";
 import type { CommandContext } from "./context";
 import { inCommandScope } from "./execution-scope";
 import type { CommandResult } from "./result";
@@ -78,7 +78,7 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
         await spec.validate?.(input);
         const key = input.idempotencyKey?.();
         const result = key === undefined ? await execute() : await context.runIdempotent(spec, key, execute, () => {
-          terminalStdout.write(`[${spec.name}] 复用同一范围的采集结果（进行中则等待）\n`);
+          useLogger().info(`[${spec.name}] 复用同一范围的采集结果（进行中则等待）`);
         });
         return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
       } catch (error) {

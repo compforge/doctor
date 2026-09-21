@@ -1,7 +1,9 @@
+import { writeOutput } from "../terminal/output";
 import { isInteractive } from "../terminal/policy";
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "../terminal/input";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { resolveCollectKubeconfig } from "../infra/k8s/context";
 import {
@@ -104,12 +106,10 @@ export async function discoverRegistryCatalog(
   };
   const allNamespaces = options.allNamespaces ?? true;
   if (!options.channelChecked && !executor) {
-    terminalStdout.write(
-      `[k8s] Doctor Host -> Kubernetes: kubeconfig=${kubeconfig?.source ?? "selected"}\n`,
-    );
+    useLogger("k8s").info(`Doctor Host -> Kubernetes: kubeconfig=${kubeconfig?.source ?? "selected"}`);
     const channel = await inspectKubernetesChannel(kubectl);
     if (!channel.available) throw new Error(channel.reason ?? "Kubernetes 通道不可用");
-    terminalStdout.success("[k8s] Kubernetes API Server 可达\n");
+    useLogger("k8s").success("Kubernetes API Server 可达");
   }
   const access = options.access ?? (!executor ? new KubernetesAccessContext(kubectl) : undefined);
   const permission = access
@@ -166,10 +166,10 @@ async function chooseSuggestedValue(input: {
   normalize: (value: string) => string;
 }): Promise<string | undefined> {
   if (input.suggestions.length > 0) {
-    terminalStdout.info(`${input.title}\n`);
-    input.suggestions.forEach((value, index) => terminalStdout.write(`  ${index + 1}) ${value}\n`));
+    writeOutput(`${input.title}` + "\n");
+    input.suggestions.forEach((value, index) => writeOutput(`  ${index + 1}) ${value}` + "\n"));
   } else {
-    terminalStdout.warning(`[image] 当前 Kubernetes 未发现可用的${input.label} 候选，请手动输入。\n`);
+    writeOutput(`当前 Kubernetes 未发现可用的${input.label} 候选，请手动输入。` + "\n");
   }
 
   while (true) {
@@ -183,14 +183,14 @@ async function chooseSuggestedValue(input: {
     if (/^\d+$/.test(answer)) {
       const selected = input.suggestions[Number(answer) - 1];
       if (selected) return selected;
-      terminalStdout.warning("输入无效，请选择候选序号或直接输入其它值。\n");
+      writeOutput("输入无效，请选择候选序号或直接输入其它值。" + "\n");
       continue;
     }
     const suggested = input.suggestions.find((value) => value.toLowerCase() === answer.toLowerCase());
     if (suggested) return suggested;
     const normalized = input.normalize(answer);
     if (normalized) return normalized;
-    terminalStdout.warning(`${input.label.trim()} 不能为空。\n`);
+    writeOutput(`${input.label.trim()} 不能为空。` + "\n");
   }
 }
 
@@ -218,7 +218,7 @@ export async function resolveImageTarget(
   options: ResolveImageTargetOptions = {},
 ): Promise<string | undefined> {
   if (explicit) {
-    terminalStdout.info(`[image] target: ${explicit}（命令参数）\n`);
+    useLogger("image").info(`target: ${explicit}（命令参数）`);
     return explicit;
   }
   const interactive = isInteractive(options.interactive);
@@ -246,7 +246,7 @@ export async function resolveImageTarget(
       profile: options.profile,
     })))();
   } catch (err) {
-    terminalStdout.warning(`[image] ${err instanceof Error ? err.message : String(err)}；改为手动输入。\n`);
+    useLogger("image").warn(`${err instanceof Error ? err.message : String(err)}；改为手动输入。`);
   }
   const prompt = options.prompt ?? defaultPrompt;
   const registries = recent
@@ -281,6 +281,6 @@ export async function resolveImageTarget(
 
   if (recent && recentScope) recent.recordImageTarget(recentScope, { registry, namespace });
   const image = `${registry}/${namespace}/${repositoryAndTag}`;
-  terminalStdout.info(`[image] target: ${image}\n`);
+  useLogger("image").info(`target: ${image}`);
   return image;
 }

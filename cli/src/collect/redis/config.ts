@@ -1,5 +1,6 @@
 import { isInteractive } from "../../terminal/policy";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { RedisProfileConfig } from "../../app/config/model";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
@@ -238,9 +239,7 @@ export async function resolveRedisConfig(
     commandContext,
   );
   if (!collect) return undefined;
-  terminalStdout.write(
-    `[collect] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("collect").info(`namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）`);
   const executor = injectedExecutor ?? createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   const catalogStore = await resolveRedisCatalogStore({

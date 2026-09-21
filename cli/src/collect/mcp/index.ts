@@ -16,7 +16,8 @@ import type { McpClient } from "../../infra/mcp";
 import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type EvidenceStatus, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
@@ -185,7 +186,7 @@ export async function runCollectMcp(
       try {
         await context?.dispose();
       } catch (error) {
-        terminalStderr.warning(`[mcp] Context 清理失败：${error instanceof Error ? error.message : String(error)}\n`);
+        useLogger("mcp").warn(`Context 清理失败：${error instanceof Error ? error.message : String(error)}`);
       }
     }
     bundle.writeSummary(
@@ -291,7 +292,7 @@ export async function runCollectMcp(
       config: resolved.config,
       inspects: [makeMcpConfigurationInspect(facts)],
       planProbes: () => mcpProbes,
-      log: (line) => terminalStdout.write(`${line}\n`),
+      log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildMcpEvidence,
       detectors: mcpDetectors,
       buildCoverage: buildMcpCoverage,
@@ -301,7 +302,7 @@ export async function runCollectMcp(
     return commandOutcome(await finish());
   } catch (error) {
     failureReason = error instanceof Error ? error.message : String(error);
-    terminalStderr.error(`[mcp] ${failureReason}\n`);
+    useLogger("mcp").error(`${failureReason}`);
     bundle.settle(failureReason);
     return commandOutcome(await finish(1));
   }

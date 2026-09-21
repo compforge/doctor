@@ -1,6 +1,7 @@
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 // Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -95,18 +96,18 @@ async function prepareLogBatch(
     pattern = buildLogPattern(!!opts.errorsOnly, opts.pattern);
     format = parseLogOutputFormat(opts.format);
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   let collect: KubernetesCommandConfig | undefined;
   try {
     collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   if (!collect) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return 130;
   }
   const resolved = {
@@ -118,9 +119,9 @@ async function prepareLogBatch(
     source: collect.kubernetes.namespaceSource,
   };
   if (resolved.source.startsWith("profile:")) {
-    terminalStdout.write(`[collect] kubeconfig 来自 ${resolved.source}（${resolved.kubeconfig}）\n`);
+    useLogger("collect").info(`kubeconfig 来自 ${resolved.source}（${resolved.kubeconfig}）`);
   }
-  terminalStdout.write(`[collect] namespace: ${resolvedNamespace.namespace}（${resolvedNamespace.source}）\n`);
+  useLogger("collect").info(`namespace: ${resolvedNamespace.namespace}（${resolvedNamespace.source}）`);
 
   const executor = createKubernetesExecutor(collect);
   let trace: ResolvedPluginTraceId[] = [];
@@ -135,8 +136,8 @@ async function prepareLogBatch(
       index: buildIndexExpr(),
       endpoint: process.env.DOCTOR_OPENSEARCH_URL?.trim(),
       log: (line, tone) => {
-        if (tone === "warning") terminalStdout.warning(`${line}\n`);
-        else terminalStdout.write(`${line}\n`);
+        if (tone === "warning") useLogger().warn(`${line}`);
+        else useLogger().info(`${line}`);
       },
     });
     try {
@@ -151,23 +152,21 @@ async function prepareLogBatch(
         resolveDependencies: (service) => dependencyRuntime.resolve(service),
       }, plugin, executor);
     } catch (err) {
-      terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+      useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
       return 2;
     } finally {
       try {
         await dependencyRuntime.close();
       } catch (error) {
-        terminalStdout.warning(
-          `[collect] Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}\n`,
-        );
+        useLogger("collect").warn(`Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}`);
       }
     }
     if (!trace) {
-      terminalStderr.warning("[collect] 已取消\n");
+      useLogger("collect").warn("已取消");
       return 130;
     }
     for (const item of trace) {
-      terminalStdout.write(`[collect] biz-id: ${item.bizId} → trace-id: ${item.traceId}（${item.service} 按 ${item.resolvedAs} 解析）\n`);
+      useLogger("collect").info(`biz-id: ${item.bizId} → trace-id: ${item.traceId}（${item.service} 按 ${item.resolvedAs} 解析）`);
     }
   }
   let services: string[] | undefined;
@@ -181,18 +180,18 @@ async function prepareLogBatch(
       context: collect.kubernetes.context,
     });
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   if (!services) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return 130;
   }
   if (!services.length) {
-    terminalStderr.error("[collect] 没有选中日志 Service；请从 Plugin Catalog 选择 --services\n");
+    useLogger("collect").error("没有选中日志 Service；请从 Plugin Catalog 选择 --services");
     return 2;
   }
-  terminalStdout.write(`[collect] services: ${services.join(", ")}\n`);
+  useLogger("collect").info(`services: ${services.join(", ")}`);
 
   const selected = services.flatMap(name => plugin.services.find(name)!.workloads)
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
@@ -260,7 +259,7 @@ export async function runCollectLog(
     if (bizId !== undefined && !traces.length) return [];
     const timeWindow = resolveLogTimeWindow({ id: bizId, since: opts.since, sinceTime: opts.sinceTime });
     if (!opts.since && !opts.sinceTime && timeWindow.sinceTime) {
-      terminalStdout.write(`[collect] ${bizId} 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}\n`);
+      useLogger("collect").info(`${bizId} 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}`);
     }
     return [{
       bizId, traceIds: traces.map(trace => trace.traceId), namespace: resolvedNamespace.namespace,
@@ -273,7 +272,7 @@ export async function runCollectLog(
   });
   const artifacts = requests.map(request => commandContext.artifacts.add({ command: "log", path: request.outputDir }));
   const results = await collectLog(requests, commandContext, executor,
-    line => terminalStdout.write(`${line}\n`), bundle, access, opts.itemConcurrency);
+    line => useLogger().info(`${line}`), bundle, access, opts.itemConcurrency);
   const byId = new Map(requests.map((request, index) => [request.bizId, { request, result: results[index]!, artifact: artifacts[index]! }]));
   const items: LogOutput["items"][number][] = [];
   requestIds.forEach((bizId) => {
@@ -326,9 +325,9 @@ export async function collectLog(
       items: contexts.map(ctx => ({ ctx, config: ctx.config })),
       concurrency, signal: commandContext.signal,
       planProbes: (_facts, config) => {
-        terminalStdout.warning(config.bizId === undefined
+        useLogger().warn(config.bizId === undefined
           ? "\n[collect:log] 按 Service / 时间范围采集（不按业务 ID 过滤）\n"
-          : `\n[collect:log] biz-id: ${config.bizId}\n`);
+          : `\n[collect:log] biz-id: ${config.bizId}`);
         return [makeLogProbe(config.services, executor)];
       }, log,
       buildEvidence: buildLogEvidence, detectors: logDetectors, buildCoverage: buildLogCoverage,

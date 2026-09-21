@@ -3,7 +3,8 @@ import { reportError } from "./error-log";
 import { withoutShadowedDefaults } from "./option-sources";
 import { CommandContext } from "../command";
 import { loadActivePlugin } from "../plugin";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import type { CommandDeliveryOptions } from "./delivery";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 
@@ -18,7 +19,7 @@ export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
 export function prepareCommand(opts: CommandOptions, printProfile: boolean, plugin?: PluginDefinition): CommandContext {
   const resolved = resolveWorkingProfile(opts);
   opts = withoutShadowedDefaults(opts, resolved.profile);
-  if (printProfile && resolved.configPath) terminalStdout.warning(`profile: ${resolved.name}\n`);
+  if (printProfile && resolved.configPath) useLogger().info(`profile: ${resolved.name}`);
   const context = new CommandContext({}, {
     name: resolved.name, configPath: resolved.configPath, value: resolved.profile,
     pluginConfig: resolved.profile.plugin?.config ?? {},

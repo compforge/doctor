@@ -1,7 +1,7 @@
 import { isInteractive } from "./policy";
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { terminalStdout } from "./output";
+import { useLogger } from "./log";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "./selection";
 
 export function findSelectableFiles(
@@ -54,13 +54,13 @@ export async function resolveFileSelection(
   const files = input.findCandidates(directory);
   if (!files.length) throw new Error(input.noCandidatesMessage);
   if (files.length === 1) {
-    terminalStdout.info(`${input.singleCandidateMessage(files[0]!)}\n`);
+    useLogger().info(input.singleCandidateMessage(files[0]!));
     return join(directory, files[0]!);
   }
 
   const selected = await (input.prompt ? input.prompt(files) : promptFile(files, input));
   if (!selected) {
-    terminalStdout.warning(`${input.cancelledMessage}\n`);
+    useLogger().info(input.cancelledMessage);
     return undefined;
   }
   return join(directory, selected);

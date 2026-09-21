@@ -1,4 +1,6 @@
-import { terminalStdout, terminalStderr } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,11 +77,11 @@ export async function runCollectCpu(
   try {
     resolved = await resolveCpuConfig(opts, commandContext);
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
   if (!resolved) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return 130;
   }
   const { config, executor } = resolved;
@@ -90,7 +92,7 @@ export async function runCollectCpu(
     config,
     outputDir: staging,
     approvalGate: resolveApprovalGate(opts),
-  }, commandContext, executor, (line) => terminalStdout.write(`${line}\n`));
+  }, commandContext, executor, (line) => useLogger().info(`${line}`));
   if (result.code === 130) {
     rmSync(join(staging, ".."), { recursive: true, force: true });
     return 130;
@@ -105,14 +107,11 @@ export async function runCollectCpu(
       });
   const { packed } = delivery;
   if (!packed.ok) {
-    terminalStderr.error(`[collect] 打包失败：${failReason(packed)}\n[collect] 原始证据保留在目录: ${staging}\n`);
+    useLogger("collect").error(`打包失败：${failReason(packed)}\n[collect] 原始证据保留在目录: ${staging}`);
     return result.code || 1;
   }
   rmSync(join(staging, ".."), { recursive: true, force: true });
-  terminalStdout.result(
-    result.code === 0,
-    `[collect] CPU ${result.code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}\n`,
-  );
+  writeOutput(`CPU ${result.code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}` + "\n");
   return result.code;
 }
 

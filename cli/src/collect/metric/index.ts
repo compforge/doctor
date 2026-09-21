@@ -9,7 +9,8 @@ import { reportError } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { commandOutcome, type CommandResult } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
@@ -65,7 +66,7 @@ export async function runCollectMetric(
     config = { ...config, services: selected };
   }
   if (!config.services.length) {
-    terminalStderr.error("[collect] 未选择任何 Metric Service\n");
+    useLogger("collect").error("未选择任何 Metric Service");
     return commandOutcome(2);
   }
 
@@ -92,7 +93,7 @@ export async function runCollectMetric(
   process.once("SIGINT", onInterrupt);
   if (control?.signal?.aborted) onExternalAbort();
   else control?.signal?.addEventListener("abort", onExternalAbort, { once: true });
-  const log = (line: string) => terminalStdout.write(`${line}\n`);
+  const log = (line: string) => useLogger().info(`${line}`);
   let preparation: MetricSourcePreparation | undefined;
   let facts: MetricInspectionFacts | undefined;
   let diagnosis: MetricDiagnosis | undefined;
@@ -100,26 +101,22 @@ export async function runCollectMetric(
   try {
     const configurations = await loadMetricConfigurations(config, plugin.services, commandContext, injectedExecutor);
     preparation = await prepareMetricSource(config, plugin, commandContext, injectedExecutor, configurations);
-    terminalStdout.write(preparation.sourceKind === "remote"
+    useLogger().info(preparation.sourceKind === "remote"
       ? `[collect] metric source: remote Prometheus ${config.prometheus!.url}\n`
       : preparation.sourceKind === "hybrid"
         ? `[collect] metric source: remote Prometheus + embedded Store sampling（interval=${config.intervalMs}ms）\n`
-      : `[collect] metric source: embedded Prombed（interval=${config.intervalMs}ms）\n`);
+      : `[collect] metric source: embedded Prombed（interval=${config.intervalMs}ms）`);
     if (preparation.storeFallbackReason) {
-      terminalStdout.warning(
-        `[collect] Store 实时补充采样不可用：${preparation.storeFallbackReason}；`
-        + "继续从远端 Prometheus 查询 Store exporter 指标\n",
-      );
+      useLogger("collect").warn(`Store 实时补充采样不可用：${preparation.storeFallbackReason}；`
+        + "继续从远端 Prometheus 查询 Store exporter 指标");
     }
     if (preparation.exporterStoreTargets || preparation.directStoreTargets) {
-      terminalStdout.write(
-        `[collect] store metrics: exporter=${preparation.exporterStoreTargets}，direct-fallback=${preparation.directStoreTargets}\n`,
-      );
+      useLogger("collect").info(`store metrics: exporter=${preparation.exporterStoreTargets}，direct-fallback=${preparation.directStoreTargets}`);
     }
     if (config.watch.mode === "until-interrupt") {
-      terminalStdout.write("[collect] 正在监听；按 Ctrl+C 停止并生成报告。\n");
+      useLogger("collect").info("正在监听；按 Ctrl+C 停止并生成报告。");
     } else if (preparation.embeddedSource && config.watch.mode === "duration") {
-      terminalStdout.write(`[collect] watch ${config.watch.label}；Ctrl+C 可提前结束并生成报告。\n`);
+      useLogger("collect").info(`watch ${config.watch.label}；Ctrl+C 可提前结束并生成报告。`);
     }
     const ctx: MetricCommandContext = {
       command: commandContext,

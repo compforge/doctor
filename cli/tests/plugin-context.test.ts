@@ -346,8 +346,8 @@ test("siblings share resources after the first PluginContext is disposed, but ne
 
 test("repeated successful access prints once, and reuse never bypasses a caller's authorization", async () => {
   const { enforceKubernetesAccess } = await import("../src/terminal/kubernetes-access");
-  const { terminalStdout } = await import("../src/terminal/output");
-  const output = spyOn(terminalStdout, "success").mockImplementation(() => true);
+
+  const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   let checks = 0;
   const executor: Executor = {
     run: async command => { checks++; return result(command, "yes"); },

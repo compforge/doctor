@@ -1,5 +1,6 @@
 import { isInteractive } from "../terminal/policy";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import {
   resolveCollectKubeconfig,
   resolveCollectNamespace,
@@ -230,10 +231,8 @@ export async function resolvePodTarget(input: {
   if (selected) {
     const pod = selected.name;
     if (pod !== keyword) {
-      terminalStdout.write(
-        `[collect] ${selectionCandidateLabel(input.selection, "Pod")}: ${pod}`
-        + `（关键词 '${keyword}' 唯一匹配）\n`,
-      );
+      useLogger("collect").info(`${selectionCandidateLabel(input.selection, "Pod")}: ${pod}`
+        + `（关键词 '${keyword}' 唯一匹配）`);
     }
   } else {
     if (!interactive) {
@@ -307,10 +306,8 @@ export async function resolvePodTarget(input: {
     const label = input.selection.candidateRole === "配置来源"
       ? "[collect] 配置来源 Container"
       : "[target] container";
-    terminalStdout.write(
-      `${label}: ${container}`
-      + `（pod/${pod} 仅有一个 Container，自动选择）\n`,
-    );
+    useLogger().info(`${label}: ${container}`
+      + `（pod/${pod} 仅有一个 Container，自动选择）`);
     return record({ pod, container }, selectedInteractively);
   }
   if (!interactive) {
@@ -434,10 +431,8 @@ recentScope = resolveKubernetesRecentScope(input.config.kubernetes),
     const label = input.selection.candidateRole === "配置来源"
       ? "[collect] 配置来源 Container"
       : "[target] container";
-    terminalStdout.write(
-      `${label}: ${container}`
-      + `（pod/${pod} 仅有一个 Container，自动选择）\n`,
-    );
+    useLogger().info(`${label}: ${container}`
+      + `（pod/${pod} 仅有一个 Container，自动选择）`);
     return record({ pod, container });
   }
   if (!interactive) {

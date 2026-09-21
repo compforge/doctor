@@ -4,7 +4,8 @@ import {
   promptSearchableChoice,
   resolveSearchableChoice,
 } from "../../terminal/selection";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import {
   selectionCandidateLabel,
   selectionInstruction,
@@ -152,7 +153,7 @@ export async function promptPod(
     : listedChoices
       ? choices
       : [];
-  if (selection.effect) terminalStdout.write(`[collect] ${selection.effect}\n`);
+  if (selection.effect) useLogger("collect").info(`${selection.effect}`);
   if (shouldPreviewPodChoices(choices, numberedChoices)) {
     printPodChoices(choices, selectionTitle(selection, "Pod"));
     numberedChoices = choices;

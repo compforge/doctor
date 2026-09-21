@@ -5,7 +5,8 @@ import {
   getS3ProviderHealth,
   getS3ProviderPhysicalCapacity,
 } from "../../../infra/object-store";
-import { terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type { StoreConfig } from "../config";
@@ -116,7 +117,7 @@ const INVENTORY_PROBE: S3Probe = {
       const deadline = Date.now() + config.s3ScanTimeoutMs;
       let remainingObjects = config.s3MaxObjects;
       const inventories = [];
-      terminalStdout.write(`[collect] 扫描 ${buckets.length} 个 S3 Bucket 的对象 metadata：最多 ${config.s3MaxObjects} 个对象 / ${config.s3ScanTimeoutMs / 1000}s\n`);
+      useLogger("collect").info(`扫描 ${buckets.length} 个 S3 Bucket 的对象 metadata：最多 ${config.s3MaxObjects} 个对象 / ${config.s3ScanTimeoutMs / 1000}s`);
       for (const [index, bucket] of buckets.entries()) {
         const remainingBuckets = buckets.length - index;
         const remainingMs = deadline - Date.now();
@@ -128,7 +129,7 @@ const INVENTORY_PROBE: S3Probe = {
         const timeBudget = Math.max(1, Math.floor(
           serviceFocus && remainingBuckets > 1 ? remainingMs / 2 : remainingMs / remainingBuckets,
         ));
-        terminalStdout.write(`[collect] 扫描 Bucket ${index + 1}/${buckets.length}：${bucket}${serviceFocus && ctx.servicePrefix ? `（优先 Prefix ${ctx.servicePrefix}）` : ""}\n`);
+        useLogger("collect").info(`扫描 Bucket ${index + 1}/${buckets.length}：${bucket}${serviceFocus && ctx.servicePrefix ? `（优先 Prefix ${ctx.servicePrefix}）` : ""}`);
         const bucketDeadline = Date.now() + timeBudget;
         let versioning: "enabled" | "suspended" | "disabled" | "unavailable" = "unavailable";
         let versioningReason: string | undefined;
@@ -148,7 +149,7 @@ const INVENTORY_PROBE: S3Probe = {
           maxObjects: objectBudget,
           timeoutMs: Math.max(0, bucketDeadline - Date.now()),
           onProgress: (objects, pages) => {
-            if (pages === 1 || pages % 10 === 0) terminalStdout.write(`[collect] ${bucket}：已扫描 ${objects} 个对象（${pages} pages）\n`);
+            if (pages === 1 || pages % 10 === 0) useLogger("collect").info(`${bucket}：已扫描 ${objects} 个对象（${pages} pages）`);
           },
         });
         remainingObjects -= inventory.objects;

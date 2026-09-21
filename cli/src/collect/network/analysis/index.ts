@@ -1,3 +1,4 @@
+import { writeOutput } from "../../../terminal/output";
 import {
   chmodSync,
   existsSync,
@@ -19,7 +20,8 @@ import type {
 } from "../../../infra/host/network-analysis";
 import { runArgv } from "@compforge/harness-toolbox/kubernetes/executor";
 import { findSelectableFiles, resolveFileSelection } from "../../../terminal/file-selection";
-import { terminalStderr, terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import { readFacts } from "../../evidence-reader";
 import { runCollect } from "../../engine";
 import { writeHtmlReport } from "../../output/html";
@@ -72,7 +74,7 @@ interface ResolveNetworkAnalysisInputOptions {
 const defaultDependencies: NetworkAnalyzeDependencies = {
   runner: runArgv,
   packetAnalysis: infra.host.networkAnalysis,
-  log: (line) => terminalStdout.info(`[neta] ${line.replace(/^\[collect\]\s*/, "")}\n`),
+  log: (line) => useLogger("neta").info(`${line.replace(/^\[collect\]\s*/, "")}`),
 };
 
 const NETWORK_BUNDLE_NAME = /^doctor-net-\d{8}-\d{6}\.tar\.gz$/i;
@@ -396,14 +398,12 @@ export async function runAnalyzeNetwork(
     chmodSync(paths.markdown, 0o600);
     chmodSync(paths.html, 0o600);
     chmodSync(paths.json, 0o600);
-    terminalStdout.success(
-      `[neta] Markdown: ${paths.markdown}\n`
+    writeOutput(`Markdown: ${paths.markdown}\n`
       + `[neta] HTML: ${paths.html}\n`
-      + `[neta] JSON: ${paths.json}\n`,
-    );
+      + `[neta] JSON: ${paths.json}` + "\n");
     return result.analysis.summary.decodedPcapCount > 0 ? 0 : 1;
   } catch (error) {
-    terminalStderr.error(`[neta] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("neta").error(`${error instanceof Error ? error.message : String(error)}`);
     return 1;
   }
 }

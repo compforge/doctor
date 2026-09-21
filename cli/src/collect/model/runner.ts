@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
@@ -119,22 +120,19 @@ function printResponseStatus(
   const observation = modelResponseObservation(diagnosis.evidence, kind);
   if (!observation) return;
   if (observation.error) {
-    terminalStderr.error(`[model] ${label}: ${observation.error}\n`);
+    useLogger("model").error(`${label}: ${observation.error}`);
     return;
   }
   const response = observation.response!;
-  terminalStdout.result(
-    response.ok,
-    `[model] ${label}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)\n`,
-  );
+  useLogger("model")[response.ok ? "success" : "error"](`${label}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)`);
 }
 
 function printFindings(findings: readonly ModelFinding[]): void {
   for (const finding of findings) {
     const line = `[model] ${finding.kind}: ${finding.summary}\n`;
-    if (finding.severity === "critical") terminalStderr.error(line);
-    else if (finding.severity === "warning") terminalStderr.warning(line);
-    else terminalStderr.info(line);
+    if (finding.severity === "critical") useLogger().error(line);
+    else if (finding.severity === "warning") useLogger().warn(line);
+    else useLogger().info(line);
   }
 }
 
@@ -160,7 +158,7 @@ export async function runModelDiagnosis(
     inference: input.inference,
     bundle,
     staging,
-    log: (line: string) => terminalStderr.info(`${line}\n`),
+    log: (line: string) => useLogger().info(`${line}`),
   };
   let facts!: Readonly<ModelInspectionFacts>;
   let diagnosis!: ModelDiagnosis;
@@ -179,7 +177,7 @@ export async function runModelDiagnosis(
         });
       },
       planProbes: () => makeModelProbes(input.model),
-      log: (line) => terminalStdout.write(`${line}\n`),
+      log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildModelEvidence,
       detectors: modelDetectors,
       buildCoverage: buildModelCoverage(config),
@@ -223,7 +221,7 @@ export async function runModelDiagnosis(
     printResponseStatus("validation", diagnosis, "model-validation");
     printResponseStatus("inference", diagnosis, "model-inference");
     for (const line of buildModelPerformanceTerminalSummary(summaries)) {
-      terminalStdout.info(line);
+      useLogger().info(line);
     }
     printFindings(diagnosis.findings);
     const outcome = evaluateCollectOutcome(
@@ -241,7 +239,7 @@ export async function runModelDiagnosis(
     const reason = error instanceof Error ? error.message : String(error);
     bundle.settle(reason);
     recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
-    terminalStderr.error(`[model] 诊断流程失败：${reason}；原始数据保留在 ${staging}\n`);
+    useLogger("model").error(`诊断流程失败：${reason}；原始数据保留在 ${staging}`);
     throw error;
   }
 }

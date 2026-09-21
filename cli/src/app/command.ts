@@ -3,10 +3,11 @@ import { CommandInputError, CommandStatus, type CommandInput, type CommandResult
 import { reportError } from "./error-log";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
-import { withMachineOutput } from "../terminal/output";
+import { withLogger } from "../terminal/log";
 import { deliverPreparationFailure } from "./preparation-failure";
 import { withoutShadowedDefaults } from "./option-sources";
 import { withInteractionOptions } from "../terminal/policy";
+import type { Distribution } from "./distribution";
 
 export type { Command } from "../command";
 
@@ -19,28 +20,34 @@ export function commandExitCode(result: CommandResult<unknown>): number {
   }
 }
 
+export type CommandRuntime = {
+  plugin?: PluginDefinition;
+  printProfile?: boolean;
+  logLevel?: Distribution["logLevel"];
+};
+
 /** The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once. */
 export async function runCommand<Input extends CommandInput, Output>(
   spec: Command<Input, Output>,
   opts: CommandOptions,
   input: Input,
-  runtime: { plugin?: PluginDefinition; printProfile?: boolean } = {},
+  runtime: CommandRuntime = {},
 ): Promise<void> {
   return withInteractionOptions(opts, () =>
-    withMachineOutput(opts.format?.trim() === "manifest", () => executeCommand(spec, opts, input, runtime)));
+    withLogger(runtime.logLevel ?? "info", () => executeCommand(spec, opts, input, runtime)));
 }
 
 async function executeCommand<Input extends CommandInput, Output>(
   spec: Command<Input, Output>, opts: CommandOptions, input: Input,
-  runtime: { plugin?: PluginDefinition; printProfile?: boolean },
+  runtime: CommandRuntime,
 ): Promise<void> {
   try {
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
     input = withoutShadowedDefaults(input, context.profile.value);
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
     process.once("SIGINT", interrupt);
-    let result: CommandResult<Output>;
     try {
+      let result: CommandResult<Output>;
       try { result = await spec.run(context, input); }
       catch (error) {
         reportError(error, { context: spec.name, summary: "fatal" });

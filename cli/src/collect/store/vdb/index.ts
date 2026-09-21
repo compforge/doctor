@@ -6,7 +6,8 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../../../command";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
-import { terminalStderr, terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import { runCollect } from "../../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../../evidence";
 import { evaluateCollectOutcome } from "../../outcome";
@@ -76,7 +77,7 @@ export async function runStoreVdb(
     container: source?.container ?? config.target?.container,
     service: storeConfig.service,
   };
-  const log = (line: string) => terminalStdout.write(`${line}\n`);
+  const log = (line: string) => useLogger().info(`${line}`);
   const ctx: VdbCommandContext = {
     command: commandContext,
     config,
@@ -120,7 +121,7 @@ export async function runStoreVdb(
       summary,
     });
     if (!prepared.ok) {
-      terminalStderr.error(`[collect] 交付失败，证据保留在目录: ${staging}\n`);
+      useLogger("collect").error(`交付失败，证据保留在目录: ${staging}`);
       return 1;
     }
     return code;
@@ -188,7 +189,7 @@ export async function runStoreVdb(
     findings: diagnosis.findings,
     coverage: diagnosis.coverage,
   });
-  terminalStdout.write(`[collect] ${vdbCapacityConclusion(observations)}\n`);
+  useLogger("collect").info(`${vdbCapacityConclusion(observations)}`);
   const healthCoverage = diagnosis.coverage.find((item) => item.goal === "cluster-health");
   const capacityCoverage = diagnosis.coverage.find((item) => item.goal === "capacity");
   const outcome = evaluateCollectOutcome([

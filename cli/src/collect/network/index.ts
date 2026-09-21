@@ -23,7 +23,8 @@ import {
 import type { RecentSelections } from "../../infra/recent";
 import { sleep } from "@compforge/harness-toolbox/process/index";
 import { findSelectableFiles } from "../../terminal/file-selection";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
+import { useLogger } from "../../terminal/log";
 import { formatDoctorDebugCommand } from "../../terminal/debug-recommendation";
 import {
   formatProgressBytes,
@@ -174,7 +175,7 @@ export async function resolveNetworkScenarioFile(input: {
   const directory = input.directory ?? ".";
   const files = findNetworkScenarioFiles(directory);
   if (!files.length) {
-    terminalStdout.info("[net] 当前目录没有 doctor-http/v1 YAML，进入守候模式。\n");
+    useLogger("net").info("当前目录没有 doctor-http/v1 YAML，进入守候模式。");
     return null;
   }
   printNumberedChoices(files, "[net] 当前目录可用的 HTTP 场景：", (file) => file);
@@ -187,11 +188,11 @@ export async function resolveNetworkScenarioFile(input: {
         emptyValue: null,
       });
   if (selected === undefined) {
-    terminalStdout.warning("已取消网络抓包场景选择。\n");
+    useLogger().warn("已取消网络抓包场景选择。");
     return undefined;
   }
   if (selected === null) {
-    terminalStdout.info("[net] 模式：守候（doctor 不主动发起请求）\n");
+    useLogger("net").info("模式：守候（doctor 不主动发起请求）");
     return null;
   }
   return join(directory, selected);
@@ -238,7 +239,7 @@ export async function resolveNetworkRequest(
   }
 
   const selected = await (input.prompt ?? promptNetworkRequest)(requests);
-  if (!selected) terminalStdout.warning("已取消网络请求选择。\n");
+  if (!selected) useLogger().warn("已取消网络请求选择。");
   return selected;
 }
 
@@ -275,7 +276,7 @@ export async function resolveNetworkServiceScope(input: {
     candidateType: "Service",
     context: { purpose: "确定本次抓包范围" },
   });
-  if (!selected) terminalStdout.warning("已取消网络抓包范围选择。\n");
+  if (!selected) useLogger().warn("已取消网络抓包范围选择。");
   if (selected && input.namespace) {
     recordRecentServiceTargets(selected, {
       namespace: input.namespace,
@@ -783,7 +784,7 @@ export async function collectNetwork(
       reason: gap.reason,
     });
   }
-  terminalStdout.info(formatNetworkCaptureScope(topology));
+  useLogger().info(formatNetworkCaptureScope(topology));
   const requiredGap = topology.missing.find((item) => item.required);
   if (requiredGap) {
     const result = { code: 1, captureMode, topology, artifacts, traceIds: [], reason: requiredGap.reason };
@@ -900,7 +901,7 @@ export async function collectNetwork(
         timeout_ms: requestPlan.timeoutMs,
         max_response_bytes: requestPlan.maxResponseBytes,
       }, null, 2)}\n`, { mode: 0o600 });
-      terminalStderr.error(`[net] 全部 ${armed.length} 个 Pod 已 ARM，开始染色请求 ${opts.captureId}\n`);
+      useLogger("net").info(`全部 ${armed.length} 个 Pod 已 ARM，开始染色请求 ${opts.captureId}`);
       response = await captureHttpResponse(requestPlan, 1, requestDir, "request", deps.sendHttp);
       bundle.addStep({
         id: "network-request",
@@ -915,10 +916,8 @@ export async function collectNetwork(
       });
     } else {
       if (!deps.waitForWatchCompletion) throw new Error("守候模式缺少终端等待能力");
-      terminalStdout.info(
-        `[net] 全部 ${armed.length} 个 Pod 已 ARM，进入守候模式。\n`
-        + "[net] 请完成页面操作，完成后回到此处按回车结束抓包。\n",
-      );
+      writeOutput(`全部 ${armed.length} 个 Pod 已 ARM，进入守候模式。\n`
+        + "[net] 请完成页面操作，完成后回到此处按回车结束抓包。" + "\n");
       watchOutcome = await deps.waitForWatchCompletion({
         timeoutMs: opts.timeoutSeconds * 1000,
         signal: opts.signal,
@@ -1008,7 +1007,7 @@ export async function runCollectNetwork(
     if (selectedFile === null) {
       capturePlan = { mode: "watch" };
     } else {
-      terminalStdout.info("[net] 模式：跟踪（doctor 按 YAML 发起并染色请求）\n");
+      useLogger("net").info("模式：跟踪（doctor 按 YAML 发起并染色请求）");
       const requestSource = readFileSync(selectedFile, "utf-8");
       const scenario = loadHttpScenario(selectedFile, { timeoutSeconds, maxResponseMiB });
       const requests = scenario.requests.flatMap((group) => group.entrypoints);
@@ -1022,7 +1021,7 @@ export async function runCollectNetwork(
       };
     }
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
   const config = await resolveKubernetesCommandConfig(
@@ -1061,7 +1060,7 @@ export async function runCollectNetwork(
     if (!selected) return 130;
     services = selected;
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
   const now = new Date();
@@ -1076,11 +1075,11 @@ export async function runCollectNetwork(
   process.once("SIGINT", onInterrupt);
   const pcapProgress = new TerminalProgressLine({
     isTTY: !!process.stdout.isTTY,
-    write: (text) => terminalStdout.write(text),
+    write: (text) => { if (useLogger().level >= 3) writeOutput(text); },
   });
   const log = (line: string) => {
     pcapProgress.interrupt();
-    terminalStdout.info(`[net] ${line}\n`);
+    useLogger("net").info(`${line}`);
   };
   let result: NetworkCollectResult;
   try {
@@ -1121,12 +1120,12 @@ export async function runCollectNetwork(
     pcapProgress.interrupt();
     process.removeListener("SIGINT", onInterrupt);
   }
-  if (result.code !== 0) terminalStderr.error(formatNetworkFailureSummary(result));
+  if (result.code !== 0) useLogger().error(formatNetworkFailureSummary(result));
   else if (result.artifacts.some((item) => !item.windowComplete)) {
-    terminalStdout.warning(formatNetworkCaptureStatus(result));
+    useLogger().warn(formatNetworkCaptureStatus(result));
   }
   if (isNetworkDebugPrerequisiteFailure(result)) {
-    terminalStdout.info(formatNetworkDebugRecommendation({
+    useLogger().info(formatNetworkDebugRecommendation({
       profileName: config.profileName,
       namespace: config.kubernetes.namespace,
       services,
@@ -1152,23 +1151,20 @@ export async function runCollectNetwork(
         reason: result.reason,
       });
   if (!delivery.packed.ok) {
-    terminalStderr.error(`[net] 打包失败，现场保留在: ${staging}\n`);
+    useLogger("net").error(`打包失败，现场保留在: ${staging}`);
     return 1;
   }
   chmodSync(delivery.path, 0o600);
   rmSync(stagingRoot, { recursive: true, force: true });
-  terminalStdout.result(
-    result.code === 0,
-    `[net] ${
+  writeOutput(`${
       result.code === 0
         ? "NetBundle"
         : result.artifacts.some((item) => !!item.file)
           ? "不完整 NetBundle"
           : "失败 Evidence Bundle"
-    }: ${delivery.path}\n`,
-  );
+    }: ${delivery.path}` + "\n");
   if (result.artifacts.some((item) => !!item.file)) {
-    terminalStdout.info(`[net] 下一步：mono-doctor doctor neta "${delivery.path}"\n`);
+    writeOutput(`下一步：mono-doctor doctor neta "${delivery.path}"` + "\n");
   }
   return result.code;
 }

@@ -11,7 +11,8 @@ import { parsePodJson, pickContainer } from "../../infra/k8s/target";
 import type { DebugEnvironmentFact } from "../../infra/target/debug";
 import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type {
   DebugCliOpts,
   DebugPlatformSource,
@@ -91,16 +92,12 @@ export function reportTargetPlatform(
   source?: DebugPlatformSource,
 ): void {
   if (target.imagePlatform) {
-    terminalStdout.write(
-      `[debug] target platform: ${target.imagePlatform.os}/${target.imagePlatform.architecture}`
-      + `${source ? ` (${source})` : ""}\n`,
-    );
+    useLogger("debug").info(`target platform: ${target.imagePlatform.os}/${target.imagePlatform.architecture}`
+      + `${source ? ` (${source})` : ""}`);
     return;
   }
-  terminalStdout.write(
-    `[debug] target platform: unknown（${target.platformReason ?? "Node 和实际 image manifest 均不可读"}）；`
-    + "使用 multi-arch image 由 Kubelet 选择\n",
-  );
+  useLogger("debug").info(`target platform: unknown（${target.platformReason ?? "Node 和实际 image manifest 均不可读"}）；`
+    + "使用 multi-arch image 由 Kubelet 选择");
 }
 
 export function formatExistingDebugContainers(

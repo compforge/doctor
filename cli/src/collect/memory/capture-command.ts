@@ -5,7 +5,8 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { infra } from "../../infra";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { parsePodJson, pickContainer } from "../../infra/k8s/target";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
+import { useLogger } from "../../terminal/log";
 import { TerminalProgressLine } from "../../terminal/progress";
 import {
   createKubernetesExecutor,
@@ -90,7 +91,7 @@ export async function runCollectMemory(
     strReprLen = parseStrReprLen(opts.strReprLen, detail === "lite" ? -1 : 1000);
     transferChunkBytes = parseTransferChunkBytes(opts.transferChunkSize);
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 
@@ -100,9 +101,7 @@ export async function runCollectMemory(
     commandContext,
   );
   if (!collect) return 130;
-  terminalStdout.write(
-    `[collect] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("collect").info(`namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）`);
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(access, {
@@ -129,7 +128,7 @@ export async function runCollectMemory(
       },
     });
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
   if (!target) return 130;
@@ -138,13 +137,13 @@ export async function runCollectMemory(
     timeoutMs: 20_000,
   });
   if (!podJsonResult.ok) {
-    terminalStderr.error(`[collect] 获取目标 Pod 失败：${failReason(podJsonResult)}\n`);
+    useLogger("collect").error(`获取目标 Pod 失败：${failReason(podJsonResult)}`);
     return 2;
   }
   const pod = parsePodJson(podJsonResult.stdout);
   const selected = pickContainer(pod, target.container);
   if (!selected.ok) {
-    terminalStderr.error(`[collect] ${selected.reason}\n`);
+    useLogger("collect").error(`${selected.reason}`);
     return 2;
   }
 
@@ -155,13 +154,13 @@ export async function runCollectMemory(
   recordPodStep(bundle, podJsonResult);
   const progressLine = new TerminalProgressLine({
     isTTY: !!process.stdout.isTTY,
-    write: (text) => terminalStdout.write(text),
+    write: (text) => { if (useLogger().level >= 3) writeOutput(text); },
   });
   const logs: string[] = [];
   const log = (line: string) => {
     progressLine.interrupt();
     logs.push(line);
-    terminalStdout.write(`${line}\n`);
+    useLogger().info(`${line}`);
   };
 
   let result: CaptureResult;
@@ -233,16 +232,14 @@ export async function runCollectMemory(
       }
     }
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.success(
-      `[collect] ${pyheapBackend.displayName} 文件：${result.heapPath}\n`,
-    );
-    terminalStdout.write(`[collect] 采集索引：${result.capturePath}\n`);
-    terminalStdout.write(`[collect] 下一步：doctor mema ${result.capturePath}\n`);
+    useLogger("collect").success(`${pyheapBackend.displayName} 文件：${result.heapPath}`);
+    writeOutput(`采集索引：${result.capturePath}` + "\n");
+    writeOutput(`下一步：doctor mema ${result.capturePath}` + "\n");
     return 0;
   }
   if (result.code === 130) {
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStderr.warning("[collect] 已取消，未执行 attach\n");
+    useLogger("collect").warn("已取消，未执行 attach");
     return 130;
   }
 
@@ -250,10 +247,10 @@ export async function runCollectMemory(
     ? result.reasons
     : [result.reason ?? `${pyheapBackend.displayName} 采集失败`];
   for (const reason of reasons) {
-    terminalStderr.error(`[collect] ${reason}\n`);
+    useLogger("collect").error(`${reason}`);
   }
   if (result.remoteHeapPath) {
-    terminalStdout.write(`[collect] 远端文件仍保留：${result.remoteHeapPath}\n`);
+    writeOutput(`远端文件仍保留：${result.remoteHeapPath}` + "\n");
   }
   bundle.writeSummary(
     `# doctor mem\n\n- 目标：${collect.kubernetes.namespace}/${target.pod}/${selected.value.name}\n`
@@ -293,9 +290,9 @@ export async function runCollectMemory(
   });
   if (failure.packed.ok) {
     rmSync(stagingRoot, { recursive: true, force: true });
-    terminalStdout.write(`[collect] 失败证据：${failure.path}\n`);
+    writeOutput(`失败证据：${failure.path}` + "\n");
   } else {
-    terminalStdout.write(`[collect] 原始失败证据：${staging}\n`);
+    writeOutput(`原始失败证据：${staging}` + "\n");
   }
   return result.code;
 }

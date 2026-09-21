@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
-import { styleTerminalText, supportsTerminalColor, TerminalOutput } from "../src/terminal/output";
+import { styleTerminalText, supportsTerminalColor } from "../src/terminal/output";
 
 function typescriptFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
@@ -25,44 +25,9 @@ describe("terminal output", () => {
   });
 
   test("resets every rendered line", () => {
-    expect(styleTerminalText("done\nnext\n", "success")).toBe(
+    expect(styleTerminalText("done\nnext\n", "success", true)).toBe(
       "\u001B[1;32mdone\u001B[22;39m\n\u001B[1;32mnext\u001B[22;39m\n",
     );
-  });
-
-  test("raw writes remain byte-for-byte unchanged", () => {
-    const chunks: Array<string | Uint8Array> = [];
-    const output = new TerminalOutput({
-      isTTY: true,
-      write(chunk) {
-        chunks.push(chunk);
-        return true;
-      },
-    }, () => ({}));
-
-    output.write("raw response\n");
-    expect(chunks).toEqual(["raw response\n"]);
-  });
-
-  test("styles reusable choice fragments only when color is enabled", () => {
-    const interactive = new TerminalOutput({
-      isTTY: true,
-      write() {
-        return true;
-      },
-    }, () => ({}));
-    const redirected = new TerminalOutput({
-      isTTY: false,
-      write() {
-        return true;
-      },
-    }, () => ({}));
-
-    expect(interactive.style("Embedding", "blue"))
-      .toBe("\u001B[1;34mEmbedding\u001B[22;39m");
-    expect(interactive.style("Multimodal", "magenta"))
-      .toBe("\u001B[1;35mMultimodal\u001B[22;39m");
-    expect(redirected.style("Embedding", "blue")).toBe("Embedding");
   });
 
   test("non-chat commands do not bypass the terminal output boundary", () => {

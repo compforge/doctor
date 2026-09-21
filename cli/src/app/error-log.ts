@@ -1,4 +1,4 @@
-import { terminalStderr } from "../terminal/output";
+import { useLogger } from "../terminal/log";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -111,10 +111,8 @@ function writeErrorLogResult(
 }
 
 function printErrorLogFallback(error: unknown, result: ErrorLogWriteResult): void {
-  terminalStderr.warning(
-    `[doctor] 无法写入错误日志 ${result.path}: ${errorMessage(result.failure)}\n`,
-  );
-  terminalStderr.error(`[doctor] 技术详情:\n${errorDetail(error)}\n`);
+  useLogger("doctor").error(`无法写入错误日志 ${result.path}: ${errorMessage(result.failure)}`);
+  useLogger("doctor").error(`技术详情:\n${errorDetail(error)}`);
 }
 
 /**
@@ -137,15 +135,13 @@ export function reportError(error: unknown, options: ReportErrorOptions): string
   const result = writeErrorLogResult(error, options.context, options.plugin);
   const summary = options.summary ?? "error";
   const message = options.displayMessage ?? errorMessage(error);
-  terminalStderr.error(`${summary}: ${message}\n`);
-  terminalStderr.info(
-    `[doctor] 版本 ${DOCTOR_CLI_VERSION}`
+  useLogger().error(`${summary}: ${message}`);
+  useLogger("doctor").error(`版本 ${DOCTOR_CLI_VERSION}`
     + `${options.plugin ? `；Plugin ${options.plugin}` : ""}`
-    + `；命令 ${commandName(options.context)}；阶段 ${options.context}\n`,
-  );
+    + `；命令 ${commandName(options.context)}；阶段 ${options.context}`);
   if (result.failure === undefined) {
-    terminalStderr.info(`[doctor] 技术详情: ${result.path}\n`);
-    if (debugEnabled()) terminalStderr.error(`[doctor] debug:\n${errorDetail(error)}\n`);
+    useLogger("doctor").error(`技术详情: ${result.path}`);
+    if (debugEnabled()) useLogger("doctor").error(`debug:\n${errorDetail(error)}`);
     return result.path;
   }
   printErrorLogFallback(error, result);

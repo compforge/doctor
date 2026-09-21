@@ -11,7 +11,8 @@ import {
   materializeToolkitResource,
   resolveToolkitResource,
 } from "../../infra/toolkit";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import {
   matchListedChoice,
   printNumberedChoices,
@@ -118,7 +119,7 @@ export async function resolveImageArchive(
       throw new Error(imageTarMissingMessage(explicit));
     }
     const path = resolve(explicit);
-    terminalStdout.info(`[image] tar: ${path}（--tar）\n`);
+    useLogger("image").info(`tar: ${path}（--tar）`);
     return path;
   }
 
@@ -127,9 +128,7 @@ export async function resolveImageArchive(
     throw new Error(imageTarMissingMessage());
   }
   if (candidates.length === 1) {
-    terminalStdout.info(
-      `[image] tar: ${candidates[0]!.path}（当前目录唯一候选，自动选择）\n`,
-    );
+    useLogger("image").info(`tar: ${candidates[0]!.path}（当前目录唯一候选，自动选择）`);
     return candidates[0]!.path;
   }
   const interactive = isInteractive(options.interactive);
@@ -138,7 +137,7 @@ export async function resolveImageArchive(
   }
   const selected = await (options.select ?? selectImageArchive)(candidates);
   if (!selected) return undefined;
-  terminalStdout.info(`[image] tar: ${selected.path}（交互选择）\n`);
+  useLogger("image").info(`tar: ${selected.path}（交互选择）`);
   return selected.path;
 }
 
@@ -162,9 +161,7 @@ export async function resolveImageArchives(
       return image ? [image.path] : [];
     });
     if (toolkitImages.length > 0) {
-      terminalStdout.info(
-        `[image] 使用 Doctor Toolkit 中的 debug image：${toolkitImages.join("、")}\n`,
-      );
+      useLogger("image").info(`使用 Doctor Toolkit 中的 debug image：${toolkitImages.join("、")}`);
       return toolkitImages;
     }
     const selected = await resolveImageArchive(undefined, options);
@@ -179,13 +176,13 @@ export async function resolveImageArchives(
         platform.images.map((resource) => materializeToolkitResource(toolkit, resource)));
       if (images.length === 0) throw new Error(`Doctor Toolkit 不包含 image：${path}`);
       paths.push(...images);
-      terminalStdout.info(`[image] Toolkit: ${path}（--tar，${images.length} 个 image）\n`);
+      useLogger("image").info(`Toolkit: ${path}（--tar，${images.length} 个 image）`);
     } catch (error) {
       if (basename(path).startsWith("doctor-toolkit-") || /Doctor Toolkit 不包含 image/.test(String(error))) {
         throw error;
       }
       paths.push(path);
-      terminalStdout.info(`[image] tar: ${path}（--tar）\n`);
+      useLogger("image").info(`tar: ${path}（--tar）`);
     }
   }
   return [...new Set(paths)];
@@ -223,13 +220,11 @@ export async function resolveSourceImage(
     if (!archive.images.includes(explicit)) {
       throw new Error(`--source-image 不在 tar 的 image 列表中：${explicit}`);
     }
-    terminalStdout.info(`[image] source: ${explicit}（--source-image）\n`);
+    useLogger("image").info(`source: ${explicit}（--source-image）`);
     return explicit;
   }
   if (archive.images.length === 1) {
-    terminalStdout.info(
-      `[image] source: ${archive.images[0]}（tar 元数据）\n`,
-    );
+    useLogger("image").info(`source: ${archive.images[0]}（tar 元数据）`);
     return archive.images[0];
   }
   const interactive = isInteractive(options.interactive);
@@ -302,10 +297,8 @@ export function findPlatformCompanion(
     }
   }
   if (candidates.length !== 1) return undefined;
-  terminalStdout.info(
-    `[image] 配对 tar: ${candidates[0]!.archive}`
+  useLogger("image").info(`配对 tar: ${candidates[0]!.archive}`
     + `（${candidates[0]!.platform?.os}/`
-    + `${candidates[0]!.platform?.architecture}）\n`,
-  );
+    + `${candidates[0]!.platform?.architecture}）`);
   return candidates[0];
 }

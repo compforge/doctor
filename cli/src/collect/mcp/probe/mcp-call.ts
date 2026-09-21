@@ -1,6 +1,7 @@
 import type { Probe } from "../../protocol";
 import { serializeMcpTranscript } from "../../../infra/mcp";
-import { terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import type {
   McpCallObservation,
   McpCommandContext,
@@ -35,7 +36,7 @@ export const mcpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, M
       return [];
     }
 
-    terminalStdout.write(`[mcp] 执行 MCP tools/call: ${facts.configuration.target.tool.name}…\n`);
+    useLogger("mcp").info(`执行 MCP tools/call: ${facts.configuration.target.tool.name}…`);
     const rawCapture = await ctx.client.callTool(facts.configuration.target.tool.name, config.args);
     const capture = {
       ...rawCapture,

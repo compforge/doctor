@@ -1,6 +1,7 @@
 import { infra } from "../../infra";
 import type { DebugCapability, DebugGdbFact } from "../../infra/target/debug";
-import { terminalStdout } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
+import { useLogger } from "../../terminal/log";
 import { formatExistingDebugContainers } from "./inspect";
 import type { DebugTarget } from "./model";
 
@@ -14,18 +15,16 @@ async function ensureGdb(
     container,
   );
   if (gdb.available && gdb.inferiorCall) {
-    terminalStdout.success("[debug] gdb: ready（inferior call 验收通过）\n");
+    useLogger("debug").success("gdb: ready（inferior call 验收通过）");
     return gdb;
   }
   if (gdb.available) {
-    terminalStdout.warning(`[debug] gdb: ${gdb.reason}\n`);
+    useLogger("debug").warn(`gdb: ${gdb.reason}`);
     return gdb;
   }
 
-  terminalStdout.warning(
-    `[debug] gdb: 未找到；如需补齐，请执行 doctor install -n ${target.namespace}`
-    + ` -p ${target.pod} -c ${container}\n`,
-  );
+  useLogger("debug").warn(`gdb: 未找到；如需补齐，请执行 doctor install -n ${target.namespace}`
+    + ` -p ${target.pod} -c ${container}`);
   return gdb;
 }
 
@@ -34,10 +33,8 @@ export async function reportDebugCapabilities(
   container: string,
   capabilities: readonly DebugCapability[],
 ): Promise<void> {
-  terminalStdout.success(
-    `[debug] container ready: ${target.pod}/${container}`
-    + `（PID namespace=${target.container}，capabilities=${capabilities.join(",")}）\n`,
-  );
+  useLogger("debug").success(`container ready: ${target.pod}/${container}`
+    + `（PID namespace=${target.container}，capabilities=${capabilities.join(",")}）`);
   if (capabilities.includes("SYS_PTRACE")) await ensureGdb(target, container);
   const manifest = await infra.target.debugEngine.inspectReadiness(
     target.executor,
@@ -45,7 +42,7 @@ export async function reportDebugCapabilities(
     container,
   );
   if (manifest.ok) {
-    terminalStdout.write(`[debug] tools: doctor-debug image manifest ready\n${manifest.stdout}`);
+    writeOutput(`[debug] tools: doctor-debug image manifest ready\n${manifest.stdout}`);
   }
 }
 
@@ -63,13 +60,11 @@ export async function reuseReadyDebugEnvironment(
     facts,
     resolved.ok ? resolved.value.executionContainer : undefined,
   );
-  if (existing) terminalStdout.info(existing);
+  if (existing) useLogger().info(existing);
   if (!resolved.ok) return undefined;
 
-  terminalStdout.write(
-    `[debug] reuse ${target.pod}/${resolved.value.executionContainer}`
-    + ` (image=${resolved.value.image})\n`,
-  );
+  useLogger("debug").info(`reuse ${target.pod}/${resolved.value.executionContainer}`
+    + ` (image=${resolved.value.image})`);
   await reportDebugCapabilities(
     target,
     resolved.value.executionContainer,

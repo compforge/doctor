@@ -1,3 +1,4 @@
+import { writeOutput } from "../terminal/output";
 import { createCaseRunner } from "../case/extensions";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
@@ -32,7 +33,8 @@ import {
 } from "../command/kubernetes-target";
 import { openPluginContext, createHostPluginContext } from "../plugin/context";
 import { resolveApprovalGate } from "../terminal/approval";
-import { terminalStderr, terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { promptListedChoice } from "../terminal/selection";
 import {
   PERF_MAX_CONCURRENCY_OPTIONS,
@@ -278,9 +280,7 @@ export async function runPerf(
   }));
 
   if (!opts.levels?.trim() && isInteractive()) {
-    terminalStdout.info(
-      `[perf] 可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）\n`,
-    );
+    writeOutput(`可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）` + "\n");
     const maxConcurrency = await promptListedChoice({
       question: "请选择最高并发（输入并发值，直接回车使用 20，q 取消）：",
       match: (answer) => {
@@ -324,13 +324,11 @@ export async function runPerf(
         configured: { tenantId, userId }, directory, commandLabel: "Perf", logPrefix: "perf",
       });
       if (!requestIdentity) {
-        terminalStderr.warning("[perf] 已取消身份选择\n");
+        useLogger("perf").warn("已取消身份选择");
         return { status: CommandStatus.Cancelled, artifacts: [] };
       }
     }
-    terminalStdout.write(
-      `[perf] identity: tenant=${requestIdentity.tenantId} user=${requestIdentity.userId}\n`,
-    );
+    useLogger("perf").info(`identity: tenant=${requestIdentity.tenantId} user=${requestIdentity.userId}`);
   }
 
   const decision = await resolveApprovalGate(opts)({
@@ -348,7 +346,7 @@ export async function runPerf(
     ],
   });
   if (!decision.approved) {
-    terminalStderr.warning(`[perf] ${approvalDeniedReason(decision.source)}\n`);
+    useLogger("perf").warn(`${approvalDeniedReason(decision.source)}`);
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
@@ -425,7 +423,7 @@ export async function runPerf(
   let metric: CommandResult<void>;
   try {
     await metricReady;
-    terminalStdout.write(`[perf] metric window ready; starting ${config.levels.join(" → ")} concurrency\n`);
+    useLogger("perf").info(`metric window ready; starting ${config.levels.join(" → ")} concurrency`);
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
@@ -444,9 +442,7 @@ export async function runPerf(
       })),
       signal: commandContext.signal,
       onTrialStart: (context) => {
-        terminalStdout.write(
-          `[perf] trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseSet, caseMix)}`,
-        );
+        useLogger("perf").info(`trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseSet, caseMix)}`);
       },
     }).run();
   } catch (error) {

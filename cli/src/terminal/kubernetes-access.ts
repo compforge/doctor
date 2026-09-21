@@ -8,7 +8,8 @@ import {
 } from "../infra/k8s/access";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../command";
-import { terminalStdout } from "./output";
+
+import { useLogger } from "./log";
 
 export async function requireKubernetesChannel(input: {
   executor: Executor;
@@ -17,15 +18,13 @@ export async function requireKubernetesChannel(input: {
   namespace?: string;
   commandContext?: CommandContext;
 }): Promise<void> {
-  terminalStdout.write(
-    `[k8s] Doctor Host -> Kubernetes: profile=${input.profileName}，`
+  useLogger("k8s").info(`Doctor Host -> Kubernetes: profile=${input.profileName}，`
     + `kubeconfig=${input.kubeconfigSource}`
-    + `${input.namespace ? `，namespace=${input.namespace}` : ""}\n`,
-  );
+    + `${input.namespace ? `，namespace=${input.namespace}` : ""}`);
   const fact = input.commandContext?.inspection.kubernetes?.channel
     ?? await inspectKubernetesChannel(input.executor);
   if (!fact.available) throw new Error(fact.reason ?? "Kubernetes 通道不可用");
-  terminalStdout.success("[k8s] Kubernetes API Server 可达\n");
+  useLogger("k8s").success("Kubernetes API Server 可达");
 }
 
 const reportedAccess = new WeakMap<KubernetesAccessContext, Set<string>>();
@@ -44,19 +43,15 @@ export async function enforceKubernetesAccess(
       const key = JSON.stringify([contract.namespace, fact.need.rule, fact.need.requirement]);
       if (reported.has(key)) continue;
       reported.add(key);
-      terminalStdout.success(
-        `[k8s] ${fact.need.requirement}: ${label} ✓（${fact.need.purpose}${scope}）\n`,
-      );
+      useLogger("k8s").success(`${fact.need.requirement}: ${label} ✓（${fact.need.purpose}${scope}）`);
       continue;
     }
     const fallback = fact.status === "denied" && fact.need.fallback ? `；${fact.need.fallback}` : "";
     const next = fact.status === "unknown"
       ? `；预检原因：${kubernetesResultDetail(fact.result)}；继续尝试实际操作`
       : fallback;
-    terminalStdout.warning(
-      `[k8s] ${fact.need.requirement}: ${label} ${fact.status}`
-      + `（${fact.need.purpose}${scope}）${next}\n`,
-    );
+    useLogger("k8s").warn(`${fact.need.requirement}: ${label} ${fact.status}`
+      + `（${fact.need.purpose}${scope}）${next}`);
   }
   if (!evaluation.runnable) {
     const missing = evaluation.facts

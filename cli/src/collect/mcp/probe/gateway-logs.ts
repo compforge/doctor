@@ -1,6 +1,7 @@
 import type { Probe } from "../../protocol";
 import { probeUnavailable } from "../../protocol";
-import { terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import { collectGatewayLogs } from "../http";
 import type {
   GatewayLogsObservation,
@@ -20,7 +21,7 @@ export const gatewayLogsProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfi
     ctx.bundle.fill("gateway-logs", { status: "unavailable", reason });
   },
   async run(ctx, facts) {
-    terminalStdout.write("[mcp] 收集本次窗口 MCP Service 日志…\n");
+    useLogger("mcp").info("收集本次窗口 MCP Service 日志…");
     const logs = await collectGatewayLogs(
       ctx.podLogs,
       facts.configuration.gatewayPods,

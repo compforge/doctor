@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
-import { terminalStderr } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { escapeHtml, type HtmlReportOptions } from "../output/html";
@@ -74,7 +75,7 @@ export async function writeStoreArtifacts(input: {
     }), { mode: 0o600 });
     return { ok: true, path: input.staging, label: "Store 诊断产物" };
   } catch (error) {
-    terminalStderr.error(`[collect] Store 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`Store 产物生成失败：${error instanceof Error ? error.message : String(error)}`);
     return { ok: false, path: input.outputPath, label: "Store 产物" };
   }
 }
@@ -123,7 +124,7 @@ export async function finishStoreBundle(input: {
     htmlReport: input.htmlReport,
   });
   if (!artifact.ok) {
-    terminalStderr.error(`[collect] 交付失败，证据保留在目录: ${state.staging}\n`);
+    useLogger("collect").error(`交付失败，证据保留在目录: ${state.staging}`);
     return 1;
   }
   return input.code;

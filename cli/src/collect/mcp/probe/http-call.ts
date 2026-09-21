@@ -1,5 +1,6 @@
 import { probeUnavailable, type Probe } from "../../protocol";
-import { terminalStdout } from "../../../terminal/output";
+
+import { useLogger } from "../../../terminal/log";
 import { executeHttpFromGatewayPod } from "../http";
 import type {
   HttpCallObservation,
@@ -48,7 +49,7 @@ export const httpCallProbe: Probe<McpObservation, McpFacts, McpDiagnosisConfig, 
       return [];
     }
 
-    terminalStdout.write(`[mcp] 在 ${pod} 内执行直接 HTTP…\n`);
+    useLogger("mcp").info(`在 ${pod} 内执行直接 HTTP…`);
     const capture = await executeHttpFromGatewayPod(ctx.executor, pod, plan, config.timeoutMs);
     const responseFile = ctx.writeArtifact("http-response.txt", capture.rawResponse);
     const stderrFile = capture.stderr

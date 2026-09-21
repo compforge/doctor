@@ -1,4 +1,6 @@
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { matchListedChoice, promptListedChoice } from "../terminal/selection";
 import type { InspectionMode } from "./inspection";
 
@@ -14,9 +16,9 @@ export const MODE_CHOICES: readonly ModeChoice[] = [
 ];
 
 export function printModeChoices(): void {
-  terminalStdout.info("[collect] 请选择本次影响等级：\n");
+  writeOutput("请选择本次影响等级：" + "\n");
   MODE_CHOICES.forEach((choice, index) => {
-    terminalStdout.write(`  ${index + 1}) ${choice.mode}  ${choice.description}\n`);
+    writeOutput(`  ${index + 1}) ${choice.mode}  ${choice.description}` + "\n");
   });
 }
 

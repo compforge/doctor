@@ -9,7 +9,8 @@ import {
 import { infra } from "../../infra";
 import type { ImagePlatform } from "../../infra/image";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { inspectTargetImagePlatform, reportTargetPlatform } from "./inspect";
 import type {
   BatchDebugImageResolution,
@@ -61,11 +62,9 @@ async function discoverDebugImageRepositories(target: DebugTarget): Promise<stri
       )
     );
   } catch (error) {
-    terminalStdout.warning(
-      "[debug] 当前 Kubernetes namespace 的 image repository 发现失败："
+    useLogger("debug").warn("当前 Kubernetes namespace 的 image repository 发现失败："
       + `${error instanceof Error ? error.message : String(error)}；`
-      + "回退目标业务镜像路径。\n",
-    );
+      + "回退目标业务镜像路径。");
     return [];
   }
 }
@@ -78,14 +77,10 @@ async function prepareTargetImage(
 ): Promise<PreparedDebugImage> {
   if (!platformReported) reportTargetPlatform(target, platformSource);
   if (fallbackReason) {
-    terminalStdout.warning(
-      `[debug] doctor debug image 不可用：${fallbackReason}\n`
-      + `[debug] 回退目标业务镜像 ${target.containerImage}，只保证基础 ptrace container\n`,
-    );
+    useLogger("debug").warn(`doctor debug image 不可用：${fallbackReason}\n`
+      + `[debug] 回退目标业务镜像 ${target.containerImage}，只保证基础 ptrace container`);
   } else {
-    terminalStdout.write(
-      `[debug] 复用目标业务镜像 ${target.containerImage}，只保证基础 ptrace container\n`,
-    );
+    useLogger("debug").info(`复用目标业务镜像 ${target.containerImage}，只保证基础 ptrace container`);
   }
   const bootstrap = await infra.target.debugEngine.resolveTargetImageKeepalive(
     target.executor,
@@ -93,15 +88,11 @@ async function prepareTargetImage(
     target.container,
   );
   if (!bootstrap) {
-    terminalStderr.error(
-      "[debug] 目标业务镜像中未找到安全常驻命令（需要 sleep 或 python3）；"
-      + "为避免启动第二份业务进程，未创建临时容器\n",
-    );
+    useLogger("debug").error("目标业务镜像中未找到安全常驻命令（需要 sleep 或 python3）；"
+      + "为避免启动第二份业务进程，未创建临时容器");
     return { code: 1 };
   }
-  terminalStdout.write(
-    `[debug] target-image keepalive: ${bootstrap.description}；不会运行业务 ENTRYPOINT/CMD\n`,
-  );
+  useLogger("debug").info(`target-image keepalive: ${bootstrap.description}；不会运行业务 ENTRYPOINT/CMD`);
   return {
     code: 0,
     source: "target-image",
@@ -159,7 +150,7 @@ export async function prepareDebugImage(
     }
   }
   if (!platformReported) reportTargetPlatform(target, platformSource);
-  terminalStdout.write(`[debug] image: ${debugImageDescription(resolvedImage)}\n`);
+  useLogger("debug").info(`image: ${debugImageDescription(resolvedImage)}`);
 
   let deployImage = image;
   if (access.state === "missing" && target.imagePlatform) {

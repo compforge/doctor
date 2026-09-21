@@ -1,6 +1,7 @@
 import { mcpConfigurationOutput } from "@compforge/doctor-plugin";
 import { invokeExtension } from "../../plugin/extension";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { McpClient as RuntimeMcpClient, serializeMcpTranscript, type McpClient } from "../../infra/mcp";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import type {
@@ -86,10 +87,8 @@ export async function resolveMcpConfiguration(
     writeArtifact,
   } = input;
 
-  terminalStdout.write(
-    `[mcp] namespace: ${namespace}\n`
-    + `[mcp] 通过 ${gatewayService} Extension 加载 MCP 配置…\n`,
-  );
+  useLogger("mcp").info(`namespace: ${namespace}\n`
+    + `[mcp] 通过 ${gatewayService} Extension 加载 MCP 配置…`);
   const configStartedAt = Date.now();
   let projection: McpConfigurationProjection;
   try {
@@ -165,7 +164,7 @@ export async function resolveMcpConfiguration(
       headers: { traceparent },
       timeoutMs,
     });
-    terminalStdout.write("[mcp] 建立 SSE session 并执行 tools/list…\n");
+    useLogger("mcp").info("建立 SSE session 并执行 tools/list…");
     const toolsResult = await listRuntimeTools(client);
     if (toolsResult.ok) {
       runtimeTools = toolsResult.names;

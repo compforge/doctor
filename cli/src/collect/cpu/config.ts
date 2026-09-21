@@ -1,5 +1,6 @@
 import { isInteractive } from "../../terminal/policy";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   createKubernetesExecutor,
@@ -47,9 +48,7 @@ export async function resolveCpuConfig(
     commandContext,
   );
   if (!collect) return undefined;
-  terminalStdout.write(
-    `[collect] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("collect").info(`namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）`);
   const executor = createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(access, {

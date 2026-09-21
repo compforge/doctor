@@ -1,5 +1,6 @@
 import type { ManagedPluginContext } from "../plugin/context";
-import { terminalStderr } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 
 /**
  * @spec Context lifetime ends with the body, not with response headers.
@@ -20,7 +21,7 @@ export function scopedModelStream(body: ReadableStream<Uint8Array>, context: Man
     terminal = true;
     output.error(signal.reason);
     void reader.cancel(signal.reason).finally(dispose).catch(error =>
-      terminalStderr.warning(`[model] ${service} stream cancellation cleanup failed: ${error instanceof Error ? error.message : String(error)}\n`));
+      useLogger("model").warn(`${service} stream cancellation cleanup failed: ${error instanceof Error ? error.message : String(error)}`));
   };
   return new ReadableStream<Uint8Array>({
     start(controller) {

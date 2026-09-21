@@ -1,3 +1,4 @@
+import { writeOutput } from "../../terminal/output";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -23,7 +24,8 @@ import {
   type LocalContainerEngine,
 } from "../../infra/host/container-engine";
 import { spawnProcess } from "@compforge/harness-toolbox/process/index";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import {
   htmlHeading,
   htmlPieChartSection,
@@ -135,9 +137,7 @@ async function resolvePydumpAnalyzerBackend(): Promise<PydumpAnalyzerBackend> {
       return undefined;
     },
     process: async () => {
-      terminalStdout.write(
-        `[collect] Doctor Host container 不可用（${containerReason}），回退本机进程…\n`,
-      );
+      useLogger("collect").info(`Doctor Host container 不可用（${containerReason}），回退本机进程…`);
       let analyzer: string;
       try {
         analyzer = resolveHostPydumpAnalyzer();
@@ -158,9 +158,7 @@ async function resolvePydumpAnalyzerBackend(): Promise<PydumpAnalyzerBackend> {
     },
   });
   if (execution.kind === "host-container") {
-    terminalStdout.write(
-      `[collect] 使用本地 ${execution.engine.name} image 分析：${execution.value.image}\n`,
-    );
+    useLogger("collect").info(`使用本地 ${execution.engine.name} image 分析：${execution.value.image}`);
     return {
       kind: "container",
       engine: execution.engine,
@@ -239,15 +237,13 @@ async function resolveHeapAnalysis(
       if (cached.source.size_bytes === heapBytes && cached.source.sha256 === heapSha256) {
         return { inputPath, heapPath: inputPath, analysisPath, analysis: cached, reused: true };
       }
-      terminalStdout.write(`[collect] 已有 JSON 与 heap 不匹配，将重新解析：${analysisPath}\n`);
+      useLogger("collect").info(`已有 JSON 与 heap 不匹配，将重新解析：${analysisPath}`);
     } catch {
-      terminalStdout.write(`[collect] 已有 JSON 无效，将重新解析：${analysisPath}\n`);
+      useLogger("collect").info(`已有 JSON 无效，将重新解析：${analysisPath}`);
     }
   }
 
-  terminalStdout.write(
-    `[collect] 正在解析 ${basename(inputPath)}；retained-heap 可能占用较多本机内存…\n`,
-  );
+  useLogger("collect").info(`正在解析 ${basename(inputPath)}；retained-heap 可能占用较多本机内存…`);
   await analyzer.run(inputPath, analysisPath);
   const analysis = readPydumpAnalysis(analysisPath);
   if (analysis.source.size_bytes !== heapBytes || analysis.source.sha256 !== heapSha256) {
@@ -419,21 +415,19 @@ export async function runMemoryAnalysis(
       if (seen.has(item.analysis.source.sha256)) continue;
       seen.add(item.analysis.source.sha256);
       resolved.push(item);
-      terminalStdout.write(
-        `[collect] ${item.reused ? "复用" : "生成"}分析 JSON：${item.analysisPath}\n`,
-      );
+      useLogger("collect").info(`${item.reused ? "复用" : "生成"}分析 JSON：${item.analysisPath}`);
     }
     resolved.sort((left, right) =>
       left.analysis.source.created_at.localeCompare(right.analysis.source.created_at));
     const outputPath = reportPath(opts.output, defaultReportPath(resolved, new Date()));
     writeAnalysisReport(resolved, outputPath, commandContext.profile.name);
-    terminalStdout.success(`[collect] Memory 分析报告：${outputPath}\n`);
+    writeOutput(`[collect] Memory 分析报告：${outputPath}\n`);
     if (resolved.length > 1) {
-      terminalStdout.write(`[collect] 已对比 ${resolved.length} 份 heap 的 type 对象数与 shallow size 变化\n`);
+      useLogger("collect").info(`已对比 ${resolved.length} 份 heap 的 type 对象数与 shallow size 变化`);
     }
     return 0;
   } catch (error) {
-    terminalStderr.error(`[collect] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 }
