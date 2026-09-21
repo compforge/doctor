@@ -6,6 +6,7 @@ import { aggregateCommandStatus, CommandStatus, type CommandContext, type Comman
 import type { StepRecord } from "../evidence";
 import type { TraceOutput } from "./index";
 import { readTraceSnapshot, TRACE_FILES, writeTraceJson, type TraceSnapshot } from "./snapshot";
+import { decodeSpanPayloads } from "./decode";
 
 interface TraceManifest {
   source?: unknown;
@@ -28,6 +29,25 @@ function readManifest(path: string): TraceManifest {
   return JSON.parse(readFileSync(path, "utf8")) as TraceManifest;
 }
 
+/** Resolve --from to a manifest path: a directory is completed to <dir>/manifest.json. */
+function resolveManifestPath(from: string): string {
+  const resolved = resolve(from);
+  let stat;
+  try {
+    stat = lstatSync(resolved);
+  } catch {
+    throw new Error(`--from 路径不存在：${resolved}`);
+  }
+  if (!stat.isDirectory()) return resolved;
+  const candidate = join(resolved, "manifest.json");
+  try {
+    if (lstatSync(candidate).isFile()) return candidate;
+  } catch { /* fall through to the friendly error below */ }
+  throw new Error(
+    `--from 指向目录但未找到 ${candidate}；请传 bundle 目录（含 manifest.json）或 manifest.json 的完整路径`,
+  );
+}
+
 /** Portable bundles resolve relative to their actual location, never a stale bundle_root in JSON. */
 function containedPath(root: string, path: string): string {
   if (isAbsolute(path)) throw new Error(`证据路径必须是相对路径：${path}`);
@@ -40,7 +60,7 @@ function containedPath(root: string, path: string): string {
 }
 
 function localTraces(from: string): { traces: LocalTrace[]; sourceStatus?: CommandStatus; source?: unknown } {
-  const path = realpathSync(resolve(from));
+  const path = realpathSync(resolveManifestPath(from));
   const root = dirname(path);
   const source = readManifest(path);
   const paths: string[] = [];
@@ -101,7 +121,10 @@ async function selection(trace: LocalTrace, input: { span?: string; node?: strin
     schema_version: 1, kind: "doctor.trace.selection", trace_id: snapshot.trace_id,
     collection: snapshot.collection, node_id: input.node, span_id: input.span, node,
     findings: node ? findings[node.node_id] ?? [] : undefined,
-    spans: [...ids].map(id => ({ ...snapshot.spans.find(span => span.span_id === id), raw: records.get(id) })),
+    // Decode [trace zstd …] offload markers in the raw span so the caller sees the
+    // original tool/model payload, not the compressed marker. ref/omitted markers pass
+    // through (ref targets live in other spans of the same run; omitted is lossy).
+    spans: [...ids].map(id => ({ ...snapshot.spans.find(span => span.span_id === id), raw: records.has(id) ? decodeSpanPayloads(records.get(id)!) : records.get(id) })),
   };
 }
 
