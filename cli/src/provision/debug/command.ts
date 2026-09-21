@@ -18,7 +18,8 @@ import {
 import type { CommandContext } from "../../command";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { promptMultiSelect } from "../../terminal/multi-select";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { deployDebugEnvironment } from "./apply";
 import {
   inspectTargetImagePlatform,
@@ -63,11 +64,8 @@ async function runDebugTargets(
     if (code === 130) return 130;
     if (code !== 0) failed = true;
   }
-  terminalStdout.result(
-    !failed,
-    `[debug] debug container 准备完成：${targets.size} Pod，`
-    + `${failed ? "存在失败" : "全部就绪"}\n`,
-  );
+  useLogger("debug")[!failed ? "success" : "error"](`debug container 准备完成：${targets.size} Pod，`
+    + `${failed ? "存在失败" : "全部就绪"}`);
   return failed ? 1 : 0;
 }
 
@@ -113,12 +111,12 @@ async function runDebugServices(
     if (!network.services.some((item) =>
       item.name === service && item.namespace === config.kubernetes.namespace
     )) {
-      terminalStderr.error(`[debug] Service '${service}' 不存在\n`);
+      useLogger("debug").error(`Service '${service}' 不存在`);
       failed = true;
       continue;
     }
     if (!pods.length) {
-      terminalStderr.error(`[debug] Service '${service}' 没有 Running Pod\n`);
+      useLogger("debug").error(`Service '${service}' 没有 Running Pod`);
       failed = true;
     }
     for (const pod of pods) {
@@ -128,9 +126,7 @@ async function runDebugServices(
         { timeoutMs: 20_000 },
       );
       if (!captured.ok) {
-        terminalStderr.error(
-          `[debug] 获取 pod/${pod.name} 失败：${failReason(captured)}\n`,
-        );
+        useLogger("debug").error(`获取 pod/${pod.name} 失败：${failReason(captured)}`);
         failed = true;
         continue;
       }
@@ -141,16 +137,14 @@ async function runDebugServices(
           ? { ok: true as const, value: parsed.containers[0] }
           : { ok: false as const, reason: `pod/${pod.name} 没有业务容器` };
       if (!selected.ok) {
-        terminalStderr.error(`[debug] ${selected.reason}\n`);
+        useLogger("debug").error(`${selected.reason}`);
         failed = true;
         continue;
       }
       if (!opts.container && parsed.containers.length > 1) {
-        terminalStdout.warning(
-          `[debug] pod/${pod.name} 有多个业务容器；批量准备选择首个 `
+        useLogger("debug").warn(`pod/${pod.name} 有多个业务容器；批量准备选择首个 `
           + `${selected.value.name} 作为 PID namespace 目标`
-          + "（网络 namespace 为 Pod 共享）\n",
-        );
+          + "（网络 namespace 为 Pod 共享）");
       }
       targets.set(pod.name, selected.value.name);
     }
@@ -220,10 +214,10 @@ async function runDebugPods(
     opts.container?.trim(),
   );
   for (const warning of resolved.warnings) {
-    terminalStdout.warning(`[debug] ${warning}\n`);
+    useLogger("debug").warn(`${warning}`);
   }
   for (const error of resolved.errors) {
-    terminalStderr.error(`[debug] ${error}\n`);
+    useLogger("debug").error(`${error}`);
   }
   if (!resolved.targets.size) return 1;
   for (const [pod, container] of resolved.targets) {
@@ -294,9 +288,7 @@ async function runDebugTarget(
   }
   if (!resolved.prepared.image) return resolved.prepared.code;
   if (resolved.reused) {
-    terminalStdout.write(
-      `[debug] image: ${resolved.prepared.image}（同平台已验证，批量复用）\n`,
-    );
+    useLogger("debug").info(`image: ${resolved.prepared.image}（同平台已验证，批量复用）`);
   }
   const deployed = await deployDebugEnvironment(
     target,

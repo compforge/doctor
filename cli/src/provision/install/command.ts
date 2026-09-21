@@ -1,3 +1,4 @@
+import { writeOutput } from "../../terminal/output";
 import { isInteractive } from "../../terminal/policy";
 import {
   createKubernetesExecutor,
@@ -13,7 +14,8 @@ import {
 import { approvalDeniedReason } from "../../command/approval";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { CommandContext } from "../../command";
 import {
   applyBundleInstall,
@@ -100,17 +102,13 @@ export async function runInstall(
 
   const inspectedTarget = await inspectInstallTarget(executor, selected.pod, selected.container);
   if (!inspectedTarget) {
-    terminalStderr.error(
-      `[install] pod/${selected.pod} container/${selected.container} 中未发现`
-      + " apt-get、apk、dnf、microdnf 或 yum\n",
-    );
+    useLogger("install").error(`pod/${selected.pod} container/${selected.container} 中未发现`
+      + " apt-get、apk、dnf、microdnf 或 yum");
     return 1;
   }
   let target = inspectedTarget;
-  terminalStdout.write(
-    `[install] target: pod/${selected.pod} container/${selected.container}`
-    + `（${targetDescription(target)}）\n`,
-  );
+  useLogger("install").info(`target: pod/${selected.pod} container/${selected.container}`
+    + `（${targetDescription(target)}）`);
 
   const existingGdb = await verifyGdbCapability(executor, selected.pod, selected.container);
   let finalGdb = existingGdb;
@@ -140,22 +138,18 @@ export async function runInstall(
       result: { status, stage, reason },
     };
     const path = writeInstallCompatibilityReport(opts, report);
-    if (path) terminalStdout.info(`[install] GDB 兼容性报告：${path}\n`);
+    if (path) writeOutput(`GDB 兼容性报告：${path}` + "\n");
     return code;
   };
   if (gdbReady(existingGdb)) {
-    terminalStdout.success(
-      `[install] GDB ${existingGdb.version ?? "version unknown"} ready`
-      + "（inferior call 验收通过）\n",
-    );
+    useLogger("install").success(`GDB ${existingGdb.version ?? "version unknown"} ready`
+      + "（inferior call 验收通过）");
     return finish(0, "ready", "preflight", "现有 GDB 已满足 inferior call 能力契约");
   }
   if (existingGdb.available) {
-    terminalStdout.warning(
-      `[install] 已有 GDB ${existingGdb.version ?? ""}，但 `
+    useLogger("install").warn(`已有 GDB ${existingGdb.version ?? ""}，但 `
       + `${existingGdb.reason ?? "inferior call 能力验收未通过"}；`
-      + `尝试通过 ${target.manager.kind} 补齐\n`,
-    );
+      + `尝试通过 ${target.manager.kind} 补齐`);
   }
 
   let bundle;
@@ -176,14 +170,12 @@ export async function runInstall(
     selectedBundle = bundle;
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    terminalStderr.error(`[install] ${reason}\n`);
+    useLogger("install").error(`${reason}`);
     return finish(1, "failed", "bundle-selection", reason);
   }
   if (bundle) {
-    terminalStdout.write(
-      `[install] Target kernel ${target.kernelVersion ?? "unknown"} 匹配离线包：`
-      + `${bundleDescription(bundle)}\n`,
-    );
+    useLogger("install").info(`Target kernel ${target.kernelVersion ?? "unknown"} 匹配离线包：`
+      + `${bundleDescription(bundle)}`);
   }
   const plan = buildInstallPlan({
     target,
@@ -192,15 +184,13 @@ export async function runInstall(
     bundle,
   });
   if (plan.kind === "unsupported") {
-    terminalStderr.error(`[install] ${plan.reason}\n`);
+    useLogger("install").error(`${plan.reason}`);
     return finish(1, "failed", "plan", plan.reason);
   }
   if (plan.kind === "online") {
-    terminalStdout.write(
-      "[install] Target 将执行在线安装命令：\n"
+    useLogger("install").info("Target 将执行在线安装命令：\n"
       + plan.commands.map((command) => `  $ ${command.join(" ")}`).join("\n")
-      + "\n",
-    );
+      + "");
   }
 
   const decision = await resolveApprovalGate(opts)({
@@ -217,7 +207,7 @@ export async function runInstall(
     ],
   });
   if (!decision.approved) {
-    terminalStderr.error(`[install] ${approvalDeniedReason(decision.source)}\n`);
+    useLogger("install").error(`${approvalDeniedReason(decision.source)}`);
     return finish(130, "cancelled", "approval", "用户未批准安装");
   }
 
@@ -246,10 +236,8 @@ export async function runInstall(
     }
     for (const alternative of compatibleBundles) {
       if (installed || attemptedBundles.has(bundleKey(alternative))) continue;
-      terminalStdout.warning(
-        `[install] ${bundleDescription(selectedBundle ?? alternative)} 安装失败；`
-        + `继续尝试 ${bundleDescription(alternative)}\n`,
-      );
+      useLogger("install").warn(`${bundleDescription(selectedBundle ?? alternative)} 安装失败；`
+        + `继续尝试 ${bundleDescription(alternative)}`);
       attemptedBundles.add(bundleKey(alternative));
       installed = await applyBundleInstall({
         ...context,
@@ -263,11 +251,9 @@ export async function runInstall(
   }
   if (!installed) {
     if (compatibleBundles.length === 0) {
-      terminalStderr.error(
-        target.manager.kind !== "apt-get"
+      useLogger().error(target.manager.kind !== "apt-get"
           ? `[install] ${target.manager.kind} 离线包安装尚未支持；在线安装已经失败\n`
-          : `[install] ${packageBundleMissingMessage(target)}\n`,
-      );
+          : `[install] ${packageBundleMissingMessage(target)}`);
     }
     return finish(1, "failed", "package-install", "所有 GDB 安装候选均失败");
   }
@@ -280,7 +266,7 @@ export async function runInstall(
     packages,
   );
   if (!verified) {
-    terminalStderr.error("[install] 安装命令已完成，但包数据库未确认 GDB 已安装\n");
+    useLogger("install").error("安装命令已完成，但包数据库未确认 GDB 已安装");
     return finish(1, "failed", "package-verification", "包数据库未确认 GDB 已安装");
   }
 
@@ -288,11 +274,9 @@ export async function runInstall(
   finalGdb = gdb;
   if (installedFromBundle && selectedBundle) attemptedBundles.add(bundleKey(selectedBundle));
   if (!gdbReady(gdb) && fallbackBundle && !installedFromBundle) {
-    terminalStdout.warning(
-      `[install] 在线 GDB ${gdb.version ?? ""} 与 Target kernel `
+    useLogger("install").warn(`在线 GDB ${gdb.version ?? ""} 与 Target kernel `
       + `${target.kernelVersion ?? "unknown"} 的 inferior call 验收失败；`
-      + `改用 ${bundleDescription(fallbackBundle)}\n`,
-    );
+      + `改用 ${bundleDescription(fallbackBundle)}`);
     installedFromBundle = await applyBundleInstall({
       ...context,
       target,
@@ -307,10 +291,8 @@ export async function runInstall(
   }
   for (const alternative of compatibleBundles) {
     if (gdbReady(gdb) || attemptedBundles.has(bundleKey(alternative))) continue;
-    terminalStdout.warning(
-      `[install] GDB ${gdb.version ?? ""} inferior call 验收失败；`
-      + `继续尝试 ${bundleDescription(alternative)}\n`,
-    );
+    useLogger("install").warn(`GDB ${gdb.version ?? ""} inferior call 验收失败；`
+      + `继续尝试 ${bundleDescription(alternative)}`);
     attemptedBundles.add(bundleKey(alternative));
     const alternativeInstalled = await applyBundleInstall({
       ...context,
@@ -324,12 +306,10 @@ export async function runInstall(
     finalGdb = gdb;
   }
   if (!gdbReady(gdb)) {
-    terminalStderr.error(
-      `[install] GDB ${gdb.version ?? ""} 已安装，但 inferior call 能力验收失败：`
-      + `${gdb.reason ?? "原因未知"}\n`,
-    );
+    useLogger("install").error(`GDB ${gdb.version ?? ""} 已安装，但 inferior call 能力验收失败：`
+      + `${gdb.reason ?? "原因未知"}`);
     if (!opts.tar && !bundle && target.manager.kind === "apt-get") {
-      terminalStderr.error(`[install] ${packageBundleMissingMessage(target)}\n`);
+      useLogger("install").error(`${packageBundleMissingMessage(target)}`);
     }
     return finish(
       1,
@@ -338,10 +318,8 @@ export async function runInstall(
       gdb.reason ?? "GDB 已安装，但 inferior call 能力验收失败",
     );
   }
-  terminalStdout.success(
-    `[install] 安装完成：pod/${selected.pod} container/${selected.container}：`
+  useLogger("install").success(`安装完成：pod/${selected.pod} container/${selected.container}：`
     + `GDB ${gdb.version ?? "version unknown"} ready`
-    + "（inferior call 验收通过）\n",
-  );
+    + "（inferior call 验收通过）");
   return finish(0, "ready", "gdb-capability", "GDB inferior call 验收通过");
 }

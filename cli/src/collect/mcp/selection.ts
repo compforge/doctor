@@ -1,5 +1,5 @@
 import { isInteractive } from "../../terminal/policy";
-import { terminalStdout } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
 import { prepareTerminalInput } from "../../terminal/input";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -37,11 +37,11 @@ export async function resolveToolArgs(opts: McpSelectionOptions, tool: McpToolDe
     return {};
   }
   if (!tool.args?.length) {
-    terminalStdout.write("[mcp] 该 tool 没有参数。\n");
+    writeOutput("[mcp] 该 tool 没有参数。\n");
     return {};
   }
 
-  terminalStdout.write(`[mcp] 逐项填写 ${tool.name} 的参数；optional/default 参数可直接回车：\n`);
+  writeOutput(`[mcp] 逐项填写 ${tool.name} 的参数；optional/default 参数可直接回车：\n`);
   prepareTerminalInput();
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   const values: Record<string, unknown> = {};
@@ -54,7 +54,7 @@ export async function resolveToolArgs(opts: McpSelectionOptions, tool: McpToolDe
           if (parsed.kind === "value") values[arg.name] = parsed.value;
           break;
         } catch (error) {
-          terminalStdout.write(`[mcp] ${error instanceof Error ? error.message : String(error)}，请重新输入。\n`);
+          writeOutput(`[mcp] ${error instanceof Error ? error.message : String(error)}，请重新输入。\n`);
         }
       }
     }

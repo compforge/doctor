@@ -1,7 +1,8 @@
 import { inspectRegistryAccess } from "../../app/registry-auth";
 import { infra } from "../../infra";
 import type { RegistryCredentials } from "../../infra/image";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type {
   ImageCliOpts,
   ImagePublishSource,
@@ -26,9 +27,7 @@ async function resolvePublishAccess(
   if (access.state === "ready" || access.state === "missing") {
     return access.credentials;
   }
-  terminalStderr.error(
-    `[image] registry access failed: ${access.state} (${targetImage})\n`,
-  );
+  useLogger("image").error(`registry access failed: ${access.state} (${targetImage})`);
   return false;
 }
 
@@ -45,7 +44,7 @@ function importImage(
   )) {
     return false;
   }
-  terminalStdout.success(`[image] published: ${targetImage}\n`);
+  useLogger("image").success(`published: ${targetImage}`);
   return true;
 }
 
@@ -88,14 +87,12 @@ export async function publishMultiArchitectureImage(
     source,
     targetImage: platformTargetImage(targetImage, source.platform),
   }));
-  terminalStdout.info("[image] Target Registry 将发布：\n");
+  useLogger("image").info("Target Registry 将发布：");
   for (const child of children) {
-    terminalStdout.write(
-      `  ${child.targetImage}`
-      + `（${child.source.platform.os}/${child.source.platform.architecture}）\n`,
-    );
+    useLogger().info(`  ${child.targetImage}`
+      + `（${child.source.platform.os}/${child.source.platform.architecture}）`);
   }
-  terminalStdout.write(`  ${targetImage}（multi-arch OCI index）\n`);
+  useLogger().info(`  ${targetImage}（multi-arch OCI index）`);
 
   for (const child of children) {
     if (!importImage(child.targetImage, child.source, credentials)) return 1;
@@ -103,9 +100,7 @@ export async function publishMultiArchitectureImage(
   const refs = children.map((child) => child.targetImage);
   if (!infra.image.createIndex(targetImage, refs, credentials)) return 1;
   if (!infra.image.verifyIndex(targetImage, credentials)) {
-    terminalStderr.error(
-      `[image] multi-arch index 验证失败：${targetImage}\n`,
-    );
+    useLogger("image").error(`multi-arch index 验证失败：${targetImage}`);
     return 1;
   }
   for (const source of complete) {
@@ -115,13 +110,11 @@ export async function publishMultiArchitectureImage(
       source.platform,
     );
     if (state !== "ready") {
-      terminalStderr.error(
-        `[image] multi-arch platform 验证失败：${targetImage}`
-        + ` (${source.platform.os}/${source.platform.architecture}, ${state})\n`,
-      );
+      useLogger("image").error(`multi-arch platform 验证失败：${targetImage}`
+        + ` (${source.platform.os}/${source.platform.architecture}, ${state})`);
       return 1;
     }
   }
-  terminalStdout.success(`[image] published multi-arch: ${targetImage}\n`);
+  useLogger("image").success(`published multi-arch: ${targetImage}`);
   return 0;
 }

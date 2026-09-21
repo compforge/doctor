@@ -11,7 +11,7 @@ import {
   type SearchableChoiceResolution,
 } from "../terminal/selection";
 import { promptTenantChoice } from "../terminal/tenant-selection";
-import { terminalStdout, type TerminalTone } from "../terminal/output";
+import { type TerminalTone, styleTerminalText } from "../terminal/output";
 import {
   recentSelectionsForInteractive,
   type RecentSelections,
@@ -116,10 +116,7 @@ export function modelChoiceTone(model: Model): TerminalTone {
 
 function renderModelChoice(model: Model): string {
   const vendor = model.vendor ? `/${model.vendor}` : "";
-  return terminalStdout.style(
-    `${model.name}（${model.type}，${model.provider}${vendor}，${model.id}）`,
-    modelChoiceTone(model),
-  );
+  return styleTerminalText(`${model.name}（${model.type}，${model.provider}${vendor}，${model.id}）`, modelChoiceTone(model));
 }
 
 async function promptModel(models: readonly Model[]): Promise<Model | undefined> {

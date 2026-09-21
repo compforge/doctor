@@ -1,3 +1,4 @@
+import { writeOutput } from "../../terminal/output";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -9,7 +10,8 @@ import {
   sendHttpRequest,
   type InspectHttpEndpoint,
 } from "../../infra/http";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
@@ -185,7 +187,7 @@ function writeHttpArtifact(
     }), { mode: 0o600 });
     return true;
   } catch (error) {
-    terminalStderr.error(`[http] 产物生成失败：${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("http").error(`产物生成失败：${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -198,15 +200,15 @@ export async function runCollectHttp(
 ): Promise<number> {
   if (opts.example !== undefined) {
     if (opts.file) {
-      terminalStderr.error("--example 与 --file 不能同时使用\n");
+      useLogger().error("--example 与 --file 不能同时使用");
       return 2;
     }
     try {
       const output = writeHttpScenarioExample(typeof opts.example === "string" ? opts.example : undefined);
-      terminalStderr.success(`[http] 示例已生成：${output}\n`);
+      writeOutput(`示例已生成：${output}` + "\n");
       return 0;
     } catch (error) {
-      terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+      useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
       return 2;
     }
   }
@@ -226,7 +228,7 @@ export async function runCollectHttp(
       executionTarget = { kind: "local" };
       activeSendHttp ??= sendHttpRequest;
       activeInspectEndpoint ??= inspectLocalHttpEndpoint;
-      terminalStdout.write("[http] 请求执行位置：local（Doctor 本机）\n");
+      useLogger("http").info("请求执行位置：local（Doctor 本机）");
     } else {
       const execution = await resolvePodHttpExecution(opts, commandContext);
       if (!execution) return 130;
@@ -236,7 +238,7 @@ export async function runCollectHttp(
       reportProfileName = execution.collect.profileName;
     }
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 
@@ -254,7 +256,7 @@ export async function runCollectHttp(
     maxResponseMiB = positiveNumber(opts.maxSize, "--max-size");
     format = parseHttpOutputFormat(opts.format);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 
@@ -269,7 +271,7 @@ export async function runCollectHttp(
     if (!selected) return 0;
     scenario = selected;
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 
@@ -277,7 +279,7 @@ export async function runCollectHttp(
   try {
     resolveHttpOutputPath(opts.output, bundleName, format);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
   }
 
@@ -287,7 +289,7 @@ export async function runCollectHttp(
   commandContext.artifacts.add({ command: "http", path: staging });
   const startedAt = new Date();
   const entrypointCount = scenario.requests.reduce((count, group) => count + group.entrypoints.length, 0);
-  terminalStderr.info(`[http] 场景 ${scenario.name}：${scenario.requests.length} 个逻辑请求、${entrypointCount} 个入口 × ${repeat} 轮\n`);
+  useLogger("http").info(`场景 ${scenario.name}：${scenario.requests.length} 个逻辑请求、${entrypointCount} 个入口 × ${repeat} 轮`);
   const attempts = Array.from({ length: repeat }, (_, index) => index + 1).flatMap(
     (round) => scenario.requests.flatMap((group) => group.entrypoints.map((request) => ({ request, round }))),
   );
@@ -310,7 +312,7 @@ export async function runCollectHttp(
     bundle,
     sendHttp: activeSendHttp!,
     lastRound: 0,
-    log: (line) => terminalStderr.info(`${line}\n`),
+    log: (line) => useLogger().info(`${line}`),
   };
   let facts!: HttpInspectionFacts;
   let diagnosis!: HttpDiagnosis;
@@ -320,7 +322,7 @@ export async function runCollectHttp(
       `${JSON.stringify(sanitizedScenario(scenario), null, 2)}\n`,
       { mode: 0o600 },
     );
-    terminalStdout.write("[collect] 采集 HTTP Facts…\n");
+    useLogger("collect").info("采集 HTTP Facts…");
     const execution = await runCollect({
       ctx,
       config: ctx.config,
@@ -335,7 +337,7 @@ export async function runCollectHttp(
         });
       },
       planProbes: () => attempts.map(({ request, round }) => makeHttpRequestProbe(request, round)),
-      log: (line) => terminalStdout.write(`${line}\n`),
+      log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildHttpEvidence(scenario.requests, repeat),
       detectors: httpDetectors,
       buildCoverage: buildHttpCoverage,
@@ -431,11 +433,11 @@ export async function runCollectHttp(
   }
   if (evidenceOutcome.exitCode !== 0) {
     recordFailureBundle({ bundleDir: staging, collectCode: evidenceOutcome.exitCode, reason: "HTTP 证据不完整" });
-    terminalStderr.error("[http] 证据不完整\n");
+    useLogger("http").error("证据不完整");
   } else if (hasFindings) {
-    terminalStderr.warning("[http] 发现异常\n");
+    useLogger("http").warn("发现异常");
   } else {
-    terminalStderr.success("[http] 诊断完成\n");
+    useLogger("http").success("诊断完成");
   }
   return evidenceOutcome.exitCode;
 }

@@ -9,7 +9,7 @@ import {
   type ApprovalRequest,
 } from "../command/approval";
 import { prepareTerminalInput } from "./input";
-import { terminalOutputStream, terminalStderr, terminalStdout } from "./output";
+import { terminalOutputStream, writeOutput } from "./output";
 
 export interface ApprovalCliOptions {
   yes?: boolean;
@@ -24,20 +24,18 @@ export async function promptForApproval(
 ): Promise<ApprovalDecision> {
   if (assumesYes()) return approveAll();
   return withTerminalInput(async () => {
-    terminalStdout.warning(`\n[operation] 操作确认：${request.title}\n`);
+    writeOutput(`\n[operation] 操作确认：${request.title}\n`);
     if (request.purpose) {
-      terminalStdout.write(`[operation] 用途：${request.purpose}\n`);
+      writeOutput(`[operation] 用途：${request.purpose}\n`);
     }
-    terminalStdout.write(`[operation] 目标：${request.target}\n`);
+    writeOutput(`[operation] 目标：${request.target}\n`);
     for (const impact of request.impact) {
-      terminalStdout.write(`[operation] - ${impact}\n`);
+      writeOutput(`[operation] - ${impact}\n`);
     }
 
     if (!isInteractive()) {
-      terminalStderr.warning(
-        "[operation] 当前为非交互终端，无法取得确认；"
-        + "已取消该操作（可用 -y/--yes 预先批准）\n",
-      );
+      writeOutput("[operation] 当前为非交互终端，无法取得确认；"
+        + "已取消该操作（可用 -y/--yes 预先批准）\n");
       return { approved: false, source: "non-interactive" };
     }
 

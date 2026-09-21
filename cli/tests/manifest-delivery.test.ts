@@ -9,7 +9,7 @@ import { EvidenceBundle } from "../src/collect/evidence";
 import { finalizeCommand } from "../src/app/finalize";
 import { finalizeResult } from "./report-fixture";
 import { runCommand } from "../src/app/command";
-import { terminalStdout, withMachineOutput } from "../src/terminal/output";
+import { useLogger, withLogger } from "../src/terminal/log";
 
 const evidenceSpec = defineCommand({ name: "doctor log", serialize: serializeEvidenceResult,
   prepare: async (_context, input) => input, run: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }) });
@@ -95,13 +95,13 @@ test("manifest refuses external symlinks without changing their target permissio
   } finally { output.restore(); }
 });
 
-test("machine output isolates async diagnostics while collectors receive Bundle format", async () => {
+test("silent logging is independent of the collectors Bundle format", async () => {
   const context = new CommandContext({}, undefined, { format: "manifest" });
   expect(commandOptions(context).format).toBe("bundle");
   const output = captureOutput();
   try {
-    await withMachineOutput(true, async () => { await Promise.resolve(); terminalStdout.write("progress\n"); });
-    expect(output.stderr()).toBe("progress\n");
+    await withLogger("silent", async () => { await Promise.resolve(); useLogger().info("progress\n"); });
+    expect(output.stderr()).toBe("");
   } finally { output.restore(); await context.disposeClients(); }
 });
 
@@ -113,7 +113,7 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
   for (const invalid of [true, false]) {
     const output = captureOutput();
     try {
-      await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {});
+      await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {}, { logLevel: "silent" });
       expect(output.json().status).toBe(invalid ? "failed" : "partial");
       expect(output.json().children).toEqual([]);
       expect(output.json().schemaVersion).toBe(1);
@@ -121,4 +121,21 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
       expect(process.exitCode).toBe(invalid ? 1 : 0);
     } finally { output.restore(); process.exitCode = oldCode; }
   }
+});
+
+test("silent execution logs do not suppress manifest delivery", async () => {
+  const output = captureOutput();
+  const oldCode = process.exitCode;
+  const spec = defineCommand({ name: "doctor test", prepare: async (_context, input) => {
+    useLogger().info("preparing\n");
+    return input;
+  }, run: async () => {
+    useLogger().info("collecting\n");
+    return { status: CommandStatus.Ok as const, output: undefined, artifacts: [] };
+  } });
+  try {
+    await runCommand(spec, { config: join(root(), "absent.yaml"), format: "manifest" }, {}, { logLevel: "silent" });
+    expect(output.json().status).toBe("ok");
+    expect(output.stderr()).toBe("");
+  } finally { output.restore(); process.exitCode = oldCode; }
 });

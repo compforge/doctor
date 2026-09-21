@@ -1,4 +1,4 @@
-import { terminalStdout, terminalStderr } from "../../../terminal/output";
+import { useLogger } from "../../../terminal/log";
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -73,7 +73,7 @@ export function runRegctl(
   options: { credentials?: RegistryCredentials; quiet?: boolean; timeoutMs?: number } = {},
 ): RegistryCommandResult {
   const command = resolveRegctlCommand();
-  if (!options.quiet) terminalStdout.write(`[debug] regctl ${args.join(" ")}\n`);
+  if (!options.quiet) useLogger("debug").info(`regctl ${args.join(" ")}`);
   const result = spawnSync(command, args, {
     encoding: "utf-8",
     env: authEnvironment(options.credentials),
@@ -82,8 +82,8 @@ export function runRegctl(
   });
   const stdout = result.stdout ?? "";
   const stderr = result.stderr ?? result.error?.message ?? "";
-  if (!options.quiet && stdout) terminalStdout.write(stdout);
-  if (!options.quiet && stderr) terminalStderr.error(stderr.endsWith("\n") ? stderr : `${stderr}\n`);
+  if (!options.quiet && stdout) useLogger().info(stdout);
+  if (!options.quiet && stderr) useLogger().error(stderr.endsWith("\n") ? stderr : `${stderr}`);
   return {
     ok: result.status === 0,
     stdout,

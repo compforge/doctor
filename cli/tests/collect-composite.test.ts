@@ -206,7 +206,7 @@ test("delivery treats an unknown format as default and prints a warning", async 
   const artifact = join(root, "doctor-inspect");
   const output = join(root, "case");
   const context = new CommandContext({});
-  const write = spyOn(process.stderr, "write").mockImplementation(() => true);
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
   try {
     mkdirSync(artifact);
     writeFileSync(join(artifact, "report.html"), "<html>inspect</html>");

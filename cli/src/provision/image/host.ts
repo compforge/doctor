@@ -6,7 +6,8 @@ import {
   type LocalContainerEngineName,
 } from "../../infra/host/container-engine";
 import { prepareTerminalInput } from "../../terminal/input";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type {
   ImagePublishSource,
   PrepareDoctorHostImageOptions,
@@ -20,10 +21,8 @@ async function confirmDoctorHostImage(
   engine: LocalContainerEngineName,
   sourceImage: string,
 ): Promise<boolean> {
-  terminalStdout.info(
-    `[image] Doctor Host 检测到 ${engine}，`
-    + `是否同时将 ${sourceImage} load 到本机？\n`,
-  );
+  useLogger("image").info(`Doctor Host 检测到 ${engine}，`
+    + `是否同时将 ${sourceImage} load 到本机？`);
   prepareTerminalInput();
   const readline = createInterface({
     input: process.stdin,
@@ -46,10 +45,8 @@ export async function prepareImageOnDoctorHost(
 ): Promise<boolean> {
   const engine = await infra.host.containerEngine();
   if (!engine) {
-    terminalStdout.warning(
-      "[image] Doctor Host 未发现可用的 Docker、Podman 或 nerdctl；"
-      + "跳过本机 load。\n",
-    );
+    useLogger("image").warn("Doctor Host 未发现可用的 Docker、Podman 或 nerdctl；"
+      + "跳过本机 load。");
     return false;
   }
   const interactive = isInteractive(options.interactive);
@@ -62,25 +59,19 @@ export async function prepareImageOnDoctorHost(
       )
     );
   if (!approved) {
-    terminalStdout.info(
-      interactive
+    useLogger().info(interactive
         ? "[image] 已跳过 Doctor Host 本机 load。\n"
         : "[image] 非交互终端未执行可选的 Doctor Host 本机 load；"
-          + "可用 -y/--yes 确认。\n",
-    );
+          + "可用 -y/--yes 确认。");
     return false;
   }
   const prepared = await prepareLocalImage(engine, archive, sourceImage);
   if (prepared.state === "failed") {
-    terminalStdout.warning(
-      `[image] ${prepared.engine} load 未完成：${prepared.reason}。\n`,
-    );
+    useLogger("image").warn(`${prepared.engine} load 未完成：${prepared.reason}。`);
     return false;
   }
   const action = prepared.state === "loaded" ? "已 load" : "已存在";
-  terminalStdout.success(
-    `[image] local ${prepared.engine}: ${prepared.image}（${action}）\n`,
-  );
+  useLogger("image").success(`local ${prepared.engine}: ${prepared.image}（${action}）`);
   return true;
 }
 
@@ -91,17 +82,13 @@ export async function prepareImagesOnDoctorHost(
   const architecture = currentHostArchitecture();
   const source = selectDoctorHostImage(sources, architecture);
   if (!source) {
-    terminalStdout.warning(
-      `[image] Doctor Host architecture=${architecture ?? process.arch}`
-      + "，没有匹配的 image tar；跳过本机 load。\n",
-    );
+    useLogger("image").warn(`Doctor Host architecture=${architecture ?? process.arch}`
+      + "，没有匹配的 image tar；跳过本机 load。");
     return false;
   }
   if (sources.length > 1) {
-    terminalStdout.info(
-      `[image] Doctor Host architecture=${architecture}，本机仅准备`
-      + ` ${source.sourceImage}。\n`,
-    );
+    useLogger("image").info(`Doctor Host architecture=${architecture}，本机仅准备`
+      + ` ${source.sourceImage}。`);
   }
   return prepareImageOnDoctorHost(
     source.archive,

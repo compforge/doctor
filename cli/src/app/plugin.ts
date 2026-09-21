@@ -1,6 +1,6 @@
 import { Option, type Command } from "commander";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 import { installPlugin, listPlugins, uninstallPlugin } from "../plugin";
 import { runStandaloneCommand } from "./command";
 import { formatServiceDescription } from "./plugin-description";
@@ -21,18 +21,18 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
           if (!plugins.length) throw new Error(`Unknown Service '${opts.service}' in the active Plugin`);
         }
         if (opts.format === "json") {
-          terminalStdout.write(`${JSON.stringify({ plugins }, null, 2)}\n`);
+          writeOutput(`${JSON.stringify({ plugins }, null, 2)}\n`);
           return;
         }
         if (plugins.length === 0) {
-          terminalStdout.write("No active Plugin. Use doctor plugin install <archive> to load one.\n");
+          writeOutput("No active Plugin. Use doctor plugin install <archive> to load one.\n");
           return;
         }
         for (const item of plugins) {
-          terminalStdout.write(`${item.id}@${item.version} (${item.source})\n`);
-          if (item.services.length === 0) terminalStdout.write("  (no declared Services)\n");
+          writeOutput(`${item.id}@${item.version} (${item.source})\n`);
+          if (item.services.length === 0) writeOutput("  (no declared Services)\n");
           for (const service of item.services) {
-            terminalStdout.write(opts.service !== undefined
+            writeOutput(opts.service !== undefined
               ? formatServiceDescription(service)
               : `  ${service.name}${service.aliases.length ? ` (aliases: ${service.aliases.join(", ")})` : ""}${service.description ? ` — ${service.description}` : ""}  extensions: ${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "-"}\n`);
           }
@@ -43,12 +43,10 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
 
 export async function runPluginInstall(archive: string): Promise<void> {
   const result = await installPlugin(archive);
-  terminalStdout.success(
-    `plugin: ${result.ref} (${result.installed ? "installed and loaded" : "already installed; loaded"})\n`,
-  );
+  writeOutput(`plugin: ${result.ref} (${result.installed ? "installed and loaded" : "already installed; loaded"})\n`);
 }
 
 export function runPluginUninstall(ref: string): void {
   uninstallPlugin(ref);
-  terminalStdout.success(`plugin: ${ref} (unloaded and uninstalled)\n`);
+  writeOutput(`plugin: ${ref} (unloaded and uninstalled)\n`);
 }

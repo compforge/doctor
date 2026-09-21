@@ -7,7 +7,8 @@ import type {
 } from "@compforge/doctor-plugin";
 import { resolveKubernetesCommandContext, type CommandContext } from "../command";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { openPluginContext, type ManagedPluginContext } from "./context";
 
 export interface ResolvePluginTraceIdOptions {
@@ -66,7 +67,7 @@ export async function resolvePluginTraceIds(
   const resolutions: ResolvedPluginTraceId[] = [];
   const failures = new Map(bizIds.map((bizId) => [bizId, [] as string[]]));
 
-  terminalStdout.write(`[collect] 正在通过 ${services.join(", ")} 解析 trace_id…\n`);
+  useLogger("collect").info(`正在通过 ${services.join(", ")} 解析 trace_id…`);
   for (const { service: provider, extension: registered } of providers) {
     const extension = requireTraceResolveExtension(registered);
     if (!unresolved.size) break;
@@ -134,10 +135,8 @@ export async function resolvePluginTraceIds(
       try {
         await managed?.dispose();
       } catch (error) {
-        terminalStdout.warning(
-          `[collect] ${provider.name} Plugin context 清理失败：`
-          + `${error instanceof Error ? error.message : String(error)}\n`,
-        );
+        useLogger("collect").warn(`${provider.name} Plugin context 清理失败：`
+          + `${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }
@@ -147,7 +146,7 @@ export async function resolvePluginTraceIds(
       `${bizId}: ${failures.get(bizId)!.join("；")}`
     )).join("；");
     if (!resolutions.length) throw new Error(`无法从 biz-id 解析出 trace_id：${detail}`);
-    terminalStdout.warning(`[collect] 部分请求没有可用 trace，跳过其 Trace/Log：${detail}\n`);
+    useLogger("collect").warn(`部分请求没有可用 trace，跳过其 Trace/Log：${detail}`);
   }
   const seen = new Set<string>();
   return resolutions.filter((item) => {

@@ -10,7 +10,6 @@ import { discoverDatabases, selectDatabaseTarget, type DbProvider } from "../src
 import { validateSql, quoteIdentifier } from "../src/collect/db/sql";
 import * as providers from "../src/collect/db/providers";
 import { canPrompt } from "../src/terminal/parameters";
-import { withMachineOutput } from "../src/terminal/output";
 import { createDoctorProgram } from "../src/app/main";
 import { databaseDiscoverySummary } from "../src/collect/db/summary";
 
@@ -84,7 +83,7 @@ test("prompt availability follows TTY, internal policy and stdin ownership", asy
     expect(canPrompt()).toBe(true);
     expect(canPrompt({ interactive: false })).toBe(false);
     expect(canPrompt({ stdinOwned: true })).toBe(false);
-    expect(withMachineOutput(true, () => canPrompt({ interactive: false }))).toBe(false);
+    expect(canPrompt({ interactive: false })).toBe(false);
     const actual = await resolveDbRequest({ service: "chat", table: "app.messages", execute: "SELECT 1" });
     expect(actual.action).toBe("query");
     expect(actual.sql).toBe("SELECT 1");

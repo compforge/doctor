@@ -9,7 +9,8 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { renderEvidence, writeEvidencePage } from "../../report/evidence";
 import { escapeHtml } from "../output/html";
 import { ParameterCancelled } from "../../terminal/parameters";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
 import { resolveDbProviders } from "./providers";
 import { databaseFailure, discoverDatabases, selectDatabaseTarget } from "./discovery";
@@ -126,8 +127,8 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       startedAt, finishedAt: new Date().toISOString()
     });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });
-    if (discoverySummary) terminalStdout.write(`${discoverySummary}\n`);
-    terminalStdout.write(`[db] ${status}；证据目录：${directory}\n`);
+    if (discoverySummary) useLogger().info(`${discoverySummary}`);
+    useLogger("db").info(`${status}；证据目录：${directory}`);
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },
 });

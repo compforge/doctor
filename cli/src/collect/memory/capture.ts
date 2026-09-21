@@ -28,7 +28,7 @@ import {
   type HeapDumpExecution,
 } from "../../infra/dump";
 import { prepareTerminalInput } from "../../terminal/input";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+import { writeOutput } from "../../terminal/output";
 import {
   formatTerminalProgress,
   type TerminalProgressUpdate,
@@ -257,35 +257,27 @@ export interface HeapCaptureConfirmation {
 }
 
 export async function confirmHeapCapture(input: HeapCaptureConfirmation): Promise<boolean> {
-  terminalStdout.warning("\n[collect] 即将 attach Python 进程并采集对象堆\n");
-  terminalStdout.write(`[collect] 目标：${input.target}，pid=${input.pid}\n`);
-  terminalStdout.write(`[collect] 后端：${pyheapBackend.displayName}\n`);
-  terminalStdout.write(
-    `[collect] 执行位置：${input.strategy === "debug-container" ? "已有 debug container" : "目标业务容器"}\n`,
-  );
-  terminalStdout.write("[collect] - attach 期间 Python 进程会暂停，通常数秒，大堆可能持续数分钟\n");
-  terminalStdout.write("[collect] - 暂停期间请求可能超时；异常中断也可能影响目标进程稳定性\n");
-  terminalStdout.write("[collect] - 完成后会把 .pyheap 文件传回 Doctor 本机\n");
+  writeOutput("\n[collect] 即将 attach Python 进程并采集对象堆\n");
+  writeOutput(`[collect] 目标：${input.target}，pid=${input.pid}\n`);
+  writeOutput(`[collect] 后端：${pyheapBackend.displayName}\n`);
+  writeOutput(`[collect] 执行位置：${input.strategy === "debug-container" ? "已有 debug container" : "目标业务容器"}\n`);
+  writeOutput("[collect] - attach 期间 Python 进程会暂停，通常数秒，大堆可能持续数分钟\n");
+  writeOutput("[collect] - 暂停期间请求可能超时；异常中断也可能影响目标进程稳定性\n");
+  writeOutput("[collect] - 完成后会把 .pyheap 文件传回 Doctor 本机\n");
   if (pyheapBackend.confirmationWarning) {
-    terminalStdout.write(`[collect] - ${pyheapBackend.confirmationWarning}\n`);
+    writeOutput(`[collect] - ${pyheapBackend.confirmationWarning}\n`);
   }
   if (input.headroomPlan) {
-    terminalStdout.write(
-      `[collect] - Headroom：临时退出 worker ${input.headroomPlan.retiredWorkers.map((worker) => worker.pid).join(", ")}`
-      + `（预计释放 ${input.headroomPlan.estimatedReclaimMb.toFixed(0)} MiB）\n`,
-    );
-    terminalStdout.write(
-      `[collect] - 保留 worker ${input.headroomPlan.servingWorker.pid} 承载请求；`
-      + "缩容期间容量下降，相关在途请求可能失败\n",
-    );
+    writeOutput(`[collect] - Headroom：临时退出 worker ${input.headroomPlan.retiredWorkers.map((worker) => worker.pid).join(", ")}`
+      + `（预计释放 ${input.headroomPlan.estimatedReclaimMb.toFixed(0)} MiB）\n`);
+    writeOutput(`[collect] - 保留 worker ${input.headroomPlan.servingWorker.pid} 承载请求；`
+      + "缩容期间容量下降，相关在途请求可能失败\n");
   }
   if (input.strReprLen !== -1) {
-    terminalStdout.write("[collect] - heap 会包含对象字符串表示，可能带入业务数据\n");
+    writeOutput("[collect] - heap 会包含对象字符串表示，可能带入业务数据\n");
   }
   if (!isInteractive()) {
-    terminalStderr.warning(
-      "[collect] 当前为非交互终端，无法取得 attach 确认；已停止（可用 -y/--yes 预先确认）\n",
-    );
+    writeOutput("[collect] 当前为非交互终端，无法取得 attach 确认；已停止（可用 -y/--yes 预先确认）\n");
     return false;
   }
   prepareTerminalInput();

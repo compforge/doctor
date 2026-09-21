@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { writeErrorLog } from "../../app/error-log";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
 import { evaluateCollectOutcome } from "../outcome";
@@ -135,11 +136,11 @@ export async function runCollectRedis(
   try {
     resolved = await resolveRedisConfig(opts, commandContext, injectedExecutor, catalog);
   } catch (err) {
-    terminalStderr.error(`[collect] ${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger("collect").error(`${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
   if (!resolved) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return 130;
   }
   const { config, executor } = resolved;
@@ -152,18 +153,18 @@ export async function runCollectRedis(
   try {
     resolveRedisOutputPath(config.output, bundleName, format);
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
-  terminalStdout.write(`[collect] Redis scan mode: ${mode}\n`);
-  terminalStdout.write(`[collect] Redis output format: ${format}\n`);
+  useLogger("collect").info(`Redis scan mode: ${mode}`);
+  useLogger("collect").info(`Redis output format: ${format}`);
   if (mode === "quick") {
-    terminalStdout.write("[collect] Redis scan limit: 基础探针不扫描 key\n");
+    useLogger("collect").info("Redis scan limit: 基础探针不扫描 key");
   } else {
-    terminalStdout.write(`[collect] Redis scan limit: 最多 ${maxKeys} 个 key（在 master/DB 间均分）\n`);
-    terminalStdout.write(`[collect] Redis scan rate: 最多 ${maxKeysPerSecond} key/s\n`);
+    useLogger("collect").info(`Redis scan limit: 最多 ${maxKeys} 个 key（在 master/DB 间均分）`);
+    useLogger("collect").info(`Redis scan rate: 最多 ${maxKeysPerSecond} key/s`);
   }
-  if (keyStats) terminalStdout.write("[collect] Redis keyStats: 强制检查所有 master\n");
+  if (keyStats) useLogger("collect").info("Redis keyStats: 强制检查所有 master");
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-redis-")), bundleName);
   commandContext.artifacts.add({ command: "redis", path: staging });
   const bundle = new EvidenceBundle(staging, REDIS_OUTCOMES);
@@ -174,7 +175,7 @@ export async function runCollectRedis(
     exec: executor,
     execTarget: config.target,
     bundle,
-    log: (line) => terminalStdout.write(`${line}\n`),
+    log: (line) => useLogger().info(`${line}`),
   };
   let summaryHtml = "<h1>Redis 诊断未形成结果</h1><p>失败原因与已取得证据见采集步骤和原始证据。</p>";
   let keyDistributionHtml = "";
@@ -331,11 +332,11 @@ export async function runCollectRedis(
       ...diagnosis.coverage.map((item) => item.status),
     ]);
     if (outcome.evidence === "partial") {
-      terminalStdout.warning("[collect] 部分完成：报告中已标明缺失证据。\n");
+      useLogger("collect").warn("部分完成：报告中已标明缺失证据。");
     } else if (outcome.evidence === "missing") {
-      terminalStderr.error("[collect] 未形成可用诊断证据。\n");
+      useLogger("collect").error("未形成可用诊断证据。");
     } else {
-      terminalStdout.success("[collect] 完成。\n");
+      useLogger("collect").success("完成。");
     }
     const disabledCatalogStore = !!config.store
       && !confirmed.target

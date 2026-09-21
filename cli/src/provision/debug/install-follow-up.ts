@@ -7,7 +7,8 @@ import {
   discoverPackageBundles,
   type PackageBundle,
 } from "../../infra/target/package-install";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runInstall } from "../install";
 import type { InstallCliOpts } from "../install/model";
 import type {
@@ -69,11 +70,9 @@ export async function offerDebugInstall(
   });
   if (!followUp) return 0;
 
-  terminalStdout.info(
-    `[debug] 发现 Doctor Toolkit/package tar：${followUp.packageTars.join("、")}\n`
+  useLogger("debug").info(`发现 Doctor Toolkit/package tar：${followUp.packageTars.join("、")}\n`
     + `[debug] 检查新建容器 ${followUp.install.pod}/${followUp.install.container} 的 GDB；`
-    + "确需安装时将展示方案并单独询问。\n",
-  );
+    + "确需安装时将展示方案并单独询问。");
   const code = await runInstall(followUp.install, commandContext);
   // Declining this optional follow-up does not undo the debug environment that is already ready.
   return code === 130 ? 0 : code;

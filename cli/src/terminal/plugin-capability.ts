@@ -4,7 +4,8 @@ import {
   pluginCapabilityLabel,
   type PluginCapabilityContract,
 } from "../command/plugin-capability";
-import { terminalStdout } from "./output";
+
+import { useLogger } from "./log";
 
 /** Plugin capability 在访问 Kubernetes 前检查，避免把业务能力缺失误报成环境故障。 */
 export function requirePluginCapabilities(
@@ -22,17 +23,13 @@ export function requirePluginCapabilities(
   for (const fact of evaluation.facts) {
     const label = pluginCapabilityLabel(fact.need.capability);
     if (fact.available) {
-      terminalStdout.success(
-        `[plugin] ${fact.need.requirement}: ${label} ✓`
-        + `（${fact.need.purpose}；providers=${fact.providers.join(",")}）\n`,
-      );
+      useLogger("plugin").success(`${fact.need.requirement}: ${label} ✓`
+        + `（${fact.need.purpose}；providers=${fact.providers.join(",")}）`);
       continue;
     }
     const fallback = fact.need.fallback ? `；${fact.need.fallback}` : "";
-    terminalStdout.warning(
-      `[plugin] ${fact.need.requirement}: ${label} missing`
-      + `（${fact.need.purpose}）${fallback}\n`,
-    );
+    useLogger("plugin").warn(`${fact.need.requirement}: ${label} missing`
+      + `（${fact.need.purpose}）${fallback}`);
   }
 
   if (!evaluation.runnable) {

@@ -110,7 +110,7 @@ test("unknown 权限预检提示 namespace 和实际失败原因", async () => {
     });
 
     expect(write).toHaveBeenCalledWith(
-      "[k8s] required: get services/chat-server unknown"
+      "[warn] [k8s] required: get services/chat-server unknown"
       + "（读取 chat-server 的 Pod selector，namespace=vke-system）"
       + "；预检原因：selfsubjectaccessreviews.authorization.k8s.io is forbidden"
       + "；继续尝试实际操作\n",

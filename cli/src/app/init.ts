@@ -1,4 +1,4 @@
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 import { prepareTerminalInput } from "../terminal/input";
 import { createInterface } from "node:readline/promises";
 import {
@@ -62,7 +62,7 @@ export async function runInit(
   const configPath = resolveConfigPath(opts.config);
   if (configPath === "") throw new Error('init is unavailable with --config=""');
   if (hasLocalConfig(configPath)) {
-    terminalStdout.warning(`config 已存在，跳过初始化: ${configPath}\n`);
+    writeOutput(`config 已存在，跳过初始化: ${configPath}\n`);
     return;
   }
 
@@ -72,5 +72,5 @@ export async function runInit(
     throw new Error(`kubeconfig path not found: ${kubeconfigPath}`);
   }
   persistInitialConfig(configPath, kubeconfigPath);
-  terminalStdout.success(`profile: ${INITIAL_PROFILE} (saved to ${configPath})\n`);
+  writeOutput(`profile: ${INITIAL_PROFILE} (saved to ${configPath})\n`);
 }

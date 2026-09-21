@@ -1,24 +1,18 @@
 import { writeTerminalOutput } from "./interaction";
-import { AsyncLocalStorage } from "node:async_hooks";
 
-const machineOutput = new AsyncLocalStorage<boolean>();
-
-/** Machine delivery owns stdout; diagnostics and interactive prompts use stderr in this invocation. */
-export function withMachineOutput<T>(enabled: boolean, work: () => T): T {
-  return machineOutput.run(enabled, work);
+/** Results, prompts and raw bytes are never filtered by the execution logger. */
+export function writeOutput(chunk: string | Uint8Array, stream: NodeJS.WriteStream = process.stdout): boolean {
+  return writeTerminalOutput(stream, chunk);
 }
 
 export function terminalOutputStream(): NodeJS.WriteStream {
-  return machineOutput.getStore() ? process.stderr : process.stdout;
+  return process.stdout;
 }
 
-/** Final machine result bypasses diagnostic routing but keeps writes behind the terminal boundary. */
 export function writeMachineResult(value: unknown): void {
-  writeTerminalOutput(process.stdout, `${JSON.stringify(value, null, 2)}\n`);
+  writeOutput(`${JSON.stringify(value, null, 2)}\n`);
 }
-// 非 chat command 的统一终端输出边界：业务代码不要直接写 process.stdout/stderr。
-// 子进程、协议 body 等原始数据用 write 原样透传；面向人的状态使用语义方法，确保
-// 颜色策略、TTY/重定向判断与 NO_COLOR 支持始终只在这一层演进。
+
 export type TerminalTone =
   | "info"
   | "success"
@@ -55,63 +49,9 @@ export function supportsTerminalColor(
   return stream.isTTY === true && env.TERM !== "dumb";
 }
 
-export function styleTerminalText(text: string, tone: TerminalTone, enabled = true): string {
+export function styleTerminalText(text: string, tone: TerminalTone, enabled = supportsTerminalColor(process.stdout)): string {
   if (!enabled || text.length === 0) return text;
   const [open, close] = ANSI[tone];
   // 每行单独 reset，避免多行消息在异常中断时把后续 shell prompt 一并染色。
   return text.replace(/[^\n]+/g, (line) => `${open}${line}${close}`);
 }
-
-/**
- * 非 chat command 的统一终端出口。write 保留原始字节；语义方法仅在 TTY 中加色，
- * 因此子进程透传、重定向、Evidence 产物和脚本消费都不会混入 ANSI 控制符。
- */
-export class TerminalOutput {
-  constructor(
-    private readonly stream: TerminalWritable,
-    private readonly environment: () => TerminalEnvironment = () => process.env,
-  ) {}
-
-  write(chunk: string | Uint8Array): boolean {
-    return writeTerminalOutput(this.stream === process.stdout ? terminalOutputStream() : this.stream, chunk);
-  }
-
-  info(text: string): boolean {
-    return this.writeStyled(text, "info");
-  }
-
-  success(text: string): boolean {
-    return this.writeStyled(text, "success");
-  }
-
-  warning(text: string): boolean {
-    return this.writeStyled(text, "warning");
-  }
-
-  error(text: string): boolean {
-    return this.writeStyled(text, "error");
-  }
-
-  result(ok: boolean, text: string): boolean {
-    return ok ? this.success(text) : this.error(text);
-  }
-
-  muted(text: string): boolean {
-    return this.writeStyled(text, "muted");
-  }
-
-  style(text: string, tone: TerminalTone): string {
-    return styleTerminalText(
-      text,
-      tone,
-      supportsTerminalColor(this.stream === process.stdout ? terminalOutputStream() : this.stream, this.environment()),
-    );
-  }
-
-  private writeStyled(text: string, tone: TerminalTone): boolean {
-    return this.write(this.style(text, tone));
-  }
-}
-
-export const terminalStdout = new TerminalOutput(process.stdout);
-export const terminalStderr = new TerminalOutput(process.stderr);

@@ -4,7 +4,8 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { packArchiveEntries, resolveArchivePath, resolveDefaultReportPaths } from "../collect/output/archive";
 import type { CommandManifest } from "../command/serialization/model";
 
-import { terminalStderr, terminalStdout, writeMachineResult } from "../terminal/output";
+import { writeMachineResult, writeOutput } from "../terminal/output";
+import { useLogger } from "../terminal/log";
 
 export interface CommandDeliveryOptions { format?: string; output?: string }
 
@@ -32,7 +33,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as CommandManifest;
   let format = options.format?.trim() || "default";
   if (!["default", "html", "json", "md", "summary", "bundle", "manifest"].includes(format)) {
-    terminalStderr.warning(`[delivery] 未识别 format '${format}'，按 default 交付 HTML + Bundle\n`);
+    useLogger("delivery").warn(`未识别 format '${format}'，按 default 交付 HTML + Bundle`);
     format = "default";
   }
   const errors: string[] = [];
@@ -58,7 +59,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
       if (format === "summary") {
         const summaryPath = join(directory, "runtime-summary.txt");
         if (!existsSync(summaryPath)) throw new Error("Serialized result has no runtime-summary.txt");
-        terminalStdout.write(readFileSync(summaryPath, "utf8"));
+        writeOutput(readFileSync(summaryPath, "utf8"));
       }
       const files: { source: string; destination: string }[] = [];
       if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
@@ -82,7 +83,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
             copyFileSync(join(directory, file.source), file.destination);
             chmodSync(file.destination, 0o600);
           }
-          terminalStdout.success(`[delivery] ${file.source}: ${file.destination}\n`);
+          writeOutput(`[delivery] ${file.source}: ${file.destination}\n`);
         } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
       }
       if (errors.length) {
@@ -95,7 +96,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
         const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), archive);
         if (!packed.ok) throw new Error(packed.stderr);
         chmodSync(archive, 0o600);
-        terminalStdout.success(`[delivery] Evidence Bundle: ${archive}\n`);
+        writeOutput(`[delivery] Evidence Bundle: ${archive}\n`);
       }
     }
   } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); root = directory; }
@@ -105,8 +106,8 @@ export async function deliverSerialized(input: { directory: string; options: Com
   const record = { ...metadata, bundle_root: root, manifest: "manifest.json" };
   writeFileSync(join(root, "manifest.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
   if (format === "manifest") writeMachineResult(record);
-  for (const error of errors) terminalStderr.error(`[delivery] ${error}\n`);
-  if (errors.length || !["manifest", "bundle", "default"].includes(format)) terminalStderr.info(`[delivery] Evidence: ${root}\n`);
+  for (const error of errors) useLogger("delivery").error(`${error}`);
+  if (errors.length || !["manifest", "bundle", "default"].includes(format)) writeOutput(`[delivery] Evidence: ${root}\n`, process.stderr);
   if (!errors.length && root !== directory) cleanupTemporaryArtifacts([directory]);
   return errors.length === 0;
 }

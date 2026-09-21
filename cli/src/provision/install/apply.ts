@@ -6,7 +6,8 @@ import {
   type PackageBundle,
   type PackageTargetFact,
 } from "../../infra/target/package-install";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { InstallPlan } from "./model";
 
 const MAX_BUNDLE_BYTES = 256 * 1024 * 1024;
@@ -27,18 +28,16 @@ export async function applyBundleInstall(input: InstallApplyContext & {
     !input.target.tarAvailable ? "tar" : undefined,
   ].filter(Boolean);
   if (missing.length) {
-    terminalStderr.error(`[install] 离线安装前置不足：缺少 ${missing.join("、")}\n`);
+    useLogger("install").error(`离线安装前置不足：缺少 ${missing.join("、")}`);
     return false;
   }
 
   const materialized = materializePackageBundle(input.bundle);
   try {
     const remoteTar = `/tmp/doctor-packages-${Date.now().toString(36)}.tar`;
-    terminalStdout.write(
-      `[install] Doctor Host -> Target upload: ${input.bundle.path}`
+    useLogger("install").info(`Doctor Host -> Target upload: ${input.bundle.path}`
       + `${input.bundle.variant ? `#${input.bundle.variant.id}` : ""}`
-      + ` -> pod/${input.pod} container/${input.container}:${remoteTar}\n`,
-    );
+      + ` -> pod/${input.pod} container/${input.container}:${remoteTar}`);
     const uploaded = await infra.fileTransfer.uploadToTarget({
       executor: input.executor,
       target: { pod: input.pod, container: input.container },
@@ -47,7 +46,7 @@ export async function applyBundleInstall(input: InstallApplyContext & {
       maxBytes: MAX_BUNDLE_BYTES,
     });
     if (!uploaded.ok) {
-      terminalStderr.error(`[install] 离线包上传失败：${failReason(uploaded)}\n`);
+      useLogger("install").error(`离线包上传失败：${failReason(uploaded)}`);
       return false;
     }
     try {
@@ -64,7 +63,7 @@ export async function applyBundleInstall(input: InstallApplyContext & {
         remoteTar,
       );
       if (!installed.ok) {
-        terminalStderr.error(`[install] 离线安装失败：${failReason(installed)}\n`);
+        useLogger("install").error(`离线安装失败：${failReason(installed)}`);
         return false;
       }
       return true;
@@ -85,7 +84,7 @@ export async function applyInstallPlan(
   context: InstallApplyContext,
 ): Promise<{ installed: boolean; fromBundle: boolean }> {
   if (plan.kind === "offline") {
-    terminalStdout.write("[install] 正在安装匹配 Target 的离线 GDB\n");
+    useLogger("install").info("正在安装匹配 Target 的离线 GDB");
     const installed = await applyBundleInstall({
       ...context,
       target: plan.target,
@@ -95,9 +94,7 @@ export async function applyInstallPlan(
     return { installed, fromBundle: installed };
   }
 
-  terminalStdout.write(
-    `[install] 正在通过 ${plan.target.manager.kind} 安装：${plan.packages.join(", ")}\n`,
-  );
+  useLogger("install").info(`正在通过 ${plan.target.manager.kind} 安装：${plan.packages.join(", ")}`);
   const online = await infra.target.packageInstaller.installOnline(
     context.executor,
     context.pod,
@@ -106,7 +103,7 @@ export async function applyInstallPlan(
     plan.packages,
   );
   if (!online.ok) {
-    terminalStdout.warning(`[install] 在线安装失败：${failReason(online)}\n`);
+    useLogger("install").warn(`在线安装失败：${failReason(online)}`);
   }
   return { installed: online.ok, fromBundle: false };
 }

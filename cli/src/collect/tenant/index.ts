@@ -6,7 +6,8 @@ import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { commandOutcome, type CommandResult } from "../../command";
 import { resolveTenant } from "../../model";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
@@ -51,11 +52,11 @@ export async function runCollectTenant(
   try {
     format = parseTenantOutputFormat(opts.format);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (format === "summary" && opts.output) {
-    terminalStderr.error("--format summary 直接输出到终端，不支持 --output\n");
+    useLogger().error("--format summary 直接输出到终端，不支持 --output");
     return commandOutcome(2);
   }
 
@@ -67,7 +68,7 @@ export async function runCollectTenant(
       commandContext,
     });
   } catch (error) {
-    terminalStderr.error(`[tenant] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("tenant").error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (!access) return commandOutcome(130);
@@ -81,14 +82,12 @@ export async function runCollectTenant(
       commandContext,
     });
     if (!tenant) {
-      terminalStderr.warning("[tenant] 已取消\n");
+      useLogger("tenant").warn("已取消");
       return commandOutcome(130);
     }
-    terminalStdout.write(`[tenant] tenant: ${tenant.name}（${tenant.id}）\n`);
-    terminalStdout.write(
-      `[tenant] namespace: ${access.config.kubernetes.namespace}`
-      + `（${access.config.kubernetes.namespaceSource}）\n`,
-    );
+    useLogger("tenant").info(`tenant: ${tenant.name}（${tenant.id}）`);
+    useLogger("tenant").info(`namespace: ${access.config.kubernetes.namespace}`
+      + `（${access.config.kubernetes.namespaceSource}）`);
 
     const reportName = tenantReportName(tenant.id);
     const config: TenantConfig = {
@@ -113,7 +112,7 @@ export async function runCollectTenant(
       config,
       inspects: makeTenantInspects(access.capabilities),
       planProbes: () => [],
-      log: (line) => terminalStdout.write(`${line}\n`),
+      log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildTenantEvidence,
       detectors: tenantDetectors,
       buildCoverage: buildTenantCoverage,
@@ -148,9 +147,7 @@ export async function runCollectTenant(
     return { ...collectCommandOutcome(outcome), artifacts: commandContext.artifacts.list() };
   } catch (error) {
     const retained = retainedStaging ? `；原始证据保留在目录: ${retainedStaging}` : "";
-    terminalStderr.error(
-      `[tenant] ${error instanceof Error ? error.message : String(error)}${retained}\n`,
-    );
+    useLogger("tenant").error(`${error instanceof Error ? error.message : String(error)}${retained}`);
     return commandOutcome(1);
   } finally {
     await access.dispose();

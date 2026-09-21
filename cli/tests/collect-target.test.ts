@@ -199,7 +199,7 @@ test("单 Container 自动选择时打印目标", async () => {
       selection: { candidateRole: "目标", purpose: "采集测试数据" },
     })).resolves.toEqual({ pod: "app-0", container: "app" });
     expect(write).toHaveBeenCalledWith(
-      "[target] container: app（pod/app-0 仅有一个 Container，自动选择）\n",
+      "[info] [target] container: app（pod/app-0 仅有一个 Container，自动选择）\n",
     );
   } finally {
     write.mockRestore();
@@ -247,7 +247,7 @@ test("配置来源 Pod 关键词唯一匹配时保留候选角色", async () => 
       },
     })).resolves.toEqual({ pod: "kb-server-0" });
     expect(write).toHaveBeenCalledWith(
-      "[collect] 配置来源 Pod: kb-server-0（关键词 'kb-server' 唯一匹配）\n",
+      "[info] [collect] 配置来源 Pod: kb-server-0（关键词 'kb-server' 唯一匹配）\n",
     );
   } finally {
     write.mockRestore();

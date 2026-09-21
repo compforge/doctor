@@ -1,6 +1,6 @@
 import { currentCommandSignal } from "../command/execution-scope";
 import { withTerminalInput } from "./interaction";
-import { terminalOutputStream, terminalStdout } from "./output";
+import { terminalOutputStream, writeOutput } from "./output";
 import { createInterface } from "node:readline/promises";
 import { prepareTerminalInput } from "./input";
 
@@ -37,7 +37,7 @@ export async function promptListedChoice<Value>(input: {
         }
         const selected = input.match(answer);
         if (selected !== undefined) return selected;
-        terminalStdout.warning(`${input.invalidMessage}\n`);
+        writeOutput(`${input.invalidMessage}\n`);
       }
     } finally {
       readline.close();
@@ -75,7 +75,7 @@ export async function promptEnter(input: {
         }
         if (!answer) return "submitted";
         if (/^(q|quit)$/i.test(answer)) return "cancelled";
-        terminalStdout.warning("操作完成后请直接按回车，或输入 q 取消。\n");
+        writeOutput("操作完成后请直接按回车，或输入 q 取消。\n");
       }
     } finally {
       clearTimeout(timer);
@@ -127,9 +127,9 @@ export function printNumberedChoices<Choice>(
   title: string,
   render: (choice: Choice) => string,
 ): void {
-  terminalStdout.info(`${title}\n`);
+  writeOutput(`${title}\n`);
   choices.forEach((choice, index) => {
-    terminalStdout.write(`  ${index + 1}) ${render(choice)}\n`);
+    writeOutput(`  ${index + 1}) ${render(choice)}\n`);
   });
 }
 
@@ -161,7 +161,7 @@ export async function promptSearchableChoice<Value, Choice>(input: {
         const answer = (await readline.question(input.question(numberedChoices.length > 0), { signal: currentCommandSignal() })).trim();
         if (/^(q|quit)$/i.test(answer)) return undefined;
         if (!answer && input.emptyMessage) {
-          terminalStdout.warning(`${input.emptyMessage}\n`);
+          writeOutput(`${input.emptyMessage}\n`);
           continue;
         }
         const resolution = input.resolve(answer, numberedChoices);
@@ -172,10 +172,10 @@ export async function promptSearchableChoice<Value, Choice>(input: {
           continue;
         }
         if (resolution.kind === "not-found") {
-          terminalStdout.warning(`${input.notFoundMessage(answer)}\n`);
+          writeOutput(`${input.notFoundMessage(answer)}\n`);
           continue;
         }
-        terminalStdout.warning(`${input.invalidNumberMessage}\n`);
+        writeOutput(`${input.invalidNumberMessage}\n`);
       }
     } finally {
       readline.close();

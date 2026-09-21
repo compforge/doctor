@@ -11,7 +11,8 @@ import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilit
 import { openPluginContext } from "../plugin/context";
 import { renderEvidence } from "../report/evidence";
 import { composeReports } from "../report/model";
-import { terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import { collectOverviewSamples } from "./collect";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
 import { overviewCollectConcurrency, overviewSampleCount } from "./options";
@@ -87,7 +88,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
         return invoke(provider, extension, (managed) => extension.run(managed, input));
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
-      warn: (message) => terminalStdout.warning(`[overview] ${message}\n`),
+      warn: (message) => useLogger("overview").warn(`${message}`),
       show: (result) => {
         snapshot = result;
         printOverview(result);
@@ -109,7 +110,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
     if (snapshot) writeOverviewEvidence(snapshot, context, reportDirectory);
   }
   for (const sample of result.samples) {
-    terminalStdout.write(`[overview] ${sample.service}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}\n`);
+    useLogger("overview").info(`${sample.service}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
   }
   const statuses: CommandStatus[] = result.services.map((service) => service.error ? CommandStatus.Failed : CommandStatus.Ok);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);

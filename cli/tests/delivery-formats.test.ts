@@ -6,7 +6,6 @@ import { CommandContext } from "../src/command";
 import { finalizeFixture, finalizeResult } from "./report-fixture";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { CommandStatus } from "../src/command";
-import { terminalStdout, terminalStderr } from "../src/terminal/output";
 
 for (const format of ["json", "md"] as const) {
   test(`${format} retains distinct artifacts with the same command and deduplicates shared references`, async () => {
@@ -57,8 +56,8 @@ test("single JSON export carries the domain diagnosis and its evidence manifest"
 test("summary finalization serializes evidence and skips the HTML renderer", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-delivery-summary-"));
   const context = new CommandContext({});
-  const output = spyOn(terminalStdout, "write").mockImplementation(() => true);
-  const evidenceOutput = spyOn(terminalStderr, "info").mockImplementation(() => true);
+  const output = spyOn(process.stdout, "write").mockImplementation(() => true);
+  const evidenceOutput = spyOn(process.stderr, "write").mockImplementation(() => true);
   const render = spyOn(inspectCommand, "render");
   let directory: string | undefined;
   try {
@@ -72,7 +71,7 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
     }, { format: "summary" })).toBe(0);
     expect(render).not.toHaveBeenCalled();
     expect(output).toHaveBeenCalledWith(summary);
-    directory = evidenceOutput.mock.calls.map(([line]) => line)
+    directory = evidenceOutput.mock.calls.map(([line]) => String(line))
       .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
     expect(directory).toBeDefined();
     const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));

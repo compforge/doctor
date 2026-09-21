@@ -2,7 +2,8 @@ import { infra } from "../../infra";
 import { failReason } from "../../infra/k8s/result";
 import { approvalDeniedReason } from "../../command/approval";
 import { resolveApprovalGate } from "../../terminal/approval";
-import { terminalStderr } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { DebugCapability } from "../../infra/target/debug";
 import type {
   DebugCliOpts,
@@ -43,9 +44,7 @@ export async function deployDebugEnvironment(
   });
   const preflight = await preparation.preflight();
   if (!preflight.runnable) {
-    terminalStderr.error(
-      `[debug] ephemeral container 预检失败：${preflight.reason ?? "原因未知"}\n`,
-    );
+    useLogger("debug").error(`ephemeral container 预检失败：${preflight.reason ?? "原因未知"}`);
     return 1;
   }
   const decision = await resolveApprovalGate(opts)({
@@ -65,17 +64,17 @@ export async function deployDebugEnvironment(
     ],
   });
   if (!decision.approved) {
-    terminalStderr.error(`[debug] ${approvalDeniedReason(decision.source)}\n`);
+    useLogger("debug").error(`${approvalDeniedReason(decision.source)}`);
     return 130;
   }
   const created = await preparation.execute();
   if (!created.ok) {
-    terminalStderr.error(`[debug] 创建失败：${failReason(created)}\n`);
+    useLogger("debug").error(`创建失败：${failReason(created)}`);
     return 1;
   }
   const running = await preparation.waitUntilReady();
   if (!running.ok) {
-    terminalStderr.error(`[debug] 容器未就绪：${failReason(running)}\n`);
+    useLogger("debug").error(`容器未就绪：${failReason(running)}`);
     return 1;
   }
   recordCreatedDebugEnvironment(target.context, {

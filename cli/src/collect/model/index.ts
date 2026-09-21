@@ -9,7 +9,8 @@ import {
   selectModel,
   type ModelAccess,
 } from "../../model";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import {
   parseModelMaxOutputTokens,
   parseModelOutputFormat,
@@ -45,7 +46,7 @@ export async function runCollectModel(
     maxOutputTokens = parseModelMaxOutputTokens(opts.maxOutputTokens);
     format = parseModelOutputFormat(opts.format);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
 
@@ -58,13 +59,11 @@ export async function runCollectModel(
       commandContext,
     });
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(2);
   }
   if (!access) return commandOutcome(130);
-  terminalStdout.write(
-    `[model] namespace: ${access.config.kubernetes.namespace}（${access.config.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("model").info(`namespace: ${access.config.kubernetes.namespace}（${access.config.kubernetes.namespaceSource}）`);
 
   try {
     const tenant = await resolveModelTenant({
@@ -76,10 +75,10 @@ export async function runCollectModel(
       promptTitle: "[model] 当前启用租户：",
     });
     if (!tenant) {
-      terminalStderr.warning("[model] 已取消\n");
+      useLogger("model").warn("已取消");
       return commandOutcome(130);
     }
-    terminalStdout.write(`[model] tenant: ${tenant.name}（${tenant.id}）\n`);
+    useLogger("model").info(`tenant: ${tenant.name}（${tenant.id}）`);
 
     const models = await access.catalog.query({
       identity: { kind: "tenant_id", value: tenant.id },
@@ -92,18 +91,16 @@ export async function runCollectModel(
       tenantId: tenant.id,
     });
     if (!selected) {
-      terminalStderr.warning("[model] 已取消\n");
+      useLogger("model").warn("已取消");
       return commandOutcome(130);
     }
     const model = requireInferenceModel(selected);
     if (model.type === "audio") {
       throw new Error("doctor model 当前支持 llm、embedding、rerank，暂不支持 audio inference");
     }
-    terminalStdout.write(
-      `[model] model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}, `
-      + `multimodal=${isMultimodalModel(model) ? "yes" : "no"}）\n`,
-    );
-    terminalStdout.write(`[model] inference endpoint: ${model.inference.baseUrl}\n`);
+    useLogger("model").info(`model: ${model.name}（type=${model.type}, provider=${model.provider}, id=${model.id}, `
+      + `multimodal=${isMultimodalModel(model) ? "yes" : "no"}）`);
+    useLogger("model").info(`inference endpoint: ${model.inference.baseUrl}`);
 
     const inference = await access.createInference(model.inference, timeoutMs);
     if (opts.performance && model.type !== "llm") {
@@ -126,11 +123,11 @@ export async function runCollectModel(
     if (result.exitCode === 0 && !result.diagnosis.findings.some(
       (finding) => finding.severity === "critical",
     )) {
-      terminalStdout.success("[model] 模型诊断完成，所需证据已完整取得。\n");
+      useLogger("model").success("模型诊断完成，所需证据已完整取得。");
     }
     return commandOutcome(result.exitCode);
   } catch (error) {
-    terminalStderr.error(`[model] ${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger("model").error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(1);
   } finally {
     await access.dispose();

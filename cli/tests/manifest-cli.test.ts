@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 for (const fixture of [true, false]) {
-  test(`manifest stdout is a single JSON document in a subprocess (${fixture ? "distribution composite" : "Core capability failure"})`, () => {
+  test(`manifest delivery follows distribution logging policy in a subprocess (${fixture ? "distribution composite" : "Core capability failure"})`, () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-manifest-process-"));
     try {
       const entry = fixture ? "fixtures/manifest-cli.ts" : "../src/app/entry.ts";
@@ -14,13 +14,18 @@ for (const fixture of [true, false]) {
         cwd: directory, env: { ...process.env, NO_COLOR: "1", DOCTOR_ERROR_LOG: join(directory, "error.log") }, stdout: "pipe", stderr: "pipe",
       });
       expect(result.exitCode, result.stderr.toString()).toBe(fixture ? 0 : 1);
-      const manifest = JSON.parse(result.stdout.toString());
+      const manifest = fixture ? JSON.parse(result.stdout.toString())
+        : JSON.parse(readFileSync(join(directory, "evidence", "manifest.json"), "utf8"));
+      if (!fixture) {
+        expect(result.stdout.toString()).toContain("profile:");
+        expect(result.stdout.toString()).toEndWith(`${JSON.stringify(manifest, null, 2)}\n`);
+      }
       expect(manifest.status).toBe(fixture ? "partial" : "failed");
       expect(manifest.schemaVersion).toBe(1);
       expect(manifest.bundle_root).toBe(join(directory, "evidence"));
       expect(JSON.parse(readFileSync(join(manifest.bundle_root, "manifest.json"), "utf8"))).toEqual(manifest);
       if (fixture) {
-        expect(result.stderr.toString()).toContain("collecting evidence");
+        expect(result.stderr.toString()).not.toContain("collecting evidence");
         expect(manifest.children).toHaveLength(1);
         const childPath = join(manifest.bundle_root, manifest.children[0].manifest);
         const child = JSON.parse(readFileSync(childPath, "utf8"));

@@ -1,12 +1,11 @@
 import type { Command } from "commander";
 import { commandOptionsWithSources } from "../app/option-sources";
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { runCommand } from "../app/command";
+import { runCommand, type CommandRuntime } from "../app/command";
 import { deliveryFormatOption } from "../app/command-defaults";
 import { domainInput } from "../command/options";
 import { overviewCommand, type OverviewCliOpts } from "./index";
 
-export function registerOverviewCommand(program: Command, plugin?: PluginDefinition): void {
+export function registerOverviewCommand(program: Command, runtime: CommandRuntime = {}): void {
   program.command("overview").description("展示各 Service 值得注意的 Facet / Entry，可选采集代表请求")
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
     .option("--services <names>", "逗号分隔的 Service；默认全部 overview provider")
@@ -21,6 +20,6 @@ export function registerOverviewCommand(program: Command, plugin?: PluginDefinit
     .option("-o, --output <path>", "报告 basename/路径")
     .action(async (opts: OverviewCliOpts, command: Command) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(overviewCommand, opts, domainInput(opts), { plugin });
+      await runCommand(overviewCommand, opts, domainInput(opts), runtime);
     });
 }

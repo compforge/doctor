@@ -278,7 +278,8 @@ doctor inspect --format manifest --output ./inspection-evidence
 
 1. 领域 Command 按原有权限、目标选择与容量限制取得 Evidence；聚合 Command 登记子执行引用及自身汇总产物。
 2. 根 Finalize 释放客户端并序列化，跳过 HTML Render。Delivery 保留或复制完整目录成为未压缩 Bundle。
-3. stdout 只输出一份 manifest JSON；进度、交互提示和技术错误走 stderr。消费者从 `bundle_root`
+3. 交付层向 stdout 输出一份 manifest JSON；过程日志由 Distribution.logLevel 独立控制，错误走 stderr。
+   非交互且日志级别为 silent 时，stdout 可直接按 JSON 解析；消费者从 `bundle_root`
    获取绝对目录；独立领域命令直接按根清单读取文件，聚合命令先按子执行引用定位对应清单。
 
 未指定 `--output` 时，由系统临时目录 API 创建唯一目录；macOS 不保证路径字面为 `/tmp`。

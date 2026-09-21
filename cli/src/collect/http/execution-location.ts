@@ -1,5 +1,5 @@
 import { isInteractive } from "../../terminal/policy";
-import { terminalStdout } from "../../terminal/output";
+
 import {
   matchListedChoice,
   printNumberedChoices,

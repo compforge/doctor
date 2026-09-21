@@ -1,8 +1,9 @@
 #!/usr/bin/env bun
+import { withLogger } from "../terminal/log";
 import { commandOptionsWithSources } from "./option-sources";
 import type { CollectHttpCliOpts } from "../collect/http";
 import type { CollectNetworkCliOpts } from "../collect/network";
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 // 入口只做子命令路由：
 //   doctor chat              → 默认本地 Agent；--server 显式选择远端 Agent（app/repl.tsx）
 //   doctor mem               → 选择后端、attach Python 进程并回传对象堆（collect/）
@@ -385,7 +386,7 @@ function withEvalOptions(cmd: CommandT): CommandT {
 /** @spec Release inspection reads local composition only, never a diagnostic target. */
 async function showVersion(distribution: Distribution): Promise<void> {
   const activePlugin = distribution.plugin ?? await loadActivePlugin();
-  terminalStdout.info(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), distribution)}\n`);
+  writeOutput(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), distribution)}\n`);
 }
 
 /** Build the CLI surface without loading a profile or contacting a target. */
@@ -393,6 +394,7 @@ export function createDoctorProgram(
   distribution: Distribution = {},
 ): Command {
   const { plugin } = distribution;
+  const commandRuntime = { plugin, logLevel: distribution.logLevel };
   const program = new CliCommand();
   program
     .name(distribution.name ?? "doctor")
@@ -417,7 +419,7 @@ export function createDoctorProgram(
     .hook("preAction", () => {
       if (!program.opts().version) return;
       // A version flag must not load the Plugin or enter a diagnostic command's action.
-      terminalStdout.info(`${formatDistributionVersion(distribution)}\n`);
+      writeOutput(`${formatDistributionVersion(distribution)}\n`);
       throw new CommanderError(0, "doctor.versionDisplayed", "");
     });
 
@@ -428,7 +430,7 @@ export function createDoctorProgram(
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const flags = toReplFlags(opts);
-    await runCommand(chatCommand, { ...opts, ...flags }, domainInput(flags), { plugin });
+    await runCommand(chatCommand, { ...opts, ...flags }, domainInput(flags), commandRuntime);
   });
 
   catalog
@@ -486,7 +488,7 @@ export function createDoctorProgram(
     .option("--profile <name>", "从 profile 取 kubeconfig 和 registry 凭据")
     .action(async (image, opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(imageCommand, opts, { ...domainInput(opts), image }, { plugin });
+      await runCommand(imageCommand, opts, { ...domainInput(opts), image }, commandRuntime);
     });
 
   catalog
@@ -504,7 +506,7 @@ export function createDoctorProgram(
     .option("--profile <name>", "从 profile 取 namespace、kubeconfig 或 kube.debug_image")
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(debugCommand, opts, domainInput(opts), { plugin });
+      await runCommand(debugCommand, opts, domainInput(opts), commandRuntime);
     });
 
   catalog
@@ -520,28 +522,28 @@ export function createDoctorProgram(
     .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, { plugin });
+      await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, commandRuntime);
     });
 
   withMemOptions(
     catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(memCommand, opts, domainInput(opts), { plugin });
+    await runCommand(memCommand, opts, domainInput(opts), commandRuntime);
   });
   withMemaOptions(
     catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
   ).action(async (inputs, opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, { plugin });
+    await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, commandRuntime);
   });
   withCpuOptions(
     catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(cpuCommand, opts, domainInput(opts), { plugin });
+    await runCommand(cpuCommand, opts, domainInput(opts), commandRuntime);
   });
-  registerOverviewCommand(catalog, plugin);
+  registerOverviewCommand(catalog, commandRuntime);
 
   withCollectOptions(
     catalog.command("collect").description(
@@ -559,27 +561,27 @@ export function createDoctorProgram(
       return;
     }
     const commandOpts = { ...normalizeBizIdOptions(positionalBizIds, opts), kinds };
-    await runCommand(collectCommand, commandOpts, domainInput(commandOpts), { plugin });
+    await runCommand(collectCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withTraceOptions(
     catalog.command("trace").description("按业务 ID 采集 trace/span，或离线下钻证据；输出 manifest、HTML 或证据包"),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, { plugin });
+    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
   });
   withStoreOptions(
     catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(storeCommand, opts, domainInput(opts), { plugin });
+    await runCommand(storeCommand, opts, domainInput(opts), commandRuntime);
   });
   withDbOptions(catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL"))
     .action(async (_opts, command: CommandT) => {
       const opts = commandOptionsWithSources(command);
       // SQL parsing belongs to db execution; help and unrelated commands do not load its grammar.
       const { dbCommand } = await import("../collect/db/command");
-      await runCommand(dbCommand, opts, domainInput(opts), { plugin });
+      await runCommand(dbCommand, opts, domainInput(opts), commandRuntime);
     });
   withLogOptions(
     catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace（只读）"),
@@ -587,7 +589,7 @@ export function createDoctorProgram(
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(logCommand, commandOpts, domainInput(commandOpts), { plugin });
+    await runCommand(logCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withDataOptions(
     catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
@@ -595,31 +597,31 @@ export function createDoctorProgram(
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(dataCommand, commandOpts, domainInput(commandOpts), { plugin });
+    await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withInspectOptions(
     catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(inspectCommand, opts, domainInput(opts), { plugin });
+    await runCommand(inspectCommand, opts, domainInput(opts), commandRuntime);
   });
   withTenantOptions(
     catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
   ).action(async (opts: CollectTenantCliOptions, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(tenantCommand, opts, domainInput(opts), { plugin });
+    await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
   });
   withHttpOptions(
     catalog.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
   ).action(async (opts: CollectHttpCliOpts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(httpCommand, opts, domainInput(opts), { plugin, printProfile: opts.example === undefined });
+    await runCommand(httpCommand, opts, domainInput(opts), { ...commandRuntime, printProfile: opts.example === undefined });
   });
   withNetworkOptions(
     catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
   ).action(async (opts: CollectNetworkCliOpts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(netCommand, opts, domainInput(opts), { plugin });
+    await runCommand(netCommand, opts, domainInput(opts), commandRuntime);
   });
   catalog
     .command("neta [input]")
@@ -635,31 +637,31 @@ export function createDoctorProgram(
     catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(mcpCommand, opts, domainInput(opts), { plugin });
+    await runCommand(mcpCommand, opts, domainInput(opts), commandRuntime);
   });
   withModelOptions(
     catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(modelCommand, opts, domainInput(opts), { plugin });
+    await runCommand(modelCommand, opts, domainInput(opts), commandRuntime);
   });
   withMetricOptions(
     catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(metricCommand, opts, domainInput(opts), { plugin });
+    await runCommand(metricCommand, opts, domainInput(opts), commandRuntime);
   });
   withEvalOptions(
     catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(evalCommand, opts, domainInput(opts), { plugin });
+    await runCommand(evalCommand, opts, domainInput(opts), commandRuntime);
   });
   withPerfOptions(
     catalog.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(perfCommand, opts, domainInput(opts), { plugin });
+    await runCommand(perfCommand, opts, domainInput(opts), commandRuntime);
   });
 
   const visibleCommands = new Set(selectVisibleCommands(catalog.commands, distribution.commands ?? DOCTOR_COMMANDS));
@@ -680,7 +682,7 @@ export async function main(distribution: Distribution = {}) {
     return;
   }
   try {
-    await program.parseAsync(process.argv);
+    await withLogger(distribution.logLevel ?? "info", () => program.parseAsync(process.argv));
   } catch (error) {
     if (error instanceof CommanderError && error.code === "doctor.versionDisplayed") return;
     throw error;

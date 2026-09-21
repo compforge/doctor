@@ -1,5 +1,6 @@
 import { isInteractive } from "../terminal/policy";
-import { terminalStdout } from "../terminal/output";
+
+import { writeOutput } from "../terminal/output";
 import {
   existsSync,
   mkdirSync,
@@ -141,19 +142,17 @@ export async function runProfile(name: string | undefined, opts: ProfileCommandO
   } else {
     current = Object.keys(config.profiles)[0];
   }
-  terminalStdout.info(
-    current
+  writeOutput(current
       ? `profile: ${current}\n`
-      : `profile: ${configuredDefault} (invalid; profile not found)\n`,
-  );
+      : `profile: ${configuredDefault} (invalid; profile not found)\n`);
   const selected = name ? resolveProfile(config, name).name : await selectProfile(config, current);
 
   if (!selected) return;
   if (selected === current) {
-    terminalStdout.info(`profile: ${current} (current)\n`);
+    writeOutput(`profile: ${current} (current)\n`);
     return;
   }
 
   persistDefaultProfile(configPath, selected);
-  terminalStdout.success(`profile: ${selected} (saved to ${configPath})\n`);
+  writeOutput(`profile: ${selected} (saved to ${configPath})\n`);
 }

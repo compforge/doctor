@@ -2,7 +2,8 @@ import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
 import { preflightPluginAccess } from "../../plugin/context";
 import { findDataProvider, type DataProvider } from "./extensions";
 import { CommandInputError, resolveKubernetesCommandContext, type CommandContext } from "../../command";
-import { terminalStderr } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../evidence";
 import { resolveDataConfig, resolveDataServiceSelection } from "./config";
@@ -38,7 +39,7 @@ export async function prepareDataCommand(
     const config = await resolveDataConfig(opts, catalog, command, injectedExecutor);
     const selections = config ? await resolveDataServiceSelection({ config, catalog }) : undefined;
     if (!config || !selections) {
-      terminalStderr.warning("[collect] 已取消\n");
+      useLogger("collect").warn("已取消");
       return undefined;
     }
     const executor = injectedExecutor ?? new KubectlExecutor(config.kube);

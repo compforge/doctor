@@ -22,7 +22,8 @@ import {
 } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
 import { resolveApprovalGate } from "../terminal/approval";
-import { terminalStderr, terminalStdout } from "../terminal/output";
+
+import { useLogger } from "../terminal/log";
 import {
   resolveEvalConfig,
   selectEvalCases,
@@ -99,7 +100,7 @@ export async function executeEvalCases(
   for (const selected of cases) {
     if (signal.aborted) break;
     const startedAt = new Date().toISOString();
-    terminalStdout.write(`[eval] case ${selected.id}…\n`);
+    useLogger("eval").info(`case ${selected.id}…`);
     try {
       const observation = await runner.run({ input: selected, runId, signal });
       const protocol = runner.classify(observation);
@@ -112,10 +113,8 @@ export async function executeEvalCases(
         protocol,
         correlation: correlation(observation),
       });
-      terminalStdout.write(
-        `[eval] case ${selected.id}: ${protocol.ok ? "ok" : protocol.errorKind ?? "failed"}`
-        + ` (${observation.durationMs.toFixed(0)}ms)\n`,
-      );
+      useLogger("eval").info(`case ${selected.id}: ${protocol.ok ? "ok" : protocol.errorKind ?? "failed"}`
+        + ` (${observation.durationMs.toFixed(0)}ms)`);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       results.push({
@@ -125,7 +124,7 @@ export async function executeEvalCases(
         finishedAt: new Date().toISOString(),
         error: reason,
       });
-      terminalStderr.error(`[eval] case ${selected.id}: ${reason}\n`);
+      useLogger("eval").error(`case ${selected.id}: ${reason}`);
     }
   }
   return results;
@@ -230,7 +229,7 @@ export async function runEval(
     commandContext,
   });
   if (provider.extension.requestIdentity && !requestIdentity) {
-    terminalStderr.warning("[eval] 已取消身份选择\n");
+    useLogger("eval").warn("已取消身份选择");
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
@@ -247,7 +246,7 @@ export async function runEval(
     ],
   });
   if (!decision.approved) {
-    terminalStderr.warning(`[eval] ${approvalDeniedReason(decision.source)}\n`);
+    useLogger("eval").warn(`${approvalDeniedReason(decision.source)}`);
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
@@ -301,7 +300,7 @@ export async function runEval(
     }
     await managed.dispose();
   }
-  if (lifecycleError) terminalStderr.error(`[eval] runner lifecycle: ${lifecycleError}\n`);
+  if (lifecycleError) useLogger("eval").error(`runner lifecycle: ${lifecycleError}`);
 
   const correlations = [...new Set(results.flatMap((item) => item.correlation?.id ?? []))];
   const evidence = await collectEvalEvidence({

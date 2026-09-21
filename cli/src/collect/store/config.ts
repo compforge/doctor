@@ -25,7 +25,8 @@ import {
   printNumberedChoices,
   promptListedChoice,
 } from "../../terminal/selection";
-import { terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import type { SelectionContext } from "../../terminal/selection-context";
 import { promptNamedChoices } from "../../terminal/service-selection";
 import { openPluginContext } from "../../plugin/context";
@@ -183,7 +184,7 @@ async function resolveService(
     return explicit;
   }
   if (choices.length === 1) {
-    terminalStdout.write(`[collect] service: ${choices[0]!.name}（唯一 ${kind} provider，自动选择）\n`);
+    useLogger("collect").info(`service: ${choices[0]!.name}（唯一 ${kind} provider，自动选择）`);
     return choices[0]!.name;
   }
   if (!interactive) throw new Error(`非交互终端请用 --service <name> 指定 ${kind} 配置来源 Service`);

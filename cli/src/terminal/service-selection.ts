@@ -1,5 +1,5 @@
 import { promptMultiSelect } from "./multi-select";
-import { terminalStdout } from "./output";
+import { useLogger } from "./log";
 import { selectionTitle, type SelectionContext } from "./selection-context";
 
 export interface NamedChoice {
@@ -17,7 +17,7 @@ export interface NamedChoiceSelectionInput<Choice extends NamedChoice> {
 export async function promptNamedChoices<Choice extends NamedChoice>(
   input: NamedChoiceSelectionInput<Choice>,
 ): Promise<string[] | undefined> {
-  if (input.context.effect) terminalStdout.write(`[collect] ${input.context.effect}\n`);
+  if (input.context.effect) useLogger().info(`[collect] ${input.context.effect}\n`);
   return promptMultiSelect({
     choices: input.choices,
     defaults: input.defaults,

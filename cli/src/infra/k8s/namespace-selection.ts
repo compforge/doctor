@@ -1,5 +1,6 @@
 import { isInteractive } from "../../terminal/policy";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 import {
   matchSearchableChoices,
   printNumberedChoices,
@@ -146,7 +147,7 @@ export async function promptNamespace(
     selection: SelectionContext;
   },
 ): Promise<string | undefined> {
-  if (input.selection.effect) terminalStdout.write(`[collect] ${input.selection.effect}\n`);
+  if (input.selection.effect) useLogger("collect").info(`${input.selection.effect}`);
   if (input.choices.length > 0) {
     printNamespaceChoices(input.choices, selectionTitle(input.selection, "Namespace"));
   }
@@ -220,10 +221,8 @@ export async function resolvePodNamespace(
     : undefined;
   const namespacePermission = evaluated?.facts.find((fact) => fact.need.rule.resource === "namespaces");
   if (namespacePermission?.status === "denied") {
-    terminalStderr.warning(
-      `[k8s] preferred: list namespaces ${namespacePermission.status}`
-      + "（Namespace 候选发现）；改为手动输入\n",
-    );
+    useLogger("k8s").warn(`preferred: list namespaces ${namespacePermission.status}`
+      + "（Namespace 候选发现）；改为手动输入");
     const selected = await (input.prompt ?? promptNamespace)({
       choices: [],
       defaultNamespace: input.resolved.namespace,
@@ -238,14 +237,10 @@ export async function resolvePodNamespace(
       const parsed = parseNamespaceChoices(listed.stdout);
       choices = recent ? recent.rankNamespaces(recentScope, parsed) : parsed;
     } catch (error) {
-      terminalStderr.error(
-        `[collect] 解析 Namespace 列表失败，改为手动输入：${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      useLogger("collect").error(`解析 Namespace 列表失败，改为手动输入：${error instanceof Error ? error.message : String(error)}`);
     }
   } else {
-    terminalStderr.error(
-      `[collect] 获取 Namespace 列表失败，改为手动输入：${listed.stderr.trim() || `exit=${listed.exitCode}`}\n`,
-    );
+    useLogger("collect").error(`获取 Namespace 列表失败，改为手动输入：${listed.stderr.trim() || `exit=${listed.exitCode}`}`);
   }
 
   const servicePermission = evaluated?.facts.find((fact) => (
@@ -260,22 +255,16 @@ export async function resolvePodNamespace(
       try {
         choices = addNamespacePluginServiceCounts(choices, services.stdout, input.plugins);
       } catch (error) {
-        terminalStderr.warning(
-          `[collect] 解析集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量：`
-          + `${error instanceof Error ? error.message : String(error)}\n`,
-        );
+        useLogger("collect").warn(`解析集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量：`
+          + `${error instanceof Error ? error.message : String(error)}`);
       }
     } else {
-      terminalStderr.warning(
-        "[collect] 获取集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量："
-        + `${services.stderr.trim() || `exit=${services.exitCode}`}\n`,
-      );
+      useLogger("collect").warn("获取集群 Service 列表失败，Namespace 候选不显示 Plugin Service 数量："
+        + `${services.stderr.trim() || `exit=${services.exitCode}`}`);
     }
   } else if (servicePermission?.status === "denied") {
-    terminalStderr.warning(
-      "[k8s] preferred: list services denied (all namespaces)"
-      + "（Plugin Service 数量）；Namespace 候选不显示数量\n",
-    );
+    useLogger("k8s").warn("preferred: list services denied (all namespaces)"
+      + "（Plugin Service 数量）；Namespace 候选不显示数量");
   }
 
   const selected = await (input.prompt ?? promptNamespace)({

@@ -29,10 +29,10 @@
     "yaml": "^2.5.1"
   },
   "dependencies": {
-    "@compforge/harness-common": "0.3.2",
     "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
     "@compforge/doctor-agent": "workspace:*",
     "@compforge/doctor-plugin": "workspace:*",
+    "@compforge/harness-common": "0.3.2",
     "@compforge/harness-toolbox": "0.3.1",
     "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
     "@compforge/prombed": "0.0.2",
@@ -50,6 +50,7 @@
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "chat-tui": "github:compforge/chat-tui#b24bad23134d7ed46a69b7de31411bce927e565c",
+    "consola": "^3.4.2",
     "fflate": "0.8.3",
     "got": "15.1.0",
     "mysql2": "3.23.1",

@@ -3,19 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 import type { OverviewResult } from "./flow";
 
 export function printOverview(result: OverviewResult): void {
-  terminalStdout.write(`Overview · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
+  writeOutput(`Overview · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
   for (const service of result.services) {
-    terminalStdout.write(`\n${service.service}\n`);
-    if (service.error) terminalStdout.warning(`  查询失败：${service.error}\n`);
+    writeOutput(`\n${service.service}\n`);
+    if (service.error) writeOutput(`  查询失败：${service.error}\n`);
     for (const facet of service.facets) {
-      terminalStdout.write(`  ${facet.facetId} · ${facet.description}\n`);
-      if (!facet.entries.length) terminalStdout.write("    无值得注意的条目\n");
-      for (const entry of facet.entries) terminalStdout.write(`    ${entry.label}: ${entry.data}${entry.unit ? ` ${entry.unit}` : ""}\n`);
-      if (facet.truncated) terminalStdout.warning(`    已截断：${facet.truncated.reason}\n`);
+      writeOutput(`  ${facet.facetId} · ${facet.description}\n`);
+      if (!facet.entries.length) writeOutput("    无值得注意的条目\n");
+      for (const entry of facet.entries) writeOutput(`    ${entry.label}: ${entry.data}${entry.unit ? ` ${entry.unit}` : ""}\n`);
+      if (facet.truncated) writeOutput(`    已截断：${facet.truncated.reason}\n`);
     }
   }
 }

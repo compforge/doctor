@@ -194,7 +194,8 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
   expect({ code, ...(code ? { stderr } : {}) }).toEqual({ code: 0 });
   expect(existsSync(output)).toBeTrue();
   if (format === "manifest") {
-    const result = JSON.parse(stdout);
+    const result = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
+    expect(stdout).toEndWith(`${JSON.stringify(result, null, 2)}\n`);
     expect(result.status).toBe("ok");
     expect(result.files.tree).toBeDefined();
   } else if (format === "bundle") {

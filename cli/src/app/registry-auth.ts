@@ -1,5 +1,5 @@
 import { isInteractive } from "../terminal/policy";
-import { terminalStdout } from "../terminal/output";
+import { writeOutput } from "../terminal/output";
 import { prepareTerminalInput } from "../terminal/input";
 import { createInterface, emitKeypressEvents } from "node:readline";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
@@ -57,7 +57,7 @@ async function promptSecret(question: string): Promise<string | undefined> {
   const input = process.stdin;
   if (!input.isTTY || !input.setRawMode) return undefined;
   prepareTerminalInput(input);
-  terminalStdout.write(question);
+  writeOutput(question);
   emitKeypressEvents(input);
   input.setRawMode(true);
   input.resume();
@@ -67,7 +67,7 @@ async function promptSecret(question: string): Promise<string | undefined> {
       input.off("keypress", onKeypress);
       input.setRawMode(false);
       input.pause();
-      terminalStdout.write("\n");
+      writeOutput("\n");
       resolve(result);
     };
     const onKeypress = (text: string, key: { name?: string; ctrl?: boolean }) => {
@@ -97,7 +97,7 @@ async function promptRegistryCredentials(
   const credentialUsage = purpose === "publish-image"
     ? "用户名和密码用于本次检查和上传，不会保存到 profile。"
     : "用户名和密码仅用于本次读取，不会上传 image，也不会保存到 profile。";
-  terminalStdout.info(`[registry] ${explanation}\n[registry] Registry 要求认证；${credentialUsage}\n`);
+  writeOutput(`[registry] ${explanation}\n[registry] Registry 要求认证；${credentialUsage}\n`);
   const username = await promptLine(
     `Registry 用户名${defaultUsername ? `（回车使用 ${defaultUsername}）` : "（回车跳过）"}：`,
     defaultUsername,

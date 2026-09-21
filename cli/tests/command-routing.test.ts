@@ -329,7 +329,7 @@ describe("CLI command routing", () => {
     const result = runCli("mem", "--profile", "prod", "--config", configPath);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stdout).toStartWith("profile: prod\n");
+    expect(result.stdout).toStartWith("[info] profile: prod\n");
     expect(readFileSync(configPath, "utf8")).toContain("default_profile: dev");
   });
 
@@ -382,7 +382,7 @@ describe("CLI command routing", () => {
     const result = runCliFrom(dir, "http", "--example");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("示例已生成：example.yaml");
+    expect(result.stdout).toContain("示例已生成：example.yaml");
     expect(readFileSync(join(dir, "example.yaml"), "utf-8")).toContain("schema: doctor-http/v1");
   });
 
@@ -392,7 +392,7 @@ describe("CLI command routing", () => {
     const result = runCliFrom(dir, "http", "-e", "requests.yaml");
 
     expect(result.exitCode).toBe(0);
-    expect(result.stderr).toContain("示例已生成：requests.yaml");
+    expect(result.stdout).toContain("示例已生成：requests.yaml");
     expect(readFileSync(join(dir, "requests.yaml"), "utf-8")).toContain("schema: doctor-http/v1");
   });
 

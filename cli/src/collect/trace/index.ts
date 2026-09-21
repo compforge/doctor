@@ -1,5 +1,6 @@
 import { CommandInputError, CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
-import { terminalStderr, terminalStdout } from "../../terminal/output";
+
+import { useLogger } from "../../terminal/log";
 // Trace run owns ID resolution, acquisition and persisted deterministic analysis.
 // Render consumes that evidence; root Delivery owns the final files and their lifetime.
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -89,14 +90,10 @@ async function prepareTraceKubernetes(
   const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!collect) return undefined;
   if (collect.kubernetes.kubeconfigSource.startsWith("profile:")) {
-    terminalStdout.write(
-      `[collect] kubeconfig 来自 ${collect.kubernetes.kubeconfigSource}`
-      + `（${collect.kubernetes.kubeconfig}）\n`,
-    );
+    useLogger("collect").info(`kubeconfig 来自 ${collect.kubernetes.kubeconfigSource}`
+      + `（${collect.kubernetes.kubeconfig}）`);
   }
-  terminalStdout.write(
-    `[collect] namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）\n`,
-  );
+  useLogger("collect").info(`namespace: ${collect.kubernetes.namespace}（${collect.kubernetes.namespaceSource}）`);
   const executor = createKubernetesExecutor(collect);
   await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor trace",
@@ -191,18 +188,18 @@ export async function runCollectTrace(
     })) } };
   };
   if (!bizIds.length) {
-    terminalStderr.error("doctor trace 需要至少一个 biz-id\n");
+    useLogger().error("doctor trace 需要至少一个 biz-id");
     return failure(2, "Trace 采集准备失败");
   }
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
-    terminalStderr.error(`--page-size 需要正整数: '${opts.pageSize}'\n`);
+    useLogger().error(`--page-size 需要正整数: '${opts.pageSize}'`);
     return failure(2, "Trace 采集准备失败");
   }
   try {
     parseTraceOutputFormat(opts.format);
   } catch (error) {
-    terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+    useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return failure(2, "Trace 采集准备失败");
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
@@ -214,11 +211,11 @@ export async function runCollectTrace(
       !endpoint && !plugin.trace?.source?.dataSource,
     );
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return failure(2, "Trace 采集准备失败");
   }
   if (!runtime) {
-    terminalStderr.warning("[collect] 已取消\n");
+    useLogger("collect").warn("已取消");
     return failure(130, "Trace 采集已取消");
   }
 
@@ -235,8 +232,8 @@ export async function runCollectTrace(
     username: opts.username,
     password: opts.password,
     log: (line, tone) => {
-      if (tone === "warning") terminalStdout.warning(`${line}\n`);
-      else terminalStdout.write(`${line}\n`);
+      if (tone === "warning") useLogger().warn(`${line}`);
+      else useLogger().info(`${line}`);
     },
   });
 
@@ -254,15 +251,13 @@ export async function runCollectTrace(
       resolveDependencies: (service) => dependencyRuntime.resolve(service),
     }, plugin, runtime.executor);
   } catch (err) {
-    terminalStderr.error(`${err instanceof Error ? err.message : String(err)}\n`);
+    useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return failure(2, "Trace 采集准备失败");
   }
   for (const trace of traces) {
-    terminalStdout.write(
-      `[collect] biz-id: ${trace.bizId} → trace-id: ${trace.traceId}`
+    useLogger("collect").info(`biz-id: ${trace.bizId} → trace-id: ${trace.traceId}`
       + `（${trace.service} 按 ${trace.resolvedAs} 解析`
-      + `${trace.sourceId ? `，source=${trace.sourceId}` : ""}）\n`,
-    );
+      + `${trace.sourceId ? `，source=${trace.sourceId}` : ""}）`);
   }
 
   if (opts.span && new Set(traces.map(trace => trace.traceId)).size > 1) {
@@ -277,7 +272,7 @@ export async function runCollectTrace(
         ? await dependencyRuntime.prepareDataSource(traceStores[0]!.service, traceStores[0]!.dataSource)
         : await dependencyRuntime.prepareDataSourceCandidates(traceStores);
     } catch (error) {
-      terminalStderr.error(`${error instanceof Error ? error.message : String(error)}\n`);
+      useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
       return failure(2, "Trace 采集准备失败");
     }
   }
@@ -308,7 +303,7 @@ export async function runCollectTrace(
   );
   const items: TraceOutput["items"][number][] = [];
   for (const [bizIndex, bizId] of bizIds.entries()) {
-    terminalStdout.warning(`\n[collect:trace] [${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}\n`);
+    useLogger("collect:trace").warn(`[${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}`);
     const groupTraces = traces.filter((trace) => trace.bizId === bizId);
     const itemStatuses: CommandStatus[] = [];
     const itemArtifacts: import("../../command").CommandArtifact[] = [];
@@ -341,15 +336,13 @@ export async function runCollectTrace(
             },
           },
           (line, tone) => {
-            if (tone === "warning") terminalStdout.warning(`${line}\n`);
-            else terminalStdout.write(`${line}\n`);
+            if (tone === "warning") useLogger().warn(`${line}`);
+            else useLogger().info(`${line}`);
           },
         );
       } catch (error) {
         code = 1;
-        terminalStderr.error(
-          `[collect] trace ${trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}\n`,
-        );
+        useLogger("collect").error(`trace ${trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}`);
       }
       itemStatuses.push(commandOutcome(code).status);
       groupCode = Math.max(groupCode, code);
@@ -372,9 +365,7 @@ export async function runCollectTrace(
     try {
       await dependencyRuntime.close();
     } catch (error) {
-      terminalStdout.warning(
-        `[collect] Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}\n`,
-      );
+      useLogger("collect").warn(`Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
