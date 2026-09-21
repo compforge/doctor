@@ -14,6 +14,14 @@ import type {
   KubernetesContainerState,
   KubernetesContainerTermination,
 } from "@compforge/harness-toolbox/kubernetes/pod";
+import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
+import {
+  deriveDeploymentName,
+  matchAutoscalers,
+  parseKubernetesAutoscalers,
+  parseKubernetesEvents,
+  selectLifecycleEvents,
+} from "../../../infra/k8s/workload-events";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type {
@@ -56,6 +64,82 @@ export function inspectContainerStateFact(
   }
   if (state.kind === "running") return { kind: state.kind, startedAt: state.startedAt };
   return { kind: state.kind, ...terminationFact(state) };
+}
+
+interface LifecycleCapture {
+  result?: ExecResult;
+  error?: string;
+}
+
+/** 单次只读 list 的生命周期信号采集；失败只降级对应部分，不影响 Pod 运行态事实。 */
+async function captureLifecycleSignals(
+  ctx: InspectCommandContext,
+  config: InspectConfig,
+  resolved: Map<string, ResolvedKubernetesWorkload>,
+): Promise<InspectFacts["lifecycleSignals"]> {
+  const run = async (args: string[]): Promise<LifecycleCapture> => {
+    try {
+      return { result: await ctx.executor.run(args, { timeoutMs: 30_000 }) };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  };
+  const [events, hpas] = await Promise.all([
+    run(["get", "events", "-o", "json"]),
+    run(["get", "horizontalpodautoscalers", "-o", "json"]),
+  ]);
+  const recordStep = (id: string, title: string, capture: LifecycleCapture) => ctx.bundle.addStep({
+    id,
+    title,
+    risk: "observe",
+    status: capture.result?.ok ? "ok" : "failed",
+    reason: capture.error ?? (capture.result ? commandReason(capture.result.ok, capture.result.stderr) : "读取失败"),
+    command: capture.result?.command ?? ["kubectl", ...["get", id === "inspect-events" ? "events" : "horizontalpodautoscalers", "-o", "json"]],
+    durationMs: capture.result?.durationMs ?? 0,
+  });
+  recordStep("inspect-events", "Workload 关联 Event", events);
+  recordStep("inspect-hpas", "HPA 自动扩缩", hpas);
+
+  const failures = [
+    events.result?.ok ? undefined : `Event：${events.error ?? commandReason(false, events.result?.stderr ?? "")}`,
+    hpas.result?.ok ? undefined : `HPA：${hpas.error ?? commandReason(false, hpas.result?.stderr ?? "")}`,
+  ].filter((reason): reason is string => !!reason);
+  if (failures.length === 2) {
+    return failedFact("inspect.lifecycle-signals", "service-targets", failures.join("；"));
+  }
+
+  const workloads = [...resolved.values()];
+  // Deployment 名单除显式采集外，还从 Pod 命名反推——未开 --deployment-config 时 HPA/Deployment 级事件仍要关联得上。
+  const deploymentNames = new Set(workloads.flatMap((workload) => [
+    ...workload.deployments.map((deployment) => deployment.name),
+    ...workload.pods.flatMap((pod) => deriveDeploymentName(pod.name) ?? []),
+  ]));
+  const objectNames = new Set([
+    ...workloads.flatMap((workload) => workload.pods.map((pod) => pod.name)),
+    ...deploymentNames,
+  ]);
+  let autoscalers: ReturnType<typeof parseKubernetesAutoscalers> = [];
+  if (hpas.result?.ok) {
+    try {
+      autoscalers = matchAutoscalers(
+        parseKubernetesAutoscalers(hpas.result.stdout, config.namespace),
+        deploymentNames,
+      );
+    } catch (error) {
+      ctx.log(`[collect] HPA 解析失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  // HPA 自身的 SuccessfulRescale 事件挂在 HPA 对象上，关联后补入事件筛选范围。
+  for (const autoscaler of autoscalers) objectNames.add(autoscaler.name);
+  let events2: ReturnType<typeof parseKubernetesEvents> = [];
+  if (events.result?.ok) {
+    try {
+      events2 = selectLifecycleEvents(parseKubernetesEvents(events.result.stdout, config.namespace), objectNames);
+    } catch (error) {
+      ctx.log(`[collect] Event 解析失败：${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return collectedFact("inspect.lifecycle-signals", "service-targets", { events: events2, autoscalers });
 }
 
 function dependencyTargets(
@@ -189,6 +273,7 @@ export function makeServiceTargetsInspect(
           dependencyTargets: config.includeDependencies
             ? failedFact("inspect.dependency-targets", "service-targets", reason)
             : unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON),
+          lifecycleSignals: unavailableFact("inspect.lifecycle-signals", "service-targets", "Workload 快照未取得，未采集事件与 Autoscaler"),
         };
       }
       ctx.workloadConfig = snapshot;
@@ -214,6 +299,7 @@ export function makeServiceTargetsInspect(
         : dependencyTargetsFailure
           ? failedFact("inspect.dependency-targets", "service-targets", dependencyTargetsFailure)
           : dependencyTargets(config, resolvedWorkloads, catalog);
+      const lifecycleSignals = await captureLifecycleSignals(ctx, config, resolvedWorkloads);
 
       const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
@@ -291,6 +377,7 @@ export function makeServiceTargetsInspect(
         serviceTargets: collectedFact("inspect.service-targets", "service-targets", { services }),
         deploymentConfiguration,
         dependencyTargets: resolvedDependencyTargets,
+        lifecycleSignals,
       };
     },
   };

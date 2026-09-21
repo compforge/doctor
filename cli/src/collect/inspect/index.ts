@@ -134,6 +134,18 @@ export async function runCollectInspect(
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
         fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
       },
+      {
+        requirement: "preferred",
+        rule: { verb: "list", resource: "events" },
+        purpose: "关联所选 Workload 的探针失败、重启与扩缩容事件",
+        fallback: "权限缺失时仍交付 Pod 运行态，事件关联标记为缺失",
+      },
+      {
+        requirement: "preferred",
+        rule: { verb: "list", resource: "horizontalpodautoscalers.autoscaling" },
+        purpose: "识别所选 Workload 的 HPA 与近期扩缩",
+        fallback: "权限缺失时不影响其它证据",
+      },
       ...(selectedDefinitions.some((service) => service.workloads.some(
         (workload) => workload.location.kind === "service",
       )) ? [{
@@ -186,6 +198,7 @@ export async function runCollectInspect(
       serviceTargets: facts.serviceTargets,
       deploymentConfiguration: facts.deploymentConfiguration,
       dependencyTargets: facts.dependencyTargets,
+      lifecycleSignals: facts.lifecycleSignals,
     } : {},
     params: {
       services: config.services,

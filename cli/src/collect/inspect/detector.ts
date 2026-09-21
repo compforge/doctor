@@ -115,6 +115,12 @@ export function projectInspectServiceFacts(
       source: facts.dependencyTargets,
       value: facts.dependencyTargets,
     }),
+    projectServiceEvidenceFact({
+      factPath: "lifecycleSignals",
+      services,
+      source: facts.lifecycleSignals,
+      value: facts.lifecycleSignals,
+    }),
   ];
 }
 
