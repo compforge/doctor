@@ -1,6 +1,6 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type Command } from "../command";
-import { reportError } from "./error-log";
+import { reportError } from "./error-report";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
 import { withLogger } from "../terminal/log";

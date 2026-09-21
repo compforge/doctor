@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -11,9 +11,11 @@ for (const fixture of [true, false]) {
       const result = Bun.spawnSync({
         cmd: [process.execPath, "run", resolve(import.meta.dir, entry), ...(fixture ? ["collect"] : ["log", "--format", "manifest"]),
           "--config", join(directory, "missing.yaml"), "--output", join(directory, "evidence")],
-        cwd: directory, env: { ...process.env, NO_COLOR: "1", DOCTOR_ERROR_LOG: join(directory, "error.log") }, stdout: "pipe", stderr: "pipe",
+        cwd: directory, env: { ...process.env, NO_COLOR: "1" }, stdout: "pipe", stderr: "pipe",
       });
       expect(result.exitCode, result.stderr.toString()).toBe(fixture ? 0 : 1);
+      expect(readdirSync(directory).filter(name => name.startsWith("doctor-error-"))).toEqual([]);
+      expect(result.stderr.toString()).not.toContain("技术详情:");
       const manifest = fixture ? JSON.parse(result.stdout.toString())
         : JSON.parse(readFileSync(join(directory, "evidence", "manifest.json"), "utf8"));
       if (!fixture) {

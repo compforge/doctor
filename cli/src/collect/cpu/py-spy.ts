@@ -1,4 +1,4 @@
-import { writeErrorLog } from "../../app/error-log";
+import { reportError } from "../../app/error-report";
 import type { DebugEnvironmentFacts } from "../../infra/target/debug";
 import type { ExecResult, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CpuCommandContext } from "./context";
@@ -156,7 +156,7 @@ async function collectFromDebugContainer(
       podDeclaresSysPtrace(input.podJson, debug.executionContainer),
     );
   } catch (error) {
-    writeErrorLog(error, "doctor cpu/py-spy-debug-ptrace");
+    reportError(error, { context: "doctor cpu/py-spy-debug-ptrace" });
     return {
       initialAttachLikely,
       strategy: "debug-container",

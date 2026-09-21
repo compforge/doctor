@@ -3,7 +3,7 @@ import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kuber
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reportError } from "../../app/error-log";
+import { reportError } from "../../app/error-report";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { commandOutcome, resolveKubernetesCommandContext, type CommandResult } from "../../command";

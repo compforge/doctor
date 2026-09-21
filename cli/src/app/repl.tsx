@@ -7,7 +7,7 @@ import { Session } from "../chat/session";
 import type { CliFlags } from "../protocol";
 import { mapErrorMessage } from "../protocol";
 import { bootstrap } from "./bootstrap";
-import { reportError } from "./error-log";
+import { reportError } from "./error-report";
 
 export async function runRepl(
   flags: CliFlags,

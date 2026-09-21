@@ -1,4 +1,4 @@
-import { writeErrorLog } from "../../../app/error-log";
+import { reportError } from "../../../app/error-report";
 import type { ContainerInfo, TargetPod } from "../../../infra/k8s/target";
 import { fillFromExec } from "../../exec-step";
 import { pickPid } from "../../fact/process";
@@ -57,7 +57,7 @@ export function makeCpuRuntimeInspect(): Inspect<CpuDiagnosisFacts, CpuCommandCo
             produced.pythonProcess = collectedFact("cpu.python-process", "cpu-runtime", parsed);
           }
         } catch (error) {
-          writeErrorLog(error, "doctor cpu/parse-python-facts");
+          reportError(error, { context: "doctor cpu/parse-python-facts" });
           ctx.notes.push(`py-spy 运行环境 Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);
         }
       }
@@ -71,7 +71,7 @@ export function makeCpuRuntimeInspect(): Inspect<CpuDiagnosisFacts, CpuCommandCo
             podDeclaresSysPtrace(ctx.podJson, ctx.container.name),
           ));
         } catch (error) {
-          writeErrorLog(error, "doctor cpu/parse-ptrace-facts");
+          reportError(error, { context: "doctor cpu/parse-ptrace-facts" });
           ctx.notes.push(`ptrace Facts 解析失败：${error instanceof Error ? error.message : String(error)}`);
         }
       }

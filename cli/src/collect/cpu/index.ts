@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import { writeErrorLog } from "../../app/error-log";
+import { reportError } from "../../app/error-report";
 import { runCollect } from "../engine";
 import type { Detector } from "../protocol";
 import { EvidenceBundle, type OutcomeDecl, type StepRisk } from "../evidence";
@@ -183,7 +183,7 @@ export async function collectCpu(
   try {
     pod = parsePodJson(podJson.stdout);
   } catch (error) {
-    writeErrorLog(error, "doctor cpu/parse-pod");
+    reportError(error, { context: "doctor cpu/parse-pod" });
     bundle.settle("Pod JSON 解析失败");
     bundle.writeSummary(`# CPU 采集失败\n\nPod JSON 解析失败\n`);
     return finish(1);
