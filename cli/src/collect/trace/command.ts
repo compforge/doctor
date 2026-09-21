@@ -21,8 +21,9 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     if (input.node && input.span) throw new CommandInputError("--node 与 --span 不能同时使用");
     if (input.from && input.bizIds.length) throw new CommandInputError("--from 不能与 biz-id 同时使用");
     if (!input.from && !input.bizIds.length) throw new CommandInputError("需要 biz-id 或 --from");
+    // Global Kubernetes scope may come from Distribution defaults; offline reads never use it.
     if (input.from && [input.endpoint, input.host, input.index, input.indexDate, input.username,
-      input.password, input.service, input.namespace].some(value => value !== undefined)) {
+      input.password, input.service].some(value => value !== undefined)) {
       throw new CommandInputError("--from 是纯离线模式，不能同时指定在线查询参数");
     }
     if (input.pageSize !== undefined && (!Number.isInteger(input.pageSize) || input.pageSize <= 0)) {

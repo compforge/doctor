@@ -187,7 +187,8 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
   const child = Bun.spawn({
     cmd: [process.execPath, "run", new URL("../src/app/entry.ts", import.meta.url).pathname,
       "trace", "--from", join(dir, "manifest.json"), "--format", format, "--output", output,
-      "--config", join(cwd, "absent-config.yaml"), "--kubeconfig", join(cwd, "absent-kubeconfig")],
+      "--config", join(cwd, "absent-config.yaml"), "--kubeconfig", join(cwd, "absent-kubeconfig"),
+      "--namespace", "unused-offline-namespace"],
     cwd, env: { ...process.env, NO_COLOR: "1" }, stdout: "pipe", stderr: "pipe",
   });
   const [stdout, stderr, code] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
