@@ -82,6 +82,8 @@ logger，领域代码在执行函数中通过 `useLogger(tag)` 获取原生 Cons
 不受日志级别影响；交互提示、授权说明与原始字节也使用独立 writer。自动化发行版可配置 `silent`，
 在非交互执行时直接消费 stdout 的结果；启用过程日志时，stdout 可以同时包含日志与最终交付。
 
+Doctor 不自动生成错误日志文件；错误摘要保留在 stderr，`--debug` 展开 stack 与 cause。需要留存时由调用方重定向 stderr。
+
 ### 展示不是权限边界
 
 命令列表复用 Commander 的 `hidden`：隐藏命令仍可直接执行，代码与依赖不保证被移除。

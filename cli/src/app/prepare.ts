@@ -1,5 +1,5 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { reportError } from "./error-log";
+import { reportError } from "./error-report";
 import { withoutShadowedDefaults } from "./option-sources";
 import { CommandContext } from "../command";
 import { loadActivePlugin } from "../plugin";

@@ -2,7 +2,7 @@ import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reportError } from "../../app/error-log";
+import { reportError } from "../../app/error-report";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { CommandStatus, aggregateCommandStatus, type CommandResult } from "../../command";
 

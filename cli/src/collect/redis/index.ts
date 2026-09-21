@@ -4,7 +4,7 @@ import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeErrorLog } from "../../app/error-log";
+import { reportError } from "../../app/error-report";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 
@@ -346,7 +346,7 @@ export async function runCollectRedis(
       disabledCatalogStore ? 0 : outcome.exitCode,
     );
   } catch (err) {
-    writeErrorLog(err, "doctor store/redis/runCollect");
+    reportError(err, { context: "doctor store/redis/runCollect" });
     const reason = err instanceof Error ? err.message : String(err);
     // 探针或判读挂了 → 剩下的格子（redis-probe 若还没填 / redis-findings）一并交代
     bundle.settle(reason);

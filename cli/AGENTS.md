@@ -58,9 +58,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
    Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。
    同一 Host 能力同时支持 container 与 process 时，先探测已有且可用的本地 container；不可用才回退
    本机进程。探测本身不隐式 load image 或改变 Host 状态。
-8. **可观测性按读者分层**：终端错误通过 stderr 提供面向现场用户的原因、版本、命令、失败阶段和
-   技术日志路径；完整异常链与运行上下文进入 Doctor Host 当前目录的 error log，`--debug` 仅在显式启用时
-   向 stderr 展开技术详情。诊断记录不得直接写入完整 argv、环境变量或未经脱敏的凭据与协议正文。
+8. **可观测性按读者分层**：终端错误通过 stderr 提供面向现场用户的原因、版本、命令、失败阶段；不自动生成错误日志文件，`--debug` 仅在显式启用时
+   向 stderr 展开完整异常链与 stack。诊断记录不得直接写入完整 argv、环境变量或未经脱敏的凭据与协议正文。
 9. **默认交付兼顾阅读与完整取证**：诊断命令未指定 `--format` 时，同时交付外置 HTML 和完整
    `tar.gz`；Bundle 解压后只产生一个顶层目录，首选根 `report.html` 阅读完整报告，通过根 manifest 定位各 Artifact 的领域 JSON、原始 Evidence 与附件；
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。

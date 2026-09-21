@@ -9,7 +9,7 @@ import { renderReportHtml } from "../report/html";
 import { cleanupTemporaryArtifacts, type CommandDeliveryOptions } from "./delivery";
 import { deliverSerialized } from "./delivery";
 import { kubernetesTargetRecord } from "../command/kubernetes-target";
-import { reportError } from "./error-log";
+import { reportError } from "./error-report";
 
 export interface FinalizeCommandInput<Input extends CommandInput, Output> {
   spec: Command<Input, Output>;

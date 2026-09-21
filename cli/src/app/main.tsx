@@ -49,7 +49,7 @@ import {
 } from "../collect/composite";
 import { registerOverviewCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
-import { reportError } from "./error-log";
+import { reportError } from "./error-report";
 import { runInit } from "./init";
 import { runProfile } from "./profile";
 import { configureProfileHelp } from "./profile-help";
