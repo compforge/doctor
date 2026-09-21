@@ -63,6 +63,7 @@ function detectorEvidence(): InspectEvidence {
       serviceTargets: unavailableFact("inspect.service-targets", "service-targets", "not needed by detector test"),
       deploymentConfiguration: unavailableFact("inspect.deployment-configuration", "service-targets", "not requested"),
       dependencyTargets: unavailableFact("inspect.dependency-targets", "service-targets", "not requested"),
+      lifecycleSignals: unavailableFact("inspect.lifecycle-signals", "service-targets", "not needed by detector test"),
     },
     rows: [],
     observations: [{
@@ -186,6 +187,7 @@ test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => 
     }),
     deploymentConfiguration: unavailableFact("inspect.deployment-configuration", "service-targets", "not requested"),
     dependencyTargets: unavailableFact("inspect.dependency-targets", "service-targets", "not requested"),
+    lifecycleSignals: unavailableFact("inspect.lifecycle-signals", "service-targets", "not requested"),
   };
 
   const projected = projectInspectServiceFacts(facts, ["api", "worker"]);
@@ -194,6 +196,7 @@ test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => 
     ["serviceTargets", "inspect.service-targets", facts.serviceTargets.producer],
     ["deploymentConfiguration", "inspect.deployment-configuration", facts.deploymentConfiguration.producer],
     ["dependencyTargets", "inspect.dependency-targets", facts.dependencyTargets.producer],
+    ["lifecycleSignals", "inspect.lifecycle-signals", facts.lifecycleSignals.producer],
   ]);
   expect(projected.every((fact) => (
     fact.services.join(",") === "api,worker"

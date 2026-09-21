@@ -381,8 +381,13 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
   dataSources?: readonly ServiceDataSource[];
   /** Explicit opt-in to configuration inspection. */
   configurationInspection?: boolean;
-  /** Presence enables log collection; default selects the implicit collection scope. */
-  logs?: { default: boolean };
+  /**
+   * Presence enables log collection; default selects the implicit collection scope.
+   * errorPatterns declares Service-specific error signatures that do not look like generic
+   * errors (e.g. WARNING-level lines carrying business error codes); Core merges them into
+   * --errors-only filtering. Invalid regex fails the log command explicitly at pattern build.
+   */
+  logs?: { default: boolean; errorPatterns?: readonly string[] };
 }
 
 /**

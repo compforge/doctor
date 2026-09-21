@@ -46,6 +46,8 @@ export interface TraceLineCollector {
   /** 每项是一条逻辑日志事件；错误首行和其堆栈续行以换行连接。 */
   readonly events: string[];
   push(line: string): void;
+  /** 最近 keepTail 行里未被筛选命中的原始行；用于被杀/崩溃容器的尾部取证，未配置 keepTail 时恒为空。 */
+  drainTail(): string[];
 }
 
 /** Empty traceIds selects the time-window logs; matching errors retain their stack continuation. */
@@ -53,12 +55,22 @@ export function createTraceLineCollector(
   traceIds: string | readonly string[],
   pattern?: RegExp,
   onTraceMatch?: (traceId: string) => void,
+  options?: { keepTail?: number },
 ): TraceLineCollector {
   const ids = typeof traceIds === "string" ? [traceIds] : traceIds;
   const lines: string[] = [];
   const events: string[] = [];
   let collectingStack = false;
   const notified = new Set<string>();
+  const keepTail = options?.keepTail ?? 0;
+  // 崩溃/被杀容器的关键证据在中断点而非"匹配错误的行"；尾部环形缓冲保留原样最后 N 行，
+  // 已命中筛选的行由 events 携带，drain 时排除避免重复。
+  const tail: { line: string; selected: boolean }[] = [];
+  const pushTail = (line: string, selected: boolean) => {
+    if (!keepTail) return;
+    tail.push({ line, selected });
+    if (tail.length > keepTail) tail.shift();
+  };
   return {
     lines,
     events,
@@ -75,6 +87,7 @@ export function createTraceLineCollector(
       if (collectingStack && isStackContinuation(line)) {
         lines.push(line);
         events[events.length - 1] += `\n${line}`;
+        pushTail(line, true);
         return;
       }
       const selected = (ids.length === 0 || matchesTrace) && (!pattern || pattern.test(line));
@@ -82,10 +95,13 @@ export function createTraceLineCollector(
         lines.push(line);
         events.push(line);
         collectingStack = ERROR_PATTERN.test(line);
+        pushTail(line, true);
         return;
       }
       collectingStack = false;
+      pushTail(line, false);
     },
+    drainTail: () => tail.filter((item) => !item.selected).map((item) => item.line),
   };
 }
 
@@ -140,10 +156,20 @@ export async function resolveLogServiceSelection(
   return selected;
 }
 
-export function buildLogPattern(errorsOnly: boolean, pattern?: string): RegExp | undefined {
-  const parts = errorsOnly ? [...ERROR_PATTERNS] : [];
+export function buildLogPattern(errorsOnly: boolean, pattern?: string, serviceErrorPatterns: readonly string[] = []): RegExp | undefined {
+  // Service 声明的 errorPatterns 并入 errors-only：业务错误常走 WARNING/INFO 级（如 error_type=104502），
+  // 通用正则抓不到。非 errors-only 模式不按内容过滤，servicePatterns 无意义。
+  const parts = errorsOnly ? [...ERROR_PATTERNS, ...serviceErrorPatterns] : [];
   if (pattern) parts.push(pattern);
   return parts.length ? new RegExp(parts.map((part) => `(?:${part})`).join("|")) : undefined;
+}
+
+/** 汇总所选 Service 在 Plugin 声明里的 errors-only 补充签名；未声明的 Service 不影响。 */
+export function serviceLogErrorPatterns(
+  catalog: ServiceCatalog,
+  services: readonly string[],
+): string[] {
+  return services.flatMap((name) => [...(catalog.find(name)?.logs?.errorPatterns ?? [])]);
 }
 
 /** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */

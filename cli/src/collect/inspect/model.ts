@@ -11,6 +11,7 @@ import type { KubernetesAccessContext } from "../../infra/k8s/access";
 import type { CommandContext } from "../../command";
 import type { ResolvedNamespace } from "../../infra/k8s/context";
 import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-config";
+import type { KubernetesAutoscaler, KubernetesWorkloadEvent } from "../../infra/k8s/workload-events";
 import type { EvidenceBundle } from "../evidence";
 
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
@@ -127,6 +128,11 @@ export interface InspectFacts {
     targets: InspectDependencyTarget[];
     missing: string[];
   }, "inspect.dependency-targets">;
+  /** 与所选 Workload 相关的 Event 与 HPA 快照；补充证据，不进入 Coverage 目标（客户环境 RBAC 常不含 events）。 */
+  lifecycleSignals: Fact<{
+    events: KubernetesWorkloadEvent[];
+    autoscalers: KubernetesAutoscaler[];
+  }, "inspect.lifecycle-signals">;
 }
 
 export interface EnvironmentConfigObservation extends ObservationMeta {

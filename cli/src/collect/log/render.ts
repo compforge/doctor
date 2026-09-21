@@ -81,6 +81,20 @@ export function buildLogTimeline(
             sequence: sequence++,
           });
         }
+        for (const line of previous.unfilteredTail ?? []) {
+          const parsed = parseLogEvent(line);
+          timeline.push({
+            kind: "log",
+            service: observation.service,
+            pod: pod.pod,
+            container: parsed.container ?? previous.container,
+            instance: "previous",
+            unfiltered: true,
+            timestamp: parsed.timestamp,
+            message: parsed.message,
+            sequence: sequence++,
+          });
+        }
       }
     }
   }
@@ -208,9 +222,26 @@ export function renderLogResult(
     `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}${config.untilTime ? ` until-time=${config.untilTime}（含边界）` : ""}`,
     `- 首次命中按${config.bizId === undefined ? "窗口内日志" : " trace ID "}统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。`,
     `- 过滤: ${config.errorsOnly ? "errors-only" : scopeLabel}${config.pattern ? ` + /${config.pattern}/` : ""}`,
+  ];
+  if (stats.previousContainerCount > 0) {
+    const lastByTarget = new Map<string, string>();
+    for (const record of timeline) {
+      if (record.instance !== "previous" || !record.timestamp) continue;
+      const key = `${record.pod}/${record.container ?? "?"}`;
+      const known = lastByTarget.get(key);
+      if (!known || Date.parse(record.timestamp) > Date.parse(known)) lastByTarget.set(key, record.timestamp);
+    }
+    const details = [...lastByTarget.entries()].map(([target, ts]) => `\`${target}\` 上次运行日志止于 ${ts}`);
+    lines.push(
+      `- ⚠️ ${stats.previousContainerCount} 个容器存在 previous 日志（发生过重启/终止），已采集`
+        + (details.length ? `：${details.join("；")}` : "")
+        + (config.errorsOnly || config.pattern ? "；筛选模式下已附未过滤的尾部日志（中断点取证）" : ""),
+    );
+  }
+  lines.push(
     "",
     "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
-  ];
+  );
   if (stats.podCount === 0) {
     lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --services。");
   } else if (stats.matchedPodCount > 0 && stats.matchedEventCount === 0) {

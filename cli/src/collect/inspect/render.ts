@@ -15,6 +15,7 @@ import type {
   KubernetesAppArmorAdmissionObservation,
   PluginWorkloadObservation,
 } from "./model";
+import type { KubernetesAutoscaler, KubernetesWorkloadEvent } from "../../infra/k8s/workload-events";
 
 function displayValue(value: JsonValue | undefined): string {
   if (value === undefined) return "—";
@@ -179,6 +180,44 @@ function runtimeSummaryIssues(diagnosis: InspectDiagnosis): RuntimeSummaryIssue[
   ));
 }
 
+function lifecycleSignals(diagnosis: InspectDiagnosis): { events: KubernetesWorkloadEvent[]; autoscalers: KubernetesAutoscaler[] } | undefined {
+  const fact = diagnosis.evidence.facts.lifecycleSignals;
+  return fact.status === "collected" ? fact : undefined;
+}
+
+function lifecycleUnavailableReason(diagnosis: InspectDiagnosis): string | undefined {
+  const fact = diagnosis.evidence.facts.lifecycleSignals;
+  return fact.status === "collected" ? undefined : fact.reason;
+}
+
+function formatEvent(event: KubernetesWorkloadEvent): string {
+  const message = event.message.length > 120 ? `${event.message.slice(0, 120)}…` : event.message;
+  return [
+    event.lastAt ?? "未知时间",
+    event.type,
+    event.reason,
+    event.count > 1 ? `×${event.count}` : undefined,
+    message ? `— ${message}` : undefined,
+  ].filter(Boolean).join(" ");
+}
+
+/** 事件按对象名挂在 Pod/Deployment/HPA 上；Pod 级关联只认 Pod 名，避免跨层级误挂。 */
+function podEvents(diagnosis: InspectDiagnosis, pod: string, limit = 3): KubernetesWorkloadEvent[] {
+  const events = lifecycleSignals(diagnosis)?.events ?? [];
+  return events.filter((event) => event.objectKind === "Pod" && event.objectName === pod).slice(-limit);
+}
+
+function autoscalerSummaryLines(autoscalers: KubernetesAutoscaler[], unavailable?: string): string[] {
+  if (unavailable) return ["", `Autoscaler / 事件：未采集（${unavailable}）`];
+  if (!autoscalers.length) return [];
+  return ["", "Autoscaler：", ...autoscalers.map((autoscaler) => {
+    const metrics = autoscaler.metrics.length ? `；${autoscaler.metrics.join("，")}` : "";
+    return `- ${autoscaler.name} → ${autoscaler.targetKind}/${autoscaler.targetName}：`
+      + `current=${autoscaler.currentReplicas ?? "?"} desired=${autoscaler.desiredReplicas ?? "?"}`
+      + `（min=${autoscaler.minReplicas ?? "?"} max=${autoscaler.maxReplicas ?? "?"}${metrics}）`;
+  })];
+}
+
 /** Concise runtime projection for terminal triage; the Markdown summary remains the complete human-readable evidence. */
 export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespace: string): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
@@ -206,6 +245,9 @@ export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespac
     || diagnosis.findings.some((finding) => finding.severity !== "info");
   // Historical restarts remain visible but do not rewrite current readiness; missing evidence cannot prove health.
   const status = degraded ? "degraded" : missing.length ? "unknown" : issues.length ? "warning" : "healthy";
+  const lifecycle = lifecycleSignals(diagnosis);
+  const autoscalers = lifecycle?.autoscalers ?? [];
+  const lifecycleUnavailable = lifecycleUnavailableReason(diagnosis);
   return [
     "Service Inspect 摘要",
     `Namespace：${namespace}`,
@@ -225,7 +267,10 @@ export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespac
         `  Image：${issue.container.image || "—"}`,
         `  Memory：request=${issue.container.requests.memory ?? "—"}，limit=${issue.container.limits.memory ?? "—"}`,
       ] : []),
+      // 探针失败/重启的触发原因在 Event 里（如 liveness 超时），Pod status 只有结果没有原因。
+      ...(issue.pod ? podEvents(diagnosis, issue.pod.pod).map((event) => `  关联事件：${formatEvent(event)}`) : []),
     ]) : ["- 无"]),
+    ...autoscalerSummaryLines(autoscalers, lifecycleUnavailable),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((item) => `- ${item}`)] : []),
     ...(diagnosis.findings.length ? ["", "诊断发现：", ...diagnosis.findings.map((finding) =>
       `- [${finding.severity}] ${finding.service}/${finding.kind}: ${finding.message}`)] : []),
@@ -379,6 +424,35 @@ function findingRows(diagnosis: InspectDiagnosis): string[][] {
   ]);
 }
 
+const EVENT_TABLE_HEADERS = ["时间", "级别", "对象", "原因", "次数", "消息"] as const;
+
+function eventRows(diagnosis: InspectDiagnosis): string[][] {
+  const events = lifecycleSignals(diagnosis)?.events ?? [];
+  // 采集侧按时间升序落盘；展示侧最近优先，便于先看触发点。
+  return [...events].reverse().map((event) => [
+    event.lastAt ?? "—",
+    event.type,
+    `${event.objectKind}/${event.objectName}`,
+    event.reason || "—",
+    String(event.count),
+    event.message || "—",
+  ]);
+}
+
+const AUTOSCALER_TABLE_HEADERS = ["HPA", "目标", "当前副本", "期望副本", "min", "max", "指标"] as const;
+
+function autoscalerRows(diagnosis: InspectDiagnosis): string[][] {
+  return (lifecycleSignals(diagnosis)?.autoscalers ?? []).map((autoscaler) => [
+    autoscaler.name,
+    `${autoscaler.targetKind}/${autoscaler.targetName}`,
+    String(autoscaler.currentReplicas ?? "—"),
+    String(autoscaler.desiredReplicas ?? "—"),
+    String(autoscaler.minReplicas ?? "—"),
+    String(autoscaler.maxReplicas ?? "—"),
+    autoscaler.metrics.join("，") || "—",
+  ]);
+}
+
 const TOOLCHAIN_TABLE_HEADERS = [
   "Service",
   "Language",
@@ -478,6 +552,18 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
       workloadProbeRows(diagnosis),
     ),
     "",
+    "### 运行事件（关联所选 Workload）",
+    "",
+    ...(lifecycleUnavailableReason(diagnosis)
+      ? [`_未采集（${lifecycleUnavailableReason(diagnosis)}）_`]
+      : markdownTable([...EVENT_TABLE_HEADERS], eventRows(diagnosis))),
+    "",
+    "### Autoscaler",
+    "",
+    ...(lifecycleUnavailableReason(diagnosis)
+      ? [`_未采集（${lifecycleUnavailableReason(diagnosis)}）_`]
+      : markdownTable([...AUTOSCALER_TABLE_HEADERS], autoscalerRows(diagnosis))),
+    "",
     "### Findings",
     "",
     ...markdownTable(["Severity", "Kind", "Message"], findingRows(diagnosis)),
@@ -540,6 +626,15 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
         ["Service", "Workload", "Pod", "Probe", "Kind", "Value"],
         workloadProbeRows(diagnosis),
       ),
+    },
+    {
+      title: "Workload / 运行事件",
+      html: htmlTable([...EVENT_TABLE_HEADERS], eventRows(diagnosis),
+        { search: { column: 2, placeholder: "按对象检索" } }),
+    },
+    {
+      title: "Workload / Autoscaler",
+      html: htmlTable([...AUTOSCALER_TABLE_HEADERS], autoscalerRows(diagnosis)),
     },
     {
       title: "Findings",
