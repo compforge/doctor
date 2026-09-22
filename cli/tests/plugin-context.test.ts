@@ -371,3 +371,64 @@ test("repeated successful access prints once, and reuse never bypasses a caller'
     })).rejects.toThrow("缺少必须");
   } finally { output.mockRestore(); }
 });
+
+
+test("Pod relay is shared across Services, scoped by namespace, and permission checked for every borrower", async () => {
+  const { ClientManager } = await import("@compforge/harness-common");
+  const { PodRelayTransport } = await import("@compforge/harness-toolbox/transport");
+  const root = new ClientManager();
+  const instances: object[] = [];
+  const connect = spyOn(PodRelayTransport.prototype, "connect").mockImplementation(function (this: object, endpoint) {
+    instances.push(this);
+    return Promise.resolve({ ...endpoint, host: "127.0.0.1" });
+  });
+  const close = spyOn(PodRelayTransport.prototype, "dispose");
+  const executor: Executor = {
+    run: async () => { throw new Error("Unexpected Kubernetes discovery"); },
+    exec: async () => { throw new Error("Unexpected Kubernetes exec"); },
+  };
+  const needs = [
+    { verb: "list", resource: "pods" },
+    { verb: "create", resource: "pods/exec" },
+    { verb: "create", resource: "pods/portforward" },
+  ].map(rule => ({ rule, requirement: "required" as const, purpose: "relay" }));
+  const contexts: ReturnType<typeof createPluginContext>[] = [];
+  const context = (name: string, namespace = "test", rules = needs) => {
+    const value = createPluginContext(executor, { namespace }, {
+      clients: root,
+      environment: { name: "test", kind: "kubernetes", context: "test", server: "https://test/" },
+      service: { name, workloads: [], component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } } },
+      capability: { access: { kubernetes: rules } },
+    });
+    contexts.push(value);
+    return value;
+  };
+  const endpoint = { host: "global-db.example", port: 3306 };
+  try {
+    const first = context("first");
+    const second = context("second");
+    await Promise.all([first.infra.kubernetes.podRelay(endpoint), second.infra.kubernetes.podRelay(endpoint)]);
+    expect(instances).toHaveLength(2);
+    expect(instances[0]).toBe(instances[1]);
+    await first.dispose();
+    expect(close).not.toHaveBeenCalled();
+    await second.infra.kubernetes.podRelay(endpoint);
+    expect(instances[2]).toBe(instances[0]);
+    await context("third", "other").infra.kubernetes.podRelay(endpoint);
+    expect(instances[3]).not.toBe(instances[0]);
+    for (const missing of needs) {
+      await expect(context("denied", "test", needs.filter(need => need !== missing))
+        .infra.kubernetes.podRelay(endpoint)).rejects.toThrow("未声明 Kubernetes access");
+    }
+    await expect(second.infra.kubernetes.inNamespace("other").podRelay(endpoint)).rejects.toThrow("未声明");
+    expect(instances).toHaveLength(4);
+    await root.dispose();
+    expect(close).toHaveBeenCalledTimes(2);
+    await expect(second.infra.kubernetes.podRelay(endpoint)).rejects.toThrow();
+  } finally {
+    await Promise.all(contexts.map(value => value.dispose()));
+    await root.dispose();
+    connect.mockRestore();
+    close.mockRestore();
+  }
+});

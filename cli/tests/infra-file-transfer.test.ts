@@ -60,7 +60,7 @@ describe("Doctor Host ↔ Target file transfer", () => {
     const source = join(directory, "tool");
     const bytes = Buffer.from("diagnostic-tool");
     writeFileSync(source, bytes);
-    let stdin: string | Uint8Array | undefined;
+    let stdin: import("@compforge/harness-toolbox/kubernetes/executor").RunOptions["stdin"];
     let command: string[] = [];
     const executor: Executor = {
       run: async () => { throw new Error("unexpected run"); },

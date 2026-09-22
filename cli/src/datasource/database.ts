@@ -94,7 +94,11 @@ export async function borrowDatabase(
   if (!source) throw new Error("DB DataSource 未提供访问目标");
   return borrowServiceClient(command, config.collect, executor, config.service, {
     access: config.capability.source ? config.capability.access ?? {} : {
-      kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/portforward" }, purpose: "访问 Service 声明的数据库" }],
+      kubernetes: [
+        { requirement: "required", rule: { verb: "create", resource: "pods/portforward" }, purpose: "访问 Service 声明的数据库" },
+        { requirement: "preferred", rule: { verb: "list", resource: "pods" }, purpose: "选择数据库 TCP relay Pod", fallback: "仅使用 Host 可达的数据库" },
+        { requirement: "preferred", rule: { verb: "create", resource: "pods/exec" }, purpose: "启动数据库 TCP relay", fallback: "仅使用 Host 可达的数据库" },
+      ],
     },
   }, source);
 }

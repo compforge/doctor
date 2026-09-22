@@ -318,8 +318,14 @@ DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dis
 外部操作归 initialize；dispose 必须幂等，并能清理初始化失败留下的资源。工厂上下文的 signal 和 infra
 属于整棵执行树，没有单次调用的依赖 handle，也无需手动注册共享客户端 cleanup。
 
-Client 持有初始化所需的运行时配置、选中的 Pod 与 Transport，并自行限制并发。MySQL 使用单个查询槽位，
-覆盖原生连接和 Pod Python 路径，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
+`mysqlDataSource` 与 `mysqlTransports(context)` 在原生建连发生网络错误后，通过
+`infra.kubernetes.podRelay` 借用现有 Pod 中转 TCP。该访问需声明 `list pods`、`create pods/exec` 和
+`create pods/portforward`；不创建 Pod，也不要求业务方指定 helper Service 或解释器。
+同一根执行中相同 cluster/namespace 共用 relay，Service 和数据库身份不参与传输身份；每个调用方
+仍独立检查 access。通道容量与超时由 Host 统一限定，根执行结束统一关闭。
+
+Client 持有初始化所需的运行时配置，并自行限制并发。MySQL 使用单个查询槽位，
+通过借用的 TCP 通道复用原生连接，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
 根 finalize 集中关闭消费者和其依赖的 Kubernetes Client。借用的 Kubernetes 通道不能由某个数据库客户端关闭。
 客户端复用只覆盖访问准备和连接，各次 SQL、Overview Entry 查询与诊断结果独立执行。
 

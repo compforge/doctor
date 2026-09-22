@@ -4,7 +4,7 @@ import type { DatabaseTarget } from "./database";
 import type { PluginClientContext, PluginDataSource } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { PortForwardTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
 import type { Client } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
 import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
@@ -157,6 +157,14 @@ export type ServiceDataSource =
   | ServiceS3DataSource
   | ServiceRedisDataSource;
 
+/** Native connections first, then a root-owned relay; protocol clients never dispose borrowed transports. */
+export function mysqlTransports(context: PluginClientContext): TcpTransport[] {
+  return [
+    new PortForwardTransport(endpoint => context.infra.kubernetes.portForward(endpoint)),
+    { kind: "tcp", name: "pod-relay", connect: endpoint => context.infra.kubernetes.podRelay(endpoint) },
+  ];
+}
+
 /** Factory resolution receives root-owned access, never captures a short-lived capability context. */
 export function mysqlDataSource(
   key: string,
@@ -166,7 +174,7 @@ export function mysqlDataSource(
     clientKey: key,
     createClient: context => new MysqlClient({
       resolve: () => resolve(context),
-      transports: [new PortForwardTransport(endpoint => context.infra.kubernetes.portForward(endpoint))],
+      transports: mysqlTransports(context),
     }, { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
   };
 }
