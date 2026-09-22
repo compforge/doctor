@@ -2,6 +2,7 @@ import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
+import { PodRelayTransport } from "@compforge/harness-toolbox/transport";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -86,6 +87,7 @@ function createKubernetesAccess(
     namespace: string,
     target: Parameters<KubernetesAccess["portForward"]>[0],
   ) => ReturnType<KubernetesAccess["portForward"]>,
+  podRelay: (namespace: string, target: Parameters<KubernetesAccess["podRelay"]>[0]) => ReturnType<KubernetesAccess["podRelay"]>,
 ): KubernetesAccess {
   const scoped = (namespace: string): KubernetesAccess => {
     const assertDeclared = (verb: string, resource: string, resourceName?: string): void => {
@@ -137,6 +139,13 @@ function createKubernetesAccess(
             timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
           }),
         );
+      },
+      podRelay: async target => {
+        // Check every borrower, including when another Service already started the shared relay.
+        assertDeclared("list", "pods");
+        assertDeclared("create", "pods/exec");
+        assertDeclared("create", "pods/portforward");
+        return podRelay(namespace, target);
       },
       portForward: async (target) => {
         signal.throwIfAborted();
@@ -194,6 +203,21 @@ export function createPluginContext(
     if (options.environment.kind !== "kubernetes" || !executor) throw new Error("This Extension context has no Kubernetes target");
     return clients.get({ clientKey: clusterKey, createClient: (_clients, rootSignal) => new KubernetesClient(kube, rootSignal, executor) });
   };
+  const relay = async (ns: string) => {
+    const kubernetes = await cluster();
+    const relayKube = { ...kube, namespace: ns };
+    // Transport identity excludes Service and database credentials; the root owns cancellation/cleanup.
+    return clients.get({
+      clientKey: clientKey("pod-relay", relayKube),
+      createClient: (_clients, rootSignal) => new PodRelayTransport({
+        ...relayKube, signal: rootSignal, startupTimeoutMs: 10_000, connectTimeoutMs: 10_000,
+        maxConnections: 32, maxTargets: 32, maxCandidatePods: 16,
+      }, { executor: {
+        run: (command, runOptions) => kubernetes.run(ns, command, runOptions),
+        exec: (target, command, runOptions) => kubernetes.exec(ns, target, command, runOptions),
+      } }),
+    });
+  };
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
@@ -204,7 +228,8 @@ export function createPluginContext(
       kubernetes: createKubernetesAccess(ns => ({
         run: async (command, runOptions) => (client ?? await cluster()).run(ns, command, runOptions),
         exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
-      }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target)),
+      }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
+      async (ns, target) => (await relay(ns)).connect(target)),
     },
     signal: accessSignal,
   });
