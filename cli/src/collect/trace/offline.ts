@@ -5,6 +5,7 @@ import { createInterface } from "node:readline";
 import { aggregateCommandStatus, CommandStatus, type CommandContext, type CommandResult } from "../../command";
 import type { StepRecord } from "../evidence";
 import type { TraceOutput } from "./index";
+import { defaultCommandReportName } from "../../command/report-name";
 import { readTraceSnapshot, TRACE_FILES, writeTraceJson, type TraceSnapshot } from "./snapshot";
 import { decodeSpanPayloads } from "./decode";
 
@@ -167,5 +168,9 @@ export async function runOfflineTrace(input: { from: string; node?: string; span
   }
   const statuses = items.map(item => item.status);
   if (source.sourceStatus && source.sourceStatus !== CommandStatus.Ok) statuses.push(source.sourceStatus);
-  return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: items.flatMap(item => item.artifacts) };
+  // 与在线路径同一命名约定：取证据里第一个 trace 的 id，避免裸 doctor-trace.html 撞名。
+  const reportName = defaultCommandReportName("trace",
+    [traces[0]?.manifest.target?.trace_id ?? traces[0]?.snapshot?.trace_id].filter((id): id is string => typeof id === "string"),
+    new Date());
+  return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: items.flatMap(item => item.artifacts), reportName };
 }

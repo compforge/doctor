@@ -23,6 +23,11 @@ export interface CommandSpec<Input extends CommandInput, Output, Prepared = Inpu
   /** Check requirements and bind this invocation's selection; undefined cancels before execution. */
   prepare(context: CommandContext, input: Input): Promise<Prepared | undefined>;
   run(context: CommandContext, prepared: Prepared): Promise<CommandResult<Output>>;
+  /** Derive the default delivered report name from the invocation input (see
+   *  command/report-name.ts for the unified convention). Used when the result does not
+   *  set its own reportName — including the cancelled-before-run path, where the input
+   *  is the only thing known. */
+  reportName?(input: Input, now: Date): string;
   /** Root finalize persists local results before rendering. No collection or remote access. */
   serialize?(context: SerializeContext, result: CommandResult<Output>): Promise<SerializedOutput>;
   /** Root finalize renders local results. Commands without a report (for example chat) omit this hook. */
@@ -54,13 +59,18 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
               context.signal.throwIfAborted();
               if (prepared === undefined) {
                 context.cancel();
-                return { status: CommandStatus.Cancelled, artifacts: [] };
+                // prepare 取消时 run 不会执行，result.reportName 无从产生；用 spec 的
+                // input → name 策略补上，否则裸 doctor-<command>.html 会挡住后续同名交付。
+                const reportName = spec.reportName?.(input, new Date());
+                if (reportName) context.artifacts.setReportName(reportName);
+                return { status: CommandStatus.Cancelled, artifacts: [], reportName };
               }
               const result = await spec.run(context, prepared);
               context.artifacts.add(result.artifacts);
-              if (result.reportName) context.artifacts.setReportName(result.reportName);
+              const reportName = result.reportName ?? spec.reportName?.(input, new Date());
+              if (reportName) context.artifacts.setReportName(reportName);
               if (result.status === CommandStatus.Cancelled) context.cancel();
-              return result;
+              return reportName === result.reportName ? result : { ...result, reportName };
             }, context.clients);
             return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
           } catch (error) {
