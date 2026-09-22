@@ -157,7 +157,7 @@ test("HTML assembly failure still delivers serialized evidence in the Bundle", a
       pages: [renderer.page(artifact, { title: "Missing page", status: CommandStatus.Ok }, "absent.html")] }] }),
   });
   const archive = join(destination, "result.tar.gz");
-  expect(await finalizeCommand({ spec, result, context, code: 0, delivery: { format: "bundle", output: archive } })).toBe(1);
+  expect(await finalizeCommand({ commandInput: {}, spec, result, context, code: 0, delivery: { format: "bundle", output: archive } })).toBe(1);
   const readArchive = (file: string) => {
     const output = Bun.spawnSync(["tar", "-xOf", archive, `result/${file}`]);
     expect(output.exitCode).toBe(0);

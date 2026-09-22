@@ -224,7 +224,7 @@ validate domain input
 
 Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行的身份。`defineCommand` 在输入校验后，
 按 Command 定义身份和 key 在当前 CommandContext 中合并调用：正在执行时等待同一个 Promise，包括资源
-清理；已完成时返回原状态、Output、Artifacts 和 reportName，不产生 skipped 状态。未提供方法时每次独立
+清理；已完成时返回原状态、Output 和 Artifacts，不产生 skipped 状态。未提供方法时每次独立
 执行。完成结果包括 partial 和 failed，本轮不隐式重试；取消始终优先于复用。key 必须包含会改变结果的
 领域参数，Profile、Plugin 和宿主配置由当前 Context 隔离，记录不跨 Doctor 运行保留。
 
@@ -239,8 +239,12 @@ Decision、ExecutionRecord、共享 ClientManager 与取消信号。领域 Conte
 Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的受限依赖与 infra。
 
 同一 CommandContext 可以被并发子命令共享。Artifacts 使用异步调用作用域，每次调用返回自己的产物
-引用和报告名称，父命令显式选择并纳入子产物；不能按全局列表位置或命令名猜测产物属于哪次调用。
+引用，父命令显式选择并纳入子产物；不能按全局列表位置或命令名猜测产物属于哪次调用。
 领域输入与输出通过 Input / Output 传递，不放入共享 Context。
+
+报告命名由根命令的 `CommandSpec.reportName(input, result, now)` 在 finalize 交付时推导；run 与
+子命令结果不携带报告名称。hook 可从离线结果提取业务 ID，也要处理失败或取消时缺少 Output 的情况；
+未提供名称时使用带时间戳的命令名，显式 `--output` 仍由 delivery 处理。
 
 Artifact ID 标识一份具体产物，command 幂等 key 标识一次可复用执行，两者职责独立。CommandArtifacts
 统一使用 add 登记或添加引用：首次登记由 Core 分配 ID，同一本轮内重复登记规范化源路径返回原引用；

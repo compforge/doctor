@@ -8,6 +8,7 @@ import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { renderEvidence } from "../report/evidence";
 import { composeReports } from "../report/model";
+import { evalRunName } from "./config";
 import { runEval } from "./index";
 import type { EvalCliOpts, EvalRun } from "./model";
 import { writeEvalReport } from "./output";
@@ -15,6 +16,7 @@ import { writeEvalReport } from "./output";
 export type EvalInput = CommandInput & Omit<EvalCliOpts, CommandHostOption>;
 export const evalCommand = defineCommand<EvalInput, EvalRun>({
   name: "doctor eval",
+  reportName: (_input, result, now) => evalRunName(result.output ? new Date(result.output.startedAt) : now),
   serialize: async (context, result) => {
     const children = [];
     const evidence = result.output?.evidence;

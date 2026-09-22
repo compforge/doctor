@@ -14,6 +14,7 @@ import { reportError } from "./error-report";
 
 export interface FinalizeCommandInput<Input extends CommandInput, Output> {
   spec: Command<Input, Output>;
+  commandInput: Input;
   result: CommandResult<Output>;
   context: CommandContext;
   delivery: CommandDeliveryOptions;
@@ -52,7 +53,7 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   serialized.writeText("AGENTS.md", renderBundleAgents());
   serialized.indexReports();
   const delivered = await deliverSerialized({ directory, options: input.delivery, code,
-    reportName: input.result.reportName ?? input.context.artifacts.reportName()
+    reportName: input.spec.reportName?.(input.commandInput, input.result, new Date())
       ?? defaultCommandReportName(input.spec.name, [], new Date()) });
   if (delivered && code === 0 && !serialized.failed && !renderer.failures.length) {
     cleanupTemporaryArtifacts(input.context.artifacts.list().map(artifact => artifact.path));

@@ -14,9 +14,9 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
   serialize: serializeEvidenceResult,
   name: "doctor trace",
   render: renderTraceReport,
-  // 多个 biz-id 时用第一个（与 defaultCommandReportName 的取首条约定一致）；
-  // 离线 --from 的 reportName 由 runOfflineTrace 按证据里的第一个 trace_id 设置。
-  reportName: (input, now) => defaultCommandReportName("trace", input.bizIds ?? [], now),
+  // Offline evidence supplies the trace ID; failed preparation can still use the invocation ID.
+  reportName: (input, result, now) => defaultCommandReportName("trace",
+    input.from ? result.output?.items[0]?.traceIds ?? [] : input.bizIds, now),
   validate: (input) => {
     for (const key of ["from", "node", "span"] as const) {
       if (input[key] !== undefined && !input[key]!.trim()) throw new CommandInputError(`--${key} 不能为空`);

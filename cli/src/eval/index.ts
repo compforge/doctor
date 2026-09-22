@@ -269,7 +269,6 @@ export async function runEval(
     await managed.dispose();
     throw error;
   }
-  commandContext.artifacts.setReportName(config.bundleName);
   commandContext.artifacts.add({ command: "eval", path: artifact.path });
   const runId = randomUUID();
   const startedAt = new Date().toISOString();
