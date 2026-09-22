@@ -1,3 +1,4 @@
+import { withInteractionOptions } from "../src/terminal/policy";
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -264,4 +265,15 @@ describe("Namespace 选择", () => {
       prompt: async () => undefined,
     })).toBeUndefined();
   });
+});
+
+// Distribution defaults enter the same invocation policy as explicit --yes.
+test("ascli --yes never prompts even with an interactive terminal", async () => {
+  const executor = new NamespaceExecutor(result());
+  const selected = await withInteractionOptions({ yes: true }, () => resolvePodNamespace({
+    resolved: { namespace: "default", source: "default" }, executor, interactive: true,
+    prompt: async () => { throw new Error("unexpected prompt"); },
+  }));
+  expect(selected).toEqual({ namespace: "default", source: "default" });
+  expect(executor.calls).toEqual([]);
 });

@@ -3,7 +3,6 @@ import { CommandStatus } from "./status";
 
 interface CommandResultArtifacts {
   readonly artifacts: readonly CommandArtifact[];
-  readonly reportName?: string;
 }
 
 export type CommandResult<Output> = CommandResultArtifacts & (

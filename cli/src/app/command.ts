@@ -54,9 +54,8 @@ async function executeCommand<Input extends CommandInput, Output>(
         result = { status: CommandStatus.Failed, artifacts: [], error };
       }
       context.artifacts.add(result.artifacts);
-      if (result.reportName) context.artifacts.setReportName(result.reportName);
       process.exitCode = await finalizeCommand({
-        spec, result, context, delivery: opts, code: commandExitCode(result),
+        spec, commandInput: input, result, context, delivery: opts, code: commandExitCode(result),
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {

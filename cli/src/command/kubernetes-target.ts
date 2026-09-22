@@ -128,7 +128,10 @@ export async function resolveKubernetesCommandConfig(
         configuredNamespace.source,
       ], resolveNamespace)
     : await resolveNamespace();
-  if (!namespace) return undefined;
+  if (!namespace) {
+    useLogger("k8s").info("Namespace 选择已取消；未开始采集");
+    return undefined;
+  }
   const resolved: KubernetesCommandConfig = {
     profileName,
     kubernetes: {

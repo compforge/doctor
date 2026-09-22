@@ -167,5 +167,6 @@ export async function runOfflineTrace(input: { from: string; node?: string; span
   }
   const statuses = items.map(item => item.status);
   if (source.sourceStatus && source.sourceStatus !== CommandStatus.Ok) statuses.push(source.sourceStatus);
+  // 与在线路径同一命名约定：取证据里第一个 trace 的 id，避免裸 doctor-trace.html 撞名。
   return { status: aggregateCommandStatus(statuses), output: { items }, artifacts: items.flatMap(item => item.artifacts) };
 }

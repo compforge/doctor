@@ -71,7 +71,6 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
   };
   // Freeze after target selection, before the first provider query; sampling reuses these exact instants.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
-  context.artifacts.setReportName(`doctor-overview-${query.window.to.replace(/[:.]/g, "-")}`);
   let collectionResult: CommandResult<CollectOutput> | undefined;
   let snapshot: OverviewResult | undefined;
   let reportDirectory: string | undefined;
@@ -123,6 +122,8 @@ export interface OverviewOutput extends OverviewResult { readonly collectionResu
 export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
 export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
   name: "doctor overview",
+  reportName: (_input, result) => result.output
+    ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
     const own = serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "overview"));
     const collected = result.output?.collectionResult;

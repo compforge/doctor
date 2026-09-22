@@ -273,6 +273,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       }
       return composeReports("doctor collect", reports);
     },
+    reportName: (input, _result, now) => collectReportName(input.bizIds, now),
     validate: (input) => {
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
         throw new CommandInputError("doctor collect 需要至少一个 biz-id");
@@ -283,7 +284,6 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       return input;
     },
     run: async (context, input) => {
-      context.artifacts.setReportName(collectReportName(input.bizIds));
       const startedAt = new Date().toISOString();
       const invoke = delegate ?? collectDelegate(input, context);
       const results = await runCollectDelegates(input.kinds, async (kind) => {

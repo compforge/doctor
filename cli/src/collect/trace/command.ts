@@ -1,6 +1,7 @@
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
+import { defaultCommandReportName } from "../../command/report-name";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
 import { runCollectTrace } from "./index";
@@ -13,6 +14,9 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
   serialize: serializeEvidenceResult,
   name: "doctor trace",
   render: renderTraceReport,
+  // Offline evidence supplies the trace ID; failed preparation can still use the invocation ID.
+  reportName: (input, result, now) => defaultCommandReportName("trace",
+    input.from ? result.output?.items[0]?.traceIds ?? [] : input.bizIds, now),
   validate: (input) => {
     for (const key of ["from", "node", "span"] as const) {
       if (input[key] !== undefined && !input[key]!.trim()) throw new CommandInputError(`--${key} 不能为空`);

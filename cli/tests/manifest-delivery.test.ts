@@ -38,7 +38,7 @@ for (const status of [CommandStatus.Ok, CommandStatus.Partial, CommandStatus.Fai
     const output = captureOutput();
     try {
       const code = status === CommandStatus.Cancelled ? 130 : status === CommandStatus.Failed ? 1 : 0;
-      expect(await finalizeCommand({ spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, delivery: { format: "manifest" } })).toBe(code);
+      expect(await finalizeCommand({ commandInput: {}, spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, delivery: { format: "manifest" } })).toBe(code);
       const manifest = output.json();
       roots.push(manifest.bundle_root);
       expect(manifest.status).toBe(status);

@@ -39,8 +39,9 @@ export function readReport(html: string) {
 }
 
 export function finalizeResult<Input extends CommandInput, Output>(context: CommandContext,
-  spec: Command<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions): Promise<number> {
-  return finalizeCommand({ context, spec, result, delivery, code: commandExitCode(result) });
+  spec: Command<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions,
+  commandInput: Input = { bizIds: [] } as unknown as Input): Promise<number> {
+  return finalizeCommand({ context, spec, commandInput, result, delivery, code: commandExitCode(result) });
 }
 
 /** A file-delivery test declares one execution per fixture; no production command or renderer is inferred. */
@@ -60,5 +61,5 @@ export function finalizeFixture(context: CommandContext, delivery: CommandDelive
       children: await Promise.all(children.map(child => writer.serialize(child.spec, child.result))) }),
     render: async () => fixtureReport(context).report,
   };
-  return finalizeCommand({ context, spec, result, delivery, code });
+  return finalizeCommand({ context, spec, commandInput: {}, result, delivery, code });
 }

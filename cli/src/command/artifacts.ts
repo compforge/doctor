@@ -12,7 +12,6 @@ export type CommandArtifactInput = Omit<CommandArtifact, "id"> & { readonly id?:
 
 interface ArtifactScope {
   artifacts: Map<string, CommandArtifact>;
-  reportName?: string;
 }
 
 /** Each invocation selects artifact references; identity belongs to the whole command tree. */
@@ -23,16 +22,6 @@ export class CommandArtifacts {
   readonly #byPath = new Map<string, CommandArtifact>();
 
   #scope(): ArtifactScope { return this.#scopes.getStore() ?? this.#root; }
-
-  setReportName(reportName: string): void {
-    const scope = this.#scope();
-    if (scope.reportName && scope.reportName !== reportName) {
-      throw new Error(`command report name 已设置为 '${scope.reportName}'，不能改为 '${reportName}'`);
-    }
-    scope.reportName = reportName;
-  }
-
-  reportName(): string | undefined { return this.#scope().reportName; }
 
   /** @rule Adding an existing reference preserves its ID, including across idempotent command results. */
   add(artifact: CommandArtifactInput): CommandArtifact;
@@ -62,12 +51,12 @@ export class CommandArtifacts {
 
   /** Async-local selection keeps concurrent calls independent without cloning the shared context. */
   async capture<T>(work: () => Promise<T>): Promise<{
-    value: T; artifacts: readonly CommandArtifact[]; reportName?: string;
+    value: T; artifacts: readonly CommandArtifact[];
   }> {
     const scope: ArtifactScope = { artifacts: new Map() };
     try {
       return await this.#scopes.run(scope, async () => ({
-        value: await work(), artifacts: this.list(), reportName: scope.reportName,
+        value: await work(), artifacts: this.list(),
       }));
     } catch (error) {
       // Without a returned child result, preserve its staged evidence on the failing parent.

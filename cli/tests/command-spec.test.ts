@@ -110,14 +110,13 @@ test("missing child capability does not veto independent collectors", async () =
   for (const artifact of result.artifacts) rmSync(artifact.path, { force: true, recursive: true });
 });
 
-test("parallel and repeated child calls return only their own artifacts and report names", async () => {
+test("parallel and repeated child calls return only their own artifacts and output", async () => {
   const context = makeContext();
   let release!: () => void;
   const bothStarted = new Promise<void>((resolve) => { release = resolve; });
   let started = 0;
   const child = defineCommand<CommandInput & { id: string }, string>({
     name: "trace", prepare: async (_context, input) => input, run: async (ctx, { id }) => {
-      ctx.artifacts.setReportName(id);
       ctx.artifacts.add({ command: "trace", path: `/tmp/${id}` });
       if (++started === 2) release();
       await bothStarted;
@@ -127,18 +126,15 @@ test("parallel and repeated child calls return only their own artifacts and repo
   });
   const parent = defineCommand<CommandInput, string[]>({
     name: "overview", prepare: async (_context, input) => input, run: async (ctx) => {
-      ctx.artifacts.setReportName("overview");
       const children = await Promise.all([child.run(ctx, { id: "first" }), child.run(ctx, { id: "second" })]);
       expect(ctx.artifacts.list()).toEqual([]);
       for (const result of children) ctx.artifacts.add(result.artifacts);
-      expect(ctx.artifacts.reportName()).toBe("overview");
-      return ok(children.map((result) => result.reportName!));
+      return ok(children.map((result) => result.output!));
     }
   });
   const result = await parent.run(context, {});
   expect(result.status).toBe(CommandStatus.Ok);
   expect(result.output).toEqual(["first", "second"]);
-  expect(result.reportName).toBe("overview");
   expect(result.artifacts.map((artifact) => artifact.path)).toEqual(["/tmp/first", "/tmp/second"]);
   const again = await child.run(context, { id: "third" });
   expect(again.artifacts).toEqual([{ id: expect.any(String), command: "trace", path: "/tmp/third" }]);

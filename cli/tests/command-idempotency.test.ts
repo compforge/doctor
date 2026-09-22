@@ -20,7 +20,6 @@ test("concurrent calls share work and cleanup, and completed calls retain status
     prepare: async (_context, input) => input, run: async (ctx) => {
       runs++;
       ctx.artifacts.add({ command: "inspect", path: "/tmp/shared-inspect" });
-      ctx.artifacts.setReportName("shared-inspect");
       onCommandDispose(async () => { await cleanup.promise; disposals++; });
       entered.release(); await finish.promise;
       return { status: CommandStatus.Partial, output: "missing optional facts", artifacts: [] };
@@ -40,7 +39,6 @@ test("concurrent calls share work and cleanup, and completed calls retain status
   for (const result of results) {
     expect(result.status).toBe(CommandStatus.Partial);
     expect(result.output).toBe("missing optional facts");
-    expect(result.reportName).toBe("shared-inspect");
     expect(result.artifacts).toEqual([{ id: expect.any(String), command: "inspect", path: "/tmp/shared-inspect" }]);
     context.artifacts.add(result.artifacts);
   }

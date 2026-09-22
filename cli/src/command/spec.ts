@@ -23,6 +23,8 @@ export interface CommandSpec<Input extends CommandInput, Output, Prepared = Inpu
   /** Check requirements and bind this invocation's selection; undefined cancels before execution. */
   prepare(context: CommandContext, input: Input): Promise<Prepared | undefined>;
   run(context: CommandContext, prepared: Prepared): Promise<CommandResult<Output>>;
+  /** Root delivery derives a name from input and available output, including failed or cancelled results. */
+  reportName?(input: Input, result: CommandResult<Output>, now: Date): string | undefined;
   /** Root finalize persists local results before rendering. No collection or remote access. */
   serialize?(context: SerializeContext, result: CommandResult<Output>): Promise<SerializedOutput>;
   /** Root finalize renders local results. Commands without a report (for example chat) omit this hook. */
@@ -58,7 +60,6 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
               }
               const result = await spec.run(context, prepared);
               context.artifacts.add(result.artifacts);
-              if (result.reportName) context.artifacts.setReportName(result.reportName);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return result;
             }, context.clients);
@@ -71,7 +72,7 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
             };
           }
         });
-        return { ...captured.value, artifacts: captured.artifacts, reportName: captured.reportName };
+        return { ...captured.value, artifacts: captured.artifacts };
       };
       try {
         context.signal.throwIfAborted();
