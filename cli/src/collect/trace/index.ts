@@ -347,7 +347,13 @@ export async function runCollectTrace(
     output: { items: [{ bizId: window ? "time_range" : "trace", traceIds: traces.map(trace => trace.traceId),
       status: CommandStatus.Failed, artifacts: [], reason }], selection },
   });
-  if (!traces.length) return preparationFailure("时间范围内没有可采集的 trace_id");
+  if (!traces.length) {
+    const reason = window ? "时间范围内没有可采集的 trace_id" : "业务 ID 未解析到可采集的 trace_id";
+    useLogger("collect").warn(`${reason}（${window
+      ? `window=${window.from}..${window.to}，limit=${limit}`
+      : `输入业务 ID 数=${bizIds.length}`}）`);
+    return preparationFailure(reason);
+  }
 
   const traceStores = plugin ? traceStoreCandidates(plugin) : [];
   let preparedStore: PreparedServiceDataSourceDependency | undefined;
