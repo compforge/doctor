@@ -11,6 +11,7 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
   const pages: ReportPage[] = [];
   if (result.output.selection?.truncated) pages.push({
     id: "trace:selection", title: "时间范围选择已截断", status: result.status,
+    subject: { key: "trace:selection", label: "时间范围选择" },
     reason: result.output.selection.truncated.reason,
   });
   for (const item of result.output.items) {
