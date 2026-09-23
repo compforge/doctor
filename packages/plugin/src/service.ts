@@ -290,6 +290,7 @@ export type ServiceInspectQueryHandler = (
 ) => Promise<readonly ServiceInspectQueryOutcome[]>;
 
 export interface ServiceTraceIdInput {
+  /** Opaque input ID. Providers decide whether it is a business ID or a trace ID. */
   bizId: string;
 }
 

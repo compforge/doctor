@@ -3,8 +3,8 @@
 ## 理念 / 概念
 
 `doctor trace` 从 SearchEngine 下载 trace 或指定 span 的证据，在 Doctor Host 保存机器可读节点树，
-并支持纯离线下钻和可交互 HTML。在线命令可以直接接收 trace ID，也可以由 Plugin 将业务 ID 或时间范围
-解析为规范 trace_id。Core 冻结目标列表后负责确认、计数、
+并支持纯离线下钻和可交互 HTML。在线命令统一接收业务 ID 或 trace ID，由 Plugin `trace.resolve`
+将 ID 解析为规范 trace_id；时间范围由 `trace.range` 解析。Core 冻结目标列表后负责确认、计数、
 分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
@@ -14,7 +14,7 @@ span。显式 `--format html`、`--format bundle` 或 `--format manifest` 时只
 
 ```bash
 doctor trace <biz_id> --format manifest
-doctor trace --trace-id <trace_id> --trace-id <trace_id> --format manifest
+doctor trace --biz-id <trace_id> --biz-id <biz_id> --format manifest
 doctor trace --since 1h --limit 50 --concurrency 2 --format manifest
 doctor trace --since-time 2026-09-23T08:00:00+08:00 --until-time 2026-09-23T09:00:00+08:00
 doctor trace --trace-file ./trace.json --format html
@@ -31,10 +31,11 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
 
 ## 流程
 
-1. app 按输入模式确认所需的 Plugin Extension：业务 ID 使用 `trace.resolve`，时间范围使用
-   `trace.range`，直接 trace ID 不需要解析 Extension。Core 注入当前选择的
-   Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并为每个 positional ID 或
-   重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。provider Service
+1. app 按输入模式确认所需的 Plugin Extension：ID 使用 `trace.resolve`，时间范围使用
+   `trace.range`。Core 注入当前选择的 Kubernetes 环境与 provider Service 身份，Plugin 自行定位
+   运行态和数据源，并为每个 positional ID 或重复 `--biz-id` 返回一条或多条规范 trace_id、
+   解析语义及可选来源 ID。输入 ID 不预设类型；provider 判断后返回 `resolvedAs`，可为 `trace_id`。不能仅按 32 位
+   十六进制形状判断，因为业务 ID 也可能采用相同形式。provider Service
    声明 capability 依赖时，Core 在调用前将其解析为受限运行时 handle。
    时间范围的 `--limit` 传给 Plugin，Plugin 须显式返回截断信息；实现可先限量候选记录，
    再对其 trace ID 去重，因此最终 trace 数可能小于 limit。

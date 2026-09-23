@@ -145,8 +145,7 @@ function withCpuOptions(cmd: CommandT): CommandT {
 }
 
 function withTraceOptions(cmd: CommandT): CommandT {
-  return withBizIdInputs(cmd, "业务 ID；可重复传入，Plugin traceId capability 先解析为 trace_id")
-    .option("--trace-id <id>", "直接采集规范 trace ID；可重复指定", (value: string, previous: string[]) => [...previous, value], [])
+  return withBizIdInputs(cmd, "业务 ID 或 trace ID；可重复传入，Plugin trace.resolve 解析为规范 trace_id")
     .option("--since <duration>", "按时间范围解析 trace ID，例如 1h、30m、2d")
     .option("--since-time <timestamp>", "时间范围起点（RFC3339；优先于 --since）")
     .option("--until-time <timestamp>", "时间范围终点（RFC3339；缺省为本次命令开始时刻）")
@@ -572,10 +571,10 @@ export function createDoctorProgram(
   });
   withTraceOptions(
     catalog.command("trace").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻"),
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts> & { traceId?: string[] }, command: CommandT) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    const { traceId, ...commandOpts } = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), traceIds: traceId ?? [],
+    const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
+    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts),
       pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
   });
   withStoreOptions(

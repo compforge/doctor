@@ -57,9 +57,8 @@ export function traceStoreCandidates(plugin: PluginDefinition): ServiceDataSourc
 }
 
 export interface CollectTraceCliOpts {
-  /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
+  /** 由 Plugin trace.resolve 解释的不透明 ID，可为业务 ID 或规范 trace ID。 */
   bizIds: readonly string[];
-  traceIds?: readonly string[];
   from?: string;
   traceFile?: string;
   since?: string;
@@ -190,9 +189,8 @@ export async function runCollectTrace(
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
   ].map((item) => item.trim()).filter(Boolean))];
-  const directTraceIds = [...new Set((opts.traceIds ?? []).map(item => item.trim()).filter(Boolean))];
   const rangeMode = opts.since !== undefined || opts.sinceTime !== undefined;
-  const requestedIds = bizIds.length ? bizIds : directTraceIds;
+  const requestedIds = bizIds;
   const failure = (code: 2 | 130, reason: string): CommandResult<TraceOutput> => {
     const status = code === 130 ? CommandStatus.Cancelled : CommandStatus.Failed;
     return { status, reason, artifacts: [], error: code === 2 ? new CommandInputError(reason) : undefined,
@@ -200,7 +198,7 @@ export async function runCollectTrace(
       bizId, traceIds: [], status, artifacts: [], reason,
     })) } };
   };
-  if (!bizIds.length && !directTraceIds.length && !rangeMode) {
+  if (!bizIds.length && !rangeMode) {
     useLogger().error("doctor trace 需要业务 ID、trace ID 或时间范围");
     return failure(2, "Trace 采集准备失败");
   }
@@ -227,19 +225,18 @@ export async function runCollectTrace(
     return failure(2, "Trace 采集准备失败");
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
-  const needsKubernetes = !directTraceIds.length || !endpoint;
   let runtime: TraceKubernetesRuntime | undefined;
   try {
-    runtime = needsKubernetes ? await prepareTraceKubernetes(
+    runtime = await prepareTraceKubernetes(
       opts,
       commandContext,
       !endpoint && !plugin?.trace?.source?.dataSource,
-    ) : undefined;
+    );
   } catch (err) {
     useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return failure(2, "Trace 采集准备失败");
   }
-  if (needsKubernetes && !runtime) {
+  if (!runtime) {
     useLogger("collect").warn("已取消");
     return failure(130, "Trace 采集已取消");
   }
@@ -266,11 +263,7 @@ export async function runCollectTrace(
   let traces: ResolvedPluginTraceId[];
   let truncated: { reason: string } | undefined;
   try {
-    if (directTraceIds.length) {
-      traces = directTraceIds.map(traceId => ({
-        bizId: traceId, traceId, service: "doctor", resolvedAs: "trace_id",
-      }));
-    } else if (window) {
+    if (window) {
       const resolved = await resolvePluginTraceRange({
         window, limit,
         kube: runtime!.collect.kubernetes,
@@ -298,7 +291,7 @@ export async function runCollectTrace(
   const sources = traces.map(trace => ({
     trace_id: trace.traceId, source_id: trace.sourceId, service: trace.service, resolved_as: trace.resolvedAs,
   }));
-  if (!bizIds.length) {
+  if (window) {
     const seen = new Set<string>();
     traces = traces.filter(trace => {
       if (seen.has(trace.traceId)) return false;
@@ -307,7 +300,7 @@ export async function runCollectTrace(
     });
   }
   for (const trace of traces) {
-    useLogger("collect").info(`biz-id: ${trace.bizId} → trace-id: ${trace.traceId}`
+    useLogger("collect").info(`input-id: ${trace.bizId} → trace-id: ${trace.traceId}`
       + `（${trace.service} 按 ${trace.resolvedAs} 解析`
       + `${trace.sourceId ? `，source=${trace.sourceId}` : ""}）`);
   }
@@ -327,7 +320,7 @@ export async function runCollectTrace(
     target: { namespace: runtime?.collect.kubernetes.namespace, input_ids: bizIds,
       trace_ids: traces.map(trace => trace.traceId), sources, ...(window ? { window } : {}) },
     inspectionFacts: {},
-    params: { index, page_size: pageSize, selection: window ? "time_range" : directTraceIds.length ? "trace_id" : "biz_id",
+    params: { index, page_size: pageSize, selection: window ? "time_range" : "biz_id",
       pagination_consistency: "live", concurrency, ...(window ? { limit, truncated } : {}) },
     startedAt,
   };
@@ -335,7 +328,7 @@ export async function runCollectTrace(
   bundle.writeManifest({ ...rootMeta, finishedAt: new Date().toISOString() });
   bundle.writeSummary([
     "# trace 目标选择", "",
-    `- 来源: ${window ? "时间范围" : directTraceIds.length ? "直接指定 trace ID" : "业务 ID"}`,
+    `- 来源: ${window ? "时间范围" : "业务 ID 或 trace ID"}`,
     ...(window ? [`- 时间范围: ${window.from} → ${window.to}`, `- limit: ${limit}`] : []),
     `- 选中 trace 数: ${traces.length}`,
     ...(truncated ? [`- 选择已截断: ${truncated.reason}`] : []),
@@ -348,10 +341,10 @@ export async function runCollectTrace(
       status: CommandStatus.Failed, artifacts: [], reason }], selection },
   });
   if (!traces.length) {
-    const reason = window ? "时间范围内没有可采集的 trace_id" : "业务 ID 未解析到可采集的 trace_id";
+    const reason = window ? "时间范围内没有可采集的 trace_id" : "输入 ID 未解析到可采集的 trace_id";
     useLogger("collect").warn(`${reason}（${window
       ? `window=${window.from}..${window.to}，limit=${limit}`
-      : `输入业务 ID 数=${bizIds.length}`}）`);
+      : `输入 ID 数=${bizIds.length}`}）`);
     return preparationFailure(reason);
   }
 
@@ -418,7 +411,7 @@ export async function runCollectTrace(
           resolvedAs: task.trace.resolvedAs,
           sourceId: task.trace.sourceId,
         },
-        selectionMode: window ? "time_range" : directTraceIds.length ? "trace_id" : "biz_id",
+        selectionMode: window ? "time_range" : task.trace.resolvedAs === "trace_id" ? "trace_id" : "biz_id",
       }, (line, tone) => {
         if (tone === "warning") useLogger().warn(`${line}`);
         else useLogger().info(`${line}`);
