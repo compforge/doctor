@@ -368,7 +368,7 @@ requests:
         interactive: true,
         prompt: async () => { throw new Error("单个场景不应进入选择"); },
       })).toBe(join(dir, "only.yaml"));
-      expect(write).toHaveBeenCalledWith("[info] [http] HTTP 场景：only.yaml（当前目录唯一候选，自动选择）\n");
+      expect(write).toHaveBeenCalledWith(expect.stringContaining("HTTP 场景：only.yaml（当前目录唯一候选，自动选择）"));
     } finally {
       write.mockRestore();
     }

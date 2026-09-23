@@ -9,13 +9,13 @@ for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "coll
     const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
     try {
       for (const explicit of [false, true]) {
-        const program = createDoctorProgram({ name: "samplectl", logLevel: "silent", commandDefaults: { [name]: { format: "manifest" } } });
+        const program = createDoctorProgram({ name: "samplectl", logLevel: "error", commandDefaults: { [name]: { format: "manifest" } } });
         const command = program.commands.find(item => item.name() === name)!;
         expect(command.helpInformation()).toMatch(/default:\s+"manifest"/);
         await program.parseAsync([name, ...(name === "collect" ? ["--include", "inspect"] : []), ...(explicit ? ["-f", "html"] : [])], { from: "user" });
         expect(run.mock.calls.at(-1)![1].format).toBe(explicit ? "html" : "manifest");
         expect(run.mock.calls.at(-1)![2]).not.toHaveProperty("format");
-        expect(run.mock.calls.at(-1)![3]).toMatchObject({ logLevel: "silent" });
+        expect(run.mock.calls.at(-1)![3]).toMatchObject({ logLevel: "error" });
       }
       expect(createDoctorProgram().commands.find(item => item.name() === name)!.opts().format).toBeUndefined();
     } finally { run.mockRestore(); }

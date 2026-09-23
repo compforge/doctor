@@ -16,10 +16,10 @@ function capture(work: () => void): string {
   finally { write.mockRestore(); }
 }
 
-test("silent retains error summary and context without stack or a file path", () => {
+test("error level retains error summary and context without stack or a file path", () => {
   process.env.DOCTOR_DEBUG = "0";
   process.argv = ["bun", "doctor", "model", "secret-argument"];
-  const output = capture(() => withLogger("silent", () => reportError(
+  const output = capture(() => withLogger("error", () => reportError(
     new Error("model request failed", { cause: new Error("private cause") }),
     { context: "doctor model/inference", summary: "fatal", plugin: "test@0.0.1" },
   )));
@@ -31,11 +31,11 @@ test("silent retains error summary and context without stack or a file path", ()
   expect(output).not.toContain("debug:");
 });
 
-for (const source of ["environment", "flag"]) test(`explicit ${source} debug prints stack and cause even with silent logging`, () => {
+for (const source of ["environment", "flag"]) test(`explicit ${source} debug prints stack and cause even with error-level logging`, () => {
   process.env.DOCTOR_DEBUG = source === "environment" ? "1" : "0";
   process.argv = ["bun", "doctor", ...(source === "flag" ? ["--debug"] : [])];
   const error = new AggregateError([new Error("child failure")], "outer failure", { cause: new Error("root cause") });
-  const output = capture(() => withLogger("silent", () => reportError(error, { context: "doctor trace/run", displayMessage: "query failed" })));
+  const output = capture(() => withLogger("error", () => reportError(error, { context: "doctor trace/run", displayMessage: "query failed" })));
   expect(output).toContain("error: query failed");
   expect(output).toContain("debug:");
   expect(output).toContain(error.stack!);

@@ -10,7 +10,7 @@ function capture() {
   return { stdout: () => stdout, stderr: () => stderr, restore() { out.mockRestore(); err.mockRestore(); } };
 }
 
-for (const level of ["silent", "info", "verbose"] as const) {
+for (const level of ["error", "warn", "info", "verbose"] as const) {
   test(`${level} filters process logs and always retains errors`, () => {
     const output = capture();
     try {
@@ -20,9 +20,9 @@ for (const level of ["silent", "info", "verbose"] as const) {
         logger.debug("query detail"); logger.trace("trace detail"); logger.error("failed request");
       });
       expect(output.stderr()).toContain("failed request");
-      expect(output.stdout().includes("found pods")).toBe(level !== "silent");
-      expect(output.stdout().includes("partial coverage")).toBe(level !== "silent");
-      expect(output.stdout().includes("finished")).toBe(level !== "silent");
+      expect(output.stdout().includes("found pods")).toBe(level === "info" || level === "verbose");
+      expect(output.stdout().includes("partial coverage")).toBe(level !== "error");
+      expect(output.stdout().includes("finished")).toBe(level === "info" || level === "verbose");
       expect(output.stdout().includes("query detail")).toBe(level === "verbose");
       expect(output.stdout().includes("trace detail")).toBe(level === "verbose");
       expect(output.stderr()).not.toContain("partial coverage");
@@ -37,20 +37,20 @@ test("concurrent scopes retain tagged logger policy across awaits and restore it
     await Promise.resolve(); logger.info(`${tag} progress`); logger.error(`${tag} error`);
   });
   try {
-    await Promise.all([run("silent", "quiet"), run("info", "visible")]);
+    await Promise.all([run("error", "quiet"), run("info", "visible")]);
     expect(output.stdout()).not.toContain("quiet progress");
     expect(output.stdout()).toContain("visible progress");
     expect(output.stderr()).toContain("quiet error");
     expect(output.stderr()).toContain("visible error");
-    expect(() => withLogger("silent", () => { throw new Error("stop"); })).toThrow("stop");
+    expect(() => withLogger("error", () => { throw new Error("stop"); })).toThrow("stop");
     useLogger().info("restored"); expect(output.stdout()).toContain("restored");
   } finally { output.restore(); }
 });
 
-test("silent logging preserves exact result and prompt bytes; format never changes logging", () => {
+test("error-level logging preserves exact result and prompt bytes; format never changes logging", () => {
   const output = capture();
   try {
-    withLogger("silent", () => { writeOutput("Choose: "); writeOutput(new Uint8Array([65, 10])); });
+    withLogger("error", () => { writeOutput("Choose: "); writeOutput(new Uint8Array([65, 10])); });
     expect(output.stdout()).toBe("Choose: A\n");
     withLogger("info", () => { useLogger().info("progress"); writeMachineResult({ ok: true }); });
     expect(output.stdout()).toContain("progress");
@@ -74,6 +74,7 @@ test("Consola defers background logs while an interactive prompt owns the termin
     expect(output.stdout()).toBe("Choose: ");
     finish(); await prompt;
     expect(output.stdout()).toStartWith("Choose: answer\n");
-    expect(output.stdout()).toContain("[collect] background progress");
+    expect(output.stdout()).toContain("[collect]");
+    expect(output.stdout()).toContain("background progress");
   } finally { finish(); await prompt; output.restore(); }
 });

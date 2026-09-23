@@ -30,7 +30,7 @@ const distribution = {
     inspect: { format: "manifest" },
     log: { format: "manifest", since: "30m" },
   },
-  logLevel: "silent",
+  logLevel: "error",
 } satisfies Distribution;
 
 startDoctor(distribution);
@@ -74,12 +74,13 @@ Help 根据有效入口隐藏 profile 相关选项和 `init/profile` 命令，�
 
 ### 执行过程与最终交付分开
 
-`logLevel` 控制整个命令生命周期的 Consola 日志：`silent` 仅保留 error/fatal，默认 `info` 展示正常
-过程与告警，`verbose` 增加 debug/trace。普通日志写 stdout，error/fatal 写 stderr。每次命令拥有独立
-logger，领域代码在执行函数中通过 `useLogger(tag)` 获取原生 Consola 实例；子任务继承命令作用域。
+`logLevel` 控制整个命令生命周期的 Consola 日志：`error` 仅保留 error/fatal，`warn` 增加告警，
+默认 `info` 展示正常过程，`verbose` 再增加 debug/trace。Core 默认启用 Consola FancyReporter；
+普通日志写 stdout，error/fatal 写 stderr。每次命令拥有独立 logger，领域代码在执行函数中通过
+`useLogger(tag)` 获取原生 Consola 实例；子任务继承命令作用域。
 
 产物 `format` 与日志级别独立，不改变日志路由。最终 summary、manifest 和产物路径由交付层输出，
-不受日志级别影响；交互提示、授权说明与原始字节也使用独立 writer。自动化发行版可配置 `silent`，
+不受日志级别影响；交互提示、授权说明与原始字节也使用独立 writer。自动化发行版可配置 `error`，
 在非交互执行时直接消费 stdout 的结果；启用过程日志时，stdout 可以同时包含日志与最终交付。
 
 Doctor 不自动生成错误日志文件；错误摘要保留在 stderr，`--debug` 展开 stack 与 cause。需要留存时由调用方重定向 stderr。

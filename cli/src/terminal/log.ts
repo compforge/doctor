@@ -2,15 +2,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { createConsola, type ConsolaInstance } from "consola";
 import { writeTerminalOutput } from "./interaction";
 
-export type LogLevel = "silent" | "info" | "verbose";
-const levels = { silent: 0, info: 3, verbose: 5 } as const;
+export type LogLevel = "error" | "warn" | "info" | "verbose";
+const levels = { error: 0, warn: 1, info: 3, verbose: 5 } as const;
 const scope = new AsyncLocalStorage<ConsolaInstance>();
 
 function createLogger(level: LogLevel): ConsolaInstance {
-  const logger = createConsola({
-    level: levels[level], throttle: 0,
+  // The Node reporter supports fancy; TypeScript resolves Consola's browser declaration without that option.
+  const options = {
+    level: levels[level], fancy: true, throttle: 0,
     formatOptions: { date: false },
-  });
+  };
+  const logger = createConsola(options);
   // Keep Consola's formatting while coordinating writes with interactive input ownership.
   const stream = (target: NodeJS.WriteStream) => new Proxy(target, {
     get(target, key) {
