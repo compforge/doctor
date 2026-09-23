@@ -8,6 +8,7 @@ import type { CliFlags } from "../protocol";
 import { mapErrorMessage } from "../protocol";
 import { bootstrap } from "./bootstrap";
 import { reportError } from "./error-report";
+import { useLogger } from "../terminal/log";
 
 export async function runRepl(
   flags: CliFlags,
@@ -15,9 +16,7 @@ export async function runRepl(
   commandContext: CommandContext,
 ): Promise<void> {
   if (!isInteractive()) {
-    process.stderr.write(
-      "doctor chat 仅支持交互式终端（非交互采集请用 doctor cpu / doctor mem / doctor trace）\n",
-    );
+    useLogger().error("doctor chat 仅支持交互式终端（非交互采集请用 doctor cpu / doctor mem / doctor trace）");
     process.exitCode = 2;
     return;
   }

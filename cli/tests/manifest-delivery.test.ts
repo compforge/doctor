@@ -95,12 +95,12 @@ test("manifest refuses external symlinks without changing their target permissio
   } finally { output.restore(); }
 });
 
-test("silent logging is independent of the collectors Bundle format", async () => {
+test("error-level logging is independent of the collectors Bundle format", async () => {
   const context = new CommandContext({}, undefined, { format: "manifest" });
   expect(commandOptions(context).format).toBe("bundle");
   const output = captureOutput();
   try {
-    await withLogger("silent", async () => { await Promise.resolve(); useLogger().info("progress\n"); });
+    await withLogger("error", async () => { await Promise.resolve(); useLogger().info("progress\n"); });
     expect(output.stderr()).toBe("");
   } finally { output.restore(); await context.disposeClients(); }
 });
@@ -113,7 +113,7 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
   for (const invalid of [true, false]) {
     const output = captureOutput();
     try {
-      await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {}, { logLevel: "silent" });
+      await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {}, { logLevel: "error" });
       expect(output.json().status).toBe(invalid ? "failed" : "partial");
       expect(output.json().children).toEqual([]);
       expect(output.json().schemaVersion).toBe(1);
@@ -123,7 +123,7 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
   }
 });
 
-test("silent execution logs do not suppress manifest delivery", async () => {
+test("error-level execution logs do not suppress manifest delivery", async () => {
   const output = captureOutput();
   const oldCode = process.exitCode;
   const spec = defineCommand({ name: "doctor test", prepare: async (_context, input) => {
@@ -134,7 +134,7 @@ test("silent execution logs do not suppress manifest delivery", async () => {
     return { status: CommandStatus.Ok as const, output: undefined, artifacts: [] };
   } });
   try {
-    await runCommand(spec, { config: join(root(), "absent.yaml"), format: "manifest" }, {}, { logLevel: "silent" });
+    await runCommand(spec, { config: join(root(), "absent.yaml"), format: "manifest" }, {}, { logLevel: "error" });
     expect(output.json().status).toBe("ok");
     expect(output.stderr()).toBe("");
   } finally { output.restore(); process.exitCode = oldCode; }

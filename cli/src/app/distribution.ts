@@ -16,7 +16,7 @@ export interface Distribution {
   optionDefaults?: Readonly<Record<string, string | number | boolean | readonly string[]>>;
   /** Defaults for declared command options (camelCase keys); explicit CLI/environment values win. */
   commandDefaults?: Readonly<Record<string, Readonly<Record<string, string | number | boolean | readonly string[]>>>>;
-  /** Execution verbosity; silent retains errors. Results and interactive prompts are independent. */
+  /** Minimum execution log level; "error" retains errors only. Results and prompts are independent. */
   logLevel?: LogLevel;
   /** If omitted, commands use the existing Host Plugin loader when needed. */
   plugin?: PluginDefinition;

@@ -24,7 +24,7 @@ program.command("collect").addOption(deliveryFormatOption(["bundle", "html"]))
       return { status: result.status, output: { child: result }, artifacts: result.artifacts };
     }, serialize: async (context, result) => ({ files: {}, children: result.output ? [await context.serialize(leaf, result.output.child)] : [] }),
       render: async () => { throw new Error("renderer must not be invoked"); } });
-    await runCommand(parent, options, {}, { logLevel: "silent" });
+    await runCommand(parent, options, {}, { logLevel: "error" });
   });
 applyCommandDefaults(program, { collect: { format: "manifest" } });
 await program.parseAsync(process.argv);

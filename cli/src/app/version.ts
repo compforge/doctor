@@ -3,7 +3,7 @@ import type { DoctorHostInfo } from "../infra/host";
 import type { Distribution } from "./distribution";
 
 // Doctor Core 的唯一版本事实源；运行时和构建流程都读取这里。
-export const DOCTOR_CLI_VERSION = "0.1.140";
+export const DOCTOR_CLI_VERSION = "0.1.141";
 
 export function formatDistributionVersion(distribution: Distribution = {}): string {
   return `${distribution.name ?? "doctor"} ${distribution.version ?? DOCTOR_CLI_VERSION}`;
