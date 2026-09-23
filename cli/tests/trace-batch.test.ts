@@ -8,8 +8,12 @@ import { traceCommand } from "../src/collect/trace/command";
 import { CommandContext, CommandStatus } from "../src/command";
 import { RenderContext } from "../src/report/context";
 
-for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output and per-ID artifacts: ${ids}`, async () => {
+const directTraceId = "0d41ecb03911d142001fc668034ffc74";
+const resolvedTraceId = (id: string) => id === directTraceId ? id : `trace-${id}`;
+
+for (const ids of [["a"], ["a", "b", "missing"], [directTraceId]]) test(`Trace uses list output and per-ID artifacts: ${ids}`, async () => {
   const queries: string[] = [];
+  const resolvedInputs: string[] = [];
   const server = Bun.serve({
     hostname: "127.0.0.1", port: 0, fetch: async request => {
       const path = new URL(request.url).pathname;
@@ -33,8 +37,11 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
       name: "api",
       workloads: [],
       extensions: [traceExtension({
-        endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) =>
-          bizId === "missing" ? undefined : { traceId: `trace-${bizId}`, resolvedAs: "message_id", sourceId: bizId }
+        endpoint: { host: "test", port: 80 }, access: {}, resolve: async (_ctx, { bizId }) => {
+          resolvedInputs.push(bizId);
+          return bizId === "missing" ? undefined : { traceId: resolvedTraceId(bizId),
+            resolvedAs: bizId === directTraceId ? "trace_id" : "message_id", sourceId: bizId };
+        }
       })]
     }])
   };
@@ -50,7 +57,8 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
   try {
     const result = await runCollectTrace({ bizIds: ids, namespace: "test", endpoint: server.url.href, pageSize: "100" }, plugin, context);
     expect(result.status).toBe(ids.length === 1 ? CommandStatus.Ok : CommandStatus.Partial);
-    expect(queries).toEqual(ids.filter(id => id !== "missing").map(id => `trace-${id}`));
+    expect(resolvedInputs).toEqual(ids);
+    expect(queries).toEqual(ids.filter(id => id !== "missing").map(resolvedTraceId));
     const items = result.output!.items;
     expect(items.map(item => item.bizId)).toEqual(ids);
     for (const item of items) {
@@ -59,7 +67,10 @@ for (const ids of [["a"], ["a", "b", "missing"]]) test(`Trace uses list output a
       for (const artifact of item.artifacts) {
         expect(existsSync(join(artifact.path, "report.html"))).toBeFalse();
         expect(JSON.parse(readFileSync(join(artifact.path, "manifest.json"), "utf8")).target.input_id).toBe(item.bizId);
-        expect(JSON.parse(readFileSync(join(artifact.path, "tree.json"), "utf8")).trace_id).toBe(`trace-${item.bizId}`);
+        expect(JSON.parse(readFileSync(join(artifact.path, "tree.json"), "utf8")).trace_id).toBe(resolvedTraceId(item.bizId));
+        if (item.bizId === directTraceId) {
+          expect(readFileSync(join(artifact.path, "summary.md"), "utf8")).toContain("输入 trace ID: `" + directTraceId + "`");
+        }
       }
     }
     expect(new Set(items.flatMap(item => item.artifacts.map(artifact => artifact.id))).size).toBe(queries.length);

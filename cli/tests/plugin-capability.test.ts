@@ -331,5 +331,5 @@ test("trace batch keeps resolvable samples when another message has no trace", a
   const opts = { namespace: "default", profileName: "test", command: "doctor trace" as const };
   expect(await resolvePluginTraceIds({ ...opts, bizIds: ["t1", "missing"] }, plugin, executor))
     .toEqual([{ bizId: "t1", traceId: "t1", service: "chat", resolvedAs: "trace_id", sourceId: undefined }]);
-  await expect(resolvePluginTraceIds({ ...opts, bizIds: ["missing"] }, plugin, executor)).rejects.toThrow("无法从 biz-id");
+  await expect(resolvePluginTraceIds({ ...opts, bizIds: ["missing"] }, plugin, executor)).rejects.toThrow("无法从输入 ID");
 });

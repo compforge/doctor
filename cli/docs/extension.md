@@ -96,7 +96,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | kind | 输入 → 输出 | 消费方 |
 |---|---|---|
 | facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
-| trace.resolve | 业务 ID → 一条或多条 Trace 定位结果，包含来源 | Trace、Log，以及调用它们的组合命令 |
+| trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
 | overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |

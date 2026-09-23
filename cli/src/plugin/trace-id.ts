@@ -35,8 +35,8 @@ export interface ResolvedPluginTraceId {
 }
 
 /**
- * 调用 Plugin 声明的 traceId provider。Core 只注入已选 Kubernetes 环境和 Service
- * 身份；运行态定位、单个 biz ID 的解释方式与一对多映射均由 provider 持有，批次调度归 Core。
+ * 调用 Plugin 声明的 trace.resolve provider。Core 只注入已选 Kubernetes 环境和 Service
+ * 身份；输入 ID 的类型判断、运行态定位与一对多映射均由 provider 持有，批次调度归 Core。
  */
 export async function resolvePluginTraceIds(
   opts: ResolvePluginTraceIdOptions,
@@ -62,7 +62,7 @@ export async function resolvePluginTraceIds(
     ...(opts.bizIds ?? []),
     ...(opts.bizId ? [opts.bizId] : []),
   ].map((item) => item.trim()).filter(Boolean))];
-  if (!bizIds.length) throw new Error("traceId resolver 需要至少一个 biz-id");
+  if (!bizIds.length) throw new Error("trace.resolve 需要至少一个输入 ID");
   const unresolved = new Set(bizIds);
   const resolutions: ResolvedPluginTraceId[] = [];
   const failures = new Map(bizIds.map((bizId) => [bizId, [] as string[]]));
@@ -106,7 +106,7 @@ export async function resolvePluginTraceIds(
           const items = traceResolveOutput(result);
           const valid = items.filter((item) => item.traceId.trim());
           if (!valid.length) {
-            failures.get(bizId)!.push(`${provider.name}: 未识别 biz-id`);
+            failures.get(bizId)!.push(`${provider.name}: 未识别输入 ID`);
             continue;
           }
           for (const item of valid) {
@@ -145,7 +145,7 @@ export async function resolvePluginTraceIds(
     const detail = [...unresolved].map((bizId) => (
       `${bizId}: ${failures.get(bizId)!.join("；")}`
     )).join("；");
-    if (!resolutions.length) throw new Error(`无法从 biz-id 解析出 trace_id：${detail}`);
+    if (!resolutions.length) throw new Error(`无法从输入 ID 解析出 trace_id：${detail}`);
     useLogger("collect").warn(`部分请求没有可用 trace，跳过其 Trace/Log：${detail}`);
   }
   const seen = new Set<string>();

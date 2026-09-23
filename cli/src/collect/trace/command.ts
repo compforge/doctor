@@ -19,7 +19,7 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
   // Offline evidence supplies the trace ID; failed preparation can still use the invocation ID.
   reportName: (input, result, now) => defaultCommandReportName("trace",
     input.from || input.traceFile || input.since || input.sinceTime
-      ? result.output?.items[0]?.traceIds ?? [] : input.traceIds?.length ? input.traceIds : input.bizIds, now),
+      ? result.output?.items[0]?.traceIds ?? [] : input.bizIds, now),
   validate: (input) => {
     for (const key of ["from", "traceFile", "node", "span"] as const) {
       if (input[key] !== undefined && !input[key]!.trim()) {
@@ -30,8 +30,8 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     if (input.node && input.span) throw new CommandInputError("--node 与 --span 不能同时使用");
     const range = input.since !== undefined || input.sinceTime !== undefined || input.untilTime !== undefined;
     const modes = Number(Boolean(input.from)) + Number(Boolean(input.traceFile)) + Number(Boolean(input.bizIds.length))
-      + Number(Boolean(input.traceIds?.length)) + Number(range);
-    if (modes !== 1) throw new CommandInputError("需且只需指定一种输入：biz-id、--trace-id、时间范围、--trace-file 或 --from");
+      + Number(range);
+    if (modes !== 1) throw new CommandInputError("需且只需指定一种输入：biz-id、时间范围、--trace-file 或 --from");
     if (range) {
       try { resolveTraceWindow(input); }
       catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
@@ -54,11 +54,10 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     }
   },
   prepare: async (context, input) => {
-    const directEndpoint = input.endpoint || input.host || process.env.DOCTOR_OPENSEARCH_URL?.trim();
     await prepareCommandRequirements(context, {
-      plugin: input.from || input.traceFile || input.traceIds?.length ? undefined
+      plugin: input.from || input.traceFile ? undefined
         : input.since || input.sinceTime ? PLUGIN_COMMAND_CAPABILITIES.traceRange : PLUGIN_COMMAND_CAPABILITIES.trace,
-      environment: { kubernetes: !input.from && !input.traceFile && !(input.traceIds?.length && directEndpoint) },
+      environment: { kubernetes: !input.from && !input.traceFile },
     });
     return input;
   },

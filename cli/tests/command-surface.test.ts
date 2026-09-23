@@ -408,6 +408,7 @@ describe("command help", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("[biz-ids...]");
+    expect(result.stdout).not.toContain("--trace-id <id>");
     expect(result.stdout).not.toContain("--id <id>");
     expect(result.stdout).toContain("业务 Service 所在 namespace");
     expect(result.stdout).toContain("OpenSearch backend service 覆盖值");
