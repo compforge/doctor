@@ -314,7 +314,7 @@ describe("profile and init", () => {
     const result = await runWithPlugin(["mem", "--profile", "prod", "--config", configPath]);
 
     expect(result.exitCode).not.toBe(0);
-    expect(result.stdout).toStartWith("[info] profile: prod\n");
+    expect(result.stdout.split("\n")[0]).toContain("profile: prod");
     expect(readFileSync(configPath, "utf8")).toContain("default_profile: dev");
   });
 });

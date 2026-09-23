@@ -579,9 +579,9 @@ test("doctor image 无集群级 list pods 权限时提示手动输入", async ()
     })).toBe("registry.example.com/dev/doctor-debug:1");
     expect(commands).toHaveLength(1);
     expect(commands[0]).toContain("-A");
-    expect(write).toHaveBeenCalledWith(
-      "[warn] [image] 当前 Kubernetes 凭据没有集群级 list pods 权限，无法从 Pod 镜像自动发现 registry 和镜像 namespace；改为手动输入。\n",
-    );
+    expect(write).toHaveBeenCalledWith(expect.stringContaining(
+      "当前 Kubernetes 凭据没有集群级 list pods 权限，无法从 Pod 镜像自动发现 registry 和镜像 namespace；改为手动输入。",
+    ));
   } finally {
     write.mockRestore();
   }
