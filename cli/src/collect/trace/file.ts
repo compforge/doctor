@@ -6,6 +6,8 @@ import { CommandStatus, type CommandContext, type CommandResult } from "../../co
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { EvidenceBundle } from "../evidence";
 import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
+import { accumulateStats, newTraceStats } from "./probe";
+import { buildTraceSummary } from "./render";
 import type { TraceOutput } from "./index";
 
 /** Import a complete local Jaeger trace into the same immutable evidence layout as online acquisition. */
@@ -58,7 +60,11 @@ export async function runFileTrace(file: string, context: CommandContext): Promi
     output: `trace_id=${traceId} spans=${records.length} file=${basename(path)}` });
   bundle.addStep({ id: "analysis", title: "离线 tree / node 证据投影", risk: "observe",
     status: projected ? "ok" : "failed", reason });
-  bundle.writeSummary(`# 本地 trace 导入\n\n- 来源: ${basename(path)}\n- trace_id: ${traceId}\n- spans: ${records.length}\n${reason ? `- 投影失败: ${reason}\n` : ""}`);
+  const stats = newTraceStats();
+  accumulateStats(stats, records);
+  bundle.writeSummary(buildTraceSummary({ traceId, inputId: traceId, resolvedAs: "trace_id",
+    index: "local_file", channel: basename(path), count: records.length, downloaded: records.length, stats,
+    steps: [`| file-import | ok | |`, `| analysis | ${projected ? "ok" : "failed"} | ${reason ?? ""} |`] }));
   bundle.writeManifest({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { trace_id: traceId, input_id: traceId, scope: "trace", resolved_as: "local_file" },

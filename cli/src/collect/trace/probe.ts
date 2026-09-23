@@ -8,6 +8,7 @@ export interface TraceStats {
   total: number;
   services: Record<string, number>;
   errorSpans: number;
+  errors?: { timeMs?: number; service: string; spanId: string; operation: string; message: string }[];
   minStartMs?: number;
   maxEndMs?: number;
 }
@@ -22,7 +23,7 @@ export function accumulateStats(stats: TraceStats, sources: Array<Record<string,
     stats.total += 1;
     const service = source?.process?.serviceName ?? "(unknown)";
     stats.services[service] = (stats.services[service] ?? 0) + 1;
-    const start = Number(source?.startTimeMillis);
+    const start = Number(source?.startTimeMillis ?? (source?.startTime === undefined ? undefined : Number(source.startTime) / 1000));
     if (Number.isFinite(start)) {
       stats.minStartMs = stats.minStartMs === undefined ? start : Math.min(stats.minStartMs, start);
       const end = start + (Number.isFinite(Number(source?.duration)) ? Number(source.duration) / 1000 : 0);
@@ -34,7 +35,20 @@ export function accumulateStats(stats: TraceStats, sources: Array<Record<string,
         (tag?.key === "error" && (tag?.value === true || tag?.value === "true")) ||
         (tag?.key === "otel.status_code" && tag?.value === "ERROR"),
     );
-    if (isError) stats.errorSpans += 1;
+    if (isError) {
+      stats.errorSpans += 1;
+      const exception = (Array.isArray(source.logs) ? source.logs : []).find((log: Record<string, any>) =>
+        Array.isArray(log.fields) && log.fields.some((field: Record<string, unknown>) => field.key === "exception.message"));
+      const message = exception?.fields.find((field: Record<string, unknown>) => field.key === "exception.message")?.value
+        ?? tags.find((tag: Record<string, unknown>) => tag.key === "otel.status_description")?.value ?? "error span";
+      const exceptionTime = Number(exception?.timestamp) / 1000;
+      const timeMs = Number.isFinite(exceptionTime) ? exceptionTime
+        : Number.isFinite(start) ? start + (Number(source.duration) || 0) / 1000 : undefined;
+      stats.errors = [...(stats.errors ?? []), { timeMs, service: String(service),
+        spanId: String(source.spanID ?? "unknown"), operation: String(source.operationName ?? "unknown").slice(0, 160),
+        message: String(message).slice(0, 512) }]
+        .sort((a, b) => (a.timeMs ?? Infinity) - (b.timeMs ?? Infinity)).slice(0, 20);
+    }
   }
 }
 

@@ -40,6 +40,10 @@ test("nested aggregates retain direct edges, reuse the same result and remain po
   const manifest = read(join(destination, "manifest.json")) as CommandManifest;
   expect(manifest.command).toBe("overview");
   expect(manifest.children).toHaveLength(2);
+  expect(manifest.files.summary.path).toBe("summary.md");
+  const summary = readFileSync(join(destination, manifest.files.summary.path), "utf8");
+  expect(summary).toContain("## 证据导航");
+  for (const child of manifest.children!) expect(summary).toContain(child.manifest);
   const parents = manifest.children!.map(child => {
     const path = join(destination, child.manifest);
     return { path, manifest: read(path) as CommandManifest };
@@ -139,7 +143,7 @@ test("Finalize indexing records every local page with private permissions", asyn
   writeFileSync(join(destination, "data-2.html"), "two", { mode: 0o644 });
   saved.indexReports();
   const manifest = read(join(destination, "manifest.json"));
-  expect(Object.keys(manifest.files)).toEqual(["data-1.html", "data-2.html"]);
+  expect(Object.keys(manifest.files)).toEqual(["summary", "data-1.html", "data-2.html"]);
   for (const file of Object.values(manifest.files) as { path: string; bytes: number }[]) {
     expect(statSync(join(destination, file.path)).mode & 0o777).toBe(0o600);
     expect(statSync(join(destination, file.path)).size).toBe(file.bytes);
@@ -168,4 +172,24 @@ test("HTML assembly failure still delivers serialized evidence in the Bundle", a
   expect(manifest.status).toBe("failed");
   expect(readArchive(manifest.files["raw.txt"].path)).toBe("retained after HTML failure");
   expect(existsSync(source)).toBe(true);
+});
+
+
+test("multi-artifact summary locates trace evidence by its target and survives relocation", async () => {
+  const source = temporary(), destination = temporary();
+  new EvidenceBundle(source).writeManifest({ doctorVersion: "test", target: { trace_id: "trace-1", input_id: "conversation-1" },
+    inspectionFacts: {}, params: {}, startedAt: "start", finishedAt: "end" });
+  writeFileSync(join(source, "summary.md"), "# Trace trace-1\n");
+  const result = { ...ok(undefined), artifacts: [
+    { id: "resolve", command: "trace", path: temporary() }, { id: "actual", command: "trace", path: source },
+  ] };
+  await SerializeContext.create(destination, { name: "doctor trace", serialize: serializeEvidenceResult }, result);
+  const moved = join(temporary(), "bundle");
+  cpSync(destination, moved, { recursive: true });
+  const manifest = read(join(moved, "manifest.json"));
+  const summary = readFileSync(join(moved, manifest.files.summary.path), "utf8");
+  expect(summary).toContain("trace-1");
+  expect(summary).toContain("conversation-1");
+  expect(summary).toContain("items/actual/summary.md");
+  for (const match of summary.matchAll(/\]\(<([^>]+)>\)/g)) expect(existsSync(join(moved, match[1]!))).toBe(true);
 });

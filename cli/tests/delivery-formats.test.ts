@@ -77,7 +77,7 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
     const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
     expect(manifest.delivery.status).toBe("ok");
     expect(readFileSync(join(directory!, manifest.files["runtime-summary.txt"].path), "utf8")).toBe(summary);
-    expect(readFileSync(join(directory!, manifest.files["summary.md"].path), "utf8")).toBe("# Full evidence");
+    expect(readFileSync(join(directory!, manifest.files.summary.path), "utf8")).toBe("# Full evidence\n");
     expect(existsSync(join(directory!, "report.html"))).toBeFalse();
   } finally {
     render.mockRestore();

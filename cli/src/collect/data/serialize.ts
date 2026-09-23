@@ -5,7 +5,7 @@ import type { SerializeContext } from "../../command/serialization/context";
 import type { SerializedOutput } from "../../command/serialization/model";
 import { readFacts } from "../evidence-reader";
 import type { DataFacts, DataOutput } from "./model";
-import { buildDataRuntimeSummary } from "./render";
+import { buildDataEvidenceSummary } from "./summary";
 
 /** One invocation snapshot; per-input findings keep their own selection and coverage. */
 export async function serializeData(context: SerializeContext, result: CommandResult<DataOutput>): Promise<SerializedOutput> {
@@ -34,7 +34,7 @@ export async function serializeData(context: SerializeContext, result: CommandRe
   return { metadata: { ...metadata, steps }, files: {
     facts: factsFile,
     diagnosis: context.writeJson("diagnosis.json", { items }),
-    summary: context.writeText("summary.md", `# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n`),
-    runtimeSummary: context.writeText("runtime-summary.txt", buildDataRuntimeSummary(result.output?.items ?? [])),
+    summary: context.writeText("summary.md", buildDataEvidenceSummary(result.output?.items ?? [], facts)),
+    runtimeSummary: context.writeText("runtime-summary.txt", buildDataEvidenceSummary(result.output?.items ?? [], facts, false)),
   } };
 }
