@@ -412,6 +412,7 @@ export async function runCollectTrace(
           resolvedAs: task.trace.resolvedAs,
           sourceId: task.trace.sourceId,
         },
+        selectionMode: window ? "time_range" : directTraceIds.length ? "trace_id" : "biz_id",
       }, (line, tone) => {
         if (tone === "warning") useLogger().warn(`${line}`);
         else useLogger().info(`${line}`);
@@ -473,6 +474,7 @@ export interface TraceCollectOptions {
     resolvedAs: string;
     sourceId?: string;
   };
+  selectionMode?: "time_range" | "trace_id" | "biz_id";
   index: string;
   auth: OpenSearchAuth;
   /** Doctor Host 直连地址（--endpoint / DOCTOR_OPENSEARCH_URL）；给了就不走 kubectl。 */
@@ -639,6 +641,7 @@ export async function collectTrace(
     buildTraceSummary({
       traceId,
       inputId: opts.bizId,
+      selectionMode: opts.selectionMode,
       resolvedAs: opts.traceIdResolution.resolvedAs,
       index: opts.index,
       channel,
