@@ -36,8 +36,8 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
    Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并为每个 positional ID 或
    重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。provider Service
    声明 capability 依赖时，Core 在调用前将其解析为受限运行时 handle。
-   时间范围的 `--limit` 传给 Plugin，Plugin 须显式返回截断信息；AgentSphere 实现检查最近的
-   `limit + 1` 条候选 AI message，再对选中的候选记录按 trace ID 去重，因此最终 trace 数可能小于 limit。
+   时间范围的 `--limit` 传给 Plugin，Plugin 须显式返回截断信息；实现可先限量候选记录，
+   再对其 trace ID 去重，因此最终 trace 数可能小于 limit。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
    未提供时优先使用 `PluginDefinition.trace.source.dataSource` 引用的业务 Service Store，再按 Service Catalog
    顺序尝试其余 OpenSearch VDB Store；每个 Store 都独立解析 endpoint、backend Service 和 namespace。
