@@ -87,6 +87,18 @@ function validateFact(input: {
       `${label}.kind '${kind}' is not declared by provides=[${capability.provides.join(", ")}]`,
     );
   }
+  if (fact.presentation !== undefined) {
+    const presentation = record(fact.presentation, `${label}.presentation`);
+    nonEmptyString(presentation.title, `${label}.presentation.title`);
+    if (!Array.isArray(presentation.fields)) throw new Error(`${label}.presentation.fields must be an array`);
+    for (const field of presentation.fields) {
+      const entry = record(field, `${label}.presentation.fields`);
+      nonEmptyString(entry.label, `${label}.presentation.fields.label`);
+      if (!Array.isArray(entry.path) || !entry.path.length || entry.path.some(key => typeof key !== "string" || !key)) {
+        throw new Error(`${label}.presentation.fields.path must contain property names`);
+      }
+    }
+  }
   if (factType === "value") {
     if (!("value" in fact)) throw new Error(`${label}.value is required`);
     if (input.valueKinds.has(kind)) {

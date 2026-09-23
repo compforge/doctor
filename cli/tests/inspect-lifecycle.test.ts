@@ -164,6 +164,9 @@ test("运行摘要把探针失败事件关联到重启的 Pod，并展示 HPA", 
   expect(summary).toContain("last=terminated: Error, exit=143");
   expect(summary).toContain("关联事件：2026-09-21T05:08:32Z Warning Unhealthy ×3 — Liveness probe failed");
   expect(summary).toContain("关联事件：2026-09-21T05:08:37Z Normal Killing");
+  expect(summary).toContain("近期生命周期事件：");
+  expect(summary).toContain("HorizontalPodAutoscaler/api：");
+  expect(summary).toContain("summary.md#workload-pods");
   expect(summary).toContain("Autoscaler：");
   expect(summary).toContain("- api → Deployment/api：current=3 desired=3（min=2 max=20；cpu: 95%/80%，memory: ?%/80%）");
   expect(summary).not.toContain("other-0");

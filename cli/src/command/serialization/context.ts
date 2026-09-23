@@ -6,6 +6,8 @@ import type { CommandResult } from "../result";
 import type { CommandInput, CommandSpec } from "../spec";
 import type { CommandManifest, SerializedOutput, StoredFile, StoredResultRef } from "./model";
 
+import { summaryNavigation, summaryText } from "./navigation";
+
 interface Node {
   id: string;
   command: string;
@@ -170,6 +172,15 @@ export class SerializeContext {
       schemaVersion: 1, executionId: this.node.id, command: this.node.command,
       status: result.status, reason: "reason" in result ? result.reason : undefined,
       serialization: { status: this.node.errors.length ? "failed" : "ok", errors: this.node.errors } };
+    // Every serialized result has a portable reading entry; domains keep their own content.
+    const summaryFile = files.summary ?? files["summary.md"];
+    const navigation = summaryNavigation(this.directory, files, this.node.children);
+    const body = summaryFile ? readFileSync(this.path(summaryFile.path), "utf8")
+      : [`# ${summaryText(this.node.command)}`, "", `采集状态：${result.status}`,
+        ...(manifest.reason ? [`原因：${summaryText(manifest.reason)}`] : []),
+        ...this.node.errors.map(error => `序列化缺口：${summaryText(error)}`), ""].join("\n");
+    for (const [key, file] of Object.entries(files)) if (file.path === "summary.md") delete files[key];
+    files.summary = this.writeText("summary.md", `${body.split("<!-- doctor:evidence-navigation -->")[0]!.trimEnd()}${navigation.length ? "\n" + navigation.join("\n") : "\n"}`);
     // Publish the inventory only after all successfully written files and child manifests exist.
     this.writeJson("manifest.json", manifest);
     return this.node;

@@ -28,10 +28,17 @@ export interface FactBase {
   schemaVersion: number;
 }
 
+/** Producer-owned display hints. Paths address fields inside record/value; no duplicate values or executable renderers. */
+export interface FactPresentation {
+  title: string;
+  fields: readonly { label: string; path: readonly string[] }[];
+}
+
 /** One opaque domain value; a Query may return at most one ValueFact of each kind. */
 export interface ValueFact<Value = unknown> extends FactBase {
   factType: "value";
   value: Value;
+  presentation?: FactPresentation;
 }
 
 /** One repeatable opaque domain record, identified stably within its kind. */
@@ -39,6 +46,7 @@ export interface RecordFact<Value = unknown> extends FactBase {
   factType: "record";
   recordKey: string;
   record: Value;
+  presentation?: FactPresentation;
 }
 
 /** A relationship proven between two diagnostic identities. */

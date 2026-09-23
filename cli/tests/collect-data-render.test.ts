@@ -47,7 +47,7 @@ test("Data terminal summary keeps batch status and evidence gaps compact", () =>
     },
   }]);
   expect(summary).toContain("业务 ID：1");
-  expect(summary).toContain("状态：degraded");
+  expect(summary).toContain("采集状态：partial");
   expect(summary).toContain("biz-1（partial）");
   expect(summary).toContain("sample: timeout");
 });

@@ -270,6 +270,12 @@ export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespac
       // 探针失败/重启的触发原因在 Event 里（如 liveness 超时），Pod status 只有结果没有原因。
       ...(issue.pod ? podEvents(diagnosis, issue.pod.pod).map((event) => `  关联事件：${formatEvent(event)}`) : []),
     ]) : ["- 无"]),
+    "", "近期生命周期事件：",
+    ...(lifecycle ? lifecycle.events.slice().sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")).slice(0, 8)
+      .map(event => `- ${event.objectKind}/${event.objectName}：${formatEvent(event)}`) : [`- 未采集：${lifecycleUnavailable}`]),
+    ...(lifecycle && !lifecycle.events.length ? ["- 所采窗口内无相关事件"] : []),
+    ...(lifecycle && lifecycle.events.length > 8 ? [`- 另有 ${lifecycle.events.length - 8} 条事件，见 summary.md#workload-events`] : []),
+    "详细证据：summary.md#workload-pods（Pod / 镜像），summary.md#workload-events（事件）",
     ...autoscalerSummaryLines(autoscalers, lifecycleUnavailable),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((item) => `- ${item}`)] : []),
     ...(diagnosis.findings.length ? ["", "诊断发现：", ...diagnosis.findings.map((finding) =>
@@ -508,6 +514,8 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
   return [
     "# Service Inspect",
     "",
+    "[Pod 与镜像](#workload-pods) · [运行事件](#workload-events) · [原始 Facts](raw/facts.json)",
+    "",
     `- Service：${services}`,
     `- Pod：${podSummary(diagnosis)}`,
     `- Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
@@ -530,6 +538,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     "",
     ...markdownTable(["Service", "Workload", "说明"], workloadRows(diagnosis)),
     "",
+    '<a id="workload-pods"></a>',
     "### Pod 运行态",
     "",
     ...markdownTable(POD_TABLE_HEADERS, podRows(diagnosis)),
@@ -552,6 +561,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
       workloadProbeRows(diagnosis),
     ),
     "",
+    '<a id="workload-events"></a>',
     "### 运行事件（关联所选 Workload）",
     "",
     ...(lifecycleUnavailableReason(diagnosis)

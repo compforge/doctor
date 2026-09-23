@@ -396,3 +396,11 @@ collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；�
 Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。provider 在整批开始时准备共享
 Client / Repository，按数据源能力合并或逐条查询，并隔离各 Query 的查询失败。共享准备失败可拒绝整次调用，
 由 Core 为本批每个 Query 记录失败；取消信号继续向上传播。单 Query 是一个元素的列表，空列表不访问外部资源。
+
+
+### Fact 的摘要展示
+
+`ValueFact` 和 `RecordFact` 可声明 `presentation`，由 Service 选择标题与字段标签。
+每个字段的 `path` 是相对于 `value` 或 `record` 的属性名数组；Core 只按路径读取已采集的值，
+不猜测业务状态，不执行 Plugin renderer，也不复制一份字段值到展示声明中。
+未声明展示字段的 Fact 仍进入证据索引。Data 摘要保留原始文件和 factPath，便于复核。

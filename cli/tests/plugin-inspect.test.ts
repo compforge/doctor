@@ -153,3 +153,17 @@ test("Core 按预算截断 query result", () => {
     omittedFacts: 1,
   });
 });
+
+
+test("Inspect presentation validates property paths without duplicating business values", () => {
+  const normalize = (presentation: unknown) => normalizeServiceInspectResult({
+    value: { resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
+      facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one",
+        record: { status: "running" }, presentation }] },
+    service: "control", queryIdentity: identity, capability, budget,
+  });
+  const presentation = { title: "Run", fields: [{ label: "status", path: ["status"] }] };
+  expect(normalize(presentation).facts[0]).toMatchObject({ presentation });
+  expect(() => normalize({ ...presentation, fields: [{ label: "status", path: [] }] }))
+    .toThrow("presentation.fields.path must contain property names");
+});

@@ -1,3 +1,4 @@
+import { summaryText } from "../../command/serialization/navigation";
 import type { TraceStats } from "./probe";
 export { renderTraceSnapshot as renderTraceEvidence } from "./snapshot";
 
@@ -28,6 +29,13 @@ export function buildTraceSummary(input: {
     lines.push(`- 时间范围: ${new Date(input.stats.minStartMs).toISOString()} ~ ${new Date(input.stats.maxEndMs).toISOString()}（跨度 ${durationMs}ms）`);
   }
   if (input.stats.errorSpans > 0) lines.push(`- error span 数: ${input.stats.errorSpans}`);
+  if (input.stats.errors?.length) {
+    lines.push("", "## 异常时间线", "", "按异常事件时间排序；缺少事件时间时使用 span 结束时间。时间先后不代表根因关系。", "",
+      "| 时间（UTC） | Service | Operation | span ID | 错误 |", "|---|---|---|---|---|");
+    for (const error of input.stats.errors) lines.push(`| ${error.timeMs === undefined ? "未知" : new Date(error.timeMs).toISOString()} | ${summaryText(error.service)} | ${summaryText(error.operation)} | ${summaryText(error.spanId)} | ${summaryText(error.message)} |`);
+    if (input.stats.errorSpans > input.stats.errors.length) lines.push(`另有 ${input.stats.errorSpans - input.stats.errors.length} 个 error span，见完整 spans。`);
+    lines.push("", "[原始 spans](spans.jsonl)，按上表 span ID 定位。");
+  }
   const services = Object.entries(input.stats.services).sort((a, b) => b[1] - a[1]);
   if (services.length) {
     lines.push("", "## 按 service 分布", "", "| service | spans |", "|---|---|");
