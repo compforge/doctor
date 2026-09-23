@@ -44,6 +44,7 @@ export interface TraceProbeOptions {
   index: string;
   pageSize: number;
   outputDir: string;
+  signal?: AbortSignal;
 }
 
 export type TraceProbeResult =
@@ -95,7 +96,7 @@ export async function probeTrace(
     downloaded = await downloadSpans(search, opts.index, traceId, opts.pageSize, (sources) => {
       appendFileSync(spansPath, `${sources.map((source) => JSON.stringify(source)).join("\n")}\n`, "utf-8");
       accumulateStats(stats, sources);
-    }, opts.spanId);
+    }, opts.spanId, opts.signal);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.fill("download", { status: "failed", reason });

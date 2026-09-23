@@ -7,6 +7,7 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import type { TraceContributions } from "@compforge/trace-harness";
+import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +24,8 @@ import {
   resolveOpenSearchAuth,
   type OpenSearchAuth,
 } from "../../infra/search/opensearch";
-import { resolvePluginTraceIds } from "../../plugin/trace-id";
+import { resolvePluginTraceIds, type ResolvedPluginTraceId } from "../../plugin/trace-id";
+import { resolvePluginTraceRange } from "../../plugin/trace-range";
 import {
   enforceKubernetesAccess,
 } from "../../terminal/kubernetes-access";
@@ -44,6 +46,7 @@ import { buildIndexExpr } from "./opensearch";
 import { probeTrace } from "./probe";
 import { buildTraceSummary } from "./render";
 import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
+import { resolveTraceWindow } from "./window";
 
 export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
@@ -56,7 +59,14 @@ export function traceStoreCandidates(plugin: PluginDefinition): ServiceDataSourc
 export interface CollectTraceCliOpts {
   /** 由 Plugin traceId capability 分别解析为一个或多个 trace_id 的业务 ID。 */
   bizIds: readonly string[];
+  traceIds?: readonly string[];
   from?: string;
+  traceFile?: string;
+  since?: string;
+  sinceTime?: string;
+  untilTime?: string;
+  limit?: string;
+  concurrency?: string;
   span?: string;
   node?: string;
   namespace?: string;
@@ -174,22 +184,36 @@ function safeOpenSearchEndpoint(value: string | undefined): string | undefined {
 /** commander action 入口：参数校验 + 组装通道，核心流程在 collectTrace（可注入 SearchEngine 测试） */
 export async function runCollectTrace(
   opts: CollectTraceCliOpts,
-  plugin: PluginDefinition,
+  plugin: PluginDefinition | undefined,
   commandContext: CommandContext,
 ): Promise<CommandResult<TraceOutput>> {
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
   ].map((item) => item.trim()).filter(Boolean))];
+  const directTraceIds = [...new Set((opts.traceIds ?? []).map(item => item.trim()).filter(Boolean))];
+  const rangeMode = opts.since !== undefined || opts.sinceTime !== undefined;
+  const requestedIds = bizIds.length ? bizIds : directTraceIds;
   const failure = (code: 2 | 130, reason: string): CommandResult<TraceOutput> => {
     const status = code === 130 ? CommandStatus.Cancelled : CommandStatus.Failed;
     return { status, reason, artifacts: [], error: code === 2 ? new CommandInputError(reason) : undefined,
-      output: { items: bizIds.map(bizId => ({
+      output: { items: requestedIds.map(bizId => ({
       bizId, traceIds: [], status, artifacts: [], reason,
     })) } };
   };
-  if (!bizIds.length) {
-    useLogger().error("doctor trace 需要至少一个 biz-id");
+  if (!bizIds.length && !directTraceIds.length && !rangeMode) {
+    useLogger().error("doctor trace 需要业务 ID、trace ID 或时间范围");
     return failure(2, "Trace 采集准备失败");
+  }
+  let window: { from: string; to: string } | undefined;
+  try {
+    if (rangeMode) window = resolveTraceWindow(opts);
+  } catch (error) {
+    return failure(2, error instanceof Error ? error.message : String(error));
+  }
+  const limit = Number(opts.limit ?? 50);
+  const concurrency = Number(opts.concurrency ?? 2);
+  if (!Number.isSafeInteger(limit) || limit <= 0 || !Number.isSafeInteger(concurrency) || concurrency <= 0) {
+    return failure(2, "--limit 和 --concurrency 必须是正整数");
   }
   const pageSize = Number(opts.pageSize);
   if (!Number.isInteger(pageSize) || pageSize <= 0) {
@@ -203,24 +227,25 @@ export async function runCollectTrace(
     return failure(2, "Trace 采集准备失败");
   }
   const endpoint = opts.endpoint ?? opts.host ?? process.env.DOCTOR_OPENSEARCH_URL?.trim();
+  const needsKubernetes = !directTraceIds.length || !endpoint;
   let runtime: TraceKubernetesRuntime | undefined;
   try {
-    runtime = await prepareTraceKubernetes(
+    runtime = needsKubernetes ? await prepareTraceKubernetes(
       opts,
       commandContext,
-      !endpoint && !plugin.trace?.source?.dataSource,
-    );
+      !endpoint && !plugin?.trace?.source?.dataSource,
+    ) : undefined;
   } catch (err) {
     useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return failure(2, "Trace 采集准备失败");
   }
-  if (!runtime) {
+  if (needsKubernetes && !runtime) {
     useLogger("collect").warn("已取消");
     return failure(130, "Trace 采集已取消");
   }
 
   const index = buildIndexExpr(opts.index, opts.indexDate);
-  const dependencyRuntime = new ServiceDependencyRuntime({
+  const dependencyRuntime = runtime && plugin ? new ServiceDependencyRuntime({
     plugin,
     collect: runtime.collect,
     executor: runtime.executor,
@@ -235,24 +260,51 @@ export async function runCollectTrace(
       if (tone === "warning") useLogger().warn(`${line}`);
       else useLogger().info(`${line}`);
     },
-  });
+  }) : undefined;
 
   try {
-  let traces;
+  let traces: ResolvedPluginTraceId[];
+  let truncated: { reason: string } | undefined;
   try {
-    traces = await resolvePluginTraceIds({
+    if (directTraceIds.length) {
+      traces = directTraceIds.map(traceId => ({
+        bizId: traceId, traceId, service: "doctor", resolvedAs: "trace_id",
+      }));
+    } else if (window) {
+      const resolved = await resolvePluginTraceRange({
+        window, limit,
+        kube: runtime!.collect.kubernetes,
+        commandContext,
+        resolveDependencies: service => dependencyRuntime!.resolve(service),
+      }, plugin!, runtime!.executor);
+      traces = resolved.traces;
+      truncated = resolved.truncated;
+    } else {
+      traces = await resolvePluginTraceIds({
       bizIds,
-      namespace: runtime.collect.kubernetes.namespace,
-      kubeconfig: runtime.collect.kubernetes.kubeconfig,
-      context: runtime.collect.kubernetes.context,
+      namespace: runtime!.collect.kubernetes.namespace,
+      kubeconfig: runtime!.collect.kubernetes.kubeconfig,
+      context: runtime!.collect.kubernetes.context,
       profileName: commandContext.profile.name,
       command: "doctor trace",
       commandContext,
-      resolveDependencies: (service) => dependencyRuntime.resolve(service),
-    }, plugin, runtime.executor);
+      resolveDependencies: (service) => dependencyRuntime!.resolve(service),
+      }, plugin!, runtime!.executor);
+    }
   } catch (err) {
     useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
     return failure(2, "Trace 采集准备失败");
+  }
+  const sources = traces.map(trace => ({
+    trace_id: trace.traceId, source_id: trace.sourceId, service: trace.service, resolved_as: trace.resolvedAs,
+  }));
+  if (!bizIds.length) {
+    const seen = new Set<string>();
+    traces = traces.filter(trace => {
+      if (seen.has(trace.traceId)) return false;
+      seen.add(trace.traceId);
+      return true;
+    });
   }
   for (const trace of traces) {
     useLogger("collect").info(`biz-id: ${trace.bizId} → trace-id: ${trace.traceId}`
@@ -264,27 +316,55 @@ export async function runCollectTrace(
     return failure(2, "--span 的业务 ID 解析出多条 trace；请改用明确的 trace ID 再查询，不能仅凭 span ID 选择 trace");
   }
 
-  const traceStores = traceStoreCandidates(plugin);
-  let preparedStore: PreparedServiceDataSourceDependency | undefined;
-  if (traceStores.length) {
-    try {
-      preparedStore = endpoint
-        ? await dependencyRuntime.prepareDataSource(traceStores[0]!.service, traceStores[0]!.dataSource)
-        : await dependencyRuntime.prepareDataSourceCandidates(traceStores);
-    } catch (error) {
-      useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-      return failure(2, "Trace 采集准备失败");
-    }
-  }
-
   const bundleName = defaultTraceBatchName(new Date());
-  // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
-  const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-collect-"));
   const staging = join(stagingRoot, bundleName);
   const summary = commandContext.artifacts.add({ command: "trace", path: staging });
   const bundle = new EvidenceBundle(staging);
   const startedAt = new Date().toISOString();
+  const rootMeta = {
+    doctorVersion: DOCTOR_CLI_VERSION,
+    target: { namespace: runtime?.collect.kubernetes.namespace, input_ids: bizIds,
+      trace_ids: traces.map(trace => trace.traceId), sources, ...(window ? { window } : {}) },
+    inspectionFacts: {},
+    params: { index, page_size: pageSize, selection: window ? "time_range" : directTraceIds.length ? "trace_id" : "biz_id",
+      pagination_consistency: "live", concurrency, ...(window ? { limit, truncated } : {}) },
+    startedAt,
+  };
+  // The target list is evidence even if the Store cannot be reached or collection is cancelled.
+  bundle.writeManifest({ ...rootMeta, finishedAt: new Date().toISOString() });
+  bundle.writeSummary([
+    "# trace 目标选择", "",
+    `- 来源: ${window ? "时间范围" : directTraceIds.length ? "直接指定 trace ID" : "业务 ID"}`,
+    ...(window ? [`- 时间范围: ${window.from} → ${window.to}`, `- limit: ${limit}`] : []),
+    `- 选中 trace 数: ${traces.length}`,
+    ...(truncated ? [`- 选择已截断: ${truncated.reason}`] : []),
+    "",
+  ].join("\n"));
+  const selection = { window, limit: window ? limit : undefined, truncated };
+  const preparationFailure = (reason: string): CommandResult<TraceOutput> => ({
+    status: CommandStatus.Failed, reason, artifacts: [summary],
+    output: { items: [{ bizId: window ? "time_range" : "trace", traceIds: traces.map(trace => trace.traceId),
+      status: CommandStatus.Failed, artifacts: [], reason }], selection },
+  });
+  if (!traces.length) return preparationFailure("时间范围内没有可采集的 trace_id");
+
+  const traceStores = plugin ? traceStoreCandidates(plugin) : [];
+  let preparedStore: PreparedServiceDataSourceDependency | undefined;
+  if (traceStores.length && dependencyRuntime) {
+    try {
+      preparedStore = endpoint
+        ? await dependencyRuntime.prepareDataSource(traceStores[0]!.service, traceStores[0]!.dataSource)
+        : await dependencyRuntime.prepareDataSourceCandidates(traceStores);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      useLogger().error(reason);
+      return preparationFailure(`OpenSearch Store 准备失败：${reason}`);
+    }
+  }
+
+  // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
+  const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
@@ -293,77 +373,90 @@ export async function runCollectTrace(
         namespace: runtime.collect.kubernetes.namespace,
       }
     : undefined;
-  const pluginSpecs = [...(plugin.trace?.analysis.specs ?? [])];
+  const pluginSpecs = [...(plugin?.trace?.analysis.specs ?? [])];
   const overriddenKinds = new Set(pluginSpecs.map((spec) => spec.kind));
   // A kind has one projection owner; appending a second spec silently discards the
   // Plugin projection and its required facts during assembly.
   const contributions = mergeTraceContributions(
-    { ...plugin.trace?.analysis, specs: pluginSpecs },
+    { ...plugin?.trace?.analysis, specs: pluginSpecs },
     { specs: [...genAiSpecs()].filter((spec) => !overriddenKinds.has(spec.kind)) },
   );
-  const items: TraceOutput["items"][number][] = [];
-  for (const [bizIndex, bizId] of bizIds.entries()) {
-    useLogger("collect:trace").warn(`[${bizIndex + 1}/${bizIds.length}] biz-id: ${bizId}`);
-    const groupTraces = traces.filter((trace) => trace.bizId === bizId);
-    const itemStatuses: CommandStatus[] = [];
-    const itemArtifacts: import("../../command").CommandArtifact[] = [];
-    let groupCode = groupTraces.length ? 0 : 1;
-    for (const [traceIndex, trace] of groupTraces.entries()) {
-      if (commandContext.signal.aborted) { itemStatuses.push(CommandStatus.Cancelled); break; }
+  const groupIds = bizIds.length ? bizIds : traces.map(trace => trace.bizId);
+  const tasks = groupIds.flatMap((bizId, bizIndex) => traces.filter(trace => trace.bizId === bizId)
+    .map((trace, traceIndex) => {
       const outputDir = join(stagingRoot, `${bundleName}-biz-${bizIndex + 1}-trace-${traceIndex + 1}`);
-      itemArtifacts.push(commandContext.artifacts.add({ command: "trace", path: outputDir }));
-      let code;
-      try {
-        code = await collectTrace(
-          {
-            traceId: trace.traceId,
-            spanId: opts.span,
-            contributions,
-            bizId,
-            index,
-            auth: preparedStore?.auth ?? explicitAuth,
-            endpoint,
-            configuredEndpoint: preparedStore?.configuredEndpoint,
-            service: opts.service,
-            kube,
-            pageSize,
-            outputDir,
-            preparedStore,
-            traceIdResolution: {
-              service: trace.service,
-              resolvedAs: trace.resolvedAs,
-              sourceId: trace.sourceId,
-            },
-          },
-          (line, tone) => {
-            if (tone === "warning") useLogger().warn(`${line}`);
-            else useLogger().info(`${line}`);
-          },
-        );
-      } catch (error) {
-        code = 1;
-        useLogger("collect").error(`trace ${trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}`);
-      }
-      itemStatuses.push(commandOutcome(code).status);
-      groupCode = Math.max(groupCode, code);
+      return { bizId, trace, outputDir };
+    }));
+  const pool = new ConcurrencyPool(concurrency);
+  const results = await Promise.allSettled(tasks.map(task => pool.run(async () => {
+    useLogger("collect:trace").info(`trace-id: ${task.trace.traceId}`);
+    const artifact = commandContext.artifacts.add({ command: "trace", path: task.outputDir });
+    try {
+      const code = await collectTrace({
+        traceId: task.trace.traceId,
+        spanId: opts.span,
+        contributions,
+        bizId: task.bizId,
+        index,
+        auth: preparedStore?.auth ?? explicitAuth,
+        endpoint,
+        configuredEndpoint: preparedStore?.configuredEndpoint,
+        service: opts.service,
+        kube,
+        pageSize,
+        signal: commandContext.signal,
+        outputDir: task.outputDir,
+        preparedStore,
+        traceIdResolution: {
+          service: task.trace.service,
+          resolvedAs: task.trace.resolvedAs,
+          sourceId: task.trace.sourceId,
+        },
+        selectionMode: window ? "time_range" : directTraceIds.length ? "trace_id" : "biz_id",
+      }, (line, tone) => {
+        if (tone === "warning") useLogger().warn(`${line}`);
+        else useLogger().info(`${line}`);
+      });
+      return { code, artifact };
+    } catch (error) {
+      useLogger("collect").error(`trace ${task.trace.traceId} 采集失败：${error instanceof Error ? error.message : String(error)}`);
+      return { code: 1, artifact };
     }
-    items.push({ bizId, traceIds: groupTraces.map(trace => trace.traceId),
-      status: commandContext.signal.aborted ? CommandStatus.Cancelled : itemStatuses.length ? aggregateCommandStatus(itemStatuses) : CommandStatus.Failed,
-      artifacts: itemArtifacts, ...(!groupTraces.length ? { reason: "无法解析 trace_id" } : {}) });
-
-  }
-
-  bundle.writeManifest({ doctorVersion: DOCTOR_CLI_VERSION,
-    target: { namespace: runtime.collect.kubernetes.namespace, input_ids: bizIds },
-    inspectionFacts: {}, params: { index, page_size: pageSize }, startedAt, finishedAt: new Date().toISOString() });
+  }, commandContext.signal)));
+  const items: TraceOutput["items"][number][] = groupIds.map(bizId => {
+    const indexes = tasks.flatMap((task, index) => task.bizId === bizId ? [index] : []);
+    const artifactIndexes = indexes.filter(index => results[index]!.status === "fulfilled"
+      && existsSync(join(tasks[index]!.outputDir, "manifest.json")));
+    const itemStatuses = indexes.map(index => {
+      const result = results[index]!;
+      if (commandContext.signal.aborted) return CommandStatus.Cancelled;
+      return result.status === "fulfilled" ? commandOutcome(result.value.code).status : CommandStatus.Failed;
+    });
+    return { bizId,
+      traceIds: indexes.map(index => tasks[index]!.trace.traceId),
+      artifactTraceIds: artifactIndexes.map(index => tasks[index]!.trace.traceId),
+      status: itemStatuses.length ? aggregateCommandStatus(itemStatuses) : CommandStatus.Failed,
+      artifacts: artifactIndexes.map(index => {
+        const result = results[index]!;
+        if (result.status !== "fulfilled") throw new Error("Trace artifact status changed");
+        return result.value.artifact;
+      }),
+      ...(!indexes.length ? { reason: "本地目标列表没有可采集的 trace_id" } : {}),
+    };
+  });
+  if (!items.length) items.push({ bizId: "time_range", traceIds: [], status: CommandStatus.Failed,
+    artifacts: [], reason: "时间范围内没有可采集的 trace_id" });
+  bundle.writeManifest({ ...rootMeta, finishedAt: new Date().toISOString() });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
     ...item, artifact_ids: artifacts.map(artifact => artifact.id),
   })) }, null, 2));
-  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items, contributions },
+  const status = aggregateCommandStatus(items.map(item => item.status));
+  return { status: status === CommandStatus.Ok && truncated ? CommandStatus.Partial : status,
+    output: { items, contributions, selection },
     artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
   } finally {
     try {
-      await dependencyRuntime.close();
+      await dependencyRuntime?.close();
     } catch (error) {
       useLogger("collect").warn(`Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -381,6 +474,7 @@ export interface TraceCollectOptions {
     resolvedAs: string;
     sourceId?: string;
   };
+  selectionMode?: "time_range" | "trace_id" | "biz_id";
   index: string;
   auth: OpenSearchAuth;
   /** Doctor Host 直连地址（--endpoint / DOCTOR_OPENSEARCH_URL）；给了就不走 kubectl。 */
@@ -390,6 +484,7 @@ export interface TraceCollectOptions {
   service?: string;
   kube?: KubectlOptions;
   pageSize: number;
+  signal?: AbortSignal;
   outputDir: string;
   /** Shared dependency access owned by the outer batch command. */
   preparedStore?: PreparedServiceDataSourceDependency;
@@ -407,7 +502,7 @@ export interface TraceCollectOptions {
  * 都只写 summary.md，manifest 里下游几行直接消失——而 manifest 才是机器消费的那份。
  */
 const TRACE_OUTCOMES: readonly OutcomeDecl[] = [
-  { id: "resolve-id", title: "业务 ID 到 trace_id 的 Plugin 解析", risk: "observe" },
+  { id: "resolve-id", title: "trace_id 目标确认", risk: "observe" },
   { id: "count", title: "span 总数查询", risk: "observe" },
   { id: "download", title: "所选范围的 span 下载", risk: "observe" },
   { id: "analysis", title: "离线 tree / node 证据投影", risk: "observe" },
@@ -433,12 +528,14 @@ export async function collectTrace(
     bundle.writeManifest({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: { ...confirmedTarget, input_id: opts.bizId, trace_id: traceId, span_id: opts.spanId,
-        scope: opts.spanId ? "span" : "trace", index: opts.index, ...target },
+        scope: opts.spanId ? "span" : "trace", index: opts.index,
+        resolved_as: opts.traceIdResolution.resolvedAs, source_id: opts.traceIdResolution.sourceId, ...target },
       files: exported ? TRACE_FILES : existsSync(join(opts.outputDir, "spans.jsonl")) ? { spans: TRACE_FILES.spans } : undefined,
       inspectionFacts: {},
       params: {
         index: opts.index,
         page_size: opts.pageSize,
+        pagination_consistency: "live",
         span_id: opts.spanId,
         endpoint: safeOpenSearchEndpoint(opts.endpoint),
         configured_endpoint: safeOpenSearchEndpoint(opts.configuredEndpoint),
@@ -518,6 +615,7 @@ export async function collectTrace(
     spanId: opts.spanId,
     index: opts.index,
     pageSize: opts.pageSize,
+    signal: opts.signal,
     outputDir: opts.outputDir,
   }, bundle, log);
   // Even interrupted downloads keep a usable local index; incompleteness must remain visible.
@@ -543,6 +641,7 @@ export async function collectTrace(
     buildTraceSummary({
       traceId,
       inputId: opts.bizId,
+      selectionMode: opts.selectionMode,
       resolvedAs: opts.traceIdResolution.resolvedAs,
       index: opts.index,
       channel,
@@ -559,6 +658,8 @@ export async function collectTrace(
 
 export interface TraceOutput {
   readonly contributions?: TraceContributions;
-  readonly items: readonly { bizId: string; traceIds: readonly string[]; status: CommandStatus; reason?: string;
+  readonly selection?: { window?: { from: string; to: string }; limit?: number; truncated?: { reason: string } };
+  readonly items: readonly { bizId: string; traceIds: readonly string[]; artifactTraceIds?: readonly string[];
+    status: CommandStatus; reason?: string;
     artifacts: readonly import("../../command").CommandArtifact[] }[];
 }

@@ -4,6 +4,7 @@ export { renderTraceSnapshot as renderTraceEvidence } from "./snapshot";
 export function buildTraceSummary(input: {
   traceId: string;
   inputId?: string;
+  selectionMode?: "time_range" | "trace_id" | "biz_id";
   resolvedAs?: string;
   index: string;
   channel: string;
@@ -15,7 +16,10 @@ export function buildTraceSummary(input: {
   const lines: string[] = [];
   lines.push(`# trace 采集摘要：${input.traceId}`, "");
   if (input.inputId) {
-    lines.push(`- 业务 ID: \`${input.inputId}\`（Plugin 按 ${input.resolvedAs ?? "unknown"} 解析）`);
+    const mode = input.selectionMode ?? (input.resolvedAs === "trace_id" ? "trace_id" : "biz_id");
+    if (mode === "trace_id") lines.push(`- 输入 trace ID: \`${input.inputId}\``);
+    else if (mode === "time_range") lines.push(`- 时间范围选中的 trace ID: \`${input.inputId}\``);
+    else lines.push(`- 业务 ID: \`${input.inputId}\`（Plugin 按 ${input.resolvedAs ?? "unknown"} 解析）`);
   }
   lines.push(`- index: \`${input.index}\`  通道: ${input.channel}`);
   lines.push(`- span 总数: ${input.count}  已下载: ${input.downloaded}`);
