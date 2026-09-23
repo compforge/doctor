@@ -16,6 +16,14 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "把业务 ID 解析为规范 trace_id",
     }],
   },
+  traceRange: {
+    command: "doctor trace",
+    needs: [{
+      requirement: "required",
+      capability: { scope: "extension", name: "trace.range" },
+      purpose: "在业务时间范围内选择规范 trace_id",
+    }],
+  },
   store: {
     command: "doctor store",
     needs: [{

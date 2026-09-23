@@ -15,7 +15,11 @@ export function buildTraceSummary(input: {
   const lines: string[] = [];
   lines.push(`# trace 采集摘要：${input.traceId}`, "");
   if (input.inputId) {
-    lines.push(`- 业务 ID: \`${input.inputId}\`（Plugin 按 ${input.resolvedAs ?? "unknown"} 解析）`);
+    lines.push(input.resolvedAs === "trace_id"
+      ? `- 输入 trace ID: \`${input.inputId}\``
+      : input.resolvedAs === "time_range"
+        ? `- 时间范围选中的 trace ID: \`${input.inputId}\``
+        : `- 业务 ID: \`${input.inputId}\`（Plugin 按 ${input.resolvedAs ?? "unknown"} 解析）`);
   }
   lines.push(`- index: \`${input.index}\`  通道: ${input.channel}`);
   lines.push(`- span 总数: ${input.count}  已下载: ${input.downloaded}`);

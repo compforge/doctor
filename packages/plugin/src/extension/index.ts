@@ -33,6 +33,7 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
 
 export * from "./facts-inspect";
 export * from "./trace-resolve";
+export * from "./trace-range";
 export * from "./overview";
 export * from "./tenant";
 export * from "./mcp";

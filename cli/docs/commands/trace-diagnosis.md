@@ -3,8 +3,8 @@
 ## 理念 / 概念
 
 `doctor trace` 从 SearchEngine 下载 trace 或指定 span 的证据，在 Doctor Host 保存机器可读节点树，
-并支持纯离线下钻和可交互 HTML。在线命令接收一个或多个业务 ID，先调用 Plugin `traceId` capability；每个 ID 可解析为一条或多条规范
-trace_id。领域层负责确认、计数、
+并支持纯离线下钻和可交互 HTML。在线命令可以直接接收 trace ID，也可以由 Plugin 将业务 ID 或时间范围
+解析为规范 trace_id。Core 冻结目标列表后负责确认、计数、
 分页下载和渲染，`infra/search` 负责 OpenSearch 协议，`collect/shared/opensearch-access` 负责 Trace/VDB 共用的
 连接确认和生命周期，`infra/k8s` 负责 Service 解析和临时网络通道。
 
@@ -14,6 +14,10 @@ span。显式 `--format html`、`--format bundle` 或 `--format manifest` 时只
 
 ```bash
 doctor trace <biz_id> --format manifest
+doctor trace --trace-id <trace_id> --trace-id <trace_id> --format manifest
+doctor trace --since 1h --limit 50 --concurrency 2 --format manifest
+doctor trace --since-time 2026-09-23T08:00:00+08:00 --until-time 2026-09-23T09:00:00+08:00
+doctor trace --trace-file ./trace.json --format html
 doctor trace <biz_id> --span <span_id> --format manifest
 doctor trace --from <manifest路径> --node <node_id> --format manifest
 doctor trace --from <manifest路径> --span <span_id> --format manifest
@@ -27,19 +31,23 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
 
 ## 流程
 
-1. app 在访问环境前确认当前 Plugin 至少声明一个 `service.traceId` provider；Core 注入当前选择的
+1. app 按输入模式确认所需的 Plugin Extension：业务 ID 使用 `trace.resolve`，时间范围使用
+   `trace.range`，直接 trace ID 不需要解析 Extension。Core 注入当前选择的
    Kubernetes 环境与 provider Service 身份，Plugin 自行定位运行态和数据源，并为每个 positional ID 或
    重复 `--biz-id` 返回一条或多条规范 trace_id、解析语义及可选来源 ID。provider Service
    声明 capability 依赖时，Core 在调用前将其解析为受限运行时 handle。
+   时间范围的 `--limit` 传给 Plugin，Plugin 须显式返回截断信息；AgentSphere 实现检查最近的
+   `limit + 1` 条候选 AI message，再对选中的候选记录按 trace ID 去重，因此最终 trace 数可能小于 limit。
 2. 配置确认解析 index、鉴权和访问方式；`--endpoint` 表示 Doctor Host 可直连的 OpenSearch 地址。
    未提供时优先使用 `PluginDefinition.trace.source.dataSource` 引用的业务 Service Store，再按 Service Catalog
    顺序尝试其余 OpenSearch VDB Store；每个 Store 都独立解析 endpoint、backend Service 和 namespace。
 3. 网络准备按确认结果建立 Service port-forward、探测可用协议并初始化 SearchEngine，统一拥有 client 和 forward 生命周期；
    ID 解析与 span 下载命中同一 Store 时复用同一连接。
-4. Probe 只按 Plugin 返回的规范 trace_id 查询 span 总数，不用任意 span tag 猜测业务 ID 关系。
+4. Probe 只按已确认的规范 trace_id 查询 span 总数，不用任意 span tag 猜测业务 ID 关系。
    `--span` 同时限定 traceID 和 spanID，count 与下载使用同一过滤条件；业务 ID 解析出多条不同 trace 时
    报歧义，要求用明确 trace ID 重试，不先下载整条 trace 再过滤。
-5. 用稳定排序和 `search_after` 下载所选范围的 `_source`，逐页追加到 `spans.jsonl` 并累计统计。
+5. Core 对 trace 目标施加有界并发；同一 trace 用稳定排序和 `search_after` 顺序下载 `_source`，
+   逐页追加到独立的 `spans.jsonl` 并累计统计。根 manifest 在下载前保存目标、来源、时间窗和截断情况。
 6. 采集后使用 TypeScript trace-harness 的 `JaegerFileSource` 读取已落盘的 `spans.jsonl`，通过
    TraceSession 为当前 trace 获取 lease、归一化并组装逻辑节点树。异步分析按 Plugin 声明的字段和 fact
    依赖准备本地证据，再执行 transforms / measurers / detectors；渲染前以 `prepareView({ full: true })`
@@ -52,6 +60,11 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
    Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
 8. 根入口释放 SearchEngine / forward 并按 format 交付；下载中断时保留已经落盘的 span 和失败上下文，
    尽力为已下载部分建立本地索引，不能把索引成功当作下载完整。
+
+`--trace-file` 是另一条本地入口：trace-harness 解析一条 Jaeger UI JSON、JSON 数组或 JSONL trace，
+Doctor 保存原文件和展开后的 `spans.jsonl`，从投影步骤进入同一套 snapshot、HTML 和 Bundle 交付。
+它不加载 Plugin，也不访问 Kubernetes 或 OpenSearch。一个文件含多条 trace 时需先拆分，以免静默丢失。
+`--from` 则读取已有 Doctor manifest 和冻结分析结果，只做离线下钻或重渲染，不重新运行 Detector。
 
 ## 离线证据与下钻
 
@@ -87,8 +100,9 @@ Service 发现回答“本轮目标是谁”，属于配置确认；port-forward
 
 ### 计数和下载是两份证据
 
-预先 count 既验证目标 trace 存在，也给全量下载提供完整性基准。下载条数与 count 不一致时仍保留
+预先 count 既验证目标 trace 存在，也给下载提供完整性基准。下载条数与 count 不一致时仍保留
 数据，但本次 Evidence 标为不完整；退出码表达证据完整度，不表达 trace 中是否存在错误 span。
+实时 `search_after` 不固定索引快照，下载期间索引变化可能影响跨页结果；Evidence 保存当前实时采集语义。
 
 ### SearchEngine 保持协议通用
 

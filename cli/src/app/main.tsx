@@ -146,7 +146,14 @@ function withCpuOptions(cmd: CommandT): CommandT {
 
 function withTraceOptions(cmd: CommandT): CommandT {
   return withBizIdInputs(cmd, "业务 ID；可重复传入，Plugin traceId capability 先解析为 trace_id")
+    .option("--trace-id <id>", "直接采集规范 trace ID；可重复指定", (value: string, previous: string[]) => [...previous, value], [])
+    .option("--since <duration>", "按时间范围解析 trace ID，例如 1h、30m、2d")
+    .option("--since-time <timestamp>", "时间范围起点（RFC3339；优先于 --since）")
+    .option("--until-time <timestamp>", "时间范围终点（RFC3339；缺省为本次命令开始时刻）")
+    .option("--limit <n>", "传给 trace.range 的目标上限（默认 50；Plugin 可按候选记录限量）")
+    .option("--concurrency <n>", "同时采集的 trace 数（默认 2）")
     .option("--from <manifest>", "仅使用已下载的 manifest 证据，不访问 Kubernetes / OpenSearch")
+    .option("--trace-file <path>", "导入单条 Jaeger trace JSON/JSONL，离线投影并生成报告")
     .option("--span <span-id>", "在线只采集指定 span；离线查看该 span 的完整证据")
     .option("--node <node-id>", "离线查看 node 及其关联 spans（需要 --from）")
     .option("--service <name>", "OpenSearch backend service 覆盖值")
@@ -564,11 +571,12 @@ export function createDoctorProgram(
     await runCommand(collectCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withTraceOptions(
-    catalog.command("trace").description("按业务 ID 采集 trace/span，或离线下钻证据；输出 manifest、HTML 或证据包"),
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
+    catalog.command("trace").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻"),
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts> & { traceId?: string[] }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
+    const { traceId, ...commandOpts } = normalizeBizIdOptions(positionalBizIds, opts);
+    await runCommand(traceCommand, commandOpts, { ...domainInput(commandOpts), traceIds: traceId ?? [],
+      pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
   });
   withStoreOptions(
     catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
