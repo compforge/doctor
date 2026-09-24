@@ -12,7 +12,7 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "types": ["bun"],
-    "lib": ["ES2022"]
+    "lib": ["ES2023"]
   },
   "include": ["src/**/*", "tests/**/*"]
 }
