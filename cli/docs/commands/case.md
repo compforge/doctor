@@ -2,15 +2,15 @@
 
 ## 理念 / 概念
 
-Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 通过统一 Extension 注册表列出 Core 内置、Plugin 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model` 和 `doctor perf` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
+Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 通过统一 Extension 注册表列出 Core 内置、Plugin 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model`、`doctor perf` 和 `doctor eval` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
 
-`facets.command` 声明 Case 的用途：`http`、`model`、`perf` 或 `both`。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension；旧版 Plugin 的 runner CaseSet 可经兼容适配器进入目录。
+`facets.command` 声明 Case 的用途：`http`、`model`、`perf`、`eval`，多用途用逗号分隔；`both` 匹配所有命令。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension。
 
 ```yaml
 caseset: doctor_smoke
 schema_version: 1
 facets:
-  command: {values: [http, model, perf]}
+  command: {values: [http, model, "eval,perf"]}
   mode: {values: [connectivity]}
 cases:
   - id: health
@@ -29,17 +29,17 @@ cases:
     facets: {command: model, mode: connectivity}
   - id: chat_load
     input: {query: Hello}
-    facets: {command: perf}
+    facets: {command: "eval,perf"}
 ```
 
-HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body`/`body_file`、响应 `expect` 和可选 Entrypoint。`--base-url` 提供本次目标的 scheme、host 和 port；Case 不保存 URL 或目标凭据。Model Case 的连通性输入使用 `path` 与 `body`，模型 ID 由 Model Capability 注入。Perf Case 的输入交给所选 Service 的单请求 runner 解释；Case 不保存并发、速率和权重。
+HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body`/`body_file`、响应 `expect` 和可选 Entrypoint。`--base-url` 提供本次目标的 scheme、host 和 port；Case 不保存 URL 或目标凭据。Model Case 的连通性输入使用 `path` 与 `body`，模型 ID 由 Model Capability 注入。Perf/Eval Case 的输入交给所选 Service 的单请求 runner 解释；Case 不保存并发、速率和权重。
 
 ## 流程
 
 1. `doctor case` 只读列出可用 Case。交互终端可选 CaseSet 和一个或多个 HTTP Case，再确认是否发送、提供目标 base URL 和请求执行位置。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
 2. 发送复用 HTTP Collect：从本机或指定 Pod/Container 发起请求；先 Inspect 目标 host:port 的 DNS/TCP，再串行执行选中的 Case。`--repeat` 控制轮次，`--interval` 控制轮间等待。每次请求保留状态、headers/body、传输阶段耗时和可选 SSE 时间线。
 3. Detector 依据传输完整性、HTTP 状态、Content-Type、耗时和 SSE 终态产生 Findings；同一 Case 的多轮结果可识别偶现失败。报告保存实际 Request Plan 的可复现 cURL，异常响应可在 HTML/Markdown 查看，完整原始证据进入 Bundle。
-4. `doctor model` 按序执行选中的连通性 Case，逐 Case 记录 Observation 和失败归因；选中的轻量性能 Case 串行采样。`doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，预算、并发和熔断仍由 Perf 命令控制。
+4. `doctor model` 按序执行选中的连通性 Case，逐 Case 记录 Observation 和失败归因；选中的轻量性能 Case 串行采样。`doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，预算、并发和熔断仍由 Perf 命令控制。`doctor eval` 默认逐例执行所选 CaseSet 的全部 Eval Case，一次一个请求，也可用 `--cases` 选择子集。
 
 ## 关键设计
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { httpScenarioFromDoctorCases } from "../src/case/http";
 import { createDoctorExtensionRegistry } from "../src/plugin/extension-registry";
-import { createServiceCatalog, withSummary, type CaseCatalogExtension, type CaseRunnerCreateExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type CaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
 
 test("shared catalog filters one canonical CaseSet by command and selects multiple IDs", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-catalog-"));
@@ -52,7 +52,7 @@ test("catalog does not auto-load the old doctor-case.yaml filename", () => {
 test("Core and Plugin catalog extensions share discovery; command filtering uses only facets", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-extensions-"));
   try {
-    writeFileSync(join(directory, "doctor-cases.yaml"), `caseset: local_cases\nfacets:\n  command: {values: [http]}\ncases:\n  - id: local_ping\n    input: {path: /ping}\n    facets: {command: http}\n`);
+    writeFileSync(join(directory, "doctor-cases.yaml"), `caseset: local_cases\nfacets:\n  command: {values: [http, "eval,perf"]}\ncases:\n  - id: local_ping\n    input: {path: /ping}\n    facets: {command: http}\n  - id: local_chat\n    input: {query: hello}\n    facets: {command: "eval,perf"}\n`);
     const pluginCases: CaseCatalogExtension = { id: "fixture.cases", kind: "case.catalog", load: () => [{
       caseset: "plugin_cases", facets: { command: { values: ["perf"] } }, cases: [
         { id: "probe", input: { query: "hello" }, facets: { command: "perf" } },
@@ -67,32 +67,8 @@ test("Core and Plugin catalog extensions share discovery; command filtering uses
     expect(catalog.map((item) => item.caseSet.caseset)).toEqual(["doctor_model", "doctor_http", "local_cases", "plugin_cases"]);
     expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "plugin_cases" }))?.cases.map((item) => item.id)).toEqual(["probe"]);
     expect((await selectDoctorCases({ catalog, command: "http", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_ping"]);
-    await expect(selectDoctorCases({ catalog, command: "perf", caseSetId: "local_cases" })).rejects.toThrow("没有可用于");
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
-  }
-});
-
-test("legacy Service runner assets adapt to perf facets without creating a runner", async () => {
-  let created = false;
-  const directory = mkdtempSync(join(tmpdir(), "doctor-empty-cases-"));
-  const runner: CaseRunnerCreateExtension = {
-    id: "runner", kind: "case.runner.create", access: {}, endpoint: { host: "chat", port: 80 },
-    caseSets: [{ caseset: "ordinary", facets: {}, cases: [{ id: "hello", input: { query: "Hi" } }] }],
-    run: withSummary({ title: "Runner", fields: [] }, async () => { created = true; throw new Error("unexpected"); }),
-  };
-  const plugin: PluginDefinition = {
-    id: "legacy", version: "1", services: createServiceCatalog([{
-      name: "chat", component: { name: "chat", repository: { forge: { name: "test" }, path: "chat" } }, workloads: [],
-      extensions: [runner],
-    }]),
-  };
-  try {
-    const catalog = doctorCaseCatalog(plugin, undefined, directory);
-    const source = catalog.find((item) => item.caseSet.caseset === "ordinary")!;
-    expect(source.service).toBe("chat");
-    expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "ordinary" }))?.cases[0]?.facets?.command).toBe("perf");
-    expect(created).toBe(false);
+    expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
+    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

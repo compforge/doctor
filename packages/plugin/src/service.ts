@@ -155,19 +155,10 @@ export interface ServicePerfObservability {
   correlationKeys: readonly string[];
 }
 
-export interface ServicePerfCaseSelection {
-  caseId: string;
-  weight?: number;
-}
-
 export interface ServicePerfScenario {
   id: string;
   title: string;
   description: string;
-  /** Compatibility with runners that bind to a particular CaseSet. */
-  caseSetId?: string;
-  /** Compatibility with older selection presets. */
-  cases?: readonly ServicePerfCaseSelection[];
   observability: ServicePerfObservability;
 }
 

@@ -391,6 +391,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
 function withEvalOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--service <name>", "提供 case capability 的 Service；仅一个 provider 时自动选择")
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要执行的 canonical CaseSet；仅一个 CaseSet 时自动选择")
     .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
     .option("--request-timeout <seconds>", "单个 Case 请求超时", "180")

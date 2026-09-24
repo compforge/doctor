@@ -1,4 +1,3 @@
-import type { Case, CaseSet } from "@compforge/spec-case/model";
 import { caseRunnerProvider } from "../case/extensions";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { EvalCliOpts, EvalConfig } from "./model";
@@ -43,30 +42,4 @@ export function selectEvalProvider(
   requested: string | undefined,
 ): EvalProvider {
   return caseRunnerProvider(plugin.services, requested);
-}
-
-export function selectEvalCaseSet(
-  provider: EvalProvider,
-  requested: string | undefined,
-): CaseSet {
-  if (requested) {
-    const caseSet = provider.extension.caseSets?.find((item) => item.caseset === requested);
-    if (!caseSet) throw new Error(`Service '${provider.service.name}' 未声明 CaseSet '${requested}'`);
-    return caseSet;
-  }
-  const caseSets = provider.extension.caseSets ?? [];
-  if (caseSets.length !== 1) {
-    throw new Error(`Service '${provider.service.name}' 有 ${caseSets.length} 个 CaseSet；请使用 --caseset 指定`);
-  }
-  return caseSets[0]!;
-}
-
-export function selectEvalCases(caseSet: CaseSet, requested: readonly string[] | undefined): Case[] {
-  if (!requested) return [...caseSet.cases];
-  const cases = new Map(caseSet.cases.map((item) => [item.id, item]));
-  const unknown = requested.filter((id) => !cases.has(id));
-  if (unknown.length) {
-    throw new Error(`CaseSet '${caseSet.caseset}' 不包含 Case：${unknown.join(", ")}`);
-  }
-  return requested.map((id) => cases.get(id)!);
 }

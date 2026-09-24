@@ -14,7 +14,7 @@ canonical Case，每个 Case 只执行一次，并把 CaseSet 快照、协议 Ob
 
 - Case 与 CaseSet 的 canonical schema、校验和版本化资产归 spec-case；Eval 不复制 schema，也不把环境、
   凭据或并发参数写回 Case。
-- Service `case.runner.create` Extension 声明 CaseSet 并创建单次请求 runner，拥有具体 HTTP/SSE 协议、鉴权、业务身份和
+- `case.catalog` Extension 提供 CaseSet；Service `case.runner.create` Extension 创建单次请求 runner，拥有具体 HTTP/SSE 协议、鉴权、业务身份和
   协议成功判定。Runner 的一次 `run` 必须对应一个 Case 请求，不能自行启动隐藏循环。
 - Doctor Core 负责选择 CaseSet/Case、顺序调度、生命周期、确认真实请求影响，以及将 Observation 的业务
   关联 ID 交给既有 Trace、Log、Data Command。
@@ -25,7 +25,7 @@ canonical Case，每个 Case 只执行一次，并把 CaseSet 快照、协议 Ob
 
 ## 流程与产物
 
-1. 选择唯一的 Case provider 与 CaseSet；可用 `--cases` 选择子集，未指定时执行全部 Case。
+1. 选择唯一的 Case runner Service，并从统一 Case 目录选择 `facets.command=eval` 的 CaseSet；当前目录的 `doctor-cases.yaml` 也可提供 CaseSet。`--cases` 可选择子集，未指定时默认执行全部匹配的 Case。
 2. 若 Case 声明需要请求身份，则从 Plugin profile 读取；交互运行可通过其声明的租户目录补齐。
 3. 展示 Case 数量、目标 Service、真实业务写入和可能的模型费用，并在用户确认后开始执行。
 4. 顺序触发每个 Case 一次，记录起止时间、Facet、完整协议 Observation、协议判定及首个可识别关联 ID。

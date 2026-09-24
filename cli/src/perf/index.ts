@@ -430,8 +430,7 @@ export async function runPerf(
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
       workload: workloadFromCaseFactory(() => createCaseRunner(selected.cases, managed, {
-        // Legacy runners bind to their declared set; catalog-native runners receive the selected set.
-        caseSetId: selected.cases.caseSets?.length ? (declaredScenario.caseSetId ?? caseSet.caseset) : caseSet.caseset,
+        caseSetId: caseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,
       })),

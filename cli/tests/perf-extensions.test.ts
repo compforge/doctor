@@ -5,8 +5,8 @@ import { createServiceCatalog, type ServiceDefinition, type ServicePerfScenario,
 import { createHostPluginContext } from "../src/plugin/context";
 import { loadPerfScenarios, selectPerfProvider } from "../src/perf/extensions";
 const scenario: ServicePerfScenario = {
-  id: "chat", title: "Chat", description: "Chat load", caseSetId: "chat",
-  cases: [{ caseId: "hello" }], observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
+  id: "chat", title: "Chat", description: "Chat load",
+  observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const createRunner = mock(async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) }));
 const service: ServiceDefinition = {
@@ -16,7 +16,7 @@ const service: ServiceDefinition = {
   workloads: [],
   extensions: [caseExtension({
     endpoint: { host: "app", port: 8080 }, access: {},
-    caseSets: [{ caseset: "chat", schema_version: 1, facets: {}, cases: [{ id: "hello", input: { query: "Hello" } }] }], createRunner
+    createRunner
   })]
 };
 const extension: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: withSummary({"title":"性能场景","fields":[{"label":"场景数","path":["length"]}]}, async () => [scenario]) };

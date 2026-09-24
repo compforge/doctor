@@ -1,16 +1,12 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
-import {
-  CASE_CATALOG_KIND, CASE_RUNNER_CREATE_KIND, loadCaseCatalog,
-  requireCaseCatalogExtension, requireCaseRunnerCreateExtension,
-  type CaseCatalogExtension, type PluginDefinition, type RegisteredExtension,
-} from "@compforge/doctor-plugin";
+import { CASE_CATALOG_KIND, loadCaseCatalog, requireCaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
 import { isInteractive } from "../terminal/policy";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 import { localCaseCatalogExtension } from "./local";
 
-export type DoctorCaseCommand = "http" | "model" | "perf";
+export type DoctorCaseCommand = "http" | "model" | "perf" | "eval";
 
 export interface DoctorCaseSet {
   source: "builtin" | "plugin" | "local";
@@ -19,32 +15,10 @@ export interface DoctorCaseSet {
   caseSet: CaseSet;
 }
 
-/** Normalize old runner assets at registration, keeping command selection facet-only. */
-function legacyRunnerCatalog(runner: RegisteredExtension): CaseCatalogExtension {
-  return {
-    id: `legacy.${runner.id}`, kind: CASE_CATALOG_KIND,
-    load: () => (requireCaseRunnerCreateExtension(runner).caseSets ?? []).map((caseSet) => {
-      const cases = caseSet.cases.map((item) => ({
-        ...item, facets: { ...item.facets, command: item.facets?.command ?? "perf" },
-      }));
-      return {
-        ...caseSet,
-        facets: { ...caseSet.facets, command: { values: [...new Set(cases.map((item) => item.facets.command))] } },
-        cases,
-      };
-    }),
-  };
-}
-
 /** One registry discovers Core, Plugin and local providers without opening target access. */
 export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
   const local = localCaseCatalogExtension(file, cwd);
-  const declared = plugin?.extensions?.some((item) => item.kind === CASE_CATALOG_KIND)
-    || Boolean(plugin?.services.extensions(CASE_CATALOG_KIND).length);
-  const adapters = !declared ? (plugin?.services.extensions(CASE_RUNNER_CREATE_KIND) ?? []).map(({ service, extension }) => ({
-    owner: `service:${service.name}`, extension: legacyRunnerCatalog(extension),
-  })) : [];
-  const registry = createDoctorExtensionRegistry(plugin, [local], adapters);
+  const registry = createDoctorExtensionRegistry(plugin, [local]);
   return registry.extensions(CASE_CATALOG_KIND).flatMap(({ owner, extension }) =>
     loadCaseCatalog(requireCaseCatalogExtension(extension)).map((caseSet) => ({
       source: owner === "core" ? "builtin" as const : owner === "local" ? "local" as const : "plugin" as const,
@@ -56,7 +30,7 @@ export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd 
 
 export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): boolean {
   const facet = item.facets?.command;
-  return facet === command || facet === "both";
+  return facet === "both" || Boolean(facet?.split(",").some((value) => value.trim() === command));
 }
 
 export interface DoctorCaseSelection {
@@ -98,16 +72,18 @@ export async function selectDoctorCases(input: {
   if (!chosen) throw new Error(`有 ${available.length} 个可用 CaseSet；请用 --caseset 指定`);
   const requestedIds = input.caseIds?.split(",").map((id) => id.trim()).filter(Boolean);
   if (input.caseIds !== undefined && !requestedIds?.length) throw new Error("--cases 未解析出任何 Case ID");
+  const defaults = input.defaultCaseIds ?? (input.command === "eval"
+    ? chosen.cases.map((item) => item.id) : [chosen.cases[0]!.id]);
   let ids = requestedIds;
   if (!ids && isInteractive()) {
     ids = await promptMultiSelect({
       choices: chosen.cases.map((item) => ({ name: item.id, description: item.desc })),
-      defaults: [...(input.defaultCaseIds ?? [chosen.cases[0]!.id])].filter((id) => chosen!.cases.some((item) => item.id === id)),
+      defaults: [...defaults].filter((id) => chosen!.cases.some((item) => item.id === id)),
       title: `[${input.command}] 选择一个或多个 Case`,
     });
     if (!ids) return undefined;
   }
-  ids ??= [...(input.defaultCaseIds ?? [chosen.cases[0]!.id])].filter((id) => chosen.cases.some((item) => item.id === id));
+  ids ??= [...defaults].filter((id) => chosen.cases.some((item) => item.id === id));
   if (!ids.length) throw new Error("至少选择一个 Case");
   const byId = new Map(chosen.cases.map((item) => [item.id, item]));
   const unknown = ids.filter((id) => !byId.has(id));

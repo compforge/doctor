@@ -1,4 +1,5 @@
 import { createCaseRunner } from "../case/extensions";
+import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
@@ -26,8 +27,6 @@ import { resolveApprovalGate } from "../terminal/approval";
 import { useLogger } from "../terminal/log";
 import {
   resolveEvalConfig,
-  selectEvalCases,
-  selectEvalCaseSet,
   selectEvalProvider,
   type EvalProvider,
 } from "./config";
@@ -213,8 +212,13 @@ export async function runEval(
 ): Promise<CommandResult<EvalRun>> {
   const config = resolveEvalConfig(opts);
   const provider = selectEvalProvider(plugin, config.service);
-  const caseSet: CaseSet = selectEvalCaseSet(provider, config.caseset);
-  const cases = selectEvalCases(caseSet, config.caseIds);
+  const selected = await selectDoctorCases({
+    catalog: doctorCaseCatalog(plugin, opts.caseFile), command: "eval",
+    caseSetId: config.caseset, caseIds: config.caseIds?.join(","),
+  });
+  if (!selected) return { status: CommandStatus.Cancelled, artifacts: [] };
+  const caseSet: CaseSet = selected.source.caseSet;
+  const cases = selected.cases;
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);

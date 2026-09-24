@@ -74,7 +74,7 @@ export function inspectExtension(value: Omit<FactsInspectExtension, "id" | "kind
   return { ...declaration, id: "inspect", kind: "facts.inspect", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
 export function caseExtension(value: Endpoint & {
-  caseSets: CaseRunnerCreateExtension["caseSets"]; requestIdentity?: ServiceCaseIdentityRequirement;
+  requestIdentity?: ServiceCaseIdentityRequirement;
   createRunner(context: ExtensionContext, input: ServiceCaseProbeOptions): Promise<ServiceCaseRunner>;
 }): CaseRunnerCreateExtension {
   const { createRunner: run, ...declaration } = value;
