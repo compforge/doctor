@@ -22,14 +22,14 @@ for (const fixture of [true, false]) {
         expect(result.stdout.toString()).toContain("profile:");
         expect(result.stdout.toString()).toEndWith(`${JSON.stringify(manifest, null, 2)}\n`);
       }
-      expect(manifest.status).toBe(fixture ? "partial" : "failed");
-      expect(manifest.schemaVersion).toBe(1);
-      expect(manifest.bundle_root).toBe(join(directory, "evidence"));
-      expect(JSON.parse(readFileSync(join(manifest.bundle_root, "manifest.json"), "utf8"))).toEqual(manifest);
+      expect(manifest.execution.status).toBe(fixture ? "partial" : "failed");
+      expect(manifest.schemaVersion).toBe(2);
+      expect(manifest.delivery.location.directory).toBe(join(directory, "evidence"));
+      expect(JSON.parse(readFileSync(join(manifest.delivery.location.directory, "manifest.json"), "utf8"))).toEqual(manifest);
       if (fixture) {
         expect(result.stderr.toString()).not.toContain("collecting evidence");
         expect(manifest.children).toHaveLength(1);
-        const childPath = join(manifest.bundle_root, manifest.children[0].manifest);
+        const childPath = join(manifest.delivery.location.directory, manifest.children[0].manifest);
         const child = JSON.parse(readFileSync(childPath, "utf8"));
         expect(readFileSync(join(childPath, "..", child.files["raw/log.txt"].path), "utf8")).toBe("captured log");
       }

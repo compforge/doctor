@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { caseExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import {
@@ -6,7 +7,7 @@ import {
 } from "../src";
 const cases = { caseset: "chat", schema_version: 1 as const, facets: {}, cases: [{ id: "hello", input: { query: "hello" } }] };
 const runner = { run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) };
-const extension: CaseRunnerCreateExtension = { id: "runner", kind: "case.runner.create", access: {}, endpoint: { host: "app", port: 8080 }, caseSets: [cases], run: async () => runner };
+const extension: CaseRunnerCreateExtension = { id: "runner", kind: "case.runner.create", access: {}, endpoint: { host: "app", port: 8080 }, caseSets: [cases], run: withSummary({"title":"Case Runner","fields":[]}, async () => runner) };
 const base: ServiceDefinition = {
   name: "app",
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
@@ -24,7 +25,7 @@ test("Case adaptation preserves metadata and never constructs a runner during di
   expect(declared.caseSets).toEqual([cases]);
   expect(createRunner).not.toHaveBeenCalled();
   const options = { caseSetId: "chat", timeoutMs: 1000 };
-  expect(await declared.run({} as never, options)).toBe(runner);
+  expect((await declared.run({} as never, options)).data).toBe(runner);
   expect(createRunner).toHaveBeenCalledTimes(1);
   expect(() => createServiceCatalog([{ ...service, extensions: [extension, extension] }])).toThrow("duplicate");
 });

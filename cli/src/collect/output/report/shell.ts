@@ -4,7 +4,7 @@ import { INSPECTOR_REPORT_SCRIPT } from "./assets/inspector-script";
 import { INSPECTOR_REPORT_STYLES } from "./assets/inspector-styles";
 import { escapeHtml } from "./components/content";
 import type {
-  BundleManifest,
+  CollectionRecord,
   HtmlReportOptions,
   HtmlReportSection,
 } from "./model";
@@ -20,7 +20,7 @@ interface SummarySection extends ReportHeading {
   children: SummarySection[];
 }
 
-export function buildHtmlReport(manifest: BundleManifest, options: HtmlReportOptions): string {
+export function buildHtmlReport(manifest: CollectionRecord, options: HtmlReportOptions): string {
   const title = options.title ?? "doctor diagnosis report";
   const sections = options.sections ?? [];
   const steps = manifest.steps ?? [];

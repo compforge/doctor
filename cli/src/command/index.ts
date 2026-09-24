@@ -8,3 +8,4 @@ export * from "./result";
 export * from "./spec";
 export * from "./serialization/context";
 export * from "./serialization/model";
+export * from "./manifest";

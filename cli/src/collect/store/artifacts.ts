@@ -70,7 +70,7 @@ export async function writeStoreArtifacts(input: {
     renderer.html = ({ text }) => escapeHtml(text);
     writeFileSync(join(input.staging, "report-input.json"), JSON.stringify({
       ...input.htmlReport, title: input.title,
-      // Escape raw HTML from field evidence before storing the local presentation projection.
+      // Escape raw HTML from field evidence before storing the local summary projection.
       summaryHtml: marked.parse(input.summary, { async: false, renderer }),
     }), { mode: 0o600 });
     return { ok: true, path: input.staging, label: "Store 诊断产物" };
@@ -91,7 +91,7 @@ export async function finishStoreBundle(input: {
   const { state, config } = input;
   state.bundle.settle(input.code === 0 ? "本轮未取得该项证据" : "上游步骤失败，未执行");
   state.bundle.writeSummary(input.summary);
-  state.bundle.writeManifest({
+  state.bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
       namespace: config.collect.kubernetes.namespace,

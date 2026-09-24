@@ -1,3 +1,4 @@
+import { validateSummary, type Summary } from "../summary";
 import type { PluginContext } from "../context";
 import type { CapabilityAccess } from "../kubernetes";
 
@@ -14,7 +15,24 @@ export interface Extension<Input, Output> {
   readonly kind: string;
   readonly description?: string;
   readonly access: CapabilityAccess;
-  run(context: ExtensionContext, input: Input): Promise<Output>;
+  run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
+}
+
+/** Data can own live resources; the host validates only the envelope here. */
+export interface ExtensionResult<Output> {
+  readonly data: Output;
+  readonly summary: Summary;
+}
+
+/** Attach declarative reading hints without consuming streams or changing resource ownership. */
+export function withSummary<Input, Output>(summary: Summary,
+  run: (context: ExtensionContext, input: Input) => Promise<Output>): Extension<Input, Output>["run"] {
+  return async (context, input) => ({ data: await run(context, input), summary });
+}
+
+export function validateExtensionResult(value: unknown): asserts value is ExtensionResult<unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Object.hasOwn(value, "data")) throw new Error("Extension result requires data");
+  validateSummary((value as ExtensionResult<unknown>).summary);
 }
 
 /** Discovered values cannot be invoked until a domain consumer establishes their input contract. */

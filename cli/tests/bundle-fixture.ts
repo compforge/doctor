@@ -1,6 +1,6 @@
 import { expect } from "bun:test";
 
-import type { CommandManifest } from "../src/command/serialization/model";
+import type { Manifest } from "../src/command/manifest";
 import { posix } from "node:path";
 
 export function readBundleText(archive: string, entry: string): string {
@@ -9,20 +9,20 @@ export function readBundleText(archive: string, entry: string): string {
   return result.stdout.toString();
 }
 
-export function readBundleIndex(archive: string, root: string): CommandManifest {
+export function readBundleIndex(archive: string, root: string): Manifest {
   const index = JSON.parse(readBundleText(archive, `${root}/manifest.json`));
-  expect(index.schemaVersion).toBe(1);
+  expect(index.schemaVersion).toBe(2);
   return index;
 }
 
-export function readBundleExecutions(archive: string, root: string): Array<{ path: string; manifest: CommandManifest }> {
-  const results: Array<{ path: string; manifest: CommandManifest }> = [];
+export function readBundleExecutions(archive: string, root: string): Array<{ path: string; manifest: Manifest }> {
+  const results: Array<{ path: string; manifest: Manifest }> = [];
   const visited = new Set<string>();
   const visit = (path: string) => {
     if (visited.has(path)) return;
     visited.add(path);
-    const manifest = JSON.parse(readBundleText(archive, `${root}/${path}`)) as CommandManifest;
-    expect(manifest.schemaVersion).toBe(1);
+    const manifest = JSON.parse(readBundleText(archive, `${root}/${path}`)) as Manifest;
+    expect(manifest.schemaVersion).toBe(2);
     results.push({ path, manifest });
     for (const child of manifest.children ?? []) visit(posix.join(posix.dirname(path), child.manifest));
   };

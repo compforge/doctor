@@ -1,5 +1,5 @@
 import { readFacts } from "../collect/evidence-reader";
-import type { BundleManifest, HtmlReportOptions } from "../collect/output/report/model";
+import type { CollectionRecord, HtmlReportOptions } from "../collect/output/report/model";
 import { buildHtmlReport } from "../collect/output/report/shell";
 import type { CommandArtifact } from "../command/artifacts";
 import type { CommandResult } from "../command/result";
@@ -8,7 +8,7 @@ import { failureReport, type RenderContext } from "./context";
 import type { Report, ReportPage, ReportSubject } from "./model";
 
 export function writeEvidencePage(context: RenderContext, artifact: CommandArtifact, options: Omit<HtmlReportOptions, "profileName">, file = "report.html"): void {
-  const manifest = context.json<BundleManifest>(artifact, "manifest.json");
+  const manifest = context.json<CollectionRecord>(artifact, "collection.json");
   context.write(artifact, buildHtmlReport(manifest, {
     ...options, profileName: context.profileName,
     inspectionFacts: options.inspectionFacts ?? readFacts(context.artifact(artifact.id).path, manifest),

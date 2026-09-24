@@ -1,3 +1,4 @@
+import { invokeExtension } from "../plugin/extension";
 import { overviewProviders } from "./extensions";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
@@ -80,11 +81,11 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
       signal: context.signal,
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
-      summarize: (provider, input) => invoke(provider, provider.summarize, (managed) => provider.summarize.run(managed, input)),
+      summarize: (provider, input) => invoke(provider, provider.summarize, (managed) => invokeExtension(provider.summarize, managed, input).then(result => result.data)),
       sample: (provider, input) => {
         const extension = provider.sample;
         if (!extension) throw new Error(`${provider.name}: missing overview.sample Extension`);
-        return invoke(provider, extension, (managed) => extension.run(managed, input));
+        return invoke(provider, extension, (managed) => invokeExtension(extension, managed, input).then(result => result.data));
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
       warn: (message) => useLogger("overview").warn(`${message}`),

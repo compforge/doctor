@@ -39,7 +39,7 @@ export async function loadMetricConfigurations(
       })
       : createHostPluginContext({ ...options, namespace: config.namespace });
     try {
-      configurations.set(name, metricConfigurationOutput(await invokeExtension(extension, context, undefined)));
+      configurations.set(name, metricConfigurationOutput((await invokeExtension(extension, context, undefined)).data));
     } finally {
       await context.dispose();
     }

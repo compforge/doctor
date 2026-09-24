@@ -1,5 +1,5 @@
 import {
-  CASE_RUNNER_CREATE_KIND, requireCaseRunnerCreateExtension, caseRunnerOutput,
+  validateExtensionResult, CASE_RUNNER_CREATE_KIND, requireCaseRunnerCreateExtension, caseRunnerOutput,
   type ServiceCatalog, type CaseRunnerCreateExtension, type PluginContext, type ServiceCaseProbeOptions,
 } from "@compforge/doctor-plugin";
 
@@ -25,5 +25,7 @@ export async function createCaseRunner(
 ) {
   context.signal.throwIfAborted();
   // A post-call abort check would discard the runner before the Command can clean it up.
-  return caseRunnerOutput(await extension.run(context, input));
+  const result = await extension.run(context, input);
+  validateExtensionResult(result);
+  return caseRunnerOutput(result.data);
 }

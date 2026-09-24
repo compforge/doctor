@@ -190,7 +190,7 @@ function writeMetricManifest(
 ): void {
   const window = metricWindow(diagnosis);
   const now = new Date().toISOString();
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { namespace: config.namespace, services: config.services.join(",") },
     inspectionFacts: facts ? { source: facts.source } : {},

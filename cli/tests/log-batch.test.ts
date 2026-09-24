@@ -45,7 +45,7 @@ for (const ids of [["trace-a"], ["trace-a", "trace-b"]]) for (const failedPod of
         const filtered = readFileSync(join(request.outputDir, "service-logs.txt"), "utf8");
         expect(filtered).toContain(request.bizId);
         expect(filtered).not.toContain(request.bizId === "trace-a" ? "trace-b" : "trace-a");
-        const manifest = JSON.parse(readFileSync(join(request.outputDir, "manifest.json"), "utf8"));
+        const manifest = JSON.parse(readFileSync(join(request.outputDir, "collection.json"), "utf8"));
         expect(manifest.target.biz_id).toBe(request.bizId);
         const raw = manifest.steps.find((step: { raw_file?: string }) => step.raw_file)?.raw_file;
         expect(readFileSync(join(request.outputDir, raw), "utf8")).toContain("trace-a");

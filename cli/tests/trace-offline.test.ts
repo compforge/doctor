@@ -1,3 +1,4 @@
+import { SerializeContext } from "../src/command/serialization/context";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -40,7 +41,11 @@ async function fixture(options: { span?: string; partial?: boolean; grouped?: bo
       claims: (_primary, candidates) => new Set(candidates.map(span => span.span_id)) }] },
   }, () => {}, search);
   expect(code).toBe(options.partial ? 1 : 0);
-  return { dir, queries, spans };
+  const destination = root();
+  const artifact = { id: "trace", command: "trace", path: dir };
+  await SerializeContext.create(destination, traceCommand, { status: options.partial ? CommandStatus.Partial : CommandStatus.Ok,
+    output: { items: [{ bizId: "message-1", traceIds: ["t1"], status: options.partial ? CommandStatus.Partial : CommandStatus.Ok, artifacts: [artifact] }] }, artifacts: [artifact] });
+  return { dir: destination, queries, spans };
 }
 
 async function offline(from: string, input: Partial<TraceInput> = {}) {
@@ -54,13 +59,17 @@ async function offline(from: string, input: Partial<TraceInput> = {}) {
   expect(loads).toBe(0);
   expect(context.inspection.kubernetes).toBeUndefined();
   await context.disposeClients();
+  if (result.artifacts.length) {
+    const saved = await SerializeContext.create(root(), traceCommand, result);
+    return { result: { ...result, artifacts: saved.artifacts }, context };
+  }
   return { result, context };
 }
 
 test("online span uses trace AND span filters for count and download, and declares limited scope", async () => {
   const { dir, queries } = await fixture({ span: "s1" });
   expect(queries).toEqual(Array(2).fill({ bool: { filter: [{ term: { traceID: "t1" } }, { term: { spanID: "s1" } }] } }));
-  expect(json(dir, "manifest.json").target).toMatchObject({ input_id: "message-1", trace_id: "t1", span_id: "s1", scope: "span" });
+  expect(json(dir, "collection.json").target).toMatchObject({ input_id: "message-1", trace_id: "t1", span_id: "s1", scope: "span" });
   expect(readTraceSnapshot(dir).collection).toEqual({ scope: "span", span_id: "s1", complete: true });
   expect(json(dir, "findings.json")).toEqual({});
   const tree = json(dir, "tree.json");
@@ -83,10 +92,10 @@ test("full trace persists a forest and node-to-span mapping, node/span drilldown
     expect(detail.spans).toHaveLength(1);
     expect(detail.spans[0].attrs.payload).toBe("input/output:child");
     expect(detail.spans[0].raw.spanID).toBe("child");
-    expect(json(path, "manifest.json").files.selection).toBe("selection.json");
-    expect(json(path, "manifest.json").source.mode).toBe("offline");
+    expect(json(path, "manifest.json").files.selection.path).toBe("selection.json");
+    expect(json(path, "collection.json").source.mode).toBe("offline");
     const copied = await offline(join(path, "manifest.json"));
-    expect(json(copied.result.artifacts[0]!.path, "manifest.json").target).toEqual(json(path, "manifest.json").target);
+    expect(json(copied.result.artifacts[0]!.path, "collection.json").target).toEqual(json(path, "collection.json").target);
   }
   expect(readFileSync(join(dir, "manifest.json"), "utf8")).toBe(original);
   expect(existsSync(join(dir, "selection.json"))).toBeFalse();
@@ -119,12 +128,12 @@ test("delivered manifest indexes tree/details, survives relocation, and can be r
 
 test("offline retains incomplete acquisition and truncation reasons instead of upgrading evidence to complete", async () => {
   const { dir } = await fixture({ partial: true });
-  const source = json(dir, "manifest.json");
+  const source = json(dir, "collection.json");
   source.steps.push({ id: "limited", status: "partial", reason: "fixture limit", truncation: { reason: "raw_byte_limit", original_bytes: 100, limit_bytes: 10 } });
-  writeFileSync(join(dir, "manifest.json"), JSON.stringify(source));
+  writeFileSync(join(dir, "collection.json"), JSON.stringify(source));
   const { result } = await offline(join(dir, "manifest.json"), { span: "child" });
   expect(result.status).toBe(CommandStatus.Partial);
-  expect(json(result.artifacts[0]!.path, "manifest.json").steps).toEqual(source.steps);
+  expect(json(result.artifacts[0]!.path, "collection.json").steps).toEqual(source.steps);
   expect(json(result.artifacts[0]!.path, "selection.json").collection.complete).toBeFalse();
   expect(json(result.artifacts[0]!.path, "findings.json")).toEqual({});
 });
@@ -152,7 +161,7 @@ test("manifest cannot escape its bundle through traversal or symlinks", async ()
   const { dir } = await fixture();
   for (const relativePath of ["../outside/manifest.json", dir]) {
     const container = root();
-    writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 1,
+    writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 2, files: {},
       children: [{ command: "trace", manifest: relativePath }] }));
     expect((await offline(join(container, "manifest.json"))).result.status).toBe(CommandStatus.Failed);
   }
@@ -165,7 +174,7 @@ test("ambiguous local span requires a per-trace artifact manifest", async () => 
   const container = root();
   cpSync(dir, join(container, "a"), { recursive: true });
   cpSync(dir, join(container, "b"), { recursive: true });
-  writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 1,
+  writeFileSync(join(container, "manifest.json"), JSON.stringify({ schemaVersion: 2, files: {}, execution: { status: "ok" },
     children: ["a", "b"].map(path => ({ command: "trace", manifest: `${path}/manifest.json` })) }));
   const { result } = await offline(join(container, "manifest.json"), { span: "child" });
   expect(result.status).toBe(CommandStatus.Failed);
@@ -197,7 +206,7 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
   if (format === "manifest") {
     const result = JSON.parse(readFileSync(join(output, "manifest.json"), "utf8"));
     expect(stdout).toEndWith(`${JSON.stringify(result, null, 2)}\n`);
-    expect(result.status).toBe("ok");
+    expect(result.execution.status).toBe("ok");
     expect(result.files.tree).toBeDefined();
   } else if (format === "bundle") {
     const files = Bun.spawnSync({ cmd: ["tar", "-tzf", output], stdout: "pipe" });

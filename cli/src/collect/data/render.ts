@@ -1,4 +1,3 @@
-import { buildDataEvidenceSummary } from "./summary";
 import {
   htmlHeading,
   htmlFactTable,
@@ -6,7 +5,7 @@ import {
   htmlParagraph,
   htmlTable,
 } from "../output/html";
-import type { CollectedDataInspectResult, DataDiagnosis, DataOutput } from "./model";
+import type { CollectedDataInspectResult, DataDiagnosis } from "./model";
 
 function value(value: string | undefined): string {
   return value || "未找到";
@@ -72,11 +71,6 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
     "",
     "完整业务记录按 manifest.json 的 files.facts 索引读取；采集步骤见 raw 目录。",
   ].join("\n");
-}
-
-/** Terminal projection for batch data collection; detailed facts remain in the serialized evidence. */
-export function buildDataRuntimeSummary(items: readonly DataOutput["items"][number][]): string {
-  return buildDataEvidenceSummary(items, undefined, false);
 }
 
 export function buildDataHtml(diagnosis: DataDiagnosis): string {

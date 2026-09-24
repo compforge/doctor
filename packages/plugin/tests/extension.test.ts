@@ -1,3 +1,4 @@
+import { withSummary } from "../src";
 import { inspectExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import {
@@ -14,10 +15,10 @@ const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition
 
 test("Catalog discovers multiple open kinds without invoking them or imposing a global input/output map", () => {
   const run = mock(async () => ["worker"]);
-  const data: Extension<void, string[]> = { id: "workloads", kind: "workload.describe", access: {}, run };
+  const data: Extension<void, string[]> = { id: "workloads", kind: "workload.describe", access: {}, run: withSummary({ title: "Fixture", fields: [] }, run) };
   const inspect: FactsInspectExtension = {
     id: "records", kind: FACTS_INSPECT_KIND, access: {},
-    accepts: ["biz_id"], provides: ["record"], run: async () => []
+    accepts: ["biz_id"], provides: ["record"], run: withSummary({ title: "Facts", fields: [] }, async () => [])
   };
   const declared = service([data, inspect]);
   const catalog = createServiceCatalog([declared]);
@@ -33,7 +34,7 @@ test("Catalog discovers multiple open kinds without invoking them or imposing a 
 });
 
 test("Catalog rejects malformed common declarations and duplicate IDs; the domain validates its own metadata", () => {
-  const item = { id: "one", kind: "custom.kind", access: {}, run: async () => 1 };
+  const item = { id: "one", kind: "custom.kind", access: {}, run: withSummary({ title: "Custom", fields: [] }, async () => 1) };
   expect(() => createServiceCatalog([service([item, item])])).toThrow("duplicate Extension id");
   expect(() => createServiceCatalog([service([{ ...item, access: undefined } as never])])).toThrow("Extension.access");
   expect(() => createServiceCatalog([service([{ ...item, run: undefined } as never])])).toThrow("Extension.run");

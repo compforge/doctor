@@ -1,3 +1,4 @@
+import { withSummary } from "../src";
 import { perfExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import {
@@ -21,9 +22,9 @@ test("Perf declarations adapt without executing a provider during discovery", as
   }]);
   const extension = requirePerfScenariosExtension(legacy.extensions("perf.scenarios")[0]!.extension);
   expect(extension.access).toEqual({});
-  expect(await extension.run({} as never, undefined)).toEqual([scenario]);
+  expect((await extension.run({} as never, undefined)).data).toEqual([scenario]);
   const run = mock(async () => [scenario]);
-  const native = createServiceCatalog([{ ...service, extensions: [{ ...extension, run }] }]);
+  const native = createServiceCatalog([{ ...service, extensions: [{ ...extension, run: withSummary({ title: "Scenarios", fields: [] }, run) }] }]);
   expect(native.extensions("perf.scenarios")).toHaveLength(1);
   expect(run).not.toHaveBeenCalled();
   expect(() => createServiceCatalog([{

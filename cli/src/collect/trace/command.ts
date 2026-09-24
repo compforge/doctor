@@ -1,5 +1,5 @@
 import { prepareCommandRequirements } from "../../command/prepare";
-import { serializeEvidenceResult } from "../serialize";
+import { serializeEvidence, type ArtifactDescription } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { defaultCommandReportName } from "../../command/report-name";
 import { commandOptions, type CommandHostOption } from "../../command/options";
@@ -13,7 +13,24 @@ import { resolveTraceWindow } from "./window";
 export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
 
 export const traceCommand = defineCommand<TraceInput, import("./index").TraceOutput>({
-  serialize: serializeEvidenceResult,
+  serialize: async (context, result) => {
+    const descriptions = new Map<string, ArtifactDescription>();
+    for (const artifact of result.artifacts) {
+      const item = result.output?.items.find(item => item.artifacts.some(ref => ref.id === artifact.id));
+      const detail = Boolean(item);
+      descriptions.set(artifact.id, { title: detail ? "Trace 详情" : "ID 解析",
+        execution: { status: item?.status ?? result.status, reason: item?.reason },
+        summary: { summary: { title: detail ? "Trace 详情" : "ID 解析", fields: detail ? [
+          { label: "Trace ID", path: ["target", "trace_id"] },
+          { label: "输入 ID", path: ["target", "input_id"] },
+          { label: "Span ID", path: ["target", "span_id"] },
+        ] : [
+          { label: "输入 ID", path: ["target", "input_ids"] },
+          { label: "Trace ID", path: ["target", "trace_ids"] },
+        ] }, data: { file: "collection.json" } } });
+    }
+    return serializeEvidence(context, result.artifacts, descriptions);
+  },
   name: "doctor trace",
   render: renderTraceReport,
   // Offline evidence supplies the trace ID; failed preparation can still use the invocation ID.

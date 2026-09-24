@@ -11,7 +11,7 @@ import { buildDataEvidenceSummary } from "./summary";
 export async function serializeData(context: SerializeContext, result: CommandResult<DataOutput>): Promise<SerializedOutput> {
   const source = result.artifacts[0];
   if (!source) return { files: {} };
-  const { files: _files, ...metadata } = JSON.parse(readFileSync(join(source.path, "manifest.json"), "utf8"));
+  const { files: _files, ...metadata } = JSON.parse(readFileSync(join(source.path, "collection.json"), "utf8"));
   const facts = readFacts<DataFacts>(source.path, { files: _files });
   const factsFile = context.writeJson("raw/facts.json", facts);
   const positions = new Map(facts.capabilityResults.map((query, index) => [query.id, index]));
@@ -31,10 +31,10 @@ export async function serializeData(context: SerializeContext, result: CommandRe
     const { raw_file, ...rest } = step;
     return { ...rest, ...(raw_file ? { raw_file: factsFile.path } : {}) };
   });
-  return { metadata: { ...metadata, steps }, files: {
+  return { files: {
+    collection: context.writeJson("collection.json", { ...metadata, files: { facts: factsFile.path }, steps }),
     facts: factsFile,
     diagnosis: context.writeJson("diagnosis.json", { items }),
     summary: context.writeText("summary.md", buildDataEvidenceSummary(result.output?.items ?? [], facts)),
-    runtimeSummary: context.writeText("runtime-summary.txt", buildDataEvidenceSummary(result.output?.items ?? [], facts, false)),
   } };
 }

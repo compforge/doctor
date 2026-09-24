@@ -2,7 +2,7 @@ import type { CommandResult } from "../../command/result";
 import { failureReport, type RenderContext } from "../../report/context";
 import { evidencePage } from "../../report/evidence";
 import type { Report, ReportPage } from "../../report/model";
-import type { BundleManifest } from "../output/report/model";
+import type { CollectionRecord } from "../output/report/model";
 import type { TraceOutput } from "./index";
 import { renderTraceEvidence } from "./render";
 
@@ -19,7 +19,7 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
     if (!item.artifacts.length) pages.push({ id: `trace:${item.bizId}`, title: "Trace", subject, status: item.status, reason: item.reason });
     for (const [index, artifact] of item.artifacts.entries()) pages.push(await evidencePage(context, artifact,
       { title: item.artifactTraceIds?.[index] ?? item.traceIds[index] ?? "Trace", subject, status: item.status, reason: item.reason }, async () => {
-        const manifest = context.json<BundleManifest>(artifact, "manifest.json");
+        const manifest = context.json<CollectionRecord>(artifact, "collection.json");
         const traceId = String(manifest.target?.trace_id ?? "");
         if (!traceId) throw new Error("Trace 证据缺少 trace_id");
         await renderTraceEvidence(context.artifact(artifact.id).path, result.output!.contributions);

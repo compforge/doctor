@@ -358,7 +358,7 @@ export async function runCollectHttp(
     const reason = error instanceof Error ? error.message : String(error);
     bundle.settle(reason);
     bundle.writeSummary(`# doctor http diagnosis failed\n\n${reason}\n`);
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: {
         scenario: scenario.name,
@@ -387,7 +387,7 @@ export async function runCollectHttp(
     findings: diagnosis.findings.map(serializeFinding),
     coverage: diagnosis.coverage,
   }, null, 2)}\n`, { mode: 0o600 });
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
       scenario: scenario.name,

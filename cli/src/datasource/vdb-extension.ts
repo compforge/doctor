@@ -31,7 +31,7 @@ export async function inspectVdbTarget(
 ) {
   const context = await open();
   try {
-    return vdbTargetOutput(await invokeExtension(extension, context, undefined));
+    return vdbTargetOutput((await invokeExtension(extension, context, undefined)).data);
   } finally {
     await context.dispose();
   }

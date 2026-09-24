@@ -27,37 +27,8 @@ function capabilitySummary(diagnosis: TenantDiagnosis): string[] {
   });
 }
 
+/** One reading entry for terminal and Markdown; raw capability Facts stay in the evidence bundle. */
 export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
-  const tenant = diagnosis.evidence.facts.tenant;
-  const capabilities = collectedCapabilities(diagnosis);
-  return [
-    "# Tenant Inspect",
-    "",
-    tenant.status === "collected"
-      ? `- 租户：${tenant.displayName || tenant.name}（${tenant.id}）`
-      : `- 租户：未取得（${tenant.reason}）`,
-    ...capabilitySummary(diagnosis).map((line) => `- ${line}`),
-    "",
-    "## Coverage",
-    "",
-    ...diagnosis.coverage.flatMap((item) => [
-      `- ${item.goal}：${item.status}`,
-      ...item.missingEvidence.map((missing) => `  - 缺失：${missing}`),
-    ]),
-    "",
-    ...capabilities.flatMap((fact) => [
-      `## ${capabilityLabel(fact)}`,
-      "",
-      "```json",
-      JSON.stringify(fact.result, null, 2),
-      "```",
-      "",
-    ]),
-  ].join("\n");
-}
-
-/** Terminal projection for tenant capability collection; capability Facts stay in the evidence bundle. */
-export function buildTenantRuntimeSummary(diagnosis: TenantDiagnosis): string {
   const tenant = diagnosis.evidence.facts.tenant;
   const capabilities = diagnosis.evidence.facts.capabilityFacts;
   const missing = diagnosis.coverage.flatMap((item) => item.missingEvidence.map((reason) => `${item.goal}：${reason}`));
@@ -65,7 +36,7 @@ export function buildTenantRuntimeSummary(diagnosis: TenantDiagnosis): string {
     ? "degraded"
     : missing.length ? "warning" : "healthy";
   return [
-    "Tenant 摘要",
+    "# Tenant 摘要",
     tenant.status === "collected"
       ? `租户：${tenant.displayName || tenant.name}（${tenant.id}）`
       : `租户：未取得（${tenant.reason}）`,
@@ -78,6 +49,7 @@ export function buildTenantRuntimeSummary(diagnosis: TenantDiagnosis): string {
       ? `- ${fact.service} · ${fact.capability}：${fact.result.facts.length} 条 Fact`
       : `- ${fact.service} · ${fact.capability}：未取得（${fact.reason}）`) : ["- 无"]),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((reason) => `- ${reason}`)] : []),
+    "", "[完整 Facts](raw/facts.json) · [诊断](diagnosis.json)",
     "",
   ].join("\n");
 }

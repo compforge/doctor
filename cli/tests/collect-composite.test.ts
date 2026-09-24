@@ -173,13 +173,13 @@ test("collect default delivery contains combined HTML and child full bundles", a
     expect(entries).toContain("case/manifest.json");
     expect(entries).toContain("case/AGENTS.md");
     const index = readBundleIndex(`${output}.tar.gz`, "case");
-    expect(index.command).toBe("collect");
-    expect(index.children!.map(child => child.command).sort()).toEqual(["data", "inspect"]);
+    expect(index.source.command).toBe("collect");
+    expect(index.children!.map(child => JSON.parse(readBundleText(`${output}.tar.gz`, `case/${child.manifest}`)).source.command).sort()).toEqual(["data", "inspect"]);
     for (const child of index.children!) {
       const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${child.manifest}`));
-      expect(manifest.executionId).toBe(child.executionId);
+      expect(manifest.id).toBe(child.id);
       expect(entries).toContain(`case/${join(dirname(child.manifest), manifest.files.report.path)}`);
-      expect(readBundleText(`${output}.tar.gz`, `case/${join(dirname(child.manifest), manifest.files["evidence.txt"].path)}`)).toBe(`${child.command} evidence`);
+      expect(readBundleText(`${output}.tar.gz`, `case/${join(dirname(child.manifest), manifest.files["evidence.txt"].path)}`)).toBe(`${manifest.source.command} evidence`);
     }
     const collection = Object.values(index.files).find(file => file.path === "collection.json")!;
     const manifest = JSON.parse(readBundleText(`${output}.tar.gz`, `case/${collection.path}`));

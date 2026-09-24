@@ -8,7 +8,7 @@ import {
 } from "../src/infra/k8s/workload-events";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
 import type { InspectDiagnosis } from "../src/collect/inspect/model";
-import { buildInspectRuntimeSummary, buildInspectSummary } from "../src/collect/inspect/render";
+import { buildInspectSummary } from "../src/collect/inspect/render";
 
 const EVENTS_JSON = JSON.stringify({
   items: [
@@ -160,7 +160,7 @@ function lifecycleDiagnosis(): InspectDiagnosis {
 }
 
 test("运行摘要把探针失败事件关联到重启的 Pod，并展示 HPA", () => {
-  const summary = buildInspectRuntimeSummary(lifecycleDiagnosis(), "demo");
+  const summary = buildInspectSummary(lifecycleDiagnosis(), "demo");
   expect(summary).toContain("last=terminated: Error, exit=143");
   expect(summary).toContain("关联事件：2026-09-21T05:08:32Z Warning Unhealthy ×3 — Liveness probe failed");
   expect(summary).toContain("关联事件：2026-09-21T05:08:37Z Normal Killing");
@@ -185,7 +185,7 @@ test("lifecycle 未采集时摘要显式标注，不冒充健康证据", () => {
   diagnosis.evidence.facts.lifecycleSignals = unavailableFact(
     "inspect.lifecycle-signals", "service-targets", "list events 权限不足",
   );
-  const summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  const summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Autoscaler / 事件：未采集（list events 权限不足）");
   expect(summary).not.toContain("关联事件");
   expect(buildInspectSummary(diagnosis)).toContain("_未采集（list events 权限不足）_");

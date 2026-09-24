@@ -1,3 +1,4 @@
+import { projectSummary } from "../../command/summary";
 import {
   htmlHeading,
   htmlList,
@@ -219,7 +220,7 @@ function autoscalerSummaryLines(autoscalers: KubernetesAutoscaler[], unavailable
 }
 
 /** Concise runtime projection for terminal triage; the Markdown summary remains the complete human-readable evidence. */
-export function buildInspectRuntimeSummary(diagnosis: InspectDiagnosis, namespace: string): string {
+function inspectHighlights(diagnosis: InspectDiagnosis, namespace: string): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.values(diagnosis.evidence.facts.serviceTargets.services)
     : [];
@@ -412,13 +413,13 @@ function workloadProbeObservations(diagnosis: InspectDiagnosis): PluginWorkloadO
 }
 
 function workloadProbeRows(diagnosis: InspectDiagnosis): string[][] {
-  return workloadProbeObservations(diagnosis).map((observation) => [
+  return workloadProbeObservations(diagnosis).slice(0, 24).map((observation) => [
     observation.service,
     observation.workload,
     observation.pod,
     observation.probe,
-    observation.observationKind,
-    JSON.stringify(observation.value),
+    projectSummary(observation.summary, observation.value).title,
+    projectSummary(observation.summary, observation.value).fields.map(field => `${field.label}=${field.value}`).join("; "),
   ]);
 }
 
@@ -507,13 +508,14 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
   });
 }
 
-export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
+export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "—"): string {
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
     : 0;
   return [
     "# Service Inspect",
     "",
+    inspectHighlights(diagnosis, namespace),
     "[Pod 与镜像](#workload-pods) · [运行事件](#workload-events) · [原始 Facts](raw/facts.json)",
     "",
     `- Service：${services}`,
@@ -557,9 +559,12 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis): string {
     "### Plugin Workload 探测",
     "",
     ...markdownTable(
-      ["Service", "Workload", "Pod", "Probe", "Kind", "Value"],
+      ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
       workloadProbeRows(diagnosis),
     ),
+    "",
+    "[完整 Probe 原始证据](raw/observations.json)",
+    ...(workloadProbeObservations(diagnosis).length > 24 ? [`另有 ${workloadProbeObservations(diagnosis).length - 24} 个 Probe，见原始证据。`] : []),
     "",
     '<a id="workload-events"></a>',
     "### 运行事件（关联所选 Workload）",
@@ -633,7 +638,7 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "Workload / Plugin 探测",
       html: htmlTable(
-        ["Service", "Workload", "Pod", "Probe", "Kind", "Value"],
+        ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
         workloadProbeRows(diagnosis),
       ),
     },

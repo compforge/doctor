@@ -12,7 +12,7 @@ function query(id: string, status = "running") {
       resolution: { inputId: id, resolvedAs: "run_id", identifiers: { run_id: "run-1" } },
       facts: [{ factType: "record" as const, kind: "sample-run", schemaVersion: 1, recordKey: "run-1",
         record: { data: { status, attempt: 0, finished: false, secret: "not-a-display-field" } },
-        presentation: { title: "Run", fields: [
+        summary: { title: "Run", fields: [
           { label: "status", path: ["data", "status"] }, { label: "attempt", path: ["data", "attempt"] },
           { label: "finished", path: ["data", "finished"] }, { label: "missing", path: ["data", "absent"] },
         ] } }],

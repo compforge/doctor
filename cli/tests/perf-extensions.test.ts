@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type ServiceDefinition, type ServicePerfScenario, type PerfScenariosExtension } from "@compforge/doctor-plugin";
@@ -18,7 +19,7 @@ const service: ServiceDefinition = {
     caseSets: [{ caseset: "chat", schema_version: 1, facets: {}, cases: [{ id: "hello", input: { query: "Hello" } }] }], createRunner
   })]
 };
-const extension: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: async () => [scenario] };
+const extension: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: withSummary({"title":"性能场景","fields":[{"label":"场景数","path":["length"]}]}, async () => [scenario]) };
 const providerFor = (item = extension) => selectPerfProvider(createServiceCatalog([{ ...service, extensions: [...(service.extensions ?? []), item] }]), "chat");
 
 test("native Perf selection supports aliases and stays offline until the authorized call", async () => {
@@ -27,7 +28,7 @@ test("native Perf selection supports aliases and stays offline until the authori
     context.onDispose(cleanup);
     return [scenario];
   });
-  const provider = providerFor({ ...extension, run });
+  const provider = providerFor({ ...extension, run: withSummary({ title: "Fixture", fields: [] }, run) });
   expect(provider.service.name).toBe("app");
   expect(run).not.toHaveBeenCalled();
   const result = await loadPerfScenarios(provider, () => createHostPluginContext({ service, capability: provider.extension }));
@@ -51,7 +52,7 @@ test("Perf requires one implementation and an associated Case capability", () =>
 test("Perf validates Case references and releases configuration scope on failure", async () => {
   for (const invalid of [{ ...scenario, caseSetId: "missing" }, { ...scenario, cases: [{ caseId: "missing" }] }]) {
     const cleanup = mock(() => { });
-    const provider = providerFor({ ...extension, run: async context => { context.onDispose(cleanup); return [invalid]; } });
+    const provider = providerFor({ ...extension, run: withSummary({ title: "Fixture", fields: [] }, async context => { context.onDispose(cleanup); return [invalid]; }) });
     await expect(loadPerfScenarios(provider, () => createHostPluginContext({ service, capability: extension }))).rejects.toThrow("references unknown");
     expect(cleanup).toHaveBeenCalledTimes(1);
   }
@@ -60,7 +61,7 @@ test("Perf validates Case references and releases configuration scope on failure
 
 test("access denial and cancellation prevent the scenario function from running", async () => {
   const run = mock(async () => [scenario]);
-  const provider = providerFor({ ...extension, run });
+  const provider = providerFor({ ...extension, run: withSummary({ title: "Fixture", fields: [] }, run) });
   await expect(loadPerfScenarios(provider, async () => { throw new Error("permission denied"); })).rejects.toThrow("permission denied");
   const controller = new AbortController();
   controller.abort();

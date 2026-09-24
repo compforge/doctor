@@ -60,7 +60,7 @@ describe("EvidenceBundle", () => {
       durationMs: 12,
       output: "x",
     });
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: "0.0.1",
       kubectlVersion: "Client Version: v1.29.0",
       target: { namespace: "ns", pod: "p" },
@@ -69,7 +69,7 @@ describe("EvidenceBundle", () => {
       startedAt: "2026-07-10T00:00:00Z",
       finishedAt: "2026-07-10T00:01:00Z",
     });
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     expect(manifest.doctor_version).toBe("0.0.1");
     expect(manifest.target.pod).toBe("p");
     expect(JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"))).toEqual({ canExec: true });
@@ -174,8 +174,8 @@ describe("EvidenceBundle worksheet", () => {
     const dir = tmp();
     const bundle = new EvidenceBundle(dir);
     bundle.addStep({ id: "a", title: "A", risk: "observe", status: "ok" });
-    bundle.writeManifest(META);
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    bundle.writeCollection(META);
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     expect(JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"))).toEqual({});
     expect(manifest.steps.map((s: any) => s.id)).toEqual(["a"]);
   });
@@ -249,12 +249,12 @@ describe("EvidenceBundle worksheet", () => {
     expect(bundle.getSteps()[1]).toMatchObject({ id: "verdict", status: "ok" });
   });
 
-  test("writeManifest 自动收尾：漏填的格子落 unavailable，不用调用方记得 settle", () => {
+  test("writeCollection 自动收尾：漏填的格子落 unavailable，不用调用方记得 settle", () => {
     const dir = tmp();
     const bundle = new EvidenceBundle(dir, OUTCOMES);
     bundle.fill("probe", { status: "ok" });
-    bundle.writeManifest(META);
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    bundle.writeCollection(META);
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     expect(manifest.steps.map((s: any) => [s.id, s.status])).toEqual([
       ["probe", "ok"],
       ["verdict", "unavailable"],

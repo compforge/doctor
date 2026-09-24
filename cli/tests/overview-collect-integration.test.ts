@@ -79,19 +79,19 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
     expect(await finalizeResult(context, collectCommand, result, { output })).toBe(0);
     const archive = join(root, "overview.tar.gz");
     const index = readBundleIndex(archive, "overview");
-    expect(index.command).toBe("collect");
+    expect(index.source.command).toBe("collect");
     const executions = readBundleExecutions(archive, "overview");
     expect(executions).toHaveLength(COLLECT_KINDS.length + 1);
-    expect(new Set(executions.map(entry => entry.manifest.executionId)).size).toBe(executions.length);
+    expect(new Set(executions.map(entry => entry.manifest.id)).size).toBe(executions.length);
     expect(new Set(executions.map(entry => entry.path)).size).toBe(executions.length);
-    for (const kind of ["inspect", "tenant", "data"]) expect(executions.filter(entry => entry.manifest.command === kind)).toHaveLength(1);
-    const manifest = JSON.parse(readBundleText(archive, "overview/manifest.json"));
+    for (const kind of ["inspect", "tenant", "data"]) expect(executions.filter(entry => entry.manifest.source.command === kind)).toHaveLength(1);
+    const manifest = JSON.parse(readBundleText(archive, "overview/collection.json"));
     expect(manifest.target.biz_ids).toEqual(["a", "b", "c", "d", "e"]);
-    const diagnosis = JSON.parse(readBundleText(archive, `overview/${manifest.files.diagnosis.path}`));
+    const diagnosis = JSON.parse(readBundleText(archive, `overview/${index.files.diagnosis!.path}`));
     expect(diagnosis.steps.map((step: { kind: string }) => step.kind)).toEqual([...COLLECT_KINDS]);
     for (const step of diagnosis.steps) {
-      const evidence = executions.find(entry => entry.manifest.executionId === step.result.executionId)!;
-      expect(evidence.manifest.command).toBe(step.kind);
+      const evidence = executions.find(entry => entry.manifest.id === step.result.id)!;
+      expect(evidence.manifest.source.command).toBe(step.kind);
       expect(step.result.manifest).toBe(evidence.path);
       expect(readBundleText(archive, `overview/${join(dirname(evidence.path), evidence.manifest.files.report!.path)}`)).toContain(`${step.kind} evidence`);
     }

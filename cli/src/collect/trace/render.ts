@@ -1,4 +1,4 @@
-import { summaryText } from "../../command/serialization/navigation";
+import { summaryText } from "../../command/summary";
 import type { TraceStats } from "./probe";
 export { renderTraceSnapshot as renderTraceEvidence } from "./snapshot";
 

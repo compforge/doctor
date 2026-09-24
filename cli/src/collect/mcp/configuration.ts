@@ -92,7 +92,7 @@ export async function resolveMcpConfiguration(
   const configStartedAt = Date.now();
   let projection: McpConfigurationProjection;
   try {
-    projection = mcpConfigurationOutput(await invokeExtension(extension, pluginContext, { timeoutMs }));
+    projection = mcpConfigurationOutput((await invokeExtension(extension, pluginContext, { timeoutMs })).data);
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.fill("mcp-config", { status: "failed", reason });

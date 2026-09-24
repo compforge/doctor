@@ -250,7 +250,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     expect(commandExitCode(code)).toBe(0);
     expect(await finalizeResult(context, dataCommand, code, { format: "json", output: join(root, "result.json") })).toBe(0);
     expect(seen).toEqual(["trace_id:trace-1"]);
-    expect(seen).not.toContain("message_id:presentation-only");
+    expect(seen).not.toContain("message_id:summary-only");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -374,15 +374,15 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     expect([...new Set(entries.map((entry) => entry.split("/")[0]))]).toEqual(["report"]);
     expect(entries).toContain("report/AGENTS.md");
     const index = readBundleIndex(bundlePath, "report");
-    expect(index.command).toBe("data");
+    expect(index.source.command).toBe("data");
     expect(index.children).toEqual([]);
     expect(entries).toContain(`report/${index.files.report!.path}`);
     expect(entries).toContain(`report/${index.files.diagnosis!.path}`);
     expect(entries).toContain(`report/${index.files.facts!.path}`);
-    const manifest = JSON.parse(readBundleText(bundlePath, "report/manifest.json"));
+    const manifest = JSON.parse(readBundleText(bundlePath, "report/collection.json"));
     expect(manifest.params.inspect_capabilities).toMatchObject({ [service]: { provides: ["sample-record"], expands: [] } });
     expect(manifest.params).not.toHaveProperty("data_capabilities");
-    expect(JSON.parse(readBundleText(bundlePath, `report/${manifest.files.facts.path}`)).capabilityResults).toMatchObject([
+    expect(JSON.parse(readBundleText(bundlePath, `report/${index.files.facts!.path}`)).capabilityResults).toMatchObject([
       { status: "collected", service, result: { facts: [{ recordKey: "one" }, { recordKey: "two" }] } },
     ]);
     const agents = Bun.spawnSync(["tar", "-xOf", bundlePath, "report/AGENTS.md"]).stdout.toString();

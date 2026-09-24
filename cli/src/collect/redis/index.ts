@@ -192,7 +192,7 @@ export async function runCollectRedis(
     const closePreparation = ctx.closePreparation;
     ctx.closePreparation = undefined;
     await closePreparation?.();
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target,
       inspectionFacts: facts ?? {},

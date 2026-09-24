@@ -197,7 +197,7 @@ export async function runModelDiagnosis(
     const summaries = modelPerformanceSummaries(diagnosis.evidence);
     const performanceEnabled = modelPerformanceDecision(diagnosis.evidence)?.enabled ?? false;
     bundle.writeSummary(buildModelMarkdown(diagnosis, summaries, attempts));
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: facts.target.status === "collected" ? { ...facts.target } : {
         model: input.model.id,

@@ -34,7 +34,7 @@ function writeNetworkManifest(root: string, input: { facts?: unknown; [key: stri
   const { facts, ...manifest } = input;
   mkdirSync(join(root, "raw"), { recursive: true });
   writeFileSync(join(root, "raw/facts.json"), JSON.stringify(facts ?? {}));
-  writeFileSync(join(root, "manifest.json"), JSON.stringify({ ...manifest, files: { facts: "raw/facts.json" } }));
+  writeFileSync(join(root, "collection.json"), JSON.stringify({ ...manifest, files: { facts: "raw/facts.json" } }));
 }
 
 test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", async () => {
@@ -178,7 +178,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
   expect(inspector).toContain("HTTP 499");
   expect(inspector).toContain("application/json");
 
-  const limitedIndex = JSON.parse(readFileSync(join(root, "manifest.json"), "utf-8"));
+  const limitedIndex = JSON.parse(readFileSync(join(root, "collection.json"), "utf-8"));
   const limitedFacts = JSON.parse(readFileSync(join(root, limitedIndex.files.facts), "utf8"));
   limitedFacts.capture_artifacts[0].window_complete = false;
   limitedFacts.capture_artifacts[0].reason =

@@ -1,3 +1,5 @@
+import type { DataRun } from "../../packages/plugin/tests/extension-fixture";
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import {
   createServiceCatalog, type ServiceDefinition, type TraceResolveExtension, type PluginContext,
@@ -14,12 +16,12 @@ const service = (name: string, extensions: ServiceDefinition["extensions"]): Ser
   workloads: [],
   extensions
 });
-const trace = (run: TraceResolveExtension["run"]): TraceResolveExtension => ({
-  id: "trace", kind: "trace.resolve", endpoint: { host: "test", port: 80 }, access: {}, run,
+const trace = (run: DataRun<TraceResolveExtension>): TraceResolveExtension => ({
+  id: "trace", kind: "trace.resolve", endpoint: { host: "test", port: 80 }, access: {}, run: withSummary({ title: "Fixture", fields: [] }, run),
 });
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
 const summarize: OverviewSummarizeExtension = {
-  id: "summary", kind: "overview.summarize", access: {}, facets: [facet], run: async () => [],
+  id: "summary", kind: "overview.summarize", access: {}, facets: [facet], run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, async () => []),
 };
 const sample: OverviewSampleExtension = {
   id: "sample", kind: "overview.sample", access: {
@@ -27,7 +29,7 @@ const sample: OverviewSampleExtension = {
       requirement: "required",
       purpose: "sample", rule: { verb: "get", resource: "configmaps" }
     }]
-  }, run: async () => [],
+  }, run: withSummary({"title":"业务样本","fields":[{"label":"样本数","path":["length"]}]}, async () => []),
 };
 
 test("native trace extensions resolve batches with fallback, provenance and deduplication", async () => {
@@ -38,7 +40,7 @@ test("native trace extensions resolve batches with fallback, provenance and dedu
   const plugin = { id: "test", version: "1", services };
   const result = await resolvePluginTraceIds({ bizIds: ["one", "two"], namespace: "test", profileName: "test", command: "doctor trace" },
     plugin, { run: async () => { throw new Error("unexpected I/O"); }, exec: async () => { throw new Error("unexpected I/O"); } },
-    { first: {} as PluginContext, second: {} as PluginContext });
+    { first: { signal: new AbortController().signal } as PluginContext, second: { signal: new AbortController().signal } as PluginContext });
   expect(result.map(item => [item.bizId, item.traceId, item.service])).toEqual([["one", "t1", "first"], ["two", "t2", "second"]]);
   expect(result[0]?.sourceId).toBe("m1");
   expect(first).toHaveBeenCalledTimes(2);
@@ -47,7 +49,7 @@ test("native trace extensions resolve batches with fallback, provenance and dedu
 
 test("overview discovers native operations without invoking them or combining their access", () => {
   const run = mock(async () => []);
-  const services = createServiceCatalog([service("chat", [{ ...summarize, run }, sample])]);
+  const services = createServiceCatalog([service("chat", [{ ...summarize, run: withSummary({ title: "Fixture", fields: [] }, run) }, sample])]);
   const provider = overviewProviders(services)[0]!;
   expect(provider.summarize.access).toEqual({});
   expect(provider.sample?.access).toEqual(sample.access);

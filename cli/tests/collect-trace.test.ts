@@ -257,7 +257,7 @@ describe("collectTrace 记账", () => {
   }
 
   function manifestOf(dir: string) {
-    return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    return JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
   }
 
   function archiveOf(dir: string): Record<string, unknown> {

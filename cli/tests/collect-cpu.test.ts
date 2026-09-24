@@ -219,7 +219,7 @@ describe("collectCpu", () => {
     expect(logs.join("\n")).toContain("py-spy 执行前资源：CPU 10.0%");
     expect(exec.execCalls.flat().join(" ")).not.toContain("tracemalloc");
 
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
     expect(inspectionFacts.resourceUsage.cpu.ratio).toBeCloseTo(0.1);
     expect(inspectionFacts.resourceUsage.memory.ratio).toBeCloseTo(0.125);
@@ -268,7 +268,7 @@ describe("collectCpu", () => {
     expect(logs.join("\n")).toContain("CPU 90.0%");
     expect(logs.join("\n")).toContain("内存 75.0%");
     expect(exec.execCalls.some((command) => command.includes("dump"))).toBe(false);
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     const pySpy = manifest.steps.find((step: any) => step.id === "py-spy-dump");
     expect(pySpy).toMatchObject({ status: "unavailable" });
   });
@@ -332,7 +332,7 @@ describe("collectCpu", () => {
     expect(exec.runCalls.some((command) => command[0] === "debug")).toBe(false);
     expect(exec.execTargets.some((target) => target.container === "doctor-debug-ready")).toBe(true);
     expect(exec.execCalls.flat().join(" ")).not.toContain("tracemalloc");
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     expect(manifest.steps.find((step: any) => step.id === "py-spy-debug-prereq"))
       .toMatchObject({ status: "ok" });
     expect(manifest.steps.find((step: any) => step.id === "py-spy-debug-dump"))

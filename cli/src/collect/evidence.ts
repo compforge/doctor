@@ -1,6 +1,6 @@
 // Evidence Bundle：一次采集的完整产物目录。
-//   <dir>/manifest.json   身份/参数/时间窗/每步状态——机器可消费
-//   <dir>/raw/facts.json  结构化 Facts；manifest 只索引，不内嵌
+//   <dir>/collection.json 身份/参数/时间窗/每步状态——由最终 manifest 索引
+//   <dir>/raw/facts.json  结构化 Facts；collection 只索引，不内嵌
 //   <dir>/raw/NN-<id>.*   每步原始 stdout（stderr 非空时并入，带分隔标记）
 //   <dir>/summary.md      规则层事实摘要——给人看
 // 原则：失败步骤也留上下文；原始证据与结论分开（分析产物后续单独落 analysis.md，不覆盖事实）。
@@ -74,7 +74,7 @@ export type OutcomeFill =
 /** settle 兜底时的 reason。用户大量看到它就说明 doctor 有记账漏洞，不是环境问题。 */
 export const OUTCOME_UNREACHED_REASON = "采集流程未到达该步骤（doctor 未记录原因）";
 
-export interface ManifestMeta {
+export interface CollectionMeta {
   /** Domain evidence entrypoints, relative to this artifact directory. */
   files?: Readonly<Record<string, string>>;
   doctorVersion: string;
@@ -151,7 +151,7 @@ export class EvidenceBundle {
   }
 
   /**
-   * 填一个检验项的终态。记录按**执行顺序**进 steps（不是声明顺序），所以 manifest
+   * 填一个检验项的终态。记录按**执行顺序**进 steps（不是声明顺序），所以 collection
    * 仍是一条时间线；预印只体现在"漏填会被 settle 抓住"，不体现在数组位置。
    *
    * 重复填 / 填未声明的格子都 throw：这是编程错误，不是环境问题。采集的"单点失败
@@ -181,7 +181,7 @@ export class EvidenceBundle {
    * 已填过的 id 直接跳过，所以调用方不必先判断填没填。
    *
    * 这里**不** throw：走到兜底说明 doctor 没记住原因，但如实记下"这份证据没拿到"
-   * 仍然比让它从 manifest 里消失强。
+   * 仍然比让它从 collection 里消失强。
    */
   settle(reason: string = OUTCOME_UNREACHED_REASON, ids?: readonly string[]): void {
     for (const id of ids ?? [...this.pending.keys()]) {
@@ -203,14 +203,14 @@ export class EvidenceBundle {
     return this.steps;
   }
 
-  writeManifest(meta: ManifestMeta): void {
+  writeCollection(meta: CollectionMeta): void {
     // 写盘前兜底收尾。放这里而不是靠调用方记得调 settle()——理由跟整个 worksheet 一样：
     // 凡是"要记得做"的记账，早晚会忘。
     this.settle();
     // Facts have already passed collection budgets; text truncation would corrupt their JSON.
     const factsFile = "raw/facts.json";
     writeFileSync(join(this.dir, factsFile), `${JSON.stringify(meta.inspectionFacts, null, 2)}\n`, "utf-8");
-    const manifest = {
+    const collection = {
       files: { ...meta.files, facts: factsFile },
       doctor_version: meta.doctorVersion,
       kubectl_version: meta.kubectlVersion,
@@ -220,7 +220,7 @@ export class EvidenceBundle {
       finished_at: meta.finishedAt,
       steps: this.steps,
     };
-    writeFileSync(join(this.dir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
+    writeFileSync(join(this.dir, "collection.json"), `${JSON.stringify(collection, null, 2)}\n`, "utf-8");
   }
 
   writeSummary(markdown: string): void {

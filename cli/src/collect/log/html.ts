@@ -5,7 +5,7 @@ import {
   serializeInlineJson,
   writeHtmlReport,
 } from "../output/html";
-import type { BundleManifest } from "../output/html";
+import type { CollectionRecord } from "../output/html";
 import { LOG_REPORT_SCRIPT, LOG_REPORT_STYLES } from "./html-assets";
 import { formatLogCaptureStats } from "./render";
 import type { LogRenderStats, LogTimelineRecord } from "./model";
@@ -60,7 +60,7 @@ export function renderLogViewer(records: readonly LogTimelineRecord[]): string {
   </div>`;
 }
 
-function buildLogSummary(manifest: BundleManifest, records: readonly LogTimelineRecord[], stats?: LogRenderStats): string {
+function buildLogSummary(manifest: CollectionRecord, records: readonly LogTimelineRecord[], stats?: LogRenderStats): string {
   const target = manifest.target ?? {};
   const params = manifest.params ?? {};
   const logCount = records.filter((record) => record.kind === "log").length;
@@ -86,8 +86,8 @@ function buildLogSummary(manifest: BundleManifest, records: readonly LogTimeline
 export function writeLogHtmlReport(bundleDir: string, outputPath: string, profileName: string): void {
   const records = parseLogTimelineJsonl(readFileSync(join(bundleDir, "timeline.jsonl"), "utf-8"));
   const manifest = JSON.parse(
-    readFileSync(join(bundleDir, "manifest.json"), "utf-8"),
-  ) as BundleManifest;
+    readFileSync(join(bundleDir, "collection.json"), "utf-8"),
+  ) as CollectionRecord;
   const statsPath = join(bundleDir, "log-stats.json");
   const stats = existsSync(statsPath) ? JSON.parse(readFileSync(statsPath, "utf-8")) as LogRenderStats : undefined;
   writeHtmlReport(bundleDir, outputPath, {

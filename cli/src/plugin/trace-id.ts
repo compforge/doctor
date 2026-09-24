@@ -1,3 +1,4 @@
+import { invokeExtension } from "./extension";
 import { TRACE_RESOLVE_KIND, requireTraceResolveExtension, traceResolveOutput } from "@compforge/doctor-plugin";
 import type {
   PluginContext,
@@ -102,7 +103,7 @@ export async function resolvePluginTraceIds(
     try {
       for (const bizId of [...unresolved]) {
         try {
-          const result = await extension.run(context, { bizId });
+          const result = (await invokeExtension(extension, context, { bizId })).data;
           const items = traceResolveOutput(result);
           const valid = items.filter((item) => item.traceId.trim());
           if (!valid.length) {

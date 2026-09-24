@@ -151,7 +151,7 @@ export async function collectCpu(
   });
   let kubectlVersion: string | undefined;
   const finish = (code: number, diagnosis?: CpuDiagnosis): CpuCollectResult => {
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       kubectlVersion,
       target: { namespace, pod: podName, container: resolvedContainer, pid: facts?.processScan?.pickedPid },

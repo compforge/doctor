@@ -65,7 +65,7 @@ export async function runFileTrace(file: string, context: CommandContext): Promi
   bundle.writeSummary(buildTraceSummary({ traceId, inputId: traceId, resolvedAs: "trace_id",
     index: "local_file", channel: basename(path), count: records.length, downloaded: records.length, stats,
     steps: [`| file-import | ok | |`, `| analysis | ${projected ? "ok" : "failed"} | ${reason ?? ""} |`] }));
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { trace_id: traceId, input_id: traceId, scope: "trace", resolved_as: "local_file" },
     files: { ...(projected ? TRACE_FILES : { spans: TRACE_FILES.spans }), source: originalName },

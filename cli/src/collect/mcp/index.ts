@@ -195,7 +195,7 @@ export async function runCollectMcp(
         : failedSummary(trace.traceId, failureReason ?? "配置确认或诊断流程未完成"),
     );
     if (diagnosis) writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: {
         namespace: collect.kubernetes.namespace,

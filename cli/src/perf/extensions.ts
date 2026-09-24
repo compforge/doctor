@@ -28,7 +28,7 @@ export async function loadPerfScenarios(
 ) {
   const context = await open();
   try {
-    const scenarios = perfScenariosOutput(await invokeExtension(provider.extension, context, undefined));
+    const scenarios = perfScenariosOutput((await invokeExtension(provider.extension, context, undefined)).data);
     validateScenarioCases(scenarios, provider.cases);
     return scenarios;
   } finally {

@@ -1,7 +1,8 @@
+import { projectSummary } from "../../command/summary";
 import type { Fact } from "@compforge/doctor-plugin";
 import { aggregateCommandStatus } from "../../command/result";
 import { CommandStatus } from "../../command/status";
-import { summaryText } from "../../command/serialization/navigation";
+import { summaryText } from "../../command/summary";
 import type { DataFacts, DataOutput } from "./model";
 
 type Item = DataOutput["items"][number];
@@ -10,15 +11,8 @@ interface ItemSummary { id: string; status: string; identifiers: string[]; recor
 
 function displayedFields(fact: Exclude<Fact, { factType: "relation" }>): string[] {
   const value = fact.factType === "record" ? fact.record : fact.value;
-  return (fact.presentation?.fields ?? []).slice(0, 12).flatMap(field => {
-    let current: unknown = value;
-    for (const key of field.path) {
-      current = current && typeof current === "object" && Object.hasOwn(current, key)
-        ? (current as Record<string, unknown>)[key] : undefined;
-    }
-    return current === undefined ? [] : [`${summaryText(field.label)}=${summaryText(
-      typeof current === "object" && current !== null ? JSON.stringify(current) : current)}`];
-  });
+  return fact.summary ? projectSummary(fact.summary, value).fields.map(field =>
+    `${summaryText(field.label)}=${summaryText(field.value)}`) : [];
 }
 
 /** Pure projection: business labels/paths belong to the producer; Core never guesses status fields. */
@@ -39,7 +33,7 @@ export function projectDataSummary(items: readonly Item[], source?: DataFacts): 
         // Keep conflicting snapshots visible rather than merging their field values.
         const key = JSON.stringify([query.service, fact.kind, fact.schemaVersion, id,
           fact.factType === "record" ? fact.record : fact.value]);
-        const entry = records.get(key) ?? { group: JSON.stringify([query.service, fact.kind, fact.presentation?.title]), title: `${query.service} / ${fact.presentation?.title ?? fact.kind} / ${id}`,
+        const entry = records.get(key) ?? { group: JSON.stringify([query.service, fact.kind, fact.summary?.title]), title: `${query.service} / ${fact.summary?.title ?? fact.kind} / ${id}`,
           fields: displayedFields(fact), references: [] };
         entry.references.push(`capabilityResults.${positions.get(query.id)}.result.facts.${index}`);
         records.set(key, entry);

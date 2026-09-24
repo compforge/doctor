@@ -18,9 +18,9 @@ afterEach(() => { for (const dir of roots.splice(0)) rmSync(dir, { recursive: tr
 
 function persist(dir: string, facts: Record<string, unknown>) {
   const bundle = new EvidenceBundle(dir);
-  bundle.writeManifest({ doctorVersion: "test", target: { service: "sample" }, params: {},
+  bundle.writeCollection({ doctorVersion: "test", target: { service: "sample" }, params: {},
     inspectionFacts: facts, startedAt: "now", finishedAt: "now", files: { details: "details.json" } });
-  return JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  return JSON.parse(readFileSync(join(dir, "collection.json"), "utf8"));
 }
 
 test("large structured Facts stay intact in raw while manifest remains an index", () => {
@@ -29,7 +29,7 @@ test("large structured Facts stay intact in raw while manifest remains an index"
   const manifest = persist(dir, facts);
   expect(manifest).not.toHaveProperty("inspection_facts");
   expect(manifest.files).toEqual({ details: "details.json", facts: "raw/facts.json" });
-  expect(readFileSync(join(dir, "manifest.json"), "utf8").length).toBeLessThan(1_000);
+  expect(readFileSync(join(dir, "collection.json"), "utf8").length).toBeLessThan(1_000);
   expect(readFacts<typeof facts>(dir, manifest)).toEqual(facts);
   expect(readFileSync(join(dir, manifest.files.facts), "utf8")).not.toContain("[doctor: truncated");
 });
@@ -43,12 +43,12 @@ test("relocated evidence renders from indexed raw through both render entrypoint
   const options = { title: "Indexed evidence", summaryHtml: "summary" };
   const artifact = { id: "a", command: "data", path: destination };
   const context = new RenderContext([artifact], "test");
-  const before = readFileSync(join(destination, "manifest.json"), "utf8");
+  const before = readFileSync(join(destination, "collection.json"), "utf8");
   writeEvidencePage(context, artifact, options);
   expect(readFileSync(join(destination, "report.html"), "utf8")).toContain("indexed-facts-render-marker");
   writeHtmlReport(destination, join(destination, "standalone.html"), { ...options, profileName: "test" });
   expect(readFileSync(join(destination, "standalone.html"), "utf8")).toContain("indexed-facts-render-marker");
-  expect(readFileSync(join(destination, "manifest.json"), "utf8")).toBe(before);
+  expect(readFileSync(join(destination, "collection.json"), "utf8")).toBe(before);
 });
 
 test("missing, malformed and escaping Facts references fail instead of hiding unavailable evidence", () => {
