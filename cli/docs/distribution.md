@@ -6,6 +6,9 @@ Doctor 是上游通用诊断 CLI。Distribution 表达一组 CLI 身份、命令
 也可以由发行方内嵌到 CLI。最终交付给用户的可执行命令是这种配置的一个入口，复用同一套 Command、
 环境访问与 Evidence 生命周期。
 
+类比 Debian 和 Ubuntu 都是 Linux 的发行版，`doctor` 和 `ascli` 可以是同一 Doctor Core 的不同发行版：
+共享诊断能力，通过各自的 Distribution 选择入口名称、默认值和 Plugin。
+
 - **Core** 拥有命令与执行契约、通用连接参数、Help 生成和版本报告。
 - **Distribution** 拥有用户看到的 CLI 身份及命令展示策略，可以在构建时内嵌或在启动时从 JSON 加载。
 - **Plugin** 拥有 Service、业务能力和 Skills。Plugin 的身份与版本不因发行版名称改变。
