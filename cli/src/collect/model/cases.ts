@@ -16,6 +16,17 @@ const MODEL_CASE_SET: CaseSet = {
       facets: { command: "model", model_type: "llm", mode: "connectivity" },
     },
     {
+      id: "llm_adjacent_assistants", desc: "检查两条 assistant 消息相邻时模型是否接受请求",
+      input: { path: "/chat/completions", body: { messages: [
+        { role: "system", content: "Reply with OK only." },
+        { role: "user", content: "Start a short conversation." },
+        { role: "assistant", content: "First assistant message." },
+        { role: "assistant", content: "Second assistant message." },
+        { role: "user", content: "Reply with OK only." },
+      ], stream: false } },
+      facets: { command: "model", model_type: "llm", mode: "connectivity" },
+    },
+    {
       id: "llm_image", desc: "LLM 图片输入连通性",
       input: { path: "/chat/completions", body: { messages: [{ role: "user", content: [
         { type: "text", text: "What color is the square in this image? Reply with the color only." },

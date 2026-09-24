@@ -49,6 +49,21 @@ test("catalog does not auto-load the old doctor-case.yaml filename", () => {
   }
 });
 
+test("built-in Model Case keeps adjacent assistant messages in the request", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-model-adjacent-"));
+  try {
+    const selected = await selectDoctorCases({
+      catalog: doctorCaseCatalog(undefined, undefined, directory), command: "model",
+      caseSetId: "doctor_model", caseIds: "llm_adjacent_assistants", modelType: "llm",
+    });
+    const messages = (selected?.cases[0]?.input.body as { messages: { role: string }[] }).messages;
+    expect(messages.map((message) => message.role)).toEqual(["system", "user", "assistant", "assistant", "user"]);
+    expect(selected?.cases[0]?.desc).toContain("assistant 消息相邻");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("Core and Plugin catalog extensions share discovery; command filtering uses only facets", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-extensions-"));
   try {
