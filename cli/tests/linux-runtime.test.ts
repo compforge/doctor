@@ -25,6 +25,19 @@ describe("Linux x64 runtime artifact selection", () => {
     expect(result.stdout.trim()).toBe("doctor-1.2.3-debian-x64-kernel-5.6-glibc-2.25");
   });
 
+  test("Debian 10 kernel 4.19 and glibc 2.28 select Bun", () => {
+    const result = select("4.19.0-27-amd64", "glibc 2.28");
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe("doctor-1.2.3-debian-x64-kernel-4.19-glibc-2.28");
+  });
+
+  test("kernel 4.18 or glibc below 2.28 still select SEA", () => {
+    expect(select("4.18.0", "glibc 2.28").stdout.trim())
+      .toBe("doctor-1.2.3-debian-x64-kernel-3.10-glibc-2.17");
+    expect(select("4.19.0", "glibc 2.27").stdout.trim())
+      .toBe("doctor-1.2.3-debian-x64-kernel-3.10-glibc-2.17");
+  });
+
   test("RHEL 7 selects glibc 2.17 SEA", () => {
     const result = select("3.10.0-862.el7.x86_64", "glibc 2.17");
     expect(result.status).toBe(0);
@@ -42,10 +55,24 @@ describe("Linux x64 runtime artifact selection", () => {
     expect(select("6.8.0", "glibc 2.39", "aarch64").status).toBe(2);
   });
 
+  test("Kylin ARM64 and x64 artifacts use Bun instead of the SEA builder", () => {
+    const result = spawnSync("make", ["-n", "build-kylin"], {
+      cwd: fileURLToPath(new URL("..", import.meta.url)),
+      encoding: "utf8",
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain("--target bun-linux-arm64");
+    expect(result.stdout).toContain("--target bun-linux-x64-baseline");
+    expect(result.stdout).not.toContain("build-linux-arm64-kylin.sh");
+    expect(result.stdout).not.toContain("build-linux-x64-legacy.sh");
+  });
+
   test("Linux build artifacts include distribution, kernel, and glibc", () => {
     expect(makefile).toContain("-debian-x64-kernel-5.6-glibc-2.25");
+    expect(makefile).toContain("-debian-x64-kernel-4.19-glibc-2.28");
     expect(makefile).toContain("-debian-x64-kernel-3.10-glibc-2.17");
     expect(makefile).toContain("-debian-arm64-kernel-5.6-glibc-2.25");
+    expect(makefile).toContain("-debian-arm64-kernel-4.19-glibc-2.28");
     expect(makefile).toContain("-kylin-x86-64-kernel-4.19-glibc-2.28");
     expect(makefile).toContain("-kylin-arm64-kernel-4.19-glibc-2.28");
   });

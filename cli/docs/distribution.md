@@ -147,3 +147,9 @@ Distribution 默认值的顺序解析。会话结束后宿主清理临时目录�
 `false` 只打包应用代码和依赖，交付启动脚本及同目录 `.mjs`，使用客户已有的 Node >= 22.23.1。
 这一选择与 Plugin 无关，也不影响 `Distribution` 的运行时装配契约。发行方可以在自己的构建清单中
 设置默认值，并允许每次构建覆盖；无需把是否内嵌 Node 写入业务 Plugin。
+
+Linux x64 的产物选择按内核和 glibc 的组合判断：kernel 5.6+/glibc 2.25+ 使用 Bun 基线；
+kernel 4.19+/glibc 2.28+ 使用同一 Bun 可执行文件的 4.19 交付变体；其余已支持的旧环境使用
+Node SEA。ARM64 同时构建 5.6/glibc 2.25 与 4.19/glibc 2.28 的 Bun 产物。Node 22 SEA
+的 Chat 采用行式界面，Bun 产物提供 OpenTUI 全屏界面。麒麟 kernel 4.19/glibc 2.28
+的 x64 和 ARM64 构建复用对应架构的 Bun 产物；交付前仍需在目标架构实测。

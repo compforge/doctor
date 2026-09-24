@@ -49,7 +49,7 @@ test("兼容 renderer 在新一轮问诊中可重复展示相同错误", () => {
   expect(writes.filter((text) => text.includes("连接失败"))).toHaveLength(2);
 });
 
-test("Kylin x64 SEA 通过 CommonJS bootstrap 加载 ESM asset", () => {
+test("legacy x64 SEA 通过 CommonJS bootstrap 加载 ESM asset", () => {
   const script = readFileSync(resolve(import.meta.dir, "../scripts/build-linux-x64-legacy.sh"), "utf8");
 
   expect(script).toContain('"main": "$WORK_DIR/bootstrap.cjs"');
