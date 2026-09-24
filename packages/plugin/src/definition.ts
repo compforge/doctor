@@ -5,6 +5,7 @@ import type {
 } from "./http";
 import type { HttpTransportResponse } from "./http";
 import type { ServiceCatalog } from "./catalog";
+import type { ExtensionRegistration } from "./extension/registry";
 import type {
   PluginSkill,
   PreparedSkillContext,
@@ -110,6 +111,8 @@ export interface PluginIdentity {
 export interface PluginDefinition extends PluginIdentity {
   /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;
+  /** Offline resources registered by the Plugin, independent of Service runtime access. */
+  extensions?: readonly ExtensionRegistration[];
   trace?: TraceCapability;
   /** Runtime-resolved Skills from the same exact Plugin version. */
   skills?: readonly PluginSkill[];

@@ -1,11 +1,14 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
-import { loadCaseSet, validateCaseSet, type Case, type CaseSet } from "@compforge/spec-case/model";
-import { CASE_RUNNER_CREATE_KIND, requireCaseRunnerCreateExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import type { Case, CaseSet } from "@compforge/spec-case/model";
+import {
+  CASE_CATALOG_KIND, CASE_RUNNER_CREATE_KIND, loadCaseCatalog,
+  requireCaseCatalogExtension, requireCaseRunnerCreateExtension,
+  type CaseCatalogExtension, type PluginDefinition, type RegisteredExtension,
+} from "@compforge/doctor-plugin";
 import { isInteractive } from "../terminal/policy";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
-import { MODEL_IMAGE_TEST_DATA_URL } from "../collect/model/config";
+import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
+import { localCaseCatalogExtension } from "./local";
 
 export type DoctorCaseCommand = "http" | "model" | "perf";
 
@@ -16,92 +19,44 @@ export interface DoctorCaseSet {
   caseSet: CaseSet;
 }
 
-const MODEL_CASE_SET: CaseSet = {
-  caseset: "doctor_model",
-  schema_version: 1,
-  facets: {
-    command: { values: ["model"] },
-    model_type: { values: ["llm", "embedding", "rerank"] },
-    mode: { values: ["connectivity", "performance"] },
-  },
-  cases: [
-    {
-      id: "llm_connectivity",
-      desc: "LLM chat completions 连通性",
-      input: { path: "/chat/completions", body: { messages: [{ role: "user", content: "Reply with OK only." }], stream: false } },
-      facets: { command: "model", model_type: "llm", mode: "connectivity" },
-    },
-    {
-      id: "llm_image",
-      desc: "LLM 图片输入连通性",
-      input: { path: "/chat/completions", body: { messages: [{ role: "user", content: [
-        { type: "text", text: "What color is the square in this image? Reply with the color only." },
-        { type: "image_url", image_url: { url: MODEL_IMAGE_TEST_DATA_URL } },
-      ] }], stream: false } },
-      facets: { command: "model", model_type: "llm", mode: "connectivity" },
-    },
-    {
-      id: "embedding_connectivity",
-      desc: "Embedding 连通性",
-      input: { path: "/embeddings", body: { input: "doctor model connectivity test" } },
-      facets: { command: "model", model_type: "embedding", mode: "connectivity" },
-    },
-    {
-      id: "rerank_connectivity",
-      desc: "Rerank 连通性",
-      input: { path: "/rerank", body: { query: "doctor model connectivity test", documents: ["doctor model connectivity test", "unrelated document"], top_n: 1 } },
-      facets: { command: "model", model_type: "rerank", mode: "connectivity" },
-    },
-    ...(["prefill_short", "prefill_medium", "prefill_long", "decode"] as const).map((id): Case => ({
-      id,
-      desc: `LLM 流式性能采样：${id}`,
-      input: { kind: "performance", scenario: id.replace("_", "-") },
-      facets: { command: "model", model_type: "llm", mode: "performance" },
-    })),
-  ],
-};
-
-/** The catalog describes requests; command-specific target and credentials never live in a Case. */
-export function builtinModelCaseSet(): CaseSet {
-  return MODEL_CASE_SET;
+/** Normalize old runner assets at registration, keeping command selection facet-only. */
+function legacyRunnerCatalog(runner: RegisteredExtension): CaseCatalogExtension {
+  return {
+    id: `legacy.${runner.id}`, kind: CASE_CATALOG_KIND,
+    load: () => (requireCaseRunnerCreateExtension(runner).caseSets ?? []).map((caseSet) => {
+      const cases = caseSet.cases.map((item) => ({
+        ...item, facets: { ...item.facets, command: item.facets?.command ?? "perf" },
+      }));
+      return {
+        ...caseSet,
+        facets: { ...caseSet.facets, command: { values: [...new Set(cases.map((item) => item.facets.command))] } },
+        cases,
+      };
+    }),
+  };
 }
 
-export function localDoctorCaseSet(file?: string, cwd = process.cwd()): DoctorCaseSet | undefined {
-  const path = file ? resolve(cwd, file) : ["doctor-case.yaml", "doctor-case.yml"]
-    .map((name) => resolve(cwd, name)).find(existsSync);
-  if (!path) return undefined;
-  const caseSet = loadCaseSet(path);
-  validateCaseSet(caseSet);
-  for (const item of caseSet.cases) {
-    if (!["http", "model", "perf", "both"].includes(item.facets?.command ?? "")) {
-      throw new Error(`${path}: Case '${item.id}' 需要 facets.command: http、model、perf 或 both`);
-    }
-  }
-  return { source: "local", file: path, caseSet };
-}
-
+/** One registry discovers Core, Plugin and local providers without opening target access. */
 export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
-  const catalog: DoctorCaseSet[] = [
-    { source: "builtin", caseSet: MODEL_CASE_SET },
-    { source: "builtin", caseSet: {
-      caseset: "doctor_http", schema_version: 1,
-      facets: { command: { values: ["http"] } },
-      cases: [{ id: "http_get_root", desc: "GET / 连通性", input: { method: "GET", path: "/", expect: { status: 200 } }, facets: { command: "http" } }],
-    } },
-  ];
-  for (const { service, extension } of plugin?.services.extensions(CASE_RUNNER_CREATE_KIND) ?? []) {
-    for (const caseSet of requireCaseRunnerCreateExtension(extension).caseSets) {
-      catalog.push({ source: "plugin", service: service.name, caseSet });
-    }
-  }
-  const local = localDoctorCaseSet(file, cwd);
-  if (local) catalog.push(local);
-  return catalog;
+  const local = localCaseCatalogExtension(file, cwd);
+  const declared = plugin?.extensions?.some((item) => item.kind === CASE_CATALOG_KIND)
+    || Boolean(plugin?.services.extensions(CASE_CATALOG_KIND).length);
+  const adapters = !declared ? (plugin?.services.extensions(CASE_RUNNER_CREATE_KIND) ?? []).map(({ service, extension }) => ({
+    owner: `service:${service.name}`, extension: legacyRunnerCatalog(extension),
+  })) : [];
+  const registry = createDoctorExtensionRegistry(plugin, [local], adapters);
+  return registry.extensions(CASE_CATALOG_KIND).flatMap(({ owner, extension }) =>
+    loadCaseCatalog(requireCaseCatalogExtension(extension)).map((caseSet) => ({
+      source: owner === "core" ? "builtin" as const : owner === "local" ? "local" as const : "plugin" as const,
+      ...(owner.startsWith("service:") ? { service: owner.slice("service:".length) } : {}),
+      ...(owner === "local" && local.file ? { file: local.file } : {}),
+      caseSet,
+    })));
 }
 
-export function caseMatchesCommand(item: Case, command: DoctorCaseCommand, legacyPlugin = false): boolean {
+export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): boolean {
   const facet = item.facets?.command;
-  return facet === command || facet === "both" || (legacyPlugin && !facet && command === "perf");
+  return facet === command || facet === "both";
 }
 
 export interface DoctorCaseSelection {
@@ -114,19 +69,16 @@ export async function selectDoctorCases(input: {
   command: DoctorCaseCommand;
   caseSetId?: string;
   caseIds?: string;
-  service?: string;
   modelType?: string;
-  defaultCaseSetId?: string;
   defaultCaseIds?: readonly string[];
 }): Promise<DoctorCaseSelection | undefined> {
   const available = input.catalog.map((source) => ({
     source,
-    cases: source.caseSet.cases.filter((item) => caseMatchesCommand(item, input.command, source.source === "plugin")
-      && (!input.modelType || !item.facets?.model_type || item.facets.model_type === input.modelType)
-      && (source.source !== "plugin" || !input.service || source.service === input.service)),
-  })).filter((entry) => entry.cases.length > 0 && (input.command !== "perf" || entry.source.source !== "builtin"));
+    cases: source.caseSet.cases.filter((item) => caseMatchesCommand(item, input.command)
+      && (!input.modelType || !item.facets?.model_type || item.facets.model_type === input.modelType)),
+  })).filter((entry) => entry.cases.length > 0);
   if (!available.length) throw new Error(`没有可用于 doctor ${input.command} 的 Case`);
-  const requestedSet = input.caseSetId ?? input.defaultCaseSetId;
+  const requestedSet = input.caseSetId;
   const matchingSets = requestedSet ? available.filter((entry) => entry.source.caseSet.caseset === requestedSet) : [];
   if (matchingSets.length > 1) throw new Error(`CaseSet '${requestedSet}' 同时来自多个来源；请避免重名`);
   let chosen: (typeof available)[number] | undefined = matchingSets[0];

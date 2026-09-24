@@ -1,6 +1,7 @@
 import { validateSummary, type Summary } from "../summary";
 import type { PluginContext } from "../context";
 import type { CapabilityAccess } from "../kubernetes";
+import { validateExtensionRegistration, type ExtensionRegistration } from "./registry";
 
 /** Reuse the host's scoped access, clients, cancellation and cleanup contract. */
 export type ExtensionContext = PluginContext;
@@ -10,10 +11,7 @@ export type ExtensionContext = PluginContext;
  * @spec kind owns the input/output contract; Core does not enumerate kinds or schedule their workflow
  * @spec access is readable without invoking run, so prepare can authorize before business execution
  */
-export interface Extension<Input, Output> {
-  readonly id: string;
-  readonly kind: string;
-  readonly description?: string;
+export interface Extension<Input, Output> extends ExtensionRegistration {
   readonly access: CapabilityAccess;
   run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
 }
@@ -39,12 +37,8 @@ export function validateExtensionResult(value: unknown): asserts value is Extens
 export type RegisteredExtension = Extension<never, unknown>;
 
 export function validateExtension(value: unknown): asserts value is RegisteredExtension {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Extension must be an object");
-  const item = value as Record<string, unknown>;
-  for (const field of ["id", "kind"] as const) {
-    if (typeof item[field] !== "string" || !item[field].trim()) throw new Error(`Extension.${field} must be a non-empty string`);
-  }
-  if (item.description !== undefined && (typeof item.description !== "string" || !item.description.trim())) throw new Error("Extension.description must be a non-empty string");
+  validateExtensionRegistration(value);
+  const item = value as unknown as Record<string, unknown>;
   if (!item.access || typeof item.access !== "object" || Array.isArray(item.access)) throw new Error("Extension.access must be an object");
   if (typeof item.run !== "function") throw new Error("Extension.run must be a function");
 }
@@ -59,5 +53,7 @@ export * from "./model";
 export * from "./metric";
 export * from "./perf";
 export * from "./case";
+export * from "./case-catalog";
+export * from "./registry";
 export * from "./workload";
 export * from "./vdb";

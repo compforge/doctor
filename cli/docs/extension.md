@@ -1,12 +1,13 @@
-# Extension：Command 与 Service 的扩展协议
+# Extension：Command 与能力提供方的扩展协议
 
 ## 理念与概念
 
-Extension 是 Service 向 Command 提供数据或执行能力的通用协议，服务于所有 Command 系列。它把双方的
-接缝收敛为一个可调用函数 `run`：kind 约定函数语义、input、output 和 access。提供数据同样通过函数
-完成；静态数据可以由无业务入参的函数返回，需要查询条件的数据使用相应 input。
+Extension 是 Core、Plugin、Service 或本地适配器向 Command 提供数据或执行能力的通用注册机制。
+提供方在 `ExtensionRegistry` 中按 owner 注册，Command 按 kind 发现并调用；kind 约定具体函数语义。
+需要 Target 访问的 Service Extension 使用 `run`、`access` 与受限上下文。离线目录型 Extension 可定义
+自己的调用方式，例如 `case.catalog` 的 `load`，列出 Case 时无需准备 Target 访问。
 
-通用协议只规范这次函数调用的发现、权限和输入输出契约。Service 自由组织资源并实现函数，Command
+通用注册只规范提供方身份、实现身份和 kind 的发现；具体 kind 规范调用、权限和输入输出。提供方自由组织资源并实现函数，Command
 拥有自己的执行流程，自由决定在何处调用、如何组合结果以及如何处理失败。
 
 一个 Service 可以提供多个 kind 的 Extension，一个 Command 可以使用多个 kind；同一个 kind 也可以被
@@ -16,13 +17,13 @@ Extension 是 Service 向 Command 提供数据或执行能力的通用协议，�
 |---|---|
 | Extension | 按 kind 声明并实现一个对外函数，包含实现身份和访问需求 |
 | kind | 标识领域契约，约定函数语义、input / output、权限要求及错误语义 |
-| Service | Extension 的提供方，组织业务身份、资源与具体实现 |
+| Core / Plugin / Service / 本地适配器 | Extension 的提供方，组织资源与具体实现 |
 | Command | Extension 的消费方，决定选择范围、调用时机及如何使用结果 |
-| Core | 提供发现、权限检查、受限上下文及资源生命周期机制 |
+| Core | 提供注册、发现、权限检查、受限上下文及资源生命周期机制 |
 
 ## 公共契约与代码归属
 
-Extension、kind 及其对应的 input / output 契约统一定义在 Plugin SDK，Command 和 Service 共同依赖：
+Extension、kind 及其对应的 input / output 契约统一定义在 Plugin SDK，Command 和提供方共同依赖：
 
 ```text
 packages/plugin/src/
@@ -38,20 +39,28 @@ packages/plugin/src/
 └── kubernetes.ts         # 复用现有 CapabilityAccess
 ```
 
-公共接口见 [extension/index.ts](../../packages/plugin/src/extension/index.ts)：
+公共注册接口见 [extension/registry.ts](../../packages/plugin/src/extension/registry.ts)；Service 的目标访问型接口见 [extension/index.ts](../../packages/plugin/src/extension/index.ts)：
 
 ```ts
-interface Extension<Input, Output> {
+interface ExtensionRegistration {
   readonly id: string;
   readonly kind: string;
   readonly description?: string;
+}
+
+interface Extension<Input, Output> extends ExtensionRegistration {
   readonly access: CapabilityAccess;
 
   run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
 }
+
+interface CaseCatalogExtension extends ExtensionRegistration {
+  readonly kind: "case.catalog";
+  load(): readonly CaseSet[];
+}
 ```
 
-所有 Extension 返回统一信封，空数据也必须有摘要声明：
+Target 访问型 Extension 返回统一信封，空数据也必须有摘要声明：
 
 ```ts
 interface ExtensionResult<T> {
@@ -74,7 +83,7 @@ interface Summary {
 执行 runner 或展开整个对象。case runner 创建在返回后不检查取消，以便生命周期所有者总能接手清理；
 该调用点单独校验信封。摘要不得引入后台调用或改变资源释放时机。
 
-id 是所属 Service 内唯一的实现标识，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
+id 在所属 owner 内唯一，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
 实现；消费方根据自己的领域规则决定选择一个、调用多个或拒绝歧义，不能默认按注册顺序取第一个。
 
 kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验，不建立中央 ExtensionContracts 映射或
@@ -84,14 +93,18 @@ kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验�
 TypeScript 泛型帮助双方表达类型，但不能证明动态加载的实现符合契约。注册时校验公共声明，消费方在
 领域边界校验 kind 的声明和输出；单靠字符串匹配不能省略校验。
 
+`case.catalog` 的 Core 内置提供方与当前目录 YAML loader 同样注册到宿主注册表。Plugin 可在顶层
+`extensions` 注册自己的 catalog；Service 的请求 runner 单独声明。目录消费者调用 `load` 并校验
+spec-case CaseSet，按 Case facets 过滤，不要求创建 runner 或访问环境。
+
 ## Command 如何使用 Extension
 
 Command 保持 Prepare → Execute → Finalize 的生命周期。Extension 的调用嵌入 Command 自己的流程，
 不为它建立额外的执行计划或工作流。
 
-1. **声明与发现**：Service.extensions 注册实现。Catalog.extensions(kind) 按 kind 返回 Service 与实现；
+1. **声明与发现**：Core、Plugin 顶层、本地适配器和 Service 均注册实现。Registry.extensions(kind) 按 kind 返回 owner 与实现；
    发现只读取声明，不调用 run，不初始化业务 Client。
-2. **Prepare**：Command 按本次输入和 Service 范围选择所需扩展，检查自身及 Extension.access 的权限。
+2. **Prepare**：Command 按本次输入和提供方范围选择所需扩展；访问 Target 的实现检查自身及 Extension.access 的权限。
    已选实现可以保存在 Command 自己的 Prepared 中；此阶段不调用扩展取业务数据或执行操作。
 3. **Execute**：Command.run 执行自身逻辑，在需要的位置通过宿主调用 Extension.run。Command 决定输入、
    调用顺序、并发、分支、重试与结果组合，并遵守对应 kind 的调用前提和错误语义。
@@ -136,8 +149,9 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
+| case.catalog | 无 Target 访问 → canonical CaseSet 列表 | Case、Model、Perf |
 | case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
-| perf.scenarios | 无入参 → 观测预设、可观测性引用与 runner 所需 CaseSet ID | Perf |
+| perf.scenarios | 无入参 → 观测预设与可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 

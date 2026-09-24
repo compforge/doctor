@@ -50,11 +50,11 @@ export function selectEvalCaseSet(
   requested: string | undefined,
 ): CaseSet {
   if (requested) {
-    const caseSet = provider.extension.caseSets.find((item) => item.caseset === requested);
+    const caseSet = provider.extension.caseSets?.find((item) => item.caseset === requested);
     if (!caseSet) throw new Error(`Service '${provider.service.name}' 未声明 CaseSet '${requested}'`);
     return caseSet;
   }
-  const caseSets = provider.extension.caseSets;
+  const caseSets = provider.extension.caseSets ?? [];
   if (caseSets.length !== 1) {
     throw new Error(`Service '${provider.service.name}' 有 ${caseSets.length} 个 CaseSet；请使用 --caseset 指定`);
   }

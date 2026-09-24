@@ -2,9 +2,9 @@
 
 ## 理念 / 概念
 
-Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 列出内置、Plugin 和当前目录 `doctor-case.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model` 和 `doctor perf` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
+Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 通过统一 Extension 注册表列出 Core 内置、Plugin 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model` 和 `doctor perf` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
 
-`facets.command` 声明 Case 的用途：`http`、`model`、`perf` 或 `both`。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 按命令过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Plugin 的 `case.runner.create` 可以提供业务 CaseSet；当前目录的 YAML 可补充现场 Case。
+`facets.command` 声明 Case 的用途：`http`、`model`、`perf` 或 `both`。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension；旧版 Plugin 的 runner CaseSet 可经兼容适配器进入目录。
 
 ```yaml
 caseset: doctor_smoke
@@ -43,7 +43,7 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 ## 关键设计
 
-Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。`doctor case` 只发送 HTTP Case；模型目标需要租户、模型目录和 Inference Capability，由 `doctor model` 负责；Perf 的业务鉴权和请求协议由 Plugin runner 负责。
+Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`。
 
 HTTP Collect 区分证据采集完整与请求成功。完整采到 HTTP 500 时，Finding 会记录失败，但报告仍可完整交付；DNS 不可达、传输中断或产物失败会使覆盖不足。Pod 模式从目标 Container 使用 curl，本机模式使用 Got；两者都归一化为同一 Observation，Detector 不访问网络。
 

@@ -269,23 +269,12 @@ export async function runPerf(
   const scenario = config.scenario ?? scenarios[0]?.id;
   const declaredScenario = scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
-  const declaredCaseSet = selected.cases.caseSets.find(
-    (candidate) => candidate.caseset === declaredScenario.caseSetId,
-  );
-  if (!declaredCaseSet) {
-    throw new Error(`Perf scenario '${scenario}' 引用了未知 CaseSet '${declaredScenario.caseSetId}'`);
-  }
   const catalog = doctorCaseCatalog(plugin, opts.caseFile);
-  const hasLocalPerfCases = catalog.some((source) => source.source === "local"
-    && source.caseSet.cases.some((item) => item.facets?.command === "perf" || item.facets?.command === "both"));
   const caseSelection = await selectDoctorCases({
     catalog,
     command: "perf",
     caseSetId: opts.caseset,
     caseIds: opts.cases,
-    service: provider.name,
-    defaultCaseSetId: !hasLocalPerfCases && !opts.caseset ? declaredScenario.caseSetId : undefined,
-    defaultCaseIds: [declaredScenario.cases?.[0]?.caseId ?? declaredCaseSet.cases[0]!.id],
   });
   if (!caseSelection) return { status: CommandStatus.Cancelled, artifacts: [] };
   const caseSet = caseSelection.source.caseSet;
@@ -441,8 +430,8 @@ export async function runPerf(
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
       workload: workloadFromCaseFactory(() => createCaseRunner(selected.cases, managed, {
-        // Plugin runner is bound to a declared CaseSet; the selected Case payload is passed per fire.
-        caseSetId: declaredCaseSet.caseset,
+        // Legacy runners bind to their declared set; catalog-native runners receive the selected set.
+        caseSetId: selected.cases.caseSets?.length ? (declaredScenario.caseSetId ?? caseSet.caseset) : caseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,
       })),

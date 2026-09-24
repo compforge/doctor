@@ -49,11 +49,11 @@ test("Perf requires one implementation and an associated Case capability", () =>
   expect(() => selectPerfProvider(missing, "unknown")).toThrow("No perf.scenarios");
 });
 
-test("Perf validates Case references and releases configuration scope on failure", async () => {
-  for (const invalid of [{ ...scenario, caseSetId: "missing" }, { ...scenario, cases: [{ caseId: "missing" }] }]) {
+test("Perf validates scenario metadata and releases configuration scope on failure", async () => {
+  for (const invalid of [{ ...scenario, id: "" }, { ...scenario, observability: { ...scenario.observability, metricServices: [] } }]) {
     const cleanup = mock(() => { });
     const provider = providerFor({ ...extension, run: withSummary({ title: "Fixture", fields: [] }, async context => { context.onDispose(cleanup); return [invalid]; }) });
-    await expect(loadPerfScenarios(provider, () => createHostPluginContext({ service, capability: extension }))).rejects.toThrow("references unknown");
+    await expect(loadPerfScenarios(provider, () => createHostPluginContext({ service, capability: extension }))).rejects.toThrow("invalid");
     expect(cleanup).toHaveBeenCalledTimes(1);
   }
   expect(createRunner).not.toHaveBeenCalled();

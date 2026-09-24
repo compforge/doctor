@@ -164,8 +164,9 @@ export interface ServicePerfScenario {
   id: string;
   title: string;
   description: string;
-  caseSetId: string;
-  /** Legacy selection preset; Doctor now selects Case IDs from the shared catalog. */
+  /** Compatibility with runners that bind to a particular CaseSet. */
+  caseSetId?: string;
+  /** Compatibility with older selection presets. */
   cases?: readonly ServicePerfCaseSelection[];
   observability: ServicePerfObservability;
 }

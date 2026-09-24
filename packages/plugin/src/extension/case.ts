@@ -5,10 +5,11 @@ import type { ServiceEndpoint, ServiceCaseIdentityRequirement, ServiceCaseProbeO
 
 export const CASE_RUNNER_CREATE_KIND = "case.runner.create";
 
-/** Canonical assets and identity requirements are discoverable before creating request resources. */
+/** Runner only creates request resources. Case assets belong to case.catalog. */
 export interface CaseRunnerCreateExtension extends Extension<ServiceCaseProbeOptions, ServiceCaseRunner> {
   readonly endpoint: ServiceEndpoint;
-  readonly caseSets: readonly CaseSet[];
+  /** Compatibility with Plugin versions that predate case.catalog. */
+  readonly caseSets?: readonly CaseSet[];
   readonly requestIdentity?: ServiceCaseIdentityRequirement;
   readonly kind: typeof CASE_RUNNER_CREATE_KIND;
 }
@@ -17,9 +18,9 @@ export function requireCaseRunnerCreateExtension(extension: RegisteredExtension)
   if (extension.kind !== CASE_RUNNER_CREATE_KIND) throw new Error(`Expected ${CASE_RUNNER_CREATE_KIND}, got ${extension.kind}`);
   requireExtensionEndpoint(extension);
   const declared = extension as CaseRunnerCreateExtension;
-  if (!Array.isArray(declared.caseSets) || !declared.caseSets.length) throw new Error(`${extension.id}: caseSets must not be empty`);
+  if (declared.caseSets !== undefined && (!Array.isArray(declared.caseSets) || !declared.caseSets.length)) throw new Error(`${extension.id}: caseSets must not be empty`);
   const names = new Set<string>();
-  for (const raw of declared.caseSets) {
+  for (const raw of declared.caseSets ?? []) {
     const cases = caseSetFromRaw(raw);
     validateCaseSet(cases);
     if (!cases.cases.length || names.has(cases.caseset)) throw new Error(`${extension.id}: empty or duplicate CaseSet '${cases.caseset}'`);

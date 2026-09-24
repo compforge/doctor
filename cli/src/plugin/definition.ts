@@ -2,6 +2,7 @@ import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
 import {
   createServiceCatalog,
+  ExtensionRegistry,
   isToolchain,
   type PluginDefinition,
   type ServiceDefinition,
@@ -169,6 +170,11 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
     throw new Error(`Plugin entry identity does not match ${manifest.id}@${manifest.version}`);
   }
   const sourceCatalog = record(definition.services, "Plugin services");
+  if (definition.extensions !== undefined) {
+    if (!Array.isArray(definition.extensions)) throw new Error("Plugin extensions must be an array");
+    const registry = new ExtensionRegistry();
+    registry.register(`plugin:${manifest.id}`, definition.extensions);
+  }
   if (definition.validateConfig !== undefined && typeof definition.validateConfig !== "function") {
     throw new Error("Plugin validateConfig must be a function");
   }

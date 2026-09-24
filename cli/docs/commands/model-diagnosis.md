@@ -14,7 +14,7 @@
 - **专业性能压测**：后续由 [AIPerf](https://github.com/ai-dynamo/aiperf) 承担负载调度、数据集生成和专业指标统计；Doctor 负责解析 Plugin 提供的模型目标与访问上下文、显式授权执行，并把结果收进诊断报告。
 - **Facts / Observations / Findings**：模型身份与脱敏 backend 摘要是 Inspect Facts；validation、inference 响应和性能样本是 Probe Observations；失败、usage 缺失和间歇性异常由纯 Detector 从 Evidence 推导。
 
-交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；随后从 Case 目录选择一个或多个 `facets.command=model` 的 Case。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`；可通过 `--caseset` / `--cases` 指定 Case。当前目录的 `doctor-case.yaml` 可提供外部 CaseSet，目标模型身份和访问配置仍由命令注入。
+交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；随后从 Case 目录选择一个或多个 `facets.command=model` 的 Case。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`；可通过 `--caseset` / `--cases` 指定 Case。当前目录的 `doctor-cases.yaml` 可提供外部 CaseSet，目标模型身份和访问配置仍由命令注入。
 
 ## 流程
 
