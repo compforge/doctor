@@ -38,7 +38,7 @@ import {
   resolveInspectServiceSelection,
 } from "./options";
 import { makeInspectProbes } from "./probe";
-import { buildInspectRuntimeSummary, buildInspectSummary } from "./render";
+import { buildInspectSummary } from "./render";
 
 export * from "./detector";
 export * from "./model";
@@ -188,7 +188,7 @@ export async function runCollectInspect(
     log,
   };
 
-  const writeManifest = () => bundle.writeManifest({
+  const writeCollection = () => bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
       namespace: config.namespace,
@@ -213,8 +213,7 @@ export async function runCollectInspect(
   const fail = (reason: string): number => {
     bundle.settle(reason);
     bundle.writeSummary(`# Service Inspect 失败\n\n${reason}\n`);
-    writeFileSync(join(staging, "runtime-summary.txt"), `Service Inspect 摘要\nNamespace：${config.namespace}\n状态：failed\n原因：${reason}\n`, "utf8");
-    writeManifest();
+    writeCollection();
     recordFailureBundle({
       bundleDir: staging,
       collectCode: 1,
@@ -253,9 +252,8 @@ export async function runCollectInspect(
   if (diagnosisFailure || !diagnosis) return commandOutcome(fail(diagnosisFailure ?? "配置诊断未形成结果"));
 
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
-  bundle.writeSummary(buildInspectSummary(diagnosis));
-  writeFileSync(join(staging, "runtime-summary.txt"), buildInspectRuntimeSummary(diagnosis, config.namespace), "utf8");
-  writeManifest();
+  bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
+  writeCollection();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (outcome.exitCode !== 0) {
     const reason = diagnosis.coverage.flatMap((item) => item.missingEvidence).join("；") || "未取得完整配置证据";

@@ -839,7 +839,8 @@ requests:
   ]).stdout.toString());
   expect(facts.endpoints).toMatchObject({ status: "collected" });
   expect(facts.endpoints.items).toHaveLength(1);
-  expect(manifest.steps).toContainEqual(expect.objectContaining({
+  const collection = JSON.parse(Bun.spawnSync(["tar", "-xOzf", archive, manifestEntry!.replace(/manifest\.json$/, "collection.json")]).stdout.toString());
+  expect(collection.steps).toContainEqual(expect.objectContaining({
     id: "http-endpoint-connectivity",
     status: "ok",
   }));

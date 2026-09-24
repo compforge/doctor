@@ -1,9 +1,10 @@
+import { buildDataEvidenceSummary } from "../src/collect/data/summary";
 import { expect, test } from "bun:test";
 import {
   buildDataCoverage,
   projectDataServiceEvidence,
 } from "../src/collect/data/detector";
-import { buildDataHtml, buildDataRuntimeSummary } from "../src/collect/data/render";
+import { buildDataHtml } from "../src/collect/data/render";
 import { CommandStatus } from "../src/command";
 import type { DataDiagnosis, DataEvidence } from "../src/collect/data";
 import { collectedFact, failedFact } from "../src/collect/protocol";
@@ -35,7 +36,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
 });
 
 test("Data terminal summary keeps batch status and evidence gaps compact", () => {
-  const summary = buildDataRuntimeSummary([{
+  const summary = buildDataEvidenceSummary([{
     bizId: "biz-1",
     status: CommandStatus.Partial,
     artifacts: [],

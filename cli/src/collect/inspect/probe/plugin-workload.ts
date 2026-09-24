@@ -68,7 +68,7 @@ export function makePluginWorkloadProbe(
             });
             const value = validateObservationValue(
               declaration.produces,
-              observed,
+              observed.data,
               `${service.name}/${declaration.workload}/${declaration.id}`,
             );
             const observation: PluginWorkloadObservation = {
@@ -86,6 +86,7 @@ export function makePluginWorkloadProbe(
               container: definition.container,
               probe: declaration.id,
               value,
+              summary: observed.summary,
             };
             observations.push(observation);
             ctx.bundle.addStep({

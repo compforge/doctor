@@ -150,7 +150,7 @@ test("command preserves bounded results, status and sanitized target in Evidence
     expect(outcome.status).toBe(CommandStatus.Partial);
     expect(calls).toBe(2);
     const directory = outcome.artifacts[0]!.path; directories.push(directory);
-    const manifest = readFileSync(join(directory, "manifest.json"), "utf8");
+    const manifest = readFileSync(join(directory, "collection.json"), "utf8");
     expect(manifest).not.toContain("never-output");
     expect(manifest).toContain('"database": "app"');
     expect(manifest).toContain('"status": "partial"');
@@ -190,7 +190,7 @@ test("database discovery preserves source descriptions in report, manifest and s
     expect(summary).toContain("| archive | — | Old records | unavailable |");
     const diagnosis = JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8"));
     expect(diagnosis.results[1]).toMatchObject({ target: "runtime", dataSources: [{ id: "runtime", description: "runtime records" }], rows: [{ Database: "agent_runtime" }] });
-    const manifest = readFileSync(join(directory, "manifest.json"), "utf8");
+    const manifest = readFileSync(join(directory, "collection.json"), "utf8");
     expect(manifest).toContain("runtime records");
     expect(manifest).toContain("Old records");
     expect(manifest).not.toContain("never-output");

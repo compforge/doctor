@@ -10,7 +10,7 @@ import {
   buildTenantCoverage,
   buildTenantEvidence,
   buildTenantHtmlSections,
-  buildTenantRuntimeSummary,
+  buildTenantSummary,
   makeTenantInspects,
   safeTenantId,
   tenantReportName,
@@ -33,7 +33,7 @@ test("tenant capabilities share one generic Inspect entry", () => {
 });
 
 test("Tenant terminal summary keeps capability counts and gaps compact", () => {
-  const summary = buildTenantRuntimeSummary({
+  const summary = buildTenantSummary({
     evidence: {
       observations: [],
       facts: {

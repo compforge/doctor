@@ -263,7 +263,7 @@ export async function runCollectMemory(
       mode: 0o600,
     });
   }
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
       namespace: collect.kubernetes.namespace,

@@ -1,9 +1,10 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type ServiceDefinition, type VdbTargetInspectExtension } from "@compforge/doctor-plugin";
 import { vdbTargetProviders, vdbTargetProvider, inspectVdbTarget } from "../src/datasource/vdb-extension";
 import { createHostPluginContext } from "../src/plugin/context";
 const target = { backend: "opensearch", store: "trace", configurationKind: "plugin" };
-const extension: VdbTargetInspectExtension = { id: "trace-target", kind: "datasource.vdb.inspect", dataSource: "trace", access: {}, run: async () => target };
+const extension: VdbTargetInspectExtension = { id: "trace-target", kind: "datasource.vdb.inspect", dataSource: "trace", access: {}, run: withSummary({"title":"向量数据库","fields":[{"label":"类型","path":["kind"]}]}, async () => target) };
 const service: ServiceDefinition = {
   name: "search",
   aliases: ["trace-search"],
@@ -35,11 +36,11 @@ test("target inspection releases scope after success, invalid output and provide
   for (const outcome of ["success", "invalid", "failure"] as const) {
     const cleanup = mock(() => { });
     const provider: VdbTargetInspectExtension = {
-      ...extension, run: async context => {
+      ...extension, run: withSummary({ title: "Fixture", fields: [] }, async context => {
         context.onDispose(cleanup);
         if (outcome === "failure") throw new Error("provider failed");
         return outcome === "invalid" ? { ...target, backend: "" } : target;
-      }
+      })
     };
     const pending = inspectVdbTarget(provider, async () => createHostPluginContext({ service, capability: provider }));
     if (outcome === "success") expect(await pending).toEqual(target);

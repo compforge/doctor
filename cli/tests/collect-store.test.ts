@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { describe, expect, test } from "bun:test";
@@ -105,13 +106,13 @@ test("VDB target provider 不要求同名 Service/Pod 已部署", async () => {
       }],
       extensions: [{
         id: "trace-target", kind: "datasource.vdb.inspect", dataSource: "trace", access: {},
-        run: async () => ({
+        run: withSummary({"title":"向量数据库","fields":[{"label":"类型","path":["kind"]}]}, async () => ({
           backend: "opensearch",
           store: "opensearch",
           endpoint: "http://opensearch.storage:9200",
           configurationKind: "plugin",
-        }),
-      }]
+        })),
+      } satisfies import("@compforge/doctor-plugin").VdbTargetInspectExtension]
     }]),
   } satisfies PluginDefinition;
 
@@ -150,7 +151,7 @@ describe("Store output", () => {
     const bundle = new EvidenceBundle(staging, []);
     const summary = "# DB Store 诊断摘要\n\n- Service: `<script>alert(1)</script>`\n- Reason: <script>alert(2)</script>\n";
     bundle.writeSummary(summary);
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: "test",
       target: { store_kind: "db" },
       inspectionFacts: {},
@@ -378,7 +379,7 @@ describe("Store output", () => {
     const root = mkdtempSync(join(tmpdir(), "doctor-s3-report-test-"));
     const bundle = new EvidenceBundle(root, []);
     bundle.writeSummary("# S3 Store 诊断摘要\n");
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: "test",
       target: { store_kind: "s3" },
       inspectionFacts: { "s3.configuration": { status: "collected" } },

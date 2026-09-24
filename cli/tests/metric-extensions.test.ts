@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type MetricConfigurationExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { ClientManager } from "@compforge/harness-common";
@@ -15,7 +16,7 @@ const base: ServiceDefinition = {
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: []
 };
-const extension: MetricConfigurationExtension = { id: "metrics", kind: "metric.configuration", access: {}, run: async () => declaration };
+const extension: MetricConfigurationExtension = { id: "metrics", kind: "metric.configuration", access: {}, run: withSummary({"title":"指标配置","fields":[]}, async () => declaration) };
 
 test("Host context reuses root clients without acquiring Kubernetes and respects ownership", async () => {
   const clients = new ClientManager();
@@ -63,7 +64,7 @@ test("native Metric discovery stays offline and remote preparation needs no Kube
     context.onDispose(cleanup);
     return declaration;
   });
-  const services = createServiceCatalog([{ ...base, extensions: [{ ...extension, run }] }]);
+  const services = createServiceCatalog([{ ...base, extensions: [{ ...extension, run: withSummary({ title: "Fixture", fields: [] }, run) }] }]);
   expect(metricConfigurationProviders(services)).toHaveLength(1);
   expect(run).not.toHaveBeenCalled();
   const command = new CommandContext({});
@@ -88,10 +89,10 @@ test("Metric rejects ambiguous providers and releases context on malformed outpu
   const cleanup = mock(() => { });
   const invalid = createServiceCatalog([{
     ...base, extensions: [{
-      ...extension, run: async context => {
+      ...extension, run: withSummary({ title: "Fixture", fields: [] }, async context => {
         context.onDispose(cleanup);
         return { ...declaration, endpoint: { ...declaration.endpoint, port: 0 } };
-      }
+      })
     }]
   }]);
   const command = new CommandContext({});
@@ -106,7 +107,7 @@ test("Metric configuration access is checked before invoking the provider", asyn
   const run = mock(async () => declaration);
   const services = createServiceCatalog([{
     ...base, extensions: [{
-      ...extension, run, access: {
+      ...extension, run: withSummary({ title: "Fixture", fields: [] }, run), access: {
         kubernetes: [
           { rule: { verb: "get", resource: "secrets" }, requirement: "required", purpose: "read metric configuration" },
         ]

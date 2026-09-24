@@ -85,7 +85,7 @@ test("Perf bundle archives the complete linked report directory", async () => {
     const executions = readBundleExecutions(archive, "perf");
     expect(executions).toHaveLength(4);
     for (const command of ["perf", "metric", "trace", "log"]) {
-      const execution = executions.find(entry => entry.manifest.command === command)!;
+      const execution = executions.find(entry => entry.manifest.source.command === command)!;
       expect(listing).toContain(`perf/${join(dirname(execution.path), execution.manifest.files.report!.path)}`);
     }
     expect(existsSync(artifact.temporaryRoot)).toBe(false);

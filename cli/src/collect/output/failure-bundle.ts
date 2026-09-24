@@ -30,7 +30,7 @@ export function resolveFailureBundlePath(output: string | undefined, bundleName:
 function failureLog(bundleDir: string, collectCode: number, reason?: string): string {
   const lines = [`collect_exit_code=${collectCode}`, ...(reason ? [`reason=${reason}`] : [])];
   try {
-    const manifest = JSON.parse(readFileSync(resolve(bundleDir, "manifest.json"), "utf-8")) as EvidenceManifest;
+    const manifest = JSON.parse(readFileSync(resolve(bundleDir, "collection.json"), "utf-8")) as EvidenceManifest;
     const incomplete = (manifest.steps ?? []).filter((step) =>
       step.status === "partial" || step.status === "failed" || step.status === "unavailable"
     );

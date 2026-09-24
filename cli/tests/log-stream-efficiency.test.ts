@@ -95,7 +95,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
     expect(rendered.summary).toContain("没有日志满足错误/内容筛选");
     writeFileSync(join(root, "timeline.jsonl"), "");
     writeFileSync(join(root, "log-stats.json"), JSON.stringify(rendered.stats));
-    writeFileSync(join(root, "manifest.json"), JSON.stringify({ target: { services: ["api"] }, params: { until_time: config.untilTime }, steps: [] }));
+    writeFileSync(join(root, "collection.json"), JSON.stringify({ target: { services: ["api"] }, params: { until_time: config.untilTime }, steps: [] }));
     const html = join(root, "report.html");
     writeLogHtmlReport(root, html, "test");
     expect(readFileSync(html, "utf8")).toContain("trace 命中 2 Pod");

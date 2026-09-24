@@ -151,7 +151,7 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
     const index = readBundleIndex(archive, "eval");
-    expect(index.command).toBe("eval");
+    expect(index.source.command).toBe("eval");
     for (const key of ["report", "caseset.json", "observations.jsonl"]) expect(listing).toContain(`eval/${index.files[key]!.path}`);
     expect(readReport(readBundleText(archive, `eval/${index.files.report!.path}`)).pages).toContain("不评价回答质量");
   } finally {

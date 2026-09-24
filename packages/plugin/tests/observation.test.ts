@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 
 import {
@@ -48,10 +49,10 @@ test("ObservationDefinition 是 Probe payload 的单一类型与 schema 来源",
     workload: "main",
     access: {},
     produces: HealthObservation,
-    run: async () => ({ ready: true, details: { latencyMs: 12 } }),
+    run: withSummary({ title: "Probe", fields: [] }, async () => ({ ready: true, details: { latencyMs: 12 } })),
   });
 
   expect(probe.produces).toBe(HealthObservation);
-  expect(await probe.run({} as never, { facts: [], instance: {} as never }))
+  expect((await probe.run({} as never, { facts: [], instance: {} as never })).data)
     .toEqual({ ready: true, details: { latencyMs: 12 } });
 });

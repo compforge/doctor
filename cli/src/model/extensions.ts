@@ -51,7 +51,7 @@ export type ModelExtensionContext = (
 async function call<Input, Output>(service: ServiceDefinition, extension: Extension<Input, Output> & { endpoint: ServiceEndpoint },
   input: Input, contextFor: ModelExtensionContext): Promise<Output> {
   const context = await contextFor(service, extension);
-  try { return await invokeExtension(extension, context, input); }
+  try { return (await invokeExtension(extension, context, input)).data; }
   finally { await context.dispose(); }
 }
 
@@ -91,7 +91,7 @@ export function extensionModelInference(provider: ReturnType<typeof modelInferen
       const signal = AbortSignal.any([requestSignal, context.signal]);
       try {
         signal.throwIfAborted();
-        const response = modelStreamOutput(await invokeExtension(stream, context, { target, timeoutMs, path, body, signal }));
+        const response = modelStreamOutput((await invokeExtension(stream, context, { target, timeoutMs, path, body, signal })).data);
         if (!response.body) { await context.dispose(); return response; }
         return { ...response, body: scopedModelStream(response.body, context, signal, service.name) };
       } catch (error) {

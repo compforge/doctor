@@ -75,7 +75,7 @@
     },
     "packages/plugin": {
       "name": "@compforge/doctor-plugin",
-      "version": "0.0.30",
+      "version": "0.1.0",
       "bin": {
         "doctor-plugin-version": "./scripts/version.ts",
       },
@@ -93,7 +93,7 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.9",
+      "version": "0.0.10",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
       },

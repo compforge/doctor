@@ -121,7 +121,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     }
     const summary = `# 数据库取证\n\nService: ${service ?? "未选择"}\n操作: ${request.action}\n状态: ${status}\n${reason ?? ""}\n\n${discoverySummary}\n\n详细结果见 raw/ JSON 文件。\n`;
     bundle.writeSummary(summary);
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
       params: { action: request.action, database: request.database, table: request.table, limits: request.limits },
       startedAt, finishedAt: new Date().toISOString()

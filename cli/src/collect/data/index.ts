@@ -143,7 +143,7 @@ function writeDataManifest(
   bundle: EvidenceBundle, config: DataConfig, providers: readonly DataProvider[], services: readonly string[],
   facts: Readonly<DataFacts>, startedAt: string,
 ): void {
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { namespace: config.namespace, input_ids: config.ids, services },
     inspectionFacts: facts,

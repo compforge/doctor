@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, Type, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { workloadProbeProviders } from "../src/plugin/workload-extensions";
@@ -8,7 +9,7 @@ const service: ServiceDefinition = {
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: [{ name: "main", platform: "kubernetes", location: { kind: "service", name: "app" } }]
 };
-const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => ({ ready: true }) });
+const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: withSummary({ title: "Probe", fields: [] }, async () => ({ ready: true })) });
 
 test("workload discovery preserves separate probe permissions without calling providers", () => {
   const run = mock(extension.run);

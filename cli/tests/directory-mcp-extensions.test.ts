@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,12 +19,12 @@ import type { ManagedPluginContext } from "../src/plugin/context";
 
 const endpoint = { host: "directory", port: 80 };
 const tenant = { id: "t", name: "tenant", displayName: "Tenant" };
-const list: TenantListExtension = { id: "list", kind: "tenant.list", access: {}, endpoint, run: async () => [tenant] };
-const resolve: TenantResolveExtension = { id: "resolve", kind: "tenant.resolve", access: {}, endpoint, run: async () => tenant };
+const list: TenantListExtension = { id: "list", kind: "tenant.list", access: {}, endpoint, run: withSummary({"title":"租户列表","fields":[{"label":"租户数","path":["length"]}]}, async () => [tenant]) };
+const resolve: TenantResolveExtension = { id: "resolve", kind: "tenant.resolve", access: {}, endpoint, run: withSummary({"title":"租户详情","fields":[{"label":"ID","path":["id"]},{"label":"名称","path":["name"]},{"label":"显示名称","path":["displayName"]}]}, async () => tenant) };
 const search: UserSearchExtension = {
   id: "search", kind: "user.search", endpoint,
   access: { kubernetes: [{ requirement: "required", purpose: "user lookup", rule: { verb: "get", resource: "configmaps" } }] },
-  run: async () => ({ users: [], total: 0 }),
+  run: withSummary({"title":"用户查询","fields":[{"label":"总数","path":["total"]},{"label":"本页用户数","path":["users","length"]}]}, async () => ({ users: [], total: 0 })),
 };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
   name: "directory",
@@ -68,7 +69,7 @@ test("directory operations isolate access and release contexts on success, failu
   const broken = extensionTenantDirectory({ ...providers, list: { ...list, run: async () => { throw new Error("lookup failed"); } } }, async () => context(dispose));
   await expect(broken.listActive()).rejects.toThrow("lookup failed");
   expect(dispose).toHaveBeenCalledTimes(3);
-  const invalid = extensionTenantDirectory({ ...providers, list: { ...list, run: async () => [{}] as never } }, async () => context(dispose));
+  const invalid = extensionTenantDirectory({ ...providers, list: { ...list, run: withSummary({ title: "Invalid identity", fields: [] }, async () => [{}] as never) } }, async () => context(dispose));
   await expect(invalid.listActive()).rejects.toThrow("invalid identity");
   expect(dispose).toHaveBeenCalledTimes(4);
 });
@@ -83,7 +84,7 @@ test("user-only provider can serve configured-tenant identity selection", async 
 test("MCP provider selection respects aliases and rejects duplicate implementations", () => {
   const extension: McpConfigurationExtension = {
     id: "config", kind: "mcp.configuration", access: {}, endpoint,
-    run: async () => ({ sourceKind: "fixture", servers: [] })
+    run: withSummary({"title":"MCP 配置","fields":[{"label":"服务数","path":["servers","length"]}]}, async () => ({ sourceKind: "fixture", servers: [] }))
   };
   const catalog = createServiceCatalog([service([extension])]);
   expect(mcpConfigurationProvider(catalog, "iam").extension).toBe(extension);
@@ -101,7 +102,7 @@ test("MCP configuration uses the native operation while gateway access stays wit
       connection: { transport: "sse" as const, path: "/sse" }, tools: [{ name: "tool" }],
     }]
   }));
-  const extension: McpConfigurationExtension = { id: "config", kind: "mcp.configuration", access: {}, endpoint, run };
+  const extension: McpConfigurationExtension = { id: "config", kind: "mcp.configuration", access: {}, endpoint, run: withSummary({ title: "Fixture", fields: [] }, run) };
   const capture = { ok: true, command: [], stdout: "", stderr: "", durationMs: 0, exitCode: 0, timedOut: false };
   const forwardGateway = mock(async (): Promise<{ host: string; port: number }> => { throw new Error("gateway unavailable"); });
   const input: McpConfigurationInput = {

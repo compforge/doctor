@@ -66,7 +66,7 @@ for (const ids of [["a"], ["a", "b", "missing"], [directTraceId]]) test(`Trace u
       expect(item.artifacts).toHaveLength(item.bizId === "missing" ? 0 : 1);
       for (const artifact of item.artifacts) {
         expect(existsSync(join(artifact.path, "report.html"))).toBeFalse();
-        expect(JSON.parse(readFileSync(join(artifact.path, "manifest.json"), "utf8")).target.input_id).toBe(item.bizId);
+        expect(JSON.parse(readFileSync(join(artifact.path, "collection.json"), "utf8")).target.input_id).toBe(item.bizId);
         expect(JSON.parse(readFileSync(join(artifact.path, "tree.json"), "utf8")).trace_id).toBe(resolvedTraceId(item.bizId));
         if (item.bizId === directTraceId) {
           expect(readFileSync(join(artifact.path, "summary.md"), "utf8")).toContain("输入 trace ID: `" + directTraceId + "`");

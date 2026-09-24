@@ -453,7 +453,7 @@ function writeNetworkResult(
     "",
   ].join("\n");
   bundle.writeSummary(summary);
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     target: {
       namespace: opts.namespace,

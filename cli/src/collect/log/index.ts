@@ -336,7 +336,7 @@ export async function collectLog(
         return [makeLogProbe(config.services, executor)];
       }, log,
       buildEvidence: buildLogEvidence, detectors: logDetectors, buildCoverage: buildLogCoverage,
-      checkpointFacts: facts => bundle.writeManifest({
+      checkpointFacts: facts => bundle.writeCollection({
         doctorVersion: DOCTOR_CLI_VERSION, target: { namespace: first.namespace, input_ids: requests.flatMap(item => item.bizId === undefined ? [] : [item.bizId]), services: first.services },
         inspectionFacts: { ...facts }, params: {}, startedAt, finishedAt: new Date().toISOString(),
       }),
@@ -367,7 +367,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
   bundle.writeSummary(rendered.summary);
   writeFileSync(join(bundle.dir, "log-stats.json"), `${JSON.stringify(rendered.stats, null, 2)}\n`, "utf-8");
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
     target: { mode: config.bizId === undefined ? "service" : "trace", namespace: config.namespace, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },

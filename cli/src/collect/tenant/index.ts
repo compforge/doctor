@@ -26,7 +26,6 @@ import type {
   TenantFacts,
 } from "./model";
 import {
-  buildTenantRuntimeSummary,
   buildTenantSummary,
 } from "./render";
 
@@ -121,8 +120,7 @@ export async function runCollectTenant(
     const diagnosis: TenantDiagnosis = execution.diagnosis;
 
     bundle.writeSummary(buildTenantSummary(diagnosis));
-    writeFileSync(join(staging, "runtime-summary.txt"), buildTenantRuntimeSummary(diagnosis), "utf8");
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: { tenant_id: tenant.id, tenant_name: tenant.name },
       inspectionFacts: { ...facts },

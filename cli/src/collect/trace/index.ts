@@ -325,7 +325,7 @@ export async function runCollectTrace(
     startedAt,
   };
   // The target list is evidence even if the Store cannot be reached or collection is cancelled.
-  bundle.writeManifest({ ...rootMeta, finishedAt: new Date().toISOString() });
+  bundle.writeCollection({ ...rootMeta, finishedAt: new Date().toISOString() });
   bundle.writeSummary([
     "# trace 目标选择", "",
     `- 来源: ${window ? "时间范围" : "业务 ID 或 trace ID"}`,
@@ -425,7 +425,7 @@ export async function runCollectTrace(
   const items: TraceOutput["items"][number][] = groupIds.map(bizId => {
     const indexes = tasks.flatMap((task, index) => task.bizId === bizId ? [index] : []);
     const artifactIndexes = indexes.filter(index => results[index]!.status === "fulfilled"
-      && existsSync(join(tasks[index]!.outputDir, "manifest.json")));
+      && existsSync(join(tasks[index]!.outputDir, "collection.json")));
     const itemStatuses = indexes.map(index => {
       const result = results[index]!;
       if (commandContext.signal.aborted) return CommandStatus.Cancelled;
@@ -445,7 +445,7 @@ export async function runCollectTrace(
   });
   if (!items.length) items.push({ bizId: "time_range", traceIds: [], status: CommandStatus.Failed,
     artifacts: [], reason: "时间范围内没有可采集的 trace_id" });
-  bundle.writeManifest({ ...rootMeta, finishedAt: new Date().toISOString() });
+  bundle.writeCollection({ ...rootMeta, finishedAt: new Date().toISOString() });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({ items: items.map(({ artifacts, ...item }) => ({
     ...item, artifact_ids: artifacts.map(artifact => artifact.id),
   })) }, null, 2));
@@ -524,7 +524,7 @@ export async function collectTrace(
 
   const finish = async (code: number, target: Record<string, unknown> = {}) => {
     if (ownsPreparation) await preparation?.close();
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: { ...confirmedTarget, input_id: opts.bizId, trace_id: traceId, span_id: opts.spanId,
         scope: opts.spanId ? "span" : "trace", index: opts.index,

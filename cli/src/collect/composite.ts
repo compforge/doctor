@@ -1,5 +1,5 @@
 import { prepareCommandRequirements } from "../command/prepare";
-import type { StoredResultRef } from "../command/serialization/model";
+import type { ResultRef } from "../command/manifest";
 import type { CommandSpec } from "../command/spec";
 import { isInteractive } from "../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
@@ -122,7 +122,7 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
 
 function registerCollectManifest(input: CollectManifestInput): void {
   const directory = mkdtempSync(join(tmpdir(), "doctor-collect-manifest-"));
-  const path = join(directory, "manifest.json");
+  const path = join(directory, "collection.json");
   writeFileSync(path, `${JSON.stringify(createCollectManifest(input), null, 2)}\n`, {
     encoding: "utf8",
     mode: 0o600,
@@ -243,16 +243,16 @@ export function createCollectCommand(delegate?: CollectDelegate) {
         inspect: inspectCommand, tenant: tenantCommand, data: dataCommand,
         trace: traceCommand, log: logCommand, metric: metricCommand,
       };
-      const children: StoredResultRef[] = [];
+      const children: ResultRef[] = [];
       for (const step of result.output?.steps ?? []) children.push(await context.serialize(commands[step.kind], step.result));
       const source = result.artifacts.find(artifact => artifact.command === "collect");
       const staged = source ? JSON.parse(readFileSync(source.path, "utf8")) : {};
-      const { steps: _steps, schema_version: _schema, command: _command, status: _status, ...metadata } = staged;
       const steps = (result.output?.steps ?? []).map((step, index) => ({
         kind: step.kind, status: step.result.status, result: children[index],
       }));
       return {
-        metadata, children, files: {
+        children, files: {
+          collection: context.writeJson("collection.json", staged),
           diagnosis: context.writeJson("diagnosis.json", { steps }),
           summary: context.writeText("summary.md", `# Collect\n\n${steps.map(step => `- ${step.kind}: ${step.status}`).join("\n")}\n`),
         }

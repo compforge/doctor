@@ -25,11 +25,11 @@ for (const format of ["json", "md"] as const) {
       const manifestPath = format === "json" ? JSON.parse(rendered).manifest : rendered.match(/\[完整执行结果\]\((.+)\)/)![1];
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       expect(manifest.children).toHaveLength(2);
-      expect(new Set(manifest.children.map((child: { executionId: string }) => child.executionId)).size).toBe(2);
+      expect(new Set(manifest.children.map((child: { id: string }) => child.id)).size).toBe(2);
       const diagnoses = manifest.children.map((child: { manifest: string }) => {
         const childPath = join(dirname(manifestPath), child.manifest);
         const childManifest = JSON.parse(readFileSync(childPath, "utf8"));
-        expect(childManifest.command).toBe("log");
+        expect(childManifest.source.command).toBe("log");
         return JSON.parse(readFileSync(join(dirname(childPath), childManifest.files["diagnosis.json"].path), "utf8"));
       });
       expect(diagnoses).toEqual([{ bizId: "request-a" }, { bizId: "request-b" }]);
@@ -63,21 +63,20 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
   try {
     const source = join(root, "source"); mkdirSync(source);
     const summary = "Service Inspect 摘要\n状态：degraded\n";
-    writeFileSync(join(source, "runtime-summary.txt"), summary);
-    writeFileSync(join(source, "summary.md"), "# Full evidence");
+    writeFileSync(join(source, "summary.md"), summary);
     const artifact = context.artifacts.add({ command: "inspect", path: source });
     expect(await finalizeResult(context, inspectCommand, {
       status: CommandStatus.Ok, output: undefined, artifacts: [artifact],
     }, { format: "summary" })).toBe(0);
     expect(render).not.toHaveBeenCalled();
-    expect(output).toHaveBeenCalledWith(summary);
+    expect(output.mock.calls.map(([line]) => String(line)).join("")).toContain(summary);
     directory = evidenceOutput.mock.calls.map(([line]) => String(line))
       .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
     expect(directory).toBeDefined();
     const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
     expect(manifest.delivery.status).toBe("ok");
-    expect(readFileSync(join(directory!, manifest.files["runtime-summary.txt"].path), "utf8")).toBe(summary);
-    expect(readFileSync(join(directory!, manifest.files.summary.path), "utf8")).toBe("# Full evidence\n");
+    expect(output).toHaveBeenCalledWith(readFileSync(join(directory!, manifest.files.summary.path), "utf8"));
+    expect(manifest.files).not.toHaveProperty("runtime-summary.txt");
     expect(existsSync(join(directory!, "report.html"))).toBeFalse();
   } finally {
     render.mockRestore();

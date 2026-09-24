@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { catalogExtensions } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import {
@@ -22,7 +23,7 @@ test("legacy model discovery adapts operations without creating clients", () => 
   for (const kind of ["model.query", "model.backend.inspect", "model.backend.validate"]) expect(catalog.extensions(kind)).toHaveLength(1);
   expect(catalog.extensions("user.search")).toHaveLength(0);
   expect(create).not.toHaveBeenCalled();
-  const extension: ModelQueryExtension = { id: "query", kind: "model.query", access: {}, endpoint, run: async () => [] };
+  const extension: ModelQueryExtension = { id: "query", kind: "model.query", access: {}, endpoint, run: withSummary({"title":"模型列表","fields":[{"label":"模型数","path":["length"]}]}, async () => []) };
   expect(() => createServiceCatalog([{ ...service, extensions: [extension, extension] }])).toThrow("duplicate");
 });
 

@@ -132,7 +132,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
           expect(Date.parse(request.untilTime!)).toBeLessThanOrEqual(Date.now());
         }
       }
-      const manifest = JSON.parse(readFileSync(join(outputDir, "manifest.json"), "utf8"));
+      const manifest = JSON.parse(readFileSync(join(outputDir, "collection.json"), "utf8"));
       expect(manifest.target.mode).toBe("service");
       expect(manifest.target.biz_id).toBeUndefined();
       expect(manifest.target.trace_ids).toEqual([]);

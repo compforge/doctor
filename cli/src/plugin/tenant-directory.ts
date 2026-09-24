@@ -42,7 +42,7 @@ export function extensionTenantDirectory(
   async function run<Input, Output>(extension: Extension<Input, Output> & { endpoint: ServiceEndpoint }, input: Input): Promise<Output> {
     const context = await contextFor(provider.service, extension);
     try {
-      return await invokeExtension(extension, context, input);
+      return (await invokeExtension(extension, context, input)).data;
     } finally {
       await context.dispose();
     }

@@ -1,3 +1,5 @@
+import type { DataRun } from "../../packages/plugin/tests/extension-fixture";
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import {
   createServiceCatalog, type ServiceDefinition, type Model, type ModelQueryExtension,
@@ -14,17 +16,17 @@ const endpoint = { host: "models", port: 8080 };
 const target = { baseUrl: "http://models/v1", model: "test-model" };
 const model: Model = { id: "m", name: "model", type: "llm", provider: "test" };
 const response: ServiceHttpResponse = { ok: true, statusCode: 200, statusText: "OK", headers: {}, text: "{}", durationMs: 1 };
-const query: ModelQueryExtension = { id: "query", kind: "model.query", endpoint, access: {}, run: async () => [model] };
+const query: ModelQueryExtension = { id: "query", kind: "model.query", endpoint, access: {}, run: withSummary({"title":"模型列表","fields":[{"label":"模型数","path":["length"]}]}, async () => [model]) };
 const inspect: ModelBackendInspectExtension = {
   id: "inspect", kind: "model.backend.inspect", endpoint, access: {},
-  run: async () => ({ modelId: "m", modelName: "model", model: "m", type: "llm", provider: "test" })
+  run: withSummary({"title":"模型后端","fields":[{"label":"类型","path":["type"]},{"label":"名称","path":["name"]}]}, async () => ({ modelId: "m", modelName: "model", model: "m", type: "llm", provider: "test" }))
 };
 const validate: ModelBackendValidateExtension = {
   id: "validate", kind: "model.backend.validate", endpoint,
   access: { kubernetes: [{ requirement: "required", rule: { verb: "get", resource: "secrets" }, purpose: "backend validation" }] },
-  run: async () => response
+  run: withSummary({"title":"模型后端校验","fields":[{"label":"HTTP 状态","path":["status"]}]}, async () => response)
 };
-const invoke: ModelInvokeExtension = { id: "invoke", kind: "model.invoke", endpoint, access: {}, run: async () => response };
+const invoke: ModelInvokeExtension = { id: "invoke", kind: "model.invoke", endpoint, access: {}, run: withSummary({"title":"模型调用","fields":[{"label":"HTTP 状态","path":["status"]}]}, async () => response) };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
   name: "models",
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
@@ -85,8 +87,8 @@ test("model discovery rejects ambiguity and supports catalogs without backends",
   expect(open).not.toHaveBeenCalled();
 });
 
-function streaming(run: ModelStreamExtension["run"], contextFor: ModelExtensionContext) {
-  const extension: ModelStreamExtension = { id: "stream", kind: "model.stream", access: {}, endpoint, run };
+function streaming(run: DataRun<ModelStreamExtension>, contextFor: ModelExtensionContext) {
+  const extension: ModelStreamExtension = { id: "stream", kind: "model.stream", access: {}, endpoint, run: withSummary({ title: "Fixture", fields: [] }, run) };
   return extensionModelInference(modelInferenceExtensions(createServiceCatalog([service([extension])]), "models"), target, 1000, contextFor);
 }
 

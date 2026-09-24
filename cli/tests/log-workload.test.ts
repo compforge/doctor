@@ -57,8 +57,8 @@ async function capture(services: ServiceDefinition[], responses: Record<string, 
       namespace: "test", services: services.map(service => service.name), traceIds: [], errorsOnly: false,
       sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", outputDir: join(root, "item"),
     }], command, executor, () => {}, new EvidenceBundle(join(root, "sources")), access);
-    const manifest = JSON.parse(readFileSync(join(root, "sources", "manifest.json"), "utf8"));
-    const itemManifest = JSON.parse(readFileSync(join(root, "item", "manifest.json"), "utf8"));
+    const manifest = JSON.parse(readFileSync(join(root, "sources", "collection.json"), "utf8"));
+    const itemManifest = JSON.parse(readFileSync(join(root, "item", "collection.json"), "utf8"));
     const facts = JSON.parse(readFileSync(join(root, "sources", manifest.files.facts), "utf8"));
     return { results, calls, reads, manifest, itemManifest, facts };
   } finally { await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }

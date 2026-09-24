@@ -4,9 +4,11 @@ import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep } fro
 import type { CommandArtifact } from "../artifacts";
 import type { CommandResult } from "../result";
 import type { CommandInput, CommandSpec } from "../spec";
-import type { CommandManifest, SerializedOutput, StoredFile, StoredResultRef } from "./model";
+import type { Manifest, StoredFile, ResultRef } from "../manifest";
+import type { SerializedOutput } from "./model";
 
-import { summaryNavigation, summaryText } from "./navigation";
+import { summaryNavigation } from "./navigation";
+import { projectSummary, renderSummary, summaryText } from "../summary";
 
 interface Node {
   id: string;
@@ -14,7 +16,7 @@ interface Node {
   path: string;
   result: CommandResult<unknown>;
   files: Record<string, StoredFile>;
-  children: StoredResultRef[];
+  children: ResultRef[];
   errors: string[];
   pending?: Promise<Node>;
 }
@@ -78,7 +80,7 @@ export class SerializeContext {
     this.session.onError?.(error, this.node.command);
   }
 
-  annotate(metadata: Record<string, unknown>): void {
+  annotate(metadata: Pick<Manifest, "source" | "render">): void {
     const manifest = JSON.parse(readFileSync(this.path("manifest.json"), "utf8"));
     this.writeJson("manifest.json", { ...manifest, ...metadata });
   }
@@ -140,7 +142,7 @@ export class SerializeContext {
   }
 
   /** @spec Shared result objects are serialized once; explicit child links preserve intermediate aggregates. */
-  async serialize<Input extends CommandInput, Output>(spec: Pick<CommandSpec<Input, Output>, "name" | "serialize">, result: CommandResult<Output>): Promise<StoredResultRef> {
+  async serialize<Input extends CommandInput, Output>(spec: Pick<CommandSpec<Input, Output>, "name" | "serialize">, result: CommandResult<Output>): Promise<ResultRef> {
     let node = this.session.results.get(result)?.get(spec);
     if (node && this.ancestors.has(node)) throw new Error(`Cyclic command result: ${spec.name}`);
     if (!node) {
@@ -149,9 +151,9 @@ export class SerializeContext {
       node.pending = child.run(spec, result);
     }
     await node.pending;
-    const reference = { executionId: node.id, command: node.command,
+    const reference = { id: node.id,
       manifest: posix.relative(this.node.path, posix.join(node.path, "manifest.json")) };
-    if (!this.node.children.some(child => child.executionId === node.id)) this.node.children.push(reference);
+    if (!this.node.children.some(child => child.id === node.id)) this.node.children.push(reference);
     return reference;
   }
 
@@ -159,7 +161,7 @@ export class SerializeContext {
     let output: SerializedOutput = { files: {} };
     try {
       if (!spec.serialize) {
-        if (result.artifacts.length || result.output !== undefined) throw new Error(`${spec.name} has no serialize implementation`);
+        if (result.artifacts.length || (result.output !== undefined && !result.summary)) throw new Error(`${spec.name} has no serialize implementation`);
       } else output = await spec.serialize(this, result);
     } catch (error) {
       this.failure(error);
@@ -167,48 +169,56 @@ export class SerializeContext {
     const files = { ...output.files };
     const indexed = new Set(Object.values(files).map(file => file.path));
     for (const [key, file] of Object.entries(this.node.files)) if (!indexed.has(file.path)) files[key] = file;
-    const { metadata, ...entries } = output;
-    const manifest: CommandManifest = { ...metadata, ...entries, files, children: this.node.children,
-      schemaVersion: 1, executionId: this.node.id, command: this.node.command,
-      status: result.status, reason: "reason" in result ? result.reason : undefined,
+    const children = [...new Map([...this.node.children, ...(output.children ?? [])].map(ref => [ref.id, ref])).values()];
+    const reason = "reason" in result ? result.reason : undefined;
+    const manifest: Manifest = { files, children,
+      schemaVersion: 2, kind: "command", id: this.node.id, title: result.summary?.title ?? this.node.command,
+      source: { command: this.node.command }, execution: { status: result.status, reason },
       serialization: { status: this.node.errors.length ? "failed" : "ok", errors: this.node.errors } };
-    // Every serialized result has a portable reading entry; domains keep their own content.
     const summaryFile = files.summary ?? files["summary.md"];
-    const navigation = summaryNavigation(this.directory, files, this.node.children);
-    const body = summaryFile ? readFileSync(this.path(summaryFile.path), "utf8")
-      : [`# ${summaryText(this.node.command)}`, "", `采集状态：${result.status}`,
-        ...(manifest.reason ? [`原因：${summaryText(manifest.reason)}`] : []),
-        ...this.node.errors.map(error => `序列化缺口：${summaryText(error)}`), ""].join("\n");
+    let body: string;
+    try {
+      if (result.summary) {
+        files.summarySpec = this.writeJson("summary.json", { summary: result.summary, data: { file: "output.json" } });
+        // Commands explicitly choose serializable output; live Extension resources are never persisted here.
+        files.output = this.writeJson("output.json", result.output ?? null);
+        files.summaryProjection = this.writeJson("summary-projection.json", projectSummary(result.summary, result.output));
+        body = renderSummary(result.summary, result.output);
+      } else body = summaryFile ? readFileSync(this.path(summaryFile.path), "utf8") : `# ${summaryText(manifest.title)}\n`;
+    } catch (error) {
+      this.failure(error);
+      body = `# ${summaryText(this.node.command)}\n`;
+    }
+    body += `\n采集状态：${result.status}\n${reason ? `原因：${summaryText(reason)}\n` : ""}`;
+    body += this.node.errors.map(error => `序列化缺口：${summaryText(error)}\n`).join("");
+    const navigation = summaryNavigation(this.directory, files, children);
     for (const [key, file] of Object.entries(files)) if (file.path === "summary.md") delete files[key];
-    files.summary = this.writeText("summary.md", `${body.split("<!-- doctor:evidence-navigation -->")[0]!.trimEnd()}${navigation.length ? "\n" + navigation.join("\n") : "\n"}`);
+    files.summary = this.writeText("summary.md", `${body.trimEnd()}${navigation.length ? "\n" + navigation.join("\n") : "\n"}`);
     // Publish the inventory only after all successfully written files and child manifests exist.
-    this.writeJson("manifest.json", manifest);
+    this.writeJson("manifest.json", { ...manifest, serialization: { status: this.node.errors.length ? "failed" : "ok", errors: this.node.errors } });
     return this.node;
   }
 
-  /** Include only local render outputs, after render has completed; raw and result metadata stay unchanged. */
+  /** Index each manifest's local reports; nested results retain their own inventories. */
   indexReports(): void {
-    for (const node of this.session.nodes) {
-      const path = join(this.root, node.path, "manifest.json");
-      const manifest = JSON.parse(readFileSync(path, "utf8")) as CommandManifest;
-      const context = new SerializeContext(this.session, node, new Set([node]));
-      const files = { ...manifest.files };
-      const index = (directory: string, prefix = "") => {
-        for (const entry of readdirSync(directory, { withFileTypes: true })) {
-          if (entry.name === "artifacts") continue; // Descendants own their execution inventories.
-          const file = posix.join(prefix, entry.name);
-          if (entry.isDirectory()) index(join(directory, entry.name), file);
-          else if (entry.isFile() && (file.endsWith(".html") || file === "AGENTS.md")) {
-            const key = file === "report.html" ? "report"
-              : Object.entries(files).find(([, value]) => value.path === file)?.[0] ?? file;
-            // Imported reports and newly rendered reports share one public file key.
-            for (const [alias, entry] of Object.entries(files)) if (entry.path === file && alias !== key) delete files[alias];
-            files[key] = context.register(file);
-          }
+    const visit = (directory: string): void => {
+      const path = join(directory, "manifest.json");
+      let manifest: Manifest | undefined;
+      try { manifest = JSON.parse(readFileSync(path, "utf8")) as Manifest; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      const files = { ...manifest?.files };
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) visit(join(directory, entry.name));
+        else if (manifest && entry.isFile() && (entry.name.endsWith(".html") || entry.name === "AGENTS.md")) {
+          const file = entry.name;
+          const key = file === "report.html" ? "report" : file;
+          for (const [alias, value] of Object.entries(files)) if (value.path === file && alias !== key) delete files[alias];
+          chmodSync(join(directory, file), 0o600);
+          files[key] = { path: file, format: extname(file).slice(1), bytes: statSync(join(directory, file)).size };
         }
-      };
-      index(context.directory);
-      context.writeJson("manifest.json", { ...manifest, files });
-    }
+      }
+      if (manifest) this.writeJson(relative(this.directory, path), { ...manifest, files });
+    };
+    visit(this.root);
   }
 }

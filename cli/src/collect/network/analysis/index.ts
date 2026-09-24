@@ -178,9 +178,9 @@ function safeArchiveEntries(raw: string): boolean {
 }
 
 function locateBundleRoot(directory: string): string {
-  if (existsSync(join(directory, "manifest.json"))) return directory;
+  if (existsSync(join(directory, "collection.json"))) return directory;
   const candidates = readdirSync(directory, { withFileTypes: true })
-    .filter((item) => item.isDirectory() && existsSync(join(directory, item.name, "manifest.json")))
+    .filter((item) => item.isDirectory() && existsSync(join(directory, item.name, "collection.json")))
     .map((item) => join(directory, item.name));
   if (candidates.length !== 1) {
     throw new Error(`NetBundle 必须包含唯一 manifest.json，实际候选 ${candidates.length} 个`);
@@ -297,7 +297,7 @@ function writeNetworkAnalysisHtml(
   try {
     mkdirSync(join(staging, "raw"));
     writeFileSync(join(staging, "raw/facts.json"), `${JSON.stringify(facts, null, 2)}\n`, "utf8");
-    writeFileSync(join(staging, "manifest.json"), `${JSON.stringify({
+    writeFileSync(join(staging, "collection.json"), `${JSON.stringify({
       doctor_version: DOCTOR_CLI_VERSION,
       target: {
         namespace: facts.namespace,
@@ -337,7 +337,7 @@ export async function analyzeNetworkBundle(
 ): Promise<{ analysis: NetworkAnalysisDocument; markdown: string }> {
   const prepared = await prepareBundle(input, dependencies.runner);
   try {
-    const manifest = JSON.parse(readFileSync(join(prepared.root, "manifest.json"), "utf-8")) as NetManifest;
+    const manifest = JSON.parse(readFileSync(join(prepared.root, "collection.json"), "utf-8")) as NetManifest;
     const inspectionFacts = readFacts<NetInspectionFacts>(prepared.root, manifest);
     const config = buildNetworkAnalysisConfig(manifest);
     const execution = await runCollect({

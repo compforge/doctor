@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
@@ -104,7 +105,7 @@ test("Plugin model capability requires an endpoint on each declared provider", (
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "inference",
         workloads: [],
-        extensions: [{ id: "invoke", kind: "model.invoke", access: {}, run: async () => { throw new Error("must not run"); } }]
+        extensions: [{ id: "invoke", kind: "model.invoke", access: {}, run: withSummary({"title":"模型调用","fields":[{"label":"HTTP 状态","path":["status"]}]}, async () => { throw new Error("must not run"); }) }]
       }]
     },
   };
@@ -254,7 +255,7 @@ test("Workload Probe 在执行前声明完整 Observation contract", () => {
           access: {},
           workload: "main",
           produces,
-          run: async () => ({}),
+          run: withSummary({ title: "Probe", fields: [] }, async () => ({})),
         }]
       }]
     },

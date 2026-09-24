@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { directoryExtensions, mcpExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import {
@@ -12,15 +13,15 @@ const base: ServiceDefinition = {
   workloads: []
 };
 const endpoint = { host: "directory", port: 8080 };
-const list: TenantListExtension = { id: "tenants", kind: "tenant.list", access: {}, endpoint, run: async () => [] };
+const list: TenantListExtension = { id: "tenants", kind: "tenant.list", access: {}, endpoint, run: withSummary({"title":"租户列表","fields":[{"label":"租户数","path":["length"]}]}, async () => []) };
 const mcp: McpConfigurationExtension = {
   id: "configuration", kind: "mcp.configuration", access: {}, endpoint,
-  run: async () => ({ sourceKind: "fixture", servers: [] }),
+  run: withSummary({"title":"MCP 配置","fields":[{"label":"服务数","path":["servers","length"]}]}, async () => ({ sourceKind: "fixture", servers: [] })),
 };
 
 test("legacy directory and MCP discovery does not create clients or read configuration", () => {
   const create = mock(() => ({ listActive: async () => [], getByName: async (name: string) => ({ id: name, name, displayName: name }) }));
-  const loadConfiguration = mock(mcp.run);
+  const loadConfiguration = mock(async (context: Parameters<typeof mcp.run>[0], input: Parameters<typeof mcp.run>[1]) => (await mcp.run(context, input)).data);
   const service = {
     ...base,
     extensions: [...directoryExtensions({ access: {}, endpoint, create }),

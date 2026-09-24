@@ -174,6 +174,7 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
 }
 
 export interface PluginWorkloadObservation extends ObservationMeta {
+  summary: import("@compforge/doctor-plugin").Summary;
   kind: "plugin-workload";
   instance: WorkloadInstance;
   observationKind: string;

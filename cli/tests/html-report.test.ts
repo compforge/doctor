@@ -79,7 +79,7 @@ test("writeHtmlReport 生成包含诊断内容、Facts 和步骤的轻量单文�
     ext: "json",
   });
   bundle.writeSummary("# Redis 诊断\n\n| node | keys |\n|---|---:|\n| redis-0 | 10 |\n\n<script>alert(2)</script>");
-  bundle.writeManifest({
+  bundle.writeCollection({
     doctorVersion: "0.0.7",
     target: { endpoint: "redis://redis:6379/0" },
     inspectionFacts: {

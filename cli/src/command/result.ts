@@ -1,7 +1,9 @@
+import type { Summary } from "@compforge/doctor-plugin";
 import type { CommandArtifact } from "./artifacts";
 import { CommandStatus } from "./status";
 
 interface CommandResultArtifacts {
+  readonly summary?: Summary;
   readonly artifacts: readonly CommandArtifact[];
 }
 

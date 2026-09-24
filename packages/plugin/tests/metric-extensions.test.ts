@@ -1,3 +1,4 @@
+import { withSummary } from "../src";
 import { metricExtension } from "./extension-fixture";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, metricConfigurationOutput, requireMetricConfigurationExtension, type ServiceDefinition } from "../src";
@@ -16,7 +17,7 @@ test("legacy Metric is adapted as a zero-access configuration function", async (
   const extension = requireMetricConfigurationExtension(services.extensions("metric.configuration")[0]!.extension);
   expect(extension.access).toEqual({});
   // The static adapter has no context dependencies.
-  expect(await extension.run({} as never, undefined)).toBe(metric);
+  expect((await extension.run({} as never, undefined)).data).toBe(metric);
   expect(() => createServiceCatalog([{
     ...base,
     extensions: [extension,
@@ -26,7 +27,7 @@ test("legacy Metric is adapted as a zero-access configuration function", async (
 
 test("native discovery does not invoke configuration", () => {
   const run = mock(async () => metric);
-  const services = createServiceCatalog([{ ...base, extensions: [{ id: "metrics", kind: "metric.configuration", access: {}, run }] }]);
+  const services = createServiceCatalog([{ ...base, extensions: [{ id: "metrics", kind: "metric.configuration", access: {}, run: withSummary({ title: "Metrics", fields: [] }, run) }] }]);
   expect(services.extensions("metric.configuration")).toHaveLength(1);
   expect(run).not.toHaveBeenCalled();
 });

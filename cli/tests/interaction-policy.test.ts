@@ -110,7 +110,7 @@ test.each(["inspect", "db"])("TTY distribution %s returns a failed manifest with
       });
       expect(result.exitCode, result.stderr.toString()).toBe(2);
       const manifest = JSON.parse(result.stdout.toString());
-      expect(manifest.status).toBe("failed");
+      expect(manifest.execution.status).toBe("failed");
       expect(existsSync(called)).toBe(false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 }, 15_000);

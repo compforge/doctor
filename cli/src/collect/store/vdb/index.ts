@@ -93,7 +93,7 @@ export async function runStoreVdb(
     await ctx.preparation?.close();
     bundle.settle(code === 0 ? "本轮未取得该项证据" : "上游步骤失败，未执行");
     bundle.writeSummary(summary);
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target,
       inspectionFacts: facts ? { ...facts } : {},

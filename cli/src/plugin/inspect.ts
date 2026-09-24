@@ -1,3 +1,4 @@
+import { validateSummary } from "@compforge/doctor-plugin";
 import { invokeExtension } from "./extension";
 import type { FactsInspectExtension, FactsInspectInput, FactsInspectOutput } from "@compforge/doctor-plugin";
 import type { PluginContext, ServiceInspectQuery, ServiceInspectQueryOutcome } from "@compforge/doctor-plugin";
@@ -87,18 +88,7 @@ function validateFact(input: {
       `${label}.kind '${kind}' is not declared by provides=[${capability.provides.join(", ")}]`,
     );
   }
-  if (fact.presentation !== undefined) {
-    const presentation = record(fact.presentation, `${label}.presentation`);
-    nonEmptyString(presentation.title, `${label}.presentation.title`);
-    if (!Array.isArray(presentation.fields)) throw new Error(`${label}.presentation.fields must be an array`);
-    for (const field of presentation.fields) {
-      const entry = record(field, `${label}.presentation.fields`);
-      nonEmptyString(entry.label, `${label}.presentation.fields.label`);
-      if (!Array.isArray(entry.path) || !entry.path.length || entry.path.some(key => typeof key !== "string" || !key)) {
-        throw new Error(`${label}.presentation.fields.path must contain property names`);
-      }
-    }
-  }
+  if (fact.summary !== undefined) validateSummary(fact.summary);
   if (factType === "value") {
     if (!("value" in fact)) throw new Error(`${label}.value is required`);
     if (input.valueKinds.has(kind)) {
@@ -247,7 +237,7 @@ export function normalizeServiceInspectResult(input: {
 
 /** Correlate by identity, never by provider response order. A malformed response fails only its query. */
 export async function inspectServiceQueries(
-  capability: Pick<FactsInspectExtension, "run">, context: PluginContext, queries: readonly ServiceInspectQuery[],
+  capability: { run(context: PluginContext, queries: FactsInspectInput): Promise<FactsInspectOutput> }, context: PluginContext, queries: readonly ServiceInspectQuery[],
 ): Promise<readonly ServiceInspectQueryOutcome[]> {
   let outcomes: readonly ServiceInspectQueryOutcome[];
   try { outcomes = await capability.run(context, queries); }
@@ -274,5 +264,5 @@ export async function inspectServiceQueries(
 export async function inspectExtensionQueries(
   extension: FactsInspectExtension, context: PluginContext, queries: FactsInspectInput,
 ): Promise<FactsInspectOutput> {
-  return inspectServiceQueries({ run: (ctx, input) => invokeExtension(extension, ctx, input) }, context, queries);
+  return inspectServiceQueries({ run: async (ctx, input) => (await invokeExtension(extension, ctx, input)).data }, context, queries);
 }

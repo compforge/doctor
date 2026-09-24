@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import {
   createServiceCatalog,
   defineObservation,
@@ -16,12 +17,12 @@ import { commandExitCode } from "../src/app/command";
 import { finalizeResult } from "./report-fixture";
 import {
   makeInspectDetectors,
+  buildInspectSummary,
   parseInspectOutputFormat,
   projectInspectServiceFacts,
   resolveInspectDependencySelection,
   resolveInspectDeploymentSelection,
   runCollectInspect,
-  buildInspectRuntimeSummary,
   type InspectConfig,
   type InspectDiagnosis,
   type InspectEvidence,
@@ -78,7 +79,7 @@ function detectorEvidence(): InspectEvidence {
       status: "allowed",
     }, {
       id: "plugin-workload-bedbox-main-health-bedbox-0",
-      kind: "plugin-workload",
+      kind: "plugin-workload", summary: { title: "Probe", fields: [{ label: "effective", path: ["effective"] }] },
       instance: { platform: "kubernetes", environment: "default", workload: "main", namespace: "demo", pod: "bedbox-0", uid: "bedbox-uid" },
       schemaVersion: 1,
       producer: { origin: "core", id: "plugin-workload-adapter" },
@@ -271,7 +272,7 @@ function runtimeSummaryDiagnosis(): InspectDiagnosis {
 }
 
 test("运行摘要突出异常 Pod、重启、OOM 与内存声明", () => {
-  const summary = buildInspectRuntimeSummary(runtimeSummaryDiagnosis(), "demo");
+  const summary = buildInspectSummary(runtimeSummaryDiagnosis(), "demo");
   expect(summary).toContain("Namespace：demo");
   expect(summary).toContain("Service：planit-server");
   expect(summary).toContain("Pod：1 total，0 ready");
@@ -298,7 +299,7 @@ function readyRuntimeFixture() {
 
 test("恢复后的 Pod 仍计入 Ready，历史 OOM 作为提醒", () => {
   const { diagnosis } = readyRuntimeFixture();
-  const summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  const summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Pod：1 total，1 ready");
   expect(summary).toContain("状态：warning");
   expect(summary).toContain("last=terminated: OOMKilled, exit=137");
@@ -310,7 +311,7 @@ test("缺失探测结果不宣称健康，也保留 Detector 发现", () => {
   delete pod.containers[0]!.lastTermination;
   diagnosis.coverage = [{ goal: "workload-observations", status: "insufficient",
     missingEvidence: ["planit-server/main: 未取得 health"] }];
-  let summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  let summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Namespace：demo");
   expect(summary).toContain("状态：unknown");
   expect(summary).toContain("证据：incomplete");
@@ -319,7 +320,7 @@ test("缺失探测结果不宣称健康，也保留 Detector 发现", () => {
     severity: "critical", confidence: "high", message: "health check failed", evidence: [],
     service: "planit-server", detector: "health",
     producer: { origin: "plugin", plugin: "fixture", service: "planit-server", id: "health" } }];
-  summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("状态：degraded");
   expect(summary).toContain("[critical] planit-server/health.failed: health check failed");
   expect(summary).toContain("证据：incomplete");
@@ -328,14 +329,14 @@ test("缺失探测结果不宣称健康，也保留 Detector 发现", () => {
 test("Service 没有 Workload 时状态未知", () => {
   const { diagnosis, service } = readyRuntimeFixture();
   service.workloads = {};
-  expect(buildInspectRuntimeSummary(diagnosis, "demo")).toContain("状态：unknown");
-  expect(buildInspectRuntimeSummary(diagnosis, "demo")).toContain("未声明 Workload");
+  expect(buildInspectSummary(diagnosis, "demo")).toContain("状态：unknown");
+  expect(buildInspectSummary(diagnosis, "demo")).toContain("未声明 Workload");
 });
 
 test("共享 Pod 按环境和 namespace 内的 UID 去重，关联仍可见", () => {
   const { diagnosis, service, workload, pod } = readyRuntimeFixture();
   service.workloads.alias = { ...workload, name: "alias" };
-  let summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  let summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Workload：2");
   expect(summary).toContain("Pod：1 total，1 ready");
   expect(summary).toContain("planit-server/main/planit-server-0");
@@ -344,7 +345,7 @@ test("共享 Pod 按环境和 namespace 内的 UID 去重，关联仍可见", ()
     podRuntime: collectedFact("inspect.workload-pods", "service-targets", {
       pods: [{ ...pod, instance: { ...pod.instance, namespace: "other" } }],
     }) };
-  summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Pod：2 total，2 ready");
 });
 
@@ -352,7 +353,7 @@ test("健康 Pod 且证据完整时才输出 healthy", () => {
   const { diagnosis, pod } = readyRuntimeFixture();
   pod.containers[0]!.restartCount = 0;
   delete pod.containers[0]!.lastTermination;
-  const summary = buildInspectRuntimeSummary(diagnosis, "demo");
+  const summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("状态：healthy");
   expect(summary).toContain("证据：complete");
 });
@@ -419,10 +420,10 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
             access: {},
             workload: "main",
             produces: coreFactsVisible,
-            run: async (_context, input) => {
+            run: withSummary({ title: "Probe", fields: [] }, async (_context, input) => {
               workloadProbeFacts = input.facts;
               return { pod: input.instance.pod };
-            },
+            }),
           })]
         }
         : service

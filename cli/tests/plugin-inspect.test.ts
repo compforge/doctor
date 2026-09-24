@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import type { FactsInspectExtension } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
@@ -7,7 +8,7 @@ const capability = {
   accepts: ["tenant_id"],
   provides: ["intention", "tenant-configuration"],
   expands: ["bot_id"],
-  run: async (_context, queries) => queries.map(query => ({
+  run: withSummary({"title":"业务数据查询","fields":[{"label":"查询数","path":["length"]}]}, async (_context, queries) => queries.map(query => ({
     identity: query.identity, status: "collected" as const, result: {
       resolution: {
         inputId: query.identity.value,
@@ -16,7 +17,7 @@ const capability = {
       },
       facts: [],
     },
-  })),
+  }))),
 } satisfies FactsInspectExtension;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
@@ -155,15 +156,15 @@ test("Core 按预算截断 query result", () => {
 });
 
 
-test("Inspect presentation validates property paths without duplicating business values", () => {
-  const normalize = (presentation: unknown) => normalizeServiceInspectResult({
+test("Inspect summary validates property paths without duplicating business values", () => {
+  const normalize = (summary: unknown) => normalizeServiceInspectResult({
     value: { resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} },
       facts: [{ factType: "record", kind: "intention", schemaVersion: 1, recordKey: "one",
-        record: { status: "running" }, presentation }] },
+        record: { status: "running" }, summary }] },
     service: "control", queryIdentity: identity, capability, budget,
   });
-  const presentation = { title: "Run", fields: [{ label: "status", path: ["status"] }] };
-  expect(normalize(presentation).facts[0]).toMatchObject({ presentation });
-  expect(() => normalize({ ...presentation, fields: [{ label: "status", path: [] }] }))
-    .toThrow("presentation.fields.path must contain property names");
+  const summary = { title: "Run", fields: [{ label: "status", path: ["status"] }] };
+  expect(normalize(summary).facts[0]).toMatchObject({ summary });
+  expect(() => normalize({ ...summary, fields: [{ label: "status", path: [42] }] }))
+    .toThrow("Summary field requires");
 });

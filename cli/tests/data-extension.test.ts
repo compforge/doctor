@@ -1,3 +1,4 @@
+import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { dirname } from "node:path";
@@ -15,12 +16,12 @@ const component = { name: "fixture", repository: { forge: { name: "test" }, path
 const need = (resource: string) => ({ rule: { verb: "get", resource }, requirement: "required" as const, purpose: "test data access" });
 const extension = (overrides: Partial<FactsInspectExtension> = {}): FactsInspectExtension => ({
   id: "records", kind: FACTS_INSPECT_KIND, access: { kubernetes: [need("configmaps")] },
-  accepts: ["biz_id"], provides: ["record"], run: async (_context, queries) => queries.map(({ identity }) => ({
+  accepts: ["biz_id"], provides: ["record"], run: withSummary({ title: "Fixture", fields: [] }, async (_context, queries) => queries.map(({ identity }) => ({
     identity, status: "collected", result: {
       resolution: { inputId: identity.value, resolvedAs: "record", identifiers: {} },
       facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: { id: identity.value } }]
     },
-  })), ...overrides,
+  }))), ...overrides,
 });
 const service = (name: string, ext: FactsInspectExtension): ServiceDefinition => ({
   name,
@@ -53,17 +54,17 @@ test("Data prepares only selected Extension access, then invokes native facts.in
   let calls = 0;
   const base = extension();
   const records = service("records", extension({
-    run: async (context, queries) => {
+    run: withSummary({ title: "Fixture", fields: [] }, async (context, queries) => {
       calls++;
       events.push("extension.run");
       expect(events[0]).toBe("auth can-i get configmaps");
       expect(context.target.service.name).toBe("records");
       await expect(context.infra.kubernetes.list("secrets")).rejects.toThrow("未声明");
       context.onDispose(dispose);
-      return [...await base.run(context, queries)].reverse();
-    }
+      return [...(await base.run(context, queries)).data].reverse();
+    })
   }));
-  records.extensions = [...records.extensions!, { id: "static", kind: "custom.describe", access: { kubernetes: [need("secrets")] }, run: otherKind }];
+  records.extensions = [...records.extensions!, { id: "static", kind: "custom.describe", access: { kubernetes: [need("secrets")] }, run: withSummary({ title: "Fixture", fields: [] }, otherKind) }];
   const configured = plugin([records, service("unselected", extension({ access: { kubernetes: [need("secrets")] } }))]);
   expect(evaluatePluginCapabilities(configured, PLUGIN_COMMAND_CAPABILITIES.data).runnable).toBeTrue();
   const context = new CommandContext({});
@@ -91,7 +92,7 @@ test("Data prepares only selected Extension access, then invokes native facts.in
 
 test("required access denial stops prepare before any provider execution or output", async () => {
   const run = mock(async () => []);
-  const configured = plugin([service("records", extension({ run }))]);
+  const configured = plugin([service("records", extension({ run: withSummary({ title: "Fixture", fields: [] }, run) }))]);
   const context = new CommandContext({});
   try {
     await expect(prepareDataCommand(args, configured.services, context, executor([], false))).rejects.toThrow("缺少必须");
@@ -102,7 +103,7 @@ test("required access denial stops prepare before any provider execution or outp
 
 test("Data validates a malformed outcome per query and retains a healthy sibling", async () => {
   const configured = plugin([service("records", extension({
-    access: {}, run: async (_context, queries) => [
+    access: {}, run: withSummary({ title: "Fixture", fields: [] }, async (_context, queries) => [
       {
         identity: queries[0]!.identity, status: "collected", result: {
           resolution: { inputId: "a", resolvedAs: "record", identifiers: {} },
@@ -115,7 +116,7 @@ test("Data validates a malformed outcome per query and retains a healthy sibling
           facts: [{ factType: "value", kind: "record", schemaVersion: 1, value: "good" }]
         }
       },
-    ]
+    ])
   }))]);
   const context = new CommandContext({});
   try {
@@ -134,7 +135,7 @@ test("Data rejects ambiguous facts.inspect producers instead of silently using r
 
 for (const nested of [false, true]) test(`Data checked entry point preflights before run (nested=${nested})`, async () => {
   const run = mock(async () => []);
-  const configured = plugin([service("records", extension({ run }))]);
+  const configured = plugin([service("records", extension({ run: withSummary({ title: "Fixture", fields: [] }, run) }))]);
   const denied = executor([], false);
   const context = new CommandContext({
     kubernetes: {

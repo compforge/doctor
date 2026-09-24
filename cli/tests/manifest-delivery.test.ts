@@ -30,7 +30,7 @@ for (const status of [CommandStatus.Ok, CommandStatus.Partial, CommandStatus.Fai
     const bundle = new EvidenceBundle(source);
     bundle.addStep({ id: "missing", title: "Unavailable Pod", status: "unavailable", risk: "observe", reason: "permission denied" });
     bundle.addStep({ id: "limited", title: "Limited raw", status: "ok", risk: "observe", output: "x".repeat(600_000) });
-    bundle.writeManifest({ doctorVersion: "test", target: { namespace: "test", services: ["api"] }, inspectionFacts: {}, params: {}, startedAt: "now", finishedAt: "now" });
+    bundle.writeCollection({ doctorVersion: "test", target: { namespace: "test", services: ["api"] }, inspectionFacts: {}, params: {}, startedAt: "now", finishedAt: "now" });
     writeFileSync(join(source, "diagnosis.json"), JSON.stringify({ coverage: [{ status: "insufficient" }] }));
     const context = new CommandContext({});
     context.artifacts.add({ command: "log", path: source, id: "a" });
@@ -40,19 +40,19 @@ for (const status of [CommandStatus.Ok, CommandStatus.Partial, CommandStatus.Fai
       const code = status === CommandStatus.Cancelled ? 130 : status === CommandStatus.Failed ? 1 : 0;
       expect(await finalizeCommand({ commandInput: {}, spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, delivery: { format: "manifest" } })).toBe(code);
       const manifest = output.json();
-      roots.push(manifest.bundle_root);
-      expect(manifest.status).toBe(status);
-      expect(manifest.exit_code).toBe(code);
+      roots.push(manifest.delivery.location.directory);
+      expect(manifest.execution.status).toBe(status);
+      expect(manifest.delivery.exitCode).toBe(code);
       expect(manifest.children).toEqual([]);
-      const artifact = manifest;
+      const artifact = JSON.parse(readFileSync(join(manifest.delivery.location.directory, manifest.files.collection.path), "utf8"));
       expect(artifact.target).toEqual({ namespace: "test", services: ["api"] });
       expect(artifact.steps[0].reason).toBe("permission denied");
       expect(artifact.steps[1].truncation.reason).toBe("raw_byte_limit");
-      expect(readFileSync(join(manifest.bundle_root, artifact.files["diagnosis.json"].path), "utf8")).toContain("insufficient");
-      expect(statSync(manifest.bundle_root).mode & 0o777).toBe(0o700);
-      expect(statSync(join(manifest.bundle_root, "manifest.json")).mode & 0o777).toBe(0o600);
-      expect(JSON.parse(readFileSync(join(manifest.bundle_root, "manifest.json"), "utf8"))).toEqual(manifest);
-      expect(existsSync(join(manifest.bundle_root, "report.html"))).toBeFalse();
+      expect(readFileSync(join(manifest.delivery.location.directory, manifest.files["diagnosis.json"].path), "utf8")).toContain("insufficient");
+      expect(statSync(manifest.delivery.location.directory).mode & 0o777).toBe(0o700);
+      expect(statSync(join(manifest.delivery.location.directory, "manifest.json")).mode & 0o777).toBe(0o600);
+      expect(JSON.parse(readFileSync(join(manifest.delivery.location.directory, "manifest.json"), "utf8"))).toEqual(manifest);
+      expect(existsSync(join(manifest.delivery.location.directory, "report.html"))).toBeFalse();
       expect(existsSync(source)).toBe(code !== 0);
     } finally { output.restore(); await context.disposeClients(); }
   });
@@ -69,9 +69,9 @@ test("explicit output, missing artifact and collisions preserve evidence and ret
     expect(await finalizeResult(context, evidenceSpec, { status: CommandStatus.Partial, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output: join(directory, "result") })).toBe(1);
     const manifest = output.json();
     expect(manifest.serialization.status).toBe("failed");
-    expect(manifest.retained_artifacts).toHaveLength(2);
+    expect(existsSync(source)).toBe(true);
     const raw = Object.values(manifest.files).find((file: any) => file.path.endsWith("/raw.txt")) as { path: string };
-    expect(readFileSync(join(manifest.bundle_root, raw.path), "utf8")).toBe("evidence");
+    expect(readFileSync(join(manifest.delivery.location.directory, raw.path), "utf8")).toBe("evidence");
     expect(output.json().execution.status).toBe("partial");
   } finally { output.restore(); }
   output = captureOutput();
@@ -90,7 +90,7 @@ test("manifest refuses external symlinks without changing their target permissio
   const output = captureOutput();
   try {
     expect(await finalizeResult(context, evidenceSpec, { status: CommandStatus.Ok, output: undefined, artifacts: context.artifacts.list() }, { format: "manifest", output: join(directory, "result") })).toBe(1);
-    expect(output.json().retained_artifacts).toHaveLength(1);
+    expect(existsSync(source)).toBe(true);
     expect(statSync(secret).mode & 0o777).toBe(0o640);
   } finally { output.restore(); }
 });
@@ -114,10 +114,10 @@ test("root lifecycle emits JSON for preflight failure and preserves a partial ch
     const output = captureOutput();
     try {
       await runCommand(spec, { config: invalid ? config : join(directory, "absent.yaml"), format: "manifest", output: join(directory, invalid ? "failure" : "partial") }, {}, { logLevel: "error" });
-      expect(output.json().status).toBe(invalid ? "failed" : "partial");
+      expect(output.json().execution.status).toBe(invalid ? "failed" : "partial");
       expect(output.json().children).toEqual([]);
-      expect(output.json().schemaVersion).toBe(1);
-      expect(output.json().executionId).toEqual(expect.any(String));
+      expect(output.json().schemaVersion).toBe(2);
+      expect(output.json().id).toEqual(expect.any(String));
       expect(process.exitCode).toBe(invalid ? 1 : 0);
     } finally { output.restore(); process.exitCode = oldCode; }
   }
@@ -135,7 +135,7 @@ test("error-level execution logs do not suppress manifest delivery", async () =>
   } });
   try {
     await runCommand(spec, { config: join(root(), "absent.yaml"), format: "manifest" }, {}, { logLevel: "error" });
-    expect(output.json().status).toBe("ok");
+    expect(output.json().execution.status).toBe("ok");
     expect(output.stderr()).toBe("");
   } finally { output.restore(); process.exitCode = oldCode; }
 });

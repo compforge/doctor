@@ -79,7 +79,7 @@ export interface HtmlReportOptions {
   inspectionFacts?: Record<string, unknown>;
 }
 
-export interface BundleManifest {
+export interface CollectionRecord {
   doctor_version?: string;
   target?: Record<string, unknown>;
   files?: Readonly<Record<string, string>>;
@@ -93,5 +93,6 @@ export interface BundleManifest {
     reason?: string;
     duration_ms?: number;
     raw_file?: string;
+    truncation?: { reason: string; original_bytes: number; limit_bytes: number };
   }>;
 }

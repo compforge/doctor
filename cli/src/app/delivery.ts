@@ -1,8 +1,8 @@
 import { tmpdir } from "node:os";
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep, relative, isAbsolute } from "node:path";
 import { packArchiveEntries, resolveArchivePath, resolveDefaultReportPaths } from "../collect/output/archive";
-import type { CommandManifest } from "../command/serialization/model";
+import type { Manifest } from "../command/manifest";
 
 import { writeMachineResult, writeOutput } from "../terminal/output";
 import { useLogger } from "../terminal/log";
@@ -30,7 +30,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
   code: number; reportName: string }): Promise<boolean> {
   const { directory, options, code, reportName } = input;
   const manifestPath = join(directory, "manifest.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as CommandManifest;
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
   let format = options.format?.trim() || "default";
   if (!["default", "html", "json", "md", "summary", "bundle", "manifest"].includes(format)) {
     useLogger("delivery").warn(`未识别 format '${format}'，按 default 交付 HTML + Bundle`);
@@ -42,8 +42,8 @@ export async function deliverSerialized(input: { directory: string; options: Com
     if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
     action();
   };
-  const metadata = { ...manifest, status: code === 130 ? "cancelled" : code !== 0 ? "failed" : manifest.status, exit_code: code, execution: { status: manifest.status, reason: manifest.reason },
-    delivery: { status: "ok", errors } };
+  let metadata: Manifest = { ...manifest, delivery: { status: "ok", errors, exitCode: code,
+    location: { directory, manifest: manifestPath } } };
   try {
     if (format === "manifest") {
       if (options.output) {
@@ -57,13 +57,12 @@ export async function deliverSerialized(input: { directory: string; options: Com
         return resolve(path.endsWith(`.${extension}`) ? path : `${path}.${extension}`);
       };
       if (format === "summary") {
-        const summaryPath = join(directory, "runtime-summary.txt");
-        if (!existsSync(summaryPath)) throw new Error("Serialized result has no runtime-summary.txt");
+        const summaryPath = join(directory, manifest.files.summary!.path);
         writeOutput(readFileSync(summaryPath, "utf8"));
       }
       const files: { source: string; destination: string }[] = [];
       if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
-      if (format === "json" || format === "md") files.push({ source: format === "json" ? "diagnosis.json" : "summary.md", destination: filePath(format) });
+      if (format === "json" || format === "md") files.push({ source: format === "json" ? (manifest.files.diagnosis?.path ?? manifest.files.output?.path ?? "diagnosis.json") : manifest.files.summary!.path, destination: filePath(format) });
       const archive = format === "default" ? paths.bundle : format === "bundle" ? resolveArchivePath(options.output, reportName) : undefined;
       // Validate every destination before publishing any output.
       for (const path of [...files.map(file => file.destination), ...(archive ? [archive] : [])]) {
@@ -76,8 +75,8 @@ export async function deliverSerialized(input: { directory: string; options: Com
             // The exported JSON lives outside the execution directory; make its relative evidence references resolvable.
             writeFileSync(file.destination, `${JSON.stringify({ manifest: manifestPath, result }, null, 2)}\n`, { mode: 0o600 });
           } else if (format === "md") {
-            const summary = existsSync(join(directory, file.source)) ? readFileSync(join(directory, file.source), "utf8") : `# ${manifest.command}\n\n${manifest.status}\n`;
-            writeFileSync(file.destination, `${summary}\n[完整执行结果](${manifestPath})\n`, { mode: 0o600 });
+            const summary = existsSync(join(directory, file.source)) ? readFileSync(join(directory, file.source), "utf8") : `# ${manifest.title}\n\n${manifest.execution.status}\n`;
+            writeFileSync(file.destination, `${relocateSummaryLinks(summary, directory, dirname(file.destination))}\n[完整执行结果](${manifestPath})\n`, { mode: 0o600 });
           } else {
             if (!existsSync(join(directory, file.source))) throw new Error(`Serialized result has no ${file.source}`);
             copyFileSync(join(directory, file.source), file.destination);
@@ -86,12 +85,9 @@ export async function deliverSerialized(input: { directory: string; options: Com
           writeOutput(`[delivery] ${file.source}: ${file.destination}\n`);
         } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
       }
-      if (errors.length) {
-        metadata.delivery.status = "failed";
-        metadata.exit_code = code === 130 ? 130 : 1;
-        metadata.status = code === 130 ? "cancelled" : "failed";
-      }
       if (archive) {
+        metadata = { ...metadata, delivery: { status: errors.length ? "failed" : "ok", errors,
+          exitCode: code === 130 ? 130 : errors.length ? 1 : code, location: { directory, manifest: manifestPath } } };
         writeFileSync(manifestPath, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
         const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), archive);
         if (!packed.ok) throw new Error(packed.stderr);
@@ -100,14 +96,25 @@ export async function deliverSerialized(input: { directory: string; options: Com
       }
     }
   } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); root = directory; }
-  metadata.delivery.status = errors.length ? "failed" : "ok";
-  metadata.exit_code = code === 130 ? 130 : errors.length ? 1 : code;
-  if (errors.length && code !== 130) metadata.status = "failed";
-  const record = { ...metadata, bundle_root: root, manifest: "manifest.json" };
+  const record: Manifest = { ...metadata, delivery: { status: errors.length ? "failed" : "ok", errors,
+    exitCode: code === 130 ? 130 : errors.length ? 1 : code,
+    location: { directory: root, manifest: join(root, "manifest.json") } } };
   writeFileSync(join(root, "manifest.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
   if (format === "manifest") writeMachineResult(record);
   for (const error of errors) useLogger("delivery").error(`${error}`);
-  if (errors.length || !["manifest", "bundle", "default"].includes(format)) writeOutput(`[delivery] Evidence: ${root}\n`, process.stderr);
+  if (errors.length || !["manifest", "bundle", "default"].includes(format)) {
+    writeOutput(`[delivery] Evidence: ${root}\n`, process.stderr);
+    writeOutput(`[delivery] Manifest: ${join(root, "manifest.json")}\n`, process.stderr);
+  }
   if (!errors.length && root !== directory) cleanupTemporaryArtifacts([directory]);
   return errors.length === 0;
+}
+
+/** Exported Markdown lives outside the evidence directory; keep its local links resolvable. */
+function relocateSummaryLinks(markdown: string, source: string, destination: string): string {
+  return markdown.replace(/\]\((<[^>]+>|[^)]+)\)/g, (match, target: string) => {
+    const value = target.startsWith("<") ? target.slice(1, -1) : target;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("#") || isAbsolute(value)) return match;
+    return `](<${relative(destination, resolve(source, value))}>)`;
+  });
 }

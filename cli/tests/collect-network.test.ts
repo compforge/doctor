@@ -430,7 +430,7 @@ requests:
     expect(collected.artifacts.every((artifact) => artifact.windowComplete)).toBe(true);
     expect(collected.traceIds).toEqual(["trace-1"]);
     expect(seenHeaders[0]?.["X-Doctor-Capture-ID"]).toBe("doctor-test");
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
     expect(manifest.target.capture_id).toBe("doctor-test");
     expect(manifest.target.trace_ids).toEqual(["trace-1"]);
@@ -505,7 +505,7 @@ requests:
       detail: "3/3 Pod 校验完成",
       complete: true,
     });
-    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf-8"));
+    const manifest = JSON.parse(readFileSync(join(dir, "collection.json"), "utf-8"));
     const inspectionFacts = JSON.parse(readFileSync(join(dir, manifest.files.facts), "utf8"));
     expect(manifest.params.capture_mode).toBe("watch");
     expect(inspectionFacts.capture_artifacts[0]).toHaveProperty("window_complete");

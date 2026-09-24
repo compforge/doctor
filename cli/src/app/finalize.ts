@@ -44,11 +44,10 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   }
   if (renderer.failures.length && code !== 130) code = 1;
   serialized.annotate({
-    source: { profile: input.context.profile.name, plugin: input.context.pluginIdentity,
+    source: { command: input.spec.name.replace(/^doctor\s+/, ""), profile: input.context.profile.name, plugin: input.context.pluginIdentity,
       targets: input.context.records(kubernetesTargetRecord, []) },
     render: { status: renderer.failures.length ? "failed" : "ok",
       errors: renderer.failures.map(item => ({ command: item.command, reason: String(item.error) })) },
-    ...(serialized.failed ? { retained_artifacts: input.result.artifacts } : {}),
   });
   serialized.writeText("AGENTS.md", renderBundleAgents());
   serialized.indexReports();

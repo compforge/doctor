@@ -1,6 +1,7 @@
 export * from "./artifact";
 export * from "./capability";
 export * from "./extension";
+export * from "./summary";
 export * from "./catalog";
 export * from "./context";
 export * from "./database";

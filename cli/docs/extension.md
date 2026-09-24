@@ -47,9 +47,32 @@ interface Extension<Input, Output> {
   readonly description?: string;
   readonly access: CapabilityAccess;
 
-  run(context: ExtensionContext, input: Input): Promise<Output>;
+  run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
 }
 ```
+
+所有 Extension 返回统一信封，空数据也必须有摘要声明：
+
+```ts
+interface ExtensionResult<T> {
+  readonly data: T;
+  readonly summary: Summary;
+}
+
+interface Summary {
+  readonly title: string;
+  readonly fields: readonly { readonly label: string; readonly path: readonly string[] }[];
+}
+```
+
+`Summary` 定义在 `packages/plugin/src/summary.ts`，也用于 Fact、Observation 和 CommandResult。
+`path` 相对伴随的数据，空路径表示数据本身；声明只包含标题和字段路径，不携带重复值或执行函数。
+提供方可用 `withSummary(summary, run)` 包装静态字段选择，动态结果也可直接返回信封。
+宿主 `invokeExtension` 校验信封；kind 消费方继续校验 `result.data`，再由 Command 选择要持久化的结果和摘要。
+
+流和 runner 仍保留其资源协议。摘要只选择状态码、身份等元数据；投影不会读取 getter、消费流、
+执行 runner 或展开整个对象。case runner 创建在返回后不检查取消，以便生命周期所有者总能接手清理；
+该调用点单独校验信封。摘要不得引入后台调用或改变资源释放时机。
 
 id 是所属 Service 内唯一的实现标识，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
 实现；消费方根据自己的领域规则决定选择一个、调用多个或拒绝歧义，不能默认按注册顺序取第一个。
@@ -80,7 +103,11 @@ prepare 确定已知的权限范围，不要求预先列出完整执行路径。
 不同 Command 系列保持自己的执行模型。Collect 的 Inspect、Probe、Detector、Evidence 与预算由 Collect
 拥有。
 
-Service 的可调用操作统一注册在 `extensions`。数据源直接注册在 `dataSources`；纯 Evidence 分析放在\n`detectors`，由 Core 实现的声明式环境检查放在 `environmentProbes`。配置和日志采集通过\n`configurationInspection`、`logs` 显式加入 Core 通用采集，不形成第二份操作注册表。\n\n## 权限、上下文与资源
+Service 的可调用操作统一注册在 `extensions`。数据源直接注册在 `dataSources`；纯 Evidence 分析放在
+`detectors`，由 Core 实现的声明式环境检查放在 `environmentProbes`。配置和日志采集通过
+`configurationInspection`、`logs` 显式加入 Core 通用采集，不形成第二份操作注册表。
+
+## 权限、上下文与资源
 
 CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数即可读取。命令按本次实际选择的扩展
 及自身动作检查权限，同一 Service 或 Plugin 中未参与的扩展不会扩大检查范围。

@@ -363,7 +363,7 @@ function writeAnalysisReport(
   const staging = mkdtempSync(join(tmpdir(), "doctor-mema-report-"));
   try {
     const now = new Date().toISOString();
-    writeFileSync(join(staging, "manifest.json"), `${JSON.stringify({
+    writeFileSync(join(staging, "collection.json"), `${JSON.stringify({
       doctor_version: DOCTOR_CLI_VERSION,
       target: { kind: "python-heap-analysis", source_count: items.length },
       params: {

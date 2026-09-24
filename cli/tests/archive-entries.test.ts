@@ -11,7 +11,7 @@ test("explicit archive destinations preserve same-named files without source pat
     const entries = ["a", "b"].map(id => {
       const dir = join(root, id);
       mkdirSync(dir);
-      const source = join(dir, "manifest.json");
+      const source = join(dir, "collection.json");
       writeFileSync(source, JSON.stringify({ id }));
       return { source, path: `artifacts/${id}/manifest.json` };
     });

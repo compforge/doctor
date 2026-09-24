@@ -8,25 +8,20 @@ import type { TraceOutput } from "./index";
 import { readTraceSnapshot, TRACE_FILES, writeTraceJson, type TraceSnapshot } from "./snapshot";
 import { decodeSpanPayloads } from "./decode";
 
-interface TraceManifest {
-  source?: unknown;
-  kind?: string;
-  schema_version?: number;
-  status?: CommandStatus;
-  target?: Record<string, unknown>;
-  files?: Record<string, string | { path: string }>;
-  children?: { manifest: string }[];
-  steps?: StepRecord[];
-}
+type TraceManifest = import("../../command/manifest").Manifest;
+type TraceCollectionRecord = import("../output/report/model").CollectionRecord;
 
 interface LocalTrace {
   manifestPath: string;
   manifest: TraceManifest;
+  collection: TraceCollectionRecord;
   snapshot?: TraceSnapshot;
 }
 
 function readManifest(path: string): TraceManifest {
-  return JSON.parse(readFileSync(path, "utf8")) as TraceManifest;
+  const value = JSON.parse(readFileSync(path, "utf8")) as TraceManifest;
+  if (value.schemaVersion !== 2) throw new Error("Unsupported Manifest schemaVersion; expected 2");
+  return value;
 }
 
 /** Resolve --from to a manifest path: a directory is completed to <dir>/manifest.json. */
@@ -69,12 +64,12 @@ function localTraces(from: string): { traces: LocalTrace[]; sourceStatus?: Comma
     if (visited.has(manifestPath)) return;
     visited.add(manifestPath);
     const manifest = readManifest(manifestPath);
-    if (manifest.target?.trace_id) { paths.push(manifestPath); return; }
-    const references = [
-      ...(manifest.children ?? []).map(child => child.manifest),
-      ...Object.values(manifest.files ?? {}).map(file => typeof file === "string" ? file : file.path)
-        .filter(file => file.endsWith("/manifest.json")),
-    ];
+    if (manifest.files.collection) {
+      const collection = JSON.parse(readFileSync(containedPath(root,
+        relative(root, resolve(dirname(manifestPath), manifest.files.collection.path))), "utf8")) as TraceCollectionRecord;
+      if (collection.target?.trace_id) { paths.push(manifestPath); return; }
+    }
+    const references = manifest.children.map(child => child.manifest);
     for (const ref of references) {
       if (isAbsolute(ref)) throw new Error(`证据路径必须是相对路径：${ref}`);
       visit(containedPath(root, relative(root, resolve(dirname(manifestPath), ref))));
@@ -83,21 +78,22 @@ function localTraces(from: string): { traces: LocalTrace[]; sourceStatus?: Comma
   visit(path);
   const traces = paths.flatMap(manifestPath => {
     const manifest = readManifest(manifestPath);
-    if (!manifest.target?.trace_id) return [];
+    const collection = JSON.parse(readFileSync(containedPath(dirname(manifestPath), manifest.files.collection!.path), "utf8")) as TraceCollectionRecord;
+    if (!collection.target?.trace_id) return [];
     const dir = dirname(manifestPath);
     // Validate referenced files before reading. Copying below also rejects any unreferenced symlinks.
-    for (const file of Object.values(manifest.files ?? {})) containedPath(dir, typeof file === "string" ? file : file.path);
+    for (const file of Object.values(manifest.files ?? {})) containedPath(dir, file.path);
     if (manifest.files?.analysis) for (const [key, path] of Object.entries(TRACE_FILES)) {
-      if ((typeof manifest.files[key] === "string" ? manifest.files[key] : manifest.files[key]?.path) !== path) throw new Error(`不支持的 trace 证据布局：${key}`);
+      if (manifest.files[key]?.path !== path) throw new Error(`不支持的 trace 证据布局：${key}`);
       containedPath(dir, path);
     }
     const snapshot = manifest.files?.analysis
       ? readTraceSnapshot(dir) : undefined;
-    if (snapshot && snapshot.trace_id !== manifest.target.trace_id) throw new Error("manifest 与 analysis 的 trace_id 不一致");
-    return [{ manifestPath, manifest, snapshot }];
+    if (snapshot && snapshot.trace_id !== collection.target.trace_id) throw new Error("manifest 与 analysis 的 trace_id 不一致");
+    return [{ manifestPath, manifest, collection, snapshot }];
   });
   if (!traces.length) throw new Error("manifest 没有 trace 证据；请使用 doctor trace --format manifest 的输出");
-  return { traces, sourceStatus: source.status, source: source.source };
+  return { traces, sourceStatus: source.execution.status, source: source.source };
 }
 
 async function selection(trace: LocalTrace, input: { span?: string; node?: string }): Promise<unknown> {
@@ -150,19 +146,19 @@ export async function runOfflineTrace(input: { from: string; node?: string; span
       if (lstatSync(path).isSymbolicLink()) throw new Error("离线证据不能包含符号链接");
       return true;
     } });
-    const manifest = { ...trace.manifest,
+    const collection = { ...trace.collection,
       source: { manifest: trace.manifestPath, mode: "offline", upstream: trace.manifest.source ?? source.source,
         status: source.sourceStatus },
-      target: { ...trace.manifest.target, ...(detail ? { selected_node_id: input.node, selected_span_id: input.span } : {}) },
-      files: { ...trace.manifest.files, ...(detail ? { selection: "selection.json" } : {}) },
+      target: { ...trace.collection.target, ...(detail ? { selected_node_id: input.node, selected_span_id: input.span } : {}) },
+      files: { ...trace.collection.files, ...(detail ? { selection: "selection.json" } : {}) },
     };
     if (detail) writeTraceJson(dir, "selection.json", detail);
-    writeTraceJson(dir, "manifest.json", manifest);
+    writeTraceJson(dir, "collection.json", collection);
     const incomplete = !trace.snapshot?.collection.complete
-      || trace.manifest.steps?.some(step => !["ok", "unnecessary"].includes(step.status) || step.truncation);
+      || trace.collection.steps?.some(step => !["ok", "unnecessary"].includes(step.status) || step.truncation);
     const status = !trace.snapshot ? CommandStatus.Failed : incomplete ? CommandStatus.Partial : CommandStatus.Ok;
-    items.push({ bizId: String(trace.manifest.target!.input_id ?? trace.snapshot?.trace_id ?? "trace"),
-      traceIds: [String(trace.manifest.target!.trace_id)], status, artifacts: [artifact],
+    items.push({ bizId: String(trace.collection.target!.input_id ?? trace.snapshot?.trace_id ?? "trace"),
+      traceIds: [String(trace.collection.target!.trace_id)], status, artifacts: [artifact],
       reason: !trace.snapshot ? "本地证据没有 analysis.json；原始证据保留，无法下钻 node" : incomplete ? "源证据不完整；离线操作未补采" : undefined });
   }
   const statuses = items.map(item => item.status);

@@ -71,7 +71,7 @@ describe("Plugin discovery", () => {
     await installPlugin(archive, installRoot);
     const result = await listPlugins(undefined, installRoot);
     expect(result).toMatchObject([{
-      id: "example", version: "0.0.9", source: "installed",
+      id: "example", version: "0.0.10", source: "installed",
       services: [
         { name: "example-api", detectors: [], environmentProbes: [] },
         { name: "example-worker", detectors: [], environmentProbes: [] },

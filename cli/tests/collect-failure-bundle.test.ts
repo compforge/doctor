@@ -30,7 +30,7 @@ describe("collect failure bundle delivery", () => {
       stderr: "full error",
     });
     bundle.writeSummary("# failed");
-    bundle.writeManifest({
+    bundle.writeCollection({
       doctorVersion: "test",
       target: {},
       inspectionFacts: {},
