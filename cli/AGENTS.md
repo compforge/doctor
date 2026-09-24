@@ -12,7 +12,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 - **数据集采集**：`doctor eval` 逐例触发 canonical CaseSet，并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
-- **Plugin 扩展**：CLI 只负责选择并注入 Plugin；公共契约归 `../packages/plugin`。
+- **Extension 扩展**：Core、Plugin、Service 和本地适配器共用按 kind 发现的注册机制；公共契约归 `../packages/plugin`。
 
 ## 代码地图与核心模块
 

@@ -46,7 +46,7 @@ export function httpScenarioFromDoctorCases(
   baseUrl: string,
   overrides: HttpScenarioOverrides = {},
 ): HttpScenario {
-  const sourcePath = selection.source.file ?? resolve("doctor-case.yaml");
+  const sourcePath = selection.source.file ?? resolve("doctor-cases.yaml");
   return parseHttpScenario({
     schema: "doctor-http/v1",
     name: selection.source.caseSet.caseset,

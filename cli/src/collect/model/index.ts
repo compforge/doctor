@@ -108,12 +108,9 @@ export async function runCollectModel(
       ? (isMultimodalModel(model) ? "llm_image" : "llm_connectivity")
       : `${model.type}_connectivity`;
     const caseCatalog = doctorCaseCatalog(plugin, opts.caseFile);
-    const hasLocalModelCases = caseCatalog.some((source) => source.source === "local"
-      && source.caseSet.cases.some((item) => item.facets?.command === "model" || item.facets?.command === "both"));
     const caseSelection = await selectDoctorCases({
       catalog: caseCatalog, command: "model",
       caseSetId: opts.caseset, caseIds: opts.cases, modelType: model.type,
-      defaultCaseSetId: !hasLocalModelCases && !opts.caseset ? "doctor_model" : undefined,
       defaultCaseIds: opts.performance
         ? ["prefill_short", "prefill_medium", "prefill_long", "decode"]
         : [defaultCase],

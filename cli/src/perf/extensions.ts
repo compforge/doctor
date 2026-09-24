@@ -1,7 +1,7 @@
 import { caseRunnerProvider } from "../case/extensions";
 import {
   PERF_SCENARIOS_KIND, requirePerfScenariosExtension, perfScenariosOutput,
-  CASE_RUNNER_CREATE_KIND, type ServiceCatalog, type CaseRunnerCreateExtension,
+  CASE_RUNNER_CREATE_KIND, type ServiceCatalog,
 } from "@compforge/doctor-plugin";
 import { invokeExtension } from "../plugin/extension";
 import type { ManagedPluginContext } from "../plugin/context";
@@ -29,24 +29,8 @@ export async function loadPerfScenarios(
   const context = await open();
   try {
     const scenarios = perfScenariosOutput((await invokeExtension(provider.extension, context, undefined)).data);
-    validateScenarioCases(scenarios, provider.cases);
     return scenarios;
   } finally {
     await context.dispose();
-  }
-}
-
-function validateScenarioCases(
-  scenarios: ReturnType<typeof perfScenariosOutput>,
-  capability: CaseRunnerCreateExtension,
-): void {
-  for (const scenario of scenarios) {
-    const cases = capability.caseSets.find(item => item.caseset === scenario.caseSetId);
-    if (!cases) throw new Error(`Perf scenario '${scenario.id}' references unknown CaseSet '${scenario.caseSetId}'`);
-    for (const selection of scenario.cases ?? []) {
-      if (!cases.cases.some(item => item.id === selection.caseId)) {
-        throw new Error(`Perf scenario '${scenario.id}' references unknown Case '${selection.caseId}'`);
-      }
-    }
   }
 }

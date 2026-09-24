@@ -323,9 +323,9 @@ describe("profile and init", () => {
 });
 
 describe("case catalog", () => {
-  test("从当前目录读取 canonical doctor-case.yaml", async () => {
+  test("从当前目录读取 canonical doctor-cases.yaml", async () => {
     const dir = workingDir();
-    writeFileSync(join(dir, "doctor-case.yaml"), `caseset: local_api\nschema_version: 1\nfacets:\n  command: {values: [http]}\ncases:\n  - id: health\n    input: {method: GET, path: /health}\n    facets: {command: http}\n`);
+    writeFileSync(join(dir, "doctor-cases.yaml"), `caseset: local_api\nschema_version: 1\nfacets:\n  command: {values: [http]}\ncases:\n  - id: health\n    input: {method: GET, path: /health}\n    facets: {command: http}\n`);
     const result = await run(["case"], { withPlugin: true, cwd: dir });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("local_api (local)");

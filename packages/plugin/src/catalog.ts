@@ -1,9 +1,11 @@
 import { validateExtension, type RegisteredExtension } from "./extension";
+import { ExtensionRegistry } from "./extension/registry";
 import type { ServiceDefinition } from "./service";
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   private readonly identities = new Map<string, T>();
+  private readonly registry = new ExtensionRegistry<RegisteredExtension>();
 
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
@@ -22,12 +24,10 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         this.identities.set(alias, service);
       }
       if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
-      const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
         validateExtension(extension);
-        if (extensionIds.has(extension.id)) throw new Error(`${service.name}: duplicate Extension id '${extension.id}'`);
-        extensionIds.add(extension.id);
       }
+      this.registry.register(service.name, service.extensions ?? []);
       const workloads = service.workloads.map((workload) => workload.name);
       for (const source of service.dataSources ?? []) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
@@ -45,9 +45,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   /** Open discovery; the consumer owns domain validation and multi-provider selection. */
   extensions(kind: string): { service: T; extension: RegisteredExtension }[] {
-    return this.services.flatMap(service => (service.extensions ?? [])
-      .filter(extension => extension.kind === kind)
-      .map(extension => ({ service, extension })));
+    return this.registry.extensions(kind).map(({ owner, extension }) => ({ service: this.identities.get(owner)!, extension }));
   }
 
   find(name: string): T | undefined {

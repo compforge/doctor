@@ -275,7 +275,7 @@ function withTenantOptions(cmd: CommandT): CommandT {
 
 function withCaseOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要发送的 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--send", "发送选中的 HTTP Case；非交互环境必须显式指定", false)
@@ -327,7 +327,7 @@ function withMcpOptions(cmd: CommandT): CommandT {
 
 function withModelOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
@@ -367,7 +367,7 @@ function withMetricOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
@@ -642,7 +642,7 @@ export function createDoctorProgram(
       for (const source of sources) {
         writeOutput(`${source.caseSet.caseset} (${source.source}${source.service ? `/${source.service}` : ""})\n`);
         for (const item of source.caseSet.cases) {
-          writeOutput(`  ${item.id}  command=${item.facets?.command ?? (source.source === "plugin" ? "perf (legacy)" : "unspecified")}${item.desc ? `  ${item.desc}` : ""}\n`);
+          writeOutput(`  ${item.id}  command=${item.facets?.command ?? "unspecified"}${item.desc ? `  ${item.desc}` : ""}\n`);
         }
       }
       if (!opts.send && !isInteractive()) return;

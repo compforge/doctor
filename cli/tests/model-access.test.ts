@@ -438,7 +438,7 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   const validated = validatePluginDefinition(base, manifest);
   expect(validated.services.extensions("perf.scenarios")).toHaveLength(1);
   const runner = requireCaseRunnerCreateExtension(validated.services.extensions("case.runner.create")[0]!.extension);
-  const caseSet = runner.caseSets[0]!;
+  const caseSet = runner.caseSets![0]!;
   expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, { caseSets: [{ ...caseSet, facets: undefined }] })))
     .toThrow("unknown facet 'difficulty'");
   expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, {

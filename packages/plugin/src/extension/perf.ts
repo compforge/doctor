@@ -19,7 +19,8 @@ export function perfScenariosOutput(value: unknown): readonly ServicePerfScenari
   const ids = new Set<string>();
   const text = (item: unknown): item is string => typeof item === "string" && Boolean(item.trim());
   for (const scenario of scenarios) {
-    if (!scenario || ![scenario.id, scenario.title, scenario.description, scenario.caseSetId].every(text)
+    if (!scenario || ![scenario.id, scenario.title, scenario.description].every(text)
+      || (scenario.caseSetId !== undefined && !text(scenario.caseSetId))
       || ids.has(scenario.id) || (scenario.cases !== undefined && (!Array.isArray(scenario.cases) || !scenario.cases.length))) {
       throw new Error("perf.scenarios returned an invalid or duplicate scenario");
     }
