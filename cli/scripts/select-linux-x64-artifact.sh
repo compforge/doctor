@@ -44,9 +44,11 @@ if ! version_ge "$glibc" "2.17"; then
   exit 2
 fi
 
-# 只有明确满足 Bun 的推荐内核和当前构建的 glibc 基线才发 modern；无法证明时回退到兼容版。
+# 4.19/glibc 2.28 已验证可运行 Bun/OpenTUI；更老的环境继续选择 Node SEA。
 if version_ge "$kernel" "5.6" && version_ge "$glibc" "2.25"; then
   echo "doctor-$version-debian-x64-kernel-5.6-glibc-2.25"
+elif version_ge "$kernel" "4.19" && version_ge "$glibc" "2.28"; then
+  echo "doctor-$version-debian-x64-kernel-4.19-glibc-2.28"
 else
   echo "doctor-$version-debian-x64-kernel-3.10-glibc-2.17"
 fi

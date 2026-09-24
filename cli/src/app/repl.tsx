@@ -43,7 +43,7 @@ export async function runRepl(
     plugin ? `${plugin.id}@${plugin.version}` : undefined,
   );
   if (!process.versions.bun) {
-    // Kylin 使用 Node SEA 兼容旧内核；OpenTUI 依赖 Bun FFI，因此在该运行时降级为行式交互。
+    // 旧内核的 Node SEA 不具备当前 OpenTUI 所需的 FFI，Chat 在该运行时使用行式交互。
     await runPlainRepl(session);
     return;
   }
