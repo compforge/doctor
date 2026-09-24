@@ -13,15 +13,18 @@ import { runDoctorImage } from "../provision/image";
 import { runInstall, validateInstallOptions } from "../provision/install";
 import { renderEvidence, writeEvidencePage } from "../report/evidence";
 import { runRepl } from "./repl";
+import type { DistributionManifest } from "./distribution";
 
-export const chatCommand = defineCommand<CommandInput & Omit<CliFlags, CommandHostOption>, void>({
+export const chatCommand = defineCommand<CommandInput & Omit<CliFlags, CommandHostOption> & {
+  agentCommands?: Readonly<Record<string, DistributionManifest>>;
+}, void>({
   name: "doctor chat",
   prepare: async (context, input) => {
     await context.resolvePlugin();
     return input;
   },
   run: async (context, input) => commandOutcome(await runRepl(
-    { ...input, ...commandOptions(context) }, await context.resolvePlugin(), context,
+    { ...input, ...commandOptions(context) }, await context.resolvePlugin(), context, input.agentCommands,
   )),
 });
 

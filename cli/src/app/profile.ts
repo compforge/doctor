@@ -44,7 +44,7 @@ export function resolveWorkingProfileName(
   if (opts.resume !== undefined) {
     return resolveResumeTarget(loadState(statePath), opts.resume).profile;
   }
-  return resolveProfile(loadConfig(resolveConfigPath(opts.config)), opts.profile).name;
+  return resolveProfile(loadConfig(resolveConfigPath(opts.config)), opts.profile ?? process.env.DOCTOR_PROFILE).name;
 }
 
 export interface ResolvedWorkingProfile {
@@ -66,7 +66,7 @@ export function resolveWorkingProfile(opts: WorkingProfileOptions): ResolvedWork
         loadState(join(homedir(), ".doctor", "state.yaml")),
         opts.resume,
       ).profile
-    : opts.profile;
+    : opts.profile ?? process.env.DOCTOR_PROFILE;
   // Loading once makes the validated profile the command's immutable configuration snapshot.
   return { ...resolveProfile(loadConfig(configPath), requested), configPath };
 }

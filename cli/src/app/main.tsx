@@ -29,7 +29,7 @@ import { writeOutput } from "../terminal/output";
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
 import { Command, CommanderError, type Command as CommandT } from "commander";
 import { CliCommand } from "./cli-command";
-import type { Distribution } from "./distribution";
+import { extractDistributionArgument, loadDistributionManifest, type Distribution, type DoctorHostOptions } from "./distribution";
 import { applyCommandDefaults, deliveryFormatOption } from "./command-defaults";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
 import { formatDistributionVersion, formatDoctorVersion } from "./version";
@@ -54,7 +54,7 @@ import { runInit } from "./init";
 import { runProfile } from "./profile";
 import { configureProfileHelp } from "./profile-help";
 import { applyOptionDefaults } from "./command-defaults";
-import { loadActivePlugin } from "../plugin";
+import { loadActivePlugin, loadInstalledPlugin } from "../plugin";
 import { registerPluginInfo, runPluginInstall, runPluginUninstall } from "./plugin";
 import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
@@ -91,6 +91,7 @@ function withReplOptions(cmd: CommandT): CommandT {
 function toReplFlags(opts: Record<string, unknown>): CliFlags {
   return {
     profile: opts.profile as string | undefined,
+    namespace: opts.namespace as string | undefined,
     resume: opts.resume === true ? true : (opts.resume as string | undefined),
     server: opts.server === true,
     config: opts.config as string | undefined,
@@ -398,6 +399,7 @@ async function showVersion(distribution: Distribution): Promise<void> {
 /** Build the CLI surface without loading a profile or contacting a target. */
 export function createDoctorProgram(
   distribution: Distribution = {},
+  host: DoctorHostOptions = {},
 ): Command {
   const { plugin } = distribution;
   const commandRuntime = { plugin, logLevel: distribution.logLevel };
@@ -413,6 +415,7 @@ export function createDoctorProgram(
     .option("-y, --yes", "不询问，使用已解析的参数和默认值并确认所选操作；缺少必要参数时报错", false)
     .option("--no-yes", "关闭自动确认，允许交互终端补齐参数")
     .option("--config <path>", 'Doctor 配置路径（默认 ~/.doctor/config.yaml；空字符串禁用外部配置）')
+    .option("--distribution <path>", "从 JSON 加载发行配置")
     .option("-n, --namespace <ns>", "目标 namespace（业务采集为业务 Service 所在 namespace，默认 default）")
     .option("--kubeconfig <path>", "Kubernetes 配置路径，优先于 profile；仅访问 Kubernetes 时使用")
     .option("--context <name>", "Kubernetes context；未指定时使用 kubeconfig 当前 context")
@@ -436,7 +439,9 @@ export function createDoctorProgram(
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const flags = toReplFlags(opts);
-    await runCommand(chatCommand, { ...opts, ...flags }, domainInput(flags), commandRuntime);
+    await runCommand(chatCommand, { ...opts, ...flags }, {
+      ...domainInput(flags), agentCommands: host.agentCommands,
+    }, commandRuntime);
   });
 
   catalog
@@ -681,22 +686,36 @@ export function createDoctorProgram(
   return program;
 }
 
-export async function main(distribution: Distribution = {}) {
-  const program = createDoctorProgram(distribution);
+export async function main(embedded: Distribution = {}, host: DoctorHostOptions = {}) {
+  const { path, argv } = extractDistributionArgument(process.argv);
+  let distribution = embedded;
+  if (path) {
+    const manifest = loadDistributionManifest(path);
+    // Help and release identity must remain available before installing a Plugin.
+    const presentationOnly = argv.length === 2 || argv.includes("--help") || argv.includes("-h")
+      || argv[2] === "help" || argv.includes("--version") || argv.includes("-V");
+    const plugin = manifest.plugin && !presentationOnly
+      ? embedded.plugin && `${embedded.plugin.id}@${embedded.plugin.version}` === manifest.plugin
+        ? embedded.plugin
+        : await loadInstalledPlugin(manifest.plugin)
+      : undefined;
+    distribution = { ...manifest, plugin };
+  }
+  const program = createDoctorProgram(distribution, host);
 
-  if (process.argv.length === 2) {
+  if (argv.length === 2) {
     program.outputHelp();
     return;
   }
   try {
-    await withLogger(distribution.logLevel ?? "info", () => program.parseAsync(process.argv));
+    await withLogger(distribution.logLevel ?? "info", () => program.parseAsync(argv));
   } catch (error) {
     if (error instanceof CommanderError && error.code === "doctor.versionDisplayed") return;
     throw error;
   }
 }
 
-export function startDoctor(distribution: Distribution = {}): void {
+export function startDoctor(distribution: Distribution = {}, host: DoctorHostOptions = {}): void {
   const { plugin } = distribution;
   const pluginIdentity = plugin ? `${plugin.id}@${plugin.version}` : undefined;
   process.once("uncaughtException", (error) => {
@@ -715,7 +734,7 @@ export function startDoctor(distribution: Distribution = {}): void {
     });
     process.exit(1);
   });
-  main(distribution).catch((err) => {
+  main(distribution, host).catch((err) => {
     reportError(err, {
       context: "doctor main",
       summary: "fatal",

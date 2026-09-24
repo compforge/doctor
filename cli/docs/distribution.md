@@ -2,11 +2,15 @@
 
 ## 理念与边界
 
-Doctor 是上游通用诊断 CLI。发行版复用同一套 Command、环境访问与 Evidence 生命周期，面向某类使用者
-选择入口名称、发行版本、说明、命令展示和内置 Plugin，不复制 Core，也不建立另一套命令执行流程。
+Doctor 是上游通用诊断 CLI。Distribution 表达一组 CLI 身份、命令展示与默认值；它可以写成 JSON，
+也可以由发行方内嵌到 CLI。最终交付给用户的可执行命令是这种配置的一个入口，复用同一套 Command、
+环境访问与 Evidence 生命周期。
+
+类比 Debian 和 Ubuntu 都是 Linux 的发行版，`doctor` 和 `ascli` 可以是同一 Doctor Core 的不同发行版：
+共享诊断能力，通过各自的 Distribution 选择入口名称、默认值和 Plugin。
 
 - **Core** 拥有命令与执行契约、通用连接参数、Help 生成和版本报告。
-- **Distribution** 拥有用户看到的 CLI 身份及命令展示策略，由发行方的 composition entry 固定。
+- **Distribution** 拥有用户看到的 CLI 身份及命令展示策略，可以在构建时内嵌或在启动时从 JSON 加载。
 - **Plugin** 拥有 Service、业务能力和 Skills。Plugin 的身份与版本不因发行版名称改变。
 
 Plugin 与发行版是两个独立维度：同一 Plugin 可以被不同发行版内置，发行版也可以不内置 Plugin，
@@ -35,6 +39,28 @@ const distribution = {
 
 startDoctor(distribution);
 ```
+
+运行时也可以传 JSON 文件。JSON 的 `plugin` 字段使用精确的 `id@version` 引用；Doctor 优先匹配
+当前入口内嵌的 Plugin，否则使用 Host 已安装的精确版本：
+
+```json
+{
+  "name": "samplectl",
+  "version": "2.3.4",
+  "plugin": "sample@1.0.0",
+  "commands": "inspect,data,plugin",
+  "optionDefaults": { "config": "", "yes": true },
+  "commandDefaults": { "inspect": { "format": "summary" } }
+}
+```
+
+```bash
+doctor --distribution ./samplectl.json inspect
+```
+
+`--distribution` 在构建 CLI 命令树前读取；显式 JSON 的身份、展示与默认值整体替代内嵌设置。
+Plugin 代码仍由宿主加载，JSON 不包含可执行代码。文件错误、未知字段、无效默认值或找不到精确
+Plugin 时，Doctor 在执行领域命令前报错。Help 和 version 只读本地信息，不访问诊断目标。
 
 使用 Doctor 的构建入口编译这份 entry；产物文件名由发行方选择，与 Help 名称显式保持一致：
 
@@ -97,6 +123,12 @@ Doctor 不自动生成错误日志文件；错误摘要保留在 stderr，`--deb
 Help、Plugin 信息与版本展示保持离线，不因传入目标参数而连接 Kubernetes。
 namespace 的默认值仍为 `default`；解析器提供的默认值不覆盖 profile 中的 namespace。
 配置关闭时不选择 profile，只使用显式参数和运行默认值。
+
+本地 Chat 宿主可在 `startDoctor(distribution, { agentCommands: { samplectl: manifest } })`
+中为 Agent 声明额外命令入口。
+宿主为会话生成对应 JSON 和临时 `bin/samplectl`，把目录加入该 Agent 的 PATH。入口复用当前 Doctor
+和精确 Plugin，并传递本次选定的 config、profile 与目标参数。子命令仍按显式参数、profile、
+Distribution 默认值的顺序解析。会话结束后宿主清理临时目录；客户端不需要另装一份 CLI。
 
 ### 发行版本与内嵌组件版本独立
 

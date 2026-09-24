@@ -7,6 +7,7 @@ import { createDoctorProgram } from "../src/app/main";
 import { prepareCommand } from "../src/app/prepare";
 import { resolveCollectKubeconfig } from "../src/infra/k8s/context";
 import { DOCTOR_CLI_VERSION } from "../src/app/version";
+import { extractDistributionArgument, loadDistributionManifest } from "../src/app/distribution";
 
 const roots: string[] = [];
 function temporaryRoot(): string {
@@ -34,6 +35,48 @@ function runDistribution(root: string, args: string[]) {
 }
 
 describe("Doctor distributions", () => {
+  test("Chat receives Host-owned Agent command Distributions", async () => {
+    const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
+    try {
+      const agentCommands = { samplectl: { name: "samplectl" } };
+      const program = createDoctorProgram({}, { agentCommands });
+      await program.parseAsync(["chat"], { from: "user" });
+      expect(run.mock.calls[0]![2]).toMatchObject({ agentCommands });
+    } finally { run.mockRestore(); }
+  });
+  test("loads a JSON presentation and resolves the embedded exact Plugin", () => {
+    const root = temporaryRoot();
+    const file = join(root, "distribution.json");
+    writeFileSync(file, JSON.stringify({
+      name: "fieldctl", version: "3.2.1", plugin: "sample@1.0.0",
+      commands: "plugin,inspect", commandDefaults: { inspect: { format: "manifest" } },
+    }));
+    expect(loadDistributionManifest(file).plugin).toBe("sample@1.0.0");
+    expect(runDistribution(root, ["--distribution", file, "--version"])).toBe("fieldctl 3.2.1\n");
+    expect(runDistribution(root, ["--distribution", file, "version"]))
+      .toStartWith(`fieldctl 3.2.1\ndoctor ${DOCTOR_CLI_VERSION}\nplugin sample@1.0.0\n`);
+    const help = runDistribution(root, ["--distribution", file, "--help"]);
+    expect(help).toContain("Usage: fieldctl");
+    expect(help).not.toMatch(/^  chat /m);
+  });
+
+  test("rejects malformed runtime JSON and duplicated selectors", () => {
+    const root = temporaryRoot();
+    const file = join(root, "invalid.json");
+    writeFileSync(file, JSON.stringify({ name: "fieldctl", plugin: "sample", unexpected: true }));
+    expect(() => loadDistributionManifest(file)).toThrow("unknown field 'unexpected'");
+    expect(() => extractDistributionArgument(["bun", "doctor", "--distribution", file, "--distribution", file]))
+      .toThrow("only once");
+  });
+
+  test("JSON Help and release version do not require an installed Plugin", () => {
+    const root = temporaryRoot();
+    const file = join(root, "distribution.json");
+    writeFileSync(file, JSON.stringify({ name: "fieldctl", plugin: "absent@1.0.0" }));
+    expect(runDistribution(root, ["--distribution", file, "--version"]))
+      .toBe(`fieldctl ${DOCTOR_CLI_VERSION}\n`);
+    expect(runDistribution(root, ["--distribution", file, "--help"])).toContain("Usage: fieldctl");
+  });
   test("retains the upstream identity by default", () => {
     expect(createDoctorProgram().helpInformation()).toContain("Usage: doctor [options] [command]");
   });
