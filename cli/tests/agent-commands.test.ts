@@ -79,6 +79,25 @@ test("Agent command passes shell-sensitive arguments through unchanged", () => {
   }
 });
 
+test("compiled Doctor command re-execs its binary without a Bun virtual entry", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-compiled-command-test-"));
+  const executable = join(root, "doctor");
+  try {
+    const build = await Bun.build({
+      entrypoints: [resolve(import.meta.dir, "fixtures/compiled-agent-command.ts")],
+      compile: { target: `bun-${process.platform}-${process.arch}` as Bun.Build.CompileTarget, outfile: executable },
+    });
+    expect(build.success, build.logs.map(String).join("\n")).toBe(true);
+    const result = Bun.spawnSync({ cmd: [executable], stdout: "pipe", stderr: "pipe" });
+    expect(result.exitCode, result.stderr.toString()).toBe(0);
+    expect(JSON.parse(result.stdout.toString())).toEqual([
+      "--distribution", expect.any(String), "--config", "/tmp/doctor-config.yaml", "version",
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Agent command rejects a different Plugin before creating an executable entry", () => {
   expect(() => prepareAgentCommands({ samplectl: {
     name: "samplectl", plugin: "other@1.0.0",

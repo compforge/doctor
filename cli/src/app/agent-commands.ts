@@ -23,8 +23,8 @@ function shellWord(value: string): string {
 
 function currentDoctorCommand(): string[] {
   const entry = process.argv[1];
-  // Compiled executables re-exec directly; Bun source and Node bundles need their runtime.
-  return entry && /\.(?:[cm]?js|tsx?)$/.test(entry) && resolve(entry) !== resolve(process.execPath)
+  // Bun exposes the bundled source under /$bunfs/; only a real JS/TS entry needs the runtime.
+  return entry && !entry.startsWith("/$bunfs/") && /\.(?:[cm]?js|tsx?)$/.test(entry) && resolve(entry) !== resolve(process.execPath)
     ? [process.execPath, resolve(entry)]
     : [process.execPath];
 }
