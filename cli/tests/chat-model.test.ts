@@ -42,3 +42,27 @@ describe("Doctor AgentUE model projection", () => {
     }]);
   });
 });
+
+test("shows executed bash command and real model thinking in transcript blocks", () => {
+  const model = createDoctorModel({
+    profileName: "local", profile: { readonly: true }, mode: "local", warnings: [],
+  });
+  model.blocks.push({ id: "thought-1", type: "thought", status: "completed", content: "checking evidence" });
+  model.blocks.push({
+    id: "tool-1", type: "tool", tool_name: "bash", status: "completed",
+    args: { command: "# trace\nascli trace --biz-id example" }, result: "done",
+  });
+
+  const state = projectChatState(model);
+  expect(state.timeline.showThoughts).toBe(true);
+  expect(state.timeline.items[0]).toMatchObject({
+    kind: "thought", title: "Thinking", content: { type: "text", text: "checking evidence" },
+  });
+  expect(state.timeline.items[1]).toMatchObject({
+    title: "bash · ascli trace --biz-id example",
+    content: [
+      { type: "command", command: "# trace\nascli trace --biz-id example" },
+      { type: "output", lines: ["done"] },
+    ],
+  });
+});

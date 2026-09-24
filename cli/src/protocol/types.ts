@@ -63,5 +63,4 @@ export interface CliFlags {
   resume?: string | true;    // true = --resume without value; string = --resume <id>
   server?: boolean;
   config?: string;
-  verbose: boolean;
 }

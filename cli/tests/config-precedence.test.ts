@@ -115,6 +115,6 @@ test("remote Chat refuses to silently ignore an unsupported explicit context", a
   const config = join(directory, "config.yaml");
   writeFileSync(config, "default_profile: test\nprofiles:\n  test:\n    readonly: true\n");
   const context = prepareCommand({ config, context: "explicit" }, false);
-  await expect(bootstrap({ config, server: true, verbose: false }, undefined, context))
+  await expect(bootstrap({ config, server: true }, undefined, context))
     .rejects.toThrow("远端 chat 暂不支持 --context");
 });

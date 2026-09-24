@@ -17,6 +17,7 @@ import type {
   InfoBlock,
   MessageBlock,
   RunContext,
+  ThoughtBlock,
   ToolBlock,
 } from "./types";
 
@@ -38,14 +39,12 @@ const streamOpenAICompletions: StreamFn = (model, context, options) => (
 export class Agent implements AgentSource {
   private readonly agent: PiAgent;
   private readonly env: AgentOptions["env"];
-  private readonly verbose: boolean;
 
   constructor(options: AgentOptions) {
     const skills = options.skills ?? [];
     const tools = mergeTools(options.tools ?? [], createExecutionTools(options.env));
     const skillCatalog = formatSkillsForSystemPrompt([...skills]);
     this.env = options.env;
-    this.verbose = options.verbose ?? false;
     const streamFn: StreamFn = options.llm.fetch
       ? (model, context, streamOptions) => streamSimple(
           model as Model<"openai-completions">,
@@ -84,7 +83,6 @@ export class Agent implements AgentSource {
         assistantId,
         assistantHasText,
         thoughtId,
-        verbose: this.verbose,
         setAssistantId: (id) => { assistantId = id; },
         setAssistantHasText: (hasText) => { assistantHasText = hasText; },
         setThoughtId: (id) => { thoughtId = id; },
@@ -123,10 +121,9 @@ export interface EventState {
   assistantId?: string;
   assistantHasText: boolean;
   thoughtId?: string;
-  verbose: boolean;
   setAssistantId(id: string): void;
   setAssistantHasText(hasText: boolean): void;
-  setThoughtId(id: string): void;
+  setThoughtId(id: string | undefined): void;
 }
 
 export function mapEvent(event: AgentEvent, context: RunContext, state: EventState): PatchEvent[] {
@@ -137,6 +134,7 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
       const id = `assistant-${crypto.randomUUID()}`;
       state.setAssistantId(id);
       state.setAssistantHasText(false);
+      state.setThoughtId(undefined);
       return [];
     }
     case "message_update": {
@@ -158,21 +156,29 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
           { mask: "block.content", eventType: update.type },
         )];
       }
-      if (state.verbose && update.type === "thinking_start") {
+      if (update.type === "thinking_start") {
         const id = `thought-${crypto.randomUUID()}`;
         state.setThoughtId(id);
         return [emitter.blockSet({
           id,
-          type: "info",
-          tone: "muted",
+          type: "thought",
+          status: "in_progress",
           content: "",
-        } satisfies InfoBlock, { eventType: update.type })];
+        } satisfies ThoughtBlock, { eventType: update.type })];
       }
-      if (state.verbose && update.type === "thinking_delta" && state.thoughtId) {
+      if (update.type === "thinking_delta" && state.thoughtId && update.delta) {
         return [emitter.blockAppend(
-          { id: state.thoughtId, type: "info", content: update.delta },
+          { id: state.thoughtId, type: "thought", content: update.delta },
           { mask: "block.content", eventType: update.type },
         )];
+      }
+      if (update.type === "thinking_end" && state.thoughtId) {
+        return [emitter.blockSet({
+          id: state.thoughtId,
+          type: "thought",
+          status: "completed",
+          content: update.content,
+        } satisfies ThoughtBlock, { eventType: update.type })];
       }
       return [];
     }
@@ -201,14 +207,20 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
         status: "in_progress",
         args: event.args,
       } satisfies ToolBlock, { eventType: event.type })];
-    case "tool_execution_end":
-      return [emitter.blockSet({
+    case "tool_execution_end": {
+      const result = {
         id: event.toolCallId,
         type: "tool",
         tool_name: event.toolName,
         status: event.isError ? "failed" : "completed",
         result: stringifyResult(event.result),
-      } satisfies ToolBlock, { eventType: event.type })];
+      } satisfies ToolBlock;
+      // Set only changed fields so the start event's command arguments survive completion.
+      return [
+        emitter.blockSet(result, { mask: "block.result", eventType: event.type }),
+        emitter.blockSet(result, { mask: "block.status", eventType: event.type }),
+      ];
+    }
     default:
       return [];
   }

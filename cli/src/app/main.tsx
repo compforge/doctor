@@ -84,8 +84,7 @@ function withReplOptions(cmd: CommandT): CommandT {
     .option("-p, --profile <name>", "profile name from ~/.doctor/config.yaml")
     .option("--server", "use the doctor-server configured by the profile", false)
     .option("--resume [conv_id]", "resume a previous conversation (latest if no id given)")
-    .option("-c, --config <path>", 'Doctor 配置路径；空字符串禁用外部配置')
-    .option("-v, --verbose", "show thinking output and HTTP debug logs", false);
+    .option("-c, --config <path>", 'Doctor 配置路径；空字符串禁用外部配置');
 }
 
 function toReplFlags(opts: Record<string, unknown>): CliFlags {
@@ -95,7 +94,6 @@ function toReplFlags(opts: Record<string, unknown>): CliFlags {
     resume: opts.resume === true ? true : (opts.resume as string | undefined),
     server: opts.server === true,
     config: opts.config as string | undefined,
-    verbose: !!(opts.verbose || process.env.DOCTOR_DEBUG),
   };
 }
 

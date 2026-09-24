@@ -64,3 +64,32 @@ function event(eventType: string, extra: Record<string, unknown> = {}): AgentEve
     ...extra,
   };
 }
+
+test("server thinking chunks and tool arguments remain visible after completion", async () => {
+  class ToolServerClient extends FakeServerClient {
+    override async *streamMessage(): AsyncGenerator<AgentEventBase> {
+      yield event("thinking.chunk", { content: "checking " });
+      yield event("thinking.chunk", { content: "evidence" });
+      yield event("tool_call.started", {
+        tool_call_id: "call-1", tool_name: "bash", args: { command: "ascli data example" },
+      });
+      yield event("tool_call.completed", {
+        tool_call_id: "call-1", tool_name: "bash", status: "completed", content: "done",
+      });
+      yield event("run.completed");
+    }
+  }
+  const profile = { readonly: true, server: "http://doctor.test" };
+  const session = new Session(createDoctorModel({
+    profileName: "server", profile, mode: "server", warnings: [],
+  }), new ServerAgent({
+    client: new ToolServerClient(), connectionId: "connection-1", profileName: "server",
+    profile, state: { conversations: {} }, statePath: "/private/tmp/unused-doctor-state.yaml",
+  }));
+
+  await session.submit("question");
+  expect(session.getModel().blocks.filter((block) => block.type !== "message")).toMatchObject([
+    { type: "thought", status: "completed", content: "checking evidence" },
+    { type: "tool", status: "completed", args: { command: "ascli data example" }, result: "done" },
+  ]);
+});

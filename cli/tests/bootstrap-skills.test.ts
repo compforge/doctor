@@ -116,7 +116,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
 
   let agent: Awaited<ReturnType<typeof bootstrap>>["agent"] | undefined;
   try {
-    const result = await bootstrap({ config: configPath, verbose: false }, plugin);
+    const result = await bootstrap({ config: configPath }, plugin);
     agent = result.agent;
     for await (const _event of agent.run("diagnose", { emitter: new PatchEmitter() })) {
       // Consume the complete AgentUE stream so the model request reaches its terminal event.
@@ -166,7 +166,7 @@ test("bootstrap keeps the remote adapter available behind explicit --server", as
   ].join("\n"));
 
   try {
-    const result = await bootstrap({ config: configPath, server: true, verbose: false });
+    const result = await bootstrap({ config: configPath, server: true });
     expect(result.model.meta.mode).toBe("server");
     expect(result.model.meta.server).toBe(`http://127.0.0.1:${server.port}`);
     expect(requests).toEqual(["GET /healthz", "POST /connections"]);

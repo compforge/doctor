@@ -53,6 +53,8 @@ AgentUE patch 输出。宿主负责 Plugin 解析、模型凭据、Pi `Execution
 embedding、rerank 和 audio 不进入 chat 选择。选中结果只在当前 Session 生效，不回写 profile。
 Plugin inference 持有路由与凭据，CLI 把它适配为 Pi 的 OpenAI-compatible streaming transport；Agent
 不需要看到 Plugin 的访问凭据。
+`bash` 工具调用在转录中展示实际命令和输出；模型或 server 返回 thinking 文本时，转录用独立 thought block 展示，
+不合成未返回的思考内容。profile 的 `llm.thinking` 决定本地模型请求是否启用推理。
 Core 在启动 Agent 前完成 Kubernetes access 预检并建立 inference port-forward，连接随
 Session 保持，并在 Session 结束时回收。
 

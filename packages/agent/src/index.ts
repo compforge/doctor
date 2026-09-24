@@ -9,5 +9,6 @@ export type {
   MessageBlock,
   RunContext,
   Skill,
+  ThoughtBlock,
   ToolBlock,
 } from "./types";

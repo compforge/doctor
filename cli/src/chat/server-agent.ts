@@ -3,6 +3,7 @@ import type {
   InfoBlock,
   MessageBlock,
   RunContext,
+  ThoughtBlock,
   ToolBlock,
 } from "@compforge/doctor-agent";
 import type { PatchEvent } from "@compforge/agentue/ui";
@@ -27,7 +28,6 @@ export interface ServerAgentOptions {
   profile: Profile;
   state: State;
   statePath: string;
-  verbose?: boolean;
 }
 
 /** Compatibility adapter for the existing Python doctor-server event stream. */
@@ -52,6 +52,8 @@ export class ServerAgent implements AgentSource {
     let assistantText = "";
     const toolFinished = new Set<string>();
     const toolStartTime = new Map<string, number>();
+    const toolStarts = new Map<string, ToolBlock>();
+    const thoughtIds = new Set<string>();
 
     try {
       for await (const event of this.streamWithRetry(text, ac.signal)) {
@@ -89,27 +91,39 @@ export class ServerAgent implements AgentSource {
             );
             break;
           }
-          case "thinking.chunk":
-            if (this.options.verbose) {
+          case "thinking.chunk": {
+            const content = String(event.content ?? "");
+            if (!content) break;
+            const id = `thinking-${event.run_id ?? "run"}`;
+            if (thoughtIds.has(id)) {
+              yield context.emitter.blockAppend(
+                { id, type: "thought", content },
+                { mask: "block.content", eventType: event.event_type },
+              );
+            } else {
+              thoughtIds.add(id);
               yield context.emitter.blockSet({
-                id: `thinking-${event.run_id ?? "run"}`,
-                type: "info",
-                tone: "muted",
-                content: String(event.content ?? ""),
-              } satisfies InfoBlock, { eventType: event.event_type });
+                id,
+                type: "thought",
+                status: "in_progress",
+                content,
+              } satisfies ThoughtBlock, { eventType: event.event_type });
             }
             break;
+          }
           case "tool_call.started": {
             const id = String(event.tool_call_id ?? crypto.randomUUID());
             const occurredAt = Number(event.occurred_at);
             if (Number.isFinite(occurredAt)) toolStartTime.set(id, occurredAt);
-            yield context.emitter.blockSet({
+            const startBlock = {
               id,
               type: "tool",
               tool_name: String(event.tool_name ?? "tool"),
               status: "in_progress",
               args: event.args,
-            } satisfies ToolBlock, { eventType: event.event_type });
+            } satisfies ToolBlock;
+            toolStarts.set(id, startBlock);
+            yield context.emitter.blockSet(startBlock, { eventType: event.event_type });
             break;
           }
           case "tool_call.result":
@@ -123,11 +137,14 @@ export class ServerAgent implements AgentSource {
             const duration = start !== undefined && Number.isFinite(end) && end >= start
               ? end - start
               : undefined;
+            const started = toolStarts.get(id);
+            toolStarts.delete(id);
             yield context.emitter.blockSet({
               id,
               type: "tool",
-              tool_name: String(event.tool_name ?? "tool"),
+              tool_name: String(event.tool_name ?? started?.tool_name ?? "tool"),
               status: status === "completed" ? "completed" : "failed",
+              ...(started?.args === undefined ? {} : { args: started.args }),
               result: stripAnsi(String(event.display_content ?? event.content ?? "")),
               ...(duration === undefined ? {} : { duration_ms: duration }),
               ...(event.truncated === true ? { truncated: true } : {}),
@@ -136,6 +153,13 @@ export class ServerAgent implements AgentSource {
             break;
           }
           case "run.completed":
+            for (const id of thoughtIds) {
+              yield context.emitter.blockSet(
+                { id, type: "thought", status: "completed" },
+                { mask: "block.status", eventType: event.event_type },
+              );
+            }
+            thoughtIds.clear();
             if (assistantId) {
               yield context.emitter.blockSet({
                 id: assistantId,
