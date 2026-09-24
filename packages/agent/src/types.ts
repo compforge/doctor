@@ -26,7 +26,13 @@ export interface InfoBlock extends BaseBlock {
   content: string;
 }
 
-export type AgentBlock = MessageBlock | ToolBlock | InfoBlock;
+export interface ThoughtBlock extends BaseBlock {
+  type: "thought";
+  status: "in_progress" | "completed";
+  content: string;
+}
+
+export type AgentBlock = MessageBlock | ToolBlock | InfoBlock | ThoughtBlock;
 
 export interface RunContext {
   emitter: PatchEmitter;
@@ -64,5 +70,4 @@ export interface AgentOptions {
   systemPrompt?: string;
   /** Host-owned facts appended to the system prompt for this Agent instance. */
   contextPrompt?: string;
-  verbose?: boolean;
 }

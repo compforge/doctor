@@ -1,9 +1,4 @@
-import type {
-  AgentBlock,
-  InfoBlock,
-  MessageBlock,
-  ToolBlock,
-} from "@compforge/doctor-agent";
+import type { AgentBlock, ToolBlock } from "@compforge/doctor-agent";
 import {
   PROTOCOL_VERSION,
   type ModelMeta,
@@ -13,7 +8,7 @@ import type { ChatState, TranscriptItem } from "chat-tui";
 
 import type { Profile } from "../app/config/model";
 
-export type { InfoBlock, MessageBlock, ToolBlock } from "@compforge/doctor-agent";
+export type { InfoBlock, MessageBlock, ThoughtBlock, ToolBlock } from "@compforge/doctor-agent";
 export type AgentMode = "local" | "server";
 export type DoctorBlock = AgentBlock;
 
@@ -87,7 +82,7 @@ export function projectChatState(model: DoctorModel): ChatState {
   return {
     timeline: {
       items,
-      showThoughts: false,
+      showThoughts: true,
     },
     composer: {
       busy: meta.busy,
@@ -101,7 +96,7 @@ export function projectChatState(model: DoctorModel): ChatState {
         ? activeTools.map((tool) => ({
             id: tool.id,
             author: "doctor",
-            label: tool.tool_name,
+            label: toolTitle(tool),
             hint: "Esc to interrupt",
           }))
         : [{
@@ -136,15 +131,31 @@ function projectBlock(block: DoctorBlock): TranscriptItem {
     };
   }
   if (block.type === "tool") {
+    const command = bashCommand(block);
     const lines = block.result ? block.result.split("\n") : [];
+    const content = [
+      ...(command ? [{ type: "command" as const, command }] : []),
+      ...(lines.length ? [{ type: "output" as const, lines }] : []),
+    ];
     return {
       type: "block",
       id: block.id,
       kind: "tool",
       author: "doctor",
       title: toolTitle(block),
-      status: block.status === "in_progress" ? "in_progress" : block.status,
-      content: lines.length ? { type: "output", lines } : undefined,
+      status: block.status,
+      content: content.length ? content : undefined,
+    };
+  }
+  if (block.type === "thought") {
+    return {
+      type: "block",
+      id: block.id,
+      kind: "thought",
+      author: "doctor",
+      title: "Thinking",
+      status: block.status,
+      content: block.content ? { type: "text", text: block.content } : undefined,
     };
   }
   return {
@@ -157,11 +168,20 @@ function projectBlock(block: DoctorBlock): TranscriptItem {
   };
 }
 
+function bashCommand(block: ToolBlock): string | undefined {
+  if (block.tool_name !== "bash" || !block.args || typeof block.args !== "object") return undefined;
+  const command = (block.args as { command?: unknown }).command;
+  return typeof command === "string" && command.trim() ? command : undefined;
+}
+
 function toolTitle(block: ToolBlock): string {
+  const command = bashCommand(block);
+  const firstLine = command?.split(/\r?\n/).map((line) => line.trim()).find((line) => line && !line.startsWith("#"));
+  const preview = firstLine ? ` · ${firstLine.length > 96 ? `${firstLine.slice(0, 95)}…` : firstLine}` : "";
   const duration = block.duration_ms === undefined ? "" : ` · ${block.duration_ms}ms`;
   const truncated = block.truncated ? " · truncated" : "";
   const timeout = block.timeout_ms === undefined ? "" : ` · timeout ${block.timeout_ms}ms`;
-  return `${block.tool_name}${duration}${truncated}${timeout}`;
+  return `${block.tool_name}${preview}${duration}${truncated}${timeout}`;
 }
 
 function footerText(meta: DoctorMeta): string {

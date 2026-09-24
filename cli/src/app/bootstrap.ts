@@ -123,7 +123,6 @@ export async function bootstrap(
         profile,
         state,
         statePath,
-        verbose: flags.verbose,
       }),
       model: createDoctorModel({
         profileName,
@@ -151,7 +150,6 @@ export async function bootstrap(
         env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: { ...localContext.shellEnv, ...commandEnv.shellEnv } }),
         skills: plugin?.skills ?? [],
         contextPrompt: localContext.contextPrompt,
-        verbose: flags.verbose,
       });
       return {
         agent: withDispose(agent, async () => {
