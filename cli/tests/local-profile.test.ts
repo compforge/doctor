@@ -1,15 +1,22 @@
 // profile 的 server 字段不再隐式选择远端；远端兼容所需的上传配置仍做校验。
 // - collect 可通过 --profile 取本地 profile 的 kubeconfig
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { validateProfile } from "../src/app/config/config";
 import {
   resolveCollectDebugImage,
   resolveCollectKubeconfig,
   resolveCollectNamespace,
+  resolveKubectlKubeconfig,
 } from "../src/infra/k8s/context";
+
+const originalKubeconfig = process.env.KUBECONFIG;
+afterEach(() => {
+  if (originalKubeconfig === undefined) delete process.env.KUBECONFIG;
+  else process.env.KUBECONFIG = originalKubeconfig;
+});
 
 describe("validateProfile", () => {
   test("llm 可空", () => {
@@ -33,17 +40,23 @@ describe("resolveCollectKubeconfig", () => {
   }
 
   test("--kubeconfig 最优先，且不读 config", () => {
-    expect(resolveCollectKubeconfig({ kubeconfig: "/k/c", profile: "local", config: "/does/not/exist" })).toEqual({
-      kubeconfig: "/k/c",
+    const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+    const kubePath = join(dir, "explicit");
+    writeFileSync(kubePath, "apiVersion: v1\n");
+    expect(resolveCollectKubeconfig({ kubeconfig: kubePath, profile: "local", config: "/does/not/exist" })).toEqual({
+      kubeconfig: kubePath,
       source: "flag",
     });
   });
 
-  test("default profile 未配 kube 时回落 kubectl 默认查找", () => {
+  test("default profile 未配 kube 时使用 KUBECONFIG", () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-local-"));
     const configPath = join(dir, "config.yaml");
+    const kubePath = join(dir, "kubeconfig");
     writeFileSync(configPath, "profiles:\n  remote:\n    server: h:1\n    readonly: true\n", "utf-8");
-    expect(resolveCollectKubeconfig({ config: configPath })).toEqual({ source: "kubectl-default" });
+    writeFileSync(kubePath, "apiVersion: v1\n");
+    process.env.KUBECONFIG = kubePath;
+    expect(resolveCollectKubeconfig({ config: configPath })).toEqual({ source: "env:KUBECONFIG" });
   });
 
   test("未给 --profile 时 best-effort 用 default profile 的 kubeconfig（文件需存在）", () => {
@@ -68,11 +81,46 @@ describe("resolveCollectKubeconfig", () => {
     });
   });
 
-  test("profile 未配 kube 时报错", () => {
+  test("profile 未配 kube 时使用 KUBECONFIG", () => {
     const configPath = writeConfig();
+    const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+    const kubePath = join(dir, "kubeconfig");
+    writeFileSync(kubePath, "apiVersion: v1\n");
+    process.env.KUBECONFIG = kubePath;
+    expect(resolveCollectKubeconfig({ profile: "local", config: configPath })).toEqual({ source: "env:KUBECONFIG" });
+  });
+
+  test("选中的 profile kubeconfig 不可用时不回落", () => {
+    const configPath = writeConfig("/missing/profile-kubeconfig");
+    const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+    const kubePath = join(dir, "kubeconfig");
+    writeFileSync(kubePath, "apiVersion: v1\n");
+    process.env.KUBECONFIG = kubePath;
     expect(() => resolveCollectKubeconfig({ profile: "local", config: configPath })).toThrow(
-      "kube.kubeconfig_path",
+      "profile-kubeconfig",
     );
+  });
+
+  test("KUBECONFIG 保留多文件语义，且每个文件都必须可读", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+    const existing = join(dir, "existing");
+    const another = join(dir, "another");
+    writeFileSync(existing, "apiVersion: v1\n");
+    writeFileSync(another, "apiVersion: v1\n");
+    expect(resolveKubectlKubeconfig(`${existing}${delimiter}${another}`))
+      .toEqual({ source: "env:KUBECONFIG" });
+    expect(() => resolveKubectlKubeconfig(`${join(dir, "missing")}${delimiter}${existing}`))
+      .toThrow("KUBECONFIG 包含不存在或不可读取的 kubeconfig");
+  });
+
+  test("没有 KUBECONFIG 时检查 ~/.kube/config 对应的默认文件", () => {
+    const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+    const defaultPath = join(dir, "config");
+    expect(() => resolveKubectlKubeconfig("", defaultPath)).toThrow("kubeconfig path not found or unreadable");
+    writeFileSync(defaultPath, "apiVersion: v1\n");
+    expect(resolveKubectlKubeconfig("", defaultPath)).toEqual({
+      kubeconfig: defaultPath, source: "kubectl-default",
+    });
   });
 });
 

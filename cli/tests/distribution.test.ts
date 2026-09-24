@@ -145,10 +145,12 @@ describe("global Kubernetes options", () => {
   test("explicit target wins over the profile through command preparation", () => {
     const root = temporaryRoot();
     const config = join(root, "config.yaml");
+    const selected = join(root, "explicit-config");
+    writeFileSync(selected, "apiVersion: v1\n");
     writeFileSync(config, "default_profile: test\nprofiles:\n  test:\n    readonly: true\n    kube:\n      kubeconfig_path: /missing/profile-config\n");
-    const context = prepareCommand({ config, kubeconfig: "/explicit/config", context: "chosen" }, false);
+    const context = prepareCommand({ config, kubeconfig: selected, context: "chosen" }, false);
     expect(resolveCollectKubeconfig(context.options.environment ?? {}, context.profile))
-      .toEqual({ kubeconfig: "/explicit/config", source: "flag" });
+      .toEqual({ kubeconfig: selected, source: "flag" });
     expect(context.options.environment?.context).toBe("chosen");
   });
 

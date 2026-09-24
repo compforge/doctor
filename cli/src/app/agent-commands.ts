@@ -62,6 +62,7 @@ export function prepareAgentCommands(
         ...(target.context ? ["--context", target.context] : []),
         ...(target.namespace ? ["--namespace", target.namespace] : []),
       ];
+      // Keep per-call arguments last so an Agent can target another env without switching its Chat profile.
       writeFileSync(join(bin, name), [
         "#!/bin/sh",
         `exec ${args.map(shellWord).join(" ")} "$@"`,

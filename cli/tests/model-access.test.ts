@@ -1,4 +1,7 @@
 import { withSummary } from "@compforge/doctor-plugin";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
@@ -464,6 +467,9 @@ test("Plugin Case request identity references a tenant directory provider", () =
 
 for (const requirement of [undefined, "preferred", "required"] as const) {
   test(`model discovery respects capability access: ${requirement ?? "none"}`, async () => {
+    const directory = mkdtempSync(join(tmpdir(), "doctor-model-access-"));
+    const kubeconfig = join(directory, "kubeconfig");
+    writeFileSync(kubeconfig, "apiVersion: v1\nkind: Config\n");
     const checks: string[] = [];
     let created = 0;
     const run = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async command => {
@@ -516,7 +522,7 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
     try {
       const opening = openModelDiscoveryAccess({
         command: "doctor model", plugin,
-        namespace: "test", context: "test-context", kubeconfig: "/tmp/model-access-test", interactive: false
+        namespace: "test", context: "test-context", kubeconfig, interactive: false
       });
       const discovery = await opening;
       expect(created).toBe(0);
@@ -532,6 +538,9 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
       } finally { await discovery?.dispose(); }
       expect([...new Set(checks)].sort()).toEqual(requirement
         ? ["create pods/portforward", "list pods", "list services"] : []);
-    } finally { run.mockRestore(); }
+    } finally {
+      run.mockRestore();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 }

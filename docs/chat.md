@@ -58,19 +58,20 @@ Plugin inference 持有路由与凭据，CLI 把它适配为 Pi 的 OpenAI-compa
 Core 在启动 Agent 前完成 Kubernetes access 预检并建立 inference port-forward，连接随
 Session 保持，并在 Session 结束时回收。
 
-本地 CLI 还会把当前 profile 已确定的基础设施目标同时写入 Agent prompt 和宿主中立的 `TARGET_*`
-shell 环境。
-profile name 就是 Plugin Skill 使用的环境标识（env key 或 alias），profile 配置提供 kubeconfig、namespace 等已解析访问
-事实；Core 直接注入 profile-owned target，Plugin 的 `prepareSkillContext` 可继续准备 OpenSearch、DB 等业务访问事实，但不能覆盖 profile
-确定的 target。Skill 可以携带完整的多环境台账，但当前会话始终受 profile 约束；环境选择属于宿主和访问
-adapter，不要求同一份 Skill 为 Doctor 与其它 Agent 宿主维护不同文案或资源副本。
+本地 CLI 将所选 profile 的基础设施目标作为会话默认值写入 Agent prompt 和宿主中立的 `TARGET_*`
+shell 环境。profile 在一次 Chat 会话中保持不变；Skill 可按用户指定的环境，为单次工具调用传入另一组
+kubeconfig、context 和 namespace。Core 注入的目标字段优先于 Plugin 的 `prepareSkillContext`，后者仍可准备
+OpenSearch、DB 等业务访问事实。具体环境名称由 Skill 解析，Core 只接收通用目标参数。
+`~/.doctor/config.yaml` 可以缺失；未配置 kubeconfig 时，Doctor 使用 `KUBECONFIG` 或
+`~/.kube/config`，并在访问前验证目标。
 
 本地宿主还可以声明 Agent 可调用的 Distribution。每次会话启动时，宿主将声明写入临时 JSON，
 生成同名命令入口并加入 Agent 执行环境的 PATH；Skill 直接调用该名称即可。入口调用当前 Doctor，
 通过 `--distribution` 加载 JSON，并继承本次已选 profile、配置文件与目标参数。Agent 释放执行环境后，
-宿主清理命令入口。远端 Chat 的命令入口由实际运行 Agent 的 server 宿主准备。
+宿主清理命令入口。工具调用显式传入的目标参数覆盖入口默认值；远端 Chat 的命令入口由实际运行 Agent 的
+server 宿主准备。
 
-Skill 可按需读取 `TARGET_*` 访问事实；宿主提供的 CLI 命令入口也继承同一目标。
+Skill 可按需读取 `TARGET_*` 默认访问事实；宿主提供的 CLI 命令入口也继承这些默认值。
 Doctor 不要求 Skill 识别宿主身份。
 
 ### Skill 跟随 Plugin
