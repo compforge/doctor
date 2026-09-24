@@ -7,6 +7,7 @@ import { Session } from "../chat/session";
 import type { CliFlags } from "../protocol";
 import { mapErrorMessage } from "../protocol";
 import { bootstrap } from "./bootstrap";
+import type { DistributionManifest } from "./distribution";
 import { reportError } from "./error-report";
 import { useLogger } from "../terminal/log";
 
@@ -14,6 +15,7 @@ export async function runRepl(
   flags: CliFlags,
   plugin: PluginDefinition | undefined,
   commandContext: CommandContext,
+  agentCommands?: Readonly<Record<string, DistributionManifest>>,
 ): Promise<void> {
   if (!isInteractive()) {
     useLogger().error("doctor chat 仅支持交互式终端（非交互采集请用 doctor cpu / doctor mem / doctor trace）");
@@ -23,7 +25,7 @@ export async function runRepl(
 
   let boot;
   try {
-    boot = await bootstrap(flags, plugin, commandContext);
+    boot = await bootstrap(flags, plugin, commandContext, agentCommands);
   } catch (error) {
     reportError(error, {
       context: "doctor chat/startup",

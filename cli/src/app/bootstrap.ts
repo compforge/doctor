@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import {
   Agent as LocalAgent,
@@ -35,6 +35,8 @@ import {
   validateProfile,
 } from "./config/config";
 import type { Profile } from "./config/model";
+import { prepareAgentCommands } from "./agent-commands";
+import type { DistributionManifest } from "./distribution";
 import { loadState, resolveResumeTarget } from "./config/state";
 
 export interface BootstrapResult {
@@ -57,6 +59,7 @@ export async function bootstrap(
   flags: CliFlags,
   plugin?: PluginDefinition,
   commandContext?: CommandContext,
+  agentCommands?: Readonly<Record<string, DistributionManifest>>,
 ): Promise<BootstrapResult> {
   const home = homedir();
   const configPath = flags.config ?? process.env.DOCTOR_CONFIG ?? join(home, ".doctor", "config.yaml");
@@ -89,6 +92,9 @@ export async function bootstrap(
   // Apply this invocation's target before validation or upload; never mutate the saved profile.
   const environment = commandContext?.options.environment;
   profile = effectiveAgentProfile(profile, environment);
+  if (flags.namespace) {
+    profile = { ...profile, namespace: flags.namespace };
+  }
 
   const remote = !!(flags.server || resumeConversationId);
   if (remote && environment?.context !== undefined) {
@@ -133,23 +139,37 @@ export async function bootstrap(
   const localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
   try {
     const localContext = await prepareLocalAgentContext(profileName, profile, plugin, environment?.context);
-    const agent = new LocalAgent({
-      llm: localModel.llm,
-      env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: localContext.shellEnv }),
-      skills: plugin?.skills ?? [],
-      contextPrompt: localContext.contextPrompt,
-      verbose: flags.verbose,
+    const commandEnv = prepareAgentCommands(agentCommands ?? {}, plugin, {
+      profileName, configPath: resolve(configPath),
+      kubeconfig: profile.kube?.kubeconfig_path ? expandHome(profile.kube.kubeconfig_path) : undefined,
+      context: environment?.context,
+      namespace: profile.namespace,
     });
-    return {
-      agent: localModel.dispose ? withDispose(agent, localModel.dispose) : agent,
-      model: createDoctorModel({
-        profileName,
-        profile,
-        mode: "local",
-        model: localModel.label,
-        warnings: validation.warnings,
-      }),
-    };
+    try {
+      const agent = new LocalAgent({
+        llm: localModel.llm,
+        env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: { ...localContext.shellEnv, ...commandEnv.shellEnv } }),
+        skills: plugin?.skills ?? [],
+        contextPrompt: localContext.contextPrompt,
+        verbose: flags.verbose,
+      });
+      return {
+        agent: withDispose(agent, async () => {
+          try { await localModel.dispose?.(); }
+          finally { commandEnv.dispose(); }
+        }),
+        model: createDoctorModel({
+          profileName,
+          profile,
+          mode: "local",
+          model: localModel.label,
+          warnings: validation.warnings,
+        }),
+      };
+    } catch (error) {
+      commandEnv.dispose();
+      throw error;
+    }
   } catch (error) {
     await localModel.dispose?.();
     throw error;

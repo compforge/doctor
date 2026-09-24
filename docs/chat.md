@@ -63,8 +63,13 @@ profile name 就是 Plugin Skill 使用的环境标识（env key 或 alias），
 确定的 target。Skill 可以携带完整的多环境台账，但当前会话始终受 profile 约束；环境选择属于宿主和访问
 adapter，不要求同一份 Skill 为 Doctor 与其它 Agent 宿主维护不同文案或资源副本。
 
-Skill 侧把这个接缝记作 `resolveInfra(env) -> infra`：`TARGET_*` 注入值优先，未注入字段由 Skill 自带的
-env registry 补齐。Doctor 只负责准备访问事实，不要求 Skill 识别宿主身份。
+本地宿主还可以声明 Agent 可调用的 Distribution。每次会话启动时，宿主将声明写入临时 JSON，
+生成同名命令入口并加入 Agent 执行环境的 PATH；Skill 直接调用该名称即可。入口调用当前 Doctor，
+通过 `--distribution` 加载 JSON，并继承本次已选 profile、配置文件与目标参数。Agent 释放执行环境后，
+宿主清理命令入口。远端 Chat 的命令入口由实际运行 Agent 的 server 宿主准备。
+
+Skill 可按需读取 `TARGET_*` 访问事实；宿主提供的 CLI 命令入口也继承同一目标。
+Doctor 不要求 Skill 识别宿主身份。
 
 ### Skill 跟随 Plugin
 

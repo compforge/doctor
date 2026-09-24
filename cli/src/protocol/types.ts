@@ -59,6 +59,7 @@ export interface AgentEventBase {
 // Resolved CLI flags after commander parsing.
 export interface CliFlags {
   profile?: string;
+  namespace?: string;
   resume?: string | true;    // true = --resume without value; string = --resume <id>
   server?: boolean;
   config?: string;
