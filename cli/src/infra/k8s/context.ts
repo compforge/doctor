@@ -83,15 +83,16 @@ function selectedKubeconfig(path: string, source: string): ResolvedKubeconfig {
   return { kubeconfig: path, source };
 }
 
-/** Preserve kubectl's multi-file KUBECONFIG behavior; only materialize its single-file default. */
+/** Keep the path list for both kubectl and the TypeScript Kubernetes client to load. */
 export function resolveKubectlKubeconfig(
   kubeconfigEnv = process.env.KUBECONFIG,
   defaultPath = join(homedir(), ".kube", "config"),
 ): ResolvedKubeconfig {
   if (kubeconfigEnv?.trim()) {
     const paths = kubeconfigEnv.split(delimiter).filter(Boolean);
-    if (!paths.some(readableKubeconfig)) {
-      throw new Error(`KUBECONFIG 中没有可读取的 kubeconfig：${kubeconfigEnv}`);
+    const unreadable = paths.find((path) => !readableKubeconfig(path));
+    if (unreadable) {
+      throw new Error(`KUBECONFIG 包含不存在或不可读取的 kubeconfig：${unreadable}`);
     }
     return { source: "env:KUBECONFIG" };
   }

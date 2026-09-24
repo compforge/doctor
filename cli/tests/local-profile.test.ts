@@ -101,13 +101,16 @@ describe("resolveCollectKubeconfig", () => {
     );
   });
 
-  test("KUBECONFIG 保留 kubectl 的多文件语义，至少需要一个可读文件", () => {
+  test("KUBECONFIG 保留多文件语义，且每个文件都必须可读", () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
     const existing = join(dir, "existing");
+    const another = join(dir, "another");
     writeFileSync(existing, "apiVersion: v1\n");
-    expect(resolveKubectlKubeconfig(`${join(dir, "missing")}${delimiter}${existing}`))
+    writeFileSync(another, "apiVersion: v1\n");
+    expect(resolveKubectlKubeconfig(`${existing}${delimiter}${another}`))
       .toEqual({ source: "env:KUBECONFIG" });
-    expect(() => resolveKubectlKubeconfig(join(dir, "missing"))).toThrow("KUBECONFIG 中没有可读取的 kubeconfig");
+    expect(() => resolveKubectlKubeconfig(`${join(dir, "missing")}${delimiter}${existing}`))
+      .toThrow("KUBECONFIG 包含不存在或不可读取的 kubeconfig");
   });
 
   test("没有 KUBECONFIG 时检查 ~/.kube/config 对应的默认文件", () => {

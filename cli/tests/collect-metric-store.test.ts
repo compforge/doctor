@@ -166,7 +166,7 @@ describe("metric Store observability", () => {
     }
   });
 
-  test("keeps remote Service and Store queries usable when the selected profile has no kubeconfig", async () => {
+  test("keeps remote Service queries usable when no kubeconfig source is available", async () => {
     const services = createServiceCatalog([{
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "app",
@@ -186,6 +186,8 @@ describe("metric Store observability", () => {
     const plugin = { id: "example", version: "0.0.1", services } as PluginDefinition;
     const directory = mkdtempSync(join(tmpdir(), "doctor-metric-remote-store-"));
     const configPath = join(directory, "config.yaml");
+    const previousKubeconfig = process.env.KUBECONFIG;
+    process.env.KUBECONFIG = join(directory, "missing");
     writeFileSync(configPath, [
       "profiles:",
       "  prometheus-only:",
@@ -210,13 +212,15 @@ describe("metric Store observability", () => {
         profile: "prometheus-only",
         services: "app",
       }, services, commandContext, false);
-      expect(config?.storeSupplementUnavailableReason).toContain("未配置 kube.kubeconfig_path");
+      expect(config?.storeSupplementUnavailableReason).toContain("KUBECONFIG 包含不存在或不可读取的 kubeconfig");
       const preparation = await prepareMetricSource(config!, plugin, commandContext);
       expect(preparation.sourceKind).toBe("remote");
-      expect(preparation.storeFallbackReason).toContain("未配置 kube.kubeconfig_path");
+      expect(preparation.storeFallbackReason).toContain("KUBECONFIG 包含不存在或不可读取的 kubeconfig");
       expect(preparation.storeSource).toBeUndefined();
       await preparation.close();
     } finally {
+      if (previousKubeconfig === undefined) delete process.env.KUBECONFIG;
+      else process.env.KUBECONFIG = previousKubeconfig;
       rmSync(directory, { recursive: true, force: true });
     }
   });
