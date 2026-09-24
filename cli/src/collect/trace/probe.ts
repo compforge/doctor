@@ -4,9 +4,19 @@ import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import type { EvidenceBundle } from "../evidence";
 import { countSpans, downloadSpans } from "./opensearch";
 
+export interface TraceOperationStats {
+  service: string;
+  operation: string;
+  count: number;
+  firstStartMs?: number;
+  lastStartMs?: number;
+  lastEndMs?: number;
+}
+
 export interface TraceStats {
   total: number;
   services: Record<string, number>;
+  operations: Map<string, TraceOperationStats>;
   errorSpans: number;
   errors?: { timeMs?: number; service: string; spanId: string; operation: string; message: string }[];
   minStartMs?: number;
@@ -14,20 +24,32 @@ export interface TraceStats {
 }
 
 export function newTraceStats(): TraceStats {
-  return { total: 0, services: {}, errorSpans: 0 };
+  return { total: 0, services: {}, operations: new Map(), errorSpans: 0 };
 }
 
 /** 按页累计统计（jaeger span _source 字段：process.serviceName / startTimeMillis / duration(µs) / tags）。 */
 export function accumulateStats(stats: TraceStats, sources: Array<Record<string, any>>): void {
   for (const source of sources) {
     stats.total += 1;
-    const service = source?.process?.serviceName ?? "(unknown)";
+    const service = String(source?.process?.serviceName ?? "(unknown)");
     stats.services[service] = (stats.services[service] ?? 0) + 1;
+    const operation = String(source?.operationName ?? "(unknown)");
+    // Preserve the exact service/operation pair across pages; names may contain any delimiter.
+    const key = JSON.stringify([service, operation]);
+    let group = stats.operations.get(key);
+    if (!group) {
+      group = { service, operation, count: 0 };
+      stats.operations.set(key, group);
+    }
+    group.count += 1;
     const start = Number(source?.startTimeMillis ?? (source?.startTime === undefined ? undefined : Number(source.startTime) / 1000));
     if (Number.isFinite(start)) {
       stats.minStartMs = stats.minStartMs === undefined ? start : Math.min(stats.minStartMs, start);
       const end = start + (Number.isFinite(Number(source?.duration)) ? Number(source.duration) / 1000 : 0);
       stats.maxEndMs = stats.maxEndMs === undefined ? end : Math.max(stats.maxEndMs, end);
+      group.firstStartMs = group.firstStartMs === undefined ? start : Math.min(group.firstStartMs, start);
+      group.lastStartMs = group.lastStartMs === undefined ? start : Math.max(group.lastStartMs, start);
+      group.lastEndMs = group.lastEndMs === undefined ? end : Math.max(group.lastEndMs, end);
     }
     const tags = Array.isArray(source?.tags) ? source.tags : [];
     const isError = tags.some(
