@@ -4,7 +4,7 @@
 
 Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 通过统一 Extension 注册表列出 Core 内置、Plugin 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model`、`doctor perf` 和 `doctor eval` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
 
-`facets.command` 声明 Case 的用途：`http`、`model`、`perf`、`eval`，多用途用逗号分隔；`both` 匹配所有命令。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension。
+`facets.command` 声明 Case 的用途：`http`、`model`、`perf`、`eval`，多用途用逗号分隔。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension。
 
 ```yaml
 caseset: doctor_smoke

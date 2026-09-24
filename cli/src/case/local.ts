@@ -14,7 +14,7 @@ export function localCaseCatalogExtension(file?: string, cwd = process.cwd()): C
       if (!existsSync(path)) throw new Error(`Case file not found: ${path}`);
       const caseSet = loadCaseSet(path);
       for (const item of caseSet.cases) {
-        if (!item.facets?.command?.split(",").every((value) => ["http", "model", "perf", "eval", "both"].includes(value.trim()))) {
+        if (!item.facets?.command?.split(",").every((value) => ["http", "model", "perf", "eval"].includes(value.trim()))) {
           throw new Error(`${path}: Case '${item.id}' 需要 facets.command: http、model、perf、eval 或其逗号分隔组合`);
         }
       }

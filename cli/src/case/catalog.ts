@@ -30,7 +30,7 @@ export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd 
 
 export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): boolean {
   const facet = item.facets?.command;
-  return facet === "both" || Boolean(facet?.split(",").some((value) => value.trim() === command));
+  return Boolean(facet?.split(",").some((value) => value.trim() === command));
 }
 
 export interface DoctorCaseSelection {
