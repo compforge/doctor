@@ -57,7 +57,8 @@ Chat 校验、Skill 目标注入和远端 kubeconfig 上传使用本次调用的
 
 ### Environment 与配置来源
 
-先按 `CLI kubeconfig > profile kubeconfig > 默认 kubeconfig` 选定访问配置，再用显式 context 或
+先按 `CLI kubeconfig > profile kubeconfig > KUBECONFIG > ~/.kube/config` 选定访问配置；
+选中来源后检查文件是否可读，缺失时直接报错，不换用低优先级目标。再用显式 context 或
 该配置的 current-context 确定 Environment。profile 是配置来源，不是环境身份；不同 profile 指向
 相同 cluster/context 时可得到同一环境身份，同一 profile 被 CLI 覆盖到其它集群时必须得到不同身份。
 无效的高优先级配置直接失败，不尝试其它集群。

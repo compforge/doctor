@@ -1,6 +1,6 @@
-import { existsSync } from "node:fs";
+import { accessSync, constants, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join } from "node:path";
 import { expandHome, loadConfig, resolveProfile } from "../../app/config/config";
 import type { CommandProfile } from "../../command/context";
 
@@ -68,47 +68,60 @@ export function resolveCollectNamespace(opts: {
   return { namespace: DEFAULT_COLLECT_NAMESPACE, source: "default" };
 }
 
-/**
- * kubeconfig 解析（配置驱动）：
- * 1. 显式 --kubeconfig 最优先；
- * 2. --profile 指定时取该 profile 的 kube.kubeconfig_path（没配则报错——显式指定不做静默回退）；
- * 3. 都没给时 best-effort 看 default profile：配了 kube 就用（含零配置合成的 default profile
- *    指向 ~/.kube/config），文件不存在或没配则交给 kubectl 自身默认查找。
- * Production command preparation passes CommandProfile; its configured path is authoritative and
- * must exist, so later domain code cannot silently switch to another kubectl target.
- */
+function readableKubeconfig(path: string): boolean {
+  try {
+    if (!statSync(path).isFile()) return false;
+    accessSync(path, constants.R_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function selectedKubeconfig(path: string, source: string): ResolvedKubeconfig {
+  if (!readableKubeconfig(path)) throw new Error(`kubeconfig path not found or unreadable (${source}): ${path}`);
+  return { kubeconfig: path, source };
+}
+
+/** Preserve kubectl's multi-file KUBECONFIG behavior; only materialize its single-file default. */
+export function resolveKubectlKubeconfig(
+  kubeconfigEnv = process.env.KUBECONFIG,
+  defaultPath = join(homedir(), ".kube", "config"),
+): ResolvedKubeconfig {
+  if (kubeconfigEnv?.trim()) {
+    const paths = kubeconfigEnv.split(delimiter).filter(Boolean);
+    if (!paths.some(readableKubeconfig)) {
+      throw new Error(`KUBECONFIG 中没有可读取的 kubeconfig：${kubeconfigEnv}`);
+    }
+    return { source: "env:KUBECONFIG" };
+  }
+  return selectedKubeconfig(defaultPath, "kubectl-default");
+}
+
+/** Select a source first, then check that it contains a readable kubeconfig before Kubernetes access. */
 export function resolveCollectKubeconfig(opts: {
   kubeconfig?: string;
   profile?: string;
   config?: string;
 }, commandProfile?: CommandProfile): ResolvedKubeconfig {
-  if (opts.kubeconfig) return { kubeconfig: expandHome(opts.kubeconfig), source: "flag" };
+  if (opts.kubeconfig) return selectedKubeconfig(expandHome(opts.kubeconfig), "flag");
   const configPath = opts.config ?? process.env.DOCTOR_CONFIG ?? join(homedir(), ".doctor", "config.yaml");
   if (commandProfile) {
     const configured = commandProfile.value.kube?.kubeconfig_path;
     if (configured) {
-      const path = expandHome(configured);
-      if (!existsSync(path)) throw new Error(`kubeconfig path not found: ${configured}`);
-      return { kubeconfig: path, source: `profile:${commandProfile.name}` };
+      return selectedKubeconfig(expandHome(configured), `profile:${commandProfile.name}`);
     }
-    if (opts.profile) {
-      throw new Error(`profile '${commandProfile.name}' 未配置 kube.kubeconfig_path，无法访问 Kubernetes`);
-    }
-    return { source: "kubectl-default" };
+    return resolveKubectlKubeconfig();
   }
   if (opts.profile) {
     const { name, profile } = resolveProfile(loadConfig(configPath), opts.profile);
-    if (!profile.kube?.kubeconfig_path) {
-      throw new Error(`profile '${name}' 未配置 kube.kubeconfig_path，无法访问 Kubernetes`);
-    }
-    return { kubeconfig: expandHome(profile.kube.kubeconfig_path), source: `profile:${name}` };
+    return profile.kube?.kubeconfig_path
+      ? selectedKubeconfig(expandHome(profile.kube.kubeconfig_path), `profile:${name}`)
+      : resolveKubectlKubeconfig();
   }
-  try {
-    const { name, profile } = resolveProfile(loadConfig(configPath), undefined);
-    const path = profile.kube?.kubeconfig_path ? expandHome(profile.kube.kubeconfig_path) : undefined;
-    if (path && existsSync(path)) return { kubeconfig: path, source: `profile:${name}` };
-  } catch {
-    // 配置有问题不阻塞采集，回落 kubectl 默认查找
-  }
-  return { source: "kubectl-default" };
+  if (configPath === "") return resolveKubectlKubeconfig();
+  const { name, profile } = resolveProfile(loadConfig(configPath), undefined);
+  return profile.kube?.kubeconfig_path
+    ? selectedKubeconfig(expandHome(profile.kube.kubeconfig_path), `profile:${name}`)
+    : resolveKubectlKubeconfig();
 }

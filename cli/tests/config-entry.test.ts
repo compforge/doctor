@@ -10,7 +10,7 @@ import { runInit } from "../src/app/init";
 import { prepareCommand } from "../src/app/prepare";
 import { commandOptions, domainInput } from "../src/command/options";
 import { commandOptionsWithSources, withoutShadowedDefaults } from "../src/app/option-sources";
-import { resolveCollectKubeconfig, resolveCollectNamespace } from "../src/infra/k8s/context";
+import { resolveCollectNamespace } from "../src/infra/k8s/context";
 import { resolveProfileRegistryCredentials } from "../src/app/registry-auth";
 import { loadConfig } from "../src/app/config/config";
 
@@ -43,7 +43,7 @@ describe("empty configuration entry", () => {
     const options = commandOptions(context);
     expect(options.config).toBe("");
     expect(options.profile).toBeUndefined();
-    expect(resolveCollectKubeconfig(options, context.profile)).toEqual({ source: "kubectl-default" });
+    expect(context.profile.value.kube?.kubeconfig_path).toBeUndefined();
     expect(resolveCollectNamespace(options, context.profile)).toEqual({ namespace: "default", source: "default" });
     expect(resolveProfileRegistryCredentials("example.org/app", options)).toBeUndefined();
     expect(() => resolveWorkingProfile({})).toThrow();

@@ -180,7 +180,7 @@ export function effectiveAgentProfile(profile: Profile, environment?: { kubeconf
   return { ...profile, kube: { ...profile.kube, kubeconfig_path: environment.kubeconfig } };
 }
 
-/** Bind Skills to the effective invocation target, not just the saved profile. */
+/** Expose the selected profile's target as the Chat default; each tool call may choose another target. */
 export function createLocalAgentContext(profileName: string, profile: Profile, context?: string): LocalAgentContext {
   if (context !== undefined && !context.trim()) throw new Error("--context 不能为空");
   const kubeconfig = profile.kube?.kubeconfig_path
@@ -202,13 +202,13 @@ export function createLocalAgentContext(profileName: string, profile: Profile, c
     `readonly=${profile.readonly}`,
   ].filter(Boolean).join(", ");
   const contextPrompt = [
-    `The Doctor host has already bound this session to one infrastructure target (${target}).`,
-    "The profile name is the selected environment identifier. Skill scripts can use the injected "
+    `The Doctor host selected the default infrastructure target for this chat (${target}).`,
+    "The profile stays fixed for this conversation. Skill scripts can use the injected default "
       + "TARGET_ENV, TARGET_KUBECONFIG, TARGET_KUBE_CONTEXT, TARGET_NAMESPACE, TARGET_READONLY, and TARGET_ACCESS_MODE variables. "
-      + "Pass TARGET_KUBECONFIG and TARGET_KUBE_CONTEXT as --kubeconfig and --context when invoking Doctor or kubectl.",
-    "Do not ask the user to choose an environment merely because a Skill contains a multi-environment catalog. "
-      + "Use this invocation's target; explicit CLI options override the saved profile. "
-      + "To change target, start a new invocation with explicit target options or another profile.",
+      + "When using the default target, pass TARGET_KUBECONFIG and TARGET_KUBE_CONTEXT as --kubeconfig and --context when set.",
+    "Use the selected target when the user has not requested another environment. "
+      + "For another environment in this conversation, pass its explicit target options to each tool command; "
+      + "do not switch the Chat profile. When no kubeconfig is selected, Doctor commands use KUBECONFIG or ~/.kube/config.",
   ].join("\n");
   return { contextPrompt, shellEnv };
 }

@@ -8,13 +8,13 @@ import type { Config, Profile } from "./model";
 export const DEFAULT_PROFILE = "default";
 
 // 零配置可跑（能力阶梯第 0 级）：没有 config.yaml 也视为有一个 default profile，
-// kubeconfig 指向 kubectl 惯例默认位置——doctor mem / doctor trace 开箱即用；
+// kubeconfig 留空，由 Kubernetes 目标解析统一选择 KUBECONFIG 或 kubectl 默认路径；
 // 问答等更高能力随 profile 补齐 llm / server 自动解锁，不靠显式"模式"开关。
 function defaultConfig(): Config {
   return {
     default_profile: DEFAULT_PROFILE,
     profiles: {
-      [DEFAULT_PROFILE]: { readonly: true, kube: { kubeconfig_path: "~/.kube/config" } },
+      [DEFAULT_PROFILE]: { readonly: true },
     },
   };
 }

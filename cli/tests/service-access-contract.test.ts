@@ -9,7 +9,7 @@ import { borrowServiceClient } from "../src/datasource/client";
 import { resolveKubernetesEnvironment } from "../src/infra/k8s/environment";
 import { instanceLogAccess } from "../src/infra/k8s/instance-log";
 import { logPlugin, logService } from "./log-fixture";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { EvidenceBundle } from "../src/collect/evidence";
@@ -91,15 +91,20 @@ test("Environment is effective cluster/context; profile labels and config paths 
 });
 
 test("Explicit kubeconfig chooses Environment even when profile kubeconfig is invalid", () => {
-  const profile = {
-    name: "saved", configPath: "", value: {
-      readonly: true,
-      kube: { kubeconfig_path: "/does-not-exist/profile-kubeconfig" }
-    }, pluginConfig: {}
-  };
-  expect(resolveCollectKubeconfig({ kubeconfig: "/selected-kubeconfig" }, profile))
-    .toEqual({ kubeconfig: "/selected-kubeconfig", source: "flag" });
-  expect(() => resolveCollectKubeconfig({}, profile)).toThrow("path not found");
+  const dir = mkdtempSync(join(tmpdir(), "doctor-kube-"));
+  const selected = join(dir, "selected-kubeconfig");
+  writeFileSync(selected, "apiVersion: v1\n");
+  try {
+    const profile = {
+      name: "saved", configPath: "", value: {
+        readonly: true,
+        kube: { kubeconfig_path: "/does-not-exist/profile-kubeconfig" }
+      }, pluginConfig: {}
+    };
+    expect(resolveCollectKubeconfig({ kubeconfig: selected }, profile))
+      .toEqual({ kubeconfig: selected, source: "flag" });
+    expect(() => resolveCollectKubeconfig({}, profile)).toThrow("path not found");
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 test("Log reads reject a replacement before capture and mark an in-stream replacement unavailable", async () => {

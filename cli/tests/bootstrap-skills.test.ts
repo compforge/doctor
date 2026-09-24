@@ -15,7 +15,7 @@ import {
   prepareLocalAgentContext,
 } from "../src/app/bootstrap";
 
-test("local Agent context binds Skill execution to the selected profile", () => {
+test("local Agent context exposes the selected profile as the default env", () => {
   const context = createLocalAgentContext("as-dev", {
     readonly: true,
     namespace: "vke-system",
@@ -29,8 +29,8 @@ test("local Agent context binds Skill execution to the selected profile", () => 
     TARGET_KUBECONFIG: join(homedir(), ".kube", "a-dev"),
     TARGET_NAMESPACE: "vke-system",
   });
-  expect(context.contextPrompt).toContain("already bound this session to one infrastructure target");
-  expect(context.contextPrompt).toContain("Do not ask the user to choose an environment");
+  expect(context.contextPrompt).toContain("default infrastructure target for this chat");
+  expect(context.contextPrompt).toContain("do not switch the Chat profile");
 });
 
 test("Plugin can prepare infra facts but cannot override the profile target", async () => {
@@ -129,7 +129,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
   const serialized = JSON.stringify(requestBody);
   expect(serialized).toContain("<name>sample-ops</name>");
   expect(serialized).toContain(`<location>${skillPath}</location>`);
-  expect(serialized).toContain("already bound this session to one infrastructure target");
+  expect(serialized).toContain("default infrastructure target for this chat");
   expect(serialized).not.toContain("PRIVATE COMPLETE INSTRUCTIONS");
 });
 

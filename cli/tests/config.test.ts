@@ -36,7 +36,7 @@ describe("loadConfig", () => {
   it("missing file yields default profile", () => {
     const cfg = loadConfig("/tmp/nope-doctor.yaml");
     expect(cfg.default_profile).toBe("default");
-    expect(cfg.profiles.default.kube?.kubeconfig_path).toBe("~/.kube/config");
+    expect(cfg.profiles.default.kube?.kubeconfig_path).toBeUndefined();
     expect(cfg.profiles.default.server).toBeUndefined();
   });
 
