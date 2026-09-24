@@ -20,6 +20,8 @@ import {
 } from "./config";
 import type { CollectModelCliOptions } from "./model";
 import { runModelDiagnosis } from "./runner";
+import { buildModelPerformanceSuite } from "./performance";
+import { doctorCaseCatalog, selectDoctorCases } from "../../case/catalog";
 
 export * from "./config";
 export * from "./detector";
@@ -102,6 +104,33 @@ export async function runCollectModel(
       + `multimodal=${isMultimodalModel(model) ? "yes" : "no"}）`);
     useLogger("model").info(`inference endpoint: ${model.inference.baseUrl}`);
 
+    const defaultCase = model.type === "llm"
+      ? (isMultimodalModel(model) ? "llm_image" : "llm_connectivity")
+      : `${model.type}_connectivity`;
+    const caseCatalog = doctorCaseCatalog(plugin, opts.caseFile);
+    const hasLocalModelCases = caseCatalog.some((source) => source.source === "local"
+      && source.caseSet.cases.some((item) => item.facets?.command === "model" || item.facets?.command === "both"));
+    const caseSelection = await selectDoctorCases({
+      catalog: caseCatalog, command: "model",
+      caseSetId: opts.caseset, caseIds: opts.cases, modelType: model.type,
+      defaultCaseSetId: !hasLocalModelCases && !opts.caseset ? "doctor_model" : undefined,
+      defaultCaseIds: opts.performance
+        ? ["prefill_short", "prefill_medium", "prefill_long", "decode"]
+        : [defaultCase],
+    });
+    if (!caseSelection) return commandOutcome(130);
+    const performanceCases = caseSelection.cases.filter((item) => item.facets?.mode === "performance");
+    const knownScenarios = new Set(buildModelPerformanceSuite(maxOutputTokens).map((item) => item.id));
+    for (const item of performanceCases) {
+      if (model.type !== "llm" || !knownScenarios.has(String(item.input.scenario))) {
+        throw new Error(`Model 性能 Case '${item.id}' 需要 llm 和有效的 input.scenario`);
+      }
+    }
+    if (opts.performance === false && performanceCases.length) {
+      throw new Error("已选择性能 Case，不能同时使用 --no-performance");
+    }
+    useLogger("model").info(`cases: ${caseSelection.source.caseSet.caseset}/${caseSelection.cases.map((item) => item.id).join(", ")}`);
+
     const inference = await access.createInference(model.inference, timeoutMs);
     if (opts.performance && model.type !== "llm") {
       throw new Error("--performance 当前只支持 llm 模型");
@@ -112,7 +141,8 @@ export async function runCollectModel(
       model,
       catalog: access.catalog,
       inference,
-      performance: opts.performance,
+      performance: performanceCases.length > 0,
+      selectedCases: caseSelection.cases,
       repeat: performanceRepeat,
       timeoutMs,
       maxOutputTokens,

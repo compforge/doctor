@@ -16,7 +16,7 @@ import { writeOutput } from "../terminal/output";
 //   doctor tenant            → 汇总租户配置与可用模型目录（collect/）
 //   doctor collect           → 集合命令：选择并编排具体 collector，自身不实现具体采集
 //   doctor inspect           → 检查 Service 的 workload 与配置（collect/）
-//   doctor http              → 从 YAML 重放多轮 HTTP 请求并分析响应（collect/）
+//   doctor case              → 列出 Case，多选后通过 HTTP 发送并分析响应（collect/）
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
 //   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
@@ -61,7 +61,7 @@ import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
 
 import { domainInput } from "../command/options";
-import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, httpCommand, netCommand } from "./core-commands";
+import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, caseCommand, netCommand } from "./core-commands";
 import { traceCommand } from "../collect/trace/command";
 import { logCommand } from "../collect/log/command";
 import { dataCommand } from "../collect/data/command";
@@ -75,6 +75,9 @@ import { modelCommand } from "../collect/model/command";
 import { collectCommand } from "../collect/composite";
 import { evalCommand } from "../eval/command";
 import { perfCommand } from "../perf/command";
+import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
+import { isInteractive, withInteractionOptions } from "../terminal/policy";
+import { promptListedChoice } from "../terminal/selection";
 
 type RawBizIdOptions<T> = Omit<T, "bizIds" | "bizId"> & { bizId?: string[] };
 
@@ -272,14 +275,16 @@ function withTenantOptions(cmd: CommandT): CommandT {
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
-function withHttpOptions(cmd: CommandT): CommandT {
+function withCaseOptions(cmd: CommandT): CommandT {
   return cmd
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--caseset <id>", "要发送的 CaseSet")
+    .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
+    .option("--send", "发送选中的 HTTP Case；非交互环境必须显式指定", false)
+    .option("--base-url <url>", "发送目标的 http(s) base URL；Case 只声明相对 path")
     .option("--location <local|pod>", "请求执行位置；交互终端缺省时选择，非交互默认 local")
     .option("-p, --pod <pod>", "Pod 名或关键词；指定后自动使用 pod 执行位置")
     .option("-c, --container <name>", "Pod 内执行 HTTP 请求的 Container")
-    .option("--file <path>", "doctor-http/v1 YAML 请求场景文件；交互终端缺省时从当前目录选择")
-    .option("-e, --example [path]", "生成 doctor-http/v1 示例文件（默认 ./example.yaml）")
-    .option("--request <ids>", "逗号分隔的 request id；交互终端缺省时选择，非交互执行全部")
     .option("--repeat <n>", "整个请求列表执行轮数", "1")
     .option("--interval <seconds>", "每轮之间的等待时间", "0")
     .option("--timeout <seconds>", "覆盖文件中的单请求超时")
@@ -324,13 +329,16 @@ function withMcpOptions(cmd: CommandT): CommandT {
 
 function withModelOptions(cmd: CommandT): CommandT {
   return cmd
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--caseset <id>", "选择 CaseSet")
+    .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
     .option("--tenant-name <name>", "通过租户目录精确解析租户名")
     .option("--model <id|name>", "模型 ID 或名称；交互终端缺省时从模型目录中选择")
     .option("--type <type>", "只列出指定类型：llm、embedding、rerank 或 audio")
     .option("--timeout <seconds>", "模型 validation/inference 请求超时（1..600 秒）", "60")
-    .option("--performance", "执行 LLM 流式性能测试；交互终端缺省时在 validation 后询问")
-    .option("--no-performance", "跳过 LLM 流式性能测试")
+    .option("--performance", "默认选择四个内置 LLM 流式性能 Case；也可用 --cases 指定")
+    .option("--no-performance", "显式禁止选择 LLM 流式性能 Case")
     .option("--repeat <n>", "每个性能测试场景的采样次数（1..20）", "3")
     .option("--max-output-tokens <n>", "持续生成场景的最大输出 token（32..4096）", "256")
     .option("--model-provider <service[/extension]>", "模型查询 Extension 提供方；多候选时必须选择")
@@ -361,8 +369,11 @@ function withMetricOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
+    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-case.yaml")
+    .option("--caseset <id>", "选择 CaseSet")
+    .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
-    .option("--scenario <id>", "Plugin 声明的业务压测场景；默认第一个")
+    .option("--scenario <id>", "Plugin 声明的压测观测配置；默认第一个")
     .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
     .option("--ramp <seconds>", "每档升压时间（秒）", "10")
     .option("--hold <seconds>", "每档稳态时间（秒）", "60")
@@ -623,11 +634,47 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
   });
-  withHttpOptions(
-    catalog.command("http").description("从 YAML 重放一个或多个 HTTP 请求，执行多轮诊断并产出 Bundle、HTML 或 Markdown"),
-  ).action(async (opts: CollectHttpCliOpts, command: CommandT) => {
+  withCaseOptions(
+    catalog.command("case").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告"),
+  ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(httpCommand, opts, domainInput(opts), { ...commandRuntime, printProfile: opts.example === undefined });
+    await withInteractionOptions(opts, () => runStandaloneCommand("doctor case", async () => {
+      const active = plugin ?? await loadActivePlugin();
+      const sources = doctorCaseCatalog(active, opts.caseFile);
+      for (const source of sources) {
+        writeOutput(`${source.caseSet.caseset} (${source.source}${source.service ? `/${source.service}` : ""})\n`);
+        for (const item of source.caseSet.cases) {
+          writeOutput(`  ${item.id}  command=${item.facets?.command ?? (source.source === "plugin" ? "perf (legacy)" : "unspecified")}${item.desc ? `  ${item.desc}` : ""}\n`);
+        }
+      }
+      if (!opts.send && !isInteractive()) return;
+      const selection = await selectDoctorCases({ catalog: sources, command: "http", caseSetId: opts.caseset, caseIds: opts.cases });
+      if (!selection) return 130;
+      if (!opts.send) {
+        const send = await promptListedChoice({
+          question: `发送 ${selection.source.caseSet.caseset}/${selection.cases.map((item) => item.id).join(", ")}？[y/N] `,
+          match: (answer) => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
+          invalidMessage: "请输入 y/yes 或 n/no。", emptyValue: false,
+        });
+        if (!send) return;
+      }
+      let baseUrl = opts.baseUrl;
+      if (!baseUrl && isInteractive()) {
+        baseUrl = await promptListedChoice({
+          question: "发送目标 base URL（例如 http://127.0.0.1:8000；q 取消）：",
+          match: (answer) => {
+            try {
+              const url = new URL(answer);
+              return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? answer : undefined;
+            } catch { return undefined; }
+          },
+          invalidMessage: "请输入无凭据的 http(s) URL。",
+        });
+      }
+      if (!baseUrl) throw new Error("发送 Case 需要 --base-url");
+      await runCommand(caseCommand, opts, domainInput({ ...opts, caseset: selection.source.caseSet.caseset,
+        cases: selection.cases.map((item) => item.id).join(","), baseUrl }), commandRuntime);
+    }));
   });
   withNetworkOptions(
     catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),

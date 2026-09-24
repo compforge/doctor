@@ -110,7 +110,7 @@ function positiveInteger(value: string, flag: string): number {
 export function defaultHttpBundleName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const timestamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-  return `doctor-http-${timestamp}`;
+  return `doctor-case-${timestamp}`;
 }
 
 export function parseHttpOutputFormat(value: string | undefined): HttpOutputFormat {
@@ -181,7 +181,7 @@ function writeHttpArtifact(
 ): boolean {
   try {
     writeFileSync(join(staging, "report-input.json"), JSON.stringify({
-      title: "doctor http 诊断报告",
+      title: "doctor case 诊断报告",
       profileName,
       summaryHtml,
     }), { mode: 0o600 });
@@ -197,6 +197,7 @@ export async function runCollectHttp(
   commandContext: CommandContext,
   sendHttp?: SendHttp,
   inspectEndpoint?: InspectHttpEndpoint,
+  preparedScenario?: { scenario: HttpScenario; source: string; caseIds?: readonly string[] },
 ): Promise<number> {
   if (opts.example !== undefined) {
     if (opts.file) {
@@ -263,13 +264,18 @@ export async function runCollectHttp(
   let scenarioFile: string;
   let scenario: HttpScenario;
   try {
-    const file = await resolveHttpScenarioFile({ file: opts.file });
-    if (!file) return 0;
-    scenarioFile = file;
-    const loaded = loadHttpScenario(scenarioFile, { timeoutSeconds, maxResponseMiB });
-    const selected = await resolveHttpScenarioRequests(loaded, { request: opts.request });
-    if (!selected) return 0;
-    scenario = selected;
+    if (preparedScenario) {
+      scenarioFile = preparedScenario.source;
+      scenario = preparedScenario.scenario;
+    } else {
+      const file = await resolveHttpScenarioFile({ file: opts.file });
+      if (!file) return 0;
+      scenarioFile = file;
+      const loaded = loadHttpScenario(scenarioFile, { timeoutSeconds, maxResponseMiB });
+      const selected = await resolveHttpScenarioRequests(loaded, { request: opts.request });
+      if (!selected) return 0;
+      scenario = selected;
+    }
   } catch (error) {
     useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
     return 2;
@@ -283,10 +289,10 @@ export async function runCollectHttp(
     return 2;
   }
 
-  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-http-"));
+  const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-case-"));
   const staging = join(stagingRoot, bundleName);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
-  commandContext.artifacts.add({ command: "http", path: staging });
+  commandContext.artifacts.add({ command: "case", path: staging });
   const startedAt = new Date();
   const entrypointCount = scenario.requests.reduce((count, group) => count + group.entrypoints.length, 0);
   useLogger("http").info(`场景 ${scenario.name}：${scenario.requests.length} 个逻辑请求、${entrypointCount} 个入口 × ${repeat} 轮`);
@@ -357,13 +363,15 @@ export async function runCollectHttp(
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     bundle.settle(reason);
-    bundle.writeSummary(`# doctor http diagnosis failed\n\n${reason}\n`);
+    bundle.writeSummary(`# doctor case diagnosis failed\n\n${reason}\n`);
     bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION,
       target: {
         scenario: scenario.name,
         execution: executionTarget,
-        source: { type: "http_file", file: basename(scenarioFile) },
+        source: preparedScenario
+          ? { type: "doctor_case", caseset: scenario.name, cases: preparedScenario.caseIds }
+          : { type: "http_file", file: basename(scenarioFile) },
       },
       inspectionFacts: facts ? { ...facts } : {},
       params: {
@@ -392,7 +400,9 @@ export async function runCollectHttp(
     target: {
       scenario: scenario.name,
       execution: executionTarget,
-      source: { type: "http_file", file: basename(scenarioFile) },
+      source: preparedScenario
+        ? { type: "doctor_case", caseset: scenario.name, cases: preparedScenario.caseIds }
+        : { type: "http_file", file: basename(scenarioFile) },
     },
     inspectionFacts: { ...facts },
     params: {

@@ -21,7 +21,6 @@ import {
   modelPerformanceAttempts,
   modelPerformanceDecision,
   modelPerformanceSummaries,
-  modelResponseObservation,
 } from "./detector";
 import { makeModelInspect } from "./fact/inspect";
 import type {
@@ -34,6 +33,7 @@ import type {
   SelectedInferenceModel,
 } from "./model";
 import type { ModelPerformanceAttempt } from "./performance";
+import type { Case } from "@compforge/spec-case/model";
 import {
   makeModelProbes,
   MODEL_INFERENCE_PROBE_ID,
@@ -47,6 +47,7 @@ import {
 } from "./render";
 
 export interface RunModelDiagnosisInput {
+  selectedCases?: readonly Case[];
   command: CommandContext;
   tenant: TenantSummary;
   model: SelectedInferenceModel;
@@ -117,14 +118,18 @@ function printResponseStatus(
   kind: "model-validation" | "model-inference",
 ): void {
   // Response bodies stay in Diagnosis reports; the terminal only shows request status.
-  const observation = modelResponseObservation(diagnosis.evidence, kind);
-  if (!observation) return;
-  if (observation.error) {
-    useLogger("model").error(`${label}: ${observation.error}`);
-    return;
+  for (const observation of diagnosis.evidence.observations.filter(
+    (item) => item.kind === kind,
+  )) {
+    if (observation.kind !== "model-validation" && observation.kind !== "model-inference") continue;
+    const name = `${label}${observation.caseId ? `/${observation.caseId}` : ""}`;
+    if (observation.error) {
+      useLogger("model").error(`${name}: ${observation.error}`);
+      continue;
+    }
+    const response = observation.response!;
+    useLogger("model")[response.ok ? "success" : "error"](`${name}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)`);
   }
-  const response = observation.response!;
-  useLogger("model")[response.ok ? "success" : "error"](`${label}: HTTP ${response.statusCode} ${response.statusText} (${response.durationMs}ms)`);
 }
 
 function printFindings(findings: readonly ModelFinding[]): void {
@@ -141,6 +146,7 @@ export async function runModelDiagnosis(
 ): Promise<RunModelDiagnosisResult> {
   const startedAt = new Date();
   const config: ModelDiagnosisConfig = {
+    selectedCases: input.selectedCases,
     performance: input.performance,
     repeat: input.repeat,
     maxOutputTokens: input.maxOutputTokens,
@@ -205,6 +211,7 @@ export async function runModelDiagnosis(
       },
       inspectionFacts: { ...facts },
       params: {
+        cases: input.selectedCases?.map((item) => item.id),
         performance_requested: config.performance,
         performance_enabled: performanceEnabled,
         repeat: config.repeat,

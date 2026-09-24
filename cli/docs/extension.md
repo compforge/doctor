@@ -137,7 +137,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
-| perf.scenarios | 无入参 → 场景、Case 组合和可观测性引用 | Perf |
+| perf.scenarios | 无入参 → 观测预设、可观测性引用与 runner 所需 CaseSet ID | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 

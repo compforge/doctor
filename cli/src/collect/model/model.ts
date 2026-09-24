@@ -8,6 +8,7 @@ import type { KubernetesCommandInput } from "../../command/kubernetes-target";
 import type { CommandContext } from "../../command";
 import type { ServiceHttpResponse } from "../../infra/http";
 import type { SelectedInferenceModel } from "../../model";
+import type { Case } from "@compforge/spec-case/model";
 import type { EvidenceBundle } from "../evidence";
 import type {
   Diagnosis,
@@ -23,6 +24,9 @@ export type { SelectedInferenceModel } from "../../model";
 export type ModelOutputFormat = "default" | "bundle" | "json" | "html";
 
 export interface CollectModelCliOptions extends KubernetesCommandInput {
+  caseFile?: string;
+  caseset?: string;
+  cases?: string;
   tenantId?: string;
   tenantName?: string;
   model?: string;
@@ -67,6 +71,7 @@ export interface ModelInspectionFacts {
 }
 
 export interface ModelDiagnosisConfig {
+  selectedCases?: readonly Case[];
   performance?: boolean;
   repeat: number;
   maxOutputTokens: number;
@@ -85,8 +90,9 @@ export interface ModelCommandContext {
 }
 
 export interface ModelResponseObservation extends ObservationMeta {
-  id: "model-validation" | "model-inference";
+  id: string;
   kind: "model-validation" | "model-inference";
+  caseId?: string;
   response?: ServiceHttpResponse;
   error?: string;
 }

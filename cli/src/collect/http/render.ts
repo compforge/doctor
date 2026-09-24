@@ -138,7 +138,7 @@ export function buildHttpMarkdown(
     : [];
   const failed = diagnosis.executions.filter((attempt) => !attempt.requestSuccess);
   return [
-    "# doctor http diagnosis",
+    "# doctor case diagnosis",
     "",
     `- scenario: ${scenarioName}`,
     `- execution: ${execution}`,
@@ -232,7 +232,7 @@ export function buildHttpHtml(
     ? diagnosis.facts.endpoints.items
     : [];
   return [
-    htmlHeading(1, "doctor http 诊断报告"),
+    htmlHeading(1, "doctor case 诊断报告"),
     htmlHeading(2, "执行汇总"),
     htmlList([
       `执行位置：${execution}`,

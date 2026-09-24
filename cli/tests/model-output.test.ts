@@ -148,3 +148,48 @@ test("doctor model JSON writes the diagnosis to a file without printing the resp
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("doctor model executes selected Cases in order and attributes failures to Case IDs", async () => {
+  const model = requireInferenceModel({
+    id: "model-1", name: "Model 1", type: "llm", provider: "test",
+    inference: { baseUrl: "http://inference.invalid/v1", model: "runtime-model" },
+  });
+  const catalog: ModelCatalog = {
+    query: async () => [model],
+    getBackend: async () => ({
+      modelId: model.id, modelName: model.name, model: model.inference.model,
+      type: model.type, provider: model.provider,
+      validate: async () => response("{}"),
+    }),
+  };
+  const calls: string[] = [];
+  const inference: ModelInference = {
+    invoke: async (_path, body) => {
+      calls.push(String((body.messages as Array<{content: string}>)[0]?.content));
+      expect(body.model).toBe("runtime-model");
+      return calls.length === 1 ? response("{}") : { ...response("failure"), ok: false, statusCode: 500 };
+    },
+    invokeStream: async () => { throw new Error("unexpected stream"); },
+  };
+  const context = new CommandContext({});
+  try {
+    const result = await runModelDiagnosis({
+      command: context, tenant: { id: "tenant-1", name: "tenant-1", displayName: "Tenant" },
+      model, catalog, inference,
+      selectedCases: [
+        { id: "first", input: { path: "/chat/completions", body: { messages: [{ role: "user", content: "first" }] } } },
+        { id: "second", input: { path: "/chat/completions", body: { messages: [{ role: "user", content: "second" }] } } },
+      ],
+      performance: false, repeat: 1, timeoutMs: 1_000, maxOutputTokens: 32,
+      format: "json", profileName: "test",
+    });
+    expect(calls).toEqual(["first", "second"]);
+    expect(result.diagnosis.evidence.observations.filter((item) => item.kind === "model-inference")
+      .map((item) => item.id)).toEqual(["model-inference:first", "model-inference:second"]);
+    expect(result.diagnosis.findings).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "model.inference-failed:second", caseId: "second" }),
+    ]));
+  } finally {
+    for (const artifact of context.artifacts.list()) rmSync(dirname(artifact.path), { recursive: true, force: true });
+  }
+});

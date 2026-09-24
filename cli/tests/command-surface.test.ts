@@ -93,7 +93,8 @@ describe("root surface", () => {
     const result = await runCore();
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("cpu [options]");
-    expect(result.stdout).toContain("http [options]");
+    expect(result.stdout).toContain("case [options]");
+    expect(result.stdout).not.toContain("http [options]");
     expect(result.stdout).toContain("data [options]");
     expect(result.stdout).toContain("store [options]");
     expect(result.stdout).toContain("tenant [options]");
@@ -122,9 +123,10 @@ describe("root surface", () => {
     expect(result.stderr).toBe("");
   });
 
-  test("curl command has been removed", async () => {
+  test("case replaces the old HTTP and curl commands", async () => {
     const result = await runWithPlugin();
-    expect(result.stdout).toContain("http [options]");
+    expect(result.stdout).toContain("case [options]");
+    expect(result.stdout).not.toContain("http [options]");
     expect(result.stdout).not.toContain("curl [options]");
   });
 
@@ -216,11 +218,12 @@ describe("capability and preflight errors", () => {
     expect(invalid.stderr).not.toContain("Kubernetes");
   });
 
-  test("http 在非交互环境未指定 YAML 时给出明确指引", async () => {
-    const result = await runWithPlugin(["http"]);
-    expect(result.exitCode).toBe(2);
-    expect(result.stderr).toContain("缺少 --file");
-    expect(result.stderr).toContain("--example");
+  test("case 在非交互环境先列出可用 Case", async () => {
+    const result = await runWithPlugin(["case"]);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("doctor_http (builtin)");
+    expect(result.stdout).toContain("http_get_root");
+    expect(result.stdout).toContain("llm_connectivity");
   });
 
   test("net 在非交互环境未指定 YAML 时给出明确指引", async () => {
@@ -319,25 +322,20 @@ describe("profile and init", () => {
   });
 });
 
-describe("http example generation", () => {
-  test("http --example 在当前目录生成可编辑的 example.yaml", async () => {
+describe("case catalog", () => {
+  test("从当前目录读取 canonical doctor-case.yaml", async () => {
     const dir = workingDir();
-
-    const result = await run(["http", "--example"], { withPlugin: true, cwd: dir });
-
+    writeFileSync(join(dir, "doctor-case.yaml"), `caseset: local_api\nschema_version: 1\nfacets:\n  command: {values: [http]}\ncases:\n  - id: health\n    input: {method: GET, path: /health}\n    facets: {command: http}\n`);
+    const result = await run(["case"], { withPlugin: true, cwd: dir });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("示例已生成：example.yaml");
-    expect(readFileSync(join(dir, "example.yaml"), "utf-8")).toContain("schema: doctor-http/v1");
+    expect(result.stdout).toContain("local_api (local)");
+    expect(result.stdout).toContain("health  command=http");
   });
 
-  test("http -e 支持指定示例文件路径", async () => {
-    const dir = workingDir();
-
-    const result = await run(["http", "-e", "requests.yaml"], { withPlugin: true, cwd: dir });
-
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("示例已生成：requests.yaml");
-    expect(readFileSync(join(dir, "requests.yaml"), "utf-8")).toContain("schema: doctor-http/v1");
+  test("非交互发送需要目标 URL", async () => {
+    const result = await runWithPlugin(["case", "--send", "--caseset", "doctor_http", "--cases", "http_get_root"]);
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stderr).toContain("--base-url");
   });
 });
 
@@ -463,16 +461,18 @@ describe("command help", () => {
     expect(result.stdout).toContain("--output <path>");
   });
 
-  test("http exposes scenario repetition and dual-delivery output options", async () => {
-    const result = await runWithPlugin(["http", "--help"]);
+  test("case exposes selection, sending and HTTP evidence options", async () => {
+    const result = await runWithPlugin(["case", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("--location <local|pod>");
     expect(result.stdout).toContain("--pod <pod>");
     expect(result.stdout).toContain("--container <name>");
     expect(result.stdout).toContain("--namespace <ns>");
-    expect(result.stdout).toContain("--file <path>");
-    expect(result.stdout).toContain("-e, --example [path]");
-    expect(result.stdout).toContain("--request <ids>");
+    expect(result.stdout).toContain("--case-file <path>");
+    expect(result.stdout).toContain("--caseset <id>");
+    expect(result.stdout).toContain("--cases <ids>");
+    expect(result.stdout).toContain("--send");
+    expect(result.stdout).toContain("--base-url <url>");
     expect(result.stdout).toContain("--repeat <n>");
     expect(result.stdout).toContain("--interval <seconds>");
     expect(result.stdout).toContain("--timeout <seconds>");
@@ -671,7 +671,7 @@ describe("command help", () => {
     expect(db.stdout).not.toContain("--store");
   });
 
-  for (const command of ["data", "store", "db", "http", "mcp", "trace"]) {
+  for (const command of ["data", "store", "db", "case", "mcp", "trace"]) {
     test(`${command} exposes -f shorthand`, async () => {
       const result = await runWithPlugin([command, "--help"]);
       expect(result.exitCode).toBe(0);

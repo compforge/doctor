@@ -123,9 +123,19 @@ export function loadHttpScenario(path: string, overrides: HttpScenarioOverrides 
     throw new Error(`读取 HTTP 请求文件 '${path}' 失败: ${error instanceof Error ? error.message : String(error)}`);
   }
 
+  let parsedRaw: unknown;
+  try {
+    parsedRaw = parseYaml(raw);
+  } catch (error) {
+    throw new Error(`HTTP 请求文件解析失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  return parseHttpScenario(parsedRaw, path, overrides);
+}
+
+export function parseHttpScenario(value: unknown, sourcePath: string, overrides: HttpScenarioOverrides = {}): HttpScenario {
   let parsed: z.infer<typeof scenarioSchema>;
   try {
-    parsed = scenarioSchema.parse(parseYaml(raw));
+    parsed = scenarioSchema.parse(value);
   } catch (error) {
     if (error instanceof z.ZodError) {
       const details = error.issues.map((issue) => `${issue.path.join(".") || "root"}: ${issue.message}`).join("; ");
@@ -136,7 +146,7 @@ export function loadHttpScenario(path: string, overrides: HttpScenarioOverrides 
 
   const requests: HttpRequestGroup[] = parsed.requests.map((request) => {
     const commonHeaders = { ...(parsed.headers ?? {}), ...(request.headers ?? {}) };
-    const body = encodeBody(request, path, commonHeaders);
+    const body = encodeBody(request, sourcePath, commonHeaders);
     const entrypoints = request.entrypoints ?? [{ id: "default", headers: {}, follow_redirects: undefined }];
     const plans: HttpRequestPlan[] = entrypoints.map((entrypoint) => ({
       requestId: request.id,
@@ -163,7 +173,7 @@ export function loadHttpScenario(path: string, overrides: HttpScenarioOverrides 
   });
   return {
     schema: parsed.schema,
-    name: parsed.name ?? basename(path),
+    name: parsed.name ?? basename(sourcePath),
     requests,
   };
 }

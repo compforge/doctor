@@ -22,6 +22,7 @@ import {
   type Workload,
 } from "@compforge/perf-harness";
 import { resolveCaseRequestIdentity } from "../case";
+import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
 import { logCommand } from "../collect/log/command";
 import { metricCommand } from "../collect/metric/command";
 import { traceCommand } from "../collect/trace/command";
@@ -268,16 +269,27 @@ export async function runPerf(
   const scenario = config.scenario ?? scenarios[0]?.id;
   const declaredScenario = scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
-  const caseSet = selected.cases.caseSets.find(
+  const declaredCaseSet = selected.cases.caseSets.find(
     (candidate) => candidate.caseset === declaredScenario.caseSetId,
   );
-  if (!caseSet) {
+  if (!declaredCaseSet) {
     throw new Error(`Perf scenario '${scenario}' 引用了未知 CaseSet '${declaredScenario.caseSetId}'`);
   }
-  const caseMix = declaredScenario.cases.map((selection) => ({
-    id: selection.caseId,
-    weight: selection.weight ?? 1,
-  }));
+  const catalog = doctorCaseCatalog(plugin, opts.caseFile);
+  const hasLocalPerfCases = catalog.some((source) => source.source === "local"
+    && source.caseSet.cases.some((item) => item.facets?.command === "perf" || item.facets?.command === "both"));
+  const caseSelection = await selectDoctorCases({
+    catalog,
+    command: "perf",
+    caseSetId: opts.caseset,
+    caseIds: opts.cases,
+    service: provider.name,
+    defaultCaseSetId: !hasLocalPerfCases && !opts.caseset ? declaredScenario.caseSetId : undefined,
+    defaultCaseIds: [declaredScenario.cases?.[0]?.caseId ?? declaredCaseSet.cases[0]!.id],
+  });
+  if (!caseSelection) return { status: CommandStatus.Cancelled, artifacts: [] };
+  const caseSet = caseSelection.source.caseSet;
+  const caseMix = caseSelection.cases.map((item) => ({ id: item.id, weight: 1 }));
 
   if (!opts.levels?.trim() && isInteractive()) {
     writeOutput(`可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）` + "\n");
@@ -339,6 +351,7 @@ export async function runPerf(
     target: `${kube.profileName}/${kube.kubernetes.namespace}/${provider.name}`
       + ` · concurrency ${config.levels.join(" → ")}`,
     impact: [
+      `Case: ${caseSet.caseset}/${caseSelection.cases.map((item) => item.id).join(", ")}；多 Case 等权随机抽取`,
       `最多发起 ${config.levels.length * config.maxRequests} 个业务请求（每档最多 ${config.maxRequests}）`,
       "请求会写入业务数据库、日志和 trace，并可能产生模型调用费用",
       `错误率达到 ${(config.abortErrorRate * 100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）时停止当前档`,
@@ -428,7 +441,8 @@ export async function runPerf(
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: provider.name, target: { service: provider.name } },
       workload: workloadFromCaseFactory(() => createCaseRunner(selected.cases, managed, {
-        caseSetId: caseSet.caseset,
+        // Plugin runner is bound to a declared CaseSet; the selected Case payload is passed per fire.
+        caseSetId: declaredCaseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,
       })),

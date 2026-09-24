@@ -36,6 +36,7 @@ test("Perf declarations adapt without executing a provider during discovery", as
 
 test("Perf output validates identities, Case weights and observability references", () => {
   expect(perfScenariosOutput([scenario])).toEqual([scenario]);
+  expect(perfScenariosOutput([{ ...scenario, cases: undefined }])).toEqual([{ ...scenario, cases: undefined }]);
   for (const invalid of [[], [scenario, scenario], [{ ...scenario, cases: [] }],
   [{ ...scenario, cases: [{ caseId: "hello", weight: -1 }] }],
   [{ ...scenario, cases: [{ caseId: "hello", weight: 0 }] }],
