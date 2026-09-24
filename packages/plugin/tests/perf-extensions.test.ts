@@ -6,8 +6,8 @@ import {
   type ServiceDefinition, type ServicePerfScenario
 } from "../src";
 const scenario: ServicePerfScenario = {
-  id: "chat", title: "Chat", description: "Chat load", caseSetId: "chat",
-  cases: [{ caseId: "hello" }], observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
+  id: "chat", title: "Chat", description: "Chat load",
+  observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const service: ServiceDefinition = {
   name: "app",
@@ -16,11 +16,11 @@ const service: ServiceDefinition = {
 };
 
 test("Perf declarations adapt without executing a provider during discovery", async () => {
-  const legacy = createServiceCatalog([{
+  const declared = createServiceCatalog([{
     ...service,
     extensions: [perfExtension({ scenarios: [scenario] })]
   }]);
-  const extension = requirePerfScenariosExtension(legacy.extensions("perf.scenarios")[0]!.extension);
+  const extension = requirePerfScenariosExtension(declared.extensions("perf.scenarios")[0]!.extension);
   expect(extension.access).toEqual({});
   expect((await extension.run({} as never, undefined)).data).toEqual([scenario]);
   const run = mock(async () => [scenario]);
@@ -34,14 +34,9 @@ test("Perf declarations adapt without executing a provider during discovery", as
   }])).toThrow("duplicate");
 });
 
-test("Perf output validates identities, Case weights and observability references", () => {
+test("Perf output validates identities and observability references", () => {
   expect(perfScenariosOutput([scenario])).toEqual([scenario]);
-  expect(perfScenariosOutput([{ ...scenario, cases: undefined }])).toEqual([{ ...scenario, cases: undefined }]);
-  for (const invalid of [[], [scenario, scenario], [{ ...scenario, cases: [] }],
-  [{ ...scenario, cases: [{ caseId: "hello", weight: -1 }] }],
-  [{ ...scenario, cases: [{ caseId: "hello", weight: 0 }] }],
-  [{ ...scenario, cases: [{ caseId: "hello", weight: Infinity }] }],
-  [{ ...scenario, cases: [{ caseId: "hello" }, { caseId: "hello" }] }],
+  for (const invalid of [[], [scenario, scenario],
   [{ ...scenario, observability: { ...scenario.observability, metricServices: [] } }],
   ]) expect(() => perfScenariosOutput(invalid)).toThrow();
 });

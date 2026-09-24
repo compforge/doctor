@@ -1,6 +1,7 @@
 import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
+  type CaseCatalogExtension,
   type PluginDefinition,
   type ServiceCaseRunner,
 } from "@compforge/doctor-plugin";
@@ -9,6 +10,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { finalizeResult, readReport } from "./report-fixture";
 import { CommandContext, CommandStatus } from "../src/command";
 import {
@@ -16,8 +18,6 @@ import {
   evalRunName,
   executeEvalCases,
   resolveEvalConfig,
-  selectEvalCases,
-  selectEvalCaseSet,
   selectEvalProvider,
   writeEvalArtifact,
   type EvalRun,
@@ -42,9 +42,14 @@ const CASE_SET: CaseSet = {
 };
 
 function testPlugin(): PluginDefinition {
+  const catalog: CaseCatalogExtension = { id: "test.cases", kind: "case.catalog", load: () => [{
+    ...CASE_SET, facets: { ...CASE_SET.facets, command: { values: ["eval"] } },
+    cases: CASE_SET.cases.map((item) => ({ ...item, facets: { ...item.facets, command: "eval" } })),
+  }] };
   return {
     id: "test",
     version: "0.0.1",
+    extensions: [catalog],
     services: createServiceCatalog([{
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
@@ -52,7 +57,6 @@ function testPlugin(): PluginDefinition {
       extensions: [caseExtension({
         endpoint: { host: "test-service", port: 8080 },
         access: {},
-        caseSets: [CASE_SET],
         createRunner: async () => ({
           run: async () => ({ status: 200, durationMs: 10 }),
           classify: () => ({ ok: true }),
@@ -62,7 +66,7 @@ function testPlugin(): PluginDefinition {
   };
 }
 
-test("eval config selects one canonical CaseSet and an optional Case subset", () => {
+test("eval config selects one canonical CaseSet and an optional Case subset", async () => {
   const now = new Date("2026-01-02T03:04:05");
   expect(evalRunName(now)).toBe("doctor-eval-20260102-030405");
   expect(resolveEvalConfig({ cases: "reason,hello,reason" }, now)).toEqual({
@@ -73,10 +77,19 @@ test("eval config selects one canonical CaseSet and an optional Case subset", ()
     bundleName: "doctor-eval-20260102-030405",
   });
   expect(() => resolveEvalConfig({ format: "json" })).toThrow("html 或 bundle");
-  const provider = selectEvalProvider(testPlugin(), undefined);
-  const caseSet = selectEvalCaseSet(provider, undefined);
-  expect(selectEvalCases(caseSet, ["reason"]).map((item) => item.id)).toEqual(["reason"]);
-  expect(() => selectEvalCases(caseSet, ["missing"])).toThrow("不包含 Case");
+  const directory = mkdtempSync(join(tmpdir(), "doctor-eval-cases-"));
+  try {
+    const plugin = testPlugin();
+    expect(selectEvalProvider(plugin, undefined).service.name).toBe("chat");
+    const catalog = doctorCaseCatalog(plugin, undefined, directory);
+    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat" }))?.cases.map((item) => item.id))
+      .toEqual(["hello", "reason"]);
+    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat", caseIds: "reason" }))?.cases.map((item) => item.id))
+      .toEqual(["reason"]);
+    await expect(selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat", caseIds: "missing" })).rejects.toThrow("不包含 Case");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("eval executes selected Cases once and preserves protocol observations", async () => {

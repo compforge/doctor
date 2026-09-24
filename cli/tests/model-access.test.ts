@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
-import { requireWorkloadProbeExtension, requireCaseRunnerCreateExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
+import { loadCaseCatalog, requireWorkloadProbeExtension, requireCaseRunnerCreateExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION, type CaseCatalogExtension } from "@compforge/doctor-plugin";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { openModelAccess, openModelDiscoveryAccess } from "../src/model";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -391,10 +391,17 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
   }, manifest)).toThrow("当前只支持 OpenSearch VDB");
 });
 
-test("Plugin perf scenarios select Cases from the Service case capability", () => {
+test("Plugin case catalog owns CaseSet validation independently of the runner", () => {
+  const caseSet = {
+    caseset: "chat", focus: "Chat Cases", schema_version: 1 as const,
+    facets: { difficulty: { values: ["simple", "complex"], ordered: true } },
+    cases: [{ id: "ordinary_chat", input: { query: "hello" }, facets: { difficulty: "simple" } }],
+  };
+  const catalog: CaseCatalogExtension = { id: "chat.cases", kind: "case.catalog", load: () => [caseSet] };
   const base = {
     id: "test",
     version: "0.0.1",
+    extensions: [catalog],
     services: {
       services: [{
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
@@ -403,19 +410,6 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
         extensions: [caseExtension({
           endpoint: { host: "test-service", port: 8000 },
           access: {},
-          caseSets: [{
-            caseset: "chat",
-            focus: "Chat Cases",
-            schema_version: 1,
-            facets: {
-              difficulty: { values: ["simple", "complex"], ordered: true },
-            },
-            cases: [{
-              id: "ordinary_chat",
-              input: { query: "hello" },
-              facets: { difficulty: "simple" },
-            }],
-          }],
           createRunner: async () => { throw new Error("factory must not run"); },
         }),
         perfExtension({
@@ -423,8 +417,6 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
             id: "ordinary-chat",
             title: "普通 Chat",
             description: "SSE Chat",
-            caseSetId: "chat",
-            cases: [{ caseId: "ordinary_chat", weight: 1 }],
             observability: {
               metricServices: ["chat"],
               logServices: ["chat"],
@@ -437,18 +429,12 @@ test("Plugin perf scenarios select Cases from the Service case capability", () =
   };
   const validated = validatePluginDefinition(base, manifest);
   expect(validated.services.extensions("perf.scenarios")).toHaveLength(1);
-  const runner = requireCaseRunnerCreateExtension(validated.services.extensions("case.runner.create")[0]!.extension);
-  const caseSet = runner.caseSets![0]!;
-  expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, { caseSets: [{ ...caseSet, facets: undefined }] })))
+  expect(loadCaseCatalog(catalog)).toMatchObject([caseSet]);
+  expect(() => loadCaseCatalog({ ...catalog, load: () => [{ ...caseSet, facets: undefined }] }))
     .toThrow("unknown facet 'difficulty'");
-  expect(() => requireCaseRunnerCreateExtension(Object.assign({}, runner, {
-    caseSets: [{
-      ...caseSet,
-      cases: [{ ...caseSet.cases[0]!, facets: { difficulty: "medium" } }],
-    }]
-  }))).toThrow("facet difficulty='medium' not in declared values");
-  // Scenario output and cross-Case references are validated when the Command loads them;
-  // perf-extensions.test exercises this boundary with real scoped execution.
+  expect(() => loadCaseCatalog({ ...catalog, load: () => [{
+    ...caseSet, cases: [{ ...caseSet.cases[0]!, facets: { difficulty: "medium" } }],
+  }] })).toThrow("facet difficulty='medium' not in declared values");
 
 });
 
@@ -460,12 +446,6 @@ test("Plugin Case request identity references a tenant directory provider", () =
     extensions: [caseExtension({
       endpoint: { host: "test-service", port: 8000 },
       access: {},
-      caseSets: [{
-        caseset: "chat",
-        focus: "Chat Cases",
-        schema_version: 1,
-        cases: [{ id: "ordinary_chat", input: { query: "hello" } }],
-      }],
       requestIdentity: {
         configured: () => ({}),
       },

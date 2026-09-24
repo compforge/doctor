@@ -6,6 +6,7 @@ import type { CommandArtifact, CommandResult, CommandStatus } from "../command";
 
 export interface EvalCliOpts {
   service?: string;
+  caseFile?: string;
   caseset?: string;
   cases?: string;
   requestTimeout?: string;

@@ -6,7 +6,6 @@ import { httpCaseCatalogExtension } from "../case/core-http";
 export function createDoctorExtensionRegistry(
   plugin?: PluginDefinition,
   local: readonly ExtensionRegistration[] = [],
-  adapters: readonly { owner: string; extension: ExtensionRegistration }[] = [],
 ): ExtensionRegistry {
   const registry = new ExtensionRegistry();
   registry.register("core", [modelCaseCatalogExtension, httpCaseCatalogExtension]);
@@ -17,6 +16,5 @@ export function createDoctorExtensionRegistry(
       registry.register(`service:${service.name}`, service.extensions ?? []);
     }
   }
-  for (const { owner, extension } of adapters) registry.register(owner, [extension]);
   return registry;
 }
