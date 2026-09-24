@@ -103,7 +103,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor log [id...]` | 不带 ID 按 Service / 时间范围采集日志；带 ID 则解析 trace 并分组聚合关联日志 |
 | `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
 | `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
-| `doctor http` | 从 YAML 重放一个或多个 HTTP 请求，多轮采集并分析响应 |
+| `doctor case` | 列出内置与当前目录的 Case；选择一个或多个 HTTP Case 发送并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
 | `doctor metric` | 使用 profile 中的 Prometheus，或临时抓取 Service `/metrics`，执行业务 detector 并生成离线 HTML 图表 |
 | `doctor net` | 协调多个 Service Pod 短时抓包；选择 YAML 跟踪已知请求，或守候页面操作产生的请求 |
@@ -132,5 +132,5 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Image 准备](docs/commands/image.md)
 - [Debug container](docs/commands/debug-container.md)
 - [Container GDB 安装](docs/commands/install.md)
-- [HTTP 场景重放与诊断](docs/commands/http-diagnosis.md)
+- [Case 选择、发送与诊断](docs/commands/case.md)
 - [Network 抓包与离线分析](docs/commands/network-diagnosis.md)

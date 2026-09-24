@@ -20,13 +20,13 @@ export function perfScenariosOutput(value: unknown): readonly ServicePerfScenari
   const text = (item: unknown): item is string => typeof item === "string" && Boolean(item.trim());
   for (const scenario of scenarios) {
     if (!scenario || ![scenario.id, scenario.title, scenario.description, scenario.caseSetId].every(text)
-      || ids.has(scenario.id) || !Array.isArray(scenario.cases) || !scenario.cases.length) {
+      || ids.has(scenario.id) || (scenario.cases !== undefined && (!Array.isArray(scenario.cases) || !scenario.cases.length))) {
       throw new Error("perf.scenarios returned an invalid or duplicate scenario");
     }
     ids.add(scenario.id);
     const cases = new Set<string>();
     let positiveWeight = false;
-    for (const selection of scenario.cases) {
+    for (const selection of scenario.cases ?? []) {
       if (!selection || !text(selection.caseId) || cases.has(selection.caseId)) {
         throw new Error(`perf.scenarios '${scenario.id}' has an invalid or duplicate Case selection`);
       }
@@ -37,7 +37,7 @@ export function perfScenariosOutput(value: unknown): readonly ServicePerfScenari
       }
       positiveWeight ||= weight > 0;
     }
-    if (!positiveWeight) throw new Error(`perf.scenarios '${scenario.id}' requires a positive Case weight`);
+    if (scenario.cases && !positiveWeight) throw new Error(`perf.scenarios '${scenario.id}' requires a positive Case weight`);
     const observations = scenario.observability;
     if (!observations || [observations.metricServices, observations.logServices, observations.correlationKeys]
       .some(items => !Array.isArray(items) || !items.length || !items.every(text))) {

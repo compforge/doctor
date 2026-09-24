@@ -86,7 +86,7 @@ export async function resolveHttpScenarioFile(
     invalidMessage: "输入无效，请输入列表中的序号或文件名。",
     cancelledMessage: "已取消 HTTP 场景选择。",
     missingFileMessage: "缺少 --file；非交互环境请显式指定 YAML，或使用 --example 生成示例",
-    noCandidatesMessage: "当前目录没有符合 doctor-http/v1 schema 的 YAML；可先运行 doctor http --example",
+    noCandidatesMessage: "当前目录没有符合 doctor-http/v1 schema 的 YAML；可使用 doctor-case.yaml 和 doctor case",
     singleCandidateMessage: (file) => `[http] HTTP 场景：${file}（当前目录唯一候选，自动选择）`,
   });
 }

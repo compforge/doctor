@@ -47,7 +47,7 @@ Business data is organized by lookup scope:
   reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
   collectors; Collect does not infer relationships between scopes, create load or change individual
   command semantics.
-- `doctor http` executes a controlled request when reproducing the problem requires an active probe.
+- `doctor case` lists reusable cases and sends selected HTTP cases when reproducing a problem requires an active probe.
 - `doctor eval` executes each selected canonical Case once and captures its protocol observation plus
   correlated Trace, Log and business Data. It preserves the CaseSet for downstream evaluators but does
   not score answer quality or interpret `judge.eval`.

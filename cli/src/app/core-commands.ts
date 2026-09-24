@@ -2,6 +2,8 @@ import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidenceResult } from "../collect/serialize";
 import { runCollectCpu } from "../collect/cpu";
 import { runCollectHttp } from "../collect/http";
+import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
+import { httpScenarioFromDoctorCases } from "../case/http";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectNetwork } from "../collect/network";
 import type { HtmlReportOptions } from "../collect/output/html";
@@ -86,15 +88,36 @@ export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof ru
   run: async (context, input) => commandOutcome(await runCollectCpu({ ...input, ...commandOptions(context) }, context)),
 });
 
-export const httpCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption>, void>({
-  name: "doctor http",
+export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption> & {
+  caseFile?: string;
+  caseset?: string;
+  cases?: string;
+  baseUrl?: string;
+}, void>({
+  name: "doctor case",
   serialize: serializeEvidenceResult,
   render: (context, result) => renderEvidence(context, result, {
-    command: "http", title: "HTTP",
+    command: "case", title: "Case HTTP",
     render: artifact => writeEvidencePage(context, artifact, context.json<HtmlReportOptions>(artifact, "report-input.json")),
   }),
   prepare: async (_context, input) => input,
-  run: async (context, input) => commandOutcome(await runCollectHttp({ ...input, ...commandOptions(context) }, context)),
+  run: async (context, input) => {
+    if (!input.baseUrl) throw new Error("发送 HTTP Case 需要 --base-url");
+    const selection = await selectDoctorCases({
+      catalog: doctorCaseCatalog(await context.resolvePlugin(), input.caseFile),
+      command: "http", caseSetId: input.caseset, caseIds: input.cases,
+    });
+    if (!selection) return commandOutcome(130);
+    const scenario = httpScenarioFromDoctorCases(selection, input.baseUrl, {
+      timeoutSeconds: input.timeout === undefined ? undefined : Number(input.timeout),
+      maxResponseMiB: input.maxSize === undefined ? undefined : Number(input.maxSize),
+    });
+    return commandOutcome(await runCollectHttp(
+      { ...input, ...commandOptions(context) }, context, undefined, undefined,
+      { scenario, source: selection.source.file ?? selection.source.caseSet.caseset,
+        caseIds: selection.cases.map((item) => item.id) },
+    ));
+  },
 });
 
 export const netCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectNetwork>[0], CommandHostOption>, void>({

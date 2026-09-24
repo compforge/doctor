@@ -41,7 +41,7 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 - `doctor collect` 调用选中的 Inspect、Tenant、Data、Trace、Log 和 Metric Collector，并把各自报告组合为
   一份离线交付。tenant 与 biz-id 仍由对应 Collector 独立解释；Collect 不推导不同 scope 间的关系、
   不产生负载，也不改变任何单项命令的采集语义。
-- `doctor http` 在需要主动复现问题时执行受控请求。
+- `doctor case` 列出可用 Case，并在选择 HTTP Case 后执行受控请求以复现问题。
 - `doctor perf` 产生有界的真实业务负载，记录请求结果，并把压测窗口与 Metric、代表请求的 Trace 和
   Log 关联起来。它可能产生业务数据或模型费用，因此始终由用户显式触发并确认。
 - `doctor chat` 组合模型、受限工具和当前 Plugin 的 Skill，使用与确定性命令相同的应用知识回答开放式

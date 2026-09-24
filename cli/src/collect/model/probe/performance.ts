@@ -93,7 +93,10 @@ export function makeModelPerformanceProbe(
     },
     run: async (ctx, _facts, config) => {
       const observations: ModelPerformanceObservation[] = [];
-      const suite = buildModelPerformanceSuite(config.maxOutputTokens);
+      const suite = buildModelPerformanceSuite(config.maxOutputTokens).filter((item) =>
+        !config.selectedCases || config.selectedCases.some((selected) =>
+          selected.facets?.mode === "performance" && selected.input.scenario === item.id));
+      if (!suite.length) throw new Error("选中的性能 Case 没有有效的 input.scenario");
       for (const testCase of suite) {
         for (let round = 0; round <= config.repeat; round += 1) {
           const warmup = round === 0;

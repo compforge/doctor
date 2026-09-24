@@ -14,7 +14,7 @@
 - **专业性能压测**：后续由 [AIPerf](https://github.com/ai-dynamo/aiperf) 承担负载调度、数据集生成和专业指标统计；Doctor 负责解析 Plugin 提供的模型目标与访问上下文、显式授权执行，并把结果收进诊断报告。
 - **Facts / Observations / Findings**：模型身份与脱敏 backend 摘要是 Inspect Facts；validation、inference 响应和性能样本是 Probe Observations；失败、usage 缺失和间歇性异常由纯 Detector 从 Evidence 推导。
 
-交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；LLM validation 通过后会展示请求规模并询问是否执行性能采样。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`，且只有 `--performance` 才会发起多轮性能请求。
+交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；随后从 Case 目录选择一个或多个 `facets.command=model` 的 Case。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`；可通过 `--caseset` / `--cases` 指定 Case。当前目录的 `doctor-case.yaml` 可提供外部 CaseSet，目标模型身份和访问配置仍由命令注入。
 
 ## 流程
 
@@ -23,8 +23,8 @@
 3. 从 `modelCatalog` capability 获取可用模型，并解析或交互选择目标 model。
 4. Model Inspect 从模型目录取得同一模型的 backend handle，生成目标与脱敏 backend Facts；原始配置和 credentials 留在 Plugin 闭包内。
 5. Validation Probe 调用 backend handle 的 validation 行为并形成 Observation；Core 不解释 provider 私有字段或拼接 validation payload。
-6. validation 成功后，Performance Decision Probe 处理显式参数或交互选择；选择性能测试时 Inference Probe 标记为 unnecessary，否则执行最小 inference。
-7. Performance Probe 串行执行短、中、长输入和持续生成场景，每次真实响应形成独立 Observation；它不产生并发或目标 RPS。
+6. validation 成功后，Inference Probe 逐个执行选中的连通性 Case；每次响应独立关联 Case ID。Case 的 `input.path` 与 `input.body` 描述请求，实际 `model` 由模型目录注入。
+7. 选中性能 Case 时，Performance Probe 串行执行对应的短、中、长输入或持续生成场景；每次真实响应形成独立 Observation，不产生并发或目标 RPS。
 8. Model Detector 只读取 Facts 与 Observations，计算性能指标、coverage 和 Findings；Renderer 在终端交付持续生成 TPS 及业务输出耗时粗估口径，并产生 JSON 或 HTML 报告。embedding / rerank 保持非流式最小请求。
 
 ## 关键设计
@@ -76,7 +76,7 @@ AIPerf 是面向生成式模型服务的独立压测引擎，原生支持 OpenAI
 
 ### SSE 共享边界
 
-SSE framing、frame 到达时间、间隔与 `[DONE]` 终态属于通用 HTTP 观测，位于 `collect/shared/http`，供 `doctor model` 与 `doctor http` 共用。OpenAI `delta`、reasoning、tool call、finish reason 和 usage 属于模型协议，只在 Model collect 中解释。
+SSE framing、frame 到达时间、间隔与 `[DONE]` 终态属于通用 HTTP 观测，位于 `collect/shared/http`，供 `doctor model` 与 `doctor case` 共用。OpenAI `delta`、reasoning、tool call、finish reason 和 usage 属于模型协议，只在 Model collect 中解释。
 
 ### terminal 只拥有交互机制
 

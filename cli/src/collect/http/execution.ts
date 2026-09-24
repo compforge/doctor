@@ -38,7 +38,7 @@ export async function resolvePodHttpExecution(
   const executor = injectedExecutor ?? createKubernetesExecutor(collect);
   const access = resolveKubernetesCommandContext(executor, commandContext).access;
   await enforceKubernetesAccess(access, {
-    command: "doctor http --execution pod",
+    command: "doctor case --location pod",
     needs: [{
       requirement: "required",
       rule: { verb: "create", resource: "pods/exec" },

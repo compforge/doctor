@@ -6,7 +6,7 @@ import type { ModelOutputFormat, ModelTestRequest } from "./model";
 
 const MODEL_TYPES: readonly ModelType[] = ["llm", "embedding", "rerank", "audio"];
 const MODEL_PERFORMANCE_CASES = 4;
-const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
+export const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
   + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
 
 export function parseModelOutputFormat(value: string | undefined): ModelOutputFormat {

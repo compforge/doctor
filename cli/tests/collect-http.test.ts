@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { httpCommand } from "../src/app/core-commands";
+import { caseCommand } from "../src/app/core-commands";
 import { finalizeResult } from "./report-fixture";
 import {
   captureHttpResponse,
@@ -64,7 +64,7 @@ async function deliverHttp(
   options: { format?: string; output?: string },
   code: number,
 ): Promise<void> {
-  expect(await finalizeResult(context, httpCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }, options)).toBe(code);
+  expect(await finalizeResult(context, caseCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }, options)).toBe(code);
 }
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
@@ -675,7 +675,7 @@ requests:
   expect(code).toBe(0);
   expect(call).toBe(2);
   const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
-  expect(html).toContain("doctor http 诊断报告");
+  expect(html).toContain("doctor case 诊断报告");
   expect(html).toContain("执行位置：local");
   expect(html).toContain("存在偶现失败");
   expect(html).toContain("执行次数：2");
@@ -896,7 +896,7 @@ requests:
 
   expect(code).toBe(0);
   const markdown = readFileSync(`${output}.md`, "utf-8");
-  expect(markdown).toContain("# doctor http diagnosis");
+  expect(markdown).toContain("# doctor case diagnosis");
   expect(markdown).toContain("- execution: local");
   expect(markdown).toContain("## 实际请求 cURL");
   expect(markdown).toContain("```bash\ncurl");
@@ -906,7 +906,7 @@ requests:
 });
 
 test("HTTP 默认双交付并保留显式格式", () => {
-  expect(defaultHttpBundleName(new Date(2026, 6, 22, 15, 4, 5))).toBe("doctor-http-20260722-150405");
+  expect(defaultHttpBundleName(new Date(2026, 6, 22, 15, 4, 5))).toBe("doctor-case-20260722-150405");
   expect(parseHttpOutputFormat(undefined)).toBe("default");
   expect(parseHttpOutputFormat("html")).toBe("html");
   expect(parseHttpOutputFormat("md")).toBe("md");

@@ -5,6 +5,9 @@ import type { Run } from "@compforge/perf-harness";
 export interface PerfCliOpts {
   service?: string;
   scenario?: string;
+  caseFile?: string;
+  caseset?: string;
+  cases?: string;
   levels?: string;
   ramp?: string;
   hold?: string;

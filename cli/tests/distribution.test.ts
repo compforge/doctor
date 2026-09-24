@@ -120,14 +120,16 @@ describe("Doctor distributions", () => {
 });
 
 describe("global Kubernetes options", () => {
-  for (const name of ["inspect", "data", "trace", "log", "metric", "tenant", "collect", "overview", "image", "debug", "install", "mem", "cpu", "http", "net", "store", "db", "model", "mcp", "eval", "perf"]) {
+  for (const name of ["inspect", "data", "trace", "log", "metric", "tenant", "collect", "overview", "image", "debug", "install", "mem", "cpu", "case", "net", "store", "db", "model", "mcp", "eval", "perf"]) {
     for (const position of ["before", "after"] as const) {
       test(`${name} forwards target options ${position} the command`, async () => {
         const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
         try {
           const program = createDoctorProgram();
           const target = ["--kubeconfig", "/explicit/config", "--context", "test-context"];
-          const command = name === "collect" ? [name, "--include", "inspect"] : [name];
+          const command = name === "collect" ? [name, "--include", "inspect"]
+            : name === "case" ? [name, "--send", "--caseset", "doctor_http", "--cases", "http_get_root", "--base-url", "http://127.0.0.1:8000"]
+            : [name];
           await program.parseAsync(position === "before" ? [...target, ...command] : [...command, ...target], { from: "user" });
           expect(run).toHaveBeenCalledTimes(1);
           const [, options, input] = run.mock.calls[0]!;

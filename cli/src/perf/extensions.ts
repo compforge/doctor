@@ -43,7 +43,7 @@ function validateScenarioCases(
   for (const scenario of scenarios) {
     const cases = capability.caseSets.find(item => item.caseset === scenario.caseSetId);
     if (!cases) throw new Error(`Perf scenario '${scenario.id}' references unknown CaseSet '${scenario.caseSetId}'`);
-    for (const selection of scenario.cases) {
+    for (const selection of scenario.cases ?? []) {
       if (!cases.cases.some(item => item.id === selection.caseId)) {
         throw new Error(`Perf scenario '${scenario.id}' references unknown Case '${selection.caseId}'`);
       }

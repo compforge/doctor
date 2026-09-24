@@ -79,12 +79,13 @@ function responseFailure(
     ?? `HTTP ${observation.response?.statusCode ?? "unknown"} ${observation.response?.statusText ?? ""}`.trim();
   return {
     ...FINDING_META,
-    id: kind,
+    id: observation.caseId ? `${kind}:${observation.caseId}` : kind,
     kind,
+    caseId: observation.caseId,
     severity: "critical",
     confidence: "high",
     evidence: [{ observationId: observation.id, role: "supporting" }],
-    summary: `${label}失败：${reason}`,
+    summary: `${label}${observation.caseId ? `（${observation.caseId}）` : ""}失败：${reason}`,
   };
 }
 
@@ -106,8 +107,9 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
     });
   }
 
-  const inference = modelResponseObservation(evidence, "model-inference");
-  if (inference) {
+  for (const inference of evidence.observations.filter(
+    (item): item is ModelResponseObservation => item.kind === "model-inference",
+  )) {
     const finding = responseFailure(inference, "model.inference-failed");
     if (finding) findings.push(finding);
   }
@@ -206,21 +208,26 @@ export function buildModelCoverage(
     }];
     const decision = modelPerformanceDecision(evidence);
     const performanceExpected = decision?.enabled ?? config.performance === true;
-    if (!performanceExpected) {
-      const inference = modelResponseObservation(evidence, "model-inference");
+    const selected = config.selectedCases?.filter((item) => item.facets?.mode !== "performance");
+    if (selected?.length || !performanceExpected) {
+      const inferences = evidence.observations.filter(
+        (item): item is ModelResponseObservation => item.kind === "model-inference",
+      );
+      const missing = selected?.filter((item) => !inferences.some((response) => response.caseId === item.id && response.response)) ?? [];
+      const inference = inferences[0];
       coverage.push({
         goal: "inference",
-        status: inference?.response ? "sufficient" : "insufficient",
-        missingEvidence: inference?.response
-          ? []
-          : [inference?.error ?? "模型推理响应"],
+        status: selected ? (missing.length === 0 && inferences.length === selected.length ? "sufficient" : "insufficient")
+          : inference?.response ? "sufficient" : "insufficient",
+        missingEvidence: selected ? missing.map((item) => `Case ${item.id} 的模型推理响应`)
+          : inference?.response ? [] : [inference?.error ?? "模型推理响应"],
       });
-      return coverage;
     }
+    if (!performanceExpected) return coverage;
 
     const observations = modelPerformanceObservations(evidence);
     const attempts = observations.map(analyzeModelPerformanceObservation);
-    const expected = config.repeat * 4;
+    const expected = config.repeat * (config.selectedCases?.filter((item) => item.facets?.mode === "performance").length ?? 4);
     const usable = attempts.filter((attempt) =>
       attempt.success
       && attempt.promptTokens !== undefined
