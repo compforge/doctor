@@ -16,6 +16,8 @@
 
 交互终端中，缺少 tenant 或 model 参数时分别从 `tenantDirectory` 和 `modelCatalog` capability 提供的候选中选择；随后从 Case 目录选择一个或多个 `facets.command=model` 的 Case。非交互环境必须显式提供 `--tenant-id` / `--tenant-name` 与 `--model`；可通过 `--caseset` / `--cases` 指定 Case。当前目录的 `doctor-cases.yaml` 可提供外部 CaseSet，目标模型身份和访问配置仍由命令注入。
 
+内置 `doctor_model/llm_adjacent_assistants` 发送 `system → user → assistant → assistant → user` 消息序列，用于检查模型 Provider 是否接受相邻的 assistant 消息。可用 `--caseset doctor_model --cases llm_adjacent_assistants` 单独运行；它只判断协议请求是否成功，不评价回答内容。
+
 ## 流程
 
 1. 解析 profile、namespace 与 Kubernetes 连接信息。
