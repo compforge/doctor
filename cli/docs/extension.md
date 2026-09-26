@@ -3,7 +3,7 @@
 ## 理念与概念
 
 Extension 是 Core、Plugin、Service 或本地适配器向 Command 提供数据或执行能力的通用注册机制。
-提供方在 `ExtensionRegistry` 中按 owner 注册，Command 按 kind 发现并调用；kind 约定具体函数语义。
+提供方在 `ExtensionRegistry` 中按 namespace 注册，Command 按 kind 发现并调用；kind 约定具体函数语义。
 需要 Target 访问的 Service Extension 使用 `run`、`access` 与受限上下文。离线目录型 Extension 可定义
 自己的调用方式，例如 `case.catalog` 的 `load`，列出 Case 时无需准备 Target 访问。
 
@@ -83,8 +83,20 @@ interface Summary {
 执行 runner 或展开整个对象。case runner 创建在返回后不检查取消，以便生命周期所有者总能接手清理；
 该调用点单独校验信封。摘要不得引入后台调用或改变资源释放时机。
 
-id 在所属 owner 内唯一，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
+id 在所属 namespace 内唯一，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
 实现；消费方根据自己的领域规则决定选择一个、调用多个或拒绝歧义，不能默认按注册顺序取第一个。
+
+namespace 是区分提供方的字符串路径，由宿主按注册位置生成，Extension 自身不重复声明。
+宿主使用 `core`、`local`、`plugin/<plugin-id>` 和
+`plugin/<plugin-id>/service/<service-name>`；ServiceCatalog 内部仅以 Service 名称作为本地 namespace，
+宿主装配时补全 Plugin 路径。路径段以 ASCII 字母或数字开头，其余字符允许字母、数字、`.`、`_`、`-`；
+区分大小写，不接受空段、空白、前后斜杠或 `.` / `..` 段，也不自动规范化。使用
+`extensionNamespace(...segments)` 生成路径，避免标识符包含 `/` 改变归属层级。
+
+Registry 以 `namespace + id` 判重，与 kind 无关。`extensions(kind)` 返回全部匹配操作，
+`extensions(kind, namespace)` 只精确匹配该 namespace；父子路径不隐式继承、覆盖或聚合。
+namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 当前仍由
+Command 选择 Service provider；产品级 Overview 的接入需显式定义其选择与调用行为。
 
 kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验，不建立中央 ExtensionContracts 映射或
 封闭枚举。新增 kind 不需要修改 Core 的通用发现与调用机制。accepts、provides 等匹配信息属于需要它们
@@ -102,7 +114,7 @@ spec-case CaseSet，按 Case facets 过滤，不要求创建 runner 或访问环
 Command 保持 Prepare → Execute → Finalize 的生命周期。Extension 的调用嵌入 Command 自己的流程，
 不为它建立额外的执行计划或工作流。
 
-1. **声明与发现**：Core、Plugin 顶层、本地适配器和 Service 均注册实现。Registry.extensions(kind) 按 kind 返回 owner 与实现；
+1. **声明与发现**：Core、Plugin 顶层、本地适配器和 Service 均注册实现。Registry.extensions(kind) 按 kind 返回 namespace 与实现；
    发现只读取声明，不调用 run，不初始化业务 Client。
 2. **Prepare**：Command 按本次输入和提供方范围选择所需扩展；访问 Target 的实现检查自身及 Extension.access 的权限。
    已选实现可以保存在 Command 自己的 Prepared 中；此阶段不调用扩展取业务数据或执行操作。

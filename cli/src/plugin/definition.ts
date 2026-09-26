@@ -3,6 +3,7 @@ import { workloadProbeProviders } from "./workload-extensions";
 import {
   createServiceCatalog,
   ExtensionRegistry,
+  extensionNamespace,
   isToolchain,
   type PluginDefinition,
   type ServiceDefinition,
@@ -173,7 +174,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (definition.extensions !== undefined) {
     if (!Array.isArray(definition.extensions)) throw new Error("Plugin extensions must be an array");
     const registry = new ExtensionRegistry();
-    registry.register(`plugin:${manifest.id}`, definition.extensions);
+    registry.register(extensionNamespace("plugin", manifest.id), definition.extensions);
   }
   if (definition.validateConfig !== undefined && typeof definition.validateConfig !== "function") {
     throw new Error("Plugin validateConfig must be a function");

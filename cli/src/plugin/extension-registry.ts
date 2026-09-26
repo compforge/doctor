@@ -1,4 +1,4 @@
-import { ExtensionRegistry, type ExtensionRegistration, type PluginDefinition } from "@compforge/doctor-plugin";
+import { ExtensionRegistry, extensionNamespace, type ExtensionRegistration, type PluginDefinition } from "@compforge/doctor-plugin";
 import { modelCaseCatalogExtension } from "../collect/model/cases";
 import { httpCaseCatalogExtension } from "../case/core-http";
 
@@ -11,9 +11,9 @@ export function createDoctorExtensionRegistry(
   registry.register("core", [modelCaseCatalogExtension, httpCaseCatalogExtension]);
   registry.register("local", local);
   if (plugin) {
-    registry.register(`plugin:${plugin.id}`, plugin.extensions ?? []);
+    registry.register(extensionNamespace("plugin", plugin.id), plugin.extensions ?? []);
     for (const service of plugin.services.services) {
-      registry.register(`service:${service.name}`, service.extensions ?? []);
+      registry.register(extensionNamespace("plugin", plugin.id, "service", service.name), service.extensions ?? []);
     }
   }
   return registry;

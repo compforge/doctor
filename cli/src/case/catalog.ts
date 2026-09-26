@@ -1,5 +1,5 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
-import { CASE_CATALOG_KIND, loadCaseCatalog, requireCaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { CASE_CATALOG_KIND, extensionNamespace, loadCaseCatalog, requireCaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
 import { isInteractive } from "../terminal/policy";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
@@ -19,11 +19,14 @@ export interface DoctorCaseSet {
 export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
   const local = localCaseCatalogExtension(file, cwd);
   const registry = createDoctorExtensionRegistry(plugin, [local]);
-  return registry.extensions(CASE_CATALOG_KIND).flatMap(({ owner, extension }) =>
+  const serviceNames = new Map(plugin?.services.services.map(service => [
+    extensionNamespace("plugin", plugin.id, "service", service.name), service.name,
+  ]));
+  return registry.extensions(CASE_CATALOG_KIND).flatMap(({ namespace, extension }) =>
     loadCaseCatalog(requireCaseCatalogExtension(extension)).map((caseSet) => ({
-      source: owner === "core" ? "builtin" as const : owner === "local" ? "local" as const : "plugin" as const,
-      ...(owner.startsWith("service:") ? { service: owner.slice("service:".length) } : {}),
-      ...(owner === "local" && local.file ? { file: local.file } : {}),
+      source: namespace === "core" ? "builtin" as const : namespace === "local" ? "local" as const : "plugin" as const,
+      ...(serviceNames.has(namespace) ? { service: serviceNames.get(namespace)! } : {}),
+      ...(namespace === "local" && local.file ? { file: local.file } : {}),
       caseSet,
     })));
 }

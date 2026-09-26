@@ -5,6 +5,7 @@ import type { ServiceDefinition } from "./service";
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   private readonly identities = new Map<string, T>();
+  // This catalog is Plugin-local; the host qualifies these names when composing Plugins.
   private readonly registry = new ExtensionRegistry<RegisteredExtension>();
 
   constructor(readonly services: readonly T[]) {
@@ -45,7 +46,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   /** Open discovery; the consumer owns domain validation and multi-provider selection. */
   extensions(kind: string): { service: T; extension: RegisteredExtension }[] {
-    return this.registry.extensions(kind).map(({ owner, extension }) => ({ service: this.identities.get(owner)!, extension }));
+    return this.registry.extensions(kind).map(({ namespace, extension }) => ({ service: this.identities.get(namespace)!, extension }));
   }
 
   find(name: string): T | undefined {
