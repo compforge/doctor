@@ -95,8 +95,8 @@ namespace 是区分提供方的字符串路径，由宿主按注册位置生成�
 
 Registry 以 `namespace + id` 判重，与 kind 无关。`extensions(kind)` 返回全部匹配操作，
 `extensions(kind, namespace)` 只精确匹配该 namespace；父子路径不隐式继承、覆盖或聚合。
-namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 当前仍由
-Command 选择 Service provider；产品级 Overview 的接入需显式定义其选择与调用行为。
+namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 由 Command
+根据 Service 选项精确选择产品或服务 namespace，数据访问目标单独声明，详见 [Overview](commands/overview.md)。
 
 kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验，不建立中央 ExtensionContracts 映射或
 封闭枚举。新增 kind 不需要修改 Core 的通用发现与调用机制。accepts、provides 等匹配信息属于需要它们

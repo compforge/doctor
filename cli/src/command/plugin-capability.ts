@@ -1,4 +1,4 @@
-import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { extensionNamespace, type PluginDefinition } from "@compforge/doctor-plugin";
 
 export type PluginCapabilityRequirement = "required" | "preferred";
 
@@ -41,7 +41,10 @@ function capabilityProviders(
   capability: PluginCapabilityReference,
 ): readonly string[] {
   if (!plugin) return [];
-  if (capability.scope === "extension") return [...new Set(plugin.services.extensions(capability.name).map(item => item.service.name))];
+  if (capability.scope === "extension") return [...new Set([
+    ...(plugin.extensions?.some(item => item.kind === capability.name) ? [extensionNamespace("plugin", plugin.id)] : []),
+    ...plugin.services.extensions(capability.name).map(item => item.service.name),
+  ])];
   return plugin.services.services.filter(service => capability.name === "dataSources" ? Boolean(service.dataSources?.length) : service.logs !== undefined).map(service => service.name);
 }
 

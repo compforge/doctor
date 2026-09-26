@@ -20,7 +20,7 @@ function provider(name: string) {
       access: {}, facets: [facet], summarize: async () => [], sample: async () => [],
     })]
   };
-  return { ...service, ...overviewProviders(createServiceCatalog([service]))[0]! };
+  return { ...service, ...overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service]) }, [service.name])[0]! };
 }
 const summary: OverviewFacetResult[] = [{
   facetId: "errors", description: "created_at", entries: [
@@ -46,7 +46,7 @@ test("overview shows text and numeric entries without sampling on decline", asyn
   expect(order).toEqual(["show", "confirm"]);
   expect(sample).not.toHaveBeenCalled();
   expect(collect).not.toHaveBeenCalled();
-  expect(result.services[0]?.facets[0]?.entries[1]?.data).toBe("upstream unavailable");
+  expect(result.providers[0]?.facets[0]?.entries[1]?.data).toBe("upstream unavailable");
   expect(result.collection).toBe("not-requested");
 });
 
@@ -61,7 +61,7 @@ test("sampling retains provenance and deduplicates collect IDs across services",
   expect(sampleQueries).toHaveLength(4);
   expect(sampleQueries[0]).toEqual({ ...query, facetId: "errors", entryKey: "E1", limit: 2 });
   expect(batches).toEqual([["trace-1"]]);
-  expect(result.samples.map((item) => item.service)).toEqual(["chat", "chat", "plan", "plan"]);
+  expect(result.samples.map((item) => item.namespace)).toEqual(["plugin/test/service/chat", "plugin/test/service/chat", "plugin/test/service/plan", "plugin/test/service/plan"]);
   expect(result.samples[0]?.source?.value).toBe("m1");
 });
 
@@ -71,8 +71,8 @@ test("provider failures and disappeared samples are visible while other services
     select: async () => "errors",
     sample: async (_service, input) => { if (input.entryKey === "E1") throw new Error("sample timeout"); return []; },
   }));
-  expect(result.services[0]?.error).toBe("DB timeout");
-  expect(result.services[0]?.facets).toEqual([]);
+  expect(result.providers[0]?.error).toBe("DB timeout");
+  expect(result.providers[0]?.facets).toEqual([]);
   expect(result.samples[0]?.error).toBe("sample timeout");
   expect(result.samples[1]?.error).toContain("没有可用样本");
   expect(result.collection).toBe("no-samples");
@@ -85,20 +85,20 @@ test("empty and non-sampleable facets never offer collection; missing results ar
     select,
   }));
   expect(select).not.toHaveBeenCalled();
-  expect(result.services[1]?.error).toContain("未返回 Facet");
+  expect(result.providers[1]?.error).toContain("未返回 Facet");
 });
 
 test("Core bounds entry results and reports truncation", async () => {
   const result = await runOverviewSession([provider("chat")], { ...query, maxEntries: 1 }, actions());
-  expect(result.services[0]?.facets[0]?.entries).toHaveLength(1);
-  expect(result.services[0]?.facets[0]?.truncated?.reason).toContain("1");
+  expect(result.providers[0]?.facets[0]?.entries).toHaveLength(1);
+  expect(result.providers[0]?.facets[0]?.truncated?.reason).toContain("1");
 });
 
 test("duplicate keys cannot ambiguously associate an entry with its sample", async () => {
   const result = await runOverviewSession([provider("chat")], query, actions({
     summarize: async () => [{ ...summary[0]!, entries: [summary[0]!.entries[0]!, summary[0]!.entries[0]!] }],
   }));
-  expect(result.services[0]?.error).toContain("重复的 Entry");
+  expect(result.providers[0]?.error).toContain("重复的 Entry");
 });
 
 test("collection errors retain the dashboard and samples", async () => {
@@ -144,7 +144,7 @@ test("overview capability validates static facet identity before accessing the t
   expect(validatePluginDefinition(valid, manifest).services.find("api")).toBeDefined();
   const invalid = provider("bad");
   invalid.extensions = invalid.extensions.map(extension => extension.kind === "overview.summarize" ? { ...extension, facets: [facet, facet] } : extension);
-  expect(() => overviewProviders(createServiceCatalog([invalid])))
+  expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([invalid]) }, [invalid.name]))
     .toThrow("duplicate");
 });
 
@@ -187,7 +187,7 @@ test("overview preserves partial collection status and cancellation", async () =
     }));
     expect(result.collection).toBe(status);
     expect(result.samples).toHaveLength(2);
-    expect(result.services[0]?.facets).toHaveLength(1);
+    expect(result.providers[0]?.facets).toHaveLength(1);
   }
 });
 
@@ -200,11 +200,11 @@ test("default sampling selects five entries across Services without truncating t
     collect: async ids => { batches.push(ids); return commandOutcome(0); },
     warn: message => { warnings.push(message); },
   }));
-  expect(result.services.flatMap(service => service.facets[0]!.entries)).toHaveLength(6);
+  expect(result.providers.flatMap(service => service.facets[0]!.entries)).toHaveLength(6);
   expect(batches).toEqual([["a/E1", "a/E2", "b/E1", "b/E2", "c/E1"]]);
   expect(result.samples).toHaveLength(5);
   expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([1, 1, 1, 1, 1, 0]);
-  expect(warnings).toEqual(["c/errors/E2: 配额为 0（未采集）"]);
+  expect(warnings).toEqual(["plugin/test/service/c/errors/E2: 配额为 0（未采集）"]);
 });
 
 test("configured sample count limits calls; failure does not backfill with unselected entries", async () => {
@@ -224,7 +224,7 @@ test("Entry selection can choose later entries and cancelling leaves overview re
     select: async () => "errors", sampleCount: 1,
     selectEntries: async entries => [entries[3]!], sample, collect,
   }));
-  expect(result.samples.map(item => [item.service, item.entryKey])).toEqual([["b", "E2"]]);
+  expect(result.samples.map(item => [item.namespace, item.entryKey])).toEqual([["plugin/test/service/b", "E2"]]);
   expect(sample).toHaveBeenCalledTimes(1);
   for (const selection of [undefined, []]) {
     sample.mockClear(); collect.mockClear();
@@ -239,7 +239,7 @@ test("Entry selection can choose later entries and cancelling leaves overview re
 
 test("Entry multiselect preselects the budget, distinguishes Services and permits explicit larger selections", async () => {
   const { selectOverviewEntries } = await import("../src/overview/selection");
-  const entries = Array.from({ length: 6 }, (_, i) => ({ service: `service-${i}`, facetId: "errors", entry: summary[0]!.entries[0]! }));
+  const entries = Array.from({ length: 6 }, (_, i) => ({ namespace: `plugin/test/service/service-${i}`, facetId: "errors", entry: summary[0]!.entries[0]! }));
   let asked = 0;
   const chosen = await selectOverviewEntries(entries, 5, true, async input => {
     asked++;
@@ -257,7 +257,7 @@ test("Entry multiselect preselects the budget, distinguishes Services and permit
 
 test("sample budget is evenly distributed and later selected entries receive zero when entries exceed it", () => {
   const entries = Array.from({ length: 6 }, (_, index) => ({
-    service: "chat", facetId: "errors", entry: { ...summary[0]!.entries[0]!, key: `E${index + 1}` },
+    namespace: "plugin/test/service/chat", facetId: "errors", entry: { ...summary[0]!.entries[0]!, key: `E${index + 1}` },
   }));
   expect(allocateOverviewSamples(entries.slice(0, 1), 5).map(item => item.count)).toEqual([5]);
   expect(allocateOverviewSamples(entries.slice(0, 2), 5).map(item => item.count)).toEqual([3, 2]);

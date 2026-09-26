@@ -8,10 +8,10 @@ import type { OverviewResult } from "./flow";
 
 export function printOverview(result: OverviewResult): void {
   writeOutput(`Overview · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
-  for (const service of result.services) {
-    writeOutput(`\n${service.service}\n`);
-    if (service.error) writeOutput(`  查询失败：${service.error}\n`);
-    for (const facet of service.facets) {
+  for (const summary of result.providers) {
+    writeOutput(`\n${summary.name}\n`);
+    if (summary.error) writeOutput(`  查询失败：${summary.error}\n`);
+    for (const facet of summary.facets) {
       writeOutput(`  ${facet.facetId} · ${facet.description}\n`);
       if (!facet.entries.length) writeOutput("    无值得注意的条目\n");
       for (const entry of facet.entries) writeOutput(`    ${entry.label}: ${entry.data}${entry.unit ? ` ${entry.unit}` : ""}\n`);
@@ -30,14 +30,14 @@ export function writeOverviewEvidence(
 }
 
 export function buildOverviewHtml(result: OverviewResult): string {
-  const sections = result.services.map((service) => `<h2>${escapeHtml(service.service)}</h2>`
-    + (service.error ? `<p>查询失败：${escapeHtml(service.error)}</p>` : "")
-    + service.facets.map((facet) => `<h3>${escapeHtml(facet.facetId)}</h3><p>${escapeHtml(facet.description)}</p>`
+  const sections = result.providers.map((summary) => `<h2>${escapeHtml(summary.name)}</h2>`
+    + (summary.error ? `<p>查询失败：${escapeHtml(summary.error)}</p>` : "")
+    + summary.facets.map((facet) => `<h3>${escapeHtml(facet.facetId)}</h3><p>${escapeHtml(facet.description)}</p>`
       + (facet.truncated ? `<p>已截断：${escapeHtml(facet.truncated.reason)}</p>` : "")
       + `<table><tr><th>Entry</th><th>数据</th><th>代表请求 / 采样结果</th></tr>`
       + facet.entries.map((entry) => {
-        const matches = (item: { service: string; facetId: string; entryKey: string }) => (
-          item.service === service.service && item.facetId === facet.facetId && item.entryKey === entry.key
+        const matches = (item: { namespace: string; facetId: string; entryKey: string }) => (
+          item.namespace === summary.namespace && item.facetId === facet.facetId && item.entryKey === entry.key
         );
         const allocation = result.sampleAllocations.find(matches);
         const samples = result.samples.filter(matches);

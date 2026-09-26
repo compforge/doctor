@@ -1,6 +1,6 @@
 import type { Identity } from "./capability";
 
-/** A named lens over notable data. The same id across Services must have the same meaning. */
+/** A named lens over notable data. The same id across providers must have the same meaning. */
 export interface OverviewFacet {
   id: string;
   title: string;
@@ -40,7 +40,7 @@ export interface OverviewSampleQuery extends OverviewQuery {
 }
 
 export interface OverviewSample {
-  /** Existing collect input; Core retains the Service/Facet/Entry provenance. */
+  /** Existing collect input; Core retains the namespace/Facet/Entry provenance. */
   bizId: string;
   /** Record from which the representative request was selected. */
   source?: Identity;

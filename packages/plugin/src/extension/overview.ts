@@ -1,4 +1,4 @@
-import type { Extension, RegisteredExtension } from "./index";
+import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 import type { OverviewFacet, OverviewQuery, OverviewFacetResult, OverviewSampleQuery, OverviewSample } from "../overview";
 
 export const OVERVIEW_SUMMARIZE_KIND = "overview.summarize";
@@ -7,13 +7,18 @@ export const OVERVIEW_SAMPLE_KIND = "overview.sample";
 export interface OverviewSummarizeExtension extends Extension<OverviewQuery, readonly OverviewFacetResult[]> {
   readonly kind: typeof OVERVIEW_SUMMARIZE_KIND;
   readonly facets: readonly OverviewFacet[];
+  /** Service whose data access context is needed; required for Plugin-level registration. */
+  readonly targetService?: string;
 }
 
 export interface OverviewSampleExtension extends Extension<OverviewSampleQuery, readonly OverviewSample[]> {
   readonly kind: typeof OVERVIEW_SAMPLE_KIND;
+  /** Sampling declares its own data target and access independently of summarizing. */
+  readonly targetService?: string;
 }
 
-export function requireOverviewSummarizeExtension(extension: RegisteredExtension): OverviewSummarizeExtension {
+export function requireOverviewSummarizeExtension(extension: ExtensionRegistration): OverviewSummarizeExtension {
+  validateExtension(extension);
   const value = extension as OverviewSummarizeExtension;
   if (value.kind !== OVERVIEW_SUMMARIZE_KIND || !Array.isArray(value.facets) || !value.facets.length) {
     throw new Error(`${extension.id}: overview.summarize requires facets`);
@@ -28,7 +33,8 @@ export function requireOverviewSummarizeExtension(extension: RegisteredExtension
   return value;
 }
 
-export function requireOverviewSampleExtension(extension: RegisteredExtension): OverviewSampleExtension {
+export function requireOverviewSampleExtension(extension: ExtensionRegistration): OverviewSampleExtension {
+  validateExtension(extension);
   if (extension.kind !== OVERVIEW_SAMPLE_KIND) throw new Error(`Expected ${OVERVIEW_SAMPLE_KIND}, got ${extension.kind}`);
   return extension as OverviewSampleExtension;
 }

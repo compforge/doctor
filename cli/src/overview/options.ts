@@ -14,3 +14,15 @@ export function overviewCollectConcurrency(value?: number, configured?: number):
   if (!Number.isSafeInteger(count) || count <= 0) throw new Error("overview collect concurrency 必须是正整数（--collect-concurrency / overview.collect_concurrency）");
   return count;
 }
+
+/** Singular selection is explicit; the existing plural option remains available for comparisons. */
+export function overviewServiceNames(opts: { service?: string; services?: string }): string[] | undefined {
+  if (opts.service !== undefined && opts.services !== undefined) throw new Error("--service 与 --services 不能同时使用");
+  const value = opts.service ?? opts.services;
+  if (value === undefined) return undefined;
+  const names = value.split(",").map(name => name.trim());
+  if (names.some(name => !name) || (opts.service !== undefined && names.length !== 1)) {
+    throw new Error("--service 需要一个 Service；多个 Service 请使用 --services，名称不能为空");
+  }
+  return names;
+}
