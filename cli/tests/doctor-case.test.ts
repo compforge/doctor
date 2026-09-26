@@ -89,7 +89,7 @@ test("Core and Plugin catalog extensions share discovery; command filtering uses
   }
 });
 
-test("host registry discovers kinds across Core, Plugin, Service and local owners", () => {
+test("host registry discovers kinds across Core, Plugin, Service and local namespaces", () => {
   const plugin: PluginDefinition = {
     id: "fixture", version: "1", extensions: [{ id: "plugin.custom", kind: "custom" }],
     services: createServiceCatalog([{
@@ -98,6 +98,37 @@ test("host registry discovers kinds across Core, Plugin, Service and local owner
     }]),
   };
   const registry = createDoctorExtensionRegistry(plugin, [{ id: "local.custom", kind: "custom" }]);
-  expect(registry.extensions("case.catalog").map((item) => item.owner)).toEqual(["core", "core"]);
-  expect(registry.extensions("custom").map((item) => item.owner)).toEqual(["local", "plugin:fixture", "service:chat"]);
+  expect(registry.extensions("case.catalog").map((item) => item.namespace)).toEqual(["core", "core"]);
+  expect(registry.extensions("custom").map((item) => item.namespace)).toEqual(["local", "plugin/fixture", "plugin/fixture/service/chat"]);
+});
+
+test("host assigns distinct namespaces to product and Service implementations with the same id", () => {
+  const extension = { id: "errors", kind: "overview.summarize", access: {}, run: withSummary({ title: "Errors", fields: [] }, async () => []) };
+  const plugin: PluginDefinition = { id: "fixture", version: "1", extensions: [extension], services: createServiceCatalog([{
+    name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
+    workloads: [], extensions: [extension],
+  }]) };
+  const registry = createDoctorExtensionRegistry(plugin);
+  expect(registry.extensions("overview.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", extension }]);
+  expect(registry.extensions("overview.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", extension }]);
+  expect(plugin.services.extensions("overview.summarize")[0]?.service.name).toBe("api");
+  expect(() => createDoctorExtensionRegistry({ ...plugin, id: "fixture/service/injected" })).toThrow("namespace");
+});
+
+test("Case catalog retains Service provenance from the qualified namespace", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-service-catalog-"));
+  try {
+    const extension = { id: "cases", kind: "case.catalog" as const,
+      access: {}, run: withSummary({ title: "Cases", fields: [] }, async () => []),
+      load: () => [{ caseset: "service_cases", facets: { command: { values: ["http"] } },
+        cases: [{ id: "ping", input: { path: "/ping" }, facets: { command: "http" } }],
+      }],
+    };
+    const plugin: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
+      name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
+      workloads: [], extensions: [extension],
+    }]) };
+    expect(doctorCaseCatalog(plugin, undefined, directory).find(item => item.caseSet.caseset === "service_cases"))
+      .toMatchObject({ source: "plugin", service: "api" });
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
