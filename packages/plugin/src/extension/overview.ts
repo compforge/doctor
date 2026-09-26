@@ -7,14 +7,10 @@ export const OVERVIEW_SAMPLE_KIND = "overview.sample";
 export interface OverviewSummarizeExtension extends Extension<OverviewQuery, readonly OverviewFacetResult[]> {
   readonly kind: typeof OVERVIEW_SUMMARIZE_KIND;
   readonly facets: readonly OverviewFacet[];
-  /** Service whose data access context is needed; required for Plugin-level registration. */
-  readonly targetService?: string;
 }
 
 export interface OverviewSampleExtension extends Extension<OverviewSampleQuery, readonly OverviewSample[]> {
   readonly kind: typeof OVERVIEW_SAMPLE_KIND;
-  /** Sampling declares its own data target and access independently of summarizing. */
-  readonly targetService?: string;
 }
 
 export function requireOverviewSummarizeExtension(extension: ExtensionRegistration): OverviewSummarizeExtension {

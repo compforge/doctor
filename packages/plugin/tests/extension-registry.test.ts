@@ -37,3 +37,15 @@ test("namespace syntax is validated on registration and discovery without normal
   registry.register("plugin/Example", [{ id: "errors", kind: "overview.summarize" }]);
   expect(registry.extensions("overview.summarize", "plugin/example")).toEqual([]);
 });
+
+
+test("an Extension declares its scope independently of the registration default", () => {
+  const registry = new ExtensionRegistry();
+  const product = { id: "errors", kind: "overview.summarize", namespace: "plugin/example" };
+  const local = { id: "errors", kind: "overview.summarize" };
+  const registered = registry.register("plugin/example/service/api", [product, local]);
+  expect(registered.map(item => item.namespace)).toEqual(["plugin/example", "plugin/example/service/api"]);
+  expect(registry.extensions(product.kind, "plugin/example")).toEqual([{ namespace: "plugin/example", extension: product }]);
+  expect(() => registry.register("plugin/example/service/worker", [product])).toThrow("duplicate");
+  expect(() => registry.register("core", [{ ...product, namespace: "plugin//invalid" }])).toThrow("namespace");
+});

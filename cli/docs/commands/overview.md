@@ -64,22 +64,25 @@ provider namespace / Facet / Entry、数据、截断原因、采样来源和 col
 
 ## Provider 契约
 
-Plugin 顶层的 `extensions` 注册产品级 `overview.summarize` 与可选的 `overview.sample`；
-Service 的 `extensions` 注册相同 kind 的服务级实现。Core 按 namespace 精确选择：默认使用
+Service 在 `extensions` 注册 `overview.summarize` 与可选的 `overview.sample`，通过 Extension 的
+`namespace` 声明产品级或服务级作用域。Core 按 namespace 精确选择：默认使用
 `plugin/<plugin-id>`，指定 Service 时使用 `plugin/<plugin-id>/service/<canonical-service-name>`。
 Service alias 先解析为标准名。未声明所选概览或同一 namespace 内存在多个相同 kind 的实现时直接报错，
 不隐式聚合、继承或借用其它 namespace 的操作；`--service` 与 `--services` 互斥。
 
-namespace 表达统计归属，数据访问目标由 `targetService` 指向 Catalog 中的 Service。产品级操作必须
-显式声明它；Service 级操作默认使用所属 Service。summary 和 sample 分别声明目标与 access，
-每次调用复用 Core 的授权、PluginContext、共享客户端及资源释放。例：
+namespace 表达统计归属，提供方 Service 决定操作的执行上下文。例如同一个 Service 可以同时提供
+产品错误概览和自己的运行状况概览。summary 和 sample 分别保留各自的 Service 绑定与 access，
+每次调用复用 Core 的授权、PluginContext、共享客户端及资源释放；namespace 不限制实现可以读取的数据。
+需要 Service 上下文的 Overview 操作应由 Service 注册，产品级 namespace 同样适用。例：
 
 ```ts
-const productOverview = {
-  ...requestErrorSummary,
-  targetService: "example-api",
+const service = {
+  ...apiService,
+  extensions: [
+    { ...requestErrorSummary, namespace: "plugin/example" },
+    serviceHealthSummary, // 未声明 namespace，默认 plugin/example/service/<service-name>
+  ],
 };
-const plugin = { ...definition, extensions: [productOverview] };
 ```
 
 Facet 契约由 SDK 的 `overview.ts` 定义。同一 Facet id 跨 provider 使用时须具有相同语义；Core 在
@@ -88,7 +91,7 @@ Facet 契约由 SDK 的 `overview.ts` 定义。同一 Facet id 跨 provider 使�
 
 Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 tenantId。Plugin 负责解释业务
 时间字段，在 description 中说明统计口径，并在查询处限制结果数、声明截断。查询失败与“没有条目”是
-不同状态；某个 provider 失败不会阻止其它 Service 展示结果。
+不同状态；某个 provider 失败不会阻止其它 provider 展示结果。
 
 确认后，Core 把每个选中 Entry 的正整数 `limit` 传给 Plugin。Plugin 返回不超过该配额的代表请求列表；
 配额为 0 的 Entry 不调用 Plugin。Plugin 应返回最精确的 collect biz-id，并可提供源记录 Identity；数据已变化时

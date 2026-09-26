@@ -1,12 +1,9 @@
 import { validateExtension, type RegisteredExtension } from "./extension";
-import { ExtensionRegistry } from "./extension/registry";
 import type { ServiceDefinition } from "./service";
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   private readonly identities = new Map<string, T>();
-  // This catalog is Plugin-local; the host qualifies these names when composing Plugins.
-  private readonly registry = new ExtensionRegistry<RegisteredExtension>();
 
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
@@ -25,10 +22,14 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         this.identities.set(alias, service);
       }
       if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
+      const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
         validateExtension(extension);
+        // The host resolves omitted namespaces once the Plugin identity is known.
+        const key = JSON.stringify([extension.namespace ?? null, extension.id]);
+        if (extensionIds.has(key)) throw new Error(`${service.name}: duplicate Extension id '${extension.id}'`);
+        extensionIds.add(key);
       }
-      this.registry.register(service.name, service.extensions ?? []);
       const workloads = service.workloads.map((workload) => workload.name);
       for (const source of service.dataSources ?? []) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
@@ -46,7 +47,8 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   /** Open discovery; the consumer owns domain validation and multi-provider selection. */
   extensions(kind: string): { service: T; extension: RegisteredExtension }[] {
-    return this.registry.extensions(kind).map(({ namespace, extension }) => ({ service: this.identities.get(namespace)!, extension }));
+    return this.services.flatMap(service => (service.extensions ?? [])
+      .filter(extension => extension.kind === kind).map(extension => ({ service, extension })));
   }
 
   find(name: string): T | undefined {

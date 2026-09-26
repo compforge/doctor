@@ -1,7 +1,7 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import {
   createServiceCatalog, withSummary, type PluginDefinition, type ServiceDefinition,
-  type OverviewSummarizeExtension, type OverviewSampleExtension, type ExtensionRegistration,
+  type OverviewSummarizeExtension, type OverviewSampleExtension,
 } from "@compforge/doctor-plugin";
 import { overviewProviders } from "../src/overview/extensions";
 import { overviewCommand, validateOverviewOptions } from "../src/overview";
@@ -9,8 +9,6 @@ import { overviewServiceNames } from "../src/overview/options";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
 import { CommandContext, CommandStatus } from "../src/command";
-import { evaluatePluginCapabilities } from "../src/command/plugin-capability";
-import { PLUGIN_COMMAND_CAPABILITIES } from "../src/command/plugin-command-capabilities";
 import { createDoctorProgram } from "../src/app/main";
 
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
@@ -26,29 +24,27 @@ const service = (name: string, extensions: ServiceDefinition["extensions"] = [])
   name, aliases: name === "api" ? ["short"] : [], workloads: [], extensions,
   component: { name, repository: { forge: { name: "fixture" }, path: `fixture/${name}` } },
 });
-function plugin(extensions: readonly (OverviewSummarizeExtension | OverviewSampleExtension | ExtensionRegistration)[] = [{ ...summarize, targetService: "short" }]): PluginDefinition {
-  return { id: "api", version: "1", extensions,
-    services: createServiceCatalog([service("api", [summarize, sample]), service("store")]) };
+function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleExtension)[] = [{ ...summarize, namespace: "plugin/fixture" }]): PluginDefinition {
+  return { id: "fixture", version: "1",
+    services: createServiceCatalog([service("api", [summarize, sample, ...product]), service("store")]) };
 }
 
-test("default overview selects only the Plugin namespace and preserves its separate data target", () => {
+test("a Service can provide the product namespace while retaining its own context binding", () => {
   const run = mock(async () => []);
-  const definition = plugin([{ ...summarize, targetService: "short", run: withSummary({ title: "Errors", fields: [] }, run) }]);
+  const definition = plugin([{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, run) }]);
   const selected = overviewProviders(definition);
   expect(selected).toHaveLength(1);
-  expect(selected[0]?.namespace).toBe("plugin/api");
+  expect(selected[0]?.namespace).toBe("plugin/fixture");
   expect(selected[0]?.service.name).toBe("api");
-  // A Service sample must never be borrowed by a product-level summary.
+  // A Service-scoped sample must not be borrowed by a product-scoped summary from the same provider.
   expect(selected[0]?.sample).toBeUndefined();
   expect(run).not.toHaveBeenCalled();
-  expect(evaluatePluginCapabilities({ ...definition, services: createServiceCatalog([service("api")]) },
-    PLUGIN_COMMAND_CAPABILITIES.overview).runnable).toBe(true);
 });
 
-test("explicit Service selection resolves aliases, deduplicates and does not validate unselected product operations", () => {
-  const selected = overviewProviders(plugin([{ ...summarize, targetService: "missing" }]), ["short", "api"]);
+test("explicit Service selection resolves aliases without validating operations in another namespace", () => {
+  const selected = overviewProviders(plugin([{ ...summarize, namespace: "plugin/fixture", facets: [] }]), ["short", "api"]);
   expect(selected).toHaveLength(1);
-  expect(selected[0]?.namespace).toBe("plugin/api/service/api");
+  expect(selected[0]?.namespace).toBe("plugin/fixture/service/api");
   expect(selected[0]?.summarize).toBe(summarize);
   expect(selected[0]?.sample).toBe(sample);
   expect(selected[0]?.sampleService?.name).toBe("api");
@@ -57,39 +53,39 @@ test("explicit Service selection resolves aliases, deduplicates and does not val
   expect(() => overviewProviders(plugin(), [])).toThrow("empty");
 });
 
-test("missing, ambiguous and malformed product operations fail instead of falling back to Service providers", () => {
-  expect(() => overviewProviders(plugin([]))).toThrow("--service");
-  expect(() => overviewProviders(plugin([summarize]))).toThrow("targetService");
-  expect(() => overviewProviders(plugin([{ ...summarize, targetService: "missing" }]))).toThrow("targetService");
-  expect(() => overviewProviders(plugin([{ id: "summary", kind: "overview.summarize" }]))).toThrow("access");
-  expect(() => overviewProviders(plugin([
-    { ...summarize, targetService: "api" }, { ...summarize, id: "second", targetService: "api" },
-  ]))).toThrow("ambiguous");
-  expect(() => overviewProviders(plugin([
-    { ...summarize, targetService: "api" }, sample,
-  ]))).toThrow("targetService");
+test("selection follows the declared namespace even when another Service provides it", () => {
+  const definition = { id: "fixture", version: "1", services: createServiceCatalog([
+    service("api"), service("store", [{ ...summarize, namespace: "plugin/fixture/service/api" }]),
+  ]) };
+  const selected = overviewProviders(definition, ["short"])[0]!;
+  expect(selected.namespace).toBe("plugin/fixture/service/api");
+  expect(selected.service.name).toBe("store");
 });
 
-test("summary and sample declare independent targets and access in the same namespace", () => {
+test("missing or ambiguous product operations fail instead of aggregating service namespaces", () => {
+  expect(() => overviewProviders(plugin([]))).toThrow("--service");
+  expect(() => overviewProviders(plugin([
+    { ...summarize, namespace: "plugin/fixture" }, { ...summarize, id: "second", namespace: "plugin/fixture" },
+  ]))).toThrow("ambiguous");
+  expect(() => overviewProviders({ ...plugin([]), extensions: [summarize] })).toThrow("providing Service");
+});
+
+test("summary and sample in one namespace can have different providing Services and access", () => {
   const sampleAccess = { kubernetes: [{ requirement: "required" as const,
     purpose: "Read sampling configuration", rule: { verb: "get", resource: "configmaps" } }] };
-  const selected = overviewProviders(plugin([
-    { ...summarize, targetService: "api" }, { ...sample, targetService: "store", access: sampleAccess },
-  ]))[0]!;
+  const selected = overviewProviders({ id: "fixture", version: "1", services: createServiceCatalog([
+    service("api", [{ ...summarize, namespace: "plugin/fixture" }]),
+    service("store", [{ ...sample, namespace: "plugin/fixture", access: sampleAccess }]),
+  ]) })[0]!;
   expect(selected.service.name).toBe("api");
   expect(selected.sampleService?.name).toBe("store");
   expect(selected.summarize.access).toEqual({});
   expect(selected.sample?.access).toEqual(sampleAccess);
-  expect(() => overviewProviders(plugin([
-    { ...summarize, targetService: "api" },
-    { ...sample, targetService: "api" }, { ...sample, id: "other", targetService: "api" },
-  ]))).toThrow("ambiguous");
 });
 
-test("Overview rejects a missing scope or data target before Kubernetes preparation", async () => {
+test("Overview rejects invalid selection before Kubernetes preparation", async () => {
   for (const [definition, input, reason] of [
     [plugin([]), {}, "--service"],
-    [plugin([summarize]), {}, "targetService"],
     [plugin(), { service: "store" }, "overview.summarize"],
     [plugin(), { facet: "missing" }, "Facet"],
   ] as const) {
@@ -117,7 +113,9 @@ test("CLI exposes explicit Service selection and rejects conflicting or empty se
 });
 
 test("same display names retain distinct namespace provenance through sampling and reports", async () => {
-  const definition = plugin([{ ...summarize, targetService: "api" }, { ...sample, targetService: "api" }]);
+  const definition = { id: "api", version: "1", services: createServiceCatalog([service("api", [
+    summarize, sample, { ...summarize, namespace: "plugin/api" }, { ...sample, namespace: "plugin/api" },
+  ])]) };
   const providers = [...overviewProviders(definition), ...overviewProviders(definition, ["api"])];
   const result = await runOverviewSession(providers, { window: { from: "2026-09-27T00:00:00Z", to: "2026-09-27T01:00:00Z" }, maxEntries: 10 }, {
     summarize: async () => [{ facetId: "errors", description: "fixture errors", entries: [{ key: "E1", label: "E1", data: 1, canSample: true }] }],
@@ -135,13 +133,12 @@ test("same display names retain distinct namespace provenance through sampling a
   expect(sections[2]).not.toContain("product-trace");
 });
 
-
-test("Overview command invokes only the selected namespace using its declared Service context", async () => {
+test("Overview command invokes the namespace provider using its original Service context", async () => {
   const targets = await import("../src/command/kubernetes-target");
   const { rmSync } = await import("node:fs");
   const calls: string[] = [];
-  const summary = (owner: string, expectedService: string): OverviewSummarizeExtension => ({
-    ...summarize, targetService: expectedService,
+  const summary = (owner: string, expectedService: string, namespace?: string): OverviewSummarizeExtension => ({
+    ...summarize, namespace,
     run: withSummary({ title: "Errors", fields: [] }, async context => {
       expect(context.target.service.name).toBe(expectedService);
       calls.push(owner);
@@ -149,8 +146,10 @@ test("Overview command invokes only the selected namespace using its declared Se
     }),
   });
   const definition: PluginDefinition = {
-    ...plugin([summary("product", "store")]),
-    services: createServiceCatalog([service("api", [summary("service", "api")]), service("store")]),
+    id: "fixture", version: "1", services: createServiceCatalog([
+      service("api", [summary("service", "api")]),
+      service("store", [summary("product", "store", "plugin/fixture")]),
+    ]),
   };
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({
     profileName: "fixture", kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" },
@@ -171,7 +170,7 @@ test("Overview command invokes only the selected namespace using its declared Se
         const result = await overviewCommand.run(context, { since: "1h", service: selection });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(result.output?.providers.map(provider => provider.namespace)).toEqual([
-          selection ? "plugin/api/service/api" : "plugin/api",
+          selection ? "plugin/fixture/service/api" : "plugin/fixture",
         ]);
       } finally {
         await context.disposeClients();

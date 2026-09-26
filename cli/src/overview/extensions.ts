@@ -8,7 +8,7 @@ import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 export interface OverviewProvider {
   namespace: string;
   name: string;
-  /** Data access target, independent of the namespace that owns the summary. */
+  /** Providing Service retained by registration; namespace never selects a data target. */
   service: ServiceDefinition;
   summarize: OverviewSummarizeExtension;
   sample?: OverviewSampleExtension;
@@ -34,13 +34,9 @@ export function overviewProviders(plugin: PluginDefinition, serviceNames?: reado
     if (summaries.length > 1 || samples.length > 1) throw new Error(`${scope.namespace}: ambiguous overview Extension`);
     const summarize = requireOverviewSummarizeExtension(summaries[0]!.extension);
     const sample = samples[0] ? requireOverviewSampleExtension(samples[0].extension) : undefined;
-    const target = (extension: OverviewSummarizeExtension | OverviewSampleExtension): ServiceDefinition => {
-      if (extension.targetService === undefined && scope.service) return scope.service;
-      const service = typeof extension.targetService === "string" ? plugin.services.find(extension.targetService) : undefined;
-      if (!service) throw new Error(`${scope.namespace}/${extension.id}: targetService must reference a declared Service`);
-      return service;
-    };
-    return { namespace: scope.namespace, name: scope.name, service: target(summarize), summarize,
-      sample, sampleService: sample ? target(sample) : undefined };
+    const service = summaries[0]!.service;
+    const sampleService = samples[0]?.service;
+    if (!service || (sample && !sampleService)) throw new Error(`${scope.namespace}: executable overview Extensions require a providing Service`);
+    return { namespace: scope.namespace, name: scope.name, service, summarize, sample, sampleService };
   });
 }
