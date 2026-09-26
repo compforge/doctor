@@ -3,7 +3,7 @@ import { overviewProviders } from "./extensions";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
-import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
+import type { PluginContext } from "@compforge/doctor-plugin";
 import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
@@ -16,12 +16,13 @@ import { composeReports } from "../report/model";
 import { useLogger } from "../terminal/log";
 import { collectOverviewSamples } from "./collect";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
-import { overviewCollectConcurrency, overviewSampleCount } from "./options";
+import { overviewCollectConcurrency, overviewSampleCount, overviewServiceNames } from "./options";
 import { buildOverviewHtml, printOverview, writeOverviewEvidence } from "./report";
 import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
 
 export interface OverviewCliOpts extends KubernetesCommandInput {
   since?: string;
+  service?: string;
   services?: string;
   tenantId?: string;
   facet?: string;
@@ -34,6 +35,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
 }
 
 export function validateOverviewOptions(opts: OverviewCliOpts): void {
+  overviewServiceNames(opts);
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
   parseCollectKinds(opts.include);
@@ -41,22 +43,12 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
   overviewCollectConcurrency(opts.collectConcurrency);
 }
 
-async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<OverviewOutput>> {
+async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvider[], context: CommandContext): Promise<CommandResult<OverviewOutput>> {
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
   const interactive = isInteractive();
   const since = opts.since ?? await selectOverviewWindow(interactive);
   if (!since) return { status: CommandStatus.Cancelled, artifacts: [] };
-  const providers = overviewProviders(plugin.services);
-  const requested = opts.services === undefined ? undefined
-    : plugin.services.resolveNames(opts.services.split(",").map((name) => name.trim()).filter(Boolean));
-  for (const name of requested ?? []) {
-    if (!providers.some((provider) => provider.name === name)) throw new Error(`Service '${name}' 未声明 overview.summarize Extension`);
-  }
-  const selected = requested ? providers.filter((provider) => requested.includes(provider.name)) : providers;
-  if (opts.facet && !selected.some((provider) => provider.summarize.facets.some((facet) => facet.id === opts.facet))) {
-    throw new Error(`未声明的 Facet: ${opts.facet}`);
-  }
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
@@ -65,7 +57,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
     const managed = await openPluginContext(executor, kube.kubernetes, {
       config: context.profile.pluginConfig,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      service: provider.service, capability: extension,
+      service: extension === provider.sample ? provider.sampleService! : provider.service, capability: extension,
       command: "doctor overview", authorization: context.kubernetes(executor).access,
     });
     try { return await work(managed); } finally { await managed.dispose(); }
@@ -110,9 +102,9 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
     if (snapshot) writeOverviewEvidence(snapshot, context, reportDirectory);
   }
   for (const sample of result.samples) {
-    useLogger("overview").info(`${sample.service}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
+    useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
   }
-  const statuses: CommandStatus[] = result.services.map((service) => service.error ? CommandStatus.Failed : CommandStatus.Ok);
+  const statuses: CommandStatus[] = result.providers.map((provider) => provider.error ? CommandStatus.Failed : CommandStatus.Ok);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
   return { status: aggregateCommandStatus(statuses), output: { ...result, collectionResult }, artifacts: context.artifacts.list() };
@@ -121,7 +113,7 @@ async function overview(opts: OverviewCliOpts, plugin: PluginDefinition, context
 export interface OverviewOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
 
 export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
-export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
+export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { input: OverviewInput; providers: OverviewProvider[] }>({
   name: "doctor overview",
   reportName: (_input, result) => result.output
     ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
@@ -140,8 +132,14 @@ export const overviewCommand = defineCommand<OverviewInput, OverviewOutput>({
   },
   validate: validateOverviewOptions,
   prepare: async (context, input) => {
-    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview, environment: { kubernetes: true } });
-    return input;
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview });
+    const providers = overviewProviders(context.plugin, overviewServiceNames(input));
+    if (input.facet && !providers.some(provider => provider.summarize.facets.some(facet => facet.id === input.facet))) {
+      throw new Error(`未声明的 Facet: ${input.facet}`);
+    }
+    // Resolve ownership and data targets before touching the environment or asking for access.
+    await context.ensureEnvironment({ kubernetes: true });
+    return { input, providers };
   },
-  run: (context, input) => overview({ ...commandOptions(context), ...input }, context.plugin, context),
+  run: (context, { input, providers }) => overview({ ...commandOptions(context), ...input }, providers, context),
 });

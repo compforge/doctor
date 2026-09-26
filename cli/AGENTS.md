@@ -8,7 +8,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
-- **概览与采样**：`doctor overview` 展示 Plugin Service 的 Facet / Entry，经用户确认后采样并复用 Collect。
+- **概览与采样**：`doctor overview` 展示 Plugin 产品或指定 Service 的 Facet / Entry，经用户确认后采样并复用 Collect。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
@@ -27,7 +27,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `case` | CaseSet 目录、命令筛选、选择及 HTTP Case 到 Collect 的适配 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
-| `overview` | Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
+| `overview` | 产品 / Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
 | `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `datasource` | Service 数据源的共享配置与访问准备，不属于某个诊断命令 |

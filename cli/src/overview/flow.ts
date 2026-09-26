@@ -7,14 +7,15 @@ import type {
 import type { OverviewProvider } from "./extensions";
 export type { OverviewProvider } from "./extensions";
 
-export interface OverviewServiceResult {
-  service: string;
+export interface OverviewProviderResult {
+  namespace: string;
+  name: string;
   facets: readonly OverviewFacetResult[];
   error?: string;
 }
 
 export interface OverviewSampleResult {
-  service: string;
+  namespace: string;
   facetId: string;
   entryKey: string;
   bizId?: string;
@@ -23,7 +24,7 @@ export interface OverviewSampleResult {
 }
 
 export interface OverviewSampleAllocation {
-  service: string;
+  namespace: string;
   facetId: string;
   entryKey: string;
   count: number;
@@ -31,7 +32,7 @@ export interface OverviewSampleAllocation {
 
 export interface OverviewResult {
   query: OverviewQuery;
-  services: OverviewServiceResult[];
+  providers: OverviewProviderResult[];
   sampleAllocations: OverviewSampleAllocation[];
   samples: OverviewSampleResult[];
   collectionError?: string;
@@ -39,7 +40,7 @@ export interface OverviewResult {
 }
 
 export interface OverviewEntryChoice {
-  service: string;
+  namespace: string;
   facetId: string;
   entry: OverviewEntry;
 }
@@ -93,7 +94,7 @@ export function allocateOverviewSamples(
   const base = Math.floor(budget / entries.length);
   const remainder = budget % entries.length;
   return entries.map((choice, index) => ({
-    service: choice.service,
+    namespace: choice.namespace,
     facetId: choice.facetId,
     entryKey: choice.entry.key,
     count: base + (index < remainder ? 1 : 0),
@@ -105,25 +106,25 @@ export async function runOverviewSession(
   providers: readonly OverviewProvider[], query: OverviewQuery, actions: OverviewActions,
 ): Promise<OverviewResult> {
   const result: OverviewResult = {
-    query, services: [], sampleAllocations: [], samples: [], collection: "not-requested",
+    query, providers: [], sampleAllocations: [], samples: [], collection: "not-requested",
   };
   // Sequential provider calls keep external-resource concurrency bounded across customer environments.
   for (const provider of providers) {
     actions.signal?.throwIfAborted();
     try {
-      result.services.push({
-        service: provider.name,
+      result.providers.push({
+        namespace: provider.namespace, name: provider.name,
         facets: checkedFacets(provider, await actions.summarize(provider, query), query.maxEntries),
       });
     } catch (error) {
-      result.services.push({ service: provider.name, facets: [], error: errorMessage(error) });
+      result.providers.push({ namespace: provider.namespace, name: provider.name, facets: [], error: errorMessage(error) });
     }
   }
   actions.show(result);
   const eligible = new Map<string, OverviewFacet>();
-  for (const service of result.services) {
-    const provider = providers.find((item) => item.name === service.service)!;
-    for (const facet of service.facets) {
+  for (const summary of result.providers) {
+    const provider = providers.find((item) => item.namespace === summary.namespace)!;
+    for (const facet of summary.facets) {
       if (facet.entries.some((entry) => entry.canSample)) {
         eligible.set(facet.facetId, provider.summarize.facets.find((item) => item.id === facet.facetId)!);
       }
@@ -134,10 +135,10 @@ export async function runOverviewSession(
   if (!selected) return result;
   if (!eligible.has(selected)) throw new Error(`Facet '${selected}' 没有可采集的 Entry`);
   // Entry data may be text, so retain dashboard/provider ordering instead of inventing a numeric ranking.
-  const candidates = result.services.flatMap((service) => (
-    service.facets.find((facet) => facet.facetId === selected)?.entries
+  const candidates = result.providers.flatMap((summary) => (
+    summary.facets.find((facet) => facet.facetId === selected)?.entries
       .filter((entry) => entry.canSample)
-      .map((entry) => ({ service: service.service, facetId: selected, entry })) ?? []
+      .map((entry) => ({ namespace: summary.namespace, facetId: selected, entry })) ?? []
   ));
   const count = overviewSampleCount(actions.sampleCount);
   const entries = actions.selectEntries
@@ -147,15 +148,15 @@ export async function runOverviewSession(
   result.sampleAllocations = allocateOverviewSamples(entries, count);
   for (const allocation of result.sampleAllocations.filter((item) => item.count === 0)) {
     actions.warn?.(
-      `${allocation.service}/${allocation.facetId}/${allocation.entryKey}: 配额为 0（未采集）`,
+      `${allocation.namespace}/${allocation.facetId}/${allocation.entryKey}: 配额为 0（未采集）`,
     );
   }
   for (const allocation of result.sampleAllocations) {
     if (allocation.count === 0) continue;
     actions.signal?.throwIfAborted();
-    const provider = providers.find((item) => item.name === allocation.service)!;
+    const provider = providers.find((item) => item.namespace === allocation.namespace)!;
     const source = {
-      service: allocation.service, facetId: allocation.facetId, entryKey: allocation.entryKey,
+      namespace: allocation.namespace, facetId: allocation.facetId, entryKey: allocation.entryKey,
     };
     try {
       const samples = await actions.sample(provider, {

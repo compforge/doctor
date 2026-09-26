@@ -2,6 +2,8 @@
 export interface ExtensionRegistration {
   readonly id: string;
   readonly kind: string;
+  /** Discovery scope; omitted means the host default for this registration location. */
+  readonly namespace?: string;
   readonly description?: string;
 }
 
@@ -35,15 +37,20 @@ export function validateExtensionNamespace(namespace: string): void {
 export class ExtensionRegistry<T extends ExtensionRegistration = ExtensionRegistration> {
   private readonly providers: RegisteredProvider<T>[] = [];
 
-  register(namespace: string, extensions: readonly T[]): void {
+  register(namespace: string, extensions: readonly T[]): RegisteredProvider<T>[] {
     validateExtensionNamespace(namespace);
+    const registered: RegisteredProvider<T>[] = [];
     for (const extension of extensions) {
       validateExtensionRegistration(extension);
-      if (this.providers.some((item) => item.namespace === namespace && item.extension.id === extension.id)) {
-        throw new Error(`${namespace}: duplicate Extension id '${extension.id}'`);
+      const effectiveNamespace = extension.namespace ?? namespace;
+      if (this.providers.some((item) => item.namespace === effectiveNamespace && item.extension.id === extension.id)) {
+        throw new Error(`${effectiveNamespace}: duplicate Extension id '${extension.id}'`);
       }
-      this.providers.push({ namespace, extension });
+      const provider = { namespace: effectiveNamespace, extension };
+      this.providers.push(provider);
+      registered.push(provider);
     }
+    return registered;
   }
 
   extensions(kind: string, namespace?: string): RegisteredProvider<T>[] {
@@ -59,6 +66,7 @@ export function validateExtensionRegistration(value: unknown): asserts value is 
   for (const field of ["id", "kind"] as const) {
     if (typeof item[field] !== "string" || !(item[field] as string).trim()) throw new Error(`Extension.${field} must be a non-empty string`);
   }
+  if (item.namespace !== undefined) validateExtensionNamespace(item.namespace as string);
   if (item.description !== undefined && (typeof item.description !== "string" || !item.description.trim())) {
     throw new Error("Extension.description must be a non-empty string");
   }

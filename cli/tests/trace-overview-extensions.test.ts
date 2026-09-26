@@ -50,7 +50,7 @@ test("native trace extensions resolve batches with fallback, provenance and dedu
 test("overview discovers native operations without invoking them or combining their access", () => {
   const run = mock(async () => []);
   const services = createServiceCatalog([service("chat", [{ ...summarize, run: withSummary({ title: "Fixture", fields: [] }, run) }, sample])]);
-  const provider = overviewProviders(services)[0]!;
+  const provider = overviewProviders({ id: "test", version: "1", services }, ["chat"])[0]!;
   expect(provider.summarize.access).toEqual({});
   expect(provider.sample?.access).toEqual(sample.access);
   expect(run).not.toHaveBeenCalled();
@@ -58,8 +58,8 @@ test("overview discovers native operations without invoking them or combining th
 });
 
 test("overview supports summaries without sampling and rejects ambiguous producers", () => {
-  expect(overviewProviders(createServiceCatalog([service("chat", [summarize])]))[0]?.sample).toBeUndefined();
-  expect(() => overviewProviders(createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]))).toThrow("ambiguous");
+  expect(overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])[0]?.sample).toBeUndefined();
+  expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]) }, ["chat"])).toThrow("ambiguous");
   const invalid: OverviewSummarizeExtension = { ...summarize, facets: [facet, facet] };
-  expect(() => overviewProviders(createServiceCatalog([service("chat", [invalid])]))).toThrow("duplicate");
+  expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [invalid])]) }, ["chat"])).toThrow("duplicate");
 });

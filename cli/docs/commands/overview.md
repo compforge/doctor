@@ -1,6 +1,6 @@
 # Overview
 
-`doctor overview` 展示各 Service 值得注意的情况。Facet 是观察维度，例如请求错误；Entry 是该维度下
+`doctor overview` 默认展示当前 Plugin 的产品级概览；`--service` 选择单个 Service，`--services` 比较多个 Service。Facet 是观察维度，例如请求错误；Entry 是该维度下
 动态发现的条目，例如某个 error code。Entry 的 data 可以是数值或文字，只有 Plugin 明确声明可采样的
 Entry 才进入后续采集。
 
@@ -8,17 +8,18 @@ Entry 才进入后续采集。
 
 ```bash
 doctor overview
-doctor overview --since 6h --services example-api --tenant-id <tenant-id>
+doctor overview --since 6h --service example-api --tenant-id <tenant-id>
+doctor overview --since 6h --services example-api,example-worker
 doctor overview --since 1h --collect --facet errors --sample-count 5
 ```
 
-交互模式先选择近 10m、1h、6h、1d 或 3d，再展示所有 Service 的结果。用户可以直接结束，也可以选择
+交互模式先选择近 10m、1h、6h、1d 或 3d，再展示所选范围的结果。用户可以直接结束，也可以选择
 一个 Facet 并确认采集。只有一个可采集 Facet 时省略选择，仍需确认，默认不采集。非交互模式默认近 1h，
 只有显式 `--collect` 才采集；多个可采集 Facet 时还需指定 `--facet`。`--facet` 本身不触发采集。
 
 选定 Facet 后，交互模式在可采样 Entry 多于一个时显示多选列表；只有一个时直接选中，不额外询问。
 列表默认预选采样预算范围内的前几项，允许增减后确认；按 Esc 取消后不采样、不 collect。非交互模式选中
-全部可采样 Entry。默认顺序沿用大盘中的 Service / Entry 顺序，不按 data 重新排序，因为 data 也可以是文字。
+全部可采样 Entry。默认顺序沿用大盘中的 provider / Entry 顺序，不按 data 重新排序，因为 data 也可以是文字。
 
 `--sample-count` 覆盖 profile 的 `overview.sample_count`，未配置时为 5，必须是正整数。它控制代表请求的全局硬上限，
 不是 Entry 选择数。Core 在所选 Entry 间按大盘顺序尽量平均分配：每项先分配
@@ -59,17 +60,38 @@ profiles:
 ```
 
 默认交付 HTML 和 Bundle；`--format html|bundle` 与 `--output` 控制交付形式。报告保留查询窗口、租户、
-Service / Facet / Entry、数据、截断原因、采样来源和 collect biz-id；采集产物与概览一起交付。
+provider namespace / Facet / Entry、数据、截断原因、采样来源和 collect biz-id；采集产物与概览一起交付。
 
 ## Provider 契约
 
-Service 在 `capabilities.overview` 声明 `facets`、`summarize`、`sample` 和所需的 `access`。
-具体类型见 SDK 的 `overview.ts`。同一个 Facet id 跨 Service 使用时必须具有相同语义；Core 在选择时
-合并 Facet，结果与样本始终以 Service、Facet id、Entry key 定位。
+Service 在 `extensions` 注册 `overview.summarize` 与可选的 `overview.sample`，通过 Extension 的
+`namespace` 声明产品级或服务级作用域。Core 按 namespace 精确选择：默认使用
+`plugin/<plugin-id>`，指定 Service 时使用 `plugin/<plugin-id>/service/<canonical-service-name>`。
+Service alias 先解析为标准名。未声明所选概览或同一 namespace 内存在多个相同 kind 的实现时直接报错，
+不隐式聚合、继承或借用其它 namespace 的操作；`--service` 与 `--services` 互斥。
+
+namespace 表达统计归属，提供方 Service 决定操作的执行上下文。例如同一个 Service 可以同时提供
+产品错误概览和自己的运行状况概览。summary 和 sample 分别保留各自的 Service 绑定与 access，
+每次调用复用 Core 的授权、PluginContext、共享客户端及资源释放；namespace 不限制实现可以读取的数据。
+需要 Service 上下文的 Overview 操作应由 Service 注册，产品级 namespace 同样适用。例：
+
+```ts
+const service = {
+  ...apiService,
+  extensions: [
+    { ...requestErrorSummary, namespace: "plugin/example" },
+    serviceHealthSummary, // 未声明 namespace，默认 plugin/example/service/<service-name>
+  ],
+};
+```
+
+Facet 契约由 SDK 的 `overview.ts` 定义。同一 Facet id 跨 provider 使用时须具有相同语义；Core 在
+选择时合并 Facet，结果与样本以 namespace、Facet id、Entry key 定位。`diagnosis.json` 中 `providers`
+保存 namespace、展示名和汇总结果，采样配额与样本也保留 namespace，数据访问 Service 不充当统计身份。
 
 Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 tenantId。Plugin 负责解释业务
 时间字段，在 description 中说明统计口径，并在查询处限制结果数、声明截断。查询失败与“没有条目”是
-不同状态；某个 Service 失败不会阻止其它 Service 展示结果。
+不同状态；某个 provider 失败不会阻止其它 provider 展示结果。
 
 确认后，Core 把每个选中 Entry 的正整数 `limit` 传给 Plugin。Plugin 返回不超过该配额的代表请求列表；
 配额为 0 的 Entry 不调用 Plugin。Plugin 应返回最精确的 collect biz-id，并可提供源记录 Identity；数据已变化时

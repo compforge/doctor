@@ -109,8 +109,8 @@ test("host assigns distinct namespaces to product and Service implementations wi
     workloads: [], extensions: [extension],
   }]) };
   const registry = createDoctorExtensionRegistry(plugin);
-  expect(registry.extensions("overview.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", extension }]);
-  expect(registry.extensions("overview.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", extension }]);
+  expect(registry.extensions("overview.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", origin: "plugin", extension }]);
+  expect(registry.extensions("overview.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", origin: "plugin", extension, service: plugin.services.find("api") }]);
   expect(plugin.services.extensions("overview.summarize")[0]?.service.name).toBe("api");
   expect(() => createDoctorExtensionRegistry({ ...plugin, id: "fixture/service/injected" })).toThrow("namespace");
 });
@@ -118,7 +118,7 @@ test("host assigns distinct namespaces to product and Service implementations wi
 test("Case catalog retains Service provenance from the qualified namespace", () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-service-catalog-"));
   try {
-    const extension = { id: "cases", kind: "case.catalog" as const,
+    const extension = { id: "cases", kind: "case.catalog" as const, namespace: "plugin/fixture",
       access: {}, run: withSummary({ title: "Cases", fields: [] }, async () => []),
       load: () => [{ caseset: "service_cases", facets: { command: { values: ["http"] } },
         cases: [{ id: "ping", input: { path: "/ping" }, facets: { command: "http" } }],
@@ -131,4 +131,17 @@ test("Case catalog retains Service provenance from the qualified namespace", () 
     expect(doctorCaseCatalog(plugin, undefined, directory).find(item => item.caseSet.caseset === "service_cases"))
       .toMatchObject({ source: "plugin", service: "api" });
   } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+
+test("declaring a different namespace retains registration origin and Service binding", () => {
+  const extension = { id: "custom", kind: "custom", namespace: "local", access: {},
+    run: withSummary({ title: "Fixture", fields: [] }, async () => []) };
+  const plugin: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
+    name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
+    workloads: [], extensions: [extension],
+  }]) };
+  expect(createDoctorExtensionRegistry(plugin).extensions("custom", "local")).toEqual([{
+    namespace: "local", origin: "plugin", extension, service: plugin.services.find("api"),
+  }]);
 });

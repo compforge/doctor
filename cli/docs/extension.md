@@ -86,17 +86,18 @@ interface Summary {
 id 在所属 namespace 内唯一，kind 是提供方与消费方共享的契约标识。相同 kind 可以有多个
 实现；消费方根据自己的领域规则决定选择一个、调用多个或拒绝歧义，不能默认按注册顺序取第一个。
 
-namespace 是区分提供方的字符串路径，由宿主按注册位置生成，Extension 自身不重复声明。
-宿主使用 `core`、`local`、`plugin/<plugin-id>` 和
-`plugin/<plugin-id>/service/<service-name>`；ServiceCatalog 内部仅以 Service 名称作为本地 namespace，
-宿主装配时补全 Plugin 路径。路径段以 ASCII 字母或数字开头，其余字符允许字母、数字、`.`、`_`、`-`；
-区分大小写，不接受空段、空白、前后斜杠或 `.` / `..` 段，也不自动规范化。使用
-`extensionNamespace(...segments)` 生成路径，避免标识符包含 `/` 改变归属层级。
+namespace 是 Extension 声明的字符串作用域，与提供方 Service 的身份独立。未声明时，宿主按注册
+位置默认使用 `core`、`local`、`plugin/<plugin-id>` 或 `plugin/<plugin-id>/service/<service-name>`。
+Service 可为自己的 Extension 显式声明产品或其它 Service 的 namespace；宿主保留原提供方的上下文绑定，
+发现按 namespace 匹配，执行权限和客户端仍来自该提供方及操作的 access 声明。
+
+路径段以 ASCII 字母或数字开头，其余字符允许字母、数字、`.`、`_`、`-`；区分大小写，不接受空段、
+空白、前后斜杠或 `.` / `..` 段，也不自动规范化。使用 `extensionNamespace(...segments)` 生成路径。
 
 Registry 以 `namespace + id` 判重，与 kind 无关。`extensions(kind)` 返回全部匹配操作，
 `extensions(kind, namespace)` 只精确匹配该 namespace；父子路径不隐式继承、覆盖或聚合。
-namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 当前仍由
-Command 选择 Service provider；产品级 Overview 的接入需显式定义其选择与调用行为。
+namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 由 Command
+根据 Service 选项精确选择产品或服务 namespace，执行时使用原提供方上下文，详见 [Overview](commands/overview.md)。
 
 kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验，不建立中央 ExtensionContracts 映射或
 封闭枚举。新增 kind 不需要修改 Core 的通用发现与调用机制。accepts、provides 等匹配信息属于需要它们

@@ -1,4 +1,4 @@
-import type { Extension, RegisteredExtension } from "./index";
+import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 import type { OverviewFacet, OverviewQuery, OverviewFacetResult, OverviewSampleQuery, OverviewSample } from "../overview";
 
 export const OVERVIEW_SUMMARIZE_KIND = "overview.summarize";
@@ -13,7 +13,8 @@ export interface OverviewSampleExtension extends Extension<OverviewSampleQuery, 
   readonly kind: typeof OVERVIEW_SAMPLE_KIND;
 }
 
-export function requireOverviewSummarizeExtension(extension: RegisteredExtension): OverviewSummarizeExtension {
+export function requireOverviewSummarizeExtension(extension: ExtensionRegistration): OverviewSummarizeExtension {
+  validateExtension(extension);
   const value = extension as OverviewSummarizeExtension;
   if (value.kind !== OVERVIEW_SUMMARIZE_KIND || !Array.isArray(value.facets) || !value.facets.length) {
     throw new Error(`${extension.id}: overview.summarize requires facets`);
@@ -28,7 +29,8 @@ export function requireOverviewSummarizeExtension(extension: RegisteredExtension
   return value;
 }
 
-export function requireOverviewSampleExtension(extension: RegisteredExtension): OverviewSampleExtension {
+export function requireOverviewSampleExtension(extension: ExtensionRegistration): OverviewSampleExtension {
+  validateExtension(extension);
   if (extension.kind !== OVERVIEW_SAMPLE_KIND) throw new Error(`Expected ${OVERVIEW_SAMPLE_KIND}, got ${extension.kind}`);
   return extension as OverviewSampleExtension;
 }
