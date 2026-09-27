@@ -14,3 +14,13 @@ The workspace version identifies both Plugin code and bundled Skills. Run
 Run `make build` in this directory to create the self-contained
 `dist/example-<version>.doctor-plugin.tar.gz` archive. The target Doctor host does not need the
 Plugin source tree or an additional package installation step.
+
+The Plugin also registers an offline `error.catalog`. After installing its archive, query the
+example definition without configuring a target:
+
+```sh
+doctor knowledge errors QUEUE_BUSY
+doctor knowledge errors --extension-namespace plugin/example --format json
+```
+
+The catalog source version describes the error definitions; it is independent of the Plugin version.

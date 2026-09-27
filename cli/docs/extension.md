@@ -110,6 +110,10 @@ TypeScript 泛型帮助双方表达类型，但不能证明动态加载的实现
 `extensions` 注册自己的 catalog；Service 的请求 runner 单独声明。目录消费者调用 `load` 并校验
 spec-case CaseSet，按 Case facets 过滤，不要求创建 runner 或访问环境。
 
+`error.catalog` 同样采用无上下文的同步 `load()`，返回带来源版本的错误定义；由
+`doctor knowledge errors` 消费。定义包含不透明错误码、名称和说明，可附带默认消息及参考链接，
+不推导现场根因或恢复策略。契约与接入方式见 [Knowledge](commands/knowledge.md)。
+
 ## Command 如何使用 Extension
 
 Command 保持 Prepare → Execute → Finalize 的生命周期。Extension 的调用嵌入 Command 自己的流程，
@@ -162,6 +166,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
+| error.catalog | 无 Target 访问 → 带来源版本的错误目录 | Knowledge |
 | case.catalog | 无 Target 访问 → canonical CaseSet 列表 | Case、Model、Perf、Eval |
 | case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
 | perf.scenarios | 无入参 → 观测预设与可观测性引用 | Perf |
