@@ -57,3 +57,5 @@ export * from "./case-catalog";
 export * from "./registry";
 export * from "./workload";
 export * from "./vdb";
+
+export * from "./error-catalog";

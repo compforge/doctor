@@ -41,6 +41,8 @@ Business data is organized by lookup scope:
 
 ## Workflows across evidence
 
+- `doctor knowledge errors [query]` looks up offline error definitions from the selected Plugin,
+  preserving source versions and namespaces. See [Knowledge](cli/docs/commands/knowledge.md).
 - `doctor overview` shows notable entries grouped by Service and Facet, then optionally samples
   representative requests for collection. See [Overview](cli/docs/commands/overview.md).
 - `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their

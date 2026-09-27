@@ -56,6 +56,7 @@ import { configureProfileHelp } from "./profile-help";
 import { applyOptionDefaults } from "./command-defaults";
 import { loadActivePlugin, loadInstalledPlugin } from "../plugin";
 import { registerPluginInfo, runPluginInstall, runPluginUninstall } from "./plugin";
+import { registerKnowledgeCommand } from "../knowledge/command";
 import { runCommand, runStandaloneCommand } from "./command";
 import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
@@ -476,6 +477,8 @@ export function createDoctorProgram(
     .command("version")
     .description("显示发行版、Doctor Core、Plugin 与本机信息（离线）")
     .action(() => showVersion(distribution));
+
+  registerKnowledgeCommand(catalog, plugin);
 
   const pluginCommand = catalog.command("plugin");
   registerPluginInfo(pluginCommand, plugin);

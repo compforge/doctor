@@ -4,6 +4,7 @@ import {
   type PluginDefinition,
 } from "@compforge/doctor-plugin";
 import pluginPackage from "../package.json" with { type: "json" };
+import { exampleErrors } from "./errors";
 
 const services = createServiceCatalog([
   {
@@ -42,6 +43,7 @@ export const examplePlugin = {
   id: "example",
   version: pluginPackage.version,
   services,
+  extensions: [exampleErrors],
 } satisfies PluginDefinition;
 
 export default examplePlugin;
