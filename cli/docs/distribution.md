@@ -152,4 +152,8 @@ Linux x64 的产物选择按内核和 glibc 的组合判断：kernel 5.6+/glibc 
 kernel 4.19+/glibc 2.28+ 使用同一 Bun 可执行文件的 4.19 交付变体；其余已支持的旧环境使用
 Node SEA。ARM64 同时构建 5.6/glibc 2.25 与 4.19/glibc 2.28 的 Bun 产物。Node 22 SEA
 的 Chat 采用行式界面，Bun 产物提供 OpenTUI 全屏界面。麒麟 kernel 4.19/glibc 2.28
-的 x64 和 ARM64 构建复用对应架构的 Bun 产物；交付前仍需在目标架构实测。
+的 x64 和 ARM64 构建使用 Node 26 SEA，随产物内嵌 OpenTUI 原生库、Worker 和语法资源，
+启用实验性 FFI 保留全屏交互。资源在启动时释放到进程独占的临时目录，正常退出时清理；
+异常终止遗留的目录由系统临时目录策略回收。客户运行时不需要 Bun 或 Node 安装，但需要
+`libatomic.so.1` 和 Node 官方要求的 C++ 运行库。ELF 的 64KB 对齐与 glibc 要求只是静态条件，
+交付前仍需在目标架构、内核及实际页大小上验证。

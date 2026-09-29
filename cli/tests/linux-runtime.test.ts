@@ -55,14 +55,16 @@ describe("Linux x64 runtime artifact selection", () => {
     expect(select("6.8.0", "glibc 2.39", "aarch64").status).toBe(2);
   });
 
-  test("Kylin ARM64 and x64 artifacts use Bun instead of the SEA builder", () => {
+  test("Kylin ARM64 and x64 artifacts build with Node SEA", () => {
     const result = spawnSync("make", ["-n", "build-kylin"], {
       cwd: fileURLToPath(new URL("..", import.meta.url)),
       encoding: "utf8",
     });
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toContain("--target bun-linux-arm64");
-    expect(result.stdout).toContain("--target bun-linux-x64-baseline");
+    expect(result.stdout).toContain("build-node-sea-doctor.ts");
+    expect(result.stdout).toContain("--arch arm64");
+    expect(result.stdout).toContain("--arch x64");
+    expect(result.stdout).not.toContain("build-bun-doctor.ts");
     expect(result.stdout).not.toContain("build-linux-arm64-kylin.sh");
     expect(result.stdout).not.toContain("build-linux-x64-legacy.sh");
   });
