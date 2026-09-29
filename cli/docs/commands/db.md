@@ -47,7 +47,7 @@ doctor db --service chat --database app --table messages --show-create-table
 doctor db --service chat --table app.messages \
   -e 'SELECT id, status FROM messages WHERE id = ?' --params '["msg:123"]' \
   --format manifest
-doctor db --service chat --table app.messages --file query.sql
+doctor db --service chat --table app.messages --file query.sql --format summary
 doctor db --service chat --table app.messages --file - <<'SQL'
 SELECT id, content FROM messages WHERE content = 'O''Reilly: "hello"' LIMIT 20;
 SQL
@@ -90,9 +90,15 @@ envPrefix，自定义 source 的宏观检查使用 store。
 
 ### 证据与展示分离
 
-JSON、HTML、Bundle、Manifest 共用 Evidence 与根交付流程。取证记录目标来源、选择结果、执行时间、
+Summary、JSON、HTML、Bundle、Manifest 共用 Evidence 与根交付流程。取证记录目标来源、选择结果、执行时间、
 缺失项和截断原因；连接密码不落盘，driver 原始错误不回显 SQL 或业务值。
 SQL、绑定参数和结果保存在受限临时目录的原始证据中，可能包含敏感业务信息，应按取证数据管理。
 `--show-databases` 在终端和报告显示数据源、说明、库名与发现状态；JSON 结果和 manifest 的目标信息
-保留相同数据源元数据，AI 无需解析展示表格。其它操作输出状态与产物位置。Distribution 可通过已有 commandDefaults 设置
-db 的 format，db 不另建发行版默认值机制。
+保留相同数据源元数据，AI 无需解析展示表格。
+
+`--format summary` 直接在终端打印证据摘要的简洁 Markdown，不额外导出 `.md` 文件，也不支持
+`--output`。摘要展示选中目标、目标 SQL 是否尝试执行、已取得的行数、查询截断状态、失败原因和
+有界结果预览；没有取得结果时行数与截断状态标为未知，不能将连接调用失败解释为服务端未执行。
+预览只限制展示，不改变查询预算或原始证据；查询截断与预览省略分别标明。
+完整已采集结果仍保存在终端给出的 Evidence 目录，`--format json` 仍是文件导出。
+Distribution 可通过已有 commandDefaults 设置 db 的 format，db 不另建发行版默认值机制。

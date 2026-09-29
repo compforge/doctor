@@ -1,3 +1,4 @@
+import type { DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -12,10 +13,10 @@ import { ParameterCancelled } from "../../terminal/parameters";
 
 import { useLogger } from "../../terminal/log";
 import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
-import { resolveDbProviders } from "./providers";
-import { databaseFailure, databaseTargets, discoverDatabases, selectDatabaseTarget } from "./discovery";
+import { resolveDbProviders, type ProviderResolution } from "./providers";
+import { databaseFailure, databaseTargets, discoverDatabases, selectDatabaseTarget, type DbDiscovery, type DbSelection } from "./discovery";
 import { quoteIdentifier } from "./sql";
-import { databaseDiscoverySummary } from "./summary";
+import { databaseDiscoverySummary, databaseSummary } from "./summary";
 
 type PreparedDb = { input: DbInput; request: Awaited<ReturnType<typeof resolveDbRequest>> };
 
@@ -28,6 +29,9 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     render: artifact => writeEvidencePage(context, artifact, { title: "数据库取证", summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
   }),
   prepare: async (context, input) => {
+    if (context.options.format?.trim() === "summary" && context.options.output) {
+      throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
+    }
     await prepareCommandRequirements(context, { plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "resource", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] } });
     // Resolve syntax/input before environment access; a SQL file is not a script runner.
     let request;
@@ -50,10 +54,15 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     const targets: Record<string, unknown>[] = [];
     let selection: Record<string, unknown> | undefined;
     const results: Record<string, unknown>[] = [];
-    let discoverySummary = "";
+    let discovery: DbDiscovery[] = [];
+    let failures: ProviderResolution["failures"] = [];
+    let selected: DbSelection | undefined;
+    let queryAttempted = false;
+    let queryResult: DatabaseQueryResult | undefined;
     try {
       const resolved = await resolveDbProviders(context, request);
       service = resolved.service;
+      failures = resolved.failures;
       const groupedTargets = databaseTargets(resolved.providers);
       const targetIds = new Map(groupedTargets.flatMap(target =>
         target.providers.map(provider => [provider.id, target.providers[0]!.id] as const)));
@@ -73,8 +82,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
         targets.push({ id: failure.id, dataSources: [{ id: failure.id, description: failure.description }], error: failure.reason });
         bundle.addStep({ id: `target-${resolved.failures.indexOf(failure)}`, title: `解析 DB ${failure.id}`, risk: "observe", status: "failed", reason: failure.reason });
       }
-      const discovery = await discoverDatabases(request, resolved.providers);
-      if (request.action === "databases") discoverySummary = databaseDiscoverySummary(discovery, resolved.failures);
+      discovery = await discoverDatabases(request, resolved.providers);
       for (const [index, item] of discovery.entries()) {
         const record = { target: targetIds.get(item.provider.id), access: item.provider.id, dataSources: item.provider.dataSources, ...item.result, error: item.error };
         results.push(record);
@@ -90,7 +98,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       const incomplete = resolved.failures.length > 0 || discovery.some(item => item.error || item.result?.truncated);
       if (request.action === "query" || request.action === "create-table") {
         if (resolved.failures.length) throw new CommandInputError("部分 Service 数据库目标无法解析，不能确认唯一查询目标；未执行 SQL");
-        const selected = await selectDatabaseTarget(request, discovery);
+        selected = await selectDatabaseTarget(request, discovery);
         selection = { target: targetIds.get(selected.provider.id), access: selected.provider.id, dataSources: selected.dataSources, database: selected.database, table: selected.table };
         const sql = request.action === "query" ? request.sql!
           : `SHOW CREATE TABLE ${quoteIdentifier(selected.database)}.${quoteIdentifier(selected.table!)}`;
@@ -100,7 +108,9 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
         bundle.addStep({ id: "query-input", title: "查询输入（可能含敏感业务值）", risk: "observe", status: "ok", rawFilePath: requestPath, ext: "json" });
         try {
           context.signal.throwIfAborted();
+          queryAttempted = true;
           const result = await selected.provider.query(sql, request.values, request.limits, selected.database);
+          queryResult = result;
           const record = { ...selection, ...result, durationMs: Date.now() - before };
           const path = join(directory, "query.json");
           writeFileSync(path, JSON.stringify(record, null, 2), { mode: 0o600 });
@@ -125,16 +135,19 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       reason = error instanceof Error ? error.message : "数据库取证失败";
       bundle.addStep({ id: "operation", title: "完成数据库操作", risk: "observe", status: "failed", reason });
     }
-    const summary = `# 数据库取证\n\nService: ${service ?? "未选择"}\n操作: ${request.action}\n状态: ${status}\n${reason ?? ""}\n\n${discoverySummary}\n\n详细结果见 raw/ JSON 文件。\n`;
-    bundle.writeSummary(summary);
+    bundle.writeSummary(databaseSummary({ service, action: request.action, status, reason,
+      selection: selected, queryAttempted, queryResult, discovery, failures }));
     bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
       params: { action: request.action, dataSource: input.dataSource, database: request.database, table: request.table, limits: request.limits },
       startedAt, finishedAt: new Date().toISOString()
     });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });
-    if (discoverySummary) useLogger().info(`${discoverySummary}`);
-    useLogger("db").info(`${status}；证据目录：${directory}`);
+    if (context.options.format?.trim() !== "summary") {
+      if (request.action === "databases") useLogger().info(databaseDiscoverySummary(discovery, failures));
+      if (reason) useLogger("db").error(reason);
+      useLogger("db").info(`${status}；证据目录：${directory}`);
+    }
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },
 });
