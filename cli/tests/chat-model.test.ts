@@ -66,3 +66,18 @@ test("shows executed bash command and real model thinking in transcript blocks",
     ],
   });
 });
+
+test("activity switches from working to compacting and back", () => {
+  const model = createDoctorModel({
+    profileName: "local", profile: { readonly: true }, mode: "local", warnings: [],
+  });
+  const activity = () => projectChatState(model).activity?.items?.[0];
+  model.meta.busy = true;
+  expect(activity()?.label).toBe("local agent · working…");
+  model.meta.compacting = true;
+  expect(activity()).toMatchObject({ label: "local agent · compacting…", hint: "Esc to interrupt" });
+  model.meta.compacting = false;
+  expect(activity()?.label).toBe("local agent · working…");
+  model.meta.busy = false;
+  expect(activity()?.label).toBe("local agent");
+});

@@ -76,6 +76,8 @@ export class Session {
       for await (const event of this.agent.compact!(instructions, { emitter: this.emitter })) this.accept(event);
     } finally {
       this.busy = false;
+      // Also clear on stream failure, which may arrive without compaction_end.
+      this.accept(this.emitter.metaSet("meta.compacting", { compacting: false }));
       this.accept(this.emitter.metaSet("meta.busy", { busy: false }));
       this.accept(this.emitter.end());
       const next = this.disposed ? undefined : this.queue.shift();
@@ -158,6 +160,8 @@ export class Session {
       this.accept(this.emitter.error("agent_error", mapErrorMessage(error)));
     } finally {
       this.busy = false;
+      // Also clear on stream failure, which may arrive without compaction_end.
+      this.accept(this.emitter.metaSet("meta.compacting", { compacting: false }));
       this.accept(this.emitter.metaSet("meta.busy", { busy: false }));
       this.accept(this.emitter.end());
     }

@@ -214,10 +214,10 @@ export function mapEvent(event: HarnessEventPayload, context: RunContext, state:
       ];
     }
     case "compaction_start":
-      return [emitter.blockSet({ id: `compact-${event.runId}`, type: "info", tone: "muted",
+      return [emitter.metaSet("meta.compacting", { compacting: true }), emitter.blockSet({ id: `compact-${event.runId}`, type: "info", tone: "muted",
         content: `正在压缩上下文（${event.reason}）…` } satisfies InfoBlock)];
     case "compaction_end":
-      return [emitter.blockSet({ id: `compact-${event.runId}`, type: "info",
+      return [emitter.metaSet("meta.compacting", { compacting: false }), emitter.blockSet({ id: `compact-${event.runId}`, type: "info",
         tone: event.status === "failed" ? "error" : "muted",
         content: event.status === "completed" ? "上下文压缩完成，完整聊天记录仍保留"
           : `上下文压缩${event.status === "aborted" ? "已中断" : event.status === "declined" ? "未执行" : `失败：${event.error?.message ?? "未知错误"}`}`,

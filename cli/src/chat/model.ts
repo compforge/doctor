@@ -26,6 +26,7 @@ export interface DoctorMeta extends ModelMeta {
   connection_id?: string;
   conversation_id?: string;
   busy: boolean;
+  compacting: boolean;
   turn_count: number;
   queued: QueuedPrompt[];
   warnings: string[];
@@ -63,6 +64,7 @@ export function createDoctorModel(options: InitialModelOptions): DoctorModel {
       ...(options.connectionId ? { connection_id: options.connectionId } : {}),
       ...(options.conversationId ? { conversation_id: options.conversationId } : {}),
       busy: false,
+      compacting: false,
       turn_count: 0,
       queued: [],
       warnings: [...options.warnings],
@@ -92,7 +94,7 @@ export function projectChatState(model: DoctorModel): ChatState {
       items: meta.queued.map((item) => ({ ...item, tag: "queued" })),
     },
     activity: {
-      items: activeTools.length
+      items: activeTools.length && !meta.compacting
         ? activeTools.map((tool) => ({
             id: tool.id,
             author: "doctor",
@@ -102,7 +104,9 @@ export function projectChatState(model: DoctorModel): ChatState {
         : [{
             id: "agent",
             author: "doctor",
-            label: meta.busy ? `${meta.mode} agent · working…` : `${meta.mode} agent`,
+            label: meta.busy
+              ? `${meta.mode} agent · ${meta.compacting ? "compacting" : "working"}…`
+              : `${meta.mode} agent`,
             ...(meta.busy ? { hint: "Esc to interrupt" } : {}),
           }],
     },

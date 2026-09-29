@@ -90,3 +90,18 @@ test("tool completion keeps the bash command from the start event", () => {
     type: "tool", status: "completed", args: { command: "ascli trace --biz-id example" }, result: "done",
   }]);
 });
+
+for (const status of ["completed", "aborted", "declined", "failed"]) {
+  test(`compaction activity clears when ${status}`, () => {
+    const context = { emitter: new PatchEmitter() };
+    const state = eventState();
+    const started = applyPatches({ meta: {}, blocks: [] }, mapEvent(event({
+      type: "compaction_start", runId: "run-1", reason: "threshold",
+    }), context, state));
+    expect(started.meta).toMatchObject({ compacting: true });
+    const ended = applyPatches(started, mapEvent(event({
+      type: "compaction_end", runId: "run-1", status,
+    }), context, state));
+    expect(ended.meta).toMatchObject({ compacting: false });
+  });
+}
