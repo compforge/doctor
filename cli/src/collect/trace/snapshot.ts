@@ -73,7 +73,7 @@ export async function exportTraceSnapshot(dir: string, traceId: string, collecti
       schema_version: 1, kind: "doctor.trace.tree", trace_id: traceId, collection,
       roots: trace.view().roots.map(node => node.node_id),
       nodes: trace.nodes.map(node => ({
-        node_id: node.node_id, parent_node_id: node.parent_node_id, kind: node.kind, name: node.name,
+        node_id: node.node_id, parent_node_id: node.parent_node_id, kind: node.kind, name: node.name, value: node.value,
         service: node.service, start_ms: node.start_ms, duration_ms: node.duration_ms,
         primary_span_id: node.primary_span_id, span_ids: node.span_ids, error_span_ids: node.error_span_ids,
       })),
