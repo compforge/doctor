@@ -99,6 +99,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor collect [id...]` | 集合选择并汇总 Data、Trace、Log、Metric；自身不实现具体采集 |
 | `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线下钻或生成 HTML / Bundle |
+| `doctor s3 ls/stat/cat` | 按 Service 连接浏览 bucket / 目录前缀、检查对象元数据和有界读取内容 |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log [id...]` | 不带 ID 按 Service / 时间范围采集日志；带 ID 则解析 trace 并分组聚合关联日志 |
 | `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
@@ -127,6 +128,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Data 汇集诊断](docs/commands/data-diagnosis.md)
 - [Trace 采集](docs/commands/trace-diagnosis.md)
 - [Store 诊断](docs/commands/store-diagnosis.md)
+- [S3 对象取证](docs/commands/s3.md)
 - [MCP 诊断](docs/commands/mcp-diagnosis.md)
 - [Model 诊断](docs/commands/model-diagnosis.md)
 - [Image 准备](docs/commands/image.md)
