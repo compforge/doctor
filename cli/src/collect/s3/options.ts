@@ -19,7 +19,7 @@ export function withS3Options(command: Command): Command {
     .option("-n, --namespace <ns>", "Service 所在 namespace")
     .option("--profile <name>", "使用指定 profile")
     .option("--config <path>", "Doctor 配置路径")
-    .addOption(deliveryFormatOption(["html", "bundle", "json", "summary"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "json", "summary"]).default("summary"))
     .option("-o, --output <path>", "取证结果输出路径")
     .addHelpText("after", `\n示例：\n  doctor s3 ls app\n  doctor s3 ls app/bucket/artifacts/\n  doctor s3 stat app/bucket/file.txt\n  doctor s3 cat --service app s3://bucket/file.txt --max-bytes 4096\n\nService 相当于 mc 的连接别名；连接来自 Service，key 按字面传递，不解码或归一化。\n`);
 }
