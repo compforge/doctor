@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type AgentSource } from "@compforge/doctor-agent";
@@ -135,4 +135,22 @@ test("slash commands inspect, export and select sessions without invoking the ag
   controller.resolvePicker("resume", history.metadata.path);
   expect(selected).toBe(history.metadata.path);
   await controller.dispose();
+});
+
+
+test.each(["", "{\"kind\":", "# not JSON", "null", "true", "42", '"text"', "[]", "{}"])(
+  "malformed session header %j gives the expected format hint", async (content) => {
+    const { root, store } = fixture();
+    const path = join(root, "invalid.jsonl");
+    writeFileSync(path, content);
+    await expect(store.prepare({ session: path }, identity)).rejects.toThrow(
+      "不支持的 Doctor 会话文件；需要 Pi 0.87 JSONL 会话格式",
+    );
+  },
+);
+
+test("session file read failures preserve their filesystem error", async () => {
+  const { root, store } = fixture();
+  await expect(store.prepare({ session: join(root, "missing.jsonl") }, identity))
+    .rejects.toMatchObject({ code: "ENOENT" });
 });
