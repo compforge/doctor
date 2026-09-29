@@ -37,8 +37,9 @@ async function fixture(options: { span?: string; partial?: boolean; grouped?: bo
     traceId: "t1", bizId: "message-1", spanId: options.span,
     traceIdResolution: { service: "fixture", resolvedAs: "message_id", sourceId: "source-message" },
     index: "jaeger-span-*", auth: {}, endpoint: "https://unused.test:9200", pageSize: 100, outputDir: dir,
-    contributions: { specs: [{ kind: "fixture", matches: span => !options.grouped || span.name !== "child",
-      claims: (_primary, candidates) => new Set(candidates.map(span => span.span_id)) }] },
+    contributions: { specs: [{ kind: "fixture", structure_fields: ["payload"], matches: span => !options.grouped || span.name !== "child",
+      claims: (_primary, candidates) => new Set(candidates.map(span => span.span_id)),
+      value: (primary, satellites) => [primary, ...satellites].map(span => span.attr("payload")).join(" ") }] },
   }, () => {}, search);
   expect(code).toBe(options.partial ? 1 : 0);
   const destination = root();
@@ -81,6 +82,8 @@ test("full trace persists a forest and node-to-span mapping, node/span drilldown
   const { dir } = await fixture();
   const tree = json(dir, "tree.json");
   expect(tree.roots).toHaveLength(2);
+  expect(tree.nodes.find((node: { node_id: string }) => node.node_id === "child").value).toBe("input/output:child");
+  expect(readTraceSnapshot(dir).nodes.find(node => node.node_id === "child")?.value).toBe("input/output:child");
   const node = tree.nodes.find((node: { primary_span_id: string }) => node.primary_span_id === "child");
   const original = readFileSync(join(dir, "manifest.json"), "utf8");
   for (const selected of [{ node: node.node_id }, { span: "child" }]) {
@@ -123,6 +126,8 @@ test("delivered manifest indexes tree/details, survives relocation, and can be r
   await render.render(traceCommand, result);
   expect(render.failures).toHaveLength(0);
   expect(readFileSync(join(result.artifacts[0]!.path, "trace.html"), "utf8")).toContain("trace-archive");
+  expect(readFileSync(join(result.artifacts[0]!.path, "trace.html"), "utf8")).toContain('id="node-search"');
+  expect(readTraceSnapshot(result.artifacts[0]!.path).nodes.find(node => node.node_id === "child")?.value).toBe("input/output:child");
   expect(existsSync(join(moved, "trace.html"))).toBeFalse();
 });
 
@@ -152,6 +157,7 @@ test("node selection collects all owned spans rather than treating node_id as sp
   const saved = readTraceSnapshot(dir);
   const node = saved.nodes.find(node => node.primary_span_id === "root")!;
   expect(node.span_ids).toEqual(["root", "child"]);
+  expect(node.value).toBe("input/output:root input/output:child");
   const { result } = await offline(join(dir, "manifest.json"), { node: node.node_id });
   expect(result.status).toBe(CommandStatus.Ok);
   expect(json(result.artifacts[0]!.path, "selection.json").spans.map((span: { span_id: string }) => span.span_id)).toEqual(["root", "child"]);
