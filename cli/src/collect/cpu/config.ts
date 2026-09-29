@@ -21,7 +21,6 @@ export interface CpuConfig {
   target: PodTarget;
   pidFlag?: string;
   mode: InspectionMode;
-  output?: string;
 }
 
 export interface CpuConfigInput extends KubernetesCommandInput {
@@ -29,7 +28,6 @@ export interface CpuConfigInput extends KubernetesCommandInput {
   container?: string;
   pid?: string;
   mode?: string;
-  output?: string;
 }
 
 export async function resolveCpuConfig(
@@ -84,7 +82,7 @@ export async function resolveCpuConfig(
     if (!mode) return undefined;
   }
   return {
-    config: { collect, target, pidFlag: input.pid, mode, output: input.output },
+    config: { collect, target, pidFlag: input.pid, mode },
     executor,
   };
 }

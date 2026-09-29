@@ -1,6 +1,7 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { CommandInputError, CommandStatus, type CommandInput, type CommandResult, type Command } from "../command";
 import { reportError } from "./error-report";
+import { createDeliveryPlan, assertDeliveryPathsAvailable, type DeliveryPlan } from "./delivery-plan";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
 import { withLogger } from "../terminal/log";
@@ -41,7 +42,10 @@ async function executeCommand<Input extends CommandInput, Output>(
   spec: Command<Input, Output>, opts: CommandOptions, input: Input,
   runtime: CommandRuntime,
 ): Promise<void> {
+  let plan: DeliveryPlan | undefined;
   try {
+    plan = createDeliveryPlan(spec.name, opts);
+    assertDeliveryPathsAvailable(plan);
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
     input = withoutShadowedDefaults(input, context.profile.value);
     const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
@@ -55,14 +59,14 @@ async function executeCommand<Input extends CommandInput, Output>(
       }
       context.artifacts.add(result.artifacts);
       process.exitCode = await finalizeCommand({
-        spec, commandInput: input, result, context, delivery: opts, code: commandExitCode(result),
+        spec, result, context, plan, code: commandExitCode(result),
       });
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
     reportError(error, { context: spec.name, summary: "fatal" });
-    process.exitCode = opts.format?.trim() === "manifest"
-      ? await deliverPreparationFailure(spec.name, error instanceof Error ? error.message : String(error), opts.output)
-      : 1;
+    process.exitCode = plan?.format === "manifest"
+      ? await deliverPreparationFailure(spec.name, error instanceof Error ? error.message : String(error), plan)
+      : error instanceof CommandInputError ? 2 : 1;
   }
 }
 

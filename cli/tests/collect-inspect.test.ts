@@ -18,7 +18,6 @@ import { finalizeResult } from "./report-fixture";
 import {
   makeInspectDetectors,
   buildInspectSummary,
-  parseInspectOutputFormat,
   projectInspectServiceFacts,
   resolveInspectDependencySelection,
   resolveInspectDeploymentSelection,
@@ -48,7 +47,7 @@ function result(stdout = ""): ExecResult {
 const createCommandContext = () => new CommandContext({});
 
 async function runInspectWithDelivery(
-  opts: Parameters<typeof runCollectInspect>[0],
+  opts: Parameters<typeof runCollectInspect>[0] & import("../src/app/delivery-plan").CommandDeliveryOptions,
   plugin: PluginDefinition,
   executor: Executor,
 ): Promise<number> {
@@ -216,10 +215,6 @@ test("terminated state 只投影 Inspect Fact 声明的字段", () => {
   expect(state).not.toHaveProperty("containerId");
 });
 
-test("inspect 接受终端 summary 格式", () => {
-  expect(parseInspectOutputFormat("summary")).toBe("summary");
-  expect(() => parseInspectOutputFormat("table")).toThrow("summary");
-});
 
 function runtimeSummaryDiagnosis(): InspectDiagnosis {
   const evidence = detectorEvidence();
@@ -366,7 +361,6 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
     servicesExplicit: true,
     includeDeploymentConfig: undefined,
     includeDependencies: undefined,
-    format: "html",
     reportName: "doctor-inspect-test",
     profileName: "default",
     kube: { namespace: "demo" },

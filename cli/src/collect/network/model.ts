@@ -27,7 +27,6 @@ export interface CollectNetworkCliOpts {
   context?: string;
   profile?: string;
   config?: string;
-  output?: string;
 }
 
 export interface NetworkPodTarget {

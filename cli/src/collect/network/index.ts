@@ -1,7 +1,6 @@
 import { isInteractive } from "../../terminal/policy";
 import { createHash, randomUUID } from "node:crypto";
 import {
-  chmodSync,
   createReadStream,
   mkdirSync,
   mkdtempSync,
@@ -52,8 +51,6 @@ import { captureHttpResponse } from "../shared/http/capture";
 import { loadHttpScenario } from "../shared/http/config";
 import type { HttpCapture } from "../shared/http/capture";
 import type { HttpRequestPlan } from "../shared/http/model";
-import { packBundle, resolveArchivePath } from "../output/archive";
-import { deliverFailureBundle } from "../output/failure-bundle";
 import type {
   CollectNetworkCliOpts,
   CollectNetworkOptions,
@@ -1065,7 +1062,6 @@ export async function runCollectNetwork(
   }
   const now = new Date();
   const bundleName = defaultNetworkBundleName(now);
-  const outputPath = resolveArchivePath(opts.output, bundleName);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-net-"));
   const staging = join(stagingRoot, bundleName);
   mkdirSync(staging, { recursive: true, mode: 0o700 });
@@ -1136,36 +1132,7 @@ export async function runCollectNetwork(
     rmSync(stagingRoot, { recursive: true, force: true });
     return result.code;
   }
-  log(
-    result.code === 0
-      ? "正在打包 NetBundle；流量分析由 doctor neta 执行…"
-      : "正在打包失败现场 Evidence Bundle…",
-  );
-  const delivery = result.code === 0
-    ? { path: outputPath, packed: await packBundle(staging, outputPath) }
-    : await deliverFailureBundle({
-        bundleDir: staging,
-        bundleName,
-        requestedOutput: opts.output,
-        collectCode: result.code,
-        reason: result.reason,
-      });
-  if (!delivery.packed.ok) {
-    useLogger("net").error(`打包失败，现场保留在: ${staging}`);
-    return 1;
-  }
-  chmodSync(delivery.path, 0o600);
-  rmSync(stagingRoot, { recursive: true, force: true });
-  writeOutput(`${
-      result.code === 0
-        ? "NetBundle"
-        : result.artifacts.some((item) => !!item.file)
-          ? "不完整 NetBundle"
-          : "失败 Evidence Bundle"
-    }: ${delivery.path}` + "\n");
-  if (result.artifacts.some((item) => !!item.file)) {
-    writeOutput(`下一步：mono-doctor doctor neta "${delivery.path}"` + "\n");
-  }
+  commandContext.artifacts.add({ command: "net", path: staging });
   return result.code;
 }
 

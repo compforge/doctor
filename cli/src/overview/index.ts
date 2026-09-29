@@ -4,7 +4,7 @@ import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
 import type { PluginContext } from "@compforge/doctor-plugin";
-import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
+import { collectCommand, parseCollectKinds, resolveCollectKinds, type CollectOutput } from "../collect/composite";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { commandOptions, type CommandHostOption } from "../command/options";
@@ -37,7 +37,6 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
 export function validateOverviewOptions(opts: OverviewCliOpts): void {
   overviewServiceNames(opts);
   if (opts.since) overviewWindow(opts.since);
-  parseCollectOutputFormat(opts.format);
   parseCollectKinds(opts.include);
   overviewSampleCount(opts.sampleCount);
   overviewCollectConcurrency(opts.collectConcurrency);
@@ -112,11 +111,9 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
 
 export interface OverviewOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
 
-export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
+export type OverviewInput = CommandInput & Omit<OverviewCliOpts, CommandHostOption>;
 export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { input: OverviewInput; providers: OverviewProvider[] }>({
   name: "doctor overview",
-  reportName: (_input, result) => result.output
-    ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
     const own = serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "overview"));
     const collected = result.output?.collectionResult;

@@ -1,3 +1,4 @@
+import { escapeHtml } from "../collect/output/html";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidenceResult } from "../collect/serialize";
 import { runCollectCpu } from "../collect/cpu";
@@ -51,35 +52,53 @@ export const debugCommand = defineCommand<CommandInput & Omit<Parameters<typeof 
   run: async (context, input) => commandOutcome(await runDebug({ ...input, ...commandOptions(context) }, context)),
 });
 
-export const installCommand = defineCommand<CommandInput & Omit<Parameters<typeof runInstall>[0], Exclude<CommandHostOption, "format">>, void>({
+export const installCommand = defineCommand<CommandInput & Omit<Parameters<typeof runInstall>[0], CommandHostOption>, void>({
   name: "doctor install",
+  serialize: serializeEvidenceResult,
+  render: (context, result) => renderEvidence(context, result, {
+    command: "install", title: "GDB 兼容性",
+    render: artifact => context.write(artifact, `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>`),
+  }),
   validate: validateInstallOptions,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { environment: { kubernetes: true } });
     return input;
   },
-  run: async (context, input) => commandOutcome(await runInstall({ ...commandOptions(context), ...input, output: context.options.output }, context)),
+  run: async (context, input) => commandOutcome(await runInstall({ ...commandOptions(context), ...input }, context)),
 });
 
 export const memCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemory>[0], CommandHostOption>, void>({
   name: "doctor mem",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "mem", title: "内存采集",
+    render: artifact => writeEvidencePage(context, artifact, { title: "内存采集",
+      summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
+  }),
   serialize: serializeEvidenceResult,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { environment: { kubernetes: true } });
     return input;
   },
-  run: async (context, input) => commandOutcome(await runCollectMemory({ ...input, ...commandOptions(context), output: context.options.output }, context)),
+  run: async (context, input) => commandOutcome(await runCollectMemory({ ...input, ...commandOptions(context) }, context)),
 });
 
 export const memaCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemoryAnalysis>[0], CommandHostOption>, void>({
   name: "doctor mema",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "mema", title: "内存分析", render: artifact => { context.read(artifact, "report.html"); },
+  }),
   serialize: serializeEvidenceResult,
   prepare: async (_context, input) => input,
-  run: async (context, input) => commandOutcome(await runCollectMemoryAnalysis({ ...input, ...commandOptions(context), output: context.options.output }, context)),
+  run: async (context, input) => commandOutcome(await runCollectMemoryAnalysis({ ...input, ...commandOptions(context) }, context)),
 });
 
 export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectCpu>[0], CommandHostOption>, void>({
   name: "doctor cpu",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "cpu", title: "CPU 采集",
+    render: artifact => writeEvidencePage(context, artifact, { title: "CPU 采集",
+      summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
+  }),
   serialize: serializeEvidenceResult,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { environment: { kubernetes: true } });
@@ -122,6 +141,11 @@ export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
 
 export const netCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectNetwork>[0], CommandHostOption>, void>({
   name: "doctor net",
+  render: (context, result) => renderEvidence(context, result, {
+    command: "net", title: "网络采集",
+    render: artifact => writeEvidencePage(context, artifact, { title: "网络采集",
+      summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
+  }),
   serialize: serializeEvidenceResult,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { environment: { kubernetes: true } });

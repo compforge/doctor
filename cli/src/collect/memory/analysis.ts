@@ -1,4 +1,3 @@
-import { writeOutput } from "../../terminal/output";
 import { createHash } from "node:crypto";
 import {
   createReadStream,
@@ -60,7 +59,6 @@ import type { CommandContext } from "../../command";
 
 export interface MemoryAnalysisOptions {
   inputs?: string[];
-  output?: string;
 }
 
 interface ResolvedAnalysis {
@@ -339,21 +337,8 @@ function buildComparisonHtml(items: readonly ResolvedAnalysis[]): string {
   ].join("");
 }
 
-function timestamp(date: Date): string {
-  return date.toISOString().replaceAll(/[:-]/g, "").replace("T", "-").slice(0, 15);
-}
 
-function defaultReportPath(items: readonly ResolvedAnalysis[], now: Date): string {
-  if (items.length === 1) {
-    return items[0]!.analysisPath.replace(/\.pydump-analysis\.json$/i, ".html");
-  }
-  return resolve(`doctor-mema-${timestamp(now)}.html`);
-}
 
-function reportPath(requested: string | undefined, fallback: string): string {
-  if (!requested?.trim()) return resolve(fallback);
-  return resolve(/\.html$/i.test(requested) ? requested : `${requested}.html`);
-}
 
 function writeAnalysisReport(
   items: readonly ResolvedAnalysis[],
@@ -419,9 +404,9 @@ export async function runMemoryAnalysis(
     }
     resolved.sort((left, right) =>
       left.analysis.source.created_at.localeCompare(right.analysis.source.created_at));
-    const outputPath = reportPath(opts.output, defaultReportPath(resolved, new Date()));
-    writeAnalysisReport(resolved, outputPath, commandContext.profile.name);
-    writeOutput(`[collect] Memory 分析报告：${outputPath}\n`);
+    const directory = mkdtempSync(join(tmpdir(), "doctor-mema-"));
+    commandContext.artifacts.add({ command: "mema", path: directory });
+    writeAnalysisReport(resolved, join(directory, "report.html"), commandContext.profile.name);
     if (resolved.length > 1) {
       useLogger("collect").info(`已对比 ${resolved.length} 份 heap 的 type 对象数与 shallow size 变化`);
     }

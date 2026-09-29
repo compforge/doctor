@@ -1,4 +1,3 @@
-import { writeOutput } from "../../terminal/output";
 import { isInteractive } from "../../terminal/policy";
 import {
   createKubernetesExecutor,
@@ -49,10 +48,6 @@ import {
 } from "./report";
 
 export function validateInstallOptions(opts: InstallCliOpts): void {
-  const reportFormat = opts.format?.trim().toLowerCase();
-  if (reportFormat && reportFormat !== "md" && reportFormat !== "json") {
-    throw new Error(`--format 只支持 md 或 json：'${opts.format}'`);
-  }
   const configuredProgram = opts.program ? parseInstallProgram(opts.program) : undefined;
   if (!configuredProgram && (!isInteractive())) {
     throw new Error("当前为非交互终端；请显式指定 --program gdb");
@@ -137,8 +132,7 @@ export async function runInstall(
       packageBundles: packageBundleReport(bundleCandidates, target, packages, selectedBundle),
       result: { status, stage, reason },
     };
-    const path = writeInstallCompatibilityReport(opts, report);
-    if (path) writeOutput(`GDB 兼容性报告：${path}` + "\n");
+    commandContext.artifacts.add({ command: "install", path: writeInstallCompatibilityReport(report) });
     return code;
   };
   if (gdbReady(existingGdb)) {

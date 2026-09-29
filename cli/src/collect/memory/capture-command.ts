@@ -1,6 +1,6 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { infra } from "../../infra";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -20,7 +20,6 @@ import { EvidenceBundle } from "../evidence";
 import { runCollect } from "../engine";
 import { failReason } from "../../infra/k8s/result";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
-import { deliverFailureBundle } from "../output/failure-bundle";
 import {
   parseCapturePreference,
   parseHeapDumpDetail,
@@ -49,7 +48,6 @@ export interface CollectMemoryCliOptions extends KubernetesCommandInput {
   container?: string;
   pid?: string;
   yes?: boolean;
-  output?: string;
   detail?: string;
   strReprLen?: string;
   captureVia?: string;
@@ -191,7 +189,7 @@ export async function runCollectMemory(
         strReprLen,
         preference,
         transferChunkBytes,
-        output: opts.output,
+        output: join(staging, "heap.pyheap"),
         invokedAt,
         confirmed: !!opts.yes,
       },
@@ -231,11 +229,7 @@ export async function runCollectMemory(
         if (!cleanup.ok) log(`[collect] 容器内 ${backendMetadata.toolDir} 清理失败，可稍后手工删除`);
       }
     }
-    rmSync(stagingRoot, { recursive: true, force: true });
-    useLogger("collect").success(`${pyheapBackend.displayName} 文件：${result.heapPath}`);
-    writeOutput(`采集索引：${result.capturePath}` + "\n");
-    writeOutput(`下一步：doctor mema ${result.capturePath}` + "\n");
-    return 0;
+    useLogger("collect").success(`${pyheapBackend.displayName} 采集完成`);
   }
   if (result.code === 130) {
     rmSync(stagingRoot, { recursive: true, force: true });
@@ -243,7 +237,7 @@ export async function runCollectMemory(
     return 130;
   }
 
-  const reasons = result.reasons?.length
+  const reasons = result.code === 0 ? [] : result.reasons?.length
     ? result.reasons
     : [result.reason ?? `${pyheapBackend.displayName} 采集失败`];
   for (const reason of reasons) {
@@ -254,7 +248,7 @@ export async function runCollectMemory(
   }
   bundle.writeSummary(
     `# doctor mem\n\n- 目标：${collect.kubernetes.namespace}/${target.pod}/${selected.value.name}\n`
-    + `- PID：${result.pid ?? "-"}\n- 结果：失败\n- 原因：\n`
+    + `- PID：${result.pid ?? "-"}\n- 结果：${result.code === 0 ? "成功" : "失败"}\n- 原因：\n`
     + `${reasons.map((reason) => `  - ${reason}`).join("\n")}\n`,
   );
   writeFileSync(join(staging, "doctor.log"), `${logs.join("\n")}\n`, { mode: 0o600 });
@@ -283,16 +277,6 @@ export async function runCollectMemory(
     startedAt: invokedAt.toISOString(),
     finishedAt: new Date().toISOString(),
   });
-  const failure = await deliverFailureBundle({
-    bundleDir: staging,
-    bundleName: basename(staging),
-    collectCode: result.code,
-  });
-  if (failure.packed.ok) {
-    rmSync(stagingRoot, { recursive: true, force: true });
-    writeOutput(`失败证据：${failure.path}` + "\n");
-  } else {
-    writeOutput(`原始失败证据：${staging}` + "\n");
-  }
+  commandContext.artifacts.add({ command: "mem", path: staging });
   return result.code;
 }

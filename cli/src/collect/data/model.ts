@@ -7,7 +7,6 @@ import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { DatabaseIdentity } from "../../infra/database";
 import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 
-export type DataOutputFormat = "default" | "bundle" | "json" | "html" | "summary";
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts {
@@ -17,15 +16,11 @@ export interface CollectDataCliOpts {
   context?: string;
   profile?: string;
   config?: string;
-  format?: string;
-  output?: string;
   services?: string;
 }
 
 export interface DataConfig {
   ids: string[];
-  format: DataOutputFormat;
-  outputPath?: string;
   reportName: string;
   profileName: string;
   fallbackIdentity?: DatabaseIdentity;

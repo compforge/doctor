@@ -1,5 +1,6 @@
-import { writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import type { DebugGdbFact } from "../../infra/target/debug";
 import {
   bundleMatches,
@@ -7,10 +8,6 @@ import {
   type PackageBundle,
   type PackageTargetFact,
 } from "../../infra/target/package-install";
-import type {
-  InstallCliOpts,
-  InstallReportFormat,
-} from "./model";
 
 export interface InstallCompatibilityReport {
   schema: "doctor.install-compatibility/v1";
@@ -36,20 +33,6 @@ export interface InstallCompatibilityReport {
     stage: string;
     reason: string;
   };
-}
-
-function reportFormat(opts: InstallCliOpts): InstallReportFormat | undefined {
-  const configured = opts.format?.trim().toLowerCase();
-  if (configured && configured !== "md" && configured !== "json") {
-    throw new Error(`--format 只支持 md 或 json：'${opts.format}'`);
-  }
-  if (configured === "md" || configured === "json") return configured;
-  if (!opts.output) return undefined;
-  return opts.output.toLowerCase().endsWith(".json") ? "json" : "md";
-}
-
-function timestampName(date: Date): string {
-  return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
 }
 
 function cell(value: unknown): string {
@@ -159,19 +142,11 @@ export function renderInstallCompatibilityMarkdown(
   return lines.join("\n");
 }
 
-export function writeInstallCompatibilityReport(
-  opts: InstallCliOpts,
-  report: InstallCompatibilityReport,
-): string | undefined {
-  const format = reportFormat(opts);
-  if (!format) return undefined;
-  const path = opts.output
-    ?? `doctor-install-gdb-${report.target.pod}-${timestampName(new Date(report.generatedAt))}.${format}`;
-  const content = format === "json"
-    ? `${JSON.stringify(report, null, 2)}\n`
-    : renderInstallCompatibilityMarkdown(report);
-  writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
-  return path;
+export function writeInstallCompatibilityReport(report: InstallCompatibilityReport): string {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-install-"));
+  writeFileSync(join(directory, "diagnosis.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 });
+  writeFileSync(join(directory, "summary.md"), renderInstallCompatibilityMarkdown(report), { mode: 0o600 });
+  return directory;
 }
 
 export function packageBundleReport(

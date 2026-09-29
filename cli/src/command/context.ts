@@ -76,8 +76,6 @@ function commandScopeKey(scope: CommandScope): string {
  */
 export interface CommandContextOptions {
   yes?: boolean;
-  format?: string;
-  output?: string;
   plugin?: PluginDefinition;
   loadPlugin?: () => Promise<PluginDefinition | undefined>;
   onError?: (error: unknown, command: string) => void;

@@ -155,21 +155,7 @@ export async function resolveCollectKinds(
   return selected as CollectKind[] | undefined;
 }
 
-export function safeCollectBizId(bizId: string): string {
-  const normalized = bizId
-    .normalize("NFKC")
-    .trim()
-    .replace(/[^\p{Letter}\p{Number}._-]+/gu, "-")
-    .replace(/^-+|-+$/g, "");
-  return Array.from(normalized || "biz").slice(0, 64).join("");
-}
 
-export function collectReportName(bizIds: readonly string[], now = new Date()): string {
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const target = bizIds.length === 1 ? safeCollectBizId(bizIds[0]!) : "batch";
-  return `doctor-collect-${target}-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
-    + `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
 
 export function parseCollectOutputFormat(raw: string | undefined): CollectOutputFormat {
   const format = raw?.trim() || "default";
@@ -273,7 +259,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       }
       return composeReports("doctor collect", reports);
     },
-    reportName: (input, _result, now) => collectReportName(input.bizIds, now),
+
     validate: (input) => {
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
         throw new CommandInputError("doctor collect 需要至少一个 biz-id");

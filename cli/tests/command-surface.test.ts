@@ -556,7 +556,7 @@ describe("command help", () => {
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).not.toContain("--mode <mode>");
     expect(result.stdout).not.toContain("--interval");
-    expect(result.stdout).not.toContain("--format");
+    expect(result.stdout).toContain("--format");
   });
 
   test("image publication exposes registry and source options", async () => {
@@ -606,7 +606,7 @@ describe("command help", () => {
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).not.toContain("--mode <mode>");
     expect(result.stdout).not.toContain("--pod <pod>");
-    expect(result.stdout).not.toContain("--format");
+    expect(result.stdout).toContain("--format");
     expect(result.stdout).not.toContain("--snapshot");
   });
 

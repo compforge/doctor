@@ -1,6 +1,5 @@
 import { dataProviders, findDataProvider } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
-import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import {
   resolveKubernetesCommandConfig,
@@ -14,32 +13,10 @@ import {
 import {
   type CollectDataCliOpts,
   type DataConfig,
-  type DataOutputFormat,
   type DataServiceSelection,
 } from "./model";
 import type { CommandContext } from "../../command";
-import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
-export function parseDataOutputFormat(value: string | undefined): DataOutputFormat {
-  const format = value?.trim() || "default";
-  if (format !== "default" && format !== "bundle" && format !== "json" && format !== "html" && format !== "summary") {
-    throw new Error(`--format 只支持 bundle、json、html 或 summary: '${format}'`);
-  }
-  return format;
-}
-
-export function resolveDataHtmlOutputPath(output: string | undefined, reportName: string): string {
-  if (!output) return join(".", `${reportName}.html`);
-  if (/\.(?:tar\.gz|tgz)$/i.test(output)) {
-    throw new Error("--format html 的输出路径不能使用 .tar.gz/.tgz 后缀");
-  }
-  return output.toLowerCase().endsWith(".html") ? output : `${output}.html`;
-}
-
-export function resolveDataJsonOutputPath(output: string | undefined, reportName: string): string {
-  if (!output) return join(".", `${reportName}.json`);
-  return output.toLowerCase().endsWith(".json") ? output : `${output}.json`;
-}
 
 export function dataReportName(now: Date): string {
   const pad = (value: number) => String(value).padStart(2, "0");
@@ -131,18 +108,7 @@ export async function resolveDataConfig(
     ...(opts.bizIds ?? []),
   ].map((bizId) => bizId.trim()).filter(Boolean))];
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
-  const format = parseDataOutputFormat(opts.format);
-  if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
   const reportName = dataReportName(new Date());
-  const outputPath = format === "default"
-    ? resolveDefaultReportPaths(opts.output, reportName).html
-    : format === "html"
-      ? resolveDataHtmlOutputPath(opts.output, reportName)
-      : format === "bundle"
-        ? resolveArchivePath(opts.output, reportName)
-        : format === "json"
-          ? resolveDataJsonOutputPath(opts.output, reportName)
-          : undefined;
   const resolvedProfile = {
     name: commandContext.profile.name,
     profile: commandContext.profile.value,
@@ -156,8 +122,6 @@ export async function resolveDataConfig(
   const services = parseDataServices(opts.services, catalog);
   return {
     ids,
-    format,
-    outputPath,
     reportName,
     profileName: collect.profileName,
     fallbackIdentity,

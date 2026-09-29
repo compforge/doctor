@@ -10,7 +10,9 @@ import {
   resolveCaptureHeapPath,
 } from "../src/collect/memory/capture-artifact";
 import { resolveHostPydumpAnalyzer } from "../src/infra/dump";
-import { CommandContext } from "../src/command";
+import { finalizeResult, readReport } from "./report-fixture";
+import { memaCommand } from "../src/app/core-commands";
+import { CommandStatus, CommandContext } from "../src/command";
 
 const createCommandContext = () => new CommandContext({});
 
@@ -64,10 +66,10 @@ describe("doctor mema local analysis", () => {
       size: Buffer.byteLength(body),
       createdAt: "2026-07-27T08:00:00Z",
     })));
-    const output = join(directory, "report.html");
+    const context = createCommandContext();
 
-    expect(await runMemoryAnalysis({ inputs: [heapPath], output }, createCommandContext())).toBe(0);
-    expect(existsSync(output)).toBe(true);
+    expect(await runMemoryAnalysis({ inputs: [heapPath] }, context)).toBe(0);
+    expect(existsSync(join(context.artifacts.list()[0]!.path, "report.html"))).toBe(true);
   });
 
   test("compares multiple analysis JSON files by type deltas", async () => {
@@ -82,10 +84,15 @@ describe("doctor mema local analysis", () => {
       sha256: "b".repeat(64), size: 200, createdAt: "2026-07-27T09:00:00Z",
       dictCount: 25, dictBytes: 4096,
     })));
-    const output = join(directory, "comparison.html");
+    const context = createCommandContext();
 
-    expect(await runMemoryAnalysis({ inputs: [second, first], output }, createCommandContext())).toBe(0);
-    expect(readFileSync(output, "utf-8")).toContain("+15");
+    expect(await runMemoryAnalysis({ inputs: [second, first] }, context)).toBe(0);
+    expect(readFileSync(join(context.artifacts.list()[0]!.path, "report.html"), "utf-8")).toContain("+15");
+    const output = join(directory, "published.html");
+    expect(await finalizeResult(context, memaCommand,
+      { status: CommandStatus.Ok, output: undefined, artifacts: context.artifacts.list() },
+      { format: "html", output })).toBe(0);
+    expect(readReport(readFileSync(output, "utf8")).pages).toContain("+15");
   });
 
   test("reads a capture sidecar and discovers it before derived files", () => {

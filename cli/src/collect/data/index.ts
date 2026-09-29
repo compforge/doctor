@@ -150,7 +150,7 @@ function writeDataManifest(
     params: { services, inspect_capabilities: Object.fromEntries(services.map(service => {
       const capability = providers.find(provider => provider.name === service)!.extension;
       return [service, { provides: capability.provides, expands: capability.expands ?? [] }];
-    })), output_format: config.format },
+    })) },
     startedAt, finishedAt: new Date().toISOString(),
   });
 }

@@ -204,7 +204,6 @@ export async function runCollectInspect(
       services: config.services,
       deployment_config: config.includeDeploymentConfig,
       dependencies: config.includeDependencies,
-      output_format: config.format,
     },
     startedAt,
     finishedAt: new Date().toISOString(),

@@ -137,7 +137,8 @@ doctor install \
   --output doctor-install-gdb.md
 ```
 
-报告 schema 为 `doctor.install-compatibility/v1`，记录 Target 的发行版、架构、kernel、glibc、Python、
+默认以 summary 打印兼容性摘要；报告保存、输出预检和不覆盖发布由根交付计划处理。
+JSON 导出包含 `manifest` 和 `result`，其中 `result` 的 schema 为 `doctor.install-compatibility/v1`，记录 Target 的发行版、架构、kernel、glibc、Python、
 CPU flags/features、容器 CapEff/Seccomp/Yama ptrace 状态，安装前后的 GDB Python scripting 事实和
 inferior call 验收结果，以及当前目录或显式 package set 中全部 candidate manifest。失败报告保留
 attach-call 原始错误和可直接搜索的组合关键词；JSON 适合自动化收集，Markdown 适合人工流转。

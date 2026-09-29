@@ -122,7 +122,6 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
     bizIds: ["biz-1"],
     services: service,
     namespace: "vke-system",
-    format: "json",
   }, plugin.services, command, executor);
 
   expect(context?.command).toBe(command);
@@ -237,8 +236,6 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
       bizIds: ["biz-1"],
       services: `${traceResolver},${resolver},${records}`,
       namespace: "vke-system",
-      format: "json",
-      output: join(root, "result.json"),
     }, relationPlugin.services, context, executor);
     expect(prepared).toBeDefined();
     const code = await runCollectData(prepared!, relationPlugin, {
@@ -267,8 +264,6 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
-      format: "json",
-      output: requestedOutput,
     }, plugin.services, context, executor);
     expect(prepared).toBeDefined();
     const code = await runCollectData(prepared!, plugin, contexts);
@@ -319,8 +314,6 @@ test("doctor data 批量 JSON 保留各 biz-id 的选择和覆盖度，Facts 只
       bizIds: ["biz-1", "biz-2"],
       services: service,
       config: join(root, "missing-config.yaml"),
-      format: "json",
-      output: outputPath,
     }, plugin.services, context, executor);
     expect(prepared).toBeDefined();
     const code = await runCollectData(prepared!, plugin, contexts);
@@ -360,7 +353,6 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
       bizIds: ["biz-1"],
       services: service,
       config: join(root, "missing-config.yaml"),
-      output,
     }, plugin.services, context, executor);
     expect(prepared).toBeDefined();
     const code = await runCollectData(prepared!, plugin, contexts);

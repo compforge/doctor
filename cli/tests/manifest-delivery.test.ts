@@ -1,3 +1,4 @@
+import { createDeliveryPlan, assertDeliveryPathsAvailable } from "../src/app/delivery-plan";
 import { serializeEvidenceResult } from "../src/collect/serialize";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
@@ -38,7 +39,7 @@ for (const status of [CommandStatus.Ok, CommandStatus.Partial, CommandStatus.Fai
     const output = captureOutput();
     try {
       const code = status === CommandStatus.Cancelled ? 130 : status === CommandStatus.Failed ? 1 : 0;
-      expect(await finalizeCommand({ commandInput: {}, spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, delivery: { format: "manifest" } })).toBe(code);
+      expect(await finalizeCommand({ spec: { name: "doctor log", run: async () => { throw new Error("must not collect"); }, serialize: serializeEvidenceResult, render }, code, result: { status, output: undefined, artifacts: context.artifacts.list() }, context, plan: createDeliveryPlan("doctor log", { format: "manifest" }) })).toBe(code);
       const manifest = output.json();
       roots.push(manifest.delivery.location.directory);
       expect(manifest.execution.status).toBe(status);
@@ -95,9 +96,10 @@ test("manifest refuses external symlinks without changing their target permissio
   } finally { output.restore(); }
 });
 
-test("error-level logging is independent of the collectors Bundle format", async () => {
-  const context = new CommandContext({}, undefined, { format: "manifest" });
-  expect(commandOptions(context).format).toBe("bundle");
+test("domain options omit delivery settings and logging remains independent", async () => {
+  const context = new CommandContext({});
+  expect(commandOptions(context)).not.toHaveProperty("format");
+  expect(commandOptions(context)).not.toHaveProperty("output");
   const output = captureOutput();
   try {
     await withLogger("error", async () => { await Promise.resolve(); useLogger().info("progress\n"); });

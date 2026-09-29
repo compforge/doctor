@@ -173,6 +173,19 @@ result/
 manifest 的 `--output` 必须是尚不存在的目录，未指定则保留唯一临时目录。目录权限 0700、文件 0600，
 拒绝包含软链接的 Artifact，不覆盖已有输出。
 
+根入口在准备 Profile / Plugin 和远端访问前生成不可变 `DeliveryPlan`。显式路径与默认生成路径都转换为
+绝对路径并一次确定；默认名称使用命令名、启动时间和唯一执行标识，不再从采集结果取名。
+预检覆盖扩展名补齐、默认格式的 HTML / Bundle 两个目标以及父目录可用性。任一目标被占用即停止，
+包含目录和悬空软链接。未知格式直接报错；`summary` 只打印 Markdown，不能搭配 `--output`。
+
+交付阶段消费同一计划，再检查全部目标。文件和归档先在目标旁完整写入，再以排他硬链接发布，避免覆盖或暴露未写完的文件。
+交付冲突或写入失败保留完整证据和 Manifest，不重新采集。多个输出不保证整体原子提交；已经发布的文件
+会逐项显示，交付失败写入 Manifest。
+
+`install`、`mem`、`mema`、`cpu`、`net` 同样先登记证据，再由根交付。`install` 默认 summary；
+采集与分析命令统一默认 HTML + Bundle。其中内存包内含 `heap.pyheap`、采集索引 `heap.json` 和诊断证据；解包后可将索引传给 `mema`。
+`mem --output` 指定报告 basename；使用 `--format bundle` 可仅交付归档，不再直接指定 heap 文件路径。
+
 ## 状态与读取顺序
 
 - `execution` 表示命令采集终态，partial 保持 partial；业务状态从领域证据读取。
