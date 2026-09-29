@@ -60,9 +60,9 @@ async function executeCommand<Input extends CommandInput, Output>(
     } finally { process.removeListener("SIGINT", interrupt); }
   } catch (error) {
     reportError(error, { context: spec.name, summary: "fatal" });
-    process.exitCode = opts.format?.trim() === "manifest"
+    process.exitCode = !(error instanceof CommandInputError) && opts.format?.trim() === "manifest"
       ? await deliverPreparationFailure(spec.name, error instanceof Error ? error.message : String(error), opts.output)
-      : 1;
+      : error instanceof CommandInputError ? 2 : 1;
   }
 }
 

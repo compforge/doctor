@@ -7,6 +7,9 @@
 跨 Command 生命周期见 [Kernel](kernel.md)。[HTML 报告渲染](rendering.md) 基于本规范定义的输出
 生成页面，不另行定义输出数据格式或存储布局。
 
+显式传入的 `--output` 路径若已存在，框架在 Prepare 阶段报错退出，不执行采集或生成失败报告。
+此检查针对传入的路径；格式对应的扩展名处理和最终交付检查沿用原有规则。
+
 ## 领域 Command 与聚合 Command
 
 按输出职责区分两类 Command：
