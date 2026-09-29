@@ -77,14 +77,14 @@ build-linux-arm64: prepare-dist
 build-linux-arm64-kernel-4.19: build-linux-arm64
 	cp $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-5.6-glibc-2.25 $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-4.19-glibc-2.28
 
-# 麒麟 V10（kernel 4.19 / glibc 2.28）复用相应架构的 Bun executable。
+# 麒麟使用 Node SEA，避免 Bun 在 ARM64 64KB 页系统上启动失败；保留 OpenTUI 全屏交互。
 build-kylin: build-kylin-arm64 build-kylin-x86-64
 
-build-kylin-arm64: build-linux-arm64-kernel-4.19
-	cp $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-arm64-kernel-4.19-glibc-2.28 $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-arm64-kernel-4.19-glibc-2.28
+build-kylin-arm64: prepare-dist
+	bun scripts/build-node-sea-doctor.ts --entry $(DOCTOR_ENTRY) --arch arm64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-arm64-kernel-4.19-glibc-2.28 --commands '$(DOCTOR_COMMANDS)'
 
-build-kylin-x86-64: build-linux-x64-modern
-	cp $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-debian-x64-kernel-5.6-glibc-2.25 $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-x86-64-kernel-4.19-glibc-2.28
+build-kylin-x86-64: prepare-dist
+	bun scripts/build-node-sea-doctor.ts --entry $(DOCTOR_ENTRY) --arch x64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-x86-64-kernel-4.19-glibc-2.28 --commands '$(DOCTOR_COMMANDS)'
 
 test:
 	bun test $(TEST_FILES)

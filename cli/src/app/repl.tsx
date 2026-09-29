@@ -42,8 +42,11 @@ export async function runRepl(
     boot.agent,
     plugin ? `${plugin.id}@${plugin.version}` : undefined,
   );
-  if (!process.versions.bun) {
-    // 旧内核的 Node SEA 不具备当前 OpenTUI 所需的 FFI，Chat 在该运行时使用行式交互。
+  // SEA ships the native assets and enables FFI; Node 22 and runtime-free bundles keep the plain REPL.
+  const nodeFullscreen = !process.versions.bun
+    && process.getBuiltinModule?.("node:sea")?.isSea()
+    && !!process.getBuiltinModule?.("node:ffi");
+  if (!process.versions.bun && !nodeFullscreen) {
     await runPlainRepl(session);
     return;
   }

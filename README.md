@@ -112,6 +112,10 @@ Build platform binaries into `dist/`:
 make build
 ```
 
+Kylin artifacts embed Node 26 and retain full-screen chat without a Bun installation.
+They require glibc 2.28+, `libatomic.so.1`, and the Node-compatible C++ runtime on the host.
+Validate the artifact on the target machine before rollout, especially ARM64 systems with 64KB pages.
+
 Build only the local macOS binary:
 
 ```bash
