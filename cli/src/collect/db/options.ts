@@ -4,6 +4,7 @@ import { deliveryFormatOption } from "../../app/command-defaults";
 export function withDbOptions(command: Command): Command {
   return command
     .option("--service <name>", "贡献数据库访问目标的业务 Service")
+    .option("--data-source <id>", "显式选择 Service 的 DB 数据源；同库同账号自动归并，存在不同目标或连接身份时可指定")
     .option("-D, --database <name>", "Service 可访问的 database")
     .option("--table <name>", "table 或 database.table；必须唯一定位")
     .option("--show-databases", "列出 Service 账号可见的数据库（不代表拥有全部表的读取权限）")

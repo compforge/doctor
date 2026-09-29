@@ -7,6 +7,7 @@ import { resolveStoreProviderConfig } from "../src/collect/store/config";
 import { borrowDatabase, resolveDatabaseTarget } from "../src/datasource/database";
 import * as databaseAccess from "../src/datasource/database";
 import { resolveDbProviders } from "../src/collect/db/providers";
+import { databaseTargets } from "../src/collect/db/discovery";
 import { resolveDbRequest } from "../src/collect/db/input";
 import { openPluginContext } from "../src/plugin/context";
 import { validatePluginDefinition } from "../src/plugin/definition";
@@ -61,8 +62,9 @@ test("store, db and business consumers share one Service datasource client and r
     try {
       const providers = await resolveDbProviders(command, await resolveDbRequest({ service: "api", showDatabases: true }));
       expect(providers.service).toBe("logical-api");
-      expect(providers.providers).toHaveLength(1);
-      expect(providers.providers[0]!.dataSources).toEqual([
+      expect(providers.providers).toHaveLength(2);
+      expect(databaseTargets(providers.providers)).toHaveLength(1);
+      expect(providers.providers.flatMap(provider => provider.dataSources)).toEqual([
         { id: "primary", description: "Canonical records" },
         { id: "history", description: "Historical records on the same connection" },
       ]);
@@ -114,4 +116,61 @@ test("Plugin loader validates datasource declarations; describe never constructs
   expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }), manifest)).not.toThrow();
   const old = { id: "test", version: "0.0.1", services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { stores: [declaration] } }] } };
   expect(() => validatePluginDefinition(old, manifest)).toThrow("unsupported Service API");
+});
+
+test("different factories remain logical sources with separate clients for the same runtime database", async () => {
+  let starts = 0;
+  let closes = 0;
+  class FakeClient extends MysqlClient<ServiceDatabaseTarget> {
+    override async initialize() { starts++; }
+    override async dispose() { closes++; }
+    override get target() { return target; }
+  }
+  const sources: ServiceDatabaseDataSource[] = ["primary", "secondary"].map(id => ({
+    id, kind: "db", backend: "mysql", access: {}, source: {
+      clientKey: `${id}-config`, createClient: context => new FakeClient({ resolve: async () => target, transports: [] },
+        { signal: context.signal, connectTimeoutMs: 100, queryTimeoutMs: 100 }),
+    },
+  }));
+  const command = new CommandContext({}, undefined, { plugin: {
+    id: "test", version: "0.0.1", services: createServiceCatalog([{
+      name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: [], dataSources: sources,
+    }]),
+  } });
+  const access = spyOn(databaseAccess, "resolveDatabaseConfig").mockImplementation(async (_context, _input, service, capability) => ({
+    config: { collect, service, capability }, executor,
+  }));
+  try {
+    const resolved = await resolveDbProviders(command, await resolveDbRequest({ service: "api", showDatabases: true }));
+    expect(resolved.failures).toEqual([]);
+    expect(resolved.providers.map(provider => provider.id)).toEqual(["primary", "secondary"]);
+    expect(databaseTargets(resolved.providers)).toHaveLength(1);
+    expect(starts).toBe(2);
+    expect(closes).toBe(0);
+  } finally { access.mockRestore(); await command.disposeClients(); }
+  expect(closes).toBe(2);
+});
+
+test("explicit datasource selection filters before resolution and unknown sources never access the environment", async () => {
+  const sources: ServiceDatabaseDataSource[] = ["primary", "secondary"].map(id => ({ id, kind: "db", backend: "mysql", envPrefix: "DB" }));
+  const command = new CommandContext({}, undefined, { plugin: {
+    id: "test", version: "0.0.1", services: createServiceCatalog([{
+      name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+      workloads: [], dataSources: sources,
+    }]),
+  } });
+  const seen: string[] = [];
+  const access = spyOn(databaseAccess, "resolveDatabaseConfig").mockImplementation(async (_context, _input, _service, capability) => {
+    seen.push(capability.id);
+    throw new Error("fixture access failure");
+  });
+  try {
+    await expect(resolveDbProviders(command, await resolveDbRequest({ service: "api", dataSource: "missing", showDatabases: true })))
+      .rejects.toThrow("未声明 DB DataSource");
+    expect(seen).toEqual([]);
+    const resolved = await resolveDbProviders(command, await resolveDbRequest({ service: "api", dataSource: "secondary", showDatabases: true }));
+    expect(seen).toEqual(["secondary"]);
+    expect(resolved.failures.map(failure => failure.id)).toEqual(["secondary"]);
+  } finally { access.mockRestore(); await command.disposeClients(); }
 });

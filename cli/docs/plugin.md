@@ -277,7 +277,9 @@ Service 使用 `dataSources[]` 声明数据源的 id、类型、用途与访问�
 DB source 使用 `PluginDataSource<MysqlClient>`，与标准 `envPrefix` 简写互斥；
 可用 SDK 的 `mysqlDataSource(key, resolve)` 构造 source，配置解析在 Client 初始化时执行，
 回调收到根执行生命周期内的上下文，不能捕获短生命周期的 capability context。
-多个数据库目标声明多个 dataSources；库表通过 Client 实时发现，不由 Plugin 重复维护清单。
+同一 Service 可声明多个同类型 dataSources，每个 ID 保留稳定的逻辑依赖身份；不同声明在某个环境
+可能解析到同一目标，也可能分开部署。目标归并由消费命令依据解析结果完成，不能用声明 ID 或
+Client 的缓存 key 代替资源身份。库表通过 Client 实时发现，不由 Plugin 重复维护清单。
 `store`、`db` 与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
 
 DB、VDB、S3、Redis 都可通过 `source` 贡献实现 initialize/dispose 的类型化 Client，由同一根

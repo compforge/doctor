@@ -1,5 +1,4 @@
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
-import { clientKey } from "@compforge/harness-common";
 import { CommandInputError, type CommandContext } from "../../command";
 import { chooseParameter, ParameterCancelled } from "../../terminal/parameters";
 import { borrowDatabase, resolveDatabaseConfig, resolveDatabaseTarget } from "../../datasource/database";
@@ -19,8 +18,13 @@ export async function resolveDbProviders(context: CommandContext, request: DbReq
   if (!services.includes(service)) throw new CommandInputError(`Service '${service}' 未声明 DB capability`);
   const providers: DbProvider[] = [];
   const failures: ProviderResolution["failures"] = [];
-  const identities = new Map<string, DbProvider>();
-  for (const capability of serviceDataSources(context.plugin.services, service, "db")) {
+  const declarations = serviceDataSources(context.plugin.services, service, "db");
+  const selectedSource = request.input.dataSource;
+  if (selectedSource && !declarations.some(source => source.id === selectedSource)) {
+    throw new CommandInputError(`Service '${service}' 未声明 DB DataSource '${selectedSource}'；候选：${declarations.map(source => source.id).join(", ")}`);
+  }
+  for (const capability of declarations) {
+    if (selectedSource && capability.id !== selectedSource) continue;
     if (capability.kind !== "db") continue;
     context.signal.throwIfAborted();
     const declaration = { id: capability.id, description: capability.description };
@@ -34,13 +38,8 @@ export async function resolveDbProviders(context: CommandContext, request: DbReq
       if (!target.host || !target.user || !target.database || !Number.isInteger(target.port) || target.port < 1 || target.port > 65535 || typeof target.password !== "string") {
         throw new CommandInputError("Service 返回了无效的数据库目标");
       }
-      // Multiple declarations of the same account/instance are one SQL routing target.
-      const identity = clientKey("db-routing", {
-        host: target.host, port: target.port, user: target.user, password: target.password,
-        source: capability.source?.clientKey, access: capability.access, kube: resolved.config.collect.kubernetes,
-      });
-      const existing = identities.get(identity);
-      if (existing) { existing.dataSources.push(declaration); continue; }
+      // Keep declaration-specific clients and authorization. Runtime database identity is
+      // resolved after discovery, independently of a source's client-cache key.
       const client = await borrowDatabase(context, resolved.config, resolved.executor, target);
       const provider: DbProvider = {
         dataSources: [declaration],
@@ -49,7 +48,6 @@ export async function resolveDbProviders(context: CommandContext, request: DbReq
           { ...target, database: selectedDatabase ?? target.database }, sql, values, limits,
         ),
       };
-      identities.set(identity, provider);
       providers.push(provider);
     } catch (error) {
       if (error instanceof ParameterCancelled || context.signal.aborted) throw error;

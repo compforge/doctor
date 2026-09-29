@@ -9,6 +9,7 @@ import { validateSql } from "./sql";
 
 export interface DbInput extends CommandInput, KubernetesCommandInput {
   service?: string;
+  dataSource?: string;
   database?: string;
   table?: string;
   pod?: string;

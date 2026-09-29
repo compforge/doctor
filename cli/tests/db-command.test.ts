@@ -6,7 +6,7 @@ import { createServiceCatalog } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
 import { dbCommand } from "../src/collect/db/command";
 import { resolveDbRequest, tableScope, validateDbInput, type DbRequest } from "../src/collect/db/input";
-import { discoverDatabases, selectDatabaseTarget, type DbProvider } from "../src/collect/db/discovery";
+import { databaseCandidates, databaseTargets, discoverDatabases, selectDatabaseTarget, type DbProvider } from "../src/collect/db/discovery";
 import { validateSql, quoteIdentifier } from "../src/collect/db/sql";
 import * as providers from "../src/collect/db/providers";
 import { canPrompt } from "../src/terminal/parameters";
@@ -123,6 +123,7 @@ test("CLI exposes db flags and Distribution can set db defaults", () => {
   expect(db.helpInformation()).not.toContain("--no-interactive");
   expect(db.options.some(option => option.attributeName() === "interactive")).toBe(false);
   expect(db.helpInformation()).not.toContain("--store");
+  expect(db.helpInformation()).toContain("--data-source");
   expect(db.opts().format).toBe("manifest");
 });
 
@@ -204,4 +205,93 @@ test("discovery summary handles omitted descriptions, empty results and truncati
   expect(summary).toContain("| primary | app | — | partial");
   expect(summary).toContain("notes \\| line break");
   expect(databaseDiscoverySummary([{ provider: first, result: result([]) }], [])).toContain("未发现可见数据库");
+});
+
+test("same database is one target while declarations and access identities remain distinct", async () => {
+  const primary = provider();
+  const secondary = provider("secondary");
+  secondary.target = { ...primary.target, source: { path: "/other/database.yaml" } };
+  const rows = result([{ database_name: "app", table_name: "messages" }]);
+  const observations = [primary, secondary].map(provider => ({ provider, result: rows }));
+  expect(databaseTargets([primary, secondary])).toHaveLength(1);
+  expect(databaseCandidates(observations, request())).toHaveLength(1);
+  const selected = await selectDatabaseTarget(request(), observations);
+  expect(selected.provider).toBe(primary);
+  expect(selected.dataSources.map(source => source.id)).toEqual(["primary", "secondary"]);
+
+  for (const credentials of [{ user: "other-reader" }, { password: "rotated-secret" }]) {
+    secondary.target = { ...primary.target, ...credentials };
+    expect(databaseTargets([primary, secondary])).toHaveLength(1);
+    expect(databaseCandidates(observations, request())).toHaveLength(1);
+    await expect(selectDatabaseTarget(request(), observations)).rejects.toThrow("--data-source");
+  }
+});
+
+test("target identity includes endpoint port and actual discovered database, not source default", async () => {
+  const primary = provider();
+  for (const location of [{ host: "another-host" }, { port: 3307 }, { database: "another_db" }]) {
+    const secondary = provider("secondary");
+    secondary.target = { ...primary.target, ...location };
+    expect(databaseTargets([primary, secondary])).toHaveLength(2);
+  }
+  const secondary = provider("secondary");
+  secondary.target = { ...primary.target, database: "another_default" };
+  const observations = [primary, secondary].map(provider => ({
+    provider, result: result([{ database_name: "app", table_name: "messages" }]),
+  }));
+  expect(databaseCandidates(observations, request())).toHaveLength(1);
+  expect((await selectDatabaseTarget(request(), observations)).database).toBe("app");
+  secondary.target = { ...secondary.target, port: 3307 };
+  expect(databaseCandidates(observations, request())).toHaveLength(2);
+  await expect(selectDatabaseTarget(request(), observations)).rejects.toThrow("--data-source");
+});
+
+test("an unavailable alias is retained as a gap and never authorizes SQL on another route", async () => {
+  const primary = provider();
+  const secondary = provider("secondary");
+  secondary.target = { ...primary.target };
+  secondary.query = async () => { throw new Error("connection unavailable"); };
+  const observations = await discoverDatabases(request(), [primary, secondary]);
+  expect(observations[1]!.error).toBeDefined();
+  await expect(selectDatabaseTarget(request(), observations)).rejects.toThrow("不完整");
+});
+
+test("command merges target evidence and executes user SQL once without replay on an alias", async () => {
+  for (const failQuery of [false, true]) {
+    const primary = provider();
+    const secondary = provider("secondary");
+    secondary.target = { ...primary.target, source: { pod: "worker", path: "/runtime.yaml" } };
+    const sqlCalls: string[] = [];
+    for (const route of [primary, secondary]) route.query = async sql => {
+      if (sql === "SELECT id FROM messages") {
+        sqlCalls.push(route.id);
+        if (failQuery) throw Object.assign(new Error("never-output"), { code: "ER_TABLEACCESS_DENIED_ERROR" });
+        return result([{ id: "message:1" }]);
+      }
+      return result([{ database_name: "app", table_name: "messages" }]);
+    };
+    const resolve = spyOn(providers, "resolveDbProviders").mockResolvedValue({
+      service: "api", providers: [primary, secondary], failures: [],
+    });
+    const context = new CommandContext({}, undefined, { plugin: {
+      id: "test", version: "0.0.1", services: createServiceCatalog([{
+        name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+        workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }],
+      }]),
+    } });
+    const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
+    try {
+      const outcome = await dbCommand.run(context, { service: "api", table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
+      expect(outcome.status).toBe(failQuery ? CommandStatus.Failed : CommandStatus.Ok);
+      expect(sqlCalls).toEqual(["primary"]);
+      const directory = outcome.artifacts[0]!.path; directories.push(directory);
+      const raw = readFileSync(join(directory, "diagnosis.json"), "utf8");
+      expect(raw).not.toContain("never-output");
+      const diagnosis = JSON.parse(raw);
+      expect(diagnosis.targets).toHaveLength(1);
+      expect(diagnosis.targets[0].dataSources.map((source: { id: string }) => source.id)).toEqual(["primary", "secondary"]);
+      expect(diagnosis.targets[0].accesses[1].provenance.path).toBe("/runtime.yaml");
+      expect(diagnosis.selection.dataSources).toEqual(diagnosis.targets[0].dataSources);
+    } finally { resolve.mockRestore(); environment.mockRestore(); await context.disposeClients(); }
+  }
 });
