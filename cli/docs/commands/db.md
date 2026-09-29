@@ -6,7 +6,7 @@
 `doctor store` 保持健康、容量与负载的宏观诊断；`doctor data` 保持业务 Identity 驱动的固定事实采集。
 db 不提供写入、批量脚本、持久 SQL REPL 或跨连接查询拼接。
 
-Service 通过 `capabilities.dataSources[]` 贡献访问能力，不增加数据库注册表。
+Service 通过 `dataSources[]` 贡献访问能力，不增加数据库注册表。
 每个 MySQL 数据源使用两种互斥声明之一：标准 `envPrefix`，或带稳定 key 与 Client 工厂的
 `source`。工厂收到根执行拥有的受控上下文，客户端初始化时解释服务私有配置与准备连接；
 Service 不拥有连接的销毁权，也不维护第二份数据库、表或 schema 清单。
@@ -19,9 +19,14 @@ Service 不拥有连接的销毁权，也不维护第二份数据库、表或 sc
 CLI 校验输入 → 选择 Service → 解析访问目标 → 借用根 Client → 有界发现库表 → 唯一目标选择
 → 只读查询 → Evidence → 根 Finalize / Delivery。
 
-同一账号、实例的重复声明合并为一个查询路由目标，不同账号或实例的同名库表不能按名字合并。
-发现失败或截断时可以交付部分清单，但不能据剩余候选证明唯一性并执行 SQL。即使显式提供
-database/table 后仍然存在同名目标，也必须失败；不暴露 `--store`，不广播 SQL。
+DataSource ID 表示 Service 的逻辑访问入口；同一 Service 可声明多个同类型入口，是否同库由运行配置决定。
+在本次环境内，数据库目标按 host、port、database 归并，保留全部声明来源及各自连接；不根据 DNS
+别名推断实例等价，也不因目标归并改变 Client 的权限检查、复用或释放规则。
+
+库表发现保留每个连接的观察。指向同一库表且账号、凭据一致时自动选择一个连接执行一次 SQL；
+不同实例或不同连接身份仍需明确选择，可用 `--data-source <id>` 限定来源。显式来源在配置解析前
+筛选，其它来源不参与本次访问；指定来源失败时不回退。发现失败或截断时可以交付部分清单，
+但不能据剩余候选证明唯一性并执行 SQL。不广播或跨账号重放 SQL。
 
 `--show-databases` 表示当前账号可见的数据库，不保证拥有其中所有表的读取权限。
 发现结果保留 Service 声明的 DataSource ID、可选 `description` 与实际可见的库名，供人和 AI 区分用途。
@@ -35,6 +40,7 @@ database/table 后仍然存在同名目标，也必须失败；不暴露 `--stor
 ```bash
 doctor db
 doctor db --service chat --show-databases
+doctor db --service chat --data-source primary --database app --show-tables
 doctor db --service chat --database app --show-tables
 doctor db --service chat --table app.messages --show-create-table
 doctor db --service chat --database app --table messages --show-create-table

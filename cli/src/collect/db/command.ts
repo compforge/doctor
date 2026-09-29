@@ -13,7 +13,7 @@ import { ParameterCancelled } from "../../terminal/parameters";
 import { useLogger } from "../../terminal/log";
 import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
 import { resolveDbProviders } from "./providers";
-import { databaseFailure, discoverDatabases, selectDatabaseTarget } from "./discovery";
+import { databaseFailure, databaseTargets, discoverDatabases, selectDatabaseTarget } from "./discovery";
 import { quoteIdentifier } from "./sql";
 import { databaseDiscoverySummary } from "./summary";
 
@@ -54,13 +54,19 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     try {
       const resolved = await resolveDbProviders(context, request);
       service = resolved.service;
-      for (const provider of resolved.providers) {
+      const groupedTargets = databaseTargets(resolved.providers);
+      const targetIds = new Map(groupedTargets.flatMap(target =>
+        target.providers.map(provider => [provider.id, target.providers[0]!.id] as const)));
+      for (const target of groupedTargets) {
         targets.push({
-          id: provider.id, dataSources: provider.dataSources, backend: "mysql", host: provider.target.host, port: provider.target.port,
-          database: provider.target.database, source: provider.source, provenance: provider.target.source ? {
-            namespace: provider.target.source.namespace, pod: provider.target.source.pod,
-            container: provider.target.source.container, path: provider.target.source.path,
-          } : undefined
+          id: target.providers[0]!.id, backend: "mysql", host: target.host, port: target.port, database: target.database,
+          dataSources: target.providers.flatMap(provider => provider.dataSources),
+          accesses: target.providers.map(provider => ({
+            id: provider.id, dataSources: provider.dataSources, source: provider.source, provenance: provider.target.source ? {
+              namespace: provider.target.source.namespace, pod: provider.target.source.pod,
+              container: provider.target.source.container, path: provider.target.source.path,
+            } : undefined,
+          })),
         });
       }
       for (const failure of resolved.failures) {
@@ -70,7 +76,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       const discovery = await discoverDatabases(request, resolved.providers);
       if (request.action === "databases") discoverySummary = databaseDiscoverySummary(discovery, resolved.failures);
       for (const [index, item] of discovery.entries()) {
-        const record = { target: item.provider.id, dataSources: item.provider.dataSources, ...item.result, error: item.error };
+        const record = { target: targetIds.get(item.provider.id), access: item.provider.id, dataSources: item.provider.dataSources, ...item.result, error: item.error };
         results.push(record);
         // Structured JSON must remain valid; the query has already applied its row/byte bounds.
         const path = join(directory, `discovery-${index}.json`);
@@ -85,7 +91,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       if (request.action === "query" || request.action === "create-table") {
         if (resolved.failures.length) throw new CommandInputError("部分 Service 数据库目标无法解析，不能确认唯一查询目标；未执行 SQL");
         const selected = await selectDatabaseTarget(request, discovery);
-        selection = { target: selected.provider.id, dataSources: selected.provider.dataSources, database: selected.database, table: selected.table };
+        selection = { target: targetIds.get(selected.provider.id), access: selected.provider.id, dataSources: selected.dataSources, database: selected.database, table: selected.table };
         const sql = request.action === "query" ? request.sql!
           : `SHOW CREATE TABLE ${quoteIdentifier(selected.database)}.${quoteIdentifier(selected.table!)}`;
         const before = Date.now();
@@ -123,7 +129,7 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     bundle.writeSummary(summary);
     bundle.writeCollection({
       doctorVersion: DOCTOR_CLI_VERSION, target: { service, targets, selection }, inspectionFacts: { targets },
-      params: { action: request.action, database: request.database, table: request.table, limits: request.limits },
+      params: { action: request.action, dataSource: input.dataSource, database: request.database, table: request.table, limits: request.limits },
       startedAt, finishedAt: new Date().toISOString()
     });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });

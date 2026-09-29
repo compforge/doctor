@@ -1,18 +1,54 @@
 import type { ServiceDatabaseDataSource, ServiceDatabaseTarget } from "@compforge/doctor-plugin";
 import type { DatabaseQueryLimits, DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
+import { clientKey } from "@compforge/harness-common";
 import { CommandInputError } from "../../command";
 import { chooseParameter } from "../../terminal/parameters";
 import type { DbRequest } from "./input";
 
 export interface DbProvider {
   id: string;
-  /** Preserve every declaration when several sources share one SQL routing target. */
+  /** Declaration references; these are not physical database or connection-pool identities. */
   dataSources: Pick<ServiceDatabaseDataSource, "id" | "description">[];
   target: ServiceDatabaseTarget;
   source: string;
   query(sql: string, values: readonly unknown[], limits: DatabaseQueryLimits, database?: string): Promise<DatabaseQueryResult>;
 }
-export interface DbCandidate { provider: DbProvider; database: string; table?: string }
+export interface DbTarget {
+  host: string;
+  port: number;
+  database: string;
+  providers: DbProvider[];
+}
+export interface DbCandidate extends DbTarget { table?: string }
+export interface DbSelection {
+  provider: DbProvider;
+  dataSources: DbProvider["dataSources"];
+  database: string;
+  table?: string;
+}
+
+function targetKey(provider: DbProvider, database: string, table?: string): string {
+  return JSON.stringify([provider.target.host, provider.target.port, database, table]);
+}
+
+/** Credentials participate only in internal access equivalence, never in exported resource identity. */
+function accessKey(provider: DbProvider): string {
+  const { host, port, user, password } = provider.target;
+  return clientKey("db-access", { host, port, user, password });
+}
+
+/** Within this invocation's environment, several declarations may resolve to one configured database. */
+export function databaseTargets(providers: readonly DbProvider[]): DbTarget[] {
+  const targets = new Map<string, DbTarget>();
+  for (const provider of providers) {
+    const { host, port, database } = provider.target;
+    const key = targetKey(provider, database);
+    const existing = targets.get(key);
+    if (existing) existing.providers.push(provider);
+    else targets.set(key, { host, port, database, providers: [provider] });
+  }
+  return [...targets.values()];
+}
 export interface DbDiscovery {
   provider: DbProvider;
   result?: DatabaseQueryResult;
@@ -46,17 +82,27 @@ export async function discoverDatabases(request: DbRequest, providers: readonly 
 }
 
 export function databaseCandidates(discovery: readonly DbDiscovery[], request: DbRequest): DbCandidate[] {
-  return discovery.flatMap(({ provider, result }) => (result?.rows ?? []).flatMap(row => {
-    const database = row.database_name ?? row.Database;
-    if (typeof database !== "string" || (request.database && database !== request.database)) return [];
-    const table = typeof row.table_name === "string" ? row.table_name : undefined;
-    if (request.table && table !== request.table) return [];
-    return [{ provider, database, table }];
-  }));
+  const candidates = new Map<string, DbCandidate>();
+  for (const { provider, result } of discovery) {
+    for (const row of result?.rows ?? []) {
+      const database = row.database_name ?? row.Database;
+      if (typeof database !== "string" || (request.database && database !== request.database)) continue;
+      const table = typeof row.table_name === "string" ? row.table_name : undefined;
+      if (request.table && table !== request.table) continue;
+      const key = targetKey(provider, database, table);
+      const existing = candidates.get(key);
+      if (existing) {
+        if (!existing.providers.includes(provider)) existing.providers.push(provider);
+      } else {
+        candidates.set(key, { host: provider.target.host, port: provider.target.port, database, table, providers: [provider] });
+      }
+    }
+  }
+  return [...candidates.values()];
 }
 
 /** Incomplete discovery can never prove uniqueness; user SQL is executed on exactly one target. */
-export async function selectDatabaseTarget(request: DbRequest, discovery: readonly DbDiscovery[]): Promise<DbCandidate> {
+export async function selectDatabaseTarget(request: DbRequest, discovery: readonly DbDiscovery[]): Promise<DbSelection> {
   if (discovery.some(item => item.error || item.result?.truncated)) {
     throw new CommandInputError("数据库发现不完整，无法确定唯一目标；请先修复访问失败，或通过 --database / --table 缩小发现范围");
   }
@@ -72,6 +118,25 @@ export async function selectDatabaseTarget(request: DbRequest, discovery: readon
     const table = await chooseParameter("--table", tables, request.interactive);
     candidates = candidates.filter(candidate => candidate.table === table);
   }
-  if (candidates.length !== 1) throw new CommandInputError("同名 Database / Table 存在于多个访问目标，仍有歧义；请调整 Service 的目标声明，本次不会广播执行 SQL");
-  return candidates[0]!;
+  if (candidates.length > 1) {
+    const source = await chooseParameter("--data-source（同名数据库目标有歧义）",
+      candidates.flatMap(candidate => candidate.providers.flatMap(provider => provider.dataSources.map(source => source.id))), request.interactive);
+    candidates = candidates.filter(candidate => candidate.providers.some(provider => provider.dataSources.some(item => item.id === source)));
+  }
+  const candidate = candidates[0]!;
+  const accesses = new Map<string, DbProvider[]>();
+  for (const provider of candidate.providers) {
+    const key = accessKey(provider);
+    const aliases = accesses.get(key);
+    if (aliases) aliases.push(provider);
+    else accesses.set(key, [provider]);
+  }
+  let aliases = [...accesses.values()][0]!;
+  if (accesses.size > 1) {
+    const source = await chooseParameter("--data-source（同库存在不同连接身份）",
+      candidate.providers.flatMap(provider => provider.dataSources.map(item => item.id)), request.interactive);
+    aliases = [...accesses.values()].find(group => group.some(provider => provider.dataSources.some(item => item.id === source)))!;
+  }
+  return { provider: aliases[0]!, dataSources: aliases.flatMap(provider => provider.dataSources),
+    database: candidate.database, table: candidate.table };
 }
