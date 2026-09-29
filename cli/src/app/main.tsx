@@ -71,6 +71,7 @@ import { tenantCommand } from "../collect/tenant/command";
 import { metricCommand } from "../collect/metric/command";
 import { storeCommand } from "../collect/store/command";
 import { withDbOptions } from "../collect/db/options";
+import { withS3Options } from "../collect/s3/options";
 import { mcpCommand } from "../collect/mcp/command";
 import { modelCommand } from "../collect/model/command";
 import { collectCommand } from "../collect/composite";
@@ -601,6 +602,12 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(storeCommand, opts, domainInput(opts), commandRuntime);
   });
+  withS3Options(catalog.command("s3").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）"))
+    .action(async (action, path, _opts, command: CommandT) => {
+      const opts = commandOptionsWithSources(command);
+      const { s3Command } = await import("../collect/s3/command");
+      await runCommand(s3Command, opts, { ...domainInput(opts), action, path }, commandRuntime);
+    });
   withDbOptions(catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL"))
     .action(async (_opts, command: CommandT) => {
       const opts = commandOptionsWithSources(command);

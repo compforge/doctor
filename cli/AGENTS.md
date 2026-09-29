@@ -85,6 +85,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Overview、Collect、Eval、P
 - `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
+- `docs/commands/s3.md` — Service S3 连接、mc 风格路径与有界对象取证
 - `docs/commands/db.md` — Service DB 目标、交互参数与有界只读 SQL 取证
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
 - `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
