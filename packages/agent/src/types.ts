@@ -1,4 +1,4 @@
-import type { AgentMessage, AgentTool, ExecutionEnv } from "@earendil-works/pi-agent-core";
+import type { AgentHarnessTool, CompactionSettings, ExecutionEnv, Session } from "@earendil-works/pi-agent-core";
 import type { BaseBlock, PatchEmitter, PatchEvent } from "@compforge/agentue/ui";
 import type { PluginSkill } from "@compforge/doctor-plugin";
 
@@ -42,6 +42,7 @@ export interface AgentSource {
   run(text: string, context: RunContext): AsyncIterable<PatchEvent>;
   abort(): void;
   dispose(): Promise<void>;
+  compact?(instructions: string | undefined, context: RunContext): AsyncIterable<PatchEvent>;
 }
 
 export interface LlmConfig {
@@ -50,6 +51,8 @@ export interface LlmConfig {
   model: string;
   endpoint?: string;
   thinking?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
   /** Host-owned transport override, used when credentials and routing stay behind an adapter. */
   fetch?: LlmFetch;
 }
@@ -64,12 +67,12 @@ export type Skill = PluginSkill;
 export interface AgentOptions {
   llm: LlmConfig;
   /** Host-owned durable history; credentials and filesystem policy stay with the host. */
-  messages?: AgentMessage[];
-  onMessage?: (message: AgentMessage) => Promise<void>;
+  session?: Session;
+  compaction?: CompactionSettings;
   /** Execution environment owned and cleaned up by this Agent. */
   env: ExecutionEnv;
   skills?: readonly PluginSkill[];
-  tools?: readonly AgentTool[];
+  tools?: readonly AgentHarnessTool<{ env: ExecutionEnv }>[];
   systemPrompt?: string;
   /** Host-owned facts appended to the system prompt for this Agent instance. */
   contextPrompt?: string;

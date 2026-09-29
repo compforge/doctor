@@ -117,3 +117,24 @@ function createModel() {
     warnings: [],
   });
 }
+
+
+test("manual compaction drains prompts queued by the UI", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  const prompts: string[] = [];
+  const source: AgentSource = {
+    async *run(text) { prompts.push(text); },
+    async *compact() { await blocked; },
+    abort() { release(); },
+    async dispose() {},
+  };
+  const session = new Session(createDoctorModel({ profileName: "test", profile: { readonly: true }, mode: "local", warnings: [] }), source);
+  const compacting = session.compact();
+  await session.submit("queued question");
+  release();
+  await compacting;
+  expect(prompts).toEqual(["queued question"]);
+  expect(session.getModel().meta.busy).toBe(false);
+  await session.dispose();
+});

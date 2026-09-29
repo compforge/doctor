@@ -4,19 +4,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Agent, type AgentSource } from "@compforge/doctor-agent";
 import { PatchEmitter } from "@compforge/agentue/ui";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import { BACKGROUND_CONTEXT, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { ChatHistoryStore, exportChat, historyBlocks, validateSessionFlags } from "../src/chat/history";
 import { createDoctorModel } from "../src/chat/model";
 import { Session } from "../src/chat/session";
 import { Controller } from "../src/chat/controller";
 
+const ctx = BACKGROUND_CONTEXT;
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const stores: ChatHistoryStore[] = [];
+afterEach(async () => { for (const store of stores.splice(0)) await store.close(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "doctor-chat-history-"));
   roots.push(root);
-  return { root, store: new ChatHistoryStore(root, join(root, "sessions")) };
+  const store = new ChatHistoryStore(root, join(root, "sessions"));
+  stores.push(store);
+  return { root, store };
 }
 const identity = { profile: "test", plugin: "example@1" };
 const user: AgentMessage = { role: "user", content: "diagnose", timestamp: 1 };
@@ -41,10 +45,10 @@ async function turn(agent: Agent, text: string) {
 test("Pi JSONL persists completed messages and resumes them in the next model request", async () => {
   const { root, store } = fixture();
   const history = (await store.prepare({}, identity))!;
-  const agent = new Agent({
+  const agent = await Agent.create({
     llm: { provider: "openai", model: "test", apiKey: "secret-not-persisted", fetch: async () => sse("first answer") },
     env: new NodeExecutionEnv({ cwd: root }),
-    onMessage: async (message) => { await history.session.appendMessage(message); },
+    session: history.session,
   });
   await turn(agent, "first question");
   // Already on disk before Agent disposal.
@@ -57,12 +61,11 @@ test("Pi JSONL persists completed messages and resumes them in the next model re
   expect(reopened.metadata.id).toBe(history.metadata.id);
   expect(reopened.messages.map((message) => message.role)).toEqual(["user", "assistant"]);
   let request: unknown;
-  const next = new Agent({
+  const next = await Agent.create({
     llm: { provider: "openai", model: "test", apiKey: "secret", fetch: async (_input, init) => {
       request = JSON.parse(String(init?.body)); return sse("second answer");
     } },
-    env: new NodeExecutionEnv({ cwd: root }), messages: reopened.messages,
-    onMessage: async (message) => { await reopened.session.appendMessage(message); },
+    env: new NodeExecutionEnv({ cwd: root }), session: reopened.session,
   });
   await turn(next, "second question");
   await next.dispose();
@@ -77,11 +80,13 @@ test("session selection is scoped, ephemeral mode does not create files, plugin 
   expect(await store.prepare({ noSession: true }, identity)).toBeUndefined();
   expect(existsSync(join(root, "sessions"))).toBe(false);
   const history = (await store.prepare({ continue: true }, identity))!;
+  await history.session.close(ctx);
   const again = await store.prepare({ session: history.metadata.id }, identity);
   expect(again?.metadata.id).toBe(history.metadata.id);
   await expect(store.prepare({ session: history.metadata.id }, { ...identity, plugin: "example@2" })).rejects.toThrow("Plugin");
   await expect(store.prepare({ session: history.metadata.id }, { ...identity, profile: "prod" })).rejects.toThrow("profile");
   const elsewhere = new ChatHistoryStore(join(root, "elsewhere"), join(root, "sessions"));
+  stores.push(elsewhere);
   expect(await elsewhere.list()).toEqual([]);
   await expect(elsewhere.prepare({ session: history.metadata.path }, identity)).rejects.toThrow("工作目录");
   expect(() => validateSessionFlags({ noSession: true, resume: true })).toThrow("--no-session");
@@ -97,10 +102,13 @@ test("tool content survives JSONL export and HTML escapes model/tool text", asyn
   toolCall.content.push({ type: "toolCall", id: "call-1", name: "read", arguments: { path: "input.txt" } });
   const toolResult: AgentMessage = { role: "toolResult", toolCallId: "call-1", toolName: "read", isError: false,
     timestamp: 3, content: [{ type: "text", text: `<script>alert(1)</script>${"x".repeat(70_000)}` }] };
-  for (const message of [user, toolCall, toolResult]) await history.session.appendMessage(message);
+  const branch = await history.session.createBranch("main", null, ctx);
+  for (const message of [user, toolCall, toolResult]) await branch.appendMessage(message, ctx);
   const path = await exportChat(history, join(root, "export.jsonl"));
   expect(readFileSync(path, "utf8")).toBe(readFileSync(history.metadata.path, "utf8"));
-  const reopened = (await store.prepare({ session: path }, identity))!;
+  const exportedStore = new ChatHistoryStore(root, join(root, "sessions"));
+  stores.push(exportedStore);
+  const reopened = (await exportedStore.prepare({ session: path }, identity))!;
   expect(reopened.messages).toHaveLength(3);
   expect(historyBlocks(reopened.messages).at(-1)).toMatchObject({ type: "tool", status: "completed", args: { path: "input.txt" } });
   const html = readFileSync(await exportChat(history, join(root, "export.html")), "utf8");
@@ -110,21 +118,10 @@ test("tool content survives JSONL export and HTML escapes model/tool text", asyn
   await expect(exportChat(history, path)).rejects.toThrow();
 });
 
-test("persistence errors end the turn visibly and prevent unrecorded follow-up turns", async () => {
-  const { root } = fixture();
-  const agent = new Agent({
-    llm: { provider: "openai", model: "test", apiKey: "secret", fetch: async () => sse("answer") },
-    env: new NodeExecutionEnv({ cwd: root }), onMessage: async () => { throw new Error("disk full"); },
-  });
-  await expect(turn(agent, "question")).rejects.toThrow("保存聊天失败");
-  await expect(turn(agent, "again")).rejects.toThrow("保存聊天失败");
-  await agent.dispose();
-});
-
 test("slash commands inspect, export and select sessions without invoking the agent", async () => {
   const { root, store } = fixture();
   const history = (await store.prepare({}, identity))!;
-  await history.session.appendMessage(user);
+  await (await history.session.createBranch("main", null, ctx)).appendMessage(user, ctx);
   const source: AgentSource = { async *run() { throw new Error("must not prompt"); }, abort() {}, async dispose() {} };
   const session = new Session(createDoctorModel({ profileName: "test", profile: { readonly: true }, mode: "local", warnings: [] }), source, undefined, history, store);
   let selected: string | undefined;

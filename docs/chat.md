@@ -43,7 +43,8 @@ doctor-server 的 wire event 只存在于 `ServerAgent` 内，由它投影为 Ag
 
 ### Agent 共用，宿主能力注入
 
-`packages/agent` 拥有 pi 驱动的模型循环、Skill 按需读取、`read`/`bash` 工具、Doctor 语义 block 和
+`packages/agent` 使用 Pi `AgentHarness` 承接模型循环、持久化、上下文压缩、重试与取消；注入 Skill 和
+`read`/`bash` 工具，并投影为 Doctor 语义 block 和
 AgentUE patch 输出。宿主负责 Plugin 解析、模型凭据、Pi `ExecutionEnv` 和 conversation 生命周期：
 本地 chat 由 CLI 提供这些能力，server chat 由 server interface 提供。chat-tui 只消费 AgentUE 投影，
 不直接依赖 pi。
@@ -81,10 +82,12 @@ Doctor 不要求 Skill 识别宿主身份。
 会话，`--resume`（`-r`）选择历史会话，`--session <path|id>` 打开指定会话。`--no-session` 使用
 临时会话，退出后不能恢复；Chat 的配置路径使用完整参数 `--config`。
 
-CLI 复用 Pi `JsonlSessionRepo` 的 JSONL v4 文件和上下文重建。共享 Agent 将 finalized 原始消息
-按顺序交给宿主追加保存，包含用户输入、回复与工具调用/结果，不依赖 TUI 的显示截断。保存失败会
-中断本轮并禁止继续产生未记录的对话；退出会等待已完成消息写入。进程被强制终止时，尚未完成的
-流式回复不保证保留。文件包含实际聊天和工具内容，以当前用户可读写的权限保存，不记录模型配置密钥。
+CLI 创建 Pi 0.87 的 `JsonlSessionRepo` 会话并交给 `AgentHarness`；临时模式使用 Pi 的内存会话。
+Harness 负责消息、工具结果、压缩摘要与运行状态的事务写入，Doctor 不再订阅消息自行追加。界面和
+导出读取完整消息记录，模型上下文由 Harness 按压缩记录重建。保存失败显示错误，原生存储故障后
+不能继续执行；退出等待运行结束并关闭会话。进程被强制终止时，未完成的流式回复不保证保留。
+恢复时通过 Pi 中断上次未完成运行，展示提示并等待用户的新输入，不自动重跑可能已执行的 shell 命令。
+文件包含实际聊天和工具内容，以当前用户可读写的权限保存，不记录模型配置密钥。
 
 `/session` 显示文件路径与统计；`/export [file.html|file.jsonl]` 导出已完成的记录，默认在当前目录
 生成 HTML，已有目标不覆盖。HTML 提供离线阅读，JSONL 保留 Pi 原始记录。`/new` 新建会话，
@@ -94,6 +97,33 @@ CLI 复用 Pi `JsonlSessionRepo` 的 JSONL v4 文件和上下文重建。共享 
 远端会话继续使用 doctor-server 持久化，以 `--server --resume [conversation-id]` 恢复；已有
 `state.yaml` 中的显式远端 ID 仍可直接使用 `--resume <id>`。不带 ID 的 `--resume` 默认选择本地
 会话。远端会话不使用这些本地保存/导出参数。
+
+### 上下文压缩
+
+Pi `AgentHarness` 根据模型窗口与预留 tokens 自动压缩；遇到可识别的 context overflow 时由 Pi
+压缩后重试。`/compact [说明]` 可在空闲时手动压缩，支持中断；界面展示压缩开始、完成或失败，
+恢复后的模型请求使用摘要和保留的近期消息，JSONL/HTML 仍包含完整聊天。压缩不改变 profile、
+Plugin 或工具权限。模型请求（包括摘要）统一通过宿主提供的模型访问通道。
+
+直接配置的模型使用 `llm.context_window` 和 `llm.max_tokens`（正整数）；Plugin 模型目录的
+`contextLength` 支持整数和 K/M 后缀。未提供有效窗口信息时，兼容默认仍为 128000 tokens，
+这只是预算假设，应按实际模型填写。输出预算默认取 32000 与窗口四分之一中的较小值；显式
+`max_tokens` 必须小于窗口。压缩预留默认不超过 16384 tokens，近期保留预算不超过 20000 tokens，
+两者也分别限制在模型窗口四分之一内。
+
+```yaml
+llm:
+  provider: openai
+  endpoint: https://your-model-endpoint/v1
+  api_key: your-key
+  model: your-model
+  context_window: 128000
+  max_tokens: 16000
+```
+
+Doctor 的 `Session` 只持有界面状态与用户输入队列；Pi 的会话记录是模型上下文和运行状态的
+唯一持久化来源。已有 JSONL/续聊能力与 Harness 在同一未发布版本中交付，不兼容早期开发分支
+使用的 Pi 0.84 JSONL 布局。
 
 ### Skill 跟随 Plugin
 

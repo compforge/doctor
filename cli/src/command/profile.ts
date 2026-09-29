@@ -55,6 +55,8 @@ export interface Profile {
     api_key?: string;
     model?: string;
     thinking?: boolean;
+    context_window?: number;
+    max_tokens?: number;
   };
 }
 

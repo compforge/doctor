@@ -12,6 +12,7 @@ import { sessionLabel } from "./history";
 export const CHAT_COMMANDS: readonly CommandSpec[] = [
   { name: "help", description: "Show keyboard and command help" },
   { name: "exit", description: "Exit Doctor chat" },
+  { name: "compact", description: "压缩当前模型上下文，保留完整聊天记录" },
   { name: "session", description: "查看当前会话文件与统计" },
   { name: "export", description: "导出会话：/export [file.html 或 file.jsonl]" },
   { name: "resume", description: "选择本地历史会话" },
@@ -45,6 +46,7 @@ export class Controller implements ChatProtocol {
 
   async command(name: string, argument = ""): Promise<void> {
     try {
+      if (name === "compact") { await this.session.compact(argument || undefined); return; }
       if (name === "session") { this.toast(await this.session.sessionInfo()); return; }
       if (name === "export") { this.toast(`已导出：${await this.session.export(argument)}`); return; }
       if (name === "new" || name === "resume") {

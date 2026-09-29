@@ -12,7 +12,7 @@ import { Agent } from "../src/agent";
 test("Agent uses the host-provided LLM transport", async () => {
   let request: Request | undefined;
   const events: PatchEvent[] = [];
-  const agent = new Agent({
+  const agent = await Agent.create({
     llm: {
       provider: "openai",
       apiKey: "adapter-owned",

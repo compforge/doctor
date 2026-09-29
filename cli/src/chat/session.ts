@@ -1,3 +1,4 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core";
 import type { AgentSource, MessageBlock } from "@compforge/doctor-agent";
 import {
   PatchEmitter,
@@ -55,8 +56,33 @@ export class Session {
   async sessionInfo(): Promise<string> {
     if (!this.history) return this.model.meta.mode === "server"
       ? `远端会话：${this.model.meta.conversation_id ?? "尚未创建"}` : "临时会话：不保存聊天记录";
-    const stats = await this.history.session.getStats();
-    return `会话：${this.history.metadata.id}\n文件：${this.history.metadata.path}\n消息：${stats.messageCount} · Tokens：${stats.totalTokens} · Cost：${stats.costTotal}`;
+    const stats = await this.history.session.getStats(BACKGROUND_CONTEXT);
+    return `会话：${this.history.metadata.id}\n文件：${this.history.metadata.path}\n消息：${stats.messageCount} · Tokens：${stats.usage.totalTokens} · Cost：${stats.usage.cost.total}`;
+  }
+
+  async compact(instructions?: string): Promise<void> {
+    this.assertCanSwitch();
+    if (!this.agent.compact) throw new Error("当前 Agent 不支持压缩上下文");
+    if (this.disposed) throw new Error("Session is disposed");
+    this.draining = this.runCompaction(instructions);
+    await this.draining;
+  }
+
+  private async runCompaction(instructions?: string): Promise<void> {
+    this.busy = true;
+    this.accept(this.emitter.start(this.model));
+    this.accept(this.emitter.metaSet("meta.busy", { busy: true }));
+    try {
+      for await (const event of this.agent.compact!(instructions, { emitter: this.emitter })) this.accept(event);
+    } finally {
+      this.busy = false;
+      this.accept(this.emitter.metaSet("meta.busy", { busy: false }));
+      this.accept(this.emitter.end());
+      const next = this.disposed ? undefined : this.queue.shift();
+      this.publishQueue();
+      if (next) await this.drain(next.text);
+      this.draining = undefined;
+    }
   }
 
   async export(path?: string): Promise<string> {

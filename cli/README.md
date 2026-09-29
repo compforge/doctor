@@ -146,3 +146,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 聊天内 `/session` 查看保存路径，`/export report.html` 或 `/export report.jsonl` 导出，`/new` 新建，
 `/resume` 选择历史。远端会话使用 `doctor chat --server --resume [id]`。保存范围与恢复边界见
 [Chat 设计](../docs/chat.md#本地会话文件)。
+
+Chat 使用 Pi `AgentHarness` 自动压缩接近模型窗口的上下文，也可输入 `/compact [说明]` 手动压缩。
+原始聊天仍保留在会话文件和导出中。直接配置模型可设置 `llm.context_window` / `llm.max_tokens`；
+Plugin 模型采用目录中的 `contextLength`，未知窗口兼容按 128000 tokens 估算。

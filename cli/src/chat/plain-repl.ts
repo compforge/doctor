@@ -11,7 +11,7 @@ export class PlainChatRenderer {
   private readonly messageText = new Map<string, string>();
   private readonly finalizedMessages = new Set<string>();
   private readonly toolStatus = new Map<string, string>();
-  private readonly infoBlocks = new Set<string>();
+  private readonly infoBlocks = new Map<string, string>();
   private errorMessage?: string;
 
   constructor(private readonly write: Write) {}
@@ -27,9 +27,9 @@ export class PlainChatRenderer {
           this.write(`\n[tool] ${block.tool_name}: ${block.status}${duration}\n`);
           this.toolStatus.set(block.id, block.status);
         }
-      } else if (block.type === "info" && !this.infoBlocks.has(block.id)) {
+      } else if (block.type === "info" && this.infoBlocks.get(block.id) !== block.content) {
         this.write(`\n[${block.tone}] ${block.content}\n`);
-        this.infoBlocks.add(block.id);
+        this.infoBlocks.set(block.id, block.content);
       }
     }
 
@@ -101,7 +101,11 @@ export async function runPlainRepl(session: Session, onRestart?: RestartChat): P
         const [name, ...parts] = text.slice(1).split(/\s+/);
         const argument = parts.join(" ");
         try {
-          if (name === "help") output.write("/session 查看会话文件与统计\n/export [file.html|file.jsonl] 导出\n/resume [ID] 恢复会话\n/new 新会话\n/exit 退出\nCtrl+C 中断当前问诊；空闲时退出\n");
+          if (name === "help") output.write("/compact [说明] 压缩上下文\n/session 查看会话文件与统计\n/export [file.html|file.jsonl] 导出\n/resume [ID] 恢复会话\n/new 新会话\n/exit 退出\nCtrl+C 中断当前问诊；空闲时退出\n");
+          else if (name === "compact") {
+            busy = true;
+            try { await session.compact(argument || undefined); } finally { busy = false; }
+          }
           else if (name === "session") output.write(`${await session.sessionInfo()}\n`);
           else if (name === "export") output.write(`已导出：${await session.export(argument)}\n`);
           else if (name === "new" || name === "resume") {

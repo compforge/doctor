@@ -2,13 +2,8 @@ import { chmod, copyFile, readFile, writeFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, resolve } from "node:path";
-import {
-  buildSessionContext,
-  JsonlSessionRepo,
-  type AgentMessage,
-  type JsonlSessionMetadata,
-  type Session as PiSession,
-} from "@earendil-works/pi-agent-core";
+import { BACKGROUND_CONTEXT, JsonlSessionRepo, type AgentMessage, type JsonlSessionMetadata,
+  type Session as PiSession, type Value } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type { AgentBlock } from "@compforge/doctor-agent";
 import type { CliFlags } from "../protocol";
@@ -16,29 +11,51 @@ import { escapeHtml } from "../collect/output/report/components/content";
 import { isInteractive } from "../terminal/policy";
 import { printNumberedChoices, promptListedChoice, matchListedChoice } from "../terminal/selection";
 
+const ctx = BACKGROUND_CONTEXT;
+interface ChatIdentity { profile: string; plugin: string }
+const identityValue: Value<ChatIdentity> = { namespace: "doctor", key: "identity", kind: "value" };
+export interface ChatMetadata extends JsonlSessionMetadata { identity?: ChatIdentity }
 export interface ChatHistory {
   session: PiSession<JsonlSessionMetadata>;
-  metadata: JsonlSessionMetadata;
+  metadata: ChatMetadata;
+  /** Complete transcript for the UI; the Harness separately reconstructs compacted model context. */
   messages: AgentMessage[];
 }
 
-/** The host chooses storage and identity; Pi owns the append-only file format and context reconstruction. */
+/** The host selects files and target identity; Pi owns storage, messages and compaction. */
 export class ChatHistoryStore {
   readonly repo: JsonlSessionRepo;
+  private readonly env: NodeExecutionEnv;
+  private active?: ChatHistory;
   constructor(readonly cwd = process.cwd(), sessionsRoot = join(process.env.DOCTOR_HOME ?? join(homedir(), ".doctor"), "sessions")) {
-    this.repo = new JsonlSessionRepo({ fs: new NodeExecutionEnv({ cwd }), sessionsRoot });
+    this.env = new NodeExecutionEnv({ cwd });
+    this.repo = new JsonlSessionRepo({ fileSystem: this.env, sessionsRoot });
   }
 
-  async list(): Promise<JsonlSessionMetadata[]> {
-    return (await this.repo.list({ cwd: this.cwd }))
-      .filter((item) => item.metadata?.doctor === true)
-      .sort((a, b) => b.modifiedAt - a.modifiedAt || b.createdAt - a.createdAt);
+  async close(): Promise<void> {
+    try { await this.repo.close(ctx); } finally { await this.env.cleanup(ctx); }
   }
 
-  async prepare(flags: CliFlags, identity: { profile: string; plugin: string }): Promise<ChatHistory | undefined> {
+  async list(): Promise<ChatMetadata[]> {
+    const result: ChatMetadata[] = [];
+    for (const metadata of await this.repo.list({ cwd: this.cwd }, ctx)) {
+      const identity = this.active?.metadata.id === metadata.id ? this.active.metadata.identity
+        : await this.readIdentity(metadata);
+      if (identity) result.push({ ...metadata, identity });
+    }
+    return result.sort((a, b) => b.modifiedAt - a.modifiedAt || b.createdAt - a.createdAt);
+  }
+
+  private async readIdentity(metadata: JsonlSessionMetadata): Promise<ChatIdentity | undefined> {
+    const session = await this.repo.open(metadata, ctx);
+    try { return (await session.getValue(identityValue, ctx))?.value; }
+    finally { await session.close(ctx); }
+  }
+
+  async prepare(flags: CliFlags, identity: ChatIdentity): Promise<ChatHistory | undefined> {
     validateSessionFlags(flags);
     if (flags.noSession) return undefined;
-    let metadata: JsonlSessionMetadata | undefined;
+    let metadata: ChatMetadata | undefined;
     const selector = flags.session ?? (typeof flags.resume === "string" ? flags.resume : undefined);
     if (selector) metadata = await this.resolve(selector);
     else if (flags.continue) metadata = (await this.list())[0];
@@ -47,46 +64,41 @@ export class ChatHistoryStore {
       if (!choices.length) throw new Error("当前目录没有可恢复的 Doctor 会话");
       if (!isInteractive()) throw new Error("选择会话需要交互终端；请使用 --session <路径或ID>");
       printNumberedChoices(choices, "[chat] 选择历史会话：", sessionLabel);
-      metadata = await promptListedChoice({
-        question: "选择会话（序号或ID，q 取消）：",
+      metadata = await promptListedChoice({ question: "选择会话（序号或ID，q 取消）：",
         match: (answer) => matchListedChoice(choices, answer, (item) => item.id, (item) => item),
-        invalidMessage: "请输入列表中的序号或完整会话 ID。",
-      });
+        invalidMessage: "请输入列表中的序号或完整会话 ID。" });
       if (!metadata) throw new Error("已取消恢复会话");
     }
     if (metadata) {
-      if (metadata.metadata?.doctor !== true) throw new Error("所选文件不是 Doctor Chat 会话");
-      if (metadata.metadata.profile !== identity.profile) {
-        throw new Error(`会话属于 profile '${metadata.metadata.profile}'；请使用 --profile 指定该环境`);
-      }
-      if (metadata.metadata.plugin !== identity.plugin) {
-        throw new Error("会话的 Plugin 版本与当前版本不同；请使用原版本或新建会话");
-      }
-      if (resolve(metadata.cwd) !== resolve(this.cwd)) {
-        throw new Error(`会话工作目录是 ${metadata.cwd}；请在该目录恢复`);
-      }
+      if (!metadata.identity) throw new Error("所选文件不是 Doctor Chat 会话");
+      if (metadata.identity.profile !== identity.profile) throw new Error(`会话属于 profile '${metadata.identity.profile}'；请使用 --profile 指定该环境`);
+      if (metadata.identity.plugin !== identity.plugin) throw new Error("会话的 Plugin 版本与当前版本不同；请使用原版本或新建会话");
+      if (resolve(metadata.cwd) !== resolve(this.cwd)) throw new Error(`会话工作目录是 ${metadata.cwd}；请在该目录恢复`);
     }
-    const session = metadata ? await this.repo.open(metadata) : await this.repo.create({
-      cwd: this.cwd, metadata: { doctor: true, ...identity },
-    });
-    metadata = await session.getMetadata();
-    // Chat artifacts contain request/tool content; do not inherit a world-readable umask.
-    await chmod(metadata.path, 0o600);
-    const entries = await session.findEntriesOnBranch({ order: "oldestFirst" });
-    return { session, metadata, messages: buildSessionContext(entries).messages };
+    const session = metadata ? await this.repo.open(metadata, ctx) : await this.repo.create({ cwd: this.cwd }, ctx);
+    try {
+      await chmod(session.metadata.path, 0o600);
+      if (!metadata) await session.setValue(identityValue, identity, ctx);
+      const entries = await session.findEntries({ type: "message", order: "asc" }, ctx);
+      this.active = { session, metadata: { ...session.metadata, identity },
+        messages: entries.flatMap((entry) => entry.type === "message" ? [entry.message] : []) };
+      return this.active;
+    } catch (error) { await session.close(ctx); throw error; }
   }
 
-  async resolve(selector: string): Promise<JsonlSessionMetadata> {
+  async resolve(selector: string): Promise<ChatMetadata> {
     if (selector.endsWith(".jsonl") || selector.includes("/")) {
       const path = resolve(selector.startsWith("~/") ? join(homedir(), selector.slice(2)) : selector);
-      // The public Pi opener accepts metadata rather than a path. Read only its header
-      // here; repo.open validates the file and reconstructs its native entries.
+      if (path === this.active?.metadata.path) return this.active.metadata;
+      // Pi's opener takes metadata; it validates the complete storage when reading the identity.
       const header = JSON.parse((await readFile(path, "utf8")).split("\n", 1)[0]!);
-      if (header.kind !== "header" || header.version !== 4 || typeof header.id !== "string" || typeof header.cwd !== "string") {
-        throw new Error("不支持的 Doctor 会话文件；需要 Pi JSONL v4");
+      if (header.kind !== "header" || header.v !== 4 || header.storageVersion !== 1
+        || typeof header.id !== "string" || typeof header.cwd !== "string") {
+        throw new Error("不支持的 Doctor 会话文件；需要 Pi 0.87 JSONL 会话格式");
       }
-      return { id: header.id, cwd: header.cwd, createdAt: header.createdAt,
-        modifiedAt: header.createdAt, path, sourceFormat: 4, metadata: header.metadata };
+      const metadata: JsonlSessionMetadata = { id: header.id, cwd: header.cwd, createdAt: header.createdAt,
+        modifiedAt: header.createdAt, path, storageVersion: header.storageVersion };
+      return { ...metadata, identity: await this.readIdentity(metadata) };
     }
     const matches = (await this.list()).filter((item) => item.id.startsWith(selector));
     if (matches.length !== 1) throw new Error(matches.length ? "会话 ID 前缀不唯一" : `未找到会话：${selector}`);
@@ -103,8 +115,8 @@ export function validateSessionFlags(flags: CliFlags): void {
   }
 }
 
-export function sessionLabel(item: JsonlSessionMetadata): string {
-  return `${new Date(item.modifiedAt).toLocaleString()}  ${item.id}  profile=${item.metadata?.profile ?? "?"}`;
+export function sessionLabel(item: ChatMetadata): string {
+  return `${new Date(item.modifiedAt).toLocaleString()}  ${item.id}  profile=${item.identity?.profile ?? "?"}`;
 }
 
 export function historyBlocks(messages: readonly AgentMessage[]): AgentBlock[] {
@@ -139,7 +151,7 @@ export async function exportChat(history: ChatHistory, requestedPath?: string): 
     await copyFile(history.metadata.path, path, constants.COPYFILE_EXCL);
     await chmod(path, 0o600);
   } else if (extension === ".html") {
-    const entries = await history.session.findEntriesOnBranch({ order: "oldestFirst" });
+    const entries = await history.session.findEntries({ order: "asc" }, ctx);
     const messages = entries.flatMap((entry) => entry.type === "message" ? [entry.message] : []);
     const blocks = historyBlocks(messages);
     const content = blocks.map((block) => {

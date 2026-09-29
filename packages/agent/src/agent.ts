@@ -1,140 +1,114 @@
 import {
-  Agent as PiAgent,
-  type AgentEvent,
-  type AgentTool,
-  type StreamFn,
-  formatSkillsForSystemPrompt,
+  AgentHarness, BACKGROUND_CONTEXT, MemorySessionRepo, formatSkillsForSystemPrompt,
+  DEFAULT_COMPACTION_SETTINGS, type AgentLane, type HarnessEventPayload, type RunResult, type CompactionResult,
 } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
-import { streamSimple } from "@earendil-works/pi-ai/api/openai-completions";
 import type { PatchEvent } from "@compforge/agentue/ui";
-
 import { AsyncQueue } from "./async-queue";
 import { createExecutionTools } from "./tools";
-import type {
-  AgentOptions,
-  AgentSource,
-  InfoBlock,
-  MessageBlock,
-  RunContext,
-  ThoughtBlock,
-  ToolBlock,
-} from "./types";
+import { createModelAccess } from "./model";
+import type { AgentOptions, AgentSource, InfoBlock, MessageBlock, RunContext, ThoughtBlock, ToolBlock } from "./types";
 
-const DEFAULT_ENDPOINTS = {
-  openai: "https://api.openai.com/v1",
-  deepseek: "https://api.deepseek.com",
-} as const;
-
+const ctx = BACKGROUND_CONTEXT;
 const DEFAULT_SYSTEM_PROMPT = [
   "You are Doctor, a concise diagnostic assistant for software and Kubernetes incidents.",
   "Ask for missing evidence before drawing conclusions. Distinguish observations from hypotheses.",
   "Never claim that you executed a diagnostic action unless a tool result proves it.",
 ].join("\n");
 
-const streamOpenAICompletions: StreamFn = (model, context, options) => (
-  streamSimple(model as Model<"openai-completions">, context, options)
-);
-
+/** Pi owns durable conversation state; Doctor only supplies capabilities and UI projection. */
 export class Agent implements AgentSource {
-  private readonly agent: PiAgent;
-  private readonly env: AgentOptions["env"];
-  private readonly onMessage: AgentOptions["onMessage"];
-  private persistence = Promise.resolve();
-  private persistenceError?: Error;
+  private active?: Promise<unknown>;
+  private constructor(
+    private readonly options: AgentOptions,
+    private readonly harness: AgentHarness<{ env: AgentOptions["env"] }>,
+    private readonly lane: AgentLane,
+    readonly recoveredInterruptedRun: boolean,
+  ) {}
 
-  constructor(options: AgentOptions) {
-    const skills = options.skills ?? [];
-    const tools = mergeTools(options.tools ?? [], createExecutionTools(options.env));
-    const skillCatalog = formatSkillsForSystemPrompt([...skills]);
-    this.env = options.env;
-    this.onMessage = options.onMessage;
-    const streamFn: StreamFn = options.llm.fetch
-      ? (model, context, streamOptions) => streamSimple(
-          model as Model<"openai-completions">,
-          context,
-          { ...streamOptions, fetch: options.llm.fetch as typeof globalThis.fetch },
-        )
-      : streamOpenAICompletions;
-    this.agent = new PiAgent({
-      initialState: {
-        systemPrompt: [
-          options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
-          options.contextPrompt,
-          skillCatalog,
-        ]
-          .filter(Boolean)
-          .join("\n\n"),
-        model: createModel(options.llm),
-        thinkingLevel: options.llm.thinking ? "medium" : "off",
-        tools,
-        messages: options.messages ?? [],
-      },
-      getApiKey: () => options.llm.apiKey,
-      streamFn,
-      toolExecution: "sequential",
-    });
-  }
-
-  async *run(text: string, context: RunContext): AsyncIterable<PatchEvent> {
-    if (this.persistenceError) throw this.persistenceError;
-    const queue = new AsyncQueue<PatchEvent>();
-    let assistantId: string | undefined;
-    let assistantHasText = false;
-    let thoughtId: string | undefined;
-
-    const unsubscribe = this.agent.subscribe((event) => {
-      if (event.type === "message_end" && this.onMessage) {
-        // Pi mutates streaming messages. Persist a finalized JSON snapshot, in event order,
-        // independently of UI truncation, and surface disk failures instead of losing history.
-        const message = JSON.parse(JSON.stringify(event.message)) as typeof event.message;
-        this.persistence = this.persistence.then(async () => {
-          if (!this.persistenceError) await this.onMessage!(message);
-        }).catch((error: unknown) => {
-          this.persistenceError = new Error(`保存聊天失败：${error instanceof Error ? error.message : String(error)}`);
-          this.agent.abort();
-        });
-      }
-      for (const patch of mapEvent(event, context, {
-        assistantId,
-        assistantHasText,
-        thoughtId,
-        setAssistantId: (id) => { assistantId = id; },
-        setAssistantHasText: (hasText) => { assistantHasText = hasText; },
-        setThoughtId: (id) => { thoughtId = id; },
-      })) {
-        queue.push(patch);
-      }
-    });
-
-    void this.agent.prompt(text).then(async () => {
-      await this.persistence;
-      if (this.persistenceError) queue.fail(this.persistenceError);
-      else queue.close();
-    }, async (error) => {
-      await this.persistence;
-      queue.fail(this.persistenceError ?? error);
-    });
-
+  static async create(options: AgentOptions): Promise<Agent> {
+    const session = options.session ?? await new MemorySessionRepo().create({}, ctx);
     try {
-      yield* queue;
-    } finally {
-      unsubscribe();
+      const { models, model } = createModelAccess(options.llm);
+      const tools = [...(options.tools ?? []), ...createExecutionTools()];
+      if (new Set(tools.map((tool) => tool.name)).size !== tools.length) throw new Error("duplicate Agent tool name");
+      const { harness } = await AgentHarness.create({
+        session, models, model, tools, toolContext: { env: options.env },
+        activeToolNames: tools.map((tool) => tool.name),
+        toolExecution: "sequential",
+        thinkingLevel: options.llm.thinking ? "medium" : "off",
+        resources: { skills: [...(options.skills ?? [])], promptTemplates: [] },
+        systemPrompt: [options.systemPrompt ?? DEFAULT_SYSTEM_PROMPT, options.contextPrompt,
+          formatSkillsForSystemPrompt([...(options.skills ?? [])])].filter(Boolean).join("\n\n"),
+        // Leave room for summaries and recent turns even on smaller configured models.
+        compaction: options.compaction ?? { ...DEFAULT_COMPACTION_SETTINGS,
+          reserveTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.reserveTokens, Math.floor(model.contextWindow / 4)),
+          keepRecentTokens: Math.min(DEFAULT_COMPACTION_SETTINGS.keepRecentTokens, Math.floor(model.contextWindow / 4)) },
+      }, ctx);
+      const lane = await harness.lane("main", ctx);
+      const recoveredInterruptedRun = (await lane.inspectExecution(ctx)).current !== null;
+      // Opening a chat must not repeat a possibly executed shell command. Pi reconciles
+      // abandoned operations as aborted; the user can continue from the saved evidence.
+      if (recoveredInterruptedRun) await lane.abort(ctx);
+      // The host's current model choice wins on restore; credentials never enter session storage.
+      await lane.setModel({ provider: model.provider, modelId: model.id }, ctx);
+      await lane.setThinkingLevel(options.llm.thinking ? "medium" : "off", ctx);
+      await lane.setActiveTools(tools.map((tool) => tool.name), ctx);
+      return new Agent(options, harness, lane, recoveredInterruptedRun);
+    } catch (error) {
+      await session.close(ctx);
+      await options.env.cleanup(ctx);
+      throw error;
     }
   }
 
-  abort(): void {
-    this.agent.abort();
+  run(text: string, context: RunContext): AsyncIterable<PatchEvent> {
+    return this.execute(() => this.lane.prompt(text, undefined, ctx), context);
   }
+
+  compact(instructions: string | undefined, context: RunContext): AsyncIterable<PatchEvent> {
+    return this.execute(() => this.lane.compact({ customInstructions: instructions }, ctx), context);
+  }
+
+  private async *execute(operation: () => Promise<RunResult | CompactionResult>, context: RunContext): AsyncIterable<PatchEvent> {
+    const queue = new AsyncQueue<PatchEvent>();
+    const state: EventState = { assistantHasText: false,
+      setAssistantId: (id) => { state.assistantId = id; },
+      setAssistantHasText: (value) => { state.assistantHasText = value; },
+      setThoughtId: (id) => { state.thoughtId = id; } };
+    const subscriptions = (["message_start", "message_update", "message_end", "tool_start", "tool_end",
+      "compaction_start", "compaction_end", "retry_scheduled"] as const).map((type) => this.harness.events.on(type, (event) => {
+        for (const patch of mapEvent(event, context, state)) queue.push(patch);
+      }));
+    this.active = operation().then((result) => {
+      // Convenience operations return typed failures, including terminal provider/storage errors.
+      assertOperation(result);
+      queue.close();
+    }).catch((error: unknown) => { queue.fail(error); });
+    try { yield* queue; }
+    finally { subscriptions.forEach((off) => off()); await this.active; this.active = undefined; }
+  }
+
+  abort(): void { void this.lane.abort(ctx).catch(() => undefined); }
 
   async dispose(): Promise<void> {
-    this.agent.abort();
     try {
-      await this.agent.waitForIdle();
-      await this.persistence;
+      await this.lane.abort(ctx);
+      await this.active;
+      await this.lane.waitForIdle(ctx);
     } finally {
-      await this.env.cleanup();
+      try { await this.harness.close(ctx); }
+      finally { await this.options.env.cleanup(ctx); }
     }
+  }
+}
+
+function assertOperation(result: RunResult | CompactionResult): void {
+  if (!result.ok) throw result.error;
+  const terminals = "compaction" in result.value
+    ? [result.value.compaction, ...(result.value.run ? [result.value.run] : [])] : [result.value];
+  for (const terminal of terminals) {
+    if (terminal.status === "failed") throw new Error(terminal.error?.message ?? "Pi operation failed");
+    if (terminal.status === "suspended") throw new Error("模型请求处于 suspended 状态，当前 Doctor 不支持 deferred 模型");
   }
 }
 
@@ -147,7 +121,7 @@ export interface EventState {
   setThoughtId(id: string | undefined): void;
 }
 
-export function mapEvent(event: AgentEvent, context: RunContext, state: EventState): PatchEvent[] {
+export function mapEvent(event: HarnessEventPayload, context: RunContext, state: EventState): PatchEvent[] {
   const { emitter } = context;
   switch (event.type) {
     case "message_start": {
@@ -159,7 +133,7 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
       return [];
     }
     case "message_update": {
-      const update = event.assistantMessageEvent;
+      const update = event.event;
       if (update.type === "text_delta") {
         if (!state.assistantId || update.delta.length === 0) return [];
         if (!state.assistantHasText) {
@@ -215,12 +189,9 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
             streaming: false,
           } satisfies MessageBlock, { eventType: event.type })]
         : [];
-      if (event.message.stopReason === "error" && event.message.errorMessage) {
-        patches.push(emitter.error("llm_error", event.message.errorMessage));
-      }
       return patches;
     }
-    case "tool_execution_start":
+    case "tool_start":
       return [emitter.blockSet({
         id: event.toolCallId,
         type: "tool",
@@ -228,7 +199,7 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
         status: "in_progress",
         args: event.args,
       } satisfies ToolBlock, { eventType: event.type })];
-    case "tool_execution_end": {
+    case "tool_end": {
       const result = {
         id: event.toolCallId,
         type: "tool",
@@ -242,12 +213,24 @@ export function mapEvent(event: AgentEvent, context: RunContext, state: EventSta
         emitter.blockSet(result, { mask: "block.status", eventType: event.type }),
       ];
     }
+    case "compaction_start":
+      return [emitter.blockSet({ id: `compact-${event.runId}`, type: "info", tone: "muted",
+        content: `正在压缩上下文（${event.reason}）…` } satisfies InfoBlock)];
+    case "compaction_end":
+      return [emitter.blockSet({ id: `compact-${event.runId}`, type: "info",
+        tone: event.status === "failed" ? "error" : "muted",
+        content: event.status === "completed" ? "上下文压缩完成，完整聊天记录仍保留"
+          : `上下文压缩${event.status === "aborted" ? "已中断" : event.status === "declined" ? "未执行" : `失败：${event.error?.message ?? "未知错误"}`}`,
+      } satisfies InfoBlock)];
+    case "retry_scheduled":
+      return [emitter.blockSet({ id: `retry-${event.runId}`, type: "info", tone: "warn",
+        content: `模型请求重试 ${event.attempt}/${event.maxAttempts}：${event.errorMessage}` } satisfies InfoBlock)];
     default:
       return [];
   }
 }
 
-function assistantText(message: Extract<AgentEvent, { type: "message_end" }>["message"]): string {
+function assistantText(message: Extract<HarnessEventPayload, { type: "message_end" }>["message"]): string {
   if (message.role !== "assistant") return "";
   return message.content
     .filter((part) => part.type === "text")
@@ -268,38 +251,4 @@ function stringifyResult(result: unknown): string {
     }
   }
   return JSON.stringify(result, null, 2);
-}
-
-function mergeTools(primary: readonly AgentTool[], skillTools: readonly AgentTool[]): AgentTool[] {
-  const tools = [...primary, ...skillTools];
-  const names = new Set<string>();
-  for (const tool of tools) {
-    if (names.has(tool.name)) throw new Error(`duplicate Agent tool name: ${tool.name}`);
-    names.add(tool.name);
-  }
-  return tools;
-}
-
-function createModel(llm: AgentOptions["llm"]): Model<"openai-completions"> {
-  const deepseek = llm.provider === "deepseek";
-  return {
-    id: llm.model,
-    name: llm.model,
-    api: "openai-completions",
-    provider: llm.provider,
-    baseUrl: llm.endpoint ?? DEFAULT_ENDPOINTS[llm.provider],
-    reasoning: !!llm.thinking || deepseek,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 128_000,
-    maxTokens: 32_000,
-    ...(deepseek ? {
-      compat: {
-        supportsStore: false,
-        supportsDeveloperRole: false,
-        requiresReasoningContentOnAssistantMessages: true,
-        thinkingFormat: "deepseek" as const,
-      },
-    } : {}),
-  };
 }
