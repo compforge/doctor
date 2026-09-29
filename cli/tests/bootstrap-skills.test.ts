@@ -116,7 +116,7 @@ test("bootstrap uses the local Agent and injects embedded Plugin Skills even whe
 
   let agent: Awaited<ReturnType<typeof bootstrap>>["agent"] | undefined;
   try {
-    const result = await bootstrap({ config: configPath }, plugin);
+    const result = await bootstrap({ config: configPath, sessionDir: join(directory, "sessions") }, plugin);
     agent = result.agent;
     for await (const _event of agent.run("diagnose", { emitter: new PatchEmitter() })) {
       // Consume the complete AgentUE stream so the model request reaches its terminal event.

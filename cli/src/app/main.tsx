@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { isRemoteChat } from "./config/state";
 import { withLogger } from "../terminal/log";
 import { commandOptionsWithSources } from "./option-sources";
 import type { CollectHttpCliOpts } from "../collect/http";
@@ -88,8 +89,12 @@ function withReplOptions(cmd: CommandT): CommandT {
   return cmd
     .option("-p, --profile <name>", "profile name from ~/.doctor/config.yaml")
     .option("--server", "use the doctor-server configured by the profile", false)
-    .option("--resume [conv_id]", "resume a previous conversation (latest if no id given)")
-    .option("-c, --config <path>", 'Doctor 配置路径；空字符串禁用外部配置');
+    .option("-c, --continue", "继续当前目录最近的本地会话")
+    .option("-r, --resume [id]", "选择本地历史会话；--server 时恢复远端会话")
+    .option("--session <path-or-id>", "恢复指定本地 JSONL 会话文件或 ID")
+    .option("--session-dir <dir>", "本地会话根目录（默认 ~/.doctor/sessions）")
+    .option("--no-session", "不保存本地聊天")
+    .option("--config <path>", 'Doctor 配置路径；空字符串禁用外部配置');
 }
 
 function toReplFlags(opts: Record<string, unknown>): CliFlags {
@@ -98,6 +103,10 @@ function toReplFlags(opts: Record<string, unknown>): CliFlags {
     namespace: opts.namespace as string | undefined,
     resume: opts.resume === true ? true : (opts.resume as string | undefined),
     server: opts.server === true,
+    continue: opts.continue === true,
+    session: typeof opts.session === "string" ? opts.session : undefined,
+    noSession: opts.session === false,
+    sessionDir: opts.sessionDir as string | undefined,
     config: opts.config as string | undefined,
   };
 }
@@ -451,7 +460,9 @@ export function createDoctorProgram(
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const flags = toReplFlags(opts);
-    await runCommand(chatCommand, { ...opts, ...flags }, {
+    // Local session selection belongs to Chat, not the legacy remote profile resolver.
+    const remoteResume = isRemoteChat(flags);
+    await runCommand(chatCommand, { ...opts, ...flags, resume: remoteResume ? flags.resume : undefined }, {
       ...domainInput(flags), agentCommands: host.agentCommands,
     }, commandRuntime);
   });

@@ -37,11 +37,14 @@ import {
 import type { Profile } from "./config/model";
 import { prepareAgentCommands } from "./agent-commands";
 import type { DistributionManifest } from "./distribution";
-import { loadState, resolveResumeTarget } from "./config/state";
+import { isRemoteChat, loadState, resolveResumeTarget } from "./config/state";
+import { ChatHistoryStore, historyBlocks, validateSessionFlags, type ChatHistory } from "../chat/history";
 
 export interface BootstrapResult {
   agent: AgentSource;
   model: DoctorModel;
+  history?: ChatHistory;
+  historyStore?: ChatHistoryStore;
 }
 
 export interface LocalAgentContext {
@@ -67,13 +70,12 @@ export async function bootstrap(
   const statePath = join(home, ".doctor", "state.yaml");
   const state = loadState(statePath);
 
-  if (flags.profile && flags.resume !== undefined) {
-    throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
-  }
+  const remote = isRemoteChat(flags, state);
+  validateSessionFlags({ ...flags, server: remote });
 
   let profileName: string | undefined;
   let resumeConversationId: string | undefined;
-  if (flags.resume !== undefined) {
+  if (remote && flags.resume !== undefined) {
     const target = resolveResumeTarget(state, flags.resume);
     profileName = target.profile;
     resumeConversationId = target.conversationId;
@@ -96,7 +98,6 @@ export async function bootstrap(
     profile = { ...profile, namespace: flags.namespace };
   }
 
-  const remote = !!(flags.server || resumeConversationId);
   if (remote && environment?.context !== undefined) {
     throw new Error("远端 chat 暂不支持 --context；请使用 current-context 已选定的 --kubeconfig 文件");
   }
@@ -104,7 +105,7 @@ export async function bootstrap(
   if (validation.errors.length) throw new Error(validation.errors.join("\n"));
 
   // Endpoint 配置只描述可用能力，不隐式改变执行位置；普通 chat 始终默认本地。
-  // --server 与 --resume 都是显式远端意图，长期可继续复用同一 AgentUE 交互面。
+  // Local resume never silently selects a remote server; known legacy IDs remain supported.
   if (remote) {
     if (!profile.server) {
       throw new Error(`profile '${profileName}' 未配置 server`);
@@ -135,6 +136,8 @@ export async function bootstrap(
     };
   }
 
+  const historyStore = new ChatHistoryStore(process.cwd(), flags.sessionDir ? expandHome(flags.sessionDir) : undefined);
+  const history = await historyStore.prepare(flags, { profile: profileName, plugin: plugin ? `${plugin.id}@${plugin.version}` : "none" });
   const localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
   try {
     const localContext = await prepareLocalAgentContext(profileName, profile, plugin, environment?.context);
@@ -147,22 +150,29 @@ export async function bootstrap(
     try {
       const agent = new LocalAgent({
         llm: localModel.llm,
+        messages: history?.messages,
+        onMessage: history ? async (message) => { await history.session.appendMessage(message); } : undefined,
         env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: { ...localContext.shellEnv, ...commandEnv.shellEnv } }),
         skills: plugin?.skills ?? [],
         contextPrompt: localContext.contextPrompt,
       });
+      const model = createDoctorModel({
+        profileName, profile, mode: "local", model: localModel.label, warnings: validation.warnings,
+      });
+      if (history) {
+        model.blocks = historyBlocks(history.messages);
+        model.meta.turn_count = history.messages.filter((message) => message.role === "user").length;
+        model.blocks.push({ id: "session-file", type: "info", tone: "muted", content: `会话文件：${history.metadata.path}` });
+      } else {
+        model.blocks.push({ id: "session-file", type: "info", tone: "warn", content: "临时会话：不保存聊天记录" });
+      }
       return {
+        history, historyStore,
         agent: withDispose(agent, async () => {
           try { await localModel.dispose?.(); }
           finally { commandEnv.dispose(); }
         }),
-        model: createDoctorModel({
-          profileName,
-          profile,
-          mode: "local",
-          model: localModel.label,
-          warnings: validation.warnings,
-        }),
+        model,
       };
     } catch (error) {
       commandEnv.dispose();

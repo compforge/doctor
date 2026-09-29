@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
-import type { State } from "../../protocol";
+import type { CliFlags, State } from "../../protocol";
 
 export function loadState(path: string): State {
   if (!existsSync(path)) {
@@ -52,4 +53,11 @@ export function resolveResumeTarget(state: State, resume: string | true): Resume
     throw new Error(`conversation ${id} not found in state`);
   }
   return { conversationId: id, profile: rec.profile };
+}
+
+/** Bare --resume selects local history; only explicit server intent or a known legacy ID selects remote. */
+export function isRemoteChat(flags: Pick<CliFlags, "server" | "resume">, state?: State): boolean {
+  if (flags.server) return true;
+  if (typeof flags.resume !== "string") return false;
+  return !!(state ?? loadState(join(homedir(), ".doctor", "state.yaml"))).conversations[flags.resume];
 }

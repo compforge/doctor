@@ -39,12 +39,16 @@ const streamOpenAICompletions: StreamFn = (model, context, options) => (
 export class Agent implements AgentSource {
   private readonly agent: PiAgent;
   private readonly env: AgentOptions["env"];
+  private readonly onMessage: AgentOptions["onMessage"];
+  private persistence = Promise.resolve();
+  private persistenceError?: Error;
 
   constructor(options: AgentOptions) {
     const skills = options.skills ?? [];
     const tools = mergeTools(options.tools ?? [], createExecutionTools(options.env));
     const skillCatalog = formatSkillsForSystemPrompt([...skills]);
     this.env = options.env;
+    this.onMessage = options.onMessage;
     const streamFn: StreamFn = options.llm.fetch
       ? (model, context, streamOptions) => streamSimple(
           model as Model<"openai-completions">,
@@ -64,7 +68,7 @@ export class Agent implements AgentSource {
         model: createModel(options.llm),
         thinkingLevel: options.llm.thinking ? "medium" : "off",
         tools,
-        messages: [],
+        messages: options.messages ?? [],
       },
       getApiKey: () => options.llm.apiKey,
       streamFn,
@@ -73,12 +77,24 @@ export class Agent implements AgentSource {
   }
 
   async *run(text: string, context: RunContext): AsyncIterable<PatchEvent> {
+    if (this.persistenceError) throw this.persistenceError;
     const queue = new AsyncQueue<PatchEvent>();
     let assistantId: string | undefined;
     let assistantHasText = false;
     let thoughtId: string | undefined;
 
     const unsubscribe = this.agent.subscribe((event) => {
+      if (event.type === "message_end" && this.onMessage) {
+        // Pi mutates streaming messages. Persist a finalized JSON snapshot, in event order,
+        // independently of UI truncation, and surface disk failures instead of losing history.
+        const message = JSON.parse(JSON.stringify(event.message)) as typeof event.message;
+        this.persistence = this.persistence.then(async () => {
+          if (!this.persistenceError) await this.onMessage!(message);
+        }).catch((error: unknown) => {
+          this.persistenceError = new Error(`保存聊天失败：${error instanceof Error ? error.message : String(error)}`);
+          this.agent.abort();
+        });
+      }
       for (const patch of mapEvent(event, context, {
         assistantId,
         assistantHasText,
@@ -91,10 +107,14 @@ export class Agent implements AgentSource {
       }
     });
 
-    void this.agent.prompt(text).then(
-      () => queue.close(),
-      (error) => queue.fail(error),
-    );
+    void this.agent.prompt(text).then(async () => {
+      await this.persistence;
+      if (this.persistenceError) queue.fail(this.persistenceError);
+      else queue.close();
+    }, async (error) => {
+      await this.persistence;
+      queue.fail(this.persistenceError ?? error);
+    });
 
     try {
       yield* queue;
@@ -111,6 +131,7 @@ export class Agent implements AgentSource {
     this.agent.abort();
     try {
       await this.agent.waitForIdle();
+      await this.persistence;
     } finally {
       await this.env.cleanup();
     }

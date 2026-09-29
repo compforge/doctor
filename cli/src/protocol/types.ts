@@ -60,7 +60,11 @@ export interface AgentEventBase {
 export interface CliFlags {
   profile?: string;
   namespace?: string;
-  resume?: string | true;    // true = --resume without value; string = --resume <id>
+  resume?: string | true;
+  continue?: boolean;
+  session?: string;
+  sessionDir?: string;
+  noSession?: boolean;
   server?: boolean;
   config?: string;
 }

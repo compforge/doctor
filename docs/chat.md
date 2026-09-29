@@ -3,7 +3,7 @@
 ## 理念 / 概念
 
 `doctor chat` 只有一套交互语义，但模型来源与执行位置选择分开。默认由 CLI 在进程内
-运行 `packages/agent`；只有显式 `--server`（或恢复远端 conversation）才通过 profile 的
+运行 `packages/agent`；只有显式 `--server`（或使用已记录的远端 conversation ID）才通过 profile 的
 `server` 和 `ServerAgent` 取得事件。本地 chat 优先使用 profile 显式配置的 `llm`；未配置时，
 从当前 Plugin 的模型目录中选择 LLM，并由 Plugin inference 提供推理访问。CLI 与 server 是两个
 宿主，通过各自的 interface、凭据、执行环境和持久化 adapter 使用同一 Agent 实现。
@@ -21,7 +21,7 @@ Skill 是 Plugin 的版本化资源。Doctor Host 加载精确 Plugin 版本后�
 doctor chat
   └─ execution choice
       ├─ default ──► model choice ──► @compforge/doctor-agent
-      └─ --server / --resume ─► ServerAgent ──► doctor-server SSE
+      └─ --server [--resume] ─► ServerAgent ──► doctor-server SSE
 
 model choice
   ├─ profile.llm ──────────────► direct model endpoint
@@ -73,6 +73,27 @@ server 宿主准备。
 
 Skill 可按需读取 `TARGET_*` 默认访问事实；宿主提供的 CLI 命令入口也继承这些默认值。
 Doctor 不要求 Skill 识别宿主身份。
+
+### 本地会话文件
+
+本地 Chat 默认按工作目录保存到 `~/.doctor/sessions/`，`DOCTOR_HOME` 可替换 `.doctor` 根目录，
+`--session-dir` 可指定会话根目录。每次普通启动创建新会话；`--continue`（`-c`）继续当前目录最近
+会话，`--resume`（`-r`）选择历史会话，`--session <path|id>` 打开指定会话。`--no-session` 使用
+临时会话，退出后不能恢复；Chat 的配置路径使用完整参数 `--config`。
+
+CLI 复用 Pi `JsonlSessionRepo` 的 JSONL v4 文件和上下文重建。共享 Agent 将 finalized 原始消息
+按顺序交给宿主追加保存，包含用户输入、回复与工具调用/结果，不依赖 TUI 的显示截断。保存失败会
+中断本轮并禁止继续产生未记录的对话；退出会等待已完成消息写入。进程被强制终止时，尚未完成的
+流式回复不保证保留。文件包含实际聊天和工具内容，以当前用户可读写的权限保存，不记录模型配置密钥。
+
+`/session` 显示文件路径与统计；`/export [file.html|file.jsonl]` 导出已完成的记录，默认在当前目录
+生成 HTML，已有目标不覆盖。HTML 提供离线阅读，JSONL 保留 Pi 原始记录。`/new` 新建会话，
+`/resume` 在交互界面选择历史会话。恢复同时重建模型上下文和界面历史，不重新执行历史工具。
+工作目录、profile 或 Plugin 精确版本不匹配时拒绝恢复，避免旧上下文在不同的执行环境中被误用。
+
+远端会话继续使用 doctor-server 持久化，以 `--server --resume [conversation-id]` 恢复；已有
+`state.yaml` 中的显式远端 ID 仍可直接使用 `--resume <id>`。不带 ID 的 `--resume` 默认选择本地
+会话。远端会话不使用这些本地保存/导出参数。
 
 ### Skill 跟随 Plugin
 
