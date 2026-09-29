@@ -143,6 +143,9 @@ Coverage 独立，只有采集批次和交付页面共享。
 `doctor chat -r` 选择历史，或 `doctor chat --session <path|id>` 打开指定 JSONL。临时问答使用
 `--no-session`；Chat 中 `-c` 表示继续会话，配置文件请使用 `--config`。
 
+用 `doctor chat --fork <会话文件路径或ID>` 从已有记录派生新会话，原会话保持不变；可用 ID 前缀。
+`--fork` 不与 `-c`、`--resume`、`--session`、`--no-session` 或 `--server` 混用。
+
 聊天内 `/session` 查看保存路径，`/export report.html` 或 `/export report.jsonl` 导出，`/new` 新建，
 `/resume` 选择历史。远端会话使用 `doctor chat --server --resume [id]`。保存范围与恢复边界见
 [Chat 设计](../docs/chat.md#本地会话文件)。

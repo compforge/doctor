@@ -63,6 +63,7 @@ export interface CliFlags {
   resume?: string | true;
   continue?: boolean;
   session?: string;
+  fork?: string;
   sessionDir?: string;
   noSession?: boolean;
   server?: boolean;

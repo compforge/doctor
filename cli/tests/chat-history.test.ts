@@ -154,3 +154,45 @@ test("session file read failures preserve their filesystem error", async () => {
   await expect(store.prepare({ session: join(root, "missing.jsonl") }, identity))
     .rejects.toMatchObject({ code: "ENOENT" });
 });
+
+
+test("fork creates an independent session and leaves the original bytes unchanged", async () => {
+  const { root, store } = fixture();
+  const history = (await store.prepare({}, identity))!;
+  const agent = await Agent.create({ session: history.session, env: new NodeExecutionEnv({ cwd: root }),
+    llm: { provider: "openai", model: "test", apiKey: "secret", fetch: async () => sse("original answer") } });
+  await turn(agent, "original question");
+  await agent.dispose();
+  const before = readFileSync(history.metadata.path, "utf8");
+  const fork = (await store.prepare({ fork: history.metadata.path }, identity))!;
+  expect(fork.metadata.id).not.toBe(history.metadata.id);
+  expect(fork.metadata.path).not.toBe(history.metadata.path);
+  expect(fork.metadata.parentSessionId).toBe(history.metadata.id);
+  expect(statSync(fork.metadata.path).mode & 0o777).toBe(0o600);
+  expect(JSON.stringify(fork.messages)).toContain("original answer");
+  let request = "";
+  const child = await Agent.create({ session: fork.session, env: new NodeExecutionEnv({ cwd: root }),
+    llm: { provider: "openai", model: "test", apiKey: "secret", fetch: async (_input, init) => {
+      request = String(init?.body); return sse("fork answer");
+    } } });
+  await turn(child, "fork question");
+  await child.dispose();
+  expect(request).toContain("original question");
+  expect(request).toContain("original answer");
+  expect(readFileSync(history.metadata.path, "utf8")).toBe(before);
+  const resumed = (await store.prepare({ session: fork.metadata.id }, identity))!;
+  expect(JSON.stringify(resumed.messages)).toContain("fork answer");
+  await resumed.session.close(ctx);
+  const byId = (await store.prepare({ fork: history.metadata.id }, identity))!;
+  expect(byId.metadata.parentSessionId).toBe(history.metadata.id);
+  expect(JSON.stringify(byId.messages)).not.toContain("fork answer");
+  await byId.session.close(ctx);
+  await expect(store.prepare({ fork: history.metadata.path }, { ...identity, profile: "other" })).rejects.toThrow("profile");
+  await expect(store.prepare({ fork: history.metadata.path }, { ...identity, plugin: "other" })).rejects.toThrow("Plugin");
+});
+
+test("fork rejects conflicting session selectors and remote or ephemeral mode", () => {
+  for (const flags of [{ continue: true }, { resume: true as const }, { session: "source" }, { noSession: true }, { server: true }]) {
+    expect(() => validateSessionFlags({ fork: "source", ...flags })).toThrow();
+  }
+});

@@ -56,7 +56,7 @@ export class ChatHistoryStore {
     validateSessionFlags(flags);
     if (flags.noSession) return undefined;
     let metadata: ChatMetadata | undefined;
-    const selector = flags.session ?? (typeof flags.resume === "string" ? flags.resume : undefined);
+    const selector = flags.fork ?? flags.session ?? (typeof flags.resume === "string" ? flags.resume : undefined);
     if (selector) metadata = await this.resolve(selector);
     else if (flags.continue) metadata = (await this.list())[0];
     else if (flags.resume) {
@@ -75,7 +75,11 @@ export class ChatHistoryStore {
       if (metadata.identity.plugin !== identity.plugin) throw new Error("会话的 Plugin 版本与当前版本不同；请使用原版本或新建会话");
       if (resolve(metadata.cwd) !== resolve(this.cwd)) throw new Error(`会话工作目录是 ${metadata.cwd}；请在该目录恢复`);
     }
-    const session = metadata ? await this.repo.open(metadata, ctx) : await this.repo.create({ cwd: this.cwd }, ctx);
+    // Pi copies the conversation tree and compaction state with fresh idle lanes;
+    // do not copy/replay persisted operations or append to the source session.
+    const session = metadata
+      ? flags.fork ? await this.repo.fork(metadata, { scope: "tree" }, ctx) : await this.repo.open(metadata, ctx)
+      : await this.repo.create({ cwd: this.cwd }, ctx);
     try {
       await chmod(session.metadata.path, 0o600);
       if (!metadata) await session.setValue(identityValue, identity, ctx);
@@ -112,10 +116,10 @@ export class ChatHistoryStore {
 }
 
 export function validateSessionFlags(flags: CliFlags): void {
-  const selectors = [flags.continue, flags.resume, flags.session].filter(Boolean);
-  if (selectors.length > 1) throw new Error("--continue、--resume、--session 只能指定一个");
+  const selectors = [flags.continue, flags.resume, flags.session, flags.fork].filter(Boolean);
+  if (selectors.length > 1) throw new Error("--continue、--resume、--session、--fork 只能指定一个");
   if (flags.noSession && selectors.length) throw new Error("--no-session 不能与会话恢复参数一起使用");
-  if (flags.server && (flags.continue || flags.session || flags.noSession || flags.sessionDir)) {
+  if (flags.server && (flags.continue || flags.session || flags.fork || flags.noSession || flags.sessionDir)) {
     throw new Error("--server 只支持远端 --resume；本地会话参数不能用于远端 chat");
   }
 }
