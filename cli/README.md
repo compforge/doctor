@@ -90,7 +90,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | 命令 | 用途 |
 |---|---|
 | `doctor plugin` | 展示当前生效的 Plugin 与 Service 声明；`--format json` 供脚本消费 |
-| `doctor chat` | 进入交互式 AI 问诊 |
+| `doctor chat` | 进入交互式 AI 问诊，默认自动保存本地会话 |
 | `doctor cpu` | 对目标 Pod 做 Python CPU、卡顿与线程栈取证 |
 | `doctor mem` | 使用 fork-pyheap attach 并回传对象堆；余量不足时按安全进程拓扑准备 Headroom |
 | `doctor mema [inputs...]` | 在 Doctor Host 用独立 Go analyzer 解析、缓存并诊断 `.pyheap` artifact |
@@ -136,3 +136,17 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Container GDB 安装](docs/commands/install.md)
 - [Case 选择、发送与诊断](docs/commands/case.md)
 - [Network 抓包与离线分析](docs/commands/network-diagnosis.md)
+
+### Chat 会话
+
+本地聊天默认自动保存到 `~/.doctor/sessions/`，按工作目录归档。用 `doctor chat -c` 继续最近会话，
+`doctor chat -r` 选择历史，或 `doctor chat --session <path|id>` 打开指定 JSONL。临时问答使用
+`--no-session`；Chat 中 `-c` 表示继续会话，配置文件请使用 `--config`。
+
+聊天内 `/session` 查看保存路径，`/export report.html` 或 `/export report.jsonl` 导出，`/new` 新建，
+`/resume` 选择历史。远端会话使用 `doctor chat --server --resume [id]`。保存范围与恢复边界见
+[Chat 设计](../docs/chat.md#本地会话文件)。
+
+Chat 使用 Pi `AgentHarness` 自动压缩接近模型窗口的上下文，也可输入 `/compact [说明]` 手动压缩。
+原始聊天仍保留在会话文件和导出中。直接配置模型可设置 `llm.context_window` / `llm.max_tokens`；
+Plugin 模型采用目录中的 `contextLength`，未知窗口兼容按 128000 tokens 估算。

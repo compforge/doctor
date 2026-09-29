@@ -1,3 +1,4 @@
+import { BACKGROUND_CONTEXT } from "@earendil-works/pi-agent-core";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -37,11 +38,14 @@ import {
 import type { Profile } from "./config/model";
 import { prepareAgentCommands } from "./agent-commands";
 import type { DistributionManifest } from "./distribution";
-import { loadState, resolveResumeTarget } from "./config/state";
+import { isRemoteChat, loadState, resolveResumeTarget } from "./config/state";
+import { ChatHistoryStore, historyBlocks, validateSessionFlags, type ChatHistory } from "../chat/history";
 
 export interface BootstrapResult {
   agent: AgentSource;
   model: DoctorModel;
+  history?: ChatHistory;
+  historyStore?: ChatHistoryStore;
 }
 
 export interface LocalAgentContext {
@@ -67,13 +71,12 @@ export async function bootstrap(
   const statePath = join(home, ".doctor", "state.yaml");
   const state = loadState(statePath);
 
-  if (flags.profile && flags.resume !== undefined) {
-    throw new Error("--profile and --resume are mutually exclusive (--resume already implies a profile)");
-  }
+  const remote = isRemoteChat(flags, state);
+  validateSessionFlags({ ...flags, server: remote });
 
   let profileName: string | undefined;
   let resumeConversationId: string | undefined;
-  if (flags.resume !== undefined) {
+  if (remote && flags.resume !== undefined) {
     const target = resolveResumeTarget(state, flags.resume);
     profileName = target.profile;
     resumeConversationId = target.conversationId;
@@ -96,7 +99,6 @@ export async function bootstrap(
     profile = { ...profile, namespace: flags.namespace };
   }
 
-  const remote = !!(flags.server || resumeConversationId);
   if (remote && environment?.context !== undefined) {
     throw new Error("远端 chat 暂不支持 --context；请使用 current-context 已选定的 --kubeconfig 文件");
   }
@@ -104,7 +106,7 @@ export async function bootstrap(
   if (validation.errors.length) throw new Error(validation.errors.join("\n"));
 
   // Endpoint 配置只描述可用能力，不隐式改变执行位置；普通 chat 始终默认本地。
-  // --server 与 --resume 都是显式远端意图，长期可继续复用同一 AgentUE 交互面。
+  // Local resume never silently selects a remote server; known legacy IDs remain supported.
   if (remote) {
     if (!profile.server) {
       throw new Error(`profile '${profileName}' 未配置 server`);
@@ -135,8 +137,11 @@ export async function bootstrap(
     };
   }
 
-  const localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
+  const historyStore = new ChatHistoryStore(process.cwd(), flags.sessionDir ? expandHome(flags.sessionDir) : undefined);
+  let localModel: LocalModel | undefined;
   try {
+    const history = await historyStore.prepare(flags, { profile: profileName, plugin: plugin ? `${plugin.id}@${plugin.version}` : "none" });
+    localModel = await resolveLocalModel(flags, profileName, profile, plugin, commandContext);
     const localContext = await prepareLocalAgentContext(profileName, profile, plugin, environment?.context);
     const commandEnv = prepareAgentCommands(agentCommands ?? {}, plugin, {
       profileName, configPath: resolve(configPath),
@@ -145,31 +150,44 @@ export async function bootstrap(
       namespace: profile.namespace,
     });
     try {
-      const agent = new LocalAgent({
+      const agent = await LocalAgent.create({
         llm: localModel.llm,
+        session: history?.session,
         env: new NodeExecutionEnv({ cwd: process.cwd(), shellEnv: { ...localContext.shellEnv, ...commandEnv.shellEnv } }),
         skills: plugin?.skills ?? [],
         contextPrompt: localContext.contextPrompt,
       });
+      const model = createDoctorModel({
+        profileName, profile, mode: "local", model: localModel.label, warnings: validation.warnings,
+      });
+      if (history) {
+        if (agent.recoveredInterruptedRun) {
+          const entries = await history.session.findEntries({ type: "message", order: "asc" }, BACKGROUND_CONTEXT);
+          history.messages = entries.flatMap((entry) => entry.type === "message" ? [entry.message] : []);
+        }
+        model.blocks = historyBlocks(history.messages);
+        model.meta.turn_count = history.messages.filter((message) => message.role === "user").length;
+        model.blocks.push({ id: "session-file", type: "info", tone: "muted", content: `会话文件：${history.metadata.path}` });
+      } else {
+        model.blocks.push({ id: "session-file", type: "info", tone: "warn", content: "临时会话：不保存聊天记录" });
+      }
+      if (agent.recoveredInterruptedRun) model.blocks.push({ id: "interrupted-run", type: "info", tone: "warn",
+        content: "上次运行未完成，已标记中断；历史工具不会自动重跑，可输入新问题继续。" });
       return {
+        history, historyStore,
         agent: withDispose(agent, async () => {
-          try { await localModel.dispose?.(); }
-          finally { commandEnv.dispose(); }
+          try { await localModel?.dispose?.(); }
+          finally { commandEnv.dispose(); await historyStore.close(); }
         }),
-        model: createDoctorModel({
-          profileName,
-          profile,
-          mode: "local",
-          model: localModel.label,
-          warnings: validation.warnings,
-        }),
+        model,
       };
     } catch (error) {
       commandEnv.dispose();
       throw error;
     }
   } catch (error) {
-    await localModel.dispose?.();
+    await localModel?.dispose?.();
+    await historyStore.close();
     throw error;
   }
 }
@@ -253,6 +271,8 @@ function resolveConfiguredLlm(profile: Profile): LlmConfig {
     model: llm.model!,
     ...(llm.endpoint ? { endpoint: llm.endpoint } : {}),
     ...(llm.thinking !== undefined ? { thinking: llm.thinking } : {}),
+    contextWindow: llm.context_window,
+    maxTokens: llm.max_tokens,
   };
 }
 
@@ -307,6 +327,7 @@ async function resolveLocalModel(
         model: model.inference.model,
         endpoint: model.inference.baseUrl,
         fetch: createModelInferenceFetch(inference),
+        contextWindow: parseContextWindow(model.contextLength),
       },
       label: `${model.provider}/${model.name}`,
       dispose: access.dispose,
@@ -333,10 +354,20 @@ export async function selectChatModel(
   return model;
 }
 
+/** Catalogs commonly express token windows as either a count or a K/M suffix. */
+export function parseContextWindow(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const match = /^(\d+(?:\.\d+)?)\s*([kKmM])?$/.exec(value.trim());
+  if (!match) return undefined;
+  const tokens = Number(match[1]) * (match[2]?.toLowerCase() === "m" ? 1_000_000 : match[2] ? 1_000 : 1);
+  return Number.isSafeInteger(tokens) && tokens > 0 ? tokens : undefined;
+}
+
 function withDispose(agent: AgentSource, dispose: () => Promise<void>): AgentSource {
   return {
     run: (text, context) => agent.run(text, context),
     abort: () => agent.abort(),
+    compact: agent.compact ? (instructions, context) => agent.compact!(instructions, context) : undefined,
     dispose: async () => {
       try {
         await agent.dispose();

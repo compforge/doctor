@@ -6,11 +6,17 @@ import {
 } from "chat-tui";
 
 import { projectChatState } from "./model";
-import { Session } from "./session";
+import { Session, type RestartChat } from "./session";
+import { sessionLabel } from "./history";
 
 export const CHAT_COMMANDS: readonly CommandSpec[] = [
   { name: "help", description: "Show keyboard and command help" },
   { name: "exit", description: "Exit Doctor chat" },
+  { name: "compact", description: "压缩当前模型上下文，保留完整聊天记录" },
+  { name: "session", description: "查看当前会话文件与统计" },
+  { name: "export", description: "导出会话：/export [file.html 或 file.jsonl]" },
+  { name: "resume", description: "选择本地历史会话" },
+  { name: "new", description: "开始新会话" },
 ];
 
 export class Controller implements ChatProtocol {
@@ -23,6 +29,7 @@ export class Controller implements ChatProtocol {
   constructor(
     private readonly session: Session,
     private readonly onExit: () => void | Promise<void>,
+    private readonly onRestart?: RestartChat,
   ) {
     this.stateStore = createChatStore(projectChatState(session.getModel()));
     this.unsubscribe = session.subscribe((model) => {
@@ -37,7 +44,32 @@ export class Controller implements ChatProtocol {
     await this.session.submit(text);
   }
 
-  async command(name: string): Promise<void> {
+  async command(name: string, argument = ""): Promise<void> {
+    try {
+      if (name === "compact") { await this.session.compact(argument || undefined); return; }
+      if (name === "session") { this.toast(await this.session.sessionInfo()); return; }
+      if (name === "export") { this.toast(`已导出：${await this.session.export(argument)}`); return; }
+      if (name === "new" || name === "resume") {
+        this.session.assertCanSwitch();
+        if (!this.onRestart) throw new Error("当前宿主不支持切换会话");
+        if (name === "new") { await this.onRestart({}); return; }
+        if (argument.trim()) {
+          const target = await this.session.historyStore!.resolve(argument.trim());
+          await this.onRestart({ session: target.path });
+          return;
+        }
+        const sessions = await this.session.historyStore!.list();
+        if (!sessions.length) throw new Error("当前目录没有可恢复的会话");
+        this.stateStore.commit({ composer: { ...this.stateStore.getState("composer"), picker: {
+          id: "resume", title: "恢复会话", search: { mode: "local" },
+          options: sessions.map((item) => ({ name: sessionLabel(item), description: item.path, value: item.path })),
+        } } });
+        return;
+      }
+    } catch (error) {
+      this.toast(error instanceof Error ? error.message : String(error), "error");
+      return;
+    }
     if (name === "exit") {
       await this.exit();
       return;
@@ -63,7 +95,18 @@ export class Controller implements ChatProtocol {
     await this.onExit();
   }
 
-  resolvePicker(): void {}
+  resolvePicker(id: string, value: string | null): void {
+    this.stateStore.commit({ composer: { ...this.stateStore.getState("composer"), picker: null } });
+    if (id === "resume" && value) {
+      void Promise.resolve(this.onRestart?.({ session: value })).catch((error: unknown) => {
+        this.toast(error instanceof Error ? error.message : String(error), "error");
+      });
+    }
+  }
+
+  private toast(text: string, tone: "info" | "error" = "info"): void {
+    this.stateStore.commit({ footer: { ...this.stateStore.getState("footer"), toast: { text, tone } } });
+  }
   searchPicker(): void {}
   resolveInteraction(_id: string, _response: InteractionResponse): void {}
 

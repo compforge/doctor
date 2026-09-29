@@ -1,11 +1,11 @@
 import { expect, test } from "bun:test";
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import type { HarnessEventPayload } from "@earendil-works/pi-agent-core";
 import { applyPatches, PatchEmitter } from "@compforge/agentue/ui";
 
 import { mapEvent, type EventState } from "../src/agent";
 
-function event(value: unknown): AgentEvent {
-  return value as AgentEvent;
+function event(value: unknown): HarnessEventPayload {
+  return value as HarnessEventPayload;
 }
 
 function eventState(): EventState {
@@ -46,12 +46,12 @@ test("assistant message blocks start with the first non-empty text delta", () =>
   }), context, state);
   expect(mapEvent(event({
     type: "message_update",
-    assistantMessageEvent: { type: "text_delta", delta: "" },
+    event: { type: "text_delta", delta: "" },
   }), context, state)).toEqual([]);
 
   const patches = mapEvent(event({
     type: "message_update",
-    assistantMessageEvent: { type: "text_delta", delta: "done" },
+    event: { type: "text_delta", delta: "done" },
   }), context, state);
   expect(JSON.stringify(patches)).toContain('"content":"done"');
   expect(JSON.stringify(patches)).not.toContain('"content":""');
@@ -62,9 +62,9 @@ test("thinking events become a complete thought block", () => {
   const state = eventState();
   mapEvent(event({ type: "message_start", message: { role: "assistant" } }), context, state);
   const patches = [
-    ...mapEvent(event({ type: "message_update", assistantMessageEvent: { type: "thinking_start" } }), context, state),
-    ...mapEvent(event({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: "checking trace" } }), context, state),
-    ...mapEvent(event({ type: "message_update", assistantMessageEvent: { type: "thinking_end", content: "checking trace" } }), context, state),
+    ...mapEvent(event({ type: "message_update", event: { type: "thinking_start" } }), context, state),
+    ...mapEvent(event({ type: "message_update", event: { type: "thinking_delta", delta: "checking trace" } }), context, state),
+    ...mapEvent(event({ type: "message_update", event: { type: "thinking_end", content: "checking trace" } }), context, state),
   ];
   const model = applyPatches({ meta: {}, blocks: [] }, patches);
   expect(model.blocks).toMatchObject([{
@@ -77,11 +77,11 @@ test("tool completion keeps the bash command from the start event", () => {
   const state = eventState();
   const patches = [
     ...mapEvent(event({
-      type: "tool_execution_start", toolCallId: "call-1", toolName: "bash",
+      type: "tool_start", toolCallId: "call-1", toolName: "bash",
       args: { command: "ascli trace --biz-id example" },
     }), context, state),
     ...mapEvent(event({
-      type: "tool_execution_end", toolCallId: "call-1", toolName: "bash",
+      type: "tool_end", toolCallId: "call-1", toolName: "bash",
       isError: false, result: { content: [{ type: "text", text: "done" }] },
     }), context, state),
   ];
@@ -90,3 +90,18 @@ test("tool completion keeps the bash command from the start event", () => {
     type: "tool", status: "completed", args: { command: "ascli trace --biz-id example" }, result: "done",
   }]);
 });
+
+for (const status of ["completed", "aborted", "declined", "failed"]) {
+  test(`compaction activity clears when ${status}`, () => {
+    const context = { emitter: new PatchEmitter() };
+    const state = eventState();
+    const started = applyPatches({ meta: {}, blocks: [] }, mapEvent(event({
+      type: "compaction_start", runId: "run-1", reason: "threshold",
+    }), context, state));
+    expect(started.meta).toMatchObject({ compacting: true });
+    const ended = applyPatches(started, mapEvent(event({
+      type: "compaction_end", runId: "run-1", status,
+    }), context, state));
+    expect(ended.meta).toMatchObject({ compacting: false });
+  });
+}

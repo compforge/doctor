@@ -123,7 +123,7 @@ describe("distribution root defaults and configuration Help", () => {
     } finally { run.mockRestore(); }
   });
 
-  test("root config does not capture container -c; legacy config -c overrides distribution defaults", async () => {
+  test("root config does not capture container -c; chat -c continues and --config overrides defaults", async () => {
     const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
     try {
       const program = createDoctorProgram({ optionDefaults: { config: "" } });
@@ -133,8 +133,9 @@ describe("distribution root defaults and configuration Help", () => {
     const program = createDoctorProgram({ optionDefaults: { config: "" } });
     const chat = program.commands.find(command => command.name() === "chat")!;
     chat.action(() => undefined);
-    await program.parseAsync(["chat", "-c", "/explicit/config"], { from: "user" });
+    await program.parseAsync(["chat", "-c", "--config", "/explicit/config"], { from: "user" });
     expect(commandOptionsWithSources(chat).config).toBe("/explicit/config");
+    expect(chat.opts().continue).toBe(true);
     expect(chat.helpInformation()).toContain("--profile");
   });
 });

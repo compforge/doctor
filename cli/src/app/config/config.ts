@@ -62,7 +62,7 @@ function validateProfileShape(value: unknown, name: string): Profile {
     if (!section) continue;
     for (const [key, item] of Object.entries(section)) {
       if (item === undefined) continue;
-      const allowed = field === "db" && key === "port_override"
+      const allowed = (field === "db" && key === "port_override") || (field === "llm" && ["context_window", "max_tokens"].includes(key))
         ? "number"
         : field === "llm" && key === "thinking"
           ? "boolean"

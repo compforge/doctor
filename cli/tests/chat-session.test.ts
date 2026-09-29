@@ -117,3 +117,42 @@ function createModel() {
     warnings: [],
   });
 }
+
+
+test("manual compaction drains prompts queued by the UI", async () => {
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  const prompts: string[] = [];
+  const source: AgentSource = {
+    async *run(text) { prompts.push(text); },
+    async *compact() { await blocked; },
+    abort() { release(); },
+    async dispose() {},
+  };
+  const session = new Session(createDoctorModel({ profileName: "test", profile: { readonly: true }, mode: "local", warnings: [] }), source);
+  const compacting = session.compact();
+  await session.submit("queued question");
+  release();
+  await compacting;
+  expect(prompts).toEqual(["queued question"]);
+  expect(session.getModel().meta.busy).toBe(false);
+  await session.dispose();
+});
+
+test("failed compaction streams clear activity before the next turn", async () => {
+  const source: AgentSource = {
+    async *run() {},
+    async *compact(_instructions, context) {
+      yield context.emitter.metaSet("meta.compacting", { compacting: true });
+      throw new Error("compaction stream failed");
+    },
+    abort() {},
+    async dispose() {},
+  };
+  const session = new Session(createModel(), source);
+  await expect(session.compact()).rejects.toThrow("compaction stream failed");
+  expect(session.getModel().meta).toMatchObject({ busy: false, compacting: false });
+  await session.submit("next question");
+  expect(session.getModel().meta).toMatchObject({ busy: false, compacting: false });
+  await session.dispose();
+});

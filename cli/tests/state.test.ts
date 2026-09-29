@@ -1,3 +1,4 @@
+import { isRemoteChat } from "../src/app/config/state";
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,4 +88,12 @@ describe("resolveResumeTarget", () => {
     const empty: State = { conversations: {} };
     expect(() => resolveResumeTarget(empty, true)).toThrow(/no.*conversation/i);
   });
+});
+
+it("chat resume defaults to local and preserves known remote IDs", () => {
+  const state = { conversations: { remote: { profile: "test", last_used_at: "now" } } };
+  expect(isRemoteChat({ resume: true }, state)).toBe(false);
+  expect(isRemoteChat({ resume: "local-id" }, state)).toBe(false);
+  expect(isRemoteChat({ resume: "remote" }, state)).toBe(true);
+  expect(isRemoteChat({ server: true, resume: true }, state)).toBe(true);
 });
