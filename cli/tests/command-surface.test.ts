@@ -396,9 +396,9 @@ describe("command help", () => {
     expect(result.stdout).toContain("--until-time <timestamp>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("新建证据目录");
-    expect(result.stdout).toContain("basename/路径");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
+    expect(result.stdout).toContain("-f manifest -o ./evidence → ./evidence/manifest.json（证据目录）");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("trace accepts biz-id and treats namespace as the business namespace", async () => {
@@ -424,7 +424,7 @@ describe("command help", () => {
     expect(result.stdout).not.toContain("--tenant-config-service <name>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "md", "summary", "manifest"');
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
   });
 
   test("tenant exposes tenant-scoped data collection", async () => {
@@ -481,9 +481,9 @@ describe("command help", () => {
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("--kubeconfig <path>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "manifest"');
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout).toContain("basename/路径");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("net exposes bounded capture options and neta stays local-only", async () => {
@@ -515,9 +515,9 @@ describe("command help", () => {
     expect(result.stdout).not.toContain("--model-catalog-service <name>");
     expect(result.stdout).toContain("-y, --yes");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("同名 .html 与 .tar.gz");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("model exposes tenant/model selection and inference diagnosis options", async () => {
@@ -536,9 +536,9 @@ describe("command help", () => {
     expect(result.stdout).toContain("--repeat <n>");
     expect(result.stdout).toContain("--max-output-tokens <n>");
     expect(result.stdout).toContain("-f, --format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("同名 .html 与 .tar.gz");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("mem uses PyHeap without exposing backend selection or historical modes", async () => {
@@ -646,9 +646,9 @@ describe("command help", () => {
     expect(result.stdout).toContain("隐藏完整 key 名并使用哈希摘要");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "manifest"');
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("上游默认 HTML + Bundle");
+    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout).toContain("同名 .html 与 .tar.gz");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("data accepts positional or repeated biz-id and exposes JSON and HTML", async () => {
@@ -658,9 +658,9 @@ describe("command help", () => {
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "summary", "manifest"');
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("新建证据目录");
+    expect(result.stdout).toContain("-f manifest -o ./evidence → ./evidence/manifest.json（证据目录）");
     expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout).toContain("同名 .html 与 .tar.gz");
+    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
   test("db exposes Service-scoped operations", async () => {

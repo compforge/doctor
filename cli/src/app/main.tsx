@@ -30,7 +30,7 @@ import { writeOutput } from "../terminal/output";
 import { Command, CommanderError, type Command as CommandT } from "commander";
 import { CliCommand } from "./cli-command";
 import { extractDistributionArgument, loadDistributionManifest, type Distribution, type DoctorHostOptions } from "./distribution";
-import { applyCommandDefaults, deliveryFormatOption } from "./command-defaults";
+import { applyCommandDefaults, configureDeliveryHelp, deliveryFormatOption } from "./command-defaults";
 import { DOCTOR_COMMANDS, selectVisibleCommands } from "./command-selection";
 import { formatDistributionVersion, formatDoctorVersion } from "./version";
 import { mapErrorMessage } from "../protocol";
@@ -732,6 +732,7 @@ export function createDoctorProgram(
   applyOptionDefaults(program, distribution.optionDefaults);
   applyCommandDefaults(program, distribution.commandDefaults);
   configureProfileHelp(program);
+  configureDeliveryHelp(program);
   return program;
 }
 
