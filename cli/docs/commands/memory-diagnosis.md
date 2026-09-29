@@ -48,13 +48,12 @@ PID 扫描、Headroom、attach、恢复和 artifact 回传共同属于一次 Mem
 恢复边界，不能拆成可并发 Probe。Probe 返回结构化 CaptureResult Observation，Coverage 只回答是否形成可供
 `doctor mema` 分析的 heap 与 capture index，不把采集失败解释成内存根因。
 
-默认输出 HTML 报告和 Evidence Bundle，`--output` 指定报告 basename；`--format bundle` 可仅交付归档。
-名称在采集前由根交付计划确定，
-包内包含 `heap.pyheap`、采集索引 `heap.json` 和诊断证据。解包后运行 `doctor mema <解包目录>/heap.json`。
-也可使用 `--format manifest --output <新目录>` 保留完整证据目录。
+默认输出：
 
-采集器只写本轮临时证据；根交付负责路径预检与不覆盖发布。交付失败保留已经回传的 heap，
-不需要重新 attach 或重复采集。
+```text
+doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.pyheap
+doctor-mem-<pod>-pid<pid>-YYYYMMDD-HHmmss.json
+```
 
 采集索引使用 `doctor.memory-capture/v1`，记录目标、PyHeap 版本、执行位置、heap 元数据，以及进程扫描、
 cgroup、目标进程状态和 Headroom 前后的事实。原始 `.pyheap` 是事实来源；分析 JSON 和 HTML 均可重建。
@@ -90,7 +89,7 @@ Headroom 会降低服务并发容量，退出 worker 上的在途请求也可能
 
 远端 heap 先压缩，再通过有界分片回传；每片可从同一 offset 重试。本机先写临时文件，压缩文件与
 解压后的 heap 都通过容器端元数据校验，成功后才原子改名。失败时不交付半份本地 heap，并报告远端
-文件位置。远端 `/tmp/doctor-pyheap` 默认保留；显式传 `--cleanup-remote` 才在本地回传并校验成功后删除。
+文件位置。远端 `/tmp/doctor-pyheap` 默认保留；显式传 `--cleanup-remote` 才在本地交付成功后删除。
 
 ### `doctor mema`
 

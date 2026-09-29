@@ -86,7 +86,7 @@ test("programmatic parent and child inherit invocation policy", async () => {
 test("yes does not select optional inspect collection; explicit false never prompts", async () => {
   const config: InspectConfig = {
     namespace: "demo", namespaceSource: "default", services: ["api"], servicesExplicit: true,
-    reportName: "test", profileName: "", kube: { namespace: "demo" },
+    format: "bundle", reportName: "test", profileName: "", kube: { namespace: "demo" },
   };
   const prompt = async () => { throw new Error("must not prompt"); };
   await withInteractionOptions({ yes: true }, async () => {

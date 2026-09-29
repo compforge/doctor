@@ -1,11 +1,12 @@
+import { lstatSync } from "node:fs";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { reportError } from "./error-report";
 import { withoutShadowedDefaults } from "./option-sources";
-import { CommandContext } from "../command";
+import { CommandContext, CommandInputError } from "../command";
 import { loadActivePlugin } from "../plugin";
 
 import { useLogger } from "../terminal/log";
-import type { CommandDeliveryOptions } from "./delivery-plan";
+import type { CommandDeliveryOptions } from "./delivery";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 
 export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
@@ -17,6 +18,10 @@ export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
 
 /** Only the root resolves profile and host settings; each spec prepares its own requirements. */
 export function prepareCommand(opts: CommandOptions, printProfile: boolean, plugin?: PluginDefinition): CommandContext {
+  // Reject an occupied explicit output before profile/Plugin preparation or remote work.
+  if (opts.output && lstatSync(opts.output, { throwIfNoEntry: false })) {
+    throw new CommandInputError(`--output 已存在：${opts.output}`);
+  }
   const resolved = resolveWorkingProfile(opts);
   opts = withoutShadowedDefaults(opts, resolved.profile);
   if (printProfile && resolved.configPath) useLogger().info(`profile: ${resolved.name}`);
@@ -26,7 +31,7 @@ export function prepareCommand(opts: CommandOptions, printProfile: boolean, plug
   }, {
     plugin, loadPlugin: loadActivePlugin,
     environment: { kubeconfig: opts.kubeconfig, context: opts.context },
-    yes: opts.yes,
+    format: opts.format, output: opts.output, yes: opts.yes,
     onError: (error, command) => reportError(error, { context: command, summary: "fatal", plugin: context.pluginIdentity }),
   });
   return context;

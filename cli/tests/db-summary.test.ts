@@ -25,8 +25,8 @@ function provider(id = "primary"): DbProvider {
     query: async () => result([{ database_name: "app", table_name: "messages" }]),
   };
 }
-function context() {
-  return new CommandContext({}, undefined, { plugin: {
+function context(options: { format?: string; output?: string } = { format: "summary" }) {
+  return new CommandContext({}, undefined, { ...options, plugin: {
     id: "test", version: "0.0.1", services: createServiceCatalog([{
       name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }],
@@ -41,6 +41,16 @@ test("DB accepts summary as a CLI and distribution format", () => {
   expect(db.options.find(option => option.attributeName() === "format")!.argChoices).toContain("summary");
 });
 
+test("DB rejects summary output paths before environment access", async () => {
+  const ctx = context({ format: "summary", output: "report.md" });
+  const environment = spyOn(ctx, "ensureEnvironment").mockResolvedValue();
+  try {
+    const outcome = await dbCommand.run(ctx, { service: "api", execute: "SELECT 1", interactive: false });
+    expect(outcome.status).toBe(CommandStatus.Failed);
+    expect(outcome).toMatchObject({ reason: expect.stringContaining("不支持 --output") });
+    expect(environment).not.toHaveBeenCalled();
+  } finally { environment.mockRestore(); await ctx.disposeClients(); }
+});
 
 for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "ambiguous", "discovery-failure", "create-table", "tables", "databases"] as const) {
   test(`DB summary delivery: ${scenario}`, async () => {
@@ -79,7 +89,7 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
       expect(outcome.status).toBe(failed ? CommandStatus.Failed : partial ? CommandStatus.Partial : CommandStatus.Ok);
       directories.push(...outcome.artifacts.map(artifact => artifact.path));
       const countBeforeDelivery = calls.length;
-      expect(await finalizeResult(ctx, dbCommand, outcome, { format: "summary" })).toBe(failed ? 1 : 0);
+      expect(await finalizeResult(ctx, dbCommand, outcome, { format: "summary" }, input)).toBe(failed ? 1 : 0);
       expect(calls.length).toBe(countBeforeDelivery);
       expect(render).not.toHaveBeenCalled();
       const stderr = evidenceOutput.mock.calls.map(([value]) => String(value)).join("");

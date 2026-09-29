@@ -134,20 +134,17 @@ function withMemOptions(cmd: CommandT): CommandT {
       .option("--cleanup-remote", "heap 成功回传后删除执行容器内临时文件", false)
   )
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
-    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
-    .option("-o, --output <path>", "内存证据输出路径；Bundle 内包含 heap 和采集索引");
+    .option("-o, --output <path>", "本机 heap 输出路径（默认 ./doctor-mem-<pod>-pid<pid>-<时间戳>.pyheap）");
 }
 
 function withMemaOptions(cmd: CommandT): CommandT {
   return cmd
-    .addOption(deliveryFormatOption(["html", "bundle"]))
-    .option("-o, --output <path>", "内存分析报告输出路径");
+    .option("-o, --output <path>", "HTML 分析报告输出路径");
 }
 
 function withCpuOptions(cmd: CommandT): CommandT {
   return withK8sProcessTargetOptions(cmd)
-    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
-    .option("-o, --output <path>", "CPU 证据输出路径");
+    .option("-o, --output <path>", "CPU 证据包输出路径（默认 ./doctor-cpu-<pod>-<时间戳>.tar.gz）");
 }
 
 function withTraceOptions(cmd: CommandT): CommandT {
@@ -308,8 +305,7 @@ function withNetworkOptions(cmd: CommandT): CommandT {
     .option("--filter <bpf>", "覆盖按 Service 端口生成的 tcpdump BPF 粗过滤条件")
     .option("--cleanup-remote", "PCAP 成功回传并校验后清理 Pod 内本次抓包", false)
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
-    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
-    .option("-o, --output <path>", "网络证据输出路径");
+    .option("-o, --output <path>", "NetBundle 输出路径（默认 ./doctor-net-<时间戳>.tar.gz）");
 }
 
 function withMcpOptions(cmd: CommandT): CommandT {
@@ -545,12 +541,12 @@ export function createDoctorProgram(
     .option("-c, --container <name>", "要安装 GDB 的目标 container")
     .option("--program <name>", "非交互调用指定要安装的程序；首版仅支持 gdb")
     .option("--tar <path>", "指定与 Target 平台和 kernel 兼容的 doctor-packages/v1 离线 tar")
-    .addOption(deliveryFormatOption(["md", "json", "summary", "html", "bundle"]).default("summary"))
-    .option("-o, --output <path>", "兼容性报告路径；导出文件时指定 --format")
+    .option("-f, --format <format>", "输出 GDB 兼容性报告：md 或 json")
+    .option("-o, --output <path>", "兼容性报告路径；未指定 --format 时按 .json 后缀推断，否则使用 md")
     .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(installCommand, opts, domainInput(opts), commandRuntime);
+      await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, commandRuntime);
     });
 
   withMemOptions(

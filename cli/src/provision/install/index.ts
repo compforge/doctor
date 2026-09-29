@@ -17,4 +17,5 @@ export type {
   InstallCliOpts,
   InstallPlan,
   InstallProgram,
+  InstallReportFormat,
 } from "./model";

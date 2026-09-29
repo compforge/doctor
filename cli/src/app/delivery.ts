@@ -1,12 +1,13 @@
 import { tmpdir } from "node:os";
-import { constants, linkSync, mkdtempSync, chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve, sep, relative, isAbsolute } from "node:path";
-import { packArchiveEntries } from "../collect/output/archive";
-import { assertDeliveryPathsAvailable, type DeliveryPlan } from "./delivery-plan";
+import { packArchiveEntries, resolveArchivePath, resolveDefaultReportPaths } from "../collect/output/archive";
 import type { Manifest } from "../command/manifest";
 
 import { writeMachineResult, writeOutput } from "../terminal/output";
 import { useLogger } from "../terminal/log";
+
+export interface CommandDeliveryOptions { format?: string; output?: string }
 
 export function cleanupTemporaryArtifacts(paths: readonly string[]): void {
   const temporaryRoot = `${resolve(tmpdir())}${sep}`;
@@ -25,49 +26,62 @@ export function cleanupTemporaryArtifacts(paths: readonly string[]): void {
 }
 
 /** Delivery consumes an already serialized, portable directory. It never reconstructs domain results. */
-export async function deliverSerialized(input: { directory: string; plan: DeliveryPlan;
-  code: number }): Promise<boolean> {
-  const { directory, plan: paths, code } = input;
+export async function deliverSerialized(input: { directory: string; options: CommandDeliveryOptions;
+  code: number; reportName: string }): Promise<boolean> {
+  const { directory, options, code, reportName } = input;
   const manifestPath = join(directory, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
-  const { format } = paths;
+  let format = options.format?.trim() || "default";
+  if (!["default", "html", "json", "md", "summary", "bundle", "manifest"].includes(format)) {
+    useLogger("delivery").warn(`未识别 format '${format}'，按 default 交付 HTML + Bundle`);
+    format = "default";
+  }
   const errors: string[] = [];
   let root = directory;
+  const publish = (path: string, action: () => void) => {
+    if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+    action();
+  };
   let metadata: Manifest = { ...manifest, delivery: { status: "ok", errors, exitCode: code,
     location: { directory, manifest: manifestPath } } };
   try {
-    // Collection may take time: recheck every destination even when preflight passed.
-    assertDeliveryPathsAvailable(paths);
     if (format === "manifest") {
-      if (paths.directory) {
-        root = paths.directory;
-        mkdirSync(root, { mode: 0o700 });
-        cpSync(directory, root, { recursive: true, errorOnExist: true, force: false });
+      if (options.output) {
+        root = resolve(options.output);
+        publish(root, () => { mkdirSync(root, { mode: 0o700 }); cpSync(directory, root, { recursive: true }); });
       }
     } else {
+      const paths = resolveDefaultReportPaths(options.output, reportName);
+      const filePath = (extension: string) => {
+        const path = options.output?.trim() || reportName;
+        return resolve(path.endsWith(`.${extension}`) ? path : `${path}.${extension}`);
+      };
       if (format === "summary") {
         const summaryPath = join(directory, manifest.files.summary!.path);
         writeOutput(readFileSync(summaryPath, "utf8"));
       }
-      const files = paths.file ? [{ destination: paths.file.path,
-        source: paths.file.format === "html" ? "report.html" : paths.file.format === "json"
-          ? (manifest.files.diagnosis?.path ?? manifest.files.output?.path ?? "diagnosis.json") : manifest.files.summary!.path }] : [];
-      const archive = paths.archive;
+      const files: { source: string; destination: string }[] = [];
+      if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
+      if (format === "json" || format === "md") files.push({ source: format === "json" ? (manifest.files.diagnosis?.path ?? manifest.files.output?.path ?? "diagnosis.json") : manifest.files.summary!.path, destination: filePath(format) });
+      const archive = format === "default" ? paths.bundle : format === "bundle" ? resolveArchivePath(options.output, reportName) : undefined;
+      // Validate every destination before publishing any output.
+      for (const path of [...files.map(file => file.destination), ...(archive ? [archive] : [])]) {
+        if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+      }
       for (const file of files) {
         try {
-          await publishFile(file.destination, temporary => {
-            if (format === "json") {
-              const result = existsSync(join(directory, file.source)) ? JSON.parse(readFileSync(join(directory, file.source), "utf8")) : undefined;
-              // The exported JSON lives outside the execution directory; make its relative evidence references resolvable.
-              writeFileSync(temporary, `${JSON.stringify({ manifest: manifestPath, result }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-            } else if (format === "md") {
-              const summary = existsSync(join(directory, file.source)) ? readFileSync(join(directory, file.source), "utf8") : `# ${manifest.title}\n\n${manifest.execution.status}\n`;
-              writeFileSync(temporary, `${relocateSummaryLinks(summary, directory, dirname(file.destination))}\n[完整执行结果](${manifestPath})\n`, { mode: 0o600, flag: "wx" });
-            } else {
-              if (!existsSync(join(directory, file.source))) throw new Error(`Serialized result has no ${file.source}`);
-              copyFileSync(join(directory, file.source), temporary, constants.COPYFILE_EXCL);
-            }
-          });
+          if (format === "json") {
+            const result = existsSync(join(directory, file.source)) ? JSON.parse(readFileSync(join(directory, file.source), "utf8")) : undefined;
+            // The exported JSON lives outside the execution directory; make its relative evidence references resolvable.
+            writeFileSync(file.destination, `${JSON.stringify({ manifest: manifestPath, result }, null, 2)}\n`, { mode: 0o600 });
+          } else if (format === "md") {
+            const summary = existsSync(join(directory, file.source)) ? readFileSync(join(directory, file.source), "utf8") : `# ${manifest.title}\n\n${manifest.execution.status}\n`;
+            writeFileSync(file.destination, `${relocateSummaryLinks(summary, directory, dirname(file.destination))}\n[完整执行结果](${manifestPath})\n`, { mode: 0o600 });
+          } else {
+            if (!existsSync(join(directory, file.source))) throw new Error(`Serialized result has no ${file.source}`);
+            copyFileSync(join(directory, file.source), file.destination);
+            chmodSync(file.destination, 0o600);
+          }
           writeOutput(`[delivery] ${file.source}: ${file.destination}\n`);
         } catch (error) { errors.push(error instanceof Error ? error.message : String(error)); }
       }
@@ -75,10 +89,9 @@ export async function deliverSerialized(input: { directory: string; plan: Delive
         metadata = { ...metadata, delivery: { status: errors.length ? "failed" : "ok", errors,
           exitCode: code === 130 ? 130 : errors.length ? 1 : code, location: { directory, manifest: manifestPath } } };
         writeFileSync(manifestPath, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
-        await publishFile(archive, async temporary => {
-          const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), temporary);
-          if (!packed.ok) throw new Error(packed.stderr);
-        });
+        const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), archive);
+        if (!packed.ok) throw new Error(packed.stderr);
+        chmodSync(archive, 0o600);
         writeOutput(`[delivery] Evidence Bundle: ${archive}\n`);
       }
     }
@@ -104,16 +117,4 @@ function relocateSummaryLinks(markdown: string, source: string, destination: str
     if (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("#") || isAbsolute(value)) return match;
     return `](<${relative(destination, resolve(source, value))}>)`;
   });
-}
-
-/** Fully prepare a file beside its destination, then publish without replacing another invocation's file. */
-async function publishFile(destination: string, write: (temporary: string) => void | Promise<void>): Promise<void> {
-  const staging = mkdtempSync(join(dirname(destination), ".doctor-publish-"));
-  try {
-    // Preserve the basename so tar's internal root matches the published archive.
-    const temporary = join(staging, basename(destination));
-    await write(temporary);
-    chmodSync(temporary, 0o600);
-    linkSync(temporary, destination);
-  } finally { rmSync(staging, { recursive: true, force: true }); }
 }

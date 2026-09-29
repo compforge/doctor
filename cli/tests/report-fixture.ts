@@ -1,4 +1,3 @@
-import { createDeliveryPlan, assertDeliveryPathsAvailable } from "../src/app/delivery-plan";
 import { strFromU8, unzipSync } from "fflate";
 import type { CommandContext, CommandInput, CommandResult, Command } from "../src/command";
 import { CommandStatus, commandOutcome } from "../src/command";
@@ -6,7 +5,7 @@ import { RenderContext } from "../src/report/context";
 import { finalizeCommand } from "../src/app/finalize";
 import { commandExitCode } from "../src/app/command";
 import { serializeEvidence } from "../src/collect/serialize";
-import type { CommandDeliveryOptions } from "../src/app/delivery-plan";
+import type { CommandDeliveryOptions } from "../src/app/delivery";
 import type { Report } from "../src/report/model";
 
 export async function renderForDelivery<Input extends CommandInput, Output>(context: CommandContext,
@@ -40,8 +39,9 @@ export function readReport(html: string) {
 }
 
 export function finalizeResult<Input extends CommandInput, Output>(context: CommandContext,
-  spec: Command<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions): Promise<number> {
-  return finalizeCommand({ context, spec, result, plan: createDeliveryPlan(spec.name, delivery), code: commandExitCode(result) });
+  spec: Command<Input, Output>, result: CommandResult<Output>, delivery: CommandDeliveryOptions,
+  commandInput: Input = { bizIds: [] } as unknown as Input): Promise<number> {
+  return finalizeCommand({ context, spec, commandInput, result, delivery, code: commandExitCode(result) });
 }
 
 /** A file-delivery test declares one execution per fixture; no production command or renderer is inferred. */
@@ -61,5 +61,5 @@ export function finalizeFixture(context: CommandContext, delivery: CommandDelive
       children: await Promise.all(children.map(child => writer.serialize(child.spec, child.result))) }),
     render: async () => fixtureReport(context).report,
   };
-  return finalizeCommand({ context, spec, result, plan: createDeliveryPlan(spec.name, delivery), code });
+  return finalizeCommand({ context, spec, commandInput: {}, result, delivery, code });
 }

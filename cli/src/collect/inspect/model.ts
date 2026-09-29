@@ -14,6 +14,7 @@ import type { KubernetesWorkloadConfigSnapshot } from "../../infra/k8s/workload-
 import type { KubernetesAutoscaler, KubernetesWorkloadEvent } from "../../infra/k8s/workload-events";
 import type { EvidenceBundle } from "../evidence";
 
+export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
 export interface CollectInspectCliOpts {
@@ -25,6 +26,8 @@ export interface CollectInspectCliOpts {
   context?: string;
   profile?: string;
   config?: string;
+  format?: string;
+  output?: string;
 }
 
 export interface InspectConfig {
@@ -34,6 +37,8 @@ export interface InspectConfig {
   servicesExplicit: boolean;
   includeDeploymentConfig?: boolean;
   includeDependencies?: boolean;
+  format: InspectOutputFormat;
+  outputPath?: string;
   reportName: string;
   profileName: string;
   kube: KubectlOptions & { namespace: string };

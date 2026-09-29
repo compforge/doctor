@@ -8,6 +8,7 @@ import { finalizeFixture } from "./report-fixture";
 import { collectPluginCapabilities } from "../src/app/plugin-command-capabilities";
 import {
   COLLECT_KINDS,
+  collectReportName,
   createCollectCommand,
   createCollectManifest,
   parseCollectKinds,
@@ -41,6 +42,15 @@ test("collect include accepts comma or pipe separated command names", () => {
   expect(() => parseCollectKinds("trace,cpu")).toThrow("--include 仅支持");
 });
 
+test("collect report name keeps a single safe biz-id and uses batch otherwise", () => {
+  const now = new Date(2026, 7, 19, 15, 4, 5);
+  expect(collectReportName(["biz/team:1"], now))
+    .toBe("doctor-collect-biz-team-1-20260819-150405");
+  expect(collectReportName(["biz-1", "biz-2"], now))
+    .toBe("doctor-collect-batch-20260819-150405");
+  expect(collectReportName([], now))
+    .toBe("doctor-collect-batch-20260819-150405");
+});
 
 test("collect capability contract is the union of selected concrete commands", () => {
   const contract = collectPluginCapabilities(["inspect", "tenant", "data", "trace", "log"]);
@@ -191,6 +201,33 @@ test("collect default delivery contains combined HTML and child full bundles", a
   }
 });
 
+test("delivery treats an unknown format as default and prints a warning", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-delivery-unknown-format-test-"));
+  const artifact = join(root, "doctor-inspect");
+  const output = join(root, "case");
+  const context = new CommandContext({});
+  const write = spyOn(process.stdout, "write").mockImplementation(() => true);
+  try {
+    mkdirSync(artifact);
+    writeFileSync(join(artifact, "report.html"), "<html>inspect</html>");
+    writeFileSync(join(artifact, "evidence.txt"), "inspect evidence");
+    context.artifacts.add({ command: "inspect", path: artifact });
+
+    expect(await finalizeFixture(
+      context,
+      { format: "unknown", output },
+      0,
+      "doctor inspect",
+    )).toBe(0);
+    expect(existsSync(`${output}.html`)).toBe(true);
+    expect(existsSync(`${output}.tar.gz`)).toBe(true);
+    expect(write.mock.calls.map(([chunk]) => String(chunk)).join(""))
+      .toContain("未识别 format 'unknown'，按 default 交付 HTML + Bundle");
+  } finally {
+    write.mockRestore();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("delivery keeps repeated command reports under one command tab", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-collect-repeated-command-test-"));

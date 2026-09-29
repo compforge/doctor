@@ -6,12 +6,15 @@ import type {
 
 export const INSTALL_PROGRAMS = ["gdb"] as const;
 export type InstallProgram = typeof INSTALL_PROGRAMS[number];
+export type InstallReportFormat = "md" | "json";
 
 export interface InstallCliOpts extends KubernetesCommandInput {
   pod?: string;
   container?: string;
   program?: string;
   tar?: string;
+  format?: string;
+  output?: string;
   yes?: boolean;
 }
 

@@ -16,7 +16,7 @@ import { resolveDbRequest, validateDbInput, type DbInput } from "./input";
 import { resolveDbProviders, type ProviderResolution } from "./providers";
 import { databaseFailure, databaseTargets, discoverDatabases, selectDatabaseTarget, type DbDiscovery, type DbSelection } from "./discovery";
 import { quoteIdentifier } from "./sql";
-import { databaseSummary } from "./summary";
+import { databaseDiscoverySummary, databaseSummary } from "./summary";
 
 type PreparedDb = { input: DbInput; request: Awaited<ReturnType<typeof resolveDbRequest>> };
 
@@ -29,6 +29,9 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     render: artifact => writeEvidencePage(context, artifact, { title: "数据库取证", summaryHtml: `<pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>` }),
   }),
   prepare: async (context, input) => {
+    if (context.options.format?.trim() === "summary" && context.options.output) {
+      throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
+    }
     await prepareCommandRequirements(context, { plugin: { command: "doctor db", needs: [{ requirement: "required", capability: { scope: "resource", name: "dataSources" }, purpose: "解析 Service 可访问的数据库目标" }] } });
     // Resolve syntax/input before environment access; a SQL file is not a script runner.
     let request;
@@ -140,8 +143,11 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
       startedAt, finishedAt: new Date().toISOString()
     });
     writeFileSync(join(directory, "diagnosis.json"), JSON.stringify({ status, reason, service, targets, selection, results }, null, 2), { mode: 0o600 });
-    if (reason) useLogger("db").error(reason);
-    useLogger("db").debug(`${status}；证据目录：${directory}`);
+    if (context.options.format?.trim() !== "summary") {
+      if (request.action === "databases") useLogger().info(databaseDiscoverySummary(discovery, failures));
+      if (reason) useLogger("db").error(reason);
+      useLogger("db").info(`${status}；证据目录：${directory}`);
+    }
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },
 });

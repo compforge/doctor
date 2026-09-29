@@ -1,4 +1,3 @@
-import { createDeliveryPlan, assertDeliveryPathsAvailable } from "../src/app/delivery-plan";
 import { afterEach, expect, test, spyOn } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -51,10 +50,10 @@ test("Command Summary, on-disk summary and format summary share one projection; 
   const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   const errors = spyOn(process.stderr, "write").mockImplementation(() => true);
   try {
-    expect(await deliverSerialized({ directory: root, plan: createDeliveryPlan("test", { format: "summary" }), code: 0 })).toBe(true);
+    expect(await deliverSerialized({ directory: root, options: { format: "summary" }, code: 0, reportName: "test" })).toBe(true);
     expect(output).toHaveBeenCalledWith(readFileSync(join(root, "summary.md"), "utf8"));
     output.mockClear();
-    expect(await deliverSerialized({ directory: root, plan: createDeliveryPlan("test", { format: "manifest" }), code: 0 })).toBe(true);
+    expect(await deliverSerialized({ directory: root, options: { format: "manifest" }, code: 0, reportName: "test" })).toBe(true);
     const printed = output.mock.calls.map(([text]) => String(text)).join("");
     const stored = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
     expect(JSON.parse(printed)).toEqual(stored);

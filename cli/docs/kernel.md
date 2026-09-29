@@ -243,10 +243,9 @@ Bundle 和领域状态；PluginContext 只暴露本次 Service 调用所需的�
 引用，父命令显式选择并纳入子产物；不能按全局列表位置或命令名猜测产物属于哪次调用。
 领域输入与输出通过 Input / Output 传递，不放入共享 Context。
 
-根入口在准备 Profile / Plugin 和访问远端前创建不可变 `DeliveryPlan`，统一校验格式与输出选项，
-确定绝对目标路径和 HTML 渲染需求，并预检全部目标。默认名称由命令名、启动时间和唯一执行标识组成，
-不依赖采集结果。Finalize 只消费同一份计划，不能重新取名、解析输出选项或重新采集。
-领域命令只登记本地证据，不读取根交付格式与输出路径；子命令共用 Context，但不创建交付计划。
+报告命名由根命令的 `CommandSpec.reportName(input, result, now)` 在 finalize 交付时推导；run 与
+子命令结果不携带报告名称。hook 可从离线结果提取业务 ID，也要处理失败或取消时缺少 Output 的情况；
+未提供名称时使用带时间戳的命令名，显式 `--output` 仍由 delivery 处理。
 
 Artifact ID 标识一份具体产物，command 幂等 key 标识一次可复用执行，两者职责独立。CommandArtifacts
 统一使用 add 登记或添加引用：首次登记由 Core 分配 ID，同一本轮内重复登记规范化源路径返回原引用；

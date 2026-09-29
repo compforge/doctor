@@ -42,7 +42,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
   };
   const context = new CommandContext({});
   try {
-    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test" },
+    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json" },
       plugin.services, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } });
     expect(prepared).toBeDefined();
     const result = await runCollectData(prepared!, plugin, { records: { signal: new AbortController().signal } as PluginContext });

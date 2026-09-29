@@ -444,9 +444,8 @@ test("兼容性报告保留搜索其它 GDB 所需的 ABI、CPU 和 attach 错�
 
   const root = mkdtempSync(join(tmpdir(), "doctor-install-report-"));
   const output = join(root, "compatibility.json");
-  const evidence = writeInstallCompatibilityReport(report);
-  expect(existsSync(join(evidence, "summary.md"))).toBe(true);
-  expect(JSON.parse(readFileSync(join(evidence, "diagnosis.json"), "utf8"))).toMatchObject({
+  expect(writeInstallCompatibilityReport({ output }, report)).toBe(output);
+  expect(JSON.parse(readFileSync(output, "utf8"))).toMatchObject({
     schema: "doctor.install-compatibility/v1",
     target: { runtime: { kernelVersion: "5.15.0-100-generic" } },
     result: { status: "failed" },

@@ -1,3 +1,4 @@
+import { writeOutput } from "../../terminal/output";
 
 import { useLogger } from "../../terminal/log";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -11,6 +12,8 @@ import { EvidenceBundle, type OutcomeDecl, type StepRisk } from "../evidence";
 import { failReason } from "../../infra/k8s/result";
 import { resolveCpuConfig } from "./config";
 import type { ApprovalDecision } from "../../command/approval";
+import { packBundle, resolveArchivePath } from "../output/archive";
+import { deliverFailureBundle } from "../output/failure-bundle";
 import {
   resolveApprovalGate,
   type ApprovalCliOptions,
@@ -83,6 +86,7 @@ export async function runCollectCpu(
   }
   const { config, executor } = resolved;
   const bundleName = defaultCpuBundleName(config.target.pod, new Date());
+  const outputPath = resolveArchivePath(config.output, bundleName);
   const staging = join(mkdtempSync(join(tmpdir(), "doctor-cpu-")), bundleName);
   const result = await collectCpu({
     config,
@@ -93,7 +97,21 @@ export async function runCollectCpu(
     rmSync(join(staging, ".."), { recursive: true, force: true });
     return 130;
   }
-  commandContext.artifacts.add({ command: "cpu", path: staging });
+  const delivery = result.code === 0
+    ? { path: outputPath, packed: await packBundle(staging, outputPath) }
+    : await deliverFailureBundle({
+        bundleDir: staging,
+        bundleName,
+        requestedOutput: config.output,
+        collectCode: result.code,
+      });
+  const { packed } = delivery;
+  if (!packed.ok) {
+    useLogger("collect").error(`打包失败：${failReason(packed)}\n[collect] 原始证据保留在目录: ${staging}`);
+    return result.code || 1;
+  }
+  rmSync(join(staging, ".."), { recursive: true, force: true });
+  writeOutput(`CPU ${result.code === 0 ? "证据包" : "失败 Evidence Bundle"}: ${delivery.path}` + "\n");
   return result.code;
 }
 

@@ -6,17 +6,18 @@ import { type CommandContext, type CommandInput, type CommandResult, type Comman
 import { SerializeContext } from "../command/serialization/context";
 import { RenderContext } from "../report/context";
 import { renderReportHtml } from "../report/html";
-import { cleanupTemporaryArtifacts } from "./delivery";
-import type { DeliveryPlan } from "./delivery-plan";
+import { cleanupTemporaryArtifacts, type CommandDeliveryOptions } from "./delivery";
 import { deliverSerialized } from "./delivery";
 import { kubernetesTargetRecord } from "../command/kubernetes-target";
+import { defaultCommandReportName } from "../command/report-name";
 import { reportError } from "./error-report";
 
 export interface FinalizeCommandInput<Input extends CommandInput, Output> {
   spec: Command<Input, Output>;
+  commandInput: Input;
   result: CommandResult<Output>;
   context: CommandContext;
-  plan: DeliveryPlan;
+  delivery: CommandDeliveryOptions;
   code: number;
 }
 
@@ -27,14 +28,15 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   catch (error) { reportError(error, { context: input.spec.name, summary: "client cleanup failed" }); code = 1; }
   if (input.context.signal.aborted) code = 130;
   // Non-reporting commands have no file output unless explicitly requested.
-  if (!input.result.artifacts.length && input.result.output === undefined && input.plan.format !== "manifest") return code;
+  if (!input.result.artifacts.length && input.result.output === undefined && input.delivery.format !== "manifest") return code;
   const directory = mkdtempSync(join(tmpdir(), "doctor-result-"));
   const serialized = await SerializeContext.create(directory, input.spec, input.result,
     (error, command) => reportError(error, { context: command, summary: "result serialization failed" }));
   if (serialized.failed && code !== 130) code = 1;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
     (error, command) => reportError(error, { context: command, summary: "report render failed" }));
-  if (input.plan.needsHtml && input.spec.render) {
+  const wantsReport = !["json", "md", "summary", "manifest"].includes(input.delivery.format?.trim() ?? "");
+  if (wantsReport && input.spec.render) {
     try {
       const report = await renderer.render(input.spec, input.result);
       if (report.sections.length) writeFileSync(join(directory, "report.html"), renderReportHtml(report, renderer), { mode: 0o600 });
@@ -49,7 +51,9 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   });
   serialized.writeText("AGENTS.md", renderBundleAgents());
   serialized.indexReports();
-  const delivered = await deliverSerialized({ directory, plan: input.plan, code });
+  const delivered = await deliverSerialized({ directory, options: input.delivery, code,
+    reportName: input.spec.reportName?.(input.commandInput, input.result, new Date())
+      ?? defaultCommandReportName(input.spec.name, [], new Date()) });
   if (delivered && code === 0 && !serialized.failed && !renderer.failures.length) {
     cleanupTemporaryArtifacts(input.context.artifacts.list().map(artifact => artifact.path));
   }
