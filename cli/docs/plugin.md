@@ -286,6 +286,9 @@ DB、VDB、S3、Redis 都可通过 `source` 贡献实现 initialize/dispose 的�
 ClientManager 初始化、复用和释放。SDK 的 `mysqlDataSource`、`vdbDataSource`、`s3DataSource` 和
 `redisDataSource` 把配置解析接到 toolbox Client；Plugin 可从配置 API、文件或声明的 Kubernetes
 访问取得连接信息，无需把配置伪装成 Pod 环境变量。协议操作仍由各类 Client 表达，不提供万能 execute。
+S3、VDB、Redis source 的 Kubernetes Service endpoint 按其 DNS 中的 namespace 建立转发，
+保持原始 Host/SNI。跨 namespace 连接需在 capability 的 `pods/portforward` 权限声明中启用
+`allNamespaces`；配置来源的 namespace 不改变对象存储等后端的部署位置。
 
 环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
 定位实际 Pod/container，不要求业务 Service 与 Kubernetes Service 同名；定位失败或来源有歧义时

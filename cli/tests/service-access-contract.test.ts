@@ -1,3 +1,5 @@
+import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
+import { startS3Fixture } from "./s3-fixture";
 import { expect, spyOn, test } from "bun:test";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
@@ -295,3 +297,40 @@ test("VDB source supplies typed access to the existing Collect flow without disc
     expect(f.calls.every(args => args[0] === "config")).toBeTrue();
   } finally { await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 });
+
+for (const crossNamespace of [true, false]) {
+  test(`S3 source routes to endpoint namespace only with declared access (${crossNamespace})`, async () => {
+    const fixture = await startS3Fixture((_url, request) => {
+      expect(request.headers.get("host")).toBe("minio.storage");
+      return new Response(null, { headers: { "content-length": "7" } });
+    });
+    const forwarded: string[] = [];
+    const forward = spyOn(KubernetesClient.prototype, "forward").mockImplementation(async (namespace, target) => {
+      forwarded.push(namespace);
+      expect(target.host).toBe("minio.storage");
+      const local = new URL(fixture.target.endpoint);
+      return { host: local.hostname, port: Number(local.port), servername: target.host };
+    });
+    const f = executor();
+    const exec: Executor = { ...f.exec, run: async (args, options) => args[0] === "auth"
+      ? { ...ok, command: args, stdout: "yes\n" } : f.exec.run(args, options) };
+    const source = s3DataSource("cross-namespace", async () => ({ ...fixture.target, endpoint: "http://minio.storage", bucket: "archive" }));
+    const access = { kubernetes: [{ requirement: "required" as const, purpose: "S3 endpoint", rule: {
+      verb: "create", resource: "pods/portforward", allNamespaces: crossNamespace,
+    } }] };
+    const service = { ...logService(), workloads: [], dataSources: [{ id: "s3", kind: "s3" as const, backend: "s3-compatible" as const, access, source }] };
+    const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
+    const collect = { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default" as const, kubeconfigSource: "flag" } };
+    try {
+      const pending = borrowServiceClient(command, collect, exec, service.name, { access }, source);
+      if (!crossNamespace) {
+        await expect(pending).rejects.toThrow("未声明 Kubernetes access");
+        expect(forwarded).toEqual([]);
+      } else {
+        const client = await pending;
+        expect(forwarded).toEqual(["storage"]);
+        expect((await client.access.headObject("archive", "file")).size).toBe(7);
+      }
+    } finally { await command.disposeClients(); forward.mockRestore(); await fixture.close(); }
+  });
+}
