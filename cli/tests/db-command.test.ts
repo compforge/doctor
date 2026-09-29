@@ -187,7 +187,7 @@ test("database discovery preserves source descriptions in report, manifest and s
     const directory = outcome.artifacts[0]!.path; directories.push(directory);
     const summary = readFileSync(join(directory, "summary.md"), "utf8");
     expect(summary).toContain("| primary | canonical | primary records | ok |");
-    expect(summary).toContain("| runtime | agent_runtime | runtime records | ok |");
+    expect(summary).toContain("| runtime | agent\\_runtime | runtime records | ok |");
     expect(summary).toContain("| archive | — | Old records | unavailable |");
     const diagnosis = JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8"));
     expect(diagnosis.results[1]).toMatchObject({ target: "runtime", dataSources: [{ id: "runtime", description: "runtime records" }], rows: [{ Database: "agent_runtime" }] });

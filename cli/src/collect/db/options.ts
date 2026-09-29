@@ -21,6 +21,6 @@ export function withDbOptions(command: Command): Command {
     .option("-c, --container <name>", "envPrefix 配置来源 Container")
     .option("--profile <name>", "从 profile 读取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "Doctor config 文件路径")
-    .addOption(deliveryFormatOption(["html", "bundle", "json"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "json", "summary"]))
     .option("-o, --output <path>", "取证结果输出路径");
 }
