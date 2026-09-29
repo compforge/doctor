@@ -5,8 +5,13 @@ import type { PluginClientContext, PluginDataSource } from "./context";
 import type { ServiceS3Client, ServiceVdbClient, ServiceRedisClient } from "./datasource";
 
 function kubernetesTransport(context: PluginClientContext): PortForwardTransport {
-  return new PortForwardTransport(async endpoint => serviceIdentity(endpoint.host, context.target.namespace)
-    ? context.infra.kubernetes.portForward(endpoint) : endpoint);
+  return new PortForwardTransport(async endpoint => {
+    const service = serviceIdentity(endpoint.host, context.target.namespace);
+    if (!service) return endpoint;
+    // The endpoint's Service namespace can differ from the configuration source's namespace.
+    // Keep Host/SNI unchanged; the host enforces declared access on the selected scope.
+    return context.infra.kubernetes.inNamespace(service.namespace).portForward(endpoint);
+  });
 }
 
 /** Keep resolved target metadata with its typed client, under the host's single lifecycle. */

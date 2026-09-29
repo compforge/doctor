@@ -35,12 +35,12 @@ function capabilityAccessNeeds(capability: CapabilityWithAccess): KubernetesAcce
   ));
   if (portForward) {
     needs.push({
-      rule: { verb: "list", resource: "services" },
+      rule: { verb: "list", resource: "services", allNamespaces: portForward.rule.allNamespaces },
       requirement: portForward.requirement,
       purpose: "Core 为 port-forward 解析 Service target",
       fallback: portForward.fallback,
     }, {
-      rule: { verb: "list", resource: "pods" },
+      rule: { verb: "list", resource: "pods", allNamespaces: portForward.rule.allNamespaces },
       requirement: portForward.requirement,
       purpose: "Core 为 port-forward 解析 Pod target",
       fallback: portForward.fallback,
