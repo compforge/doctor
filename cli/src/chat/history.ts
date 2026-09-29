@@ -91,10 +91,15 @@ export class ChatHistoryStore {
       const path = resolve(selector.startsWith("~/") ? join(homedir(), selector.slice(2)) : selector);
       if (path === this.active?.metadata.path) return this.active.metadata;
       // Pi's opener takes metadata; it validates the complete storage when reading the identity.
-      const header = JSON.parse((await readFile(path, "utf8")).split("\n", 1)[0]!);
-      if (header.kind !== "header" || header.v !== 4 || header.storageVersion !== 1
+      // Keep filesystem errors intact; only malformed content gets the format hint.
+      const firstLine = (await readFile(path, "utf8")).split("\n", 1)[0]!;
+      const formatError = "不支持的 Doctor 会话文件；需要 Pi 0.87 JSONL 会话格式";
+      let header;
+      try { header = JSON.parse(firstLine); }
+      catch (cause) { throw new Error(formatError, { cause }); }
+      if (!header || typeof header !== "object" || header.kind !== "header" || header.v !== 4 || header.storageVersion !== 1
         || typeof header.id !== "string" || typeof header.cwd !== "string") {
-        throw new Error("不支持的 Doctor 会话文件；需要 Pi 0.87 JSONL 会话格式");
+        throw new Error(formatError);
       }
       const metadata: JsonlSessionMetadata = { id: header.id, cwd: header.cwd, createdAt: header.createdAt,
         modifiedAt: header.createdAt, path, storageVersion: header.storageVersion };
