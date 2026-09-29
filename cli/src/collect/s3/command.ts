@@ -10,7 +10,7 @@ import { useLogger } from "../../terminal/log";
 import { EvidenceBundle } from "../evidence";
 import { escapeHtml } from "../output/html";
 import { serializeEvidenceResult } from "../serialize";
-import { resolveS3Request, type S3Input, type S3Request } from "./input";
+import { promptS3Request, validateS3Input, type S3Input, type S3Request } from "./input";
 import { executeS3, s3Failure, type S3Result } from "./operations";
 import { resolveS3Provider } from "./provider";
 import { s3Summary } from "./summary";
@@ -18,7 +18,7 @@ import { s3Summary } from "./summary";
 type PreparedS3 = { input: S3Input; request: S3Request };
 export const s3Command = defineCommand<S3Input, void, PreparedS3>({
   name: "doctor s3",
-  validate: input => { resolveS3Request(input); },
+  validate: validateS3Input,
   serialize: serializeEvidenceResult,
   render: (context, result) => renderEvidence(context, result, {
     command: "s3", title: "S3 对象取证",
@@ -27,11 +27,16 @@ export const s3Command = defineCommand<S3Input, void, PreparedS3>({
     }),
   }),
   prepare: async (context, input) => {
-    const request = resolveS3Request(input);
     if (context.options.format?.trim() === "summary" && context.options.output) throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
     await prepareCommandRequirements(context, { plugin: { command: "doctor s3", needs: [{
       requirement: "required", capability: { scope: "resource", name: "dataSources" }, purpose: "解析 Service 的 S3 访问目标",
     }] } });
+    let request: S3Request;
+    try { request = await promptS3Request(input); }
+    catch (error) {
+      if (error instanceof ParameterCancelled) return undefined;
+      throw error;
+    }
     return { input, request };
   },
   run: async (context, { input, request }) => {

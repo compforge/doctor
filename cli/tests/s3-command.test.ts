@@ -31,7 +31,7 @@ test("mc paths and S3 URIs preserve literal keys and enforce operation bounds", 
 test("CLI registers mc operations and Distribution defaults", () => {
   const program = createDoctorProgram({ name: "ascli", commands: "s3", commandDefaults: { s3: { format: "manifest" } } });
   const command = program.commands.find(command => command.name() === "s3")!;
-  expect(command.helpInformation()).toContain("<operation> [target]");
+  expect(command.helpInformation()).toContain("[operation] [target]");
   expect(command.helpInformation()).toContain("--recursive");
   expect(command.opts().format).toBe("manifest");
 });
