@@ -196,3 +196,11 @@ test("fork rejects conflicting session selectors and remote or ephemeral mode", 
     expect(() => validateSessionFlags({ fork: "source", ...flags })).toThrow();
   }
 });
+
+for (const flags of [{ fork: "" }, { fork: "", session: "existing-session-id" }]) {
+  test(`empty --fork rejects before creating a session${flags.session ? " when --session is also specified" : ""}`, async () => {
+    const { root, store } = fixture();
+    await expect(store.prepare(flags, identity)).rejects.toThrow("--fork 需要非空的会话路径或 ID");
+    expect(existsSync(join(root, "sessions"))).toBe(false);
+  });
+}

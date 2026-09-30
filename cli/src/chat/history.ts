@@ -116,6 +116,8 @@ export class ChatHistoryStore {
 }
 
 export function validateSessionFlags(flags: CliFlags): void {
+  // 空 fork 会在 ?? 选择中遮蔽 session，却被后续 truthy 检查当作未选择。
+  if (flags.fork === "") throw new Error("--fork 需要非空的会话路径或 ID");
   const selectors = [flags.continue, flags.resume, flags.session, flags.fork].filter(Boolean);
   if (selectors.length > 1) throw new Error("--continue、--resume、--session、--fork 只能指定一个");
   if (flags.noSession && selectors.length) throw new Error("--no-session 不能与会话恢复参数一起使用");
