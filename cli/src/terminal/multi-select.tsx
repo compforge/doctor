@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 
 export interface MultiSelectChoice {
   name: string;
+  /** 默认显示在名称旁的说明；选中值仍为 name。 */
+  description?: string;
 }
 
 export interface MultiSelectState {
@@ -207,6 +209,7 @@ export async function promptMultiSelect<Choice extends MultiSelectChoice>(input:
   choices: readonly Choice[];
   defaults?: readonly string[];
   title: string;
+  /** 自定义完整候选文案；未指定时显示 name 和可选 description。 */
   renderChoice?: (choice: Choice) => string;
 }): Promise<string[] | undefined> {
   return withTerminalInput(async () => {
@@ -218,7 +221,8 @@ export async function promptMultiSelect<Choice extends MultiSelectChoice>(input:
           choices={input.choices}
           defaults={input.defaults ?? []}
           title={input.title}
-          renderChoice={input.renderChoice ?? ((choice) => choice.name)}
+          renderChoice={input.renderChoice ?? ((choice) =>
+            choice.description ? `${choice.name} — ${choice.description}` : choice.name)}
           onComplete={(value) => {
             selected = value;
           }}
