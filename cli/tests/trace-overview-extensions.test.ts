@@ -51,7 +51,7 @@ test("overview discovers native operations without invoking them or combining th
   const run = mock(async () => []);
   const services = createServiceCatalog([service("chat", [{ ...summarize, run: withSummary({ title: "Fixture", fields: [] }, run) }, sample])]);
   const provider = overviewProviders({ id: "test", version: "1", services }, ["chat"])[0]!;
-  expect(provider.summarize.access).toEqual({});
+  expect(provider.summarize!.access).toEqual({});
   expect(provider.sample?.access).toEqual(sample.access);
   expect(run).not.toHaveBeenCalled();
   expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.overview).runnable).toBe(true);

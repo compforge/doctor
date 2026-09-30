@@ -101,3 +101,18 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 
 Overview 引用批次 Collect 的产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
 统一提供 ID 到归档路径的映射，因此同名目录和多个 Collect manifest 均可保留，串行与并发采用同一规则。
+
+## 耗时概览
+
+`overview.cost` 是独立 Extension，可与 `overview.summarize` 在同一 namespace 共存，也可单独提供。
+Core 使用相同的冻结窗口和租户条件调用它，以提供该 Extension 的原始 Service 准备 access；
+两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。未选择 Service 时仍只读取 Plugin namespace。
+
+Provider 接收 `OverviewCostQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
+返回 `OverviewCostResult`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
+label、sampleCount、missingCount 和 durationMs（min/avg/p50/p95/max）描述耗时。
+单位固定为毫秒；没有有效样本时省略 durationMs，不能用零替代未知值。缺失、不完整或无效区间计入
+missingCount。Provider 在源头限制读取，并说明截断；Core 校验统计数据并限制展示条目。
+
+终端和 HTML 显示耗时表，diagnosis.json 保留类型化统计。耗时条目当前仅供查看，不进入
+`overview.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。

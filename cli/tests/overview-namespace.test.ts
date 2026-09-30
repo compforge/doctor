@@ -79,7 +79,7 @@ test("summary and sample in one namespace can have different providing Services 
   ]) })[0]!;
   expect(selected.service.name).toBe("api");
   expect(selected.sampleService?.name).toBe("store");
-  expect(selected.summarize.access).toEqual({});
+  expect(selected.summarize!.access).toEqual({});
   expect(selected.sample?.access).toEqual(sampleAccess);
 });
 

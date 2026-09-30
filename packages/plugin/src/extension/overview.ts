@@ -1,5 +1,5 @@
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
-import type { OverviewFacet, OverviewQuery, OverviewFacetResult, OverviewSampleQuery, OverviewSample } from "../overview";
+import type { OverviewFacet, OverviewQuery, OverviewFacetResult, OverviewSampleQuery, OverviewSample, OverviewCostQuery, OverviewCostResult } from "../overview";
 
 export const OVERVIEW_SUMMARIZE_KIND = "overview.summarize";
 export const OVERVIEW_SAMPLE_KIND = "overview.sample";
@@ -33,4 +33,17 @@ export function requireOverviewSampleExtension(extension: ExtensionRegistration)
   validateExtension(extension);
   if (extension.kind !== OVERVIEW_SAMPLE_KIND) throw new Error(`Expected ${OVERVIEW_SAMPLE_KIND}, got ${extension.kind}`);
   return extension as OverviewSampleExtension;
+}
+
+export const OVERVIEW_COST_KIND = "overview.cost";
+
+/** Independently executable duration overview; does not participate in overview.sample. */
+export interface OverviewCostExtension extends Extension<OverviewCostQuery, OverviewCostResult> {
+  readonly kind: typeof OVERVIEW_COST_KIND;
+}
+
+export function requireOverviewCostExtension(extension: ExtensionRegistration): OverviewCostExtension {
+  validateExtension(extension);
+  if (extension.kind !== OVERVIEW_COST_KIND) throw new Error(`Expected ${OVERVIEW_COST_KIND}, got ${extension.kind}`);
+  return extension as OverviewCostExtension;
 }

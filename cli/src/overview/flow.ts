@@ -1,7 +1,8 @@
+import { checkedCost } from "./cost";
 import { overviewSampleCount } from "./options";
 import { CommandStatus, type CommandResult } from "../command";
 import type {
-  OverviewEntry, OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
+  OverviewCostQuery, OverviewCostResult, OverviewEntry, OverviewFacet, OverviewFacetResult, OverviewQuery, OverviewSample, OverviewSampleQuery,
 } from "@compforge/doctor-plugin";
 
 import type { OverviewProvider } from "./extensions";
@@ -12,6 +13,8 @@ export interface OverviewProviderResult {
   name: string;
   facets: readonly OverviewFacetResult[];
   error?: string;
+  cost?: OverviewCostResult;
+  costError?: string;
 }
 
 export interface OverviewSampleResult {
@@ -47,6 +50,7 @@ export interface OverviewEntryChoice {
 
 export interface OverviewActions {
   sampleCount?: number;
+  cost?(provider: OverviewProvider, query: OverviewCostQuery): Promise<OverviewCostResult>;
   selectEntries?(entries: readonly OverviewEntryChoice[], defaultCount: number): Promise<readonly OverviewEntryChoice[] | undefined>;
   summarize(provider: OverviewProvider, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
   sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<readonly OverviewSample[]>;
@@ -63,7 +67,7 @@ function errorMessage(error: unknown): string {
 }
 
 function checkedFacets(provider: OverviewProvider, results: readonly OverviewFacetResult[], limit: number) {
-  const remaining = new Set(provider.summarize.facets.map((facet) => facet.id));
+  const remaining = new Set(provider.summarize!.facets.map((facet) => facet.id));
   const facets = results.map((result) => {
     if (!remaining.delete(result.facetId)) throw new Error(`未声明或重复的 Facet: ${result.facetId}`);
     const keys = new Set<string>();
@@ -111,13 +115,21 @@ export async function runOverviewSession(
   // Sequential provider calls keep external-resource concurrency bounded across customer environments.
   for (const provider of providers) {
     actions.signal?.throwIfAborted();
-    try {
-      result.providers.push({
-        namespace: provider.namespace, name: provider.name,
-        facets: checkedFacets(provider, await actions.summarize(provider, query), query.maxEntries),
-      });
-    } catch (error) {
-      result.providers.push({ namespace: provider.namespace, name: provider.name, facets: [], error: errorMessage(error) });
+    const summary: OverviewProviderResult = { namespace: provider.namespace, name: provider.name, facets: [] };
+    result.providers.push(summary);
+    if (provider.summarize) {
+      try {
+        summary.facets = checkedFacets(provider, await actions.summarize(provider, query), query.maxEntries);
+      } catch (error) { summary.error = errorMessage(error); }
+    }
+    // Separate outcomes: a failed duration query must not discard a successful summary (or vice versa).
+    if (provider.cost) {
+      actions.signal?.throwIfAborted();
+      try {
+        if (!actions.cost) throw new Error("Missing overview.cost executor");
+        const costQuery = { ...query, maxRecords: 1000 };
+        summary.cost = checkedCost(await actions.cost(provider, costQuery), costQuery);
+      } catch (error) { summary.costError = errorMessage(error); }
     }
   }
   actions.show(result);
@@ -126,7 +138,7 @@ export async function runOverviewSession(
     const provider = providers.find((item) => item.namespace === summary.namespace)!;
     for (const facet of summary.facets) {
       if (facet.entries.some((entry) => entry.canSample)) {
-        eligible.set(facet.facetId, provider.summarize.facets.find((item) => item.id === facet.facetId)!);
+        eligible.set(facet.facetId, provider.summarize!.facets.find((item) => item.id === facet.facetId)!);
       }
     }
   }

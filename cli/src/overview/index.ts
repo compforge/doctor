@@ -53,11 +53,12 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
   const db = context.profile.value.db;
-  const invoke = async <T>(provider: OverviewProvider, extension: OverviewProvider["summarize"] | NonNullable<OverviewProvider["sample"]>, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
+  const invoke = async <T>(provider: OverviewProvider, extension: NonNullable<OverviewProvider["summarize"] | OverviewProvider["sample"] | OverviewProvider["cost"]>, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
     const managed = await openPluginContext(executor, kube.kubernetes, {
       config: context.profile.pluginConfig,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      service: extension === provider.sample ? provider.sampleService! : provider.service, capability: extension,
+      service: extension === provider.sample ? provider.sampleService!
+        : extension === provider.cost ? provider.costService! : provider.service, capability: extension,
       command: "doctor overview", authorization: context.kubernetes(executor).access,
     });
     try { return await work(managed); } finally { await managed.dispose(); }
@@ -73,7 +74,8 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
       signal: context.signal,
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
-      summarize: (provider, input) => invoke(provider, provider.summarize, (managed) => invokeExtension(provider.summarize, managed, input).then(result => result.data)),
+      summarize: (provider, input) => invoke(provider, provider.summarize!, (managed) => invokeExtension(provider.summarize!, managed, input).then(result => result.data)),
+      cost: (provider, input) => invoke(provider, provider.cost!, (managed) => invokeExtension(provider.cost!, managed, input).then(result => result.data)),
       sample: (provider, input) => {
         const extension = provider.sample;
         if (!extension) throw new Error(`${provider.name}: missing overview.sample Extension`);
@@ -104,7 +106,10 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   for (const sample of result.samples) {
     useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
   }
-  const statuses: CommandStatus[] = result.providers.map((provider) => provider.error ? CommandStatus.Failed : CommandStatus.Ok);
+  const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
+    ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
+    ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
+  ]);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
   return { status: aggregateCommandStatus(statuses), output: { ...result, collectionResult }, artifacts: context.artifacts.list() };
@@ -134,7 +139,7 @@ export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { in
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview });
     const providers = overviewProviders(context.plugin, overviewServiceNames(input));
-    if (input.facet && !providers.some(provider => provider.summarize.facets.some(facet => facet.id === input.facet))) {
+    if (input.facet && !providers.some(provider => provider.summarize?.facets.some(facet => facet.id === input.facet))) {
       throw new Error(`未声明的 Facet: ${input.facet}`);
     }
     // Resolve ownership and data targets before touching the environment or asking for access.
