@@ -89,6 +89,12 @@ Harness 负责消息、工具结果、压缩摘要与运行状态的事务写入
 恢复时通过 Pi 中断上次未完成运行，展示提示并等待用户的新输入，不自动重跑可能已执行的 shell 命令。
 文件包含实际聊天和工具内容，以当前用户可读写的权限保存，不记录模型配置密钥。
 
+`--fork <path|id>` 使用 Pi 原生 `JsonlSessionRepo.fork(scope=tree)` 派生独立会话：新 ID 和文件，
+保留完整消息、工具结果及压缩记录，记录父会话 ID；不复制待执行操作或累计 usage，不改写源会话。
+路径、完整 ID 或唯一 ID 前缀沿用会话选择规则，工作目录、profile 和 Plugin 精确版本仍须匹配。
+`--fork` 与 `--continue`、`--resume`、`--session`、`--no-session`、`--server` 互斥；
+派生后 `/new` 或 `/resume` 按常规切换，不再次执行启动时的 fork。
+
 `/session` 显示文件路径与统计；`/export [file.html|file.jsonl]` 导出已完成的记录，默认在当前目录
 生成 HTML，已有目标不覆盖。HTML 提供离线阅读，JSONL 保留 Pi 原始记录。`/new` 新建会话，
 `/resume` 在交互界面选择历史会话。恢复同时重建模型上下文和界面历史，不重新执行历史工具。

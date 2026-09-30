@@ -92,6 +92,7 @@ function withReplOptions(cmd: CommandT): CommandT {
     .option("-c, --continue", "继续当前目录最近的本地会话")
     .option("-r, --resume [id]", "选择本地历史会话；--server 时恢复远端会话")
     .option("--session <path-or-id>", "恢复指定本地 JSONL 会话文件或 ID")
+    .option("--fork <path-or-id>", "从指定本地会话文件或 ID 派生新会话，保留原会话")
     .option("--session-dir <dir>", "本地会话根目录（默认 ~/.doctor/sessions）")
     .option("--no-session", "不保存本地聊天")
     .option("--config <path>", 'Doctor 配置路径；空字符串禁用外部配置');
@@ -107,6 +108,7 @@ function toReplFlags(opts: Record<string, unknown>): CliFlags {
     session: typeof opts.session === "string" ? opts.session : undefined,
     noSession: opts.session === false,
     sessionDir: opts.sessionDir as string | undefined,
+    fork: opts.fork as string | undefined,
     config: opts.config as string | undefined,
   };
 }

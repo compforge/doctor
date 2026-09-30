@@ -66,7 +66,21 @@ test("Harness automatically compacts at the model threshold and restores compact
   await consume(next.run("continue", context()));
   expect(request).toContain("SUMMARY_OLD_EVIDENCE");
   expect(request).not.toContain(oldPrompt);
+  const sourceCompactions = await reopened.session.findEntries({ type: "compaction" }, ctx);
   await next.dispose();
+  const sourceBytes = readFileSync(history.metadata.path, "utf8");
+  const fork = (await store.prepare({ fork: history.metadata.path }, identity))!;
+  expect(await fork.session.findEntries({ type: "compaction" }, ctx)).toEqual(sourceCompactions);
+  let forkRequest = "";
+  const forked = await Agent.create({ session: fork.session, env: new NodeExecutionEnv({ cwd: root }), compaction,
+    llm: { provider: "openai", model: "test", apiKey: "secret", contextWindow: 4096, maxTokens: 512,
+      fetch: async (_input, init) => { forkRequest = String(init?.body); return answer("forked"); } } });
+  await consume(forked.run("continue on fork", context()));
+  expect(forkRequest).toContain("SUMMARY_OLD_EVIDENCE");
+  expect(forkRequest).not.toContain(oldPrompt);
+  expect(readFileSync(await exportChat(fork, join(root, "fork.html")), "utf8")).toContain(oldPrompt);
+  await forked.dispose();
+  expect(readFileSync(history.metadata.path, "utf8")).toBe(sourceBytes);
 });
 
 test("Harness recovers context overflow by summarizing then retrying the interrupted turn", async () => {

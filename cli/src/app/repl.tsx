@@ -27,7 +27,7 @@ export async function runRepl(
   while (true) {
     const restart = await runChatSession(nextFlags, plugin, commandContext, agentCommands);
     if (!restart) return;
-    nextFlags = { ...flags, continue: false, resume: undefined, session: restart.session,
+    nextFlags = { ...flags, continue: false, resume: undefined, fork: undefined, session: restart.session,
       noSession: restart.session ? false : flags.noSession };
   }
 }
