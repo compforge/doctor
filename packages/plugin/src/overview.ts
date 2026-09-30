@@ -45,3 +45,26 @@ export interface OverviewSample {
   /** Record from which the representative request was selected. */
   source?: Identity;
 }
+
+/** Duration statistics only; monetary/resource costs use separate contracts. */
+export interface OverviewCostQuery extends OverviewQuery {
+  /** Maximum source records per provider; bound reads and disclose any truncation. */
+  maxRecords: number;
+}
+
+export interface OverviewCostEntry {
+  key: string;
+  label: string;
+  /** Records with valid, completed intervals. Missing/invalid intervals are not zero. */
+  sampleCount: number;
+  missingCount: number;
+  /** Milliseconds; required iff sampleCount > 0. Percentile convention belongs in description. */
+  durationMs?: { min: number; avg: number; p50: number; p95: number; max: number };
+}
+
+export interface OverviewCostResult {
+  /** Population, timestamp meanings, interval and percentile conventions. */
+  description: string;
+  entries: readonly OverviewCostEntry[];
+  truncated?: { reason: string };
+}

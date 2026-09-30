@@ -31,7 +31,7 @@ packages/plugin/src/
 │   ├── index.ts          # Extension、ExtensionContext、公共声明校验与统一导出
 │   ├── facts-inspect.ts  # facts.inspect 的领域契约
 │   ├── trace-resolve.ts  # trace.resolve 的领域契约
-│   ├── overview.ts       # overview.summarize / overview.sample 的领域契约
+│   ├── overview.ts       # overview.summarize / overview.sample / overview.cost 的领域契约
 │   ├── tenant.ts         # tenant.list / tenant.resolve / user.search 的领域契约
 │   ├── mcp.ts            # mcp.configuration 的领域契约
 │   ├── model.ts          # 模型目录、Backend 与推理的领域契约
@@ -156,6 +156,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
 | overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
+| overview.cost | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Overview |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
 | tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |

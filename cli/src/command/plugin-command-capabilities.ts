@@ -6,7 +6,8 @@ import type { CollectKind } from "../collect/composite";
 export const PLUGIN_COMMAND_CAPABILITIES = {
   overview: {
     command: "doctor overview",
-    needs: [{ requirement: "required", capability: { scope: "extension", name: "overview.summarize" }, purpose: "展示值得注意的 Facet / Entry，并按需采样" }],
+    // Exact namespace selection accepts either summarize or cost; overviewProviders validates before I/O.
+    needs: [],
   },
   trace: {
     command: "doctor trace",
