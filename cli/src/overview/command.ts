@@ -6,7 +6,7 @@ import { domainInput } from "../command/options";
 import { overviewCommand, type OverviewCliOpts } from "./index";
 
 export function registerOverviewCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("overview").description("展示产品或指定 Service 的 Facet / Entry，可选采集代表请求")
+  program.command("overview").description("展示产品或 Service 概览，自动执行所选 Service 绑定的只读 HTTP Cases，可选采集代表请求")
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
     .option("--service <name>", "查看指定 Service；未指定时查看产品概览")
     .option("--services <names>", "比较逗号分隔的多个 Service；不能与 --service 同用")

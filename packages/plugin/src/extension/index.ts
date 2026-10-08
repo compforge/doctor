@@ -59,3 +59,4 @@ export * from "./workload";
 export * from "./vdb";
 
 export * from "./error-catalog";
+export * from "./case-relations";

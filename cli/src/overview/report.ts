@@ -5,6 +5,7 @@ import { escapeHtml } from "../collect/output/report/components/content";
 import type { OverviewCostEntry, OverviewCostResult } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
+import type { CaseCheckResult } from "./cases";
 import type { OverviewResult } from "./flow";
 
 const COST_HEADERS = ["耗时项", "样本", "缺失/无效", "Min ms", "Avg ms", "P50 ms", "P95 ms", "Max ms"];
@@ -23,10 +24,34 @@ function costHtml(cost: OverviewCostResult): string {
     + `</table>${cost.entries.length ? "" : "<p>无耗时样本</p>"}`;
 }
 
+function casesHtml(checks: readonly CaseCheckResult[]): string {
+  return `<h3>Case 检查（本次执行）</h3>` + (checks.length ? "" : "<p>本次没有适用的 Case 消费关系</p>") + checks.map(check =>
+    `<h4>${escapeHtml(`${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}`)} · ${escapeHtml(check.status)}</h4>`
+    + `<p>${check.producer ? `提供方：${escapeHtml(check.producer.namespace)}/${escapeHtml(check.producer.extension)}<br>` : ""}`
+    + `消费方：${escapeHtml(check.consumer)}/${escapeHtml(check.workload ?? "未解析")}<br>`
+    + `${escapeHtml(check.startedAt)} → ${escapeHtml(check.finishedAt ?? "进行中")}</p>`
+    + (check.error ? `<pre>${escapeHtml(check.stage)}: ${escapeHtml(check.error)}</pre>` : "")
+    + (check.truncated ? `<p>覆盖不足：${escapeHtml(check.truncated)}</p>` : "")
+    + `<table><tr><th>Case / 入口</th><th>消费方实例</th><th>URL</th><th>结果</th><th>详情</th></tr>`
+    + check.attempts.map(attempt => `<tr><td>${escapeHtml(attempt.caseId)} / ${escapeHtml(attempt.entrypoint)}</td>`
+      + `<td>${escapeHtml(attempt.target.namespace)}/${escapeHtml(attempt.target.pod)}/${escapeHtml(attempt.target.container ?? "")}</td>`
+      + `<td>${escapeHtml(attempt.url)}</td><td>${escapeHtml(attempt.status)} · HTTP ${attempt.observation.response.statusCode ?? "—"}</td>`
+      + `<td>${attempt.observation.response.durationMs} ms<pre>${escapeHtml(attempt.observation.response.error ?? attempt.findings.map(finding => finding.kind).join(", "))}</pre>`
+      + `<details><summary>请求证据</summary><pre>${escapeHtml(JSON.stringify(attempt, null, 2))}</pre></details></td></tr>`).join("")
+    + `</table>`).join("");
+}
+
 export function printOverview(result: OverviewResult): void {
   writeOutput(`Overview · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
   for (const summary of result.providers) {
     writeOutput(`\n${summary.name}\n`);
+    if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
+    for (const check of summary.cases ?? []) {
+      writeOutput(`  Case ${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}: ${check.status} (${check.stage})\n`);
+      if (check.error) writeOutput(`    ${check.error}\n`);
+      if (check.truncated) writeOutput(`    覆盖不足：${check.truncated}\n`);
+      for (const attempt of check.attempts) writeOutput(`    ${attempt.target.pod}/${attempt.target.container} → ${attempt.caseId}/${attempt.entrypoint}: ${attempt.status}, HTTP ${attempt.observation.response.statusCode ?? "—"}, ${attempt.observation.response.durationMs} ms${attempt.observation.response.error ? ` · ${attempt.observation.response.error}` : ""}\n`);
+    }
     if (summary.costError) writeOutput(`  耗时查询失败：${summary.costError}\n`);
     if (summary.cost) {
       writeOutput(`  耗时统计 · ${summary.cost.description}\n    ${COST_HEADERS.join(" | ")}\n`);
@@ -58,6 +83,8 @@ export function buildOverviewHtml(result: OverviewResult): string {
     + (summary.error ? `<p>查询失败：${escapeHtml(summary.error)}</p>` : "")
     + (summary.costError ? `<p>耗时查询失败：${escapeHtml(summary.costError)}</p>` : "")
     + (summary.cost ? costHtml(summary.cost) : "")
+    + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")
+    + (summary.cases ? casesHtml(summary.cases) : "")
     + summary.facets.map((facet) => `<h3>${escapeHtml(facet.facetId)}</h3><p>${escapeHtml(facet.description)}</p>`
       + (facet.truncated ? `<p>已截断：${escapeHtml(facet.truncated.reason)}</p>` : "")
       + `<table><tr><th>Entry</th><th>数据</th><th>代表请求 / 采样结果</th></tr>`

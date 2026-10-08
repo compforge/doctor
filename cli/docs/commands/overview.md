@@ -116,3 +116,71 @@ missingCount。Provider 在源头限制读取，并说明截断；Core 校验统
 
 终端和 HTML 显示耗时表，diagnosis.json 保留类型化统计。耗时条目当前仅供查看，不进入
 `overview.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。
+
+## 消费方 HTTP Case 检查
+
+Service 通过 `case.consume` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
+例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
+指定 Service 的 Overview 在概览查询后自动执行这些只读 GET/HEAD 检查，再进入可选的历史样本采集。
+没有 summarize/cost 的 Service 也可以只提供 `case.consume`。产品级概览保持自身 namespace 的统计范围，
+不会隐式执行所有 Service 的检查。
+
+Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.produce` Extension，
+以 `workload` 引用消费方已声明的 Workload。两个 kind 均遵循普通 Extension 契约：声明 `access`，
+通过 `run(context, input)` 返回 `{ data, summary }`。消费方返回 `{ bindings }`，提供方返回 `{ cases }`；
+两次调用各自使用所属 Service 的 PluginContext、access 与租户条件。提供方
+返回本次准备好的 HTTP Case 列表，每项由 canonical `case` 与有序运行时 `targets` 组成；不执行请求。
+这个运行时接口独立于离线 `case.catalog`，签名 URL 不进入静态目录或配置。
+
+Overview 先调用消费方扩展取得本次关系，再解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
+每个绑定最多检查 10 个 Running 实例，每个实例最多 10 个 Cases；提供方应在数据源处限制结果，
+超限或提供方截断在报告中明确展示。实例未配置 container 且存在多个容器时报告缺口，不猜测业务容器。
+请求沿用 HTTP Collect 的超时和响应容量预算，串行执行；代理与 TLS 使用目标容器 curl 的正常行为，
+不绕过代理、不跳过证书验证、不回退到 Host/port-forward。重定向响应直接作为证据，不隐式跟随到另一目标。
+
+Case 可给出有序备用 URL，主地址不满足预期时继续尝试，遇到成功停止；原地址失败始终保留，
+备用成功不把绑定改判为通过。每次尝试记录提供方、binding、Case、Pod UID/container、请求 URL（查询值脱敏）、
+时间、HTTP/transport 结果与 Finding，headers/body/error 附件随 Overview Bundle 交付。凭据头与已知签名值脱敏。
+二进制文件保留受预算限制的响应内容；响应摘要对应下载流，文本附件可能经脱敏。
+
+无法取得消费关系、无法准备 Pod、无法取得 Case、空 Case 列表和请求失败分别记录阶段和原因；它们不是网络成功。
+单个消费扩展或绑定失败不丢失其他结果；证据同时保留消费扩展 ID 与 binding ID，取消保留已完成的尝试。Case 时间是本次执行时间，
+`--since` 的历史窗口只用于概览和后续采样。`doctor case` 的现有目录与发送入口保持独立。
+
+消费方声明示例（提供方已在其 Service.extensions 注册 `file-downloads`）：
+
+```ts
+const worker = {
+  ...workerService,
+  extensions: [{
+    id: "downloads", kind: "case.consume", access: {},
+    run: withSummary({ title: "文件消费关系", fields: [] }, async () => ({
+      bindings: [{
+        id: "file-download", workload: "main",
+        producer: { namespace: "plugin/example/service/files", extension: "file-downloads" },
+      }],
+    })),
+  }],
+};
+```
+
+`case.produce` 的 `data.cases` 将稳定意图与本次可访问的地址对应：
+
+```ts
+{
+  case: {
+    id: "file_download", desc: "文件可下载",
+    input: { protocol: "http", method: "GET", headers: { Range: "bytes=0-1023" } },
+    judge: { e2e: { http: { status: [200, 206] } } },
+  },
+  targets: [{ id: "primary", url: signedURL }, { id: "internal", url: internalURL }],
+}
+```
+
+Case 使用 spec-case 的共享 HTTP profile；`case.input.protocol` 决定执行协议，`http` 同时支持目标 URL
+中的 HTTP/HTTPS scheme。签名 URL 和各入口独立的认证头属于 targets，不改变 Case hash；实际 Pod 属于消费关系。
+Doctor 在消费方 Pod 内发送请求，复用 HTTP Collect 的响应采集与 Detector，负责权限、备用入口策略与报告。
+每项至少提供一个地址、最多五个，按声明顺序尝试；headers 只应用于所属地址，不跨备用入口继承。
+Overview 只接受无 body 的 GET/HEAD，并要求明确的 `judge.e2e.http`；其他消费者可使用完整 HTTP profile。
+无可用样本返回 `{ cases: [], reason: "当前租户没有可用文件" }`。消费关系为空表示本次没有适用检查，
+不能作为网络连通性证据。
