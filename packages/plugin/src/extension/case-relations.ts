@@ -1,23 +1,25 @@
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 import { validateExtensionNamespace } from "./registry";
 
-export const CASE_HTTP_PROVIDE_KIND = "case.http.provide";
+export const CASE_PRODUCE_KIND = "case.produce";
+export const CASE_CONSUME_KIND = "case.consume";
 
 /** A consumer-owned relationship. Workload names refer to this Service's declarations. */
 export interface CaseBinding {
   readonly id: string;
   readonly workload: string;
-  readonly provider: { readonly namespace: string; readonly extension: string };
+  readonly producer: { readonly namespace: string; readonly extension: string };
 }
 
-export interface HttpCaseQuery {
+export interface CaseProduceQuery {
   readonly tenantId?: string;
   /** Bound preparation at its data source; temporary URLs belong only to this invocation. */
   readonly maxCases: number;
 }
 
 /** Read-only HTTP checks run by Core from the consumer's declared Workload. */
-export interface ProvidedHttpCase {
+export interface ProducedHttpCase {
+  readonly protocol: "http";
   readonly id: string;
   readonly description: string;
   readonly request: {
@@ -30,15 +32,37 @@ export interface ProvidedHttpCase {
   readonly alternatives?: readonly { readonly id: string; readonly url: string }[];
 }
 
-export interface HttpCasesResult {
-  readonly cases: readonly ProvidedHttpCase[];
+/** Protocol discriminates the executable payload; HTTP includes both http and https URL schemes. */
+export type ProducedCase = ProducedHttpCase;
+
+export interface CaseProduceResult {
+  readonly cases: readonly ProducedCase[];
   /** Required for an empty list; unavailable samples are not a successful network check. */
   readonly reason?: string;
   readonly truncated?: { readonly reason: string };
 }
 
-export interface HttpCaseProviderExtension extends Extension<HttpCaseQuery, HttpCasesResult> {
-  readonly kind: typeof CASE_HTTP_PROVIDE_KIND;
+export interface CaseProduceExtension extends Extension<CaseProduceQuery, CaseProduceResult> {
+  readonly kind: typeof CASE_PRODUCE_KIND;
+}
+
+export interface CaseConsumeQuery { readonly tenantId?: string }
+export interface CaseConsumeResult { readonly bindings: readonly CaseBinding[] }
+
+/** @spec Both kinds return data through the normal Extension envelope; Overview owns execution. */
+export interface CaseConsumeExtension extends Extension<CaseConsumeQuery, CaseConsumeResult> {
+  readonly kind: typeof CASE_CONSUME_KIND;
+}
+
+export function requireCaseConsumeExtension(extension: ExtensionRegistration): CaseConsumeExtension {
+  validateExtension(extension);
+  if (extension.kind !== CASE_CONSUME_KIND) throw new Error(`Unsupported Case consumer kind: ${extension.kind}`);
+  return extension as CaseConsumeExtension;
+}
+
+export function validateCaseConsumeResult(value: CaseConsumeResult): void {
+  if (!value || typeof value !== "object") throw new Error("Case consumer must return bindings");
+  validateCaseBindings(value.bindings);
 }
 
 function name(value: unknown, label: string): asserts value is string {
@@ -46,22 +70,22 @@ function name(value: unknown, label: string): asserts value is string {
 }
 
 export function validateCaseBindings(bindings: readonly CaseBinding[]): void {
-  if (!Array.isArray(bindings)) throw new Error("Service.caseBindings must be an array");
+  if (!Array.isArray(bindings)) throw new Error("Case bindings must be an array");
   const ids = new Set<string>();
   for (const binding of bindings) {
     name(binding.id, "Case binding id");
     name(binding.workload, "Case binding workload");
     if (ids.has(binding.id)) throw new Error(`Duplicate Case binding: ${binding.id}`);
     ids.add(binding.id);
-    validateExtensionNamespace(binding.provider?.namespace);
-    name(binding.provider?.extension, "Case provider extension");
+    validateExtensionNamespace(binding.producer?.namespace);
+    name(binding.producer?.extension, "Case provider extension");
   }
 }
 
-export function requireHttpCaseProviderExtension(extension: ExtensionRegistration): HttpCaseProviderExtension {
+export function requireCaseProduceExtension(extension: ExtensionRegistration): CaseProduceExtension {
   validateExtension(extension);
-  if (extension.kind !== CASE_HTTP_PROVIDE_KIND) throw new Error(`Unsupported Case provider kind: ${extension.kind}`);
-  return extension as HttpCaseProviderExtension;
+  if (extension.kind !== CASE_PRODUCE_KIND) throw new Error(`Unsupported Case provider kind: ${extension.kind}`);
+  return extension as CaseProduceExtension;
 }
 
 function httpUrl(value: string): void {
@@ -70,12 +94,13 @@ function httpUrl(value: string): void {
 }
 
 /** Dynamic ESM output crosses a runtime boundary; invalid requests must never reach Pod exec. */
-export function validateHttpCasesResult(value: HttpCasesResult, maxCases: number): void {
+export function validateCaseProduceResult(value: CaseProduceResult, maxCases: number): void {
   if (!value || !Array.isArray(value.cases) || value.cases.length > maxCases) throw new Error(`Case provider must return at most ${maxCases} Cases`);
   if (!value.cases.length) name(value.reason, "Empty Case list reason");
   if (value.truncated) name(value.truncated.reason, "Case truncation reason");
   const ids = new Set<string>();
   for (const item of value.cases) {
+    if (item.protocol !== "http") throw new Error("Unsupported Case protocol; expected http");
     name(item.id, "Case id");
     name(item.description, "Case description");
     if (ids.has(item.id)) throw new Error(`Duplicate Case: ${item.id}`);

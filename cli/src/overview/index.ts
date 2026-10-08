@@ -76,9 +76,9 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
       signal: context.signal,
       cases: (provider, query, checkpoint) => {
         const snapshots: CaseCheckResult[] = [];
-        return checkServiceCases(context.plugin, provider.caseService!, provider.bindings!, query.tenantId,
+        return checkServiceCases(context.plugin, provider.caseService!, provider.consumers!, query.tenantId,
           caseCheckActions(context, executor, kube.kubernetes, reportDirectory!, result => {
-            const index = snapshots.findIndex(item => item.bindingId === result.bindingId);
+            const index = snapshots.findIndex(item => item.consumeExtension === result.consumeExtension && item.bindingId === result.bindingId);
             if (index < 0) snapshots.push(result); else snapshots[index] = result;
             checkpoint(snapshots);
           }));

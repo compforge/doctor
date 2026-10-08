@@ -139,7 +139,7 @@ export async function runOverviewSession(
   // Checkpoint before active checks; cancellation must leave completed attempts deliverable.
   actions.show(result);
   for (const [index, provider] of providers.entries()) {
-    if (!provider.bindings?.length) continue;
+    if (!provider.consumers?.length) continue;
     const summary = result.providers[index]!;
     try {
       if (!actions.cases) throw new Error("Missing Overview Case executor");

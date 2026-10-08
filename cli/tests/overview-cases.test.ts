@@ -3,25 +3,27 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type HttpCaseProviderExtension, type CaseBinding, type ProvidedHttpCase, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
+  type CaseConsumeExtension, type CaseProduceExtension, type CaseBinding, type ProducedHttpCase, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
-import { checkServiceCases, serviceCaseBindings, type CaseCheckActions } from "../src/overview/cases";
+import { checkServiceCases, type CaseCheckActions } from "../src/overview/cases";
 import { overviewProviders } from "../src/overview/extensions";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
 import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "test" } };
-const provider: HttpCaseProviderExtension = { id: "files", kind: "case.http.provide", access: {},
+const provider: CaseProduceExtension = { id: "files", kind: "case.produce", access: {},
   run: withSummary({ title: "Files", fields: [] }, async () => ({ cases: [] })) };
 const bindings: CaseBinding[] = [
-  { id: "kb-files", workload: "main", provider: { namespace: "plugin/test/service/kb", extension: "files" } },
+  { id: "kb-files", workload: "main", producer: { namespace: "plugin/test/service/kb", extension: "files" } },
 ];
-const consumer: ServiceDefinition = { name: "sandbox", component, workloads: [kubernetesServiceWorkload("sandbox")], caseBindings: bindings };
+const consumption: CaseConsumeExtension = { id: "downloads", kind: "case.consume", access: {},
+  run: withSummary({ title: "Downloads", fields: [] }, async () => ({ bindings })) };
+const consumer: ServiceDefinition = { name: "sandbox", component, workloads: [kubernetesServiceWorkload("sandbox")], extensions: [consumption] };
 const kb: ServiceDefinition = { name: "kb", component, workloads: [], extensions: [provider] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, kb]) };
 const target: WorkloadInstance = { platform: "kubernetes", environment: "cluster", workload: "main", namespace: "ns", pod: "sandbox-1", uid: "uid-1", container: "app" };
-const file: ProvidedHttpCase = { id: "download", description: "File", request: { url: "https://files.test/download?signature=TOPSECRET", headers: { Authorization: "Bearer TOKEN" } }, expect: { status: [200] } };
+const file: ProducedHttpCase = { id: "download", protocol: "http", description: "File", request: { url: "https://files.test/download?signature=TOPSECRET", headers: { Authorization: "Bearer TOKEN" } }, expect: { status: [200] } };
 function fixture(overrides: Partial<CaseCheckActions> = {}) {
   const directory = mkdtempSync(join(tmpdir(), "overview-cases-"));
   const controller = new AbortController();
@@ -33,20 +35,21 @@ function fixture(overrides: Partial<CaseCheckActions> = {}) {
       calls.push(request.url);
       return { statusCode: 200, statusText: "OK", headers: {}, body: new Response("file bytes").body };
     }; },
-    provide: async service => { expect(service.name).toBe("kb"); calls.push("provide"); return { cases: [file] }; },
+    consume: async (_service, extension, query) => { expect(query.tenantId).toBe("tenant"); calls.push("consume"); return { bindings }; },
+    produce: async service => { expect(service.name).toBe("kb"); calls.push("provide"); return { cases: [file] }; },
     ...overrides,
   };
-  return { directory, controller, calls, actions, run: () => checkServiceCases(plugin, consumer, serviceCaseBindings(consumer), "tenant", actions),
+  return { directory, controller, calls, actions, run: () => checkServiceCases(plugin, consumer, [consumption], "tenant", actions),
     cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
 
 test("case-only Service is discoverable; provider is called after consumer preparation and URLs run from that target", async () => {
   const selected = overviewProviders(plugin, ["sandbox"]);
-  expect(selected[0]!.bindings).toHaveLength(1);
+  expect(selected[0]!.consumers).toHaveLength(1);
   const f = fixture();
   try {
     const results = await f.run();
-    expect(f.calls).toEqual(["targets", "sender:sandbox-1", "provide", file.request.url]);
+    expect(f.calls).toEqual(["consume", "targets", "sender:sandbox-1", "provide", file.request.url]);
     expect(results[0]!.status).toBe("passed");
     expect(results[0]!.attempts[0]!.target).toEqual(target);
     expect(JSON.stringify(results)).not.toContain("TOPSECRET");
@@ -56,7 +59,7 @@ test("case-only Service is discoverable; provider is called after consumer prepa
 
 test("DNS failure, alternate success and HTTP failure all remain attributable; subsequent Cases still run", async () => {
   const f = fixture({
-    provide: async () => ({ cases: [{ ...file, alternatives: [{ id: "internal", url: "http://platform:3000/download" }] }, { ...file, id: "unauthorized" }] }),
+    produce: async () => ({ cases: [{ ...file, alternatives: [{ id: "internal", url: "http://platform:3000/download" }] }, { ...file, id: "unauthorized" }] }),
     sender: async () => async request => {
       if (request.url.startsWith("http://platform")) return { statusCode: 200, statusText: "OK", headers: {}, body: new Response("bytes").body };
       throw new HttpTransportError(`Could not resolve host ${request.url}, Bearer TOKEN`, { engine: "curl", exitCode: 6, timings: {}, error: `DNS ${request.url}` });
@@ -77,7 +80,7 @@ test("DNS failure, alternate success and HTTP failure all remain attributable; s
 test("missing consumer tools and empty providers are coverage gaps, not network success", async () => {
   for (const overrides of [
     { sender: async () => { throw new Error("curl not found"); } },
-    { provide: async () => ({ cases: [], reason: "No file in tenant" }) },
+    { produce: async () => ({ cases: [], reason: "No file in tenant" }) },
   ] satisfies Partial<CaseCheckActions>[]) {
     const f = fixture(overrides);
     try {
@@ -106,7 +109,7 @@ test("Overview runs bindings automatically and retains history when checks fail"
 });
 
 test("cancellation retains the interrupted attempt and never starts a queued Case", async () => {
-  const f = fixture({ provide: async () => ({ cases: [file, { ...file, id: "second" }] }) });
+  const f = fixture({ produce: async () => ({ cases: [file, { ...file, id: "second" }] }) });
   f.actions.sender = async () => async () => {
     f.controller.abort();
     throw new Error("cancelled");
@@ -128,7 +131,7 @@ test("replica tool/provider failures preserve their identity and do not hide ano
     if (instance.pod === target.pod) throw new Error("curl not found");
     return async () => ({ statusCode: 200, statusText: "OK", headers: {}, body: new Response("ok").body });
   };
-  f.actions.provide = async () => {
+  f.actions.produce = async () => {
     if (++calls === 1) throw new Error("presign unavailable");
     return { cases: [file] };
   };
@@ -170,12 +173,17 @@ test("real Case adapter executes only in consumer container and delivers failed 
   try {
     const actions = caseCheckActions(context, executor, { namespace: "ns" }, f.directory, () => {});
     // The real provider invocation uses its own bound Service and invocation context.
-    const runtimeProvider: HttpCaseProviderExtension = { ...provider, run: withSummary({ title: "Files", fields: [] }, async ctx => {
+    const runtimeProvider: CaseProduceExtension = { ...provider, run: withSummary({ title: "Files", fields: [] }, async ctx => {
       expect(ctx.target.service.name).toBe("kb");
       return { cases: [file] };
     }) };
-    const runtimePlugin = { ...plugin, services: createServiceCatalog([consumer, { ...kb, extensions: [runtimeProvider] }]) };
-    const checks = await checkServiceCases(runtimePlugin, consumer, bindings, undefined, actions);
+    const runtimeConsumption: CaseConsumeExtension = { ...consumption, run: withSummary({ title: "Relations", fields: [] }, async ctx => {
+      expect(ctx.target.service.name).toBe("sandbox");
+      return { bindings };
+    }) };
+    const runtimeConsumer = { ...consumer, extensions: [runtimeConsumption] };
+    const runtimePlugin = { ...plugin, services: createServiceCatalog([runtimeConsumer, { ...kb, extensions: [runtimeProvider] }]) };
+    const checks = await checkServiceCases(runtimePlugin, runtimeConsumer, [runtimeConsumption], undefined, actions);
     expect(checks[0]!.error).toBeUndefined();
     expect(checks[0]!.status).toBe("failed");
     expect(checks[0]!.attempts[0]!.target).toMatchObject({ namespace: "ns", pod: target.pod, uid: target.uid, container: "app" });
@@ -195,6 +203,58 @@ test("real Case adapter executes only in consumer container and delivers failed 
     const html = readReport(readFileSync(path, "utf8"));
     expect(html.index.sections[0]!.pages[0]!.status).toBe(CommandStatus.Failed);
     expect(html.pages).toContain("HTTP 403");
-    expect(readBundleText(join(f.directory, "delivery.tar.gz"), "delivery/cases/sandbox/0/0/0/0/body.txt")).toBe("denied");
+    expect(readBundleText(join(f.directory, "delivery.tar.gz"), "delivery/cases/sandbox/0/0/0/0/0/body.txt")).toBe("denied");
   } finally { await context.disposeClients(); f.cleanup(); }
+});
+
+test("consumer data is resolved at execution and invalid relationships never reach a Pod", async () => {
+  for (const consume of [
+    async () => { throw new Error("consumer configuration unavailable"); },
+    async () => ({ bindings: [{ ...bindings[0]!, workload: "missing" }] }),
+    async () => ({ bindings: [bindings[0]!, bindings[0]!] }),
+  ]) {
+    const f = fixture({ consume });
+    try {
+      const [result] = await f.run();
+      expect(result!.status).toBe("unavailable");
+      expect(result!.consumeExtension).toBe("downloads");
+      expect(result!.error).toBeDefined();
+      expect(f.calls).toEqual([]);
+      expect(buildOverviewHtml({ query: { window: { from: "a", to: "b" }, maxEntries: 1 },
+        providers: [{ namespace: "sandbox", name: "sandbox", facets: [], cases: [result!] }],
+        collection: "not-requested", samples: [], sampleAllocations: [] })).toContain("downloads");
+    } finally { f.cleanup(); }
+  }
+});
+
+test("consume extensions isolate failures and preserve duplicate binding IDs across extensions", async () => {
+  const f = fixture();
+  const snapshots: import("../src/overview/cases").CaseCheckResult[] = [];
+  f.actions.checkpoint = result => { if (!snapshots.includes(result)) snapshots.push(result); };
+  f.actions.consume = async (_service, extension) => {
+    if (extension.id === "broken") throw new Error("cannot read consumer config");
+    return { bindings };
+  };
+  try {
+    const results = await checkServiceCases(plugin, consumer,
+      [{ ...consumption, id: "broken" }, consumption, { ...consumption, id: "second" }], "tenant", f.actions);
+    expect(results.map(result => result.status)).toEqual(["unavailable", "passed", "passed"]);
+    expect(results.map(result => result.consumeExtension)).toEqual(["broken", "downloads", "second"]);
+    expect(snapshots).toHaveLength(3);
+    expect(readdirSync(join(f.directory, "cases/sandbox"))).toEqual(["1", "2"]);
+  } finally { f.cleanup(); }
+});
+
+test("empty consumption does not invoke producers; unsupported Case protocols never send requests", async () => {
+  const empty = fixture({ consume: async () => ({ bindings: [] }) });
+  try { expect(await empty.run()).toEqual([]); expect(empty.calls).toEqual([]); }
+  finally { empty.cleanup(); }
+  const unsupported = fixture({ produce: async () => ({ cases: [{ ...file, protocol: "tcp" } as never] }) });
+  try {
+    const [result] = await unsupported.run();
+    expect(result!.status).toBe("failed");
+    expect(result!.error).toContain("protocol");
+    expect(result!.attempts).toHaveLength(0);
+    expect(unsupported.calls).not.toContain(file.request.url);
+  } finally { unsupported.cleanup(); }
 });

@@ -1,5 +1,5 @@
-import { serviceCaseBindings, type OverviewCaseBinding } from "./cases";
 import {
+  CASE_CONSUME_KIND, requireCaseConsumeExtension, type CaseConsumeExtension,
   OVERVIEW_SUMMARIZE_KIND, OVERVIEW_SAMPLE_KIND, OVERVIEW_COST_KIND, extensionNamespace,
   requireOverviewSummarizeExtension, requireOverviewSampleExtension, requireOverviewCostExtension,
   type OverviewCostExtension, type OverviewSummarizeExtension, type OverviewSampleExtension, type PluginDefinition, type ServiceDefinition,
@@ -11,7 +11,7 @@ export interface OverviewProvider {
   name: string;
   /** Providing Service retained by registration; namespace never selects a data target. */
   service: ServiceDefinition;
-  bindings?: readonly OverviewCaseBinding[];
+  consumers?: readonly CaseConsumeExtension[];
   caseService?: ServiceDefinition;
   summarize?: OverviewSummarizeExtension;
   cost?: OverviewCostExtension;
@@ -36,8 +36,11 @@ export function overviewProviders(plugin: PluginDefinition, serviceNames?: reado
     const summaries = registry.extensions(OVERVIEW_SUMMARIZE_KIND, scope.namespace);
     const samples = registry.extensions(OVERVIEW_SAMPLE_KIND, scope.namespace);
     const costs = registry.extensions(OVERVIEW_COST_KIND, scope.namespace);
-    const bindings = scope.service ? serviceCaseBindings(scope.service) : [];
-    if (!summaries.length && !costs.length && !bindings.length) throw new Error(`${scope.namespace}: 未声明 overview.summarize、overview.cost Extension 或 Service.caseBindings${scope.service ? "" : "；可使用 --service 选择已声明概览的 Service"}`);
+    const consumers = scope.service ? registry.extensions(CASE_CONSUME_KIND, scope.namespace).map(entry => {
+      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: case.consume must belong to the selected Service`);
+      return requireCaseConsumeExtension(entry.extension);
+    }) : [];
+    if (!summaries.length && !costs.length && !consumers.length) throw new Error(`${scope.namespace}: 未声明 overview.summarize、overview.cost Extension 或 case.consume Extension${scope.service ? "" : "；可使用 --service 选择已声明概览的 Service"}`);
     if (summaries.length > 1 || samples.length > 1 || costs.length > 1) throw new Error(`${scope.namespace}: ambiguous overview Extension`);
     const summarize = summaries[0] ? requireOverviewSummarizeExtension(summaries[0].extension) : undefined;
     const cost = costs[0] ? requireOverviewCostExtension(costs[0].extension) : undefined;
@@ -46,6 +49,6 @@ export function overviewProviders(plugin: PluginDefinition, serviceNames?: reado
     const costService = costs[0]?.service;
     const sampleService = samples[0]?.service;
     if (!service || (sample && !sampleService) || (cost && !costService)) throw new Error(`${scope.namespace}: executable overview Extensions require a providing Service`);
-    return { namespace: scope.namespace, name: scope.name, service, bindings, caseService: scope.service, summarize, sample, sampleService, cost, costService };
+    return { namespace: scope.namespace, name: scope.name, service, consumers, caseService: scope.service, summarize, sample, sampleService, cost, costService };
   });
 }

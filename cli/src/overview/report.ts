@@ -25,10 +25,10 @@ function costHtml(cost: OverviewCostResult): string {
 }
 
 function casesHtml(checks: readonly CaseCheckResult[]): string {
-  return `<h3>Case 检查（本次执行）</h3>` + checks.map(check =>
-    `<h4>${escapeHtml(check.bindingId)} · ${escapeHtml(check.status)}</h4>`
-    + `<p>提供方：${escapeHtml(check.provider.namespace)}/${escapeHtml(check.provider.extension)}<br>`
-    + `消费方：${escapeHtml(check.consumer)}/${escapeHtml(check.workload)}<br>`
+  return `<h3>Case 检查（本次执行）</h3>` + (checks.length ? "" : "<p>本次没有适用的 Case 消费关系</p>") + checks.map(check =>
+    `<h4>${escapeHtml(`${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}`)} · ${escapeHtml(check.status)}</h4>`
+    + `<p>${check.producer ? `提供方：${escapeHtml(check.producer.namespace)}/${escapeHtml(check.producer.extension)}<br>` : ""}`
+    + `消费方：${escapeHtml(check.consumer)}/${escapeHtml(check.workload ?? "未解析")}<br>`
     + `${escapeHtml(check.startedAt)} → ${escapeHtml(check.finishedAt ?? "进行中")}</p>`
     + (check.error ? `<pre>${escapeHtml(check.stage)}: ${escapeHtml(check.error)}</pre>` : "")
     + (check.truncated ? `<p>覆盖不足：${escapeHtml(check.truncated)}</p>` : "")
@@ -47,7 +47,7 @@ export function printOverview(result: OverviewResult): void {
     writeOutput(`\n${summary.name}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
-      writeOutput(`  Case binding ${check.bindingId}: ${check.status} (${check.stage})\n`);
+      writeOutput(`  Case ${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}: ${check.status} (${check.stage})\n`);
       if (check.error) writeOutput(`    ${check.error}\n`);
       if (check.truncated) writeOutput(`    覆盖不足：${check.truncated}\n`);
       for (const attempt of check.attempts) writeOutput(`    ${attempt.target.pod}/${attempt.target.container} → ${attempt.caseId}/${attempt.entrypoint}: ${attempt.status}, HTTP ${attempt.observation.response.statusCode ?? "—"}, ${attempt.observation.response.durationMs} ms${attempt.observation.response.error ? ` · ${attempt.observation.response.error}` : ""}\n`);

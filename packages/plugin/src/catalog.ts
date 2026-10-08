@@ -1,4 +1,3 @@
-import { validateCaseBindings } from "./extension/http-cases";
 import { validateExtension, type RegisteredExtension } from "./extension";
 import type { ServiceDefinition } from "./service";
 
@@ -23,7 +22,6 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         this.identities.set(alias, service);
       }
       if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
-      if (service.caseBindings !== undefined) validateCaseBindings(service.caseBindings);
       const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
         validateExtension(extension);

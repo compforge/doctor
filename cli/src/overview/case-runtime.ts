@@ -1,5 +1,5 @@
 import type { KubectlOptions, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { WorkloadInstance } from "@compforge/doctor-plugin";
+import type { WorkloadInstance, Extension, ServiceDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 import { discoverKubernetesWorkload } from "../infra/k8s/workload";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
@@ -10,6 +10,16 @@ import type { CaseCheckActions } from "./cases";
 
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
+  const invoke = async <I, O>(service: ServiceDefinition, extension: Extension<I, O>, query: I): Promise<O> => {
+    const db = context.profile.value.db;
+    const managed = await openPluginContext(executor, kubernetes, {
+      config: context.profile.pluginConfig, service, capability: extension, signal: context.signal, clients: context.clients,
+      databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
+      command: `doctor overview ${extension.kind}`, authorization: context.kubernetes(executor).access,
+    });
+    try { return (await invokeExtension(extension, managed, query)).data; }
+    finally { await managed.dispose(); }
+  };
   return {
     directory, checkpoint, signal: context.signal,
     targets: async (service, binding) => {
@@ -46,15 +56,7 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       if (!result.ok) throw new Error(result.stderr.trim() || `curl unavailable (exit=${result.exitCode}, timedOut=${result.timedOut})`);
       return createPodHttpSender(executor, target, supportsPodCurlDiagnostics(result.stdout));
     },
-    provide: async (service, extension, query) => {
-      const db = context.profile.value.db;
-      const managed = await openPluginContext(executor, kubernetes, {
-        config: context.profile.pluginConfig, service, capability: extension, signal: context.signal, clients: context.clients,
-        databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-        command: "doctor overview Case provider", authorization: context.kubernetes(executor).access,
-      });
-      try { return (await invokeExtension(extension, managed, query)).data; }
-      finally { await managed.dispose(); }
-    },
+    consume: invoke,
+    produce: invoke,
   };
 }

@@ -1,5 +1,4 @@
 import { requireFactsInspectExtension, type FactsInspectExtension } from "./extension";
-import type { CaseBinding } from "./extension/http-cases";
 import type { CapabilityAccess } from "./kubernetes";
 import type { ServiceDefinition } from "./service";
 import type { ServiceDataSourceKind } from "./datasource";
@@ -15,7 +14,6 @@ export interface ServiceDescription {
   extensions?: { id: string; kind: string; description?: string }[];
   details: {
     workloads: Workload[];
-    caseBindings?: CaseBinding[];
     dependencies: { id: string; service: string; dataSource: string }[];
     dataSources: { id: string; kind: ServiceDataSourceKind; backend: string; description?: string }[];
     inspect?: Pick<FactsInspectExtension, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
@@ -62,7 +60,6 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     environmentProbes: (service.environmentProbes ?? []).map(item => item.id),
     ...(service.extensions?.length ? { extensions: service.extensions.map(({ id, kind, description }) => ({ id, kind, description })) } : {}),
     details: {
-      ...(service.caseBindings?.length ? { caseBindings: service.caseBindings.map(({ id, workload, provider }) => ({ id, workload, provider: { namespace: provider.namespace, extension: provider.extension } })) } : {}),
       workloads: service.workloads.map(({ name, description, platform, namespace, location, container }) => ({
         name, description, platform, namespace, container,
         location: location.kind === "labels"

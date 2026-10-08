@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProvidedHttpCase, WorkloadInstance } from "@compforge/doctor-plugin";
+import type { ProducedHttpCase, WorkloadInstance } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
 import { HTTP_DEFAULTS } from "../collect/shared/http/config";
 import { captureHttpResponse } from "../collect/shared/http/capture";
@@ -36,7 +36,7 @@ export function caseError(error: unknown, secrets: readonly string[] = []): stri
 }
 
 export async function executeHttpCase(input: {
-  item: ProvidedHttpCase; target: WorkloadInstance; directory: string; prefix: string;
+  item: ProducedHttpCase; target: WorkloadInstance; directory: string; prefix: string;
   send: SendHttp; signal: AbortSignal;
 }): Promise<CaseAttempt[]> {
   const { item, target, directory, prefix, signal } = input;
