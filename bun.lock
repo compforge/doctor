@@ -5,7 +5,7 @@
     "": {
       "name": "compforge-doctor",
       "devDependencies": {
-        "@compforge/spec-case": "0.0.6",
+        "@compforge/spec-case": "0.0.7",
       },
     },
     "cli": {
@@ -18,7 +18,7 @@
         "@compforge/harness-toolbox": "0.3.6",
         "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
         "@compforge/prombed": "0.0.2",
-        "@compforge/spec-case": "0.0.6",
+        "@compforge/spec-case": "0.0.7",
         "@compforge/trace-harness": "0.2.2",
         "@earendil-works/pi-agent-core": "0.87.1",
         "@kubernetes/client-node": "1.4.0",
@@ -82,7 +82,7 @@
       "dependencies": {
         "@compforge/harness-common": "0.3.2",
         "@compforge/harness-toolbox": "0.3.6",
-        "@compforge/spec-case": "0.0.6",
+        "@compforge/spec-case": "0.0.7",
         "@compforge/trace-harness": "0.2.2",
         "typebox": "1.3.7",
       },
@@ -170,7 +170,7 @@
 
     "@compforge/prombed": ["@compforge/prombed@0.0.2", "", {}, "sha512-HeQyJeAuwNPI7RtLeS8dCApvHJFZYlyUq2EatMQxVaaywszwKCTfdY851JEDIGrW7Sh92h9AXc2ITYz3VwoVcA=="],
 
-    "@compforge/spec-case": ["@compforge/spec-case@0.0.6", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-Z+pm1DDjTPTdZUwdtOeF7i60fA4m4vJ1HVwzLlyeJTFsViCRvSzsxUnZSxJFHDxpcHFoA9UIh8rJz3jwCcB78w=="],
+    "@compforge/spec-case": ["@compforge/spec-case@0.0.7", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-lF6mZ+v9o9FjfLtDuszkk0O8o3uyueNarYZAwy8Ixzuxc6uHAMI0aopmagY1foGrtV1TeRBt1C1lFM7qRVWSPQ=="],
 
     "@compforge/trace-harness": ["@compforge/trace-harness@0.2.2", "", { "dependencies": { "@compforge/harness-toolbox": "0.1.0", "fflate": "0.8.3" } }, "sha512-sgiEKXCw7a5QCHWrbwsb2t7WsJlsJx9aygQZ/Lz14FnuFxYnFiuJxgbrVshE6rJ4FGQ+u9N1yiYlRHLkgT5YYA=="],
 
