@@ -3,6 +3,8 @@
 .vscode/
 node_modules/
 *.tsbuildinfo
+# Bun stages build output in the working directory during parallel validation.
+.*.bun-build
 *.log
 .env
 **/.env
