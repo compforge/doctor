@@ -129,7 +129,7 @@ Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.p
 以 `workload` 引用消费方已声明的 Workload。两个 kind 均遵循普通 Extension 契约：声明 `access`，
 通过 `run(context, input)` 返回 `{ data, summary }`。消费方返回 `{ bindings }`，提供方返回 `{ cases }`；
 两次调用各自使用所属 Service 的 PluginContext、access 与租户条件。提供方
-返回本次有效的 HTTP Case 列表；它只准备 URL、GET/HEAD 请求头与预期状态，不执行请求。
+返回本次准备好的 HTTP Case 列表，每项由 canonical `case` 与有序运行时 `targets` 组成；不执行请求。
 这个运行时接口独立于离线 `case.catalog`，签名 URL 不进入静态目录或配置。
 
 Overview 先调用消费方扩展取得本次关系，再解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
@@ -164,7 +164,23 @@ const worker = {
 };
 ```
 
-`case.produce` 的 `data` 为 `{ cases: [{ id, protocol: "http", description, request: { url }, expect: { status: [200] } }] }`，
-无可用样本时为 `{ cases: [], reason: "当前租户没有可用文件" }`。Case 的 `protocol` 决定执行协议，
-`http` 同时支持 URL 中的 `http:` 与 `https:` scheme；不支持的协议会明确报错。消费关系为空表示本次没有
-适用检查，不能作为网络连通性证据。
+`case.produce` 的 `data.cases` 将稳定意图与本次可访问的地址对应：
+
+```ts
+{
+  case: {
+    id: "file_download", desc: "文件可下载",
+    input: { protocol: "http", method: "GET", headers: { Range: "bytes=0-1023" } },
+    judge: { e2e: { http: { status: [200, 206] } } },
+  },
+  targets: [{ id: "primary", url: signedURL }, { id: "internal", url: internalURL }],
+}
+```
+
+Case 使用 spec-case 的共享 HTTP profile；`case.input.protocol` 决定执行协议，`http` 同时支持目标 URL
+中的 HTTP/HTTPS scheme。签名 URL 和各入口独立的认证头属于 targets，不改变 Case hash；实际 Pod 属于消费关系。
+Doctor 在消费方 Pod 内发送请求，复用 HTTP Collect 的响应采集与 Detector，负责权限、备用入口策略与报告。
+每项至少提供一个地址、最多五个，按声明顺序尝试；headers 只应用于所属地址，不跨备用入口继承。
+Overview 只接受无 body 的 GET/HEAD，并要求明确的 `judge.e2e.http`；其他消费者可使用完整 HTTP profile。
+无可用样本返回 `{ cases: [], reason: "当前租户没有可用文件" }`。消费关系为空表示本次没有适用检查，
+不能作为网络连通性证据。

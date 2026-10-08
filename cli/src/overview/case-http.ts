@@ -1,6 +1,7 @@
+import { caseHash } from "@compforge/spec-case/model";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ProducedHttpCase, WorkloadInstance } from "@compforge/doctor-plugin";
+import type { CaseProduceResult, WorkloadInstance } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
 import { HTTP_DEFAULTS } from "../collect/shared/http/config";
 import { captureHttpResponse } from "../collect/shared/http/capture";
@@ -11,6 +12,7 @@ import { PROBE_RUNNABLE } from "../collect/protocol";
 
 export interface CaseAttempt {
   caseId: string;
+  caseHash: string;
   description: string;
   entrypoint: string;
   target: WorkloadInstance;
@@ -35,28 +37,31 @@ export function caseError(error: unknown, secrets: readonly string[] = []): stri
   return text.replace(/^(authorization|proxy-authorization|cookie|set-cookie|x-api-key):.*$/gim, "$1: [redacted]");
 }
 
-export async function executeHttpCase(input: {
-  item: ProducedHttpCase; target: WorkloadInstance; directory: string; prefix: string;
+export async function checkHttpCase(input: {
+  item: CaseProduceResult["cases"][number]; target: WorkloadInstance; directory: string; prefix: string;
   send: SendHttp; signal: AbortSignal;
 }): Promise<CaseAttempt[]> {
   const { item, target, directory, prefix, signal } = input;
-  const secrets = Object.entries(item.request.headers ?? {}).filter(([key]) => /authorization|cookie|token|key|secret/i.test(key)).map(([, value]) => value);
-  for (const url of [item.request.url, ...(item.alternatives ?? []).map(entry => entry.url)]) {
-    secrets.push(...new URL(url).searchParams.values());
-  }
+  const secrets = item.targets.flatMap(entry => [
+    ...Object.entries(entry.headers ?? {}).filter(([key]) => /authorization|cookie|token|key|secret/i.test(key)).map(([, value]) => value),
+    ...new URL(entry.url).searchParams.values(),
+  ]);
   const attempts: CaseAttempt[] = [];
-  const entries = [{ id: "primary", url: item.request.url }, ...(item.alternatives ?? [])];
-  for (const [index, entry] of entries.entries()) {
+  for (const [index, entry] of item.targets.entries()) {
     signal.throwIfAborted();
     const path = `${prefix}/${index}`;
+    const headers = Object.fromEntries(Object.entries(item.case.input.headers ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
+    // Runtime headers belong to this route; credentials must not leak into another route's request.
+    for (const [key, value] of Object.entries(entry.headers ?? {})) headers[key.toLowerCase()] = value;
     const request: HttpRequestPlan = {
-      requestId: prefix, entrypointId: entry.id, method: item.request.method ?? "GET", url: entry.url,
-      headers: { ...item.request.headers }, followRedirects: false,
+      requestId: prefix, entrypointId: entry.id, method: item.case.input.method,
+      // An absent path preserves the exact signed URL returned by the producer.
+      url: item.case.input.path === undefined ? entry.url : new URL(item.case.input.path, entry.url).toString(),
+      headers, followRedirects: false, expect: item.case.judge!.e2e!.http!,
       timeoutMs: HTTP_DEFAULTS.timeoutSeconds * 1000,
-      maxResponseBytes: HTTP_DEFAULTS.maxResponseMiB * 1024 * 1024, expect: item.expect,
+      maxResponseBytes: HTTP_DEFAULTS.maxResponseMiB * 1024 * 1024,
     };
-    // No DNS/TCP preflight: the real request must preserve the container's proxy and TLS behavior.
-    // Redirects remain visible; forwarding credentials to an unknown redirect target is not implicit.
+    // Reuse Collect capture and diagnosis from the selected container; no Host fallback or preflight.
     const observations = await runProbes([{
       id: `http:${path}`, evaluate: () => PROBE_RUNNABLE,
       run: async (): Promise<HttpAttemptObservation[]> => {
@@ -77,8 +82,8 @@ export async function executeHttpCase(input: {
       if (transport.redirectUrls) transport.redirectUrls = transport.redirectUrls.map(url => caseError(url));
     }
     const findings = detectHttpAttempt(request, observation);
-    const attempt: CaseAttempt = { caseId: item.id, description: item.description, entrypoint: entry.id,
-      target, url: caseError(entry.url), status: findings.length ? "failed" : "passed", observation, findings };
+    const attempt: CaseAttempt = { caseId: item.case.id, caseHash: caseHash(item.case), description: item.case.desc ?? item.case.id, entrypoint: entry.id,
+      target, url: caseError(request.url), status: findings.length ? "failed" : "passed", observation, findings };
     // Raw text evidence is bounded by captureHttpResponse. Keep binary downloads and their original digest.
     for (const file of [observation.response.headersFile, observation.response.errorFile,
       ...(observation.response.contentType?.match(/text|json|xml/) ? [observation.response.bodyFile] : [])]) {

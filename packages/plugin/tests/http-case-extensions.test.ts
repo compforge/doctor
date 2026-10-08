@@ -1,13 +1,16 @@
 import { expect, test } from "bun:test";
-import { validateCaseBindings, validateCaseConsumeResult, validateExtension, withSummary, type CaseConsumeExtension, validateCaseProduceResult, type ProducedHttpCase } from "../src";
+import { validateCaseBindings, validateCaseConsumeResult, validateExtension, withSummary, type CaseConsumeExtension, validateCaseProduceResult, type CaseProduceResult } from "../src";
 
-const item: ProducedHttpCase = { id: "download", protocol: "http", description: "File", request: { url: "https://files.test/object?signature=secret" }, expect: { status: [200] } };
+const item: CaseProduceResult["cases"][number] = { case: { id: "download", desc: "File", input: { protocol: "http", method: "GET" },
+  judge: { e2e: { http: { status: [200] } } } }, targets: [{ id: "primary", url: "https://files.test/object?signature=secret" }] };
 test("runtime Cases retain signed URLs in memory but reject writes and invalid contracts before execution", () => {
   expect(() => validateCaseProduceResult({ cases: [item] }, 1)).not.toThrow();
-  for (const request of [{ url: "file:///etc/passwd" }, { url: "https://user:secret@files.test" },
-    { url: item.request.url, method: "POST" }, { url: item.request.url, headers: { Authorization: "secret\r\nInjected: yes" } }]) {
-    expect(() => validateCaseProduceResult({ cases: [{ ...item, request } as ProducedHttpCase] }, 1)).toThrow();
+  for (const target of [{ url: "file:///etc/passwd" }, { url: "https://user:secret@files.test" },
+    { url: item.targets[0]!.url, headers: { Authorization: "secret\r\nInjected: yes" } }]) {
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, targets: [{ id: "primary", ...target }] }] }, 1)).toThrow();
   }
+  expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, input: { protocol: "http", method: "POST" } } }] }, 1)).toThrow("GET/HEAD");
+  expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, judge: {} } }] }, 1)).toThrow("criteria");
   expect(() => validateCaseProduceResult({ cases: [item, item] }, 1)).toThrow("at most");
   expect(() => validateCaseProduceResult({ cases: [item, item] }, 2)).toThrow("Duplicate");
   expect(() => validateCaseProduceResult({ cases: [] }, 1)).toThrow("reason");
@@ -33,9 +36,19 @@ test("case.consume is an ordinary executable Extension returning relationship da
 
 test("produced Cases explicitly select a supported protocol independently of the URL scheme", () => {
   for (const protocol of [undefined, "https", "tcp"]) {
-    expect(() => validateCaseProduceResult({ cases: [{ ...item, protocol } as never] }, 1)).toThrow("protocol");
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, input: { ...item.case.input, protocol } } } as never] }, 1)).toThrow("protocol");
   }
   for (const scheme of ["http", "https"]) {
-    expect(() => validateCaseProduceResult({ cases: [{ ...item, request: { url: `${scheme}://files.test/object` } }] }, 1)).not.toThrow();
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, targets: [{ id: "primary", url: `${scheme}://files.test/object` }] }] }, 1)).not.toThrow();
+  }
+});
+
+
+test("runtime routes are bounded, nonempty and uniquely named before any request", () => {
+  for (const targets of [[], [item.targets[0]!, item.targets[0]!], Array.from({ length: 6 }, (_, i) => ({ id: String(i), url: "https://files.test" }))]) {
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, targets }] }, 1)).toThrow();
+  }
+  for (const path of ["//other.test", "/\t/other.test", "/\\other.test"]) {
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, input: { ...item.case.input, path } } }] }, 1)).toThrow("origin-relative");
   }
 });

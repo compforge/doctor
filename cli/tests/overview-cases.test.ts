@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type CaseConsumeExtension, type CaseProduceExtension, type CaseBinding, type ProducedHttpCase, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
+  type CaseConsumeExtension, type CaseProduceExtension, type CaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
 import { checkServiceCases, type CaseCheckActions } from "../src/overview/cases";
 import { overviewProviders } from "../src/overview/extensions";
@@ -23,7 +23,10 @@ const consumer: ServiceDefinition = { name: "sandbox", component, workloads: [ku
 const kb: ServiceDefinition = { name: "kb", component, workloads: [], extensions: [provider] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, kb]) };
 const target: WorkloadInstance = { platform: "kubernetes", environment: "cluster", workload: "main", namespace: "ns", pod: "sandbox-1", uid: "uid-1", container: "app" };
-const file: ProducedHttpCase = { id: "download", protocol: "http", description: "File", request: { url: "https://files.test/download?signature=TOPSECRET", headers: { Authorization: "Bearer TOKEN" } }, expect: { status: [200] } };
+const file: CaseProduceResult["cases"][number] = {
+  case: { id: "download", desc: "File", input: { protocol: "http", method: "GET" }, judge: { e2e: { http: { status: [200] } } } },
+  targets: [{ id: "primary", url: "https://files.test/download?signature=TOPSECRET", headers: { Authorization: "Bearer TOKEN" } }],
+};
 function fixture(overrides: Partial<CaseCheckActions> = {}) {
   const directory = mkdtempSync(join(tmpdir(), "overview-cases-"));
   const controller = new AbortController();
@@ -49,7 +52,7 @@ test("case-only Service is discoverable; provider is called after consumer prepa
   const f = fixture();
   try {
     const results = await f.run();
-    expect(f.calls).toEqual(["consume", "targets", "sender:sandbox-1", "provide", file.request.url]);
+    expect(f.calls).toEqual(["consume", "targets", "sender:sandbox-1", "provide", file.targets[0]!.url]);
     expect(results[0]!.status).toBe("passed");
     expect(results[0]!.attempts[0]!.target).toEqual(target);
     expect(JSON.stringify(results)).not.toContain("TOPSECRET");
@@ -59,7 +62,7 @@ test("case-only Service is discoverable; provider is called after consumer prepa
 
 test("DNS failure, alternate success and HTTP failure all remain attributable; subsequent Cases still run", async () => {
   const f = fixture({
-    produce: async () => ({ cases: [{ ...file, alternatives: [{ id: "internal", url: "http://platform:3000/download" }] }, { ...file, id: "unauthorized" }] }),
+    produce: async () => ({ cases: [{ ...file, targets: [...file.targets, { id: "internal", url: "http://platform:3000/download" }] }, { ...file, case: { ...file.case, id: "unauthorized" } }] }),
     sender: async () => async request => {
       if (request.url.startsWith("http://platform")) return { statusCode: 200, statusText: "OK", headers: {}, body: new Response("bytes").body };
       throw new HttpTransportError(`Could not resolve host ${request.url}, Bearer TOKEN`, { engine: "curl", exitCode: 6, timings: {}, error: `DNS ${request.url}` });
@@ -109,7 +112,7 @@ test("Overview runs bindings automatically and retains history when checks fail"
 });
 
 test("cancellation retains the interrupted attempt and never starts a queued Case", async () => {
-  const f = fixture({ produce: async () => ({ cases: [file, { ...file, id: "second" }] }) });
+  const f = fixture({ produce: async () => ({ cases: [file, { ...file, case: { ...file.case, id: "second" } }] }) });
   f.actions.sender = async () => async () => {
     f.controller.abort();
     throw new Error("cancelled");
@@ -189,7 +192,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
     expect(checks[0]!.attempts[0]!.target).toMatchObject({ namespace: "ns", pod: target.pod, uid: target.uid, container: "app" });
     expect(calls).toHaveLength(2);
     expect(calls[1]!.target).toMatchObject({ pod: target.pod, container: "app" });
-    expect(calls[1]!.command).toContain(file.request.url);
+    expect(calls[1]!.command).toContain(file.targets[0]!.url);
     expect(calls[1]!.command).not.toContain("--insecure");
     expect(calls[1]!.command).not.toContain("--noproxy");
     const output = { query: { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 },
@@ -249,12 +252,45 @@ test("empty consumption does not invoke producers; unsupported Case protocols ne
   const empty = fixture({ consume: async () => ({ bindings: [] }) });
   try { expect(await empty.run()).toEqual([]); expect(empty.calls).toEqual([]); }
   finally { empty.cleanup(); }
-  const unsupported = fixture({ produce: async () => ({ cases: [{ ...file, protocol: "tcp" } as never] }) });
+  const unsupported = fixture({ produce: async () => ({ cases: [{ ...file, case: { ...file.case, input: { ...file.case.input, protocol: "tcp" } } } as never] }) });
   try {
     const [result] = await unsupported.run();
     expect(result!.status).toBe("failed");
     expect(result!.error).toContain("protocol");
     expect(result!.attempts).toHaveLength(0);
-    expect(unsupported.calls).not.toContain(file.request.url);
+    expect(unsupported.calls).not.toContain(file.targets[0]!.url);
   } finally { unsupported.cleanup(); }
+});
+
+
+test("route credentials stay isolated while Case intent and resolved paths remain stable", async () => {
+  const requests: Array<{ url: string; headers: Record<string, string> }> = [];
+  const sample = { ...file, case: { ...file.case, input: { ...file.case.input, path: "/health?probe=ready", headers: { Range: "bytes=0-1023" } } },
+    targets: [file.targets[0]!, { id: "internal", url: "http://platform:3000/unused" }] };
+  const f = fixture({ produce: async () => ({ cases: [sample] }), sender: async () => async request => {
+    requests.push(request);
+    return { statusCode: requests.length === 1 ? 503 : 200, statusText: "", headers: {}, body: new Response("ok").body };
+  } });
+  try {
+    const [result] = await f.run();
+    expect(requests.map(request => request.url)).toEqual(["https://files.test/health?probe=ready", "http://platform:3000/health?probe=ready"]);
+    expect(requests[0]!.headers.authorization).toBe("Bearer TOKEN");
+    expect(requests[1]!.headers.authorization).toBeUndefined();
+    expect(requests.map(request => request.headers.range)).toEqual(["bytes=0-1023", "bytes=0-1023"]);
+    expect(result!.attempts[0]!.caseHash).toBe(result!.attempts[1]!.caseHash);
+    expect(result!.status).toBe("failed");
+  } finally { f.cleanup(); }
+});
+
+test("HTTP 200 followed by an interrupted body remains a failed Case with transport evidence", async () => {
+  const f = fixture({ sender: async () => async () => ({ statusCode: 200, statusText: "OK", headers: {},
+    body: new ReadableStream<Uint8Array>({ start(controller) { controller.error(new Error("download interrupted")); } }),
+  }) });
+  try {
+    const [result] = await f.run();
+    expect(result!.status).toBe("failed");
+    expect(result!.attempts[0]!.observation.response.statusCode).toBe(200);
+    expect(result!.attempts[0]!.observation.response.captureComplete).toBe(false);
+    expect(result!.attempts[0]!.findings.some(finding => finding.kind === "http.transport-failed")).toBe(true);
+  } finally { f.cleanup(); }
 });

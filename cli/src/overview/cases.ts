@@ -7,7 +7,7 @@ import {
 } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
-import { caseError, executeHttpCase, type CaseAttempt } from "./case-http";
+import { caseError, checkHttpCase, type CaseAttempt } from "./case-http";
 
 export interface CaseCheckResult {
   consumeExtension: string;
@@ -90,7 +90,7 @@ async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefi
         result.stage = "request";
         for (const [caseIndex, item] of provided.cases.entries()) {
           actions.signal.throwIfAborted();
-          result.attempts.push(...await executeHttpCase({ item, target, send, signal: actions.signal,
+          result.attempts.push(...await checkHttpCase({ item, target, send, signal: actions.signal,
             directory: actions.directory, prefix: `cases/${encodeURIComponent(consumer.name)}/${consumeIndex}/${bindingIndex}/${targetIndex}/${caseIndex}` }));
           actions.checkpoint(result);
         }

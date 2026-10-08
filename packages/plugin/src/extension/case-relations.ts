@@ -1,3 +1,4 @@
+import { validateHttpCase, type HttpCase } from "@compforge/spec-case/http";
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 import { validateExtensionNamespace } from "./registry";
 
@@ -17,26 +18,16 @@ export interface CaseProduceQuery {
   readonly maxCases: number;
 }
 
-/** Read-only HTTP checks run by Core from the consumer's declared Workload. */
-export interface ProducedHttpCase {
-  readonly protocol: "http";
-  readonly id: string;
-  readonly description: string;
-  readonly request: {
-    readonly url: string;
-    readonly method?: "GET" | "HEAD";
-    readonly headers?: Readonly<Record<string, string>>;
-  };
-  readonly expect: { readonly status: readonly number[]; readonly contentType?: string };
-  /** Alternate URLs are diagnostic attempts, never a mutation of the consumer's configuration. */
-  readonly alternatives?: readonly { readonly id: string; readonly url: string }[];
-}
-
-/** Protocol discriminates the executable payload; HTTP includes both http and https URL schemes. */
-export type ProducedCase = ProducedHttpCase;
-
 export interface CaseProduceResult {
-  readonly cases: readonly ProducedCase[];
+  readonly cases: readonly {
+    readonly case: HttpCase;
+    /** Ordered diagnostic routes: try the configured URL first, then alternatives on failure. */
+    readonly targets: readonly {
+      readonly id: string;
+      readonly url: string;
+      readonly headers?: Readonly<Record<string, string>>;
+    }[];
+  }[];
   /** Required for an empty list; unavailable samples are not a successful network check. */
   readonly reason?: string;
   readonly truncated?: { readonly reason: string };
@@ -88,38 +79,32 @@ export function requireCaseProduceExtension(extension: ExtensionRegistration): C
   return extension as CaseProduceExtension;
 }
 
-function httpUrl(value: string): void {
-  const url = new URL(value);
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Case URL must be credential-free HTTP(S)");
-}
-
-/** Dynamic ESM output crosses a runtime boundary; invalid requests must never reach Pod exec. */
+/** Dynamic plugin output is validated before requests enter the consumer's execution channel. */
 export function validateCaseProduceResult(value: CaseProduceResult, maxCases: number): void {
-  if (!value || !Array.isArray(value.cases) || value.cases.length > maxCases) throw new Error(`Case provider must return at most ${maxCases} Cases`);
+  if (!value || !Array.isArray(value.cases) || value.cases.length > maxCases) throw new Error(`Case producer must return at most ${maxCases} Cases`);
   if (!value.cases.length) name(value.reason, "Empty Case list reason");
   if (value.truncated) name(value.truncated.reason, "Case truncation reason");
   const ids = new Set<string>();
   for (const item of value.cases) {
-    if (item.protocol !== "http") throw new Error("Unsupported Case protocol; expected http");
-    name(item.id, "Case id");
-    name(item.description, "Case description");
-    if (ids.has(item.id)) throw new Error(`Duplicate Case: ${item.id}`);
-    ids.add(item.id);
-    httpUrl(item.request.url);
-    if (item.request.method !== undefined && !["GET", "HEAD"].includes(item.request.method)) throw new Error("Overview HTTP Cases only allow GET/HEAD");
-    if (!Array.isArray(item.expect?.status) || !item.expect.status.length
-      || item.expect.status.some((status: number) => !Number.isInteger(status) || status < 100 || status > 599)) throw new Error("Invalid Case expected status");
-    if (item.expect.contentType !== undefined) name(item.expect.contentType, "Case expected content type");
-    for (const [key, header] of Object.entries(item.request.headers ?? {})) {
-      if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(key) || typeof header !== "string" || /[\r\n]/.test(header)) throw new Error("Invalid Case HTTP header");
-    }
-    const alternatives = new Set(["primary"]);
-    if (item.alternatives && (!Array.isArray(item.alternatives) || item.alternatives.length > 4)) throw new Error("At most four Case alternatives are allowed");
-    for (const alternate of item.alternatives ?? []) {
-      name(alternate.id, "Case alternative id");
-      if (alternatives.has(alternate.id)) throw new Error("Duplicate Case alternative");
-      alternatives.add(alternate.id);
-      httpUrl(alternate.url);
+    validateHttpCase(item.case);
+    if (ids.has(item.case.id)) throw new Error(`Duplicate Case: ${item.case.id}`);
+    ids.add(item.case.id);
+    // Overview is a read-only diagnostic consumer of the shared HTTP profile.
+    if (!["GET", "HEAD"].includes(item.case.input.method) || item.case.input.body !== undefined) throw new Error("Overview HTTP Cases only allow body-free GET/HEAD");
+    if (!item.case.judge?.e2e?.http) throw new Error("Overview HTTP Case requires judge.e2e.http criteria");
+    if (!Array.isArray(item.targets) || !item.targets.length || item.targets.length > 5) throw new Error("Case must provide one to five HTTP targets");
+    const targets = new Set<string>();
+    for (const target of item.targets) {
+      name(target.id, "Case target id");
+      if (targets.has(target.id)) throw new Error("Duplicate Case target");
+      targets.add(target.id);
+      name(target.url, "Case target URL");
+      const url = new URL(target.url);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) throw new Error("Case target must be a credential-free HTTP(S) URL");
+      if (target.headers !== undefined && (!target.headers || typeof target.headers !== "object" || Array.isArray(target.headers))) throw new Error("Invalid Case target headers");
+      for (const [key, header] of Object.entries(target.headers ?? {})) {
+        if (!/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(key) || typeof header !== "string" || /[\r\n]/.test(header)) throw new Error("Invalid Case target header");
+      }
     }
   }
 }
