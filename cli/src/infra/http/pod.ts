@@ -124,7 +124,8 @@ export function buildPodCurlCommand(
   ];
   if (diagnostics) command.push("--write-out", curlWriteOut());
   if (request.followRedirects) command.push("--location");
-  command.push("--request", request.method);
+  if (request.method === "HEAD") command.push("--head");
+  else command.push("--request", request.method);
   for (const [name, value] of Object.entries(request.headers)) {
     command.push("--header", `${name}: ${value}`);
   }
@@ -316,9 +317,8 @@ export function createPodHttpSender(
     let pending = new Uint8Array();
     let latestHead: HttpResponseHead | undefined;
     let bodyStarted = false;
-    const diagnostics: HttpTransportDiagnostics | undefined = diagnosticsEnabled
-      ? { engine: "curl", timings: {} }
-      : undefined;
+    // Exit status and stderr remain useful on old curl versions without write-out timing support.
+    const diagnostics: HttpTransportDiagnostics = { engine: "curl", timings: {} };
 
     const fail = (error: Error) => {
       if (!responseSettled) {
@@ -381,7 +381,7 @@ export function createPodHttpSender(
     }).then((result) => {
       signal.removeEventListener("abort", abort);
       const parsed = parsePodCurlDiagnostics(result.stderr, result.exitCode);
-      if (diagnostics && parsed.diagnostics) Object.assign(diagnostics, parsed.diagnostics);
+      Object.assign(diagnostics, { exitCode: result.exitCode ?? undefined, error: parsed.stderr || undefined }, parsed.diagnostics);
       if (!bodyStarted && latestHead) startBody(pending);
       if (!result.ok) {
         const error = execFailure(result, parsed.stderr);

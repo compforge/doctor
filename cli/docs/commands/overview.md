@@ -121,7 +121,8 @@ missingCount。Provider 在源头限制读取，并说明截断；Core 校验统
 
 Service 通过 `case.consume` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
-指定 Service 的 Overview 在概览查询后自动执行这些只读 GET/HEAD 检查，再进入可选的历史样本采集。
+指定 Service 的 Overview 在概览查询后执行这些检查，再进入可选的历史样本采集。GET/HEAD 自动执行；
+非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
 没有 summarize/cost 的 Service 也可以只提供 `case.consume`。产品级概览保持自身 namespace 的统计范围，
 不会隐式执行所有 Service 的检查。
 
@@ -138,7 +139,7 @@ Overview 先调用消费方扩展取得本次关系，再解析消费方实例�
 请求沿用 HTTP Collect 的超时和响应容量预算，串行执行；代理与 TLS 使用目标容器 curl 的正常行为，
 不绕过代理、不跳过证书验证、不回退到 Host/port-forward。重定向响应直接作为证据，不隐式跟随到另一目标。
 
-Case 可给出有序备用 URL，主地址不满足预期时继续尝试，遇到成功停止；原地址失败始终保留，
+GET/HEAD Case 可给出有序备用 URL，主地址不满足预期时继续尝试，遇到成功停止；原地址失败始终保留，
 备用成功不把绑定改判为通过。每次尝试记录提供方、binding、Case、Pod UID/container、请求 URL（查询值脱敏）、
 时间、HTTP/transport 结果与 Finding，headers/body/error 附件随 Overview Bundle 交付。凭据头与已知签名值脱敏。
 二进制文件保留受预算限制的响应内容；响应摘要对应下载流，文本附件可能经脱敏。
@@ -181,6 +182,28 @@ Case 使用 spec-case 的共享 HTTP profile；`case.input.protocol` 决定执�
 中的 HTTP/HTTPS scheme。签名 URL 和各入口独立的认证头属于 targets，不改变 Case hash；实际 Pod 属于消费关系。
 Doctor 在消费方 Pod 内发送请求，复用 HTTP Collect 的响应采集与 Detector，负责权限、备用入口策略与报告。
 每项至少提供一个地址、最多五个，按声明顺序尝试；headers 只应用于所属地址，不跨备用入口继承。
-Overview 只接受无 body 的 GET/HEAD，并要求明确的 `judge.e2e.http`；其他消费者可使用完整 HTTP profile。
+Overview 要求明确的 `judge.e2e.http`。GET/HEAD 不接受 body；非只读请求必须只有一个 target，
+避免备用入口导致业务动作重放。`case.input.body` 是稳定请求正文；`target.body` 可提供本次解析后的完整正文
+（如新会话 ID、授权上下文），覆盖稳定正文但不改变 Case hash，报告不保存请求正文。
 无可用样本返回 `{ cases: [], reason: "当前租户没有可用文件" }`。消费关系为空表示本次没有适用检查，
-不能作为网络连通性证据。
+不能作为网络连通性证据。非空 Cases 同时带 `reason` 表示部分准备失败；可运行的检查仍执行，
+报告保留缺口，不能把剩余检查通过当作完整通过。
+
+
+### 流式响应与故障分类
+
+SSE Case 在 canonical `judge.e2e.sse` 声明协议事件要求，由 Doctor 消费：
+
+```ts
+sse: {
+  eventField: "type", terminalEvent: "END",
+  requiredEvents: ["MESSAGE", "OUTPUT"], // 至少出现其中一种回复事件
+  errorEvents: ["ERROR", "INPUT_REQUIRED"],
+}
+```
+
+同时将 `judge.e2e.http.contentType` 设为 `text/event-stream`。只有 HTTP 状态符合预期、响应完整、出现回复事件与结束事件、没有错误事件时才通过。事件名属于提供方；Core 不包含业务 Agent 协议。
+该检查验证协议执行，不评价答案内容；原始 SSE 及有界错误详情进入报告。
+
+Case 报告根据本次 Pod 请求的退出码、错误文本与响应分类 DNS、代理 DNS、连接、超时、TLS 证书、TLS 握手和 HTTP 状态错误。`wrong version number` 等证据只给出“疑似 HTTP 配成 HTTPS”，因为代理或 TLS 配置也可能产生相同错误；服务端明确返回“HTTP 发到了 HTTPS 端口”则记录该响应事实。
+报告保留目标 URL 的 scheme/端口、Pod/container、对端 IP、阶段耗时及原始错误；不自动切换 scheme、跳过证书校验或把备用成功覆盖原始失败。旧 curl 没有阶段耗时，也保留退出码和 stderr。
