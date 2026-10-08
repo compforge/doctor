@@ -6,7 +6,7 @@ import type { CollectKind } from "../collect/composite";
 export const PLUGIN_COMMAND_CAPABILITIES = {
   overview: {
     command: "doctor overview",
-    // Exact namespace selection accepts either summarize or cost; overviewProviders validates before I/O.
+    // Exact namespace selection accepts summarize, cost or consumer Case bindings; overviewProviders validates before I/O.
     needs: [],
   },
   trace: {

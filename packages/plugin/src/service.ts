@@ -1,5 +1,6 @@
 import type { Case } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
+import type { CaseBinding } from "./extension/http-cases";
 import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
 import type {
@@ -371,6 +372,8 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
   /** Declarations executed by Core environment probes. */
   environmentProbes?: readonly ServiceEnvironmentProbe[];
   /** Open, kind-based functions. A Service may provide several kinds. */
+  /** Outbound checks owned by this consumer; Overview executes them from the declared Workload. */
+  caseBindings?: readonly CaseBinding[];
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
   /** Explicit opt-in to configuration inspection. */

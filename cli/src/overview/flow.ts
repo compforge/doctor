@@ -1,3 +1,4 @@
+import type { CaseCheckResult } from "./cases";
 import { checkedCost } from "./cost";
 import { overviewSampleCount } from "./options";
 import { CommandStatus, type CommandResult } from "../command";
@@ -15,6 +16,8 @@ export interface OverviewProviderResult {
   error?: string;
   cost?: OverviewCostResult;
   costError?: string;
+  cases?: CaseCheckResult[];
+  casesError?: string;
 }
 
 export interface OverviewSampleResult {
@@ -50,6 +53,7 @@ export interface OverviewEntryChoice {
 
 export interface OverviewActions {
   sampleCount?: number;
+  cases?(provider: OverviewProvider, query: OverviewQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   cost?(provider: OverviewProvider, query: OverviewCostQuery): Promise<OverviewCostResult>;
   selectEntries?(entries: readonly OverviewEntryChoice[], defaultCount: number): Promise<readonly OverviewEntryChoice[] | undefined>;
   summarize(provider: OverviewProvider, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
@@ -132,7 +136,18 @@ export async function runOverviewSession(
       } catch (error) { summary.costError = errorMessage(error); }
     }
   }
+  // Checkpoint before active checks; cancellation must leave completed attempts deliverable.
   actions.show(result);
+  for (const [index, provider] of providers.entries()) {
+    if (!provider.bindings?.length) continue;
+    const summary = result.providers[index]!;
+    try {
+      if (!actions.cases) throw new Error("Missing Overview Case executor");
+      summary.cases = await actions.cases(provider, query, cases => { summary.cases = cases; actions.show(result); });
+    } catch (error) { summary.casesError = errorMessage(error); }
+    actions.show(result);
+    if (actions.signal?.aborted) return result;
+  }
   const eligible = new Map<string, OverviewFacet>();
   for (const summary of result.providers) {
     const provider = providers.find((item) => item.namespace === summary.namespace)!;

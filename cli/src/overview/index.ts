@@ -1,3 +1,5 @@
+import { caseCheckActions } from "./case-runtime";
+import { checkServiceCases, type CaseCheckResult } from "./cases";
 import { invokeExtension } from "../plugin/extension";
 import { overviewProviders } from "./extensions";
 import { prepareCommandRequirements } from "../command/prepare";
@@ -72,6 +74,15 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   try {
     result = await runOverviewSession(selected, query, {
       signal: context.signal,
+      cases: (provider, query, checkpoint) => {
+        const snapshots: CaseCheckResult[] = [];
+        return checkServiceCases(context.plugin, provider.caseService!, provider.bindings!, query.tenantId,
+          caseCheckActions(context, executor, kube.kubernetes, reportDirectory!, result => {
+            const index = snapshots.findIndex(item => item.bindingId === result.bindingId);
+            if (index < 0) snapshots.push(result); else snapshots[index] = result;
+            checkpoint(snapshots);
+          }));
+      },
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
       summarize: (provider, input) => invoke(provider, provider.summarize!, (managed) => invokeExtension(provider.summarize!, managed, input).then(result => result.data)),
@@ -84,10 +95,10 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
       warn: (message) => useLogger("overview").warn(`${message}`),
       show: (result) => {
+        if (!snapshot) printOverview(result);
         snapshot = result;
-        printOverview(result);
         // Preserve the overview snapshot before optional collection; render owns reading order.
-        reportDirectory = writeOverviewEvidence(result, context);
+        reportDirectory = writeOverviewEvidence(result, context, reportDirectory);
       },
       collect: async (bizIds) => {
         const kinds = await resolveCollectKinds(opts.include, interactive);
@@ -103,12 +114,16 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
     // The dashboard remains deliverable even if optional selection or collection fails.
     if (snapshot) writeOverviewEvidence(snapshot, context, reportDirectory);
   }
+  if (result.providers.some(provider => provider.cases || provider.casesError)) printOverview(result);
   for (const sample of result.samples) {
     useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
   }
   const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
     ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
     ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
+    ...(provider.casesError ? [CommandStatus.Failed] : []),
+    ...(provider.cases ?? []).map(check => check.status === "passed" ? CommandStatus.Ok
+      : check.status === "cancelled" ? CommandStatus.Cancelled : CommandStatus.Failed),
   ]);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
@@ -123,7 +138,9 @@ export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { in
   reportName: (_input, result) => result.output
     ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
-    const own = serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "overview"));
+    const artifacts = result.artifacts.filter(artifact => artifact.command === "overview");
+    const own = serializeEvidence(context, artifacts, new Map(artifacts.map(artifact => [artifact.id,
+      { title: "Overview", execution: { status: result.status } }])));
     const collected = result.output?.collectionResult;
     return { ...own, children: collected ? [await context.serialize(collectCommand, collected)] : [] };
   },
