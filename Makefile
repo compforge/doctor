@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := build
 
-.PHONY: deps build-deps check-plugin-version bump-plugin-version fix lint lint-ci lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test test-cli test-agent test-plugin-sdk build build-local toolkit toolkit-all toolkit-matrix install clean
+.PHONY: deps build-deps check-plugin-version bump-plugin-version fix lint-all lint-cli lint-agent lint-plugin-sdk lint-example-plugin lint-spec test-all test-cli test-agent test-plugin-sdk build build-local toolkit toolkit-all toolkit-matrix install clean
 
 ROOT_DIR := $(abspath .)
 DIST_DIR := $(ROOT_DIR)/dist
@@ -10,7 +10,6 @@ PLUGIN_ROOT := $(ROOT_DIR)/plugins/$(PLUGIN)
 PLUGIN_VERSION_TOOL := $(ROOT_DIR)/packages/plugin/scripts/version.ts
 PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION),)
 CHECK_JOBS ?= 4
-TEST_FILES ?=
 BUNDLE_RUNTIME ?= true
 ifeq ($(filter $(BUNDLE_RUNTIME),true false),)
 $(error BUNDLE_RUNTIME must be true or false)
@@ -36,42 +35,37 @@ bump-plugin-version:
 fix:
 	@true
 
-lint:
-	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin check-plugin-version
-
-lint-ci: lint
+lint-all:
+	$(MAKE) --no-print-directory -j$(CHECK_JOBS) lint-cli lint-agent lint-plugin-sdk lint-example-plugin
 
 lint-cli:
-	bun run typecheck:cli
+	$(MAKE) -C cli lint
 
 lint-agent:
-	bun run typecheck:agent
+	$(MAKE) -C packages/agent lint
 
 lint-plugin-sdk:
-	bun run typecheck:plugin-sdk
+	$(MAKE) -C packages/plugin lint
 
 lint-example-plugin:
-	bun run typecheck:example-plugin
+	$(MAKE) -C plugins/example lint
 
 lint-spec:
 	bun run specgen:check
 
-ifneq ($(strip $(TEST_FILES)),)
-test:
-	bun test $(TEST_FILES)
-else
-test:
+# Canonical lint/test targets belong to leaf Components. Aggregation is explicit so
+# repository-aware runners do not execute a child suite both here and in its owner.
+test-all:
 	$(MAKE) --no-print-directory -j$(CHECK_JOBS) test-cli test-agent test-plugin-sdk
-endif
 
 test-cli:
-	bun run test:cli
+	$(MAKE) -C cli test
 
 test-agent:
-	bun run test:agent
+	$(MAKE) -C packages/agent test
 
 test-plugin-sdk:
-	bun run test:plugin-sdk
+	$(MAKE) -C packages/plugin test
 
 build: $(if $(filter true,$(BUNDLE_RUNTIME)),build-deps,deps) check-plugin-version
 	rm -rf $(DIST_DIR)

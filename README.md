@@ -97,14 +97,12 @@ Requirements: [Bun](https://bun.sh/) and Go.
 
 ```bash
 bun install
-bun run typecheck:plugin-sdk
-bun run typecheck:agent
-bun run typecheck:example-plugin
-bun run typecheck:cli
-bun run test:plugin-sdk
-bun run test:agent
-bun run test:cli
+make lint-all
+make test-all
 ```
+
+For one Component, run `make -C cli lint test` (or use `packages/agent` or
+`packages/plugin`). Component targets validate only their own sources and tests.
 
 Build platform binaries into `dist/`:
 

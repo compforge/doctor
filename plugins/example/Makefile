@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := build
 
-.PHONY: build clean fix lint lint-ci test
+.PHONY: build clean fix lint lint-ci
 
 PLUGIN_ROOT := $(abspath .)
 DOCTOR_ROOT := $(abspath ../..)
@@ -15,9 +15,8 @@ fix:
 	@true
 
 lint:
+	bun ../../packages/plugin/scripts/version.ts check .
 	bun run typecheck
 
 lint-ci: lint
 
-test:
-	bun ../../packages/plugin/scripts/version.ts check .
