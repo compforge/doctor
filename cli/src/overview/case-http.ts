@@ -1,7 +1,9 @@
+import { diagnoseHttpFailure, type HttpFailureDiagnosis } from "../collect/shared/http/diagnosis";
 import { caseHash } from "@compforge/spec-case/model";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import type { CaseProduceResult, WorkloadInstance } from "@compforge/doctor-plugin";
+import { caseSseExpectation, type CaseProduceResult, type WorkloadInstance } from "@compforge/doctor-plugin";
+import { inspectCaseSse, type CaseSseResult } from "./case-sse";
 import type { SendHttp } from "../infra/http";
 import { HTTP_DEFAULTS } from "../collect/shared/http/config";
 import { captureHttpResponse } from "../collect/shared/http/capture";
@@ -20,6 +22,8 @@ export interface CaseAttempt {
   status: "passed" | "failed";
   observation: HttpAttemptObservation;
   findings: HttpFinding[];
+  sseCheck?: CaseSseResult;
+  failure?: HttpFailureDiagnosis;
 }
 
 /** Signed query strings and credentials never belong in a reusable diagnostic report. */
@@ -37,6 +41,22 @@ export function caseError(error: unknown, secrets: readonly string[] = []): stri
   return text.replace(/^(authorization|proxy-authorization|cookie|set-cookie|x-api-key):.*$/gim, "$1: [redacted]");
 }
 
+function bodySecrets(body: string | undefined): string[] {
+  if (!body) return [];
+  let value: unknown;
+  try { value = JSON.parse(body); } catch { return []; }
+  const values: string[] = [];
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    for (const [key, entry] of Object.entries(value)) {
+      if (typeof entry === "string" && /password|authorization|cookie|token|api.?key|secret/i.test(key)) values.push(entry);
+      else visit(entry);
+    }
+  };
+  visit(value);
+  return values;
+}
+
 export async function checkHttpCase(input: {
   item: CaseProduceResult["cases"][number]; target: WorkloadInstance; directory: string; prefix: string;
   send: SendHttp; signal: AbortSignal;
@@ -45,6 +65,7 @@ export async function checkHttpCase(input: {
   const secrets = item.targets.flatMap(entry => [
     ...Object.entries(entry.headers ?? {}).filter(([key]) => /authorization|cookie|token|key|secret/i.test(key)).map(([, value]) => value),
     ...new URL(entry.url).searchParams.values(),
+    ...bodySecrets(entry.body ?? item.case.input.body),
   ]);
   const attempts: CaseAttempt[] = [];
   for (const [index, entry] of item.targets.entries()) {
@@ -57,6 +78,7 @@ export async function checkHttpCase(input: {
       requestId: prefix, entrypointId: entry.id, method: item.case.input.method,
       // An absent path preserves the exact signed URL returned by the producer.
       url: item.case.input.path === undefined ? entry.url : new URL(item.case.input.path, entry.url).toString(),
+      body: (entry.body ?? item.case.input.body) === undefined ? undefined : new TextEncoder().encode(entry.body ?? item.case.input.body!),
       headers, followRedirects: false, expect: item.case.judge!.e2e!.http!,
       timeoutMs: HTTP_DEFAULTS.timeoutSeconds * 1000,
       maxResponseBytes: HTTP_DEFAULTS.maxResponseMiB * 1024 * 1024,
@@ -82,8 +104,15 @@ export async function checkHttpCase(input: {
       if (transport.redirectUrls) transport.redirectUrls = transport.redirectUrls.map(url => caseError(url));
     }
     const findings = detectHttpAttempt(request, observation);
+    const bodyText = response.contentType?.match(/text|json|xml/)
+      ? readFileSync(join(directory, response.bodyFile), "utf8") : "";
+    const failure = diagnoseHttpFailure(request, observation, bodyText.slice(0, 4096));
+    const sseExpectation = caseSseExpectation(item.case);
+    const sseCheck = sseExpectation ? inspectCaseSse(
+      caseError(bodyText, secrets), sseExpectation, secrets,
+    ) : undefined;
     const attempt: CaseAttempt = { caseId: item.case.id, caseHash: caseHash(item.case), description: item.case.desc ?? item.case.id, entrypoint: entry.id,
-      target, url: caseError(request.url), status: findings.length ? "failed" : "passed", observation, findings };
+      target, url: caseError(request.url), status: failure || findings.length || sseCheck?.errors.length ? "failed" : "passed", observation, findings, sseCheck, failure };
     // Raw text evidence is bounded by captureHttpResponse. Keep binary downloads and their original digest.
     for (const file of [observation.response.headersFile, observation.response.errorFile,
       ...(observation.response.contentType?.match(/text|json|xml/) ? [observation.response.bodyFile] : [])]) {

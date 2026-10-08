@@ -26,9 +26,11 @@ export interface CaseProduceResult {
       readonly id: string;
       readonly url: string;
       readonly headers?: Readonly<Record<string, string>>;
+      /** Resolved request body (identities, fresh session IDs); never part of Case identity or reports. */
+      readonly body?: string;
     }[];
   }[];
-  /** Required for an empty list; unavailable samples are not a successful network check. */
+  /** Required for an empty list; with Cases, explains a partial preparation failure. Neither means full success. */
   readonly reason?: string;
   readonly truncated?: { readonly reason: string };
 }
@@ -89,12 +91,16 @@ export function validateCaseProduceResult(value: CaseProduceResult, maxCases: nu
     validateHttpCase(item.case);
     if (ids.has(item.case.id)) throw new Error(`Duplicate Case: ${item.case.id}`);
     ids.add(item.case.id);
-    // Overview is a read-only diagnostic consumer of the shared HTTP profile.
-    if (!["GET", "HEAD"].includes(item.case.input.method) || item.case.input.body !== undefined) throw new Error("Overview HTTP Cases only allow body-free GET/HEAD");
+    // Non-read HTTP methods are gated by Overview before any request, and never replayed via alternates.
+    const readOnly = ["GET", "HEAD"].includes(item.case.input.method);
+    if (readOnly && item.case.input.body !== undefined) throw new Error("GET/HEAD Cases cannot have a body");
+    caseSseExpectation(item.case);
     if (!item.case.judge?.e2e?.http) throw new Error("Overview HTTP Case requires judge.e2e.http criteria");
     if (!Array.isArray(item.targets) || !item.targets.length || item.targets.length > 5) throw new Error("Case must provide one to five HTTP targets");
+    if (!readOnly && item.targets.length !== 1) throw new Error("Non-read HTTP Cases require exactly one target; automatic replay is unsafe");
     const targets = new Set<string>();
     for (const target of item.targets) {
+      if (target.body !== undefined && (typeof target.body !== "string" || readOnly)) throw new Error("Only non-read HTTP Cases can provide a runtime string body");
       name(target.id, "Case target id");
       if (targets.has(target.id)) throw new Error("Duplicate Case target");
       targets.add(target.id);
@@ -107,4 +113,29 @@ export function validateCaseProduceResult(value: CaseProduceResult, maxCases: nu
       }
     }
   }
+}
+
+/** Declarative SSE checks in canonical judge.e2e; event vocabulary belongs to the producer. */
+export interface CaseSseExpectation {
+  readonly eventField: string;
+  readonly terminalEvent: string;
+  readonly errorEvents: readonly string[];
+  /** At least one of these response events must be present, in addition to the terminal event. */
+  readonly requiredEvents: readonly string[];
+}
+
+export function caseSseExpectation(value: HttpCase): CaseSseExpectation | undefined {
+  const raw = value.judge?.e2e?.sse;
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("Invalid Case SSE expectation");
+  const sse = raw as Record<string, unknown>;
+  if (Object.keys(sse).some(key => !["eventField", "terminalEvent", "errorEvents", "requiredEvents"].includes(key))) throw new Error("Unknown Case SSE expectation field");
+  name(sse.eventField, "SSE eventField");
+  name(sse.terminalEvent, "SSE terminalEvent");
+  for (const key of ["errorEvents", "requiredEvents"]) {
+    if (!Array.isArray(sse[key]) || !sse[key].length) throw new Error(`SSE ${key} must be a nonempty list`);
+    for (const event of sse[key]) name(event, `SSE ${key} event`);
+  }
+  if (value.judge?.e2e?.http?.contentType !== "text/event-stream") throw new Error("SSE Case must expect text/event-stream");
+  return sse as unknown as CaseSseExpectation;
 }

@@ -32,7 +32,7 @@ function fixture(overrides: Partial<CaseCheckActions> = {}) {
   const controller = new AbortController();
   const calls: string[] = [];
   const actions: CaseCheckActions = {
-    directory, signal: controller.signal, checkpoint: () => {},
+    directory, signal: controller.signal, checkpoint: () => {}, approve: async () => ({ approved: true, source: "assume-yes" }),
     targets: async () => { calls.push("targets"); return { targets: [target] }; },
     sender: async selected => { calls.push(`sender:${selected.pod}`); return async request => {
       calls.push(request.url);
@@ -292,5 +292,88 @@ test("HTTP 200 followed by an interrupted body remains a failed Case with transp
     expect(result!.attempts[0]!.observation.response.statusCode).toBe(200);
     expect(result!.attempts[0]!.observation.response.captureComplete).toBe(false);
     expect(result!.attempts[0]!.findings.some(finding => finding.kind === "http.transport-failed")).toBe(true);
+  } finally { f.cleanup(); }
+});
+
+const hello: CaseProduceResult["cases"][number] = {
+  case: { id: "hello", desc: "Send hello", input: { protocol: "http", method: "POST", body: '{"message":"hello"}' },
+    judge: { e2e: { http: { status: [200], contentType: "text/event-stream" },
+      sse: { eventField: "type", terminalEvent: "END", errorEvents: ["ERROR", "INPUT_REQUIRED"], requiredEvents: ["STREAM_MESSAGE"] } } } },
+  targets: [{ id: "primary", url: "http://127.0.0.1:8015/chat", body: '{"message":"hello","session":"fresh-session"}' }],
+};
+
+test("non-read Cases are never sent when approval is denied; GET Cases remain automatic", async () => {
+  let sent = 0;
+  const f = fixture({ produce: async () => ({ cases: [hello] }),
+    approve: async () => ({ approved: false, source: "non-interactive" }),
+    sender: async () => async () => { sent++; throw new Error("must not send"); } });
+  try {
+    const [result] = await f.run();
+    expect(result!.status).toBe("cancelled");
+    expect(result!.error).toContain("非交互");
+    expect(result!.attempts).toEqual([]);
+    expect(sent).toBe(0);
+  } finally { f.cleanup(); }
+});
+
+test("POST sends the runtime body once and keeps it out of the Case identity and report", async () => {
+  let requests = 0;
+  const f = fixture({ produce: async () => ({ cases: [hello] }), sender: async () => async request => {
+    requests++;
+    expect(request.method).toBe("POST");
+    expect(new TextDecoder().decode(request.body)).toContain("fresh-session");
+    return { statusCode: 200, statusText: "OK", headers: { "content-type": "text/event-stream" },
+      body: new Response('data: {"type":"STREAM_MESSAGE","content":"Hello"}\n\ndata: {"type":"END"}\n\n').body };
+  } });
+  try {
+    const [result] = await f.run();
+    expect(result!.status).toBe("passed");
+    expect(requests).toBe(1);
+    expect(JSON.stringify(result)).not.toContain("fresh-session");
+    expect(result!.attempts[0]!.sseCheck?.events.END).toBe(1);
+  } finally { f.cleanup(); }
+});
+
+test("HTTP 200 cannot conceal SSE errors, interrupted inputs, empty output or missing END", async () => {
+  for (const payload of [
+    'data: {"type":"ERROR","error_code":"TLS_FAILURE","error_detail":"wrong version number"}\n\ndata: {"type":"END"}\n\n',
+    'data: {"type":"INPUT_REQUIRED"}\n\n',
+    'data: {"type":"END"}\n\n',
+    'data: {"type":"STREAM_MESSAGE","content":"Hello"}\n\n',
+    'data: {"type":"STREAM_MESSAGE"}\n\ndata: {"type":"END"}',
+  ]) {
+    const f = fixture({ produce: async () => ({ cases: [hello] }), sender: async () => async () => ({
+      statusCode: 200, statusText: "OK", headers: { "content-type": "text/event-stream" }, body: new Response(payload).body,
+    }) });
+    try {
+      const [result] = await f.run();
+      expect(result!.status).toBe("failed");
+      expect(result!.attempts[0]!.sseCheck!.errors.length).toBeGreaterThan(0);
+      if (payload.includes("TLS_FAILURE")) expect(JSON.stringify(result)).toContain("wrong version number");
+    } finally { f.cleanup(); }
+  }
+});
+
+test("partial producer failure preserves a runnable network Case without claiming the message ran", async () => {
+  const f = fixture({ produce: async () => ({ cases: [file], reason: "Message preparation: strategy unavailable" }) });
+  try {
+    const [result] = await f.run();
+    expect(result!.attempts).toHaveLength(1);
+    expect(result!.attempts[0]!.status).toBe("passed");
+    expect(result!.status).toBe("failed");
+    expect(result!.error).toContain("strategy unavailable");
+  } finally { f.cleanup(); }
+});
+
+test("runtime body credentials are redacted from failed response evidence", async () => {
+  const secretHello = { ...hello, targets: [{ ...hello.targets[0]!, body: '{"api_key":"BODY_SECRET","message":"hello"}' }] };
+  const f = fixture({ produce: async () => ({ cases: [secretHello] }), sender: async () => async () => ({
+    statusCode: 200, statusText: "OK", headers: { "content-type": "text/event-stream" },
+    body: new Response('data: {"type":"ERROR","message":"BODY_SECRET rejected"}\n\n').body,
+  }) });
+  try {
+    const [result] = await f.run();
+    expect(JSON.stringify(result)).not.toContain("BODY_SECRET");
+    expect(readFileSync(join(f.directory, result!.attempts[0]!.observation.response.bodyFile), "utf8")).not.toContain("BODY_SECRET");
   } finally { f.cleanup(); }
 });

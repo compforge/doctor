@@ -7,6 +7,8 @@ import { createPodHttpSender, supportsPodCurlDiagnostics } from "../infra/http/p
 import { openPluginContext } from "../plugin/context";
 import { invokeExtension } from "../plugin/extension";
 import type { CaseCheckActions } from "./cases";
+import { resolveApprovalGate } from "../terminal/approval";
+import { caseError } from "./case-http";
 
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
@@ -22,6 +24,13 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
   };
   return {
     directory, checkpoint, signal: context.signal,
+    approve: (target, item) => resolveApprovalGate({ yes: context.options.yes })({
+      id: `overview-case:${target.uid}:${item.case.id}`, risk: "disrupt",
+      title: `执行 Case：${item.case.desc ?? item.case.id}`,
+      target: `${target.namespace}/${target.pod}/${target.container ?? ""}`,
+      impact: [`${item.case.input.method} ${caseError(item.targets[0]!.url)}`,
+        "执行真实请求，可能创建会话、产生模型费用或触发所选服务的业务动作；每个消费方实例执行一次，无自动重试。"],
+    }),
     targets: async (service, binding) => {
       const definition = service.workloads.find(workload => workload.name === binding.workload)!;
       const location = definition.location;

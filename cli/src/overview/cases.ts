@@ -6,6 +6,7 @@ import {
   type PluginDefinition, type ServiceDefinition, type WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
+import { approvalDeniedReason, type ApprovalDecision } from "../command/approval";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 import { caseError, checkHttpCase, type CaseAttempt } from "./case-http";
 
@@ -17,7 +18,7 @@ export interface CaseCheckResult {
   workload?: string;
   startedAt: string;
   finishedAt?: string;
-  stage: "consume" | "binding" | "execution" | "provider" | "request";
+  stage: "consume" | "binding" | "execution" | "provider" | "approval" | "request";
   status: "passed" | "failed" | "unavailable" | "empty" | "cancelled";
   error?: string;
   truncated?: string;
@@ -31,6 +32,7 @@ export interface CaseCheckActions {
   /** Core prepares each target independently; one missing curl cannot hide another replica's result. */
   targets(service: ServiceDefinition, binding: CaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
   sender(target: WorkloadInstance): Promise<SendHttp>;
+  approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number]): Promise<ApprovalDecision>;
   consume(service: ServiceDefinition, extension: CaseConsumeExtension, query: CaseConsumeQuery): Promise<CaseConsumeResult>;
   produce(service: ServiceDefinition, extension: CaseProduceExtension, query: CaseProduceQuery): Promise<CaseProduceResult>;
   checkpoint(result: CaseCheckResult): void;
@@ -81,6 +83,7 @@ async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefi
           actions.checkpoint(result);
           continue;
         }
+        if (provided.reason && provided.cases.length) result.error = [result.error, `${target.pod}/${target.container}: ${caseError(provided.reason)}`].filter(Boolean).join("\n");
         if (provided.truncated) result.truncated = [result.truncated, provided.truncated.reason].filter(Boolean).join("; ");
         if (!provided.cases.length) {
           result.status = "empty";
@@ -90,12 +93,23 @@ async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefi
         result.stage = "request";
         for (const [caseIndex, item] of provided.cases.entries()) {
           actions.signal.throwIfAborted();
+          if (!["GET", "HEAD"].includes(item.case.input.method)) {
+            result.stage = "approval";
+            const decision = await actions.approve(target, item);
+            if (!decision.approved) {
+              result.status = "cancelled";
+              result.error = [result.error, `${target.pod}/${target.container} ${item.case.id}: ${approvalDeniedReason(decision.source)}`].filter(Boolean).join("\n");
+              actions.checkpoint(result);
+              continue;
+            }
+          }
+          result.stage = "request";
           result.attempts.push(...await checkHttpCase({ item, target, send, signal: actions.signal,
             directory: actions.directory, prefix: `cases/${encodeURIComponent(consumer.name)}/${consumeIndex}/${bindingIndex}/${targetIndex}/${caseIndex}` }));
           actions.checkpoint(result);
         }
       }
-      if (result.attempts.length) result.status = result.error || result.truncated || result.attempts.some(attempt => attempt.status === "failed") ? "failed" : "passed";
+      if (result.attempts.length && result.status !== "cancelled") result.status = result.error || result.truncated || result.attempts.some(attempt => attempt.status === "failed") ? "failed" : "passed";
     } catch (error) {
       result.error = [result.error, caseError(error)].filter(Boolean).join("\n");
       result.status = actions.signal.aborted ? "cancelled" : result.stage === "request" || result.stage === "provider" ? "failed" : "unavailable";
