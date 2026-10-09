@@ -7,6 +7,7 @@ import { parseCollectOutputFormat } from "../collect/composite";
 import { serializeEvidence } from "../collect/serialize";
 import { renderEvidence } from "../report/evidence";
 import { isInteractive } from "../terminal/policy";
+import { resolveApprovalGate } from "../terminal/approval";
 import { overviewServiceNames } from "../overview/options";
 import { overviewWindow, selectOverviewWindow } from "../overview/selection";
 import { overviewInvoker } from "../overview/runtime";
@@ -16,6 +17,7 @@ import { runHealthSession, type HealthResult } from "./flow";
 import { checkServiceCases, type CaseCheckResult } from "./cases";
 import { prepareServiceCases, type PreparedCaseCheck } from "./case-prepare";
 import { caseCheckActions, casePrepareActions } from "./case-runtime";
+import { createHealthCaseApproval } from "./approval";
 import { buildHealthHtml, printHealth, writeHealthEvidence } from "./report";
 
 export interface HealthCliOpts extends KubernetesCommandInput {
@@ -46,6 +48,8 @@ interface HealthPreparation {
 async function health(prepared: HealthPreparation, context: CommandContext): Promise<CommandResult<HealthResult>> {
   const { input: opts, selected, cases, since, kube, executor } = prepared;
   const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor health");
+  const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
+    resolveApprovalGate({ yes: context.options.yes }));
   // Historical statistics share one frozen window; probes describe this execution, not that window.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
   let snapshot: HealthResult | undefined;
@@ -63,7 +67,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
             const index = snapshots.findIndex(item => item.consumeExtension === check.consumeExtension && item.bindingId === check.bindingId);
             if (index < 0) snapshots.push(check); else snapshots[index] = check;
             checkpoint(snapshots);
-          }));
+          }, approve));
       },
       show: current => {
         snapshot = current;
