@@ -10,8 +10,6 @@ import type { CaseCheckActions } from "./cases";
 import type { CasePrepareActions } from "./case-prepare";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../case/prepare-identity";
-import { resolveApprovalGate } from "../terminal/approval";
-import { caseError } from "../case/http-check";
 
 function caseInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
   return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, label: string, query: I): Promise<O> => {
@@ -43,17 +41,12 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
 }
 
 export function caseCheckActions(context: CommandContext, executor: Executor,
-  kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
+  kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"],
+  approve: CaseCheckActions["approve"]): CaseCheckActions {
   const invoke = caseInvoker(context, executor, kubernetes);
   return {
     directory, checkpoint, signal: context.signal,
-    approve: (target, item) => resolveApprovalGate({ yes: context.options.yes })({
-      id: `health-case:${JSON.stringify([target.uid, item.case.id, item.subject?.id])}`, risk: "disrupt",
-      title: `执行 Case：${item.case.desc ?? item.case.id}${item.subject ? ` · ${item.subject.label ?? item.subject.id}` : ""}`,
-      target: `${target.namespace}/${target.pod}/${target.container ?? ""}`,
-      impact: [`${item.case.input.method} ${caseError(item.targets[0]!.url)}`,
-        "执行真实请求，可能创建会话、产生模型费用或触发所选服务的业务动作；每个消费方实例执行一次，无自动重试。"],
-    }),
+    approve,
     targets: async (service, binding) => {
       const definition = service.workloads.find(workload => workload.name === binding.workload)!;
       const location = definition.location;

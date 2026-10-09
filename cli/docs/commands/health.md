@@ -45,7 +45,9 @@ missingCount。Provider 在源头限制读取，并说明截断；Core 校验统
 Service 通过 `health.case.bindings` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
 指定 Service 的 Health 在统计查询后执行这些检查。GET/HEAD 自动执行；
-非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
+非只读方法在首次请求前统一确认一次，提示列出本轮消费方 Workload、Case 来源及执行上限。
+决定通过 `CommandContext.decide()` 按准备好的检查范围保存，本轮跨服务、实例和 Case 复用同意或拒绝；
+拒绝后跳过后续非只读请求，GET/HEAD 继续执行。下一次命令重新确认，非交互可通过全局 `-y/--yes` 预先批准。
 没有 Facet 或耗时统计的 Service 也可以只提供 `health.case.bindings`。
 
 Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源，

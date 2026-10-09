@@ -177,7 +177,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
     },
   };
   try {
-    const actions = caseCheckActions(context, executor, { namespace: "ns" }, f.directory, () => {});
+    const actions = caseCheckActions(context, executor, { namespace: "ns" }, f.directory, () => {}, f.actions.approve);
     // The real provider invocation uses its own bound Service and invocation context.
     const runtimeProvider: CaseProducer = { ...provider, run: withSummary({ title: "Files", fields: [] }, async ctx => {
       expect(ctx.target.service.name).toBe("kb");
