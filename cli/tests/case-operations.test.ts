@@ -2,6 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, withSummary, type CaseProducer, type ServiceCaseSource, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext } from "../src/command";
+import { approveAll } from "../src/command/approval";
 import { caseCheckActions } from "../src/health/case-runtime";
 import { createHostPluginContext } from "../src/plugin/context";
 import { invokeOperation } from "../src/plugin/operation";
@@ -32,7 +33,7 @@ test("Health native producer checks its own access before invocation and retains
   });
   const calls: string[][] = [];
   try {
-    const actions = caseCheckActions(context, executor(false, calls), { namespace: "ns" }, "/unused", () => {});
+    const actions = caseCheckActions(context, executor(false, calls), { namespace: "ns" }, "/unused", () => {}, approveAll);
     await expect(actions.produce(service, source, { maxCases: 1 })).rejects.toThrow("Case files produce");
     expect(run).not.toHaveBeenCalled();
     expect(calls).toEqual([["auth", "can-i", "get", "services/source"]]);
@@ -60,7 +61,7 @@ test("native producer contexts remain isolated and are disposed on success, fail
     });
     const calls: string[][] = [];
     try {
-      const actions = caseCheckActions(context, executor(true, calls), { namespace: "ns" }, "/unused", () => {});
+      const actions = caseCheckActions(context, executor(true, calls), { namespace: "ns" }, "/unused", () => {}, approveAll);
       const result = actions.produce(service, source, { maxCases: 1 });
       if (outcome === "success") expect(await result).toEqual({ cases: [], reason: "fixture" });
       else await expect(result).rejects.toThrow(outcome === "failure" ? "source unavailable" : "Summary");
