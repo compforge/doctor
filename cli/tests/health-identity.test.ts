@@ -130,7 +130,7 @@ test("shared tenant decisions distinguish explicit parameters and Case identity 
 test("prepare binds identities without target access; run preserves fresh production per replica", async () => {
   const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
   const binding = { id: "hello", workload: "main", producer: { service: "source", source: "hello" } };
-  const consume = { id: "requests", kind: "health.cases" as const, access: {},
+  const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
   const source = { name: "source", component, workloads: [], cases: [{ id: producer.id, load: () => [], produce: producer }] };
@@ -165,7 +165,7 @@ test("missing or cancelled identity is a binding-level gap and does not block id
   const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
   const plain = { ...producer, id: "plain", requestIdentity: undefined };
   const binding = (id: string) => ({ id, workload: "main", producer: { service: "source", source: id } });
-  const consume = { id: "requests", kind: "health.cases" as const, access: {},
+  const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer,

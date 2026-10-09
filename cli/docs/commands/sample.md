@@ -5,7 +5,7 @@
 展示的目的在于帮助用户选择代表 biz-ids，再决定是否采集，而不是完整呈现系统状态。
 
 所选 namespace 必须同时提供 summarize 和 sample。Core 只展示 `canSample` 的 Entry，隐藏纯展示维度；空维度和截断信息仍保留，说明查询结果与覆盖范围。
-纯统计、耗时分布和主动 Case 探测归 [Health](health.md)，Sample 不查询 `overview.cost`。
+纯统计、耗时分布和主动 Case 探测归 [Health](health.md)，Sample 不查询 `duration.summarize`。
 
 ## 使用
 
@@ -71,7 +71,7 @@ provider namespace / Facet / Entry、数据、截断原因、采样来源和 col
 
 ## Provider 契约
 
-Service 在 `extensions` 注册成对的 `overview.summarize` 与 `overview.sample`，通过 Extension 的
+Service 在 `extensions` 注册成对的 `facet.summarize` 与 `facet.sample`，通过 Extension 的
 `namespace` 声明产品级或服务级作用域。Core 按 namespace 精确选择：默认使用
 `plugin/<plugin-id>`，指定 Service 时使用 `plugin/<plugin-id>/service/<canonical-service-name>`。
 Service alias 先解析为标准名。缺少所选 namespace 的 summarize/sample 配对，或存在多个 summarize/sample 实现时直接报错，
@@ -92,7 +92,7 @@ const service = {
 };
 ```
 
-Facet 契约由 SDK 的 `overview.ts` 定义。同一 Facet id 跨 provider 使用时须具有相同语义；Core 在
+Facet 契约由 SDK 的 `facet.ts` 定义。同一 Facet id 跨 provider 使用时须具有相同语义；Core 在
 选择时合并 Facet，结果与样本以 namespace、Facet id、Entry key 定位。`diagnosis.json` 中 `providers`
 保存 namespace、展示名和汇总结果，采样配额与样本也保留 namespace，数据访问 Service 不充当统计身份。
 

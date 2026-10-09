@@ -1,8 +1,8 @@
-import { queryOverview, type OverviewProviderResult, type OverviewQueryActions } from "./query";
+import { queryOverview, type OverviewProviderResult, type FacetSummaryQueryActions } from "./query";
 import { overviewSampleCount } from "./options";
 import { CommandStatus, type CommandResult } from "../command";
 import type {
-  OverviewEntry, OverviewFacet, OverviewQuery, OverviewSample, OverviewSampleQuery,
+  FacetEntry, FacetDefinition, FacetSummaryQuery, FacetSample, FacetSampleQuery,
 } from "@compforge/doctor-plugin";
 
 import type { OverviewProvider } from "./extensions";
@@ -10,16 +10,16 @@ export type { OverviewProvider } from "./extensions";
 
 export type { OverviewProviderResult } from "./query";
 
-export interface OverviewSampleResult {
+export interface FacetSampleResult {
   namespace: string;
   facetId: string;
   entryKey: string;
   bizId?: string;
-  source?: OverviewSample["source"];
+  source?: FacetSample["source"];
   error?: string;
 }
 
-export interface OverviewSampleAllocation {
+export interface FacetSampleAllocation {
   namespace: string;
   facetId: string;
   entryKey: string;
@@ -27,26 +27,26 @@ export interface OverviewSampleAllocation {
 }
 
 export interface OverviewResult {
-  query: OverviewQuery;
+  query: FacetSummaryQuery;
   providers: OverviewProviderResult[];
-  sampleAllocations: OverviewSampleAllocation[];
-  samples: OverviewSampleResult[];
+  sampleAllocations: FacetSampleAllocation[];
+  samples: FacetSampleResult[];
   collectionError?: string;
   collection: "not-requested" | "no-samples" | CommandStatus;
 }
 
-export interface OverviewEntryChoice {
+export interface FacetEntryChoice {
   namespace: string;
   facetId: string;
-  entry: OverviewEntry;
+  entry: FacetEntry;
 }
 
-export interface OverviewActions extends Omit<OverviewQueryActions, "cost"> {
+export interface OverviewActions extends Omit<FacetSummaryQueryActions, "cost"> {
   sampleCount?: number;
-  selectEntries?(entries: readonly OverviewEntryChoice[], defaultCount: number): Promise<readonly OverviewEntryChoice[] | undefined>;
-  sample(provider: OverviewProvider, query: OverviewSampleQuery): Promise<readonly OverviewSample[]>;
+  selectEntries?(entries: readonly FacetEntryChoice[], defaultCount: number): Promise<readonly FacetEntryChoice[] | undefined>;
+  sample(provider: OverviewProvider, query: FacetSampleQuery): Promise<readonly FacetSample[]>;
   /** Undefined means statistics only. Selecting a Facet permits lookup, not collection. */
-  select(facets: readonly OverviewFacet[]): Promise<string | undefined>;
+  select(facets: readonly FacetDefinition[]): Promise<string | undefined>;
   collect(bizIds: string[]): Promise<CommandResult<unknown>>;
   confirmCollect(bizIds: readonly string[]): Promise<boolean>;
   show(result: OverviewResult): void;
@@ -59,8 +59,8 @@ function errorMessage(error: unknown): string {
 
 /** Split one hard sample budget as evenly as possible while preserving dashboard order. */
 export function allocateOverviewSamples(
-  entries: readonly OverviewEntryChoice[], sampleCount: number,
-): OverviewSampleAllocation[] {
+  entries: readonly FacetEntryChoice[], sampleCount: number,
+): FacetSampleAllocation[] {
   const budget = overviewSampleCount(sampleCount);
   if (!entries.length) return [];
   const base = Math.floor(budget / entries.length);
@@ -75,7 +75,7 @@ export function allocateOverviewSamples(
 
 /** Core owns ordering, consent, provenance and deduplication; providers own matching semantics. */
 export async function runOverviewSession(
-  providers: readonly OverviewProvider[], query: OverviewQuery, actions: OverviewActions,
+  providers: readonly OverviewProvider[], query: FacetSummaryQuery, actions: OverviewActions,
 ): Promise<OverviewResult> {
   const result: OverviewResult = {
     query,
@@ -92,7 +92,7 @@ export async function runOverviewSession(
   };
   // Checkpoint before optional lookup; declining collection must retain the queried samples.
   actions.show(result);
-  const eligible = new Map<string, OverviewFacet>();
+  const eligible = new Map<string, FacetDefinition>();
   for (const summary of result.providers) {
     const provider = providers.find((item) => item.namespace === summary.namespace)!;
     for (const facet of provider.sample ? summary.facets : []) {

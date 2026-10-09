@@ -1,4 +1,4 @@
-import { withSummary, type CaseProduceResult, type HealthCasesExtension, type ServiceCaseSource } from "@compforge/doctor-plugin";
+import { withSummary, type CaseProduceResult, type HealthCaseBindingsExtension, type ServiceCaseSource } from "@compforge/doctor-plugin";
 
 const ping: CaseProduceResult["cases"][number]["case"] = {
   id: "api_health", desc: "API health endpoint is reachable",
@@ -17,8 +17,8 @@ export const apiCases: ServiceCaseSource = {
   },
 };
 
-export const workerHealthCases: HealthCasesExtension = {
-  id: "api-connectivity", kind: "health.cases", access: {},
+export const workerHealthCases: HealthCaseBindingsExtension = {
+  id: "api-connectivity", kind: "health.case.bindings", access: {},
   run: withSummary({ title: "Worker dependencies", fields: [] }, async () => ({
     bindings: [{ id: "api", workload: "main", producer: { service: "example-api", source: "connectivity" } }],
   })),

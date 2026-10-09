@@ -122,15 +122,15 @@ test("host registry discovers kinds across Core, Plugin, Service and local names
 });
 
 test("host assigns distinct namespaces to product and Service implementations with the same id", () => {
-  const extension = { id: "errors", kind: "overview.summarize", access: {}, run: withSummary({ title: "Errors", fields: [] }, async () => []) };
+  const extension = { id: "errors", kind: "facet.summarize", access: {}, run: withSummary({ title: "Errors", fields: [] }, async () => []) };
   const plugin: PluginDefinition = { id: "fixture", version: "1", extensions: [extension], services: createServiceCatalog([{
     name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
     workloads: [], extensions: [extension],
   }]) };
   const registry = createDoctorExtensionRegistry(plugin);
-  expect(registry.extensions("overview.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", origin: "plugin", extension }]);
-  expect(registry.extensions("overview.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", origin: "plugin", extension, service: plugin.services.find("api") }]);
-  expect(plugin.services.extensions("overview.summarize")[0]?.service.name).toBe("api");
+  expect(registry.extensions("facet.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", origin: "plugin", extension }]);
+  expect(registry.extensions("facet.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", origin: "plugin", extension, service: plugin.services.find("api") }]);
+  expect(plugin.services.extensions("facet.summarize")[0]?.service.name).toBe("api");
   expect(() => createDoctorExtensionRegistry({ ...plugin, id: "fixture/service/injected" })).toThrow("namespace");
 });
 

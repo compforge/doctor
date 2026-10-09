@@ -1,7 +1,7 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import {
   createServiceCatalog, withSummary, type PluginDefinition, type ServiceDefinition,
-  type OverviewSummarizeExtension, type OverviewSampleExtension,
+  type FacetSummarizeExtension, type FacetSampleExtension,
 } from "@compforge/doctor-plugin";
 import { overviewProviders } from "../src/overview/extensions";
 import { healthProviders } from "../src/health/extensions";
@@ -13,19 +13,19 @@ import { CommandContext, CommandStatus } from "../src/command";
 import { createDoctorProgram } from "../src/app/main";
 
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
-const summarize: OverviewSummarizeExtension = {
-  id: "summary", kind: "overview.summarize", facets: [facet], access: {},
+const summarize: FacetSummarizeExtension = {
+  id: "summary", kind: "facet.summarize", facets: [facet], access: {},
   run: withSummary({ title: "Errors", fields: [] }, async () => []),
 };
-const sample: OverviewSampleExtension = {
-  id: "sample", kind: "overview.sample", access: {},
+const sample: FacetSampleExtension = {
+  id: "sample", kind: "facet.sample", access: {},
   run: withSummary({ title: "Samples", fields: [] }, async () => []),
 };
 const service = (name: string, extensions: ServiceDefinition["extensions"] = []): ServiceDefinition => ({
   name, aliases: name === "api" ? ["short"] : [], workloads: [], extensions,
   component: { name, repository: { forge: { name: "fixture" }, path: `fixture/${name}` } },
 });
-function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleExtension)[] = [{ ...summarize, namespace: "plugin/fixture" }, { ...sample, namespace: "plugin/fixture" }]): PluginDefinition {
+function plugin(product: readonly (FacetSummarizeExtension | FacetSampleExtension)[] = [{ ...summarize, namespace: "plugin/fixture" }, { ...sample, namespace: "plugin/fixture" }]): PluginDefinition {
   return { id: "fixture", version: "1",
     services: createServiceCatalog([service("api", [summarize, sample, ...product]), service("store")]) };
 }
@@ -34,7 +34,7 @@ test("health uses Service statistics instead of a product summary provided by th
   const run = mock(async () => []);
   const definition = plugin([{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, run) }]);
   const selected = healthProviders(definition);
-  expect(() => overviewProviders(definition)).toThrow("overview.sample");
+  expect(() => overviewProviders(definition)).toThrow("facet.sample");
   expect(selected).toHaveLength(1);
   expect(selected[0]?.namespace).toBe("plugin/fixture/service/api");
   expect(selected[0]?.summarize).toBe(summarize);
@@ -52,7 +52,7 @@ test("explicit Service selection resolves aliases without validating operations 
   expect(selected[0]?.sample).toBe(sample);
   expect(selected[0]?.sampleService?.name).toBe("api");
   expect(() => overviewProviders(plugin(), ["missing"])).toThrow("Unknown Service");
-  expect(() => overviewProviders(plugin(), ["store"])).toThrow("overview.summarize");
+  expect(() => overviewProviders(plugin(), ["store"])).toThrow("facet.summarize");
   expect(() => overviewProviders(plugin(), [])).toThrow("empty");
 });
 
@@ -89,7 +89,7 @@ test("summary and sample in one namespace can have different providing Services 
 test("Overview rejects invalid selection before Kubernetes preparation", async () => {
   for (const [definition, input, reason] of [
     [plugin([]), {}, "--service"],
-    [plugin(), { service: "store" }, "overview.summarize"],
+    [plugin(), { service: "store" }, "facet.summarize"],
     [plugin(), { facet: "missing" }, "Facet"],
   ] as const) {
     const context = new CommandContext({}, undefined, { plugin: definition });
@@ -140,7 +140,7 @@ test("Overview command invokes the namespace provider using its original Service
   const targets = await import("../src/command/kubernetes-target");
   const { rmSync } = await import("node:fs");
   const calls: string[] = [];
-  const summary = (owner: string, expectedService: string, namespace?: string): OverviewSummarizeExtension => ({
+  const summary = (owner: string, expectedService: string, namespace?: string): FacetSummarizeExtension => ({
     ...summarize, namespace,
     run: withSummary({ title: "Errors", fields: [] }, async context => {
       expect(context.target.service.name).toBe(expectedService);

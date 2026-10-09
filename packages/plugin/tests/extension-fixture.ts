@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import type {
   ExtensionContext, FactsInspectExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
-  CaseRunnerCreateExtension, TraceResolveExtension, OverviewSummarizeExtension, OverviewSampleExtension,
+  CaseRunnerCreateExtension, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
   MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension, ServiceEnvironmentProbe,
   TenantListExtension, TenantResolveExtension, UserSearchExtension, ModelQueryExtension,
   ModelBackendInspectExtension, ModelBackendValidateExtension, ModelInvokeExtension, ModelStreamExtension,
@@ -89,12 +89,12 @@ export function mcpExtension(value: Endpoint & { loadConfiguration: DataRun<McpC
   return { ...declaration, id: "mcp.configuration", kind: "mcp.configuration", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
 export function overviewExtensions(value: {
-  access: Access; facets: OverviewSummarizeExtension["facets"];
-  summarize: DataRun<OverviewSummarizeExtension>; sample: DataRun<OverviewSampleExtension>;
+  access: Access; facets: FacetSummarizeExtension["facets"];
+  summarize: DataRun<FacetSummarizeExtension>; sample: DataRun<FacetSampleExtension>;
 }) {
   return [
-    { id: "overview.summarize", kind: "overview.summarize", access: value.access, facets: value.facets, run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, value.summarize) } satisfies OverviewSummarizeExtension,
-    { id: "overview.sample", kind: "overview.sample", access: value.access, run: withSummary({"title":"业务样本","fields":[{"label":"样本数","path":["length"]}]}, value.sample) } satisfies OverviewSampleExtension,
+    { id: "facet.summarize", kind: "facet.summarize", access: value.access, facets: value.facets, run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, value.summarize) } satisfies FacetSummarizeExtension,
+    { id: "facet.sample", kind: "facet.sample", access: value.access, run: withSummary({"title":"业务样本","fields":[{"label":"样本数","path":["length"]}]}, value.sample) } satisfies FacetSampleExtension,
   ];
 }
 export function metricExtension(value: MetricConfiguration): MetricConfigurationExtension {

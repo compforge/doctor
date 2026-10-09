@@ -1,7 +1,7 @@
 import { validateCaseRef, type ServiceCaseRef } from "../cases";
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 
-export const HEALTH_CASES_KIND = "health.cases";
+export const HEALTH_CASE_BINDINGS_KIND = "health.case.bindings";
 
 /** Health owns which shared Case source must be reachable from its Service's Workload. */
 export interface HealthCaseBinding {
@@ -10,22 +10,22 @@ export interface HealthCaseBinding {
   readonly producer: ServiceCaseRef;
 }
 
-export interface HealthCasesQuery { readonly tenantId?: string }
-export interface HealthCasesResult { readonly bindings: readonly HealthCaseBinding[] }
+export interface HealthCaseBindingsQuery { readonly tenantId?: string }
+export interface HealthCaseBindingsResult { readonly bindings: readonly HealthCaseBinding[] }
 
 /** @spec Health declares dependencies; the referenced Service owns Case definitions and runtime objects. */
-export interface HealthCasesExtension extends Extension<HealthCasesQuery, HealthCasesResult> {
-  readonly kind: typeof HEALTH_CASES_KIND;
+export interface HealthCaseBindingsExtension extends Extension<HealthCaseBindingsQuery, HealthCaseBindingsResult> {
+  readonly kind: typeof HEALTH_CASE_BINDINGS_KIND;
 }
 
-export function requireHealthCasesExtension(extension: ExtensionRegistration): HealthCasesExtension {
+export function requireHealthCaseBindingsExtension(extension: ExtensionRegistration): HealthCaseBindingsExtension {
   validateExtension(extension);
-  if (extension.kind !== HEALTH_CASES_KIND) throw new Error(`Unsupported Health Case kind: ${extension.kind}`);
-  return extension as HealthCasesExtension;
+  if (extension.kind !== HEALTH_CASE_BINDINGS_KIND) throw new Error(`Expected ${HEALTH_CASE_BINDINGS_KIND}, got ${extension.kind}`);
+  return extension as HealthCaseBindingsExtension;
 }
 
-export function validateHealthCasesResult(value: HealthCasesResult): void {
-  if (!value || typeof value !== "object") throw new Error("Health Cases must return bindings");
+export function validateHealthCaseBindingsResult(value: HealthCaseBindingsResult): void {
+  if (!value || typeof value !== "object") throw new Error("health.case.bindings must return bindings");
   validateHealthCaseBindings(value.bindings);
 }
 

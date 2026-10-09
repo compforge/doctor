@@ -2,21 +2,21 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { escapeHtml } from "../collect/output/report/components/content";
-import type { OverviewCostEntry, OverviewCostResult } from "@compforge/doctor-plugin";
+import type { DurationEntry, DurationSummary } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
 import type { OverviewProviderResult } from "./query";
 import type { OverviewResult } from "./flow";
 
 const COST_HEADERS = ["耗时项", "样本", "缺失/无效", "Min ms", "Avg ms", "P50 ms", "P95 ms", "Max ms"];
-function costCells(entry: OverviewCostEntry): (string | number)[] {
+function costCells(entry: DurationEntry): (string | number)[] {
   return [entry.label, entry.sampleCount, entry.missingCount,
     ...(["min", "avg", "p50", "p95", "max"] as const).map(key => {
       const value = entry.durationMs?.[key];
       return value === undefined ? "—" : Number(value.toFixed(2));
     })];
 }
-function costHtml(cost: OverviewCostResult): string {
+function costHtml(cost: DurationSummary): string {
   return `<h3>耗时统计</h3><p>${escapeHtml(cost.description)}</p>`
     + (cost.truncated ? `<p>已截断：${escapeHtml(cost.truncated.reason)}</p>` : "")
     + `<table><tr>${COST_HEADERS.map(label => `<th>${label}</th>`).join("")}</tr>`

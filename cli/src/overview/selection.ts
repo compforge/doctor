@@ -1,12 +1,12 @@
 import { promptMultiSelect } from "../terminal/multi-select";
-import type { OverviewEntryChoice } from "./flow";
-import type { OverviewFacet, OverviewQuery } from "@compforge/doctor-plugin";
+import type { FacetEntryChoice } from "./flow";
+import type { FacetDefinition, FacetSummaryQuery } from "@compforge/doctor-plugin";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 
 export const OVERVIEW_WINDOWS = ["10m", "1h", "6h", "1d", "3d"] as const;
 const DURATIONS: Record<string, number> = { "10m": 600_000, "1h": 3_600_000, "6h": 21_600_000, "1d": 86_400_000, "3d": 259_200_000 };
 
-export function overviewWindow(since: string, now = new Date()): OverviewQuery["window"] {
+export function overviewWindow(since: string, now = new Date()): FacetSummaryQuery["window"] {
   const duration = DURATIONS[since];
   if (!duration) throw new Error(`--since 支持 ${OVERVIEW_WINDOWS.join(", ")}`);
   return { from: new Date(now.getTime() - duration).toISOString(), to: now.toISOString() };
@@ -23,7 +23,7 @@ export async function selectOverviewWindow(interactive: boolean): Promise<string
 }
 
 export async function selectOverviewFacet(
-  facets: readonly OverviewFacet[], opts: { collect?: boolean; facet?: string }, interactive: boolean,
+  facets: readonly FacetDefinition[], opts: { collect?: boolean; facet?: string }, interactive: boolean,
   prompt: typeof promptListedChoice = promptListedChoice,
 ): Promise<string | undefined> {
   let facet = opts.facet ? facets.find((item) => item.id === opts.facet) : undefined;
@@ -62,9 +62,9 @@ export async function confirmOverviewCollection(
 }
 
 export async function selectOverviewEntries(
-  entries: readonly OverviewEntryChoice[], defaultCount: number, interactive: boolean,
+  entries: readonly FacetEntryChoice[], defaultCount: number, interactive: boolean,
   prompt: typeof promptMultiSelect = promptMultiSelect,
-): Promise<readonly OverviewEntryChoice[] | undefined> {
+): Promise<readonly FacetEntryChoice[] | undefined> {
   const defaults = entries.slice(0, defaultCount);
   if (!interactive || entries.length === 1) return entries;
   const choices = entries.map((choice) => ({

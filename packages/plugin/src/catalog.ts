@@ -26,7 +26,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
         if (["case.catalog", "case.produce", "case.runner.create", "case.consume"].includes(extension.kind)) {
-          throw new Error(`${service.name}: ${extension.kind} is not a Service Extension; use Service.cases and health.cases`);
+          throw new Error(`${service.name}: ${extension.kind} is not a Service Extension; use Service.cases and health.case.bindings`);
         }
         validateExtension(extension);
         // The host resolves omitted namespaces once the Plugin identity is known.

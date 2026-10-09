@@ -37,7 +37,7 @@ const producer: CaseProduceExtension = { id: "models", kind: "case.produce", acc
   run: withSummary({ title: "Model Cases", fields: [] }, async () => ({ cases: modelHttpCases(model) })) };
 const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
 const binding = { id: "models", workload: "main", producer: { service: "catalog", source: "models" } };
-const consume = { id: "requests", kind: "health.cases" as const, access: {},
+const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
   run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
 const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
 const source = { name: "catalog", component, workloads: [], cases: [{ id: producer.id, load: () => [], produce: producer }] };

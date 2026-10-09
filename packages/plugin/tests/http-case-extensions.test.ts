@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateHealthCaseBindings, validateHealthCasesResult, validateExtension, withSummary, type HealthCasesExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
+import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseBindingsExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
 
 test("Case producers declare optional identity requirements before execution", () => {
   const extension = { id: "probe", kind: "case.produce", access: {},
@@ -48,15 +48,15 @@ test("binding references exact provider identity and a consumer Workload", () =>
   expect(() => validateHealthCaseBindings([binding, binding])).toThrow("Duplicate");
 });
 
-test("health.cases is an ordinary executable Extension returning relationship data", async () => {
-  const extension: HealthCasesExtension = { id: "downloads", kind: "health.cases", access: {},
+test("health.case.bindings is an ordinary executable Extension returning relationship data", async () => {
+  const extension: HealthCaseBindingsExtension = { id: "downloads", kind: "health.case.bindings", access: {},
     run: withSummary({ title: "Downloads", fields: [] }, async (_context, query) => ({ bindings: query.tenantId ? [{
       id: "file", workload: "main", producer: { service: "files", source: "downloads" },
     }] : [] })) };
   expect(() => validateExtension(extension)).not.toThrow();
   expect(() => validateExtension({ ...extension, run: undefined })).toThrow("run");
-  expect(() => validateHealthCasesResult({ bindings: [] })).not.toThrow();
-  expect(() => validateHealthCasesResult({} as never)).toThrow("array");
+  expect(() => validateHealthCaseBindingsResult({ bindings: [] })).not.toThrow();
+  expect(() => validateHealthCaseBindingsResult({} as never)).toThrow("array");
 });
 
 test("produced Cases explicitly select a supported protocol independently of the URL scheme", () => {

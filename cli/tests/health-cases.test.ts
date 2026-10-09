@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type HealthCasesExtension, type CaseProduceExtension, type HealthCaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
+  type HealthCaseBindingsExtension, type CaseProduceExtension, type HealthCaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
 import { prepareServiceCases, type CasePrepareActions } from "../src/health/case-prepare";
 import { checkServiceCases, type CaseCheckActions } from "../src/health/cases";
@@ -18,7 +18,7 @@ const provider: CaseProduceExtension = { id: "files", kind: "case.produce", acce
 const bindings: HealthCaseBinding[] = [
   { id: "kb-files", workload: "main", producer: { service: "kb", source: "files" } },
 ];
-const consumption: HealthCasesExtension = { id: "downloads", kind: "health.cases", access: {},
+const consumption: HealthCaseBindingsExtension = { id: "downloads", kind: "health.case.bindings", access: {},
   run: withSummary({ title: "Downloads", fields: [] }, async () => ({ bindings })) };
 const consumer: ServiceDefinition = { name: "sandbox", component, workloads: [kubernetesServiceWorkload("sandbox")], extensions: [consumption] };
 const kb: ServiceDefinition = { name: "kb", component, workloads: [], cases: [{ id: provider.id, load: () => [], produce: provider }] };
@@ -183,7 +183,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
       expect(ctx.target.service.name).toBe("kb");
       return { cases: [file] };
     }) };
-    const runtimeConsumption: HealthCasesExtension = { ...consumption, run: withSummary({ title: "Relations", fields: [] }, async ctx => {
+    const runtimeConsumption: HealthCaseBindingsExtension = { ...consumption, run: withSummary({ title: "Relations", fields: [] }, async ctx => {
       expect(ctx.target.service.name).toBe("sandbox");
       return { bindings };
     }) };

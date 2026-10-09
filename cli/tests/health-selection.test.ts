@@ -1,6 +1,6 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { createServiceCatalog, withSummary, type OverviewSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type FacetSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
 import { healthCommand } from "../src/health";
 import { healthProviders } from "../src/health/extensions";
@@ -8,8 +8,8 @@ import * as selection from "../src/health/selection";
 import * as targets from "../src/command/kubernetes-target";
 
 const results = [{ facetId: "status", description: "Status", entries: [] }];
-const summarize: OverviewSummarizeExtension = {
-  id: "summary", kind: "overview.summarize", access: {}, facets: [{ id: "status", title: "Status", description: "Status" }],
+const summarize: FacetSummarizeExtension = {
+  id: "summary", kind: "facet.summarize", access: {}, facets: [{ id: "status", title: "Status", description: "Status" }],
   run: withSummary({ title: "Summary", fields: [] }, async () => results),
 };
 function service(name: string, extensions: ServiceDefinition["extensions"] = []): ServiceDefinition {
@@ -28,7 +28,7 @@ test("default health discovers every supported Service, not product statistics o
     "plugin/fixture/service/api", "plugin/fixture/service/worker",
   ]);
   expect(healthProviders(plugin, ["worker-alias", "worker"])).toHaveLength(1);
-  expect(() => healthProviders(plugin, ["unrelated"])).toThrow("health.cases");
+  expect(() => healthProviders(plugin, ["unrelated"])).toThrow("health.case.bindings");
   expect(() => healthProviders(plugin, ["missing"])).toThrow("Unknown Service");
   expect(() => healthProviders(plugin, [])).toThrow("empty");
   for (const services of [[], [service("unrelated")], [service("api", [{ ...summarize, namespace: "plugin/fixture" }])]]) {

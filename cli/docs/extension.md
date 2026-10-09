@@ -31,7 +31,9 @@ packages/plugin/src/
 │   ├── index.ts          # Extension、ExtensionContext、公共声明校验与统一导出
 │   ├── facts-inspect.ts  # facts.inspect 的领域契约
 │   ├── trace-resolve.ts  # trace.resolve 的领域契约
-│   ├── overview.ts       # overview.summarize / overview.sample / overview.cost 的领域契约
+│   ├── facet.ts          # facet.summarize / facet.sample 的领域契约
+│   ├── duration.ts       # duration.summarize 的领域契约
+│   ├── health.ts         # health.case.bindings 的消费关系契约
 │   ├── tenant.ts         # tenant.list / tenant.resolve / user.search 的领域契约
 │   ├── mcp.ts            # mcp.configuration 的领域契约
 │   ├── model.ts          # 模型目录、Backend 与推理的领域契约
@@ -150,9 +152,9 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 |---|---|---|
 | facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
-| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Sample / Health |
-| overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Sample |
-| overview.cost | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Health |
+| facet.summarize | 时间窗口、租户、预算 → Facet 汇总 | Sample / Health |
+| facet.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Sample |
+| duration.summarize | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Health |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
 | tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
@@ -164,10 +166,13 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | error.catalog | 无 Target 访问 → 带来源版本的错误目录 | Knowledge |
-| health.cases | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
+| health.case.bindings | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
 | perf.scenarios | 无入参 → Case 来源引用、观测预设与可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
+
+Facet 描述可汇总、可下钻的数据维度，由 Health 与 Sample 按各自流程消费；Duration 独立提供耗时统计。
+`health.case.bindings` 只选择共享 Case 来源与消费方 Workload，不返回 Case 内容或执行探测。
 
 Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Sample 按 Service
 关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 通过 Health 展示统计。
@@ -221,6 +226,6 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 目标解析使用 Extension 自己的访问权限，返回后释放调用上下文；Store 负责后续连接和诊断。
 返回值可携带连接凭据，校验错误只报告字段名。共享 Client source 与目标解析 Extension 是互斥的访问入口。
 
-`health.cases` 与共享来源的 `produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
+`health.case.bindings` 与共享来源的 `produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
 运行时 Case 数据。Health 按关系定位提供方，再根据 `Case.input.protocol` 从消费者 Pod 执行检查；扩展自身
 不负责探测编排。两次调用独立使用所属 Service 的访问权限与上下文，具体流程见 [Health](commands/health.md)。

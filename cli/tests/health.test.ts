@@ -1,8 +1,8 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { createServiceCatalog, withSummary, type OverviewSummarizeExtension, type OverviewSampleExtension, type OverviewCostExtension,
-  type HealthCasesExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type FacetSummarizeExtension, type FacetSampleExtension, type DurationSummarizeExtension,
+  type HealthCaseBindingsExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
 import { createDoctorProgram } from "../src/app/main";
 import { healthCommand } from "../src/health";
@@ -19,11 +19,11 @@ import * as caseRuntime from "../src/health/case-runtime";
 const query = { window: { from: "2026-10-01T00:00:00Z", to: "2026-10-01T01:00:00Z" }, maxEntries: 10 };
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
 const summary = [{ facetId: facet.id, entries: [{ key: "E1", label: "Failure", data: 2, canSample: true }], description: "Errors" }];
-const summarize: OverviewSummarizeExtension = { id: "summary", kind: "overview.summarize", access: {}, facets: [facet],
+const summarize: FacetSummarizeExtension = { id: "summary", kind: "facet.summarize", access: {}, facets: [facet],
   run: withSummary({ title: "Errors", fields: [] }, async () => summary) };
-const sample: OverviewSampleExtension = { id: "sample", kind: "overview.sample", access: {},
+const sample: FacetSampleExtension = { id: "sample", kind: "facet.sample", access: {},
   run: withSummary({ title: "Samples", fields: [] }, async () => [{ bizId: "trace-1" }]) };
-const consume: HealthCasesExtension = { id: "checks", kind: "health.cases", access: {},
+const consume: HealthCaseBindingsExtension = { id: "checks", kind: "health.case.bindings", access: {},
   run: withSummary({ title: "Checks", fields: [] }, async () => ({ bindings: [] })) };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
   name: "api", aliases: ["short"], workloads: [], extensions,
@@ -44,7 +44,7 @@ test("Health prepares producer identity before statistics and never persists it 
   const api = definition.services.find("api")!;
   const { kubernetesServiceWorkload } = await import("@compforge/doctor-plugin");
   const ready = { ...api, workloads: [kubernetesServiceWorkload("api")], extensions: [
-    { ...summarize, run: withSummary({ title: "Summary", fields: [] }, async (_ctx, input: import("@compforge/doctor-plugin").OverviewQuery) => {
+    { ...summarize, run: withSummary({ title: "Summary", fields: [] }, async (_ctx, input: import("@compforge/doctor-plugin").FacetSummaryQuery) => {
       expect(input.tenantId).toBeUndefined(); calls.push("summary"); return summary;
     }) },
     { ...consume, run: withSummary({ title: "Relations", fields: [] }, async () => {
@@ -92,7 +92,7 @@ test("health discovers statistics and Cases without inspecting sample implementa
   expect(healthProviders(plugin([summarize]), ["api"])[0]!.summarize).toBe(summarize);
   expect(() => overviewProviders(plugin([summarize]), ["api"])).toThrow("doctor health");
   expect(() => overviewProviders(plugin([consume]), ["api"])).toThrow("doctor health");
-  expect(() => healthProviders(plugin([]), ["api"])).toThrow("health.cases");
+  expect(() => healthProviders(plugin([]), ["api"])).toThrow("health.case.bindings");
   expect(healthProviders(plugin([consume]))[0]!.consumers).toEqual([consume]);
 });
 
@@ -156,7 +156,7 @@ test("real commands share statistics, but only overview --facet queries IDs with
   const calls: string[] = [];
   const displaySummary = [{ ...summary[0]!, entries: [...summary[0]!.entries,
     { key: "status", label: "System status", data: 1, canSample: false }] }];
-  const cost: OverviewCostExtension = { id: "cost", kind: "overview.cost", access: {},
+  const cost: DurationSummarizeExtension = { id: "cost", kind: "duration.summarize", access: {},
     run: withSummary({ title: "Duration", fields: [] }, async () => {
       calls.push("cost"); return { description: "Startup duration", entries: [] };
     }) };
@@ -220,7 +220,7 @@ test("overview projects selectable entries, while health retains display-only fa
     { facetId: "empty", description: "Empty", entries: [] },
     { facetId: "truncated", description: "Bounded query", entries: [displayEntry], truncated: { reason: "source cap" } },
   ];
-  const multiSummary: OverviewSummarizeExtension = { ...summarize, facets: [facet, statusFacet, emptyFacet, truncatedFacet] };
+  const multiSummary: FacetSummarizeExtension = { ...summarize, facets: [facet, statusFacet, emptyFacet, truncatedFacet] };
   const definition = plugin([multiSummary, sample]);
   const shared = { summarize: async () => all, show: () => {} };
   const overview = await runOverviewSession(overviewProviders(definition, ["api"]), query, {
@@ -241,7 +241,7 @@ test("overview projects selectable entries, while health retains display-only fa
 });
 
 test("overview discovery does not validate or borrow duration-only capabilities", () => {
-  const cost: OverviewCostExtension = { id: "cost", kind: "overview.cost", access: {},
+  const cost: DurationSummarizeExtension = { id: "cost", kind: "duration.summarize", access: {},
     run: withSummary({ title: "Duration", fields: [] }, async () => ({ description: "Startup", entries: [] })) };
   expect(() => overviewProviders(plugin([cost]), ["api"])).toThrow("doctor health");
   const definition = plugin([summarize, sample, cost, { ...cost, id: "second-cost" }]);

@@ -1,6 +1,6 @@
 import {
-  caseProducer, validateHealthCasesResult,
-  type HealthCaseBinding, type HealthCasesExtension, type HealthCasesQuery, type HealthCasesResult,
+  caseProducer, validateHealthCaseBindingsResult,
+  type HealthCaseBinding, type HealthCaseBindingsExtension, type HealthCaseBindingsQuery, type HealthCaseBindingsResult,
   type CaseProduceExtension, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import { caseError } from "../case/http-check";
@@ -21,14 +21,14 @@ export interface PreparedCaseCheck {
 
 export interface CasePrepareActions {
   signal: AbortSignal;
-  consume(service: ServiceDefinition, extension: HealthCasesExtension, query: HealthCasesQuery): Promise<HealthCasesResult>;
+  consume(service: ServiceDefinition, extension: HealthCaseBindingsExtension, query: HealthCaseBindingsQuery): Promise<HealthCaseBindingsResult>;
   identity(extension: CaseProduceExtension): Promise<ServiceRequestIdentity | undefined>;
   tenant?(extension: CaseProduceExtension): Promise<string | undefined>;
 }
 
 /** @spec Resolve only selected dependencies and identities in Command.prepare; never generate Cases or enter consumer Pods. */
 export async function prepareServiceCases(plugin: PluginDefinition, consumer: ServiceDefinition,
-  extensions: readonly HealthCasesExtension[], tenantId: string | undefined, actions: CasePrepareActions): Promise<PreparedCaseCheck[]> {
+  extensions: readonly HealthCaseBindingsExtension[], tenantId: string | undefined, actions: CasePrepareActions): Promise<PreparedCaseCheck[]> {
   const prepared: PreparedCaseCheck[] = [];
   for (const [consumeIndex, extension] of extensions.entries()) {
     const base = (): CaseCheckResult => ({
@@ -38,7 +38,7 @@ export async function prepareServiceCases(plugin: PluginDefinition, consumer: Se
     try {
       actions.signal.throwIfAborted();
       const data = await actions.consume(consumer, extension, { tenantId });
-      validateHealthCasesResult(data);
+      validateHealthCaseBindingsResult(data);
       for (const [bindingIndex, binding] of data.bindings.entries()) {
         const result: CaseCheckResult = { ...base(), bindingId: binding.id, producer: binding.producer,
           workload: binding.workload, stage: "binding" };

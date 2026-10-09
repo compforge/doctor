@@ -42,7 +42,7 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`。
 
-Health 通过自己的 `health.cases` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
+Health 通过自己的 `health.case.bindings` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
 运行时 `subject` 标识被测业务对象，`targets` 保存新鲜地址、凭据与请求正文；两者不改变 canonical Case ID/hash。
 同一用例可以绑定多个对象，执行实例是另一维度。Health、Perf 和 Eval 共享 Case 能力，各自负责体检、加压或证据采集。
 

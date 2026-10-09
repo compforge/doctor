@@ -1,7 +1,7 @@
 # Health
 
 `doctor health` 展示系统统计并执行所选 Service 的体检，不查找代表 biz-id，不触发 Collect。
-统计复用 `overview.summarize` 与 `overview.cost`；当前主动探测由 `health.cases` 引用共享 `Service.cases`。
+统计复用 `facet.summarize` 与 `duration.summarize`；当前主动探测由 `health.case.bindings` 引用共享 `Service.cases`。
 Health 的目标是系统健康检查，Case 执行是其中一种探测方式；其他检查不必包装为 Case。
 Health 完整展示 summary，包括不可采样的状态条目；不要求对应的 sample Extension。
 两类结果分别说明历史窗口内的情况和本次执行的情况，查询失败不等同于系统异常，也不丢弃其他已取得结果。
@@ -16,7 +16,7 @@ doctor health --services example-api,example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `--service` 或 `--services` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `overview.summarize`、`overview.cost` 或 `health.cases`，
+候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize` 或 `health.case.bindings`，
 不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
@@ -27,26 +27,26 @@ doctor health --services example-api,example-worker --tenant-id <tenant-id>
 
 ## 耗时统计
 
-`overview.cost` 是独立 Extension，可与 `overview.summarize` 在同一 namespace 共存，也可单独提供。
+`duration.summarize` 是独立 Extension，可与 `facet.summarize` 在同一 namespace 共存，也可单独提供。
 Core 使用相同的冻结窗口和租户条件调用它，以提供该 Extension 的原始 Service 准备 access；
 两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。
 
-Provider 接收 `OverviewCostQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
-返回 `OverviewCostResult`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
+Provider 接收 `DurationSummaryQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
+返回 `DurationSummary`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
 label、sampleCount、missingCount 和 durationMs（min/avg/p50/p95/max）描述耗时。
 单位固定为毫秒；没有有效样本时省略 durationMs，不能用零替代未知值。缺失、不完整或无效区间计入
 missingCount。Provider 在源头限制读取，并说明截断；Core 校验统计数据并限制展示条目。
 
 终端和 HTML 显示耗时表，diagnosis.json 保留类型化统计。耗时条目当前仅供查看，不进入
-`overview.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。
+`facet.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。
 
 ## 消费方 HTTP Case 检查
 
-Service 通过 `health.cases` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
+Service 通过 `health.case.bindings` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
 指定 Service 的 Health 在统计查询后执行这些检查。GET/HEAD 自动执行；
 非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
-没有 summarize/cost 的 Service 也可以只提供 `health.cases`。
+没有 Facet 或耗时统计的 Service 也可以只提供 `health.case.bindings`。
 
 Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源，
 以 `workload` 引用消费方已声明的 Workload。消费扩展与来源的 `produce` 均遵循调用契约：声明 `access`，
@@ -79,7 +79,7 @@ GET/HEAD Case 可给出有序备用 URL，主地址不满足预期时继续尝�
 const worker = {
   ...workerService,
   extensions: [{
-    id: "downloads", kind: "health.cases", access: {},
+    id: "downloads", kind: "health.case.bindings", access: {},
     run: withSummary({ title: "文件消费关系", fields: [] }, async () => ({
       bindings: [{
         id: "file-download", workload: "main",

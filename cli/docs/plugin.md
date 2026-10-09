@@ -71,7 +71,7 @@ Service 与 dataSource ID 引用其它 Service 的资源。宿主解析依赖并
 
 `cases` 与 DataSource、Workload 一样是 Service 贡献。一个 `ServiceCaseSource` 用稳定 ID 集中提供
 离线 CaseSet、可选的运行时 `produce` 和单请求 `runner`；来源引用是 `{ service, source }`。
-Health 的 `health.cases` 扩展引用它并声明消费方 Workload，Perf 场景引用它并决定负载流程，
+Health 的 `health.case.bindings` 扩展引用它并声明消费方 Workload，Perf 场景引用它并决定负载流程，
 Case 命令离线展示它。来源决定探测哪些业务对象，命令只补齐所声明的上下文和控制运行策略。
 
 `load()` 不访问 Target；`produce` / `runner` 分别声明 access，并复用宿主的结果信封和资源生命周期。
@@ -388,9 +388,9 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 
 ### Service Sample 与 Health
 
-`overview.summarize` 与 `overview.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
+`facet.summarize` 与 `facet.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
 文字，Sample 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
-Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`overview.cost` 只供 Health 展示；Health 另外编排 `health.cases/produce` 体检，不进入样本查询或 Collect。
+Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`duration.summarize` 只供 Health 展示；Health 通过 `health.case.bindings` 选择来源，再调用来源的 `produce` 准备体检用例，不进入样本查询或 Collect。
 Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Sample 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
 详见 [Sample](commands/sample.md) 与 [Health](commands/health.md)。
 

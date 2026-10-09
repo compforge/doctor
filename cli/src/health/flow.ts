@@ -1,5 +1,5 @@
-import type { OverviewQuery } from "@compforge/doctor-plugin";
-import { queryOverview, type OverviewProviderResult, type OverviewQueryActions } from "../overview/query";
+import type { FacetSummaryQuery } from "@compforge/doctor-plugin";
+import { queryOverview, type OverviewProviderResult, type FacetSummaryQueryActions } from "../overview/query";
 import type { CaseCheckResult } from "./cases";
 import type { HealthProvider } from "./extensions";
 
@@ -9,18 +9,18 @@ export interface HealthProviderResult extends OverviewProviderResult {
 }
 
 export interface HealthResult {
-  query: OverviewQuery;
+  query: FacetSummaryQuery;
   providers: HealthProviderResult[];
 }
 
-export interface HealthActions extends OverviewQueryActions {
-  cases(provider: HealthProvider, query: OverviewQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
+export interface HealthActions extends FacetSummaryQueryActions {
+  cases(provider: HealthProvider, query: FacetSummaryQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   show(result: HealthResult): void;
 }
 
 /** @spec Health queries statistics and runs approved probes, never samples or invokes Collect. */
 export async function runHealthSession(
-  providers: readonly HealthProvider[], query: OverviewQuery, actions: HealthActions,
+  providers: readonly HealthProvider[], query: FacetSummaryQuery, actions: HealthActions,
 ): Promise<HealthResult> {
   const result: HealthResult = { query, providers: await queryOverview(providers, query, actions) };
   actions.show(result);

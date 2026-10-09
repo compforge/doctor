@@ -46,7 +46,8 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
 export * from "./facts-inspect";
 export * from "./trace-resolve";
 export * from "./trace-range";
-export * from "./overview";
+export * from "./facet";
+export * from "./duration";
 export * from "./tenant";
 export * from "./mcp";
 export * from "./model";
