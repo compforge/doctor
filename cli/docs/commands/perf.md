@@ -16,8 +16,8 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
   TypeScript 是两个平级实现，互不作为对方的规范。
 - Doctor Core 使用 TypeScript 实现调度负载、限制请求数、按 dispatch 时间归窗，并写出
   `run.json` / `outcomes.jsonl`。
-- `case.catalog` Extension 提供 spec-case canonical CaseSet；Service `case.runner.create` Extension 提供并发安全的单请求 runner；
-  `perf.scenarios` Extension 返回观测预设，包含关联键优先级和可观测 Service 清单。Case 从共享目录选择，
+- `Service.cases` 的同一来源提供 spec-case canonical CaseSet 和并发安全的单请求 runner；
+  `perf.scenarios` Extension 返回观测预设，显式引用 `cases: { service, source }`，并包含关联键优先级和可观测 Service 清单。Case 从所引用来源的共享目录选择，
   单选时始终执行该 Case，多选时由 Harness 等权随机抽取。Case
   不携带环境、凭据、并发度或权重。
 - CaseSet 用受控 Facet 词表声明 `difficulty`、`task_type` 等分类轴；Case 只选择每个轴上的值。
@@ -35,7 +35,7 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
 
 ## 流程
 
-1. 校验 Plugin 提供 `case.runner.create`、`perf.scenarios` 和 `metric.configuration` Extension；选择 Service 与观测预设，再从 Case 目录选择一个或多个 `facets.command=perf` 的 Case。当前目录的 `doctor-cases.yaml` 也可提供 CaseSet；`--caseset` / `--cases` 支持非交互选择。
+1. 选择提供 `perf.scenarios` 的 Service 与观测预设，解析其引用的 Case 来源，再选择 runner 支持的一个或多个 Case。来源可以属于另一 Service，runner 使用该来源的访问上下文。当前目录的 `doctor-cases.yaml` 也可提供兼容 CaseSet；`--caseset` / `--cases` 支持非交互选择。
 2. 交互运行选择最高并发；按需从 Plugin 声明的目录选择租户，再通过服务端关键词搜索和分页选择用户；
    随后展示并确认并发档位、每档最大请求数、错误率熔断和持久数据影响。非交互运行默认使用
    5、10、15、20 四档，并必须由 Plugin profile 提供身份。

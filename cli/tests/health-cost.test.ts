@@ -1,8 +1,8 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createServiceCatalog, withSummary, type OverviewCostExtension, type OverviewCostResult,
-  type OverviewSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type DurationSummarizeExtension, type DurationSummary,
+  type FacetSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { healthProviders } from "../src/health/extensions";
 import { checkedCost } from "../src/overview/cost";
 import { runHealthSession } from "../src/health/flow";
@@ -12,14 +12,14 @@ import { CommandContext, CommandStatus } from "../src/command";
 import * as targets from "../src/command/kubernetes-target";
 
 const query = { window: { from: "2026-09-30T00:00:00Z", to: "2026-09-30T01:00:00Z" }, maxEntries: 10, maxRecords: 1000 };
-const costResult: OverviewCostResult = { description: "completed startup intervals", entries: [
+const costResult: DurationSummary = { description: "completed startup intervals", entries: [
   { key: "start", label: "<start>", sampleCount: 2, missingCount: 3,
     durationMs: { min: 1, avg: 2, p50: 1, p95: 3, max: 3 } },
   { key: "empty", label: "Empty", sampleCount: 0, missingCount: 5 },
 ] };
-const cost: OverviewCostExtension = { id: "cost", kind: "overview.cost", access: {},
+const cost: DurationSummarizeExtension = { id: "cost", kind: "duration.summarize", access: {},
   run: withSummary({ title: "Costs", fields: [] }, async () => costResult) };
-const summarize: OverviewSummarizeExtension = { id: "summary", kind: "overview.summarize", access: {},
+const summarize: FacetSummarizeExtension = { id: "summary", kind: "facet.summarize", access: {},
   facets: [{ id: "errors", title: "Errors", description: "Errors" }],
   run: withSummary({ title: "Errors", fields: [] }, async () => [{ facetId: "errors", description: "Errors", entries: [] }]) };
 const service = (name: string, extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({

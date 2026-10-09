@@ -67,7 +67,7 @@ async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[]
       summarize: (provider, input) => invoke(provider, provider.summarize!, input),
       sample: (provider, input) => {
         const extension = provider.sample;
-        if (!extension) throw new Error(`${provider.name}: missing overview.sample Extension`);
+        if (!extension) throw new Error(`${provider.name}: missing facet.sample Extension`);
         return invoke(provider, extension, input);
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),

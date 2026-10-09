@@ -2,8 +2,9 @@ import { diagnoseHttpFailure, type HttpFailureDiagnosis } from "../collect/share
 import { caseHash } from "@compforge/spec-case/model";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { caseSseExpectation, type CaseProduceResult, type WorkloadInstance } from "@compforge/doctor-plugin";
-import { inspectCaseSse, type CaseSseResult } from "./case-sse";
+import { caseModelExpectation, caseSseExpectation, type CaseProduceResult, type WorkloadInstance } from "@compforge/doctor-plugin";
+import { inspectCaseSse, type CaseSseResult } from "./sse-check";
+import { inspectCaseModel, type CaseModelResult } from "./model-check";
 import type { SendHttp } from "../infra/http";
 import { HTTP_DEFAULTS } from "../collect/shared/http/config";
 import { captureHttpResponse } from "../collect/shared/http/capture";
@@ -14,6 +15,7 @@ import { PROBE_RUNNABLE } from "../collect/protocol";
 
 export interface CaseAttempt {
   caseId: string;
+  subject?: CaseProduceResult["cases"][number]["subject"];
   caseHash: string;
   description: string;
   entrypoint: string;
@@ -23,6 +25,7 @@ export interface CaseAttempt {
   observation: HttpAttemptObservation;
   findings: HttpFinding[];
   sseCheck?: CaseSseResult;
+  modelCheck?: CaseModelResult;
   failure?: HttpFailureDiagnosis;
 }
 
@@ -111,8 +114,10 @@ export async function checkHttpCase(input: {
     const sseCheck = sseExpectation ? inspectCaseSse(
       caseError(bodyText, secrets), sseExpectation, secrets,
     ) : undefined;
-    const attempt: CaseAttempt = { caseId: item.case.id, caseHash: caseHash(item.case), description: item.case.desc ?? item.case.id, entrypoint: entry.id,
-      target, url: caseError(request.url), status: failure || findings.length || sseCheck?.errors.length ? "failed" : "passed", observation, findings, sseCheck, failure };
+    const modelExpectation = caseModelExpectation(item.case);
+    const modelCheck = modelExpectation ? inspectCaseModel(bodyText, modelExpectation) : undefined;
+    const attempt: CaseAttempt = { caseId: item.case.id, subject: item.subject, caseHash: caseHash(item.case), description: item.case.desc ?? item.case.id, entrypoint: entry.id,
+      target, url: caseError(request.url), status: failure || findings.length || sseCheck?.errors.length || modelCheck?.errors.length ? "failed" : "passed", observation, findings, sseCheck, modelCheck, failure };
     // Raw text evidence is bounded by captureHttpResponse. Keep binary downloads and their original digest.
     for (const file of [observation.response.headersFile, observation.response.errorFile,
       ...(observation.response.contentType?.match(/text|json|xml/) ? [observation.response.bodyFile] : [])]) {

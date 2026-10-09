@@ -1,9 +1,9 @@
-import type { OverviewCostQuery, OverviewCostResult } from "@compforge/doctor-plugin";
+import type { DurationSummaryQuery, DurationSummary } from "@compforge/doctor-plugin";
 
 /** Validate the public aggregate contract; business intervals and statistics remain provider-owned. */
-export function checkedCost(result: OverviewCostResult, query: OverviewCostQuery): OverviewCostResult {
+export function checkedCost(result: DurationSummary, query: DurationSummaryQuery): DurationSummary {
   if (!result || typeof result.description !== "string" || !result.description.trim() || !Array.isArray(result.entries)) {
-    throw new Error("overview.cost requires a description and entries");
+    throw new Error("duration.summarize requires a description and entries");
   }
   const keys = new Set<string>();
   for (const entry of result.entries) {

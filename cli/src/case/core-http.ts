@@ -1,8 +1,7 @@
-import type { CaseCatalogExtension } from "@compforge/doctor-plugin";
-import { CASE_CATALOG_KIND } from "@compforge/doctor-plugin";
+import type { CaseCatalog } from "@compforge/doctor-plugin";
 
-export const httpCaseCatalogExtension: CaseCatalogExtension = {
-  id: "core.http", kind: CASE_CATALOG_KIND,
+export const httpCaseCatalog: CaseCatalog = {
+  id: "core.http",
   load: () => [{
     caseset: "doctor_http", schema_version: 1,
     facets: { command: { values: ["http"] } },

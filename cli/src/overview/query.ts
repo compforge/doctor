@@ -1,23 +1,23 @@
-import type { OverviewCostQuery, OverviewCostResult, OverviewFacetResult, OverviewQuery } from "@compforge/doctor-plugin";
+import type { DurationSummaryQuery, DurationSummary, FacetSummary, FacetSummaryQuery } from "@compforge/doctor-plugin";
 import type { OverviewProvider } from "./extensions";
 import { checkedCost } from "./cost";
 
 export interface OverviewProviderResult {
   namespace: string;
   name: string;
-  facets: readonly OverviewFacetResult[];
+  facets: readonly FacetSummary[];
   error?: string;
-  cost?: OverviewCostResult;
+  cost?: DurationSummary;
   costError?: string;
 }
 
-export interface OverviewQueryActions {
-  summarize(provider: OverviewProvider, query: OverviewQuery): Promise<readonly OverviewFacetResult[]>;
-  cost?(provider: OverviewProvider, query: OverviewCostQuery): Promise<OverviewCostResult>;
+export interface FacetSummaryQueryActions {
+  summarize(provider: OverviewProvider, query: FacetSummaryQuery): Promise<readonly FacetSummary[]>;
+  cost?(provider: OverviewProvider, query: DurationSummaryQuery): Promise<DurationSummary>;
   signal?: AbortSignal;
 }
 
-function checkedFacets(provider: OverviewProvider, results: readonly OverviewFacetResult[], limit: number) {
+function checkedFacets(provider: OverviewProvider, results: readonly FacetSummary[], limit: number) {
   const remaining = new Set(provider.summarize!.facets.map(facet => facet.id));
   const facets = results.map(result => {
     if (!remaining.delete(result.facetId)) throw new Error(`未声明或重复的 Facet: ${result.facetId}`);
@@ -39,7 +39,7 @@ function checkedFacets(provider: OverviewProvider, results: readonly OverviewFac
 
 /** Shared statistics only: callers own probing, sample selection and collection. */
 export async function queryOverview(
-  providers: readonly OverviewProvider[], query: OverviewQuery, actions: OverviewQueryActions,
+  providers: readonly OverviewProvider[], query: FacetSummaryQuery, actions: FacetSummaryQueryActions,
 ): Promise<OverviewProviderResult[]> {
   const results: OverviewProviderResult[] = [];
   // Keep external-resource concurrency bounded across customer environments.
@@ -56,7 +56,7 @@ export async function queryOverview(
     if (provider.cost) {
       actions.signal?.throwIfAborted();
       try {
-        if (!actions.cost) throw new Error("Missing overview.cost executor");
+        if (!actions.cost) throw new Error("Missing duration.summarize executor");
         const costQuery = { ...query, maxRecords: 1000 };
         summary.cost = checkedCost(await actions.cost(provider, costQuery), costQuery);
       } catch (error) { summary.costError = error instanceof Error ? error.message : String(error); }

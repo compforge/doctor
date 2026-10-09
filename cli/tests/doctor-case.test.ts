@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { httpScenarioFromDoctorCases } from "../src/case/http";
 import { createDoctorExtensionRegistry } from "../src/plugin/extension-registry";
-import { createServiceCatalog, withSummary, type CaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type CaseCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 
 test("shared catalog filters one canonical CaseSet by command and selects multiple IDs", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-catalog-"));
@@ -15,7 +15,7 @@ test("shared catalog filters one canonical CaseSet by command and selects multip
     const http = await selectDoctorCases({ catalog, command: "http", caseSetId: "shared", caseIds: "health,ping" });
     expect(http?.cases.map((item) => item.id)).toEqual(["health", "ping"]);
     expect((await selectDoctorCases({ catalog, command: "model", caseSetId: "shared", caseIds: "chat" }))?.cases).toHaveLength(1);
-    expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "shared", caseIds: "load,load_more" }))?.cases.map((item) => item.id)).toEqual(["load", "load_more"]);
+    expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "shared", caseIds: "load,load_more" }))?.cases.map((item) => item.id)).toEqual(["load", "load_more"]);
     expect(() => httpScenarioFromDoctorCases(http!, "http://127.0.0.1:8765")).not.toThrow();
     const scenario = httpScenarioFromDoctorCases(http!, "http://127.0.0.1:8765");
     expect(scenario.requests.map((item) => item.id)).toEqual(["health", "ping"]);
@@ -28,14 +28,26 @@ test("shared catalog filters one canonical CaseSet by command and selects multip
   }
 });
 
-test("external Case requires a command facet", () => {
+test("external Case does not require a command facet", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-invalid-"));
   try {
-    writeFileSync(join(directory, "doctor-cases.yaml"), "caseset: missing_command\ncases:\n  - id: ping\n    input: {path: /ping}\n");
-    expect(() => doctorCaseCatalog(undefined, undefined, directory)).toThrow("facets.command");
+    writeFileSync(join(directory, "doctor-cases.yaml"), "caseset: missing_command\ncases:\n  - id: ping\n    input: {method: GET, path: /ping}\n");
+    expect(doctorCaseCatalog(undefined, undefined, directory).at(-1)?.caseSet.cases[0]?.id).toBe("ping");
+    expect((await selectDoctorCases({ catalog: doctorCaseCatalog(undefined, undefined, directory), command: "http", caseSetId: "missing_command" }))?.cases[0]?.id).toBe("ping");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("canonical Service HTTP Cases retain their declared judgment when explicitly sent", () => {
+  const item = { id: "ping", input: { protocol: "http", method: "GET", path: "/health" },
+    judge: { e2e: { http: { status: [204], contentType: "text/plain" } } } };
+  const selection = { source: { source: "plugin" as const, caseSet: { caseset: "api", cases: [item] } }, cases: [item] };
+  const scenario = httpScenarioFromDoctorCases(selection, "http://api.test");
+  expect(scenario.requests[0]!.entrypoints[0]!.expect).toMatchObject({ status: [204], contentType: "text/plain" });
+  expect(scenario.requests[0]!.entrypoints[0]!.url).toBe("http://api.test/health");
+  expect(() => httpScenarioFromDoctorCases({ ...selection, cases: [{ ...item,
+    judge: { e2e: { ...item.judge.e2e, model: { type: "llm" } } } }] }, "http://api.test")).toThrow("cannot evaluate");
 });
 
 test("catalog does not auto-load the old doctor-case.yaml filename", () => {
@@ -69,26 +81,28 @@ for (const { caseId, role, roles } of [
   });
 }
 
-test("Core and Plugin catalog extensions share discovery; command filtering uses only facets", async () => {
+test("Service assets and local Cases are selected by protocol, not command facets", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-extensions-"));
   try {
-    writeFileSync(join(directory, "doctor-cases.yaml"), `caseset: local_cases\nfacets:\n  command: {values: [http, "eval,perf"]}\ncases:\n  - id: local_ping\n    input: {path: /ping}\n    facets: {command: http}\n  - id: local_chat\n    input: {query: hello}\n    facets: {command: "eval,perf"}\n`);
-    const pluginCases: CaseCatalogExtension = { id: "fixture.cases", kind: "case.catalog", load: () => [{
+    writeFileSync(join(directory, "doctor-cases.yaml"), `caseset: local_cases\nfacets:\n  command: {values: [http, "eval,perf"]}\ncases:\n  - id: local_ping\n    input: {method: GET, path: /ping}\n    facets: {command: http}\n  - id: local_chat\n    input: {query: hello}\n    facets: {command: "eval,perf"}\n`);
+    const pluginCases: CaseCatalog = { id: "fixture.cases", load: () => [{
       caseset: "plugin_cases", facets: { command: { values: ["perf"] } }, cases: [
         { id: "probe", input: { query: "hello" }, facets: { command: "perf" } },
         { id: "unassigned", input: { query: "ignored" } },
       ],
     }] };
     const plugin: PluginDefinition = {
-      id: "fixture", version: "1", services: createServiceCatalog([]),
-      extensions: [pluginCases],
+      id: "fixture", version: "1", services: createServiceCatalog([{
+        name: "app", component: { name: "app", repository: { forge: { name: "test" }, path: "app" } }, workloads: [],
+        cases: [{ id: "chat", load: pluginCases.load }],
+      }]),
     };
     const catalog = doctorCaseCatalog(plugin, undefined, directory);
-    expect(catalog.map((item) => item.caseSet.caseset)).toEqual(["doctor_model", "doctor_http", "local_cases", "plugin_cases"]);
-    expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "plugin_cases" }))?.cases.map((item) => item.id)).toEqual(["probe"]);
+    expect(catalog.map((item) => item.caseSet.caseset)).toEqual(["doctor_model", "doctor_http", "plugin_cases", "local_cases"]);
+    expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "plugin_cases" }))?.cases.map((item) => item.id)).toEqual(["probe"]);
     expect((await selectDoctorCases({ catalog, command: "http", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_ping"]);
-    expect((await selectDoctorCases({ catalog, command: "perf", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
-    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
+    expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
+    expect((await selectDoctorCases({ catalog, command: "eval", supports: item => typeof item.input.query === "string", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -103,24 +117,24 @@ test("host registry discovers kinds across Core, Plugin, Service and local names
     }]),
   };
   const registry = createDoctorExtensionRegistry(plugin, [{ id: "local.custom", kind: "custom" }]);
-  expect(registry.extensions("case.catalog").map((item) => item.namespace)).toEqual(["core", "core"]);
+  expect(registry.extensions("case.catalog")).toEqual([]);
   expect(registry.extensions("custom").map((item) => item.namespace)).toEqual(["local", "plugin/fixture", "plugin/fixture/service/chat"]);
 });
 
 test("host assigns distinct namespaces to product and Service implementations with the same id", () => {
-  const extension = { id: "errors", kind: "overview.summarize", access: {}, run: withSummary({ title: "Errors", fields: [] }, async () => []) };
+  const extension = { id: "errors", kind: "facet.summarize", access: {}, run: withSummary({ title: "Errors", fields: [] }, async () => []) };
   const plugin: PluginDefinition = { id: "fixture", version: "1", extensions: [extension], services: createServiceCatalog([{
     name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
     workloads: [], extensions: [extension],
   }]) };
   const registry = createDoctorExtensionRegistry(plugin);
-  expect(registry.extensions("overview.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", origin: "plugin", extension }]);
-  expect(registry.extensions("overview.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", origin: "plugin", extension, service: plugin.services.find("api") }]);
-  expect(plugin.services.extensions("overview.summarize")[0]?.service.name).toBe("api");
+  expect(registry.extensions("facet.summarize", "plugin/fixture")).toEqual([{ namespace: "plugin/fixture", origin: "plugin", extension }]);
+  expect(registry.extensions("facet.summarize", "plugin/fixture/service/api")).toEqual([{ namespace: "plugin/fixture/service/api", origin: "plugin", extension, service: plugin.services.find("api") }]);
+  expect(plugin.services.extensions("facet.summarize")[0]?.service.name).toBe("api");
   expect(() => createDoctorExtensionRegistry({ ...plugin, id: "fixture/service/injected" })).toThrow("namespace");
 });
 
-test("Case catalog retains Service provenance from the qualified namespace", () => {
+test("Case catalog retains its owning Service and source identity", () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-service-catalog-"));
   try {
     const extension = { id: "cases", kind: "case.catalog" as const, namespace: "plugin/fixture",
@@ -131,10 +145,10 @@ test("Case catalog retains Service provenance from the qualified namespace", () 
     };
     const plugin: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
       name: "api", component: { name: "api", repository: { forge: { name: "fixture" }, path: "fixture/api" } },
-      workloads: [], extensions: [extension],
+      workloads: [], cases: [{ id: "cases", load: extension.load }],
     }]) };
     expect(doctorCaseCatalog(plugin, undefined, directory).find(item => item.caseSet.caseset === "service_cases"))
-      .toMatchObject({ source: "plugin", service: "api" });
+      .toMatchObject({ source: "plugin", service: "api", sourceId: "cases" });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

@@ -5,6 +5,7 @@ import {
 } from "@compforge/doctor-plugin";
 import pluginPackage from "../package.json" with { type: "json" };
 import { exampleErrors } from "./errors";
+import { apiCases, workerHealthCases } from "./cases";
 
 const services = createServiceCatalog([
   {
@@ -18,10 +19,12 @@ const services = createServiceCatalog([
       buildTool: "tsc",
     },
     configurationInspection: true,
+    cases: [apiCases],
     logs: { default: true }
   },
   {
     name: "example-worker",
+    extensions: [workerHealthCases],
     component: { name: "example-worker", repository: { forge: { name: "github" }, path: "compforge/doctor" } },
     workloads: [kubernetesServiceWorkload("example-worker")],
     toolchain: {

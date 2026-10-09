@@ -6,6 +6,7 @@ import { createHostPluginContext } from "../src/plugin/context";
 import { loadPerfScenarios, selectPerfProvider } from "../src/perf/extensions";
 const scenario: ServicePerfScenario = {
   id: "chat", title: "Chat", description: "Chat load",
+  cases: { service: "app", source: "chat" },
   observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const createRunner = mock(async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) }));
@@ -14,10 +15,10 @@ const service: ServiceDefinition = {
   aliases: ["chat"],
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: [],
-  extensions: [caseExtension({
+  cases: [{ id: "chat", load: () => [], runner: caseExtension({
     endpoint: { host: "app", port: 8080 }, access: {},
     createRunner
-  })]
+  }) }]
 };
 const extension: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: withSummary({"title":"性能场景","fields":[{"label":"场景数","path":["length"]}]}, async () => [scenario]) };
 const providerFor = (item = extension) => selectPerfProvider(createServiceCatalog([{ ...service, extensions: [...(service.extensions ?? []), item] }]), "chat");
@@ -38,14 +39,14 @@ test("native Perf selection supports aliases and stays offline until the authori
   expect(createRunner).not.toHaveBeenCalled();
 });
 
-test("Perf requires one implementation and an associated Case capability", () => {
+test("Perf selects its workflow independently of the scenario's Case owner", () => {
   const duplicate = createServiceCatalog([{ ...service, extensions: [extension, { ...extension, id: "second" }] }]);
   expect(() => selectPerfProvider(duplicate, "app")).toThrow("Ambiguous");
   const missing = createServiceCatalog([{
     ...service,
-    extensions: [extension]
+    cases: [], extensions: [extension]
   }]);
-  expect(() => selectPerfProvider(missing, "app")).toThrow("case.runner.create");
+  expect(selectPerfProvider(missing, "app").service.name).toBe("app");
   expect(() => selectPerfProvider(missing, "unknown")).toThrow("No perf.scenarios");
 });
 

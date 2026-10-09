@@ -12,7 +12,7 @@ test("Core and Plugin register through one kind-indexed extension registry", () 
 
 test("namespace filters never inherit, merge or override a parent or sibling", () => {
   const registry = new ExtensionRegistry();
-  const extension = { id: "errors", kind: "overview.summarize" };
+  const extension = { id: "errors", kind: "facet.summarize" };
   const namespaces = ["core", "local", "plugin/example", "plugin/example/service/api", "plugin/other/service/api"];
   for (const namespace of namespaces) registry.register(namespace, [extension]);
   expect(registry.extensions(extension.kind).map(item => item.namespace)).toEqual(namespaces);
@@ -20,7 +20,7 @@ test("namespace filters never inherit, merge or override a parent or sibling", (
   expect(registry.extensions(extension.kind, "plugin/example/service/api")).toEqual([{ namespace: "plugin/example/service/api", extension }]);
   expect(registry.extensions(extension.kind, "plugin/missing")).toEqual([]);
   expect(registry.extensions("other.kind", "plugin/example")).toEqual([]);
-  expect(() => registry.register("plugin/example", [{ ...extension, kind: "overview.sample" }])).toThrow("duplicate");
+  expect(() => registry.register("plugin/example", [{ ...extension, kind: "facet.sample" }])).toThrow("duplicate");
 });
 
 test("namespace syntax is validated on registration and discovery without normalization", () => {
@@ -28,21 +28,21 @@ test("namespace syntax is validated on registration and discovery without normal
   for (const namespace of ["", " ", "/core", "core/", "plugin//api", "plugin/../api", "plugin/./api", "plugin:api", "plugin/my app", " core", "core\n"]) {
     expect(() => validateExtensionNamespace(namespace)).toThrow();
     expect(() => registry.register(namespace, [])).toThrow();
-    expect(() => registry.extensions("overview.summarize", namespace)).toThrow();
+    expect(() => registry.extensions("facet.summarize", namespace)).toThrow();
   }
   expect(extensionNamespace("plugin", "Example_v1.2", "service", "api-server")).toBe("plugin/Example_v1.2/service/api-server");
   expect(() => extensionNamespace()).toThrow();
   expect(() => extensionNamespace("plugin", "example/service/api")).toThrow();
   expect(() => extensionNamespace("plugin", "")).toThrow();
-  registry.register("plugin/Example", [{ id: "errors", kind: "overview.summarize" }]);
-  expect(registry.extensions("overview.summarize", "plugin/example")).toEqual([]);
+  registry.register("plugin/Example", [{ id: "errors", kind: "facet.summarize" }]);
+  expect(registry.extensions("facet.summarize", "plugin/example")).toEqual([]);
 });
 
 
 test("an Extension declares its scope independently of the registration default", () => {
   const registry = new ExtensionRegistry();
-  const product = { id: "errors", kind: "overview.summarize", namespace: "plugin/example" };
-  const local = { id: "errors", kind: "overview.summarize" };
+  const product = { id: "errors", kind: "facet.summarize", namespace: "plugin/example" };
+  const local = { id: "errors", kind: "facet.summarize" };
   const registered = registry.register("plugin/example/service/api", [product, local]);
   expect(registered.map(item => item.namespace)).toEqual(["plugin/example", "plugin/example/service/api"]);
   expect(registry.extensions(product.kind, "plugin/example")).toEqual([{ namespace: "plugin/example", extension: product }]);

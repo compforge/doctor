@@ -1,9 +1,9 @@
-import { CASE_CONSUME_KIND, requireCaseConsumeExtension, type CaseConsumeExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 import { overviewScopes, overviewStatistics, type OverviewProvider } from "../overview/extensions";
 
 export interface HealthProvider extends OverviewProvider {
-  consumers: readonly CaseConsumeExtension[];
+  consumers: readonly HealthCaseBindingsExtension[];
   caseService?: ServiceDefinition;
 }
 
@@ -14,12 +14,12 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
   const scopes = !serviceNames && !names.length ? [] : overviewScopes(plugin, names);
   const providers = scopes.flatMap(scope => {
     const statistics = overviewStatistics(registry, scope);
-    const consumers = scope.service ? registry.extensions(CASE_CONSUME_KIND, scope.namespace).map(entry => {
-      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: case.consume must belong to the selected Service`);
-      return requireCaseConsumeExtension(entry.extension);
+    const consumers = scope.service ? registry.extensions(HEALTH_CASE_BINDINGS_KIND, scope.namespace).map(entry => {
+      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: health.case.bindings must belong to the selected Service`);
+      return requireHealthCaseBindingsExtension(entry.extension);
     }) : [];
     if (!statistics && !consumers.length) {
-      if (serviceNames) throw new Error(`${scope.namespace}: 未声明 overview.summarize、overview.cost 或 case.consume Extension`);
+      if (serviceNames) throw new Error(`${scope.namespace}: 未声明 facet.summarize、duration.summarize 或 health.case.bindings Extension`);
       return [];
     }
     return [{ ...(statistics ?? { namespace: scope.namespace, name: scope.name, service: scope.service! }),

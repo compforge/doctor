@@ -1,5 +1,6 @@
 import type { Extension, RegisteredExtension } from "./index";
 import type { ServicePerfScenario } from "../service";
+import { validateCaseRef } from "../cases";
 
 export const PERF_SCENARIOS_KIND = "perf.scenarios";
 
@@ -24,6 +25,7 @@ export function perfScenariosOutput(value: unknown): readonly ServicePerfScenari
       throw new Error("perf.scenarios returned an invalid or duplicate scenario");
     }
     ids.add(scenario.id);
+    validateCaseRef(scenario.cases);
     const observations = scenario.observability;
     if (!observations || [observations.metricServices, observations.logServices, observations.correlationKeys]
       .some(items => !Array.isArray(items) || !items.length || !items.every(text))) {

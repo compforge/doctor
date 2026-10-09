@@ -1,13 +1,12 @@
 import { isInteractive } from "../../terminal/policy";
-import type { ModelType } from "@compforge/doctor-plugin";
+import { modelConnectivityCases, type ModelType } from "@compforge/doctor-plugin";
 import type { SelectedInferenceModel } from "../../model";
 import { promptListedChoice } from "../../terminal/selection";
 import type { ModelOutputFormat, ModelTestRequest } from "./model";
 
 const MODEL_TYPES: readonly ModelType[] = ["llm", "embedding", "rerank", "audio"];
 const MODEL_PERFORMANCE_CASES = 4;
-export const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
-  + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";
+export { MODEL_IMAGE_TEST_DATA_URL } from "@compforge/doctor-plugin";
 
 export function parseModelOutputFormat(value: string | undefined): ModelOutputFormat {
   const format = value?.trim() || "default";
@@ -79,44 +78,9 @@ export async function resolveModelPerformanceEnabled(input: {
 }
 
 export function buildModelTestRequest(model: SelectedInferenceModel): ModelTestRequest {
-  const id = model.inference.model;
-  if (model.type === "llm") {
-    return {
-      path: "/chat/completions",
-      body: {
-        model: id,
-        messages: [{
-          role: "user",
-          content: model.inputModalities?.includes("image")
-            ? [{
-                type: "text",
-                text: "What color is the square in this image? Reply with the color only.",
-              }, {
-                type: "image_url",
-                image_url: { url: MODEL_IMAGE_TEST_DATA_URL },
-              }]
-            : "Reply with OK only.",
-        }],
-        stream: false,
-      },
-    };
-  }
-  if (model.type === "embedding") {
-    return {
-      path: "/embeddings",
-      body: { model: id, input: "doctor model connectivity test" },
-    };
-  }
-  if (model.type === "rerank") {
-    return {
-      path: "/rerank",
-      body: {
-        model: id,
-        query: "doctor model connectivity test",
-        documents: ["doctor model connectivity test", "unrelated document"],
-        top_n: 1,
-      },
-    };
-  }
-  throw new Error("doctor model 暂不支持 audio inference");
+  const id = model.type === "llm" && model.inputModalities?.includes("image") ? "llm_image" : `${model.type}_connectivity`;
+  const item = modelConnectivityCases(model).find(item => item.id === id);
+  if (!item) throw new Error("doctor model 暂不支持 audio inference");
+  return { path: item.input.path as string,
+    body: { ...(item.input.body as Record<string, unknown>), model: model.inference.model } };
 }

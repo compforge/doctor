@@ -1,6 +1,7 @@
 import { caseRunnerProvider } from "../case/extensions";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { EvalCliOpts, EvalConfig } from "./model";
+import type { Case } from "@compforge/spec-case/model";
 
 export type EvalProvider = ReturnType<typeof caseRunnerProvider>;
 
@@ -40,6 +41,8 @@ export function resolveEvalConfig(opts: EvalCliOpts, now = new Date()): EvalConf
 export function selectEvalProvider(
   plugin: PluginDefinition,
   requested: string | undefined,
+  sourceId?: string,
+  cases?: readonly Case[],
 ): EvalProvider {
-  return caseRunnerProvider(plugin.services, requested);
+  return caseRunnerProvider(plugin.services, requested, sourceId, cases);
 }

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
   type CaseProduceExtension, type ServiceRequestIdentity, type TenantDirectory } from "@compforge/doctor-plugin";
 import { CommandContext } from "../src/command";
-import { resolveHealthCaseIdentity } from "../src/health/identity";
+import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../src/case/prepare-identity";
 import { prepareServiceCases } from "../src/health/case-prepare";
 import { checkServiceCases } from "../src/health/cases";
 import { resolveTenant } from "../src/terminal/tenant";
@@ -19,6 +19,33 @@ const unavailableDirectory: TenantDirectory = {
   listActive: async () => { throw new Error("unexpected tenant lookup"); },
   getByName: async () => { throw new Error("unexpected tenant lookup"); },
 };
+
+test("tenant-only probes share tenant selection with Agent probes without requesting a user", async () => {
+  const context = new CommandContext({});
+  const tenantProducer = { ...producer, requestIdentity: undefined, requestTenant: { configured: () => undefined } };
+  let tenantPrompts = 0, userPrompts = 0;
+  const directory = { ...unavailableDirectory, listActive: async () => [tenant],
+    searchActiveUsers: async () => ({ users: [user], total: 1 }) };
+  const selection = { interactive: true, promptTenant: async () => { tenantPrompts++; return tenant; },
+    promptUser: async () => { userPrompts++; return user; } };
+  try {
+    expect(await resolveCaseProducerTenant(context, tenantProducer, {}, directory, selection)).toBe(tenant.id);
+    expect([tenantPrompts, userPrompts]).toEqual([1, 0]);
+    expect(await resolveCaseProducerIdentity(context, producer, {}, directory, selection)).toEqual({ tenantId: tenant.id, userId: user.id });
+    expect([tenantPrompts, userPrompts]).toEqual([1, 1]);
+  } finally { await context.disposeClients(); }
+});
+
+test("tenant-only probes honor CLI/config and never fabricate a tenant in noninteractive mode", async () => {
+  const context = new CommandContext({});
+  const configured = { ...producer, requestIdentity: undefined, requestTenant: { configured: () => tenant.id } };
+  try {
+    expect(await resolveCaseProducerTenant(context, configured, {}, unavailableDirectory, { interactive: false })).toBe(tenant.id);
+    expect(await resolveCaseProducerTenant(context, configured, { tenantId: "override" }, unavailableDirectory, { interactive: false })).toBe("override");
+    await expect(resolveCaseProducerTenant(context, { ...configured, requestTenant: { configured: () => undefined } }, {}, unavailableDirectory, { interactive: false }))
+      .rejects.toThrow("--tenant-id");
+  } finally { await context.disposeClients(); }
+});
 
 test("Health fills one identity for multiple producers, with tenant-scoped user search", async () => {
   const context = new CommandContext({});
@@ -39,8 +66,8 @@ test("Health fills one identity for multiple producers, with tenant-scoped user 
       (await search({ page: 1, pageSize: 10 })).users[0],
   };
   try {
-    const first = resolveHealthCaseIdentity(context, producer, {}, directory, selection);
-    const second = resolveHealthCaseIdentity(context, { ...producer, id: "another" }, {}, directory, selection);
+    const first = resolveCaseProducerIdentity(context, producer, {}, directory, selection);
+    const second = resolveCaseProducerIdentity(context, { ...producer, id: "another" }, {}, directory, selection);
     expect(await first).toEqual({ tenantId: tenant.id, userId: user.id });
     expect(await second).toEqual(await first);
     expect([tenants, users]).toEqual([1, 1]);
@@ -52,11 +79,11 @@ test("configured identities skip interaction; CLI tenant changes never reuse ano
   const declared = { ...producer, requestIdentity: { configured: () => ({ tenantId: tenant.id, userId: user.id }) } };
   const context = new CommandContext({});
   try {
-    expect(await resolveHealthCaseIdentity(context, declared, {}, unavailableDirectory, { interactive: false }))
+    expect(await resolveCaseProducerIdentity(context, declared, {}, unavailableDirectory, { interactive: false }))
       .toEqual({ tenantId: tenant.id, userId: user.id });
-    await expect(resolveHealthCaseIdentity(context, declared, { tenantId: "tenant-b" }, unavailableDirectory, { interactive: false }))
+    await expect(resolveCaseProducerIdentity(context, declared, { tenantId: "tenant-b" }, unavailableDirectory, { interactive: false }))
       .rejects.toThrow("未执行 Case");
-    expect(await resolveHealthCaseIdentity(context, declared, { tenantId: "tenant-b", userId: "user-b" }, unavailableDirectory, { interactive: false }))
+    expect(await resolveCaseProducerIdentity(context, declared, { tenantId: "tenant-b", userId: "user-b" }, unavailableDirectory, { interactive: false }))
       .toEqual({ tenantId: "tenant-b", userId: "user-b" });
   } finally { await context.disposeClients(); }
 });
@@ -65,7 +92,7 @@ test("-y never fabricates an identity or opens an interactive selector", async (
   const context = new CommandContext({});
   try {
     await expect(withInteractionOptions({ yes: true }, () =>
-      resolveHealthCaseIdentity(context, producer, {}, unavailableDirectory, { interactive: true })))
+      resolveCaseProducerIdentity(context, producer, {}, unavailableDirectory, { interactive: true })))
       .rejects.toThrow("--tenant-id / --user-id");
   } finally { await context.disposeClients(); }
 });
@@ -75,13 +102,13 @@ test("identity cancellation is shared without poisoning a different tenant's sel
   let prompts = 0;
   try {
     for (const id of ["one", "two"]) {
-      expect(await resolveHealthCaseIdentity(context, { ...producer, id }, {}, {
+      expect(await resolveCaseProducerIdentity(context, { ...producer, id }, {}, {
         ...unavailableDirectory, listActive: async () => [tenant],
       }, { interactive: true, promptTenant: async () => { prompts++; return undefined; } })).toBeUndefined();
     }
     expect(prompts).toBe(1);
     expect(context.signal.aborted).toBe(false);
-    expect(await resolveHealthCaseIdentity(context, producer, { tenantId: "tenant-b" }, {
+    expect(await resolveCaseProducerIdentity(context, producer, { tenantId: "tenant-b" }, {
       ...unavailableDirectory, searchActiveUsers: async () => ({ users: [user], total: 1 }),
     }, {
       interactive: true, promptUser: async () => user,
@@ -102,11 +129,11 @@ test("shared tenant decisions distinguish explicit parameters and Case identity 
 
 test("prepare binds identities without target access; run preserves fresh production per replica", async () => {
   const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
-  const binding = { id: "hello", workload: "main", producer: { namespace: "plugin/test/service/source", extension: "hello" } };
-  const consume = { id: "requests", kind: "case.consume" as const, access: {},
+  const binding = { id: "hello", workload: "main", producer: { service: "source", source: "hello" } };
+  const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
-  const source = { name: "source", component, workloads: [], extensions: [producer] };
+  const source = { name: "source", component, workloads: [], cases: [{ id: producer.id, load: () => [], produce: producer }] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, source]) };
   const signal = new AbortController().signal;
   const identity: ServiceRequestIdentity = { tenantId: tenant.id, userId: user.id };
@@ -137,12 +164,12 @@ test("prepare binds identities without target access; run preserves fresh produc
 test("missing or cancelled identity is a binding-level gap and does not block identity-free producers", async () => {
   const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
   const plain = { ...producer, id: "plain", requestIdentity: undefined };
-  const binding = (id: string) => ({ id, workload: "main", producer: { namespace: "plugin/test/service/source", extension: id } });
-  const consume = { id: "requests", kind: "case.consume" as const, access: {},
+  const binding = (id: string) => ({ id, workload: "main", producer: { service: "source", source: id } });
+  const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer,
-    { name: "source", component, workloads: [], extensions: [producer, plain] }]) };
+    { name: "source", component, workloads: [], cases: [producer, plain].map(produce => ({ id: produce.id, load: () => [], produce })) }]) };
   for (const cancelled of [false, true]) {
     const prepared = await prepareServiceCases(plugin, consumer, [consume], undefined, {
       signal: new AbortController().signal,
@@ -151,6 +178,6 @@ test("missing or cancelled identity is a binding-level gap and does not block id
     });
     expect(prepared[0]?.execution).toBeUndefined();
     expect(prepared[0]?.result).toMatchObject({ stage: "identity", status: cancelled ? "cancelled" : "unavailable", targets: [], attempts: [] });
-    expect(prepared[1]?.execution?.producer).toBe(plain);
+    expect(prepared[1]?.execution?.producer.run).toBe(plain.run);
   }
 });

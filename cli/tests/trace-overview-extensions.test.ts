@@ -3,7 +3,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import {
   createServiceCatalog, type ServiceDefinition, type TraceResolveExtension, type PluginContext,
-  type OverviewSummarizeExtension, type OverviewSampleExtension
+  type FacetSummarizeExtension, type FacetSampleExtension
 } from "@compforge/doctor-plugin";
 import { resolvePluginTraceIds } from "../src/plugin/trace-id";
 import { overviewProviders } from "../src/overview/extensions";
@@ -20,11 +20,11 @@ const trace = (run: DataRun<TraceResolveExtension>): TraceResolveExtension => ({
   id: "trace", kind: "trace.resolve", endpoint: { host: "test", port: 80 }, access: {}, run: withSummary({ title: "Fixture", fields: [] }, run),
 });
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
-const summarize: OverviewSummarizeExtension = {
-  id: "summary", kind: "overview.summarize", access: {}, facets: [facet], run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, async () => []),
+const summarize: FacetSummarizeExtension = {
+  id: "summary", kind: "facet.summarize", access: {}, facets: [facet], run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, async () => []),
 };
-const sample: OverviewSampleExtension = {
-  id: "sample", kind: "overview.sample", access: {
+const sample: FacetSampleExtension = {
+  id: "sample", kind: "facet.sample", access: {
     kubernetes: [{
       requirement: "required",
       purpose: "sample", rule: { verb: "get", resource: "configmaps" }
@@ -60,6 +60,6 @@ test("overview discovers native operations without invoking them or combining th
 test("overview requires sampling and rejects ambiguous producers", () => {
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])).toThrow("doctor health");
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]) }, ["chat"])).toThrow("ambiguous");
-  const invalid: OverviewSummarizeExtension = { ...summarize, facets: [facet, facet] };
+  const invalid: FacetSummarizeExtension = { ...summarize, facets: [facet, facet] };
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [invalid])]) }, ["chat"])).toThrow("duplicate");
 });

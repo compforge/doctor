@@ -1,5 +1,5 @@
 import { overviewExtensions } from "../../packages/plugin/tests/extension-fixture";
-import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResult, type OverviewQuery } from "@compforge/doctor-plugin";
+import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type FacetSummary, type FacetSummaryQuery } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { CommandStatus, commandOutcome } from "../src/command";
 import { allocateOverviewSamples, runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
@@ -8,7 +8,7 @@ import type { promptListedChoice } from "../src/terminal/selection";
 import { overviewProviders } from "../src/overview/extensions";
 
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
-const query: OverviewQuery = {
+const query: FacetSummaryQuery = {
   window: overviewWindow("1h", new Date("2026-09-09T10:00:00Z")), tenantId: "tenant-1", maxEntries: 2,
 };
 function provider(name: string) {
@@ -22,7 +22,7 @@ function provider(name: string) {
   };
   return { ...service, ...overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service]) }, [service.name])[0]! };
 }
-const summary: OverviewFacetResult[] = [{
+const summary: FacetSummary[] = [{
   facetId: "errors", description: "created_at", entries: [
     { key: "E1", label: "E1", data: 8, unit: "requests", canSample: true },
     { key: "E2", label: "E2", data: "upstream unavailable", canSample: true },
@@ -148,7 +148,7 @@ test("overview capability validates static facet identity before accessing the t
   };
   expect(validatePluginDefinition(valid, manifest).services.find("api")).toBeDefined();
   const invalid = provider("bad");
-  invalid.extensions = invalid.extensions.map(extension => extension.kind === "overview.summarize" ? { ...extension, facets: [facet, facet] } : extension);
+  invalid.extensions = invalid.extensions.map(extension => extension.kind === "facet.summarize" ? { ...extension, facets: [facet, facet] } : extension);
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([invalid]) }, [invalid.name]))
     .toThrow("duplicate");
 });

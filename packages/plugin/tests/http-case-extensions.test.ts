@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateCaseBindings, validateCaseConsumeResult, validateExtension, withSummary, type CaseConsumeExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
+import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseBindingsExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
 
 test("Case producers declare optional identity requirements before execution", () => {
   const extension = { id: "probe", kind: "case.produce", access: {},
@@ -10,6 +10,19 @@ test("Case producers declare optional identity requirements before execution", (
   for (const requestIdentity of [null, true, {}, { configured: "invalid" }]) {
     const invalid = { ...extension, requestIdentity };
     expect(() => requireCaseProduceExtension(invalid)).toThrow("requestIdentity");
+  }
+});
+
+test("tenant-only producers do not declare model IDs or require user identity", () => {
+  const extension = { id: "models", kind: "case.produce", access: {},
+    run: withSummary({ title: "Models", fields: [] }, async () => ({ cases: [], reason: "fixture" })) };
+  const declared = { ...extension, requestTenant: { configured: () => "tenant" } };
+  expect(() => requireCaseProduceExtension(declared)).not.toThrow();
+  const conflicting = { ...declared, requestIdentity: { configured: () => ({}) } };
+  expect(() => requireCaseProduceExtension(conflicting)).toThrow("either");
+  for (const requestTenant of [null, true, {}, { configured: "invalid" }]) {
+    const invalid = { ...extension, requestTenant };
+    expect(() => requireCaseProduceExtension(invalid)).toThrow("requestTenant");
   }
 });
 
@@ -30,20 +43,20 @@ test("runtime Cases retain signed URLs in memory and reject invalid contracts be
 });
 
 test("binding references exact provider identity and a consumer Workload", () => {
-  const binding = { id: "download", workload: "main", producer: { namespace: "plugin/test/service/kb", extension: "files" } };
-  expect(() => validateCaseBindings([binding])).not.toThrow();
-  expect(() => validateCaseBindings([binding, binding])).toThrow("Duplicate");
+  const binding = { id: "download", workload: "main", producer: { service: "kb", source: "files" } };
+  expect(() => validateHealthCaseBindings([binding])).not.toThrow();
+  expect(() => validateHealthCaseBindings([binding, binding])).toThrow("Duplicate");
 });
 
-test("case.consume is an ordinary executable Extension returning relationship data", async () => {
-  const extension: CaseConsumeExtension = { id: "downloads", kind: "case.consume", access: {},
+test("health.case.bindings is an ordinary executable Extension returning relationship data", async () => {
+  const extension: HealthCaseBindingsExtension = { id: "downloads", kind: "health.case.bindings", access: {},
     run: withSummary({ title: "Downloads", fields: [] }, async (_context, query) => ({ bindings: query.tenantId ? [{
-      id: "file", workload: "main", producer: { namespace: "plugin/test/service/files", extension: "downloads" },
+      id: "file", workload: "main", producer: { service: "files", source: "downloads" },
     }] : [] })) };
   expect(() => validateExtension(extension)).not.toThrow();
   expect(() => validateExtension({ ...extension, run: undefined })).toThrow("run");
-  expect(() => validateCaseConsumeResult({ bindings: [] })).not.toThrow();
-  expect(() => validateCaseConsumeResult({} as never)).toThrow("array");
+  expect(() => validateHealthCaseBindingsResult({ bindings: [] })).not.toThrow();
+  expect(() => validateHealthCaseBindingsResult({} as never)).toThrow("array");
 });
 
 test("produced Cases explicitly select a supported protocol independently of the URL scheme", () => {
@@ -81,4 +94,15 @@ test("SSE expectations are validated before execution", () => {
       http: { status: [200], contentType: "text/event-stream" }, sse,
     } } } }] }, 1)).toThrow();
   }
+});
+
+test("model response expectations are validated before execution", () => {
+  for (const model of [null, {}, { type: "audio" }, { type: "llm", unexpected: true }]) {
+    expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, judge: { e2e: {
+      http: { status: [200], contentType: "application/json" }, model,
+    } } } }] }, 1)).toThrow("model expectation");
+  }
+  expect(() => validateCaseProduceResult({ cases: [{ ...item, case: { ...item.case, judge: { e2e: {
+    http: { status: [200] }, model: { type: "llm" },
+  } } } }] }, 1)).toThrow("application/json");
 });

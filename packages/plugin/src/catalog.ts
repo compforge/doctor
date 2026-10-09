@@ -1,5 +1,6 @@
 import { validateExtension, type RegisteredExtension } from "./extension";
 import type { ServiceDefinition } from "./service";
+import { validateCaseSource, validateCaseRef, type ServiceCaseRef } from "./cases";
 
 /** 只负责 Service 身份和通用 capability 查询；具体 capability 语义由其消费方拥有。 */
 export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
@@ -24,6 +25,9 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       if (service.extensions !== undefined && !Array.isArray(service.extensions)) throw new Error(`${service.name}.extensions must be an array`);
       const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
+        if (["case.catalog", "case.produce", "case.runner.create", "case.consume"].includes(extension.kind)) {
+          throw new Error(`${service.name}: ${extension.kind} is not a Service Extension; use Service.cases and health.case.bindings`);
+        }
         validateExtension(extension);
         // The host resolves omitted namespaces once the Plugin identity is known.
         const key = JSON.stringify([extension.namespace ?? null, extension.id]);
@@ -31,6 +35,13 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         extensionIds.add(key);
       }
       const workloads = service.workloads.map((workload) => workload.name);
+      if (service.cases !== undefined && !Array.isArray(service.cases)) throw new Error(`${service.name}.cases must be an array`);
+      const sources = new Set<string>();
+      for (const source of service.cases ?? []) {
+        validateCaseSource(source);
+        if (sources.has(source.id)) throw new Error(`${service.name}: duplicate Case source '${source.id}'`);
+        sources.add(source.id);
+      }
       for (const source of service.dataSources ?? []) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
           throw new Error(`${service.name}/${source.id}: source 与 environment 配置映射必须且只能声明一个`);
@@ -53,6 +64,18 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   find(name: string): T | undefined {
     return this.identities.get(name);
+  }
+
+  caseSources() {
+    return this.services.flatMap(service => (service.cases ?? []).map(source => ({ service, source })));
+  }
+
+  caseSource(ref: ServiceCaseRef) {
+    validateCaseRef(ref);
+    const service = this.find(ref.service);
+    const source = service?.cases?.find(source => source.id === ref.source);
+    if (!service || !source) throw new Error(`Missing Service Case source: ${ref.service}/${ref.source}`);
+    return { service, source };
   }
 
   /** Resolve input synonyms and deduplicate by canonical identity before scheduling or recording evidence. */

@@ -2,8 +2,6 @@ import {
   ExtensionRegistry, extensionNamespace, type ExtensionRegistration, type PluginDefinition,
   type RegisteredProvider, type ServiceDefinition,
 } from "@compforge/doctor-plugin";
-import { modelCaseCatalogExtension } from "../collect/model/cases";
-import { httpCaseCatalogExtension } from "../case/core-http";
 
 export interface DoctorExtensionProvider extends RegisteredProvider {
   readonly origin: "core" | "plugin" | "local";
@@ -21,10 +19,12 @@ export function createDoctorExtensionRegistry(
   const register = (namespace: string, extensions: readonly ExtensionRegistration[],
     origin: DoctorExtensionProvider["origin"], service?: ServiceDefinition) => {
     for (const provider of registry.register(namespace, extensions)) {
+      if (["case.catalog", "case.produce", "case.runner.create", "case.consume"].includes(provider.extension.kind)) {
+        throw new Error(`${provider.extension.kind}: contribute Cases through Service.cases`);
+      }
       bindings.set(provider, service ? { origin, service } : { origin });
     }
   };
-  register("core", [modelCaseCatalogExtension, httpCaseCatalogExtension], "core");
   register("local", local, "local");
   if (plugin) {
     register(extensionNamespace("plugin", plugin.id), plugin.extensions ?? [], "plugin");

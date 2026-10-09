@@ -1,7 +1,7 @@
 import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
-  type CaseCatalogExtension,
+  type CaseCatalog,
   type PluginDefinition,
   type ServiceCaseRunner,
 } from "@compforge/doctor-plugin";
@@ -42,26 +42,25 @@ const CASE_SET: CaseSet = {
 };
 
 function testPlugin(): PluginDefinition {
-  const catalog: CaseCatalogExtension = { id: "test.cases", kind: "case.catalog", load: () => [{
+  const catalog: CaseCatalog = { id: "test.cases", load: () => [{
     ...CASE_SET, facets: { ...CASE_SET.facets, command: { values: ["eval"] } },
     cases: CASE_SET.cases.map((item) => ({ ...item, facets: { ...item.facets, command: "eval" } })),
   }] };
   return {
     id: "test",
     version: "0.0.1",
-    extensions: [catalog],
     services: createServiceCatalog([{
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
-      extensions: [caseExtension({
+      cases: [{ id: "chat", load: catalog.load, runner: caseExtension({
         endpoint: { host: "test-service", port: 8080 },
         access: {},
         createRunner: async () => ({
           run: async () => ({ status: 200, durationMs: 10 }),
           classify: () => ({ ok: true }),
         }),
-      })]
+      }) }]
     }]),
   };
 }
@@ -82,11 +81,11 @@ test("eval config selects one canonical CaseSet and an optional Case subset", as
     const plugin = testPlugin();
     expect(selectEvalProvider(plugin, undefined).service.name).toBe("chat");
     const catalog = doctorCaseCatalog(plugin, undefined, directory);
-    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat" }))?.cases.map((item) => item.id))
+    expect((await selectDoctorCases({ catalog, command: "eval", supports: item => typeof item.input.query === "string", caseSetId: "ordinary-chat" }))?.cases.map((item) => item.id))
       .toEqual(["hello", "reason"]);
-    expect((await selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat", caseIds: "reason" }))?.cases.map((item) => item.id))
+    expect((await selectDoctorCases({ catalog, command: "eval", supports: item => typeof item.input.query === "string", caseSetId: "ordinary-chat", caseIds: "reason" }))?.cases.map((item) => item.id))
       .toEqual(["reason"]);
-    await expect(selectDoctorCases({ catalog, command: "eval", caseSetId: "ordinary-chat", caseIds: "missing" })).rejects.toThrow("不包含 Case");
+    await expect(selectDoctorCases({ catalog, command: "eval", supports: item => typeof item.input.query === "string", caseSetId: "ordinary-chat", caseIds: "missing" })).rejects.toThrow("不包含 Case");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

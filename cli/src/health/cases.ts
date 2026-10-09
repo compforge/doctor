@@ -1,18 +1,18 @@
 import {
   validateCaseProduceResult,
-  type CaseBinding, type CaseProduceResult, type CaseProduceExtension, type CaseProduceQuery,
+  type HealthCaseBinding, type CaseProduceResult, type CaseProduceExtension, type CaseProduceQuery,
   type ServiceDefinition, type WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
 import { approvalDeniedReason, type ApprovalDecision } from "../command/approval";
 import type { PreparedCaseCheck } from "./case-prepare";
-import { caseError, checkHttpCase, type CaseAttempt } from "./case-http";
+import { caseError, checkHttpCase, type CaseAttempt } from "../case/http-check";
 
 export interface CaseCheckResult {
   consumeExtension: string;
   bindingId?: string;
   consumer: string;
-  producer?: CaseBinding["producer"];
+  producer?: HealthCaseBinding["producer"];
   workload?: string;
   startedAt: string;
   finishedAt?: string;
@@ -28,7 +28,7 @@ export interface CaseCheckActions {
   signal: AbortSignal;
   directory: string;
   /** Core prepares each target independently; one missing curl cannot hide another replica's result. */
-  targets(service: ServiceDefinition, binding: CaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
+  targets(service: ServiceDefinition, binding: HealthCaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
   sender(target: WorkloadInstance): Promise<SendHttp>;
   approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number]): Promise<ApprovalDecision>;
   produce(service: ServiceDefinition, extension: CaseProduceExtension, query: CaseProduceQuery): Promise<CaseProduceResult>;
