@@ -7,12 +7,14 @@ import { createPodHttpSender, supportsPodCurlDiagnostics } from "../infra/http/p
 import { openPluginContext } from "../plugin/context";
 import { invokeExtension } from "../plugin/extension";
 import type { CaseCheckActions } from "./cases";
+import type { CasePrepareActions } from "./case-prepare";
+import { discoverTenantDirectory } from "../plugin/tenant-directory";
+import { resolveHealthCaseIdentity } from "./identity";
 import { resolveApprovalGate } from "../terminal/approval";
 import { caseError } from "./case-http";
 
-export function caseCheckActions(context: CommandContext, executor: Executor,
-  kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
-  const invoke = async <I, O>(service: ServiceDefinition, extension: Extension<I, O>, query: I): Promise<O> => {
+function caseInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
+  return async <I, O>(service: ServiceDefinition, extension: Extension<I, O>, query: I): Promise<O> => {
     const db = context.profile.value.db;
     const managed = await openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, capability: extension, signal: context.signal, clients: context.clients,
@@ -22,6 +24,24 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
     try { return (await invokeExtension(extension, managed, query)).data; }
     finally { await managed.dispose(); }
   };
+}
+
+export function casePrepareActions(context: CommandContext, executor: Executor,
+  kubernetes: KubectlOptions & { namespace: string }, input: { tenantId?: string; userId?: string }): CasePrepareActions {
+  const directory = discoverTenantDirectory(context.plugin.services, (service, extension) =>
+    openPluginContext(executor, kubernetes, {
+      config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
+      signal: context.signal, clients: context.clients, command: "doctor health identity",
+      authorization: context.kubernetes(executor).access,
+    }), { commandContext: context });
+  return {
+    signal: context.signal, consume: caseInvoker(context, executor, kubernetes),
+    identity: extension => resolveHealthCaseIdentity(context, extension, input, directory),
+  };
+}
+
+export function caseCheckActions(context: CommandContext, executor: Executor,
+  kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
   return {
     directory, checkpoint, signal: context.signal,
     approve: (target, item) => resolveApprovalGate({ yes: context.options.yes })({
@@ -65,7 +85,6 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       if (!result.ok) throw new Error(result.stderr.trim() || `curl unavailable (exit=${result.exitCode}, timedOut=${result.timedOut})`);
       return createPodHttpSender(executor, target, supportsPodCurlDiagnostics(result.stdout));
     },
-    consume: invoke,
-    produce: invoke,
+    produce: caseInvoker(context, executor, kubernetes),
   };
 }

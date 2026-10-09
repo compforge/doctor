@@ -1,13 +1,11 @@
 import {
-  CASE_PRODUCE_KIND, requireCaseProduceExtension,
-  validateCaseProduceResult, validateCaseConsumeResult,
-  type CaseConsumeExtension, type CaseConsumeQuery, type CaseConsumeResult,
+  validateCaseProduceResult,
   type CaseBinding, type CaseProduceResult, type CaseProduceExtension, type CaseProduceQuery,
-  type PluginDefinition, type ServiceDefinition, type WorkloadInstance,
+  type ServiceDefinition, type WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
 import { approvalDeniedReason, type ApprovalDecision } from "../command/approval";
-import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
+import type { PreparedCaseCheck } from "./case-prepare";
 import { caseError, checkHttpCase, type CaseAttempt } from "./case-http";
 
 export interface CaseCheckResult {
@@ -18,7 +16,7 @@ export interface CaseCheckResult {
   workload?: string;
   startedAt: string;
   finishedAt?: string;
-  stage: "consume" | "binding" | "execution" | "provider" | "approval" | "request";
+  stage: "consume" | "binding" | "identity" | "execution" | "provider" | "approval" | "request";
   status: "passed" | "failed" | "unavailable" | "empty" | "cancelled";
   error?: string;
   truncated?: string;
@@ -33,28 +31,20 @@ export interface CaseCheckActions {
   targets(service: ServiceDefinition, binding: CaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
   sender(target: WorkloadInstance): Promise<SendHttp>;
   approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number]): Promise<ApprovalDecision>;
-  consume(service: ServiceDefinition, extension: CaseConsumeExtension, query: CaseConsumeQuery): Promise<CaseConsumeResult>;
   produce(service: ServiceDefinition, extension: CaseProduceExtension, query: CaseProduceQuery): Promise<CaseProduceResult>;
   checkpoint(result: CaseCheckResult): void;
 }
 
-/** @spec Binding owns the source; provider owns requests; Health alone schedules and retains failures. */
-async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefinition,
-  bindings: readonly CaseBinding[], consumeExtension: string, consumeIndex: number, tenantId: string | undefined, actions: CaseCheckActions): Promise<CaseCheckResult[]> {
-  const registry = createDoctorExtensionRegistry(plugin);
+/** @spec Run only prepared dependencies; per-target Case generation remains fresh and authorization remains explicit. */
+export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], actions: CaseCheckActions): Promise<CaseCheckResult[]> {
   const results: CaseCheckResult[] = [];
-  for (const [bindingIndex, binding] of bindings.entries()) {
-    const result: CaseCheckResult = { consumeExtension, bindingId: binding.id,
-      consumer: consumer.name, producer: binding.producer, workload: binding.workload,
-      startedAt: new Date().toISOString(), stage: "binding", status: "unavailable", targets: [], attempts: [] };
+  for (const check of prepared) {
+    const { result, execution } = check;
     results.push(result);
+    if (!execution) { actions.checkpoint(result); continue; }
+    const { consumer, binding, consumeIndex, bindingIndex, service, producer, query } = execution;
     try {
       actions.signal.throwIfAborted();
-      const registered = registry.extensions(CASE_PRODUCE_KIND, binding.producer.namespace)
-        .find(entry => entry.extension.id === binding.producer.extension);
-      if (!registered?.service) throw new Error(`Missing Service ${CASE_PRODUCE_KIND} provider: ${binding.producer.namespace}/${binding.producer.extension}`);
-      const provider = requireCaseProduceExtension(registered.extension);
-      if (!consumer.workloads.some(workload => workload.name === binding.workload)) throw new Error(`Unknown consumer Workload: ${binding.workload}`);
       result.stage = "execution";
       const discovery = await actions.targets(consumer, binding);
       result.targets = discovery.targets;
@@ -72,10 +62,9 @@ async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefi
         }
         result.stage = "provider";
         // Resolve fresh URLs after Pod readiness, once per target; signed links must not age in a queue.
-        const query = { tenantId, maxCases: 10 };
         let provided: CaseProduceResult;
         try {
-          provided = await actions.produce(registered.service, provider, query);
+          provided = await actions.produce(service, producer, query);
           validateCaseProduceResult(provided, query.maxCases);
         } catch (error) {
           result.status = "failed";
@@ -116,30 +105,6 @@ async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefi
     } finally {
       if (actions.signal.aborted) result.status = "cancelled";
       result.finishedAt = new Date().toISOString();
-      actions.checkpoint(result);
-    }
-    if (actions.signal.aborted) break;
-  }
-  return results;
-}
-
-/** @spec Consumer extensions supply relationships; producer extensions supply Cases, never probe results. */
-export async function checkServiceCases(plugin: PluginDefinition, consumer: ServiceDefinition,
-  extensions: readonly CaseConsumeExtension[], tenantId: string | undefined, actions: CaseCheckActions): Promise<CaseCheckResult[]> {
-  const results: CaseCheckResult[] = [];
-  for (const [index, extension] of extensions.entries()) {
-    const startedAt = new Date().toISOString();
-    try {
-      actions.signal.throwIfAborted();
-      const data = await actions.consume(consumer, extension, { tenantId });
-      validateCaseConsumeResult(data);
-      results.push(...await checkCaseBindings(plugin, consumer, data.bindings, extension.id, index, tenantId, actions));
-    } catch (error) {
-      // Discovery failed before a binding exists; retain the responsible extension without inventing a target.
-      const result: CaseCheckResult = { consumeExtension: extension.id, consumer: consumer.name,
-        startedAt, finishedAt: new Date().toISOString(), stage: "consume",
-        status: actions.signal.aborted ? "cancelled" : "unavailable", error: caseError(error), targets: [], attempts: [] };
-      results.push(result);
       actions.checkpoint(result);
     }
     if (actions.signal.aborted) break;

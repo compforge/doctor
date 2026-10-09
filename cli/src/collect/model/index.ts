@@ -5,11 +5,11 @@ import {
   isMultimodalModel,
   openModelAccess,
   requireInferenceModel,
-  resolveModelTenant,
   selectModel,
   type ModelAccess,
 } from "../../model";
 
+import { resolveTenant } from "../../terminal/tenant";
 import { useLogger } from "../../terminal/log";
 import {
   parseModelMaxOutputTokens,
@@ -68,7 +68,7 @@ export async function runCollectModel(
   useLogger("model").info(`namespace: ${access.config.kubernetes.namespace}（${access.config.kubernetes.namespaceSource}）`);
 
   try {
-    const tenant = await resolveModelTenant({
+    const tenant = await resolveTenant({
       tenantId: opts.tenantId,
       tenantName: opts.tenantName,
       profileName: access.config.profileName,

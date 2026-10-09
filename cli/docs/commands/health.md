@@ -54,7 +54,8 @@ Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.p
 返回本次准备好的 HTTP Case 列表，每项由 canonical `case` 与有序运行时 `targets` 组成；不执行请求。
 这个运行时接口独立于离线 `case.catalog`，签名 URL 不进入静态目录或配置。
 
-Health 先调用消费方扩展取得本次关系，再解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
+Health 在 Command prepare 阶段调用消费方扩展取得本次关系、解析实际依赖的 producer，并补齐其声明的请求身份。
+run 消费准备好的绑定与身份，解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
 每个绑定最多检查 10 个 Running 实例，每个实例最多 10 个 Cases；提供方应在数据源处限制结果，
 超限或提供方截断在报告中明确展示。实例未配置 container 且存在多个容器时报告缺口，不猜测业务容器。
 请求沿用 HTTP Collect 的超时和响应容量预算，串行执行；代理与 TLS 使用目标容器 curl 的正常行为，
@@ -110,6 +111,20 @@ Health 要求明确的 `judge.e2e.http`。GET/HEAD 不接受 body；非只读请
 不能作为网络连通性证据。非空 Cases 同时带 `reason` 表示部分准备失败；可运行的检查仍执行，
 报告保留缺口，不能把剩余检查通过当作完整通过。
 
+
+### Case 请求身份
+
+需要真实租户/用户的 `case.produce` 可声明 `requestIdentity: { configured(config) }`，
+复用 `ServiceCaseIdentityRequirement`；Plugin 解释自己的配置，Core 只消费返回的 tenantId/userId。
+Health prepare 按显式 `--tenant-id` / `--user-id`、Plugin 配置的优先级补齐身份。
+缺失时通过 `tenant.list`、`user.search` 选择启用租户及该租户中的真实用户；同一身份只询问一次。
+显式切换租户时不沿用原配置租户的用户，需重新选择或提供 `--user-id`。
+
+身份通过 `CaseProduceQuery.requestIdentity` 传入，不修改 profile，也不写入报告。
+Case 身份的租户不改变整轮统计范围；只有显式 `--tenant-id` 限定统计。
+非交互（包括 `-y`）缺参时，相关绑定记录为 identity 阶段 unavailable，不进入 Pod 或调用 producer；
+取消身份选择记录为 cancelled，其余独立检查继续。选择身份不是批准真实请求，非只读 Case 仍需审批。
+签名 URL 与独立会话仍由 producer 在每个实例执行前生成，避免准备阶段产生的临时数据过期。
 
 ### 流式响应与故障分类
 

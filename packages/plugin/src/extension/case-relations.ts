@@ -1,3 +1,4 @@
+import type { ServiceCaseIdentityRequirement, ServiceRequestIdentity } from "../service";
 import { validateHttpCase, type HttpCase } from "@compforge/spec-case/http";
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 import { validateExtensionNamespace } from "./registry";
@@ -14,6 +15,8 @@ export interface CaseBinding {
 
 export interface CaseProduceQuery {
   readonly tenantId?: string;
+  /** Prepared probe identity; does not narrow the Health statistics query. */
+  readonly requestIdentity?: ServiceRequestIdentity;
   /** Bound preparation at its data source; temporary URLs belong only to this invocation. */
   readonly maxCases: number;
 }
@@ -36,6 +39,7 @@ export interface CaseProduceResult {
 }
 
 export interface CaseProduceExtension extends Extension<CaseProduceQuery, CaseProduceResult> {
+  readonly requestIdentity?: ServiceCaseIdentityRequirement;
   readonly kind: typeof CASE_PRODUCE_KIND;
 }
 
@@ -78,7 +82,11 @@ export function validateCaseBindings(bindings: readonly CaseBinding[]): void {
 export function requireCaseProduceExtension(extension: ExtensionRegistration): CaseProduceExtension {
   validateExtension(extension);
   if (extension.kind !== CASE_PRODUCE_KIND) throw new Error(`Unsupported Case provider kind: ${extension.kind}`);
-  return extension as CaseProduceExtension;
+  const declared = extension as CaseProduceExtension;
+  if (declared.requestIdentity !== undefined && (!declared.requestIdentity || typeof declared.requestIdentity.configured !== "function")) {
+    throw new Error(`${extension.id}: invalid Case requestIdentity`);
+  }
+  return declared;
 }
 
 /** Dynamic plugin output is validated before requests enter the consumer's execution channel. */

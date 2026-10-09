@@ -1,8 +1,6 @@
 import { isInteractive } from "../terminal/policy";
 import type {
   Model,
-  TenantDirectory,
-  TenantSummary,
 } from "@compforge/doctor-plugin";
 
 import {
@@ -10,7 +8,6 @@ import {
   promptSearchableChoice,
   type SearchableChoiceResolution,
 } from "../terminal/selection";
-import { promptTenantChoice } from "../terminal/tenant-selection";
 import { type TerminalTone, styleTerminalText } from "../terminal/output";
 import {
   recentSelectionsForInteractive,
@@ -18,61 +15,8 @@ import {
 } from "../infra/recent";
 import type { SelectedInferenceModel } from "./types";
 import { isMultimodalModel } from "./types";
-import {
-  defineCommandDecision,
-  type CommandContext,
-} from "../command";
 
-const tenantSelectionDecision = defineCommandDecision<TenantSummary | undefined>("tenant-selection");
-
-export async function resolveTenant(input: {
-  tenantId?: string;
-  tenantName?: string;
-  profileName?: string;
-  directory: TenantDirectory;
-  commandContext?: CommandContext;
-  promptTitle?: string;
-  interactive?: boolean;
-  recent?: RecentSelections;
-  prompt?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
-}): Promise<TenantSummary | undefined> {
-  const resolve = async (): Promise<TenantSummary | undefined> => {
-    const tenantId = input.tenantId?.trim();
-    const tenantName = input.tenantName?.trim();
-    if (tenantId && tenantName) throw new Error("--tenant-id 与 --tenant-name 不能同时使用");
-    if (tenantId) return { id: tenantId, name: tenantId, displayName: tenantId };
-    if (tenantName) return input.directory.getByName(tenantName);
-
-    const interactive = isInteractive(input.interactive);
-    if (!interactive) {
-      throw new Error("非交互环境必须通过 --tenant-id 或 --tenant-name 显式指定租户");
-    }
-    const tenants = await input.directory.listActive();
-    if (!tenants.length) throw new Error("租户目录未返回当前启用租户");
-    const recent = recentSelectionsForInteractive(input.interactive, input.recent);
-    const recentChoices = input.profileName && recent
-      ? recent.recentChoices("tenant", input.profileName, tenants, (tenant) => tenant.id)
-      : [];
-    const selected = await (input.prompt ?? ((choices) => promptTenantChoice({
-      choices,
-      title: input.promptTitle ?? "[tenant] 当前启用租户：",
-      recentChoices,
-    })))(tenants);
-    if (selected && input.profileName) {
-      recent?.recordChoice("tenant", input.profileName, selected.id);
-    }
-    return selected;
-  };
-  return input.commandContext
-    ? await input.commandContext.decide(
-        tenantSelectionDecision,
-        [input.profileName ?? input.commandContext.profile.name],
-        resolve,
-      )
-    : await resolve();
-}
-
-export const resolveModelTenant = resolveTenant;
+export { resolveTenant, resolveTenant as resolveModelTenant } from "../terminal/tenant";
 
 function modelSearchKeys(model: Model): string[] {
   return [
