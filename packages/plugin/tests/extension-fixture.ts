@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import type {
   ExtensionContext, FactsInspectExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
-  CaseRunnerCreateExtension, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
+  CaseRunnerFactory, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
   MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension, ServiceEnvironmentProbe,
   TenantListExtension, TenantResolveExtension, UserSearchExtension, ModelQueryExtension,
   ModelBackendInspectExtension, ModelBackendValidateExtension, ModelInvokeExtension, ModelStreamExtension,
@@ -73,12 +73,12 @@ export function inspectExtension(value: Omit<FactsInspectExtension, "id" | "kind
   const { inspect: run, resolveTarget: _target, ...declaration } = value;
   return { ...declaration, id: "inspect", kind: "facts.inspect", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
-export function caseExtension(value: Endpoint & {
+export function caseRunnerFixture(value: Endpoint & {
   requestIdentity?: ServiceCaseIdentityRequirement;
   createRunner(context: ExtensionContext, input: ServiceCaseProbeOptions): Promise<ServiceCaseRunner>;
-}): CaseRunnerCreateExtension {
+}): CaseRunnerFactory {
   const { createRunner: run, ...declaration } = value;
-  return { ...declaration, id: "case.runner.create", kind: "case.runner.create", supports: item => typeof item.input.query === "string", run: withSummary({ title: "Fixture", fields: [] }, run) };
+  return { ...declaration, supports: item => typeof item.input.query === "string", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
 export function traceExtension(value: Endpoint & { resolve: DataRun<TraceResolveExtension> }): TraceResolveExtension {
   const { resolve: run, ...declaration } = value;

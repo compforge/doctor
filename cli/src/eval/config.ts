@@ -1,4 +1,4 @@
-import { caseRunnerProvider } from "../case/extensions";
+import { caseRunnerProvider } from "../case/runners";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { EvalCliOpts, EvalConfig } from "./model";
 import type { Case } from "@compforge/spec-case/model";

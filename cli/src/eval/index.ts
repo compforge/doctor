@@ -1,4 +1,4 @@
-import { createCaseRunner, runnableCaseCatalog } from "../case/extensions";
+import { createCaseRunner, runnableCaseCatalog } from "../case/runners";
 import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
@@ -63,7 +63,7 @@ async function resolveEvalRequestIdentity(input: {
   profileName: string;
   commandContext: CommandContext;
 }): Promise<ServiceRequestIdentity | undefined> {
-  const requirement = input.provider.extension.requestIdentity;
+  const requirement = input.provider.factory.requestIdentity;
   if (!requirement) return undefined;
   const configured = requirement.configured(input.commandContext.profile.pluginConfig);
   const tenantId = configured.tenantId?.trim();
@@ -233,7 +233,7 @@ export async function runEval(
     profileName: kube.profileName,
     commandContext,
   });
-  if (provider.extension.requestIdentity && !requestIdentity) {
+  if (provider.factory.requestIdentity && !requestIdentity) {
     useLogger("eval").warn("已取消身份选择");
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
@@ -262,8 +262,8 @@ export async function runEval(
   }, {
     config: commandContext.profile.pluginConfig,
     service: provider.service,
-    endpoint: provider.extension.endpoint,
-    capability: provider.extension,
+    endpoint: provider.factory.endpoint,
+    capability: provider.factory,
     command: "doctor eval",
     authorization: resolveKubernetesCommandContext(executor, commandContext).access,
   });
@@ -282,7 +282,7 @@ export async function runEval(
   let results: EvalCaseResult[] = [];
   let lifecycleError: string | undefined;
   try {
-    runner = await createCaseRunner(provider.extension, managed, {
+    runner = await createCaseRunner(provider.factory, managed, {
       caseSetId: caseSet.caseset,
       timeoutMs: config.requestTimeoutMs,
       requestIdentity,

@@ -1,4 +1,4 @@
-import type { CaseProduceExtension, ServiceRequestIdentity, TenantDirectory } from "@compforge/doctor-plugin";
+import type { CaseProducer, ServiceRequestIdentity, TenantDirectory } from "@compforge/doctor-plugin";
 import { defineCommandDecision, type CommandContext } from "../command";
 import { resolveCaseRequestIdentity } from "./identity";
 import { isInteractive } from "../terminal/policy";
@@ -6,22 +6,22 @@ import { resolveTenant } from "../terminal/tenant";
 
 const identityDecision = defineCommandDecision<ServiceRequestIdentity | undefined>("case-producer-identity");
 
-export async function resolveCaseProducerTenant(context: CommandContext, extension: CaseProduceExtension,
+export async function resolveCaseProducerTenant(context: CommandContext, producer: CaseProducer,
   input: { tenantId?: string }, directory: TenantDirectory,
   selection: Pick<Parameters<typeof resolveCaseRequestIdentity>[0], "promptTenant" | "interactive"> = {},
 ): Promise<string | undefined> {
-  const tenantId = input.tenantId?.trim() || extension.requestTenant!.configured(context.profile.pluginConfig)?.trim();
+  const tenantId = input.tenantId?.trim() || producer.requestTenant!.configured(context.profile.pluginConfig)?.trim();
   return (await resolveTenant({ tenantId, directory, commandContext: context, scope: "case-identity",
     interactive: selection.interactive, prompt: selection.promptTenant,
     promptTitle: "[case] 选择探测使用的租户：" }))?.id;
 }
 
 /** Same configured identity shares one decision, including cancellation or failure, across producers. */
-export function resolveCaseProducerIdentity(context: CommandContext, extension: CaseProduceExtension,
+export function resolveCaseProducerIdentity(context: CommandContext, producer: CaseProducer,
   input: { tenantId?: string; userId?: string }, directory: TenantDirectory,
   selection: Pick<Parameters<typeof resolveCaseRequestIdentity>[0], "promptTenant" | "promptUser" | "interactive"> = {},
 ): Promise<ServiceRequestIdentity | undefined> {
-  const configured = extension.requestIdentity!.configured(context.profile.pluginConfig);
+  const configured = producer.requestIdentity!.configured(context.profile.pluginConfig);
   const tenantId = input.tenantId?.trim() || configured.tenantId?.trim();
   // A user belongs to its configured tenant; a CLI tenant override must not reuse a different tenant's user.
   const sameTenant = !configured.tenantId?.trim() || tenantId === configured.tenantId.trim();

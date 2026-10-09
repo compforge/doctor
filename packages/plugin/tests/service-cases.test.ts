@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { caseSetFromRaw } from "@compforge/spec-case/model";
-import { caseProducer, createServiceCatalog, describeService, loadCaseCatalog, withSummary,
+import { caseProducer, caseRunner, createServiceCatalog, describeService, loadCaseCatalog, withSummary,
   type ServiceCaseSource, type ServiceDefinition } from "../src";
 
 const base: ServiceDefinition = { name: "catalog", aliases: ["short"], workloads: [],
@@ -20,7 +20,24 @@ test("Service discovery and description never load assets or prepare runtime obj
   expect(loadCaseCatalog(source)).toEqual([caseSetFromRaw(caseSet)]);
   expect(load).toHaveBeenCalledTimes(1);
   expect(caseProducer(source).run).toBe(run);
+  expect(caseProducer(source)).toBe(source.produce!);
+  for (const key of ["id", "kind", "namespace"]) expect(caseProducer(source)).not.toHaveProperty(key);
   expect(run).not.toHaveBeenCalled();
+});
+
+test("one Case resource contributes independent native operations without another registration", () => {
+  const source: ServiceCaseSource = { id: "requests", load: () => [caseSet],
+    produce: { access: {}, run: withSummary({ title: "Requests", fields: [] }, async () => ({ cases: [], reason: "fixture" })) },
+    runner: { access: {}, endpoint: { host: "app", port: 80 }, supports: () => true,
+      run: withSummary({ title: "Runner", fields: [] }, async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) })) },
+  };
+  const catalog = createServiceCatalog([{ ...base, cases: [source] }]);
+  expect(catalog.extensions("case.produce")).toEqual([]);
+  expect(catalog.extensions("case.runner.create")).toEqual([]);
+  expect(catalog.caseSources()[0]!.source).toBe(source);
+  expect(caseRunner(source)).toBe(source.runner!);
+  for (const key of ["id", "kind", "namespace"]) expect(caseRunner(source)).not.toHaveProperty(key);
+  expect(describeService({ ...base, cases: [source] }).cases?.[0]).toMatchObject({ id: "requests", produce: true, runner: true });
 });
 
 test("Case references require a specific owning Service and source", () => {

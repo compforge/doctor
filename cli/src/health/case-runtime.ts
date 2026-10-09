@@ -1,11 +1,11 @@
 import type { KubectlOptions, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { WorkloadInstance, Extension, ServiceDefinition } from "@compforge/doctor-plugin";
+import { caseProducer, type WorkloadInstance, type PluginOperation, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
 import { discoverKubernetesWorkload } from "../infra/k8s/workload";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 import { createPodHttpSender, supportsPodCurlDiagnostics } from "../infra/http/pod";
 import { openPluginContext } from "../plugin/context";
-import { invokeExtension } from "../plugin/extension";
+import { invokeOperation } from "../plugin/operation";
 import type { CaseCheckActions } from "./cases";
 import type { CasePrepareActions } from "./case-prepare";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -14,20 +14,21 @@ import { resolveApprovalGate } from "../terminal/approval";
 import { caseError } from "../case/http-check";
 
 function caseInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
-  return async <I, O>(service: ServiceDefinition, extension: Extension<I, O>, query: I): Promise<O> => {
+  return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, label: string, query: I): Promise<O> => {
     const db = context.profile.value.db;
     const managed = await openPluginContext(executor, kubernetes, {
-      config: context.profile.pluginConfig, service, capability: extension, signal: context.signal, clients: context.clients,
+      config: context.profile.pluginConfig, service, capability: operation, signal: context.signal, clients: context.clients,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      command: `doctor health ${extension.kind}`, authorization: context.kubernetes(executor).access,
+      command: `doctor health ${label}`, authorization: context.kubernetes(executor).access,
     });
-    try { return (await invokeExtension(extension, managed, query)).data; }
+    try { return (await invokeOperation(operation, managed, query)).data; }
     finally { await managed.dispose(); }
   };
 }
 
 export function casePrepareActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, input: { tenantId?: string; userId?: string }): CasePrepareActions {
+  const invoke = caseInvoker(context, executor, kubernetes);
   const directory = discoverTenantDirectory(context.plugin.services, (service, extension) =>
     openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
@@ -35,14 +36,15 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
       authorization: context.kubernetes(executor).access,
     }), { commandContext: context });
   return {
-    signal: context.signal, consume: caseInvoker(context, executor, kubernetes),
-    identity: extension => resolveCaseProducerIdentity(context, extension, input, directory),
-    tenant: extension => resolveCaseProducerTenant(context, extension, input, directory),
+    signal: context.signal, consume: (service, extension, query) => invoke(service, extension, `${extension.kind}/${extension.id}`, query),
+    identity: producer => resolveCaseProducerIdentity(context, producer, input, directory),
+    tenant: producer => resolveCaseProducerTenant(context, producer, input, directory),
   };
 }
 
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"]): CaseCheckActions {
+  const invoke = caseInvoker(context, executor, kubernetes);
   return {
     directory, checkpoint, signal: context.signal,
     approve: (target, item) => resolveApprovalGate({ yes: context.options.yes })({
@@ -86,6 +88,6 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       if (!result.ok) throw new Error(result.stderr.trim() || `curl unavailable (exit=${result.exitCode}, timedOut=${result.timedOut})`);
       return createPodHttpSender(executor, target, supportsPodCurlDiagnostics(result.stdout));
     },
-    produce: caseInvoker(context, executor, kubernetes),
+    produce: (service, source, query) => invoke(service, caseProducer(source), `Case ${source.id} produce`, query),
   };
 }

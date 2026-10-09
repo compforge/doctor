@@ -1,6 +1,6 @@
 import {
-  validateExtensionResult, caseRunner, caseRunnerOutput,
-  type ServiceCatalog, type CaseRunnerCreateExtension, type PluginContext, type ServiceCaseProbeOptions,
+  validateOperationResult, caseRunner, caseRunnerOutput,
+  type ServiceCatalog, type CaseRunnerFactory, type PluginContext, type ServiceCaseProbeOptions,
 } from "@compforge/doctor-plugin";
 import type { Case } from "@compforge/spec-case/model";
 import type { DoctorCaseSet } from "./catalog";
@@ -17,7 +17,7 @@ export function caseRunnerProvider(catalog: ServiceCatalog, requested?: string, 
       : `No Case runner${requested ? ` for Service '${requested}'` : ""}${sourceId ? ` source '${sourceId}'` : ""}`);
   }
   const { service, source } = candidates[0]!;
-  return { service, source, extension: caseRunner(source) };
+  return { service, source, factory: caseRunner(source) };
 }
 
 /** A selected source cannot accidentally execute another Service's catalog. Local inputs remain explicit. */
@@ -39,13 +39,13 @@ export function runnableCaseCatalog(catalog: readonly DoctorCaseSet[], services:
 
 /** Transfer a created runner to its lifecycle owner, including when cancellation races with creation. */
 export async function createCaseRunner(
-  extension: CaseRunnerCreateExtension,
+  factory: CaseRunnerFactory,
   context: PluginContext,
   input: ServiceCaseProbeOptions,
 ) {
   context.signal.throwIfAborted();
   // A post-call abort check would discard the runner before the Command can clean it up.
-  const result = await extension.run(context, input);
-  validateExtensionResult(result);
+  const result = await factory.run(context, input);
+  validateOperationResult(result);
   return caseRunnerOutput(result.data);
 }

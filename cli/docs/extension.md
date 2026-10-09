@@ -50,18 +50,20 @@ interface ExtensionRegistration {
   readonly description?: string;
 }
 
-interface Extension<Input, Output> extends ExtensionRegistration {
+interface PluginOperation<Input, Output> {
   readonly access: CapabilityAccess;
 
-  run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
+  run(context: PluginContext, input: Input): Promise<OperationResult<Output>>;
 }
+
+interface Extension<Input, Output> extends ExtensionRegistration, PluginOperation<Input, Output> {}
 
 ```
 
 Target 访问型 Extension 返回统一信封，空数据也必须有摘要声明：
 
 ```ts
-interface ExtensionResult<T> {
+interface OperationResult<T> {
   readonly data: T;
   readonly summary: Summary;
 }
@@ -75,7 +77,9 @@ interface Summary {
 `Summary` 定义在 `packages/plugin/src/summary.ts`，也用于 Fact、Observation 和 CommandResult。
 `path` 相对伴随的数据，空路径表示数据本身；声明只包含标题和字段路径，不携带重复值或执行函数。
 提供方可用 `withSummary(summary, run)` 包装静态字段选择，动态结果也可直接返回信封。
-宿主 `invokeExtension` 校验信封；kind 消费方继续校验 `result.data`，再由 Command 选择要持久化的结果和摘要。
+`PluginOperation` 与 `OperationResult` 位于 `packages/plugin/src/operation.ts`，只描述调用，不提供资源发现或注册。
+宿主 `invokeOperation` 统一校验信封，`invokeExtension` 使用同一实现；领域消费方继续校验 `result.data`，
+再由 Command 选择要持久化的结果和摘要。Extension 的结果类型沿用 `ExtensionResult` 导出。
 
 流和 runner 仍保留其资源协议。摘要只选择状态码、身份等元数据；投影不会读取 getter、消费流、
 执行 runner 或展开整个对象。case runner 创建在返回后不检查取消，以便生命周期所有者总能接手清理；
@@ -105,7 +109,8 @@ TypeScript 泛型帮助双方表达类型，但不能证明动态加载的实现
 领域边界校验 kind 的声明和输出；单靠字符串匹配不能省略校验。
 
 共享 Case 资产通过 `Service.cases` 贡献，每个来源组合离线 `load`、可选运行时 `produce` 与 `runner`。
-调用型操作复用 Extension 的受限上下文与结果信封，但其注册身份属于 Case 来源。
+Case source 是 Service 资源；其 `CaseProducer` 和 `CaseRunnerFactory` 直接实现 `PluginOperation`，
+不携带 Extension 的 id、kind 或 namespace。来源身份由 `{ service, source }` 表达，操作只声明自身权限与契约。
 Core 内置与本地 YAML 直接实现离线目录接口；加载目录不创建 runner 或访问环境。
 
 `error.catalog` 同样采用无上下文的同步 `load()`，返回带来源版本的错误定义；由

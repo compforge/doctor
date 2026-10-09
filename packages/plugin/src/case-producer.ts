@@ -1,8 +1,6 @@
-import type { ServiceCaseIdentityRequirement, ServiceRequestIdentity } from "../service";
+import type { ServiceCaseIdentityRequirement, ServiceRequestIdentity } from "./service";
 import { validateHttpCase, type HttpCase } from "@compforge/spec-case/http";
-import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
-
-export const CASE_PRODUCE_KIND = "case.produce";
+import { validateOperation, type PluginOperation } from "./operation";
 
 export interface CaseProduceQuery {
   readonly tenantId?: string;
@@ -38,28 +36,26 @@ export interface CaseProduceResult {
   readonly truncated?: { readonly reason: string };
 }
 
-export interface CaseProduceExtension extends Extension<CaseProduceQuery, CaseProduceResult> {
+/** Runtime binding capability owned by a Service Case source, not a discoverable Extension. */
+export interface CaseProducer extends PluginOperation<CaseProduceQuery, CaseProduceResult> {
   readonly requestIdentity?: ServiceCaseIdentityRequirement;
   readonly requestTenant?: CaseTenantRequirement;
-  readonly kind: typeof CASE_PRODUCE_KIND;
 }
 
 function name(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be non-empty`);
 }
 
-export function requireCaseProduceExtension(extension: ExtensionRegistration): CaseProduceExtension {
-  validateExtension(extension);
-  if (extension.kind !== CASE_PRODUCE_KIND) throw new Error(`Unsupported Case provider kind: ${extension.kind}`);
-  const declared = extension as CaseProduceExtension;
+export function validateCaseProducer(value: unknown): asserts value is CaseProducer {
+  validateOperation(value);
+  const declared = value as CaseProducer;
   if (declared.requestIdentity !== undefined && (!declared.requestIdentity || typeof declared.requestIdentity.configured !== "function")) {
-    throw new Error(`${extension.id}: invalid Case requestIdentity`);
+    throw new Error("Case producer: invalid requestIdentity");
   }
   if (declared.requestTenant !== undefined) {
-    if (!declared.requestTenant || typeof declared.requestTenant.configured !== "function") throw new Error(`${extension.id}: invalid Case requestTenant`);
-    if (declared.requestIdentity) throw new Error(`${extension.id}: declare either requestTenant or requestIdentity`);
+    if (!declared.requestTenant || typeof declared.requestTenant.configured !== "function") throw new Error("Case producer: invalid requestTenant");
+    if (declared.requestIdentity) throw new Error("Case producer: declare either requestTenant or requestIdentity");
   }
-  return declared;
 }
 
 /** Dynamic plugin output is validated before requests enter the consumer's execution channel. */

@@ -40,6 +40,14 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 ## 关键设计
 
+Service Case source 是可被多个 Command 引用的资源，不是命令扩展的集合。离线 `load` 提供目录；
+`CaseProducer` 绑定本次对象和目标；`CaseRunnerFactory` 创建由命令接管的单请求 runner。
+三者由同一 `{ service, source }` 标识。Health 的消费关系与 Perf 的场景仍是各命令自己的 Extension。
+
+原生操作与 Extension 共用 `PluginOperation` 的 access、PluginContext 和结果信封，因此不需要为使用
+统一权限、客户端和清理机制而额外注册。producer 返回后释放调用上下文；runner factory 的上下文保留至
+runner 清理完成。创建期间取消仍必须将已创建的 runner 交给生命周期所有者，不能在返回前丢弃资源。
+
 Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`。
 
 Health 通过自己的 `health.case.bindings` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。

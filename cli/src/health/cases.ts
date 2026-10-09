@@ -1,6 +1,6 @@
 import {
   validateCaseProduceResult,
-  type HealthCaseBinding, type CaseProduceResult, type CaseProduceExtension, type CaseProduceQuery,
+  type HealthCaseBinding, type CaseProduceResult, type ServiceCaseSource, type CaseProduceQuery,
   type ServiceDefinition, type WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { SendHttp } from "../infra/http";
@@ -31,7 +31,7 @@ export interface CaseCheckActions {
   targets(service: ServiceDefinition, binding: HealthCaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
   sender(target: WorkloadInstance): Promise<SendHttp>;
   approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number]): Promise<ApprovalDecision>;
-  produce(service: ServiceDefinition, extension: CaseProduceExtension, query: CaseProduceQuery): Promise<CaseProduceResult>;
+  produce(service: ServiceDefinition, source: ServiceCaseSource, query: CaseProduceQuery): Promise<CaseProduceResult>;
   checkpoint(result: CaseCheckResult): void;
 }
 
@@ -42,7 +42,7 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
     const { result, execution } = check;
     results.push(result);
     if (!execution) { actions.checkpoint(result); continue; }
-    const { consumer, binding, consumeIndex, bindingIndex, service, producer, query } = execution;
+    const { consumer, binding, consumeIndex, bindingIndex, service, source, query } = execution;
     try {
       actions.signal.throwIfAborted();
       result.stage = "execution";
@@ -64,7 +64,7 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
         // Resolve fresh URLs after Pod readiness, once per target; signed links must not age in a queue.
         let provided: CaseProduceResult;
         try {
-          provided = await actions.produce(service, producer, query);
+          provided = await actions.produce(service, source, query);
           validateCaseProduceResult(provided, query.maxCases);
         } catch (error) {
           result.status = "failed";

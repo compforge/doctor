@@ -19,6 +19,15 @@ export interface ServiceEndpoint {
   port: number;
 }
 
+/** Shared by resource operations and network-backed Extensions. */
+export function validateServiceEndpoint(value: unknown, label = "Service"): asserts value is ServiceEndpoint {
+  const endpoint = value as ServiceEndpoint | undefined;
+  if (!endpoint || typeof endpoint.host !== "string" || !endpoint.host.trim()
+    || !Number.isInteger(endpoint.port) || endpoint.port < 1 || endpoint.port > 65535) {
+    throw new Error(`${label}: invalid endpoint`);
+  }
+}
+
 export interface TenantSummary {
   id: string;
   name: string;

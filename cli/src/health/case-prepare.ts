@@ -1,7 +1,7 @@
 import {
   caseProducer, validateHealthCaseBindingsResult,
   type HealthCaseBinding, type HealthCaseBindingsExtension, type HealthCaseBindingsQuery, type HealthCaseBindingsResult,
-  type CaseProduceExtension, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
+  type CaseProducer, type ServiceCaseSource, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import { caseError } from "../case/http-check";
 import type { CaseCheckResult } from "./cases";
@@ -14,7 +14,7 @@ export interface PreparedCaseCheck {
     consumeIndex: number;
     bindingIndex: number;
     service: ServiceDefinition;
-    producer: CaseProduceExtension;
+    source: ServiceCaseSource;
     query: CaseProduceQuery;
   };
 }
@@ -22,8 +22,8 @@ export interface PreparedCaseCheck {
 export interface CasePrepareActions {
   signal: AbortSignal;
   consume(service: ServiceDefinition, extension: HealthCaseBindingsExtension, query: HealthCaseBindingsQuery): Promise<HealthCaseBindingsResult>;
-  identity(extension: CaseProduceExtension): Promise<ServiceRequestIdentity | undefined>;
-  tenant?(extension: CaseProduceExtension): Promise<string | undefined>;
+  identity(producer: CaseProducer): Promise<ServiceRequestIdentity | undefined>;
+  tenant?(producer: CaseProducer): Promise<string | undefined>;
 }
 
 /** @spec Resolve only selected dependencies and identities in Command.prepare; never generate Cases or enter consumer Pods. */
@@ -61,7 +61,7 @@ export async function prepareServiceCases(plugin: PluginDefinition, consumer: Se
             result.error = "已取消 Case 身份选择，未执行检查";
           } else {
             check.execution = { consumer, binding, consumeIndex, bindingIndex, service: registered.service,
-              producer, query: { tenantId, requestIdentity, requestTenantId, maxCases: 10 } };
+              source: registered.source, query: { tenantId, requestIdentity, requestTenantId, maxCases: 10 } };
           }
         } catch (error) {
           result.error = caseError(error);

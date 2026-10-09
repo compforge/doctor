@@ -36,7 +36,7 @@ const plugin = (extensions: ServiceDefinition["extensions"]) => ({
 test("Health prepares producer identity before statistics and never persists it as a tenant filter", async () => {
   const calls: string[] = [];
   const producer = {
-    id: "probe", kind: "case.produce" as const, access: {},
+    access: {},
     requestIdentity: { configured: () => { calls.push("identity"); return { tenantId: "probe-tenant", userId: "probe-user" }; } },
     run: withSummary({ title: "Probe", fields: [] }, async () => ({ cases: [], reason: "No sample" })),
   };

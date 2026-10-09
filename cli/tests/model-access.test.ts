@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
+import { caseRunnerFixture, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import { loadCaseCatalog, requireWorkloadProbeExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION, type CaseCatalog } from "@compforge/doctor-plugin";
@@ -409,7 +409,7 @@ test("Plugin case catalog owns CaseSet validation independently of the runner", 
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "chat",
         workloads: [],
-        cases: [{ id: "chat", load: catalog.load, runner: caseExtension({
+        cases: [{ id: "chat", load: catalog.load, runner: caseRunnerFixture({
           endpoint: { host: "test-service", port: 8000 },
           access: {},
           createRunner: async () => { throw new Error("factory must not run"); },
@@ -446,7 +446,7 @@ test("Plugin Case request identity references a tenant directory provider", () =
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "chat",
     workloads: [],
-    cases: [{ id: "chat", load: () => [], runner: caseExtension({
+    cases: [{ id: "chat", load: () => [], runner: caseRunnerFixture({
       endpoint: { host: "test-service", port: 8000 },
       access: {},
       requestIdentity: {

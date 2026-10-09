@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type HealthCaseBindingsExtension, type CaseProduceExtension, type HealthCaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
+  type HealthCaseBindingsExtension, type CaseProducer, type HealthCaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
 import { prepareServiceCases, type CasePrepareActions } from "../src/health/case-prepare";
 import { checkServiceCases, type CaseCheckActions } from "../src/health/cases";
@@ -13,7 +13,7 @@ import { buildHealthHtml } from "../src/health/report";
 import { CommandContext, CommandStatus } from "../src/command";
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "test" } };
-const provider: CaseProduceExtension = { id: "files", kind: "case.produce", access: {},
+const provider: CaseProducer = { access: {},
   run: withSummary({ title: "Files", fields: [] }, async () => ({ cases: [] })) };
 const bindings: HealthCaseBinding[] = [
   { id: "kb-files", workload: "main", producer: { service: "kb", source: "files" } },
@@ -21,7 +21,7 @@ const bindings: HealthCaseBinding[] = [
 const consumption: HealthCaseBindingsExtension = { id: "downloads", kind: "health.case.bindings", access: {},
   run: withSummary({ title: "Downloads", fields: [] }, async () => ({ bindings })) };
 const consumer: ServiceDefinition = { name: "sandbox", component, workloads: [kubernetesServiceWorkload("sandbox")], extensions: [consumption] };
-const kb: ServiceDefinition = { name: "kb", component, workloads: [], cases: [{ id: provider.id, load: () => [], produce: provider }] };
+const kb: ServiceDefinition = { name: "kb", component, workloads: [], cases: [{ id: "files", load: () => [], produce: provider }] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, kb]) };
 const target: WorkloadInstance = { platform: "kubernetes", environment: "cluster", workload: "main", namespace: "ns", pod: "sandbox-1", uid: "uid-1", container: "app" };
 const file: CaseProduceResult["cases"][number] = {
@@ -179,7 +179,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
   try {
     const actions = caseCheckActions(context, executor, { namespace: "ns" }, f.directory, () => {});
     // The real provider invocation uses its own bound Service and invocation context.
-    const runtimeProvider: CaseProduceExtension = { ...provider, run: withSummary({ title: "Files", fields: [] }, async ctx => {
+    const runtimeProvider: CaseProducer = { ...provider, run: withSummary({ title: "Files", fields: [] }, async ctx => {
       expect(ctx.target.service.name).toBe("kb");
       return { cases: [file] };
     }) };
@@ -188,7 +188,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
       return { bindings };
     }) };
     const runtimeConsumer = { ...consumer, extensions: [runtimeConsumption] };
-    const runtimePlugin = { ...plugin, services: createServiceCatalog([runtimeConsumer, { ...kb, cases: [{ id: runtimeProvider.id, load: () => [], produce: runtimeProvider }] }]) };
+    const runtimePlugin = { ...plugin, services: createServiceCatalog([runtimeConsumer, { ...kb, cases: [{ id: "files", load: () => [], produce: runtimeProvider }] }]) };
     const checks = await checkServiceCases(await prepareServiceCases(runtimePlugin, runtimeConsumer, [runtimeConsumption], undefined,
       casePrepareActions(context, executor, { namespace: "ns" }, {})), actions);
     expect(checks[0]!.error).toBeUndefined();

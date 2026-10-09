@@ -1,28 +1,28 @@
 import { expect, test } from "bun:test";
-import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseBindingsExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
+import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseBindingsExtension, validateCaseProduceResult, type CaseProduceResult, validateCaseProducer } from "../src";
 
 test("Case producers declare optional identity requirements before execution", () => {
-  const extension = { id: "probe", kind: "case.produce", access: {},
+  const extension = { access: {},
     run: withSummary({ title: "Probe", fields: [] }, async () => ({ cases: [], reason: "fixture" })) };
-  expect(() => requireCaseProduceExtension(extension)).not.toThrow();
+  expect(() => validateCaseProducer(extension)).not.toThrow();
   const declared = { ...extension, requestIdentity: { configured: () => ({}) } };
-  expect(() => requireCaseProduceExtension(declared)).not.toThrow();
+  expect(() => validateCaseProducer(declared)).not.toThrow();
   for (const requestIdentity of [null, true, {}, { configured: "invalid" }]) {
     const invalid = { ...extension, requestIdentity };
-    expect(() => requireCaseProduceExtension(invalid)).toThrow("requestIdentity");
+    expect(() => validateCaseProducer(invalid)).toThrow("requestIdentity");
   }
 });
 
 test("tenant-only producers do not declare model IDs or require user identity", () => {
-  const extension = { id: "models", kind: "case.produce", access: {},
+  const extension = { access: {},
     run: withSummary({ title: "Models", fields: [] }, async () => ({ cases: [], reason: "fixture" })) };
   const declared = { ...extension, requestTenant: { configured: () => "tenant" } };
-  expect(() => requireCaseProduceExtension(declared)).not.toThrow();
+  expect(() => validateCaseProducer(declared)).not.toThrow();
   const conflicting = { ...declared, requestIdentity: { configured: () => ({}) } };
-  expect(() => requireCaseProduceExtension(conflicting)).toThrow("either");
+  expect(() => validateCaseProducer(conflicting)).toThrow("either");
   for (const requestTenant of [null, true, {}, { configured: "invalid" }]) {
     const invalid = { ...extension, requestTenant };
-    expect(() => requireCaseProduceExtension(invalid)).toThrow("requestTenant");
+    expect(() => validateCaseProducer(invalid)).toThrow("requestTenant");
   }
 });
 
