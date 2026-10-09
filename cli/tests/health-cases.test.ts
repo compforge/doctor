@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
   type CaseConsumeExtension, type CaseProduceExtension, type CaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
+import { prepareServiceCases, type CasePrepareActions } from "../src/health/case-prepare";
 import { checkServiceCases, type CaseCheckActions } from "../src/health/cases";
 import { healthProviders } from "../src/health/extensions";
 import { runHealthSession } from "../src/health/flow";
@@ -27,11 +28,12 @@ const file: CaseProduceResult["cases"][number] = {
   case: { id: "download", desc: "File", input: { protocol: "http", method: "GET" }, judge: { e2e: { http: { status: [200] } } } },
   targets: [{ id: "primary", url: "https://files.test/download?signature=TOPSECRET", headers: { Authorization: "Bearer TOKEN" } }],
 };
-function fixture(overrides: Partial<CaseCheckActions> = {}) {
+function fixture(overrides: Partial<CaseCheckActions & CasePrepareActions> = {}) {
   const directory = mkdtempSync(join(tmpdir(), "overview-cases-"));
   const controller = new AbortController();
   const calls: string[] = [];
-  const actions: CaseCheckActions = {
+  const actions: CaseCheckActions & CasePrepareActions = {
+    identity: async () => undefined,
     directory, signal: controller.signal, checkpoint: () => {}, approve: async () => ({ approved: true, source: "assume-yes" }),
     targets: async () => { calls.push("targets"); return { targets: [target] }; },
     sender: async selected => { calls.push(`sender:${selected.pod}`); return async request => {
@@ -42,7 +44,7 @@ function fixture(overrides: Partial<CaseCheckActions> = {}) {
     produce: async service => { expect(service.name).toBe("kb"); calls.push("provide"); return { cases: [file] }; },
     ...overrides,
   };
-  return { directory, controller, calls, actions, run: () => checkServiceCases(plugin, consumer, [consumption], "tenant", actions),
+  return { directory, controller, calls, actions, run: async () => checkServiceCases(await prepareServiceCases(plugin, consumer, [consumption], "tenant", actions), actions),
     cleanup: () => rmSync(directory, { recursive: true, force: true }) };
 }
 
@@ -150,7 +152,7 @@ test("replica tool/provider failures preserve their identity and do not hide ano
 
 
 test("real Case adapter executes only in consumer container and delivers failed HTTP evidence", async () => {
-  const { caseCheckActions } = await import("../src/health/case-runtime");
+  const { caseCheckActions, casePrepareActions } = await import("../src/health/case-runtime");
   const { writeHealthEvidence } = await import("../src/health/report");
   const { healthCommand } = await import("../src/health");
   const { finalizeResult, readReport } = await import("./report-fixture");
@@ -187,7 +189,8 @@ test("real Case adapter executes only in consumer container and delivers failed 
     }) };
     const runtimeConsumer = { ...consumer, extensions: [runtimeConsumption] };
     const runtimePlugin = { ...plugin, services: createServiceCatalog([runtimeConsumer, { ...kb, extensions: [runtimeProvider] }]) };
-    const checks = await checkServiceCases(runtimePlugin, runtimeConsumer, [runtimeConsumption], undefined, actions);
+    const checks = await checkServiceCases(await prepareServiceCases(runtimePlugin, runtimeConsumer, [runtimeConsumption], undefined,
+      casePrepareActions(context, executor, { namespace: "ns" }, {})), actions);
     expect(checks[0]!.error).toBeUndefined();
     expect(checks[0]!.status).toBe("failed");
     expect(checks[0]!.attempts[0]!.target).toMatchObject({ namespace: "ns", pod: target.pod, uid: target.uid, container: "app" });
@@ -210,7 +213,7 @@ test("real Case adapter executes only in consumer container and delivers failed 
   } finally { await context.disposeClients(); f.cleanup(); }
 });
 
-test("consumer data is resolved at execution and invalid relationships never reach a Pod", async () => {
+test("consumer data is resolved during preparation and invalid relationships never reach a Pod", async () => {
   for (const consume of [
     async () => { throw new Error("consumer configuration unavailable"); },
     async () => ({ bindings: [{ ...bindings[0]!, workload: "missing" }] }),
@@ -238,8 +241,8 @@ test("consume extensions isolate failures and preserve duplicate binding IDs acr
     return { bindings };
   };
   try {
-    const results = await checkServiceCases(plugin, consumer,
-      [{ ...consumption, id: "broken" }, consumption, { ...consumption, id: "second" }], "tenant", f.actions);
+    const results = await checkServiceCases(await prepareServiceCases(plugin, consumer,
+      [{ ...consumption, id: "broken" }, consumption, { ...consumption, id: "second" }], "tenant", f.actions), f.actions);
     expect(results.map(result => result.status)).toEqual(["unavailable", "passed", "passed"]);
     expect(results.map(result => result.consumeExtension)).toEqual(["broken", "downloads", "second"]);
     expect(snapshots).toHaveLength(3);

@@ -10,7 +10,10 @@ import type {
 import { prepareTerminalInput } from "../terminal/input";
 import { writeOutput } from "../terminal/output";
 import { printNumberedChoices } from "../terminal/selection";
-import { promptTenantChoice } from "../terminal/tenant-selection";
+import { resolveTenant } from "../terminal/tenant";
+import { defineCommandDecision, type CommandContext } from "../command";
+
+const userSelectionDecision = defineCommandDecision<UserSummary | undefined>("case-user-selection");
 
 const USER_PAGE_SIZE = 10;
 
@@ -131,18 +134,20 @@ export async function resolveCaseRequestIdentity(input: {
   directory: TenantDirectory;
   commandLabel: string;
   logPrefix: string;
+  commandContext?: CommandContext;
+  interactive?: boolean;
   promptTenant?: (tenants: readonly TenantSummary[]) => Promise<TenantSummary | undefined>;
   promptUser?: (input: { search: UserSearch }) => Promise<UserSummary | undefined>;
 }): Promise<ServiceRequestIdentity | undefined> {
   let tenantId = normalized(input.configured.tenantId);
   let userId = normalized(input.configured.userId);
   if (!tenantId) {
-    const tenants = await input.directory.listActive();
-    if (!tenants.length) throw new Error("租户目录未返回当前启用租户");
-    const tenant = await (input.promptTenant ?? ((choices) => promptTenantChoice({
-      choices,
-      title: `[${input.logPrefix}] 当前启用租户：`,
-    })))(tenants);
+    const tenant = await resolveTenant({
+      directory: input.directory, commandContext: input.commandContext,
+      profileName: input.commandContext?.profile.name, scope: "case-identity",
+      interactive: input.interactive, prompt: input.promptTenant,
+      promptTitle: `[${input.logPrefix}] 当前启用租户：`,
+    });
     if (!tenant) return undefined;
     tenantId = tenant.id;
   }
@@ -154,9 +159,12 @@ export async function resolveCaseRequestIdentity(input: {
       tenantId,
       ...request,
     });
-    const user = await (input.promptUser ?? ((selection) => (
+    const choose = () => (input.promptUser ?? ((selection) => (
       promptUserChoice(selection.search, input.logPrefix)
     )))({ search });
+    const user = input.commandContext
+      ? await input.commandContext.decide(userSelectionDecision, [input.commandContext.profile.name, tenantId], choose)
+      : await choose();
     if (!user) return undefined;
     userId = user.id;
   }

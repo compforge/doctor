@@ -20,11 +20,11 @@ import type { CommandContext } from "../command";
 import {
   openModelAccess,
   requireInferenceModel,
-  resolveModelTenant,
   selectModel,
   type SelectedInferenceModel,
 } from "../model";
 
+import { resolveTenant } from "../terminal/tenant";
 import { useLogger } from "../terminal/log";
 import { DoctorClient } from "../protocol";
 import type { CliFlags } from "../protocol";
@@ -301,7 +301,7 @@ async function resolveLocalModel(
   });
   if (!access) throw new Error("已取消 Doctor chat 模型选择");
   try {
-    const tenant = await resolveModelTenant({
+    const tenant = await resolveTenant({
       directory: access.directory,
       profileName,
       commandContext,

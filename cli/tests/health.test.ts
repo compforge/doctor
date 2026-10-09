@@ -14,6 +14,7 @@ import { sampleCommand } from "../src/overview";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
 import * as targets from "../src/command/kubernetes-target";
+import * as caseRuntime from "../src/health/case-runtime";
 
 const query = { window: { from: "2026-10-01T00:00:00Z", to: "2026-10-01T01:00:00Z" }, maxEntries: 10 };
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };
@@ -30,6 +31,55 @@ const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition
 });
 const plugin = (extensions: ServiceDefinition["extensions"]) => ({
   id: "fixture", version: "1", services: createServiceCatalog([service(extensions)]),
+});
+
+test("Health prepares producer identity before statistics and never persists it as a tenant filter", async () => {
+  const calls: string[] = [];
+  const producer = {
+    id: "probe", kind: "case.produce" as const, access: {},
+    requestIdentity: { configured: () => { calls.push("identity"); return { tenantId: "probe-tenant", userId: "probe-user" }; } },
+    run: withSummary({ title: "Probe", fields: [] }, async () => ({ cases: [], reason: "No sample" })),
+  };
+  const definition = plugin([summarize, consume, producer]);
+  const api = definition.services.find("api")!;
+  const { kubernetesServiceWorkload } = await import("@compforge/doctor-plugin");
+  const ready = { ...api, workloads: [kubernetesServiceWorkload("api")], extensions: [
+    { ...summarize, run: withSummary({ title: "Summary", fields: [] }, async (_ctx, input: import("@compforge/doctor-plugin").OverviewQuery) => {
+      expect(input.tenantId).toBeUndefined(); calls.push("summary"); return summary;
+    }) },
+    { ...consume, run: withSummary({ title: "Relations", fields: [] }, async () => {
+      calls.push("consume");
+      return { bindings: [{ id: "probe", workload: "main", producer: { namespace: "plugin/fixture/service/api", extension: "probe" } }] };
+    }) }, producer,
+  ] };
+  const context = new CommandContext({}, undefined, { plugin: { ...definition, services: createServiceCatalog([ready]) } });
+  context.ensureEnvironment = async () => {};
+  const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture",
+    kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" } });
+  const executor = spyOn(targets, "createKubernetesExecutor").mockReturnValue({
+    run: async args => ({ ok: true, stdout: "fixture\nhttps://cluster.example", stderr: "", exitCode: 0, command: args, durationMs: 1, timedOut: false }),
+    exec: async () => { throw new Error("unexpected exec"); },
+  });
+  const checks = spyOn(caseRuntime, "caseCheckActions").mockImplementation((_ctx, _executor, _kube, directory, checkpoint) => ({
+    directory, checkpoint, signal: context.signal,
+    targets: async () => { calls.push("targets"); return { targets: [] }; },
+    sender: async () => { throw new Error("unexpected sender"); },
+    approve: async () => { throw new Error("unexpected approval"); },
+    produce: async () => { throw new Error("unexpected production"); },
+  }));
+  try {
+    const result = await healthCommand.run(context, { since: "1h", service: "api" });
+    expect(calls).toEqual(["consume", "identity", "summary", "targets"]);
+    expect(result.output?.query.tenantId).toBeUndefined();
+    const artifact = result.artifacts[0]!;
+    const evidence = readFileSync(join(artifact.path, "diagnosis.json"), "utf8");
+    expect(evidence).not.toContain("probe-user");
+    expect(evidence).not.toContain("probe-tenant");
+  } finally {
+    config.mockRestore(); executor.mockRestore(); checks.mockRestore();
+    await context.disposeClients();
+    for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
+  }
 });
 
 test("health discovers statistics and Cases without inspecting sample implementations", () => {

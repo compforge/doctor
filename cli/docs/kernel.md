@@ -103,6 +103,8 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 
 Prepare 按输入选择本次依赖，完成 Plugin 能力存在性检查、环境准备和已选实现的访问检查。
 公共的能力与环境检查复用 prepareCommandRequirements；没有额外准备工作的命令直接返回输入。
+依赖 Extension 声明的请求身份也由 prepare 补齐：按需发现目录、应用参数与配置优先级，并通过共享 Decision 完成交互选择。
+准备结果向 run 传递已解析的依赖与输入，不让执行中的每个实例重复询问。
 validate 负责不访问外部资源的输入校验，在加载 Plugin 和访问环境前拒绝无效请求。
 
 prepare 根据本次输入选择并绑定资源和能力，Service 则提供 Workload、DataSource、capability 与 access

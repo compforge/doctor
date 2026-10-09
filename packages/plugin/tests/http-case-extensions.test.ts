@@ -1,5 +1,17 @@
 import { expect, test } from "bun:test";
-import { validateCaseBindings, validateCaseConsumeResult, validateExtension, withSummary, type CaseConsumeExtension, validateCaseProduceResult, type CaseProduceResult } from "../src";
+import { validateCaseBindings, validateCaseConsumeResult, validateExtension, withSummary, type CaseConsumeExtension, validateCaseProduceResult, type CaseProduceResult, requireCaseProduceExtension } from "../src";
+
+test("Case producers declare optional identity requirements before execution", () => {
+  const extension = { id: "probe", kind: "case.produce", access: {},
+    run: withSummary({ title: "Probe", fields: [] }, async () => ({ cases: [], reason: "fixture" })) };
+  expect(() => requireCaseProduceExtension(extension)).not.toThrow();
+  const declared = { ...extension, requestIdentity: { configured: () => ({}) } };
+  expect(() => requireCaseProduceExtension(declared)).not.toThrow();
+  for (const requestIdentity of [null, true, {}, { configured: "invalid" }]) {
+    const invalid = { ...extension, requestIdentity };
+    expect(() => requireCaseProduceExtension(invalid)).toThrow("requestIdentity");
+  }
+});
 
 const item: CaseProduceResult["cases"][number] = { case: { id: "download", desc: "File", input: { protocol: "http", method: "GET" },
   judge: { e2e: { http: { status: [200] } } } }, targets: [{ id: "primary", url: "https://files.test/object?signature=secret" }] };

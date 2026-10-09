@@ -171,6 +171,7 @@ test("Perf fills missing tenant and user identity from the declared directory", 
   const searches: unknown[] = [];
   expect(await resolveCaseRequestIdentity({
     configured: {},
+    interactive: true,
     directory: {
       listActive: async () => tenants,
       getByName: async () => tenants[0]!,

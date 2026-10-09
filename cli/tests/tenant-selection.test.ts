@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { TenantDirectory, TenantSummary } from "@compforge/doctor-plugin";
 
 import { RecentSelections } from "../src/infra/recent";
-import { resolveModelTenant } from "../src/model";
+import { resolveTenant } from "../src/terminal/tenant";
 import { CommandContext } from "../src/command";
 
 test("交互选择的租户进入当前 profile 的最近常用列表", async () => {
@@ -26,7 +26,7 @@ test("交互选择的租户进入当前 profile 的最近常用列表", async ()
     join(mkdtempSync(join(tmpdir(), "doctor-tenant-recent-")), "recent.json"),
   );
 
-  await expect(resolveModelTenant({
+  await expect(resolveTenant({
     profileName: "test",
     directory,
     interactive: true,
@@ -59,7 +59,7 @@ test("standalone 与 composite collector 通过 CommandContext 复用同一租�
     },
   };
 
-  await expect(resolveModelTenant(input)).resolves.toEqual(tenant);
-  await expect(resolveModelTenant(input)).resolves.toEqual(tenant);
+  await expect(resolveTenant(input)).resolves.toEqual(tenant);
+  await expect(resolveTenant(input)).resolves.toEqual(tenant);
   expect(prompts).toBe(1);
 });

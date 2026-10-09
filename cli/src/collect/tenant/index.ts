@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import type { CommandContext } from "../../command";
 import { commandOutcome, type CommandResult } from "../../command";
-import { resolveTenant } from "../../model";
+import { resolveTenant } from "../../terminal/tenant";
 
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
