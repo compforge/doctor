@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type CaseProduceExtension, type ServiceRequestIdentity, type TenantDirectory } from "@compforge/doctor-plugin";
+  type CaseProducer, type ServiceRequestIdentity, type TenantDirectory } from "@compforge/doctor-plugin";
 import { CommandContext } from "../src/command";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../src/case/prepare-identity";
 import { prepareServiceCases } from "../src/health/case-prepare";
@@ -10,8 +10,8 @@ import { withInteractionOptions } from "../src/terminal/policy";
 
 const tenant = { id: "tenant-a", name: "alpha", displayName: "Alpha" };
 const user = { id: "user-a", name: "alice", displayName: "Alice" };
-const producer: CaseProduceExtension = {
-  id: "hello", kind: "case.produce", access: {},
+const producer: CaseProducer = {
+  access: {},
   requestIdentity: { configured: () => ({}) },
   run: withSummary({ title: "Hello", fields: [] }, async () => ({ cases: [], reason: "fixture" })),
 };
@@ -67,7 +67,7 @@ test("Health fills one identity for multiple producers, with tenant-scoped user 
   };
   try {
     const first = resolveCaseProducerIdentity(context, producer, {}, directory, selection);
-    const second = resolveCaseProducerIdentity(context, { ...producer, id: "another" }, {}, directory, selection);
+    const second = resolveCaseProducerIdentity(context, { ...producer }, {}, directory, selection);
     expect(await first).toEqual({ tenantId: tenant.id, userId: user.id });
     expect(await second).toEqual(await first);
     expect([tenants, users]).toEqual([1, 1]);
@@ -101,8 +101,8 @@ test("identity cancellation is shared without poisoning a different tenant's sel
   const context = new CommandContext({});
   let prompts = 0;
   try {
-    for (const id of ["one", "two"]) {
-      expect(await resolveCaseProducerIdentity(context, { ...producer, id }, {}, {
+    for (const declaration of [producer, { ...producer }]) {
+      expect(await resolveCaseProducerIdentity(context, declaration, {}, {
         ...unavailableDirectory, listActive: async () => [tenant],
       }, { interactive: true, promptTenant: async () => { prompts++; return undefined; } })).toBeUndefined();
     }
@@ -133,7 +133,7 @@ test("prepare binds identities without target access; run preserves fresh produc
   const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
-  const source = { name: "source", component, workloads: [], cases: [{ id: producer.id, load: () => [], produce: producer }] };
+  const source = { name: "source", component, workloads: [], cases: [{ id: "hello", load: () => [], produce: producer }] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, source]) };
   const signal = new AbortController().signal;
   const identity: ServiceRequestIdentity = { tenantId: tenant.id, userId: user.id };
@@ -163,13 +163,13 @@ test("prepare binds identities without target access; run preserves fresh produc
 
 test("missing or cancelled identity is a binding-level gap and does not block identity-free producers", async () => {
   const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
-  const plain = { ...producer, id: "plain", requestIdentity: undefined };
+  const plain = { ...producer, requestIdentity: undefined };
   const binding = (id: string) => ({ id, workload: "main", producer: { service: "source", source: id } });
   const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
     run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [] })) };
   const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer,
-    { name: "source", component, workloads: [], cases: [producer, plain].map(produce => ({ id: produce.id, load: () => [], produce })) }]) };
+    { name: "source", component, workloads: [], cases: [{ id: "hello", load: () => [], produce: producer }, { id: "plain", load: () => [], produce: plain }] }]) };
   for (const cancelled of [false, true]) {
     const prepared = await prepareServiceCases(plugin, consumer, [consume], undefined, {
       signal: new AbortController().signal,
@@ -178,6 +178,6 @@ test("missing or cancelled identity is a binding-level gap and does not block id
     });
     expect(prepared[0]?.execution).toBeUndefined();
     expect(prepared[0]?.result).toMatchObject({ stage: "identity", status: cancelled ? "cancelled" : "unavailable", targets: [], attempts: [] });
-    expect(prepared[1]?.execution?.producer.run).toBe(plain.run);
+    expect(prepared[1]?.execution?.source.produce?.run).toBe(plain.run);
   }
 });

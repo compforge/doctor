@@ -1,7 +1,7 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
-import { requireCaseProduceExtension, type CaseProduceExtension } from "./extension/case-produce";
-import { requireCaseRunnerCreateExtension, type CaseRunnerCreateExtension } from "./extension/case";
+import { validateCaseProducer, type CaseProducer } from "./case-producer";
+import { validateCaseRunnerFactory, type CaseRunnerFactory } from "./case-runner";
 
 export interface ServiceCaseRef { readonly service: string; readonly source: string }
 
@@ -14,21 +14,27 @@ export interface CaseCatalog {
   load(): readonly CaseSet[];
 }
 
-/** @spec A Service contributes Case assets once; commands own selection, scheduling and reporting. */
+/**
+ * Case is a Service-owned resource, alongside DataSource and Workload.
+ * @spec The source owns assets and runtime binding; Commands reference it and own selection, scheduling and reporting.
+ * @why Producer and runner share the source identity, not separate Extension registrations.
+ */
 export interface ServiceCaseSource extends CaseCatalog {
-  readonly produce?: Omit<CaseProduceExtension, "id" | "kind" | "namespace">;
-  readonly runner?: Omit<CaseRunnerCreateExtension, "id" | "kind" | "namespace">;
+  readonly produce?: CaseProducer;
+  readonly runner?: CaseRunnerFactory;
 }
 
-/** Adapt owned operations to the host invocation seam, never register a second public entry. */
-export function caseProducer(source: ServiceCaseSource): CaseProduceExtension {
+/** Select the resource's own capability without synthesizing another registration identity. */
+export function caseProducer(source: ServiceCaseSource): CaseProducer {
   if (!source.produce) throw new Error(`Case source '${source.id}' does not provide runtime Cases`);
-  return requireCaseProduceExtension({ ...source.produce, id: source.id, kind: "case.produce" });
+  validateCaseProducer(source.produce);
+  return source.produce;
 }
 
-export function caseRunner(source: ServiceCaseSource): CaseRunnerCreateExtension {
+export function caseRunner(source: ServiceCaseSource): CaseRunnerFactory {
   if (!source.runner) throw new Error(`Case source '${source.id}' does not provide a runner`);
-  return requireCaseRunnerCreateExtension({ ...source.runner, id: source.id, kind: "case.runner.create" });
+  validateCaseRunnerFactory(source.runner);
+  return source.runner;
 }
 
 export function validateCaseSource(source: ServiceCaseSource): void {

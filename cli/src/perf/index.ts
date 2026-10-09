@@ -1,5 +1,5 @@
 import { writeOutput } from "../terminal/output";
-import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/extensions";
+import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/runners";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -273,7 +273,7 @@ export async function runPerf(
   const catalog = doctorCaseCatalog(plugin, opts.caseFile);
   const caseSelection = await selectDoctorCases({
     catalog: runnerCaseCatalog(catalog, runnerProvider),
-    supports: runnerProvider.extension.supports,
+    supports: runnerProvider.factory.supports,
     command: "perf",
     caseSetId: opts.caseset,
     caseIds: opts.cases,
@@ -300,7 +300,7 @@ export async function runPerf(
   }
 
   let requestIdentity: ServiceRequestIdentity | undefined;
-  const identityRequirement = runnerProvider.extension.requestIdentity;
+  const identityRequirement = runnerProvider.factory.requestIdentity;
   if (identityRequirement) {
     const configured = identityRequirement.configured(commandContext.profile.pluginConfig);
     const tenantId = configured.tenantId?.trim();
@@ -362,8 +362,8 @@ export async function runPerf(
   }, {
     config: commandContext.profile.pluginConfig,
     service: runnerProvider.service,
-    endpoint: runnerProvider.extension.endpoint,
-    capability: runnerProvider.extension,
+    endpoint: runnerProvider.factory.endpoint,
+    capability: runnerProvider.factory,
     command: "doctor perf",
     authorization,
   });
@@ -432,7 +432,7 @@ export async function runPerf(
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       subject: { name: runnerProvider.service.name, target: { service: runnerProvider.service.name, source: runnerProvider.source.id } },
-      workload: workloadFromCaseFactory(() => createCaseRunner(runnerProvider.extension, managed, {
+      workload: workloadFromCaseFactory(() => createCaseRunner(runnerProvider.factory, managed, {
         caseSetId: caseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,

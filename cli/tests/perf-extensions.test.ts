@@ -1,5 +1,5 @@
 import { withSummary } from "@compforge/doctor-plugin";
-import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
+import { caseRunnerFixture } from "../../packages/plugin/tests/extension-fixture";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type ServiceDefinition, type ServicePerfScenario, type PerfScenariosExtension } from "@compforge/doctor-plugin";
 import { createHostPluginContext } from "../src/plugin/context";
@@ -15,7 +15,7 @@ const service: ServiceDefinition = {
   aliases: ["chat"],
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: [],
-  cases: [{ id: "chat", load: () => [], runner: caseExtension({
+  cases: [{ id: "chat", load: () => [], runner: caseRunnerFixture({
     endpoint: { host: "app", port: 8080 }, access: {},
     createRunner
   }) }]

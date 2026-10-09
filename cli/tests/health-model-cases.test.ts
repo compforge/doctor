@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, modelHttpCases, withSummary,
-  type CaseProduceExtension, type CaseModelType, type Model, type WorkloadInstance } from "@compforge/doctor-plugin";
+  type CaseProducer, type CaseModelType, type Model, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { inspectCaseModel } from "../src/case/model-check";
 import { prepareServiceCases } from "../src/health/case-prepare";
 import { checkServiceCases } from "../src/health/cases";
@@ -32,7 +32,7 @@ test("model response checks reject HTTP-200 error envelopes and unusable results
 
 const model: Model = { id: "catalog-id", name: "Example", type: "llm", provider: "example",
   inference: { baseUrl: "http://inference.test/v1", model: "runtime-model-id" } };
-const producer: CaseProduceExtension = { id: "models", kind: "case.produce", access: {},
+const producer: CaseProducer = { access: {},
   requestTenant: { configured: () => undefined },
   run: withSummary({ title: "Model Cases", fields: [] }, async () => ({ cases: modelHttpCases(model) })) };
 const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
@@ -40,7 +40,7 @@ const binding = { id: "models", workload: "main", producer: { service: "catalog"
 const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
   run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
 const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
-const source = { name: "catalog", component, workloads: [], cases: [{ id: producer.id, load: () => [], produce: producer }] };
+const source = { name: "catalog", component, workloads: [], cases: [{ id: "models", load: () => [], produce: producer }] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, source]) };
 const target: WorkloadInstance = { platform: "kubernetes", environment: "test", workload: "main", namespace: "test", pod: "worker-1", uid: "uid-1", container: "app" };
 
@@ -61,7 +61,7 @@ test("Health prepares only the tenant; producer owns model choice and consumer o
       signal, directory, checkpoint: () => {}, targets: async () => ({ targets: [target] }),
       produce: async (service, extension, query) => {
         expect(service.name).toBe(source.name);
-        expect(extension.run).toBe(producer.run);
+        expect(extension.produce!.run).toBe(producer.run);
         expect(query.requestTenantId).toBe("probe-tenant");
         calls.push("produce");
         return { cases: modelHttpCases(model) };

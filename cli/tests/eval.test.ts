@@ -1,4 +1,4 @@
-import { caseExtension } from "../../packages/plugin/tests/extension-fixture";
+import { caseRunnerFixture } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
   type CaseCatalog,
@@ -53,7 +53,7 @@ function testPlugin(): PluginDefinition {
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat",
       workloads: [],
-      cases: [{ id: "chat", load: catalog.load, runner: caseExtension({
+      cases: [{ id: "chat", load: catalog.load, runner: caseRunnerFixture({
         endpoint: { host: "test-service", port: 8080 },
         access: {},
         createRunner: async () => ({

@@ -36,8 +36,8 @@ test("Catalog discovers multiple open kinds without invoking them or imposing a 
 test("Catalog rejects malformed common declarations and duplicate IDs; the domain validates its own metadata", () => {
   const item = { id: "one", kind: "custom.kind", access: {}, run: withSummary({ title: "Custom", fields: [] }, async () => 1) };
   expect(() => createServiceCatalog([service([item, item])])).toThrow("duplicate Extension id");
-  expect(() => createServiceCatalog([service([{ ...item, access: undefined } as never])])).toThrow("Extension.access");
-  expect(() => createServiceCatalog([service([{ ...item, run: undefined } as never])])).toThrow("Extension.run");
+  expect(() => createServiceCatalog([service([{ ...item, access: undefined } as never])])).toThrow("Operation.access");
+  expect(() => createServiceCatalog([service([{ ...item, run: undefined } as never])])).toThrow("Operation.run");
   expect(() => requireFactsInspectExtension({ ...item, kind: FACTS_INSPECT_KIND })).toThrow("accepts");
 });
 

@@ -1,7 +1,7 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import type { HttpCase } from "@compforge/spec-case/http";
 import type { Model } from "./definition";
-import type { CaseProduceResult } from "./extension/case-produce";
+import type { CaseProduceResult } from "./case-producer";
 
 export const MODEL_IMAGE_TEST_DATA_URL = "data:image/png;base64,"
   + "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC";

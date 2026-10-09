@@ -1,7 +1,7 @@
 import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, type CaseCatalog, type CaseRunnerCreateExtension, type ServiceDefinition, type PluginDefinition, type PerfScenariosExtension } from "@compforge/doctor-plugin";
-import { caseRunnerProvider, createCaseRunner, runnableCaseCatalog, runnerCaseCatalog } from "../src/case/extensions";
+import { createServiceCatalog, type CaseCatalog, type CaseRunnerFactory, type ServiceDefinition, type PluginDefinition, type PerfScenariosExtension } from "@compforge/doctor-plugin";
+import { caseRunnerProvider, createCaseRunner, runnableCaseCatalog, runnerCaseCatalog } from "../src/case/runners";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { createHostPluginContext } from "../src/plugin/context";
 import { selectEvalProvider, executeEvalCases } from "../src/eval";
@@ -9,8 +9,8 @@ import { selectPerfProvider, loadPerfScenarios } from "../src/perf/extensions";
 import { workloadFromCaseRunner } from "../src/perf";
 
 const cases = { caseset: "chat", schema_version: 1 as const, facets: {}, cases: [{ id: "hello", input: { query: "hello" } }] };
-const extension: CaseRunnerCreateExtension = {
-  id: "runner", kind: "case.runner.create", endpoint: { host: "app", port: 8080 }, access: {},
+const extension: CaseRunnerFactory = {
+  endpoint: { host: "app", port: 8080 }, access: {},
   supports: item => typeof item.input.query === "string",
   run: withSummary({"title":"Case Runner","fields":[]}, async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) }))
 };
@@ -26,7 +26,7 @@ const base: ServiceDefinition = {
   workloads: []
 };
 
-test("native Case extension serves both Eval and Perf without legacy capability", async () => {
+test("native Case resource serves both Eval and Perf without legacy capability", async () => {
   const run = mock(extension.run);
   const services = createServiceCatalog([{ ...base, cases: [{ id: "chat", load: catalog.load, runner: { ...extension, run } }], extensions: [scenarios] }]);
   const plugin: PluginDefinition = { id: "test", version: "0.0.1", services };
@@ -38,7 +38,7 @@ test("native Case extension serves both Eval and Perf without legacy capability"
   expect(run).not.toHaveBeenCalled();
   const context = createHostPluginContext({ service: base, capability: extension });
   try {
-    const runner = await createCaseRunner(selected.extension, context, { caseSetId: "chat", timeoutMs: 1000 });
+    const runner = await createCaseRunner(selected.factory, context, { caseSetId: "chat", timeoutMs: 1000 });
     expect((await executeEvalCases(runner, cases.cases, "run", context.signal))[0]?.protocol?.ok).toBe(true);
     expect(workloadFromCaseRunner(runner)).toBeDefined();
   } finally { await context.dispose(); }
@@ -61,7 +61,7 @@ test("Perf scenario may reference another Service's source without borrowing the
   const ref = declared[0]!.cases;
   const selected = caseRunnerProvider(services, ref.service, ref.source);
   expect(selected.service.name).toBe("app");
-  expect(selected.extension.endpoint).toEqual(extension.endpoint);
+  expect(selected.factory.endpoint).toEqual(extension.endpoint);
   expect(() => caseRunnerProvider(services, "app", "missing")).toThrow("No Case runner");
 });
 
@@ -84,7 +84,7 @@ test("cancellation during creation transfers the runner to its cleanup owner", a
   const controller = new AbortController();
   const cleanup = mock(async () => { });
   const run = mock(async () => ({ status: 200, durationMs: 1 }));
-  const factory: CaseRunnerCreateExtension = {
+  const factory: CaseRunnerFactory = {
     ...extension, run: withSummary({ title: "Fixture", fields: [] }, async () => {
       controller.abort();
       return { run, cleanup, classify: () => ({ ok: true }) };
