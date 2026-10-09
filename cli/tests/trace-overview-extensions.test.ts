@@ -54,7 +54,7 @@ test("overview discovers native operations without invoking them or combining th
   expect(provider.summarize!.access).toEqual({});
   expect(provider.sample?.access).toEqual(sample.access);
   expect(run).not.toHaveBeenCalled();
-  expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.overview).runnable).toBe(true);
+  expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.sample).runnable).toBe(true);
 });
 
 test("overview requires sampling and rejects ambiguous producers", () => {

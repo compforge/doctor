@@ -18,7 +18,7 @@ import { overviewCollectConcurrency, overviewSampleCount, overviewServiceNames }
 import { buildOverviewHtml, printOverview, writeOverviewEvidence } from "./report";
 import { confirmOverviewCollection, overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
 
-export interface OverviewCliOpts extends KubernetesCommandInput {
+export interface SampleCliOpts extends KubernetesCommandInput {
   since?: string;
   service?: string;
   services?: string;
@@ -32,7 +32,7 @@ export interface OverviewCliOpts extends KubernetesCommandInput {
   format?: string;
 }
 
-export function validateOverviewOptions(opts: OverviewCliOpts): void {
+export function validateSampleOptions(opts: SampleCliOpts): void {
   overviewServiceNames(opts);
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
@@ -41,7 +41,8 @@ export function validateOverviewOptions(opts: OverviewCliOpts): void {
   overviewCollectConcurrency(opts.collectConcurrency);
 }
 
-async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvider[], context: CommandContext): Promise<CommandResult<OverviewOutput>> {
+async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[], context: CommandContext): Promise<CommandResult<SampleOutput>> {
+  // Keep persisted profile keys independent of the user-facing command name.
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
   const interactive = isInteractive();
@@ -50,7 +51,7 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
-  const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor overview");
+  const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor sample");
   // Freeze after target selection, before the first provider query; sampling reuses these exact instants.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
   let collectionResult: CommandResult<CollectOutput> | undefined;
@@ -71,11 +72,11 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
       confirmCollect: (bizIds) => confirmOverviewCollection(bizIds, opts.collect, interactive),
-      warn: (message) => useLogger("overview").warn(`${message}`),
+      warn: (message) => useLogger("sample").warn(`${message}`),
       show: (result) => {
         if (!snapshot) printOverview(result);
         if (result.samples.length && !samplesShown) {
-          for (const sample of result.samples) useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
+          for (const sample of result.samples) useLogger("sample").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
           samplesShown = true;
         }
         snapshot = result;
@@ -104,31 +105,31 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   return { status: aggregateCommandStatus(statuses), output: { ...result, collectionResult }, artifacts: context.artifacts.list() };
 }
 
-export interface OverviewOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
+export interface SampleOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
 
-export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
-export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { input: OverviewInput; providers: OverviewProvider[] }>({
-  name: "doctor overview",
+export type SampleInput = CommandInput & Omit<SampleCliOpts, Exclude<CommandHostOption, "format">>;
+export const sampleCommand = defineCommand<SampleInput, SampleOutput, { input: SampleInput; providers: OverviewProvider[] }>({
+  name: "doctor sample",
   reportName: (_input, result) => result.output
-    ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
+    ? `doctor-sample-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
-    const artifacts = result.artifacts.filter(artifact => artifact.command === "overview");
+    const artifacts = result.artifacts.filter(artifact => artifact.command === "sample");
     const own = serializeEvidence(context, artifacts, new Map(artifacts.map(artifact => [artifact.id,
-      { title: "Overview", execution: { status: result.status } }])));
+      { title: "Sample", execution: { status: result.status } }])));
     const collected = result.output?.collectionResult;
     return { ...own, children: collected ? [await context.serialize(collectCommand, collected)] : [] };
   },
   render: async (context, result) => {
     const dashboard = await renderEvidence(context, result, {
-      command: "overview", title: "Overview", scope: "概览 / 采样窗口",
+      command: "sample", title: "Sample", scope: "采样窗口",
       render: artifact => context.write(artifact, buildOverviewHtml(context.json<OverviewResult>(artifact, "diagnosis.json"))),
     });
     const collected = result.output?.collectionResult;
-    return composeReports("doctor overview", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
+    return composeReports("doctor sample", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
   },
-  validate: validateOverviewOptions,
+  validate: validateSampleOptions,
   prepare: async (context, input) => {
-    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview });
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.sample });
     const providers = overviewProviders(context.plugin, overviewServiceNames(input));
     if (input.facet && !providers.some(provider => provider.summarize?.facets.some(facet => facet.id === input.facet))) {
       throw new Error(`未声明的 Facet: ${input.facet}`);
@@ -137,5 +138,5 @@ export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { in
     await context.ensureEnvironment({ kubernetes: true });
     return { input, providers };
   },
-  run: (context, { input, providers }) => overview({ ...commandOptions(context), ...input }, providers, context),
+  run: (context, { input, providers }) => sample({ ...commandOptions(context), ...input }, providers, context),
 });

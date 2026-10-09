@@ -8,7 +8,7 @@ export async function collectOverviewSamples(
   context: CommandContext, bizIds: readonly string[], input: Omit<CollectInput, "bizIds">, concurrency: number,
   run: typeof collectCommand.run = collectCommand.run,
 ): Promise<CommandResult<CollectOutput>> {
-  useLogger("overview:collect").warn(`批量采集 ${bizIds.length} 个 biz-id`);
+  useLogger("sample:collect").warn(`批量采集 ${bizIds.length} 个 biz-id`);
   const result = await run(context, { ...input, bizIds: [...new Set(bizIds)], itemConcurrency: concurrency });
   context.artifacts.add(result.artifacts);
   return result;

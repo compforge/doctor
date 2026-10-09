@@ -45,7 +45,7 @@ export function printOverviewStatistics(summary: OverviewProviderResult): void {
 }
 
 export function printOverview(result: OverviewResult): void {
-  writeOutput(`Overview · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
+  writeOutput(`Sample · ${result.query.window.from} → ${result.query.window.to} [from, to)\n`);
   for (const summary of result.providers) printOverviewStatistics(summary);
   if (!result.providers.some(summary => summary.error || summary.facets.some(facet => facet.entries.length))) {
     writeOutput("当前结果中没有可选对象；完整系统情况请使用 doctor health。\n");
@@ -54,10 +54,10 @@ export function printOverview(result: OverviewResult): void {
 
 export function writeOverviewEvidence(
   result: OverviewResult, context: CommandContext,
-  directory = mkdtempSync(join(tmpdir(), "doctor-overview-")),
+  directory = mkdtempSync(join(tmpdir(), "doctor-sample-")),
 ): string {
   writeFileSync(join(directory, "diagnosis.json"), JSON.stringify(result, null, 2), { mode: 0o600 });
-  context.artifacts.add({ command: "overview", path: directory });
+  context.artifacts.add({ command: "sample", path: directory });
   return directory;
 }
 
@@ -95,8 +95,8 @@ export function buildOverviewHtml(result: OverviewResult): string {
   const sections = result.providers.map(summary => buildOverviewStatisticsHtml(summary, result)).join("");
   const empty = result.providers.some(summary => summary.error || summary.facets.some(facet => facet.entries.length))
     ? "" : "<p>当前结果中没有可选对象；完整系统情况请使用 doctor health。</p>";
-  return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Overview</title>
+  return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Sample</title>
 <style>${OVERVIEW_REPORT_STYLE}</style>
-<h1>Doctor Overview</h1><p>${escapeHtml(result.query.window.from)} → ${escapeHtml(result.query.window.to)} [from, to)</p>
+<h1>Doctor Sample</h1><p>${escapeHtml(result.query.window.from)} → ${escapeHtml(result.query.window.to)} [from, to)</p>
 <p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · 采集状态: ${escapeHtml(result.collection)} ${escapeHtml(result.collectionError ?? "")}</p>${empty}${sections}</html>`;
 }

@@ -20,7 +20,7 @@ for (const format of ["json", "md"] as const) {
         context.artifacts.add(artifact);
       }
       const output = join(root, `report.${format}`);
-      expect(await finalizeFixture(context, { format, output }, 0, "doctor overview")).toBe(0);
+      expect(await finalizeFixture(context, { format, output }, 0, "doctor sample")).toBe(0);
       const rendered = readFileSync(output, "utf8");
       const manifestPath = format === "json" ? JSON.parse(rendered).manifest : rendered.match(/\[完整执行结果\]\((.+)\)/)![1];
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));

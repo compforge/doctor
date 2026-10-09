@@ -49,7 +49,7 @@ import {
   type CollectCliOpts,
 } from "../collect/composite";
 import { registerHealthCommand } from "../health/command";
-import { registerOverviewCommand } from "../overview/command";
+import { registerSampleCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-report";
 import { runInit } from "./init";
@@ -580,7 +580,7 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(cpuCommand, opts, domainInput(opts), commandRuntime);
   });
-  registerOverviewCommand(catalog, commandRuntime);
+  registerSampleCommand(catalog, commandRuntime);
   registerHealthCommand(catalog, commandRuntime);
 
   withCollectOptions(

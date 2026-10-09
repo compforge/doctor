@@ -2,7 +2,7 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
+Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
 体检、概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
 - **离线知识**：`doctor knowledge errors` 查询带来源版本的错误定义，不准备 Target 访问。
@@ -10,7 +10,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
 - **系统体检**：`doctor health` 按 Service 复用概览统计并执行消费方 Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
-- **概览与采样**：`doctor overview` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
+- **采样取证**：`doctor sample` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
@@ -31,7 +31,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
 | `knowledge` | 离线知识目录查询及文本 / JSON 投影 |
 | `health` | 系统统计与消费方 Case 体检、审批及探测结果报告 |
-| `overview` | 产品 / Service 概览、Facet 选择、代表请求采样与 Collect 编排 |
+| `overview` | Sample 命令、Facet 选择与 Collect 编排，以及与 Health 共用的统计查询 |
 | `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `datasource` | Service 数据源的共享配置与访问准备，不属于某个诊断命令 |
@@ -85,7 +85,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 - `docs/commands/case.md` — Case 目录、发送与 HTTP 取证边界
 - `docs/commands/knowledge.md` — 离线错误定义、来源版本与查询语义
 - `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
-- `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
+- `docs/commands/sample.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/commands/s3.md` — Service S3 连接、mc 风格路径与有界对象取证

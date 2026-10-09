@@ -27,12 +27,12 @@ function temporaryDirectory() {
 
 function parsedOptions(args: string[] = []) {
   const program = new Command().option("--kubeconfig <path>");
-  const command = program.command("overview")
+  const command = program.command("sample")
     .option("--sample-count <number>", "", Number)
     .option("--namespace <name>")
     .option("--collect");
-  applyCommandDefaults(program, { overview: { sampleCount: 5, namespace: "distribution", collect: false } });
-  program.parse(["overview", ...args], { from: "user" });
+  applyCommandDefaults(program, { sample: { sampleCount: 5, namespace: "distribution", collect: false } });
+  program.parse(["sample", ...args], { from: "user" });
   return commandOptionsWithSources<{ sampleCount?: number; namespace?: string; collect?: boolean }>(command);
 }
 

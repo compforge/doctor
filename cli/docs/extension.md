@@ -96,8 +96,8 @@ Service 可为自己的 Extension 显式声明产品或其它 Service 的 namesp
 
 Registry 以 `namespace + id` 判重，与 kind 无关。`extensions(kind)` 返回全部匹配操作，
 `extensions(kind, namespace)` 只精确匹配该 namespace；父子路径不隐式继承、覆盖或聚合。
-namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Overview 由 Command
-根据 Service 选项精确选择产品或服务 namespace，执行时使用原提供方上下文，详见 [Overview](commands/overview.md)。
+namespace 只表达实现归属，不授予访问权限，也不自动决定业务统计范围。Sample 由 Command
+根据 Service 选项精确选择产品或服务 namespace，执行时使用原提供方上下文，详见 [Sample](commands/sample.md)。
 
 kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验，不建立中央 ExtensionContracts 映射或
 封闭枚举。新增 kind 不需要修改 Core 的通用发现与调用机制。accepts、provides 等匹配信息属于需要它们
@@ -154,8 +154,8 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 |---|---|---|
 | facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
-| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview / Health |
-| overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
+| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Sample / Health |
+| overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Sample |
 | overview.cost | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Health |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
 | tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
@@ -176,8 +176,8 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
-Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Overview 按 Service
-关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 可以独立展示概览。
+Trace 按 Service 顺序尝试未解析的业务 ID，保留来源并按业务 ID 与 trace ID 去重。Sample 按 Service
+关联汇总和采样，分别检查两次操作的访问需求；仅提供汇总的 Service 通过 Health 展示统计。
 这两个领域均要求每个 Service 对同一操作提供一个实现，重复声明在消费时报告歧义。
 
 目录操作分别声明访问需求，消费方按实际需要调用，每次调用结束后释放受限上下文。

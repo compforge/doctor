@@ -9,8 +9,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
     // Exact statistics/Case discovery runs before environment preparation.
     needs: [],
   },
-  overview: {
-    command: "doctor overview",
+  sample: {
+    command: "doctor sample",
     // Object selection requires a summary/sample pair in one namespace, validated before I/O.
     needs: [],
   },

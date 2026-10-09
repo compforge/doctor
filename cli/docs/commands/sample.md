@@ -1,20 +1,23 @@
-# Overview
+# Sample
 
-`doctor overview` 展示用于选取数据的统计：Facet 是观察维度，例如请求错误；Entry 是该维度下动态发现的条目，例如某个 error code。
+`doctor sample` 展示用于选取数据的统计：Facet 是观察维度，例如请求错误；Entry 是该维度下动态发现的条目，例如某个 error code。
 默认选择当前 Plugin 的产品 namespace；`--service` 选择单个 Service，`--services` 选择多个 Service。
 展示的目的在于帮助用户选择代表 biz-ids，再决定是否采集，而不是完整呈现系统状态。
 
 所选 namespace 必须同时提供 summarize 和 sample。Core 只展示 `canSample` 的 Entry，隐藏纯展示维度；空维度和截断信息仍保留，说明查询结果与覆盖范围。
-纯统计、耗时分布和主动 Case 探测归 [Health](health.md)，Overview 不查询 `overview.cost`。
+纯统计、耗时分布和主动 Case 探测归 [Health](health.md)，Sample 不查询 `overview.cost`。
 
 ## 使用
 
+命令名为 `sample`；Plugin 的 `overview.*` Extension kind 与 profile 的 `overview` 配置节保持不变。
+Distribution 的命令列表及 `commandDefaults` 使用命令名 `sample`。
+
 ```bash
-doctor overview
-doctor overview --since 6h --service example-api --tenant-id <tenant-id>
-doctor overview --since 6h --services example-api,example-worker
-doctor overview --since 1h --facet errors --sample-count 5
-doctor overview --since 1h --collect --facet errors --sample-count 5
+doctor sample
+doctor sample --since 6h --service example-api --tenant-id <tenant-id>
+doctor sample --since 6h --services example-api,example-worker
+doctor sample --since 1h --facet errors --sample-count 5
+doctor sample --since 1h --collect --facet errors --sample-count 5
 ```
 
 交互模式先选择近 10m、1h、6h、1d 或 3d，再展示所选范围的结果。用户可以直接结束，也可以选择
@@ -46,7 +49,7 @@ Core 将整批 biz-id 交给一次 Collect，各子命令接收完整列表。In
 Data 共用访问准备与 Identity 查询，Log 共用目标准备与原始日志源，每个输入仍独立诊断和保留证据。
 `--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`，控制批次内需要逐 ID 执行的日志工作，
 默认 2。失败请求不阻止其它请求完成；取消后不启动排队工作，已经取得的证据仍统一交付。
-Overview 把冻结的查询起止时间传给 Collect，日志采集沿用 Log 的包含终点时间戳语义。
+Sample 把冻结的查询起止时间传给 Collect，日志采集沿用 Log 的包含终点时间戳语义。
 
 日志网络读取使用独立的全局预算：整棵命令树共享 `log.concurrency` 个 Pod/Container 读取名额，默认 4，
 并共享总字节预算。current、previous 和重试均受约束；本地快照回放不重复消耗网络预算。
@@ -77,7 +80,7 @@ Service alias 先解析为标准名。缺少所选 namespace 的 summarize/sampl
 namespace 表达统计归属，提供方 Service 决定操作的执行上下文。例如同一个 Service 可以同时提供
 产品错误概览和自己的运行状况概览。summary 和 sample 分别保留各自的 Service 绑定与 access，
 每次调用复用 Core 的授权、PluginContext、共享客户端及资源释放；namespace 不限制实现可以读取的数据。
-需要 Service 上下文的 Overview 操作应由 Service 注册，产品级 namespace 同样适用。例：
+需要 Service 上下文的 Sample 操作应由 Service 注册，产品级 namespace 同样适用。例：
 
 ```ts
 const service = {
@@ -103,5 +106,5 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，通过同一根 ClientManager 复用已初始化的客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。
 
-Overview 引用批次 Collect 的产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
+Sample 引用批次 Collect 的产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
 统一提供 ID 到归档路径的映射，因此同名目录和多个 Collect manifest 均可保留，串行与并发采用同一规则。

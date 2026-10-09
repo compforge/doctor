@@ -101,7 +101,8 @@ describe("root surface", () => {
     expect(result.stdout).toContain("model [options]");
     expect(result.stdout).toContain("eval [options]");
     expect(result.stdout).toContain("perf [options]");
-    expect(result.stdout).toContain("overview [options]");
+    expect(result.stdout).toContain("sample [options]");
+    expect(result.stdout).not.toContain("overview [options]");
     expect(result.stdout).toContain("--debug");
   });
 

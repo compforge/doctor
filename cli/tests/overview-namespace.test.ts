@@ -5,7 +5,7 @@ import {
 } from "@compforge/doctor-plugin";
 import { overviewProviders } from "../src/overview/extensions";
 import { healthProviders } from "../src/health/extensions";
-import { overviewCommand, validateOverviewOptions } from "../src/overview";
+import { sampleCommand, validateSampleOptions } from "../src/overview";
 import { overviewServiceNames } from "../src/overview/options";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
@@ -96,7 +96,7 @@ test("Overview rejects invalid selection before Kubernetes preparation", async (
     const accesses = mock(async () => { throw new Error("unexpected environment access"); });
     context.ensureEnvironment = async requirements => { if (requirements.kubernetes) await accesses(); };
     try {
-      const result = await overviewCommand.run(context, { since: "1h", ...input });
+      const result = await sampleCommand.run(context, { since: "1h", ...input });
       expect(result.status).toBe(CommandStatus.Failed);
       expect("reason" in result ? result.reason : undefined).toContain(reason);
       expect(accesses).not.toHaveBeenCalled();
@@ -105,13 +105,13 @@ test("Overview rejects invalid selection before Kubernetes preparation", async (
 });
 
 test("CLI exposes explicit Service selection and rejects conflicting or empty selectors", () => {
-  const command = createDoctorProgram().commands.find(command => command.name() === "overview")!;
+  const command = createDoctorProgram().commands.find(command => command.name() === "sample")!;
   expect(command.helpInformation()).toContain("--service <name>");
   expect(overviewServiceNames({})).toBeUndefined();
   expect(overviewServiceNames({ service: "short" })).toEqual(["short"]);
   expect(overviewServiceNames({ services: "api, store" })).toEqual(["api", "store"]);
   for (const opts of [{ service: "" }, { service: "api,store" }, { services: "api,,store" }, { service: "api", services: "store" }]) {
-    expect(() => validateOverviewOptions(opts)).toThrow("--service");
+    expect(() => validateSampleOptions(opts)).toThrow("--service");
   }
 });
 
@@ -170,7 +170,7 @@ test("Overview command invokes the namespace provider using its original Service
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
-        const result = await overviewCommand.run(context, { since: "1h", service: selection });
+        const result = await sampleCommand.run(context, { since: "1h", service: selection });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(result.output?.providers.map(provider => provider.namespace)).toEqual([
           selection ? "plugin/fixture/service/api" : "plugin/fixture",
