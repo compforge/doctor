@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import type { Case } from "@compforge/spec-case/model";
+import { validateHttpCase } from "@compforge/spec-case/http";
 import { parseHttpScenario, type HttpScenarioOverrides } from "../collect/shared/http/config";
 import type { HttpScenario } from "../collect/shared/http/model";
 import type { DoctorCaseSelection } from "./catalog";
@@ -20,12 +21,19 @@ function requestFromCase(item: Case, baseUrl: string): Record<string, unknown> {
   for (const key of ["url", "base_url", "host", "port", "ip"]) {
     if (key in input) throw new Error(`Case '${item.id}' 不能声明目标 ${key}；请使用 --base-url`);
   }
-  const { path, entrypoints, ...request } = input;
+  const { path, entrypoints, protocol, ...request } = input;
   const normalized: Record<string, unknown> = {
     ...request,
     id: item.id,
     url: requestUrl(baseUrl, path, item.id),
   };
+  if (protocol !== undefined) {
+    validateHttpCase(item);
+    const unsupported = Object.keys(item.judge?.e2e ?? {}).filter(key => key !== "http");
+    if (unsupported.length) throw new Error(`Case '${item.id}': doctor case cannot evaluate judge.e2e.${unsupported.join(", ")}`);
+    const expect = item.judge?.e2e?.http;
+    if (expect) normalized.expect = { status: expect.status, content_type: expect.contentType };
+  }
   if (entrypoints !== undefined) {
     if (!Array.isArray(entrypoints)) throw new Error(`Case '${item.id}' 的 entrypoints 必须是数组`);
     normalized.entrypoints = entrypoints.map((entrypoint) => {

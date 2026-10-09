@@ -173,6 +173,12 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   const sourceCatalog = record(definition.services, "Plugin services");
   if (definition.extensions !== undefined) {
     if (!Array.isArray(definition.extensions)) throw new Error("Plugin extensions must be an array");
+    for (const value of definition.extensions) {
+      const extension = record(value, "Plugin Extension");
+      if (["case.catalog", "case.produce", "case.runner.create", "case.consume"].includes(String(extension.kind))) {
+        throw new Error(`${extension.kind}: contribute Cases through Service.cases`);
+      }
+    }
     const registry = new ExtensionRegistry();
     registry.register(extensionNamespace("plugin", manifest.id), definition.extensions);
   }

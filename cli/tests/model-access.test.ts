@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { caseExtension, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
-import { loadCaseCatalog, requireWorkloadProbeExtension, requireCaseRunnerCreateExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION, type CaseCatalogExtension } from "@compforge/doctor-plugin";
+import { loadCaseCatalog, requireWorkloadProbeExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION, type CaseCatalog } from "@compforge/doctor-plugin";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { openModelAccess, openModelDiscoveryAccess } from "../src/model";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -400,24 +400,24 @@ test("Plugin case catalog owns CaseSet validation independently of the runner", 
     facets: { difficulty: { values: ["simple", "complex"], ordered: true } },
     cases: [{ id: "ordinary_chat", input: { query: "hello" }, facets: { difficulty: "simple" } }],
   };
-  const catalog: CaseCatalogExtension = { id: "chat.cases", kind: "case.catalog", load: () => [caseSet] };
+  const catalog: CaseCatalog = { id: "chat.cases", load: () => [caseSet] };
   const base = {
     id: "test",
     version: "0.0.1",
-    extensions: [catalog],
     services: {
       services: [{
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "chat",
         workloads: [],
-        extensions: [caseExtension({
+        cases: [{ id: "chat", load: catalog.load, runner: caseExtension({
           endpoint: { host: "test-service", port: 8000 },
           access: {},
           createRunner: async () => { throw new Error("factory must not run"); },
-        }),
-        perfExtension({
+        }) }],
+        extensions: [perfExtension({
           scenarios: [{
             id: "ordinary-chat",
+            cases: { service: "chat", source: "chat" },
             title: "普通 Chat",
             description: "SSE Chat",
             observability: {
@@ -446,19 +446,19 @@ test("Plugin Case request identity references a tenant directory provider", () =
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "chat",
     workloads: [],
-    extensions: [caseExtension({
+    cases: [{ id: "chat", load: () => [], runner: caseExtension({
       endpoint: { host: "test-service", port: 8000 },
       access: {},
       requestIdentity: {
         configured: () => ({}),
       },
       createRunner: async () => { throw new Error("factory must not run"); },
-    })]
+    }) }]
   };
   const validated = validatePluginDefinition({
     id: "test", version: "0.0.1", services: { services: [caseService] },
   }, manifest);
-  const runner = requireCaseRunnerCreateExtension(validated.services.extensions("case.runner.create")[0]!.extension);
+  const runner = validated.services.caseSources()[0]!.source.runner!;
   expect(runner.requestIdentity?.configured({})).toEqual({});
   expect(validated.services.extensions("tenant.list")).toHaveLength(0);
 

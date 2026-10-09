@@ -62,12 +62,22 @@ plugins/<plugin>/            可独立构建、归档和分发的具体 Plugin �
 `PluginDefinition`，不引用具体 Plugin；根目录发行构建和 Host loader 分别负责在编译期、运行期
 取得具体实现，collect 不感知来源。
 
-Service 的对外操作统一通过 Extension 注册；kind 契约由 SDK 定义，Command 选择和组合实现。
+Service 的命令扩展通过 Extension 注册；kind 契约由 SDK 定义，Command 选择和组合实现。
 调用权限、输入输出、流式生命周期以及 Collect 的 Fact / Observation / Detector 边界见 [Extension](extension.md)。
 
 资源声明与调用协议分别建模：`dataSources` 保存可复用访问资源，`dependencies` 通过
 Service 与 dataSource ID 引用其它 Service 的资源。宿主解析依赖并注入受限 handle，管理共享 Client
 及其清理。`detectors` 是只消费 Evidence 的纯分析函数；`environmentProbes` 是 Core 执行的环境检查声明。
+
+`cases` 与 DataSource、Workload 一样是 Service 贡献。一个 `ServiceCaseSource` 用稳定 ID 集中提供
+离线 CaseSet、可选的运行时 `produce` 和单请求 `runner`；来源引用是 `{ service, source }`。
+Health 的 `health.cases` 扩展引用它并声明消费方 Workload，Perf 场景引用它并决定负载流程，
+Case 命令离线展示它。来源决定探测哪些业务对象，命令只补齐所声明的上下文和控制运行策略。
+
+`load()` 不访问 Target；`produce` / `runner` 分别声明 access，并复用宿主的结果信封和资源生命周期。
+canonical Case 保存稳定刺激；运行时 subject 保存业务对象身份，targets 保存地址、凭据和新鲜会话。
+模型来源可贡献 `MODEL_CONNECTIVITY_CASE_SET`，使用 `modelHttpCases(model)` 绑定其选定模型。
+runner 用 `supports(case)` 声明协议兼容性，同一来源可同时服务 Health、Perf、Eval；Facet 只负责分类。
 
 `trace.analysis` 采用 Trace Harness 的纯分析扩展；`trace.source.dataSource` 是首选存储资源引用。
 TraceSession 从已经下载的本地证据准备分析依赖，结束后保存机器证据供离线渲染。
@@ -123,7 +133,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 13,
+  "pluginApiVersion": 14,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -380,7 +390,7 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 
 `overview.summarize` 与 `overview.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
 文字，Sample 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
-Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`overview.cost` 只供 Health 展示；Health 另外编排 `case.consume/produce` 体检，不进入样本查询或 Collect。
+Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`overview.cost` 只供 Health 展示；Health 另外编排 `health.cases/produce` 体检，不进入样本查询或 Collect。
 Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Sample 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
 详见 [Sample](commands/sample.md) 与 [Health](commands/health.md)。
 

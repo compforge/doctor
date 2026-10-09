@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { queryErrorCatalogs } from "../src/knowledge/errors";
 import { buildPluginArchive } from "../../packages/plugin/scripts/pack";
+import examplePackage from "../../plugins/example/package.json" with { type: "json" };
 import {
   installPlugin,
   loadActivePlugin,
@@ -28,7 +29,7 @@ describe("Plugin archive lifecycle", () => {
 
     const installRoot = join(root, "plugins");
     const result = await installPlugin(first, installRoot);
-    expect(result).toMatchObject({ ref: "example@0.0.12", installed: true });
+    expect(result).toMatchObject({ ref: `example@${examplePackage.version}`, installed: true });
     expect(existsSync(join(result.path, "plugin.json"))).toBe(true);
     expect(existsSync(join(result.path, "plugin.mjs"))).toBe(true);
     expect(existsSync(join(result.path, ".doctor-install.json"))).toBe(true);
@@ -36,7 +37,7 @@ describe("Plugin archive lifecycle", () => {
 
     const plugin = await loadInstalledPlugin(result.ref, installRoot);
     expect(plugin.id).toBe("example");
-    expect(plugin.version).toBe("0.0.12");
+    expect(plugin.version).toBe(examplePackage.version);
     const knowledge = queryErrorCatalogs(plugin, { query: "QUEUE_BUSY" });
     expect(knowledge.catalogs).toHaveLength(1);
     expect(knowledge.catalogs[0]).toMatchObject({ namespace: "plugin/example",
@@ -47,7 +48,7 @@ describe("Plugin archive lifecycle", () => {
     expect((await loadActivePlugin(installRoot))?.id).toBe("example");
 
     expect(await installPlugin(second, installRoot)).toMatchObject({
-      ref: "example@0.0.12",
+      ref: `example@${examplePackage.version}`,
       installed: false,
     });
     uninstallPlugin(result.ref, installRoot);

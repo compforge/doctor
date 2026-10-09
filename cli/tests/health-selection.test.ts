@@ -28,7 +28,7 @@ test("default health discovers every supported Service, not product statistics o
     "plugin/fixture/service/api", "plugin/fixture/service/worker",
   ]);
   expect(healthProviders(plugin, ["worker-alias", "worker"])).toHaveLength(1);
-  expect(() => healthProviders(plugin, ["unrelated"])).toThrow("case.consume");
+  expect(() => healthProviders(plugin, ["unrelated"])).toThrow("health.cases");
   expect(() => healthProviders(plugin, ["missing"])).toThrow("Unknown Service");
   expect(() => healthProviders(plugin, [])).toThrow("empty");
   for (const services of [[], [service("unrelated")], [service("api", [{ ...summarize, namespace: "plugin/fixture" }])]]) {

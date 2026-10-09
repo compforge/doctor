@@ -51,6 +51,7 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
 2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
    是 contribution、capability 和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
+   Case 与 DataSource、Workload 一样由 Service 贡献；共享定义和运行时对象准备归 Case 来源，Health、Perf、Eval 各自拥有消费流程。
 3. **确定性诊断以 Evidence 为结果**：Fact 表示本次诊断内足够稳定、可供后续 Probe 复用的信息，
    Observation 只表示某个探测时间点或时间窗口取得的信息；这种稳定性是相对生命周期，不是永恒真理。
    采集阶段允许受控的临时准备，Detector 与 Render 只消费已取得的 Facts/Observations，不继续访问外部资源。

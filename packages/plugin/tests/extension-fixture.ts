@@ -78,7 +78,7 @@ export function caseExtension(value: Endpoint & {
   createRunner(context: ExtensionContext, input: ServiceCaseProbeOptions): Promise<ServiceCaseRunner>;
 }): CaseRunnerCreateExtension {
   const { createRunner: run, ...declaration } = value;
-  return { ...declaration, id: "case.runner.create", kind: "case.runner.create", run: withSummary({ title: "Fixture", fields: [] }, run) };
+  return { ...declaration, id: "case.runner.create", kind: "case.runner.create", supports: item => typeof item.input.query === "string", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
 export function traceExtension(value: Endpoint & { resolve: DataRun<TraceResolveExtension> }): TraceResolveExtension {
   const { resolve: run, ...declaration } = value;

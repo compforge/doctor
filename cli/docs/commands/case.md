@@ -2,15 +2,14 @@
 
 ## 理念 / 概念
 
-Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。`doctor case` 通过统一 Extension 注册表列出 Core 内置、Plugin 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。`doctor model`、`doctor perf` 和 `doctor eval` 从同一目录选择与命令匹配的 Case。选择发生在执行命令时，CaseSet 不保存本次选择。
+Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。Service 通过 `cases` 贡献 Case 来源，与 DataSource、Workload 并列；每个来源集中持有离线定义及可选的运行时 producer、单请求 runner。`doctor case` 列出 Core 内置、Service 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。选择发生在执行命令时，CaseSet 不保存本次选择。
 
-`facets.command` 声明 Case 的用途：`http`、`model`、`perf`、`eval`，多用途用逗号分隔。一个 CaseSet 可以同时包含不同用途的 Case。Doctor 只按 Case facets 过滤候选，执行时只读取选中的 Case。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core、Plugin 和本地 YAML loader 均注册 `case.catalog` Extension。
+可执行性由协议决定：HTTP/Model 按输入协议筛选，Perf/Eval 使用来源 runner 的 `supports(case)`。Facet 描述用例分类，不承担命令路由。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core 和本地 YAML 使用相同的离线目录接口，不需要创建虚拟 Service。
 
 ```yaml
 caseset: doctor_smoke
 schema_version: 1
 facets:
-  command: {values: [http, model, "eval,perf"]}
   mode: {values: [connectivity]}
 cases:
   - id: health
@@ -18,7 +17,6 @@ cases:
       method: GET
       path: /health
       expect: {status: 200}
-    facets: {command: http}
   - id: model_messages
     input:
       path: /chat/completions
@@ -26,10 +24,9 @@ cases:
         messages:
           - {role: system, content: Answer briefly.}
           - {role: user, content: Hello}
-    facets: {command: model, mode: connectivity}
+    facets: {mode: connectivity}
   - id: chat_load
     input: {query: Hello}
-    facets: {command: "eval,perf"}
 ```
 
 HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body`/`body_file`、响应 `expect` 和可选 Entrypoint。`--base-url` 提供本次目标的 scheme、host 和 port；Case 不保存 URL 或目标凭据。Model Case 的连通性输入使用 `path` 与 `body`，模型 ID 由 Model Capability 注入。Perf/Eval Case 的输入交给所选 Service 的单请求 runner 解释；Case 不保存并发、速率和权重。
@@ -44,6 +41,10 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 ## 关键设计
 
 Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`。
+
+Health 通过自己的 `health.cases` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
+运行时 `subject` 标识被测业务对象，`targets` 保存新鲜地址、凭据与请求正文；两者不改变 canonical Case ID/hash。
+同一用例可以绑定多个对象，执行实例是另一维度。Health、Perf 和 Eval 共享 Case 能力，各自负责体检、加压或证据采集。
 
 HTTP Collect 区分证据采集完整与请求成功。完整采到 HTTP 500 时，Finding 会记录失败，但报告仍可完整交付；DNS 不可达、传输中断或产物失败会使覆盖不足。Pod 模式从目标 Container 使用 curl，本机模式使用 Got；两者都归一化为同一 Observation，Detector 不访问网络。
 

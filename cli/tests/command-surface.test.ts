@@ -330,7 +330,7 @@ describe("case catalog", () => {
     const result = await run(["case"], { withPlugin: true, cwd: dir });
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("local_api (local)");
-    expect(result.stdout).toContain("health  command=http");
+    expect(result.stdout).toContain("\n  health\n");
   });
 
   test("非交互发送需要目标 URL", async () => {

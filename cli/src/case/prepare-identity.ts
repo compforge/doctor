@@ -1,12 +1,23 @@
 import type { CaseProduceExtension, ServiceRequestIdentity, TenantDirectory } from "@compforge/doctor-plugin";
 import { defineCommandDecision, type CommandContext } from "../command";
-import { resolveCaseRequestIdentity } from "../case/identity";
+import { resolveCaseRequestIdentity } from "./identity";
 import { isInteractive } from "../terminal/policy";
+import { resolveTenant } from "../terminal/tenant";
 
-const identityDecision = defineCommandDecision<ServiceRequestIdentity | undefined>("health-case-identity");
+const identityDecision = defineCommandDecision<ServiceRequestIdentity | undefined>("case-producer-identity");
+
+export async function resolveCaseProducerTenant(context: CommandContext, extension: CaseProduceExtension,
+  input: { tenantId?: string }, directory: TenantDirectory,
+  selection: Pick<Parameters<typeof resolveCaseRequestIdentity>[0], "promptTenant" | "interactive"> = {},
+): Promise<string | undefined> {
+  const tenantId = input.tenantId?.trim() || extension.requestTenant!.configured(context.profile.pluginConfig)?.trim();
+  return (await resolveTenant({ tenantId, directory, commandContext: context, scope: "case-identity",
+    interactive: selection.interactive, prompt: selection.promptTenant,
+    promptTitle: "[case] 选择探测使用的租户：" }))?.id;
+}
 
 /** Same configured identity shares one decision, including cancellation or failure, across producers. */
-export function resolveHealthCaseIdentity(context: CommandContext, extension: CaseProduceExtension,
+export function resolveCaseProducerIdentity(context: CommandContext, extension: CaseProduceExtension,
   input: { tenantId?: string; userId?: string }, directory: TenantDirectory,
   selection: Pick<Parameters<typeof resolveCaseRequestIdentity>[0], "promptTenant" | "promptUser" | "interactive"> = {},
 ): Promise<ServiceRequestIdentity | undefined> {
@@ -22,7 +33,7 @@ export function resolveHealthCaseIdentity(context: CommandContext, extension: Ca
     }
     return resolveCaseRequestIdentity({
       ...selection, configured: { tenantId, userId }, directory, commandContext: context,
-      commandLabel: "Health", logPrefix: "health",
+      commandLabel: "Case", logPrefix: "case",
     });
   });
 }

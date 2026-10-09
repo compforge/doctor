@@ -27,7 +27,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 | `command` | CommandSpec、结构化结果、共享 Context、调用作用域及环境/access/审批契约 |
 | `provision` | 为诊断显式准备 image、debug environment 和工具 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
-| `case` | CaseSet 目录、命令筛选、选择及 HTTP Case 到 Collect 的适配 |
+| `case` | Service Case 目录、协议匹配、身份准备、单次 HTTP/SSE/模型判定及 HTTP Collect 适配 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
 | `knowledge` | 离线知识目录查询及文本 / JSON 投影 |
 | `health` | 系统统计与消费方 Case 体检、审批及探测结果报告 |
@@ -56,7 +56,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
    不能反向依赖 CLI。
 5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 contribution/capability；collect 再结合现场环境判断本次
    是否可用。
-6. **Case 触发、采集与加压分开**：Plugin case runner 每次只触发一个 Case；Eval 顺序执行每个选中 Case
+6. **Case 资产与消费流程分开**：Service.cases 贡献离线目录、运行时 producer 和单请求 runner；Health 通过 health.cases 引用来源和消费方 Workload。Plugin case runner 每次只触发一个 Case；Eval 顺序执行每个选中 Case
    一次并保留关联证据，Perf/Core 独占并发调度、预算、熔断和 Window 归约。两者都不在 runner 内隐藏循环。
 7. **工具与执行通道分开**：根目录 `toolkit/` 只分发版本化资源；CLI `infra/toolkit` 按 Host process、
    Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。

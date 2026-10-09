@@ -2,6 +2,7 @@ import type { Case } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
+import type { ServiceCaseSource, ServiceCaseRef } from "./cases";
 import type {
   Fact,
   Identity,
@@ -156,6 +157,7 @@ export interface ServicePerfObservability {
 }
 
 export interface ServicePerfScenario {
+  cases: ServiceCaseRef;
   id: string;
   title: string;
   description: string;
@@ -373,6 +375,7 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
   /** Open, kind-based functions. A Service may provide several kinds. */
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
+  cases?: readonly ServiceCaseSource[];
   /** Explicit opt-in to configuration inspection. */
   configurationInspection?: boolean;
   /**

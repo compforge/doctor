@@ -1,36 +1,43 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
-import { CASE_CATALOG_KIND, loadCaseCatalog, requireCaseCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { loadCaseCatalog, MODEL_CASE_SET, type CaseSupport, type PluginDefinition } from "@compforge/doctor-plugin";
 import { isInteractive } from "../terminal/policy";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
-import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
-import { localCaseCatalogExtension } from "./local";
+import { httpCaseCatalog } from "./core-http";
+import { localCaseCatalog } from "./local";
 
 export type DoctorCaseCommand = "http" | "model" | "perf" | "eval";
 
 export interface DoctorCaseSet {
   source: "builtin" | "plugin" | "local";
   service?: string;
+  sourceId?: string;
+  supports?: CaseSupport;
   file?: string;
   caseSet: CaseSet;
 }
 
-/** One registry discovers Core, Plugin and local providers without opening target access. */
+/** Offline assets have one owner; listing never prepares targets or creates runners. */
 export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
-  const local = localCaseCatalogExtension(file, cwd);
-  const registry = createDoctorExtensionRegistry(plugin, [local]);
-  return registry.extensions(CASE_CATALOG_KIND).flatMap(({ origin, extension, service }) =>
-    loadCaseCatalog(requireCaseCatalogExtension(extension)).map((caseSet) => ({
-      source: origin === "core" ? "builtin" as const : origin,
-      ...(service ? { service: service.name } : {}),
-      ...(origin === "local" && local.file ? { file: local.file } : {}),
-      caseSet,
-    })));
+  const local = localCaseCatalog(file, cwd);
+  return [
+    ...[{ id: "core.model", load: () => [MODEL_CASE_SET] }, httpCaseCatalog].flatMap(source =>
+      loadCaseCatalog(source).map(caseSet => ({ source: "builtin" as const, caseSet }))),
+    ...(plugin?.services.caseSources() ?? []).flatMap(({ service, source }) =>
+      loadCaseCatalog(source).map(caseSet => ({ source: "plugin" as const, service: service.name, sourceId: source.id, caseSet }))),
+    ...loadCaseCatalog(local).map(caseSet => ({ source: "local" as const, file: local.file, caseSet })),
+  ];
 }
 
 export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): boolean {
-  const facet = item.facets?.command;
-  return Boolean(facet?.split(",").some((value) => value.trim() === command));
+  if (command === "http") return typeof item.input.path === "string"
+    && (item.input.protocol === undefined || item.input.protocol === "http")
+    && (item.input.body === undefined || typeof item.input.body === "string");
+  if (command === "model") return item.input.kind === "performance"
+    || (["/chat/completions", "/embeddings", "/rerank"].includes(String(item.input.path))
+      && typeof item.input.body === "object" && item.input.body !== null);
+  // Perf/Eval must supply the selected runner's protocol contract.
+  return false;
 }
 
 export interface DoctorCaseSelection {
@@ -45,10 +52,11 @@ export async function selectDoctorCases(input: {
   caseIds?: string;
   modelType?: string;
   defaultCaseIds?: readonly string[];
+  supports?: CaseSupport;
 }): Promise<DoctorCaseSelection | undefined> {
   const available = input.catalog.map((source) => ({
     source,
-    cases: source.caseSet.cases.filter((item) => caseMatchesCommand(item, input.command)
+    cases: source.caseSet.cases.filter((item) => (input.supports ?? source.supports ?? ((item: Case) => caseMatchesCommand(item, input.command)))(item)
       && (!input.modelType || !item.facets?.model_type || item.facets.model_type === input.modelType)),
   })).filter((entry) => entry.cases.length > 0);
   if (!available.length) throw new Error(`没有可用于 doctor ${input.command} 的 Case`);

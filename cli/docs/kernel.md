@@ -354,7 +354,11 @@ approval。完整的调度、Coverage、Worksheet、授权、报告和退出码�
 | Chat | 使用共享 Agent runtime 处理开放式问题；不依赖 Collect 的确定性流程 |
 
 Model discovery、Case、Trace、Store 等能力可以被多个主路径复用，但复用的是稳定 capability 或 Command
-入口，不是复制内部编排。具体边界分别见 [`plugin.md`](plugin.md)、[`commands/eval.md`](commands/eval.md)、
+入口，而不是把命令的调度策略放进提供方。Case 与 DataSource、Workload 都是 Service 贡献：
+Service 决定用例内容和运行时业务对象，命令决定执行位置、次数、预算及结果解释。
+Health 的消费关系引用共享 Case 来源与自身 Workload；Perf 场景引用 Case 来源，单请求 runner 的访问上下文属于该来源 Service。
+离线目录、运行时对象（model/agent/file）、请求地址和执行实例分开建模，避免环境或凭据改变 Case 身份。
+具体边界分别见 [`plugin.md`](plugin.md)、[`commands/eval.md`](commands/eval.md)、
 [`commands/perf.md`](commands/perf.md) 与 [`../docs/chat.md`](../../docs/chat.md)。
 
 ## 依赖方向与代码地图

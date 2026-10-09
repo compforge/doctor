@@ -1,7 +1,8 @@
 # Health
 
 `doctor health` 展示系统统计并执行所选 Service 的体检，不查找代表 biz-id，不触发 Collect。
-统计复用 `overview.summarize` 与 `overview.cost`；主动探测使用 `case.consume/produce`。
+统计复用 `overview.summarize` 与 `overview.cost`；当前主动探测由 `health.cases` 引用共享 `Service.cases`。
+Health 的目标是系统健康检查，Case 执行是其中一种探测方式；其他检查不必包装为 Case。
 Health 完整展示 summary，包括不可采样的状态条目；不要求对应的 sample Extension。
 两类结果分别说明历史窗口内的情况和本次执行的情况，查询失败不等同于系统异常，也不丢弃其他已取得结果。
 
@@ -15,7 +16,7 @@ doctor health --services example-api,example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `--service` 或 `--services` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `overview.summarize`、`overview.cost` 或 `case.consume`，
+候选来自各 Service 精确 namespace 下的 `overview.summarize`、`overview.cost` 或 `health.cases`，
 不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
@@ -41,18 +42,20 @@ missingCount。Provider 在源头限制读取，并说明截断；Core 校验统
 
 ## 消费方 HTTP Case 检查
 
-Service 通过 `case.consume` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
+Service 通过 `health.cases` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
 指定 Service 的 Health 在统计查询后执行这些检查。GET/HEAD 自动执行；
 非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
-没有 summarize/cost 的 Service 也可以只提供 `case.consume`。
+没有 summarize/cost 的 Service 也可以只提供 `health.cases`。
 
-Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.produce` Extension，
-以 `workload` 引用消费方已声明的 Workload。两个 kind 均遵循普通 Extension 契约：声明 `access`，
+Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源，
+以 `workload` 引用消费方已声明的 Workload。消费扩展与来源的 `produce` 均遵循调用契约：声明 `access`，
 通过 `run(context, input)` 返回 `{ data, summary }`。消费方返回 `{ bindings }`，提供方返回 `{ cases }`；
 两次调用各自使用所属 Service 的 PluginContext、access 与租户条件。提供方
-返回本次准备好的 HTTP Case 列表，每项由 canonical `case` 与有序运行时 `targets` 组成；不执行请求。
-这个运行时接口独立于离线 `case.catalog`，签名 URL 不进入静态目录或配置。
+返回本次准备好的 HTTP Case 列表，每项由 canonical `case`、可选的业务对象 `subject` 与有序运行时 `targets` 组成；不执行请求。
+同一来源的 `load` 提供离线定义，`produce` 绑定本次对象；签名 URL 不进入静态目录或配置。
+探测哪些业务对象由 producer 决定，例如模型/Agent 提供方选取模型与 Agent，文件提供方选取下载文件。
+Health 不选择这些业务对象，只补齐声明需要的上下文，控制执行预算、审批和结果汇总。
 
 Health 在 Command prepare 阶段调用消费方扩展取得本次关系、解析实际依赖的 producer，并补齐其声明的请求身份。
 run 消费准备好的绑定与身份，解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
@@ -70,24 +73,24 @@ GET/HEAD Case 可给出有序备用 URL，主地址不满足预期时继续尝�
 单个消费扩展或绑定失败不丢失其他结果；证据同时保留消费扩展 ID 与 binding ID，取消保留已完成的尝试。Case 时间是本次执行时间，
 `--since` 的历史窗口只用于统计查询。`doctor case` 的现有目录与发送入口保持独立。
 
-消费方声明示例（提供方已在其 Service.extensions 注册 `file-downloads`）：
+消费方声明示例（提供方已在其 Service.cases 贡献 `file-downloads`）：
 
 ```ts
 const worker = {
   ...workerService,
   extensions: [{
-    id: "downloads", kind: "case.consume", access: {},
+    id: "downloads", kind: "health.cases", access: {},
     run: withSummary({ title: "文件消费关系", fields: [] }, async () => ({
       bindings: [{
         id: "file-download", workload: "main",
-        producer: { namespace: "plugin/example/service/files", extension: "file-downloads" },
+        producer: { service: "files", source: "file-downloads" },
       }],
     })),
   }],
 };
 ```
 
-`case.produce` 的 `data.cases` 将稳定意图与本次可访问的地址对应：
+Case 来源的 `produce` 返回 `data.cases`，将稳定意图与本次可访问的地址对应：
 
 ```ts
 {
@@ -114,7 +117,7 @@ Health 要求明确的 `judge.e2e.http`。GET/HEAD 不接受 body；非只读请
 
 ### Case 请求身份
 
-需要真实租户/用户的 `case.produce` 可声明 `requestIdentity: { configured(config) }`，
+需要真实租户/用户的 `produce` 可声明 `requestIdentity: { configured(config) }`，
 复用 `ServiceCaseIdentityRequirement`；Plugin 解释自己的配置，Core 只消费返回的 tenantId/userId。
 Health prepare 按显式 `--tenant-id` / `--user-id`、Plugin 配置的优先级补齐身份。
 缺失时通过 `tenant.list`、`user.search` 选择启用租户及该租户中的真实用户；同一身份只询问一次。
@@ -125,6 +128,24 @@ Case 身份的租户不改变整轮统计范围；只有显式 `--tenant-id` 限
 非交互（包括 `-y`）缺参时，相关绑定记录为 identity 阶段 unavailable，不进入 Pod 或调用 producer；
 取消身份选择记录为 cancelled，其余独立检查继续。选择身份不是批准真实请求，非只读 Case 仍需审批。
 签名 URL 与独立会话仍由 producer 在每个实例执行前生成，避免准备阶段产生的临时数据过期。
+
+仅需要租户的 producer 声明 `requestTenant: { configured(config) }`，返回配置中的租户 ID 或 undefined，
+不声明 `requestIdentity`。Health 复用相同的租户选择，按 CLI 参数、Plugin 配置、交互选择的顺序准备
+`CaseProduceQuery.requestTenantId`，不查询用户，也不缩小统计范围。缺参或取消遵循同样的 identity 阶段处理。
+
+### 模型功能探测
+
+模型来源的 `load` 可以贡献 SDK 的 `MODEL_CONNECTIVITY_CASE_SET`。producer 自行查询模型目录，决定探测的模型 ID，使用 `modelHttpCases(model)` 将同一份用例
+绑定到本次 inference 地址与模型。提供方负责遵守 `maxCases`，并显式报告截断或部分准备失败。
+请求从消费方 Pod 发起；经过模型网关的调用验证整条业务链路，不把网关侧的供应商 DNS 解析归因于消费方。
+
+共享用例覆盖基础调用、连续 assistant、连续 user，以及声明支持图片的 LLM、embedding 与 rerank。
+`judge.e2e.model: { type: "llm" | "embedding" | "rerank" }` 配合 JSON HTTP 预期，检查响应能够解析、
+没有错误包且包含有效 completion、向量或排序结果；不评价回答质量。HTTP 200 的空结果或错误包不算通过。
+模型 ID 与展示名称放在运行时 subject，路由与推理模型标识放在 target，不写入稳定 Case 正文；响应仍受统一超时和容量约束。
+
+Health 只做有界功能探测；Perf 测量所选 Case 的性能，Model 提供模型列表与模型吞吐测试。
+三个入口可以复用用例内容，但不共享命令职责或运行策略。
 
 ### 流式响应与故障分类
 

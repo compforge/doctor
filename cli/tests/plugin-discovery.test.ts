@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { buildPluginArchive } from "../../packages/plugin/scripts/pack";
+import examplePackage from "../../plugins/example/package.json" with { type: "json" };
 import { installPlugin, listPlugins } from "../src/plugin";
 
 const roots: string[] = [];
@@ -71,7 +72,7 @@ describe("Plugin discovery", () => {
     await installPlugin(archive, installRoot);
     const result = await listPlugins(undefined, installRoot);
     expect(result).toMatchObject([{
-      id: "example", version: "0.0.12", source: "installed",
+      id: "example", version: examplePackage.version, source: "installed",
       services: [
         { name: "example-api", detectors: [], environmentProbes: [] },
         { name: "example-worker", detectors: [], environmentProbes: [] },

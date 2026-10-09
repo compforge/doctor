@@ -1,7 +1,7 @@
 import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, type CaseCatalogExtension, type CaseRunnerCreateExtension, type ServiceDefinition, type PluginDefinition, type PerfScenariosExtension } from "@compforge/doctor-plugin";
-import { caseRunnerProvider, createCaseRunner } from "../src/case/extensions";
+import { createServiceCatalog, type CaseCatalog, type CaseRunnerCreateExtension, type ServiceDefinition, type PluginDefinition, type PerfScenariosExtension } from "@compforge/doctor-plugin";
+import { caseRunnerProvider, createCaseRunner, runnableCaseCatalog, runnerCaseCatalog } from "../src/case/extensions";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { createHostPluginContext } from "../src/plugin/context";
 import { selectEvalProvider, executeEvalCases } from "../src/eval";
@@ -11,10 +11,11 @@ import { workloadFromCaseRunner } from "../src/perf";
 const cases = { caseset: "chat", schema_version: 1 as const, facets: {}, cases: [{ id: "hello", input: { query: "hello" } }] };
 const extension: CaseRunnerCreateExtension = {
   id: "runner", kind: "case.runner.create", endpoint: { host: "app", port: 8080 }, access: {},
+  supports: item => typeof item.input.query === "string",
   run: withSummary({"title":"Case Runner","fields":[]}, async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) }))
 };
-const scenarios: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: withSummary({"title":"性能场景","fields":[{"label":"场景数","path":["length"]}]}, async () => [{ id: "chat", title: "Chat", description: "Load", observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] } }]) };
-const catalog: CaseCatalogExtension = { id: "test.cases", kind: "case.catalog", load: () => [{
+const scenarios: PerfScenariosExtension = { id: "scenarios", kind: "perf.scenarios", access: {}, run: withSummary({"title":"性能场景","fields":[{"label":"场景数","path":["length"]}]}, async () => [{ id: "chat", title: "Chat", description: "Load", cases: { service: "app", source: "chat" }, observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] } }]) };
+const catalog: CaseCatalog = { id: "test.cases", load: () => [{
   ...cases, facets: { command: { values: ["eval,perf"] } },
   cases: cases.cases.map((item) => ({ ...item, facets: { command: "eval,perf" } })),
 }] };
@@ -27,12 +28,12 @@ const base: ServiceDefinition = {
 
 test("native Case extension serves both Eval and Perf without legacy capability", async () => {
   const run = mock(extension.run);
-  const services = createServiceCatalog([{ ...base, extensions: [{ ...extension, run }, scenarios] }]);
-  const plugin: PluginDefinition = { id: "test", version: "0.0.1", services, extensions: [catalog] };
+  const services = createServiceCatalog([{ ...base, cases: [{ id: "chat", load: catalog.load, runner: { ...extension, run } }], extensions: [scenarios] }]);
+  const plugin: PluginDefinition = { id: "test", version: "0.0.1", services };
   const selected = selectEvalProvider(plugin, "chat");
-  expect((await selectDoctorCases({ catalog: doctorCaseCatalog(plugin), command: "eval", caseSetId: "chat" }))?.cases.map((item) => item.id)).toEqual(["hello"]);
+  expect((await selectDoctorCases({ catalog: doctorCaseCatalog(plugin), command: "eval", supports: item => typeof item.input.query === "string", caseSetId: "chat" }))?.cases.map((item) => item.id)).toEqual(["hello"]);
   const perf = selectPerfProvider(services, "chat");
-  expect((await selectDoctorCases({ catalog: doctorCaseCatalog(plugin), command: "perf", caseSetId: "chat" }))?.cases.map((item) => item.id)).toEqual(["hello"]);
+  expect((await selectDoctorCases({ catalog: doctorCaseCatalog(plugin), command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "chat" }))?.cases.map((item) => item.id)).toEqual(["hello"]);
   await loadPerfScenarios(perf, () => createHostPluginContext({ service: base, capability: scenarios }));
   expect(run).not.toHaveBeenCalled();
   const context = createHostPluginContext({ service: base, capability: extension });
@@ -44,9 +45,39 @@ test("native Case extension serves both Eval and Perf without legacy capability"
 });
 
 test("Case discovery rejects missing and ambiguous implementations", () => {
-  const catalog = createServiceCatalog([{ ...base, extensions: [extension, { ...extension, id: "other" }] }]);
+  const catalog = createServiceCatalog([{ ...base, cases: ["chat", "other"].map(id => ({ id, load: () => [cases], runner: extension })) }]);
   expect(() => caseRunnerProvider(catalog, "app")).toThrow("Ambiguous");
-  expect(() => caseRunnerProvider(catalog, "missing")).toThrow("No case.runner.create");
+  expect(() => caseRunnerProvider(catalog, "missing")).toThrow("No Case runner");
+  expect(caseRunnerProvider(catalog, "app", "other").source.id).toBe("other");
+});
+
+test("Perf scenario may reference another Service's source without borrowing the scenario owner's access", async () => {
+  const services = createServiceCatalog([
+    { ...base, name: "workflow", aliases: [], extensions: [scenarios] },
+    { ...base, cases: [{ id: "chat", load: catalog.load, runner: extension }] },
+  ]);
+  const workflow = selectPerfProvider(services, "workflow");
+  const declared = await loadPerfScenarios(workflow, () => createHostPluginContext({ service: workflow.service, capability: scenarios }));
+  const ref = declared[0]!.cases;
+  const selected = caseRunnerProvider(services, ref.service, ref.source);
+  expect(selected.service.name).toBe("app");
+  expect(selected.extension.endpoint).toEqual(extension.endpoint);
+  expect(() => caseRunnerProvider(services, "app", "missing")).toThrow("No Case runner");
+});
+
+test("Eval selects a source before its runner and cannot execute another source's incompatible Cases", async () => {
+  const other = { caseset: "other", cases: [{ id: "file", input: { file: "example" } }] };
+  const services = createServiceCatalog([{ ...base, cases: [
+    { id: "chat", load: catalog.load, runner: extension },
+    { id: "files", load: () => [other], runner: { ...extension, supports: item => typeof item.input.file === "string" } },
+  ] }]);
+  const plugin = { id: "test", version: "1", services };
+  const all = doctorCaseCatalog(plugin);
+  const selection = await selectDoctorCases({ catalog: runnableCaseCatalog(all, services, "app"), command: "eval", caseSetId: "other" });
+  const provider = selectEvalProvider(plugin, selection!.source.service, selection!.source.sourceId, selection!.cases);
+  expect(provider.source.id).toBe("files");
+  expect(runnerCaseCatalog(all, provider).map(item => item.caseSet.caseset)).toEqual(["other"]);
+  expect(() => selectEvalProvider(plugin, "app", "chat", selection!.cases)).toThrow("No Case runner");
 });
 
 test("cancellation during creation transfers the runner to its cleanup owner", async () => {

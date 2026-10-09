@@ -1,5 +1,5 @@
 import { writeOutput } from "../terminal/output";
-import { createCaseRunner } from "../case/extensions";
+import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/extensions";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
@@ -269,9 +269,11 @@ export async function runPerf(
   const scenario = config.scenario ?? scenarios[0]?.id;
   const declaredScenario = scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
+  const runnerProvider = caseRunnerProvider(plugin.services, declaredScenario.cases.service, declaredScenario.cases.source);
   const catalog = doctorCaseCatalog(plugin, opts.caseFile);
   const caseSelection = await selectDoctorCases({
-    catalog,
+    catalog: runnerCaseCatalog(catalog, runnerProvider),
+    supports: runnerProvider.extension.supports,
     command: "perf",
     caseSetId: opts.caseset,
     caseIds: opts.cases,
@@ -298,7 +300,7 @@ export async function runPerf(
   }
 
   let requestIdentity: ServiceRequestIdentity | undefined;
-  const identityRequirement = selected.cases.requestIdentity;
+  const identityRequirement = runnerProvider.extension.requestIdentity;
   if (identityRequirement) {
     const configured = identityRequirement.configured(commandContext.profile.pluginConfig);
     const tenantId = configured.tenantId?.trim();
@@ -337,9 +339,10 @@ export async function runPerf(
     risk: "disrupt",
     title: `执行 ${declaredScenario.title} 压测`,
     purpose: declaredScenario.description,
-    target: `${kube.profileName}/${kube.kubernetes.namespace}/${provider.name}`
+    target: `${kube.profileName}/${kube.kubernetes.namespace}/${runnerProvider.service.name}`
       + ` · concurrency ${config.levels.join(" → ")}`,
     impact: [
+      `场景：${provider.name}/${declaredScenario.id}；Case 来源：${runnerProvider.service.name}/${runnerProvider.source.id}`,
       `Case: ${caseSet.caseset}/${caseSelection.cases.map((item) => item.id).join(", ")}；多 Case 等权随机抽取`,
       `最多发起 ${config.levels.length * config.maxRequests} 个业务请求（每档最多 ${config.maxRequests}）`,
       "请求会写入业务数据库、日志和 trace，并可能产生模型调用费用",
@@ -358,9 +361,9 @@ export async function runPerf(
     context: kube.kubernetes.context,
   }, {
     config: commandContext.profile.pluginConfig,
-    service: provider,
-    endpoint: selected.cases.endpoint,
-    capability: selected.cases,
+    service: runnerProvider.service,
+    endpoint: runnerProvider.extension.endpoint,
+    capability: runnerProvider.extension,
     command: "doctor perf",
     authorization,
   });
@@ -428,8 +431,8 @@ export async function runPerf(
     useLogger("perf").info(`metric window ready; starting ${config.levels.join(" → ")} concurrency`);
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
-      subject: { name: provider.name, target: { service: provider.name } },
-      workload: workloadFromCaseFactory(() => createCaseRunner(selected.cases, managed, {
+      subject: { name: runnerProvider.service.name, target: { service: runnerProvider.service.name, source: runnerProvider.source.id } },
+      workload: workloadFromCaseFactory(() => createCaseRunner(runnerProvider.extension, managed, {
         caseSetId: caseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,

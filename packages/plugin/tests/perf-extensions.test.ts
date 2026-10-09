@@ -7,6 +7,7 @@ import {
 } from "../src";
 const scenario: ServicePerfScenario = {
   id: "chat", title: "Chat", description: "Chat load",
+  cases: { service: "app", source: "chat" },
   observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const service: ServiceDefinition = {

@@ -664,9 +664,14 @@ export function createDoctorProgram(
       const active = plugin ?? await loadActivePlugin();
       const sources = doctorCaseCatalog(active, opts.caseFile);
       for (const source of sources) {
-        writeOutput(`${source.caseSet.caseset} (${source.source}${source.service ? `/${source.service}` : ""})\n`);
+        writeOutput(`${source.caseSet.caseset} (${source.source}${source.service ? `/${source.service}/${source.sourceId}` : ""})\n`);
         for (const item of source.caseSet.cases) {
-          writeOutput(`  ${item.id}  command=${item.facets?.command ?? "unspecified"}${item.desc ? `  ${item.desc}` : ""}\n`);
+          writeOutput(`  ${item.id}${item.desc ? `  ${item.desc}` : ""}\n`);
+        }
+      }
+      for (const { service, source } of active?.services.caseSources() ?? []) {
+        if (!sources.some(item => item.service === service.name && item.sourceId === source.id)) {
+          writeOutput(`${service.name}/${source.id} (plugin · runtime Cases)${source.description ? `  ${source.description}` : ""}\n`);
         }
       }
       if (!opts.send && !isInteractive()) return;

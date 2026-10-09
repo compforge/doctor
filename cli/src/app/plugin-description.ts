@@ -17,6 +17,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
     lines.push("    数据查询：未声明 facts.inspect Extension");
   }
   lines.push(`    Extensions：${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "无"}`,
+    `    Cases：${service.cases?.map(item => `${item.id}${item.produce ? " [produce]" : ""}${item.runner ? " [runner]" : ""}`).join(", ") || "无"}`,
     `    Detectors：${service.detectors.join(", ") || "无"}`,
     `    EnvironmentProbes：${service.environmentProbes.join(", ") || "无"}`,
     `    DataSources：${dataSources.map(source => `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,

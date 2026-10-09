@@ -5,7 +5,7 @@
 Extension 是 Core、Plugin、Service 或本地适配器向 Command 提供数据或执行能力的通用注册机制。
 提供方在 `ExtensionRegistry` 中按 namespace 注册，Command 按 kind 发现并调用；kind 约定具体函数语义。
 需要 Target 访问的 Service Extension 使用 `run`、`access` 与受限上下文。离线目录型 Extension 可定义
-自己的调用方式，例如 `case.catalog` 的 `load`，列出 Case 时无需准备 Target 访问。
+自己的调用方式，例如 `error.catalog` 的 `load`，列出错误定义时无需准备 Target 访问。
 
 通用注册只规范提供方身份、实现身份和 kind 的发现；具体 kind 规范调用、权限和输入输出。提供方自由组织资源并实现函数，Command
 拥有自己的执行流程，自由决定在何处调用、如何组合结果以及如何处理失败。
@@ -54,10 +54,6 @@ interface Extension<Input, Output> extends ExtensionRegistration {
   run(context: ExtensionContext, input: Input): Promise<ExtensionResult<Output>>;
 }
 
-interface CaseCatalogExtension extends ExtensionRegistration {
-  readonly kind: "case.catalog";
-  load(): readonly CaseSet[];
-}
 ```
 
 Target 访问型 Extension 返回统一信封，空数据也必须有摘要声明：
@@ -106,9 +102,9 @@ kind 保持开放字符串，各领域在 SDK 中组织自己的类型与校验�
 TypeScript 泛型帮助双方表达类型，但不能证明动态加载的实现符合契约。注册时校验公共声明，消费方在
 领域边界校验 kind 的声明和输出；单靠字符串匹配不能省略校验。
 
-`case.catalog` 的 Core 内置提供方与当前目录 YAML loader 同样注册到宿主注册表。Plugin 可在顶层
-`extensions` 注册自己的 catalog；Service 的请求 runner 单独声明。目录消费者调用 `load` 并校验
-spec-case CaseSet，按 Case facets 过滤，不要求创建 runner 或访问环境。
+共享 Case 资产通过 `Service.cases` 贡献，每个来源组合离线 `load`、可选运行时 `produce` 与 `runner`。
+调用型操作复用 Extension 的受限上下文与结果信封，但其注册身份属于 Case 来源。
+Core 内置与本地 YAML 直接实现离线目录接口；加载目录不创建 runner 或访问环境。
 
 `error.catalog` 同样采用无上下文的同步 `load()`，返回带来源版本的错误定义；由
 `doctor knowledge errors` 消费。定义包含不透明错误码、名称和说明，可附带默认消息及参考链接，
@@ -122,7 +118,7 @@ Command 保持 Prepare → Execute → Finalize 的生命周期。Extension 的�
 1. **声明与发现**：Core、Plugin 顶层、本地适配器和 Service 均注册实现。Registry.extensions(kind) 按 kind 返回 namespace 与实现；
    发现只读取声明，不调用 run，不初始化业务 Client。
 2. **Prepare**：Command 按本次输入和提供方范围选择所需扩展；访问 Target 的实现检查自身及 Extension.access 的权限。
-   已选实现可以保存在 Command 自己的 Prepared 中；此阶段不调用扩展取业务数据或执行操作。
+   已选实现可以保存在 Command 自己的 Prepared 中；允许按命令契约发现依赖和补齐身份，真实请求仍在执行阶段审批后触发。
 3. **Execute**：Command.run 执行自身逻辑，在需要的位置通过宿主调用 Extension.run。Command 决定输入、
    调用顺序、并发、分支、重试与结果组合，并遵守对应 kind 的调用前提和错误语义。
 4. **Finalize**：Command 将本次结果交给序列化与渲染。Finalize 消费已取得的本地结果，不继续调用扩展取数。
@@ -133,7 +129,7 @@ prepare 确定已知的权限范围，不要求预先列出完整执行路径。
 不同 Command 系列保持自己的执行模型。Collect 的 Inspect、Probe、Detector、Evidence 与预算由 Collect
 拥有。
 
-Service 的可调用操作统一注册在 `extensions`。数据源直接注册在 `dataSources`；纯 Evidence 分析放在
+命令扩展注册在 `extensions`，共享 Case 来源注册在 `cases`，数据源注册在 `dataSources`；纯 Evidence 分析放在
 `detectors`，由 Core 实现的声明式环境检查放在 `environmentProbes`。配置和日志采集通过
 `configurationInspection`、`logs` 显式加入 Core 通用采集，不形成第二份操作注册表。
 
@@ -168,11 +164,8 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | error.catalog | 无 Target 访问 → 带来源版本的错误目录 | Knowledge |
-| case.consume | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
-| case.produce | 租户、数量预算 → canonical Case 与有序运行时 targets | Health |
-| case.catalog | 无 Target 访问 → canonical CaseSet 列表 | Case、Model、Perf、Eval |
-| case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
-| perf.scenarios | 无入参 → 观测预设与可观测性引用 | Perf |
+| health.cases | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
+| perf.scenarios | 无入参 → Case 来源引用、观测预设与可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
@@ -212,10 +205,10 @@ Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共
 Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需求的函数使用 Host 上下文，
 保留共享 Client、取消和清理机制；声明 Kubernetes 访问需求的函数使用解析后的集群上下文。
 
-Perf 按 Service 选择唯一的场景扩展，并从 `case.catalog` 选择 Case；确认场景观测配置和 Case 后再申请施压审批。
+Perf 按 Service 选择唯一的场景扩展，再从场景引用的 `Service.cases` 来源选择 runner 支持的 Case；确认场景观测配置和 Case 后再申请施压审批。
 场景读取有独立的权限和调用上下文，读取完成即释放；请求 runner 的创建、调度和清理由 Command 管理。
 
-`case.runner.create` 声明端点和请求身份需求，发现时校验元数据，调用时创建
+Case 来源的 `runner` 声明协议兼容性、端点和请求身份需求，发现时校验元数据，调用时创建
 runner。Command 在主动请求审批后调用创建函数，并持有访问上下文直到 runner 生命周期结束；
 Harness 调度 setup、逐次 run、deactivate 和 cleanup。创建期间发生取消时，已创建的 runner 仍交给
 生命周期所有者清理。
@@ -228,6 +221,6 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 目标解析使用 Extension 自己的访问权限，返回后释放调用上下文；Store 负责后续连接和诊断。
 返回值可携带连接凭据，校验错误只报告字段名。共享 Client source 与目标解析 Extension 是互斥的访问入口。
 
-`case.consume` 与 `case.produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
+`health.cases` 与共享来源的 `produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
 运行时 Case 数据。Health 按关系定位提供方，再根据 `Case.input.protocol` 从消费者 Pod 执行检查；扩展自身
 不负责探测编排。两次调用独立使用所属 Service 的访问权限与上下文，具体流程见 [Health](commands/health.md)。

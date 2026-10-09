@@ -12,6 +12,7 @@ export interface ServiceDescription {
   detectors: string[];
   environmentProbes: string[];
   extensions?: { id: string; kind: string; description?: string }[];
+  cases?: { id: string; description?: string; produce: boolean; runner: boolean }[];
   details: {
     workloads: Workload[];
     dependencies: { id: string; service: string; dataSource: string }[];
@@ -52,12 +53,19 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
       access.push({ owner: `dataSources.${dataSource.id}`, requirements: describeAccess(dataSource.access) });
     }
   }
+  for (const source of service.cases ?? []) {
+    for (const operation of ["produce", "runner"] as const) {
+      if (source[operation]) access.push({ owner: `cases.${source.id}.${operation}`, requirements: describeAccess(source[operation].access) });
+    }
+  }
   return {
     name: service.name,
     aliases: [...(service.aliases ?? [])],
     description: service.description,
     detectors: (service.detectors ?? []).map(item => item.id),
     environmentProbes: (service.environmentProbes ?? []).map(item => item.id),
+    ...(service.cases?.length ? { cases: service.cases.map(source => ({ id: source.id, description: source.description,
+      produce: Boolean(source.produce), runner: Boolean(source.runner) })) } : {}),
     ...(service.extensions?.length ? { extensions: service.extensions.map(({ id, kind, description }) => ({ id, kind, description })) } : {}),
     details: {
       workloads: service.workloads.map(({ name, description, platform, namespace, location, container }) => ({

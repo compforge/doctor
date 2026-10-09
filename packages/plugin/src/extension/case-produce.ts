@@ -1,29 +1,29 @@
 import type { ServiceCaseIdentityRequirement, ServiceRequestIdentity } from "../service";
 import { validateHttpCase, type HttpCase } from "@compforge/spec-case/http";
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
-import { validateExtensionNamespace } from "./registry";
 
 export const CASE_PRODUCE_KIND = "case.produce";
-export const CASE_CONSUME_KIND = "case.consume";
-
-/** A consumer-owned relationship. Workload names refer to this Service's declarations. */
-export interface CaseBinding {
-  readonly id: string;
-  readonly workload: string;
-  readonly producer: { readonly namespace: string; readonly extension: string };
-}
 
 export interface CaseProduceQuery {
   readonly tenantId?: string;
-  /** Prepared probe identity; does not narrow the Health statistics query. */
+  /** Prepared probe identity; independent of the command's statistics scope. */
   readonly requestIdentity?: ServiceRequestIdentity;
+  /** Prepared tenant for tenant-only probes; does not narrow the Health statistics query. */
+  readonly requestTenantId?: string;
   /** Bound preparation at its data source; temporary URLs belong only to this invocation. */
   readonly maxCases: number;
+}
+
+/** A tenant-only dependency must not force the user to select an unrelated real user. */
+export interface CaseTenantRequirement {
+  configured(config: Readonly<Record<string, unknown>>): string | undefined;
 }
 
 export interface CaseProduceResult {
   readonly cases: readonly {
     readonly case: HttpCase;
+    /** Runtime business object; never changes the canonical stimulus identity. */
+    readonly subject?: { readonly id: string; readonly label?: string };
     /** Ordered diagnostic routes: try the configured URL first, then alternatives on failure. */
     readonly targets: readonly {
       readonly id: string;
@@ -40,43 +40,12 @@ export interface CaseProduceResult {
 
 export interface CaseProduceExtension extends Extension<CaseProduceQuery, CaseProduceResult> {
   readonly requestIdentity?: ServiceCaseIdentityRequirement;
+  readonly requestTenant?: CaseTenantRequirement;
   readonly kind: typeof CASE_PRODUCE_KIND;
-}
-
-export interface CaseConsumeQuery { readonly tenantId?: string }
-export interface CaseConsumeResult { readonly bindings: readonly CaseBinding[] }
-
-/** @spec Both kinds return data through the normal Extension envelope; Health owns execution. */
-export interface CaseConsumeExtension extends Extension<CaseConsumeQuery, CaseConsumeResult> {
-  readonly kind: typeof CASE_CONSUME_KIND;
-}
-
-export function requireCaseConsumeExtension(extension: ExtensionRegistration): CaseConsumeExtension {
-  validateExtension(extension);
-  if (extension.kind !== CASE_CONSUME_KIND) throw new Error(`Unsupported Case consumer kind: ${extension.kind}`);
-  return extension as CaseConsumeExtension;
-}
-
-export function validateCaseConsumeResult(value: CaseConsumeResult): void {
-  if (!value || typeof value !== "object") throw new Error("Case consumer must return bindings");
-  validateCaseBindings(value.bindings);
 }
 
 function name(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || !value.trim()) throw new Error(`${label} must be non-empty`);
-}
-
-export function validateCaseBindings(bindings: readonly CaseBinding[]): void {
-  if (!Array.isArray(bindings)) throw new Error("Case bindings must be an array");
-  const ids = new Set<string>();
-  for (const binding of bindings) {
-    name(binding.id, "Case binding id");
-    name(binding.workload, "Case binding workload");
-    if (ids.has(binding.id)) throw new Error(`Duplicate Case binding: ${binding.id}`);
-    ids.add(binding.id);
-    validateExtensionNamespace(binding.producer?.namespace);
-    name(binding.producer?.extension, "Case provider extension");
-  }
 }
 
 export function requireCaseProduceExtension(extension: ExtensionRegistration): CaseProduceExtension {
@@ -85,6 +54,10 @@ export function requireCaseProduceExtension(extension: ExtensionRegistration): C
   const declared = extension as CaseProduceExtension;
   if (declared.requestIdentity !== undefined && (!declared.requestIdentity || typeof declared.requestIdentity.configured !== "function")) {
     throw new Error(`${extension.id}: invalid Case requestIdentity`);
+  }
+  if (declared.requestTenant !== undefined) {
+    if (!declared.requestTenant || typeof declared.requestTenant.configured !== "function") throw new Error(`${extension.id}: invalid Case requestTenant`);
+    if (declared.requestIdentity) throw new Error(`${extension.id}: declare either requestTenant or requestIdentity`);
   }
   return declared;
 }
@@ -97,12 +70,18 @@ export function validateCaseProduceResult(value: CaseProduceResult, maxCases: nu
   const ids = new Set<string>();
   for (const item of value.cases) {
     validateHttpCase(item.case);
-    if (ids.has(item.case.id)) throw new Error(`Duplicate Case: ${item.case.id}`);
-    ids.add(item.case.id);
+    if (item.subject) {
+      name(item.subject.id, "Case subject id");
+      if (item.subject.label !== undefined) name(item.subject.label, "Case subject label");
+    }
+    const identity = JSON.stringify([item.case.id, item.subject?.id]);
+    if (ids.has(identity)) throw new Error(`Duplicate Case: ${item.case.id}`);
+    ids.add(identity);
     // Non-read HTTP methods are gated by Health before any request, and never replayed via alternates.
     const readOnly = ["GET", "HEAD"].includes(item.case.input.method);
     if (readOnly && item.case.input.body !== undefined) throw new Error("GET/HEAD Cases cannot have a body");
     caseSseExpectation(item.case);
+    caseModelExpectation(item.case);
     if (!item.case.judge?.e2e?.http) throw new Error("Health HTTP Case requires judge.e2e.http criteria");
     if (!Array.isArray(item.targets) || !item.targets.length || item.targets.length > 5) throw new Error("Case must provide one to five HTTP targets");
     if (!readOnly && item.targets.length !== 1) throw new Error("Non-read HTTP Cases require exactly one target; automatic replay is unsafe");
@@ -146,4 +125,19 @@ export function caseSseExpectation(value: HttpCase): CaseSseExpectation | undefi
   }
   if (value.judge?.e2e?.http?.contentType !== "text/event-stream") throw new Error("SSE Case must expect text/event-stream");
   return sse as unknown as CaseSseExpectation;
+}
+
+export type CaseModelType = "llm" | "embedding" | "rerank";
+
+/** Protocol validation, not a quality judgment of the generated answer. */
+export function caseModelExpectation(value: HttpCase): CaseModelType | undefined {
+  const raw = value.judge?.e2e?.model;
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)
+    || Object.keys(raw).some(key => key !== "type")
+    || !["llm", "embedding", "rerank"].includes((raw as { type: string }).type)) {
+    throw new Error("Invalid Case model expectation");
+  }
+  if (value.judge?.e2e?.http?.contentType !== "application/json") throw new Error("Model Case must expect application/json");
+  return (raw as { type: CaseModelType }).type;
 }

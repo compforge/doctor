@@ -53,10 +53,10 @@ export * from "./model";
 export * from "./metric";
 export * from "./perf";
 export * from "./case";
-export * from "./case-catalog";
 export * from "./registry";
 export * from "./workload";
 export * from "./vdb";
 
 export * from "./error-catalog";
-export * from "./case-relations";
+export * from "./case-produce";
+export * from "./health";

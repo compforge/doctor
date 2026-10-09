@@ -2,7 +2,7 @@ import { expect, mock, spyOn, test } from "bun:test";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createServiceCatalog, withSummary, type OverviewSummarizeExtension, type OverviewSampleExtension, type OverviewCostExtension,
-  type CaseConsumeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+  type HealthCasesExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
 import { createDoctorProgram } from "../src/app/main";
 import { healthCommand } from "../src/health";
@@ -23,7 +23,7 @@ const summarize: OverviewSummarizeExtension = { id: "summary", kind: "overview.s
   run: withSummary({ title: "Errors", fields: [] }, async () => summary) };
 const sample: OverviewSampleExtension = { id: "sample", kind: "overview.sample", access: {},
   run: withSummary({ title: "Samples", fields: [] }, async () => [{ bizId: "trace-1" }]) };
-const consume: CaseConsumeExtension = { id: "checks", kind: "case.consume", access: {},
+const consume: HealthCasesExtension = { id: "checks", kind: "health.cases", access: {},
   run: withSummary({ title: "Checks", fields: [] }, async () => ({ bindings: [] })) };
 const service = (extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({
   name: "api", aliases: ["short"], workloads: [], extensions,
@@ -40,7 +40,7 @@ test("Health prepares producer identity before statistics and never persists it 
     requestIdentity: { configured: () => { calls.push("identity"); return { tenantId: "probe-tenant", userId: "probe-user" }; } },
     run: withSummary({ title: "Probe", fields: [] }, async () => ({ cases: [], reason: "No sample" })),
   };
-  const definition = plugin([summarize, consume, producer]);
+  const definition = plugin([summarize, consume]);
   const api = definition.services.find("api")!;
   const { kubernetesServiceWorkload } = await import("@compforge/doctor-plugin");
   const ready = { ...api, workloads: [kubernetesServiceWorkload("api")], extensions: [
@@ -49,9 +49,9 @@ test("Health prepares producer identity before statistics and never persists it 
     }) },
     { ...consume, run: withSummary({ title: "Relations", fields: [] }, async () => {
       calls.push("consume");
-      return { bindings: [{ id: "probe", workload: "main", producer: { namespace: "plugin/fixture/service/api", extension: "probe" } }] };
-    }) }, producer,
-  ] };
+      return { bindings: [{ id: "probe", workload: "main", producer: { service: "api", source: "probe" } }] };
+    }) },
+  ], cases: [{ id: "probe", load: () => [], produce: producer }] };
   const context = new CommandContext({}, undefined, { plugin: { ...definition, services: createServiceCatalog([ready]) } });
   context.ensureEnvironment = async () => {};
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture",
@@ -92,7 +92,7 @@ test("health discovers statistics and Cases without inspecting sample implementa
   expect(healthProviders(plugin([summarize]), ["api"])[0]!.summarize).toBe(summarize);
   expect(() => overviewProviders(plugin([summarize]), ["api"])).toThrow("doctor health");
   expect(() => overviewProviders(plugin([consume]), ["api"])).toThrow("doctor health");
-  expect(() => healthProviders(plugin([]), ["api"])).toThrow("case.consume");
+  expect(() => healthProviders(plugin([]), ["api"])).toThrow("health.cases");
   expect(healthProviders(plugin([consume]))[0]!.consumers).toEqual([consume]);
 });
 
