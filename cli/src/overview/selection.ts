@@ -27,12 +27,12 @@ export async function selectOverviewFacet(
   prompt: typeof promptListedChoice = promptListedChoice,
 ): Promise<string | undefined> {
   let facet = opts.facet ? facets.find((item) => item.id === opts.facet) : undefined;
-  if (opts.facet && !facet) throw new Error(`Facet '${opts.facet}' 没有可采集的 Entry`);
-  if (!interactive && !opts.collect) return undefined;
+  if (opts.facet && !facet) throw new Error(`Facet '${opts.facet}' 没有可查询样本的 Entry`);
+  if (!interactive && !opts.collect && !opts.facet) return undefined;
   if (!facet && facets.length === 1) facet = facets[0];
   if (!facet) {
-    if (!interactive) throw new Error("多个 Facet 可采集；请使用 --collect --facet <id>");
-    printNumberedChoices(facets, "可采集的 Facet", (item) => `${item.id} · ${item.title}`);
+    if (!interactive) throw new Error("多个 Facet 可下钻；请使用 --facet <id>");
+    printNumberedChoices(facets, "可下钻的 Facet", (item) => `${item.id} · ${item.title}`);
     const id = await prompt({
       question: "选择 Facet [回车或 q 仅查看概览]: ", emptyValue: "",
       match: (answer) => matchListedChoice(facets, answer, (item) => item.id, (item) => item.id),
@@ -41,15 +41,24 @@ export async function selectOverviewFacet(
     facet = facets.find((item) => item.id === id);
   }
   if (!facet) return undefined;
-  // --collect is explicit consent. Generic --yes must never turn overview into collection.
-  if (opts.collect) return facet.id;
+  return facet.id;
+}
+
+/** Sample lookup is independent of permission to collect detailed evidence. */
+export async function confirmOverviewCollection(
+  bizIds: readonly string[], collect: boolean | undefined, interactive: boolean,
+  prompt: typeof promptListedChoice = promptListedChoice,
+): Promise<boolean> {
+  // Generic --yes must never turn a lookup into collection.
+  if (collect) return true;
+  if (!interactive) return false;
   const confirmed = await prompt({
-    question: `选择 ${facet.title} 的代表请求并采集（data、trace、log）？[y/N]: `,
+    question: `已找到 ${bizIds.length} 个 biz-id，是否继续采集诊断数据？[y/N]: `,
     emptyValue: false,
     match: (answer) => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
     invalidMessage: "请输入 y 或 n",
   });
-  return confirmed ? facet.id : undefined;
+  return confirmed === true;
 }
 
 export async function selectOverviewEntries(
@@ -63,7 +72,7 @@ export async function selectOverviewEntries(
   }));
   const selected = await prompt({
     choices, defaults: choices.slice(0, defaultCount).map((choice) => choice.name),
-    title: `选择要采集的 Entry（总采样上限 ${defaultCount}；确认后在所选 Entry 之间平均分配）`,
+    title: `选择要查询样本的 Entry（总采样上限 ${defaultCount}；确认后在所选 Entry 之间平均分配）`,
     renderChoice: (choice) => `${choice.namespace} · ${choice.entry.label}: ${choice.entry.data}${choice.entry.unit ? ` ${choice.entry.unit}` : ""}`,
   });
   if (!selected) return undefined;

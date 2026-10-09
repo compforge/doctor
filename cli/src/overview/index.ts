@@ -1,17 +1,13 @@
-import { caseCheckActions } from "./case-runtime";
-import { checkServiceCases, type CaseCheckResult } from "./cases";
-import { invokeExtension } from "../plugin/extension";
+import { overviewInvoker } from "./runtime";
 import { overviewProviders } from "./extensions";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { isInteractive } from "../terminal/policy";
-import type { PluginContext } from "@compforge/doctor-plugin";
 import { collectCommand, parseCollectKinds, parseCollectOutputFormat, resolveCollectKinds, type CollectOutput } from "../collect/composite";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig, type KubernetesCommandInput } from "../command/kubernetes-target";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
-import { openPluginContext } from "../plugin/context";
 import { renderEvidence } from "../report/evidence";
 import { composeReports } from "../report/model";
 
@@ -20,7 +16,7 @@ import { collectOverviewSamples } from "./collect";
 import { runOverviewSession, type OverviewProvider, type OverviewResult } from "./flow";
 import { overviewCollectConcurrency, overviewSampleCount, overviewServiceNames } from "./options";
 import { buildOverviewHtml, printOverview, writeOverviewEvidence } from "./report";
-import { overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
+import { confirmOverviewCollection, overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
 
 export interface OverviewCliOpts extends KubernetesCommandInput {
   since?: string;
@@ -54,48 +50,34 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
-  const db = context.profile.value.db;
-  const invoke = async <T>(provider: OverviewProvider, extension: NonNullable<OverviewProvider["summarize"] | OverviewProvider["sample"] | OverviewProvider["cost"]>, work: (managed: PluginContext) => Promise<T>): Promise<T> => {
-    const managed = await openPluginContext(executor, kube.kubernetes, {
-      config: context.profile.pluginConfig,
-      databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      service: extension === provider.sample ? provider.sampleService!
-        : extension === provider.cost ? provider.costService! : provider.service, capability: extension,
-      command: "doctor overview", authorization: context.kubernetes(executor).access,
-    });
-    try { return await work(managed); } finally { await managed.dispose(); }
-  };
+  const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor overview");
   // Freeze after target selection, before the first provider query; sampling reuses these exact instants.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
   let collectionResult: CommandResult<CollectOutput> | undefined;
   let snapshot: OverviewResult | undefined;
+  let samplesShown = false;
   let reportDirectory: string | undefined;
   let result: OverviewResult;
   try {
     result = await runOverviewSession(selected, query, {
       signal: context.signal,
-      cases: (provider, query, checkpoint) => {
-        const snapshots: CaseCheckResult[] = [];
-        return checkServiceCases(context.plugin, provider.caseService!, provider.consumers!, query.tenantId,
-          caseCheckActions(context, executor, kube.kubernetes, reportDirectory!, result => {
-            const index = snapshots.findIndex(item => item.consumeExtension === result.consumeExtension && item.bindingId === result.bindingId);
-            if (index < 0) snapshots.push(result); else snapshots[index] = result;
-            checkpoint(snapshots);
-          }));
-      },
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
-      summarize: (provider, input) => invoke(provider, provider.summarize!, (managed) => invokeExtension(provider.summarize!, managed, input).then(result => result.data)),
-      cost: (provider, input) => invoke(provider, provider.cost!, (managed) => invokeExtension(provider.cost!, managed, input).then(result => result.data)),
+      summarize: (provider, input) => invoke(provider, provider.summarize!, input),
       sample: (provider, input) => {
         const extension = provider.sample;
         if (!extension) throw new Error(`${provider.name}: missing overview.sample Extension`);
-        return invoke(provider, extension, (managed) => invokeExtension(extension, managed, input).then(result => result.data));
+        return invoke(provider, extension, input);
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
+      confirmCollect: (bizIds) => confirmOverviewCollection(bizIds, opts.collect, interactive),
       warn: (message) => useLogger("overview").warn(`${message}`),
       show: (result) => {
         if (!snapshot) printOverview(result);
+        if (result.samples.length && !samplesShown) {
+          for (const sample of result.samples) useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
+          samplesShown = true;
+        }
         snapshot = result;
         // Preserve the overview snapshot before optional collection; render owns reading order.
         reportDirectory = writeOverviewEvidence(result, context, reportDirectory);
@@ -114,16 +96,8 @@ async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvid
     // The dashboard remains deliverable even if optional selection or collection fails.
     if (snapshot) writeOverviewEvidence(snapshot, context, reportDirectory);
   }
-  if (result.providers.some(provider => provider.cases || provider.casesError)) printOverview(result);
-  for (const sample of result.samples) {
-    useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
-  }
   const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
     ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
-    ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
-    ...(provider.casesError ? [CommandStatus.Failed] : []),
-    ...(provider.cases ?? []).map(check => check.status === "passed" ? CommandStatus.Ok
-      : check.status === "cancelled" ? CommandStatus.Cancelled : CommandStatus.Failed),
   ]);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);

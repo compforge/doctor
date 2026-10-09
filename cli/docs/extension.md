@@ -154,9 +154,9 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 |---|---|---|
 | facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
-| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
+| overview.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview / Health |
 | overview.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Overview |
-| overview.cost | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Overview |
+| overview.cost | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Health |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
 | tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
@@ -168,8 +168,8 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | error.catalog | 无 Target 访问 → 带来源版本的错误目录 | Knowledge |
-| case.consume | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Overview |
-| case.produce | 租户、数量预算 → canonical Case 与有序运行时 targets | Overview |
+| case.consume | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
+| case.produce | 租户、数量预算 → canonical Case 与有序运行时 targets | Health |
 | case.catalog | 无 Target 访问 → canonical CaseSet 列表 | Case、Model、Perf、Eval |
 | case.runner.create | CaseSet ID、超时、请求身份 → Case runner | Eval、Perf |
 | perf.scenarios | 无入参 → 观测预设与可观测性引用 | Perf |
@@ -229,5 +229,5 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 返回值可携带连接凭据，校验错误只报告字段名。共享 Client source 与目标解析 Extension 是互斥的访问入口。
 
 `case.consume` 与 `case.produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
-运行时 Case 数据。Overview 按关系定位提供方，再根据 `Case.input.protocol` 从消费者 Pod 执行检查；扩展自身
-不负责探测编排。两次调用独立使用所属 Service 的访问权限与上下文，具体流程见 [Overview](commands/overview.md)。
+运行时 Case 数据。Health 按关系定位提供方，再根据 `Case.input.protocol` 从消费者 Pod 执行检查；扩展自身
+不负责探测编排。两次调用独立使用所属 Service 的访问权限与上下文，具体流程见 [Health](commands/health.md)。

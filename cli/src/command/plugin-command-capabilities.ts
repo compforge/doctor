@@ -4,9 +4,14 @@ import type { CollectKind } from "../collect/composite";
 
 /** Plugin command 在接触环境前声明的静态业务能力；依赖 flags 的条件能力由对应 command 延迟检查。 */
 export const PLUGIN_COMMAND_CAPABILITIES = {
+  health: {
+    command: "doctor health",
+    // Exact statistics/Case discovery runs before environment preparation.
+    needs: [],
+  },
   overview: {
     command: "doctor overview",
-    // Exact namespace selection accepts summarize, cost or consumer Case bindings; overviewProviders validates before I/O.
+    // Object selection requires a summary/sample pair in one namespace, validated before I/O.
     needs: [],
   },
   trace: {
