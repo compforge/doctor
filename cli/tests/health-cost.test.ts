@@ -32,7 +32,8 @@ const plugin = (extensions: ServiceDefinition["extensions"]) => ({ id: "fixture"
 test("health supports cost-only namespaces without borrowing summary or sample", () => {
   const definition = plugin([cost, { ...summarize, namespace: "plugin/fixture" }]);
   expect(healthProviders(definition, ["api"])[0]).toMatchObject({ cost, costService: { name: "api" }, summarize: undefined });
-  expect(healthProviders(definition)[0]?.cost).toBeUndefined();
+  expect(healthProviders(definition)[0]?.cost).toBe(cost);
+  expect(healthProviders(definition)[0]?.summarize).toBeUndefined();
   expect(() => healthProviders(plugin([cost, { ...cost, id: "other" }]), ["api"])).toThrow("ambiguous");
 });
 
@@ -72,10 +73,10 @@ test("summary and cost fail independently and cost-only never samples", async ()
 test("command retains independent owners, typed evidence and partial status, including cost-only", async () => {
   const calls: string[] = [];
   const definition = { id: "fixture", version: "1", services: createServiceCatalog([
-    service("api", [{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, async context => {
+    service("api", [{ ...summarize, run: withSummary({ title: "Errors", fields: [] }, async context => {
       expect(context.target.service.name).toBe("api"); calls.push("summary"); throw new Error("summary offline");
     }) }]),
-    service("store", [cost, { ...cost, id: "product-cost", namespace: "plugin/fixture",
+    service("store", [cost, { ...cost, id: "api-cost", namespace: "plugin/fixture/service/api",
       run: withSummary({ title: "Costs", fields: [] }, async context => {
         expect(context.target.service.name).toBe("store"); calls.push("cost"); return costResult;
       }) }]),
@@ -89,13 +90,13 @@ test("command retains independent owners, typed evidence and partial status, inc
     }, exec: async () => { throw new Error("unexpected exec"); },
   });
   try {
-    for (const selection of [undefined, "store"]) {
+    for (const selection of ["api", "store"]) {
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       let artifacts: readonly { command: string; path: string }[] = [];
       try {
         const result = await healthCommand.run(context, { since: "1h", service: selection });
-        expect(result.status).toBe(selection ? CommandStatus.Ok : CommandStatus.Partial);
+        expect(result.status).toBe(selection === "store" ? CommandStatus.Ok : CommandStatus.Partial);
         expect(result.output?.providers[0]?.cost).toEqual(costResult);
         artifacts = result.artifacts;
         const artifact = artifacts.find(item => item.command === "health")!;

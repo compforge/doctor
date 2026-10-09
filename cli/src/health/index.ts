@@ -10,7 +10,8 @@ import { isInteractive } from "../terminal/policy";
 import { overviewServiceNames } from "../overview/options";
 import { overviewWindow, selectOverviewWindow } from "../overview/selection";
 import { overviewInvoker } from "../overview/runtime";
-import { healthProviders, type HealthProvider } from "./extensions";
+import type { HealthProvider } from "./extensions";
+import { selectHealthProviders } from "./selection";
 import { runHealthSession, type HealthResult } from "./flow";
 import { checkServiceCases, type CaseCheckResult } from "./cases";
 import { caseCheckActions } from "./case-runtime";
@@ -96,7 +97,8 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, { input: H
   validate: validateHealthOptions,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.health });
-    const providers = healthProviders(context.plugin, overviewServiceNames(input));
+    const providers = await selectHealthProviders(context.plugin, overviewServiceNames(input), isInteractive());
+    if (!providers) return undefined;
     await context.ensureEnvironment({ kubernetes: true });
     return { input, providers };
   },

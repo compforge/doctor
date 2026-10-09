@@ -381,6 +381,7 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 `overview.summarize` 与 `overview.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
 文字，Overview 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
 Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`overview.cost` 只供 Health 展示；Health 另外编排 `case.consume/produce` 体检，不进入样本查询或 Collect。
+Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Overview 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
 详见 [Overview](commands/overview.md) 与 [Health](commands/health.md)。
 
 Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，

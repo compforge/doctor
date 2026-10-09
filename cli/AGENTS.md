@@ -9,7 +9,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
-- **系统体检**：`doctor health` 复用概览统计并执行消费方 Case，不查询代表 biz-id 或触发 Collect。
+- **系统体检**：`doctor health` 按 Service 复用概览统计并执行消费方 Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
 - **概览与采样**：`doctor overview` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
