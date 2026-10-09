@@ -43,7 +43,7 @@ test("health discovers statistics and Cases without inspecting sample implementa
   expect(() => overviewProviders(plugin([summarize]), ["api"])).toThrow("doctor health");
   expect(() => overviewProviders(plugin([consume]), ["api"])).toThrow("doctor health");
   expect(() => healthProviders(plugin([]), ["api"])).toThrow("case.consume");
-  expect(() => healthProviders(plugin([consume]))).toThrow("--service");
+  expect(healthProviders(plugin([consume]))[0]!.consumers).toEqual([consume]);
 });
 
 test("health flow preserves statistics and failed probes without lookup or collection fields", async () => {

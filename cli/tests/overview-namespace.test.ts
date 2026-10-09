@@ -30,13 +30,14 @@ function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleEx
     services: createServiceCatalog([service("api", [summarize, sample, ...product]), service("store")]) };
 }
 
-test("a Service can provide the product namespace while retaining its own context binding", () => {
+test("health uses Service statistics instead of a product summary provided by the same Service", () => {
   const run = mock(async () => []);
   const definition = plugin([{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, run) }]);
   const selected = healthProviders(definition);
   expect(() => overviewProviders(definition)).toThrow("overview.sample");
   expect(selected).toHaveLength(1);
-  expect(selected[0]?.namespace).toBe("plugin/fixture");
+  expect(selected[0]?.namespace).toBe("plugin/fixture/service/api");
+  expect(selected[0]?.summarize).toBe(summarize);
   expect(selected[0]?.service.name).toBe("api");
   // A Service-scoped sample must not be borrowed by a product-scoped summary from the same provider.
   expect(selected[0]?.sample).toBeUndefined();

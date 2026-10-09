@@ -13,8 +13,12 @@ doctor health --since 1h --service example-worker
 doctor health --services example-api,example-worker --tenant-id <tenant-id>
 ```
 
-默认只查询 Plugin 产品 namespace；选择 Service 后读取其精确 namespace，并执行其消费关系。
-不会隐式遍历所有 Service。仅提供 Case 消费关系的 Service 也可体检；仅提供 Case 的服务由消费方引用执行。
+未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
+显式 `--service` 或 `--services` 跳过选择，只检查指定服务，支持别名并按规范名去重。
+候选来自各 Service 精确 namespace 下的 `overview.summarize`、`overview.cost` 或 `case.consume`，
+不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
+显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
+选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
 
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
 报告保存统计结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
@@ -24,7 +28,7 @@ doctor health --services example-api,example-worker --tenant-id <tenant-id>
 
 `overview.cost` 是独立 Extension，可与 `overview.summarize` 在同一 namespace 共存，也可单独提供。
 Core 使用相同的冻结窗口和租户条件调用它，以提供该 Extension 的原始 Service 准备 access；
-两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。未选择 Service 时仍只读取 Plugin namespace。
+两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。
 
 Provider 接收 `OverviewCostQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
 返回 `OverviewCostResult`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
@@ -41,8 +45,7 @@ Service 通过 `case.consume` Extension 返回消费关系，表示它必须从�
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
 指定 Service 的 Health 在统计查询后执行这些检查。GET/HEAD 自动执行；
 非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
-没有 summarize/cost 的 Service 也可以只提供 `case.consume`。产品级概览保持自身 namespace 的统计范围，
-不会隐式执行所有 Service 的检查。
+没有 summarize/cost 的 Service 也可以只提供 `case.consume`。
 
 Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.produce` Extension，
 以 `workload` 引用消费方已声明的 Workload。两个 kind 均遵循普通 Extension 契约：声明 `access`，
