@@ -231,7 +231,7 @@ Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行�
 
 Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数生成 key，Collect 使用这些 Input 调用
 子命令。调用方仍显式纳入子产物，Artifacts 按产物 ID 去重，因此多个 Collect 可引用同一份环境/租户证据，
-最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
+最终报告只交付一份。Sample 无需识别第一次或后续 Collect。
 
 ### Context 与调用归属
 

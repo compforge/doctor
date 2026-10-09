@@ -10,7 +10,7 @@ import { healthProviders } from "../src/health/extensions";
 import { runHealthSession } from "../src/health/flow";
 import { buildHealthHtml } from "../src/health/report";
 import { overviewProviders } from "../src/overview/extensions";
-import { overviewCommand } from "../src/overview";
+import { sampleCommand } from "../src/overview";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
 import * as targets from "../src/command/kubernetes-target";
@@ -128,13 +128,13 @@ test("real commands share statistics, but only overview --facet queries IDs with
     }, exec: async () => { throw new Error("unexpected exec"); },
   });
   try {
-    for (const kind of ["health", "overview"] as const) {
+    for (const kind of ["health", "sample"] as const) {
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
         const result = kind === "health"
           ? await healthCommand.run(context, { since: "1h", service: "short" })
-          : await overviewCommand.run(context, { since: "1h", service: "short", facet: "errors" });
+          : await sampleCommand.run(context, { since: "1h", service: "short", facet: "errors" });
         expect(result.status).toBe(CommandStatus.Ok);
         const artifact = result.artifacts.find(item => item.command === kind)!;
         const evidence = JSON.parse(readFileSync(join(artifact.path, "diagnosis.json"), "utf8"));

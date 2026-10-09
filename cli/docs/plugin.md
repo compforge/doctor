@@ -332,7 +332,7 @@ DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dis
 Client 持有初始化所需的运行时配置，并自行限制并发。MySQL 使用单个查询槽位，
 通过借用的 TCP 通道复用原生连接，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
 根 finalize 集中关闭消费者和其依赖的 Kubernetes Client。借用的 Kubernetes 通道不能由某个数据库客户端关闭。
-客户端复用只覆盖访问准备和连接，各次 SQL、Overview Entry 查询与诊断结果独立执行。
+客户端复用只覆盖访问准备和连接，各次 SQL、Sample Entry 查询与诊断结果独立执行。
 
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
@@ -376,13 +376,13 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 定制 CLI 的名称、描述和命令展示由 [Distribution](distribution.md) 表达，通过 `startDoctor`
 的发行配置注入；它属于发行装配，不进入 Plugin 业务协议。
 
-### Service Overview 与 Health
+### Service Sample 与 Health
 
 `overview.summarize` 与 `overview.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
-文字，Overview 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
+文字，Sample 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
 Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`overview.cost` 只供 Health 展示；Health 另外编排 `case.consume/produce` 体检，不进入样本查询或 Collect。
-Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Overview 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
-详见 [Overview](commands/overview.md) 与 [Health](commands/health.md)。
+Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Sample 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
+详见 [Sample](commands/sample.md) 与 [Health](commands/health.md)。
 
 Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，
 不得放入命令参数。取消信号、权限检查及资源生命周期继续由宿主管理。

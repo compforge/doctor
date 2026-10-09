@@ -22,7 +22,7 @@ doctor health --services example-api,example-worker --tenant-id <tenant-id>
 
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
 报告保存统计结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
-如需从错误等现象定位具体对象，使用 [Overview](overview.md) 查询 biz-ids，再决定是否采集。
+如需从错误等现象定位具体对象，使用 [Sample](sample.md) 查询 biz-ids，再决定是否采集。
 
 ## 耗时统计
 

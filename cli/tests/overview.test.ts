@@ -287,11 +287,11 @@ test("a single selected Entry receives the entire sample budget", async () => {
 
 test("sample count honors CLI over profile and rejects invalid numbers", async () => {
   const { overviewSampleCount } = await import("../src/overview/options");
-  const { validateOverviewOptions } = await import("../src/overview");
+  const { validateSampleOptions } = await import("../src/overview");
   expect(overviewSampleCount()).toBe(5);
   expect(overviewSampleCount(undefined, 3)).toBe(3);
   expect(overviewSampleCount(2, 3)).toBe(2);
   for (const count of [0, -1, 1.5, NaN, Infinity]) {
-    expect(() => validateOverviewOptions({ sampleCount: count })).toThrow("正整数");
+    expect(() => validateSampleOptions({ sampleCount: count })).toThrow("正整数");
   }
 });

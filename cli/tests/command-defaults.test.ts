@@ -4,7 +4,7 @@ import { applyCommandDefaults } from "../src/app/command-defaults";
 import { createDoctorProgram } from "../src/app/main";
 import * as execution from "../src/app/command";
 
-for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "collect", "overview"]) {
+for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "collect", "sample"]) {
   test(`${name}: distribution defaults are visible in Help and explicit formats win`, async () => {
     const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
     try {

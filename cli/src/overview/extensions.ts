@@ -48,7 +48,7 @@ export function overviewStatistics(
   return { namespace: scope.namespace, name: scope.name, service, summarize, cost, costService: costs[0]?.service };
 }
 
-/** @spec Overview selects objects: it requires a summary/sample pair in the same exact namespace, never cost-only statistics. */
+/** @spec Sample selects objects: it requires a summary/sample pair in the same exact namespace, never cost-only statistics. */
 export function overviewProviders(plugin: PluginDefinition, serviceNames?: readonly string[]): OverviewProvider[] {
   const registry = createDoctorExtensionRegistry(plugin);
   return overviewScopes(plugin, serviceNames).map(scope => {

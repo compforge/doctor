@@ -30,7 +30,7 @@ test("nested aggregates retain direct edges, reuse the same result and remain po
   const separate = ok({ value: "body" });
   const aggregate = defineCommand({ name: "doctor collect", prepare: async (_context, input) => input, run: async () => ok([shared]),
     serialize: async (context, result) => ({ files: {}, children: await Promise.all((result.output ?? []).map(child => context.serialize(leaf, child))) }) });
-  const root = defineCommand({ name: "doctor overview", prepare: async (_context, input) => input, run: async () => ok([ok([shared]), ok([shared, separate])]),
+  const root = defineCommand({ name: "doctor sample", prepare: async (_context, input) => input, run: async () => ok([ok([shared]), ok([shared, separate])]),
     serialize: async (context, result) => ({ files: {}, children: await Promise.all((result.output ?? []).map(child => context.serialize(aggregate, child))) }) });
   const source = temporary();
   await SerializeContext.create(source, root, ok([ok([shared]), ok([shared, separate])]));
@@ -39,7 +39,7 @@ test("nested aggregates retain direct edges, reuse the same result and remain po
   cpSync(source, destination, { recursive: true });
   rmSync(source, { recursive: true });
   const manifest = read(join(destination, "manifest.json")) as Manifest;
-  expect(manifest.source.command).toBe("overview");
+  expect(manifest.source.command).toBe("sample");
   expect(manifest.children).toHaveLength(2);
   expect(manifest.files.summary.path).toBe("summary.md");
   const summary = readFileSync(join(destination, manifest.files.summary.path), "utf8");

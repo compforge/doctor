@@ -17,7 +17,7 @@
 | 类型 | 职责 | 示例 | 输出组织 |
 |---|---|---|---|
 | 领域 Command | 直接完成某一领域的采集、诊断或分析 | `data`、`trace`、`inspect` | 本次执行的清单、证据和诊断直接放在输出根目录 |
-| 聚合 Command | 编排其他 Command，关联子结果并形成汇总 | `collect`、`overview` | 清单登记子执行，交付根的 `artifacts/` 保存各次后代执行的产物 |
+| 聚合 Command | 编排其他 Command，关联子结果并形成汇总 | `collect`、`sample` | 清单登记子执行，交付根的 `artifacts/` 保存各次后代执行的产物 |
 
 使用“领域”而不是“原子”，因为一次领域命令可以查询多个 Service、处理多个业务 ID，或执行多个步骤，
 并不意味着操作不可拆分或具有事务原子性。这里区分的是输出职责，不按内部函数调用次数分类。
@@ -36,7 +36,7 @@
 本次调用的位置，“领域 / 聚合”描述输出职责，两者是独立维度。例如：
 
 ```text
-overview                         # 根执行，聚合 Command
+sample                         # 根执行，聚合 Command
 └── collect                      # 子执行，同时也是聚合 Command
     ├── trace                    # 领域 Command
     ├── log                      # 领域 Command
@@ -44,15 +44,15 @@ overview                         # 根执行，聚合 Command
 ```
 
 每次执行都有自己的身份和 manifest。每个聚合节点登记直接子执行的引用，保留自身输入、状态及汇总；
-即使只做编排、没有 raw 文件，也保留该节点。`overview` 引用 `collect`，`collect` 再引用
-`trace`、`log`、`data`，不能将后代全部改记成 `overview` 的直接子执行而丢失编排关系。
+即使只做编排、没有 raw 文件，也保留该节点。`sample` 引用 `collect`，`collect` 再引用
+`trace`、`log`、`data`，不能将后代全部改记成 `sample` 的直接子执行而丢失编排关系。
 
 执行关系通过清单递归表达，物理目录在交付根的 `artifacts/` 中统一组织，避免层层复制子树：
 
 ```text
-doctor-overview/
-├── manifest.json                # overview：引用 collect
-├── analysis/                    # overview 自身的汇总
+doctor-sample/
+├── manifest.json                # sample：引用 collect
+├── analysis/                    # sample 自身的汇总
 └── artifacts/
     ├── <id>-collect/
     │   └── manifest.json        # collect：引用 trace、log、data

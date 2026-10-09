@@ -14,7 +14,7 @@ export function overviewWindow(since: string, now = new Date()): OverviewQuery["
 
 export async function selectOverviewWindow(interactive: boolean): Promise<string | undefined> {
   if (!interactive) return "1h";
-  printNumberedChoices(OVERVIEW_WINDOWS, "概览时间范围", (value) => `近 ${value}`);
+  printNumberedChoices(OVERVIEW_WINDOWS, "统计时间范围", (value) => `近 ${value}`);
   return promptListedChoice({
     question: "选择时间范围 [默认 1h，q 退出]: ", emptyValue: "1h",
     match: (answer) => matchListedChoice(OVERVIEW_WINDOWS, answer, (value) => value, (value) => value),
@@ -34,7 +34,7 @@ export async function selectOverviewFacet(
     if (!interactive) throw new Error("多个 Facet 可下钻；请使用 --facet <id>");
     printNumberedChoices(facets, "可下钻的 Facet", (item) => `${item.id} · ${item.title}`);
     const id = await prompt({
-      question: "选择 Facet [回车或 q 仅查看概览]: ", emptyValue: "",
+      question: "选择 Facet [回车或 q 仅查看统计]: ", emptyValue: "",
       match: (answer) => matchListedChoice(facets, answer, (item) => item.id, (item) => item.id),
       invalidMessage: "请输入编号或 Facet id",
     });

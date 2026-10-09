@@ -3,12 +3,12 @@ import { commandOptionsWithSources } from "../app/option-sources";
 import { runCommand, type CommandRuntime } from "../app/command";
 import { deliveryFormatOption } from "../app/command-defaults";
 import { domainInput } from "../command/options";
-import { overviewCommand, type OverviewCliOpts } from "./index";
+import { sampleCommand, type SampleCliOpts } from "./index";
 
-export function registerOverviewCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("overview").description("展示可下钻条目以选取 biz-id，可选采集诊断数据；完整统计与体检使用 health")
+export function registerSampleCommand(program: Command, runtime: CommandRuntime = {}): void {
+  program.command("sample").description("按条件选取代表 biz-id，可选采集诊断数据；完整统计与体检使用 health")
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
-    .option("--service <name>", "查看指定 Service；未指定时查看产品概览")
+    .option("--service <name>", "从指定 Service 选取样本；未指定时使用产品级采样入口")
     .option("--services <names>", "比较逗号分隔的多个 Service；不能与 --service 同用")
     .option("--tenant-id <id>", "只查看该租户")
     .option("--facet <id>", "选择 Facet 并查询代表对象；本身不触发采集")
@@ -19,8 +19,8 @@ export function registerOverviewCommand(program: Command, runtime: CommandRuntim
     .option("--profile <name>", "使用指定 profile")
     .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-o, --output <path>", "报告 basename/路径")
-    .action(async (opts: OverviewCliOpts, command: Command) => {
+    .action(async (opts: SampleCliOpts, command: Command) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(overviewCommand, opts, domainInput(opts), runtime);
+      await runCommand(sampleCommand, opts, domainInput(opts), runtime);
     });
 }
