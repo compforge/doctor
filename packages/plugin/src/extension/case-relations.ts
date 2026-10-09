@@ -42,7 +42,7 @@ export interface CaseProduceExtension extends Extension<CaseProduceQuery, CasePr
 export interface CaseConsumeQuery { readonly tenantId?: string }
 export interface CaseConsumeResult { readonly bindings: readonly CaseBinding[] }
 
-/** @spec Both kinds return data through the normal Extension envelope; Overview owns execution. */
+/** @spec Both kinds return data through the normal Extension envelope; Health owns execution. */
 export interface CaseConsumeExtension extends Extension<CaseConsumeQuery, CaseConsumeResult> {
   readonly kind: typeof CASE_CONSUME_KIND;
 }
@@ -91,11 +91,11 @@ export function validateCaseProduceResult(value: CaseProduceResult, maxCases: nu
     validateHttpCase(item.case);
     if (ids.has(item.case.id)) throw new Error(`Duplicate Case: ${item.case.id}`);
     ids.add(item.case.id);
-    // Non-read HTTP methods are gated by Overview before any request, and never replayed via alternates.
+    // Non-read HTTP methods are gated by Health before any request, and never replayed via alternates.
     const readOnly = ["GET", "HEAD"].includes(item.case.input.method);
     if (readOnly && item.case.input.body !== undefined) throw new Error("GET/HEAD Cases cannot have a body");
     caseSseExpectation(item.case);
-    if (!item.case.judge?.e2e?.http) throw new Error("Overview HTTP Case requires judge.e2e.http criteria");
+    if (!item.case.judge?.e2e?.http) throw new Error("Health HTTP Case requires judge.e2e.http criteria");
     if (!Array.isArray(item.targets) || !item.targets.length || item.targets.length > 5) throw new Error("Case must provide one to five HTTP targets");
     if (!readOnly && item.targets.length !== 1) throw new Error("Non-read HTTP Cases require exactly one target; automatic replay is unsafe");
     const targets = new Set<string>();

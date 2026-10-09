@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
   type CaseConsumeExtension, type CaseProduceExtension, type CaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
-import { checkServiceCases, type CaseCheckActions } from "../src/overview/cases";
-import { overviewProviders } from "../src/overview/extensions";
-import { runOverviewSession } from "../src/overview/flow";
-import { buildOverviewHtml } from "../src/overview/report";
-import { CommandContext, CommandStatus, commandOutcome } from "../src/command";
+import { checkServiceCases, type CaseCheckActions } from "../src/health/cases";
+import { healthProviders } from "../src/health/extensions";
+import { runHealthSession } from "../src/health/flow";
+import { buildHealthHtml } from "../src/health/report";
+import { CommandContext, CommandStatus } from "../src/command";
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "test" } };
 const provider: CaseProduceExtension = { id: "files", kind: "case.produce", access: {},
@@ -47,7 +47,7 @@ function fixture(overrides: Partial<CaseCheckActions> = {}) {
 }
 
 test("case-only Service is discoverable; provider is called after consumer preparation and URLs run from that target", async () => {
-  const selected = overviewProviders(plugin, ["sandbox"]);
+  const selected = healthProviders(plugin, ["sandbox"]);
   expect(selected[0]!.consumers).toHaveLength(1);
   const f = fixture();
   try {
@@ -96,18 +96,19 @@ test("missing consumer tools and empty providers are coverage gaps, not network 
   }
 });
 
-test("Overview runs bindings automatically and retains history when checks fail", async () => {
+test("Health runs bindings automatically and retains history when checks fail", async () => {
   const f = fixture({ sender: async () => async () => ({ statusCode: 403, statusText: "Forbidden", headers: {}, body: new Response("denied").body }) });
   try {
-    const selected = overviewProviders(plugin, ["sandbox"]);
-    const result = await runOverviewSession(selected, { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 }, {
-      summarize: async () => [], sample: async () => [], select: async () => undefined, collect: async () => commandOutcome(0),
+    const selected = healthProviders(plugin, ["sandbox"]);
+    const result = await runHealthSession(selected, { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 }, {
+      summarize: async () => [],
       show: () => {}, cases: () => f.run(),
     });
-    expect(result.collection).toBe("not-requested");
+    expect(result).not.toHaveProperty("collection");
+    expect(result).not.toHaveProperty("samples");
     expect(result.providers[0]!.cases![0]!.attempts[0]!.observation.response.statusCode).toBe(403);
-    expect(buildOverviewHtml(result)).toContain("HTTP 403");
-    expect(buildOverviewHtml(result)).not.toContain("TOPSECRET");
+    expect(buildHealthHtml(result)).toContain("HTTP 403");
+    expect(buildHealthHtml(result)).not.toContain("TOPSECRET");
   } finally { f.cleanup(); }
 });
 
@@ -149,9 +150,9 @@ test("replica tool/provider failures preserve their identity and do not hide ano
 
 
 test("real Case adapter executes only in consumer container and delivers failed HTTP evidence", async () => {
-  const { caseCheckActions } = await import("../src/overview/case-runtime");
-  const { writeOverviewEvidence } = await import("../src/overview/report");
-  const { overviewCommand } = await import("../src/overview");
+  const { caseCheckActions } = await import("../src/health/case-runtime");
+  const { writeHealthEvidence } = await import("../src/health/report");
+  const { healthCommand } = await import("../src/health");
   const { finalizeResult, readReport } = await import("./report-fixture");
   const { readBundleText } = await import("./bundle-fixture");
   const f = fixture();
@@ -196,13 +197,12 @@ test("real Case adapter executes only in consumer container and delivers failed 
     expect(calls[1]!.command).not.toContain("--insecure");
     expect(calls[1]!.command).not.toContain("--noproxy");
     const output = { query: { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 },
-      providers: [{ namespace: "plugin/test/service/sandbox", name: "sandbox", facets: [], cases: checks }],
-      sampleAllocations: [], samples: [], collection: "not-requested" as const };
-    writeOverviewEvidence(output, context, f.directory);
-    writeOverviewEvidence(output, context, f.directory);
+      providers: [{ namespace: "plugin/test/service/sandbox", name: "sandbox", facets: [], cases: checks }] };
+    writeHealthEvidence(output, context, f.directory);
+    writeHealthEvidence(output, context, f.directory);
     expect(context.artifacts.list()).toHaveLength(1);
     const path = join(f.directory, "delivery.html");
-    await finalizeResult(context, overviewCommand, { status: CommandStatus.Failed, output, artifacts: context.artifacts.list() }, { output: path });
+    await finalizeResult(context, healthCommand, { status: CommandStatus.Failed, output, artifacts: context.artifacts.list() }, { output: path });
     const html = readReport(readFileSync(path, "utf8"));
     expect(html.index.sections[0]!.pages[0]!.status).toBe(CommandStatus.Failed);
     expect(html.pages).toContain("HTTP 403");
@@ -223,16 +223,15 @@ test("consumer data is resolved at execution and invalid relationships never rea
       expect(result!.consumeExtension).toBe("downloads");
       expect(result!.error).toBeDefined();
       expect(f.calls).toEqual([]);
-      expect(buildOverviewHtml({ query: { window: { from: "a", to: "b" }, maxEntries: 1 },
-        providers: [{ namespace: "sandbox", name: "sandbox", facets: [], cases: [result!] }],
-        collection: "not-requested", samples: [], sampleAllocations: [] })).toContain("downloads");
+      expect(buildHealthHtml({ query: { window: { from: "a", to: "b" }, maxEntries: 1 },
+        providers: [{ namespace: "sandbox", name: "sandbox", facets: [], cases: [result!] }] })).toContain("downloads");
     } finally { f.cleanup(); }
   }
 });
 
 test("consume extensions isolate failures and preserve duplicate binding IDs across extensions", async () => {
   const f = fixture();
-  const snapshots: import("../src/overview/cases").CaseCheckResult[] = [];
+  const snapshots: import("../src/health/cases").CaseCheckResult[] = [];
   f.actions.checkpoint = result => { if (!snapshots.includes(result)) snapshots.push(result); };
   f.actions.consume = async (_service, extension) => {
     if (extension.id === "broken") throw new Error("cannot read consumer config");

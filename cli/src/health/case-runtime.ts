@@ -17,7 +17,7 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
     const managed = await openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, capability: extension, signal: context.signal, clients: context.clients,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      command: `doctor overview ${extension.kind}`, authorization: context.kubernetes(executor).access,
+      command: `doctor health ${extension.kind}`, authorization: context.kubernetes(executor).access,
     });
     try { return (await invokeExtension(extension, managed, query)).data; }
     finally { await managed.dispose(); }
@@ -25,7 +25,7 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
   return {
     directory, checkpoint, signal: context.signal,
     approve: (target, item) => resolveApprovalGate({ yes: context.options.yes })({
-      id: `overview-case:${target.uid}:${item.case.id}`, risk: "disrupt",
+      id: `health-case:${target.uid}:${item.case.id}`, risk: "disrupt",
       title: `执行 Case：${item.case.desc ?? item.case.id}`,
       target: `${target.namespace}/${target.pod}/${target.container ?? ""}`,
       impact: [`${item.case.input.method} ${caseError(item.targets[0]!.url)}`,
@@ -37,7 +37,7 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       const resource = location.kind === "service" ? "services"
         : location.kind === "resource" ? `${location.resource_kind.toLowerCase()}s` : undefined;
       await enforceKubernetesAccess(context.kubernetes(executor).access, {
-        command: "doctor overview Case checks", needs: [
+        command: "doctor health Case checks", needs: [
           { rule: { verb: "list", resource: "pods" }, requirement: "required", purpose: "定位消费方 Pod" },
           ...(resource ? [{ rule: { verb: "get", resource, resourceName: location.kind === "labels" ? undefined : location.name },
             requirement: "required" as const, purpose: "解析消费方 Workload" }] : []),
@@ -58,7 +58,7 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
     sender: async target => {
       if (!target.container) throw new Error("Declare the consumer Workload container explicitly");
       await enforceKubernetesAccess(context.kubernetes(executor).access, {
-        command: "doctor overview Case checks", needs: [{ rule: { verb: "create", resource: "pods/exec", resourceName: target.pod },
+        command: "doctor health Case checks", needs: [{ rule: { verb: "create", resource: "pods/exec", resourceName: target.pod },
           requirement: "required", purpose: "从消费方容器直接执行 HTTP 检查" }],
       });
       const result = await executor.exec(target, ["curl", "--version"], { timeoutMs: 10_000, signal: context.signal });

@@ -48,6 +48,7 @@ import {
   resolveCollectKinds,
   type CollectCliOpts,
 } from "../collect/composite";
+import { registerHealthCommand } from "../health/command";
 import { registerOverviewCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-report";
@@ -580,6 +581,7 @@ export function createDoctorProgram(
     await runCommand(cpuCommand, opts, domainInput(opts), commandRuntime);
   });
   registerOverviewCommand(catalog, commandRuntime);
+  registerHealthCommand(catalog, commandRuntime);
 
   withCollectOptions(
     catalog.command("collect").description(

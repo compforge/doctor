@@ -4,6 +4,7 @@ import {
   type OverviewSummarizeExtension, type OverviewSampleExtension,
 } from "@compforge/doctor-plugin";
 import { overviewProviders } from "../src/overview/extensions";
+import { healthProviders } from "../src/health/extensions";
 import { overviewCommand, validateOverviewOptions } from "../src/overview";
 import { overviewServiceNames } from "../src/overview/options";
 import { runOverviewSession } from "../src/overview/flow";
@@ -24,7 +25,7 @@ const service = (name: string, extensions: ServiceDefinition["extensions"] = [])
   name, aliases: name === "api" ? ["short"] : [], workloads: [], extensions,
   component: { name, repository: { forge: { name: "fixture" }, path: `fixture/${name}` } },
 });
-function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleExtension)[] = [{ ...summarize, namespace: "plugin/fixture" }]): PluginDefinition {
+function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleExtension)[] = [{ ...summarize, namespace: "plugin/fixture" }, { ...sample, namespace: "plugin/fixture" }]): PluginDefinition {
   return { id: "fixture", version: "1",
     services: createServiceCatalog([service("api", [summarize, sample, ...product]), service("store")]) };
 }
@@ -32,7 +33,8 @@ function plugin(product: readonly (OverviewSummarizeExtension | OverviewSampleEx
 test("a Service can provide the product namespace while retaining its own context binding", () => {
   const run = mock(async () => []);
   const definition = plugin([{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, run) }]);
-  const selected = overviewProviders(definition);
+  const selected = healthProviders(definition);
+  expect(() => overviewProviders(definition)).toThrow("overview.sample");
   expect(selected).toHaveLength(1);
   expect(selected[0]?.namespace).toBe("plugin/fixture");
   expect(selected[0]?.service.name).toBe("api");
@@ -55,7 +57,7 @@ test("explicit Service selection resolves aliases without validating operations 
 
 test("selection follows the declared namespace even when another Service provides it", () => {
   const definition = { id: "fixture", version: "1", services: createServiceCatalog([
-    service("api"), service("store", [{ ...summarize, namespace: "plugin/fixture/service/api" }]),
+    service("api"), service("store", [{ ...summarize, namespace: "plugin/fixture/service/api" }, { ...sample, namespace: "plugin/fixture/service/api" }]),
   ]) };
   const selected = overviewProviders(definition, ["short"])[0]!;
   expect(selected.namespace).toBe("plugin/fixture/service/api");
@@ -120,7 +122,7 @@ test("same display names retain distinct namespace provenance through sampling a
   const result = await runOverviewSession(providers, { window: { from: "2026-09-27T00:00:00Z", to: "2026-09-27T01:00:00Z" }, maxEntries: 10 }, {
     summarize: async () => [{ facetId: "errors", description: "fixture errors", entries: [{ key: "E1", label: "E1", data: 1, canSample: true }] }],
     sample: async provider => [{ bizId: provider.namespace === "plugin/api" ? "product-trace" : "service-trace" }],
-    select: async () => "errors", collect: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }), show: () => {},
+    select: async () => "errors", confirmCollect: async () => true, collect: async () => ({ status: CommandStatus.Ok, output: undefined, artifacts: [] }), show: () => {},
   });
   expect(result.providers.map(item => item.namespace)).toEqual(["plugin/api", "plugin/api/service/api"]);
   expect(result.samples.map(item => [item.namespace, item.bizId])).toEqual([
@@ -147,8 +149,8 @@ test("Overview command invokes the namespace provider using its original Service
   });
   const definition: PluginDefinition = {
     id: "fixture", version: "1", services: createServiceCatalog([
-      service("api", [summary("service", "api")]),
-      service("store", [summary("product", "store", "plugin/fixture")]),
+      service("api", [summary("service", "api"), sample]),
+      service("store", [summary("product", "store", "plugin/fixture"), { ...sample, namespace: "plugin/fixture" }]),
     ]),
   };
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({

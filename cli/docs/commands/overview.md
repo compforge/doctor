@@ -1,8 +1,11 @@
 # Overview
 
-`doctor overview` 默认展示当前 Plugin 的产品级概览；`--service` 选择单个 Service，`--services` 比较多个 Service。Facet 是观察维度，例如请求错误；Entry 是该维度下
-动态发现的条目，例如某个 error code。Entry 的 data 可以是数值或文字，只有 Plugin 明确声明可采样的
-Entry 才进入后续采集。
+`doctor overview` 展示用于选取数据的统计：Facet 是观察维度，例如请求错误；Entry 是该维度下动态发现的条目，例如某个 error code。
+默认选择当前 Plugin 的产品 namespace；`--service` 选择单个 Service，`--services` 选择多个 Service。
+展示的目的在于帮助用户选择代表 biz-ids，再决定是否采集，而不是完整呈现系统状态。
+
+所选 namespace 必须同时提供 summarize 和 sample。Core 只展示 `canSample` 的 Entry，隐藏纯展示维度；空维度和截断信息仍保留，说明查询结果与覆盖范围。
+纯统计、耗时分布和主动 Case 探测归 [Health](health.md)，Overview 不查询 `overview.cost`。
 
 ## 使用
 
@@ -10,12 +13,13 @@ Entry 才进入后续采集。
 doctor overview
 doctor overview --since 6h --service example-api --tenant-id <tenant-id>
 doctor overview --since 6h --services example-api,example-worker
+doctor overview --since 1h --facet errors --sample-count 5
 doctor overview --since 1h --collect --facet errors --sample-count 5
 ```
 
 交互模式先选择近 10m、1h、6h、1d 或 3d，再展示所选范围的结果。用户可以直接结束，也可以选择
-一个 Facet 并确认采集。只有一个可采集 Facet 时省略选择，仍需确认，默认不采集。非交互模式默认近 1h，
-只有显式 `--collect` 才采集；多个可采集 Facet 时还需指定 `--facet`。`--facet` 本身不触发采集。
+一个 Facet 查询代表对象；只有一个可下钻 Facet 时省略维度选择。查询出的 biz-ids 先展示并保存，再询问是否采集，默认不采集。
+非交互模式默认近 1h；`--facet` 查询样本但不采集，只有显式 `--collect` 才采集。多个可下钻 Facet 时需指定 `--facet`。
 
 选定 Facet 后，交互模式在可采样 Entry 多于一个时显示多选列表；只有一个时直接选中，不额外询问。
 列表默认预选采样预算范围内的前几项，允许增减后确认；按 Esc 取消后不采样、不 collect。非交互模式选中
@@ -25,7 +29,7 @@ doctor overview --since 1h --collect --facet errors --sample-count 5
 不是 Entry 选择数。Core 在所选 Entry 间按大盘顺序尽量平均分配：每项先分配
 `floor(sample-count / Entry 数)`，余数再从前往后每项加一。例如预算 5 且选择 1、2、3 项时，配额分别为
 `[5]`、`[3,2]`、`[2,2,1]`。选择 6 项时分配为 `[1,1,1,1,1,0]`，Core 为每个配额为 0 的 Entry 分别输出
-黄色“配额为 0（未采集）”提示，保留选择与配额记录并继续执行。样本缺失、去重或失败会使实际数量少于预算，
+黄色“配额为 0（未查询）”提示，保留选择与配额记录并继续执行。样本缺失、去重或失败会使实际数量少于预算，
 不跨 Entry 补位：
 
 ```yaml
@@ -36,7 +40,7 @@ profiles:
       sample_count: 5
 ```
 
-采样并去重后，Core 复用 Collect 的命令选择：交互模式选择一次，非交互默认全部；`--include` 可显式
+采样并去重、经用户确认采集后，Core 复用 Collect 的命令选择：交互模式选择一次，非交互默认全部；`--include` 可显式
 指定 inspect、tenant、data、trace、log、metric 的子集（例如 `--include inspect,tenant,data,trace,log`）。
 Core 将整批 biz-id 交给一次 Collect，各子命令接收完整列表。Inspect、Tenant、Metric 在该批次中各执行一次；
 Data 共用访问准备与 Identity 查询，Log 共用目标准备与原始日志源，每个输入仍独立诊断和保留证据。
@@ -64,10 +68,10 @@ provider namespace / Facet / Entry、数据、截断原因、采样来源和 col
 
 ## Provider 契约
 
-Service 在 `extensions` 注册 `overview.summarize` 与可选的 `overview.sample`，通过 Extension 的
+Service 在 `extensions` 注册成对的 `overview.summarize` 与 `overview.sample`，通过 Extension 的
 `namespace` 声明产品级或服务级作用域。Core 按 namespace 精确选择：默认使用
 `plugin/<plugin-id>`，指定 Service 时使用 `plugin/<plugin-id>/service/<canonical-service-name>`。
-Service alias 先解析为标准名。未声明所选概览或同一 namespace 内存在多个相同 kind 的实现时直接报错，
+Service alias 先解析为标准名。缺少所选 namespace 的 summarize/sample 配对，或存在多个 summarize/sample 实现时直接报错，
 不隐式聚合、继承或借用其它 namespace 的操作；`--service` 与 `--services` 互斥。
 
 namespace 表达统计归属，提供方 Service 决定操作的执行上下文。例如同一个 Service 可以同时提供
@@ -95,115 +99,9 @@ Core 在查询前冻结 `[from, to)`，summary 和 sample 使用同一窗口与 
 
 确认后，Core 把每个选中 Entry 的正整数 `limit` 传给 Plugin。Plugin 返回不超过该配额的代表请求列表；
 配额为 0 的 Entry 不调用 Plugin。Plugin 应返回最精确的 collect biz-id，并可提供源记录 Identity；数据已变化时
-返回空列表。Core 校验返回数量，对 biz-id 去重并再次应用总上限后调用所选 Collect 子命令。采样失败保留
+返回空列表。Core 校验返回数量，对 biz-id 去重并再次应用总上限；仅在取得采集许可后调用所选 Collect 子命令。采样失败保留
 在对应 Entry，不以其他请求替代。概览及采样通过 PluginContext 访问，通过同一根 ClientManager 复用已初始化的客户端；每个 Entry 仍独立查询。采集阶段继续
 使用各 collector 的访问策略与报告流水线。
 
 Overview 引用批次 Collect 的产物；幂等复用的 Inspect/Tenant 保留同一 Artifact ID。Bundle 的根索引
 统一提供 ID 到归档路径的映射，因此同名目录和多个 Collect manifest 均可保留，串行与并发采用同一规则。
-
-## 耗时概览
-
-`overview.cost` 是独立 Extension，可与 `overview.summarize` 在同一 namespace 共存，也可单独提供。
-Core 使用相同的冻结窗口和租户条件调用它，以提供该 Extension 的原始 Service 准备 access；
-两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。未选择 Service 时仍只读取 Plugin namespace。
-
-Provider 接收 `OverviewCostQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
-返回 `OverviewCostResult`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
-label、sampleCount、missingCount 和 durationMs（min/avg/p50/p95/max）描述耗时。
-单位固定为毫秒；没有有效样本时省略 durationMs，不能用零替代未知值。缺失、不完整或无效区间计入
-missingCount。Provider 在源头限制读取，并说明截断；Core 校验统计数据并限制展示条目。
-
-终端和 HTML 显示耗时表，diagnosis.json 保留类型化统计。耗时条目当前仅供查看，不进入
-`overview.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。
-
-## 消费方 HTTP Case 检查
-
-Service 通过 `case.consume` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
-例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
-指定 Service 的 Overview 在概览查询后执行这些检查，再进入可选的历史样本采集。GET/HEAD 自动执行；
-非只读方法在请求前使用统一操作确认，非交互可通过全局 `-y/--yes` 预先批准。
-没有 summarize/cost 的 Service 也可以只提供 `case.consume`。产品级概览保持自身 namespace 的统计范围，
-不会隐式执行所有 Service 的检查。
-
-Binding 以 `producer.namespace + producer.extension` 定位 Service 的 `case.produce` Extension，
-以 `workload` 引用消费方已声明的 Workload。两个 kind 均遵循普通 Extension 契约：声明 `access`，
-通过 `run(context, input)` 返回 `{ data, summary }`。消费方返回 `{ bindings }`，提供方返回 `{ cases }`；
-两次调用各自使用所属 Service 的 PluginContext、access 与租户条件。提供方
-返回本次准备好的 HTTP Case 列表，每项由 canonical `case` 与有序运行时 `targets` 组成；不执行请求。
-这个运行时接口独立于离线 `case.catalog`，签名 URL 不进入静态目录或配置。
-
-Overview 先调用消费方扩展取得本次关系，再解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
-每个绑定最多检查 10 个 Running 实例，每个实例最多 10 个 Cases；提供方应在数据源处限制结果，
-超限或提供方截断在报告中明确展示。实例未配置 container 且存在多个容器时报告缺口，不猜测业务容器。
-请求沿用 HTTP Collect 的超时和响应容量预算，串行执行；代理与 TLS 使用目标容器 curl 的正常行为，
-不绕过代理、不跳过证书验证、不回退到 Host/port-forward。重定向响应直接作为证据，不隐式跟随到另一目标。
-
-GET/HEAD Case 可给出有序备用 URL，主地址不满足预期时继续尝试，遇到成功停止；原地址失败始终保留，
-备用成功不把绑定改判为通过。每次尝试记录提供方、binding、Case、Pod UID/container、请求 URL（查询值脱敏）、
-时间、HTTP/transport 结果与 Finding，headers/body/error 附件随 Overview Bundle 交付。凭据头与已知签名值脱敏。
-二进制文件保留受预算限制的响应内容；响应摘要对应下载流，文本附件可能经脱敏。
-
-无法取得消费关系、无法准备 Pod、无法取得 Case、空 Case 列表和请求失败分别记录阶段和原因；它们不是网络成功。
-单个消费扩展或绑定失败不丢失其他结果；证据同时保留消费扩展 ID 与 binding ID，取消保留已完成的尝试。Case 时间是本次执行时间，
-`--since` 的历史窗口只用于概览和后续采样。`doctor case` 的现有目录与发送入口保持独立。
-
-消费方声明示例（提供方已在其 Service.extensions 注册 `file-downloads`）：
-
-```ts
-const worker = {
-  ...workerService,
-  extensions: [{
-    id: "downloads", kind: "case.consume", access: {},
-    run: withSummary({ title: "文件消费关系", fields: [] }, async () => ({
-      bindings: [{
-        id: "file-download", workload: "main",
-        producer: { namespace: "plugin/example/service/files", extension: "file-downloads" },
-      }],
-    })),
-  }],
-};
-```
-
-`case.produce` 的 `data.cases` 将稳定意图与本次可访问的地址对应：
-
-```ts
-{
-  case: {
-    id: "file_download", desc: "文件可下载",
-    input: { protocol: "http", method: "GET", headers: { Range: "bytes=0-1023" } },
-    judge: { e2e: { http: { status: [200, 206] } } },
-  },
-  targets: [{ id: "primary", url: signedURL }, { id: "internal", url: internalURL }],
-}
-```
-
-Case 使用 spec-case 的共享 HTTP profile；`case.input.protocol` 决定执行协议，`http` 同时支持目标 URL
-中的 HTTP/HTTPS scheme。签名 URL 和各入口独立的认证头属于 targets，不改变 Case hash；实际 Pod 属于消费关系。
-Doctor 在消费方 Pod 内发送请求，复用 HTTP Collect 的响应采集与 Detector，负责权限、备用入口策略与报告。
-每项至少提供一个地址、最多五个，按声明顺序尝试；headers 只应用于所属地址，不跨备用入口继承。
-Overview 要求明确的 `judge.e2e.http`。GET/HEAD 不接受 body；非只读请求必须只有一个 target，
-避免备用入口导致业务动作重放。`case.input.body` 是稳定请求正文；`target.body` 可提供本次解析后的完整正文
-（如新会话 ID、授权上下文），覆盖稳定正文但不改变 Case hash，报告不保存请求正文。
-无可用样本返回 `{ cases: [], reason: "当前租户没有可用文件" }`。消费关系为空表示本次没有适用检查，
-不能作为网络连通性证据。非空 Cases 同时带 `reason` 表示部分准备失败；可运行的检查仍执行，
-报告保留缺口，不能把剩余检查通过当作完整通过。
-
-
-### 流式响应与故障分类
-
-SSE Case 在 canonical `judge.e2e.sse` 声明协议事件要求，由 Doctor 消费：
-
-```ts
-sse: {
-  eventField: "type", terminalEvent: "END",
-  requiredEvents: ["MESSAGE", "OUTPUT"], // 至少出现其中一种回复事件
-  errorEvents: ["ERROR", "INPUT_REQUIRED"],
-}
-```
-
-同时将 `judge.e2e.http.contentType` 设为 `text/event-stream`。只有 HTTP 状态符合预期、响应完整、出现回复事件与结束事件、没有错误事件时才通过。事件名属于提供方；Core 不包含业务 Agent 协议。
-该检查验证协议执行，不评价答案内容；原始 SSE 及有界错误详情进入报告。
-
-Case 报告根据本次 Pod 请求的退出码、错误文本与响应分类 DNS、代理 DNS、连接、超时、TLS 证书、TLS 握手和 HTTP 状态错误。`wrong version number` 等证据只给出“疑似 HTTP 配成 HTTPS”，因为代理或 TLS 配置也可能产生相同错误；服务端明确返回“HTTP 发到了 HTTPS 端口”则记录该响应事实。
-报告保留目标 URL 的 scheme/端口、Pod/container、对端 IP、阶段耗时及原始错误；不自动切换 scheme、跳过证书校验或把备用成功覆盖原始失败。旧 curl 没有阶段耗时，也保留退出码和 stderr。

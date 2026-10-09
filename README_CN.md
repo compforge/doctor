@@ -38,6 +38,8 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 
 ## 跨证据面工作流
 
+- `doctor health` 展示系统统计并执行所选 Service 的体检，不采集业务诊断数据。非只读探测仍需确认，详见 [Health](cli/docs/commands/health.md)。
+- `doctor overview` 展示可下钻条目，帮助按错误等现象选取代表 biz-ids，再经用户确认采集。详见 [Overview](cli/docs/commands/overview.md)。
 - `doctor collect` 调用选中的 Inspect、Tenant、Data、Trace、Log 和 Metric Collector，并把各自报告组合为
   一份离线交付。tenant 与 biz-id 仍由对应 Collector 独立解释；Collect 不推导不同 scope 间的关系、
   不产生负载，也不改变任何单项命令的采集语义。

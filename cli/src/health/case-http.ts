@@ -90,7 +90,7 @@ export async function checkHttpCase(input: {
         const captured = await captureHttpResponse(request, 1, join(directory, path), path,
           (request, localSignal) => input.send(request, AbortSignal.any([signal, localSignal])));
         return [{ id: `http-attempt:${path}`, kind: "http-attempt", schemaVersion: 1,
-          producer: { origin: "core", id: "overview-http-case" }, requestId: prefix, entrypointId: entry.id,
+          producer: { origin: "core", id: "health-http-case" }, requestId: prefix, entrypointId: entry.id,
           round: 1, directory: path, ...captured }];
       },
     }], undefined, {}, {});

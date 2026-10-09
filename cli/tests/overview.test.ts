@@ -3,7 +3,7 @@ import { DOCTOR_PLUGIN_API_VERSION, createServiceCatalog, type OverviewFacetResu
 import { expect, mock, test } from "bun:test";
 import { CommandStatus, commandOutcome } from "../src/command";
 import { allocateOverviewSamples, runOverviewSession, type OverviewActions, type OverviewProvider } from "../src/overview/flow";
-import { overviewWindow, selectOverviewFacet } from "../src/overview/selection";
+import { confirmOverviewCollection, overviewWindow, selectOverviewFacet } from "../src/overview/selection";
 import type { promptListedChoice } from "../src/terminal/selection";
 import { overviewProviders } from "../src/overview/extensions";
 
@@ -31,7 +31,7 @@ const summary: OverviewFacetResult[] = [{
 function actions(overrides: Partial<OverviewActions> = {}): OverviewActions {
   return {
     summarize: async () => summary, sample: async () => [{ bizId: "trace-1" }],
-    select: async () => undefined, collect: async () => commandOutcome(0), show: () => { }, ...overrides
+    confirmCollect: async () => true, select: async () => undefined, collect: async () => commandOutcome(0), show: () => { }, ...overrides
   };
 }
 
@@ -110,17 +110,22 @@ test("collection errors retain the dashboard and samples", async () => {
   expect(result.samples).toHaveLength(2);
 });
 
-test("single facet skips selection but still asks confirmation with default No", async () => {
+test("single facet permits lookup, but collection still asks confirmation with default No", async () => {
   const questions: string[] = [];
   const prompt: typeof promptListedChoice = async (input) => { questions.push(input.question); return input.emptyValue; };
-  expect(await selectOverviewFacet([facet], {}, true, prompt)).toBeUndefined();
+  expect(await selectOverviewFacet([facet], {}, true, prompt)).toBe("errors");
+  expect(questions).toHaveLength(0);
+  expect(await confirmOverviewCollection(["trace-1"], undefined, true, prompt)).toBe(false);
   expect(questions).toHaveLength(1);
   expect(questions[0]).toContain("[y/N]");
 });
 
-test("noninteractive overview is read only; explicit collection needs an unambiguous facet", async () => {
+test("noninteractive overview permits explicit lookup; collection needs separate consent", async () => {
   const facets = [facet, { ...facet, id: "slow" }];
-  expect(await selectOverviewFacet(facets, { facet: "errors" }, false)).toBeUndefined();
+  expect(await selectOverviewFacet(facets, {}, false)).toBeUndefined();
+  expect(await selectOverviewFacet(facets, { facet: "errors" }, false)).toBe("errors");
+  expect(await confirmOverviewCollection(["trace-1"], undefined, false)).toBe(false);
+  expect(await confirmOverviewCollection(["trace-1"], true, false)).toBe(true);
   expect(await selectOverviewFacet([facet], { collect: true }, false)).toBe("errors");
   expect(await selectOverviewFacet(facets, { collect: true, facet: "slow" }, false)).toBe("slow");
   await expect(selectOverviewFacet(facets, { collect: true }, false)).rejects.toThrow("--facet");
@@ -204,7 +209,7 @@ test("default sampling selects five entries across Services without truncating t
   expect(batches).toEqual([["a/E1", "a/E2", "b/E1", "b/E2", "c/E1"]]);
   expect(result.samples).toHaveLength(5);
   expect(result.sampleAllocations.map(allocation => allocation.count)).toEqual([1, 1, 1, 1, 1, 0]);
-  expect(warnings).toEqual(["plugin/test/service/c/errors/E2: 配额为 0（未采集）"]);
+  expect(warnings).toEqual(["plugin/test/service/c/errors/E2: 配额为 0（未查询）"]);
 });
 
 test("configured sample count limits calls; failure does not backfill with unselected entries", async () => {

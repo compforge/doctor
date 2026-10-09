@@ -38,7 +38,7 @@ export interface CaseCheckActions {
   checkpoint(result: CaseCheckResult): void;
 }
 
-/** @spec Binding owns the source; provider owns requests; Overview alone schedules and retains failures. */
+/** @spec Binding owns the source; provider owns requests; Health alone schedules and retains failures. */
 async function checkCaseBindings(plugin: PluginDefinition, consumer: ServiceDefinition,
   bindings: readonly CaseBinding[], consumeExtension: string, consumeIndex: number, tenantId: string | undefined, actions: CaseCheckActions): Promise<CaseCheckResult[]> {
   const registry = createDoctorExtensionRegistry(plugin);

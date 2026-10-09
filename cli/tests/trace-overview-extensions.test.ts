@@ -57,8 +57,8 @@ test("overview discovers native operations without invoking them or combining th
   expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.overview).runnable).toBe(true);
 });
 
-test("overview supports summaries without sampling and rejects ambiguous producers", () => {
-  expect(overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])[0]?.sample).toBeUndefined();
+test("overview requires sampling and rejects ambiguous producers", () => {
+  expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])).toThrow("doctor health");
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]) }, ["chat"])).toThrow("ambiguous");
   const invalid: OverviewSummarizeExtension = { ...summarize, facets: [facet, facet] };
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [invalid])]) }, ["chat"])).toThrow("duplicate");
