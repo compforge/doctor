@@ -1,3 +1,4 @@
+import { containsLogIdentity } from "./correlation";
 import { isInteractive } from "../../terminal/policy";
 import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -55,9 +56,9 @@ export function createTraceLineCollector(
   traceIds: string | readonly string[],
   pattern?: RegExp,
   onTraceMatch?: (traceId: string) => void,
-  options?: { keepTail?: number },
+  options?: { keepTail?: number; identityValues?: readonly string[]; requireIdentity?: boolean },
 ): TraceLineCollector {
-  const ids = typeof traceIds === "string" ? [traceIds] : traceIds;
+  const ids = [...(typeof traceIds === "string" ? [traceIds] : traceIds), ...(options?.identityValues ?? [])];
   const lines: string[] = [];
   const events: string[] = [];
   let collectingStack = false;
@@ -75,10 +76,10 @@ export function createTraceLineCollector(
     lines,
     events,
     push: (line) => {
-      const matchesTrace = ids.some((traceId) => line.includes(traceId));
+      const matchesTrace = ids.some((traceId) => containsLogIdentity(applicationLogText(line), traceId));
       if (matchesTrace && onTraceMatch) {
         for (const traceId of ids) {
-          if (!notified.has(traceId) && line.includes(traceId)) {
+          if (!notified.has(traceId) && containsLogIdentity(applicationLogText(line), traceId)) {
             notified.add(traceId);
             onTraceMatch(traceId);
           }
@@ -90,7 +91,7 @@ export function createTraceLineCollector(
         pushTail(line, true);
         return;
       }
-      const selected = (ids.length === 0 || matchesTrace) && (!pattern || pattern.test(line));
+      const selected = (ids.length === 0 && !options?.requireIdentity || matchesTrace) && (!pattern || pattern.test(line));
       if (selected) {
         lines.push(line);
         events.push(line);

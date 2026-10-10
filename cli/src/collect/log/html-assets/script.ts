@@ -209,6 +209,11 @@ function mountLogViewer(viewer) {
     header.append(time, service, pod, container, instance, contextButton);
     const message = document.createElement('pre');
     message.className = 'log-message';
+    if (record.matches?.length) {
+      const correlation = document.createElement('span');
+      correlation.textContent = '[' + record.matches.map(match => match.kind + ':' + match.identity.kind + '=' + match.identity.value).join(', ') + '] ';
+      message.appendChild(correlation);
+    }
     appendHighlighted(message, record.message, search.value.trim());
     const context = document.createElement('div');
     context.className = 'log-context';

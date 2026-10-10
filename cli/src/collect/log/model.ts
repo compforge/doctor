@@ -9,6 +9,8 @@ export interface LogCollectOptions {
   /** Absent for Service/time-window collection; never invent a business ID for that mode. */
   bizId?: string;
   traceIds: readonly string[];
+  identities?: readonly import("./correlation").LogIdentityMatch[];
+  resolutionGaps?: readonly string[];
   namespace: string;
   kubeconfig?: string;
   context?: string;
@@ -96,6 +98,7 @@ export interface LogTimelineRecord {
   timestamp?: string;
   message: string;
   sequence: number;
+  matches?: readonly import("./correlation").LogMatch[];
 }
 
 export interface LogCommandContext {

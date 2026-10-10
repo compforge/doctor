@@ -1,3 +1,4 @@
+import { logMatches } from "./correlation";
 import stripAnsi from "strip-ansi";
 import type {
   LogDiagnosis,
@@ -139,7 +140,7 @@ export function renderServiceLogs(
         const container = entry.container ? ` container/${entry.container}` : "";
         const previous = entry.instance === "previous" ? " instance/previous" : "";
         const timestamp = entry.timestamp ? `${entry.timestamp} ` : "";
-        return `[service/${entry.service} pod/${entry.pod}${container}${previous}] ${timestamp}${entry.message}`;
+        return `[service/${entry.service} pod/${entry.pod}${container}${previous}] ${timestamp}${entry.matches?.length ? "[" + entry.matches.map(match => `${match.kind}:${match.identity.kind}=${match.identity.value}`).join(", ") + "] " : ""}${entry.message}`;
       })
     : ["(no matched log lines)"]));
   return `${lines.join("\n").trimEnd()}\n`;
@@ -157,7 +158,7 @@ function failureSummary(facts: LogInspectionFacts): string | undefined {
 
 export function formatLogCaptureStats(stats: LogRenderStats, serviceMode = false): string {
   const first = stats.firstMatchMs === undefined ? "未命中" : `${(stats.firstMatchMs / 1000).toFixed(2)} s`;
-  return `候选 ${stats.podCount} Pod，扫描 ${stats.scannedPodCount} Pod，${serviceMode ? "窗口内有日志" : "trace 命中"} ${stats.matchedPodCount} Pod；下载 ${(stats.bytesRead / 1024 / 1024).toFixed(2)} MiB；复用 ${stats.reusedCaptureCount ?? 0} 路日志；首次命中 ${first}；采集 wall-clock ${(stats.wallMs / 1000).toFixed(2)} s`;
+  return `候选 ${stats.podCount} Pod，扫描 ${stats.scannedPodCount} Pod，${serviceMode ? "窗口内有日志" : "关联命中"} ${stats.matchedPodCount} Pod；下载 ${(stats.bytesRead / 1024 / 1024).toFixed(2)} MiB；复用 ${stats.reusedCaptureCount ?? 0} 路日志；首次命中 ${first}；采集 wall-clock ${(stats.wallMs / 1000).toFixed(2)} s`;
 }
 
 export function renderLogResult(
@@ -202,6 +203,11 @@ export function renderLogResult(
     unavailableCount: 0,
   });
   const timeline = buildLogTimeline(observations);
+  for (const record of timeline) {
+    if (record.kind === "log" && !record.unfiltered && config.bizId !== undefined) {
+      record.matches = logMatches(record.message.split("\n")[0]!, config.traceIds, config.identities ?? [], record.service);
+    }
+  }
   const serviceLogs = renderServiceLogs(
     config.traceIds,
     config.namespace,
@@ -211,16 +217,16 @@ export function renderLogResult(
   const failed = failureSummary(facts);
   if (failed) return { timeline, serviceLogs, summary: failed, stats };
 
-  const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "全部 trace 日志";
+  const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "trace 或已解析对象关联日志（共享对象命中不代表请求归属）";
   const lines = [
-    `# log 采集摘要：${config.bizId === undefined ? "Service / 时间范围" : config.traceIds.join(", ")}`,
+    `# log 采集摘要：${config.bizId === undefined ? "Service / 时间范围" : config.bizId}`,
     "",
     `- namespace: \`${config.namespace}\``,
     `- services: ${config.services.map((service) => `\`${service}\``).join(", ")}`,
     `- 命中日志事件: ${stats.matchedEventCount}  previous 容器: ${stats.previousContainerCount}  部分采集 pod: ${stats.partialCount}  不可用 pod: ${stats.unavailableCount}`,
     `- ${formatLogCaptureStats(stats, config.bizId === undefined)}`,
     `- 时间窗口: ${config.sinceTime ? `since-time=${config.sinceTime}` : `since=${config.since}`}${config.untilTime ? ` until-time=${config.untilTime}（含边界）` : ""}`,
-    `- 首次命中按${config.bizId === undefined ? "窗口内日志" : " trace ID "}统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。`,
+    `- 首次命中按${config.bizId === undefined ? "窗口内日志" : " trace 或对象身份 "}统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。`,
     `- 过滤: ${config.errorsOnly ? "errors-only" : scopeLabel}${config.pattern ? ` + /${config.pattern}/` : ""}`,
   ];
   if (stats.previousContainerCount > 0) {
@@ -245,11 +251,11 @@ export function renderLogResult(
   if (stats.podCount === 0) {
     lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --services。");
   } else if (stats.matchedPodCount > 0 && stats.matchedEventCount === 0) {
-    lines.push("", `> 找到${config.bizId === undefined ? "窗口内" : " trace "}日志，但没有日志满足错误/内容筛选条件。`);
+    lines.push("", `> 找到${config.bizId === undefined ? "窗口内" : "关联"}日志，但没有日志满足错误/内容筛选条件。`);
   } else if (stats.matchedEventCount === 0) {
     lines.push("", config.bizId === undefined
       ? "> 时间窗口内没有日志；可能该时段无输出或已超出 Pod 日志保留期。"
-      : "> 未命中日志；可能已超出 pod 日志保留期，或 trace 未经过这些服务。");
+      : "> 未命中日志；可能已超出 pod 日志保留期，或 trace / 关联对象未出现在这些服务。");
   }
   return { timeline, serviceLogs, summary: lines.join("\n"), stats };
 }
