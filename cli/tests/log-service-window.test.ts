@@ -1,4 +1,5 @@
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
+import { finalizeResult } from "./report-fixture";
 import { logService, podDiscoveryExecutor } from "./log-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -43,7 +44,7 @@ const pods = parsePods(JSON.stringify({
   }]
 }), "test");
 
-for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unresolved"] as const) {
+for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unresolved", "zero", "unavailable"] as const) {
   test(`log command: ${variant}, bounded collection and trace resolution isolation`, async () => {
     const root = mkdtempSync(join(tmpdir(), "doctor-log-window-test-"));
     const kubeconfig = join(root, "kubeconfig");
@@ -70,7 +71,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       }
     }, {
       name: "test", configPath: "", value: { readonly: true, namespace: "test", kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {},
-    }, { plugin: activePlugin });
+    }, { plugin: activePlugin, format: "summary" });
     const ensure = spyOn(context, "ensureEnvironment").mockResolvedValue(undefined);
     let discoveries = 0;
     const discovery = podDiscoveryExecutor(pods, () => { discoveries++; });
@@ -87,12 +88,14 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       requests.push(request);
       expect(request.limitBytes).toBeGreaterThan(0);
       expect(request.limitBytes).toBeLessThanOrEqual(64 * 1024 * 1024);
-      request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:01Z INFO unrelated request");
-      request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:02Z ERROR database failed");
-      request.onLine?.('2026-09-16T01:00:02Z   File "app.py", line 3');
+      if (variant !== "zero" && variant !== "unavailable") {
+        request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:01Z INFO unrelated request");
+        request.onLine?.("[pod/pod-1/app] 2026-09-16T01:00:02Z ERROR database failed");
+        request.onLine?.('2026-09-16T01:00:02Z   File "app.py", line 3');
+      }
       return {
-        ...ok, captureStatus: variant === "partial" ? "partial" : "complete", bytesRead: 200, attempts: 1,
-        stderr: variant === "partial" ? "capture byte limit" : ""
+        ...ok, captureStatus: variant === "unavailable" ? "unavailable" : variant === "partial" ? "partial" : "complete", bytesRead: variant === "zero" || variant === "unavailable" ? 0 : 200, attempts: 1,
+        stderr: variant === "unavailable" ? "log access denied" : variant === "partial" ? "capture byte limit" : ""
       };
     });
     const input: LogInput = {
@@ -102,8 +105,23 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     };
     const started = Date.now();
     let outputDir: string | undefined;
+    let evidenceDir: string | undefined;
+    const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
+    const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
       const result = await logCommand.run(context, input);
+      await finalizeResult(context, logCommand, result, { format: "summary" }, input);
+      const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
+      evidenceDir = stderr.mock.calls.map(([line]) => String(line))
+        .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+      expect(evidenceDir).toBeDefined();
+      const deliveryManifest = JSON.parse(readFileSync(join(evidenceDir!, "manifest.json"), "utf8"));
+      expect(deliveryManifest.execution.status).toBe(result.status);
+      expect(terminal).toContain(`采集状态：${result.status}`);
+      expect(terminal).not.toContain('"schemaVersion"');
+      expect(terminal).not.toContain("database failed");
+      const fullOutput = JSON.parse(readFileSync(join(evidenceDir!, "output.json"), "utf8"));
+      expect(fullOutput.items).toHaveLength(1);
       if (variant === "unresolved") {
         expect(result.status).toBe(CommandStatus.Failed);
         expect(resolutions).toBe(1);
@@ -112,11 +130,17 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
         return;
       }
       expect(resolutions).toBe(0);
-      if (result.status === CommandStatus.Failed) throw new Error(result.reason);
-      expect(result.status).toBe(variant === "partial" ? CommandStatus.Partial : CommandStatus.Ok);
+      if (result.status === CommandStatus.Failed && variant !== "unavailable") throw new Error(result.reason);
+      expect(result.status).toBe(variant === "unavailable" ? CommandStatus.Failed : variant === "partial" ? CommandStatus.Partial : CommandStatus.Ok);
       expect(result.output?.items).toHaveLength(1);
       const item = result.output!.items[0]!;
       expect(item.bizId).toBeUndefined();
+      expect(item.stats).toBeDefined();
+      expect(terminal).toContain("匹配事件（非错误数）");
+      if (variant === "partial" || variant === "unavailable") {
+        expect(item.missingEvidence?.length).toBeGreaterThan(0);
+        expect(terminal).toContain("采集缺口");
+      }
       outputDir = item.artifacts[0]!.path;
       expect(requests.map(request => !!request.previous).sort()).toEqual([false, true]);
       expect(discoveries).toBe(1);
@@ -137,6 +161,12 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(manifest.target.biz_id).toBeUndefined();
       expect(manifest.target.trace_ids).toEqual([]);
       const timeline = readFileSync(join(outputDir, "timeline.jsonl"), "utf8");
+      expect(item.stats).toEqual(JSON.parse(readFileSync(join(outputDir, "log-stats.json"), "utf8")));
+      if (variant === "zero" || variant === "unavailable") {
+        expect(item.stats!.matchedEventCount).toBe(0);
+        expect(terminal).toContain("零命中不代表服务正常");
+        return;
+      }
       expect(timeline).toContain("database failed");
       expect(timeline).toContain("app.py");
       expect(timeline).toContain('"instance":"previous"');
@@ -159,6 +189,8 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(readFileSync(html, "utf8")).toContain("不按业务 ID 过滤");
       expect(readFileSync(html, "utf8")).not.toContain("trace 命中");
     } finally {
+      stdout.mockRestore(); stderr.mockRestore();
+      if (evidenceDir) rmSync(evidenceDir, { recursive: true, force: true });
       await context.disposeClients();
       for (const mock of [ensure, exec, version, logs]) mock.mockRestore();
       if (outputDir) rmSync(dirname(outputDir), { recursive: true, force: true });
@@ -210,4 +242,17 @@ test("errors-only 合并 Service 声明的业务错误签名", () => {
   expect(pattern!.test("INFO ordinary line")).toBe(false);
   // 非 errors-only 不按内容过滤，Service 签名不产生意外筛选
   expect(buildLogPattern(false, undefined, ["error_type=\\d+"])).toBeUndefined();
+});
+
+
+test("log summary rejects output before accessing the environment", async () => {
+  const context = new CommandContext({}, undefined, { plugin, format: "summary", output: "report" });
+  const ensure = spyOn(context, "ensureEnvironment");
+  try {
+    const result = await logCommand.run(context, { bizIds: [] });
+    expect(result.status).toBe(CommandStatus.Failed);
+    if (result.status !== CommandStatus.Failed) throw new Error("expected failure");
+    expect(result.reason).toContain("不支持 --output");
+    expect(ensure).not.toHaveBeenCalled();
+  } finally { ensure.mockRestore(); await context.disposeClients(); }
 });

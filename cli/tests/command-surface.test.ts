@@ -396,7 +396,7 @@ describe("command help", () => {
     expect(result.stdout).not.toContain("--id <id>");
     expect(result.stdout).toContain("--until-time <timestamp>");
     expect(result.stdout).toContain("--format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "summary", "manifest"');
     expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("-f manifest -o ./evidence → ./evidence/manifest.json（证据目录）");
     expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");

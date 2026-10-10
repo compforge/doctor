@@ -219,7 +219,7 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
     .option("--errors-only", "只保留常见错误日志（有业务 ID 时先按 trace 过滤）", false)
     .option("--pattern <regex>", "按正则筛选日志（有业务 ID 时先按 trace 过滤）")
-    .addOption(deliveryFormatOption(["html", "bundle"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }

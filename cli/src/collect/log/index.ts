@@ -42,11 +42,14 @@ import type {
   LogCollectOptions,
   LogCommandContext,
   LogDiagnosis,
+  LogRenderStats,
 } from "./model";
 import type { LogOutputFormat } from "./output";
 import { parseLogOutputFormat } from "./output";
 import { makeLogProbe } from "./probe/service";
 import { formatLogCaptureStats, renderLogResult, renderTimelineJsonl } from "./render";
+
+import { logSummary } from "./summary";
 
 export * from "./config";
 export * from "./detector";
@@ -242,13 +245,12 @@ export async function runCollectLog(
   const prepared = await prepareLogBatch({ ...opts, bizIds: ids, untilTime }, plugin, commandContext);
   if (typeof prepared === "number") {
     const failure = commandOutcome(prepared);
-    return {
-      ...failure, output: {
-        items: requestIds.map(bizId => ({
-          bizId, status: failure.status, artifacts: [], reason: "日志采集准备未完成",
-        }))
-      }
+    const output: LogOutput = {
+      items: requestIds.map(bizId => ({
+        bizId, status: failure.status, artifacts: [], reason: "日志采集准备未完成",
+      })),
     };
+    return { ...failure, output, summary: logSummary(output) };
   }
   const { collect, resolvedNamespace, resolved, executor, services, access } = prepared;
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-log-"));
@@ -278,19 +280,27 @@ export async function runCollectLog(
   const items: LogOutput["items"][number][] = [];
   requestIds.forEach((bizId) => {
     const collected = byId.get(bizId);
-    let status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
-    let reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id" : undefined);
-    items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}) });
+    const status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
+    const reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id" : undefined);
+    items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}),
+      ...(collected ? { stats: collected.result.stats, missingEvidence: collected.result.missingEvidence } : {}) });
   });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({
     items: items.map(({ artifacts, ...item }) => ({
       ...item, artifact_ids: artifacts.map(artifact => artifact.id),
     }))
   }, null, 2));
-  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items }, artifacts: [summary, ...artifacts] };
+  const output: LogOutput = { namespace: resolvedNamespace.namespace, services, items };
+  return { status: aggregateCommandStatus(items.map(item => item.status)), output,
+    summary: logSummary(output), artifacts: [summary, ...artifacts] };
 }
 
-interface LogItemResult { status: CommandStatus; reason?: string }
+interface LogItemResult {
+  status: CommandStatus;
+  reason?: string;
+  stats?: LogRenderStats;
+  missingEvidence?: readonly string[];
+}
 
 /** Acquires one Pod discovery snapshot; item probes share PodLogClient captures under the root Pod budget. */
 export async function collectLog(
@@ -379,13 +389,20 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
   return {
     status: collectCommandOutcome(outcome).status,
+    // Project the already captured evidence; zero matches cannot stand in for a failed read.
+    ...(facts.runtime.status === "collected" && facts.servicePods.status === "collected" ? { stats: rendered.stats } : {}),
+    missingEvidence: [...new Set(diagnosis.coverage.flatMap(item => item.missingEvidence))],
     ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {})
   };
 }
 
 export interface LogOutput {
+  readonly namespace?: string;
+  readonly services?: readonly string[];
   readonly items: readonly {
     bizId?: string; status: CommandStatus; reason?: string;
+    stats?: LogRenderStats;
+    missingEvidence?: readonly string[];
     artifacts: readonly import("../../command").CommandArtifact[]
   }[];
 }
