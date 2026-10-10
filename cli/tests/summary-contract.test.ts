@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { withSummary, validateExtensionResult, type Summary } from "@compforge/doctor-plugin";
-import { projectSummary } from "../src/command/summary";
+import { projectSummary, renderSummary } from "../src/command/summary";
 import { SerializeContext } from "../src/command/serialization/context";
 import { CommandStatus } from "../src/command/status";
 import { deliverSerialized } from "../src/app/delivery";
@@ -70,4 +70,30 @@ test("invalid Summary records a serialization failure while preserving raw outpu
   expect(context.failed).toBe(true);
   expect(JSON.parse(readFileSync(join(root, "manifest.json"), "utf8")).serialization.status).toBe("failed");
   expect(JSON.parse(readFileSync(join(root, "output.json"), "utf8"))).toEqual({ value: 1 });
+});
+
+
+test("producer text is optional, plain, bounded in views and complete in saved declarations", async () => {
+  const text = "Carrier Ready; observation absent <script> & [link](url)\n" + "x".repeat(1000);
+  const declaration = { title: "Snapshot", text, fields: [] };
+  expect(() => validateExtensionResult({ data: {}, summary: { ...declaration, text: 42 } })).toThrow("Summary.text");
+  expect(() => validateExtensionResult({ data: {}, summary: declaration })).not.toThrow();
+  const projection = projectSummary(declaration, {});
+  expect(projection.text!.length).toBeLessThanOrEqual(513);
+  expect(projection.text).toEndWith("…");
+  const rendered = renderSummary(declaration, {});
+  expect(rendered).toContain("&lt;script&gt;");
+  expect(rendered).not.toContain("<script>");
+  expect(rendered).not.toContain("[link](url)");
+  expect(renderSummary({ ...declaration, text: "Snapshot text", fields: [{ label: "Count", path: ["count"] }] }, { count: 0 }))
+    .toContain("Snapshot text\n\n- Count：0");
+
+  const root = temporary();
+  await SerializeContext.create(root, { name: "doctor parent", serialize: async context => ({ files: {}, children: [
+    await context.serialize({ name: "doctor child" }, { status: CommandStatus.Ok, artifacts: [], output: {}, summary: declaration }),
+  ] }) }, { status: CommandStatus.Ok, artifacts: [], output: {} });
+  const manifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+  const child = join(root, manifest.children[0].manifest, "..");
+  expect(JSON.parse(readFileSync(join(child, "summary.json"), "utf8")).summary.text).toBe(text);
+  expect(readFileSync(join(root, "summary.md"), "utf8")).toContain("Carrier Ready; observation absent &lt;script&gt;");
 });

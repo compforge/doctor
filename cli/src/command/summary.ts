@@ -3,6 +3,7 @@ import { validateSummary, type Summary } from "@compforge/doctor-plugin";
 /** One bounded projection for terminal, Markdown and HTML. Never walk arbitrary response bodies. */
 export interface SummaryProjection {
   title: string;
+  text?: string;
   fields: { label: string; value: string }[];
   omitted: number;
 }
@@ -33,7 +34,7 @@ export function projectSummary(summary: Summary, data: unknown): SummaryProjecti
     const text = summaryValue(value);
     return text === undefined ? [] : [{ label: summaryValue(field.label)!, value: text }];
   });
-  return { title: summaryValue(summary.title)!, fields, omitted: Math.max(0, summary.fields.length - selected.length) };
+  return { title: summaryValue(summary.title)!, ...(summary.text !== undefined ? { text: summaryValue(summary.text) } : {}), fields, omitted: Math.max(0, summary.fields.length - selected.length) };
 }
 
 export function summaryText(value: unknown, limit = 512): string {
@@ -46,6 +47,7 @@ export function summaryText(value: unknown, limit = 512): string {
 export function renderSummary(summary: Summary, data: unknown): string {
   const projection = projectSummary(summary, data);
   return [`# ${summaryText(projection.title)}`, "",
+    ...(projection.text ? [summaryText(projection.text), ""] : []),
     ...projection.fields.map(field => `- ${summaryText(field.label)}：${summaryText(field.value)}`),
     ...(projection.omitted ? [`- 另有 ${projection.omitted} 个字段，见原始数据。`] : []), ""].join("\n");
 }

@@ -70,12 +70,14 @@ interface OperationResult<T> {
 
 interface Summary {
   readonly title: string;
+  readonly text?: string;
   readonly fields: readonly { readonly label: string; readonly path: readonly string[] }[];
 }
 ```
 
 `Summary` 定义在 `packages/plugin/src/summary.ts`，也用于 Fact、Observation 和 CommandResult。
-`path` 相对伴随的数据，空路径表示数据本身；声明只包含标题和字段路径，不携带重复值或执行函数。
+`path` 相对伴随的数据，空路径表示数据本身；生产者可通过 `text` 返回本次结果的纯文本描述，与字段投影共存；仅需文本时使用 `fields: []`。
+结构化 data 是程序消费契约，文本用于阅读，不作为后续逻辑的数据来源。
 提供方可用 `withSummary(summary, run)` 包装静态字段选择，动态结果也可直接返回信封。
 `PluginOperation` 与 `OperationResult` 位于 `packages/plugin/src/operation.ts`，只描述调用，不提供资源发现或注册。
 宿主 `invokeOperation` 统一校验信封，`invokeExtension` 使用同一实现；领域消费方继续校验 `result.data`，

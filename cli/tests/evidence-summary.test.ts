@@ -1,6 +1,9 @@
+import type { Summary } from "@compforge/doctor-plugin";
+import { projectSummary } from "../src/command/summary";
+import { htmlFactTable } from "../src/collect/output/report/components/fact-table";
 import { expect, test } from "bun:test";
 import type { DataDiagnosis, DataFacts } from "../src/collect/data/model";
-import { buildDataEvidenceSummary, projectDataSummary } from "../src/collect/data/summary";
+import { buildDataEvidenceSummary, projectDataSummary, dataNavigationSummary } from "../src/collect/data/summary";
 import { collectedFact } from "../src/collect/protocol";
 import { CommandStatus } from "../src/command";
 import { accumulateStats, newTraceStats } from "../src/collect/trace/probe";
@@ -93,4 +96,21 @@ test("summary preserves failed and cancelled collection outcomes", () => {
     expect(text).toContain("collection stopped");
     expect(text).toContain("未形成业务诊断");
   }
+});
+
+
+test("producer text reaches Data and parent navigation with exact global Fact addresses", () => {
+  const first = query("carrier");
+  const fact = first.result.facts[0]!;
+  const text = "Carrier Ready; observation pending <script>";
+  (fact as { summary: Summary }).summary = { title: "Run", fields: [], text };
+  const data = item([first]);
+  const source = { services: {}, capabilityResults: [query("unrelated"), first] };
+  expect(buildDataEvidenceSummary([data], source)).toContain("Carrier Ready; observation pending &lt;script&gt;");
+  const preview = projectSummary(dataNavigationSummary([data], source), source);
+  expect(preview.fields[0]!.value).toBe(text);
+  expect(preview.fields[0]!.label).toContain("capabilityResults.1.result.facts.0");
+  expect(htmlFactTable([fact])).toContain('"summary"');
+  expect(htmlFactTable([fact])).not.toContain("<script>");
+  expect((source.capabilityResults[1]!.result.facts[0]!.summary as Summary).text).toBe(text);
 });

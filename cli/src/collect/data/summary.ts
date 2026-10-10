@@ -1,12 +1,12 @@
 import { projectSummary } from "../../command/summary";
-import type { Fact } from "@compforge/doctor-plugin";
+import type { Fact, Summary } from "@compforge/doctor-plugin";
 import { aggregateCommandStatus } from "../../command/result";
 import { CommandStatus } from "../../command/status";
 import { summaryText } from "../../command/summary";
 import type { DataFacts, DataOutput } from "./model";
 
 type Item = DataOutput["items"][number];
-interface RecordSummary { group: string; title: string; fields: string[]; references: string[] }
+interface RecordSummary { group: string; title: string; text?: string; fields: string[]; references: string[] }
 interface ItemSummary { id: string; status: string; identifiers: string[]; records: RecordSummary[]; findings: string[]; missing: string[] }
 
 function displayedFields(fact: Exclude<Fact, { factType: "relation" }>): string[] {
@@ -34,6 +34,7 @@ export function projectDataSummary(items: readonly Item[], source?: DataFacts): 
         const key = JSON.stringify([query.service, fact.kind, fact.schemaVersion, id,
           fact.factType === "record" ? fact.record : fact.value]);
         const entry = records.get(key) ?? { group: JSON.stringify([query.service, fact.kind, fact.summary?.title]), title: `${query.service} / ${fact.summary?.title ?? fact.kind} / ${id}`,
+          text: fact.summary ? projectSummary(fact.summary, fact.factType === "record" ? fact.record : fact.value).text : undefined,
           fields: displayedFields(fact), references: [] };
         entry.references.push(`capabilityResults.${positions.get(query.id)}.result.facts.${index}`);
         records.set(key, entry);
@@ -84,7 +85,7 @@ export function buildDataEvidenceSummary(items: readonly Item[], source?: DataFa
     if (item.findings.length > 20 || item.missing.length > 20) lines.push("更多发现或缺口见 diagnosis.json。", "");
     lines.push("", "### 业务记录", "");
     for (const record of selectRecords(item.records, 20)) {
-      lines.push(`- ${summaryText(record.title)}`, ...record.fields.map(field => `  - ${field}`),
+      lines.push(`- ${summaryText(record.title)}`, ...(record.text ? [`  - ${summaryText(record.text)}`] : []), ...record.fields.map(field => `  - ${field}`),
         `  - [原始证据](raw/facts.json)：${record.references.slice(0, 3).map(path => `\`${path}\``).join("、")}`);
       if (record.references.length > 3) lines.push(`  - 另有 ${record.references.length - 3} 个来源，见原始 Facts。`);
     }
@@ -94,4 +95,16 @@ export function buildDataEvidenceSummary(items: readonly Item[], source?: DataFa
   if (projected.length > 16) lines.push(`另有 ${projected.length - 16} 个输入，见 diagnosis.json。`);
   lines.push("[诊断与完整缺口](diagnosis.json) · [完整 Facts](raw/facts.json) · [清单](manifest.json)", "");
   return lines.join("\n");
+}
+
+/** Reuse producer summaries in parent navigation; paths address the authoritative Facts file. */
+export function dataNavigationSummary(items: readonly Item[], source: DataFacts): Summary {
+  const records = projectDataSummary(items, source).flatMap(item => item.records
+    .filter(record => record.text)
+    .map(record => ({ ...record, group: `${item.id}/${record.group}`, title: `${item.id} / ${record.title}` })));
+  const selected = selectRecords(records, 6);
+  return { title: "业务数据关键事实", fields: selected.map(record => ({
+    label: `${record.title} · ${record.references[0]}`,
+    path: [...record.references[0]!.split("."), "summary", "text"],
+  })) };
 }
