@@ -409,7 +409,7 @@ Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Servi
 ### Inspect 批量调用
 
 `FactsInspectExtension.run(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
-collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；未找到记录仍通过 resolution 表达。
+collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；对象解析由 resolution 表达，精确查询确认不存在由 sources 的 not_found 表达。
 Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。provider 在整批开始时准备共享
 Client / Repository，按数据源能力合并或逐条查询，并隔离各 Query 的查询失败。共享准备失败可拒绝整次调用，
 由 Core 为本批每个 Query 记录失败；取消信号继续向上传播。单 Query 是一个元素的列表，空列表不访问外部资源。
@@ -421,3 +421,14 @@ Client / Repository，按数据源能力合并或逐条查询，并隔离各 Que
 每个字段的 `path` 是相对于 `value` 或 `record` 的属性名数组；Core 只按路径读取已采集的值，
 不猜测业务状态，不执行 Plugin renderer，也不复制一份字段值到展示声明中。
 未声明展示字段的 Fact 仍进入证据索引。Data 摘要保留原始文件和 factPath，便于复核。
+
+
+### Inspect 来源采集结果
+
+Inspect 的 `sources` 保存来源读取结果，与业务 Facts 分开：`collected` 表示取得结果，
+`not_found` 表示精确查询确认对象不存在，`failed` 表示查询失败，`not_collected` 表示没有执行读取。
+失败可携带 toolbox 的 `errorKind` / `errorCode`；数据库空列表仍是成功查询，不转换为异常。
+Core 保留这些结果、限制容量并投影给 Detector；确认不存在不降低采集覆盖率，失败和未采集才形成证据缺口。
+来源结果与 Facts 共用 Query 的条目数和字节预算。失败 Query 也可以携带已取得的来源结果。
+
+Service Detector 根据生命周期等业务 Facts 判断不存在是否符合预期，通过 `factPath` 引用来源结果和判断所依赖的生命周期记录。Core 不从资源名称或错误文案推断业务故障。

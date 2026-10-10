@@ -87,8 +87,9 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
 });
 
 test("Plugin Kubernetes access normalizes command failures", async () => {
+  let failure = { stderr: "forbidden", timedOut: false };
   const executor: Executor = {
-    run: async (command) => result(command, "", false),
+    run: async (command) => ({ ...result(command, "", false), ...failure }),
     exec: async (_target, command) => result(command, "", false),
   };
   const context = createPluginContext(executor, { namespace: "default" }, {
@@ -110,7 +111,13 @@ test("Plugin Kubernetes access normalizes command failures", async () => {
   });
 
   await expect(context.infra.kubernetes.get("secrets", "sample"))
-    .rejects.toThrow("kubectl -n default get secrets sample -o json 失败：forbidden");
+    .rejects.toMatchObject({ kind: "operation_failed" });
+  for (const [reason, kind] of [["NotFound", "resource_not_found"], ["Forbidden", "permission_denied"], ["Unauthorized", "authentication_failed"]]) {
+    failure = { stderr: `Error from server (${reason}): resource unavailable`, timedOut: false };
+    await expect(context.infra.kubernetes.get("secrets", "sample")).rejects.toMatchObject({ kind });
+  }
+  failure = { stderr: "", timedOut: true };
+  await expect(context.infra.kubernetes.get("secrets", "sample")).rejects.toMatchObject({ kind: "timeout" });
   await context.dispose();
 });
 

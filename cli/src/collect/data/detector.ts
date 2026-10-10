@@ -35,6 +35,13 @@ export function projectDataServiceEvidence(evidence: DataEvidence, plugin: strin
         : []
     )),
     observations: [],
+    sources: evidence.facts.capabilityResults.flatMap((result, index) => (
+      (result.status === "collected" ? result.result.sources : result.sources) ?? []
+    ).map((source, sourceIndex) => ({
+      factPath: `capabilityResults.${index}.${result.status === "collected" ? "result." : ""}sources.${sourceIndex}`,
+      producer: { origin: "plugin" as const, plugin, service: result.service, id: result.extension ?? "inspect" },
+      query: result.identity, result: source,
+    }))),
   };
 }
 
@@ -65,17 +72,19 @@ export function buildDataCoverage(
     const results = evidence.facts.capabilityResults.filter((item): item is CollectedDataInspectResult => (
       item.status === "collected" && item.service === service
     ));
+    for (const item of evidence.facts.capabilityResults.filter(item => item.service === service)) {
+      if (item.status !== "collected") missingEvidence.push(`${service} ${item.identity.kind}:${item.identity.value} ${item.status === "failed" ? "查询失败" : "未采集"}：${item.reason}`);
+      const sources = item.status === "collected" ? item.result.sources : item.sources;
+      for (const source of sources ?? []) {
+        if (source.status === "failed" || source.status === "not_collected") {
+          missingEvidence.push(`${service} ${source.source} ${source.status === "failed" ? "查询失败" : "未采集"}：${source.reason}`);
+        }
+      }
+    }
     if (!results.length) {
-      const failures = evidence.facts.capabilityResults.flatMap((item) => (
-        item.status !== "collected" && item.service === service
-          ? [`${item.identity.kind}:${item.identity.value}: ${item.reason}`]
-          : []
-      ));
-      missingEvidence.push(
-        failures.length
-          ? `${service} 业务记录未取得：${failures.join("；")}`
-          : `${service} 业务记录未取得`,
-      );
+      if (!evidence.facts.capabilityResults.some(item => item.service === service)) {
+        missingEvidence.push(`${service} 业务记录未取得`);
+      }
       continue;
     }
     if (!results.some((item) => item.result.resolution.resolvedAs !== "unresolved")) {

@@ -185,9 +185,25 @@ export interface ServiceInspectTruncation {
   omittedFacts?: number;
 }
 
+/**
+ * @spec Only an exact successful lookup can report not_found; failed and unperformed reads remain distinct.
+ * @why Acquisition evidence does not decide whether absence is expected in a business lifecycle.
+ * @see {@link ../../../cli/docs/plugin.md#inspect-来源采集结果}
+ */
+export type ServiceInspectSource = {
+  source: string;
+  subject?: Identity;
+  observedAt?: string;
+} & (
+  | { status: "collected" | "not_found" }
+  | { status: "failed"; reason: string; errorKind?: string; errorCode?: string | number }
+  | { status: "not_collected"; reason: string }
+);
+
 /** Query-level outcome; acquisition state is not disguised as a domain Fact. */
 export interface ServiceInspectResult<F extends Fact = Fact> extends InspectQueryResult<F> {
   resolution: ServiceInspectResolution;
+  sources?: readonly ServiceInspectSource[];
   /** Optional sources that could not contribute to this otherwise collected result. */
   missingEvidence?: readonly string[];
   /** Explicitly records provider-side or Core-side capacity truncation. */
@@ -254,6 +270,13 @@ export interface ServiceEvidenceObservation<Value extends JsonObject = JsonObjec
 export interface ServiceEvidence {
   facts: readonly ServiceEvidenceFact[];
   observations: readonly ServiceEvidenceObservation[];
+  /** Source reads are acquisition evidence, not domain Facts. */
+  sources?: readonly {
+    factPath: string;
+    producer: ServiceEvidenceProducer;
+    query: Identity;
+    result: ServiceInspectSource;
+  }[];
 }
 
 /** Pure business judgment over already collected Evidence; it never receives PluginContext. */
@@ -280,7 +303,7 @@ export interface ServiceInspectQuery extends Query<Identity> {
 /** Every requested identity has an outcome, including lookup failures. */
 export type ServiceInspectQueryOutcome = { identity: Identity } & (
   | { status: "collected"; result: ServiceInspectResult }
-  | { status: "failed"; reason: string }
+  | { status: "failed"; reason: string; sources?: readonly ServiceInspectSource[] }
 );
 
 /**

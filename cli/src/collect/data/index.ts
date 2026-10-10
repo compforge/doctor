@@ -114,9 +114,8 @@ export async function runCollectData(
     let reason = result.status === "rejected" ? String(result.reason instanceof Error ? result.reason.message : result.reason) : undefined;
     let status = commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed;
     if (diagnosis) {
-      const outcome = evaluateCollectOutcome(services.map(service => projected.capabilityResults.some(item =>
-        item.status === "collected" && item.service === service && item.result.resolution.resolvedAs !== "unresolved")
-        ? "sufficient" : "insufficient"));
+      // Coverage includes source failures and truncation even when identity resolution succeeded.
+      const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
       status = collectCommandOutcome(outcome).status;
       if (outcome.exitCode) reason = diagnosis.coverage[0]?.missingEvidence.join("；") || "未取得所选 Service 的业务记录";
     }

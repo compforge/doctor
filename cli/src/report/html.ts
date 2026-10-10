@@ -1,4 +1,4 @@
-import { escapeHtml } from "../collect/output/report/components/content";
+import { escapeHtml } from "./escape";
 import { REPORT_ARCHIVE_SCRIPT, ReportArchive } from "./archive";
 import type { RenderContext } from "./context";
 import type { Report } from "./model";

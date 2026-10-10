@@ -49,6 +49,7 @@ export interface DataInspectionFacts {
 }
 
 export interface DataInspectResultIdentity {
+  sources?: readonly import("@compforge/doctor-plugin").ServiceInspectSource[];
   id: string;
   stage: "expand" | "provide";
   /** Specific Extension producer; older stored results use inspect. */
