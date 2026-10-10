@@ -416,7 +416,14 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
    * errors (e.g. WARNING-level lines carrying business error codes); Core merges them into
    * --errors-only filtering. Invalid regex fails the log command explicitly at pattern build.
    */
-  logs?: { default: boolean; errorPatterns?: readonly string[] };
+  logs?: {
+    default: boolean;
+    errorPatterns?: readonly string[];
+    /** Directed identity edges from facts.inspect that may correlate this Service's logs.
+     * Omit reverse edges through shared resources to avoid selecting sibling requests.
+     * Matching remains related-object evidence, never proof of request ownership. */
+    identityRelations?: Readonly<Record<string, readonly string[]>>;
+  };
 }
 
 /**

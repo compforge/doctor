@@ -98,7 +98,7 @@ test("a fast hit is reported while a sibling is blocked; every Pod/current/previ
     writeFileSync(join(root, "collection.json"), JSON.stringify({ target: { services: ["api"] }, params: { until_time: config.untilTime }, steps: [] }));
     const html = join(root, "report.html");
     writeLogHtmlReport(root, html, "test");
-    expect(readFileSync(html, "utf8")).toContain("trace 命中 2 Pod");
+    expect(readFileSync(html, "utf8")).toContain("关联命中 2 Pod");
     expect(readFileSync(html, "utf8")).toContain("until-time=2026-09-09T02:00:00Z");
   } finally { release(); await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 });

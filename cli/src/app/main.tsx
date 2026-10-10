@@ -209,7 +209,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
 
 function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
   const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
-  return withBizIdInputs(cmd, "可选业务 ID；提供时解析 trace_id，省略时按 Service / 时间范围采集；可重复传入")
+  return withBizIdInputs(cmd, "可选业务 ID；提供时解析 trace 或已声明的关联对象，省略时按 Service / 时间范围采集；可重复传入")
     .option(
       "--services <names>",
       `逗号分隔的 Kubernetes Service；缺省时交互多选，非交互默认 ${defaultDescription}`,
@@ -217,8 +217,8 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
     .option("--since <duration>", "kubectl 日志回看窗口（缺省时优先从 UUIDv7 ID 推导，否则为 6h）")
     .option("--since-time <timestamp>", "从指定时间开始，优先于 --since")
     .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
-    .option("--errors-only", "只保留常见错误日志（有业务 ID 时先按 trace 过滤）", false)
-    .option("--pattern <regex>", "按正则筛选日志（有业务 ID 时先按 trace 过滤）")
+    .option("--errors-only", "只保留常见错误日志（有业务 ID 时先按 trace 或关联对象过滤）", false)
+    .option("--pattern <regex>", "按正则筛选日志（有业务 ID 时先按 trace 或关联对象过滤）")
     .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
@@ -629,7 +629,7 @@ export function createDoctorProgram(
       await runCommand(dbCommand, opts, domainInput(opts), commandRuntime);
     });
   withLogOptions(
-    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace（只读）"),
+    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace 与对象日志（只读）"),
     "",
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);

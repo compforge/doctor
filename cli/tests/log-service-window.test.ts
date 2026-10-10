@@ -199,7 +199,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
   });
 }
 
-test("business ID still requires traceId before any environment access", async () => {
+test("without object relations, business ID still requires trace resolution before environment access", async () => {
   const context = new CommandContext({}, undefined, { plugin });
   const ensure = spyOn(context, "ensureEnvironment").mockImplementation(async () => { throw new Error("unexpected environment access"); });
   try {

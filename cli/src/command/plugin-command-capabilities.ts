@@ -44,10 +44,6 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       requirement: "required",
       capability: { scope: "resource", name: "logs" },
       purpose: "声明需要采集日志的业务 Service",
-    }, {
-      requirement: "required",
-      capability: { scope: "extension", name: "trace.resolve" },
-      purpose: "把业务 ID 解析为规范 trace_id",
     }],
   },
   data: {
