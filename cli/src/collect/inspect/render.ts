@@ -413,14 +413,11 @@ function workloadProbeObservations(diagnosis: InspectDiagnosis): PluginWorkloadO
 }
 
 function workloadProbeRows(diagnosis: InspectDiagnosis): string[][] {
-  return workloadProbeObservations(diagnosis).slice(0, 24).map((observation) => [
-    observation.service,
-    observation.workload,
-    observation.pod,
-    observation.probe,
-    projectSummary(observation.summary, observation.value).title,
-    projectSummary(observation.summary, observation.value).fields.map(field => `${field.label}=${field.value}`).join("; "),
-  ]);
+  return workloadProbeObservations(diagnosis).slice(0, 24).map((observation) => {
+    const summary = projectSummary(observation.summary, observation.value);
+    return [observation.service, observation.workload, observation.pod, observation.probe,
+      summary.title, [summary.text, ...summary.fields.map(field => `${field.label}=${field.value}`)].filter(Boolean).join("; ")];
+  });
 }
 
 function findingRows(diagnosis: InspectDiagnosis): string[][] {

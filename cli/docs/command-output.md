@@ -120,7 +120,9 @@ File descriptors 记录实际字节数。清单不展开子清单正文，也不
 保存 Summary 与数据文件绑定，`summary-projection.json` 保存有界阅读投影。Command 默认绑定 output.json；
 Artifact serializer 显式绑定该项数据文件。摘要规范不要求插件返回 Markdown 或 HTML。
 
-同一投影用于终端、Markdown 和 HTML。通用投影最多显示 12 个字段，字段文本限制为 512 字符，
+同一投影用于终端、Markdown 和 HTML，按标题、生产者提供的 `text`、字段顺序展示。
+`text` 是纯文本，展示时转义并限制为 512 字符；完整文本保存在摘要声明或原始 Fact 中。
+通用投影最多显示 12 个字段，字段文本限制为 512 字符，
 数组最多预览 8 项、深度不超过 2；对象只显示类型提示，不 JSON.stringify 整个响应。
 false、0、null 保留，未定义字段省略；getter、函数和活资源不参与展开。
 原始数据完整保存，省略信息可沿文件引用读取，摘要截断不改变采集完整度。
@@ -131,6 +133,8 @@ Inspect 的 Workload Probe 由 Plugin 声明字段，完整 value 保存在 raw/
 
 Data 保留采集状态、业务记录、诊断发现、采集缺口及原始 Facts 引用。没有 finding 仅表示未发现内置异常。
 同一记录的来源合并展示，冲突的快照分别保留；摘要的记录上限不影响原始记录。
+Data 为父级导航提供最多六条带生产者文本的记录及 Facts 位置；Log 等组合命令直接展示这些关键事实，
+通过同一导航中的 Facts 文件链接查阅对应记录。
 
 ## 正文与容量边界
 

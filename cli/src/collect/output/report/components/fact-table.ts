@@ -1,4 +1,5 @@
 import type { Fact, RelationFact } from "@compforge/doctor-plugin";
+import { projectSummary } from "../../../../command/summary";
 import { htmlTable, htmlTableDetailCell } from "./table";
 
 const FACT_PREVIEW_LENGTH = 240;
@@ -20,8 +21,9 @@ export function htmlFactTable(
     searchPlaceholder?: string;
   } = {},
 ): string {
+  const hasText = facts.some(fact => fact.factType !== "relation" && fact.summary?.text);
   return htmlTable(
-    ["key", "data", "kind", "type", ...(options.metadataHeaders ?? [])],
+    ["key", ...(hasText ? ["summary"] : []), "data", "kind", "type", ...(options.metadataHeaders ?? [])],
     facts.map((fact, index) => {
       const key = factKey(fact);
       const compact = JSON.stringify(fact) ?? String(fact);
@@ -30,6 +32,8 @@ export function htmlFactTable(
         : compact;
       return [
         key,
+        ...(hasText ? [fact.factType !== "relation" && fact.summary
+          ? projectSummary(fact.summary, fact.factType === "record" ? fact.record : fact.value).text ?? "—" : "—"] : []),
         htmlTableDetailCell(preview, JSON.stringify(fact, null, 2) ?? String(fact), `${fact.kind} · ${key}`),
         fact.kind,
         fact.factType,

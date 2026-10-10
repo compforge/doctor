@@ -3,9 +3,10 @@ import { join } from "node:path";
 import type { CommandResult } from "../../command/result";
 import type { SerializeContext } from "../../command/serialization/context";
 import type { SerializedOutput } from "../../command/serialization/model";
+import { projectSummary } from "../../command/summary";
 import { readFacts } from "../evidence-reader";
 import type { DataFacts, DataOutput } from "./model";
-import { buildDataEvidenceSummary } from "./summary";
+import { buildDataEvidenceSummary, dataNavigationSummary } from "./summary";
 
 /** One invocation snapshot; per-input findings keep their own selection and coverage. */
 export async function serializeData(context: SerializeContext, result: CommandResult<DataOutput>): Promise<SerializedOutput> {
@@ -31,7 +32,10 @@ export async function serializeData(context: SerializeContext, result: CommandRe
     const { raw_file, ...rest } = step;
     return { ...rest, ...(raw_file ? { raw_file: factsFile.path } : {}) };
   });
+  const summary = dataNavigationSummary(result.output?.items ?? [], facts);
   return { files: {
+    summarySpec: context.writeJson("summary.json", { summary, data: { file: factsFile.path } }),
+    summaryProjection: context.writeJson("summary-projection.json", projectSummary(summary, facts)),
     collection: context.writeJson("collection.json", { ...metadata, files: { facts: factsFile.path }, steps }),
     facts: factsFile,
     diagnosis: context.writeJson("diagnosis.json", { items }),

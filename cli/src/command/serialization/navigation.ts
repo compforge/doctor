@@ -16,6 +16,7 @@ export function summaryNavigation(directory: string, files: Readonly<Record<stri
     lines.push(`- ${summaryText(manifest.title)} · ${manifest.execution.status}`);
     if (manifest.files.summaryProjection) {
       const projection = JSON.parse(readFileSync(join(directory, posix.dirname(path), manifest.files.summaryProjection.path), "utf8")) as SummaryProjection;
+      if (projection.text) lines.push(`  ${summaryText(projection.text)}`);
       lines.push(...projection.fields.slice(0, 6).map(field => `  - ${summaryText(field.label)}：${summaryText(field.value)}`));
     }
     lines.push(`  ${links.map(([label, path]) => `[${label}](<${path}>)`).join(" · ")}`);
