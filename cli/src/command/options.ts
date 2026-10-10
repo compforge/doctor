@@ -18,8 +18,8 @@ export function commandOptions(context: CommandContext) {
     ...context.options.environment,
     profile: context.profile.configPath ? context.profile.name : undefined,
     config: context.profile.configPath,
-    // Manifest is a root delivery format: collectors prepare ordinary Bundle evidence, not HTML.
-    format: context.options.format?.trim() === "manifest" ? "bundle" : context.options.format,
+    // Manifest and Summary are root delivery views; collectors still prepare complete Bundle evidence.
+    format: ["manifest", "summary"].includes(context.options.format?.trim() ?? "") ? "bundle" : context.options.format,
     output: undefined,
   };
 }

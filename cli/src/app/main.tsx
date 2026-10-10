@@ -256,7 +256,7 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--watch <duration>", "传给 doctor metric 的采集窗口；默认 0")
     .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
     .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
-    .addOption(deliveryFormatOption(["html", "bundle"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Prometheus")
     .option("-o, --output <path>", "集合报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }

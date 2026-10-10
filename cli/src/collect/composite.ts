@@ -280,6 +280,9 @@ export function createCollectCommand(delegate?: CollectDelegate) {
       }
     },
     prepare: async (context, input) => {
+      if (context.options.format?.trim() === "summary" && context.options.output) {
+        throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
+      }
       await prepareCommandRequirements(context, { plugin: { command: "doctor collect", needs: [] } });
       return input;
     },
