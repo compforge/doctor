@@ -9,7 +9,9 @@
 及输入输出契约定义在 `packages/plugin`，业务解析与查询实现归 Service。
 
 facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected / failed outcome。成功 result 的
-`resolution`、`missingEvidence` 与 `truncated` 表达本次获取状态；`facts` 承载可独立消费的稳定信息：
+`resolution` 表达对象解析，`sources` 区分成功取得、确认不存在、查询失败与未采集；`missingEvidence`
+补充证据缺口，`truncated` 表达容量截断。命令状态使用完整覆盖度，已解析 ID 的部分采集仍返回 partial。
+`facts` 承载可独立消费的稳定信息：
 
 - `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。
 - `RecordFact`：同 kind 可以返回多条，每条有稳定 `recordKey`；record 内部 shape 对 Doctor 不透明。HTML

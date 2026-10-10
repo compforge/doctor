@@ -1,3 +1,4 @@
+import { normalizeInspectSources, boundInspectSources } from "../../../plugin/inspect-sources";
 import type {
   Identity,
   RelationFact,
@@ -73,8 +74,8 @@ function resultId(stage: DataStage, service: string, identity: Identity): string
 
 
 function consumeBudget(remaining: RemainingFactBudget, result: ServiceInspectResult): void {
-  remaining.facts -= result.facts.length;
-  remaining.bytes -= result.facts.reduce((total, fact) => (
+  remaining.facts -= result.facts.length + (result.sources?.length ?? 0);
+  remaining.bytes -= [...result.facts, ...result.sources ?? []].reduce((total, fact) => (
     total + Buffer.byteLength(JSON.stringify(fact), "utf8")
   ), 0);
 }
@@ -110,7 +111,14 @@ async function queryIdentities(input: {
   const outcomes = await inspectExtensionQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget })));
   return outcomes.map(outcome => {
     try {
-      if (outcome.status === "failed") throw new Error(outcome.reason);
+      if (outcome.status === "failed") {
+        const bounded = boundInspectSources(normalizeInspectSources(outcome.sources, declared.name), budget);
+        remaining.facts -= bounded.sources.length;
+        remaining.bytes -= bounded.bytes;
+        return Object.assign(failedFact("data.inspect-result", "data-service-contributions",
+          outcome.reason + (bounded.omitted ? `; ${bounded.omitted} source outcomes omitted by budget` : "")),
+          metadata(outcome.identity), { sources: bounded.sources });
+      }
       const result = normalizeServiceInspectResult({
         value: outcome.result, service: declared.name,
         queryIdentity: outcome.identity, capability, budget

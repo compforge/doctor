@@ -7,7 +7,7 @@ import { BACKGROUND_CONTEXT, JsonlSessionRepo, type AgentMessage, type JsonlSess
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type { AgentBlock } from "@compforge/doctor-agent";
 import type { CliFlags } from "../protocol";
-import { escapeHtml } from "../collect/output/report/components/content";
+import { escapeHtml } from "../report/escape";
 import { isInteractive } from "../terminal/policy";
 import { printNumberedChoices, promptListedChoice, matchListedChoice } from "../terminal/selection";
 

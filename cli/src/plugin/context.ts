@@ -1,3 +1,4 @@
+import { kubernetesCommandError } from "@compforge/harness-toolbox/errors";
 import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
@@ -105,13 +106,14 @@ function createKubernetesAccess(
     const commandLabel = (command: readonly string[]): string => (
       `kubectl -n ${namespace} ${command.join(" ")}`
     );
-    const run = async (command: readonly string[]): Promise<string> => checkedOutput(
-      commandLabel(command),
-      await executorForNamespace(namespace).run([...command], {
-        signal,
-        timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS,
-      }),
-    );
+    const run = async (command: readonly string[]): Promise<string> => {
+      const result = await executorForNamespace(namespace).run([...command], {
+        signal, timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS,
+      });
+      signal.throwIfAborted();
+      if (!result.ok) throw kubernetesCommandError(result);
+      return checkedOutput(commandLabel(command), result);
+    };
     return {
       inNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
       get: async <T>(resource: string, name: string) => {

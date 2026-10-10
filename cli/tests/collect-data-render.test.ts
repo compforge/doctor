@@ -31,7 +31,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
   expect(buildDataCoverage(evidence)).toEqual([{
     goal: "business-data-relations",
     status: "insufficient",
-    missingEvidence: ["sample 业务记录未取得：biz_id:biz-1: query timeout"],
+    missingEvidence: ["sample biz_id:biz-1 查询失败：query timeout"],
   }]);
 });
 

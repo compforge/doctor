@@ -82,7 +82,7 @@ function validateFindings(input: {
   const { plugin, service, detector, evidence } = input;
   const label = `${service}.detectors.${detector}`;
   if (!Array.isArray(input.value)) throw new Error(`${label}.detect must return an array`);
-  const factPaths = new Set(evidence.facts.map((fact) => fact.factPath));
+  const factPaths = new Set([...evidence.facts, ...evidence.sources ?? []].map(item => item.factPath));
   const observationIds = new Set(evidence.observations.map((observation) => observation.id));
   const ids = new Set<string>();
   return input.value.map((value, index) => {

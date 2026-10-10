@@ -1,3 +1,4 @@
+import { normalizeInspectSources, boundInspectSources } from "./inspect-sources";
 import { validateSummary } from "@compforge/doctor-plugin";
 import { invokeExtension } from "./extension";
 import type { FactsInspectExtension, FactsInspectInput, FactsInspectOutput } from "@compforge/doctor-plugin";
@@ -207,9 +208,14 @@ export function normalizeServiceInspectResult(input: {
     }
   }
 
-  const bounded = applyBudget(facts, budget);
+  const sourceBudget = boundInspectSources(normalizeInspectSources(result.sources, service), budget);
+  const bounded = applyBudget(facts, {
+    maxFacts: budget.maxFacts - sourceBudget.sources.length,
+    maxBytes: budget.maxBytes - sourceBudget.bytes,
+  });
   const truncationReasons = [
     providerTruncation?.reason,
+    sourceBudget.omitted ? `Core budget omitted ${sourceBudget.omitted} source outcome(s)` : undefined,
     bounded.omittedFacts
       ? `Core Fact budget omitted ${bounded.omittedFacts} item(s) (maxFacts=${budget.maxFacts}, maxBytes=${budget.maxBytes})`
       : undefined,
@@ -225,6 +231,7 @@ export function normalizeServiceInspectResult(input: {
       identifiers: identifiers as Readonly<Record<string, string | undefined>>,
     },
     facts: bounded.facts,
+    ...(result.sources !== undefined ? { sources: sourceBudget.sources } : {}),
     ...(missingEvidence ? { missingEvidence: missingEvidence as string[] } : {}),
     ...(truncationReasons.length ? {
       truncated: {

@@ -2,12 +2,14 @@ import { inspectExtension } from "../../packages/plugin/tests/extension-fixture"
 import { expect, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { createServiceCatalog, type PluginContext, type PluginDefinition, type ServiceInspectQuery } from "@compforge/doctor-plugin";
+import { createServiceCatalog, type ServiceInspectSource, type PluginContext, type PluginDefinition, type ServiceInspectQuery } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
+import { projectDataServiceEvidence } from "../src/collect/data/detector";
 import { prepareDataCommand, runCollectData } from "../src/collect/data";
 
-for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
+for (const ids of [["a"], ["a", "b", "missing"], ["missing"], ["partial"]]) test(`Data acquires and projects the complete list: ${ids}`, async () => {
   const batches: string[][] = [];
+  const unavailable: ServiceInspectSource = { source: "db/records", status: "failed", reason: "denied", errorKind: "permission_denied" };
   const plugin: PluginDefinition = {
     id: "batch", version: "1", services: createServiceCatalog([{
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
@@ -25,10 +27,11 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
           batches.push(queries.map(query => query.identity.value));
           // Return reversed results deliberately: identity, not response position, controls attribution.
           return [...queries].reverse().map(({ identity }) => identity.value === "missing"
-            ? { identity, status: "failed" as const, reason: "record unavailable" }
+            ? { identity, status: "failed" as const, reason: "record unavailable", sources: [unavailable] }
             : {
               identity, status: "collected" as const, result: {
                 resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} },
+                ...(identity.value === "partial" ? { sources: [unavailable] } : {}),
                 facts: [{ factType: "record" as const, kind: "record", schemaVersion: 1, recordKey: identity.value, record: { id: identity.value } },
                 ...(identity.kind === "biz_id" ? [{
                   factType: "relation" as const, kind: "conversation", schemaVersion: 1,
@@ -47,10 +50,16 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"]]) test(`Data acquir
     expect(prepared).toBeDefined();
     const result = await runCollectData(prepared!, plugin, { records: { signal: new AbortController().signal } as PluginContext });
     expect(batches).toEqual(ids.some(id => id !== "missing") ? [ids, ["shared"]] : [ids]);
-    expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : CommandStatus.Ok);
+    expect(result.status).toBe(ids.length > 1 ? CommandStatus.Partial : ids[0] === "missing" ? CommandStatus.Failed : ids[0] === "partial" ? CommandStatus.Partial : CommandStatus.Ok);
     const output = result.output;
     if (!output) throw new Error("missing Data output");
-    expect(output.items.map(item => [item.bizId, item.status])).toEqual(ids.map(id => [id, id === "missing" ? "failed" : "ok"]));
+    expect(output.items.map(item => [item.bizId, item.status])).toEqual(ids.map(id => [id, id === "missing" ? "failed" : id === "partial" ? "partial" : "ok"]));
+    for (const item of output.items.filter(item => ["partial", "missing"].includes(item.bizId))) {
+      expect(item.diagnosis).toBeDefined();
+      const projected = projectDataServiceEvidence(item.diagnosis!.evidence, "batch");
+      expect(projected.sources?.some(source => source.result.status === "failed" && source.result.errorKind === "permission_denied")).toBe(true);
+      expect(item.diagnosis!.coverage[0]?.missingEvidence.join()).toContain("db/records 查询失败");
+    }
     for (const item of output.items.filter(item => item.status === CommandStatus.Ok)) {
       expect(item.diagnosis!.evidence.facts.capabilityResults.map(query => query.identity.value)).toEqual([item.bizId, "shared"]);
       expect(item.diagnosis!.findings.every(finding => finding.message === item.bizId)).toBeTrue();

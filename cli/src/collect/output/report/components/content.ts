@@ -1,11 +1,5 @@
-export function escapeHtml(value: unknown): string {
-  return String(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import { escapeHtml } from "../../../../report/escape";
+export { escapeHtml } from "../../../../report/escape";
 
 /** 把结构化数据安全嵌入 application/json，避免内容提前闭合 script 标签。 */
 export function serializeInlineJson(value: unknown): string {
