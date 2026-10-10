@@ -108,7 +108,7 @@ async function queryIdentities(input: {
   ));
   ctx.command.signal.throwIfAborted();
   const capability = declared.extension;
-  const outcomes = await inspectExtensionQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget })));
+  const outcomes = await inspectExtensionQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget, ...(ctx.config.timeWindow ? { constraints: { timeWindow: ctx.config.timeWindow } } : {}) })));
   return outcomes.map(outcome => {
     try {
       if (outcome.status === "failed") {

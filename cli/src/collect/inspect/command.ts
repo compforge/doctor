@@ -1,3 +1,4 @@
+import { freezeTimeWindow, resolveTimeWindow } from "../time-window";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
@@ -16,7 +17,7 @@ export function createInspectInput(input: Omit<InspectInput, "idempotencyKey">):
   return {
     ...input,
     idempotencyKey() {
-      return JSON.stringify([this.namespace ?? null, this.services ?? null, this.deploymentConfig ?? null, this.dependencies ?? null]);
+      return JSON.stringify([this.namespace ?? null, this.services ?? null, this.deploymentConfig ?? null, this.dependencies ?? null, this.since ?? null, this.sinceTime ?? null, this.untilTime ?? null]);
     },
   };
 }
@@ -24,7 +25,7 @@ export function createInspectInput(input: Omit<InspectInput, "idempotencyKey">):
 export const inspectCommand = defineCommand<InspectInput, void>({
   serialize: serializeEvidenceResult,
   name: "doctor inspect",
-  validate: validateInspectInput,
+  validate: input => { validateInspectInput(input); resolveTimeWindow(input); },
   render: async (context, result) => renderEvidence(context, result, {
     command: "inspect", title: "Inspect", scope: "环境 / Service",
     render: artifact => {
@@ -35,6 +36,7 @@ export const inspectCommand = defineCommand<InspectInput, void>({
     },
   }),
   prepare: async (context, input) => {
+    input = freezeTimeWindow(input);
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.inspect, environment: { kubernetes: true } });
     return input;
   },

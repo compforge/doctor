@@ -85,7 +85,7 @@ test("parseKubernetesEvents 归一 lastTimestamp/eventTime/series 并过滤 name
 test("selectLifecycleEvents 只保留相关对象的 Warning 与生命周期 Normal", () => {
   const events = parseKubernetesEvents(EVENTS_JSON, "demo");
   const selected = selectLifecycleEvents(events, new Set(["api-0", "api"]));
-  expect(selected.map((event) => event.reason)).toEqual(["SuccessfulRescale", "Unhealthy", "Killing"]);
+  expect(selected.map((event) => event.reason)).toEqual(["SuccessfulRescale", "Unhealthy", "Killing", "Pulled"]);
 });
 
 test("parseKubernetesAutoscalers 解析目标、副本与利用率摘要", () => {

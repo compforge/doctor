@@ -1,3 +1,4 @@
+import { resolveTimeWindow } from "../time-window";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
@@ -72,6 +73,7 @@ export async function resolveInspectConfig(
   executor?: Executor,
 ): Promise<InspectConfig | undefined> {
   validateInspectInput(opts);
+  const timeWindow = resolveTimeWindow(opts);
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
   if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
@@ -88,6 +90,7 @@ export async function resolveInspectConfig(
   const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
   if (!collect) return undefined;
   return {
+    timeWindow,
     namespace: collect.kubernetes.namespace,
     namespaceSource: collect.kubernetes.namespaceSource,
     services: opts.services === undefined ? [] : parseInspectServices(opts.services, plugin.services),

@@ -24,6 +24,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"], ["partial"]]) test
       extensions: [inspectExtension({
         access: {}, accepts: ["biz_id", "conversation_id"], provides: ["record"], expands: ["conversation_id"],
         inspect: async (_context, queries: readonly ServiceInspectQuery[]) => {
+          for (const query of queries) expect(query.constraints?.timeWindow).toEqual({ from: "2026-10-10T09:00:00Z", to: "2026-10-10T10:00:00Z" });
           batches.push(queries.map(query => query.identity.value));
           // Return reversed results deliberately: identity, not response position, controls attribution.
           return [...queries].reverse().map(({ identity }) => identity.value === "missing"
@@ -45,7 +46,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"], ["partial"]]) test
   };
   const context = new CommandContext({});
   try {
-    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json" },
+    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json", sinceTime: "2026-10-10T09:00:00Z", untilTime: "2026-10-10T10:00:00Z" },
       plugin.services, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } });
     expect(prepared).toBeDefined();
     const result = await runCollectData(prepared!, plugin, { records: { signal: new AbortController().signal } as PluginContext });

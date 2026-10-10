@@ -181,7 +181,7 @@ function runtimeSummaryIssues(diagnosis: InspectDiagnosis): RuntimeSummaryIssue[
   ));
 }
 
-function lifecycleSignals(diagnosis: InspectDiagnosis): { events: KubernetesWorkloadEvent[]; autoscalers: KubernetesAutoscaler[] } | undefined {
+function lifecycleSignals(diagnosis: InspectDiagnosis) {
   const fact = diagnosis.evidence.facts.lifecycleSignals;
   return fact.status === "collected" ? fact : undefined;
 }
@@ -272,9 +272,11 @@ function inspectHighlights(diagnosis: InspectDiagnosis, namespace: string): stri
       ...(issue.pod ? podEvents(diagnosis, issue.pod.pod).map((event) => `  关联事件：${formatEvent(event)}`) : []),
     ]) : ["- 无"]),
     "", "近期生命周期事件：",
+    ...(lifecycle ? [`- 查询窗口：${lifecycle.timeWindow?.from ?? "未限定起点"} → ${lifecycle.timeWindow?.to ?? "未限定终点"}；采集时间：${lifecycle.eventsObservedAt ?? "未记录"}`,
+      ...(lifecycle.omittedEvents ? [`- 容量限制省略 ${lifecycle.omittedEvents} 条事件`] : [])] : []),
     ...(lifecycle ? lifecycle.events.slice().sort((a, b) => (b.lastAt ?? "").localeCompare(a.lastAt ?? "")).slice(0, 8)
       .map(event => `- ${event.objectKind}/${event.objectName}：${formatEvent(event)}`) : [`- 未采集：${lifecycleUnavailable}`]),
-    ...(lifecycle && !lifecycle.events.length ? ["- 所采窗口内无相关事件"] : []),
+    ...(lifecycle && !lifecycle.events.length ? ["- 当前查询未返回相关事件（不代表历史上没有事件）"] : []),
     ...(lifecycle && lifecycle.events.length > 8 ? [`- 另有 ${lifecycle.events.length - 8} 条事件，见 summary.md#workload-events`] : []),
     "详细证据：summary.md#workload-pods（Pod / 镜像），summary.md#workload-events（事件）",
     ...autoscalerSummaryLines(autoscalers, lifecycleUnavailable),

@@ -54,6 +54,13 @@ Tenant 使用 `--tenant-id` / `--tenant-name`，业务 ID 仍只传给 Data、Tr
 记录在共享 `CommandContext`，但集合层不尝试从 biz-id 推导租户，也不读取 Model Catalog。非交互环境
 选择 tenant 数据面时必须显式给出租户。
 
+### Log 与事件共用显式时间窗
+
+`--since`、`--since-time`、`--until-time` 适用于 Log 和 Data/Inspect 中的历史事件。
+绝对起点优先；相对窗口在准备前以显式终点或当前时刻解析一次，所有子命令沿用相同边界。
+未提供这些参数时，各采集器保留自己的默认策略。窗口不会把数据库记录、Pod 当前状态变成历史快照，
+也不会改变按业务 ID 获取 Trace 或 Metric 的语义。协议见 [Inspect 查询时间窗](../plugin.md#inspect-查询时间窗)。
+
 ### Metric 保持时间窗口语义
 
 Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、

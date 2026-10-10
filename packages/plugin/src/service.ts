@@ -295,7 +295,17 @@ export interface ServiceWorkloadProbeInput extends ServiceProbeInput {
   instance: WorkloadInstance;
 }
 
-export interface ServiceInspectQuery extends Query<Identity> {
+/** Absolute RFC3339 bounds, inclusive. Absence leaves the provider's default scope unchanged. */
+export interface InspectTimeWindow {
+  readonly from?: string;
+  readonly to?: string;
+}
+
+export interface ServiceInspectConstraints {
+  readonly timeWindow?: InspectTimeWindow;
+}
+
+export interface ServiceInspectQuery extends Query<Identity, ServiceInspectConstraints> {
   budget: ServiceInspectBudget;
   results: ReadonlyMap<string, readonly ServiceInspectResult[]>;
 }

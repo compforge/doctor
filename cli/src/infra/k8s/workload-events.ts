@@ -1,9 +1,6 @@
-// Workload 生命周期信号：Event 与 HPA 的只读快照。
-//
-// 为什么独立于 Pod 运行态采集：Pod status 只回答"现在/上次终止是什么"，不回答"谁触发的"——
-// 探针失败、HPA 扩缩、节点驱逐都在 Event 里。Event 只在 API server 保留约 1h，
-// 因此这里不做时间窗参数，采集后按对象归属与级别筛选。
+import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 
+// API retention is cluster policy; filter available events by the caller window, never assume a one-hour TTL.
 interface ResourceList {
   items?: Array<Record<string, unknown>>;
 }
@@ -35,6 +32,7 @@ export interface KubernetesWorkloadEvent {
   count: number;
   /** 最近一次发生时间（lastTimestamp / eventTime / series.lastObservedTime 归一）。 */
   lastAt?: string;
+  firstAt?: string;
 }
 
 export interface KubernetesAutoscaler {
@@ -51,6 +49,7 @@ export interface KubernetesAutoscaler {
 
 /** 这些 Normal 事件回答"谁动了 Workload"，与 Warning 同级保留；其余 Normal 是噪声。 */
 const LIFECYCLE_NORMAL_REASONS = new Set([
+  "Scheduled", "Pulling", "Pulled", "Created", "Started",
   "Killing",
   "ScalingReplicaSet",
   "SuccessfulRescale",
@@ -76,7 +75,8 @@ export function parseKubernetesEvents(raw: string, namespace: string): Kubernete
       objectKind: text(object.kind) ?? "",
       objectName,
       count: integer(item.count) ?? integer(series.count) ?? 1,
-      lastAt: text(item.lastTimestamp) ?? text(item.eventTime) ?? text(series.lastObservedTime),
+      firstAt: text(item.firstTimestamp) ?? text(item.eventTime) ?? text(metadata.creationTimestamp) ?? ((integer(series.count) ?? integer(item.count) ?? 1) === 1 ? text(item.lastTimestamp) : undefined),
+      lastAt: text(series.lastObservedTime) ?? text(item.lastTimestamp) ?? text(item.eventTime) ?? text(metadata.creationTimestamp) ?? text(item.firstTimestamp),
     }];
   });
 }
@@ -125,10 +125,14 @@ export function selectLifecycleEvents(
   events: readonly KubernetesWorkloadEvent[],
   objectNames: ReadonlySet<string>,
   limit = LIFECYCLE_EVENT_LIMIT,
+  timeWindow?: InspectTimeWindow,
 ): KubernetesWorkloadEvent[] {
   return events
     .filter((event) => objectNames.has(event.objectName)
       && (event.type === "Warning" || LIFECYCLE_NORMAL_REASONS.has(event.reason)))
+    // Repeated events describe an interval. Unknown times cannot prove exclusion.
+    .filter(event => (!timeWindow?.from || !event.lastAt || !(Date.parse(event.lastAt) < Date.parse(timeWindow.from)))
+      && (!timeWindow?.to || !event.firstAt || !(Date.parse(event.firstAt) > Date.parse(timeWindow.to))))
     .sort((left, right) => Date.parse(right.lastAt ?? "") - Date.parse(left.lastAt ?? ""))
     .slice(0, limit)
     .reverse();

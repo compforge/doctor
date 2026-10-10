@@ -1,6 +1,6 @@
+import { resolveTimeWindow, type TimeWindowOptions } from "../time-window";
 import { containsLogIdentity } from "./correlation";
 import { isInteractive } from "../../terminal/policy";
-import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
@@ -174,35 +174,26 @@ export function serviceLogErrorPatterns(
 }
 
 /** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */
-export function resolveLogTimeWindow(input: {
-  id?: string;
-  since?: string;
-  sinceTime?: string;
-  now?: Date;
-}): { since?: string; sinceTime?: string } {
+export function resolveLogTimeWindow(input: TimeWindowOptions & { id?: string; now?: Date }): { since?: string; sinceTime?: string } {
   if (input.sinceTime) return { sinceTime: input.sinceTime };
-  if (input.since) return { since: input.since };
+  const lookback = (since: string) => input.untilTime
+    ? { sinceTime: resolveTimeWindow({ since, untilTime: input.untilTime })!.from }
+    : { since };
+  if (input.since) return lookback(input.since);
 
   const compact = input.id?.replaceAll("-", "") ?? "";
-  if (!COMPACT_UUID_V7.test(compact)) return { since: DEFAULT_LOG_SINCE };
+  if (!COMPACT_UUID_V7.test(compact)) return lookback(DEFAULT_LOG_SINCE);
   const timestampMs = Number.parseInt(compact.slice(0, 12), 16);
-  const nowMs = (input.now ?? new Date()).getTime();
+  const nowMs = input.untilTime ? Date.parse(input.untilTime) : (input.now ?? new Date()).getTime();
   if (timestampMs < nowMs - DEFAULT_LOG_WINDOW_MS || timestampMs > nowMs + UUID_V7_LEAD_MS) {
-    return { since: DEFAULT_LOG_SINCE };
+    return lookback(DEFAULT_LOG_SINCE);
   }
   return { sinceTime: new Date(timestampMs - UUID_V7_LEAD_MS).toISOString() };
 }
 
 /** Reject ambiguous/invalid upper bounds before any remote access. */
-export function validateLogTimeWindow(input: { sinceTime?: string; untilTime?: string }): void {
-  if (input.untilTime === undefined) return;
-  const end = logTimestampNanos(input.untilTime);
-  if (end === undefined) throw new Error("--until-time 必须是 RFC3339 时间戳");
-  if (input.sinceTime !== undefined) {
-    const start = logTimestampNanos(input.sinceTime);
-    if (start === undefined) throw new Error("--since-time 必须是 RFC3339 时间戳");
-    if (start > end) throw new Error("--until-time 不能早于 --since-time");
-  }
+export function validateLogTimeWindow(input: TimeWindowOptions): void {
+  resolveTimeWindow(input);
 }
 
 export function filterTraceLines(stdout: string, traceIds: string | readonly string[], pattern?: RegExp): string[] {
