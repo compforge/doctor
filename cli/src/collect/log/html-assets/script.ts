@@ -141,7 +141,8 @@ function mountLogViewer(viewer) {
   function appendHighlighted(container, text, rawQuery) {
     const query = rawQuery.toLocaleLowerCase();
     if (!query) {
-      container.textContent = text;
+      // Preserve correlation labels already appended by logRow, including after reset.
+      container.append(document.createTextNode(text));
       return;
     }
     const lower = text.toLocaleLowerCase();
