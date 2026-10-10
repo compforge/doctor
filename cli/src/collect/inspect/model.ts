@@ -1,3 +1,5 @@
+import type { TimeWindowOptions } from "../time-window";
+import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 import type {
   JsonObject,
   Toolchain,
@@ -17,7 +19,7 @@ import type { EvidenceBundle } from "../evidence";
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-export interface CollectInspectCliOpts {
+export interface CollectInspectCliOpts extends TimeWindowOptions {
   namespace?: string;
   services?: string;
   deploymentConfig?: boolean;
@@ -31,6 +33,7 @@ export interface CollectInspectCliOpts {
 }
 
 export interface InspectConfig {
+  timeWindow?: InspectTimeWindow;
   namespace: string;
   namespaceSource: ResolvedNamespace["source"];
   services: string[];
@@ -131,6 +134,9 @@ export interface InspectFacts {
   /** 与所选 Workload 相关的 Event 与 HPA 快照；补充证据，不进入 Coverage 目标（客户环境 RBAC 常不含 events）。 */
   lifecycleSignals: Fact<{
     events: KubernetesWorkloadEvent[];
+    eventsObservedAt?: string;
+    timeWindow?: InspectTimeWindow;
+    omittedEvents?: number;
     autoscalers: KubernetesAutoscaler[];
   }, "inspect.lifecycle-signals">;
 }

@@ -146,7 +146,7 @@ function writeDataManifest(
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { namespace: config.namespace, input_ids: config.ids, services },
     inspectionFacts: facts,
-    params: { services, inspect_capabilities: Object.fromEntries(services.map(service => {
+    params: { time_window: config.timeWindow, services, inspect_capabilities: Object.fromEntries(services.map(service => {
       const capability = providers.find(provider => provider.name === service)!.extension;
       return [service, { provides: capability.provides, expands: capability.expands ?? [] }];
     })), output_format: config.format },
@@ -168,7 +168,7 @@ function writeDataEvidence(
     }
   }
   if (reason) bundle.settle(reason);
-  bundle.writeSummary(diagnosis ? buildDataSummary(diagnosis) : `# 业务数据汇集诊断失败\n\n${reason}\n`);
+  bundle.writeSummary(diagnosis ? `${config.timeWindow ? `查询窗口：${config.timeWindow.from ?? "未限定起点"} → ${config.timeWindow.to ?? "未限定终点"}\n\n` : ""}${buildDataSummary(diagnosis)}` : `# 业务数据汇集诊断失败\n\n${reason}\n`);
   writeDataManifest(bundle, config, providers, services, facts, startedAt);
   if (diagnosis) writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (reason) recordFailureBundle({ bundleDir: bundle.dir, collectCode: 1, reason });

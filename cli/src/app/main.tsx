@@ -233,6 +233,9 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
       "--services <names>",
       `逗号分隔、提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`,
     )
+    .option("--since <duration>", "事件回看窗口，例如 30m、2h")
+    .option("--since-time <timestamp>", "事件起点（RFC3339；优先于 --since）")
+    .option("--until-time <timestamp>", "事件终点（RFC3339，包含边界；指定窗口时缺省为命令开始时刻）")
     .addOption(deliveryFormatOption(["bundle", "json", "html", "summary"]))
     .option("--profile <name>", "从 profile 取 kubeconfig；数据源身份仅作服务运行时配置的兜底")
     .option(
@@ -250,9 +253,9 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
     .option("--dependencies", "传给 inspect：采集应用依赖及版本")
     .option("--no-dependencies", "不采集应用依赖及版本")
-    .option("--since <duration>", "传给 doctor log 的日志回看窗口")
-    .option("--since-time <timestamp>", "传给 doctor log 的日志起始时间，优先于 --since")
-    .option("--until-time <timestamp>", "传给 doctor log 的日志截止时间（RFC3339，包含边界）")
+    .option("--since <duration>", "Log 与 Data/Inspect 事件的统一回看窗口")
+    .option("--since-time <timestamp>", "Log 与 Data/Inspect 事件的统一起点，优先于 --since")
+    .option("--until-time <timestamp>", "Log 与 Data/Inspect 事件的统一终点（RFC3339，包含边界）")
     .option("--watch <duration>", "传给 doctor metric 的采集窗口；默认 0")
     .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
     .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
@@ -268,6 +271,9 @@ function withInspectOptions(cmd: CommandT): CommandT {
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
     .option("--dependencies", "进入业务 Container 采集应用依赖；交互模式未指定时询问，-y 默认不采集")
     .option("--no-dependencies", "不采集应用依赖")
+    .option("--since <duration>", "事件回看窗口，例如 30m、2h")
+    .option("--since-time <timestamp>", "事件起点（RFC3339；优先于 --since）")
+    .option("--until-time <timestamp>", "事件终点（RFC3339，包含边界；指定窗口时缺省为命令开始时刻）")
     .addOption(deliveryFormatOption(["bundle", "json", "html", "md", "summary"]))
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");

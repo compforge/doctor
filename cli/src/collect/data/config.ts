@@ -1,3 +1,4 @@
+import { resolveTimeWindow } from "../time-window";
 import { dataProviders, findDataProvider } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
@@ -131,6 +132,7 @@ export async function resolveDataConfig(
     ...(opts.bizIds ?? []),
   ].map((bizId) => bizId.trim()).filter(Boolean))];
   if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
+  const timeWindow = resolveTimeWindow(opts);
   const format = parseDataOutputFormat(opts.format);
   if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
   const reportName = dataReportName(new Date());
@@ -155,6 +157,7 @@ export async function resolveDataConfig(
   if (!collect) return undefined;
   const services = parseDataServices(opts.services, catalog);
   return {
+    timeWindow,
     ids,
     format,
     outputPath,

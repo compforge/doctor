@@ -74,3 +74,12 @@ test("Help shows each Distribution's effective format default and output destina
   expect(trace).not.toContain("-f json -o");
   expect(trace).not.toContain("-f summary →");
 });
+
+for (const name of ["data", "inspect", "collect"]) test(`${name} accepts a diagnostic time window`, async () => {
+  const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
+  try {
+    await createDoctorProgram().parseAsync([name, ...(name === "collect" ? ["--include", "data"] : []),
+      "--since", "2h", "--until-time", "2026-10-10T10:00:00Z"], { from: "user" });
+    expect(run.mock.calls.at(-1)![2]).toMatchObject({ since: "2h", untilTime: "2026-10-10T10:00:00Z" });
+  } finally { run.mockRestore(); }
+});

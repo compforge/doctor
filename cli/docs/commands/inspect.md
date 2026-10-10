@@ -69,3 +69,10 @@ Pod 数量、镜像和资源声明回答“所选 Service 当前落到了哪些�
 ### ConfigMap 与显式 env 的关系
 
 大多数部署不会在 ConfigMap 和显式 env 中声明同名配置。若意外重复，Doctor 仍遵循 Kubernetes 的确定性优先级：显式 `env` 覆盖 `envFrom` 引入的 ConfigMap 值，并在 Env 列中只保留一个结果。
+
+## 事件时间窗
+
+`--since`、`--since-time`、`--until-time` 限定历史事件范围；Pod 状态仍是本次采集的当前快照。
+保留 Warning 与启动、重启、扩缩等相关 Normal 事件，包括镜像 Pulling/Pulled。
+重复事件按发生区间与窗口相交保留。证据保存首次/最近发生时间、采集时间及容量截断数；
+未指定窗口时不额外限制为一小时。空结果只表示当前 API 查询未返回相关事件。

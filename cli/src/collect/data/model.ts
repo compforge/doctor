@@ -1,3 +1,5 @@
+import type { TimeWindowOptions } from "../time-window";
+import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, FindingMeta } from "../protocol";
 import type {
   Identity,
@@ -10,7 +12,7 @@ import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/execu
 export type DataOutputFormat = "default" | "bundle" | "json" | "html" | "summary";
 export type SupportedDataService = string;
 
-export interface CollectDataCliOpts {
+export interface CollectDataCliOpts extends TimeWindowOptions {
   bizIds: readonly string[];
   namespace?: string;
   kubeconfig?: string;
@@ -23,6 +25,7 @@ export interface CollectDataCliOpts {
 }
 
 export interface DataConfig {
+  timeWindow?: InspectTimeWindow;
   ids: string[];
   format: DataOutputFormat;
   outputPath?: string;

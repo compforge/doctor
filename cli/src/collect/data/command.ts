@@ -1,3 +1,4 @@
+import { freezeTimeWindow, resolveTimeWindow } from "../time-window";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeData } from "./serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
@@ -14,10 +15,12 @@ export const dataCommand = defineCommand<DataInput, DataOutput, PreparedDataComm
   serialize: serializeData,
   name: "doctor data",
   validate: (input) => {
+    resolveTimeWindow(input);
     if (!input.bizIds?.some(id => id.trim())) throw new CommandInputError("doctor data 需要至少一个 biz-id");
   },
   render: renderDataReport,
   prepare: async (context, input) => {
+    input = freezeTimeWindow(input);
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.data, environment: { kubernetes: true } });
     return prepareDataCommand(
       { ...input, ...commandOptions(context) }, context.plugin.services, context,

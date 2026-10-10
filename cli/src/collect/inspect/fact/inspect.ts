@@ -21,6 +21,7 @@ import {
   parseKubernetesAutoscalers,
   parseKubernetesEvents,
   selectLifecycleEvents,
+  LIFECYCLE_EVENT_LIMIT,
 } from "../../../infra/k8s/workload-events";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
@@ -67,6 +68,7 @@ export function inspectContainerStateFact(
 }
 
 interface LifecycleCapture {
+  observedAt?: string;
   result?: ExecResult;
   error?: string;
 }
@@ -79,7 +81,7 @@ async function captureLifecycleSignals(
 ): Promise<InspectFacts["lifecycleSignals"]> {
   const run = async (args: string[]): Promise<LifecycleCapture> => {
     try {
-      return { result: await ctx.executor.run(args, { timeoutMs: 30_000 }) };
+      return { result: await ctx.executor.run(args, { timeoutMs: 30_000 }), observedAt: new Date().toISOString() };
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }
@@ -132,14 +134,17 @@ async function captureLifecycleSignals(
   // HPA 自身的 SuccessfulRescale 事件挂在 HPA 对象上，关联后补入事件筛选范围。
   for (const autoscaler of autoscalers) objectNames.add(autoscaler.name);
   let events2: ReturnType<typeof parseKubernetesEvents> = [];
+  let omittedEvents = 0;
   if (events.result?.ok) {
     try {
-      events2 = selectLifecycleEvents(parseKubernetesEvents(events.result.stdout, config.namespace), objectNames);
+      const selected = selectLifecycleEvents(parseKubernetesEvents(events.result.stdout, config.namespace), objectNames, Infinity, config.timeWindow);
+      omittedEvents = Math.max(0, selected.length - LIFECYCLE_EVENT_LIMIT);
+      events2 = selected.slice(-LIFECYCLE_EVENT_LIMIT);
     } catch (error) {
       ctx.log(`[collect] Event 解析失败：${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  return collectedFact("inspect.lifecycle-signals", "service-targets", { events: events2, autoscalers });
+  return collectedFact("inspect.lifecycle-signals", "service-targets", { events: events2, autoscalers, eventsObservedAt: events.observedAt, timeWindow: config.timeWindow, omittedEvents });
 }
 
 function dependencyTargets(

@@ -201,6 +201,7 @@ export async function runCollectInspect(
       lifecycleSignals: facts.lifecycleSignals,
     } : {},
     params: {
+      time_window: config.timeWindow,
       services: config.services,
       deployment_config: config.includeDeploymentConfig,
       dependencies: config.includeDependencies,

@@ -432,3 +432,17 @@ Core 保留这些结果、限制容量并投影给 Detector；确认不存在不
 来源结果与 Facts 共用 Query 的条目数和字节预算。失败 Query 也可以携带已取得的来源结果。
 
 Service Detector 根据生命周期等业务 Facts 判断不存在是否符合预期，通过 `factPath` 引用来源结果和判断所依赖的生命周期记录。Core 不从资源名称或错误文案推断业务故障。
+
+### Inspect 查询时间窗
+
+Core 通过 `ServiceInspectQuery.constraints.timeWindow` 传递可选 RFC3339 绝对起止时间
+`{ from?, to? }`，边界包含端点；关联 Identity 的后续查询沿用同一窗口。窗口约束历史事件，
+不要求数据库记录和 Pod 当前状态提供历史快照。Plugin 决定事件类型、关联方式和容量限制。
+
+Data、Inspect、Collect 支持 `--since`、`--since-time`、`--until-time`。绝对起点优先；
+显式窗口缺省终点为准备开始时刻，相对时长从终点回推。Collect 在准备前解析一次，供 Log 和
+Data/Inspect 共用；未指定参数时不注入公共默认窗口，Log 保留原有 6h/UUIDv7 策略。
+
+事件采集应保留发生时间和实际采集时间；重复事件按发生区间与窗口相交保留，不能因最后一次发生
+在终点之后而丢弃整个事件。缺失时间不能证明事件在窗口外。采集范围与截断应写入证据；
+查询无返回不等于历史上没有事件，API 的保留期可能已经删除它们。

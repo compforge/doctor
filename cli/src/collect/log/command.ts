@@ -1,3 +1,4 @@
+import { freezeTimeWindow } from "../time-window";
 import { dataCommand } from "../data/command";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
@@ -23,6 +24,7 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
     catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },
   prepare: async (context, input) => {
+    input = freezeTimeWindow(input);
     if (context.options.format?.trim() === "summary" && context.options.output) {
       throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
     }

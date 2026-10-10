@@ -1,3 +1,6 @@
+import { dataCommand } from "../src/collect/data/command";
+import { inspectCommand } from "../src/collect/inspect/command";
+import { logCommand } from "../src/collect/log/command";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -287,4 +290,19 @@ test("collect preserves staged evidence when default delivery fails", async () =
     write.mockRestore();
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("collect freezes one explicit interval for Inspect, Data and Log", async () => {
+  const calls: Array<{ since?: string; sinceTime?: string; untilTime?: string }> = [];
+  const mocks = [spyOn(inspectCommand, "run").mockImplementation(async (_ctx, input) => { calls.push(input); return { status: CommandStatus.Ok, output: undefined, artifacts: [] }; }),
+    spyOn(dataCommand, "run").mockImplementation(async (_ctx, input) => { calls.push(input); return { status: CommandStatus.Ok, output: { items: [] }, artifacts: [] }; }),
+    spyOn(logCommand, "run").mockImplementation(async (_ctx, input) => { calls.push(input); return { status: CommandStatus.Ok, output: { items: [] }, artifacts: [] }; })];
+  const context = new CommandContext({}, undefined, { plugin: { id: "fixture", version: "1", services: createServiceCatalog([]) } });
+  try {
+    const result = await createCollectCommand().run(context, { bizIds: ["test"], kinds: ["inspect", "data", "log"], since: "2h", untilTime: "2026-10-10T10:00:00Z" });
+    expect(result.status).toBe(CommandStatus.Ok);
+    expect(calls).toHaveLength(3);
+    for (const input of calls) expect(input).toMatchObject({ since: undefined, sinceTime: "2026-10-10T08:00:00.000Z", untilTime: "2026-10-10T10:00:00Z" });
+    for (const artifact of result.artifacts) rmSync(dirname(artifact.path), { recursive: true, force: true });
+  } finally { mocks.forEach(mock => mock.mockRestore()); await context.disposeClients(); }
 });

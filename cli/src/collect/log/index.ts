@@ -158,6 +158,7 @@ async function prepareLogBatch(
   const identityServices = services.filter(name => plugin.services.find(name)?.logs?.identityRelations);
   if (opts.bizIds.length && identityServices.length) {
     identityResolution = await dataCommand.run(commandContext, {
+      since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime,
       bizIds: opts.bizIds, namespace: resolvedNamespace.namespace, services: identityServices.join(","),
     });
   }
@@ -276,7 +277,7 @@ export async function runCollectLog(
     const resolutionGaps = prepared.identityResolution && (dataItem?.status ?? prepared.identityResolution.status) !== CommandStatus.Ok
       ? [dataItem?.reason ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined) ?? "对象关联采集不完整，详见关联 Data 证据"] : [];
 
-    const timeWindow = resolveLogTimeWindow({ id: bizId, since: opts.since, sinceTime: opts.sinceTime });
+    const timeWindow = resolveLogTimeWindow({ id: bizId, since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime });
     if (!opts.since && !opts.sinceTime && timeWindow.sinceTime) {
       useLogger("collect").info(`${bizId} 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}`);
     }

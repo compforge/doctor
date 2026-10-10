@@ -1,3 +1,4 @@
+import { freezeTimeWindow, resolveTimeWindow } from "./time-window";
 import { prepareCommandRequirements } from "../command/prepare";
 import type { ResultRef } from "../command/manifest";
 import type { CommandSpec } from "../command/spec";
@@ -206,17 +207,18 @@ function inspectServiceNames(plugin: PluginDefinition): string {
 function collectDelegate(input: CollectInput, context: CommandContext): CollectDelegate {
   const plugin = context.plugin;
   const common = { namespace: input.namespace };
+  const time = { since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime };
   return (kind) => {
     switch (kind) {
       case "inspect": return inspectCommand.run(context, createInspectInput({
-        ...common, services: inspectServiceNames(plugin),
+        ...common, ...time, services: inspectServiceNames(plugin),
         deploymentConfig: input.deploymentConfig, dependencies: input.dependencies,
       }));
       case "tenant": return tenantCommand.run(context, createTenantInput({
         ...common, tenantId: input.tenantId, tenantName: input.tenantName,
       }));
       case "data": return dataCommand.run(context, {
-        ...common, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
+        ...common, ...time, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
       });
       case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds });
       case "log": return logCommand.run(context, {
@@ -275,11 +277,13 @@ export function createCollectCommand(delegate?: CollectDelegate) {
     },
     reportName: (input, _result, now) => collectReportName(input.bizIds, now),
     validate: (input) => {
+      resolveTimeWindow(input);
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
         throw new CommandInputError("doctor collect 需要至少一个 biz-id");
       }
     },
     prepare: async (context, input) => {
+      input = freezeTimeWindow(input);
       if (context.options.format?.trim() === "summary" && context.options.output) {
         throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
       }
