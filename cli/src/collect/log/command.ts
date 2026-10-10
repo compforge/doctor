@@ -18,6 +18,9 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
     catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },
   prepare: async (context, input) => {
+    if (context.options.format?.trim() === "summary" && context.options.output) {
+      throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
+    }
     await prepareCommandRequirements(context, {
       environment: { kubernetes: true },
       plugin: input.bizIds.some(id => id.trim()) ? PLUGIN_COMMAND_CAPABILITIES.log : {
