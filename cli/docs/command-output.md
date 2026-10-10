@@ -177,6 +177,10 @@ result/
 | default | 外置 HTML 和完整 tar.gz |
 
 `format` 只决定交付视图，不改变采集范围。manifest、summary、json、md 跳过 HTML 渲染。
+`collect -f summary` 在终端展示各子命令状态、已有摘要和证据链接，完整子结果仍保存在证据目录；
+不支持 `--output`。省略 `-f` 时仍采用原有默认格式。Manifest 和 Summary 只在根交付阶段生效，
+子采集器按 Bundle 准备完整证据，包括不提供独立 Summary 格式的 Trace、Metric。
+
 manifest 的 `--output` 必须是尚不存在的目录，未指定则保留唯一临时目录。目录权限 0700、文件 0600，
 拒绝包含软链接的 Artifact，不覆盖已有输出。
 
