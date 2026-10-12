@@ -1,8 +1,21 @@
-/** Producer-owned reading hints. Paths are relative to the accompanying data, never a renderer. */
+/**
+ * Producer-owned reading hints for the accompanying evidence.
+ *
+ * @spec text explains what the evidence means and limits on judgment; fields expose supporting counts, objects, and evidence.
+ * @spec The enclosing command or query result owns status: it describes execution completeness, not application health.
+ * @rule For partial results, truncation, zero matches, or failed sources, explain what was obtained, what is missing, and which judgments remain unsupported.
+ * @see {@link ../../../cli/docs/command-output.md#摘要与原始证据}
+ */
 export interface Summary {
   readonly title: string;
-  /** Producer-authored plain text for this result; consumers retain data as the machine contract. */
+  /**
+   * A few concise, producer-authored sentences interpreting the result and its limits.
+   * Keep data details, record lists, and raw output in fields or linked evidence; text is not a detailed report.
+   * Avoid repeating field values or inferring unsupported conclusions; bounded views may truncate long text.
+   * Optional when the fields are self-explanatory; the accompanying data remains the machine contract.
+   */
   readonly text?: string;
+  /** Supporting evidence in reading order, with decisive facts before context for bounded views. Paths are relative to the accompanying data. */
   readonly fields: readonly { readonly label: string; readonly path: readonly string[] }[];
 }
 

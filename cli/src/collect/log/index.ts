@@ -274,8 +274,11 @@ export async function runCollectLog(
     const identities = dataItem?.diagnosis && bizId !== undefined
       ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services) : [];
     if (bizId !== undefined && !traces.length && !identities.length) return [];
+    const dataGaps = dataItem?.diagnosis?.coverage.flatMap(item => item.missingEvidence) ?? [];
     const resolutionGaps = prepared.identityResolution && (dataItem?.status ?? prepared.identityResolution.status) !== CommandStatus.Ok
-      ? [dataItem?.reason ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined) ?? "对象关联采集不完整，详见关联 Data 证据"] : [];
+      ? [...new Set(dataGaps.length ? dataGaps : [dataItem?.reason
+        ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined)
+        ?? "对象关联采集不完整，详见关联 Data 证据"])] : [];
 
     const timeWindow = resolveLogTimeWindow({ id: bizId, since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime });
     if (!opts.since && !opts.sinceTime && timeWindow.sinceTime) {
@@ -300,7 +303,7 @@ export async function runCollectLog(
     const status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
     const reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id 或已声明的日志对象身份" : undefined);
     items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}),
-      ...(collected ? { stats: collected.result.stats, missingEvidence: collected.result.missingEvidence } : {}) });
+      ...(collected ? { stats: collected.result.stats, missingEvidence: collected.result.missingEvidence, resolutionGaps: collected.result.resolutionGaps } : {}) });
   });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({
     items: items.map(({ artifacts, ...item }) => ({
@@ -317,6 +320,7 @@ interface LogItemResult {
   reason?: string;
   stats?: LogRenderStats;
   missingEvidence?: readonly string[];
+  resolutionGaps?: readonly string[];
 }
 
 /** Acquires one Pod discovery snapshot; item probes share PodLogClient captures under the root Pod budget. */
@@ -409,6 +413,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
     // Project the already captured evidence; zero matches cannot stand in for a failed read.
     ...(facts.runtime.status === "collected" && facts.servicePods.status === "collected" ? { stats: rendered.stats } : {}),
     missingEvidence: [...new Set([...diagnosis.coverage.flatMap(item => item.missingEvidence), ...(config.resolutionGaps ?? [])])],
+    ...(config.resolutionGaps?.length ? { resolutionGaps: config.resolutionGaps } : {}),
     ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {})
   };
 }
@@ -421,6 +426,8 @@ export interface LogOutput {
     bizId?: string; status: CommandStatus; reason?: string;
     stats?: LogRenderStats;
     missingEvidence?: readonly string[];
+    /** Data acquisition gaps limit object correlation independently of Pod log capture. */
+    resolutionGaps?: readonly string[];
     artifacts: readonly import("../../command").CommandArtifact[]
   }[];
 }

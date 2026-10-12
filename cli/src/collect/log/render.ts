@@ -1,3 +1,4 @@
+import { logEvidenceImpact } from "./summary";
 import { logMatches } from "./correlation";
 import stripAnsi from "strip-ansi";
 import type {
@@ -229,6 +230,13 @@ export function renderLogResult(
     `- 首次命中按${config.bizId === undefined ? "窗口内日志" : " trace 或对象身份 "}统计，早于错误/内容筛选；复用 raw 的读取不重复计入下载量；采集 wall-clock 从日志采集开始计时，包含 Pod 发现和排队。`,
     `- 过滤: ${config.errorsOnly ? "errors-only" : scopeLabel}${config.pattern ? ` + /${config.pattern}/` : ""}`,
   ];
+  const captureGaps = [...new Set(diagnosis.coverage.flatMap(item => item.missingEvidence))];
+  const resolutionGaps = config.resolutionGaps ?? [];
+  lines.push(
+    ...resolutionGaps.map(gap => `- 关联缺口: ${gap}`),
+    ...captureGaps.map(gap => `- 采集缺口: ${gap}`),
+    ...logEvidenceImpact(resolutionGaps, [...captureGaps, ...resolutionGaps]).map(impact => `- ${impact}`),
+  );
   if (stats.previousContainerCount > 0) {
     const lastByTarget = new Map<string, string>();
     for (const record of timeline) {

@@ -72,7 +72,23 @@ for (const variant of ["collected", "partial", "failed"] as const) {
       expect(dataChild).toBeDefined();
       expect(dataChild.files.facts.path).toBe("raw/facts.json");
       expect(dataChild.serialization.status).toBe("ok");
-      expect(stdout.mock.calls.map(([line]) => String(line)).join("")).toContain(`采集状态：${result.status}`);
+      const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
+      expect(terminal).toContain(`采集状态：${result.status}`);
+      if (variant === "partial") {
+        const [partial, complete] = result.output!.items;
+        expect(partial!.resolutionGaps).toEqual(["api db/workspace 查询失败：denied"]);
+        expect(complete!.resolutionGaps).toBeUndefined();
+        expect(terminal).toContain("已获得匹配事件");
+        expect(terminal).toContain("关联缺口");
+        expect(terminal).toContain("api db/workspace 查询失败：denied");
+        expect(terminal).toContain("不能据此排除相关对象的问题");
+        expect(terminal).not.toContain("采集缺口影响");
+        const summary = readFileSync(join(partial!.artifacts[0]!.path, "summary.md"), "utf8");
+        expect(summary).toContain("关联缺口: api db/workspace 查询失败：denied");
+        expect(summary).toContain("不能据此排除相关对象的问题");
+        const stored = JSON.parse(readFileSync(join(evidenceDir!, "output.json"), "utf8"));
+        expect(stored.items[0].resolutionGaps).toEqual(partial!.resolutionGaps);
+      }
     } finally {
       for (const mock of [stdout, stderr, ensure, exec, version, logs]) mock.mockRestore();
       await context.disposeClients();

@@ -1,3 +1,5 @@
+import { createServiceCatalog } from "@compforge/doctor-plugin";
+import { createCollectCommand } from "../src/collect/composite";
 import { expect, spyOn, test } from "bun:test";
 import { readFileSync, rmSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -98,3 +100,61 @@ test("Log root surfaces producer Data text and navigates directly to its Fact ev
     expect(manifest.serialization.status).toBe("ok");
   } finally { await context.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 });
+
+/** @case id=log-partial-evidence,desc=`关联失败时保留已采日志和判断边界`,expect=`4 Pod and 92 events remain visible alongside the correlation failure` */
+for (const captureGap of [undefined, "Pod api-pod 只取得部分 current 日志"]) {
+  for (const mode of ["log", "collect"] as const) {
+    test(`${mode} partial summary retains counts and separates gaps (capture gap: ${!!captureGap})`, async () => {
+      const context = new CommandContext({}, undefined, { format: "summary", plugin: {
+        id: "fixture", version: "1.0.0", services: createServiceCatalog([]),
+      } });
+      const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
+      const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+      let directory: string | undefined;
+      try {
+        const gap = "worker sandbox_id:s1 查询失败：from must equal the Query identity";
+        const output: LogOutput = { namespace: "test", services: ["api", "worker"], items: [{
+          bizId: "request-a", status: CommandStatus.Partial, artifacts: [],
+          stats: { podCount: 4, scannedPodCount: 4, matchedPodCount: 4, matchedEventCount: 92,
+            previousContainerCount: 0, partialCount: captureGap ? 1 : 0, unavailableCount: 0, bytesRead: 4096, wallMs: 10 },
+          resolutionGaps: [gap], missingEvidence: [gap, ...(captureGap ? [captureGap] : [])],
+        }] };
+        const result = { status: CommandStatus.Partial, output, summary: logSummary(output), artifacts: [] };
+        if (mode === "log") {
+          await finalizeResult(context, logCommand, result, { format: "summary" });
+        } else {
+          const command = createCollectCommand(async () => result);
+          const input = { bizIds: ["request-a"], kinds: ["log" as const] };
+          await finalizeResult(context, command, await command.run(context, input), { format: "summary" }, input);
+        }
+        const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
+        expect(terminal).toContain(mode === "log" ? "采集状态：partial" : "log: partial");
+        expect(terminal).toContain("已获得匹配事件（非错误数）：92");
+        expect(terminal).toContain("扫描 Pod：4");
+        expect(terminal).toContain("worker sandbox\\_id:s1 查询失败：from must equal the Query identity");
+        expect(terminal.split("from must equal the Query identity")).toHaveLength(2);
+        expect(terminal).toContain("已获得的日志仍可用于分析");
+        expect(terminal).toContain("不能据此排除相关对象的问题");
+        if (captureGap) {
+          expect(terminal).toContain(`采集缺口：${captureGap}`);
+          expect(terminal).toContain("不能据此判断完整时间线");
+        } else {
+          expect(terminal).not.toContain("采集缺口影响");
+        }
+        directory = stderr.mock.calls.map(([line]) => String(line))
+          .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+        expect(directory).toBeDefined();
+        const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
+        expect(manifest.execution.status).toBe("partial");
+        expect(manifest.delivery.status).toBe("ok");
+        const outputPath = mode === "log" ? join(directory!, "output.json")
+          : join(directory!, manifest.children[0].manifest, "..", "output.json");
+        expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(output);
+      } finally {
+        stdout.mockRestore(); stderr.mockRestore();
+        await context.disposeClients();
+        if (directory) rmSync(directory, { recursive: true, force: true });
+      }
+    });
+  }
+}
