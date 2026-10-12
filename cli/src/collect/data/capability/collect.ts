@@ -177,6 +177,7 @@ interface QueuedIdentity {
  *
  * @spec Data Relation expansion uses a deduplicated work queue with explicit depth, identity, Fact count, and Fact byte budgets
  * @see {@link ../../../../docs/kernel.md}
+ * @see {@link ../../../../docs/commands/data-diagnosis.md#identity-关系驱动跨-service-采集}
  */
 async function collectExpansionResults(input: {
   expanders: readonly DataProvider[];
