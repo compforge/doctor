@@ -143,6 +143,7 @@ function applyBudget(
  * @spec Inspect returns ValueFact, RecordFact, or RelationFact inside a query-level result; ValueFact kinds and RecordFact keys are unique
  * @spec Core enforces the caller-owned Fact count and serialized-byte budget before Evidence composition
  * @see {@link ../../docs/kernel.md}
+ * @see {@link ../../docs/commands/data-diagnosis.md#每个-query-只贡献当前-identity-的出边}
  */
 export function normalizeServiceInspectResult(input: {
   value: unknown;

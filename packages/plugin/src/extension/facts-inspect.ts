@@ -5,7 +5,11 @@ export const FACTS_INSPECT_KIND = "facts.inspect";
 export type FactsInspectInput = readonly ServiceInspectQuery[];
 export type FactsInspectOutput = readonly ServiceInspectQueryOutcome[];
 
-/** Identity matching and Fact declarations belong to this kind, not the generic Extension protocol. */
+/**
+ * Identity matching and Fact declarations belong to this kind, not the generic Extension protocol.
+ *
+ * @see {@link ../../../../cli/docs/commands/data-diagnosis.md#identity-关系驱动跨-service-采集}
+ */
 export interface FactsInspectExtension extends Extension<FactsInspectInput, FactsInspectOutput> {
   readonly kind: typeof FACTS_INSPECT_KIND;
   readonly accepts: readonly string[];

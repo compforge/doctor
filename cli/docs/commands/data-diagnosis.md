@@ -2,6 +2,33 @@
 
 ## 理念 / 概念
 
+用户通常从一个业务 ID 开始排查，而相关记录分散在多个 Service。Data 的目标是围绕这个输入建立一份
+有来源、有范围、可复查的证据：哪些对象实际相关、各 Service 取得了什么、还缺什么，以及已有证据
+支持哪些判断。关联范围由现场证明的 Identity 关系逐步形成，Catalog 提供可参与查询的能力。
+
+```mermaid
+flowchart LR
+    I[输入业务 ID] --> Q[按 Identity 生成 Query]
+    Q --> P[Service 查询数据源]
+    P --> E[Core 校验并保存结果]
+    E -->|Relation 发现新 Identity| Q
+    E --> F[按输入投影并冻结 Evidence]
+    F --> D[Detector 判断与 Coverage]
+    D --> R[报告与原始证据索引]
+```
+
+Core 负责选择 Service、调度 Query、去重、预算和结果归属；Plugin 负责识别业务对象、访问数据源、
+解释记录与关联。一次 Query 可以使用多条 SQL 或多个 API 完成查询，但输出的 Relation 只描述当前
+Identity 的出边；后续 Identity 的查询由 Core 调度。这样业务适配能利用批量访问，整个采集的范围和
+容量仍由同一个命令管理。
+
+采集结果同时记录领域事实和获取这些事实的过程。`collected` 表示 Query 返回了可接收的证据，来源失败、
+缺失或截断仍会影响 Coverage；业务成功与否由 Detector 或后续分析依据事实判断。不同 Service 的记录
+可能取得于不同时间，报告保留来源和观察时间，让读者能识别证据覆盖与时序限制。Detector 和 Render
+消费已冻结的 Evidence，避免在解释和展示时继续查询现场，使同一份结果能够离线复查。
+
+### 查询与事实
+
 `doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
 `--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
@@ -67,7 +94,21 @@ Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schem
 只接受一个该 kind 的实现，多个实现明确报歧义。尚未迁移的 Inspect contribution 由适配入口生成同一
 Extension 视图；不能与原生 facts.inspect 重复注册。其它命令不必同时迁移。
 
-### Relation 是确定性的两阶段依赖
+### Identity 关系驱动跨 Service 采集
+
+Data 的采集依赖由能力声明和现场关系共同表达：`accepts` 声明 Service 能查询的 Identity 类型，
+`expands` 声明可能发现的目标 Identity 类型，实际返回的 `RelationFact { from, to }` 证明具体对象间的
+关联。Core 将新 Identity 交给接受其类型的 Service，调用顺序随关系展开形成，无需预先声明
+“Service2 必须等 Service1”。`provides` 声明产出的 Fact 类型，不参与查询调度。
+
+例如，Service1 接受 `biz_id` 并能扩展 `message_id`，Service2 接受 `biz_id`、`message_id` 并能扩展
+`trace_id`。输入 `biz_id:a` 时，Service1 返回 `a → message_id:b`；Service2 查询 `a` 可以正常未命中，
+返回 `collected`、未解析的 resolution 和空 Facts。Core 发现 `message_id:b` 后，再交给 Service2 查询，
+由它返回 `b → trace_id:c`。这是对新 Identity 的查询，第一次未命中不会阻止这次调用。
+
+这里表达的是查询键的发现与传递；要求某个 Service 消费另一个 Service 的完整 Fact 后才能执行，属于
+另一个层次的前置依赖，当前声明没有表达这种契约。Service 的 `dependencies` 用于引用其他 Service 的
+DataSource，`relationships` 表达 `managed-by`，两者均不决定 Data 采集顺序。
 
 所有 Relation provider 共享一个按 Identity 去重的 work queue，Data Command 取得有界闭包后才进入
 provide。这样 capability 无论以什么 Catalog 顺序注册，都能在其接受的 Identity 出现后运行。提供 Relation
@@ -80,6 +121,20 @@ RelationFact 是 capability 数据结果的一部分；resolution 中的 identif
 调度。Core 校验 ValueFact/RecordFact kind 是否由 `provides` 声明、同 kind ValueFact 是否唯一、RecordFact
 的 `recordKey` 是否唯一、RelationFact 的起点是否等于本次 Query Identity、目标 kind 是否由 `expands`
 声明，并拥有去重、查询边界和后续调度。
+
+### 每个 Query 只贡献当前 Identity 的出边
+
+Identity 由 `kind` 和 `value` 共同确定。以请求关联任务为例，输入 `biz_id:r1` 时，Plugin 可以返回
+`biz_id:r1 → request_id:r1`；Core 再查询 `request_id:r1`，由该 Query 返回
+`request_id:r1 → job_id:j1`。即使 ID 字符串相同，通用输入与具体业务身份仍是两个不同节点。
+
+Plugin 可以在一次数据访问中读到多层关联，但应将关系按当前 Query 的起点投影后返回。查询 `r1` 时
+夹带 `j1 → artifact_id:a1` 会使该 Query 的结果校验失败；把这条关系的起点改写为 `r1` 则改变了关系
+含义。保留真实端点，并由后续 Query 返回对应关系，才能让 Core 正确计算各输入的可达范围和查询预算。
+双向关系分别由两端的 Query 贡献，Core 的 Service/Identity 去重保证环不会反复触发查询。
+
+接入验证应把真实 Plugin 返回值送入 Core 的结果校验与展开入口，检查别名解析、多层关系、共享节点和
+环均能形成完整证据。只测试仓库查询或关系生成函数，无法发现 Plugin 与宿主对 Query 范围的理解差异。
 
 ### ID 是不带类型的输入，类型来自证据
 
