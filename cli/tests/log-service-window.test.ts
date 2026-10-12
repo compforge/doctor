@@ -140,6 +140,9 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       if (variant === "partial" || variant === "unavailable") {
         expect(item.missingEvidence?.length).toBeGreaterThan(0);
         expect(terminal).toContain("采集缺口");
+        expect(terminal).toContain("不能据此判断完整时间线");
+        expect(terminal).not.toContain("关联缺口影响");
+        if (variant === "unavailable") expect(terminal).not.toContain("已获得的日志仍可用于分析");
       }
       outputDir = item.artifacts[0]!.path;
       expect(requests.map(request => !!request.previous).sort()).toEqual([false, true]);
