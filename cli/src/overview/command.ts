@@ -7,6 +7,12 @@ import { sampleCommand, type SampleCliOpts } from "./index";
 
 export function registerSampleCommand(program: Command, runtime: CommandRuntime = {}): void {
   program.command("sample").description("按条件选取代表 biz-id，可选采集诊断数据；完整统计与体检使用 health")
+    .addHelpText("after", `
+分析思路：
+  Facet 表示观察维度，Entry 表示其中可采样的条目；选择条目取得代表 biz-id，再决定是否 collect。
+结果解读：
+  代表样本受查询条件和预算限制；样本数不等于总体数量，完整统计与主动体检应使用 health。
+`)
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
     .option("--service <name>", "从指定 Service 选取样本；未指定时使用产品级采样入口")
     .option("--services <names>", "比较逗号分隔的多个 Service；不能与 --service 同用")

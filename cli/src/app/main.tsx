@@ -426,7 +426,11 @@ async function showVersion(distribution: Distribution): Promise<void> {
   writeOutput(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), distribution)}\n`);
 }
 
-/** Build the CLI surface without loading a profile or contacting a target. */
+/**
+ * Build the CLI surface without loading a profile or contacting a target.
+ * @spec A Distribution description replaces the complete root description, including diagnostic guidance.
+ * @see {@link component://docs/distribution.md}
+ */
 export function createDoctorProgram(
   distribution: Distribution = {},
   host: DoctorHostOptions = {},
@@ -437,8 +441,27 @@ export function createDoctorProgram(
   program
     .name(distribution.name ?? "doctor")
     .description(distribution.description ?? [
-      "面向应用与基础设施的本地诊断工具。",
-      "Core 提供通用 Target 访问与证据编排，Plugin 提供业务目标和数据语义；默认旁路运行、证据优先。",
+      "面向应用与基础设施的本地诊断工具；默认旁路运行、证据优先。",
+      "",
+      "诊断模型：",
+      "  Core 提供通用 Target 访问与证据编排；Plugin 提供业务目标和数据语义，并声明 Service 与访问方式。",
+      "  Service 是业务诊断对象，拥有零到多个 Workload；Pod、Container、Process 提供运行态证据。",
+      "  Doctor Host 是运行 CLI 的机器，Target 是被诊断目标；访问位置会影响观测结果。",
+      "  Facts / Observations 保存事实与观测，Findings 是基于已有证据的规则判断。",
+      "",
+      "排查路径：",
+      "  系统整体异常   → health 查看统计与体检 → sample 选取代表业务 ID → collect 汇集证据",
+      "  已知异常请求   → collect 联合取证，或 trace / log / data 聚焦单个数据面",
+      "  部署与依赖异常 → inspect 查看运行态与配置 → store 检查存储 → db / s3 查询具体数据",
+      "  主动复现问题   → case / model / mcp；批量触发与取证用 eval，受控压测用 perf",
+      "  CPU / 内存 / 网络 → cpu / mem / net 采集；对象堆与网络证据用 mema / neta 离线分析",
+      "  已知错误码     → knowledge errors 查询定义；开放式问题用 chat 组织调查",
+      "",
+      "证据原则：",
+      "  先核对对象、执行位置、时间窗口和采集完整性，再区分观测事实、规则发现与待验证推断。",
+      "  空结果、采集失败、未执行和正常结果含义不同；没有发现异常只能说明本次覆盖范围。",
+      "  报告保留可复查证据；输出格式改变交付视图，具体采集范围由命令参数决定。",
+      "  主动请求与 image / debug / install 等准备动作会影响目标，执行前核对动作与授权。",
     ].join("\n"))
     .option("-V, --version", "显示发行版名称与版本（离线）")
     .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
@@ -465,7 +488,13 @@ export function createDoctorProgram(
   const catalog = new CliCommand().copyInheritedSettings(program);
 
   withReplOptions(
-    catalog.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）"),
+    catalog.command("chat").description("交互式 AI 问诊（默认本地；--server 显式连接 profile 中的 doctor-server）")
+      .addHelpText("after", `
+分析思路：
+  围绕问题选择工具并检查返回证据，使用当前 Plugin 随版本提供的业务 Skill。
+结果解读：
+  调查结论应关联实际工具结果；缺少证据的假设需要继续取证，不能当作已确认根因。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const flags = toReplFlags(opts);
@@ -522,6 +551,12 @@ export function createDoctorProgram(
   catalog
     .command("image [image]")
     .description("将 image tar 发布到 Target Registry 和/或 load 到 Doctor Host")
+    .addHelpText("after", `
+分析思路：
+  把已有镜像包交付到 Target Registry 或 Doctor Host，为后续诊断准备资源。
+结果解读：
+  上传或 load 成功只证明镜像交付；目标 Pod 能否拉取、启动并使用该镜像仍需现场验证。
+`)
     .option(
       "--tar <path>",
       "image tar 路径；可重复指定 amd64/arm64，缺省时从当前目录选择",
@@ -540,6 +575,12 @@ export function createDoctorProgram(
     .command("debug")
     .allowExcessArguments(false)
     .description("为目标 Pod 启动或复用具备 ptrace 权限的 debug 临时容器")
+    .addHelpText("after", `
+分析思路：
+  为选定 Pod 准备诊断容器和所需权限，供后续 CPU、内存或网络取证使用。
+结果解读：
+  容器与权限准备成功只说明具备取证条件；实际进程或网络问题由后续采集判断。
+`)
     .option("-p, --pod <pod>", "单个目标 Pod 名或关键词；交互终端缺省时多选")
     .option("--services <names>", "逗号分隔的 Service；为其全部 Running Pod 准备 debug container")
     .option("-c, --container <name>", "目标业务容器")
@@ -558,6 +599,12 @@ export function createDoctorProgram(
     .command("install")
     .allowExcessArguments(false)
     .description("向目标 Pod container 安装排查程序；首版支持 GDB")
+    .addHelpText("after", `
+分析思路：
+  按目标容器的 OS、架构与 kernel 选择兼容资源，并将诊断程序安装到指定容器。
+结果解读：
+  安装与兼容性结果只覆盖该目标容器；后续仍需运行相应诊断命令取得问题证据。
+`)
     .option("-p, --pod <pod>", "目标 Pod 名或关键词")
     .option("-c, --container <name>", "要安装 GDB 的目标 container")
     .option("--program <name>", "非交互调用指定要安装的程序；首版仅支持 gdb")
@@ -571,19 +618,37 @@ export function createDoctorProgram(
     });
 
   withMemOptions(
-    catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆"),
+    catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆")
+      .addHelpText("after", `
+分析思路：
+  在线 attach 选定 Python 进程并导出对象堆，回传后交给 mema 离线分析。
+结果解读：
+  采集会增加目标开销，确认 attach 与内存余量计划后执行；单次堆快照不足以证明持续泄漏。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(memCommand, opts, domainInput(opts), commandRuntime);
   });
   withMemaOptions(
-    catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件"),
+    catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件")
+      .addHelpText("after", `
+分析思路：
+  在 Doctor Host 读取已有对象堆，分析对象占用与引用关系；多个快照可用于比较变化。
+结果解读：
+  大对象或一次增长是调查线索；判断泄漏需结合采集时刻、负载和持续增长证据。
+`),
   ).action(async (inputs, opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, commandRuntime);
   });
   withCpuOptions(
-    catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）"),
+    catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）")
+      .addHelpText("after", `
+分析思路：
+  先检查容器资源、Python 进程与取证条件，再按所选模式取得线程栈证据。
+结果解读：
+  单次线程栈是时点快照；判断持续 CPU 热点或阻塞需结合多次观测、CPU 曲线与请求时延。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(cpuCommand, opts, domainInput(opts), commandRuntime);
@@ -594,7 +659,13 @@ export function createDoctorProgram(
   withCollectOptions(
     catalog.command("collect").description(
       "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
-    ),
+    )
+      .addHelpText("after", `
+分析思路：
+  按所选数据面调用 inspect / tenant / data / trace / log / metric，并汇总各自证据。
+结果解读：
+  逐项检查成功、失败和缺口，汇总完成不代表每项完整；精确控制单个数据面时运行对应命令。
+`),
   ).action(async (
     positionalBizIds,
     opts: Omit<CollectCliOpts, "bizIds" | "kinds"> & { bizId?: string[]; include?: string },
@@ -616,7 +687,12 @@ export function createDoctorProgram(
   trace/span 标准化为 Node，保留发生的事实与源 span 引用。
   Measurer 对 trace/node 计算客观 Measurement；Detector 可使用这些度量，按规则产出 Finding。
   View 按不同侧重点展示同一 trace/node 的已有数据，render 将其呈现为 text、JSON 或 HTML。
-  采集后的证据可反复分析和渲染；判断原因前先核对采集范围与完整性。
+  采集后的证据可通过 --from 离线切换视图和格式，复用已保存的分析结果。
+结果解读：
+  空结果先检查 ID 解析、时间窗口与数据源；部分采集或单 span 证据不能代表完整调用链。
+  Finding 是规则判断；调用耗时可能重叠，不能相加当成总耗时，也不能仅凭最长调用认定根因。
+下一步：
+  用 --format manifest 保存证据，再以 --from 配合 --node / --span 下钻已有内容。
 `),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
@@ -625,26 +701,52 @@ export function createDoctorProgram(
       pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
   });
   withStoreOptions(
-    catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）"),
+    catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）")
+      .addHelpText("after", `
+分析思路：
+  从 Service 提供的连接与访问上下文检查存储健康和容量，保留各后端的取证结果。
+结果解读：
+  有界扫描或抽样只覆盖实际检查范围；具体记录或对象问题可继续使用 db / s3。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(storeCommand, opts, domainInput(opts), commandRuntime);
   });
-  withS3Options(catalog.command("s3").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）"))
-    .action(async (action, path, _opts, command: CommandT) => {
-      const opts = commandOptionsWithSources(command);
-      const { s3Command } = await import("../collect/s3/command");
-      await runCommand(s3Command, opts, { ...domainInput(opts), action, path }, commandRuntime);
-    });
-  withDbOptions(catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL"))
-    .action(async (_opts, command: CommandT) => {
-      const opts = commandOptionsWithSources(command);
-      // SQL parsing belongs to db execution; help and unrelated commands do not load its grammar.
-      const { dbCommand } = await import("../collect/db/command");
-      await runCommand(dbCommand, opts, domainInput(opts), commandRuntime);
-    });
+  withS3Options(
+    catalog.command("s3").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）")
+      .addHelpText("after", `
+分析思路：
+  通过 Service 的 S3 连接列举、查看对象元数据或读取有界内容，保留对象路径与读取范围。
+结果解读：
+  列举结果和截断内容不是完整 bucket 快照；判断对象是否正确时核对路径、大小与实际读取内容。
+`),
+  ).action(async (action, path, _opts, command: CommandT) => {
+    const opts = commandOptionsWithSources(command);
+    const { s3Command } = await import("../collect/s3/command");
+    await runCommand(s3Command, opts, { ...domainInput(opts), action, path }, commandRuntime);
+  });
+  withDbOptions(
+    catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL")
+      .addHelpText("after", `
+分析思路：
+  先发现 Service 可访问的库表，再使用有界只读 SQL 验证具体数据假设。
+结果解读：
+  空结果需要核对库表、条件和访问范围；被行数或时间预算截断的结果不能代表全部数据。
+`),
+  ).action(async (_opts, command: CommandT) => {
+    const opts = commandOptionsWithSources(command);
+    // SQL parsing belongs to db execution; help and unrelated commands do not load its grammar.
+    const { dbCommand } = await import("../collect/db/command");
+    await runCommand(dbCommand, opts, domainInput(opts), commandRuntime);
+  });
   withLogOptions(
-    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace 与对象日志（只读）"),
+    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace 与对象日志（只读）")
+      .addHelpText("after", `
+分析思路：
+  按 Service 与时间窗口读取日志；有业务 ID 时关联 trace 与对象日志，保留各来源结果。
+结果解读：
+  无匹配日志不证明请求未发生；先检查窗口、目标副本、日志保留范围及读取失败或截断。
+`),
     "",
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectLogCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
@@ -652,7 +754,13 @@ export function createDoctorProgram(
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withDataOptions(
-    catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）"),
+    catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）")
+      .addHelpText("after", `
+分析思路：
+  从业务 ID 出发，沿现场证据中的 Identity 关系汇集各 Service 的关联记录。
+结果解读：
+  采集成功表示取得数据，业务是否成功仍需解释记录；核对来源、观察时间和关联范围内的缺口。
+`),
     [],
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
@@ -660,19 +768,37 @@ export function createDoctorProgram(
     await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withInspectOptions(
-    catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）"),
+    catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）")
+      .addHelpText("after", `
+分析思路：
+  按 Service 查看 Workload 运行态，并按所选范围补充部署配置与现场依赖版本。
+结果解读：
+  声明的配置和资源量不等于进程当前值或实际用量；重启、OOM 与退避状态需结合日志和时间线判断。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(inspectCommand, opts, domainInput(opts), commandRuntime);
   });
   withTenantOptions(
-    catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）"),
+    catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）")
+      .addHelpText("after", `
+分析思路：
+  以租户身份汇集 Plugin 提供的业务事实，保留各来源的配置与能力信息。
+结果解读：
+  租户可见的配置或模型目录不证明实际调用成功；模型调用用 model，单请求记录用 data / trace。
+`),
   ).action(async (opts: CollectTenantCliOptions, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
   });
   withCaseOptions(
-    catalog.command("case").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告"),
+    catalog.command("case").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
+      .addHelpText("after", `
+分析思路：
+  从 Case 目录选择请求，确认目标与执行位置后实际发送，并保留协议响应和诊断证据。
+结果解读：
+  检查请求是否执行及响应判定；一次通过只覆盖该 Case、身份和执行位置，不能代表全部业务可用。
+`),
   ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await withInteractionOptions(opts, () => runStandaloneCommand("doctor case", async () => {
@@ -719,7 +845,13 @@ export function createDoctorProgram(
     }));
   });
   withNetworkOptions(
-    catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle"),
+    catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle")
+      .addHelpText("after", `
+分析思路：
+  在所选 Service 的 Pod 上进行有界抓包，保存采集范围与 NetBundle，交给 neta 离线分析。
+结果解读：
+  未覆盖的 Pod、时段或加密流量可能留下缺口；未捕获到报文不证明调用没有发生。
+`),
   ).action(async (opts: CollectNetworkCliOpts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(netCommand, opts, domainInput(opts), commandRuntime);
@@ -727,6 +859,12 @@ export function createDoctorProgram(
   catalog
     .command("neta [input]")
     .description("纯离线分析 NetBundle，重建业务调用并生成 Findings、Coverage 与可视化报告")
+    .addHelpText("after", `
+分析思路：
+  从已有 NetBundle 重建调用与时间线，结合捕获范围给出 Findings 和 Coverage。
+结果解读：
+  结论受抓包完整性与协议可解析性限制；结合 trace / log 交叉验证，缺口需要重新采集补足。
+`)
     .option("--trace-id <ids>", "逗号分隔的一个或多个 trace ID（缺省读取 NetBundle）")
     .option("--capture-id <id>", "覆盖 NetBundle 中的染色 ID")
     .option("-o, --output <path>", "报告输出路径或前缀；生成同名 Markdown、HTML 与 JSON")
@@ -735,31 +873,61 @@ export function createDoctorProgram(
       await runStandaloneCommand("doctor neta", () => runAnalyzeNetwork(input, opts));
     });
   withMcpOptions(
-    catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML"),
+    catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML")
+      .addHelpText("after", `
+分析思路：
+  先确认配置与运行时 tool，再执行获准的 MCP 调用；有 HTTP 映射时可比较直连路径。
+结果解读：
+  tools/list 成功只证明工具发现；结合 tools/call、直连结果与日志定位失败边界。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(mcpCommand, opts, domainInput(opts), commandRuntime);
   });
   withModelOptions(
-    catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference"),
+    catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference")
+      .addHelpText("after", `
+分析思路：
+  按租户与模型身份检查 backend validation，再执行所选 Case 的真实 inference。
+结果解读：
+  validation 通过不保证推理成功；串行性能样本只反映本次请求，不能作为并发容量结论。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(modelCommand, opts, domainInput(opts), commandRuntime);
   });
   withMetricOptions(
-    catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表"),
+    catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表")
+      .addHelpText("after", `
+分析思路：
+  按 Service 声明采集和查询指标，在同一窗口内保留曲线、规则发现与覆盖缺口。
+结果解读：
+  先核对数据源、窗口和指标口径；空数据不是零值或正常，跨窗口或副本的数值不能直接归因。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(metricCommand, opts, domainInput(opts), commandRuntime);
   });
   withEvalOptions(
-    catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分"),
+    catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分")
+      .addHelpText("after", `
+分析思路：
+  从 CaseSet 选择 Case，逐例触发真实请求，并关联采集 trace、log、data。
+结果解读：
+  分别检查请求执行与证据采集状态；报告用于复查实际行为，回答质量需另行评价。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(evalCommand, opts, domainInput(opts), commandRuntime);
   });
   withPerfOptions(
-    catalog.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据"),
+    catalog.command("perf").description("发起受控业务压测，并在同一窗口交付 metric、trace 与 log 证据")
+      .addHelpText("after", `
+分析思路：
+  按所选 Case 产生受控负载，同时采集同窗口的 metric、trace 与 log 以解释性能现象。
+结果解读：
+  比较实际负载、错误率、延迟与证据覆盖；单次结果仅适用于本次目标、Case 和负载条件。
+`),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(perfCommand, opts, domainInput(opts), commandRuntime);
