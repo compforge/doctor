@@ -426,7 +426,11 @@ async function showVersion(distribution: Distribution): Promise<void> {
   writeOutput(`${formatDoctorVersion(activePlugin, getDoctorHostInfo(), distribution)}\n`);
 }
 
-/** Build the CLI surface without loading a profile or contacting a target. */
+/**
+ * Build the CLI surface without loading a profile or contacting a target.
+ * @spec A Distribution description replaces the complete root description, including diagnostic guidance.
+ * @see {@link component://docs/distribution.md}
+ */
 export function createDoctorProgram(
   distribution: Distribution = {},
   host: DoctorHostOptions = {},
@@ -436,8 +440,8 @@ export function createDoctorProgram(
   const program = new CliCommand();
   program
     .name(distribution.name ?? "doctor")
-    .description([
-      distribution.description ?? "面向应用与基础设施的本地诊断工具；默认旁路运行、证据优先。",
+    .description(distribution.description ?? [
+      "面向应用与基础设施的本地诊断工具；默认旁路运行、证据优先。",
       "",
       "诊断模型：",
       "  Core 提供通用 Target 访问与证据编排；Plugin 提供业务目标和数据语义，并声明 Service 与访问方式。",
