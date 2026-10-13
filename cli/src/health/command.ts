@@ -7,6 +7,12 @@ import { healthCommand, type HealthCliOpts } from "./index";
 
 export function registerHealthCommand(program: Command, runtime: CommandRuntime = {}): void {
   program.command("health").description("展示系统统计并执行所选 Service 的体检（非只读请求需确认），不采样或采集业务诊断数据")
+    .addHelpText("after", `
+分析思路：
+  按 Service 展示历史窗口统计，并从消费方 Workload 执行当前体检；两类结果分别保留。
+结果解读：
+  区分历史统计与本次探测，查询失败或未执行不能当作正常；定位具体请求时用 sample 再 collect。
+`)
     .option("--since <duration>", "统计时间范围：10m、1h、6h、1d、3d；非交互默认 1h")
     .option("--service <name>", "体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service")
     .option("--services <names>", "体检逗号分隔的多个 Service；不能与 --service 同用")
