@@ -610,7 +610,14 @@ export function createDoctorProgram(
     await runCommand(collectCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withTraceOptions(
-    catalog.command("trace").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻"),
+    catalog.command("trace").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻")
+      .addHelpText("after", `
+分析思路（Trace Harness）：
+  trace/span 标准化为 Node，保留发生的事实与源 span 引用。
+  Measurer 对 trace/node 计算客观 Measurement；Detector 可使用这些度量，按规则产出 Finding。
+  View 按不同侧重点展示同一 trace/node 的已有数据，render 将其呈现为 text、JSON 或 HTML。
+  采集后的证据可反复分析和渲染；判断原因前先核对采集范围与完整性。
+`),
   ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectTraceCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
