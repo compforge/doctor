@@ -2,9 +2,9 @@ import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
 import type { PodChoice } from "../../infra/k8s/pod-selection";
 import type { DebugCliOpts } from "./model";
 
-export function parseDebugServices(raw: string): string[] {
-  const services = [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))];
-  if (!services.length) throw new Error("--services 未解析出任何服务");
+export function parseDebugServices(raw: readonly string[]): string[] {
+  const services = [...new Set(raw.map((item) => item.trim()).filter(Boolean))];
+  if (!services.length) throw new Error("--service 未解析出任何服务");
   return services;
 }
 

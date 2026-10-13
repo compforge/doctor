@@ -22,13 +22,13 @@
 6. HTML 和 Markdown 分别展示 Workload 声明、Pod、Toolchain、应用依赖与 Service 配置；Workload 说明和 Toolchain 明确标为声明，依赖与 runtime version 明确标为本次现场观测。
 7. 报告状态按本次选择的范围计算；只采集 Pod 运行态不因未开启可选项而变为 partial。已选择的目标采集不足仍保留真实缺口。完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
 
-`-y/--yes` 禁止全部交互，包括 Service 选择与可选采集询问；缺少 `--services` 时在 Plugin
+`-y/--yes` 禁止全部交互，包括 Service 选择与可选采集询问；缺少 `--service` 时在 Plugin
 加载和环境连接前报参数错误。`-y` 不开启可选采集，需显式传 `--deployment-config` 或
 `--dependencies`；对应 `--no-*` 表示明确关闭，即使恢复交互也不再询问该项。
 
 ## 终端运行摘要
 
-使用 `doctor inspect --services api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的
+使用 `doctor inspect --service api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的
 Evidence 目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用相同的采集范围。
 
 Pod 总数按环境、namespace 和 UID 去重，异常明细保留 Service/Workload 关联。Ready 数量只表示

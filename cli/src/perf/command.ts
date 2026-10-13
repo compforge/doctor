@@ -1,3 +1,4 @@
+import { forServices } from "../command/services";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { logCommand } from "../collect/log/command";
@@ -12,8 +13,8 @@ import { runPerf } from "./index";
 import type { PerfCliOpts, PerfResult } from "./model";
 import { writePerfReport } from "./report";
 
-export type PerfInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
-export const perfCommand = defineCommand<PerfInput, PerfResult>({
+type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
+const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   name: "doctor perf",
   serialize: async (context, result) => {
     const children = [];
@@ -51,3 +52,5 @@ export const perfCommand = defineCommand<PerfInput, PerfResult>({
   },
   run: (context, input) => runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
 });
+
+export const perfCommand = forServices(perfServiceCommand);

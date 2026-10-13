@@ -15,7 +15,7 @@ import type {
 } from "../protocol";
 
 export interface CollectMetricCliOpts {
-  services?: string;
+  services?: readonly string[];
   watch?: string;
   interval?: string;
   prometheus?: string;

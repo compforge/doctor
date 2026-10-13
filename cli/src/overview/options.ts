@@ -15,14 +15,8 @@ export function overviewCollectConcurrency(value?: number, configured?: number):
   return count;
 }
 
-/** Singular selection is explicit; the existing plural option remains available for comparisons. */
-export function overviewServiceNames(opts: { service?: string; services?: string }): string[] | undefined {
-  if (opts.service !== undefined && opts.services !== undefined) throw new Error("--service 与 --services 不能同时使用");
-  const value = opts.service ?? opts.services;
-  if (value === undefined) return undefined;
-  const names = value.split(",").map(name => name.trim());
-  if (names.some(name => !name) || (opts.service !== undefined && names.length !== 1)) {
-    throw new Error("--service 需要一个 Service；多个 Service 请使用 --services，名称不能为空");
-  }
-  return names;
+/** Selection cardinality does not change the input model. */
+export function overviewServiceNames(opts: { services?: readonly string[] }): string[] | undefined {
+  if (opts.services?.some(name => !name.trim()) || opts.services?.length === 0) throw new Error("--service 不能为空");
+  return opts.services === undefined ? undefined : [...new Set(opts.services.map(name => name.trim()))];
 }

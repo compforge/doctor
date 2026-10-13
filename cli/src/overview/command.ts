@@ -1,3 +1,4 @@
+import { serviceOption } from "../app/service-option";
 import type { Command } from "commander";
 import { commandOptionsWithSources } from "../app/option-sources";
 import { runCommand, type CommandRuntime } from "../app/command";
@@ -14,8 +15,7 @@ export function registerSampleCommand(program: Command, runtime: CommandRuntime 
   代表样本受查询条件和预算限制；样本数不等于总体数量，完整统计与主动体检应使用 health。
 `)
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
-    .option("--service <name>", "从指定 Service 选取样本；未指定时使用产品级采样入口")
-    .option("--services <names>", "比较逗号分隔的多个 Service；不能与 --service 同用")
+    .addOption(serviceOption("从指定 Service 选取样本；未指定时使用产品级采样入口"))
     .option("--tenant-id <id>", "只查看该租户")
     .option("--facet <id>", "选择 Facet 并查询代表对象；本身不触发采集")
     .option("--sample-count <number>", "代表请求的总采样上限（默认 5）", Number)

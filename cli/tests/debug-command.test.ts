@@ -276,7 +276,7 @@ test("缺少 debug environment 时可把既有 Service 或 Pod 选择渲染为 d
     namespace: "default",
     services: ["frontend", "planner"],
   })).toBe(
-    "mono-doctor doctor debug --profile demo -n default --services frontend,planner",
+    "mono-doctor doctor debug --profile demo -n default --service frontend --service planner",
   );
   expect(formatDoctorDebugCommand({
     profileName: "demo profile",

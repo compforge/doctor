@@ -21,7 +21,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 
 export interface CollectInspectCliOpts extends TimeWindowOptions {
   namespace?: string;
-  services?: string;
+  services?: readonly string[];
   deploymentConfig?: boolean;
   dependencies?: boolean;
   kubeconfig?: string;

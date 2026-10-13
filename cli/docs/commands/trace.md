@@ -4,6 +4,10 @@
 原始 spans、Node、Measurements、Findings、AgentRun 和 HTML 使用同一份采集结果。
 业务语义和 AgentRun 提取由 Plugin 贡献，Core 不内置业务节点规则。
 
+后端优先由 Plugin 的 trace 数据源配置定位；临时直连使用 `--endpoint <url>`（或
+`DOCTOR_OPENSEARCH_URL`）。未配置数据源时仍可自动发现 OpenSearch。`trace` 不再提供
+覆盖后端 Kubernetes Service 的 `--service` 参数。
+
 ## 查看对象与格式
 
 | 对象 | 参数 | 内容 |

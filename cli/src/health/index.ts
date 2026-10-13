@@ -22,8 +22,7 @@ import { buildHealthHtml, printHealth, writeHealthEvidence } from "./report";
 
 export interface HealthCliOpts extends KubernetesCommandInput {
   since?: string;
-  service?: string;
-  services?: string;
+  services?: readonly string[];
   tenantId?: string;
   userId?: string;
   output?: string;

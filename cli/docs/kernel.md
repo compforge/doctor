@@ -28,6 +28,14 @@ CLI composition root 接收可选的 `Distribution`，再构造完整 Commander 
 Kubernetes 连接参数在根命令统一声明，通过 Commander 全局选项传入 CommandContext；子命令不重复
 声明，不借进程环境变量传播目标。参数解析和 Help 构造不触发环境访问。
 
+### Service 选择
+
+业务 Service 选择统一使用可重复的 `-s, --service <name>`，例如 `-s api -s worker`。
+Command 输入使用 `services: string[]`，一个 Service 也是长度为 1 的数组；不使用逗号字符串或
+另设 `--services`。省略选择沿用各命令的默认范围，显式选择按 Catalog 解析别名并去重。
+原本逐目标执行的 DB、S3、Store、Eval、Perf 复用 Command 准备、执行和结果组合协议逐服务运行；
+每个 Service 保留独立结果和证据，失败不丢弃其它服务结果，取消停止后续执行。
+
 ### 全局配置优先级
 
 所有 Command 对同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。

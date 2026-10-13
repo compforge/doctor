@@ -30,7 +30,7 @@ const service = (name: string, ext: FactsInspectExtension): ServiceDefinition =>
   extensions: [...[ext]]
 });
 const plugin = (services: ServiceDefinition[]): PluginDefinition => ({ id: "extensions", version: "1", services: createServiceCatalog(services) });
-const args = { bizIds: ["a", "b"], namespace: "test", services: "records", format: "json" };
+const args = { bizIds: ["a", "b"], namespace: "test", services: ["records"], format: "json" };
 function executor(events: string[], allowed = true): Executor {
   return {
     run: async command => {

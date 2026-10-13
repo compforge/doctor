@@ -90,7 +90,7 @@ test("noninteractive command runs all supported Services once, or only explicitl
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
-        const result = await healthCommand.run(context, { since: "1h", service, yes: true });
+        const result = await healthCommand.run(context, { since: "1h", services: service === undefined ? undefined : [service], yes: true });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(calls).toEqual(service ? ["worker"] : ["api", "worker"]);
         expect(result.output?.providers.map(provider => provider.name)).toEqual(calls);

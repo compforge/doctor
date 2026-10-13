@@ -158,7 +158,7 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
 
     const context = new CommandContext({});
     context.artifacts.add({ command: "eval", path: artifact.path });
-    expect(await finalizeResult(context, evalCommand, { status: CommandStatus.Ok, output: run, artifacts: context.artifacts.list() },
+    expect(await finalizeResult(context, evalCommand, { status: CommandStatus.Ok, output: { services: [{ service: run.service, result: { status: CommandStatus.Ok, output: run, artifacts: context.artifacts.list() } }] }, artifacts: context.artifacts.list() },
       { format: "bundle", output: archive })).toBe(0);
     expect(existsSync(archive)).toBe(true);
     const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();

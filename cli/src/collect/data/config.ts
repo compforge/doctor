@@ -75,13 +75,12 @@ export function dataServicesForBizQuery(catalog: ServiceCatalog): string[] {
     .filter((service) => selected.has(service));
 }
 
-export function parseDataServices(raw: string | undefined, catalog: ServiceCatalog): string[] {
-  const values = (raw ?? dataServicesForBizQuery(catalog).join(","))
-    .split(",")
+export function parseDataServices(raw: readonly string[] | undefined, catalog: ServiceCatalog): string[] {
+  const values = (raw ?? dataServicesForBizQuery(catalog))
     .map((item) => item.trim())
     .filter(Boolean);
   const services = [...new Set(values)];
-  if (!services.length) throw new Error("--services 未解析出任何 Service");
+  if (!services.length) throw new Error("--service 未解析出任何 Service");
   const unsupported = services.filter((service) => !findDataProvider(catalog, service));
   if (unsupported.length) {
     throw new Error(`Doctor 未注册以下 Service 的 facts.inspect Extension：${unsupported.join(", ")}`);

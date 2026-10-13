@@ -48,7 +48,7 @@ for (const variant of ["collected", "partial", "failed"] as const) {
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     let evidenceDir: string | undefined;
     try {
-      const input = { bizIds: ["a", "b"], services: "api", sinceTime: "2026-09-16T01:00:00Z" };
+      const input = { bizIds: ["a", "b"], services: ["api"], sinceTime: "2026-09-16T01:00:00Z" };
       const result = await logCommand.run(context, input);
       expect(result.status).toBe(variant === "failed" ? CommandStatus.Failed : variant === "partial" ? CommandStatus.Partial : CommandStatus.Ok);
       expect(result.output?.items.map(item => item.status)).toEqual(variant === "failed" ? [CommandStatus.Failed, CommandStatus.Failed] : variant === "partial" ? [CommandStatus.Partial, CommandStatus.Ok] : [CommandStatus.Ok, CommandStatus.Ok]);

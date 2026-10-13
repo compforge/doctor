@@ -45,7 +45,7 @@ test("DB rejects summary output paths before environment access", async () => {
   const ctx = context({ format: "summary", output: "report.md" });
   const environment = spyOn(ctx, "ensureEnvironment").mockResolvedValue();
   try {
-    const outcome = await dbCommand.run(ctx, { service: "api", execute: "SELECT 1", interactive: false });
+    const outcome = await dbCommand.run(ctx, { services: ["api"], execute: "SELECT 1", interactive: false });
     expect(outcome.status).toBe(CommandStatus.Failed);
     expect(outcome).toMatchObject({ reason: expect.stringContaining("不支持 --output") });
     expect(environment).not.toHaveBeenCalled();
@@ -78,7 +78,7 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
     const render = spyOn(dbCommand, "render");
     const failed = ["query-failure", "ambiguous", "discovery-failure"].includes(scenario);
     const partial = scenario === "rows" || scenario === "bytes";
-    const input: DbInput = { service: "api", database: "app", interactive: false,
+    const input: Omit<DbInput, "service"> & { services: string[] } = { services: ["api"], database: "app", interactive: false,
       ...(scenario === "create-table" ? { table: "messages", showCreateTable: true }
         : scenario === "tables" ? { showTables: true } : scenario === "databases" ? { showDatabases: true }
           : { execute: "SELECT id, content FROM messages" }),

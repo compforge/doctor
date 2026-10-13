@@ -26,8 +26,8 @@ const catalog = createServiceCatalog([service]);
 
 for (const [name, parse] of Object.entries({ inspect: parseInspectServices, data: parseDataServices, log: resolveLogServices, metric: parseMetricServices })) {
   test(`${name} canonicalizes aliases and schedules a Service only once`, () => {
-    expect(parse("api,api-server,api", catalog)).toEqual(["api-server"]);
-    expect(() => parse("missing", catalog)).toThrow();
+    expect(parse(["api", "api-server", "api"], catalog)).toEqual(["api-server"]);
+    expect(() => parse(["missing"], catalog)).toThrow();
   });
 }
 
@@ -36,7 +36,7 @@ test("alias resolution retains contribution checks and self-description", () => 
   const description = describeService(service);
   expect(description.aliases).toEqual(["api"]);
   expect(formatServiceDescription(description)).toContain("Aliases：api");
-  expect(() => parseDataServices("api", createServiceCatalog([{ ...service, extensions: undefined }]))).toThrow("facts.inspect Extension");
+  expect(() => parseDataServices(["api"], createServiceCatalog([{ ...service, extensions: undefined }]))).toThrow("facts.inspect Extension");
 });
 
 test("runtime Plugin loading validates aliases and reconstructs the alias-aware Catalog", () => {

@@ -9,8 +9,8 @@ capability 时，CLI 会在访问环境前说明具体缺口。
 `--kubeconfig` 与 `--context` 是全局选项，根 Help 和子命令 Help 都会展示。参数可放在子命令前后：
 
 ```bash
-doctor --kubeconfig /path/to/config --context staging inspect --services api -n app
-doctor inspect --kubeconfig /path/to/config --context staging --services api -n app
+doctor --kubeconfig /path/to/config --context staging inspect --service api -n app
+doctor inspect --kubeconfig /path/to/config --context staging --service api -n app
 ```
 
 显式 `--kubeconfig` 优先于 profile 的 `kube.kubeconfig_path`；同一选项重复传入时最后一个生效。
@@ -20,7 +20,7 @@ doctor inspect --kubeconfig /path/to/config --context staging --services api -n 
 `-y/--yes` 是全局参数：不询问，使用已解析的参数与默认值，预先批准已选操作；
 缺少必要信息时直接报错（参数错误退出码 2），不会自动选择不明确的目标。
 默认 Doctor 保留交互补参；Distribution 可设置 `optionDefaults.yes = true`，显式
-`--no-yes` 可覆盖。`inspect -y --services api` 默认只采集基础信息，可选配置与依赖分别用
+`--no-yes` 可覆盖。`inspect -y --service api` 默认只采集基础信息，可选配置与依赖分别用
 `--deployment-config` / `--dependencies` 开启，或用对应 `--no-*` 显式关闭。
 
 ## 本地构建
@@ -74,14 +74,16 @@ make -C ../toolkit build-all
 ## 命令
 
 用 `doctor plugin` 离线查看当前生效的 Plugin、版本、加载来源及其声明的 Service。
-`doctor plugin --format json` 返回 `{ "plugins": [...] }`，每个 Service 包含 `name`、
-`capabilities` 和 `contributions` 名称数组，以及可选说明和 `details` 诊断声明。
-用 `doctor plugin --service <name>` 查看一个逻辑 Service 的输入 ID、可能产出、限制、Workload 与依赖；
-加 `-f json` 可供 Agent 读取同一份结构化详情。例如提取可传给 `inspect --services` 的名称：
+`doctor plugin --format json` 返回 `{ "plugins": [...] }`，包含产品说明、concepts、workflows，
+以及由 `name`、`aliases` 和可选简短介绍组成的服务索引。
+用 `doctor plugin --service <name>` 查看该逻辑 Service 的知识、输入 ID、可能产出、限制、Workload 与依赖；
+加 `-f json` 可供 Agent 读取同一份结构化详情。例如提取可传给 `inspect --service` 的名称：
 
 ```bash
 doctor plugin --format json | jq -r '.plugins[].services[].name'
 ```
+
+所有 Service 选择参数统一为可重复的 `-s/--service`，例如 `doctor plugin -s api -s worker`；内部以数组处理。
 
 入口注入的 Plugin 优先于本机激活版本；没有生效 Plugin 时列表为空。输出是 Catalog 声明，
 不表示目标环境中的服务已部署、健康或可达，也不表示每个 Service 支持全部采集命令。

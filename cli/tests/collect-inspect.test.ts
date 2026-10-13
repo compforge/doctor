@@ -548,7 +548,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const completeOutput = join(dir, "complete.md");
     expect(await runInspectWithDelivery({
       namespace: "demo",
-      services: "example-api",
+      services: ["example-api"],
       deploymentConfig: true,
       config: configPath,
       format: "md",
@@ -591,7 +591,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const defaultOutput = join(dir, "default.tar.gz");
     expect(await runInspectWithDelivery({
       namespace: "demo",
-      services: "example-api",
+      services: ["example-api"],
       deploymentConfig: true,
       config: configPath,
       output: defaultOutput,
@@ -604,7 +604,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const partialOutput = join(dir, "partial.md");
     expect(await runInspectWithDelivery({
       namespace: "demo",
-      services: "example-api",
+      services: ["example-api"],
       config: configPath,
       format: "md",
       output: partialOutput,
@@ -622,7 +622,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const dependenciesOutput = join(dir, "dependencies.md");
     expect(await runInspectWithDelivery({
       namespace: "demo",
-      services: "example-api",
+      services: ["example-api"],
       dependencies: true,
       config: configPath,
       format: "md",
@@ -654,7 +654,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const commandsBeforeUnavailable = dependencyCommands.length;
     expect(await runInspectWithDelivery({
       namespace: "demo",
-      services: "example-api",
+      services: ["example-api"],
       dependencies: true,
       config: configPath,
       format: "md",

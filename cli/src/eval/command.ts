@@ -1,3 +1,4 @@
+import { forServices } from "../command/services";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { dataCommand } from "../collect/data/command";
@@ -13,8 +14,8 @@ import { runEval } from "./index";
 import type { EvalCliOpts, EvalRun } from "./model";
 import { writeEvalReport } from "./output";
 
-export type EvalInput = CommandInput & Omit<EvalCliOpts, CommandHostOption>;
-export const evalCommand = defineCommand<EvalInput, EvalRun>({
+type EvalServiceInput = CommandInput & Omit<EvalCliOpts, CommandHostOption>;
+const evalServiceCommand = defineCommand<EvalServiceInput, EvalRun>({
   name: "doctor eval",
   reportName: (_input, result, now) => evalRunName(result.output ? new Date(result.output.startedAt) : now),
   serialize: async (context, result) => {
@@ -43,3 +44,5 @@ export const evalCommand = defineCommand<EvalInput, EvalRun>({
   },
   run: (context, input) => runEval({ ...input, ...commandOptions(context) }, context.plugin, context),
 });
+
+export const evalCommand = forServices(evalServiceCommand);

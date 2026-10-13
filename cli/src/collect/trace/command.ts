@@ -70,7 +70,7 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     if (input.traceFile && input.span) throw new CommandInputError("--trace-file 不能与 --span 同时使用；导入后用 --from 下钻");
     // Global Kubernetes scope may come from Distribution defaults; offline reads never use it.
     if ((input.from || input.traceFile) && [input.endpoint, input.host, input.index, input.indexDate, input.username,
-      input.password, input.service].some(value => value !== undefined)) {
+      input.password].some(value => value !== undefined)) {
       throw new CommandInputError("本地输入是纯离线模式，不能同时指定在线查询参数");
     }
     if (input.pageSize !== undefined && (!Number.isInteger(input.pageSize) || input.pageSize <= 0)) {

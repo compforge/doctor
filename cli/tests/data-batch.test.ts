@@ -46,7 +46,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"], ["partial"]]) test
   };
   const context = new CommandContext({});
   try {
-    const prepared = await prepareDataCommand({ bizIds: ids, services: "records", namespace: "test", format: "json", sinceTime: "2026-10-10T09:00:00Z", untilTime: "2026-10-10T10:00:00Z" },
+    const prepared = await prepareDataCommand({ bizIds: ids, services: ["records"], namespace: "test", format: "json", sinceTime: "2026-10-10T09:00:00Z", untilTime: "2026-10-10T10:00:00Z" },
       plugin.services, context, { run: async () => { throw new Error("unexpected access"); }, exec: async () => { throw new Error("unexpected access"); } });
     expect(prepared).toBeDefined();
     const result = await runCollectData(prepared!, plugin, { records: { signal: new AbortController().signal } as PluginContext });

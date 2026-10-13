@@ -31,7 +31,7 @@ describe("metric Store observability", () => {
       })]
     }]);
     await expect(resolveMetricConfig({
-      services: "app",
+      services: ["app"],
       prometheus: "http://prometheus.example",
       format: "bundle",
       output: "report.html",
@@ -210,7 +210,7 @@ describe("metric Store observability", () => {
       const config = await resolveMetricConfig({
         config: configPath,
         profile: "prometheus-only",
-        services: "app",
+        services: ["app"],
       }, services, commandContext, false);
       expect(config?.storeSupplementUnavailableReason).toContain("KUBECONFIG 包含不存在或不可读取的 kubeconfig");
       const preparation = await prepareMetricSource(config!, plugin, commandContext);

@@ -420,7 +420,7 @@ describe("command help", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor inspect [options]");
     expect(result.stdout).toContain("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）");
-    expect(result.stdout).toContain("--services <names>");
+    expect(result.stdout).toContain("-s, --service <name>");
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
     expect(result.stdout).not.toContain("--tenant-id <id>");
@@ -494,7 +494,7 @@ describe("command help", () => {
     expect(net.exitCode).toBe(0);
     expect(net.stdout).toContain("--file <path>");
     expect(net.stdout).toContain("守候模式");
-    expect(net.stdout).toContain("--services <names>");
+    expect(net.stdout).toContain("-s, --service <name>");
     expect(net.stdout).toContain("--max-pcap-size <mib>");
     expect(net.stdout).toContain("--max-response-size <mib>");
     expect(net.stdout).toContain("--cleanup-remote");
@@ -582,7 +582,7 @@ describe("command help", () => {
     expect(debug.stdout).toContain("Usage: doctor debug [options]");
     expect(debug.stdout).toContain("--image <image>");
     expect(debug.stdout).not.toContain("--tar <path>");
-    expect(debug.stdout).toContain("--services <names>");
+    expect(debug.stdout).toContain("-s, --service <name>");
     expect(debug.stdout).not.toContain("GDB 安装");
     expect(debug.stdout).not.toContain("--debug-container <name>");
   });

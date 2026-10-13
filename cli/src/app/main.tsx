@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { serviceOption } from "./service-option";
 import { isRemoteChat } from "./config/state";
 import { withLogger } from "../terminal/log";
 import { commandOptionsWithSources } from "./option-sources";
@@ -171,7 +172,6 @@ function withTraceOptions(cmd: CommandT): CommandT {
     .option("--node <node-id>", "离线查看 node 及其关联 spans（需要 --from）")
     .addOption(new Option("--view <view>", "trace: default/agent；node: default/measurements/timeline")
       .choices(["default", "agent", "measurements", "timeline"]))
-    .option("--service <name>", "OpenSearch backend service 覆盖值")
     .option("--endpoint <url>", "Doctor Host 直连 OpenSearch 的地址；缺省也读 DOCTOR_OPENSEARCH_URL")
     .option("--host <url>", "--endpoint 的兼容别名（已弃用）")
     .option("--index <expr>", "索引表达式（默认 jaeger-span-*）")
@@ -187,7 +187,7 @@ function withTraceOptions(cmd: CommandT): CommandT {
 function withStoreOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--type <types>", "逗号分隔的 Store 类型：db、vdb、s3、redis；交互终端缺省时多选")
-    .option("--service <name>", "提供 Store 配置的业务 Service；缺省时从 Catalog capability 选择")
+    .addOption(serviceOption("提供 Store 配置的业务 Service；缺省时从 Catalog capability 选择"))
     .option("--store <id>", "Service 声明多个同类 Store 时指定 capability ID")
     .option("-p, --pod <pod>", "读取 Store 运行时配置的 Service Pod")
     .option("-c, --container <name>", "多容器 Pod 中读取配置的 Container")
@@ -212,10 +212,7 @@ function withStoreOptions(cmd: CommandT): CommandT {
 function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
   const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
   return withBizIdInputs(cmd, "可选业务 ID；提供时解析 trace 或已声明的关联对象，省略时按 Service / 时间范围采集；可重复传入")
-    .option(
-      "--services <names>",
-      `逗号分隔的 Kubernetes Service；缺省时交互多选，非交互默认 ${defaultDescription}`,
-    )
+    .addOption(serviceOption(`Kubernetes Service；缺省时交互多选，非交互默认 ${defaultDescription}`))
     .option("--since <duration>", "kubectl 日志回看窗口（缺省时优先从 UUIDv7 ID 推导，否则为 6h）")
     .option("--since-time <timestamp>", "从指定时间开始，优先于 --since")
     .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
@@ -231,10 +228,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
     ? defaultServiceNames.join(",")
     : "当前 Plugin 中提供 Inspect contribution 的 Service";
   return withBizIdInputs(cmd, "需要汇集关联数据的业务 ID；可重复传入")
-    .option(
-      "--services <names>",
-      `逗号分隔、提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`,
-    )
+    .addOption(serviceOption(`提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`))
     .option("--since <duration>", "事件回看窗口，例如 30m、2h")
     .option("--since-time <timestamp>", "事件起点（RFC3339；优先于 --since）")
     .option("--until-time <timestamp>", "事件终点（RFC3339，包含边界；指定窗口时缺省为命令开始时刻）")
@@ -268,7 +262,7 @@ function withCollectOptions(cmd: CommandT): CommandT {
 
 function withInspectOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--services <names>", "逗号分隔的 Kubernetes Service；缺省时交互多选，非交互必须指定")
+    .addOption(serviceOption("Kubernetes Service；缺省时交互多选，非交互必须指定"))
     .option("--deployment-config", "采集 Deployment Env/ConfigMap；交互模式未指定时询问，-y 默认不采集")
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
     .option("--dependencies", "进入业务 Container 采集应用依赖；交互模式未指定时询问，-y 默认不采集")
@@ -316,7 +310,7 @@ function withCaseOptions(cmd: CommandT): CommandT {
 function withNetworkOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--file <path>", "doctor-http/v1 YAML 场景文件；选择后进入跟踪模式，不选择则进入守候模式")
-    .option("--services <names>", "逗号分隔的 Kubernetes Service；交互终端缺省时多选，非交互必须指定")
+    .addOption(serviceOption("Kubernetes Service；交互终端缺省时多选，非交互必须指定"))
     .option("--timeout <seconds>", "跟踪请求或守候窗口的最长时间", String(NETWORK_DEFAULTS.timeoutSeconds))
     .option("--drain <seconds>", "请求结束后继续抓包的时间", String(NETWORK_DEFAULTS.drainSeconds))
     .option("--max-pcap-size <mib>", "每个 Pod 的 PCAP 最大容量", String(NETWORK_DEFAULTS.maxPcapMiB))
@@ -376,7 +370,7 @@ function withModelOptions(cmd: CommandT): CommandT {
 
 function withMetricOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--services <names>", "逗号分隔的 metric provider；缺省时交互多选，非交互使用全部已注册 Service")
+    .addOption(serviceOption("metric provider；缺省时交互多选，非交互使用全部已注册 Service"))
     .option("--watch <duration>", "采集窗口：0、1m、2m、5m、10m 或 until-interrupt；非交互默认 0")
     .option("--interval <duration>", "内嵌 Prombed 抓取间隔（500ms..60s）", "5s")
     .option("--prometheus <url>", "Prometheus 地址；优先于 profile.prometheus.url")
@@ -390,7 +384,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
-    .option("--service <name>", "提供 perf capability 的 Service；仅一个 provider 时自动选择")
+    .addOption(serviceOption("提供 perf capability 的 Service；仅一个 provider 时自动选择"))
     .option("--scenario <id>", "Plugin 声明的压测观测配置；默认第一个")
     .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
     .option("--ramp <seconds>", "每档升压时间（秒）", "10")
@@ -410,7 +404,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
 
 function withEvalOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--service <name>", "提供 case capability 的 Service；仅一个 provider 时自动选择")
+    .addOption(serviceOption("提供 case capability 的 Service；仅一个 provider 时自动选择"))
     .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要执行的 canonical CaseSet；仅一个 CaseSet 时自动选择")
     .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
@@ -586,7 +580,7 @@ export function createDoctorProgram(
   容器与权限准备成功只说明具备取证条件；实际进程或网络问题由后续采集判断。
 `)
     .option("-p, --pod <pod>", "单个目标 Pod 名或关键词；交互终端缺省时多选")
-    .option("--services <names>", "逗号分隔的 Service；为其全部 Running Pod 准备 debug container")
+    .addOption(serviceOption("Service；为其全部 Running Pod 准备 debug container"))
     .option("-c, --container <name>", "目标业务容器")
     .option("--image <image>", "已发布且集群可拉取的 debug image")
     .option(

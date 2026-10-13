@@ -29,7 +29,7 @@ Debug Environment Fact 与 Preparation，不依赖具体准备路线。
    所需能力，不把 ptrace-only container 误报为完整工具环境。
 
 Network 同样只消费已就绪 Fact：debug container 启动后不自动抓包；`doctor net` 通过镜像内的抓包控制器显式创建
-有超时和容量边界的 session，停止并回传完成后再按用户选择清理远端 artifact。`doctor debug --services`
+有超时和容量边界的 session，停止并回传完成后再按用户选择清理远端 artifact。`doctor debug --service`
 只是单 Pod 准备流程的批量入口，仍不拥有任何抓包 session。
 
 ## 关键设计

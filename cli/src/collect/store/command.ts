@@ -1,3 +1,4 @@
+import { forServices } from "../../command/services";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { defineCommand, type CommandInput } from "../../command";
@@ -8,9 +9,9 @@ import { composeReports } from "../../report/model";
 import type { HtmlReportOptions } from "../output/html";
 import { runCollectStore } from "./index";
 
-export type StoreInput = CommandInput & Omit<Parameters<typeof runCollectStore>[0], CommandHostOption>;
+type StoreServiceInput = CommandInput & Omit<Parameters<typeof runCollectStore>[0], CommandHostOption>;
 
-export const storeCommand = defineCommand<StoreInput, void>({
+const storeServiceCommand = defineCommand<StoreServiceInput, void>({
   serialize: serializeEvidenceResult,
   name: "doctor store",
   render: async (context, result) => composeReports("doctor store", await Promise.all(
@@ -27,3 +28,5 @@ export const storeCommand = defineCommand<StoreInput, void>({
     { ...input, ...commandOptions(context) }, context.plugin, context,
   ),
 });
+
+export const storeCommand = forServices(storeServiceCommand);

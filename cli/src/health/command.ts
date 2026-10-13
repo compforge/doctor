@@ -1,3 +1,4 @@
+import { serviceOption } from "../app/service-option";
 import type { Command } from "commander";
 import { commandOptionsWithSources } from "../app/option-sources";
 import { runCommand, type CommandRuntime } from "../app/command";
@@ -14,8 +15,7 @@ export function registerHealthCommand(program: Command, runtime: CommandRuntime 
   区分历史统计与本次探测，查询失败或未执行不能当作正常；定位具体请求时用 sample 再 collect。
 `)
     .option("--since <duration>", "统计时间范围：10m、1h、6h、1d、3d；非交互默认 1h")
-    .option("--service <name>", "体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service")
-    .option("--services <names>", "体检逗号分隔的多个 Service；不能与 --service 同用")
+    .addOption(serviceOption("体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service"))
     .option("--tenant-id <id>", "只查看该租户，并用于 Case 请求身份")
     .option("--user-id <id>", "Case 请求使用的真实用户；未指定时读取 Plugin 配置或交互选择")
     .option("--profile <name>", "使用指定 profile")

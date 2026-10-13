@@ -257,7 +257,7 @@ export function renderLogResult(
     "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
   );
   if (stats.podCount === 0) {
-    lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --services。");
+    lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --service。");
   } else if (stats.matchedPodCount > 0 && stats.matchedEventCount === 0) {
     lines.push("", `> 找到${config.bizId === undefined ? "窗口内" : "关联"}日志，但没有日志满足错误/内容筛选条件。`);
   } else if (stats.matchedEventCount === 0) {

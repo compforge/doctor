@@ -147,7 +147,7 @@ test("command preserves bounded results, status and sanitized target in Evidence
   });
   const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
   try {
-    const outcome = await dbCommand.run(context, { service: "chat", table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
+    const outcome = await dbCommand.run(context, { services: ["chat"], table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
     expect(outcome.status).toBe(CommandStatus.Partial);
     expect(calls).toBe(2);
     const directory = outcome.artifacts[0]!.path; directories.push(directory);
@@ -182,7 +182,7 @@ test("database discovery preserves source descriptions in report, manifest and s
   });
   const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
   try {
-    const outcome = await dbCommand.run(context, { service: "api", showDatabases: true, interactive: false });
+    const outcome = await dbCommand.run(context, { services: ["api"], showDatabases: true, interactive: false });
     expect(outcome.status).toBe(CommandStatus.Partial);
     const directory = outcome.artifacts[0]!.path; directories.push(directory);
     const summary = readFileSync(join(directory, "summary.md"), "utf8");
@@ -281,7 +281,7 @@ test("command merges target evidence and executes user SQL once without replay o
     } });
     const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();
     try {
-      const outcome = await dbCommand.run(context, { service: "api", table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
+      const outcome = await dbCommand.run(context, { services: ["api"], table: "app.messages", execute: "SELECT id FROM messages", interactive: false });
       expect(outcome.status).toBe(failQuery ? CommandStatus.Failed : CommandStatus.Ok);
       expect(sqlCalls).toEqual(["primary"]);
       const directory = outcome.artifacts[0]!.path; directories.push(directory);

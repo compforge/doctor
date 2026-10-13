@@ -73,7 +73,7 @@ async function runDebugServices(
   opts: DebugCliOpts,
   commandContext: CommandContext,
 ): Promise<number> {
-  if (opts.pod) throw new Error("--services 与 --pod 不能同时使用");
+  if (opts.pod) throw new Error("--service 与 --pod 不能同时使用");
   const config = await resolveKubernetesCommandConfig(
     opts,
     undefined,
@@ -83,7 +83,7 @@ async function runDebugServices(
   const executor = createKubernetesExecutor(config);
   const access = commandContext.kubernetes(executor).access;
   await enforceKubernetesAccess(access, {
-    command: "doctor debug --services",
+    command: "doctor debug --service",
     needs: [{
       requirement: "required",
       rule: { verb: "list", resource: "services" },

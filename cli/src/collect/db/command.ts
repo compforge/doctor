@@ -1,3 +1,4 @@
+import { forServices } from "../../command/services";
 import type { DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
@@ -20,7 +21,7 @@ import { databaseDiscoverySummary, databaseSummary } from "./summary";
 
 type PreparedDb = { input: DbInput; request: Awaited<ReturnType<typeof resolveDbRequest>> };
 
-export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
+const dbServiceCommand = defineCommand<DbInput, void, PreparedDb>({
   serialize: serializeEvidenceResult,
   name: "doctor db",
   validate: validateDbInput,
@@ -151,3 +152,5 @@ export const dbCommand = defineCommand<DbInput, void, PreparedDb>({
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },
 });
+
+export const dbCommand = forServices(dbServiceCommand);

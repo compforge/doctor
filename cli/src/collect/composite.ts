@@ -194,14 +194,14 @@ export async function runCollectDelegates(
   return results;
 }
 
-function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string {
+function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string[] {
   const kind = capability === "inspect" ? "facts.inspect" : "metric.configuration";
-  return [...new Set(plugin.services.extensions(kind).map(({ service }) => service.name))].join(",");
+  return [...new Set(plugin.services.extensions(kind).map(({ service }) => service.name))];
 }
 
 /** biz-id 不能推导 Service 范围；组合执行时显式采用 Plugin 声明的完整业务 Service 边界。 */
-function inspectServiceNames(plugin: PluginDefinition): string {
-  return plugin.services.services.map((service) => service.name).join(",");
+function inspectServiceNames(plugin: PluginDefinition): string[] {
+  return plugin.services.services.map((service) => service.name);
 }
 
 function collectDelegate(input: CollectInput, context: CommandContext): CollectDelegate {
@@ -225,7 +225,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         ...common, bizIds: input.bizIds,
         // Capability availability is broader than the Plugin's default collection scope.
         services: plugin.services.services.filter(service => service.logs !== undefined)
-          .filter((service) => service.logs!.default).map((service) => service.name).join(","),
+          .filter((service) => service.logs!.default).map((service) => service.name),
         since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
       case "metric": return metricCommand.run(context, {

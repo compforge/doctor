@@ -21,7 +21,7 @@ export function formatDoctorDebugCommand(input: DoctorDebugCommandInput): string
     "--profile", input.profileName,
     "-n", input.namespace,
   ];
-  if (input.services?.length) args.push("--services", input.services.join(","));
+  if (input.services?.length) args.push(...input.services.flatMap(service => ["--service", service]));
   else if (input.pod) args.push("-p", input.pod);
   if (input.container) args.push("-c", input.container);
   if (input.kubeconfig) args.push("--kubeconfig", input.kubeconfig);

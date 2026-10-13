@@ -68,7 +68,7 @@ test("Health prepares producer identity before statistics and never persists it 
     produce: async () => { throw new Error("unexpected production"); },
   }));
   try {
-    const result = await healthCommand.run(context, { since: "1h", service: "api" });
+    const result = await healthCommand.run(context, { since: "1h", services: ["api"] });
     expect(calls).toEqual(["consume", "identity", "summary", "targets"]);
     expect(result.output?.query.tenantId).toBeUndefined();
     const artifact = result.artifacts[0]!;
@@ -146,7 +146,7 @@ test("health exposes no collection flags and rejects unknown scopes before envir
   const ensure = mock(async () => {});
   context.ensureEnvironment = async requirements => { if (requirements.kubernetes) await ensure(); };
   try {
-    const result = await healthCommand.run(context, { since: "1h", service: "missing" });
+    const result = await healthCommand.run(context, { since: "1h", services: ["missing"] });
     expect(result.status).toBe(CommandStatus.Failed);
     expect(ensure).not.toHaveBeenCalled();
   } finally { await context.disposeClients(); }
@@ -183,8 +183,8 @@ test("real commands share statistics, but only overview --facet queries IDs with
       context.ensureEnvironment = async () => {};
       try {
         const result = kind === "health"
-          ? await healthCommand.run(context, { since: "1h", service: "short" })
-          : await sampleCommand.run(context, { since: "1h", service: "short", facet: "errors" });
+          ? await healthCommand.run(context, { since: "1h", services: ["short"] })
+          : await sampleCommand.run(context, { since: "1h", services: ["short"], facet: "errors" });
         expect(result.status).toBe(CommandStatus.Ok);
         const artifact = result.artifacts.find(item => item.command === kind)!;
         const evidence = JSON.parse(readFileSync(join(artifact.path, "diagnosis.json"), "utf8"));

@@ -120,7 +120,7 @@ test("DataCommandContext 聚合调用方提供的 CommandContext", async () => {
   const command = new CommandContext({});
   const context = await prepareDataCommand({
     bizIds: ["biz-1"],
-    services: service,
+    services: [service],
     namespace: "vke-system",
     format: "json",
   }, plugin.services, command, executor);
@@ -235,7 +235,7 @@ test("doctor data Relation work queue 不依赖 Catalog 顺序，也不读取 su
     const context = new CommandContext({});
     const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
-      services: `${traceResolver},${resolver},${records}`,
+      services: [traceResolver, resolver, records],
       namespace: "vke-system",
       format: "json",
       output: join(root, "result.json"),
@@ -265,7 +265,7 @@ test("doctor data JSON 写入文件，stdout 只报告文件路径", async () =>
     const context = new CommandContext({});
     const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
-      services: service,
+      services: [service],
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: requestedOutput,
@@ -317,7 +317,7 @@ test("doctor data 批量 JSON 保留各 biz-id 的选择和覆盖度，Facts 只
     const context = new CommandContext({});
     const prepared = await prepareDataCommand({
       bizIds: ["biz-1", "biz-2"],
-      services: service,
+      services: [service],
       config: join(root, "missing-config.yaml"),
       format: "json",
       output: outputPath,
@@ -358,7 +358,7 @@ test("doctor data 默认输出 HTML 和包含 JSON/Evidence 的 Bundle", async (
     const context = new CommandContext({});
     const prepared = await prepareDataCommand({
       bizIds: ["biz-1"],
-      services: service,
+      services: [service],
       config: join(root, "missing-config.yaml"),
       output,
     }, plugin.services, context, executor);
