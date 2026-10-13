@@ -40,7 +40,7 @@ function uniqueIdRecords(value: unknown, label: string): Map<string, Record<stri
   return result;
 }
 
-function validateKnowledge(value: Record<string, unknown>, label: string): void {
+function validateDescription(value: Record<string, unknown>, label: string): void {
   for (const field of ["description", "concepts", "workflows"] as const) {
     if (value[field] !== undefined) nonEmptyString(value[field], `${label}.${field}`);
   }
@@ -49,7 +49,7 @@ function validateKnowledge(value: Record<string, unknown>, label: string): void 
 function validateService(value: unknown, index: number): ServiceDefinition {
   const service = record(value, `Plugin Service[${index}]`);
   nonEmptyString(service.name, `Plugin Service[${index}].name`);
-  validateKnowledge(service, String(service.name));
+  validateDescription(service, String(service.name));
   if (!Array.isArray(service.workloads)) {
     throw new Error(`Plugin Service '${String(service.name)}'.workloads must be an array`);
   }
@@ -176,7 +176,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   if (definition.id !== manifest.id || definition.version !== manifest.version) {
     throw new Error(`Plugin entry identity does not match ${manifest.id}@${manifest.version}`);
   }
-  validateKnowledge(definition, `Plugin ${manifest.id}`);
+  validateDescription(definition, `Plugin ${manifest.id}`);
   const sourceCatalog = record(definition.services, "Plugin services");
   if (definition.extensions !== undefined) {
     if (!Array.isArray(definition.extensions)) throw new Error("Plugin extensions must be an array");

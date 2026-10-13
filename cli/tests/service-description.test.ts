@@ -104,7 +104,7 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
     name: "legacy",
     workloads: []
   }));
-  expect(legacy).toContain("说明：未提供");
+  expect(legacy).not.toContain("    说明：");
   expect(legacy).not.toContain("Concepts");
   expect(legacy).not.toContain("Workflows");
   expect(formatPluginDescription({})).toBe("");

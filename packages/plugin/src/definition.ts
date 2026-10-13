@@ -1,4 +1,3 @@
-import type { Product } from "@compforge/harness-common";
 import type { TraceContributions } from "@compforge/trace-harness";
 import type { Identity, Query } from "./capability";
 import type {
@@ -108,9 +107,15 @@ export interface PluginIdentity {
  * @case id=plugin_distribution_unit,desc=`装配完整 Plugin`,expect=`Service 与 Skill 来自同一 Plugin 版本`,forbid=`独立选择或升级 Skill`
  * @see {@link cli/docs/plugin.md}
  * @rule 新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期
- * @spec Description, concepts and workflows reuse Common metadata without changing Plugin distribution identity.
+ * @spec Plugin description, concepts and workflows are offline distribution knowledge, not runtime evidence.
  */
-export interface PluginDefinition extends PluginIdentity, Pick<Product, "description" | "concepts" | "workflows"> {
+export interface PluginDefinition extends PluginIdentity {
+  /** Short introduction to this Plugin's scope. */
+  description?: string;
+  /** Optional Markdown describing the objects, relationships and constraints across its Services. */
+  concepts?: string;
+  /** Optional Markdown describing cross-Service flows; not executable plans. */
+  workflows?: string;
   /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
   services: ServiceCatalog;
   /** Offline resources registered by the Plugin, independent of Service runtime access. */
