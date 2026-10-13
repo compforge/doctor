@@ -1,9 +1,7 @@
 import { describeService, type PluginDefinition, type ServiceDescription } from "@compforge/doctor-plugin";
 import { loadActivePlugin, pluginInstallRoot } from "./loader";
 
-export interface PluginSummary {
-  id: string;
-  version: string;
+export interface PluginSummary extends Pick<PluginDefinition, "id" | "version" | "description" | "concepts" | "workflows"> {
   source: "injected" | "installed";
   services: ServiceDescription[];
 }
@@ -21,6 +19,9 @@ export async function listPlugins(
   return [{
     id: plugin.id,
     version: plugin.version,
+    description: plugin.description,
+    concepts: plugin.concepts,
+    workflows: plugin.workflows,
     // 注入也可能来自调用方的动态加载，不能推断它一定是内嵌代码。
     source: injected ? "injected" : "installed",
     services: plugin.services.services.map(describeService),

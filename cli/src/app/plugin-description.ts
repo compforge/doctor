@@ -1,8 +1,26 @@
-import type { ServiceDescription } from "@compforge/doctor-plugin";
+import type { PluginDefinition, ServiceDescription } from "@compforge/doctor-plugin";
+
+function descriptionLines(value: Pick<ServiceDescription, "description" | "concepts" | "workflows">, indent: string): string[] {
+  const lines = value.description === undefined ? [] : [`${indent}说明：${value.description}`];
+  for (const field of ["concepts", "workflows"] as const) {
+    const text = value[field];
+    if (text !== undefined) {
+      lines.push(`${indent}${field === "concepts" ? "Concepts（核心概念）" : "Workflows（典型流程）"}：`,
+        ...text.split("\n").map(line => `${indent}  ${line}`));
+    }
+  }
+  return lines;
+}
+
+/** Offline Plugin knowledge uses the same projection as JSON, without target preparation. */
+export function formatPluginDescription(plugin: Pick<PluginDefinition, "description" | "concepts" | "workflows">): string {
+  const lines = descriptionLines(plugin, "  ");
+  return lines.length ? lines.join("\n") + "\n" : "";
+}
 
 /** Text and JSON share the same declaration projection; rendering never inspects a live Service. */
 export function formatServiceDescription(service: ServiceDescription): string {
-  const lines = [`  Service: ${service.name}`, `    说明：${service.description ?? "未提供"}`];
+  const lines = [`  Service: ${service.name}`, ...descriptionLines(service, "    ")];
   lines.push(`    Aliases：${service.aliases.join(", ") || "无"}`);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {

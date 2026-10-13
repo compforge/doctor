@@ -397,12 +397,14 @@ export interface ServiceRelationship {
   service: string;
 }
 
-/** Doctor 跨 Plugin 共用的 Service 元描述；具体 Plugin 只声明身份和 capability。 */
+/**
+ * Doctor extends Common Service with diagnostic contributions and capabilities.
+ * @spec Common Service owns identity, description, concepts, workflows and Workload declarations.
+ * @rule Knowledge is Plugin-authored static text; it must not contain credentials or runtime configuration.
+ */
 export interface ServiceDefinition extends Omit<Service, "environment"> {
   /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */
   aliases?: readonly string[];
-  /** Logical service responsibility; must not contain credentials or runtime configuration. */
-  description?: string;
   relationships?: readonly ServiceRelationship[];
   toolchain?: Toolchain;
   /**

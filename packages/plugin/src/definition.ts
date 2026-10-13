@@ -1,3 +1,4 @@
+import type { Product } from "@compforge/harness-common";
 import type { TraceContributions } from "@compforge/trace-harness";
 import type { Identity, Query } from "./capability";
 import type {
@@ -101,15 +102,18 @@ export interface PluginIdentity {
 }
 
 /**
- * Plugin 是多个 Service 与 Skill 共享版本、安装和选择生命周期的分发单元。
+ * Plugin 通常对应一个 Product，以 Service 为组成单位，并统一交付产品知识与排障 Skill。
+ * Service 与 Skill 共享 Plugin 的版本、安装和选择生命周期。
  *
  * @spec Plugin identity、Service、Skill 与业务 capability 共享同一版本和选择生命周期
  * @case id=plugin_distribution_unit,desc=`装配完整 Plugin`,expect=`Service 与 Skill 来自同一 Plugin 版本`,forbid=`独立选择或升级 Skill`
  * @see {@link cli/docs/plugin.md}
  * @rule 新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期
+ * @spec Plugin carries Product-level description, concepts and workflows; its ServiceCatalog declares the composition.
+ * @rule Product name and Plugin id/version retain their own identity conventions.
  */
-export interface PluginDefinition extends PluginIdentity {
-  /** 一个应用可由同一 Plugin 中的多个 Service 共同描述。 */
+export interface PluginDefinition extends PluginIdentity, Pick<Product, "description" | "concepts" | "workflows"> {
+  /** Services composing the product represented by this Plugin. */
   services: ServiceCatalog;
   /** Offline resources registered by the Plugin, independent of Service runtime access. */
   extensions?: readonly ExtensionRegistration[];

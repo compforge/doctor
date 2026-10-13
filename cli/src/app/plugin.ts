@@ -3,12 +3,12 @@ import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { writeOutput } from "../terminal/output";
 import { installPlugin, listPlugins, uninstallPlugin } from "../plugin";
 import { runStandaloneCommand } from "./command";
-import { formatServiceDescription } from "./plugin-description";
+import { formatPluginDescription, formatServiceDescription } from "./plugin-description";
 
 export function registerPluginInfo(command: Command, plugin?: PluginDefinition): void {
   command.description("展示当前 Plugin 与 Service 声明，或安装/卸载 Plugin")
     .allowExcessArguments(false)
-    .option("--service <name>", "按逻辑 Service 名称展示诊断能力详情（离线声明，不探测现场）")
+    .option("--service <name>", "按逻辑 Service 名称展示 concepts、workflows 与诊断能力（离线声明，不探测现场）")
     .addOption(new Option("-f, --format <format>", "输出格式")
       .choices(["text", "json"]).default("text"))
     .action(async (opts: { format: "text" | "json"; service?: string }) => {
@@ -30,6 +30,7 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
         }
         for (const item of plugins) {
           writeOutput(`${item.id}@${item.version} (${item.source})\n`);
+          writeOutput(formatPluginDescription(item));
           if (item.services.length === 0) writeOutput("  (no declared Services)\n");
           for (const service of item.services) {
             writeOutput(opts.service !== undefined

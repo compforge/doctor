@@ -5,10 +5,8 @@ import type { ServiceDataSourceKind } from "./datasource";
 import type { Workload } from "./workload";
 
 /** A serializable declaration view, never a report of observed availability. */
-export interface ServiceDescription {
-  name: string;
+export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "description" | "concepts" | "workflows"> {
   aliases: string[];
-  description?: string;
   detectors: string[];
   environmentProbes: string[];
   extensions?: { id: string; kind: string; description?: string }[];
@@ -62,6 +60,8 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     name: service.name,
     aliases: [...(service.aliases ?? [])],
     description: service.description,
+    concepts: service.concepts,
+    workflows: service.workflows,
     detectors: (service.detectors ?? []).map(item => item.id),
     environmentProbes: (service.environmentProbes ?? []).map(item => item.id),
     ...(service.cases?.length ? { cases: service.cases.map(source => ({ id: source.id, description: source.description,

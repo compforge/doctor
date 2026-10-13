@@ -1,6 +1,7 @@
 # @compforge/doctor-plugin
 
-Doctor 的公共 Plugin SDK。Plugin 将一个应用的 Service 与排障 Skill 打包为可离线分发的版本化交付物；
+Doctor 的公共 Plugin SDK。Plugin 通常对应一个以 Service 为组成单位的 Product，
+将产品知识、Service 与排障 Skill 打包为可离线分发的版本化交付物；
 Service 描述业务身份、运行负载和数据源，并注册可供 Doctor 调用的 Extension。
 
 ## 接入方式

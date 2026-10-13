@@ -107,6 +107,9 @@ describe("doctor plugin CLI", () => {
     expect(result.stdout.toString()).toContain("test@0.0.1 (injected)");
     expect(result.stdout.toString()).toContain("test-store");
     expect(result.stdout.toString()).toContain("aliases: store");
+    expect(result.stdout.toString()).toContain("说明：Task processing product");
+    expect(result.stdout.toString()).toContain("A Task owns Attempts.\n    Each Attempt produces a Result.");
+    expect(result.stdout.toString()).toContain("Submit → queue → execute → persist");
   });
 
   test("JSON is directly consumable without profile or target preparation", () => {
@@ -115,8 +118,14 @@ describe("doctor plugin CLI", () => {
     expect(JSON.parse(result.stdout.toString())).toEqual({
       plugins: [{
         id: "test", version: "0.0.1", source: "injected",
+        description: "Task processing product",
+        concepts: "A Task owns Attempts.\nEach Attempt produces a Result.",
+        workflows: "Submit → queue → execute → persist",
         services: [{
-          name: "test-store", aliases: ["store"], detectors: [], environmentProbes: [],
+          name: "test-store", aliases: ["store"],
+          concepts: "A Cache stores task results.",
+          workflows: "Read cache → return result\nA cache miss is not a failed Task.",
+          detectors: [], environmentProbes: [],
           details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
         }],
       }]
@@ -130,10 +139,12 @@ describe("doctor plugin CLI", () => {
     expect(result.stderr.toString()).toContain("Allowed choices are text, json");
   });
 
-  test("service filter renders offline details for legacy Services", () => {
+  test("service filter renders offline knowledge and capabilities", () => {
     const result = run("plugin", "--service", "test-store");
     expect(result.exitCode).toBe(0);
     expect(result.stdout.toString()).toContain("Service: test-store");
+    expect(result.stdout.toString()).toContain("A Cache stores task results.");
+    expect(result.stdout.toString()).toContain("Read cache → return result\n      A cache miss is not a failed Task.");
     expect(result.stdout.toString()).toContain("cache (redis/redis)");
     expect(result.stdout.toString()).toContain("尚未检查目标环境");
   });
@@ -145,6 +156,8 @@ describe("doctor plugin CLI", () => {
     expect(services).toHaveLength(1);
     expect(services[0].name).toBe("test-store");
     expect(services[0].aliases).toEqual(["store"]);
+    expect(services[0].concepts).toBe("A Cache stores task results.");
+    expect(services[0].workflows).toBe("Read cache → return result\nA cache miss is not a failed Task.");
     expect(services[0].details.dataSources).toEqual([{ id: "cache", kind: "redis", backend: "redis" }]);
   });
 
