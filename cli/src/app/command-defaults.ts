@@ -14,6 +14,7 @@ const formatExamples: Readonly<Record<string, string>> = {
   md: "-f md -o ./report.md → Markdown 文件",
   bundle: "-f bundle -o ./report.tar.gz → 归档文件",
   manifest: "-f manifest -o ./evidence → ./evidence/manifest.json（证据目录）",
+  text: "-f text → 终端文本视图；-o ./view.txt 写入文件",
   summary: "-f summary → 终端摘要；证据保存在临时目录，无需 -o",
 };
 
@@ -24,6 +25,7 @@ const formatDefaults: Readonly<Record<string, string>> = {
   md: "Markdown 文件",
   bundle: "归档文件",
   manifest: "JSON 索引与临时证据目录",
+  text: "文本视图",
   summary: "终端摘要与临时证据目录",
 };
 
@@ -35,7 +37,7 @@ export function configureDeliveryHelp(program: Command): void {
     if (!format || !output) continue;
     const formats = format.argChoices ?? [];
     const defaultFormat = String(format.defaultValue ?? "default");
-    const examples = ["default", "html", "bundle", "json", "md", "manifest", "summary"]
+    const examples = ["default", "html", "bundle", "json", "text", "md", "manifest", "summary"]
       .filter(choice => formats.includes(choice))
       .map(choice => `  ${formatExamples[choice]}`)
       .join("\n");

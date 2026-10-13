@@ -1,3 +1,4 @@
+import { createAgentRunIR } from "@compforge/trace-harness";
 import { SerializeContext } from "../src/command/serialization/context";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
@@ -22,7 +23,7 @@ function rawSpan(id: string, parent?: string) {
     tags: [{ key: "payload", value: `input/output:${id}` }] };
 }
 
-async function fixture(options: { span?: string; partial?: boolean; grouped?: boolean } = {}) {
+async function fixture(options: { span?: string; partial?: boolean; grouped?: boolean; extracted?: () => void; hiddenMeasurements?: boolean } = {}) {
   const dir = root();
   const spans = options.span ? [rawSpan(options.span)] : [rawSpan("root"), rawSpan("child", "root"), rawSpan("another-root")];
   const queries: unknown[] = [];
@@ -37,7 +38,16 @@ async function fixture(options: { span?: string; partial?: boolean; grouped?: bo
     traceId: "t1", bizId: "message-1", spanId: options.span,
     traceIdResolution: { service: "fixture", resolvedAs: "message_id", sourceId: "source-message" },
     index: "jaeger-span-*", auth: {}, endpoint: "https://unused.test:9200", pageSize: 100, outputDir: dir,
-    contributions: { specs: [{ kind: "fixture", structure_fields: ["payload"], matches: span => !options.grouped || span.name !== "child",
+    contributions: {
+      measurementFilter: options.hiddenMeasurements ? () => false : undefined,
+      agentRunExtractor: options.extracted ? { extract: trace => {
+        options.extracted!();
+        return createAgentRunIR(trace.trace_id, [{ id: "run-1", name: "fixture-agent", start_ms: 1000,
+          duration_ms: 20, source_node_ids: ["root"], items: [{ kind: "agent-turn", id: "turn-1", name: "turn",
+            start_ms: 1000, duration_ms: 20, items: [{ kind: "tool-call", id: "tool-1",
+              name: "fixture-tool", start_ms: 1000, duration_ms: 20, source_node_ids: ["child"] }] }] }]);
+      } } : undefined,
+      specs: [{ kind: "fixture", structure_fields: ["payload"], matches: span => !options.grouped || span.name !== "child",
       claims: (_primary, candidates) => new Set(candidates.map(span => span.span_id)),
       value: (primary, satellites) => [primary, ...satellites].map(span => span.attr("payload")).join(" ") }] },
   }, () => {}, search);
@@ -192,13 +202,14 @@ test("invalid mode combinations are rejected before loading Plugin or Kubernetes
     { from: undefined, node: "n", bizIds: ["id"] }, { from: "manifest", node: "n", span: "s" },
     { from: "manifest", bizIds: ["id"] }, { from: "manifest", endpoint: "https://unused.test" },
     { span: "  " }, { from: "" },
-  ]) expect((await offline("unused", input)).result.status).toBe(CommandStatus.Failed);
+    { view: "measurements" }, { view: "timeline" }, { node: "child", view: "agent" }, { span: "child", view: "agent" },
+  ] satisfies Partial<TraceInput>[]) expect((await offline("unused", input)).result.status).toBe(CommandStatus.Failed);
 });
 
-for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format} uses root delivery without a Plugin or kubeconfig`, async () => {
+for (const format of ["manifest", "html", "bundle", "text", "json"]) test(`CLI offline ${format} uses root delivery without a Plugin or kubeconfig`, async () => {
   const { dir } = await fixture();
   const cwd = root();
-  const output = join(cwd, format === "manifest" ? "delivery" : format === "html" ? "report.html" : "report.tar.gz");
+  const output = join(cwd, format === "manifest" ? "delivery" : format === "bundle" ? "report.tar.gz" : `report.${format === "text" ? "txt" : format}`);
   const child = Bun.spawn({
     cmd: [process.execPath, "run", new URL("../src/app/entry.ts", import.meta.url).pathname,
       "trace", "--from", join(dir, "manifest.json"), "--format", format, "--output", output,
@@ -214,6 +225,13 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
     expect(stdout).toEndWith(`${JSON.stringify(result, null, 2)}\n`);
     expect(result.execution.status).toBe("ok");
     expect(result.files.tree).toBeDefined();
+  } else if (format === "text") {
+    expect(readFileSync(output, "utf8")).toContain("trace=t1 trace view=default");
+    expect(readFileSync(output, "utf8")).toContain("scope=trace · complete=true");
+  } else if (format === "json") {
+    const exported = JSON.parse(readFileSync(output, "utf8"));
+    expect(existsSync(exported.manifest)).toBeTrue();
+    expect(exported.result.items[0].traces[0].view.rows.items).toHaveLength(3);
   } else if (format === "bundle") {
     const files = Bun.spawnSync({ cmd: ["tar", "-tzf", output], stdout: "pipe" });
     expect(files.exitCode).toBe(0);
@@ -223,3 +241,76 @@ for (const format of ["manifest", "html", "bundle"]) test(`CLI offline ${format}
   expect(existsSync(join(dir, "manifest.json"))).toBeTrue();
   expect(existsSync(join(dir, "trace.html"))).toBeFalse();
 }, 15000);
+
+
+test("offline node views prepare hidden timing from saved measurements without changing source", async () => {
+  const { dir } = await fixture({ hiddenMeasurements: true });
+  const original = readFileSync(join(dir, "analysis.json"), "utf8");
+  expect(readTraceSnapshot(dir).views.default.timings).toEqual({});
+  for (const view of ["default", "measurements", "timeline"] as const) {
+    const { result } = await offline(dir, { node: "child", view });
+    expect(result.status).toBe(CommandStatus.Ok);
+    const path = result.artifacts[0]!.path;
+    const selected = json(path, "view.json");
+    expect(selected).toMatchObject({ scope: "node", view, node: { node_id: "child" } });
+    if (view === "default") expect(selected.spans.child.attrs.payload.value).toBe("input/output:child");
+    else {
+      expect(selected.timing).toMatchObject({ status: "measured", window: { elapsed_ms: 20 } });
+      if (view === "timeline") expect(selected.calls.items.map((call: {node_id: string}) => call.node_id).sort())
+        .toEqual(["another-root", "child", "root"]);
+      else expect(selected.groups.items.reduce((sum: number, group: {total: number}) => sum + group.total, 0)).toBe(60);
+    }
+    const render = new RenderContext(result.artifacts, "offline");
+    await render.render(traceCommand, result);
+    expect(render.failures).toEqual([]);
+    expect(readFileSync(join(path, "trace.html"), "utf8")).toContain(`child · ${view}`);
+  }
+  expect(readFileSync(join(dir, "analysis.json"), "utf8")).toBe(original);
+});
+
+test("incomplete or span-only evidence does not invent prefix timing", async () => {
+  for (const options of [{ partial: true }, { span: "child" }]) {
+    const { dir } = await fixture(options);
+    const { result } = await offline(dir, { node: "child", view: "timeline" });
+    const selected = json(result.artifacts[0]!.path, "view.json");
+    expect(selected.timing).toBeNull();
+    expect(selected.calls).toBeNull();
+  }
+});
+
+test("Agent view reuses acquisition-time extraction in HTML and text", async () => {
+  let extractions = 0;
+  const { dir } = await fixture({ extracted: () => { extractions++; } });
+  expect(extractions).toBe(1);
+  const { result } = await offline(dir, { view: "agent" });
+  const path = result.artifacts[0]!.path;
+  expect(json(path, "view.json")).toMatchObject({ scope: "trace", view: "agent", status: "available" });
+  expect(readFileSync(join(path, "view.txt"), "utf8")).toContain("fixture-tool");
+  expect(json(path, "view.json").rows.items.some((row: {name: string}) => row.name === "another-root")).toBeFalse();
+  const defaultResult = (await offline(dir)).result;
+  const render = new RenderContext(defaultResult.artifacts, "offline");
+  const report = await render.render(traceCommand, defaultResult);
+  expect(render.failures).toEqual([]);
+  expect(report.sections[0]!.pages).toHaveLength(2);
+  expect(readFileSync(join(defaultResult.artifacts[0]!.path, "agent.html"), "utf8")).toContain("trace-archive");
+  expect(extractions).toBe(1);
+});
+
+test("Agent projection without an extractor is explicitly unavailable", async () => {
+  const { dir } = await fixture();
+  const { result } = await offline(dir, { view: "agent" });
+  expect(json(result.artifacts[0]!.path, "view.json")).toMatchObject({ view: "agent", status: "not_available" });
+});
+
+test("text delivery writes view to stdout with acquisition completeness", async () => {
+  const { dir } = await fixture();
+  const { result, context } = await offline(dir, { node: "child", view: "timeline" });
+  let stdout = "";
+  const write = spyOn(process.stdout, "write").mockImplementation(chunk => { stdout += String(chunk); return true; });
+  try { expect(await finalizeResult(context, traceCommand, result, { format: "text" })).toBe(0); }
+  finally { write.mockRestore(); }
+  expect(stdout).toContain("node view=timeline");
+  expect(stdout).toContain("complete=true");
+  expect(stdout).toContain("Timeline:");
+  expect(stdout).not.toContain("[delivery]");
+});

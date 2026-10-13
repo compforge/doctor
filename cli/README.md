@@ -98,7 +98,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor collect [id...]` | 集合选择并汇总 Data、Trace、Log、Metric；自身不实现具体采集 |
-| `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线下钻或生成 HTML / Bundle |
+| `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线选择 trace/node view，渲染 text / JSON / HTML / Bundle（[说明](docs/commands/trace.md)） |
 | `doctor s3 ls/stat/cat` | 按 Service 连接浏览 bucket / 目录前缀、检查对象元数据和有界读取内容 |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
 | `doctor log [id...]` | 不带 ID 按 Service / 时间范围采集日志；带 ID 则解析 trace 并分组聚合关联日志 |

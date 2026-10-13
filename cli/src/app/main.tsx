@@ -28,7 +28,7 @@ import { writeOutput } from "../terminal/output";
 //   doctor init              → 首次初始化 local profile
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
-import { Command, CommanderError, type Command as CommandT } from "commander";
+import { Command, CommanderError, Option, type Command as CommandT } from "commander";
 import { CliCommand } from "./cli-command";
 import { extractDistributionArgument, loadDistributionManifest, type Distribution, type DoctorHostOptions } from "./distribution";
 import { applyCommandDefaults, configureDeliveryHelp, deliveryFormatOption } from "./command-defaults";
@@ -169,6 +169,8 @@ function withTraceOptions(cmd: CommandT): CommandT {
     .option("--trace-file <path>", "导入单条 Jaeger trace JSON/JSONL，离线投影并生成报告")
     .option("--span <span-id>", "在线只采集指定 span；离线查看该 span 的完整证据")
     .option("--node <node-id>", "离线查看 node 及其关联 spans（需要 --from）")
+    .addOption(new Option("--view <view>", "trace: default/agent；node: default/measurements/timeline")
+      .choices(["default", "agent", "measurements", "timeline"]))
     .option("--service <name>", "OpenSearch backend service 覆盖值")
     .option("--endpoint <url>", "Doctor Host 直连 OpenSearch 的地址；缺省也读 DOCTOR_OPENSEARCH_URL")
     .option("--host <url>", "--endpoint 的兼容别名（已弃用）")
@@ -177,7 +179,7 @@ function withTraceOptions(cmd: CommandT): CommandT {
     .option("--username <user>", "OpenSearch 用户名（缺省读 DOCTOR_OPENSEARCH_USERNAME）")
     .option("--password <pass>", "OpenSearch 密码（缺省读 DOCTOR_OPENSEARCH_PASSWORD）")
     .option("--page-size <n>", "分页拉取批大小", "1000")
-    .addOption(deliveryFormatOption(["html", "bundle"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "text", "json"]))
     .option("--profile <name>", "从 ~/.doctor/config.yaml 的该 profile 取 kubeconfig（--kubeconfig 优先）")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }

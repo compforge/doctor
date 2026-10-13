@@ -8,9 +8,11 @@ import { runCollectTrace } from "./index";
 import { renderTraceReport } from "./report";
 import { runOfflineTrace } from "./offline";
 import { runFileTrace } from "./file";
+import { prepareTraceViews, serializeTraceViews } from "./views";
+import type { TraceViewOptions } from "./snapshot";
 import { resolveTraceWindow } from "./window";
 
-export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & { pageSize?: number };
+export type TraceInput = CommandInput & Omit<Parameters<typeof runCollectTrace>[0], CommandHostOption | "pageSize"> & TraceViewOptions & { pageSize?: number };
 
 export const traceCommand = defineCommand<TraceInput, import("./index").TraceOutput>({
   serialize: async (context, result) => {
@@ -29,7 +31,8 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
           { label: "Trace ID", path: ["target", "trace_ids"] },
         ] }, data: { file: "collection.json" } } });
     }
-    return serializeEvidence(context, result.artifacts, descriptions);
+    const saved = serializeEvidence(context, result.artifacts, descriptions);
+    return { ...saved, files: { ...saved.files, ...serializeTraceViews(context, result) } };
   },
   name: "doctor trace",
   render: renderTraceReport,
@@ -45,6 +48,10 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     }
     if (input.node && !input.from) throw new CommandInputError("--node 需要 --from；在线采集请使用 --span");
     if (input.node && input.span) throw new CommandInputError("--node 与 --span 不能同时使用");
+    const views = input.node ? ["default", "measurements", "timeline"] : ["default", "agent"];
+    if (input.view !== undefined && !views.includes(input.view)) throw new CommandInputError(
+      `--view ${input.view} 不适用于${input.node ? " node" : " trace"}；可选：${views.join(", ")}`);
+    if (input.span && input.view && input.view !== "default") throw new CommandInputError("--span 只支持 default view");
     const range = input.since !== undefined || input.sinceTime !== undefined || input.untilTime !== undefined;
     const modes = Number(Boolean(input.from)) + Number(Boolean(input.traceFile)) + Number(Boolean(input.bizIds.length))
       + Number(range);
@@ -78,11 +85,15 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
     });
     return input;
   },
-  run: async (context, input) => input.from
-    ? runOfflineTrace({ from: input.from, node: input.node, span: input.span }, context)
-    : input.traceFile ? runFileTrace(input.traceFile, context)
-    : runCollectTrace(
-      { ...input, ...commandOptions(context), pageSize: String(input.pageSize ?? 1000) },
-      await context.resolvePlugin(), context,
-    ),
+  run: async (context, input) => {
+    const result = await (input.from
+      ? runOfflineTrace({ from: input.from, node: input.node, span: input.span }, context)
+      : input.traceFile ? runFileTrace(input.traceFile, context)
+      : runCollectTrace(
+        { ...input, ...commandOptions(context), pageSize: String(input.pageSize ?? 1000) },
+        await context.resolvePlugin(), context,
+      ));
+    await prepareTraceViews(result, input);
+    return result;
+  },
 });
