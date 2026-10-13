@@ -136,7 +136,7 @@ describe("doctor plugin CLI", () => {
   test("invalid format is rejected", () => {
     const result = run("plugin", "--format", "xml");
     expect(result.exitCode).not.toBe(0);
-    expect(result.stderr.toString()).toContain("Allowed choices are text, json");
+    expect(result.stderr.toString()).toContain("Allowed choices are text, json, summary");
   });
 
   test("service filter renders offline knowledge and capabilities", () => {
@@ -147,6 +147,35 @@ describe("doctor plugin CLI", () => {
     expect(result.stdout.toString()).toContain("Read cache → return result\n      A cache miss is not a failed Task.");
     expect(result.stdout.toString()).toContain("cache (redis/redis)");
     expect(result.stdout.toString()).toContain("尚未检查目标环境");
+  });
+
+  test("summary shows Product knowledge and a Service index without extension details", () => {
+    const result = run("plugin", "-f", "summary");
+    expect(result.exitCode).toBe(0);
+    const output = result.stdout.toString();
+    expect(output).toContain("test@0.0.1");
+    expect(output).toContain("说明：Task processing product");
+    expect(output).toContain("A Task owns Attempts.\n    Each Attempt produces a Result.");
+    expect(output).toContain("Submit → queue → execute → persist");
+    expect(output).toContain("test-store (aliases: store)");
+    expect(output).not.toContain("extensions:");
+    expect(output).not.toContain("(injected)");
+    expect(output).not.toContain("A Cache stores task results.");
+    expect(result.stderr.toString()).toBe("");
+  });
+
+  test("Service summary accepts aliases and only renders identity and business knowledge", () => {
+    const result = run("plugin", "--service", "store", "--format", "summary");
+    expect(result.exitCode).toBe(0);
+    const output = result.stdout.toString();
+    expect(output).toContain("Service: test-store");
+    expect(output).toContain("Aliases：store");
+    expect(output).toContain("A Cache stores task results.");
+    expect(output).toContain("Read cache → return result\n      A cache miss is not a failed Task.");
+    for (const internal of ["Extensions", "Cases", "Detectors", "EnvironmentProbes", "DataSources", "Workloads", "访问需求", "facts.inspect", "redis/redis"]) {
+      expect(output).not.toContain(internal);
+    }
+    expect(result.stderr.toString()).toBe("");
   });
 
   test("service filter keeps JSON directly consumable", () => {

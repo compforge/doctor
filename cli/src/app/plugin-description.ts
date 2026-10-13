@@ -18,10 +18,22 @@ export function formatPluginDescription(plugin: Pick<PluginDefinition, "descript
   return lines.length ? lines.join("\n") + "\n" : "";
 }
 
+function serviceKnowledgeLines(service: ServiceDescription): string[] {
+  return [`  Service: ${service.name}`, ...descriptionLines(service, "    "),
+    `    Aliases：${service.aliases.join(", ") || "无"}`];
+}
+
+/**
+ * @spec Summary exposes declared business knowledge and identity, without diagnostic implementation details.
+ * @link cli/docs/plugin.md
+ */
+export function formatServiceSummary(service: ServiceDescription): string {
+  return serviceKnowledgeLines(service).join("\n") + "\n";
+}
+
 /** Text and JSON share the same declaration projection; rendering never inspects a live Service. */
 export function formatServiceDescription(service: ServiceDescription): string {
-  const lines = [`  Service: ${service.name}`, ...descriptionLines(service, "    ")];
-  lines.push(`    Aliases：${service.aliases.join(", ") || "无"}`);
+  const lines = serviceKnowledgeLines(service);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
     lines.push("    数据查询（facts.inspect Extension，不是同名 CLI 命令）",

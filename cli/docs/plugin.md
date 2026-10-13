@@ -198,7 +198,7 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 
 ### 命令运行
 
-`doctor plugin` 是离线发现入口，展示采集命令实际使用的 Plugin 与 Service Catalog，支持 text/json。
+`doctor plugin` 是离线发现入口，展示采集命令实际使用的 Plugin 与 Service Catalog，支持 text/json/summary。
 它复用“入口注入优先，否则加载 Host active 版本”的规则，不扫描未激活版本，也不准备 profile、
 调用业务 capability 或访问目标环境。来源 `injected` 表示由 composition root 提供（通常是内嵌，
 也可能是调用方动态加载），`installed` 表示本机激活的安装版本。Service 的 Extension/Detector
@@ -217,6 +217,16 @@ Plugin 复用 Common Product 的说明契约来承载产品级知识，Service �
 这些字段由 Plugin 作者随版本维护，提供时须为非空文本；内容原样进入 JSON，文本输出保留 Markdown 和换行。
 `doctor plugin` 展示 Plugin 知识及服务索引，`doctor plugin --service <name>` 增加该 Service 的知识与能力详情；
 两者均支持 `-f json`，无需准备 profile 或 Target 访问。三个字段均可独立省略，缺省时不补造业务知识。
+
+`-f summary` 面向业务理解，只展示 Product/Service 的身份、别名、说明、concepts 与 workflows。
+未指定 Service 时展示 Product 知识与服务索引；指定 Service 时增加该服务的知识。
+Summary 不展示 Extensions、Cases、Detectors、Workloads、数据源或访问需求等诊断实现声明。
+默认 `text` 和显式 `json` 保留完整声明，格式选择不改变 Plugin 加载与 Service 筛选。
+
+```bash
+doctor plugin -f summary
+doctor plugin --service <name> -f summary
+```
 
 Service 的 `description` 解释职责，Workload 的 `description` 解释运行负载的用途；Inspect 的
 `description` 和 `limitations` 解释查询用途和证据盲区。
