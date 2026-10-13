@@ -112,7 +112,9 @@ describe("root surface", () => {
     expect(result.stdout).toContain("Usage: doctor [options] [command]");
     expect(result.stdout).toContain("面向应用与基础设施的本地诊断工具");
     expect(result.stdout).toContain("Core 提供通用 Target 访问与证据编排");
-    expect(result.stdout).toContain("Plugin 提供业务目标和数据语义");
+    expect(result.stdout).toContain("Plugin 交付产品与 Service 的业务知识、诊断声明和 Skill");
+    expect(result.stdout).toContain("Concepts（核心概念）");
+    expect(result.stdout).toContain("Workflows（典型流程）");
     expect(result.stdout).toContain("默认旁路运行、证据优先");
     expect(result.stdout).toContain("chat [options]");
     expect(result.stdout).toContain("init [options]");

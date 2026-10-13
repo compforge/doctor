@@ -44,6 +44,24 @@ for (const args of [["-y", "child"], ["child", "-y"], ["child"]]) {
   });
 }
 
+test.each([
+  { args: ["child"], expected: false },
+  { args: ["child", "--yes"], expected: true },
+  { args: ["child", "--no-yes"], expected: false },
+  { args: ["--yes", "child", "--no-yes"], expected: false },
+  { args: ["--no-yes", "child", "--yes"], expected: true },
+])("Commander preserves interaction policy for $args", async ({ args, expected }) => {
+  const root = new CliCommand().option("-y, --yes", "no questions", false).option("--no-yes");
+  let called = false;
+  root.command("child").action(() => {
+    called = true;
+    expect(assumesYes()).toBe(expected);
+  });
+  await root.parseAsync(args, { from: "user" });
+  expect(called).toBe(true);
+  expect(assumesYes()).toBe(false);
+});
+
 test("explicit no-yes overrides distribution default", async () => {
   const root = new CliCommand().option("-y, --yes", "no questions", false).option("--no-yes");
   applyOptionDefaults(root, { yes: true });

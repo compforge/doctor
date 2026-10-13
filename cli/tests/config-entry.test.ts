@@ -77,6 +77,7 @@ describe("distribution root defaults and configuration Help", () => {
       capture(program);
       if (args.includes("help")) await program.parseAsync(args, { from: "user" });
       else await expect(program.parseAsync(args, { from: "user" })).rejects.toMatchObject({ exitCode: 0 });
+      if (args.includes("inspect")) expect(help).toContain("Usage: doctor inspect");
       expect(help).not.toContain("--profile");
       expect(help).not.toMatch(/^  (init|profile)\b/m);
       expect(help).toContain("--kubeconfig");
