@@ -1,7 +1,6 @@
 import { chmodSync, copyFileSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, extname, join, resolve } from "node:path";
-import { JaegerFileSource } from "@compforge/trace-harness";
 import { CommandStatus, type CommandContext, type CommandResult } from "../../command";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
 import { EvidenceBundle } from "../evidence";
@@ -12,6 +11,7 @@ import type { TraceOutput } from "./index";
 
 /** Import a complete local Jaeger trace into the same immutable evidence layout as online acquisition. */
 export async function runFileTrace(file: string, context: CommandContext): Promise<CommandResult<TraceOutput>> {
+  const { JaegerFileSource } = await import("@compforge/trace-harness");
   const path = resolve(file);
   const source = new JaegerFileSource(path, {
     format: extname(path).toLowerCase() === ".jsonl" ? "jsonl" : "jaeger",

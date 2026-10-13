@@ -19,7 +19,7 @@
         "@compforge/perf-harness": "https://github.com/compforge/case-harness/releases/download/perf-harness-v0.0.2/compforge-perf-harness-0.0.2.tgz",
         "@compforge/prombed": "0.0.2",
         "@compforge/spec-case": "0.0.7",
-        "@compforge/trace-harness": "0.2.2",
+        "@compforge/trace-harness": "0.3.1",
         "@earendil-works/pi-agent-core": "0.87.1",
         "@kubernetes/client-node": "1.4.0",
         "@modelcontextprotocol/sdk": "1.29.0",
@@ -83,7 +83,7 @@
         "@compforge/harness-common": "0.3.2",
         "@compforge/harness-toolbox": "0.3.9",
         "@compforge/spec-case": "0.0.7",
-        "@compforge/trace-harness": "0.2.2",
+        "@compforge/trace-harness": "0.3.1",
         "typebox": "1.3.7",
       },
       "devDependencies": {
@@ -172,7 +172,7 @@
 
     "@compforge/spec-case": ["@compforge/spec-case@0.0.7", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-lF6mZ+v9o9FjfLtDuszkk0O8o3uyueNarYZAwy8Ixzuxc6uHAMI0aopmagY1foGrtV1TeRBt1C1lFM7qRVWSPQ=="],
 
-    "@compforge/trace-harness": ["@compforge/trace-harness@0.2.2", "", { "dependencies": { "@compforge/harness-toolbox": "0.1.0", "fflate": "0.8.3" } }, "sha512-sgiEKXCw7a5QCHWrbwsb2t7WsJlsJx9aygQZ/Lz14FnuFxYnFiuJxgbrVshE6rJ4FGQ+u9N1yiYlRHLkgT5YYA=="],
+    "@compforge/trace-harness": ["@compforge/trace-harness@0.3.1", "", { "dependencies": { "@compforge/harness-toolbox": "0.1.0", "fflate": "0.8.3" } }, "sha512-jxFtf6hWbXY2aymL5BKPygrRn63FAGXygte/kTbC6ZcSUoy/g250PwvN8OJgNPHqbAlYyAU06xf/2kReWzCP7w=="],
 
     "@earendil-works/chord": ["@earendil-works/chord@0.87.1", "", { "dependencies": { "esbuild": "0.28.2" } }, "sha512-bg7IkJGFcEaMqqYgOGUiq5Ky9RghpRfrlZ8I/v/1b4bBZ02A7t3E+6uhPRbadwWb/kWsnVFbZsqOKRN4a3LLCg=="],
 
@@ -312,7 +312,7 @@
 
     "@stablelib/base64": ["@stablelib/base64@1.0.1", "", {}, "sha512-1bnPQqSxSuc3Ii6MhBysoWCg58j97aUjuCSZrGSmDxNqtytIi0k8utUenAwTZN4V5mXXYGsVUI9zeBqy+jBOSQ=="],
 
-    "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+    "@types/bun": ["@types/bun@1.4.3", "", { "dependencies": { "bun-types": "1.4.3" } }, "sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw=="],
 
     "@types/http-cache-semantics": ["@types/http-cache-semantics@4.2.0", "", {}, "sha512-L3LgimLHXtGkWikKnsPg0/VFx9OGZaC+eN1u4r+OB1XRqH3meBIAVC2zr1WdMH+RHmnRkqliQAOHNJ/E0j/e0Q=="],
 
@@ -388,7 +388,7 @@
 
     "bun-ffi-structs": ["bun-ffi-structs@0.3.1", "", { "peerDependencies": { "typescript": "^5" } }, "sha512-3gM7PpVWLyrwxWjcilSiGuhWanhZivvo6l0u573NziPH6f/gwk6McbaYgn7oJWov6pKGRTDbrg94W5DcJsKTtQ=="],
 
-    "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+    "bun-types": ["bun-types@1.4.3", "", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg=="],
 
     "byte-counter": ["byte-counter@0.1.0", "", {}, "sha512-jheRLVMeUKrDBjVw2O5+k4EvR4t9wtxHL+bo/LxfkxsVeuGMy3a5SEGgXdAFA4FSzTrU8rQXQIrsZ3oBq5a0pQ=="],
 
@@ -880,6 +880,8 @@
 
     "@aws-sdk/token-providers/@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
 
+    "@compforge/doctor-plugin-example/@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
+
     "@compforge/harness-toolbox/@compforge/harness-common": ["@compforge/harness-common@0.3.0", "", {}, "sha512-EC1iZVZZR/cp5b9b0PNWlE2frN/Id94AvpquV3bnbiA4s647B1reA3+xq7KQmdNJfD0NSdRX1c9J38L04tGYnA=="],
 
     "@compforge/perf-harness/@compforge/spec-case": ["@compforge/spec-case@0.0.4", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-QGeD7d3cu5OA381ilKzRky6XQKow7LKApnD7hF953v5XGxCZbPOzwF5GAGBOjfCypY8sUrUknPetTqy2rTfGKQ=="],
@@ -949,6 +951,8 @@
     "type-is/mime-types": ["mime-types@3.0.2", "", { "dependencies": { "mime-db": "^1.54.0" } }, "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="],
 
     "@aws-sdk/middleware-websocket/@aws-sdk/core/@aws-sdk/xml-builder": ["@aws-sdk/xml-builder@3.972.41", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-ctjVSyCMegrWfXlx6VqzSBFI6UqmQ5ZlnfMhdLIiWmhoH8UAQxSCP5N3OpG7X3k4LnS7ou74C4mt20+bfTW2aQ=="],
+
+    "@compforge/doctor-plugin-example/@types/bun/bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
 
     "@compforge/perf-harness/@compforge/spec-case/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

@@ -1,4 +1,4 @@
-import type { AgentRunIR, AnalysisContext, Findings, Measurements, NodeInit, NormSpan, TraceContributions, TraceHarness } from "@compforge/trace-harness";
+import type { AgentRunIR, AnalysisContext, Findings, Measurements, NodeInit, NormSpan, TraceContributions, TraceHarness, TraceView, View, ViewRequest } from "@compforge/trace-harness";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,15 +16,15 @@ type SavedSpan = Pick<NormSpan, "span_id" | "parent_span_id" | "name" | "start_m
 
 /** Frozen projection, not executable Plugin code. Node identity survives Plugin upgrades and offline delivery. */
 export interface TraceSnapshot {
-  schema_version: 1;
+  schema_version: 2;
   kind: "doctor.trace";
   trace_id: string;
   collection: TraceCollection;
   nodes: NodeInit[];
   spans: SavedSpan[];
-  measurements: Pick<Measurements, "specs" | "sources" | "results">;
-  visible_measurements: Pick<Measurements, "specs" | "sources" | "results">;
+  measurements: Pick<Measurements, "specs" | "sources" | "nodes" | "trace">;
   agent_runs?: AgentRunIR;
+  views: { default: TraceView; agent?: TraceView };
 }
 
 export function writeTraceJson(dir: string, name: string, value: unknown): void {
@@ -53,8 +53,12 @@ export async function exportTraceSnapshot(dir: string, traceId: string, collecti
   contributions?: TraceContributions): Promise<void> {
   await withTraceAnalysis(dir, traceId, contributions, collection.scope === "trace" && collection.complete, (analysis, harness) => {
     const trace = analysis.trace;
+    const visible = harness.visibleMeasurements(trace, analysis.measurements);
+    // Prepare only report-selected anchors; explicit offline node queries prepare other anchors on demand.
+    harness.prepare(analysis, { agentRuns: true, callBreakdowns: Object.keys(visible.nodes).filter(id =>
+      visible.nodes[id]?.some(m => m.kind === "calls_until_node_end")) });
     const snapshot: TraceSnapshot = {
-      schema_version: 1, kind: "doctor.trace", trace_id: traceId, collection,
+      schema_version: 2, kind: "doctor.trace", trace_id: traceId, collection,
       nodes: trace.nodes,
       // Raw records remain in spans.jsonl. Normalized values preserve Plugin normalization for offline views.
       spans: [...trace.spans.values()].map(span => ({
@@ -64,14 +68,17 @@ export async function exportTraceSnapshot(dir: string, traceId: string, collecti
         loaded_fields: span.loaded_fields, field_errors: span.field_errors,
       })),
       measurements: analysis.measurements,
-      visible_measurements: harness.visibleMeasurements(trace, analysis.measurements),
-      agent_runs: harness.extractAgentRuns(trace),
+      agent_runs: analysis.agentRuns,
+      views: {
+        default: harness.buildView(analysis, { scope: "trace" }) as TraceView,
+        ...(analysis.agentRuns ? { agent: harness.buildView(analysis, { scope: "trace", view: "agent" }) as TraceView } : {}),
+      },
     };
     writeTraceJson(dir, TRACE_FILES.analysis, snapshot);
     writeTraceJson(dir, TRACE_FILES.findings, analysis.findings);
     writeTraceJson(dir, TRACE_FILES.tree, {
       schema_version: 1, kind: "doctor.trace.tree", trace_id: traceId, collection,
-      roots: trace.view().roots.map(node => node.node_id),
+      roots: trace.tree().roots.map(node => node.node_id),
       nodes: trace.nodes.map(node => ({
         node_id: node.node_id, parent_node_id: node.parent_node_id, kind: node.kind, name: node.name, value: node.value,
         service: node.service, start_ms: node.start_ms, duration_ms: node.duration_ms,
@@ -83,18 +90,18 @@ export async function exportTraceSnapshot(dir: string, traceId: string, collecti
 
 export function readTraceSnapshot(dir: string): TraceSnapshot {
   const snapshot = JSON.parse(readFileSync(join(dir, TRACE_FILES.analysis), "utf8")) as TraceSnapshot;
-  if (snapshot.kind !== "doctor.trace" || snapshot.schema_version !== 1 || !snapshot.trace_id
+  if (snapshot.kind !== "doctor.trace" || snapshot.schema_version !== 2 || !snapshot.trace_id
+    || !snapshot.views?.default || !snapshot.measurements?.nodes || !Array.isArray(snapshot.measurements?.trace)
     || !Array.isArray(snapshot.nodes) || !Array.isArray(snapshot.spans) || !snapshot.collection
     || !["trace", "span"].includes(snapshot.collection.scope) || typeof snapshot.collection.complete !== "boolean") {
-    throw new Error("不支持的 trace 证据版本或结构；需要包含 analysis.json 的 Doctor manifest");
+    throw new Error("不支持的 trace 证据版本或结构；需要 schema_version=2 的 analysis.json，可用 --trace-file 重新导入原始 spans");
   }
   return snapshot;
 }
 
-/** Offline report consumes saved facts and findings. It never reruns detectors against a newer Plugin. */
-export async function renderTraceSnapshot(dir: string, contributions?: TraceContributions): Promise<void> {
-  const { Node, NormSpan, TraceContext, Measurements, TraceHarness, renderInteractive } = await import("@compforge/trace-harness");
-  const snapshot = readTraceSnapshot(dir);
+/** Rehydrate frozen facts; no Source, extractor or Detector runs during offline selection. */
+async function snapshotAnalysis(dir: string, snapshot: TraceSnapshot): Promise<AnalysisContext> {
+  const { Node, NormSpan, TraceContext, Measurements, AnalysisContext } = await import("@compforge/trace-harness");
   const findings = JSON.parse(readFileSync(join(dir, TRACE_FILES.findings), "utf8")) as Findings;
   const spans = snapshot.spans.map(value => {
     const span = new NormSpan(value.span_id, value.parent_span_id, value.name, value.start_ms, value.dur_ms,
@@ -104,9 +111,36 @@ export async function renderTraceSnapshot(dir: string, contributions?: TraceCont
     return [span.span_id, span] as const;
   });
   const trace = new TraceContext(snapshot.trace_id, new Map(spans), snapshot.nodes.map(node => new Node(node)), new Map());
-  const measured = snapshot.visible_measurements;
-  const measurements = new Measurements(measured.specs, measured.sources, measured.results);
-  const html = renderInteractive(trace, findings, { measurements, agentRunIR: snapshot.agent_runs,
-    facetRegistry: contributions ? new TraceHarness(contributions).facets : undefined });
-  writeFileSync(join(dir, "trace.html"), html, { mode: 0o600 });
+  const m = snapshot.measurements;
+  const analysis = new AnalysisContext(trace, new Measurements(m.specs, m.sources, m.nodes, m.trace), findings);
+  analysis.agentRuns = snapshot.agent_runs;
+  return analysis;
+}
+
+export type TraceViewOptions = { node?: string; view?: "default" | "agent" | "measurements" | "timeline" };
+
+/** @spec Prepare derivatives explicitly from saved evidence, then select a View; never reacquire data. */
+export async function selectTraceView(dir: string, options: TraceViewOptions = {}): Promise<View> {
+  const { TraceHarness, buildView } = await import("@compforge/trace-harness");
+  const snapshot = readTraceSnapshot(dir);
+  if (!options.node && (options.view === undefined || options.view === "default")) return snapshot.views.default;
+  if (!options.node && options.view === "agent" && snapshot.views.agent) return snapshot.views.agent;
+  const analysis = await snapshotAnalysis(dir, snapshot);
+  if (snapshot.collection.scope === "trace" && snapshot.collection.complete
+    && options.node && ["measurements", "timeline"].includes(options.view ?? "")) {
+    new TraceHarness({}).prepare(analysis, { callBreakdowns: [options.node] });
+  }
+  const request = options.node
+    ? { scope: "node", nodeId: options.node, view: options.view ?? "default" }
+    : { scope: "trace", view: options.view ?? "default" };
+  return buildView(analysis, request as ViewRequest);
+}
+
+/** Render only a prepared View, preserving collection-time facets and Agent extraction offline. */
+export async function renderTraceSnapshot(dir: string): Promise<void> {
+  const { render } = await import("@compforge/trace-harness");
+  const { existsSync } = await import("node:fs");
+  const view: View = existsSync(join(dir, "view.json"))
+    ? JSON.parse(readFileSync(join(dir, "view.json"), "utf8")) : readTraceSnapshot(dir).views.default;
+  writeFileSync(join(dir, "trace.html"), render(view, { format: "html" }), { mode: 0o600 });
 }

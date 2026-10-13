@@ -32,7 +32,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
   const manifestPath = join(directory, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as Manifest;
   let format = options.format?.trim() || "default";
-  if (!["default", "html", "json", "md", "summary", "bundle", "manifest"].includes(format)) {
+  if (!["default", "html", "json", "text", "md", "summary", "bundle", "manifest"].includes(format)) {
     useLogger("delivery").warn(`未识别 format '${format}'，按 default 交付 HTML + Bundle`);
     format = "default";
   }
@@ -63,6 +63,11 @@ export async function deliverSerialized(input: { directory: string; options: Com
       const files: { source: string; destination: string }[] = [];
       if (format === "default" || format === "html") files.push({ source: "report.html", destination: format === "default" ? paths.html : filePath("html") });
       if (format === "json" || format === "md") files.push({ source: format === "json" ? (manifest.files.diagnosis?.path ?? manifest.files.output?.path ?? "diagnosis.json") : manifest.files.summary!.path, destination: filePath(format) });
+      if (format === "text") {
+        if (!manifest.files.text) throw new Error("Serialized result has no text output");
+        if (options.output) files.push({ source: manifest.files.text.path, destination: filePath("txt") });
+        else writeOutput(readFileSync(join(directory, manifest.files.text.path), "utf8"));
+      }
       const archive = format === "default" ? paths.bundle : format === "bundle" ? resolveArchivePath(options.output, reportName) : undefined;
       // Validate every destination before publishing any output.
       for (const path of [...files.map(file => file.destination), ...(archive ? [archive] : [])]) {

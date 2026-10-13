@@ -155,12 +155,12 @@ export function defaultTraceBatchName(now: Date): string {
   return `doctor-trace-batch-${ts}`;
 }
 
-export type TraceOutputFormat = "default" | "html" | "bundle";
+export type TraceOutputFormat = "default" | "html" | "bundle" | "text" | "json";
 
 export function parseTraceOutputFormat(value: string | undefined): TraceOutputFormat {
   const format = value?.trim() || "default";
-  if (format !== "default" && format !== "html" && format !== "bundle") {
-    throw new Error(`--format 只支持 html 或 bundle: '${format}'`);
+  if (format !== "default" && format !== "html" && format !== "bundle" && format !== "text" && format !== "json") {
+    throw new Error(`--format 只支持 default、html、bundle、text 或 json: '${format}'`);
   }
   return format;
 }

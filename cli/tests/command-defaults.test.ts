@@ -71,7 +71,8 @@ test("Help shows each Distribution's effective format default and output destina
   expect(db.replace(/\s+/g, " ")).toContain("当前默认 manifest（JSON 索引与临时证据目录）");
   expect(db).toContain("-f manifest -o ./evidence → ./evidence/manifest.json（证据目录）");
   const trace = commandHelp(ascli, "trace");
-  expect(trace).not.toContain("-f json -o");
+  expect(trace).toContain("-f json -o");
+  expect(trace).toContain("-f text → 终端文本视图");
   expect(trace).not.toContain("-f summary →");
 });
 

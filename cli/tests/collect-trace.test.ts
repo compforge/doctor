@@ -31,7 +31,7 @@ async function collectTrace(
   search?: Parameters<typeof collectTraceEvidence>[2],
 ): Promise<number> {
   const code = await collectTraceEvidence(options, log, search);
-  if (code === 0) await renderTraceEvidence(options.outputDir, options.contributions);
+  if (code === 0) await renderTraceEvidence(options.outputDir);
   return code;
 }
 
@@ -211,7 +211,9 @@ describe("trace 输出格式", () => {
   });
 
   test("拒绝未知格式和 bundle 后缀", () => {
-    expect(() => parseTraceOutputFormat("json")).toThrow("html 或 bundle");
+    expect(parseTraceOutputFormat("json")).toBe("json");
+    expect(parseTraceOutputFormat("text")).toBe("text");
+    expect(() => parseTraceOutputFormat("invalid")).toThrow("--format 只支持");
     expect(() => resolveTraceHtmlPath("report.tar.gz", "ignored")).toThrow("不能使用");
   });
 });
