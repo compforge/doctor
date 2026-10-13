@@ -48,7 +48,8 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
    Inspect → Probe → Detector，通过 capability 复用 DataSource、Model、Case 等业务能力；access、类型化 data、
    Target-scoped infra 与 profile config 只支撑 contribution/capability 的准备和调用，不形成平行生命周期。
    私有业务实现不进入 CLI/SDK。
-2. **Plugin 是 Service 与 Skill 的分发单元**：一个 Plugin 可打包多个 Service 及多个 Skill；Service
+2. **Plugin 是产品的装配与分发形式**：Plugin 通常对应一个以 Service 为组成单位的 Product，
+   统一交付产品知识、多个 Service 及排障 Skill；Service
    是 contribution、capability 和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
    Case 与 DataSource、Workload 一样由 Service 贡献；共享定义和运行时对象准备归 Case 来源，Health、Perf、Eval 各自拥有消费流程。

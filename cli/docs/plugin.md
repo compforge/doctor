@@ -210,7 +210,10 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 
 Plugin 与 Service 都可以提供可选的 `description`、`concepts`、`workflows`：简短介绍、核心对象与约束、
 从触发到完成的典型流程。Common Service 拥有 Service 的身份、知识与 Workload 声明，Doctor 只扩展
-诊断 contribution 与 capability。Plugin 是 `id@version` 标识的分发单元，自身声明作用域及跨服务知识。
+诊断 contribution 与 capability。Product 是以 Service 为组成单位的业务聚合；Plugin 通常对应一个 Product，
+以 `ServiceCatalog` 表达组成，并作为 `id@version` 标识的装配和分发形式统一交付 Service 与 Skill。
+Plugin 复用 Common Product 的说明契约来承载产品级知识，Service 的知识聚焦自身职责与协作边界。
+这层对应关系不要求 Product 的 `name` 与 Plugin 的 `id` 使用相同命名。
 这些字段由 Plugin 作者随版本维护，提供时须为非空文本；内容原样进入 JSON，文本输出保留 Markdown 和换行。
 `doctor plugin` 展示 Plugin 知识及服务索引，`doctor plugin --service <name>` 增加该 Service 的知识与能力详情；
 两者均支持 `-f json`，无需准备 profile 或 Target 访问。三个字段均可独立省略，缺省时不补造业务知识。
