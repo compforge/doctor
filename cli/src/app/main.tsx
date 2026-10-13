@@ -444,12 +444,14 @@ export function createDoctorProgram(
       "面向应用与基础设施的本地诊断工具；默认旁路运行、证据优先。",
       "",
       "诊断模型：",
-      "  Core 提供通用 Target 访问与证据编排；Plugin 提供业务目标和数据语义，并声明 Service 与访问方式。",
+      "  Core 提供通用 Target 访问与证据编排；Plugin 交付产品与 Service 的业务知识、诊断声明和 Skill。",
+      "  Concepts（核心概念）解释业务对象与约束；Workflows（典型流程）说明从触发到完成的业务过程。",
       "  Service 是业务诊断对象，拥有零到多个 Workload；Pod、Container、Process 提供运行态证据。",
       "  Doctor Host 是运行 CLI 的机器，Target 是被诊断目标；访问位置会影响观测结果。",
       "  Facts / Observations 保存事实与观测，Findings 是基于已有证据的规则判断。",
       "",
       "排查路径：",
+      "  理解产品与服务 → plugin -f summary 查看 concepts / workflows；--service <name> 聚焦服务",
       "  系统整体异常   → health 查看统计与体检 → sample 选取代表业务 ID → collect 汇集证据",
       "  已知异常请求   → collect 联合取证，或 trace / log / data 聚焦单个数据面",
       "  部署与依赖异常 → inspect 查看运行态与配置 → store 检查存储 → db / s3 查询具体数据",
@@ -542,14 +544,16 @@ export function createDoctorProgram(
     .action(runPluginUninstall);
 
   catalog
-    .command("help")
+    .command("help [command]")
     .description("显示帮助信息")
-    .action(() => {
-      program.outputHelp();
+    .action((name?: string) => {
+      const target = name ? program.commands.find(command => command.name() === name || command.aliases().includes(name)) : program;
+      if (!target) return program.error(`unknown command '${name}'`, { code: "commander.unknownCommand" });
+      target.outputHelp();
     });
 
   catalog
-    .command("image [image]")
+    .command("image [image]").helpGroup("Provision · 能力准备:")
     .description("将 image tar 发布到 Target Registry 和/或 load 到 Doctor Host")
     .addHelpText("after", `
 分析思路：
@@ -572,7 +576,7 @@ export function createDoctorProgram(
     });
 
   catalog
-    .command("debug")
+    .command("debug").helpGroup("Provision · 能力准备:")
     .allowExcessArguments(false)
     .description("为目标 Pod 启动或复用具备 ptrace 权限的 debug 临时容器")
     .addHelpText("after", `
@@ -596,7 +600,7 @@ export function createDoctorProgram(
     });
 
   catalog
-    .command("install")
+    .command("install").helpGroup("Provision · 能力准备:")
     .allowExcessArguments(false)
     .description("向目标 Pod container 安装排查程序；首版支持 GDB")
     .addHelpText("after", `
@@ -618,7 +622,7 @@ export function createDoctorProgram(
     });
 
   withMemOptions(
-    catalog.command("mem").description("使用 fork-pyheap attach Python 进程并回传对象堆")
+    catalog.command("mem").helpGroup("Collect · 采集与分析:").description("使用 fork-pyheap attach Python 进程并回传对象堆")
       .addHelpText("after", `
 分析思路：
   在线 attach 选定 Python 进程并导出对象堆，回传后交给 mema 离线分析。
@@ -630,7 +634,7 @@ export function createDoctorProgram(
     await runCommand(memCommand, opts, domainInput(opts), commandRuntime);
   });
   withMemaOptions(
-    catalog.command("mema [inputs...]").description("在本机解析并诊断一个或多个 .pyheap 文件")
+    catalog.command("mema [inputs...]").helpGroup("Collect · 采集与分析:").description("在本机解析并诊断一个或多个 .pyheap 文件")
       .addHelpText("after", `
 分析思路：
   在 Doctor Host 读取已有对象堆，分析对象占用与引用关系；多个快照可用于比较变化。
@@ -642,7 +646,7 @@ export function createDoctorProgram(
     await runCommand(memaCommand, opts, { ...domainInput(opts), inputs }, commandRuntime);
   });
   withCpuOptions(
-    catalog.command("cpu").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）")
+    catalog.command("cpu").helpGroup("Collect · 采集与分析:").description("对目标 pod 做 Python CPU/卡顿取证，产出证据包（无 server 直连）")
       .addHelpText("after", `
 分析思路：
   先检查容器资源、Python 进程与取证条件，再按所选模式取得线程栈证据。
@@ -657,7 +661,7 @@ export function createDoctorProgram(
   registerHealthCommand(catalog, commandRuntime);
 
   withCollectOptions(
-    catalog.command("collect").description(
+    catalog.command("collect").helpGroup("Collect · 采集与分析:").description(
       "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
     )
       .addHelpText("after", `
@@ -681,7 +685,7 @@ export function createDoctorProgram(
     await runCommand(collectCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withTraceOptions(
-    catalog.command("trace").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻")
+    catalog.command("trace").helpGroup("Collect · 采集与分析:").description("按 trace ID、业务 ID 或时间范围采集，也可导入 Jaeger 文件或离线下钻")
       .addHelpText("after", `
 分析思路（Trace Harness）：
   trace/span 标准化为 Node，保留发生的事实与源 span 引用。
@@ -701,7 +705,7 @@ export function createDoctorProgram(
       pageSize: commandOpts.pageSize === undefined ? undefined : Number(commandOpts.pageSize) }, commandRuntime);
   });
   withStoreOptions(
-    catalog.command("store").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）")
+    catalog.command("store").helpGroup("Collect · 采集与分析:").description("从 Service Pod 提取配置并诊断 DB/VDB/S3/Redis 健康与容量（只读）")
       .addHelpText("after", `
 分析思路：
   从 Service 提供的连接与访问上下文检查存储健康和容量，保留各后端的取证结果。
@@ -713,7 +717,7 @@ export function createDoctorProgram(
     await runCommand(storeCommand, opts, domainInput(opts), commandRuntime);
   });
   withS3Options(
-    catalog.command("s3").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）")
+    catalog.command("s3").helpGroup("Collect · 采集与分析:").description("按 ls/stat/cat 浏览 Service 的 S3 bucket、前缀与对象（只读）")
       .addHelpText("after", `
 分析思路：
   通过 Service 的 S3 连接列举、查看对象元数据或读取有界内容，保留对象路径与读取范围。
@@ -726,7 +730,7 @@ export function createDoctorProgram(
     await runCommand(s3Command, opts, { ...domainInput(opts), action, path }, commandRuntime);
   });
   withDbOptions(
-    catalog.command("db").description("发现 Service 可访问的数据库与表，执行有界只读 SQL")
+    catalog.command("db").helpGroup("Collect · 采集与分析:").description("发现 Service 可访问的数据库与表，执行有界只读 SQL")
       .addHelpText("after", `
 分析思路：
   先发现 Service 可访问的库表，再使用有界只读 SQL 验证具体数据假设。
@@ -740,7 +744,7 @@ export function createDoctorProgram(
     await runCommand(dbCommand, opts, domainInput(opts), commandRuntime);
   });
   withLogOptions(
-    catalog.command("log").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace 与对象日志（只读）")
+    catalog.command("log").helpGroup("Collect · 采集与分析:").description("按 Service / 时间范围采集 Pod 日志；可选业务 ID 关联 trace 与对象日志（只读）")
       .addHelpText("after", `
 分析思路：
   按 Service 与时间窗口读取日志；有业务 ID 时关联 trace 与对象日志，保留各来源结果。
@@ -754,7 +758,7 @@ export function createDoctorProgram(
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withDataOptions(
-    catalog.command("data").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）")
+    catalog.command("data").helpGroup("Collect · 采集与分析:").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）")
       .addHelpText("after", `
 分析思路：
   从业务 ID 出发，沿现场证据中的 Identity 关系汇集各 Service 的关联记录。
@@ -768,7 +772,7 @@ export function createDoctorProgram(
     await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withInspectOptions(
-    catalog.command("inspect").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）")
+    catalog.command("inspect").helpGroup("Collect · 采集与分析:").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）")
       .addHelpText("after", `
 分析思路：
   按 Service 查看 Workload 运行态，并按所选范围补充部署配置与现场依赖版本。
@@ -780,7 +784,7 @@ export function createDoctorProgram(
     await runCommand(inspectCommand, opts, domainInput(opts), commandRuntime);
   });
   withTenantOptions(
-    catalog.command("tenant").description("汇总 Plugin 提供的租户粒度业务事实（只读）")
+    catalog.command("tenant").helpGroup("Collect · 采集与分析:").description("汇总 Plugin 提供的租户粒度业务事实（只读）")
       .addHelpText("after", `
 分析思路：
   以租户身份汇集 Plugin 提供的业务事实，保留各来源的配置与能力信息。
@@ -792,7 +796,7 @@ export function createDoctorProgram(
     await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
   });
   withCaseOptions(
-    catalog.command("case").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
+    catalog.command("case").helpGroup("Collect · 采集与分析:").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
       .addHelpText("after", `
 分析思路：
   从 Case 目录选择请求，确认目标与执行位置后实际发送，并保留协议响应和诊断证据。
@@ -845,7 +849,7 @@ export function createDoctorProgram(
     }));
   });
   withNetworkOptions(
-    catalog.command("net").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle")
+    catalog.command("net").helpGroup("Collect · 采集与分析:").description("协调目标服务 Pod 短时抓包，以跟踪或守候模式产出 NetBundle")
       .addHelpText("after", `
 分析思路：
   在所选 Service 的 Pod 上进行有界抓包，保存采集范围与 NetBundle，交给 neta 离线分析。
@@ -857,7 +861,7 @@ export function createDoctorProgram(
     await runCommand(netCommand, opts, domainInput(opts), commandRuntime);
   });
   catalog
-    .command("neta [input]")
+    .command("neta [input]").helpGroup("Collect · 采集与分析:")
     .description("纯离线分析 NetBundle，重建业务调用并生成 Findings、Coverage 与可视化报告")
     .addHelpText("after", `
 分析思路：
@@ -873,7 +877,7 @@ export function createDoctorProgram(
       await runStandaloneCommand("doctor neta", () => runAnalyzeNetwork(input, opts));
     });
   withMcpOptions(
-    catalog.command("mcp").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML")
+    catalog.command("mcp").helpGroup("Collect · 采集与分析:").description("对 MCP tool 执行多维取证与规则分析，产出 Evidence Bundle 或 HTML")
       .addHelpText("after", `
 分析思路：
   先确认配置与运行时 tool，再执行获准的 MCP 调用；有 HTTP 映射时可比较直连路径。
@@ -885,7 +889,7 @@ export function createDoctorProgram(
     await runCommand(mcpCommand, opts, domainInput(opts), commandRuntime);
   });
   withModelOptions(
-    catalog.command("model").description("从模型目录选择可用模型，执行 validation 与真实 inference")
+    catalog.command("model").helpGroup("Collect · 采集与分析:").description("从模型目录选择可用模型，执行 validation 与真实 inference")
       .addHelpText("after", `
 分析思路：
   按租户与模型身份检查 backend validation，再执行所选 Case 的真实 inference。
@@ -897,7 +901,7 @@ export function createDoctorProgram(
     await runCommand(modelCommand, opts, domainInput(opts), commandRuntime);
   });
   withMetricOptions(
-    catalog.command("metric").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表")
+    catalog.command("metric").helpGroup("Collect · 采集与分析:").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表")
       .addHelpText("after", `
 分析思路：
   按 Service 声明采集和查询指标，在同一窗口内保留曲线、规则发现与覆盖缺口。
@@ -941,6 +945,9 @@ export function createDoctorProgram(
   applyCommandDefaults(program, distribution.commandDefaults);
   configureProfileHelp(program);
   configureDeliveryHelp(program);
+  // Root action owns unknown-command diagnostics. Set this after child creation
+  // so subcommands retain Commander's strict argument validation.
+  program.allowExcessArguments(true);
   return program;
 }
 
