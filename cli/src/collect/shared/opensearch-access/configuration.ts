@@ -9,7 +9,7 @@ import type { StepInput } from "../../evidence";
 
 export type OpenSearchConnectionPlan =
   | {
-      kind: "direct";
+      kind: "direct" | "target";
       endpoint: string;
       username?: string;
       password?: string;
@@ -30,7 +30,7 @@ export interface OpenSearchConnectionConfirmation {
 export interface ConfirmOpenSearchConnectionOptions {
   /** Doctor Host 可直接访问的稳定入口，优先级最高。 */
   endpoint?: string;
-  /** 从被诊断对象配置中提取的入口，可能是 K8s Service DNS。 */
+  /** 从被诊断对象配置中提取的入口，可能是 K8s Service DNS 或仅在集群内可达的地址。 */
   configuredEndpoint?: string;
   serviceName?: string;
   kube?: KubectlOptions;
@@ -42,7 +42,7 @@ export type OpenSearchAccessLog = (
 ) => void;
 
 /**
- * 把 OpenSearch 连接入口确认成 direct 或 Service 两种计划；这里只确认，不建立网络通道。
+ * 区分 Doctor Host 入口、Target 配置入口与 Service；这里只确认，不建立网络通道。
  * endpoint 是 Doctor Host 可直连的地址，configuredEndpoint 则属于当前诊断 target 的现场 Fact。
  */
 export async function confirmOpenSearchConnection(
@@ -92,7 +92,7 @@ export async function confirmOpenSearchConnection(
       if (!identity) {
         return {
           connection: {
-            kind: "direct",
+            kind: "target",
             endpoint: configured.safeEndpoint,
             username: configured.username,
             password: configured.password,
