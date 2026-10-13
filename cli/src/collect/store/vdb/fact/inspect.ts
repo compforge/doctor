@@ -126,7 +126,7 @@ export function makeVdbAccessInspect(
         });
         return { access: failedFact("store.vdb.access", "vdb-access", confirmation.failure.reason) };
       }
-      const directCredentials = confirmation.connection?.kind === "direct"
+      const directCredentials = (confirmation.connection?.kind === "direct" || confirmation.connection?.kind === "target")
         && confirmation.connection.username
         && confirmation.connection.password;
       const auth = directCredentials

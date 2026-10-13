@@ -3,7 +3,7 @@ import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
-import { PodRelayTransport } from "@compforge/harness-toolbox/transport";
+import { sharedPodRelay } from "../datasource/pod-relay";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -207,17 +207,9 @@ export function createPluginContext(
   };
   const relay = async (ns: string) => {
     const kubernetes = await cluster();
-    const relayKube = { ...kube, namespace: ns };
-    // Transport identity excludes Service and database credentials; the root owns cancellation/cleanup.
-    return clients.get({
-      clientKey: clientKey("pod-relay", relayKube),
-      createClient: (_clients, rootSignal) => new PodRelayTransport({
-        ...relayKube, signal: rootSignal, startupTimeoutMs: 10_000, connectTimeoutMs: 10_000,
-        maxConnections: 32, maxTargets: 32, maxCandidatePods: 16,
-      }, { executor: {
-        run: (command, runOptions) => kubernetes.run(ns, command, runOptions),
-        exec: (target, command, runOptions) => kubernetes.exec(ns, target, command, runOptions),
-      } }),
+    return sharedPodRelay(clients, { ...kube, namespace: ns }, {
+      run: (command, runOptions) => kubernetes.run(ns, command, runOptions),
+      exec: (target, command, runOptions) => kubernetes.exec(ns, target, command, runOptions),
     });
   };
   const disposers: Array<() => void | Promise<void>> = [];
