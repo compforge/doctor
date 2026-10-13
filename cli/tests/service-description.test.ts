@@ -3,12 +3,14 @@ import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, requireFactsInspectExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
-import { formatServiceDescription } from "../src/app/plugin-description";
+import { formatPluginDescription, formatServiceDescription } from "../src/app/plugin-description";
 
 const service: ServiceDefinition = {
   component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
   name: "api",
   description: "Business API",
+  concepts: "A Request owns Attempts.\nAn Attempt records one execution.",
+  workflows: "1. Accept request\n2. Execute attempt\n3. Persist result",
   workloads: [],
   extensions: [inspectExtension({
     description: "Read a request record", limitations: ["Retained records only"],
@@ -57,6 +59,8 @@ test("text uses the same projection and distinguishes possible output from accep
   const catalog = createServiceCatalog([service]);
   const text = formatServiceDescription(describeService(catalog.find("api")!));
   expect(text).toContain("说明：Business API");
+  expect(text).toContain("Concepts（核心概念）：\n      A Request owns Attempts.\n      An Attempt records one execution.");
+  expect(text).toContain("Workflows（典型流程）：\n      1. Accept request\n      2. Execute attempt\n      3. Persist result");
   expect(text).toContain("用途：Read a request record");
   expect(text).toContain("输入 ID（每个 Query 选一种）：request_id");
   expect(text).toContain("可能关联的 ID：run_id");
@@ -101,6 +105,9 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
     workloads: []
   }));
   expect(legacy).toContain("说明：未提供");
+  expect(legacy).not.toContain("Concepts");
+  expect(legacy).not.toContain("Workflows");
+  expect(formatPluginDescription({})).toBe("");
   expect(legacy).toContain("未声明 facts.inspect Extension");
   expect(legacy).toContain("Extensions：无");
   expect(legacy).toContain("EnvironmentProbes：无");
@@ -130,4 +137,27 @@ test("text reports VDB access under its Store identity", () => {
   }));
   expect(text).toContain("dataSources.index:");
   expect(text).toContain("required: get configmaps/search-config — Locate search storage");
+});
+
+
+test("Plugin and Service knowledge is optional text, validated without runtime work", () => {
+  const knowledge = { description: "Task product", concepts: "Task → Attempt\nAttempt → Result", workflows: "Submit → schedule → persist" };
+  const result = validatePluginDefinition({
+    id: "sample", version: "1.0.0", ...knowledge, services: { services: [service] },
+    validateConfig: () => { throw new Error("must remain offline"); },
+  }, manifest);
+  expect(result).toMatchObject(knowledge);
+  expect(result.services.find("api")).toMatchObject({ concepts: service.concepts, workflows: service.workflows });
+  const text = formatPluginDescription(result);
+  expect(text).toContain("说明：Task product");
+  expect(text).toContain("Task → Attempt\n    Attempt → Result");
+  expect(text).toContain("Submit → schedule → persist");
+  for (const field of ["description", "concepts", "workflows"]) {
+    for (const invalid of [42, null, {}, [], " "]) {
+      expect(() => validate({ ...service, [field]: invalid })).toThrow(`api.${field}`);
+      expect(() => validatePluginDefinition({
+        id: "sample", version: "1.0.0", [field]: invalid, services: { services: [service] },
+      }, manifest)).toThrow(`Plugin sample.${field}`);
+    }
+  }
 });

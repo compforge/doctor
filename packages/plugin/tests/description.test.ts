@@ -8,6 +8,8 @@ const service: ServiceDefinition = {
   component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
   name: "runtime",
   description: "Session and run evidence",
+  concepts: "A Session owns Runs.\nA Run records one execution.",
+  workflows: "Accept → execute → persist.\nAcceptance is not completion.",
   workloads: [{
     name: "worker", description: "Handles session runs", container: "app",
     platform: "kubernetes", location: { kind: "labels", labels: { app: "worker" } },
@@ -35,6 +37,7 @@ test("description projects the execution declaration without confusing inputs an
   const result = describeService(service);
   expect(result.name).toBe("runtime");
   expect(result.description).toBe("Session and run evidence");
+  expect(JSON.parse(JSON.stringify(result))).toMatchObject({ concepts: service.concepts, workflows: service.workflows });
   expect(result.extensions?.map(item => item.kind)).toEqual(["trace.resolve", "facts.inspect"]);
   expect(result.detectors).toEqual(["state"]);
   expect(result.details.inspect).toEqual({
@@ -77,14 +80,14 @@ test("explicit projection excludes credentials, configuration and functions even
   }
 });
 
-test("old Services and empty declarations stay discoverable without invented capabilities", () => {
+test("omitted metadata and empty declarations do not invent capabilities", () => {
   const result = describeService({
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "legacy",
     workloads: []
   });
   expect(result).toEqual({
-    name: "legacy", aliases: [], description: undefined, detectors: [], environmentProbes: [],
+    name: "legacy", aliases: [], description: undefined, concepts: undefined, workflows: undefined, detectors: [], environmentProbes: [],
     details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] }
   });
   const withoutExplanation = { ...requireFactsInspectExtension(service.extensions![1]!), description: undefined, limitations: undefined };
