@@ -1,3 +1,4 @@
+import { conceptToMarkdown, knowledgeToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 
 /** 进程内测试（command-surface.test.ts）与 CLI 入口 fixture（plugin-cli.ts）共用的测试 Plugin。 */
@@ -6,8 +7,9 @@ export const testPlugin = {
   version: "0.0.1",
   description: "Task processing product",
   knowledge: {
-    concepts: [{ id: "model", name: "Model", description: "A Task owns Attempts.\nEach Attempt produces a Result." }],
-    workflows: [{ id: "flow", title: "Flow", summary: "Submit → queue → execute → persist", steps: [] }],
+    markdown() { return knowledgeToMarkdown(this); },
+    concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "model", name: "Model", description: "A Task owns Attempts.\nEach Attempt produces a Result." }],
+    workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "flow", title: "Flow", summary: "Submit → queue → execute → persist", steps: [] }],
   },
   services: createServiceCatalog([{
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
@@ -15,8 +17,9 @@ export const testPlugin = {
     aliases: ["store"],
     upstream: ["test-api"],
     knowledge: {
-      concepts: [{ id: "model", name: "Model", description: "A Cache stores task results." }],
-      workflows: [{ id: "flow", title: "Flow", summary: "Read cache → return result\nA cache miss is not a failed Task.", steps: [] }],
+      markdown() { return knowledgeToMarkdown(this); },
+      concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "model", name: "Model", description: "A Cache stores task results." }],
+      workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "flow", title: "Flow", summary: "Read cache → return result\nA cache miss is not a failed Task.", steps: [] }],
     },
     workloads: [],
     dataSources: [{

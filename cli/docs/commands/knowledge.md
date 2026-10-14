@@ -47,6 +47,10 @@ Plugin 与 Service 都声明 `knowledge?: Knowledge`。基础结构和 Markdown 
 同一所有者、同一种类的对象 ID 唯一；同一容器内子项 ID 唯一。Step 父引用允许前向声明，
 不能缺失、自指或成环。`source` 保留定义来源 `name`、`version` 和可选 `reference`，版本可独立于 Plugin。
 
+各知识对象提供 `markdown(): string`；文本展示调用对象自身的方法，父对象组合子对象输出。
+JSON 展示只序列化结构化内容，不调用 Markdown 方法。Plugin 加载时验证方法契约，但不执行渲染。
+从 JSON 加载知识的 Plugin 负责为各层对象补齐方法，可委托 SDK 导出的 common 转换函数。
+
 原 `error.catalog` Extension 与 `knowledge errors` 已移除，错误目录直接放进
 `Knowledge.dictionaries`，使用 `knowledge lookup errors [query]`。错误码可作为字符串 Entry ID，
 保留前导零；同一码有多个解释时使用不同稳定 ID，将共享码放进 aliases。

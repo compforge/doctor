@@ -1,3 +1,4 @@
+import { conceptToMarkdown, knowledgeToMarkdown } from "@compforge/doctor-plugin";
 import { describe, expect, spyOn, test } from "bun:test";
 import { createServiceCatalog } from "@compforge/doctor-plugin";
 import { createDoctorProgram } from "../src/app/main";
@@ -87,7 +88,7 @@ test("Plugin JSON omits Knowledge at both levels", async () => {
   let output = "";
   const writer = spyOn(process.stdout, "write").mockImplementation(chunk => { output += String(chunk); return true; });
   try {
-    const plugin = { ...ctx.plugin, knowledge: { concepts: [{ id: "model", name: "Product", description: "Product concept" }] } };
+    const plugin = { ...ctx.plugin, knowledge: { markdown() { return knowledgeToMarkdown(this); }, concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "model", name: "Product", description: "Product concept" }] } };
     await createDoctorProgram({ plugin }).parseAsync(["plugin", "-s", "api", "--service", "worker", "-s", "api-alias", "-f", "json"], { from: "user" });
     const selected = JSON.parse(output).plugins[0];
     expect(selected.services.map((service: { name: string }) => service.name)).toEqual(["api", "worker"]);

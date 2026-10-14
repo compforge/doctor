@@ -1,3 +1,4 @@
+import { articleToMarkdown, conceptToMarkdown, knowledgeToMarkdown, sectionToMarkdown, stepToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import {
   createServiceCatalog,
   kubernetesServiceWorkload,
@@ -26,7 +27,7 @@ const services = createServiceCatalog([
   {
     name: "example-worker",
     upstream: ["example-api"],
-    knowledge: { concepts: [{ id: "queue", name: "Queue", description: "The worker executes queued jobs." }] },
+    knowledge: { markdown() { return knowledgeToMarkdown(this); }, concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "queue", name: "Queue", description: "The worker executes queued jobs." }] },
     extensions: [workerHealthCases],
     component: { name: "example-worker", repository: { forge: { name: "github" }, path: "compforge/doctor" } },
     workloads: [kubernetesServiceWorkload("example-worker")],
@@ -50,13 +51,14 @@ export const examplePlugin = {
   version: pluginPackage.version,
   services,
   knowledge: {
-    concepts: [{ id: "job", name: "Job", description: "A Job has a request and an execution result." }],
-    workflows: [{ id: "execution", title: "Job execution", summary: "The API queues work for the worker.",
-      steps: [{ id: "accept", title: "Accept", description: "Validate and queue the request." },
-        { id: "execute", title: "Execute", description: "Execute the queued job." },
-        { id: "persist", parentId: "execute", title: "Persist", description: "Save the execution result." }] }],
-    articles: [{ id: "queue-capacity", title: "Queue capacity", summary: "Understand a full queue.",
-      sections: [{ id: "investigate", title: "Investigate", body: "Check queue depth and worker throughput using current evidence." }] }],
+    markdown() { return knowledgeToMarkdown(this); },
+    concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "job", name: "Job", description: "A Job has a request and an execution result." }],
+    workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "execution", title: "Job execution", summary: "The API queues work for the worker.",
+      steps: [{ markdown() { return stepToMarkdown(this); }, id: "accept", title: "Accept", description: "Validate and queue the request." },
+        { markdown() { return stepToMarkdown(this); }, id: "execute", title: "Execute", description: "Execute the queued job." },
+        { markdown() { return stepToMarkdown(this); }, id: "persist", parentId: "execute", title: "Persist", description: "Save the execution result." }] }],
+    articles: [{ markdown() { return articleToMarkdown(this); }, id: "queue-capacity", title: "Queue capacity", summary: "Understand a full queue.",
+      sections: [{ markdown() { return sectionToMarkdown(this); }, id: "investigate", title: "Investigate", body: "Check queue depth and worker throughput using current evidence." }] }],
     dictionaries: [exampleErrors],
   },
 } satisfies PluginDefinition;

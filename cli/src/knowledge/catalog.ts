@@ -46,7 +46,7 @@ export function selectKnowledgeOwners(plugin: PluginDefinition | undefined,
   }
   return selected.map(descriptor => {
     if (descriptor.knowledge !== undefined) validateKnowledgeDeclaration(descriptor.knowledge, `${descriptor.namespace}.knowledge`);
-    const knowledge = descriptor.knowledge ?? {};
+    const knowledge = descriptor.knowledge ?? { markdown: () => "" };
     return { ...descriptor, plugin: { id: plugin.id, version: plugin.version }, knowledge };
   });
 }
