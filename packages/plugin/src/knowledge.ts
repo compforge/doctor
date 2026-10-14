@@ -36,11 +36,13 @@ function markdown(value: Record<string, unknown>, label: string): void {
 /** Validate callable Knowledge across installed ESM and injected Plugin boundaries without rendering it. */
 export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"): asserts value is Knowledge {
   const knowledge = record(value, label);
+  const markdownObjects: { value: Record<string, unknown>; path: string }[] = [{ value: knowledge, path: label }];
   for (const kind of ["concepts", "workflows", "articles", "dictionaries"] as const) {
     if (knowledge[kind] === undefined) continue;
     for (const item of records(knowledge[kind], `${label}.${kind}`)) {
       text(item.id, `${label}.${kind}.id`, true);
       const path = `${label}.${kind}.${String(item.id)}`;
+      markdownObjects.push({ value: item, path });
       if (kind === "concepts") {
         text(item.name, `${path}.name`, true);
         text(item.description, `${path}.description`);
@@ -51,6 +53,7 @@ export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"
       if (kind === "workflows") {
         for (const step of records(item.steps, `${path}.steps`)) {
           text(step.id, `${path}.steps.id`, true);
+          markdownObjects.push({ value: step, path: `${path}.steps.${String(step.id)}` });
           text(step.title, `${path}.steps.title`, true);
           text(step.description, `${path}.steps.description`);
           if (step.parentId !== undefined) text(step.parentId, `${path}.steps.parentId`, true);
@@ -58,12 +61,14 @@ export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"
       } else if (kind === "articles") {
         for (const section of records(item.sections, `${path}.sections`)) {
           text(section.id, `${path}.sections.id`, true);
+          markdownObjects.push({ value: section, path: `${path}.sections.${String(section.id)}` });
           text(section.title, `${path}.sections.title`, true);
           text(section.body, `${path}.sections.body`);
         }
       } else {
         for (const entry of records(item.entries, `${path}.entries`)) {
           text(entry.id, `${path}.entries.id`, true);
+          markdownObjects.push({ value: entry, path: `${path}.entries.${String(entry.id)}` });
           text(entry.name, `${path}.entries.name`, true);
           text(entry.description, `${path}.entries.description`);
           if (entry.aliases !== undefined) strings(entry.aliases, `${path}.entries.aliases`);
@@ -78,15 +83,6 @@ export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"
     }
   }
   validateKnowledge(value as Knowledge);
-  markdown(knowledge, label);
-  for (const kind of ["concepts", "workflows", "articles", "dictionaries"] as const) {
-    for (const item of records(knowledge[kind] ?? [], `${label}.${kind}`)) {
-      const path = `${label}.${kind}.${String(item.id)}`;
-      markdown(item, path);
-      const children = kind === "workflows" ? "steps" : kind === "articles" ? "sections" : kind === "dictionaries" ? "entries" : undefined;
-      if (children) {
-        for (const child of records(item[children], `${path}.${children}`)) markdown(child, `${path}.${children}.${String(child.id)}`);
-      }
-    }
-  }
+  // Preserve structural/identity diagnostics before checking the callable contract.
+  for (const { value, path } of markdownObjects) markdown(value, path);
 }
