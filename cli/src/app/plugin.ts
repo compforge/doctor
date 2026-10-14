@@ -8,7 +8,7 @@ import { formatPluginDescription, formatServiceDescription, formatServiceSummary
 
 /** @spec Plugin displays identity, Service declarations and static caller relationships; Knowledge has its own command. */
 export function registerPluginInfo(command: Command, plugin?: PluginDefinition): void {
-  command.description("查看 Plugin / Service 目录与诊断声明，或安装/卸载 Plugin")
+  command.description("查看 Plugin / Service 目录、诊断能力与上游关系，或安装/卸载 Plugin")
     .allowExcessArguments(false)
     .addOption(serviceOption("按逻辑 Service 名称展示诊断声明与上游关系"))
     .addOption(new Option("-f, --format <format>", "输出格式：summary 展示目录，text/json 包含诊断声明")
@@ -17,7 +17,7 @@ export function registerPluginInfo(command: Command, plugin?: PluginDefinition):
 Plugin 目录：
   不指定 --service 时展示产品身份与服务索引；指定后展示服务的诊断声明。
   Upstream 表示声明的调用方 Service，不代表现场 trace 或健康状态。
-  产品和服务知识请使用 doctor knowledge。
+  产品和服务知识请使用 knowledge search/show；确定调查路径后，执行 inspect/collect 等命令获取现场证据。
 
 示例：
   doctor plugin

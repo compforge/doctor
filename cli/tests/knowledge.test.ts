@@ -5,6 +5,7 @@ import type { Command } from "commander";
 import { createDoctorProgram } from "../src/app/main";
 import { knowledgeIndex, selectKnowledgeOwners } from "../src/knowledge/catalog";
 import { lookupKnowledge, readKnowledge } from "../src/knowledge/read";
+import { searchKnowledge } from "../src/knowledge/search";
 
 const knowledge: Knowledge = {
   markdown() { return knowledgeToMarkdown(this); },
@@ -134,7 +135,7 @@ test("Knowledge text uses custom object and nested Markdown for overview, show a
   expect(await run(["knowledge", "lookup", "errors", "001"], injected)).toContain("Custom entry");
 });
 
-test("JSON and index commands do not invoke Markdown methods", async () => {
+test("JSON, index and search commands do not invoke Markdown methods", async () => {
   const noRender = () => { throw new Error("Markdown must not run for structured output"); };
   const custom: Knowledge = {
     markdown: noRender,
@@ -147,10 +148,101 @@ test("JSON and index commands do not invoke Markdown methods", async () => {
       entries: item.entries.map(entry => ({ ...entry, markdown: noRender })) })),
   };
   const injected = { ...plugin(), knowledge: custom };
-  for (const args of [[], ["list"], ["show", "concept/job"], ["show", "workflow/run#save"],
+  for (const args of [[], ["list"], ["search", "queue"], ["show", "concept/job"], ["show", "workflow/run#save"],
     ["show", "article/capacity#check%2Fqueue"], ["show", "dictionary/errors"], ["lookup", "errors", "001"]]) {
     const output = JSON.parse(await run(["knowledge", ...args, "-f", "json"], injected));
     expect(JSON.stringify(output)).not.toContain("markdown");
   }
   expect(await run(["knowledge", "list"], injected)).toContain("concept/job");
+  expect(await run(["knowledge", "search", "queue"], injected)).toContain("article/capacity#check%2Fqueue");
+});
+
+
+describe("knowledge search", () => {
+  test("searches Product and all Services by default; explicit Service aliases exclude Product", () => {
+    expect(searchKnowledge(plugin(), "attempts").matches.map(match => match.namespace)).toEqual([
+      "plugin/example", "plugin/example/service/worker", "plugin/example/service/api",
+    ]);
+    expect(searchKnowledge(plugin(), "attempts", { services: ["worker", "work"] }).matches.map(match => match.namespace))
+      .toEqual(["plugin/example/service/worker"]);
+    expect(searchKnowledge(plugin(), "attempts", { services: ["api", "work"] }).matches.map(match => match.namespace))
+      .toEqual(["plugin/example/service/worker", "plugin/example/service/api"]);
+    expect(() => searchKnowledge(plugin(), "queue", { services: ["missing"] })).toThrow("Unknown Service");
+  });
+
+  test("finds structured roots and leaves with references that can be read directly", () => {
+    for (const [query, suffix] of [
+      ["attempts", "concept/job"], ["accept", "workflow/run"], ["persist", "workflow/run#save"],
+      ["investigation", "article/capacity"], ["depth", "article/capacity#check%2Fqueue"],
+      ["1.2.3", "dictionary/errors"], ["CAPACITYEXCEEDED", "dictionary/errors#001"],
+    ]) {
+      const result = searchKnowledge(plugin(), query!);
+      expect(result.matches.map(match => match.ref)).toEqual([
+        `plugin/example/${suffix}`, `plugin/example/service/worker/${suffix}`, `plugin/example/service/api/${suffix}`,
+      ]);
+      for (const match of result.matches) expect(readKnowledge(plugin(), match.ref).ref).toBe(match.ref);
+    }
+    const leaf = searchKnowledge(plugin(), "depth").matches[0]!;
+    expect(leaf).toMatchObject({ kind: "article", id: "capacity", childKind: "section", childId: "check/queue" });
+  });
+
+  test("normalizes whitespace and requires every case-insensitive term in the same object", () => {
+    const result = searchKnowledge(plugin(), "  QUEUE\n  full  ");
+    expect(result.query).toBe("QUEUE full");
+    expect(result.matches.map(match => match.ref)).toEqual([
+      "plugin/example/dictionary/errors#001", "plugin/example/service/worker/dictionary/errors#001",
+      "plugin/example/service/api/dictionary/errors#001",
+    ]);
+    expect(searchKnowledge(plugin(), "accept persist").matches).toEqual([]);
+    expect(searchKnowledge(plugin(), "attempts expired").matches).toEqual([]);
+    expect(searchKnowledge(plugin(), "not-present").matches).toEqual([]);
+    expect(searchKnowledge(undefined, "queue").matches).toEqual([]);
+    expect(() => searchKnowledge(plugin(), " \n ")).toThrow("must not be empty");
+  });
+
+  test("keeps bounded context around a match in a long body", () => {
+    const body = `${"prefix ".repeat(100)}needle ${"suffix ".repeat(100)}`;
+    const custom: Knowledge = { ...knowledge, articles: [{ ...knowledge.articles![0]!, sections: [
+      { ...knowledge.articles![0]!.sections[0]!, body },
+    ] }] };
+    const result = searchKnowledge({ ...plugin(), knowledge: custom }, "needle");
+    expect(result.matches).toHaveLength(1);
+    expect(result.matches[0]!.snippet).toContain("needle");
+    expect(result.matches[0]!.snippet.length).toBeLessThanOrEqual(200);
+    expect(result.matches[0]!.snippet).toMatch(/^….*…$/u);
+  });
+
+  test("CLI search stays offline, merges repeated parent/child Services and inherits format", async () => {
+    const all = JSON.parse(await run(["--config", "/missing/config", "--kubeconfig", "/missing/kubeconfig",
+      "knowledge", "search", "attempts", "-f", "json"]));
+    expect(all.matches.map((match: { namespace: string }) => match.namespace)).toEqual([
+      "plugin/example", "plugin/example/service/worker", "plugin/example/service/api",
+    ]);
+    const selected = JSON.parse(await run(["knowledge", "-s", "work", "-f", "json", "search", "attempts",
+      "--service", "api", "--service", "worker"]));
+    expect(selected.matches.map((match: { service: string }) => match.service)).toEqual(["worker", "api"]);
+    expect(await run(["knowledge", "search", "not-present"])).toContain("No knowledge matches");
+    const text = await run(["knowledge", "search", "depth", "-s", "work"]);
+    expect(text).toContain("plugin/example/service/worker/article/capacity#check%2Fqueue");
+    expect(text).toContain("Inspect depth.");
+    expect(text).not.toContain("plugin/example/service/api");
+  });
+
+  test("distribution help points AI from search to knowledge and runtime evidence", () => {
+    const program = createDoctorProgram({ name: "ascli", plugin: plugin() });
+    const command = program.commands.find(command => command.name() === "knowledge")!;
+    const helpFor = (command: Command): string => {
+      let output = "";
+      command.configureOutput({ writeOut: value => { output += value; } }).outputHelp();
+      return output;
+    };
+    const help = helpFor(command);
+    expect(help).toContain('ascli knowledge search "runtime error"');
+    expect(help).toContain("AI 排查路径");
+    expect(help).toContain("inspect/collect");
+    const search = command.commands.find(command => command.name() === "search")!;
+    expect(search.helpInformation()).toContain("默认产品和全部 Service");
+    expect(helpFor(search)).toContain("knowledge show <ref>");
+    expect(helpFor(program.commands.find(command => command.name() === "plugin")!)).toContain("knowledge search/show");
+  });
 });
