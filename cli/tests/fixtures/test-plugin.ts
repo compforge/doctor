@@ -5,14 +5,19 @@ export const testPlugin = {
   id: "test",
   version: "0.0.1",
   description: "Task processing product",
-  concepts: "A Task owns Attempts.\nEach Attempt produces a Result.",
-  workflows: "Submit → queue → execute → persist",
+  knowledge: {
+    concepts: [{ id: "model", name: "Model", description: "A Task owns Attempts.\nEach Attempt produces a Result." }],
+    workflows: [{ id: "flow", title: "Flow", summary: "Submit → queue → execute → persist", steps: [] }],
+  },
   services: createServiceCatalog([{
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "test-store",
     aliases: ["store"],
-    concepts: "A Cache stores task results.",
-    workflows: "Read cache → return result\nA cache miss is not a failed Task.",
+    upstream: ["test-api"],
+    knowledge: {
+      concepts: [{ id: "model", name: "Model", description: "A Cache stores task results." }],
+      workflows: [{ id: "flow", title: "Flow", summary: "Read cache → return result\nA cache miss is not a failed Task.", steps: [] }],
+    },
     workloads: [],
     dataSources: [{
       id: "cache",

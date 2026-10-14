@@ -109,10 +109,10 @@ export interface PluginIdentity {
  * @case id=plugin_distribution_unit,desc=`装配完整 Plugin`,expect=`Service 与 Skill 来自同一 Plugin 版本`,forbid=`独立选择或升级 Skill`
  * @see {@link cli/docs/plugin.md}
  * @rule 新增 Plugin 级资源时，先判断它是否应跟随 Plugin 生命周期
- * @spec Plugin carries Product-level description, concepts and workflows; its ServiceCatalog declares the composition.
+ * @spec Plugin carries Product-level description and structured Knowledge; its ServiceCatalog declares the composition.
  * @rule Product name and Plugin id/version retain their own identity conventions.
  */
-export interface PluginDefinition extends PluginIdentity, Pick<Product, "description" | "concepts" | "workflows"> {
+export interface PluginDefinition extends PluginIdentity, Pick<Product, "description" | "knowledge"> {
   /** Services composing the product represented by this Plugin. */
   services: ServiceCatalog;
   /** Offline resources registered by the Plugin, independent of Service runtime access. */

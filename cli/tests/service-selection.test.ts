@@ -82,21 +82,21 @@ test("invalid Service names fail before running any selected target", async () =
 });
 
 
-test("Plugin JSON keeps product and selected Service knowledge at separate levels", async () => {
+test("Plugin JSON omits Knowledge at both levels", async () => {
   const ctx = context();
   let output = "";
   const writer = spyOn(process.stdout, "write").mockImplementation(chunk => { output += String(chunk); return true; });
   try {
-    const plugin = { ...ctx.plugin, concepts: "Product concept", workflows: "Product workflow" };
+    const plugin = { ...ctx.plugin, knowledge: { concepts: [{ id: "model", name: "Product", description: "Product concept" }] } };
     await createDoctorProgram({ plugin }).parseAsync(["plugin", "-s", "api", "--service", "worker", "-s", "api-alias", "-f", "json"], { from: "user" });
     const selected = JSON.parse(output).plugins[0];
     expect(selected.services.map((service: { name: string }) => service.name)).toEqual(["api", "worker"]);
-    expect(selected).not.toHaveProperty("concepts");
+    expect(selected).not.toHaveProperty("knowledge");
     expect(selected.services.every((service: object) => "details" in service)).toBe(true);
     output = "";
     await createDoctorProgram({ plugin }).parseAsync(["plugin", "-f", "json"], { from: "user" });
     const product = JSON.parse(output).plugins[0];
-    expect(product.concepts).toBe("Product concept");
+    expect(product).not.toHaveProperty("knowledge");
     expect(product.services).toHaveLength(3);
     expect(product.services.every((service: object) => !("details" in service))).toBe(true);
   } finally { writer.mockRestore(); await ctx.disposeClients(); }

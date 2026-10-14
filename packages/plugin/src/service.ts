@@ -399,8 +399,8 @@ export interface ServiceRelationship {
 
 /**
  * Doctor extends Common Service with diagnostic contributions and capabilities.
- * @spec Common Service owns identity, description, concepts, workflows and Workload declarations.
- * @rule Knowledge is Plugin-authored static text; it must not contain credentials or runtime configuration.
+ * @spec Common Service owns identity, structured Knowledge, upstream and Workload declarations.
+ * @rule Knowledge is Plugin-authored structured offline content; it must not contain credentials or runtime configuration.
  */
 export interface ServiceDefinition extends Omit<Service, "environment"> {
   /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */

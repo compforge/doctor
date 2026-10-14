@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { queryErrorCatalogs } from "../src/knowledge/errors";
+import { lookupKnowledge } from "../src/knowledge/read";
 import { buildPluginArchive } from "../../packages/plugin/scripts/pack";
 import examplePackage from "../../plugins/example/package.json" with { type: "json" };
 import {
@@ -38,11 +38,11 @@ describe("Plugin archive lifecycle", () => {
     const plugin = await loadInstalledPlugin(result.ref, installRoot);
     expect(plugin.id).toBe("example");
     expect(plugin.version).toBe(examplePackage.version);
-    const knowledge = queryErrorCatalogs(plugin, { query: "QUEUE_BUSY" });
-    expect(knowledge.catalogs).toHaveLength(1);
-    expect(knowledge.catalogs[0]).toMatchObject({ namespace: "plugin/example",
+    const knowledge = lookupKnowledge(plugin, "errors", "QUEUE_BUSY");
+    expect(knowledge.entries).toHaveLength(1);
+    expect(knowledge).toMatchObject({ namespace: "plugin/example",
       source: { name: "example-api", version: "1.0.0" },
-      errors: [{ code: "QUEUE_BUSY", name: "QueueBusy" }],
+      entries: [{ entry: { id: "QUEUE_BUSY", name: "QueueBusy" } }],
     });
     expect(plugin.services.services.filter(item => item.logs).length).toBeGreaterThan(0);
     expect((await loadActivePlugin(installRoot))?.id).toBe("example");

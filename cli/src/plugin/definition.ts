@@ -5,6 +5,7 @@ import {
   ExtensionRegistry,
   extensionNamespace,
   isToolchain,
+  validateKnowledgeDeclaration,
   type PluginDefinition,
   type ServiceDefinition,
 } from "@compforge/doctor-plugin";
@@ -41,9 +42,11 @@ function uniqueIdRecords(value: unknown, label: string): Map<string, Record<stri
 }
 
 function validateDescription(value: Record<string, unknown>, label: string): void {
-  for (const field of ["description", "concepts", "workflows"] as const) {
-    if (value[field] !== undefined) nonEmptyString(value[field], `${label}.${field}`);
+  if (value.description !== undefined) nonEmptyString(value.description, `${label}.description`);
+  for (const field of ["concepts", "workflows"] as const) {
+    if (value[field] !== undefined) throw new Error(`${label}.${field} was removed; declare knowledge.${field}`);
   }
+  if (value.knowledge !== undefined) validateKnowledgeDeclaration(value.knowledge, `${label}.knowledge`);
 }
 
 function validateService(value: unknown, index: number): ServiceDefinition {

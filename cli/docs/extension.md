@@ -4,8 +4,8 @@
 
 Extension 是 Core、Plugin、Service 或本地适配器向 Command 提供数据或执行能力的通用注册机制。
 提供方在 `ExtensionRegistry` 中按 namespace 注册，Command 按 kind 发现并调用；kind 约定具体函数语义。
-需要 Target 访问的 Service Extension 使用 `run`、`access` 与受限上下文。离线目录型 Extension 可定义
-自己的调用方式，例如 `error.catalog` 的 `load`，列出错误定义时无需准备 Target 访问。
+需要 Target 访问的 Service Extension 使用 `run`、`access` 与受限上下文。
+静态知识直接由 Plugin/Service 的 `Knowledge` 声明，不通过 Extension 发现或调用。
 
 通用注册只规范提供方身份、实现身份和 kind 的发现；具体 kind 规范调用、权限和输入输出。提供方自由组织资源并实现函数，Command
 拥有自己的执行流程，自由决定在何处调用、如何组合结果以及如何处理失败。
@@ -115,9 +115,8 @@ Case source 是 Service 资源；其 `CaseProducer` 和 `CaseRunnerFactory` 直�
 不携带 Extension 的 id、kind 或 namespace。来源身份由 `{ service, source }` 表达，操作只声明自身权限与契约。
 Core 内置与本地 YAML 直接实现离线目录接口；加载目录不创建 runner 或访问环境。
 
-`error.catalog` 同样采用无上下文的同步 `load()`，返回带来源版本的错误定义；由
-`doctor knowledge errors` 消费。定义包含不透明错误码、名称和说明，可附带默认消息及参考链接，
-不推导现场根因或恢复策略。契约与接入方式见 [Knowledge](commands/knowledge.md)。
+错误定义放入 `Knowledge.dictionaries`，由通用 `doctor knowledge lookup` 展示和查找。
+契约与接入方式见 [Knowledge](commands/knowledge.md)。
 
 ## Command 如何使用 Extension
 
@@ -172,7 +171,6 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
-| error.catalog | 无 Target 访问 → 带来源版本的错误目录 | Knowledge |
 | health.case.bindings | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
 | perf.scenarios | 无入参 → Case 来源引用、观测预设与可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |

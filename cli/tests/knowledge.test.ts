@@ -1,21 +1,32 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { createServiceCatalog, type ErrorCatalogExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, type Knowledge, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { Command } from "commander";
 import { createDoctorProgram } from "../src/app/main";
-import { formatErrorCatalogs, queryErrorCatalogs } from "../src/knowledge/errors";
+import { knowledgeIndex, selectKnowledgeOwners } from "../src/knowledge/catalog";
+import { lookupKnowledge, readKnowledge } from "../src/knowledge/read";
 
-const errors: ErrorCatalogExtension = {
-  id: "errors", kind: "error.catalog",
-  load: () => ({ source: { name: "api", version: "1.2.3" }, errors: [
-    { code: "001", name: "QueueBusy", description: "Queue full", aliases: ["CapacityExceeded"] },
-    { code: "001", name: "TooManyJobs", description: "Job limit" },
-  ] }),
+const knowledge: Knowledge = {
+  concepts: [{ id: "job", name: "Job", description: "A Job owns attempts." }],
+  workflows: [{ id: "run", title: "Run", summary: "Accept and execute.", steps: [
+    { id: "save", parentId: "execute", title: "Save", description: "Persist result." },
+    { id: "execute", title: "Execute", description: "Execute job." },
+  ] }],
+  articles: [{ id: "capacity", title: "Capacity", summary: "Queue investigation", sections: [
+    { id: "check/queue", title: "Check queue", body: "Inspect depth." },
+  ] }],
+  dictionaries: [{ id: "errors", title: "Errors", summary: "Queue definitions",
+    source: { name: "api", version: "1.2.3" }, entries: [
+      { id: "001", name: "QueueBusy", description: "Queue full", aliases: ["CapacityExceeded"] },
+      { id: "002", name: "QueueTimeout", description: "Queue expired" },
+    ] }],
 };
-const child: ErrorCatalogExtension = { ...errors, namespace: "plugin/example/service/worker" };
-function plugin(extensions: readonly ErrorCatalogExtension[] = [errors, child]): PluginDefinition {
-  return { id: "example", version: "0.1.0", services: createServiceCatalog([]), extensions };
+function plugin(): PluginDefinition {
+  const component = { name: "test", repository: { forge: { name: "test" }, path: "fixtures/app" } };
+  return { id: "example", version: "0.1.0", knowledge, services: createServiceCatalog([
+    { name: "worker", aliases: ["work"], component, workloads: [], knowledge, upstream: ["api"] },
+    { name: "api", component, workloads: [], knowledge },
+  ]), validateConfig: () => { throw new Error("must remain offline"); } };
 }
-
 async function run(args: string[], injected = plugin()): Promise<string> {
   let output = "";
   const write = spyOn(process.stdout, "write").mockImplementation(chunk => { output += String(chunk); return true; });
@@ -34,50 +45,62 @@ async function run(args: string[], injected = plugin()): Promise<string> {
   } finally { write.mockRestore(); process.exitCode = previous; }
 }
 
-describe("knowledge errors", () => {
-  test("preserves every definition, catalog version and namespace for an ambiguous code", () => {
-    const result = queryErrorCatalogs(plugin(), { query: "001" });
-    expect(result.catalogs.map(c => [c.namespace, c.source.version, c.errors.length])).toEqual([
-      ["plugin/example", "1.2.3", 2], ["plugin/example/service/worker", "1.2.3", 2],
-    ]);
-    expect(queryErrorCatalogs(plugin(), { query: "01" }).catalogs.every(c => c.errors.length === 0)).toBe(true);
+describe("structured knowledge", () => {
+  test("defaults to Product; selected Services resolve aliases without Product inheritance", () => {
+    expect(selectKnowledgeOwners(plugin()).map(owner => owner.namespace)).toEqual(["plugin/example"]);
+    expect(selectKnowledgeOwners(plugin(), { services: ["worker", "work"] }).map(owner => owner.namespace))
+      .toEqual(["plugin/example/service/worker"]);
+    expect(() => selectKnowledgeOwners(plugin(), { all: true, services: ["api"] })).toThrow("--all");
+    expect(() => selectKnowledgeOwners(plugin(), { services: ["missing"] })).toThrow("Unknown Service");
+    expect(selectKnowledgeOwners(undefined)).toEqual([]);
   });
-  test("matches names and aliases case insensitively", () => {
-    for (const query of ["busy", "CAPACITY"]) {
-      expect(queryErrorCatalogs(plugin([errors]), { query }).catalogs[0]?.errors.map(e => e.name)).toEqual(["QueueBusy"]);
-    }
+  test("references resolve roots, children and encoded IDs; ambiguous short refs require an owner", () => {
+    expect(readKnowledge(plugin(), "article/capacity#check%2Fqueue").item).toEqual(knowledge.articles![0]!.sections[0]!);
+    expect(readKnowledge(plugin(), "workflow/run#save").item).toHaveProperty("parentId", "execute");
+    expect(readKnowledge(plugin(), "plugin/example/service/worker/concept/job").service).toBe("worker");
+    expect(() => readKnowledge(plugin(), "concept/job", { services: ["api", "worker"] })).toThrow("Ambiguous");
+    expect(() => readKnowledge(plugin(), "plugin/example/concept/job", { services: ["worker"] })).toThrow("out-of-scope");
+    expect(() => readKnowledge(plugin(), "article/capacity#missing")).toThrow("Unknown Section");
+    expect(() => readKnowledge(plugin(), "concept/job#child")).toThrow("no child");
+    expect(() => readKnowledge(plugin(), "article/%broken")).toThrow("Invalid encoding");
   });
-  test("filters namespace exactly before loading catalogs", () => {
-    const broken = { ...child, load: () => { throw new Error("must not load"); } };
-    const result = queryErrorCatalogs(plugin([errors, broken]), { namespace: "plugin/example" });
-    expect(result.catalogs).toHaveLength(1);
-    expect(() => queryErrorCatalogs(plugin([broken]))).toThrow("must not load");
-    expect(queryErrorCatalogs(plugin(), { namespace: "plugin/missing" }).catalogs).toEqual([]);
+  test("lookup preserves opaque IDs and source version and matches names/aliases case insensitively", () => {
+    expect(lookupKnowledge(plugin(), "errors", "001").entries.map(item => item.entry.id)).toEqual(["001"]);
+    expect(lookupKnowledge(plugin(), "errors", "01").entries).toEqual([]);
+    expect(lookupKnowledge(plugin(), "errors", "queue").entries).toHaveLength(2);
+    expect(lookupKnowledge(plugin(), "errors", "CAPACITY").entries[0]?.entry.name).toBe("QueueBusy");
+    expect(lookupKnowledge(plugin(), "errors", undefined).source?.version).toBe("1.2.3");
+    expect(lookupKnowledge(plugin(), "errors", "missing").text).toContain("No entry matches");
+    expect(() => lookupKnowledge(plugin(), "errors", " ")).toThrow("must not be empty");
   });
-  test("distinguishes no catalog from no matching definition", () => {
-    expect(formatErrorCatalogs(queryErrorCatalogs(undefined))).toContain("No error catalogs declared");
-    expect(formatErrorCatalogs(queryErrorCatalogs(plugin(), { query: "missing" }))).toContain("No error definition matches");
-    expect(() => queryErrorCatalogs(plugin(), { query: "  " })).toThrow("must not be empty");
+  test("index omits large object bodies", () => {
+    const index = knowledgeIndex(selectKnowledgeOwners(plugin())[0]!);
+    expect(index.items).toHaveLength(4);
+    expect(JSON.stringify(index)).not.toContain("Inspect depth.");
   });
-  test("group help discovers errors without loading definitions", async () => {
-    const output = await run(["knowledge"], plugin([{ ...errors, load: () => { throw new Error("must not load"); } }]));
-    expect(output).toContain("errors [options] [query]");
+  test("commands stay offline with unavailable profile and kubeconfig; JSON omits generated text", async () => {
+    const result = JSON.parse(await run(["--config", "/missing/config", "--kubeconfig", "/missing/kubeconfig",
+      "knowledge", "lookup", "errors", "001", "-f", "json"]));
+    expect(result.entries).toHaveLength(1);
+    expect(result.source).toEqual({ name: "api", version: "1.2.3" });
+    expect(result).not.toHaveProperty("text");
+    expect(JSON.parse(await run(["knowledge", "show", "concept/job", "-f", "json"]))).not.toHaveProperty("text");
   });
-  test("real command queries offline despite unavailable config and kubeconfig", async () => {
-    const output = await run(["--config", "/missing/doctor.yaml", "--kubeconfig", "/missing/kubeconfig",
-      "knowledge", "errors", "001", "--extension-namespace", "plugin/example", "--format", "json"]);
-    const result = JSON.parse(output);
-    expect(result.catalogs).toHaveLength(1);
-    expect(result.catalogs[0].errors).toHaveLength(2);
-    expect(result.catalogs[0].source).toEqual({ name: "api", version: "1.2.3" });
+  test("root and child options combine selections and inherit JSON format", async () => {
+    const result = JSON.parse(await run(["knowledge", "-s", "work", "-f", "json", "list", "-s", "api", "--kind", "concept"]));
+    expect(result.owners.map((owner: { service: string }) => owner.service)).toEqual(["worker", "api"]);
+    expect(result.owners.every((owner: { items: unknown[] }) => owner.items.length === 1)).toBe(true);
+    const all = JSON.parse(await run(["knowledge", "list", "--all", "-f", "json"]));
+    expect(all.owners).toHaveLength(3);
   });
-  test("global Kubernetes namespace does not filter offline definitions", async () => {
-    const result = JSON.parse(await run(["--namespace", "kube-only", "knowledge", "errors", "-f", "json"]));
-    expect(result.catalogs).toHaveLength(2);
-    expect(result.namespace).toBeUndefined();
-  });
-  test("text lists definitions and empty search results remain successful", async () => {
-    expect(await run(["knowledge", "errors"])).toContain("001 · QueueBusy");
-    expect(await run(["knowledge", "errors", "missing"])).toContain("No error definition matches");
+  test("overview expands model, indexes articles/dictionaries, and selected Service omits Product index", async () => {
+    const overview = JSON.parse(await run(["knowledge", "-f", "json"]));
+    expect(overview.owners[0].concepts).toEqual(knowledge.concepts);
+    expect(overview.owners[0].articles[0]).not.toHaveProperty("sections");
+    expect(overview.services).toHaveLength(2);
+    const selected = JSON.parse(await run(["knowledge", "-s", "worker", "-f", "json"]));
+    expect(selected).not.toHaveProperty("services");
+    expect(selected.owners[0].upstream).toEqual(["api"]);
+    expect(await run(["knowledge", "show", "workflow/run"])).toContain("Persist result.");
   });
 });
