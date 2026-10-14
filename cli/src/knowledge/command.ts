@@ -23,8 +23,8 @@ function addOptions(command: Command): Command {
     .addOption(new Option("-f, --format <format>", "输出格式").choices(["text", "json"]));
 }
 
-function output(value: unknown, text: string, options: Options): void {
-  writeOutput(options.format === "json" ? `${JSON.stringify(value, null, 2)}\n` : `${text}\n`);
+function output(value: unknown, text: () => string, options: Options): void {
+  writeOutput(options.format === "json" ? `${JSON.stringify(value, null, 2)}\n` : `${text()}\n`);
 }
 
 /** Knowledge only organizes versioned Plugin/Service declarations; no profiles, clients or extensions run. */
@@ -53,8 +53,8 @@ export function registerKnowledgeCommand(program: Command, injected?: PluginDefi
       name: service.name, aliases: service.aliases ?? [], description: service.description, upstream: service.upstream,
     })) ?? [] : undefined;
     output({ owners: owners.map(overviewKnowledge), services },
-      [owners.length ? owners.map(overviewToMarkdown).join("\n\n") : "No active Plugin.",
-        ...(services?.length ? ["Services:", ...services.map(service => `- ${service.name}${service.description ? ` — ${service.description}` : ""}`)] : [])].join("\n\n"), options);
+      () => [owners.length ? owners.map(overviewToMarkdown).join("\n\n") : "No active Plugin.",
+        ...(services?.length ? ["Services:", services.map(service => `- ${service.name}${service.description ? ` — ${service.description}` : ""}`).join("\n")] : [])].join("\n\n"), options);
   }));
   addOptions(knowledge.command("list").description("列出可引用的知识对象"))
     .option("--all", "同时列出产品和全部 Service 知识")
@@ -62,20 +62,20 @@ export function registerKnowledgeCommand(program: Command, injected?: PluginDefi
     .action(async (_options, command: Command) => runStandaloneCommand("doctor knowledge list", async () => {
       const options = optionsFor(command);
       const owners = selectKnowledgeOwners(await plugin(), options).map(owner => knowledgeIndex(owner, options.kind));
-      output({ owners }, owners.flatMap(owner => [owner.namespace,
+      output({ owners }, () => owners.flatMap(owner => [owner.namespace,
         ...owner.items.map(item => `- ${item.ref} · ${item.title} — ${item.summary}`),
         ...(owner.items.length ? [] : ["No knowledge declared."])]).join("\n") || "No active Plugin.", options);
     }));
   addOptions(knowledge.command("show <ref>").description("展示知识对象或 Step / Section / Entry"))
     .action(async (ref: string, _options, command: Command) => runStandaloneCommand("doctor knowledge show", async () => {
       const options = optionsFor(command);
-      const { text, ...result } = readKnowledge(await plugin(), ref, options);
-      output(result, `${result.ref}\n\n${text}`, options);
+      const { text, ...result } = readKnowledge(await plugin(), ref, options, options.format !== "json");
+      output(result, () => `${result.ref}\n\n${text}`, options);
     }));
   addOptions(knowledge.command("lookup <dictionary> [query]").description("列出词典，或按词条 ID、名称与别名查找"))
     .action(async (dictionary: string, query: string | undefined, _options, command: Command) => runStandaloneCommand("doctor knowledge lookup", async () => {
       const options = optionsFor(command);
-      const { text, ...result } = lookupKnowledge(await plugin(), dictionary, query, options);
-      output(result, text, options);
+      const { text, ...result } = lookupKnowledge(await plugin(), dictionary, query, options, options.format !== "json");
+      output(result, () => text, options);
     }));
 }

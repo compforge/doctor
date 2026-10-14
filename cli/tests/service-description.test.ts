@@ -1,3 +1,4 @@
+import { conceptToMarkdown, knowledgeToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, requireFactsInspectExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -10,8 +11,9 @@ const service: ServiceDefinition = {
   name: "api",
   description: "Business API",
   knowledge: {
-    concepts: [{ id: "model", name: "Model", description: "A Request owns Attempts.\nAn Attempt records one execution." }],
-    workflows: [{ id: "flow", title: "Flow", summary: "1. Accept request\n2. Execute attempt\n3. Persist result", steps: [] }],
+    markdown() { return knowledgeToMarkdown(this); },
+    concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "model", name: "Model", description: "A Request owns Attempts.\nAn Attempt records one execution." }],
+    workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "flow", title: "Flow", summary: "1. Accept request\n2. Execute attempt\n3. Persist result", steps: [] }],
   },
   workloads: [],
   extensions: [inspectExtension({

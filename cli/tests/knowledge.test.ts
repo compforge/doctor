@@ -1,3 +1,4 @@
+import { articleToMarkdown, conceptToMarkdown, dictionaryToMarkdown, entryToMarkdown, knowledgeToMarkdown, sectionToMarkdown, stepToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import { describe, expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, type Knowledge, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { Command } from "commander";
@@ -6,18 +7,19 @@ import { knowledgeIndex, selectKnowledgeOwners } from "../src/knowledge/catalog"
 import { lookupKnowledge, readKnowledge } from "../src/knowledge/read";
 
 const knowledge: Knowledge = {
-  concepts: [{ id: "job", name: "Job", description: "A Job owns attempts." }],
-  workflows: [{ id: "run", title: "Run", summary: "Accept and execute.", steps: [
-    { id: "save", parentId: "execute", title: "Save", description: "Persist result." },
-    { id: "execute", title: "Execute", description: "Execute job." },
+  markdown() { return knowledgeToMarkdown(this); },
+  concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "job", name: "Job", description: "A Job owns attempts." }],
+  workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "run", title: "Run", summary: "Accept and execute.", steps: [
+    { markdown() { return stepToMarkdown(this); }, id: "save", parentId: "execute", title: "Save", description: "Persist result." },
+    { markdown() { return stepToMarkdown(this); }, id: "execute", title: "Execute", description: "Execute job." },
   ] }],
-  articles: [{ id: "capacity", title: "Capacity", summary: "Queue investigation", sections: [
-    { id: "check/queue", title: "Check queue", body: "Inspect depth." },
+  articles: [{ markdown() { return articleToMarkdown(this); }, id: "capacity", title: "Capacity", summary: "Queue investigation", sections: [
+    { markdown() { return sectionToMarkdown(this); }, id: "check/queue", title: "Check queue", body: "Inspect depth." },
   ] }],
-  dictionaries: [{ id: "errors", title: "Errors", summary: "Queue definitions",
+  dictionaries: [{ markdown() { return dictionaryToMarkdown(this); }, id: "errors", title: "Errors", summary: "Queue definitions",
     source: { name: "api", version: "1.2.3" }, entries: [
-      { id: "001", name: "QueueBusy", description: "Queue full", aliases: ["CapacityExceeded"] },
-      { id: "002", name: "QueueTimeout", description: "Queue expired" },
+      { markdown() { return entryToMarkdown(this); }, id: "001", name: "QueueBusy", description: "Queue full", aliases: ["CapacityExceeded"] },
+      { markdown() { return entryToMarkdown(this); }, id: "002", name: "QueueTimeout", description: "Queue expired" },
     ] }],
 };
 function plugin(): PluginDefinition {
@@ -95,7 +97,7 @@ describe("structured knowledge", () => {
   });
   test("overview expands model, indexes articles/dictionaries, and selected Service omits Product index", async () => {
     const overview = JSON.parse(await run(["knowledge", "-f", "json"]));
-    expect(overview.owners[0].concepts).toEqual(knowledge.concepts);
+    expect(overview.owners[0].concepts).toEqual(JSON.parse(JSON.stringify(knowledge.concepts)));
     expect(overview.owners[0].articles[0]).not.toHaveProperty("sections");
     expect(overview.services).toHaveLength(2);
     const selected = JSON.parse(await run(["knowledge", "-s", "worker", "-f", "json"]));
@@ -103,4 +105,52 @@ describe("structured knowledge", () => {
     expect(selected.owners[0].upstream).toEqual(["api"]);
     expect(await run(["knowledge", "show", "workflow/run"])).toContain("Persist result.");
   });
+});
+
+
+test("Knowledge text uses custom object and nested Markdown for overview, show and lookup", async () => {
+  const custom: Knowledge = {
+    ...knowledge,
+    concepts: [{ ...knowledge.concepts![0]!, markdown() { return "Custom concept"; } }],
+    workflows: [{ ...knowledge.workflows![0]!, steps: [
+      { ...knowledge.workflows![0]!.steps[1]!, markdown() { return "Custom step"; } },
+    ] }],
+    articles: [{ ...knowledge.articles![0]!, sections: [
+      { ...knowledge.articles![0]!.sections[0]!, markdown() { return "Custom section"; } },
+    ] }],
+    dictionaries: [{ ...knowledge.dictionaries![0]!, entries: [
+      { ...knowledge.dictionaries![0]!.entries[0]!, markdown() { return "Custom entry"; } },
+    ] }],
+  };
+  const injected = { ...plugin(), knowledge: custom };
+  const overview = await run(["knowledge"], injected);
+  expect(overview).toContain("Custom concept");
+  expect(overview).toContain("1. Custom step");
+  for (const [ref, content] of [
+    ["concept/job", "Custom concept"], ["workflow/run", "Custom step"], ["workflow/run#execute", "Custom step"],
+    ["article/capacity", "Custom section"], ["article/capacity#check%2Fqueue", "Custom section"],
+    ["dictionary/errors", "Custom entry"], ["dictionary/errors#001", "Custom entry"],
+  ]) expect(await run(["knowledge", "show", ref!], injected)).toContain(content!);
+  expect(await run(["knowledge", "lookup", "errors", "001"], injected)).toContain("Custom entry");
+});
+
+test("JSON and index commands do not invoke Markdown methods", async () => {
+  const noRender = () => { throw new Error("Markdown must not run for structured output"); };
+  const custom: Knowledge = {
+    markdown: noRender,
+    concepts: knowledge.concepts!.map(item => ({ ...item, markdown: noRender })),
+    workflows: knowledge.workflows!.map(item => ({ ...item, markdown: noRender,
+      steps: item.steps.map(step => ({ ...step, markdown: noRender })) })),
+    articles: knowledge.articles!.map(item => ({ ...item, markdown: noRender,
+      sections: item.sections.map(section => ({ ...section, markdown: noRender })) })),
+    dictionaries: knowledge.dictionaries!.map(item => ({ ...item, markdown: noRender,
+      entries: item.entries.map(entry => ({ ...entry, markdown: noRender })) })),
+  };
+  const injected = { ...plugin(), knowledge: custom };
+  for (const args of [[], ["list"], ["show", "concept/job"], ["show", "workflow/run#save"],
+    ["show", "article/capacity#check%2Fqueue"], ["show", "dictionary/errors"], ["lookup", "errors", "001"]]) {
+    const output = JSON.parse(await run(["knowledge", ...args, "-f", "json"], injected));
+    expect(JSON.stringify(output)).not.toContain("markdown");
+  }
+  expect(await run(["knowledge", "list"], injected)).toContain("concept/job");
 });

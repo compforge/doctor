@@ -1,3 +1,4 @@
+import { conceptToMarkdown, knowledgeToMarkdown, workflowToMarkdown } from "../src";
 import { inspectExtension, traceExtension } from "./extension-fixture";
 import { expect, test } from "bun:test";
 import { describeService, requireFactsInspectExtension, type ServiceDefinition } from "../src";
@@ -9,8 +10,9 @@ const service: ServiceDefinition = {
   name: "runtime",
   description: "Session and run evidence",
   knowledge: {
-    concepts: [{ id: "model", name: "Model", description: "A Session owns Runs.\nA Run records one execution." }],
-    workflows: [{ id: "flow", title: "Flow", summary: "Accept → execute → persist.\nAcceptance is not completion.", steps: [] }],
+    markdown() { return knowledgeToMarkdown(this); },
+    concepts: [{ markdown() { return conceptToMarkdown(this); }, id: "model", name: "Model", description: "A Session owns Runs.\nA Run records one execution." }],
+    workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "flow", title: "Flow", summary: "Accept → execute → persist.\nAcceptance is not completion.", steps: [] }],
   },
   workloads: [{
     name: "worker", description: "Handles session runs", container: "app",
@@ -39,7 +41,7 @@ test("description projects the execution declaration without confusing inputs an
   const result = describeService(service);
   expect(result.name).toBe("runtime");
   expect(result.description).toBe("Session and run evidence");
-  expect(JSON.parse(JSON.stringify(result))).toMatchObject({ knowledge: service.knowledge });
+  expect(JSON.parse(JSON.stringify(result))).toMatchObject({ knowledge: JSON.parse(JSON.stringify(service.knowledge)) });
   expect(result.extensions?.map(item => item.kind)).toEqual(["trace.resolve", "facts.inspect"]);
   expect(result.detectors).toEqual(["state"]);
   expect(result.details.inspect).toEqual({

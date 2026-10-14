@@ -7,7 +7,7 @@ export {
 } from "@compforge/harness-common";
 export type {
   Knowledge, Concept, Workflow, Step, Article, Section, Dictionary, Entry,
-  KnowledgeSource, KnowledgeMarkdownOptions,
+  KnowledgeSource, Markdown,
 } from "@compforge/harness-common";
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -29,7 +29,11 @@ function strings(value: unknown, label: string): void {
   value.forEach((item, index) => text(item, `${label}[${index}]`, true));
 }
 
-/** Validate plain Knowledge across installed ESM and injected Plugin boundaries without invoking handlers. */
+function markdown(value: Record<string, unknown>, label: string): void {
+  if (typeof value.markdown !== "function") throw new Error(`${label}.markdown must be a function; restore methods after loading JSON`);
+}
+
+/** Validate callable Knowledge across installed ESM and injected Plugin boundaries without rendering it. */
 export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"): asserts value is Knowledge {
   const knowledge = record(value, label);
   for (const kind of ["concepts", "workflows", "articles", "dictionaries"] as const) {
@@ -74,4 +78,15 @@ export function validateKnowledgeDeclaration(value: unknown, label = "knowledge"
     }
   }
   validateKnowledge(value as Knowledge);
+  markdown(knowledge, label);
+  for (const kind of ["concepts", "workflows", "articles", "dictionaries"] as const) {
+    for (const item of records(knowledge[kind] ?? [], `${label}.${kind}`)) {
+      const path = `${label}.${kind}.${String(item.id)}`;
+      markdown(item, path);
+      const children = kind === "workflows" ? "steps" : kind === "articles" ? "sections" : kind === "dictionaries" ? "entries" : undefined;
+      if (children) {
+        for (const child of records(item[children], `${path}.${children}`)) markdown(child, `${path}.${children}.${String(child.id)}`);
+      }
+    }
+  }
 }
