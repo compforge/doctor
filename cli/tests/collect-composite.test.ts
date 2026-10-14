@@ -259,7 +259,9 @@ test("delivery keeps repeated command reports under one command tab", async () =
 
 test("collect preserves staged evidence when default delivery fails", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-collect-delivery-failure-test-"));
-  const output = join(root, "missing", "case");
+  const parent = join(root, "blocked");
+  writeFileSync(parent, "occupied by a file");
+  const output = join(parent, "case");
   const plugin = {
     id: "test",
     version: "0.0.1",

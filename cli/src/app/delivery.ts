@@ -25,7 +25,12 @@ export function cleanupTemporaryArtifacts(paths: readonly string[]): void {
   }
 }
 
-/** Delivery consumes an already serialized, portable directory. It never reconstructs domain results. */
+/**
+ * Delivery consumes an already serialized, portable directory. It never reconstructs domain results.
+ * @spec Output delivery creates missing parent directories and refuses existing destinations.
+ * @case id=nested_output,desc=`Output has missing ancestors`,expect=`All file formats and manifest are delivered`
+ * @see {@link component://docs/command-output.md}
+ */
 export async function deliverSerialized(input: { directory: string; options: CommandDeliveryOptions;
   code: number; reportName: string }): Promise<boolean> {
   const { directory, options, code, reportName } = input;
@@ -38,9 +43,12 @@ export async function deliverSerialized(input: { directory: string; options: Com
   }
   const errors: string[] = [];
   let root = directory;
-  const publish = (path: string, action: () => void) => {
-    if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
-    action();
+  const prepareDestinations = (paths: readonly string[]) => {
+    // Check every destination before creating parents or publishing any output.
+    for (const path of paths) {
+      if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
+    }
+    for (const path of paths) mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   };
   let metadata: Manifest = { ...manifest, delivery: { status: "ok", errors, exitCode: code,
     location: { directory, manifest: manifestPath } } };
@@ -48,7 +56,9 @@ export async function deliverSerialized(input: { directory: string; options: Com
     if (format === "manifest") {
       if (options.output) {
         root = resolve(options.output);
-        publish(root, () => { mkdirSync(root, { mode: 0o700 }); cpSync(directory, root, { recursive: true }); });
+        prepareDestinations([root]);
+        mkdirSync(root, { mode: 0o700 });
+        cpSync(directory, root, { recursive: true });
       }
     } else {
       const paths = resolveDefaultReportPaths(options.output, reportName);
@@ -69,10 +79,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
         else writeOutput(readFileSync(join(directory, manifest.files.text.path), "utf8"));
       }
       const archive = format === "default" ? paths.bundle : format === "bundle" ? resolveArchivePath(options.output, reportName) : undefined;
-      // Validate every destination before publishing any output.
-      for (const path of [...files.map(file => file.destination), ...(archive ? [archive] : [])]) {
-        if (existsSync(path)) throw new Error(`--output 已存在，为避免覆盖请换一个路径：${path}`);
-      }
+      prepareDestinations([...files.map(file => file.destination), ...(archive ? [archive] : [])]);
       for (const file of files) {
         try {
           if (format === "json") {
