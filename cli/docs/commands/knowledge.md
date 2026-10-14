@@ -9,20 +9,39 @@
 ```sh
 doctor knowledge                               # 产品概念、流程，文章/词典索引与服务目录
 doctor knowledge -s api                        # 单个 Service 的知识
+doctor knowledge search "runtime error"        # 产品和全部服务知识
+doctor knowledge search "runtime" -s api       # 仅指定 Service
 doctor knowledge list --all --kind dictionary  # 产品和全部 Service 的词典索引
 doctor knowledge show article/queue#capacity   # 对象或子项的正文
 doctor knowledge lookup errors QUEUE_BUSY      # 词典查询
 doctor knowledge lookup errors -f json         # 整本词典的条目
 ```
 
-默认作用域是产品级 Knowledge。`-s/--service` 可重复，支持 Service aliases，最终按标准名去重。
+概览、list、show 与 lookup 的默认作用域是产品级 Knowledge。`-s/--service` 可重复，支持 Service aliases，最终按标准名去重。
 指定 Service 时只读取所选服务，不隐式合并产品知识；选项可放在 knowledge 或子命令之后。
 `list --all` 同时列出产品与全部 Service，不能与 `--service` 混用。`list --kind` 支持
 `concept`、`workflow`、`article`、`dictionary`。
 
 概览展开概念和流程，文章与词典只列索引，正文使用 `show`。所有动作支持 `-f text|json`；
-文本从结构生成 Markdown，JSON 保留结构，不重复附带生成的正文文本。
+概览、show 与 lookup 的文本调用对象的 Markdown 方法；索引和搜索展示简短条目。
+JSON 保留结构，不重复附带生成的正文文本。
 `doctor plugin` 保留身份、服务目录、诊断能力与 `upstream` 静态关系，知识正文由本命令展示。
+
+## 搜索与 AI 排查
+
+`search` 不指定 Service 时搜索当前 Plugin 的产品级及全部 Service Knowledge；指定 `-s/--service`
+时只搜索所选服务，不包含产品级知识。Service aliases、重复选择去重和父/子命令选项合并规则一致。
+
+搜索对象 ID、标题/名称、说明/摘要、Section 正文、Entry 别名以及 Dictionary 来源字段。
+按空白拆分查询词，不区分大小写，所有词必须出现在同一对象或子项的结构化字段中。
+父对象的摘要与子项正文分别匹配，避免仅因子项命中而重复返回容器。结果按知识声明顺序返回，
+包含归属、完整引用、标题和最多 200 字符的命中附近片段；完整正文通过 `show` 读取。
+搜索不执行 Markdown 方法，不加载 profile、客户端或 Extension。无匹配或未加载 Plugin 返回空数组，
+空白查询词报错；这是离线文本搜索，后续向量索引可复用相同作用域和引用。
+
+AI 使用 Doctor 或 ascli 时，先通过 `knowledge search` 定位相关知识、`show` 阅读必要正文，
+再用 `plugin` 确认服务目录、诊断能力与上游关系。需要排查运行问题时，根据知识中的流程执行
+`inspect/collect` 或 `trace/log/data` 等命令取得现场证据，验证判断并继续排查。
 
 ## 引用
 
@@ -59,4 +78,4 @@ JSON 展示只序列化结构化内容，不调用 Markdown 方法。Plugin 加�
 
 `lookup` 不带查询词时列出全部条目；带词时精确匹配 ID，或忽略大小写匹配名称和别名片段。
 返回全部匹配项，不按声明顺序挑选一个。空词典与无匹配均成功返回空数组；空白查询词报错。
-此轮不提供全文搜索或 VDB。接入示例见 [example Plugin](../../../plugins/example/src/index.ts)。
+本地文本搜索由 `search` 提供；向量检索尚未接入。接入示例见 [example Plugin](../../../plugins/example/src/index.ts)。
