@@ -57,7 +57,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   replace(tenantCommand, "tenant");
   replace(dataCommand, "data", input => expect(input.bizIds).toEqual(["a", "b", "c", "d", "e"]));
   replace(traceCommand, "trace");
-  replace(logCommand, "log", (input) => expect(input.services).toBe("chat-server"));
+  replace(logCommand, "log", (input) => expect(input.services).toEqual(["chat-server"]));
   replace(metricCommand, "metric");
   try {
     const kinds = await resolveCollectKinds(undefined, false);

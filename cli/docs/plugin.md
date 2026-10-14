@@ -205,7 +205,7 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
 
 `doctor plugin --service <name>` 按逻辑 Service 身份筛选并展示详情；未知 Service 报错，不返回伪装成功的
-空目录。JSON 保留名称数组，增加 `description` 与 `details`；概览和详情使用 SDK `describeService`
+空目录。未筛选时 JSON 的服务索引只含名称、别名与简短介绍；筛选后展示知识与 `details`。概览和详情使用 SDK `describeService`
 对同一份 Service 声明的显式投影，知识和诊断能力都来自这份声明。可选说明缺省时不展示该字段。
 
 Plugin 与 Service 都可以提供可选的 `description`、`concepts`、`workflows`：简短介绍、核心对象与约束、
@@ -215,13 +215,14 @@ Plugin 与 Service 都可以提供可选的 `description`、`concepts`、`workfl
 Plugin 复用 Common Product 的说明契约来承载产品级知识，Service 的知识聚焦自身职责与协作边界。
 这层对应关系不要求 Product 的 `name` 与 Plugin 的 `id` 使用相同命名。
 这些字段由 Plugin 作者随版本维护，提供时须为非空文本；内容原样进入 JSON，文本输出保留 Markdown 和换行。
-`doctor plugin` 展示 Plugin 知识及服务索引，`doctor plugin --service <name>` 增加该 Service 的知识与能力详情；
-两者均支持 `-f json`，无需准备 profile 或 Target 访问。三个字段均可独立省略，缺省时不补造业务知识。
+`doctor plugin` 展示 Plugin 知识及服务索引，`doctor plugin --service <name>` 仅展示该 Service 的知识与能力详情，不重复产品级介绍；
+两者均支持 `-f json`；指定 Service 时 JSON 也只保留所属 Plugin 身份与筛选后的服务，不包含产品级说明。
+以上输出均无需准备 profile 或 Target 访问。三个字段均可独立省略，缺省时不补造业务知识。
 
 `-f summary` 面向业务理解，只展示 Product/Service 的身份、别名、说明、concepts 与 workflows。
-未指定 Service 时展示 Product 知识与服务索引；指定 Service 时增加该服务的知识。
+未指定 Service 时展示 Product 知识与服务索引；指定 Service 时仅展示该服务的知识。
 Summary 不展示 Extensions、Cases、Detectors、Workloads、数据源或访问需求等诊断实现声明。
-默认 `text` 和显式 `json` 保留完整声明，格式选择不改变 Plugin 加载与 Service 筛选。
+指定 Service 时，默认 `text` 和显式 `json` 保留该服务的完整声明；格式选择不改变 Plugin 加载与 Service 筛选。
 
 ```bash
 doctor plugin -f summary

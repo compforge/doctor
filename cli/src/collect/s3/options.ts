@@ -1,3 +1,4 @@
+import { serviceOption } from "../../app/service-option";
 import { Argument, type Command } from "commander";
 import { deliveryFormatOption } from "../../app/command-defaults";
 import { S3_ACTIONS } from "./input";
@@ -6,7 +7,7 @@ export function withS3Options(command: Command): Command {
   return command
     .addArgument(new Argument("[operation]", "ls 浏览、stat 元数据、cat 有界读取；省略时在终端选择").choices([...S3_ACTIONS]))
     .argument("[target]", "Service[/bucket[/key]]；指定 --service 时也可用 bucket/key 或 s3://bucket/key")
-    .option("--service <name>", "提供 S3 访问配置的业务 Service")
+    .addOption(serviceOption("提供 S3 访问配置的业务 Service"))
     .option("--data-source <id>", "选择 Service 声明的 S3 数据源；多数据源时必须唯一选择")
     .option("-r, --recursive", "递归列出指定 bucket/prefix 的对象（默认只列一层）")
     .option("--continuation-token <token>", "从上次 ls 返回的游标继续，需保持相同目标与递归选项")

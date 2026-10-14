@@ -65,7 +65,7 @@ export interface CollectLogCliOpts {
   bizIds: readonly string[];
   itemConcurrency?: number;
   namespace?: string;
-  services?: string;
+  services?: readonly string[];
   since?: string;
   sinceTime?: string;
   untilTime?: string;
@@ -150,7 +150,7 @@ async function prepareLogBatch(
     return 130;
   }
   if (!services.length) {
-    useLogger("collect").error("没有选中日志 Service；请从 Plugin Catalog 选择 --services");
+    useLogger("collect").error("没有选中日志 Service；请从 Plugin Catalog 选择 --service");
     return 2;
   }
   useLogger("collect").info(`services: ${services.join(", ")}`);
@@ -159,7 +159,7 @@ async function prepareLogBatch(
   if (opts.bizIds.length && identityServices.length) {
     identityResolution = await dataCommand.run(commandContext, {
       since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime,
-      bizIds: opts.bizIds, namespace: resolvedNamespace.namespace, services: identityServices.join(","),
+      bizIds: opts.bizIds, namespace: resolvedNamespace.namespace, services: identityServices,
     });
   }
   let trace: ResolvedPluginTraceId[] = [];

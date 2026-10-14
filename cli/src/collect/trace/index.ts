@@ -69,7 +69,6 @@ export interface CollectTraceCliOpts {
   span?: string;
   node?: string;
   namespace?: string;
-  service?: string;
   endpoint?: string;
   /** @deprecated 使用 endpoint；仅保留 CLI 兼容。 */
   host?: string;
@@ -250,7 +249,6 @@ export async function runCollectTrace(
     commandContext,
     index,
     endpoint,
-    serviceName: opts.service,
     username: opts.username,
     password: opts.password,
     log: (line, tone) => {
@@ -400,7 +398,6 @@ export async function runCollectTrace(
         auth: preparedStore?.auth ?? explicitAuth,
         endpoint,
         configuredEndpoint: preparedStore?.configuredEndpoint,
-        service: opts.service,
         kube,
         pageSize,
         signal: commandContext.signal,
@@ -480,7 +477,6 @@ export interface TraceCollectOptions {
   endpoint?: string;
   /** 从业务 Service Store 运行时配置中提取的 OpenSearch 地址。 */
   configuredEndpoint?: string;
-  service?: string;
   kube?: KubectlOptions;
   pageSize: number;
   signal?: AbortSignal;
@@ -538,7 +534,6 @@ export async function collectTrace(
         span_id: opts.spanId,
         endpoint: safeOpenSearchEndpoint(opts.endpoint),
         configured_endpoint: safeOpenSearchEndpoint(opts.configuredEndpoint),
-        service: opts.service,
         namespace: opts.kube?.namespace,
         // 凭据只记录 username（是否配置了鉴权本身是排障线索）；password 永不落盘
         username: opts.auth.username,
@@ -580,7 +575,6 @@ export async function collectTrace(
     const confirmation = await confirmOpenSearchConnection({
       endpoint: opts.endpoint,
       configuredEndpoint: opts.configuredEndpoint,
-      serviceName: opts.service,
       kube: opts.kube,
     }, log);
     for (const step of confirmation.steps) bundle.addStep(step);

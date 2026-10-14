@@ -100,7 +100,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     });
     const input: LogInput = {
       bizIds: variant === "unresolved" ? ["unknown-request"] : [], ...(variant === "explicit" ? {
-        services: "worker", sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", errorsOnly: true,
+        services: ["worker"], sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", errorsOnly: true,
       } : {})
     };
     const started = Date.now();

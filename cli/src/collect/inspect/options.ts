@@ -26,9 +26,9 @@ import type {
 import { CommandInputError, type CommandContext } from "../../command";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 
-export function parseInspectServices(raw: string, catalog: ServiceCatalog): string[] {
-  const services = [...new Set(raw.split(",").map((item) => item.trim()).filter(Boolean))];
-  if (!services.length) throw new Error("--services 未解析出任何 Service");
+export function parseInspectServices(raw: readonly string[], catalog: ServiceCatalog): string[] {
+  const services = [...new Set(raw.map((item) => item.trim()).filter(Boolean))];
+  if (!services.length) throw new Error("--service 未解析出任何 Service");
   const unsupported = services.filter((service) => !catalog.find(service));
   if (unsupported.length) {
     throw new Error(`Doctor Plugin 未注册以下 Service：${unsupported.join(", ")}`);
@@ -191,7 +191,7 @@ export async function resolveInspectServiceSelection(
   if (input.config.servicesExplicit) return input.config.services;
   const interactive = isInteractive(input.interactive);
   if (!interactive) {
-    throw new CommandInputError("非交互模式需要 --services 指定要检查的 Service");
+    throw new CommandInputError("非交互模式需要 --service 指定要检查的 Service");
   }
   const listed = input.catalog.services
     .filter((service) => service.workloads.length > 0)
@@ -219,10 +219,10 @@ export async function resolveInspectServiceSelection(
 
 /** Fail before Plugin loading or cluster access; target discovery is not a substitute for user intent. */
 export function validateInspectInput(input: Pick<CollectInspectCliOpts, "services">): void {
-  if (input.services !== undefined && !input.services.split(",").some(value => value.trim())) {
-    throw new CommandInputError("--services 不能为空");
+  if (input.services !== undefined && (!input.services.length || input.services.some(value => !value.trim()))) {
+    throw new CommandInputError("--service 不能为空");
   }
   if (!isInteractive() && input.services === undefined) {
-    throw new CommandInputError("非交互模式需要 --services 指定要检查的 Service");
+    throw new CommandInputError("非交互模式需要 --service 指定要检查的 Service");
   }
 }

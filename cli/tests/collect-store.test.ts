@@ -172,7 +172,7 @@ describe("Store output", () => {
     });
     const context = new CommandContext({});
     const artifact = context.artifacts.add({ command: "db", path: staging });
-    await renderForDelivery(context, storeCommand, { status: CommandStatus.Ok, output: undefined, artifacts: [artifact] });
+    await renderForDelivery(context, storeCommand, { status: CommandStatus.Ok, output: { services: [{ result: { status: CommandStatus.Ok, output: undefined, artifacts: [artifact] } }] }, artifacts: [artifact] });
     const html = readFileSync(join(staging, "report.html"), "utf8");
     expect(prepared).toMatchObject({ ok: true, path: staging, label: "Store 诊断产物" });
     expect(html).toContain(">DB Store 诊断摘要</h1>");

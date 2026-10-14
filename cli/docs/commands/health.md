@@ -11,11 +11,11 @@ Health 完整展示 summary，包括不可采样的状态条目；不要求对�
 ```bash
 doctor health
 doctor health --since 1h --service example-worker
-doctor health --services example-api,example-worker --tenant-id <tenant-id>
+doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ```
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
-显式 `--service` 或 `--services` 跳过选择，只检查指定服务，支持别名并按规范名去重。
+显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
 候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize` 或 `health.case.bindings`，
 不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。

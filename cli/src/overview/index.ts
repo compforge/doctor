@@ -20,8 +20,7 @@ import { confirmOverviewCollection, overviewWindow, selectOverviewEntries, selec
 
 export interface SampleCliOpts extends KubernetesCommandInput {
   since?: string;
-  service?: string;
-  services?: string;
+  services?: readonly string[];
   tenantId?: string;
   facet?: string;
   collect?: boolean;

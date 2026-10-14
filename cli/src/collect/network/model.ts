@@ -16,7 +16,7 @@ export type NetworkCaptureMode = "tracking" | "watch";
 export interface CollectNetworkCliOpts {
   file?: string;
   namespace?: string;
-  services?: string;
+  services?: readonly string[];
   timeout: string;
   drain: string;
   maxPcapSize: string;

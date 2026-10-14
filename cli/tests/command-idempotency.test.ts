@@ -107,9 +107,9 @@ test("cancellation reaches shared work and waiters, drains cleanup, and override
 });
 
 test("Inspect and Tenant input identities change with collection scope, not caller biz-id", () => {
-  const inspect = createInspectInput({ namespace: "ns", services: "api", dependencies: false });
-  expect(inspect.idempotencyKey!()).toBe(createInspectInput({ namespace: "ns", services: "api", dependencies: false }).idempotencyKey!());
-  for (const change of [{ namespace: "other" }, { services: "worker" }, { dependencies: true }, { deploymentConfig: true }]) {
+  const inspect = createInspectInput({ namespace: "ns", services: ["api"], dependencies: false });
+  expect(inspect.idempotencyKey!()).toBe(createInspectInput({ namespace: "ns", services: ["api"], dependencies: false }).idempotencyKey!());
+  for (const change of [{ namespace: "other" }, { services: ["worker"] }, { dependencies: true }, { deploymentConfig: true }]) {
     expect(createInspectInput({ ...inspect, ...change }).idempotencyKey!()).not.toBe(inspect.idempotencyKey!());
   }
   const tenant = createTenantInput({ namespace: "ns", tenantId: "one" });

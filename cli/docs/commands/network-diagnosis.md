@@ -29,7 +29,7 @@ debug environment 准备后保持空闲，不自动抓包。一次抓包由 `Net
 ### 1. 发现目标与确认前置能力
 
 `doctor net` 先由操作者确认本次要覆盖的 Service，再解析对应 Endpoint、Pod、业务容器、Pod IP、端口和节点信息。
-交互终端未指定 `--services` 时列出当前 namespace 的 Service 供多选；非交互调用必须显式传入。
+交互终端未指定 `--service` 时列出当前 namespace 的 Service 供多选；非交互调用必须显式传入。
 负载均衡会把请求送到任一副本，因此默认覆盖目标 Service 的全部 Ready Pod；现场可以主动缩容副本来
 降低抓包规模，但这不是正确性的前置条件。
 
@@ -47,7 +47,7 @@ debug environment 准备后保持空闲，不自动抓包。一次抓包由 `Net
 
 缺少 runtime 时命令停止并列出需要准备的 Pod，不在采集过程中隐式注入临时容器。若所选 Pod 全部只缺
 runtime、抓包尚未开始，终端把已经选择的 profile、namespace 和 Service 范围渲染为可直接执行的
-`doctor debug --services ...`，且不生成没有 PCAP 的失败 Bundle；已开始抓包或存在其它覆盖缺口时仍保留
+`doctor debug --service ...`，且不生成没有 PCAP 的失败 Bundle；已开始抓包或存在其它覆盖缺口时仍保留
 失败 Bundle。镜像发布、Pod mutation 与网络取证因此保持为可见的不同操作。
 
 ### 2. 建立 NetworkCaptureSession 并统一 ARM

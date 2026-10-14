@@ -4,12 +4,12 @@ Doctor 从 Plugin Service 的 Workload 声明定位日志实例，再通过共�
 
 ```bash
 doctor log                         # 默认 Service / 时间窗口；交互时可选择 Service
-doctor log --services api -n prod --since 15m
-doctor log --services api --since-time '2026-09-16T15:00:00+08:00' --until-time '2026-09-16T15:15:00+08:00'
+doctor log --service api -n prod --since 15m
+doctor log --service api --since-time '2026-09-16T15:00:00+08:00' --until-time '2026-09-16T15:15:00+08:00'
 doctor log <biz-id> --since 15m      # trace 与已解析对象关联
 ```
 
-`--services` 和时间起点都可省略：非交互使用 Plugin 的默认日志 Service，交互沿用 Service 多选；无 ID 默认回看 6 小时。`--errors-only` 和 `--pattern` 在两种模式下均可用。
+`--service` 和时间起点都可省略：非交互使用 Plugin 的默认日志 Service，交互沿用 Service 多选；无 ID 默认回看 6 小时。`--errors-only` 和 `--pattern` 在两种模式下均可用。
 
 ## Workload 与采集范围
 
@@ -44,7 +44,7 @@ Kubernetes Log API 只接受时间起点。Doctor 按容器运行时日志时间
 
 ## 终端摘要
 
-`doctor log --services api --since 15m -f summary` 在终端输出采集状态、查询范围、各查询的匹配事件数、扫描 Pod 数和采集缺口；证据目录与 manifest 路径同时返回。摘要沿用公共长度限制，多 ID 查询超出部分仍完整保存在 `output.json`，原始日志、时间线和详细采集记录留在证据目录。
+`doctor log --service api --since 15m -f summary` 在终端输出采集状态、查询范围、各查询的匹配事件数、扫描 Pod 数和采集缺口；证据目录与 manifest 路径同时返回。摘要沿用公共长度限制，多 ID 查询超出部分仍完整保存在 `output.json`，原始日志、时间线和详细采集记录留在证据目录。
 
 部分成功时，摘要保留已获得的匹配事件数和扫描 Pod 数，并分别展示对象关联缺口与日志采集缺口。
 关联缺口沿用 Data 证据中的 Service、查询身份或数据来源及失败原因，表示依赖这些身份匹配的日志可能遗漏；

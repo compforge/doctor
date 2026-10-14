@@ -150,12 +150,12 @@ export async function inspectNetworkTopology(
   };
 }
 
-export function parseNetworkServices(raw: string): string[] {
+export function parseNetworkServices(raw: readonly string[]): string[] {
   const services: string[] = [];
-  for (const item of raw.split(",")) {
+  for (const item of raw) {
     const name = item.trim();
     if (name && !services.includes(name)) services.push(name);
   }
-  if (!services.length) throw new Error("--services 未解析出任何服务");
+  if (!services.length) throw new Error("--service 未解析出任何服务");
   return services;
 }

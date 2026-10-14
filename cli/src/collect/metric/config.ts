@@ -65,10 +65,10 @@ export function parseMetricInterval(raw: string | undefined): number {
   return intervalMs;
 }
 
-export function parseMetricServices(raw: string | undefined, catalog: ServiceCatalog): string[] {
+export function parseMetricServices(raw: readonly string[] | undefined, catalog: ServiceCatalog): string[] {
   const defaults = metricConfigurationProviders(catalog).map(({ service }) => service.name);
-  const services = [...new Set((raw ?? defaults.join(",")).split(",").map((item) => item.trim()).filter(Boolean))];
-  if (!services.length) throw new Error("--services 未解析出任何 Service");
+  const services = [...new Set((raw ?? defaults).map((item) => item.trim()).filter(Boolean))];
+  if (!services.length) throw new Error("--service 未解析出任何 Service");
   const unsupported = services.filter((service) => !defaults.includes(catalog.find(service)?.name ?? ""));
   if (unsupported.length) throw new Error(`Doctor 未注册以下 Service 的 metric.configuration Extension：${unsupported.join(", ")}`);
   return catalog.resolveNames(services);

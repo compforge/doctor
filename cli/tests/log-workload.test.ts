@@ -144,7 +144,7 @@ test("interactive Service choices come from Catalog without accessing Kubernetes
   const selected = await resolveLogServiceSelection({ namespace: "test", catalog: plugin.services, executor, interactive: true,
     prompt: async input => { expect(input.choices.map(choice => choice.name)).toEqual(["logical"]); return ["logical"]; } });
   expect(selected).toEqual(["logical"]);
-  expect(await resolveLogServiceSelection({ namespace: "test", catalog: plugin.services, executor, raw: "short" })).toEqual(["logical"]);
+  expect(await resolveLogServiceSelection({ namespace: "test", catalog: plugin.services, executor, raw: ["short"] })).toEqual(["logical"]);
 });
 
 test("Pod replacement during overlapping discovery is a gap, not a misleading source identity", async () => {

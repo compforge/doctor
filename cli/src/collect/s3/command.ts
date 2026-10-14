@@ -1,3 +1,4 @@
+import { forServices } from "../../command/services";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ import { resolveS3Provider } from "./provider";
 import { s3Summary } from "./summary";
 
 type PreparedS3 = { input: S3Input; request: S3Request };
-export const s3Command = defineCommand<S3Input, void, PreparedS3>({
+const s3ServiceCommand = defineCommand<S3Input, void, PreparedS3>({
   name: "doctor s3",
   validate: validateS3Input,
   serialize: serializeEvidenceResult,
@@ -79,3 +80,5 @@ export const s3Command = defineCommand<S3Input, void, PreparedS3>({
     return { status, reason, output: undefined, artifacts: context.artifacts.list() };
   },
 });
+
+export const s3Command = forServices(s3ServiceCommand);

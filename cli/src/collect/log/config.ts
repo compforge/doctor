@@ -106,13 +106,13 @@ export function createTraceLineCollector(
   };
 }
 
-export function resolveLogServices(raw: string, catalog: ServiceCatalog): string[] {
+export function resolveLogServices(raw: readonly string[], catalog: ServiceCatalog): string[] {
   const services: string[] = [];
-  for (const item of raw.split(",")) {
+  for (const item of raw) {
     const service = item.trim();
     if (service && !services.includes(service)) services.push(service);
   }
-  if (!services.length) throw new Error("--services 未解析出任何服务");
+  if (!services.length) throw new Error("--service 未解析出任何服务");
   const unsupported = services.filter((service) => !catalog.find(service)?.logs);
   if (unsupported.length) {
     throw new Error(`Doctor 未注册以下 Service 的日志采集能力：${unsupported.join(", ")}`);
@@ -121,7 +121,7 @@ export function resolveLogServices(raw: string, catalog: ServiceCatalog): string
 }
 
 export interface LogServiceSelectionInput {
-  raw?: string;
+  raw?: readonly string[];
   namespace: string;
   catalog: ServiceCatalog;
   executor: Executor;

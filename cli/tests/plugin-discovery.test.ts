@@ -123,10 +123,6 @@ describe("doctor plugin CLI", () => {
         workflows: "Submit → queue → execute → persist",
         services: [{
           name: "test-store", aliases: ["store"],
-          concepts: "A Cache stores task results.",
-          workflows: "Read cache → return result\nA cache miss is not a failed Task.",
-          detectors: [], environmentProbes: [],
-          details: { workloads: [], dependencies: [], dataSources: [{ id: "cache", kind: "redis", backend: "redis" }], access: [] },
         }],
       }]
     });
@@ -142,6 +138,9 @@ describe("doctor plugin CLI", () => {
   test("service filter renders offline knowledge and capabilities", () => {
     const result = run("plugin", "--service", "test-store");
     expect(result.exitCode).toBe(0);
+    for (const product of ["Task processing product", "A Task owns Attempts.", "Submit → queue → execute → persist"]) {
+      expect(result.stdout.toString()).not.toContain(product);
+    }
     expect(result.stdout.toString()).toContain("Service: test-store");
     expect(result.stdout.toString()).toContain("A Cache stores task results.");
     expect(result.stdout.toString()).toContain("Read cache → return result\n      A cache miss is not a failed Task.");
@@ -169,6 +168,9 @@ describe("doctor plugin CLI", () => {
     expect(result.exitCode).toBe(0);
     const output = result.stdout.toString();
     expect(output).toContain("Service: test-store");
+    for (const product of ["Task processing product", "A Task owns Attempts.", "Submit → queue → execute → persist"]) {
+      expect(output).not.toContain(product);
+    }
     expect(output).toContain("Aliases：store");
     expect(output).toContain("A Cache stores task results.");
     expect(output).toContain("Read cache → return result\n      A cache miss is not a failed Task.");
@@ -181,7 +183,9 @@ describe("doctor plugin CLI", () => {
   test("service filter keeps JSON directly consumable", () => {
     const result = run("plugin", "--service", "store", "-f", "json");
     expect(result.exitCode).toBe(0);
-    const services = JSON.parse(result.stdout.toString()).plugins[0].services;
+    const plugin = JSON.parse(result.stdout.toString()).plugins[0];
+    expect(Object.keys(plugin).sort()).toEqual(["id", "services", "source", "version"]);
+    const services = plugin.services;
     expect(services).toHaveLength(1);
     expect(services[0].name).toBe("test-store");
     expect(services[0].aliases).toEqual(["store"]);

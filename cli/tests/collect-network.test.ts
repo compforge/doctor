@@ -252,14 +252,14 @@ requests:
       },
     })).toEqual(["frontend", "planner"]);
     expect(await resolveNetworkServiceScope({
-      services: "frontend,model-gateway-v2",
+      services: ["frontend", "model-gateway-v2"],
       interactive: false,
       loadChoices,
     })).toEqual(["frontend", "model-gateway-v2"]);
     expect(resolveNetworkServiceScope({
       interactive: false,
       loadChoices,
-    })).rejects.toThrow("缺少 --services");
+    })).rejects.toThrow("缺少 --service");
   });
 
   test("失败时生成可直接阅读的终端摘要", () => {
@@ -354,7 +354,7 @@ requests:
       namespace: "default",
       services: ["frontend", "planner"],
     })).toContain(
-      "mono-doctor doctor debug --profile demo -n default --services frontend,planner",
+      "mono-doctor doctor debug --profile demo -n default --service frontend --service planner",
     );
   });
 

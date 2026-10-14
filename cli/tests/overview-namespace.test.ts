@@ -89,7 +89,7 @@ test("summary and sample in one namespace can have different providing Services 
 test("Overview rejects invalid selection before Kubernetes preparation", async () => {
   for (const [definition, input, reason] of [
     [plugin([]), {}, "--service"],
-    [plugin(), { service: "store" }, "facet.summarize"],
+    [plugin(), { services: ["store"] }, "facet.summarize"],
     [plugin(), { facet: "missing" }, "Facet"],
   ] as const) {
     const context = new CommandContext({}, undefined, { plugin: definition });
@@ -108,9 +108,9 @@ test("CLI exposes explicit Service selection and rejects conflicting or empty se
   const command = createDoctorProgram().commands.find(command => command.name() === "sample")!;
   expect(command.helpInformation()).toContain("--service <name>");
   expect(overviewServiceNames({})).toBeUndefined();
-  expect(overviewServiceNames({ service: "short" })).toEqual(["short"]);
-  expect(overviewServiceNames({ services: "api, store" })).toEqual(["api", "store"]);
-  for (const opts of [{ service: "" }, { service: "api,store" }, { services: "api,,store" }, { service: "api", services: "store" }]) {
+  expect(overviewServiceNames({ services: ["short"] })).toEqual(["short"]);
+  expect(overviewServiceNames({ services: ["api", "store"] })).toEqual(["api", "store"]);
+  for (const opts of [{ services: [] }, { services: [""] }, { services: ["api", "", "store"] }]) {
     expect(() => validateSampleOptions(opts)).toThrow("--service");
   }
 });
@@ -170,7 +170,7 @@ test("Overview command invokes the namespace provider using its original Service
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
-        const result = await sampleCommand.run(context, { since: "1h", service: selection });
+        const result = await sampleCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(result.output?.providers.map(provider => provider.namespace)).toEqual([
           selection ? "plugin/fixture/service/api" : "plugin/fixture",

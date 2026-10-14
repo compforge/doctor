@@ -1,7 +1,7 @@
 # Sample
 
 `doctor sample` 展示用于选取数据的统计：Facet 是观察维度，例如请求错误；Entry 是该维度下动态发现的条目，例如某个 error code。
-默认选择当前 Plugin 的产品 namespace；`--service` 选择单个 Service，`--services` 选择多个 Service。
+默认选择当前 Plugin 的产品 namespace；`-s/--service <name>` 可重复传入，选择一个或多个 Service。
 展示的目的在于帮助用户选择代表 biz-ids，再决定是否采集，而不是完整呈现系统状态。
 
 所选 namespace 必须同时提供 summarize 和 sample。Core 只展示 `canSample` 的 Entry，隐藏纯展示维度；空维度和截断信息仍保留，说明查询结果与覆盖范围。
@@ -15,7 +15,7 @@ Distribution 的命令列表及 `commandDefaults` 使用命令名 `sample`。
 ```bash
 doctor sample
 doctor sample --since 6h --service example-api --tenant-id <tenant-id>
-doctor sample --since 6h --services example-api,example-worker
+doctor sample --since 6h -s example-api -s example-worker
 doctor sample --since 1h --facet errors --sample-count 5
 doctor sample --since 1h --collect --facet errors --sample-count 5
 ```
@@ -75,7 +75,7 @@ Service 在 `extensions` 注册成对的 `facet.summarize` 与 `facet.sample`，
 `namespace` 声明产品级或服务级作用域。Core 按 namespace 精确选择：默认使用
 `plugin/<plugin-id>`，指定 Service 时使用 `plugin/<plugin-id>/service/<canonical-service-name>`。
 Service alias 先解析为标准名。缺少所选 namespace 的 summarize/sample 配对，或存在多个 summarize/sample 实现时直接报错，
-不隐式聚合、继承或借用其它 namespace 的操作；`--service` 与 `--services` 互斥。
+不隐式聚合、继承或借用其它 namespace 的操作；重复的 Service 名与别名按规范名去重。
 
 namespace 表达统计归属，提供方 Service 决定操作的执行上下文。例如同一个 Service 可以同时提供
 产品错误概览和自己的运行状况概览。summary 和 sample 分别保留各自的 Service 绑定与 access，

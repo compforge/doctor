@@ -78,7 +78,7 @@ test("required inspect/db inputs fail before Plugin or environment access", asyn
     expect(inspect.status).toBe(CommandStatus.Failed);
     if (inspect.status !== CommandStatus.Failed) throw new Error("expected input failure");
     expect(inspect.error).toBeInstanceOf(CommandInputError);
-    expect(inspect.reason).toContain("--services");
+    expect(inspect.reason).toContain("--service");
     const db = await dbCommand.run(context, {});
     expect(db.status).toBe(CommandStatus.Failed);
     if (db.status !== CommandStatus.Failed) throw new Error("expected input failure");

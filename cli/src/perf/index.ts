@@ -224,7 +224,7 @@ async function collectCorrelatedEvidence(input: {
     const log = trace.status === CommandStatus.Cancelled ? undefined : await logCommand.run(input.commandContext, {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
-      services: input.services.join(","),
+      services: input.services,
       sinceTime: input.run.trials.find((trial) => trial.id === selected.trialId)?.started_at,
     });
     if (log) input.commandContext.artifacts.add(log.artifacts);
@@ -410,7 +410,7 @@ export async function runPerf(
     rejectMetricStart = rejectReady;
   });
   const metricPromise = metricCommand.run(commandContext, {
-    services: declaredScenario.observability.metricServices.join(","),
+    services: declaredScenario.observability.metricServices,
     watch: "until-interrupt",
     interval: opts.interval ?? "5s",
     prometheus: opts.prometheus,

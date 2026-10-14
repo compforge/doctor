@@ -95,7 +95,7 @@ test("command retains independent owners, typed evidence and partial status, inc
       context.ensureEnvironment = async () => {};
       let artifacts: readonly { command: string; path: string }[] = [];
       try {
-        const result = await healthCommand.run(context, { since: "1h", service: selection });
+        const result = await healthCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
         expect(result.status).toBe(selection === "store" ? CommandStatus.Ok : CommandStatus.Partial);
         expect(result.output?.providers[0]?.cost).toEqual(costResult);
         artifacts = result.artifacts;

@@ -178,7 +178,7 @@ async function collectEvalEvidence(input: {
       log = collected(await logCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        services: logServices.join(","),
+        services: logServices,
         sinceTime: input.startedAt,
       }), input.commandContext);
     } catch (error) {
@@ -192,7 +192,7 @@ async function collectEvalEvidence(input: {
       data = collected(await dataCommand.run(input.commandContext, {
         bizIds: [...input.correlations],
         namespace: input.namespace,
-        services: dataServices.join(","),
+        services: dataServices,
       }), input.commandContext);
     } catch (error) {
       data = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };

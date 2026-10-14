@@ -21,7 +21,7 @@ export interface CollectDataCliOpts extends TimeWindowOptions {
   config?: string;
   format?: string;
   output?: string;
-  services?: string;
+  services?: readonly string[];
 }
 
 export interface DataConfig {

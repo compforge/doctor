@@ -244,7 +244,7 @@ export async function resolveNetworkRequest(
 }
 
 export async function resolveNetworkServiceScope(input: {
-  services?: string;
+  services?: readonly string[];
   namespace?: string;
   kubeconfig?: string;
   context?: string;
@@ -253,11 +253,11 @@ export async function resolveNetworkServiceScope(input: {
   loadChoices: () => Promise<ServiceChoice[]>;
   prompt?: (input: NamedChoiceSelectionInput<ServiceChoice>) => Promise<string[] | undefined>;
 }): Promise<string[] | undefined> {
-  if (input.services?.trim()) return parseNetworkServices(input.services);
+  if (input.services?.length) return parseNetworkServices(input.services);
 
   const interactive = isInteractive(input.interactive);
   if (!interactive) {
-    throw new Error("缺少 --services；非交互环境请显式指定本次抓包范围");
+    throw new Error("缺少 --service；非交互环境请显式指定本次抓包范围");
   }
   const listed = await input.loadChoices();
   const choices = input.namespace

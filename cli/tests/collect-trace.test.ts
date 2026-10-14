@@ -90,11 +90,11 @@ describe("pickOpenSearchService", () => {
     ]));
     expect(r).toEqual({ ok: true, value: { namespace: "obs", name: "opensearch-cluster", port: 9200 } });
   });
-  test("--service 精确匹配", () => {
+  test("配置的后端 Service 名称精确匹配", () => {
     const r = pickOpenSearchService(svcList([{ ns: "obs", name: "my-es", ports: [9200] }]), "my-es");
     expect(r.ok).toBe(true);
   });
-  test("自动发现跳过 headless 孪生，--service 点名仍可选中", () => {
+  test("自动发现跳过 headless 孪生，配置明确点名仍可选中", () => {
     const list = svcList([
       { ns: "obs", name: "opensearch-cluster-master", ports: [9200] },
       { ns: "obs", name: "opensearch-cluster-master-headless", ports: [9200], headless: true },
