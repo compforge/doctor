@@ -13,7 +13,7 @@ function fixture(names = ["api-1", "api-2"], containers = ["server"]) {
   const service = {
     name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/api" } },
     workloads: [{ name: "main", platform: "kubernetes" as const, location: { kind: "labels" as const, labels: { app: "api" } } }],
-    dataSources: [{ id: "database", kind: "db" as const, backend: "mysql" as const, envPrefix: "DB" }],
+    dataSources: [{ id: "database", kind: "db" as const, backend: "mysql" as const, source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }],
   };
   const command = new CommandContext({}, undefined, { format: "summary", plugin: {
     id: "test", version: "0.0.1", services: createServiceCatalog([service]),
@@ -59,35 +59,6 @@ test("a unique Pod and container need no selection flags", async () => {
   const f = fixture(["api-1"]);
   try { expect(await resolveDataSourceTarget(f.input)).toEqual({ pod: "api-1", container: "server" }); }
   finally { await f.command.disposeClients(); }
-});
-
-/** @case id=db_source_selection,desc=`Multiple configuration Pods`,expect=`Report source candidates before SQL`,forbid=`Generic database failure hides selection` */
-test("db preserves actual datasource selection failures in its report and evidence before connecting", async () => {
-  const f = fixture();
-  const environment = spyOn(f.command, "ensureEnvironment").mockResolvedValue();
-  const resolve = spyOn(databaseAccess, "resolveDatabaseConfig").mockImplementation(async () => {
-    await resolveDataSourceTarget(f.input);
-    throw new Error("Ambiguous source must not resolve");
-  });
-  const connect = spyOn(databaseAccess, "borrowDatabase");
-  try {
-    const result = await dbCommand.run(f.command, { services: ["api"], database: "app", execute: "SELECT 1", interactive: false });
-    expect(result.status).toBe(CommandStatus.Failed);
-    expect(connect).not.toHaveBeenCalled();
-    const directory = result.artifacts[0]!.path;
-    const summary = readFileSync(join(directory, "summary.md"), "utf8");
-    expect(summary).toContain("--pod");
-    expect(summary).toContain("api-1, api-2");
-    expect(summary).toContain("未执行");
-    expect(summary).not.toContain("数据库操作失败或超时");
-    const diagnosis = JSON.parse(readFileSync(join(directory, "diagnosis.json"), "utf8"));
-    expect(diagnosis.targets[0].error).toContain("--pod");
-    expect(diagnosis.results).toEqual([]);
-  } finally {
-    resolve.mockRestore(); connect.mockRestore(); environment.mockRestore();
-    await f.command.disposeClients();
-    for (const artifact of f.command.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
-  }
 });
 
 test("unknown configuration failures remain redacted rather than being promoted to input errors", async () => {

@@ -12,6 +12,10 @@ The API Service contributes a shared connectivity Case through `Service.cases`; 
 The Worker's `health.case.bindings` references that source. Running `doctor health --service example-worker` requires
 a matching deployment and checks the API from the Worker container; it does not use the Doctor Host's network path.
 
+The Worker's database source reads `database.host`, `port` (default 3306), `database`, `user`, and
+`password` from the Plugin profile configuration. The Plugin interprets these fields during Client
+initialization; Doctor Core manages the Client lifecycle without selecting a configuration Pod.
+
 The workspace version identifies both Plugin code and bundled Skills. Run
 `make bump-plugin-version PLUGIN=example` whenever either content set changes.
 

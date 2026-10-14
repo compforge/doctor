@@ -29,7 +29,7 @@ function context(options: { format?: string; output?: string } = { format: "summ
   return new CommandContext({}, undefined, { ...options, plugin: {
     id: "test", version: "0.0.1", services: createServiceCatalog([{
       name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }],
+      workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }],
     }]),
   } });
 }

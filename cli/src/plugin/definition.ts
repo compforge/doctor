@@ -155,9 +155,8 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       }
       if (store.kind === "db") {
         if (store.backend !== "mysql") throw new Error(`${label}.backend must be mysql`);
-        const env = store.envPrefix !== undefined;
-        if (env === resolver) throw new Error(`${label} must declare exactly one of envPrefix / source`);
-        if (env) nonEmptyString(store.envPrefix, `${label}.envPrefix`);
+        if ("envPrefix" in store) throw new Error(`${label}.envPrefix is unsupported; resolve configuration inside source`);
+        if (!resolver) throw new Error(`${label}.source is required`);
         if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
       }
       if (store.kind === "s3" || store.kind === "redis") {

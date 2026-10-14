@@ -57,7 +57,7 @@ test("Trace Store 首选 Plugin source，再补齐其余 OpenSearch VDB target",
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name: "chat-server",
       workloads: [],
-      dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }]
+      dataSources: [{ id: "database", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }]
     }]),
   } satisfies PluginDefinition;
 

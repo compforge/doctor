@@ -1,4 +1,5 @@
 import type { ServiceMetricChart, ServiceMetricDetector } from "@compforge/doctor-plugin";
+import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
 import type { CommandContext } from "../../command";
 import type {
   EmbeddedMetricSource,
@@ -45,7 +46,7 @@ export interface MetricConfig {
   /** Remote Service metrics remain usable when optional Kubernetes Store sampling cannot be prepared. */
   storeSupplementUnavailableReason?: string;
   namespace: string;
-  namespaceSource: string;
+  namespaceSource: KubernetesCommandConfig["kubernetes"]["namespaceSource"];
   kube: { namespace: string; kubeconfig?: string; context?: string };
   reportName: string;
   outputPath: string;

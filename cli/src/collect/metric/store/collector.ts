@@ -1,12 +1,14 @@
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { parseExposition } from "@compforge/prombed";
 import type {
+  Database,
   PluginDefinition,
   ServiceCatalog,
-  ServiceDatabaseDataSource,
   ServiceRedisDataSource,
 } from "@compforge/doctor-plugin";
-import { MysqlDatabase, parseMysqlEnvTarget } from "../../../infra/database/mysql";
+import type { CommandContext } from "../../../command";
+import type { KubernetesCommandConfig } from "../../../command/kubernetes-target";
+import { borrowDatabase } from "../../../datasource/database";
 import type { DatabaseTarget } from "../../../infra/database";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
@@ -23,7 +25,7 @@ import {
   type RedisEndpoint,
   type RedisTopology,
 } from "@compforge/harness-toolbox/redis/index";
-import { configuredValue, loadServiceRuntimeConfig } from "../../../datasource/runtime-config";
+import { loadServiceRuntimeConfig } from "../../../datasource/runtime-config";
 import {
   hasRedisStoreConfiguration,
   resolveRedisTarget,
@@ -89,19 +91,6 @@ export function discoverStoreExporterServices(
 
 function environmentText(environment: ReadonlyMap<string, string>): string {
   return [...environment].map(([name, value]) => `${name}=${value}`).join("\n");
-}
-
-function mysqlConfigurationComplete(
-  environment: Map<string, string>,
-  capability: ServiceDatabaseDataSource,
-): boolean {
-  const prefix = capability.envPrefix;
-  return !!(
-    configuredValue(environment, `${prefix}_HOST`)
-    && (configuredValue(environment, `${prefix}_DATABASE`) || configuredValue(environment, `${prefix}_NAME`))
-    && (configuredValue(environment, `${prefix}_USERNAME`) || configuredValue(environment, `${prefix}_USER`))
-    && configuredValue(environment, `${prefix}_PASSWORD`)
-  );
 }
 
 async function runtimeEnvironment(
@@ -242,9 +231,9 @@ export function mysqlStatusExposition(rows: readonly Record<string, unknown>[]):
 
 function mysqlSampler(
   service: string,
-  store: ServiceDatabaseDataSource,
+  store: { id: string },
   target: DatabaseTarget,
-  database: MysqlDatabase,
+  database: Database,
 ): StoreMetricSampler {
   return {
     kind: "mysql",
@@ -268,6 +257,8 @@ function targetKey(kind: MetricStoreKind, target: RedisTarget | DatabaseTarget):
 
 async function prepareDirectSamplers(input: {
   plugin: PluginDefinition;
+  commandContext: CommandContext;
+  collect: KubernetesCommandConfig;
   services: readonly string[];
   executor: Executor;
   forwarder: ServicePortForwarder;
@@ -276,34 +267,21 @@ async function prepareDirectSamplers(input: {
 }): Promise<{
   samplers: StoreMetricSampler[];
   errors: Array<{ kind: MetricStoreKind; message: string }>;
-  close(): Promise<void>;
 }> {
   const samplers = new Map<string, StoreMetricSampler>();
   const errors: Array<{ kind: MetricStoreKind; message: string }> = [];
-  const mysql = new MysqlDatabase([new PortForwardTransport((endpoint) => input.forwarder.forward(endpoint))], {
-    connectTimeoutMs: 10_000,
-    queryTimeoutMs: 15_000,
-  });
   for (const serviceName of input.services) {
     const service = input.plugin.services.find(serviceName);
     if (!service) continue;
-    const namespace = input.networkServices.find((item) => item.name === serviceName)?.namespace
-      ?? input.pods[0]?.namespace
-      ?? "";
-    const pod = findPodsForService(input.networkServices, input.pods, serviceName, namespace)[0];
-    if (!pod) {
-      for (const store of service.dataSources ?? []) {
-        if (store.kind === "redis") {
-          errors.push({ kind: "redis", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
-        } else if (store.kind === "db" && store.backend === "mysql") {
-          errors.push({ kind: "mysql", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
-        }
-      }
-      continue;
-    }
     for (const store of service.dataSources ?? []) {
       try {
         if (store.kind === "redis") {
+          const namespace = input.networkServices.find(item => item.name === serviceName)?.namespace ?? input.collect.kubernetes.namespace;
+          const pod = findPodsForService(input.networkServices, input.pods, serviceName, namespace)[0];
+          if (!pod) {
+            errors.push({ kind: "redis", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
+            continue;
+          }
           const runtime = await runtimeEnvironment(
             input.executor,
             pod,
@@ -317,28 +295,18 @@ async function prepareDirectSamplers(input: {
           const key = targetKey("redis", target);
           if (!samplers.has(key)) samplers.set(key, redisSampler(serviceName, store, target, input.forwarder));
         } else if (store.kind === "db" && store.backend === "mysql") {
-          if (!store.envPrefix) {
-            errors.push({ kind: "mysql", message: `${serviceName}/${store.id} Metric 直采需要 envPrefix；自定义 DB 目标请使用 doctor store/db` });
-            continue;
-          }
-          const runtime = await runtimeEnvironment(
-            input.executor,
-            pod,
-            (environment) => mysqlConfigurationComplete(environment, store),
-          );
-          if (!runtime) {
-            errors.push({ kind: "mysql", message: `${serviceName}/${store.id} 未解析出 MySQL 运行时配置` });
-            continue;
-          }
-          const target = parseMysqlEnvTarget(runtime.raw, { label: serviceName, prefix: store.envPrefix });
-          const key = targetKey("mysql", target);
-          if (!samplers.has(key)) samplers.set(key, mysqlSampler(serviceName, store, target, mysql));
+          const client = await borrowDatabase(input.commandContext, {
+            collect: input.collect, service: serviceName, capability: store,
+          }, input.executor);
+          const key = targetKey("mysql", client.target);
+          if (!samplers.has(key)) samplers.set(key, mysqlSampler(serviceName, store, client.target, client.database));
         }
       } catch (error) {
         const kind = store.kind === "redis" ? "redis" : "mysql";
         errors.push({
           kind,
-          message: `${serviceName}/${store.id} Store 配置解析失败：${error instanceof Error ? error.message : String(error)}`,
+          message: store.kind === "db" ? `${serviceName}/${store.id} 数据库 source 初始化失败`
+            : `${serviceName}/${store.id} Store 配置解析失败：${error instanceof Error ? error.message : String(error)}`,
         });
       }
     }
@@ -346,7 +314,6 @@ async function prepareDirectSamplers(input: {
   return {
     samplers: [...samplers.values()],
     errors,
-    close: () => mysql.close(),
   };
 }
 
@@ -431,6 +398,8 @@ async function scrapeExporter(
 
 export async function prepareStoreMetricCollection(input: {
   plugin: PluginDefinition;
+  commandContext: CommandContext;
+  collect: KubernetesCommandConfig;
   services: readonly string[];
   executor: Executor;
   forwarder: ServicePortForwarder;
@@ -476,7 +445,6 @@ export async function prepareStoreMetricCollection(input: {
         kind,
         message: `Store 直采准备失败：${error instanceof Error ? error.message : String(error)}`,
       })),
-      close: async () => undefined,
     };
   }
   const samplers = direct.samplers;
@@ -538,7 +506,8 @@ export async function prepareStoreMetricCollection(input: {
               metricNames: [...STORE_METRIC_NAMES[kind]],
             });
           } catch (error) {
-            errors.push(`${sampler.service}/${sampler.store} ${kind} 直采失败：${error instanceof Error ? error.message : String(error)}`);
+            errors.push(kind === "mysql" ? `${sampler.service}/${sampler.store} MySQL 直采失败`
+              : `${sampler.service}/${sampler.store} ${kind} 直采失败：${error instanceof Error ? error.message : String(error)}`);
           }
         }
       }
@@ -546,7 +515,6 @@ export async function prepareStoreMetricCollection(input: {
     },
     close: async () => {
       await Promise.allSettled(samplers.map((sampler) => sampler.close()));
-      await direct.close();
     },
   };
 }

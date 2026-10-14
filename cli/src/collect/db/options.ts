@@ -18,8 +18,6 @@ export function withDbOptions(command: Command): Command {
     .option("--max-rows <n>", "每次查询最多保留行数（1..100000）", "1000")
     .option("--max-bytes <n>", "每次查询最多保留 JSON 行字节数（不含包装结构）", "4194304")
     .option("-n, --namespace <ns>", "Service 目标 namespace")
-    .option("-p, --pod <pod>", "envPrefix 配置来源 Pod；多副本时可显式指定")
-    .option("-c, --container <name>", "envPrefix 配置来源 Container")
     .option("--profile <name>", "从 profile 读取 namespace / kubeconfig / Plugin config")
     .option("--config <path>", "Doctor config 文件路径")
     .addOption(deliveryFormatOption(["html", "bundle", "json", "summary"]))

@@ -1,7 +1,7 @@
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import { CommandInputError, type CommandContext } from "../../command";
 import { chooseParameter, ParameterCancelled } from "../../terminal/parameters";
-import { borrowDatabase, resolveDatabaseConfig, resolveDatabaseTarget } from "../../datasource/database";
+import { borrowDatabase, resolveDatabaseConfig } from "../../datasource/database";
 import { databaseFailure, type DbProvider } from "./discovery";
 import type { DbRequest } from "./input";
 
@@ -32,18 +32,16 @@ export async function resolveDbProviders(context: CommandContext, request: DbReq
       const resolved = await resolveDatabaseConfig(context, {
         ...request.input, ...context.options.environment, profile: context.profile.name,
       }, service, capability, request.interactive);
-      const database = await resolveDatabaseTarget(resolved.config, resolved.executor, context);
-      if (!database.target) { failures.push({ ...declaration, reason: database.reason ?? "未解析到数据库目标" }); continue; }
-      const target = database.target;
+      const client = await borrowDatabase(context, resolved.config, resolved.executor);
+      const target = client.target;
       if (!target.host || !target.user || !target.database || !Number.isInteger(target.port) || target.port < 1 || target.port > 65535 || typeof target.password !== "string") {
         throw new CommandInputError("Service 返回了无效的数据库目标");
       }
       // Keep declaration-specific clients and authorization. Runtime database identity is
       // resolved after discovery, independently of a source's client-cache key.
-      const client = await borrowDatabase(context, resolved.config, resolved.executor, target);
       const provider: DbProvider = {
         dataSources: [declaration],
-        id: capability.id, target, source: database.source,
+        id: capability.id, target, source: "plugin",
         query: (sql, values, limits, selectedDatabase) => client.database.queryReadonly(
           { ...target, database: selectedDatabase ?? target.database }, sql, values, limits,
         ),

@@ -7,8 +7,8 @@
 db 不提供写入、批量脚本、持久 SQL REPL 或跨连接查询拼接。
 
 Service 通过 `dataSources[]` 贡献访问能力，不增加数据库注册表。
-每个 MySQL 数据源使用两种互斥声明之一：标准 `envPrefix`，或带稳定 key 与 Client 工厂的
-`source`。工厂收到根执行拥有的受控上下文，客户端初始化时解释服务私有配置与准备连接；
+每个 MySQL 数据源通过带稳定 key 与 Client 工厂的 `source` 提供访问。
+工厂收到根执行拥有的受控上下文，客户端初始化时解释服务私有配置与准备连接；
 Service 不拥有连接的销毁权，也不维护第二份数据库、表或 schema 清单。
 
 `store`、`db` 和业务 Inspect 可以消费同一个 source。数据库访问准备归共享 datasource 层，
@@ -55,9 +55,8 @@ SQL
 
 交互只补缺失选择；必要参数齐全时直接执行。终端选择来自相同的 Service 声明和运行时发现，
 不会另维护菜单。缺参时仅在可交互终端引导补齐；非 TTY 下缺参或目标歧义直接报错。
-使用 `envPrefix` 时，Pod / Container 是连接配置的来源；多副本不证明连接配置一致。
-非交互调用在来源不唯一时报告 `--pod` / `--container` 及候选，显式选择无效时报告输入错误。
-这些提示由共享 datasource 层提供，并保留在 DB 取证报告中；底层驱动错误继续脱敏。
+环境变量、文件等配置的读取及来源副本选择由 Plugin 的 source 实现；DB 命令直接消费初始化后的 Client，
+无需用户选择配置来源 Pod / Container。Plugin 可在 target.source 中提供配置来源，取证报告保留该信息；底层驱动错误继续脱敏。
 `--file -` 独占 stdin，不借 stdin 做交互。通用选择与录入机制归 terminal 层，目前由 db 接入，
 不改变其它命令既有的交互策略。
 
@@ -79,8 +78,7 @@ toolbox 在独占、一次性的原生 MySQL 会话内固定 SQL mode、设置 S
 污染其它借用者。READ ONLY 不是任意 SQL 沙箱，仍要求最小权限账号，不建议使用管理员凭据。
 
 需要支持 `max_execution_time` 的 MySQL（5.7.8+）；不将此支持范围扩展为 MariaDB 或其它数据库兼容承诺。
-Pod Python 路径不支持有界只读接口时明确失败，不能退回完整缓冲查询。Metric 的既有 DB 直采仍只消费
-envPrefix，自定义 source 的宏观检查使用 store。
+Pod Python 路径不支持有界只读接口时明确失败，不能退回完整缓冲查询。Metric 的 MySQL 直采与 Store、DB 共用 Service 声明的 source Client。
 
 ### 限制在接收过程中生效
 
