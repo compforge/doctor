@@ -1,10 +1,14 @@
+import * as serviceNetwork from "@compforge/harness-toolbox/kubernetes/service";
+import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import { prepareStoreMetricCollection } from "../src/collect/metric/store/collector";
+import { EmbeddedMetricSource } from "../src/infra/metric";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, describeService, type PluginDefinition, type PluginDataSource, type ServiceDatabaseDataSource, type ServiceDatabaseTarget } from "@compforge/doctor-plugin";
-import { MysqlClient } from "@compforge/harness-toolbox/mysql";
+import { MysqlClient, MysqlDatabase } from "@compforge/harness-toolbox/mysql";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext, resolveKubernetesCommandContext } from "../src/command";
 import { resolveStoreProviderConfig } from "../src/collect/store/config";
-import { borrowDatabase, resolveDatabaseTarget } from "../src/datasource/database";
+import { borrowDatabase } from "../src/datasource/database";
 import * as databaseAccess from "../src/datasource/database";
 import { resolveDbProviders } from "../src/collect/db/providers";
 import { databaseTargets } from "../src/collect/db/discovery";
@@ -24,12 +28,16 @@ const executor: Executor = {
   exec: async () => { throw new Error("unexpected Pod exec"); },
 };
 
-test("store, db and business consumers share one Service datasource client and root-owned cleanup", async () => {
+test("store, db, metric and business consumers share a source without configuration Pods and root-owned cleanup", async () => {
   let starts = 0, closes = 0;
+  const database = new MysqlDatabase([], { connectTimeoutMs: 100, queryTimeoutMs: 100 });
+  const query = spyOn(database, "query").mockResolvedValue([{ Variable_name: "Queries", Value: "7" }]);
+  const network = spyOn(serviceNetwork, "listServiceNetwork").mockResolvedValue({ services: [], pods: [] });
   class FakeClient extends MysqlClient<ServiceDatabaseTarget> {
     override async initialize() { starts++; }
     override async dispose() { closes++; }
     override get target() { return target; }
+    override get database() { return database; }
   }
   const source: PluginDataSource<MysqlClient<ServiceDatabaseTarget>> = {
     clientKey: "primary",
@@ -55,9 +63,8 @@ test("store, db and business consumers share one Service datasource client and r
     expect(resolved?.config.target).toBeUndefined();
     expect(resolved?.config.service).toBe("logical-api");
     const config = { ...resolved!.config, capability };
-    const db = await resolveDatabaseTarget(config, executor, command);
-    expect(db.target).toEqual(target);
-    const first = await borrowDatabase(command, config, executor, db.target);
+    const first = await borrowDatabase(command, config, executor);
+    expect(first.target).toEqual(target);
     const access = spyOn(databaseAccess, "resolveDatabaseConfig").mockResolvedValue({ config, executor });
     try {
       const providers = await resolveDbProviders(command, await resolveDbRequest({ service: "api", showDatabases: true }));
@@ -71,6 +78,19 @@ test("store, db and business consumers share one Service datasource client and r
       expect(providers.failures).toEqual([]);
       expect(access.mock.calls[0]![2]).toBe("logical-api");
     } finally { access.mockRestore(); }
+    const metrics = await prepareStoreMetricCollection({
+      plugin, commandContext: command, collect, services: ["logical-api"], executor,
+      forwarder: { forwardServiceTargets: async () => [] } as unknown as ServicePortForwarder,
+      namespace: "app", intervalMs: 1000,
+    });
+    const metricSource = new EmbeddedMetricSource({ retentionMs: 60_000, sampleIntervalMs: 1000 });
+    const ingest = spyOn(metricSource, "ingest");
+    try {
+      expect(metrics.directCount).toBe(1);
+      expect(await metrics.sample(metricSource)).toEqual([]);
+      expect(query).toHaveBeenCalledWith(target, "SHOW GLOBAL STATUS", []);
+      expect(ingest.mock.calls[0]?.[0]).toContain("mysql_global_status_queries 7");
+    } finally { ingest.mockRestore(); await metrics.close(); }
     const business = await openPluginContext(executor, { namespace: "app" }, {
       clients: command.clients, config: command.profile.pluginConfig,
       service: {
@@ -84,7 +104,7 @@ test("store, db and business consumers share one Service datasource client and r
     finally { await business.dispose(); }
     expect(starts).toBe(1);
     expect(closes).toBe(0);
-  } finally { await command.disposeClients(); }
+  } finally { network.mockRestore(); query.mockRestore(); await command.disposeClients(); await database.close(); }
   expect(closes).toBe(1);
 });
 
@@ -110,10 +130,10 @@ test("Plugin loader validates datasource declarations; describe never constructs
   expect(description.details.dataSources).toEqual([{ id: "primary", kind: "db", backend: "mysql", description: undefined }]);
   expect(JSON.stringify(description)).not.toContain("createClient");
   expect(called).toBe(false);
-  expect(() => validatePluginDefinition(plugin({ ...declaration, envPrefix: "DB" }), manifest)).toThrow("exactly one");
-  expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql" }), manifest)).toThrow("exactly one");
+  expect(() => validatePluginDefinition(plugin({ ...declaration, envPrefix: "DB" }), manifest)).toThrow("source");
+  expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql" }), manifest)).toThrow("source");
   expect(() => validatePluginDefinition(plugin({ ...declaration, source: { clientKey: "primary" } }), manifest)).toThrow("createClient");
-  expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }), manifest)).not.toThrow();
+  expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }), manifest)).toThrow("envPrefix is unsupported");
   const old = { id: "test", version: "0.0.1", services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { stores: [declaration] } }] } };
   expect(() => validatePluginDefinition(old, manifest)).toThrow("unsupported Service API");
 });
@@ -153,7 +173,7 @@ test("different factories remain logical sources with separate clients for the s
 });
 
 test("explicit datasource selection filters before resolution and unknown sources never access the environment", async () => {
-  const sources: ServiceDatabaseDataSource[] = ["primary", "secondary"].map(id => ({ id, kind: "db", backend: "mysql", envPrefix: "DB" }));
+  const sources: ServiceDatabaseDataSource[] = ["primary", "secondary"].map(id => ({ id, kind: "db", backend: "mysql", source: { clientKey: id, createClient: () => { throw new Error("Unexpected database access"); } } }));
   const command = new CommandContext({}, undefined, { plugin: {
     id: "test", version: "0.0.1", services: createServiceCatalog([{
       name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },

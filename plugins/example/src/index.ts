@@ -1,3 +1,4 @@
+import { workerDatabase } from "./database";
 import { articleToMarkdown, conceptToMarkdown, knowledgeToMarkdown, sectionToMarkdown, stepToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import {
   createServiceCatalog,
@@ -37,12 +38,7 @@ const services = createServiceCatalog([
       dependencyManager: "uv",
     },
     logs: { default: false },
-    dataSources: [{
-      id: "primary-database",
-      kind: "db",
-      backend: "mysql",
-      envPrefix: "DATABASE_",
-    }]
+    dataSources: [workerDatabase]
   },
 ] as const);
 

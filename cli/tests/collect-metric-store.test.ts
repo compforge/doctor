@@ -142,7 +142,7 @@ describe("metric Store observability", () => {
         workloads: [],
         dataSources: [
           { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
-          { id: "database", kind: "db" as const, backend: "mysql" as const, envPrefix: "DB" },
+          { id: "database", kind: "db" as const, backend: "mysql" as const, source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } },
         ]
       },
       {

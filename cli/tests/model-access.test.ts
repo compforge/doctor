@@ -385,7 +385,7 @@ test("Service capability dependency 必须引用另一 Service 已声明的 Stor
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "kb-server",
         workloads: [],
-        dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "DB" }]
+        dataSources: [{ id: "database", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }]
       }, {
         ...base.services.services[1],
         dependencies: [{ ...dependency, dataSource: "database" }],

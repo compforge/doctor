@@ -26,18 +26,15 @@ export interface ServiceDatabaseTarget extends DatabaseTarget {
 
 /**
  * @spec Service declares access, not query results; clients are borrowed from the root lifecycle.
- * @why A shared source lets db, store and business Inspect reuse access without depending on each other.
+ * @why A shared source lets db, store, metric and business Inspect reuse access without depending on each other.
+ * @spec The Plugin resolves database configuration and any configuration Pod inside its source client.
+ * @see {@link component://../../cli/docs/plugin.md}
  */
 export type ServiceDatabaseDataSource = ServiceDataSourceBase & {
   kind: "db";
   backend: "mysql";
-} & ({
-  envPrefix: string;
-  source?: never;
-} | {
-  envPrefix?: never;
   source: PluginDataSource<MysqlClient<ServiceDatabaseTarget>>;
-});
+};
 
 export interface ServiceVdbTarget {
   backend: string;

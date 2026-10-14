@@ -140,7 +140,7 @@ test("command preserves bounded results, status and sanitized target in Evidence
           component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
           name: "chat",
           workloads: [],
-          dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }]
+          dataSources: [{ id: "primary", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }]
         },
       ])
     }
@@ -175,7 +175,7 @@ test("database discovery preserves source descriptions in report, manifest and s
           name: "api",
           component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
           workloads: [],
-          dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }]
+          dataSources: [{ id: "primary", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }]
         },
       ])
     }
@@ -276,7 +276,7 @@ test("command merges target evidence and executes user SQL once without replay o
     const context = new CommandContext({}, undefined, { plugin: {
       id: "test", version: "0.0.1", services: createServiceCatalog([{
         name: "api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-        workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }],
+        workloads: [], dataSources: [{ id: "primary", kind: "db", backend: "mysql", source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } }],
       }]),
     } });
     const environment = spyOn(context, "ensureEnvironment").mockResolvedValue();

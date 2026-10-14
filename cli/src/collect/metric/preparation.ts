@@ -94,22 +94,22 @@ export async function prepareMetricSource(
         requirement: "required",
         rule: { verb: "create", resource: "pods/portforward" },
         purpose: "从 Doctor Host 抓取 Service /metrics",
-      }, {
-        requirement: "preferred",
+      }, ...(storeKinds.includes("redis") ? [{
+        requirement: "preferred" as const,
         rule: { verb: "get", resource: "configmaps" },
-        purpose: "解析 Redis/DB 声明配置",
+        purpose: "解析 Redis 声明配置",
         fallback: "回退读取 Container 运行时 env",
       }, {
-        requirement: "preferred",
+        requirement: "preferred" as const,
         rule: { verb: "get", resource: "secrets" },
-        purpose: "解析 Redis/DB 声明凭据",
+        purpose: "解析 Redis 声明凭据",
         fallback: "回退读取 Container 运行时 env",
       }, {
-        requirement: "preferred",
+        requirement: "preferred" as const,
         rule: { verb: "create", resource: "pods/exec" },
-        purpose: "声明配置不足时读取 Redis/DB 运行时 env",
+        purpose: "声明配置不足时读取 Redis 运行时 env",
         fallback: "对应 Store 标记为不可用",
-      }],
+      }] : [])],
     });
 
     forwarder = await ServicePortForwarder.create(executor, config.kube);
@@ -149,6 +149,11 @@ export async function prepareMetricSource(
     if (storeKinds.length) {
       storeCollection = await prepareStoreMetricCollection({
         plugin,
+        commandContext,
+        collect: {
+          profileName: config.profileName,
+          kubernetes: { ...config.kube, namespace: config.namespace, namespaceSource: config.namespaceSource, kubeconfigSource: "resolved" },
+        },
         services: config.services,
         executor,
         forwarder,

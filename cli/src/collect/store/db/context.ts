@@ -1,5 +1,4 @@
-import type { ServiceDatabaseDataSource } from "@compforge/doctor-plugin";
-import type { DatabaseTarget } from "../../../infra/database";
+import type { ServiceDatabaseDataSource, ServiceDatabaseTarget } from "@compforge/doctor-plugin";
 import type { Database } from "../../../infra/database/mysql";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../../evidence";
@@ -12,7 +11,7 @@ export interface DbCommandContext {
   config: StoreConfig;
   capability: ServiceDatabaseDataSource;
   bundle: EvidenceBundle;
-  target?: DatabaseTarget;
+  target?: ServiceDatabaseTarget;
   database?: Database;
   log: (line: string) => void;
 }

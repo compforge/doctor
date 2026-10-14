@@ -12,8 +12,6 @@ export interface DbInput extends CommandInput, KubernetesCommandInput {
   dataSource?: string;
   database?: string;
   table?: string;
-  pod?: string;
-  container?: string;
   showDatabases?: boolean;
   showTables?: boolean;
   showCreateTable?: boolean;

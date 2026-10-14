@@ -20,7 +20,7 @@ const service: ServiceDefinition = {
   }],
   dependencies: [{ id: "records", service: "storage", dataSource: "main" }],
   logs: { default: false },
-  dataSources: [{ id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" }],
+  dataSources: [{ id: "database", kind: "db", backend: "mysql", source: { clientKey: "PRIVATE_DB", createClient: noAccess } }],
   detectors: [{ id: "state", detect: noAccess }],
   extensions: [traceExtension({ access: {}, endpoint: { host: "private-host", port: 80 }, resolve: noAccess }),
   inspectExtension({
@@ -129,7 +129,7 @@ test("VDB Store access is projected per Store without resolving targets or expos
       },
       { id: "empty", kind: "vdb", backend: "opensearch", access: {} },
       { id: "legacy", kind: "vdb", backend: "opensearch" },
-      { id: "database", kind: "db", backend: "mysql", envPrefix: "PRIVATE_DB" },
+      { id: "database", kind: "db", backend: "mysql", source: { clientKey: "PRIVATE_DB", createClient: noAccess } },
     ]
   });
   expect(result.details.access).toEqual([

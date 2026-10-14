@@ -300,13 +300,14 @@ access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Servi
 
 Service 使用 `dataSources[]` 声明数据源的 id、类型、用途与访问方式。
 它是访问能力，不是业务 Fact；声明中的工厂、凭据与运行时对象不会进入自描述或 Evidence。
-DB source 使用 `PluginDataSource<MysqlClient>`，与标准 `envPrefix` 简写互斥；
+DB 必须通过 `source: PluginDataSource<MysqlClient>` 贡献访问能力；
 可用 SDK 的 `mysqlDataSource(key, resolve)` 构造 source，配置解析在 Client 初始化时执行，
 回调收到根执行生命周期内的上下文，不能捕获短生命周期的 capability context。
 同一 Service 可声明多个同类型 dataSources，每个 ID 保留稳定的逻辑依赖身份；不同声明在某个环境
 可能解析到同一目标，也可能分开部署。目标归并由消费命令依据解析结果完成，不能用声明 ID 或
 Client 的缓存 key 代替资源身份。库表通过 Client 实时发现，不由 Plugin 重复维护清单。
-`store`、`db` 与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
+`store`、`db`、Metric MySQL 直采与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
+数据库环境变量、配置文件和来源副本选择由 Plugin 实现；Core 只借用初始化后的 Client。
 
 DB、VDB、S3、Redis 都可通过 `source` 贡献实现 initialize/dispose 的类型化 Client，由同一根
 ClientManager 初始化、复用和释放。SDK 的 `mysqlDataSource`、`vdbDataSource`、`s3DataSource` 和
@@ -316,7 +317,7 @@ S3、VDB、Redis source 的 Kubernetes Service endpoint 按其 DNS 中的 namesp
 保持原始 Host/SNI。跨 namespace 连接需在 capability 的 `pods/portforward` 权限声明中启用
 `allNamespaces`；配置来源的 namespace 不改变对象存储等后端的部署位置。
 
-环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
+S3/Redis 环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
 定位实际 Pod/container，不要求业务 Service 与 Kubernetes Service 同名；定位失败或来源有歧义时
 明确报错。使用 source 时不要求存在配置来源 Pod，也不额外探测 source 未提供的 Provider HTTP 接口。
 
