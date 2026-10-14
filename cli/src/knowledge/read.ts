@@ -1,7 +1,7 @@
-import type { Entry, KnowledgeSource } from "@compforge/doctor-plugin";
+import type { Entry, KnowledgeSource, Workflow } from "@compforge/doctor-plugin";
 import {
   resolveKnowledgeItem, knowledgeReference, ownerIdentity, knowledgeIndex,
-  type KnowledgeSelection, type KnowledgeOwner, type KnowledgeItem,
+  type KnowledgeSelection, type KnowledgeOwner,
 } from "./catalog";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 
@@ -60,18 +60,36 @@ export function overviewKnowledge(owner: KnowledgeOwner) {
     articles: index.items.filter(item => item.kind === "article"), dictionaries: index.items.filter(item => item.kind === "dictionary") };
 }
 
-export function overviewToMarkdown(owner: KnowledgeOwner): string {
-  const model = knowledgeItemsForOverview(owner);
-  const index = knowledgeIndex(owner).items.filter(item => item.kind === "article" || item.kind === "dictionary");
-  return [owner.namespace, owner.description, owner.upstream === undefined ? undefined : `Upstream: ${owner.upstream.join(", ") || "none"}`,
-    ...model.map(item => item.value.markdown()), ...index.map(item => `- ${item.ref} · ${item.title} — ${item.summary}`),
-    model.length || index.length ? undefined : "No knowledge declared.",
-  ].filter(value => value !== undefined).join("\n\n");
+/**
+ * @spec Overview uses structured fields for compact text; show and lookup retain object Markdown.
+ * @see {@link cli/docs/commands/knowledge.md}
+ */
+export function overviewToText(owner: KnowledgeOwner): string {
+  const { concepts = [], workflows = [] } = owner.knowledge;
+  const index = knowledgeIndex(owner);
+  const header = [owner.namespace, owner.description,
+    owner.upstream === undefined ? undefined : `Upstream: ${owner.upstream.join(", ") || "none"}`,
+  ].filter(value => value !== undefined).join("\n");
+  const sections: string[] = [];
+  if (concepts.length) sections.push(["Concept",
+    ...concepts.map(concept => `• ${concept.name}：${concept.description.replace(/\n/g, "\n  ")}`),
+  ].join("\n"));
+  if (workflows.length) sections.push(`Workflow\n${workflows.map(workflowOverview).join("\n\n")}`);
+  for (const [kind, title] of [["article", "Article"], ["dictionary", "Dictionary"]] as const) {
+    const items = index.items.filter(item => item.kind === kind);
+    if (items.length) sections.push([title,
+      ...items.map(item => `• ${kind}/${encodeURIComponent(item.id)} — ${item.title}`),
+    ].join("\n"));
+  }
+  return [header, ...(sections.length ? sections : ["No knowledge declared."])].join("\n\n");
 }
 
-function knowledgeItemsForOverview(owner: KnowledgeOwner): KnowledgeItem[] {
-  return [
-    ...(owner.knowledge.concepts ?? []).map(value => ({ kind: "concept" as const, value })),
-    ...(owner.knowledge.workflows ?? []).map(value => ({ kind: "workflow" as const, value })),
-  ];
+function workflowOverview(workflow: Workflow): string {
+  const renderSteps = (parentId: string | undefined, indent: string): string[] => workflow.steps
+    .filter(step => step.parentId === parentId)
+    .flatMap((step, index) => [
+      `${indent}${index + 1}. ${step.title}：${step.description.replace(/\n/g, `\n${indent}   `)}`,
+      ...renderSteps(step.id, `${indent}  `),
+    ]);
+  return [`${workflow.title}（${workflow.id}）`, workflow.summary, ...renderSteps(undefined, "")].join("\n");
 }

@@ -109,7 +109,7 @@ describe("structured knowledge", () => {
 });
 
 
-test("Knowledge text uses custom object and nested Markdown for overview, show and lookup", async () => {
+test("show and lookup preserve custom object and nested Markdown", async () => {
   const custom: Knowledge = {
     ...knowledge,
     concepts: [{ ...knowledge.concepts![0]!, markdown() { return "Custom concept"; } }],
@@ -124,9 +124,6 @@ test("Knowledge text uses custom object and nested Markdown for overview, show a
     ] }],
   };
   const injected = { ...plugin(), knowledge: custom };
-  const overview = await run(["knowledge"], injected);
-  expect(overview).toContain("Custom concept");
-  expect(overview).toContain("1. Custom step");
   for (const [ref, content] of [
     ["concept/job", "Custom concept"], ["workflow/run", "Custom step"], ["workflow/run#execute", "Custom step"],
     ["article/capacity", "Custom section"], ["article/capacity#check%2Fqueue", "Custom section"],
@@ -135,7 +132,7 @@ test("Knowledge text uses custom object and nested Markdown for overview, show a
   expect(await run(["knowledge", "lookup", "errors", "001"], injected)).toContain("Custom entry");
 });
 
-test("JSON, index and search commands do not invoke Markdown methods", async () => {
+test("overview, JSON, index and search commands do not invoke Markdown methods", async () => {
   const noRender = () => { throw new Error("Markdown must not run for structured output"); };
   const custom: Knowledge = {
     markdown: noRender,
@@ -153,6 +150,13 @@ test("JSON, index and search commands do not invoke Markdown methods", async () 
     const output = JSON.parse(await run(["knowledge", ...args, "-f", "json"], injected));
     expect(JSON.stringify(output)).not.toContain("markdown");
   }
+  const overview = await run(["knowledge", "-s", "work"], injected);
+  expect(overview).toContain("plugin/example/service/worker\nUpstream: api\n\nConcept\n• Job：A Job owns attempts.");
+  expect(overview).toContain("Workflow\nRun（run）\nAccept and execute.\n1. Execute：Execute job.\n  1. Save：Persist result.");
+  expect(overview).toContain("Article\n• article/capacity — Capacity\n\nDictionary\n• dictionary/errors — Errors");
+  expect(overview).not.toContain("plugin/example/service/worker/article/capacity");
+  expect(overview).not.toContain("Inspect depth.");
+  expect(await run(["knowledge", "show", "article/capacity", "-s", "work"], plugin())).toContain("Inspect depth.");
   expect(await run(["knowledge", "list"], injected)).toContain("concept/job");
   expect(await run(["knowledge", "search", "queue"], injected)).toContain("article/capacity#check%2Fqueue");
 });

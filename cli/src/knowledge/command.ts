@@ -5,7 +5,7 @@ import { serviceOption } from "../app/service-option";
 import { loadActivePlugin } from "../plugin/loader";
 import { writeOutput } from "../terminal/output";
 import { KNOWLEDGE_KINDS, knowledgeIndex, selectKnowledgeOwners, type KnowledgeKind } from "./catalog";
-import { lookupKnowledge, overviewKnowledge, overviewToMarkdown, readKnowledge } from "./read";
+import { lookupKnowledge, overviewKnowledge, overviewToText, readKnowledge } from "./read";
 import { searchKnowledge } from "./search";
 
 interface Options { services?: string[]; format?: "text" | "json"; all?: boolean; kind?: KnowledgeKind }
@@ -63,7 +63,7 @@ AI 排查路径：先 search 定位知识，再 show 阅读必要正文；通过
       name: service.name, aliases: service.aliases ?? [], description: service.description, upstream: service.upstream,
     })) ?? [] : undefined;
     output({ owners: owners.map(overviewKnowledge), services },
-      () => [owners.length ? owners.map(overviewToMarkdown).join("\n\n") : "No active Plugin.",
+      () => [owners.length ? owners.map(overviewToText).join("\n\n") : "No active Plugin.",
         ...(services?.length ? ["Services:", services.map(service => `- ${service.name}${service.description ? ` — ${service.description}` : ""}`).join("\n")] : [])].join("\n\n"), options);
   }));
   addOptions(knowledge.command("list").description("列出可引用的知识对象"))

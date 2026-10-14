@@ -22,8 +22,10 @@ doctor knowledge lookup errors -f json         # 整本词典的条目
 `list --all` 同时列出产品与全部 Service，不能与 `--service` 混用。`list --kind` 支持
 `concept`、`workflow`、`article`、`dictionary`。
 
-概览展开概念和流程，文章与词典只列索引，正文使用 `show`。所有动作支持 `-f text|json`；
-概览、show 与 lookup 的文本调用对象的 Markdown 方法；索引和搜索展示简短条目。
+概览按 `Concept / Workflow / Article / Dictionary` 分组：概念以条目展示，流程保留名称、摘要与
+编号步骤，文章与词典只列短引用和标题。短引用在对应产品或 Service 作用域内使用 `show` 阅读正文。
+所有动作支持 `-f text|json`；概览文本由 Core 按结构化字段紧凑排版，show 与 lookup 调用对象的
+Markdown 方法；索引和搜索展示简短条目。
 JSON 保留结构，不重复附带生成的正文文本。
 `doctor plugin` 保留身份、服务目录、诊断能力与 `upstream` 静态关系，知识正文由本命令展示。
 
