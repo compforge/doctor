@@ -1,6 +1,6 @@
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ServiceDefinition } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../command";
+import { CommandInputError, type CommandContext } from "../command";
 import type { PodTarget } from "../command/kubernetes-target";
 import { discoverKubernetesWorkload } from "../infra/k8s/workload";
 import { promptPod, type PodChoice } from "../infra/k8s/pod-selection";
@@ -9,6 +9,8 @@ import { resolveUserSelection, type SelectionContext } from "../terminal/selecti
 
 /**
  * @spec Configuration comes from a declared Workload instance, never a same-name platform Service.
+ * @spec Missing or invalid source selections remain actionable input errors across datasource consumers.
+ * @why A shared Service does not prove that replicas have identical connection configuration.
  * @rule Incomplete discovery cannot prove a unique configuration source; fail before reading credentials.
  */
 export async function resolveDataSourceTarget(input: {
@@ -42,10 +44,12 @@ export async function resolveDataSourceTarget(input: {
     }
   }
   const candidates = [...choices.values()].filter(pod => !input.pod || pod.name === input.pod);
-  if (!candidates.length) throw new Error(`Service '${input.service.name}' 的 Workload 中没有匹配的 Running Pod${input.pod ? ` '${input.pod}'` : ""}`);
+  if (!candidates.length) throw new CommandInputError(`Service '${input.service.name}' 的 Workload 中没有匹配的 Running Pod${input.pod ? ` '${input.pod}'` : ""}`);
   let pod = candidates[0]!.name;
   if (candidates.length > 1) {
-    if (!input.interactive) throw new Error(`Service '${input.service.name}' 有多个 Running Pod；请用 --pod <pod> 指定`);
+    if (!input.interactive) throw new CommandInputError(
+      `Service '${input.service.name}' 有多个 Running Pod；请用 --pod <pod> 指定配置来源；候选：${candidates.map(pod => pod.name).join(", ")}`,
+    );
     const selected = await resolveUserSelection(input.commandContext, input.selection, "Pod", [input.namespace],
       () => promptPod(candidates, { selection: input.selection }));
     if (!selected) return undefined;
@@ -54,11 +58,11 @@ export async function resolveDataSourceTarget(input: {
   const containers = choices.get(pod)!.containers;
   let container = input.container;
   if (container && !containers.some(item => item.name === container)) {
-    throw new Error(`${input.service.name}/${pod}: Workload 未声明 Container '${container}'`);
+    throw new CommandInputError(`${input.service.name}/${pod}: Workload 未声明 Container '${container}'；候选：${containers.map(item => item.name).join(", ")}`);
   }
   if (!container && containers.length === 1) container = containers[0]!.name;
   if (!container) {
-    if (!input.interactive) throw new Error(`${input.service.name}/${pod}: 请用 --container 指定配置来源`);
+    if (!input.interactive) throw new CommandInputError(`${input.service.name}/${pod}: 请用 --container 指定配置来源；候选：${containers.map(item => item.name).join(", ")}`);
     container = await promptContainer(containers, input.selection);
     if (!container) return undefined;
   }
