@@ -1,39 +1,24 @@
 import type { PluginDefinition, ServiceDescription } from "@compforge/doctor-plugin";
 
-function descriptionLines(value: Pick<ServiceDescription, "description" | "concepts" | "workflows">, indent: string): string[] {
-  const lines = value.description === undefined ? [] : [`${indent}说明：${value.description}`];
-  for (const field of ["concepts", "workflows"] as const) {
-    const text = value[field];
-    if (text !== undefined) {
-      lines.push(`${indent}${field === "concepts" ? "Concepts（核心概念）" : "Workflows（典型流程）"}：`,
-        ...text.split("\n").map(line => `${indent}  ${line}`));
-    }
-  }
-  return lines;
+export function formatPluginDescription(plugin: Pick<PluginDefinition, "description">): string {
+  return plugin.description === undefined ? "" : `  说明：${plugin.description}\n`;
 }
 
-/** Offline Plugin knowledge uses the same projection as JSON, without target preparation. */
-export function formatPluginDescription(plugin: Pick<PluginDefinition, "description" | "concepts" | "workflows">): string {
-  const lines = descriptionLines(plugin, "  ");
-  return lines.length ? lines.join("\n") + "\n" : "";
+function serviceDescriptionLines(service: ServiceDescription): string[] {
+  return [`  Service: ${service.name}`,
+    ...(service.description === undefined ? [] : [`    说明：${service.description}`]),
+    `    Aliases：${service.aliases.join(", ") || "无"}`,
+    ...(service.upstream === undefined ? [] : [`    Upstream：${service.upstream.join(", ") || "无"}`])];
 }
 
-function serviceKnowledgeLines(service: ServiceDescription): string[] {
-  return [`  Service: ${service.name}`, ...descriptionLines(service, "    "),
-    `    Aliases：${service.aliases.join(", ") || "无"}`];
-}
-
-/**
- * @spec Summary exposes declared business knowledge and identity, without diagnostic implementation details.
- * @link cli/docs/plugin.md
- */
+/** Summary describes Service identity and declared callers without expanding Knowledge. */
 export function formatServiceSummary(service: ServiceDescription): string {
-  return serviceKnowledgeLines(service).join("\n") + "\n";
+  return serviceDescriptionLines(service).join("\n") + "\n";
 }
 
 /** Text and JSON share the same declaration projection; rendering never inspects a live Service. */
 export function formatServiceDescription(service: ServiceDescription): string {
-  const lines = serviceKnowledgeLines(service);
+  const lines = serviceDescriptionLines(service);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
     lines.push("    数据查询（facts.inspect Extension，不是同名 CLI 命令）",

@@ -41,7 +41,7 @@ Business data is organized by lookup scope:
 
 ## Workflows across evidence
 
-- `doctor knowledge errors [query]` looks up offline error definitions from the selected Plugin,
+- `doctor knowledge` organizes offline concepts, workflows, articles and dictionaries from the selected Plugin,
   preserving source versions and namespaces. See [Knowledge](cli/docs/commands/knowledge.md).
 - `doctor health` shows system statistics and runs Service checks without collecting business evidence.
   See [Health](cli/docs/commands/health.md).

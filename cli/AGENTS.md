@@ -5,7 +5,7 @@
 Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
 体检、概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 
-- **离线知识**：`doctor knowledge errors` 查询带来源版本的错误定义，不准备 Target 访问。
+- **离线知识**：`doctor knowledge` 组织 Plugin/Service 的概念、流程、文章与词典，不准备 Target 访问。
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
@@ -83,7 +83,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - `docs/command-output.md` — Command 输出数据的规范与组织：执行结果、Evidence 保存、manifest 清单与交付
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/commands/case.md` — Case 目录、发送与 HTTP 取证边界
-- `docs/commands/knowledge.md` — 离线错误定义、来源版本与查询语义
+- `docs/commands/knowledge.md` — 结构化知识、作用域、引用与词典查询
 - `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
 - `docs/commands/sample.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排

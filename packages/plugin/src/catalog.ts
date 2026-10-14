@@ -1,3 +1,4 @@
+import { validateKnowledgeDeclaration } from "./knowledge";
 import { validateExtension, type RegisteredExtension } from "./extension";
 import type { ServiceDefinition } from "./service";
 import { validateCaseSource, validateCaseRef, type ServiceCaseRef } from "./cases";
@@ -11,6 +12,11 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
     for (const service of services) this.identities.set(service.name, service);
     for (const service of services) {
+      if (service.knowledge !== undefined) validateKnowledgeDeclaration(service.knowledge, `${service.name}.knowledge`);
+      if (service.upstream !== undefined && (!Array.isArray(service.upstream)
+        || service.upstream.some(name => typeof name !== "string" || !name.trim()))) {
+        throw new Error(`${service.name}.upstream must be an array of non-empty canonical Service names`);
+      }
       if (service.aliases !== undefined && !Array.isArray(service.aliases)) {
         throw new Error(`Service '${service.name}'.aliases must be an array`);
       }

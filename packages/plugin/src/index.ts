@@ -26,3 +26,4 @@ export * from "./datasource";
 export * from "./datasource-clients";
 export * from "./workload";
 export type { Service, Environment, Component, Repository, Forge, Host, HostEnvironment } from "@compforge/harness-common";
+export * from "./knowledge";

@@ -66,6 +66,7 @@ export function validateExtensionRegistration(value: unknown): asserts value is 
   for (const field of ["id", "kind"] as const) {
     if (typeof item[field] !== "string" || !(item[field] as string).trim()) throw new Error(`Extension.${field} must be a non-empty string`);
   }
+  if (item.kind === "error.catalog") throw new Error("error.catalog has moved to Plugin/Service Knowledge.dictionaries");
   if (item.namespace !== undefined) validateExtensionNamespace(item.namespace as string);
   if (item.description !== undefined && (typeof item.description !== "string" || !item.description.trim())) {
     throw new Error("Extension.description must be a non-empty string");

@@ -205,28 +205,23 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 名称直接投影自声明；这些名称不是 CLI 命令清单，Catalog 存在也不代表现场可达。
 
 `doctor plugin --service <name>` 按逻辑 Service 身份筛选并展示详情；未知 Service 报错，不返回伪装成功的
-空目录。未筛选时 JSON 的服务索引只含名称、别名与简短介绍；筛选后展示知识与 `details`。概览和详情使用 SDK `describeService`
-对同一份 Service 声明的显式投影，知识和诊断能力都来自这份声明。可选说明缺省时不展示该字段。
+空目录。未筛选时 JSON 的服务索引包含名称、别名、简短介绍与 `upstream`；筛选后展示诊断
+`details`。`upstream` 是该 Service 的调用方名称列表，未声明和显式空列表分别表示未知与无上游。
+它是静态关系，不代表现场调用链、健康状态或访问计划。
 
-Plugin 与 Service 都可以提供可选的 `description`、`concepts`、`workflows`：简短介绍、核心对象与约束、
-从触发到完成的典型流程。Common Service 拥有 Service 的身份、知识与 Workload 声明，Doctor 只扩展
-诊断 contribution 与 capability。Product 是以 Service 为组成单位的业务聚合；Plugin 通常对应一个 Product，
-以 `ServiceCatalog` 表达组成，并作为 `id@version` 标识的装配和分发形式统一交付 Service 与 Skill。
-Plugin 复用 Common Product 的说明契约来承载产品级知识，Service 的知识聚焦自身职责与协作边界。
-这层对应关系不要求 Product 的 `name` 与 Plugin 的 `id` 使用相同命名。
-这些字段由 Plugin 作者随版本维护，提供时须为非空文本；内容原样进入 JSON，文本输出保留 Markdown 和换行。
-`doctor plugin` 展示 Plugin 知识及服务索引，`doctor plugin --service <name>` 仅展示该 Service 的知识与能力详情，不重复产品级介绍；
-两者均支持 `-f json`；指定 Service 时 JSON 也只保留所属 Plugin 身份与筛选后的服务，不包含产品级说明。
-以上输出均无需准备 profile 或 Target 访问。三个字段均可独立省略，缺省时不补造业务知识。
+Plugin 通常对应一个 Product，以 `ServiceCatalog` 表达组成，并作为 `id@version` 标识的装配和
+分发形式交付 Service、Knowledge 与 Skill。Plugin 与 Service 均通过 Common 的可选 `knowledge`
+声明概念、流程、文章与词典；知识阅读统一使用 [doctor knowledge](commands/knowledge.md)。
+原来独立的 `concepts`、`workflows` 文本字段迁入结构化 Knowledge，文本由结构统一生成。
 
-`-f summary` 面向业务理解，只展示 Product/Service 的身份、别名、说明、concepts 与 workflows。
-未指定 Service 时展示 Product 知识与服务索引；指定 Service 时仅展示该服务的知识。
-Summary 不展示 Extensions、Cases、Detectors、Workloads、数据源或访问需求等诊断实现声明。
-指定 Service 时，默认 `text` 和显式 `json` 保留该服务的完整声明；格式选择不改变 Plugin 加载与 Service 筛选。
+`doctor plugin` 展示 Plugin 身份、说明与服务索引，指定 Service 后仅展示所属 Plugin 身份与服务声明。
+文本、Summary 和 JSON 均不展开 Knowledge。`-f summary` 只展示身份、别名、说明与上游关系；
+默认 `text` 和显式 `json` 在指定 Service 时包含诊断能力声明。输出无需准备 profile 或 Target 访问。
 
 ```bash
-doctor plugin -f summary
+doctor plugin
 doctor plugin --service <name> -f summary
+doctor knowledge --service <name>
 ```
 
 Service 的 `description` 解释职责，Workload 的 `description` 解释运行负载的用途；Inspect 的

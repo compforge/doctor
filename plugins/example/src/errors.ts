@@ -1,16 +1,11 @@
-import type { ErrorCatalogExtension } from "@compforge/doctor-plugin";
+import type { Dictionary } from "@compforge/doctor-plugin";
 
-/** Example definitions only; this catalog performs no Service or network access. */
+/** Domain details are readable text; the Host only needs generic Entry identity and aliases. */
 export const exampleErrors = {
-  id: "errors", kind: "error.catalog",
-  description: "Example API error definitions",
-  load: () => ({
-    source: { name: "example-api", version: "1.0.0" },
-    errors: [{
-      code: "QUEUE_BUSY", name: "QueueBusy", aliases: ["QueueFull"],
-      description: "The example worker queue has reached its capacity.",
-      exception: "QueueBusyError", defaultMessage: "The queue is busy. Try again later.",
-      defaultHttpStatus: 503, defaultDisposition: "retryable",
-    }],
-  }),
-} satisfies ErrorCatalogExtension;
+  id: "errors", title: "Example API errors", summary: "Published queue error definitions",
+  source: { name: "example-api", version: "1.0.0" },
+  entries: [{
+    id: "QUEUE_BUSY", name: "QueueBusy", aliases: ["QueueFull"],
+    description: "The example worker queue has reached its capacity.\n\nException: QueueBusyError\n\nDefault message: The queue is busy. Try again later.\n\nDefault HTTP status: 503\n\nDefault disposition: retryable",
+  }],
+} satisfies Dictionary;
