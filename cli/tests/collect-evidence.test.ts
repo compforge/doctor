@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { EvidenceBundle, OUTCOME_UNREACHED_REASON, truncateRaw } from "../src/collect/evidence";
 import {
   packBundle,
@@ -45,6 +45,34 @@ describe("EvidenceBundle", () => {
     });
     expect(readFileSync(join(dir, "raw", "01-logs-pod.log"), "utf-8")).toBe(raw);
     expect(existsSync(source)).toBe(false);
+  });
+
+  test.each(["text", "stream"] as const)("keeps qualified step IDs inside raw for %s evidence", (mode) => {
+    const dir = tmp();
+    try {
+      const bundle = new EvidenceBundle(dir);
+      const ids = ["tenant-models:model-api/model.query", "tenant-models:model-api-model.query", "../../outside", "tenant\\models\\query"];
+      const paths: string[] = [];
+      for (const id of ids) {
+        const source = join(dir, ".capture.json");
+        const body = JSON.stringify({ id });
+        if (mode === "stream") writeFileSync(source, body);
+        const step = bundle.addStep({
+          id, title: "Model catalog", risk: "observe", status: "ok", ext: "json",
+          ...(mode === "stream" ? { rawFilePath: source } : { output: body }),
+        });
+        expect(step.id).toBe(id);
+        expect(step.raw_file).toBeDefined();
+        const path = join(dir, step.raw_file!);
+        expect(dirname(path)).toBe(join(dir, "raw"));
+        expect(readFileSync(path, "utf8")).toBe(body);
+        if (mode === "stream") expect(existsSync(source)).toBe(false);
+        paths.push(path);
+      }
+      expect(new Set(paths).size).toBe(ids.length);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("manifest carries steps + meta", () => {

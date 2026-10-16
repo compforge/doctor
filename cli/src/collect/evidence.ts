@@ -122,6 +122,7 @@ export class EvidenceBundle {
     return this.record(input);
   }
 
+  /** @spec Step IDs remain unchanged in evidence; raw filenames are single safe path components. */
   private record(input: Omit<StepInput, "status"> & { status: EvidenceStatus }): StepRecord {
     this.seq += 1;
     const record: StepRecord = {
@@ -135,12 +136,12 @@ export class EvidenceBundle {
       duration_ms: input.durationMs,
     };
     const body = composeRawBody(input.output, input.stderr);
+    const name = `${String(this.seq).padStart(2, "0")}-${input.id}.${input.ext ?? "txt"}`
+      .replace(/[^a-zA-Z0-9._-]/g, "-");
     if (input.rawFilePath) {
-      const name = `${String(this.seq).padStart(2, "0")}-${input.id}.${input.ext ?? "txt"}`;
       renameSync(input.rawFilePath, join(this.dir, "raw", name));
       record.raw_file = `raw/${name}`;
     } else if (body) {
-      const name = `${String(this.seq).padStart(2, "0")}-${input.id}.${input.ext ?? "txt"}`;
       writeFileSync(join(this.dir, "raw", name), truncateRaw(body), "utf-8");
       record.raw_file = `raw/${name}`;
       const bytes = Buffer.byteLength(body, "utf8");
