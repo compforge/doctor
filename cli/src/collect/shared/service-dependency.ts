@@ -83,7 +83,8 @@ export interface ServiceDependencyRuntimeOptions {
   plugin: PluginDefinition;
   collect: KubernetesCommandConfig;
   executor: Executor;
-  command: "doctor trace" | "doctor log";
+  command: "doctor trace" | "doctor log" | "doctor health";
+  onPrepared?(prepared: PreparedServiceDataSourceDependency, source: ServiceDataSourceReference): Promise<void>;
   commandContext: CommandContext;
   index: string;
   endpoint?: string;
@@ -125,7 +126,11 @@ export class ServiceDependencyRuntime {
     const key = `${service}\0${dataSource}`;
     let prepared = this.dataSources.get(key);
     if (!prepared) {
-      prepared = this.openDataSource(service, dataSource);
+      prepared = this.openDataSource(service, dataSource).then(async result => {
+        try { await this.options.onPrepared?.(result, { service, dataSource }); }
+        catch (error) { this.options.log(`附带健康探测失败：${error instanceof Error ? error.message : String(error)}`, "warning"); }
+        return result;
+      });
       this.dataSources.set(key, prepared);
     }
     return prepared;

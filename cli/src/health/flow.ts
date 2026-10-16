@@ -3,9 +3,19 @@ import { queryOverview, type OverviewProviderResult, type FacetSummaryQueryActio
 import type { CaseCheckResult } from "./cases";
 import type { HealthProvider } from "./extensions";
 
+import type { DataSourceHealthEvidence } from "../datasource/health/report";
+
+export interface HealthDataSourceCheck {
+  service: string;
+  dataSource: string;
+  evidence?: DataSourceHealthEvidence;
+  error?: string;
+}
+
 export interface HealthProviderResult extends OverviewProviderResult {
   cases?: CaseCheckResult[];
   casesError?: string;
+  dataSources?: HealthDataSourceCheck[];
 }
 
 export interface HealthResult {
@@ -15,6 +25,7 @@ export interface HealthResult {
 
 export interface HealthActions extends FacetSummaryQueryActions {
   cases(provider: HealthProvider, query: FacetSummaryQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
+  dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   show(result: HealthResult): void;
 }
 
@@ -26,8 +37,12 @@ export async function runHealthSession(
   actions.show(result);
   for (const [index, provider] of providers.entries()) {
     if (actions.signal?.aborted) return result;
-    if (!provider.consumers.length) continue;
     const summary = result.providers[index]!;
+    if (provider.dataSources?.length && actions.dataSources) {
+      summary.dataSources = await actions.dataSources(provider);
+      actions.show(result);
+    }
+    if (!provider.consumers.length) continue;
     try {
       summary.cases = await actions.cases(provider, query, cases => { summary.cases = cases; actions.show(result); });
     } catch (error) { summary.casesError = error instanceof Error ? error.message : String(error); }

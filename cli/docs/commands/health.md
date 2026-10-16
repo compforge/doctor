@@ -16,7 +16,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize` 或 `health.case.bindings`，
+候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize` 或 `health.case.bindings`，以及声明了受支持 DataSource 或数据源依赖的 Service，
 不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
@@ -166,3 +166,13 @@ sse: {
 
 Case 报告根据本次 Pod 请求的退出码、错误文本与响应分类 DNS、代理 DNS、连接、超时、TLS 证书、TLS 握手和 HTTP 状态错误。`wrong version number` 等证据只给出“疑似 HTTP 配成 HTTPS”，因为代理或 TLS 配置也可能产生相同错误；服务端明确返回“HTTP 发到了 HTTPS 端口”则记录该响应事实。
 报告保留目标 URL 的 scheme/端口、Pod/container、对端 IP、阶段耗时及原始错误；不自动切换 scheme、跳过证书校验或把备用成功覆盖原始失败。旧 curl 没有阶段耗时，也保留退出码和 stderr。
+
+## 数据源健康
+
+Service 自身的 OpenSearch VDB DataSource，以及 `dependencies` 显式引用的 OpenSearch DataSource，
+由 Core builtin `datasource.health` 探测；不要求额外注册 Service Extension 或把集群检查包装成 Case。
+Health 按声明的来源准备访问，失败时保留来源与错误，不替换成其它集群。相同来源在本次命令中复用准备和探测结果。
+
+检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
+越过 low 水位就给出预警；读取水位失败时注明默认值与较低置信度。报告中标明本次探测时间，
+不把当前容量状态解释为 `--since` 窗口内一直如此。采集完整性与健康 Finding 分别报告。

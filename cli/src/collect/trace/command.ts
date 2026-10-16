@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { DataSourceHealthEvidence } from "../../datasource/health/report";
+import { dataSourceHealthStatus } from "../../datasource/health/status";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidence, type ArtifactDescription } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
@@ -18,6 +22,15 @@ export const traceCommand = defineCommand<TraceInput, import("./index").TraceOut
   serialize: async (context, result) => {
     const descriptions = new Map<string, ArtifactDescription>();
     for (const artifact of result.artifacts) {
+      if (artifact.command === "datasource-health") {
+        const evidence = JSON.parse(readFileSync(join(artifact.path, "health.json"), "utf8")) as DataSourceHealthEvidence;
+        descriptions.set(artifact.id, { title: "OpenSearch 健康", execution: { status: dataSourceHealthStatus(evidence.health) },
+          summary: { summary: { title: "OpenSearch 健康", fields: [
+            { label: "采集状态", path: ["health", "status"] },
+            { label: "健康结论", path: ["health", "summary"] },
+          ] }, data: { file: "health.json" } } });
+        continue;
+      }
       const item = result.output?.items.find(item => item.artifacts.some(ref => ref.id === artifact.id));
       const detail = Boolean(item);
       descriptions.set(artifact.id, { title: detail ? "Trace 详情" : "ID 解析",

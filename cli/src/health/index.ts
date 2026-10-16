@@ -11,6 +11,9 @@ import { resolveApprovalGate } from "../terminal/approval";
 import { overviewServiceNames } from "../overview/options";
 import { overviewWindow, selectOverviewWindow } from "../overview/selection";
 import { overviewInvoker } from "../overview/runtime";
+import { ServiceDependencyRuntime } from "../collect/shared/service-dependency";
+import { DataSourceHealthSession } from "../datasource/health/session";
+import { useLogger } from "../terminal/log";
 import type { HealthProvider } from "./extensions";
 import { selectHealthProviders } from "./selection";
 import { runHealthSession, type HealthResult } from "./flow";
@@ -46,6 +49,10 @@ interface HealthPreparation {
 
 async function health(prepared: HealthPreparation, context: CommandContext): Promise<CommandResult<HealthResult>> {
   const { input: opts, selected, cases, since, kube, executor } = prepared;
+  const healthSession = new DataSourceHealthSession();
+  const sources = new ServiceDependencyRuntime({ plugin: context.plugin, collect: kube, executor,
+    command: "doctor health", commandContext: context, index: "*",
+    log: line => useLogger("health").info(line) });
   const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor health");
   const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
     resolveApprovalGate({ yes: context.options.yes }));
@@ -57,6 +64,20 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   try {
     result = await runHealthSession(selected, query, {
       signal: context.signal,
+      dataSources: async provider => {
+        const results = [];
+        for (const reference of provider.dataSources ?? []) {
+          if (context.signal.aborted) break;
+          try {
+            const prepared = await sources.prepareDataSource(reference.service, reference.dataSource);
+            const health = await healthSession.probe(prepared.search, context.signal);
+            results.push({ ...reference, evidence: { target: { ...prepared.evidenceTarget, ...reference }, health } });
+          } catch (error) {
+            results.push({ ...reference, error: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        return results;
+      },
       summarize: (provider, input) => invoke(provider, provider.summarize!, input),
       cost: (provider, input) => invoke(provider, provider.cost!, input),
       cases: (provider, _input, checkpoint) => {
@@ -74,6 +95,8 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
       },
     });
   } finally {
+    try { await sources.close(); }
+    catch (error) { useLogger("health").warn(`数据源清理失败：${error instanceof Error ? error.message : String(error)}`); }
     if (snapshot) {
       writeHealthEvidence(snapshot, context, reportDirectory);
       printHealth(snapshot);
@@ -83,6 +106,9 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
     ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
     ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
     ...(provider.casesError ? [CommandStatus.Failed] : []),
+    ...(provider.dataSources ?? []).map(check => check.error || !check.evidence ? CommandStatus.Failed
+      : check.evidence.health.status === "unavailable" ? CommandStatus.Failed
+      : check.evidence.health.status === "partial" ? CommandStatus.Partial : CommandStatus.Ok),
     ...(provider.cases ?? []).map(check => check.status === "passed" ? CommandStatus.Ok
       : check.status === "cancelled" ? CommandStatus.Cancelled : CommandStatus.Failed),
   ]);

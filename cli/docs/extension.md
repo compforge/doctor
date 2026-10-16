@@ -234,3 +234,18 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 `health.case.bindings` 与共享来源的 `produce` 均通过标准 `run` 返回 `{ data, summary }`，分别提供消费关系和
 运行时 Case 数据。Health 按关系定位提供方，再根据 `Case.input.protocol` 从消费者 Pod 执行检查；扩展自身
 不负责探测编排。两次调用独立使用所属 Service 的访问权限与上下文，具体流程见 [Health](commands/health.md)。
+
+## Core builtin 数据源健康
+
+`core/opensearch-health` 注册为 `datasource.health`，实现位于 `cli/src/datasource/opensearch`。
+它是 Core provider，使用公共 `ExtensionRegistration` 参与发现；其 Core 内部调用契约接收已经准备并授权的
+Search client 和取消信号，不另建 PluginContext、连接或凭据解析路径。Service 只声明 DataSource 及依赖。
+
+`store`、在线 `trace` 和 `health` 复用同一探测及 Detector。每次探测最多 10 秒，串行读取 cluster health、
+节点磁盘、实时水位、索引写保护、分片与 cluster stats；某项失败保留其它证据。查询超时停止后续读取，
+底层未结束的请求由借用 client 的命令生命周期清理。一次命令对同一准备好的 client 复用一个快照。
+采集状态与健康结论分开：完整取得 red 状态仍是成功采集，权限不足或超时则保留缺口。
+
+在线 trace 在使用数据源解析 ID 时就取得附带健康证据，0 span 或解析无结果时仍交付；它不改变原有 trace
+采集结果。附带证据进入独立 Artifact、HTML 和 views.json/views.txt。离线 trace 不触发网络探测。
+健康异常只能提示可能的存储链路原因，不能证明指定请求未产生或未上报 span。

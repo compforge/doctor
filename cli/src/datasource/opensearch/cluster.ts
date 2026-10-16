@@ -2,8 +2,8 @@ import type {
   OpenSearchHealthObservation,
   OpenSearchShardObservation,
   OpenSearchStatsObservation,
-} from "../model";
-import type { VdbOpenSearchProbeSpec } from "./opensearch";
+} from "./model";
+import type { OpenSearchHealthProbe } from "./probe";
 import { numberValue, record, stringValue } from "./value";
 
 export function parseHealth(raw: unknown): OpenSearchHealthObservation {
@@ -61,21 +61,21 @@ export function parseShards(raw: unknown): OpenSearchShardObservation {
   };
 }
 
-export const CLUSTER_HEALTH_PROBE: VdbOpenSearchProbeSpec = {
+export const CLUSTER_HEALTH_PROBE: OpenSearchHealthProbe = {
   id: "cluster-health",
   outcome: "cluster-health",
   path: "/_cluster/health",
   parse: parseHealth,
 };
 
-export const CLUSTER_STATS_PROBE: VdbOpenSearchProbeSpec = {
+export const CLUSTER_STATS_PROBE: OpenSearchHealthProbe = {
   id: "cluster-stats",
   outcome: "cluster-stats",
   path: "/_cluster/stats",
   parse: parseStats,
 };
 
-export const SHARD_STATE_PROBE: VdbOpenSearchProbeSpec = {
+export const SHARD_STATE_PROBE: OpenSearchHealthProbe = {
   id: "shard-state",
   outcome: "shard-state",
   path: "/_cat/shards",
