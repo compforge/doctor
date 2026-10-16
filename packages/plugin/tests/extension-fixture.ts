@@ -22,7 +22,12 @@ export function directoryExtensions(value: Endpoint & { create(context: Extensio
     } satisfies TenantListExtension,
     {
       id: "tenant.resolve", kind: "tenant.resolve", access: value.access, endpoint: value.endpoint,
-      run: withSummary({"title":"租户详情","fields":[{"label":"ID","path":["id"]},{"label":"名称","path":["name"]},{"label":"显示名称","path":["displayName"]}]}, async (context, input) => value.create(context).getByName(input.name))
+      run: withSummary({"title":"租户详情","fields":[{"label":"ID","path":["id"]},{"label":"名称","path":["name"]},{"label":"显示名称","path":["displayName"]}]}, async (context, input) => {
+        const directory = value.create(context);
+        if (input.name !== undefined) return directory.getByName(input.name);
+        if (!directory.getById) throw new Error("Directory does not support tenant ID lookup");
+        return directory.getById(input.id);
+      })
     } satisfies TenantResolveExtension,
   ];
 }

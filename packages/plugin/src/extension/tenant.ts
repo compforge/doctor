@@ -1,5 +1,5 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ServiceEndpoint, TenantSummary, UserDirectorySearch, UserDirectorySearchResult } from "../service";
+import type { ServiceEndpoint, TenantLookup, TenantSummary, UserDirectorySearch, UserDirectorySearchResult } from "../service";
 import { requireExtensionEndpoint } from "./endpoint";
 
 export const TENANT_LIST_KIND = "tenant.list";
@@ -11,7 +11,7 @@ export interface TenantListExtension extends Extension<void, TenantSummary[]> {
   readonly endpoint: ServiceEndpoint;
 }
 
-export interface TenantResolveExtension extends Extension<{ name: string }, TenantSummary> {
+export interface TenantResolveExtension extends Extension<TenantLookup, TenantSummary> {
   readonly kind: typeof TENANT_RESOLVE_KIND;
   readonly endpoint: ServiceEndpoint;
 }
