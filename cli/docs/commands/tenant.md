@@ -54,3 +54,26 @@ Plugin 不再返回 tenant report contribution，也不拥有 Tenant 报告 sche
 
 Tenant 只读取当前现状。需要产生业务流量、执行验证或性能采样的领域命令继续通过 Probe/Operation
 产生 Observation，不把主动行为包装成 Fact。
+
+
+## 只读目录查询
+
+无需执行租户诊断即可查看身份目录：
+
+```bash
+doctor tenant list
+doctor tenant get --tenant-id <id>
+doctor tenant get --tenant-name <name> -f json
+doctor tenant users --tenant-name <name> --query <keyword> --page 1 --page-size 20
+```
+
+`list` 列出启用租户；`get` 必须且只能指定一个非空的 ID 或名称，并调用 `tenant.resolve` 精确查询。
+协议用 `{ id }` 或 `{ name }` 表达查询意图；找不到和访问失败直接返回错误，不尝试另一种选择器。
+`users` 同样要求显式租户，按名称时先解析 ID，再调用 `user.search`；直接指定 ID 时仅把它作为查询范围。
+省略关键词时列出当前页启用用户，默认第 1 页、每页 20 个，每页上限 100。
+
+目录命令默认输出身份表格，`-f json` 输出结构化对象；用户结果包含 tenantId、query、page、pageSize、
+total 和 users。空列表是成功结果，能力缺失、未找到或访问失败不伪装为空列表。
+输出只包含身份 ID、名称、显示名称和查询分页信息，可通过 shell 重定向保存；不支持 `-o`。
+这些命令只准备所需目录能力的访问，不采集配置或模型事实。原有 `doctor tenant --tenant-id/--tenant-name`
+继续运行租户诊断；其中 ID 参数表示诊断范围，不承担目录存在性验证。

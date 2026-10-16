@@ -120,3 +120,15 @@ test("MCP configuration uses the native operation while gateway access stays wit
     expect(bundle.getSteps().find(step => step.id === "mcp-config")?.status).toBe("ok");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+
+test("tenant.resolve preserves explicit ID and name selectors and releases each context", async () => {
+  const resolveRun = mock(resolve.run);
+  const dispose = mock(async () => {});
+  const provider = tenantDirectoryExtensions(createServiceCatalog([service([{ ...resolve, run: resolveRun }])]), "directory");
+  const directory = extensionTenantDirectory(provider, async () => context(dispose));
+  expect(await directory.getById!("t")).toEqual(tenant);
+  expect(await directory.getByName("tenant")).toEqual(tenant);
+  expect(resolveRun.mock.calls.map(call => call[1])).toEqual([{ id: "t" }, { name: "tenant" }]);
+  expect(dispose).toHaveBeenCalledTimes(2);
+});

@@ -71,6 +71,7 @@ import { logCommand } from "../collect/log/command";
 import { dataCommand } from "../collect/data/command";
 import { inspectCommand } from "../collect/inspect/command";
 import { tenantCommand } from "../collect/tenant/command";
+import { tenantDirectoryCommand } from "../collect/tenant/directory";
 import { metricCommand } from "../collect/metric/command";
 import { storeCommand } from "../collect/store/command";
 import { withDbOptions } from "../collect/db/options";
@@ -777,7 +778,7 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(inspectCommand, opts, domainInput(opts), commandRuntime);
   });
-  withTenantOptions(
+  const tenant = withTenantOptions(
     catalog.command("tenant").helpGroup("Collect · 采集与分析:").description("汇总 Plugin 提供的租户粒度业务事实（只读）")
       .addHelpText("after", `
 分析思路：
@@ -789,6 +790,24 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
   });
+  for (const [operation, description] of [
+    ["list", "列出启用租户的 ID、名称和显示名称（只读）"],
+    ["get", "按 --tenant-id 或 --tenant-name 精确查询租户（只读）"],
+    ["users", "在指定租户内列出或搜索启用用户（只读）"],
+  ] as const) {
+    const child = tenant.command(operation).description(description).allowExcessArguments(false)
+      .addOption(new Option("-f, --format <format>", "输出格式，默认 text").choices(["text", "json"]));
+    child.addHelpText("after", "\n目录查询直接输出结果，支持 -f text/json；用 shell 重定向保存。get/users 必须指定 --tenant-id 或 --tenant-name，二者互斥。\n");
+    if (operation === "users") child.option("--query <text>", "用户名或显示名称关键词；缺省列出当前页用户")
+      .option("--page <number>", "页码，默认 1", Number)
+      .option("--page-size <number>", "每页数量 1..100，默认 20", Number);
+    child.action(async (_options, command: CommandT) => {
+      const opts = commandOptionsWithSources(command);
+      // Parent diagnostic defaults must not override an explicit directory format.
+      opts.format = command.opts().format ?? (tenant.getOptionValueSource("format") === "cli" ? tenant.opts().format : "text");
+      await runCommand(tenantDirectoryCommand, opts, { ...domainInput(opts), operation }, commandRuntime);
+    });
+  }
   withCaseOptions(
     catalog.command("case").helpGroup("Collect · 采集与分析:").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
       .addHelpText("after", `
@@ -939,6 +958,14 @@ export function createDoctorProgram(
   applyCommandDefaults(program, distribution.commandDefaults);
   configureProfileHelp(program);
   configureDeliveryHelp(program);
+  // Directory queries inherit environment help, but have no diagnostic report delivery.
+  for (const child of tenant.commands) {
+    const help = child.configureHelp();
+    child.configureHelp({ ...help, visibleGlobalOptions(command) {
+      return help.visibleGlobalOptions!.call(this, command)
+        .filter(option => !["format", "output"].includes(option.attributeName()));
+    } });
+  }
   // Root action owns unknown-command diagnostics. Set this after child creation
   // so subcommands retain Commander's strict argument validation.
   program.allowExcessArguments(true);

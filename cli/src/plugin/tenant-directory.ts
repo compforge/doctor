@@ -51,6 +51,7 @@ export function extensionTenantDirectory(
   const missing = (kind: string): never => { throw new Error(`${provider.service.name}: missing ${kind} Extension`); };
   return {
     listActive: async () => tenantListOutput(await run(list ?? missing(TENANT_LIST_KIND), undefined)),
+    getById: async id => tenantResolveOutput(await run(resolve ?? missing(TENANT_RESOLVE_KIND), { id })),
     getByName: async name => tenantResolveOutput(await run(resolve ?? missing(TENANT_RESOLVE_KIND), { name })),
     ...(search ? {
       searchActiveUsers: async (input: Parameters<NonNullable<TenantDirectory["searchActiveUsers"]>>[0]) =>
@@ -82,6 +83,7 @@ export function discoverTenantDirectory(
   return {
     listActive: async () => (await directory(TENANT_LIST_KIND)).listActive(),
     getByName: async name => (await directory(TENANT_RESOLVE_KIND)).getByName(name),
+    getById: async id => (await directory(TENANT_RESOLVE_KIND)).getById!(id),
     ...(catalog.extensions(USER_SEARCH_KIND).some(item => !options.service || item.service === catalog.find(options.service.split("/")[0]!)) ? {
       searchActiveUsers: async (input: Parameters<NonNullable<TenantDirectory["searchActiveUsers"]>>[0]) =>
         (await directory(USER_SEARCH_KIND)).searchActiveUsers!(input),

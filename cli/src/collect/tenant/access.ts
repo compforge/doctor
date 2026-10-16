@@ -28,11 +28,11 @@ function tenantDirectoryPort(value: string | undefined, fallback: number): numbe
 }
 
 /** Prepare tenant identity access; each reusable capability owns its short-lived Plugin context. */
-export async function openTenantAccess(input: {
+export async function openTenantDirectoryAccess(input: {
   options: CollectTenantCliOptions;
   plugin: PluginDefinition;
   commandContext: CommandContext;
-}): Promise<TenantAccess | undefined> {
+}) {
   const { options, plugin, commandContext } = input;
   const config = await resolveKubernetesCommandConfig(options, undefined, commandContext);
   if (!config) return undefined;
@@ -64,6 +64,14 @@ export async function openTenantAccess(input: {
     capability: extension,
     authorization,
   }), { service: options.directoryProvider, commandContext });
+  return { config, executor, authorization, kube, databaseIdentity, directory };
+}
+
+export async function openTenantAccess(input: Parameters<typeof openTenantDirectoryAccess>[0]): Promise<TenantAccess | undefined> {
+  const access = await openTenantDirectoryAccess(input);
+  if (!access) return undefined;
+  const { config, executor, authorization, kube, databaseIdentity, directory } = access;
+  const { plugin, commandContext } = input;
   const capabilities: TenantCapabilityCollector[] = dataProviders(plugin.services)
     .filter(provider => provider.extension.accepts.includes("tenant_id"))
     .map(({ service, extension }) => ({

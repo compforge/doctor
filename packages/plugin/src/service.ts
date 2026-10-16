@@ -52,9 +52,14 @@ export interface UserDirectorySearchResult {
   total: number;
 }
 
+/** Exactly one selector; IDs and names are never guessed or used as fallbacks. */
+export type TenantLookup = { id: string; name?: never } | { name: string; id?: never };
+
 export interface TenantDirectory {
   listActive(): Promise<TenantSummary[]>;
   getByName(name: string): Promise<TenantSummary>;
+  /** Optional for existing in-process directories that only resolve names. */
+  getById?(id: string): Promise<TenantSummary>;
   /** Optional because tenant-only directory providers do not need to expose users. */
   searchActiveUsers?(input: UserDirectorySearch): Promise<UserDirectorySearchResult>;
 }

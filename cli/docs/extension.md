@@ -162,7 +162,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | facet.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Sample |
 | duration.summarize | 窗口、租户、预算 → 毫秒耗时分布与样本覆盖 | Health |
 | tenant.list | 无业务入参 → 启用租户列表 | Tenant、Model/Chat、Eval、Perf |
-| tenant.resolve | 租户名称 → 租户身份 | Tenant、Model/Chat |
+| tenant.resolve | 显式租户 ID 或名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
 | mcp.configuration | 超时预算 → MCP server、工具与连接配置投影 | MCP |
 | model.query | 租户 Identity、模型类型 → 模型列表 | Model、Chat、Tenant |
