@@ -212,6 +212,10 @@ Plugin 通过 `validateConfig` 在命令准备阶段校验自己的 schema，校
 Plugin 通常对应一个 Product，以 `ServiceCatalog` 表达组成，并作为 `id@version` 标识的装配和
 分发形式交付 Service、Knowledge 与 Skill。Plugin 与 Service 均通过 Common 的可选 `knowledge`
 声明概念、流程、文章与词典；知识阅读统一使用 [doctor knowledge](commands/knowledge.md)。
+
+Knowledge 只记录业务知识，包括业务概念、规则、服务机制与领域约束。CLI 的命令语法、参数、
+默认值和输出格式统一通过对应命令的 `--help` 获取，不写入 Knowledge，避免重复维护命令帮助。
+
 原来独立的 `concepts`、`workflows` 文本字段迁入结构化 Knowledge，每个知识对象通过 `markdown()` 提供文本，父对象调用子对象方法组合。JSON 加载方须补齐方法后再声明 Knowledge。
 
 `doctor plugin` 展示 Plugin 身份、说明与服务索引，指定 Service 后仅展示所属 Plugin 身份与服务声明。
