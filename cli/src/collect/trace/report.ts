@@ -1,3 +1,4 @@
+import { escapeHtml } from "../output/report/components/content";
 import type { View } from "@compforge/trace-harness";
 import { existsSync } from "node:fs";
 import { readTraceSnapshot } from "./snapshot";
@@ -7,12 +8,22 @@ import { evidencePage } from "../../report/evidence";
 import type { Report, ReportPage } from "../../report/model";
 import type { CollectionRecord } from "../output/report/model";
 import type { TraceOutput } from "./index";
+import { aggregateCommandStatus } from "../../command/result";
+import { dataSourceHealthStatus } from "../../datasource/health/status";
+import { dataSourceHealthHtml, type DataSourceHealthEvidence } from "../../datasource/health/report";
 import { renderTraceEvidence } from "./render";
 
 export async function renderTraceReport(context: RenderContext, result: CommandResult<TraceOutput>): Promise<Report> {
   if (!result.output) return failureReport("doctor trace", result);
   const { render } = await import("@compforge/trace-harness");
   const pages: ReportPage[] = [];
+  const healthPages: ReportPage[] = [];
+  for (const artifact of result.artifacts.filter(item => item.command === "datasource-health")) {
+    const evidence = context.json<DataSourceHealthEvidence>(artifact, "health.json");
+    healthPages.push(await evidencePage(context, artifact, { title: "OpenSearch 健康（附带信息）", status: dataSourceHealthStatus(evidence.health) }, () => {
+      context.write(artifact, `<!doctype html><meta charset="utf-8"><title>OpenSearch 健康</title>${dataSourceHealthHtml(evidence)}`);
+    }));
+  }
   if (result.output.selection?.truncated) pages.push({
     id: "trace:selection", title: "时间范围选择已截断", status: result.status,
     subject: { key: "trace:selection", label: "时间范围选择" },
@@ -27,6 +38,10 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
           const manifest = context.json<CollectionRecord>(artifact, "collection.json");
           const traceId = String(manifest.target?.trace_id ?? "");
           if (!traceId) throw new Error("Trace 证据缺少 trace_id");
+          if (!existsSync(context.path(artifact, "analysis.json"))) {
+            context.write(artifact, `<!doctype html><meta charset="utf-8"><title>Trace 采集结果</title><h1>${escapeHtml(traceId)}</h1><pre>${escapeHtml(context.read(artifact, "summary.md"))}</pre>`);
+            return;
+          }
           await renderTraceEvidence(context.artifact(artifact.id).path);
           context.write(artifact, context.read(artifact, "trace.html"));
         }));
@@ -43,5 +58,6 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
       }
     }
   }
-  return { title: "doctor trace", sections: [{ id: "trace", title: "Trace", status: result.status, pages }] };
+  return { title: "doctor trace", sections: [{ id: "trace", title: "Trace", status: result.status, pages },
+    ...(healthPages.length ? [{ id: "datasource-health", title: "数据源健康（附带信息）", status: aggregateCommandStatus(healthPages.map(page => page.status)), pages: healthPages }] : [])] };
 }

@@ -6,6 +6,7 @@ import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
 import { buildOverviewStatisticsHtml, printOverviewStatistics, OVERVIEW_REPORT_STYLE } from "../overview/report";
 import type { CaseCheckResult } from "./cases";
+import { dataSourceHealthHtml } from "../datasource/health/report";
 import type { HealthResult } from "./flow";
 
 function casesHtml(checks: readonly CaseCheckResult[]): string {
@@ -30,6 +31,7 @@ export function printHealth(result: HealthResult): void {
   writeOutput(`Health · 统计窗口 ${result.query.window.from} → ${result.query.window.to} [from, to)；Case 为本次执行\n`);
   for (const summary of result.providers) {
     printOverviewStatistics(summary);
+    for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
       writeOutput(`  Case ${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}: ${check.status} (${check.stage})\n`);
@@ -52,6 +54,8 @@ export function writeHealthEvidence(
 
 export function buildHealthHtml(result: HealthResult): string {
   const sections = result.providers.map(summary => buildOverviewStatisticsHtml(summary)
+    + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
+      + (check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
     + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")
     + (summary.cases ? casesHtml(summary.cases) : "")).join("");
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>

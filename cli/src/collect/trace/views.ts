@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { CommandResult } from "../../command/result";
 import type { SerializeContext } from "../../command/serialization/context";
 import type { CollectionRecord } from "../output/report/model";
+import type { DataSourceHealthEvidence } from "../../datasource/health/report";
 import type { TraceOutput } from "./index";
 import { readTraceSnapshot, selectTraceView, writeTraceJson, type TraceViewOptions } from "./snapshot";
 
@@ -26,6 +27,11 @@ export async function prepareTraceViews(result: CommandResult<TraceOutput>, opti
 /** The root export keeps acquisition status alongside the selected views, including failed batch items. */
 export function serializeTraceViews(context: SerializeContext, result: CommandResult<TraceOutput>) {
   const texts = [`doctor trace · status=${result.status}`];
+  const dataSources = result.artifacts.filter(artifact => artifact.command === "datasource-health").map(artifact => {
+    const evidence = JSON.parse(readFileSync(join(artifact.path, "health.json"), "utf8")) as DataSourceHealthEvidence;
+    texts.push(`OpenSearch 健康（本次探测，${evidence.health.status}）：${evidence.health.summary}`);
+    return evidence;
+  });
   if (result.output?.selection?.truncated) texts.push(`selection truncated: ${result.output.selection.truncated.reason}`);
   const items = (result.output?.items ?? []).map(item => {
     texts.push(`input=${item.bizId} · status=${item.status}${item.reason ? ` · ${item.reason}` : ""}`);
@@ -46,7 +52,7 @@ export function serializeTraceViews(context: SerializeContext, result: CommandRe
   if ("reason" in result && result.reason) texts.push(result.reason);
   return {
     output: context.writeJson("views.json", { schema_version: 1, kind: "doctor.trace.views", status: result.status,
-      reason: "reason" in result ? result.reason : undefined, selection: result.output?.selection, items }),
+      reason: "reason" in result ? result.reason : undefined, selection: result.output?.selection, items, ...(dataSources.length ? { data_sources: dataSources } : {}) }),
     text: context.writeText("views.txt", `${texts.join("\n\n")}\n`),
   };
 }

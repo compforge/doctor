@@ -3,6 +3,8 @@ import {
   type RegisteredProvider, type ServiceDefinition,
 } from "@compforge/doctor-plugin";
 
+import { BUILTIN_EXTENSIONS } from "./builtins";
+
 export interface DoctorExtensionProvider extends RegisteredProvider {
   readonly origin: "core" | "plugin" | "local";
   /** The providing Service owns execution context regardless of the declared namespace. */
@@ -25,6 +27,7 @@ export function createDoctorExtensionRegistry(
       bindings.set(provider, service ? { origin, service } : { origin });
     }
   };
+  register("core", BUILTIN_EXTENSIONS, "core");
   register("local", local, "local");
   if (plugin) {
     register(extensionNamespace("plugin", plugin.id), plugin.extensions ?? [], "plugin");

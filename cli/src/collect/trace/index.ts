@@ -48,6 +48,10 @@ import { buildTraceSummary } from "./render";
 import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
 import { resolveTraceWindow } from "./window";
 
+import { DataSourceHealthSession } from "../../datasource/health/session";
+import { writeDataSourceHealth } from "../../datasource/health/report";
+import type { CommandArtifact } from "../../command/artifacts";
+
 export { accumulateStats, newTraceStats, type TraceStats } from "./probe";
 export { buildTraceSummary } from "./render";
 
@@ -185,6 +189,16 @@ export async function runCollectTrace(
   plugin: PluginDefinition | undefined,
   commandContext: CommandContext,
 ): Promise<CommandResult<TraceOutput>> {
+  const healthArtifacts: CommandArtifact[] = [];
+  const healthSession = new DataSourceHealthSession();
+  const observedStores = new WeakSet<SearchEngine>();
+  const observeStore = async (search: SearchEngine, target: Record<string, unknown>) => {
+    if (observedStores.has(search)) return;
+    observedStores.add(search);
+    const health = await healthSession.probe(search, commandContext.signal);
+    healthArtifacts.push(writeDataSourceHealth(commandContext, { target, health }));
+    useLogger("trace").info(`OpenSearch 健康：${health.summary}`);
+  };
   const bizIds = [...new Set([
     ...(opts.bizIds ?? []),
   ].map((item) => item.trim()).filter(Boolean))];
@@ -192,7 +206,7 @@ export async function runCollectTrace(
   const requestedIds = bizIds;
   const failure = (code: 2 | 130, reason: string): CommandResult<TraceOutput> => {
     const status = code === 130 ? CommandStatus.Cancelled : CommandStatus.Failed;
-    return { status, reason, artifacts: [], error: code === 2 ? new CommandInputError(reason) : undefined,
+    return { status, reason, artifacts: healthArtifacts, error: code === 2 ? new CommandInputError(reason) : undefined,
       output: { items: requestedIds.map(bizId => ({
       bizId, traceIds: [], status, artifacts: [], reason,
     })) } };
@@ -247,6 +261,7 @@ export async function runCollectTrace(
     executor: runtime.executor,
     command: "doctor trace",
     commandContext,
+    onPrepared: (prepared, source) => observeStore(prepared.search, { ...prepared.evidenceTarget, ...source, index }),
     index,
     endpoint,
     username: opts.username,
@@ -334,7 +349,7 @@ export async function runCollectTrace(
   ].join("\n"));
   const selection = { window, limit: window ? limit : undefined, truncated };
   const preparationFailure = (reason: string): CommandResult<TraceOutput> => ({
-    status: CommandStatus.Failed, reason, artifacts: [summary],
+    status: CommandStatus.Failed, reason, artifacts: [summary, ...healthArtifacts],
     output: { items: [{ bizId: window ? "time_range" : "trace", traceIds: traces.map(trace => trace.traceId),
       status: CommandStatus.Failed, artifacts: [], reason }], selection },
   });
@@ -403,6 +418,7 @@ export async function runCollectTrace(
         signal: commandContext.signal,
         outputDir: task.outputDir,
         preparedStore,
+        observeStore,
         traceIdResolution: {
           service: task.trace.service,
           resolvedAs: task.trace.resolvedAs,
@@ -449,7 +465,7 @@ export async function runCollectTrace(
   const status = aggregateCommandStatus(items.map(item => item.status));
   return { status: status === CommandStatus.Ok && truncated ? CommandStatus.Partial : status,
     output: { items, contributions, selection },
-    artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
+    artifacts: [summary, ...items.flatMap(item => item.artifacts), ...healthArtifacts] };
   } finally {
     try {
       await dependencyRuntime?.close();
@@ -483,6 +499,7 @@ export interface TraceCollectOptions {
   outputDir: string;
   /** Shared dependency access owned by the outer batch command. */
   preparedStore?: PreparedServiceDataSourceDependency;
+  observeStore?(search: SearchEngine, target: Record<string, unknown>): Promise<void>;
 }
 
 /**
@@ -603,6 +620,8 @@ export async function collectTrace(
   channel = preparation.channel;
   const baseUrl = preparation.baseUrl;
 
+  try { await opts.observeStore?.(search, { ...confirmedTarget, ...preparation.evidenceTarget, index: opts.index }); }
+  catch (error) { log(`附带健康探测失败：${error instanceof Error ? error.message : String(error)}`, "warning"); }
   const probe = await probeTrace(search, {
     traceId,
     spanId: opts.spanId,

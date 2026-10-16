@@ -4,8 +4,8 @@ import type {
   OpenSearchDiskSettingsObservation,
   OpenSearchDiskWatermark,
   OpenSearchIndexBlocksObservation,
-} from "../model";
-import type { VdbOpenSearchProbeSpec } from "./opensearch";
+} from "./model";
+import type { OpenSearchHealthProbe } from "./probe";
 import { numberValue, record, stringValue } from "./value";
 
 export function parseAllocation(raw: unknown): OpenSearchAllocationObservation {
@@ -13,6 +13,7 @@ export function parseAllocation(raw: unknown): OpenSearchAllocationObservation {
   const nodes = rows.map((rawRow): OpenSearchAllocationNode => {
     const row = record(rawRow);
     const optionalNumber = (value: unknown) => {
+      if (value === null || value === undefined || value === "") return undefined;
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : undefined;
     };
@@ -44,6 +45,7 @@ function parseBytes(value: string | undefined): number | undefined {
 
 function parseWatermark(rawValue: unknown, maxHeadroom: unknown): OpenSearchDiskWatermark {
   const raw = stringValue(rawValue).trim();
+  if (!raw) return { raw, kind: "unknown" };
   const headroom = parseBytes(stringValue(maxHeadroom).trim());
   if (raw.endsWith("%")) {
     const ratio = Number(raw.slice(0, -1)) / 100;
@@ -102,7 +104,7 @@ export function parseIndexBlocks(rawValue: unknown): OpenSearchIndexBlocksObserv
   };
 }
 
-export const NODE_ALLOCATION_PROBE: VdbOpenSearchProbeSpec = {
+export const NODE_ALLOCATION_PROBE: OpenSearchHealthProbe = {
   id: "node-allocation",
   outcome: "node-allocation",
   path: "/_cat/allocation",
@@ -110,15 +112,19 @@ export const NODE_ALLOCATION_PROBE: VdbOpenSearchProbeSpec = {
   parse: parseAllocation,
 };
 
-export const CLUSTER_SETTINGS_PROBE: VdbOpenSearchProbeSpec = {
+export const CLUSTER_SETTINGS_PROBE: OpenSearchHealthProbe = {
   id: "cluster-settings",
   outcome: "cluster-settings",
   path: "/_cluster/settings",
   query: { include_defaults: true, flat_settings: true },
+  project: raw => Object.fromEntries(["transient", "persistent", "defaults"].map(scope => [scope,
+    Object.fromEntries(Object.entries(record(record(raw)[scope]))
+      .filter(([key]) => key.startsWith("cluster.routing.allocation.disk."))),
+  ])),
   parse: parseDiskSettings,
 };
 
-export const INDEX_WRITE_BLOCKS_PROBE: VdbOpenSearchProbeSpec = {
+export const INDEX_WRITE_BLOCKS_PROBE: OpenSearchHealthProbe = {
   id: "index-write-blocks",
   outcome: "index-write-blocks",
   path: "/_all/_settings",

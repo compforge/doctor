@@ -119,8 +119,8 @@ export async function probeTrace(
   }
   bundle.fill("count", { status: "ok", output: String(count) });
   if (count === 0) {
-    const reason = `index '${opts.index}' 中没有该 trace${opts.spanId ? ` / span ${opts.spanId}` : ""} 的 span；确认 --index-date 与目标环境`;
-    log(`[collect] index '${opts.index}' 中没有 trace_id=${traceId} 的 span（已过保留期 / index 或环境不对）`);
+    const reason = `index '${opts.index}' 中没有该 trace${opts.spanId ? ` / span ${opts.spanId}` : ""} 的 span；需结合数据源健康证据、--index-date 与目标环境判断，不能据此证明请求没有产生 span`;
+    log(`[collect] index '${opts.index}' 中没有 trace_id=${traceId} 的 span（请结合附带的数据源健康、索引范围及保留期判断）`);
     return { ok: false, title: "span 总数为 0", reason, traceId };
   }
 
