@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CommandContext } from "../src/command";
@@ -75,7 +75,7 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
     config,
     bundle: new EvidenceBundle(root),
     capabilities: [{
-      id: "models",
+      id: "models:model-api/model.query",
       service: "model-api",
       capability: "modelCatalog",
       query: async (identity) => [{
@@ -124,12 +124,20 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
   };
   try {
     const facts = await runInspects(makeTenantInspects(ctx.capabilities), ctx);
+    expect(facts.capabilityFacts).toHaveLength(2);
+    expect(ctx.bundle.getSteps()).toHaveLength(2);
+    for (const step of ctx.bundle.getSteps()) {
+      expect(step.status).toBe("ok");
+      expect(step.raw_file).toBeDefined();
+      const persisted = JSON.parse(readFileSync(join(root, step.raw_file!), "utf8"));
+      expect(persisted).toEqual(facts.capabilityFacts.find((fact) => `tenant-${fact.id}` === step.id));
+    }
     const evidence = buildTenantEvidence([], facts);
     const coverage = buildTenantCoverage(evidence);
 
     expect(facts.capabilityFacts[0]).toMatchObject({
       status: "collected",
-      id: "models",
+      id: "models:model-api/model.query",
       kind: "tenant.capability-result",
       result: {
         resolution: { identifiers: { models: "1" } },
@@ -159,7 +167,7 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
       { to: { kind: "bot_id", value: "bot-1" } },
     ]);
     expect(coverage.map((item) => [item.goal, item.status])).toEqual([
-      ["models", "sufficient"],
+      ["models:model-api/model.query", "sufficient"],
       ["inspect:config-api", "partial"],
     ]);
     const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
