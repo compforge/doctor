@@ -683,3 +683,20 @@ describe("command help", () => {
     });
   }
 });
+
+describe("resize provision command", () => {
+  test("resize exposes manual memory growth with no restore or Collect mode", async () => {
+    const help = await runCore(["resize", "--help"]);
+    expect(help.exitCode).toBe(0);
+    expect(help.stdout).toContain("--memory <size>");
+    expect(help.stdout).toContain("--output <path>");
+    expect(help.stdout).toContain("Collect 不自动执行");
+    expect(help.stdout).not.toContain("--restore");
+    const missing = await runCore(["resize", "--config", ""]);
+    expect(missing.exitCode).not.toBe(0);
+    expect(missing.stderr).toContain("--memory");
+    const invalid = await runCore(["resize", "--memory", "garbage", "--config", ""]);
+    expect(invalid.exitCode).not.toBe(0);
+    expect(invalid.stderr).toContain("--memory");
+  });
+});

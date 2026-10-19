@@ -23,7 +23,7 @@ Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Tra
 但不在 Doctor 内评价回答质量；只在压力下出现的问题归 Perf 施压与同窗口信号关联。Model、MCP 等
 业务特有领域仍复用同一套 Service 与 capability 模型。
 
-`image`、`debug`、`install` 负责显式准备上述诊断所需的镜像、临时环境和工具。确定性问题由 Core 的
+`image`、`debug`、`install`、`resize` 属于 Provision，负责显式准备镜像、临时环境和工具，以及调整当前实例的资源限制。确定性问题由 Core 的
 通用能力与 Plugin 的业务 capability 协作形成 Evidence 和报告；无法预先固化路径的开放式问题交给
 Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Skill。
 

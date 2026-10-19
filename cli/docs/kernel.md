@@ -7,7 +7,7 @@ Eval、Perf 与 Chat 共用启动上下文和基础设施，但各自拥有不�
 
 | 主路径 | 主要结果 | 与 Collect 的关系 |
 |---|---|---|
-| Provision | 外部能力或环境准备完成 | 不隐藏在 Collect 中；由用户显式触发 |
+| Provision | 外部能力、环境准备或显式状态调整完成 | 不隐藏在 Collect 中；由用户显式触发 |
 | Collect | 可复查的 Evidence、Finding、Coverage 与诊断产物 | 确定性诊断主路径 |
 | Eval | Case 执行记录及关联证据 | 复用已有 Collect 入口采集证据 |
 | Perf | 受控负载结果及同窗口证据 | 复用已有 Collect 入口采集证据 |
@@ -387,7 +387,7 @@ cli/src/
 │   ├── operation.ts     副作用授权与审计
 │   ├── output/          通用格式与交付原语
 │   └── <domain>/        领域 Config、Inspect、Probe、Detector、Renderer
-├── provision/           image、debug environment 与工具准备
+├── provision/           image、debug environment、工具准备及实例资源调整
 ├── eval/                Case 顺序执行与关联证据编排
 ├── perf/                受控负载与跨数据面证据编排
 ├── chat/                Session / Controller 与 AgentUE adapter
