@@ -7,7 +7,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 
 - **离线知识**：`doctor knowledge` 组织 Plugin/Service 的概念、流程、文章与词典，不准备 Target 访问。
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
-- **能力准备**：`doctor image/debug/install` 显式改变 Registry、Doctor Host 或 Target 状态。
+- **能力准备**：`doctor image/debug/install/resize` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
 - **系统体检**：`doctor health` 按 Service 复用概览统计并执行消费方 Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
 - **采样取证**：`doctor sample` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
@@ -25,7 +25,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 | `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
 | `report` | Report、RenderContext、共享导航及离线页面加载 |
 | `command` | CommandSpec、结构化结果、共享 Context、调用作用域及环境/access/审批契约 |
-| `provision` | 为诊断显式准备 image、debug environment 和工具 |
+| `provision` | 为诊断显式准备 image、debug environment、工具及调整实例资源限制 |
 | `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
 | `case` | Service Case 目录、协议匹配、身份准备、单次 HTTP/SSE/模型判定及 HTTP Collect 适配 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
@@ -92,3 +92,5 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - `docs/commands/db.md` — Service DB 目标、交互参数与有界只读 SQL 取证
 - `docs/naming.md` — chat 内部短名与跨边界公开命名约定
 - `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
+
+- `docs/commands/resize.md` — 手动调整内存上限、授权、操作记录与生效边界

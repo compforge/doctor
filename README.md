@@ -62,6 +62,9 @@ Business data is organized by lookup scope:
   using the same application knowledge as deterministic commands.
 
 Some investigations need tools or permissions that are not already present in the application container.
+`doctor resize` explicitly raises a running instance’s memory cgroup limit, with an approved plan and operation record;
+see [resize](cli/docs/commands/resize.md).
+
 `doctor image`, `doctor debug` and `doctor install` explicitly prepare a diagnostic image, temporary debug
 environment or tool. Doctor shows and confirms operations that can change the target; preparation is not
 hidden inside a read-only collection.

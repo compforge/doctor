@@ -26,6 +26,7 @@ import { writeOutput } from "../terminal/output";
 //   doctor eval              → 按 canonical CaseSet 顺序触发请求，采集关联 trace/log/data，不做质量评分
 //   doctor perf              → 发起受控业务压测，并在同一窗口采集 metric、trace、log
 //   doctor install           → 向选定 Pod container 安装 GDB
+//   doctor resize            → 手动调整当前实例的内存 cgroup 上限
 //   doctor init              → 首次初始化 local profile
 //   doctor profile           → 交互选择并持久切换 config.yaml.default_profile
 // CLI 是多能力入口，bare `doctor` 显示本次构建选中的子命令帮助。
@@ -65,7 +66,7 @@ import { normalizeBizIdOptions, withBizIdInputs } from "./biz-id-input";
 import { getDoctorHostInfo } from "../infra/host";
 
 import { domainInput } from "../command/options";
-import { chatCommand, imageCommand, debugCommand, installCommand, memCommand, memaCommand, cpuCommand, caseCommand, netCommand } from "./core-commands";
+import { chatCommand, imageCommand, debugCommand, installCommand, resizeCommand, memCommand, memaCommand, cpuCommand, caseCommand, netCommand } from "./core-commands";
 import { traceCommand } from "../collect/trace/command";
 import { logCommand } from "../collect/log/command";
 import { dataCommand } from "../collect/data/command";
@@ -458,7 +459,7 @@ export function createDoctorProgram(
       "  先核对对象、执行位置、时间窗口和采集完整性，再区分观测事实、规则发现与待验证推断。",
       "  空结果、采集失败、未执行和正常结果含义不同；没有发现异常只能说明本次覆盖范围。",
       "  报告保留可复查证据；输出格式改变交付视图，具体采集范围由命令参数决定。",
-      "  主动请求与 image / debug / install 等准备动作会影响目标，执行前核对动作与授权。",
+      "  主动请求与 image / debug / install / resize 等 Provision 动作会影响目标，执行前核对动作与授权。",
     ].join("\n"))
     .option("-V, --version", "显示发行版名称与版本（离线）")
     .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
@@ -614,6 +615,27 @@ export function createDoctorProgram(
     .action(async (opts, command: CommandT) => {
       opts = commandOptionsWithSources(command);
       await runCommand(installCommand, opts, { ...domainInput(opts), format: opts.format }, commandRuntime);
+    });
+
+  catalog
+    .command("resize").helpGroup("Provision · 能力准备:")
+    .allowExcessArguments(false)
+    .description("手动上调当前实例的内存 cgroup 上限")
+    .addHelpText("after", `
+操作范围：
+  首版支持单业务容器 Pod 的 cgroup v1 memory 上限；先准备同节点辅助 Pod，
+  再确认父子 cgroup 调整计划。此操作不修改 Kubernetes 资源声明。
+结果解读：
+  新上限保留在当前实例中，重建或调谐可能覆盖；Collect 不自动执行此操作。
+`)
+    .option("-p, --pod <pod>", "目标 Pod 名或关键词")
+    .option("-c, --container <name>", "目标业务容器")
+    .option("--memory <size>", "目标内存上限，例如 512Mi 或 8Gi；仅支持上调")
+    .option("-o, --output <path>", "JSON 操作记录路径；默认在当前目录生成，已有文件不覆盖")
+    .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
+    .action(async (opts, command: CommandT) => {
+      opts = commandOptionsWithSources(command);
+      await runCommand(resizeCommand, opts, domainInput(opts), commandRuntime);
     });
 
   withMemOptions(

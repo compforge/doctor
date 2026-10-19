@@ -13,6 +13,7 @@ import type { CliFlags } from "../protocol";
 import { runDebug } from "../provision/debug";
 import { runDoctorImage } from "../provision/image";
 import { runInstall, validateInstallOptions } from "../provision/install";
+import { runResize, validateResizeOptions } from "../provision/resize";
 import { renderEvidence, writeEvidencePage } from "../report/evidence";
 import { runRepl } from "./repl";
 import type { DistributionManifest } from "./distribution";
@@ -59,6 +60,16 @@ export const installCommand = defineCommand<CommandInput & Omit<Parameters<typeo
     return input;
   },
   run: async (context, input) => commandOutcome(await runInstall({ ...commandOptions(context), ...input, output: context.options.output }, context)),
+});
+
+export const resizeCommand = defineCommand<CommandInput & Omit<Parameters<typeof runResize>[0], CommandHostOption>, void>({
+  name: "doctor resize",
+  validate: validateResizeOptions,
+  prepare: async (context, input) => {
+    await prepareCommandRequirements(context, { environment: { kubernetes: true } });
+    return input;
+  },
+  run: async (context, input) => commandOutcome(await runResize({ ...input, ...commandOptions(context), output: context.options.output }, context)),
 });
 
 export const memCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectMemory>[0], CommandHostOption>, void>({
