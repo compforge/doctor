@@ -690,11 +690,14 @@ describe("resize provision command", () => {
     expect(help.exitCode).toBe(0);
     expect(help.stdout).toContain("--memory <size>");
     expect(help.stdout).toContain("--output <path>");
+    expect(help.stdout).toContain("增加 50% 或 100%");
+    expect(help.stdout).toContain("CPU 暂不支持");
     expect(help.stdout).toContain("Collect 不自动执行");
     expect(help.stdout).not.toContain("--restore");
     const missing = await runCore(["resize", "--config", ""]);
     expect(missing.exitCode).not.toBe(0);
     expect(missing.stderr).toContain("--memory");
+    expect(missing.stderr).toContain("--pod");
     const invalid = await runCore(["resize", "--memory", "garbage", "--config", ""]);
     expect(invalid.exitCode).not.toBe(0);
     expect(invalid.stderr).toContain("--memory");

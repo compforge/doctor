@@ -623,14 +623,16 @@ export function createDoctorProgram(
     .description("手动上调当前实例的内存 cgroup 上限")
     .addHelpText("after", `
 操作范围：
-  首版支持单业务容器 Pod 的 cgroup v1 memory 上限；先准备同节点辅助 Pod，
-  再确认父子 cgroup 调整计划。此操作不修改 Kubernetes 资源声明。
+  交互终端补齐 Pod、Container，选择资源类型（CPU 暂不支持），读取当前内存上限，
+  再选择增加 50% 或 100%。支持 Running / Ready Pod 的 cgroup v1 memory 上限。
+  非交互必须指定 --pod、--memory；多容器 Pod 还必须指定 --container。
+  确认父子 cgroup 调整计划后执行，此操作不修改 Kubernetes 资源声明。
 结果解读：
   新上限保留在当前实例中，重建或调谐可能覆盖；Collect 不自动执行此操作。
 `)
     .option("-p, --pod <pod>", "目标 Pod 名或关键词")
     .option("-c, --container <name>", "目标业务容器")
-    .option("--memory <size>", "目标内存上限，例如 512Mi 或 8Gi；仅支持上调")
+    .option("--memory <size>", "直接指定目标上限，例如 8Gi；缺省交互选择增加 50% 或 100%")
     .option("-o, --output <path>", "JSON 操作记录路径；默认在当前目录生成，已有文件不覆盖")
     .option("--profile <name>", "从 profile 取 namespace 和 kubeconfig")
     .action(async (opts, command: CommandT) => {

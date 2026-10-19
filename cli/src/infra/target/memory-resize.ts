@@ -3,6 +3,7 @@ import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes
 import type { K8sMutation } from "../k8s/mutation";
 import { failReason } from "../k8s/result";
 import { parsePodJson, pickContainer } from "../k8s/target";
+import { cgroupMemoryCmd, parseCgroupMemoryFacts } from "./cgroup-memory";
 
 export interface MemoryResizeTarget {
   namespace: string;
@@ -59,7 +60,6 @@ export async function inspectMemoryResizeTarget(exec: Executor, pod: string, con
   if (parsed.phase !== "Running" || !parsed.nodeName || !status?.state?.running || !status.ready) {
     throw new Error(`pod/${pod} container/${container} 必须处于 Running / Ready`);
   }
-  if (parsed.containers.length !== 1) throw new Error("doctor resize 首版仅支持单业务容器 Pod");
   const containerId = String(status.containerID ?? "");
   const runtimeId = containerId.match(/^[a-z0-9-]+:\/\/([a-f0-9]{32,64})$/)?.[1];
   const podUid = String(raw.metadata?.uid ?? "");
@@ -82,6 +82,17 @@ export async function inspectMemoryResizeTarget(exec: Executor, pod: string, con
     imagePullSecrets: (raw.spec.imagePullSecrets ?? []).map((item: { name: string }) => ({ name: item.name })),
     declaredMemory: picked.value.limits?.memory, cgroupPath, podCgroupPath,
   };
+}
+
+export async function inspectContainerMemory(exec: Executor, target: MemoryResizeTarget): Promise<{ limitBytes: string; currentBytes: string }> {
+  const captured = await exec.exec({ pod: target.pod, container: target.container }, cgroupMemoryCmd(), { timeoutMs: 10_000 });
+  if (!captured.ok) throw new Error(`读取 pod/${target.pod} container/${target.container} 内存失败：${failReason(captured)}`);
+  const facts = parseCgroupMemoryFacts(captured.stdout);
+  if (facts?.version !== 1 || !facts.limitBytes || !facts.currentBytes
+    || !/^\d+$/.test(facts.limitBytes) || !/^\d+$/.test(facts.currentBytes)) {
+    throw new Error("无法确认当前 Container 的 cgroup v1 内存上限和用量");
+  }
+  return { limitBytes: facts.limitBytes, currentBytes: facts.currentBytes };
 }
 
 export function assertSameMemoryTarget(expected: MemoryResizeTarget, actual: MemoryResizeTarget): void {
