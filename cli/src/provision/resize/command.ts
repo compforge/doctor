@@ -18,13 +18,15 @@ import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { useLogger } from "../../terminal/log";
 import { writeOutput } from "../../terminal/output";
 import type { ResizeCliOpts, ResizeRecord } from "./model";
-import { effectiveMemoryLimit, parseResizeMemory, planMemoryGrowth, validateResizeOptions } from "./plan";
+import { effectiveMemoryLimit, planMemoryGrowth, validateResizeOptions } from "./plan";
+import { selectResizeMemory } from "./selection";
 
 interface ResizeOperation {
   executor: Executor;
   target: MemoryResizeTarget;
   keepalive: readonly string[];
   requestedBytes: string;
+  expectedLimitBytes?: string;
   signal?: AbortSignal;
   approve: ApprovalGate;
   output?: string;
@@ -83,7 +85,12 @@ export async function provisionMemoryResize(input: ResizeOperation): Promise<num
     assertSameMemoryTarget(target, await inspectMemoryResizeTarget(executor, target.pod, target.container));
     const before = await inspectMemoryHierarchy(executor, helper, target);
     record.before = before;
-    const plan = (hierarchy: typeof before): MemoryLimitChange[] => planMemoryGrowth(target, hierarchy, input.requestedBytes);
+    const plan = (hierarchy: typeof before): MemoryLimitChange[] => {
+      if (input.expectedLimitBytes && hierarchy.groups[0]?.limitBytes !== input.expectedLimitBytes) {
+        throw new Error("Container 内存上限已变化，请重新选择扩容额度");
+      }
+      return planMemoryGrowth(target, hierarchy, input.requestedBytes);
+    };
     record.changes = plan(before);
     record.result.status = "planned";
     persist();
@@ -173,16 +180,18 @@ export async function runResize(opts: ResizeCliOpts, context: CommandContext): P
   });
   const selected = await resolvePodTarget({
     config, executor, pod: opts.pod, container: opts.container,
-    selectContainer: true, access, commandContext: context,
+    selectContainer: true, interactive: opts.interactive, access, commandContext: context,
     selection: { candidateRole: "目标", purpose: "手动调整实例内存上限" },
   });
   if (!selected?.container) return 130;
   const target = await inspectMemoryResizeTarget(executor, selected.pod, selected.container);
+  const memory = await selectResizeMemory(executor, target, opts);
+  if (!memory) return 130;
   const keepalive = await infra.target.debugEngine.resolveTargetImageKeepalive(executor, target.pod, target.container);
   if (!keepalive) throw new Error("目标镜像缺少可用的 sleep / Python 常驻命令，无法准备 resize 辅助 Pod");
   return provisionMemoryResize({
     executor, target, keepalive: keepalive.command,
-    requestedBytes: parseResizeMemory(opts.memory!), signal: context.signal,
+    ...memory, signal: context.signal,
     approve: resolveApprovalGate(opts), output: opts.output,
   });
 }

@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import {
   applyMemoryLimitsCmd, assertSameMemoryTarget, inspectMemoryResizeTarget, memoryResizeHelperMutation,
@@ -36,11 +36,12 @@ function hierarchy(): MemoryHierarchy {
 function result(stdout = "", ok = true): ExecResult {
   return { ok, exitCode: ok ? 0 : 1, stdout, stderr: ok ? "" : "injected failure", durationMs: 1, timedOut: false, command: [] };
 }
-function podJson(containerId = target.containerId): string {
+function podJson(containerId = target.containerId, sidecar = false): string {
   return JSON.stringify({
     metadata: { name: target.pod, namespace: target.namespace, uid: target.podUid },
     spec: { nodeName: target.node, imagePullSecrets: target.imagePullSecrets,
-      containers: [{ name: target.container, image: target.image, resources: { limits: { memory: "4Gi" } } }] },
+      containers: [{ name: target.container, image: target.image, resources: { limits: { memory: "4Gi" } } },
+        ...(sidecar ? [{ name: "sidecar", image: "example/sidecar:1", resources: { limits: { memory: "2Gi" } } }] : [])] },
     status: { phase: "Running", containerStatuses: [{ name: target.container, containerID: containerId, ready: true,
       restartCount: 1, state: { running: { startedAt: "2026-01-01T00:00:00Z" } } }] },
   });
@@ -59,7 +60,8 @@ test("resize plans parent before child, preserves exact 64-bit ancestor limits, 
     .toEqual([target.podCgroupPath, target.cgroupPath]);
   expect(() => planMemoryGrowth(target, facts, parseResizeMemory("2Gi"))).toThrow("不能降低");
   expect(planMemoryGrowth(target, facts, parseResizeMemory("4Gi"))).toEqual([]);
-  expect(() => validateResizeOptions({})).toThrow("--memory");
+  expect(() => validateResizeOptions({ interactive: false })).toThrow("--memory");
+  expect(() => validateResizeOptions({ interactive: true })).not.toThrow();
   expect(() => parseResizeMemory("1e99")).toThrow();
   expect(() => parseResizeMemory("1Ki")).toThrow();
 });
@@ -116,9 +118,10 @@ test("remote write script checks all cgroups before writing and refuses out-of-s
   expect(() => applyMemoryLimitsCmd(target, [{ ...changes[0]!, afterBytes: "1" }])).toThrow("不能降低");
 });
 
-interface FakeOptions { partial?: boolean; createFailure?: boolean; waitFailure?: boolean; cleanupFailure?: boolean; stale?: boolean; admissionFailure?: boolean }
+interface FakeOptions { changedLimit?: boolean; partial?: boolean; createFailure?: boolean; waitFailure?: boolean; cleanupFailure?: boolean; stale?: boolean; admissionFailure?: boolean }
 function fakeRuntime(path: string, opts: FakeOptions = {}) {
   const facts = hierarchy();
+  if (opts.changedLimit) facts.groups[0]!.limitBytes = String(6 * GIB);
   const calls: string[] = [];
   let writes = 0;
   const executor: Executor = {
@@ -153,7 +156,7 @@ async function operation(options: FakeOptions = {}, deniedAt?: number, signal?: 
   const runtime = fakeRuntime(output, options);
   let approvals = 0;
   const code = await provisionMemoryResize({
-    executor: runtime.executor, target, keepalive: ["/bin/sleep", "600"], requestedBytes: String(8 * GIB), output, signal,
+    executor: runtime.executor, target, keepalive: ["/bin/sleep", "600"], requestedBytes: String(8 * GIB), expectedLimitBytes: String(4 * GIB), output, signal,
     approve: async () => ({ approved: ++approvals !== deniedAt, source: "prompt" }),
   });
   return { ...runtime, code, record: JSON.parse(readFileSync(output, "utf8")) as ResizeRecord, approvals, output };
@@ -205,4 +208,40 @@ test("admission, helper startup, stale target, cancellation and cleanup failures
   expect(cleanup.code).toBe(1);
   expect(cleanup.record.result.helperDeleted).toBe(false);
   expect(cleanup.record.result.status).toBe("failed");
+});
+
+test("changing the container limit after selection stops before cgroup writes", async () => {
+  const outcome = await operation({ changedLimit: true });
+  expect(outcome.code).toBe(1);
+  expect(outcome.writes()).toBe(0);
+  expect(outcome.record.result.reason).toContain("重新选择");
+  expect(outcome.record.result.helperDeleted).toBe(true);
+});
+
+
+test("growing a selected container preserves the Pod budget for siblings and checks the larger parent plan", () => {
+  const facts = hierarchy();
+  facts.groups[1]!.limitBytes = String(6 * GIB); // 4 GiB server plus 2 GiB sidecar.
+  const changes = planMemoryGrowth(target, facts, String(8 * GIB));
+  expect(changes.map(change => [change.path, change.afterBytes])).toEqual([
+    [target.podCgroupPath, String(10 * GIB)], [target.cgroupPath, String(8 * GIB)],
+  ]);
+  facts.groups[2]!.limitBytes = String(9 * GIB);
+  expect(() => planMemoryGrowth(target, facts, String(8 * GIB))).toThrow("上层 cgroup");
+  facts.groups[2]!.limitBytes = unlimited;
+  facts.groups[1]!.memswLimitBytes = String(9 * GIB);
+  expect(() => planMemoryGrowth(target, facts, String(8 * GIB))).toThrow("memsw");
+  delete facts.groups[1]!.memswLimitBytes;
+  facts.groups[1]!.limitBytes = unlimited;
+  expect(planMemoryGrowth(target, facts, String(8 * GIB)).map(change => change.path)).toEqual([target.cgroupPath]);
+});
+
+test("target discovery accepts the explicitly selected business container in a multi-container Pod", async () => {
+  const executor: Executor = {
+    run: async () => result(podJson(undefined, true)),
+    exec: async selected => { expect(selected.container).toBe("server"); return result(target.cgroupPath); },
+  };
+  const discovered = await inspectMemoryResizeTarget(executor, target.pod, "server");
+  assertSameMemoryTarget(target, discovered);
+  expect(discovered.image).toBe(target.image);
 });
