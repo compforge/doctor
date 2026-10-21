@@ -21,12 +21,12 @@ export function s3Summary(request: S3Request, result: S3Result | undefined, iden
     if (result.metadata) lines.push("", JSON.stringify(result.metadata, null, 2));
     else lines.push("Bucket HEAD 成功。");
     if (result.bytes) {
-      lines.push("", `读取 ${result.bytes.byteLength} bytes · ${result.complete ? "complete" : "partial"} · 原始内容: content.bin`);
+      lines.push("", `读取 ${result.bytes.byteLength} bytes · ${result.complete ? "complete" : "partial"}`);
       try {
         const text = new TextDecoder("utf-8", { fatal: true }).decode(result.bytes);
         if (text.includes("\0")) throw new Error("binary");
         lines.push("", text.replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`));
-      } catch { lines.push("二进制或不完整 UTF-8 内容，请读取原始内容文件。"); }
+      } catch { lines.push("二进制或不完整 UTF-8 内容，未在摘要中展示。"); }
     }
   }
   if (result.stoppedReason) lines.push(`停止原因：${result.stoppedReason}`);

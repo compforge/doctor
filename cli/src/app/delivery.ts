@@ -114,7 +114,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
   writeFileSync(join(root, "manifest.json"), `${JSON.stringify(record, null, 2)}\n`, { mode: 0o600 });
   if (format === "manifest") writeMachineResult(record);
   for (const error of errors) useLogger("delivery").error(`${error}`);
-  if (errors.length || !["manifest", "bundle", "default"].includes(format)) {
+  if (format !== "summary" && (errors.length || !["manifest", "bundle", "default"].includes(format))) {
     writeOutput(`[delivery] Evidence: ${root}\n`, process.stderr);
     writeOutput(`[delivery] Manifest: ${join(root, "manifest.json")}\n`, process.stderr);
   }

@@ -1,5 +1,5 @@
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
-import { finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 import { logService, podDiscoveryExecutor } from "./log-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -108,12 +108,12 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
     let evidenceDir: string | undefined;
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     try {
       const result = await logCommand.run(context, input);
       await finalizeResult(context, logCommand, result, { format: "summary" }, input);
       const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
-      evidenceDir = stderr.mock.calls.map(([line]) => String(line))
-        .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+      evidenceDir = captured.directory;
       expect(evidenceDir).toBeDefined();
       const deliveryManifest = JSON.parse(readFileSync(join(evidenceDir!, "manifest.json"), "utf8"));
       expect(deliveryManifest.execution.status).toBe(result.status);
@@ -192,7 +192,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       expect(readFileSync(html, "utf8")).toContain("不按业务 ID 过滤");
       expect(readFileSync(html, "utf8")).not.toContain("trace 命中");
     } finally {
-      stdout.mockRestore(); stderr.mockRestore();
+      stdout.mockRestore(); stderr.mockRestore(); captured.restore();
       if (evidenceDir) rmSync(evidenceDir, { recursive: true, force: true });
       await context.disposeClients();
       for (const mock of [ensure, exec, version, logs]) mock.mockRestore();

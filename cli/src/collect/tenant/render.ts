@@ -49,7 +49,7 @@ export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
       ? `- ${fact.service} · ${fact.capability}：${fact.result.facts.length} 条 Fact`
       : `- ${fact.service} · ${fact.capability}：未取得（${fact.reason}）`) : ["- 无"]),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((reason) => `- ${reason}`)] : []),
-    "", "[完整 Facts](raw/facts.json) · [诊断](diagnosis.json)",
+    "",
     "",
   ].join("\n");
 }

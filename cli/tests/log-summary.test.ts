@@ -12,7 +12,7 @@ import { CommandContext, CommandStatus } from "../src/command";
 import { logCommand } from "../src/collect/log/command";
 import type { LogOutput } from "../src/collect/log";
 import { logSummary } from "../src/collect/log/summary";
-import { finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 
 test("log exposes summary and allows distributions to select it as default", () => {
   const program = createDoctorProgram({ commandDefaults: { log: { format: "summary" } } });
@@ -27,6 +27,7 @@ for (const format of ["summary", "manifest"] as const) {
     const context = new CommandContext({});
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     const render = spyOn(logCommand, "render");
     let directory: string | undefined;
     try {
@@ -40,10 +41,9 @@ for (const format of ["summary", "manifest"] as const) {
       expect(render).not.toHaveBeenCalled();
       const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
       if (format === "summary") {
-        directory = stderr.mock.calls.map(([line]) => String(line))
-          .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+        directory = captured.directory;
         expect(terminal).toContain("trace resolution failed");
-        expect(terminal).toContain("见原始数据");
+        expect(terminal).toContain("未在摘要中展示");
         expect(terminal).not.toContain("request-29");
         expect(terminal.length).toBeLessThan(3000);
       } else {
@@ -58,7 +58,7 @@ for (const format of ["summary", "manifest"] as const) {
       expect(manifest.serialization.status).toBe("ok");
       expect(manifest.delivery.status).toBe("ok");
     } finally {
-      render.mockRestore(); stdout.mockRestore(); stderr.mockRestore();
+      render.mockRestore(); stdout.mockRestore(); stderr.mockRestore(); captured.restore();
       await context.disposeClients();
       if (directory) rmSync(directory, { recursive: true, force: true });
     }
@@ -110,6 +110,7 @@ for (const captureGap of [undefined, "Pod api-pod 只取得部分 current 日志
       } });
       const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
       const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+      const captured = captureSerializedDirectory();
       let directory: string | undefined;
       try {
         const gap = "worker sandbox_id:s1 查询失败：from must equal the Query identity";
@@ -141,8 +142,7 @@ for (const captureGap of [undefined, "Pod api-pod 只取得部分 current 日志
         } else {
           expect(terminal).not.toContain("采集缺口影响");
         }
-        directory = stderr.mock.calls.map(([line]) => String(line))
-          .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+        directory = captured.directory;
         expect(directory).toBeDefined();
         const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
         expect(manifest.execution.status).toBe("partial");
@@ -151,7 +151,7 @@ for (const captureGap of [undefined, "Pod api-pod 只取得部分 current 日志
           : join(directory!, manifest.children[0].manifest, "..", "output.json");
         expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual(output);
       } finally {
-        stdout.mockRestore(); stderr.mockRestore();
+        stdout.mockRestore(); stderr.mockRestore(); captured.restore();
         await context.disposeClients();
         if (directory) rmSync(directory, { recursive: true, force: true });
       }

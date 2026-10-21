@@ -122,7 +122,6 @@ export function renderMcpSummary(diagnosis: McpDiagnosis): string {
     ),
     ...(facts.httpPlan?.unsupported ?? []).map((item) => `- mapping unsupported: ${item}`),
     "",
-    "完整原始证据见 raw/。",
     "",
   ];
   return lines.join("\n");

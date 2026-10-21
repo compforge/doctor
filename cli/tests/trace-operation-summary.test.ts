@@ -59,13 +59,13 @@ test("group identity is exact and rendering escapes untrusted service and operat
   expect(md).not.toContain("<img>");
 });
 
-test("bounded groups prioritize repetition and link omitted rows to raw evidence", () => {
+test("bounded groups prioritize repetition and report omitted row counts", () => {
   const stats = newTraceStats();
   accumulateStats(stats, Array.from({ length: 25 }, (_, i) => span("svc", `operation-${i}`, i)));
   accumulateStats(stats, [span("svc", "GetModel", 100), span("svc", "GetModel", 200)]);
   const table = summary(stats).split("## 按 Service / Operation 分组")[1]!.split("## 步骤状态")[0]!;
   expect(table.match(/^\| svc \|/gm)).toHaveLength(20);
   expect(table.indexOf("| svc | GetModel | 2 |")).toBeLessThan(table.indexOf("| svc | operation-0 |"));
-  expect(table).toContain("另有 6 组未展示，见 [原始 spans](spans.jsonl)");
+  expect(table).toContain("另有 6 组未展示。");
   expect(summary(newTraceStats())).not.toContain("## 按 Service / Operation 分组");
 });

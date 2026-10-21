@@ -33,8 +33,7 @@ export function buildTraceSummary(input: {
     lines.push("", "## 异常时间线", "", "按异常事件时间排序；缺少事件时间时使用 span 结束时间。时间先后不代表根因关系。", "",
       "| 时间（UTC） | Service | Operation | span ID | 错误 |", "|---|---|---|---|---|");
     for (const error of input.stats.errors) lines.push(`| ${error.timeMs === undefined ? "未知" : new Date(error.timeMs).toISOString()} | ${summaryText(error.service)} | ${summaryText(error.operation)} | ${summaryText(error.spanId)} | ${summaryText(error.message)} |`);
-    if (input.stats.errorSpans > input.stats.errors.length) lines.push(`另有 ${input.stats.errorSpans - input.stats.errors.length} 个 error span，见完整 spans。`);
-    lines.push("", "[原始 spans](spans.jsonl)，按上表 span ID 定位。");
+    if (input.stats.errorSpans > input.stats.errors.length) lines.push(`另有 ${input.stats.errorSpans - input.stats.errors.length} 个 error span 未在摘要中展示。`);
   }
   const services = Object.entries(input.stats.services).sort((a, b) => b[1] - a[1]);
   if (services.length) {
@@ -51,10 +50,8 @@ export function buildTraceSummary(input: {
       "| Service | Operation | spans | 首次开始（UTC） | 末次开始（UTC） | 最晚结束（UTC） |",
       "|---|---|---|---|---|---|");
     for (const group of operations.slice(0, 20)) lines.push(`| ${summaryText(group.service, 160)} | ${summaryText(group.operation, 160)} | ${group.count} | ${time(group.firstStartMs)} | ${time(group.lastStartMs)} | ${time(group.lastEndMs)} |`);
-    if (operations.length > 20) lines.push(`另有 ${operations.length - 20} 组未展示，见 [原始 spans](spans.jsonl)。`);
+    if (operations.length > 20) lines.push(`另有 ${operations.length - 20} 组未展示。`);
   }
   lines.push("", "## 步骤状态", "", "| step | status | reason |", "|---|---|---|", ...input.steps, "");
-  lines.push("span 原始数据见 `spans.jsonl`（每行一个 jaeger-span `_source`，可直接作 trace 离线分析输入）。");
-  lines.push("交互调用栈见 `trace.html`（node tree、节点详情、span attrs 与火焰图）。");
   return lines.join("\n");
 }

@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CommandContext } from "../src/command";
-import { finalizeFixture, finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeFixture, finalizeResult } from "./report-fixture";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { CommandStatus } from "../src/command";
 
@@ -58,6 +58,7 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
   const context = new CommandContext({});
   const output = spyOn(process.stdout, "write").mockImplementation(() => true);
   const evidenceOutput = spyOn(process.stderr, "write").mockImplementation(() => true);
+  const captured = captureSerializedDirectory();
   const render = spyOn(inspectCommand, "render");
   let directory: string | undefined;
   try {
@@ -70,8 +71,11 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
     }, { format: "summary" })).toBe(0);
     expect(render).not.toHaveBeenCalled();
     expect(output.mock.calls.map(([line]) => String(line)).join("")).toContain(summary);
-    directory = evidenceOutput.mock.calls.map(([line]) => String(line))
-      .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+    directory = captured.directory;
+    const terminal = output.mock.calls.map(([line]) => String(line)).join("");
+    expect(terminal).not.toContain("证据导航");
+    expect(terminal).not.toContain("manifest.json");
+    expect(evidenceOutput).not.toHaveBeenCalled();
     expect(directory).toBeDefined();
     const manifest = JSON.parse(readFileSync(join(directory!, "manifest.json"), "utf8"));
     expect(manifest.delivery.status).toBe("ok");
@@ -81,7 +85,7 @@ test("summary finalization serializes evidence and skips the HTML renderer", asy
   } finally {
     render.mockRestore();
     output.mockRestore();
-    evidenceOutput.mockRestore();
+    evidenceOutput.mockRestore(); captured.restore();
     await context.disposeClients();
     if (directory) rmSync(directory, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });

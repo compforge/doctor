@@ -21,7 +21,10 @@ export interface FinalizeCommandInput<Input extends CommandInput, Output> {
   code: number;
 }
 
-/** @spec Root finalize serializes every result before optional local rendering and one delivery. */
+/**
+ * @spec Root finalize serializes every result before optional local rendering and one delivery.
+ * @rule Summary presents results and gaps; manifest retains the full evidence inventory.
+ */
 export async function finalizeCommand<Input extends CommandInput, Output>(input: FinalizeCommandInput<Input, Output>): Promise<number> {
   let code = input.code;
   try { await input.context.disposeClients(); }
@@ -31,7 +34,8 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   if (!input.result.artifacts.length && input.result.output === undefined && input.delivery.format !== "manifest") return code;
   const directory = mkdtempSync(join(tmpdir(), "doctor-result-"));
   const serialized = await SerializeContext.create(directory, input.spec, input.result,
-    (error, command) => reportError(error, { context: command, summary: "result serialization failed" }));
+    (error, command) => reportError(error, { context: command, summary: "result serialization failed" }),
+    input.delivery.format?.trim() === "summary" ? "result" : "evidence");
   if (serialized.failed && code !== 130) code = 1;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
     (error, command) => reportError(error, { context: command, summary: "report render failed" }));

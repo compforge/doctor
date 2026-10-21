@@ -59,10 +59,11 @@ Image 来自发现的 Pod Container 声明及 imageID，不表示 Registry 当�
 
 ## 终端运行摘要
 
-使用 `doctor inspect --service api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的
-Evidence 目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用相同的采集范围。
+使用 `doctor inspect --service api -f summary` 直接打印紧凑摘要。
+完整证据仍落盘，但终端不显示原始证据链接、证据导航或目录提示；需要证据索引时使用 `-f manifest`。
+Summary 不生成 HTML，不支持 `--output`；它与其它格式使用相同的采集范围。
 `summary` 统一隐藏连接成功、权限检查和采集进度等 info/success 日志，保留 warn/error；
-结果摘要与 Evidence/Manifest 导航使用独立 writer，正常输出。
+结果摘要使用独立 writer，正常输出。
 
 Pod 总数按环境、namespace 和 UID 去重，异常明细保留 Service/Workload 关联。Ready 数量只表示
 当前就绪状态，历史重启或 OOM 不减少 Ready 数量。状态含义如下：

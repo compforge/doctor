@@ -59,7 +59,8 @@ test("summary bounds record output while keeping raw evidence and coverage gaps"
   expect(md).toContain("另有 5 条记录");
   expect(md).toContain("runtime unavailable");
   expect(md).toContain("采集状态：partial");
-  expect(md).toContain("[完整 Facts](raw/facts.json)");
+  expect(md).not.toContain("[完整 Facts](raw/facts.json)");
+  expect(md).not.toContain("manifest.json");
 });
 
 test("trace summary bounds and orders exception events instead of calling the earliest a root cause", () => {

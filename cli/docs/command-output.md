@@ -170,7 +170,7 @@ result/
 | 格式 | 行为 |
 |---|---|
 | manifest | 保留或复制完整目录，stdout 输出与磁盘 manifest.json 相同的最终对象 |
-| summary | 打印 files.summary 对应的同一份 Markdown，并给出 Evidence/Manifest 位置 |
+| summary | 仅展示结果、状态和必要缺口，不打印证据导航或 Evidence/Manifest 路径 |
 | md | 导出同一摘要，重定位链接以便从导出位置读取证据 |
 | json | 导出领域诊断或 output，并关联权威 Manifest |
 | html | 按 Manifest/证据生成独立 HTML |
@@ -179,10 +179,13 @@ result/
 
 所有 Command 的 `summary` 格式都在公共 CLI action 入口将过程日志级别收敛到 warn，
 覆盖独立离线命令以及诊断命令的准备、执行和清理；直接/嵌入调用共享同一策略。
-发行版已有的 error 级别仍保留。结果摘要与证据导航通过独立 writer 输出，不受日志级别影响。
+发行版已有的 error 级别仍保留。结果通过独立 writer 输出，不受日志级别影响。
 
-`format` 只决定交付视图，不改变采集范围。manifest、summary、json、md 跳过 HTML 渲染。
-`collect -f summary` 在终端展示各子命令状态、已有摘要和证据链接，完整子结果仍保存在证据目录；
+`format` 决定终端呈现，既控制执行阶段的日志，也控制 finish 阶段的输出。
+finish 先保存完整结果树和原始证据，再按格式选择摘要展示：`summary` 隐藏证据链接及目录提示，
+保留业务结果、子结果状态和缺口；`manifest` 输出完整文件和子结果索引。格式不改变采集范围或证据内容。
+manifest、summary、json、md 跳过 HTML 渲染。
+`collect -f summary` 在终端展示各子命令状态、已有摘要和缺口，完整子结果仍保存在证据目录；
 不支持 `--output`。省略 `-f` 时仍采用原有默认格式。Manifest 和 Summary 只在根交付阶段生效，
 子采集器按 Bundle 准备完整证据，包括不提供独立 Summary 格式的 Trace、Metric。
 
