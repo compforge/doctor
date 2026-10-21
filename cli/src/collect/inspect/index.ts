@@ -119,6 +119,12 @@ export async function runCollectInspect(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod 证据，ConfigMap 配置标记为缺失",
   }] : [];
+  const environmentNeeds = config.field === "env" ? [{
+    requirement: "preferred" as const,
+    rule: { verb: "create" as const, resource: "pods/exec" },
+    purpose: "逐个 Pod 的业务 Container 读取实际环境变量",
+    fallback: "无法读取时将 Pod Env 标记为缺失，不使用 Deployment 声明值替代",
+  }] : [];
   const dependencyNeeds = includeDependencies ? [{
     requirement: "preferred" as const,
     rule: { verb: "create" as const, resource: "pods/exec" },
@@ -168,6 +174,7 @@ export async function runCollectInspect(
           fallback: "目标不可读时记录 Workload unavailable",
         }];
       })),
+      ...environmentNeeds,
       ...dependencyNeeds,
     ],
   });

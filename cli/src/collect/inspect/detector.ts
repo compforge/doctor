@@ -1,3 +1,4 @@
+import { containerEnvironmentTargets } from "./fact/inspect";
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
   ConfigurationComparisonRow,
@@ -120,13 +121,11 @@ export function searchInspectFields(evidence: InspectEvidence, field: InspectFie
     return { field, keyword, matches };
   }
   return { field, keyword,
-    matches: environmentObservations(evidence.observations).flatMap(observation =>
-      Object.entries(observation.values).flatMap(([name, value]) => {
-        const text = typeof value === "string" ? value : JSON.stringify(value);
-        return contains(name) || contains(text)
-          ? [{ name, value, service: observation.service, deployment: observation.deployment, container: observation.container }]
-          : [];
-      })),
+    matches: evidence.observations.flatMap(observation => observation.kind === "container-environment" && observation.status === "collected"
+      ? Object.entries(observation.values).flatMap(([name, value]) => contains(name) || contains(value)
+        ? [{ name, value, service: observation.service, workload: observation.workload, pod: observation.pod, container: observation.container }]
+        : [])
+      : []),
   };
 }
 
@@ -200,6 +199,13 @@ export function projectInspectServiceEvidence(
           },
         })];
       }
+      if (observation.kind === "container-environment") {
+        return [projectServiceEvidenceObservation({
+          services: [observation.service], probe: "container-environment", source: observation,
+          value: { workload: observation.workload, pod: observation.pod, container: observation.container,
+            status: observation.status, values: observation.values, ...(observation.reason ? { reason: observation.reason } : {}) },
+        })];
+      }
       if (observation.kind === "environment-config") {
         return [projectServiceEvidenceObservation({
           services: [observation.service],
@@ -254,7 +260,7 @@ export function makeInspectDetectors(
 
 export function buildInspectCoverage(
   evidence: InspectEvidence,
-  scope?: { includeDeploymentConfig?: boolean; includeDependencies?: boolean },
+  scope?: { includeDeploymentConfig?: boolean; includeDependencies?: boolean; field?: InspectField },
 ): DiagnosisCoverage<InspectDiagnosisGoal>[] {
   const environmentMissing: string[] = [];
   if (evidence.facts.deploymentConfiguration.status !== "collected") {
@@ -381,6 +387,21 @@ export function buildInspectCoverage(
       : collectedDependencies > 0 ? "partial" : "insufficient",
     missingEvidence: dependencyMissing,
   });
+  if (scope?.field === "env") {
+    const { targets, missing } = containerEnvironmentTargets(evidence.facts);
+    let collected = 0;
+    for (const target of targets) {
+      const observation = evidence.observations.find(item => item.kind === "container-environment"
+        && item.service === target.service && item.workload === target.workload
+        && item.pod === target.pod && item.container === target.container);
+      if (observation?.kind === "container-environment" && observation.status === "collected") collected++;
+      else missing.push(`${target.service}/${target.workload}/${target.pod}/${target.container}: ${
+        observation?.kind === "container-environment" ? observation.reason ?? "Env 不可用" : "未取得 Pod Env"}`);
+    }
+    coverage.push({ goal: "container-environment",
+      status: targets.length > 0 && collected === targets.length && !missing.length
+        ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
+  }
   // Coverage measures the requested scope, not optional collection the caller never selected.
   return coverage.filter(({ goal }) => !scope
     || (goal !== "environment-config" || scope.includeDeploymentConfig)

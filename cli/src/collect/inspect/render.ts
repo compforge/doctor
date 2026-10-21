@@ -509,19 +509,19 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
 
 function searchHeaders(diagnosis: InspectDiagnosis): string[] {
   return diagnosis.evidence.search!.field === "env"
-    ? ["名称", "值", "Service", "Deployment", "Container"]
+    ? ["名称", "值", "Service", "Workload", "Pod", "Container"]
     : ["Image", "Image ID", "Service", "Workload", "Pod", "Container"];
 }
 
 function searchRows(diagnosis: InspectDiagnosis): string[][] {
   const search = diagnosis.evidence.search!;
   return search.field === "env"
-    ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.deployment, item.container])
+    ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.workload, item.pod, item.container])
     : search.matches.map(item => [item.image, item.imageId ?? "—", item.service, item.workload, item.pod, item.container]);
 }
 
 function searchStatus(diagnosis: InspectDiagnosis): string {
-  const goal = diagnosis.evidence.search!.field === "env" ? "environment-config" : "workload-runtime";
+  const goal = diagnosis.evidence.search!.field === "env" ? "container-environment" : "workload-runtime";
   const complete = diagnosis.coverage.find(item => item.goal === goal)?.status === "sufficient";
   return complete ? "采集完整" : "证据不完整，未匹配不代表目标值不存在";
 }
