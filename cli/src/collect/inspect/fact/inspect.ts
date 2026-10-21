@@ -26,6 +26,7 @@ import {
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type {
+  ContainerEnvironmentTarget,
   InspectCommandContext,
   InspectConfig,
   InspectContainerTerminationFact,
@@ -205,6 +206,35 @@ function dependencyTargets(
   return collectedFact("inspect.dependency-targets", "service-targets", { targets, missing });
 }
 
+/** @spec Env is observed inside each business container; declaration values never substitute for it. */
+export function containerEnvironmentTargets(facts: InspectFacts): {
+  targets: ContainerEnvironmentTarget[]; missing: string[];
+} {
+  const targets: ContainerEnvironmentTarget[] = [];
+  const missing: string[] = [];
+  if (facts.serviceTargets.status !== "collected") return { targets, missing: [facts.serviceTargets.reason] };
+  for (const service of Object.values(facts.serviceTargets.services)) {
+    for (const workload of Object.values(service.workloads)) {
+      if (workload.podRuntime.status !== "collected") {
+        missing.push(`${service.service}/${workload.name}: ${workload.podRuntime.reason}`);
+        continue;
+      }
+      if (!workload.podRuntime.pods.length) missing.push(`${service.service}/${workload.name}: 没有 Pod 可读取 Env`);
+      for (const pod of workload.podRuntime.pods) {
+        const source = `${service.service}/${workload.name}/${pod.pod}`;
+        if (!pod.environmentContainer) {
+          missing.push(`${source}: ${pod.environmentUnavailableReason ?? "未定位到业务 Container"}`);
+        } else if (pod.phase !== "Running") {
+          missing.push(`${source}/${pod.environmentContainer}: Pod 状态为 ${pod.phase}，无法读取 Env`);
+        } else {
+          targets.push({ service: service.service, workload: workload.name, pod: pod.pod, container: pod.environmentContainer });
+        }
+      }
+    }
+  }
+  return { targets, missing };
+}
+
 export function makeServiceTargetsInspect(
   config: InspectConfig,
   catalog: ServiceCatalog,
@@ -346,28 +376,35 @@ export function makeServiceTargetsInspect(
               : resolved.unavailableReason
                 ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
                 : collectedFact("inspect.workload-pods", "service-targets", {
-                  pods: resolved.pods.map((pod) => ({
-                    instance: resolved.instances.find(instance => instance.pod === pod.name)!,
-                    pod: pod.name,
-                    serviceAccountName: pod.serviceAccountName,
-                    phase: pod.phase,
-                    reason: pod.reason,
-                    message: pod.message,
-                    conditions: pod.conditions.map((condition) => ({ ...condition })),
-                    containers: pod.containers.map((container) => ({
-                      name: container.name,
-                      image: container.image,
-                      imageId: container.imageId,
-                      requests: { cpu: container.requests.cpu, memory: container.requests.memory },
-                      limits: { cpu: container.limits.cpu, memory: container.limits.memory },
-                      ready: container.ready,
-                      restartCount: container.restartCount,
-                      state: inspectContainerStateFact(container.state),
-                      lastTermination: container.lastTermination
-                        ? terminationFact(container.lastTermination)
-                        : undefined,
-                    })),
-                  })),
+                  pods: resolved.pods.map((pod) => {
+                    const environment = config.field === "env" ? selectWorkloadPodContainer(resolved, pod) : undefined;
+                    return {
+                      instance: resolved.instances.find(instance => instance.pod === pod.name)!,
+                      pod: pod.name,
+                      serviceAccountName: pod.serviceAccountName,
+                      ...(config.field === "env" ? {
+                        environmentContainer: environment?.container?.name,
+                        environmentUnavailableReason: environment?.reason,
+                      } : {}),
+                      phase: pod.phase,
+                      reason: pod.reason,
+                      message: pod.message,
+                      conditions: pod.conditions.map((condition) => ({ ...condition })),
+                      containers: pod.containers.map((container) => ({
+                        name: container.name,
+                        image: container.image,
+                        imageId: container.imageId,
+                        requests: { cpu: container.requests.cpu, memory: container.requests.memory },
+                        limits: { cpu: container.limits.cpu, memory: container.limits.memory },
+                        ready: container.ready,
+                        restartCount: container.restartCount,
+                        state: inspectContainerStateFact(container.state),
+                        lastTermination: container.lastTermination
+                          ? terminationFact(container.lastTermination)
+                          : undefined,
+                      })),
+                    };
+                  }),
                 }),
           };
         }

@@ -265,7 +265,7 @@ function withCollectOptions(cmd: CommandT): CommandT {
 function withInspectOptions(cmd: CommandT): CommandT {
   return cmd
     .addOption(serviceOption("Kubernetes Service；缺省时交互多选，非交互必须指定"))
-    .addOption(new Option("--field <field>", "快速查看 env 或 image；默认终端展示").choices(["env", "image"]))
+    .addOption(new Option("--field <field>", "查看 Pod 容器内 env 或 image；默认终端展示").choices(["env", "image"]))
     .option("--search <keyword>", "在所选字段内做忽略大小写的子串匹配；未指定 --field 时搜索 env")
     .option("--deployment-config", "采集 Deployment Env/ConfigMap；交互模式未指定时询问，-y 默认不采集")
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
@@ -801,6 +801,7 @@ export function createDoctorProgram(
 示例：
   doctor inspect -s api --search sandbox
   doctor inspect -s api --field image --search sha256
+  Env 逐个 Pod 读取业务 Container 的实际环境变量，需要 pods/exec；不会用 Deployment 声明值替代。
 结果解读：
   声明的配置和资源量不等于进程当前值或实际用量；重启、OOM 与退避状态需结合日志和时间线判断。
 `),

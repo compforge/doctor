@@ -96,6 +96,9 @@ export interface InspectPodRuntimeFact {
   instance: WorkloadInstance;
   pod: string;
   serviceAccountName: string;
+  /** Business container resolved from the Workload declaration or Service ports. */
+  environmentContainer?: string;
+  environmentUnavailableReason?: string;
   phase: string;
   reason?: string;
   message?: string;
@@ -155,6 +158,20 @@ export interface EnvironmentConfigObservation extends ObservationMeta {
   values: Record<string, JsonValue>;
 }
 
+export interface ContainerEnvironmentTarget {
+  service: string;
+  workload: string;
+  pod: string;
+  container: string;
+}
+
+export interface ContainerEnvironmentObservation extends ObservationMeta, ContainerEnvironmentTarget {
+  kind: "container-environment";
+  status: "collected" | "unavailable";
+  values: Record<string, string>;
+  reason?: string;
+}
+
 export interface RuntimeDependency {
   name: string;
   version?: string;
@@ -202,6 +219,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
 
 export type InspectObservation =
   | EnvironmentConfigObservation
+  | ContainerEnvironmentObservation
   | DependencyInventoryObservation
   | KubernetesAppArmorAdmissionObservation
   | PluginWorkloadObservation;
@@ -216,12 +234,9 @@ export interface InspectEvidence extends Evidence<InspectObservation, InspectFac
   search?: InspectSearchResult;
 }
 
-export interface EnvSearchMatch {
+export interface EnvSearchMatch extends ContainerEnvironmentTarget {
   name: string;
-  value: JsonValue;
-  service: string;
-  deployment: string;
-  container: string;
+  value: string;
 }
 
 export interface ImageSearchMatch {
@@ -241,6 +256,7 @@ export type InspectSearchResult = { keyword?: string } & (
 export type InspectFinding = ServiceDetectorFinding;
 export type InspectDiagnosisGoal =
   | "environment-config"
+  | "container-environment"
   | "workload-runtime"
   | "runtime-dependencies"
   | "workload-observations";

@@ -98,7 +98,7 @@ export async function resolveInspectConfig(
     servicesExplicit: opts.services !== undefined,
     search: opts.search?.trim(),
     field,
-    includeDeploymentConfig: field === "env" ? true : opts.deploymentConfig ?? (field ? false : undefined),
+    includeDeploymentConfig: opts.deploymentConfig ?? (field ? false : undefined),
     includeDependencies: opts.dependencies ?? (field ? false : undefined),
     format,
     outputPath,
@@ -226,10 +226,6 @@ export function validateInspectInput(input: Pick<CollectInspectCliOpts, "service
     throw new CommandInputError("--field 只支持 env 或 image");
   }
   if (input.search !== undefined && !input.search.trim()) throw new CommandInputError("--search 不能为空");
-  const field = input.field ?? (input.search !== undefined ? "env" : undefined);
-  if (field === "env" && input.deploymentConfig === false) {
-    throw new CommandInputError("Env 查询不能与 --no-deployment-config 同时使用");
-  }
   if (input.services !== undefined && (!input.services.length || input.services.some(value => !value.trim()))) {
     throw new CommandInputError("--service 不能为空");
   }

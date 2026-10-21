@@ -12,7 +12,7 @@ import { buildInspectEvidence, searchInspectFields } from "../src/collect/inspec
 import { buildInspectHtml, buildInspectHtmlSections, buildInspectSummary } from "../src/collect/inspect/render";
 import { validateInspectInput } from "../src/collect/inspect/options";
 import { createInspectInput } from "../src/collect/inspect/command";
-import type { EnvironmentConfigObservation, InspectDiagnosis, InspectFacts } from "../src/collect/inspect/model";
+import type { ContainerEnvironmentObservation, InspectDiagnosis, InspectFacts } from "../src/collect/inspect/model";
 import { unavailableFact } from "../src/collect/protocol";
 
 const facts: InspectFacts = {
@@ -21,20 +21,22 @@ const facts: InspectFacts = {
   dependencyTargets: unavailableFact("inspect.dependency-targets", "test", "not requested"),
   lifecycleSignals: unavailableFact("inspect.lifecycle-signals", "test", "fixture"),
 };
-const observation = (deployment: string, values: Record<string, string>): EnvironmentConfigObservation => ({
-  id: deployment, kind: "environment-config", schemaVersion: 1,
-  producer: { origin: "core", id: "environment-config" },
-  service: "api", deployment, container: "main", values,
+const observation = (pod: string, values: Record<string, string>): ContainerEnvironmentObservation => ({
+  id: pod, kind: "container-environment", schemaVersion: 1,
+  producer: { origin: "core", id: "container-environment" },
+  service: "api", workload: "api", pod, container: "main", status: "collected", values,
 });
 const evidence = buildInspectEvidence([
   observation("api-a", { SANDBOX_ENDPOINT: "http://compute-a:80", SERVICE_URL: "http://SandBox-B:80", LOG_LEVEL: "info" }),
   observation("api-b", { SANDBOX_ENDPOINT: "http://compute-c:80", LITERAL: "a.b[0]", AUTH: "[secretKeyRef:auth/token]" }),
+  { id: "declaration", kind: "environment-config", schemaVersion: 1, producer: { origin: "core", id: "environment-config" },
+    service: "api", deployment: "api", container: "main", values: { SANDBOX_ONLY_DECLARED: "should-not-match", LOG_LEVEL: "declaration" } },
 ], facts);
 
 test("Env search matches names and values case-insensitively and preserves each source", () => {
   const result = searchInspectFields(evidence, "env", "sAnDbOx");
   if (result.field !== "env") throw new Error("expected env result");
-  expect(result.matches.map(item => [item.name, item.value, item.deployment, item.container])).toEqual([
+  expect(result.matches.map(item => [item.name, item.value, item.pod, item.container])).toEqual([
     ["SANDBOX_ENDPOINT", "http://compute-a:80", "api-a", "main"],
     ["SERVICE_URL", "http://SandBox-B:80", "api-a", "main"],
     ["SANDBOX_ENDPOINT", "http://compute-c:80", "api-b", "main"],
@@ -45,14 +47,15 @@ test("Env search matches names and values case-insensitively and preserves each 
   expect(searchInspectFields(evidence, "env", ".*").matches).toEqual([]);
   expect(searchInspectFields(evidence, "env", "sandbox compute").matches).toEqual([]);
   expect(searchInspectFields(evidence, "env", "secretkeyref").matches[0]).toMatchObject({ value: "[secretKeyRef:auth/token]" });
-  expect(evidence.observations).toHaveLength(2);
-  expect(evidence.rows.some(item => item.name === "LOG_LEVEL")).toBe(true);
+  expect(evidence.observations).toHaveLength(3);
+  expect(searchInspectFields(evidence, "env", "should-not-match").matches).toEqual([]);
+  expect(evidence.observations[0]).toMatchObject({ values: { LOG_LEVEL: "info" } });
   expect(evidence.search).toBeUndefined();
 });
 
-test("search rejects empty keywords and conflicting config scope before access", () => {
+test("search rejects empty keywords and allows Pod Env without deployment configuration", () => {
   expect(() => validateInspectInput({ services: ["api"], search: "   " })).toThrow("--search 不能为空");
-  expect(() => validateInspectInput({ services: ["api"], search: "env", deploymentConfig: false })).toThrow("--no-deployment-config");
+  expect(() => validateInspectInput({ services: ["api"], search: "env", deploymentConfig: false })).not.toThrow();
   expect(() => validateInspectInput({ services: ["api"], search: "env" })).not.toThrow();
   expect(createInspectInput({ services: ["api"], search: "a" }).idempotencyKey?.())
     .not.toBe(createInspectInput({ services: ["api"], search: "b" }).idempotencyKey?.());
@@ -61,7 +64,7 @@ test("search rejects empty keywords and conflicting config scope before access",
 test("search reports filtered values and distinguishes an empty result from missing evidence", () => {
   const diagnosis: InspectDiagnosis = {
     evidence: { ...evidence, search: searchInspectFields(evidence, "env", "sandbox") }, findings: [],
-    coverage: [{ goal: "environment-config", status: "sufficient", missingEvidence: [] }],
+    coverage: [{ goal: "container-environment", status: "sufficient", missingEvidence: [] }],
   };
   const summary = buildInspectSummary(diagnosis, "qa");
   expect(summary).toContain("http://SandBox-B:80");
@@ -72,23 +75,23 @@ test("search reports filtered values and distinguishes an empty result from miss
   diagnosis.evidence.search = searchInspectFields(evidence, "env", "missing");
   expect(buildInspectSummary(diagnosis)).toContain("采集完整");
   expect(buildInspectSummary(diagnosis)).toContain("未找到匹配的 env");
-  diagnosis.coverage = [{ goal: "environment-config", status: "insufficient", missingEvidence: ["ConfigMap read failed"] }];
+  diagnosis.coverage = [{ goal: "container-environment", status: "insufficient", missingEvidence: ["pods/exec denied"] }];
   expect(buildInspectSummary(diagnosis)).toContain("未匹配不代表目标值不存在");
-  expect(buildInspectSummary(diagnosis)).toContain("ConfigMap read failed");
+  expect(buildInspectSummary(diagnosis)).toContain("pods/exec denied");
 });
 
 
 for (const scenario of [
-  { field: undefined, search: "sAnDbOx", configuration: true, count: 2 },
-  { field: "env" as const, search: undefined, configuration: true, count: 3 },
-  { field: "env" as const, search: "missing", configuration: true, count: 0 },
+  { field: undefined, search: "sAnDbOx", configuration: false, count: 2 },
+  { field: "env" as const, search: undefined, configuration: false, count: 3 },
+  { field: "env" as const, search: "missing", configuration: false, count: 0 },
   { field: "image" as const, search: undefined, configuration: false, count: 1 },
   { field: "image" as const, search: "IMAGE:v2", configuration: false, count: 1 },
   { field: "image" as const, search: "SHA256:ABCD", configuration: false, count: 1 },
   { field: "image" as const, search: "missing", configuration: false, count: 0 },
-  { field: "env" as const, search: "missing", configuration: true, count: 0, failConfig: true },
+  { field: "env" as const, search: "missing", configuration: false, count: 0, failExec: true },
 ]) {
-  test(`inspect field=${scenario.field ?? "implicit"} search=${scenario.search ?? "all"} failed=${!!scenario.failConfig}`, async () => {
+  test(`inspect field=${scenario.field ?? "implicit"} search=${scenario.search ?? "all"} failed=${!!scenario.failExec}`, async () => {
     const dir = mkdtempSync(join(tmpdir(), "inspect-search-test-"));
     const config = join(dir, "config.yaml");
     writeFileSync(config, "");
@@ -114,7 +117,6 @@ for (const scenario of [
         calls.push([...args]);
         if (args[0] === "config") return response("test\nhttps://cluster.test");
         const resource = args[1]!;
-        if (scenario.failConfig && resource === "configmaps") return { ...response(""), ok: false, exitCode: 1, stderr: "ConfigMap denied" };
         if (resources[resource]) {
           const selectorIndex = args.indexOf("-l");
           const selector = selectorIndex >= 0 ? args[selectorIndex + 1] : undefined;
@@ -128,7 +130,12 @@ for (const scenario of [
         }
         throw new Error(`Unexpected kubectl: ${args.join(" ")}`);
       },
-      exec: async () => { throw new Error("detail queries must not collect dependencies implicitly"); },
+      exec: async (target, command) => {
+        expect(command).toEqual(["printenv", "-0"]);
+        expect(target).toEqual({ pod: "api-0", container: "main" });
+        if (scenario.failExec) return { ...response(""), ok: false, exitCode: 1, stderr: "pods/exec denied" };
+        return response("SANDBOX_MODE=actual-pod\0OTHER_URL=http://SandBox.test\0LOG_LEVEL=runtime\0");
+      },
     };
     try {
       await runCollectInspect({ namespace: "demo", services: ["example-api"], field: scenario.field,
@@ -143,14 +150,16 @@ for (const scenario of [
       expect(JSON.stringify(result)).not.toContain("do-not-return");
       expect(result.matches.every(item => item.service === "example-api" && item.container === "main")).toBe(true);
       const summary = readFileSync(join(artifact.path, "summary.md"), "utf8");
-      if (scenario.failConfig) {
+      if (scenario.failExec) {
         expect(summary).toContain("证据不完整");
-        expect(summary).toContain("ConfigMap denied");
+        expect(summary).toContain("pods/exec denied");
       } else {
         expect(summary).toContain("采集完整");
       }
-      if (scenario.configuration && !scenario.failConfig) {
-        expect(diagnosis.evidence.rows.some(row => row.name === "LOG_LEVEL")).toBe(true);
+      if (result.field === "env" && !scenario.failExec) {
+        expect(diagnosis.evidence.observations.some(item => item.kind === "container-environment"
+          && item.values.LOG_LEVEL === "runtime")).toBe(true);
+        expect(result.matches.every(item => item.pod === "api-0")).toBe(true);
         if (scenario.search) expect(summary).not.toContain("LOG_LEVEL");
       }
       if (result.field === "image" && result.matches.length) {

@@ -38,25 +38,31 @@ doctor inspect -s api --field image --search registry.example.com
 `--field env|image` 选择要快速查看的信息；不带关键词时返回该字段的全部条目。
 `--search` 对 Env 名称或值、镜像地址或 Image ID 做忽略大小写的字面子串匹配；
 单独使用 `--search` 默认搜索 env。关键词不作为正则表达式，也不拆词；首尾空白会移除，
-空白关键词报错。结果保留原值和 Service、Deployment/Workload、Pod、Container 来源。
+空白关键词报错。结果保留原值和 Service、Workload、Pod、Container 来源。
 
-Env 查询明确开启 Deployment Env/ConfigMap 采集，不能与 `--no-deployment-config` 同用。
-Image 查询默认只读取 Workload 运行信息，不开启部署配置采集；两类查询均不默认采集应用依赖。
-显式传入 `--deployment-config` 或 `--dependencies` 时仍采集相应证据。
-Secret 引用仍只展示引用信息，不读取 Secret 内容。
+Env 查询通过 `pods/exec` 在每个 Pod 的业务 Container 内执行 `printenv -0`，读取现场环境变量；
+包括镜像 ENV、Kubernetes 注入值和已注入容器的 Secret 值。不会额外读取 Secret API。
+按 Workload 声明或 Service port 定位业务 Container，每个副本独立采集，不按镜像合并。
+缺少权限、Container 未运行、业务容器无法唯一定位或 printenv 不可用时，在 Coverage 中保留缺口；
+不会用 Deployment/ConfigMap 的声明值替代。NUL 分隔保留值中的换行和等号。
+
+Env 和 Image 查询均默认关闭部署配置与依赖采集；显式传入 `--deployment-config` 或
+`--dependencies` 时额外采集相应证据。部署配置仍表示声明，Env 搜索只匹配容器现场观测值。
 
 没有指定 format 或 output 时默认在终端显示结果；显式指定交付格式时沿用该格式。
 结构化结果保存在 `analysis/evidence.json` 的 `search` 字段中，包含 field、可选 keyword 和 matches；
 JSON 交付通过证据引用关联该文件。完整 Facts、Observations、Detector 输入和 Coverage 不受过滤影响。
 采集完整但没有匹配时成功返回空结果；采集不足时保留缺口，不将其解释为目标值不存在。
 
-Env 搜索仅覆盖当前配置 Probe 已解析的 Env；不展开挂载 YAML/JSON 的嵌套字段，也不读取进程环境。
+Env 表示容器内新执行进程观察到的环境，不展开挂载 YAML/JSON，也不声称反映应用启动后在进程内修改的环境变量。
 Image 来自发现的 Pod Container 声明及 imageID，不表示 Registry 当前 tag 指向的镜像。
 
 ## 终端运行摘要
 
 使用 `doctor inspect --service api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的
 Evidence 目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用相同的采集范围。
+`summary` 统一隐藏连接成功、权限检查和采集进度等 info/success 日志，保留 warn/error；
+结果摘要与 Evidence/Manifest 导航使用独立 writer，正常输出。
 
 Pod 总数按环境、namespace 和 UID 去重，异常明细保留 Service/Workload 关联。Ready 数量只表示
 当前就绪状态，历史重启或 OOM 不减少 Ready 数量。状态含义如下：

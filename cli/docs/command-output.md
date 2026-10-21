@@ -177,6 +177,10 @@ result/
 | bundle | 打包整个目录，保留相对引用 |
 | default | 外置 HTML 和完整 tar.gz |
 
+所有 Command 的 `summary` 格式都在公共 CLI action 入口将过程日志级别收敛到 warn，
+覆盖独立离线命令以及诊断命令的准备、执行和清理；直接/嵌入调用共享同一策略。
+发行版已有的 error 级别仍保留。结果摘要与证据导航通过独立 writer 输出，不受日志级别影响。
+
 `format` 只决定交付视图，不改变采集范围。manifest、summary、json、md 跳过 HTML 渲染。
 `collect -f summary` 在终端展示各子命令状态、已有摘要和证据链接，完整子结果仍保存在证据目录；
 不支持 `--output`。省略 `-f` 时仍采用原有默认格式。Manifest 和 Summary 只在根交付阶段生效，

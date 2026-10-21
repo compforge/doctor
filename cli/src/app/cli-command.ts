@@ -1,4 +1,5 @@
 import { Command, type Help } from "commander";
+import { withCommandLogger } from "../terminal/log";
 import { withInteractionOptions } from "../terminal/policy";
 import { commandOptionsWithSources } from "./option-sources";
 
@@ -22,7 +23,10 @@ export class CliCommand extends Command {
   }
 
   override action(handler: Parameters<Command["action"]>[0]): this {
-    return super.action((...args: Parameters<typeof handler>) =>
-      withInteractionOptions(commandOptionsWithSources(this), () => handler.apply(this, args)));
+    return super.action((...args: Parameters<typeof handler>) => {
+      const options = commandOptionsWithSources(this);
+      return withInteractionOptions(options, () =>
+        withCommandLogger(options, () => handler.apply(this, args)));
+    });
   }
 }

@@ -3,7 +3,7 @@ import { CommandInputError, CommandStatus, type CommandInput, type CommandResult
 import { reportError } from "./error-report";
 import { finalizeCommand } from "./finalize";
 import { prepareCommand, type CommandOptions } from "./prepare";
-import { withLogger } from "../terminal/log";
+import { withCommandLogger } from "../terminal/log";
 import { deliverPreparationFailure } from "./preparation-failure";
 import { withoutShadowedDefaults } from "./option-sources";
 import { withInteractionOptions } from "../terminal/policy";
@@ -26,7 +26,10 @@ export type CommandRuntime = {
   logLevel?: Distribution["logLevel"];
 };
 
-/** The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once. */
+/**
+ * The only profile-aware CLI lifecycle: execute a spec, then deliver exactly once.
+ * Direct/embedded invocations share the CLI action logging policy.
+ */
 export async function runCommand<Input extends CommandInput, Output>(
   spec: Command<Input, Output>,
   opts: CommandOptions,
@@ -34,7 +37,7 @@ export async function runCommand<Input extends CommandInput, Output>(
   runtime: CommandRuntime = {},
 ): Promise<void> {
   return withInteractionOptions(opts, () =>
-    withLogger(runtime.logLevel ?? "info", () => executeCommand(spec, opts, input, runtime)));
+    withCommandLogger(opts, () => executeCommand(spec, opts, input, runtime), runtime.logLevel ?? "info"));
 }
 
 async function executeCommand<Input extends CommandInput, Output>(

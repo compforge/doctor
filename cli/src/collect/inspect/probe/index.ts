@@ -7,6 +7,8 @@ import type {
   InspectFacts,
   InspectObservation,
 } from "../model";
+import { containerEnvironmentTargets } from "../fact/inspect";
+import { makeContainerEnvironmentProbe } from "./container-environment";
 import { makeServiceConfigProbe } from "./service-environment";
 import { makeDependencyInventoryProbe } from "./dependencies";
 import { makeAppArmorUnconfinedAdmissionProbe } from "./apparmor";
@@ -28,6 +30,7 @@ export function makeInspectProbes(
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
+    ...(config.field === "env" ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>
         Object.values(service.workloads).flatMap((workload) =>
