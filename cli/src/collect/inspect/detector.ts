@@ -1,6 +1,9 @@
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
   ConfigurationComparisonRow,
+  InspectField,
+  ImageSearchMatch,
+  InspectSearchResult,
   DependencyInventoryObservation,
   EnvironmentConfigObservation,
   InspectDiagnosisGoal,
@@ -87,6 +90,44 @@ export function buildInspectEvidence(
     return { name: row.displayName, env };
   }).sort((left, right) => left.name.localeCompare(right.name));
   return { observations, facts, rows: comparisonRows };
+}
+
+/**
+ * @spec Detail search matches literal substrings ignoring case and preserves each source.
+ * @rule Search is a projection: full Observations, Detector inputs and Coverage remain unchanged.
+ * @see {@link cli/docs/commands/inspect.md}
+ */
+export function searchInspectFields(evidence: InspectEvidence, field: InspectField, keyword?: string): InspectSearchResult {
+  const term = keyword?.toLowerCase() ?? "";
+  const contains = (text: string) => text.toLowerCase().includes(term);
+  if (field === "image") {
+    const targets = evidence.facts.serviceTargets;
+    const matches: ImageSearchMatch[] = [];
+    if (targets.status === "collected") {
+      for (const service of Object.values(targets.services)) {
+        for (const workload of Object.values(service.workloads)) {
+          if (workload.podRuntime.status !== "collected") continue;
+          for (const pod of workload.podRuntime.pods) {
+            for (const container of pod.containers) {
+              if (!contains(container.image) && !contains(container.imageId ?? "")) continue;
+              matches.push({ image: container.image, imageId: container.imageId,
+                service: service.service, workload: workload.name, pod: pod.pod, container: container.name });
+            }
+          }
+        }
+      }
+    }
+    return { field, keyword, matches };
+  }
+  return { field, keyword,
+    matches: environmentObservations(evidence.observations).flatMap(observation =>
+      Object.entries(observation.values).flatMap(([name, value]) => {
+        const text = typeof value === "string" ? value : JSON.stringify(value);
+        return contains(name) || contains(text)
+          ? [{ name, value, service: observation.service, deployment: observation.deployment, container: observation.container }]
+          : [];
+      })),
+  };
 }
 
 export const inspectDetectors: readonly Detector<InspectEvidence, InspectFinding>[] = [];

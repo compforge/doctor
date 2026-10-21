@@ -6,6 +6,8 @@ import type { Command } from "commander";
 import { createDoctorProgram, main } from "../src/app/main";
 import { DOCTOR_CLI_VERSION } from "../src/app/version";
 import { withLogger } from "../src/terminal/log";
+import { inspectCommand } from "../src/collect/inspect/command";
+import { commandOutcome } from "../src/command";
 import { testPlugin } from "./fixtures/test-plugin";
 
 // CLI 表面断言（help / version / 错误路径 / profile 与 init）全部在进程内完成：
@@ -420,6 +422,8 @@ describe("command help", () => {
     const result = await runWithPlugin(["inspect", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor inspect [options]");
+    expect(result.stdout).toContain("--search <keyword>");
+    expect(result.stdout).toContain("--field <field>");
     expect(result.stdout).toContain("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）");
     expect(result.stdout).toContain("-s, --service <name>");
     expect(result.stdout).toContain("--deployment-config");
@@ -429,6 +433,27 @@ describe("command help", () => {
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "json", "html", "md", "summary", "manifest"');
     expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
+  });
+
+  test("inspect detail queries default to summary and preserve explicit output choices", async () => {
+    const observed: Array<{ format?: string; field?: string; search?: string; services?: readonly string[] }> = [];
+    const mock = spyOn(inspectCommand, "run").mockImplementation(async (context, input) => {
+      observed.push({ format: context.options.format, field: input.field, search: input.search, services: input.services });
+      return commandOutcome(0);
+    });
+    try {
+      const config = configFile("");
+      for (const args of [
+        ["--search", "SaNdBoX"], ["--field", "image"],
+        ["--field", "image", "-f", "json"], ["--search", "url", "-o", "report"],
+      ]) {
+        expect((await runWithPlugin(["inspect", "-s", "example-api", "--config", config, ...args])).exitCode).toBe(0);
+      }
+      expect(observed.map(item => item.format)).toEqual(["summary", "summary", "json", undefined]);
+      expect(observed[0]).toMatchObject({ services: ["example-api"], search: "SaNdBoX" });
+      expect(observed[1]?.field).toBe("image");
+      expect((await runWithPlugin(["inspect", "-s", "example-api", "--field", "unknown"])).exitCode).not.toBe(0);
+    } finally { mock.mockRestore(); }
   });
 
   test("tenant exposes tenant-scoped data collection", async () => {
