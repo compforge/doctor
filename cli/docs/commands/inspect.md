@@ -26,6 +26,33 @@
 加载和环境连接前报参数错误。`-y` 不开启可选采集，需显式传 `--deployment-config` 或
 `--dependencies`；对应 `--no-*` 表示明确关闭，即使恢复交互也不再询问该项。
 
+## 快速查看字段
+
+```sh
+doctor inspect -s api --search sandbox
+doctor inspect -s api --field env --search SANDBOX
+doctor inspect -s api --field image
+doctor inspect -s api --field image --search registry.example.com
+```
+
+`--field env|image` 选择要快速查看的信息；不带关键词时返回该字段的全部条目。
+`--search` 对 Env 名称或值、镜像地址或 Image ID 做忽略大小写的字面子串匹配；
+单独使用 `--search` 默认搜索 env。关键词不作为正则表达式，也不拆词；首尾空白会移除，
+空白关键词报错。结果保留原值和 Service、Deployment/Workload、Pod、Container 来源。
+
+Env 查询明确开启 Deployment Env/ConfigMap 采集，不能与 `--no-deployment-config` 同用。
+Image 查询默认只读取 Workload 运行信息，不开启部署配置采集；两类查询均不默认采集应用依赖。
+显式传入 `--deployment-config` 或 `--dependencies` 时仍采集相应证据。
+Secret 引用仍只展示引用信息，不读取 Secret 内容。
+
+没有指定 format 或 output 时默认在终端显示结果；显式指定交付格式时沿用该格式。
+结构化结果保存在 `analysis/evidence.json` 的 `search` 字段中，包含 field、可选 keyword 和 matches；
+JSON 交付通过证据引用关联该文件。完整 Facts、Observations、Detector 输入和 Coverage 不受过滤影响。
+采集完整但没有匹配时成功返回空结果；采集不足时保留缺口，不将其解释为目标值不存在。
+
+Env 搜索仅覆盖当前配置 Probe 已解析的 Env；不展开挂载 YAML/JSON 的嵌套字段，也不读取进程环境。
+Image 来自发现的 Pod Container 声明及 imageID，不表示 Registry 当前 tag 指向的镜像。
+
 ## 终端运行摘要
 
 使用 `doctor inspect --service api -f summary` 直接打印紧凑摘要，完整证据仍保留在输出的

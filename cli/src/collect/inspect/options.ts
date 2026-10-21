@@ -73,6 +73,7 @@ export async function resolveInspectConfig(
   executor?: Executor,
 ): Promise<InspectConfig | undefined> {
   validateInspectInput(opts);
+  const field = opts.field ?? (opts.search !== undefined ? "env" : undefined);
   const timeWindow = resolveTimeWindow(opts);
   const format = parseInspectOutputFormat(opts.format);
   if (format === "json" && opts.output) throw new Error("--output 仅在 --format html 或 md 时可用");
@@ -95,8 +96,10 @@ export async function resolveInspectConfig(
     namespaceSource: collect.kubernetes.namespaceSource,
     services: opts.services === undefined ? [] : parseInspectServices(opts.services, plugin.services),
     servicesExplicit: opts.services !== undefined,
-    includeDeploymentConfig: opts.deploymentConfig,
-    includeDependencies: opts.dependencies,
+    search: opts.search?.trim(),
+    field,
+    includeDeploymentConfig: field === "env" ? true : opts.deploymentConfig ?? (field ? false : undefined),
+    includeDependencies: opts.dependencies ?? (field ? false : undefined),
     format,
     outputPath,
     reportName,
@@ -218,7 +221,15 @@ export async function resolveInspectServiceSelection(
 }
 
 /** Fail before Plugin loading or cluster access; target discovery is not a substitute for user intent. */
-export function validateInspectInput(input: Pick<CollectInspectCliOpts, "services">): void {
+export function validateInspectInput(input: Pick<CollectInspectCliOpts, "services" | "search" | "field" | "deploymentConfig">): void {
+  if (input.field !== undefined && input.field !== "env" && input.field !== "image") {
+    throw new CommandInputError("--field 只支持 env 或 image");
+  }
+  if (input.search !== undefined && !input.search.trim()) throw new CommandInputError("--search 不能为空");
+  const field = input.field ?? (input.search !== undefined ? "env" : undefined);
+  if (field === "env" && input.deploymentConfig === false) {
+    throw new CommandInputError("Env 查询不能与 --no-deployment-config 同时使用");
+  }
   if (input.services !== undefined && (!input.services.length || input.services.some(value => !value.trim()))) {
     throw new CommandInputError("--service 不能为空");
   }

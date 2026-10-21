@@ -507,7 +507,37 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
   });
 }
 
+function searchHeaders(diagnosis: InspectDiagnosis): string[] {
+  return diagnosis.evidence.search!.field === "env"
+    ? ["名称", "值", "Service", "Deployment", "Container"]
+    : ["Image", "Image ID", "Service", "Workload", "Pod", "Container"];
+}
+
+function searchRows(diagnosis: InspectDiagnosis): string[][] {
+  const search = diagnosis.evidence.search!;
+  return search.field === "env"
+    ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.deployment, item.container])
+    : search.matches.map(item => [item.image, item.imageId ?? "—", item.service, item.workload, item.pod, item.container]);
+}
+
+function searchStatus(diagnosis: InspectDiagnosis): string {
+  const goal = diagnosis.evidence.search!.field === "env" ? "environment-config" : "workload-runtime";
+  const complete = diagnosis.coverage.find(item => item.goal === goal)?.status === "sufficient";
+  return complete ? "采集完整" : "证据不完整，未匹配不代表目标值不存在";
+}
+
 export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "—"): string {
+  if (diagnosis.evidence.search) {
+    const search = diagnosis.evidence.search;
+    return [`# Inspect ${search.field}`, "", `- Namespace：${markdownCell(namespace)}`,
+      ...(search.keyword !== undefined ? [`- 关键词：${markdownCell(search.keyword)}（忽略大小写）`] : []),
+      `- 匹配项：${search.matches.length}；${searchStatus(diagnosis)}`, "",
+      ...(search.matches.length ? markdownTable(searchHeaders(diagnosis), searchRows(diagnosis)) : [`未找到匹配的 ${search.field}。`]),
+      "", ...diagnosis.coverage.flatMap(item => [
+        `- ${item.goal}：${item.status}`, ...item.missingEvidence.map(missing => `  - 缺失：${markdownCell(missing)}`),
+      ]), "", "[完整采集证据](raw/observations.json)",
+    ].join("\n");
+  }
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
     : 0;
@@ -595,6 +625,13 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
 }
 
 export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
+  if (diagnosis.evidence.search) {
+    const search = diagnosis.evidence.search;
+    return [htmlHeading(1, `Inspect ${search.field}`), htmlList([
+      ...(search.keyword !== undefined ? [`关键词：${search.keyword}（忽略大小写）`] : []),
+      `匹配项：${search.matches.length}`, searchStatus(diagnosis),
+    ])].join("\n");
+  }
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
     ? Object.keys(diagnosis.evidence.facts.serviceTargets.services).length
     : 0;
@@ -621,6 +658,16 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
 }
 
 export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlReportSection[] {
+  if (diagnosis.evidence.search) return [{
+    title: `匹配的 ${diagnosis.evidence.search.field}`,
+    html: diagnosis.evidence.search.matches.length
+      ? htmlTable(searchHeaders(diagnosis), searchRows(diagnosis)) : htmlParagraph(`未找到匹配的 ${diagnosis.evidence.search.field}。`),
+  }, {
+    title: "采集完整性",
+    html: htmlList(diagnosis.coverage.flatMap(item => [
+      `${item.goal}：${item.status}`, ...item.missingEvidence,
+    ])),
+  }];
   return [
     {
       title: "Workload / 声明",

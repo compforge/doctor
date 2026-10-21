@@ -265,6 +265,8 @@ function withCollectOptions(cmd: CommandT): CommandT {
 function withInspectOptions(cmd: CommandT): CommandT {
   return cmd
     .addOption(serviceOption("Kubernetes Service；缺省时交互多选，非交互必须指定"))
+    .addOption(new Option("--field <field>", "快速查看 env 或 image；默认终端展示").choices(["env", "image"]))
+    .option("--search <keyword>", "在所选字段内做忽略大小写的子串匹配；未指定 --field 时搜索 env")
     .option("--deployment-config", "采集 Deployment Env/ConfigMap；交互模式未指定时询问，-y 默认不采集")
     .option("--no-deployment-config", "不采集 Deployment Env/ConfigMap")
     .option("--dependencies", "进入业务 Container 采集应用依赖；交互模式未指定时询问，-y 默认不采集")
@@ -791,15 +793,20 @@ export function createDoctorProgram(
     await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withInspectOptions(
-    catalog.command("inspect").helpGroup("Collect · 采集与分析:").description("检查 Service 的 workload、配置、Toolchain 与应用依赖（只读）")
+    catalog.command("inspect").helpGroup("Collect · 采集与分析:").description("检查 Service 的 workload、配置与依赖；支持 --field env|image 和 --search 快速查值（只读）")
       .addHelpText("after", `
 分析思路：
   按 Service 查看 Workload 运行态，并按所选范围补充部署配置与现场依赖版本。
+  快速查值：--field env|image 选择字段，--search 按名称或值忽略大小写做包含匹配；默认搜索 env。
+示例：
+  doctor inspect -s api --search sandbox
+  doctor inspect -s api --field image --search sha256
 结果解读：
   声明的配置和资源量不等于进程当前值或实际用量；重启、OOM 与退避状态需结合日志和时间线判断。
 `),
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
+    if ((opts.field !== undefined || opts.search !== undefined) && opts.format === undefined && opts.output === undefined) opts.format = "summary";
     await runCommand(inspectCommand, opts, domainInput(opts), commandRuntime);
   });
   const tenant = withTenantOptions(

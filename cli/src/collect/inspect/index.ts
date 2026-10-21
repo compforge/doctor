@@ -23,6 +23,7 @@ import {
   buildInspectEvidence,
   makeInspectDetectors,
   projectInspectServiceFacts,
+  searchInspectFields,
 } from "./detector";
 import { makeServiceTargetsInspect } from "./fact/inspect";
 import type {
@@ -204,6 +205,8 @@ export async function runCollectInspect(
       time_window: config.timeWindow,
       services: config.services,
       deployment_config: config.includeDeploymentConfig,
+      search: config.search,
+      field: config.field,
       dependencies: config.includeDependencies,
       output_format: config.format,
     },
@@ -252,6 +255,11 @@ export async function runCollectInspect(
   }
   if (diagnosisFailure || !diagnosis) return commandOutcome(fail(diagnosisFailure ?? "配置诊断未形成结果"));
 
+  if (config.field !== undefined) {
+    diagnosis = { ...diagnosis, evidence: { ...diagnosis.evidence,
+      search: searchInspectFields(diagnosis.evidence, config.field, config.search),
+    } };
+  }
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
   bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
   writeCollection();

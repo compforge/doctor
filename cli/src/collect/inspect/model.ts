@@ -19,10 +19,14 @@ import type { EvidenceBundle } from "../evidence";
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
+export type InspectField = "env" | "image";
+
 export interface CollectInspectCliOpts extends TimeWindowOptions {
   namespace?: string;
   services?: readonly string[];
   deploymentConfig?: boolean;
+  search?: string;
+  field?: InspectField;
   dependencies?: boolean;
   kubeconfig?: string;
   context?: string;
@@ -39,6 +43,8 @@ export interface InspectConfig {
   services: string[];
   servicesExplicit: boolean;
   includeDeploymentConfig?: boolean;
+  search?: string;
+  field?: InspectField;
   includeDependencies?: boolean;
   format: InspectOutputFormat;
   outputPath?: string;
@@ -207,7 +213,30 @@ export interface ConfigurationComparisonRow {
 
 export interface InspectEvidence extends Evidence<InspectObservation, InspectFacts> {
   rows: ConfigurationComparisonRow[];
+  search?: InspectSearchResult;
 }
+
+export interface EnvSearchMatch {
+  name: string;
+  value: JsonValue;
+  service: string;
+  deployment: string;
+  container: string;
+}
+
+export interface ImageSearchMatch {
+  image: string;
+  imageId?: string;
+  service: string;
+  workload: string;
+  pod: string;
+  container: string;
+}
+
+export type InspectSearchResult = { keyword?: string } & (
+  | { field: "env"; matches: EnvSearchMatch[] }
+  | { field: "image"; matches: ImageSearchMatch[] }
+);
 
 export type InspectFinding = ServiceDetectorFinding;
 export type InspectDiagnosisGoal =

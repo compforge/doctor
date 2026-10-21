@@ -17,7 +17,7 @@ export function createInspectInput(input: Omit<InspectInput, "idempotencyKey">):
   return {
     ...input,
     idempotencyKey() {
-      return JSON.stringify([this.namespace ?? null, this.services ?? null, this.deploymentConfig ?? null, this.dependencies ?? null, this.since ?? null, this.sinceTime ?? null, this.untilTime ?? null]);
+      return JSON.stringify([this.namespace ?? null, this.services ?? null, this.search ?? null, this.field ?? null, this.deploymentConfig ?? null, this.dependencies ?? null, this.since ?? null, this.sinceTime ?? null, this.untilTime ?? null]);
     },
   };
 }
