@@ -119,7 +119,7 @@ export async function runCollectInspect(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod 证据，ConfigMap 配置标记为缺失",
   }] : [];
-  const environmentNeeds = config.field === "env" ? [{
+  const environmentNeeds = (config.field === "env" || config.field === "config") ? [{
     requirement: "preferred" as const,
     rule: { verb: "create" as const, resource: "pods/exec" },
     purpose: "逐个 Pod 的业务 Container 读取实际环境变量",

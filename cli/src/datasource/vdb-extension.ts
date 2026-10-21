@@ -1,3 +1,4 @@
+import { connectionDataSources } from "@compforge/doctor-plugin";
 import {
   VDB_TARGET_INSPECT_KIND, requireVdbTargetInspectExtension, vdbTargetOutput,
   type ServiceCatalog, type VdbTargetInspectExtension,
@@ -9,7 +10,7 @@ export function vdbTargetProviders(catalog: ServiceCatalog) {
   const seen = new Map<string, Set<string>>();
   return catalog.extensions(VDB_TARGET_INSPECT_KIND).map(({ service, extension }) => {
     const inspect = requireVdbTargetInspectExtension(extension);
-    const source = service.dataSources?.find(item => item.id === inspect.dataSource);
+    const source = connectionDataSources(service).find(item => item.id === inspect.dataSource);
     if (!source || source.kind !== "vdb") throw new Error(`${service.name}/${inspect.id}: unknown VDB dataSource '${inspect.dataSource}'`);
     if (source.source) throw new Error(`${service.name}/${inspect.dataSource}: datasource.vdb.inspect conflicts with a shared Client source`);
     const ids = seen.get(service.name) ?? new Set<string>();

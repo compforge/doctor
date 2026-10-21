@@ -465,7 +465,6 @@ const TOOLCHAIN_TABLE_HEADERS = [
   "Execution platform",
   "Dependency manager",
   "Build tool",
-  "Config capability",
 ] as const;
 
 function toolchainRows(diagnosis: InspectDiagnosis): string[][] {
@@ -478,7 +477,6 @@ function toolchainRows(diagnosis: InspectDiagnosis): string[][] {
       target.toolchain?.executionPlatform ?? "—",
       target.toolchain?.dependencyManager ?? "—",
       target.toolchain?.buildTool ?? "—",
-      target.configurationSupported ? "支持" : "未声明",
     ]);
 }
 
@@ -508,6 +506,7 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
 }
 
 function searchHeaders(diagnosis: InspectDiagnosis): string[] {
+  if (diagnosis.evidence.search!.field === "config") return ["名称", "值", "来源", "文件", "Service", "Workload", "Namespace", "Pod", "Container"];
   return diagnosis.evidence.search!.field === "env"
     ? ["名称", "值", "Service", "Workload", "Pod", "Container"]
     : ["Image", "Image ID", "Service", "Workload", "Pod", "Container"];
@@ -515,14 +514,17 @@ function searchHeaders(diagnosis: InspectDiagnosis): string[] {
 
 function searchRows(diagnosis: InspectDiagnosis): string[][] {
   const search = diagnosis.evidence.search!;
+  if (search.field === "config") return search.matches.map(item => [item.name, displayValue(item.value), item.source, item.path ?? "—", item.service, item.workload, item.namespace ?? "—", item.pod ?? "—", item.container ?? "—"]);
   return search.field === "env"
     ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.workload, item.pod, item.container])
     : search.matches.map(item => [item.image, item.imageId ?? "—", item.service, item.workload, item.pod, item.container]);
 }
 
 function searchStatus(diagnosis: InspectDiagnosis): string {
-  const goal = diagnosis.evidence.search!.field === "env" ? "container-environment" : "workload-runtime";
-  const complete = diagnosis.coverage.find(item => item.goal === goal)?.status === "sufficient";
+  const field = diagnosis.evidence.search!.field;
+  const goals = field === "config" ? ["container-environment", "file-configuration"]
+    : [field === "env" ? "container-environment" : "workload-runtime"];
+  const complete = goals.every(goal => diagnosis.coverage.find(item => item.goal === goal)?.status === "sufficient");
   return complete ? "采集完整" : "证据不完整，未匹配不代表目标值不存在";
 }
 

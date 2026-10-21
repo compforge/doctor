@@ -21,7 +21,7 @@ const pod = (name: string): InspectPodRuntimeFact => ({
 function facts(pods: InspectPodRuntimeFact[]): InspectFacts {
   return {
     serviceTargets: collectedFact("inspect.service-targets", "service-targets", { services: { api: {
-      service: "api", configurationSupported: false, workloads: { api: { name: "api", location: { kind: "labels", labels: { app: "api" } },
+      service: "api", workloads: { api: { name: "api", location: { kind: "labels", labels: { app: "api" } },
         probes: [], deployments: [], unavailableDeployments: [], podRuntime: collectedFact("inspect.workload-pods", "service-targets", { pods }) } },
     } } }),
     deploymentConfiguration: unavailableFact("inspect.deployment-configuration", "service-targets", "not requested"),

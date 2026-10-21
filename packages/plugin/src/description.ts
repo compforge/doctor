@@ -1,3 +1,4 @@
+import { connectionDataSources, fileDataSources } from "./datasource";
 import { requireFactsInspectExtension, type FactsInspectExtension } from "./extension";
 import type { CapabilityAccess } from "./kubernetes";
 import type { ServiceDefinition } from "./service";
@@ -14,7 +15,8 @@ export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "de
   details: {
     workloads: Workload[];
     dependencies: { id: string; service: string; dataSource: string }[];
-    dataSources: { id: string; kind: ServiceDataSourceKind; backend: string; description?: string }[];
+    dataSources: ({ id: string; kind: ServiceDataSourceKind; backend: string; description?: string }
+      | { kind: "file"; path: string; workload: string; description?: string })[];
     inspect?: Pick<FactsInspectExtension, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
     access: { owner: string; requirements: CapabilityAccess }[];
   };
@@ -46,10 +48,13 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
   for (const extension of service.extensions ?? []) {
     access.push({ owner: `extensions.${extension.id}`, requirements: describeAccess(extension.access) });
   }
-  for (const dataSource of service.dataSources ?? []) {
+  for (const dataSource of connectionDataSources(service)) {
     if (dataSource.access !== undefined) {
       access.push({ owner: `dataSources.${dataSource.id}`, requirements: describeAccess(dataSource.access) });
     }
+  }
+  for (const source of fileDataSources(service)) {
+    access.push({ owner: `dataSources.${source.workload}:${source.path}`, requirements: describeAccess(source.access) });
   }
   for (const source of service.cases ?? []) {
     for (const operation of ["produce", "runner"] as const) {
@@ -77,7 +82,8 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
             : { kind: location.kind, name: location.name },
       })),
       dependencies: (service.dependencies ?? []).map(({ id, service, dataSource }) => ({ id, service, dataSource })),
-      dataSources: (service.dataSources ?? []).map(({ id, kind, backend, description }) => ({ id, kind, backend, description })),
+      dataSources: [...connectionDataSources(service).map(({ id, kind, backend, description }) => ({ id, kind, backend, description })),
+        ...fileDataSources(service).map(({ path, workload, description }) => ({ kind: "file" as const, path, workload, description }))],
       inspect: inspect ? {
         description: inspect.description,
         limitations: [...(inspect.limitations ?? [])],

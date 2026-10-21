@@ -119,7 +119,7 @@ function lifecycleDiagnosis(): InspectDiagnosis {
           services: {
             api: {
               service: "api",
-              configurationSupported: false,
+
               workloads: {
                 main: {
                   name: "main",

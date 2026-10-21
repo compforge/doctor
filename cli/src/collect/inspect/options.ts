@@ -222,8 +222,8 @@ export async function resolveInspectServiceSelection(
 
 /** Fail before Plugin loading or cluster access; target discovery is not a substitute for user intent. */
 export function validateInspectInput(input: Pick<CollectInspectCliOpts, "services" | "search" | "field" | "deploymentConfig">): void {
-  if (input.field !== undefined && input.field !== "env" && input.field !== "image") {
-    throw new CommandInputError("--field 只支持 env 或 image");
+  if (input.field !== undefined && input.field !== "env" && input.field !== "image" && input.field !== "config") {
+    throw new CommandInputError("--field 只支持 env、config 或 image");
   }
   if (input.search !== undefined && !input.search.trim()) throw new CommandInputError("--search 不能为空");
   if (input.services !== undefined && (!input.services.length || input.services.some(value => !value.trim()))) {

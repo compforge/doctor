@@ -1,6 +1,7 @@
 import { containerEnvironmentTargets } from "./fact/inspect";
 import type { Detector, DiagnosisCoverage } from "../protocol";
 import type {
+  ConfigSearchMatch,
   ConfigurationComparisonRow,
   InspectField,
   ImageSearchMatch,
@@ -120,6 +121,18 @@ export function searchInspectFields(evidence: InspectEvidence, field: InspectFie
     }
     return { field, keyword, matches };
   }
+  if (field === "config") {
+    const matches: ConfigSearchMatch[] = evidence.observations.flatMap(observation => {
+      if ((observation.kind !== "file-configuration" && observation.kind !== "container-environment") || observation.status !== "collected") return [];
+      return Object.entries(observation.values).flatMap(([name, value]) => {
+        if (!contains(name) && !contains(typeof value === "string" ? value : JSON.stringify(value))) return [];
+        return [{ name, value, source: observation.kind === "file-configuration" ? "file" as const : "env" as const,
+          service: observation.service, workload: observation.workload, pod: observation.pod, container: observation.container,
+          ...(observation.kind === "file-configuration" ? { namespace: observation.namespace, path: observation.path } : {}) }];
+      });
+    });
+    return { field, keyword, matches };
+  }
   return { field, keyword,
     matches: evidence.observations.flatMap(observation => observation.kind === "container-environment" && observation.status === "collected"
       ? Object.entries(observation.values).flatMap(([name, value]) => contains(name) || contains(value)
@@ -199,6 +212,13 @@ export function projectInspectServiceEvidence(
           },
         })];
       }
+      if (observation.kind === "file-configuration") return [projectServiceEvidenceObservation({
+        services: [observation.service], probe: "file-configuration", source: observation,
+        value: { workload: observation.workload, path: observation.path, status: observation.status, values: observation.values,
+          ...(observation.namespace ? { namespace: observation.namespace } : {}),
+          ...(observation.pod ? { pod: observation.pod } : {}), ...(observation.container ? { container: observation.container } : {}),
+          ...(observation.reason ? { reason: observation.reason } : {}) },
+      })];
       if (observation.kind === "container-environment") {
         return [projectServiceEvidenceObservation({
           services: [observation.service], probe: "container-environment", source: observation,
@@ -270,7 +290,6 @@ export function buildInspectCoverage(
     environmentMissing.push(evidence.facts.serviceTargets.reason);
   } else if (evidence.facts.deploymentConfiguration.status !== "unavailable") {
     for (const [service, target] of Object.entries(evidence.facts.serviceTargets.services)) {
-      if (!target.configurationSupported) continue;
       for (const workload of Object.values(target.workloads)) {
         if (!workload.deployments.length) environmentMissing.push(`${service}/${workload.name} 没有可采集的 Deployment/Container`);
         for (const deployment of workload.unavailableDeployments) {
@@ -387,7 +406,7 @@ export function buildInspectCoverage(
       : collectedDependencies > 0 ? "partial" : "insufficient",
     missingEvidence: dependencyMissing,
   });
-  if (scope?.field === "env") {
+  if (scope?.field === "env" || scope?.field === "config") {
     const { targets, missing } = containerEnvironmentTargets(evidence.facts);
     let collected = 0;
     for (const target of targets) {
@@ -401,6 +420,23 @@ export function buildInspectCoverage(
     coverage.push({ goal: "container-environment",
       status: targets.length > 0 && collected === targets.length && !missing.length
         ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
+  }
+  if (scope?.field === "config") {
+    const missing: string[] = [];
+    let expected = 0;
+    let collected = 0;
+    if (evidence.facts.serviceTargets.status !== "collected") missing.push(evidence.facts.serviceTargets.reason);
+    else for (const service of Object.values(evidence.facts.serviceTargets.services)) {
+      for (const file of service.files ?? []) {
+        expected++;
+        const observation = evidence.observations.find(item => item.kind === "file-configuration" && item.id === file.id);
+        if (observation?.kind === "file-configuration" && observation.status === "collected") collected++;
+        else missing.push(observation?.kind === "file-configuration" && observation.reason
+          ? observation.reason : `${service.service}/${file.workload} ${file.path}: 未取得配置文件`);
+      }
+    }
+    coverage.push({ goal: "file-configuration", status: !missing.length && collected === expected
+      ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
   }
   // Coverage measures the requested scope, not optional collection the caller never selected.
   return coverage.filter(({ goal }) => !scope

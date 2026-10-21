@@ -3,7 +3,7 @@ import { isInteractive } from "../../terminal/policy";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import type {
-  ServiceDataSource,
+  ServiceConnectionDataSource,
   ServiceVdbTarget,
 } from "@compforge/doctor-plugin";
 import {
@@ -64,7 +64,7 @@ export interface CollectStoreCliOpts extends KubernetesCommandInput {
 export interface StoreConfig {
   collect: KubernetesCommandConfig;
   service: string;
-  capability: ServiceDataSource;
+  capability: ServiceConnectionDataSource;
   target?: PodTarget;
   vdbTarget?: ServiceVdbTarget;
   backendService?: string;
@@ -197,7 +197,7 @@ async function resolveCapability(
   requested: string | undefined,
   plugin: PluginDefinition,
   interactive: boolean,
-): Promise<ServiceDataSource | undefined> {
+): Promise<ServiceConnectionDataSource | undefined> {
   const choices = serviceDataSources(plugin.services, service, kind);
   const explicit = requested?.trim();
   if (explicit) {

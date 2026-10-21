@@ -1,3 +1,4 @@
+import { connectionDataSources } from "./datasource";
 import { validateKnowledgeDeclaration } from "./knowledge";
 import { validateExtension, type RegisteredExtension } from "./extension";
 import type { ServiceDefinition } from "./service";
@@ -12,6 +13,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
     for (const service of services) this.identities.set(service.name, service);
     for (const service of services) {
+      if ("configurationInspection" in service) throw new Error(`${service.name}.configurationInspection was removed; declare file dataSources`);
       if (service.knowledge !== undefined) validateKnowledgeDeclaration(service.knowledge, `${service.name}.knowledge`);
       if (service.upstream !== undefined && (!Array.isArray(service.upstream)
         || service.upstream.some(name => typeof name !== "string" || !name.trim()))) {
@@ -48,7 +50,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         if (sources.has(source.id)) throw new Error(`${service.name}: duplicate Case source '${source.id}'`);
         sources.add(source.id);
       }
-      for (const source of service.dataSources ?? []) {
+      for (const source of connectionDataSources(service)) {
         if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
           throw new Error(`${service.name}/${source.id}: source 与 environment 配置映射必须且只能声明一个`);
         }

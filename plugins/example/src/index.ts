@@ -21,7 +21,6 @@ const services = createServiceCatalog([
       dependencyManager: "npm",
       buildTool: "tsc",
     },
-    configurationInspection: true,
     cases: [apiCases],
     logs: { default: true }
   },

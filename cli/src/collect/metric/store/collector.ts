@@ -1,3 +1,4 @@
+import { connectionDataSources } from "@compforge/doctor-plugin";
 import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { parseExposition } from "@compforge/prombed";
 import type {
@@ -273,7 +274,7 @@ async function prepareDirectSamplers(input: {
   for (const serviceName of input.services) {
     const service = input.plugin.services.find(serviceName);
     if (!service) continue;
-    for (const store of service.dataSources ?? []) {
+    for (const store of connectionDataSources(service)) {
       try {
         if (store.kind === "redis") {
           const namespace = input.networkServices.find(item => item.name === serviceName)?.namespace ?? input.collect.kubernetes.namespace;
@@ -410,7 +411,7 @@ export async function prepareStoreMetricCollection(input: {
   const network = await listServiceNetwork(input.executor, input.namespace);
   const kinds = new Set<MetricStoreKind>();
   for (const serviceName of input.services) {
-    for (const store of input.plugin.services.find(serviceName)?.dataSources ?? []) {
+    for (const store of connectionDataSources(input.plugin.services.find(serviceName))) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }
@@ -525,7 +526,7 @@ export function selectedMetricStoreKinds(
 ): MetricStoreKind[] {
   const kinds = new Set<MetricStoreKind>();
   for (const service of services) {
-    for (const store of catalog.find(service)?.dataSources ?? []) {
+    for (const store of connectionDataSources(catalog.find(service))) {
       if (store.kind === "redis") kinds.add("redis");
       if (store.kind === "db" && store.backend === "mysql") kinds.add("mysql");
     }
