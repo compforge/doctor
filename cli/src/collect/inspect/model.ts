@@ -19,7 +19,7 @@ import type { EvidenceBundle } from "../evidence";
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-export type InspectField = "env" | "image";
+export type InspectField = "env" | "image" | "config";
 
 export interface CollectInspectCliOpts extends TimeWindowOptions {
   namespace?: string;
@@ -119,7 +119,7 @@ export interface InspectWorkloadTargetFact {
 export interface InspectServiceTargetFact {
   service: string;
   toolchain?: Toolchain;
-  configurationSupported: boolean;
+  files?: Array<{ id: string; path: string; workload: string }>;
   workloads: Record<string, InspectWorkloadTargetFact>;
 }
 
@@ -172,6 +172,31 @@ export interface ContainerEnvironmentObservation extends ObservationMeta, Contai
   reason?: string;
 }
 
+export interface FileConfigurationObservation extends ObservationMeta {
+  kind: "file-configuration";
+  service: string;
+  workload: string;
+  path: string;
+  namespace?: string;
+  pod?: string;
+  container?: string;
+  status: "collected" | "unavailable";
+  values: Record<string, JsonValue>;
+  reason?: string;
+}
+
+export interface ConfigSearchMatch {
+  name: string;
+  value: JsonValue;
+  source: "env" | "file";
+  service: string;
+  workload: string;
+  namespace?: string;
+  pod?: string;
+  container?: string;
+  path?: string;
+}
+
 export interface RuntimeDependency {
   name: string;
   version?: string;
@@ -220,6 +245,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
 export type InspectObservation =
   | EnvironmentConfigObservation
   | ContainerEnvironmentObservation
+  | FileConfigurationObservation
   | DependencyInventoryObservation
   | KubernetesAppArmorAdmissionObservation
   | PluginWorkloadObservation;
@@ -251,12 +277,14 @@ export interface ImageSearchMatch {
 export type InspectSearchResult = { keyword?: string } & (
   | { field: "env"; matches: EnvSearchMatch[] }
   | { field: "image"; matches: ImageSearchMatch[] }
+  | { field: "config"; matches: ConfigSearchMatch[] }
 );
 
 export type InspectFinding = ServiceDetectorFinding;
 export type InspectDiagnosisGoal =
   | "environment-config"
   | "container-environment"
+  | "file-configuration"
   | "workload-runtime"
   | "runtime-dependencies"
   | "workload-observations";
@@ -270,4 +298,8 @@ export interface InspectCommandContext {
   bundle: EvidenceBundle;
   workloadConfig?: KubernetesWorkloadConfigSnapshot;
   log: (line: string) => void;
+}
+
+export function fileConfigurationId(service: string, clientKey: string): string {
+  return `file-config-${service}-${clientKey}`;
 }

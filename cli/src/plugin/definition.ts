@@ -1,3 +1,4 @@
+import { connectionDataSources, isFileDataSource } from "@compforge/doctor-plugin";
 import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
 import {
@@ -109,7 +110,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   if (service.capabilities !== undefined || service.contributions !== undefined) throw new Error(`${service.name}: unsupported Service API; declare extensions, dataSources and detectors`);
-  if (service.configurationInspection !== undefined && typeof service.configurationInspection !== "boolean") throw new Error(`${service.name}.configurationInspection must be a boolean`);
+  if (service.configurationInspection !== undefined) throw new Error(`${service.name}.configurationInspection was removed; declare file dataSources`);
   if (service.logs !== undefined) {
     const logs = record(service.logs, `${service.name}.logs`);
     if (typeof logs.default !== "boolean") throw new Error(`${service.name}.logs.default must be a boolean`);
@@ -143,7 +144,22 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     }
   }
   if (service.dataSources !== undefined) {
-    const dataSources = uniqueIdRecords(service.dataSources, `${service.name}.dataSources`);
+    if (!Array.isArray(service.dataSources)) throw new Error(`${service.name}.dataSources must be an array`);
+    const files = service.dataSources.filter(isFileDataSource);
+    const keys = new Set<string>();
+    for (const file of files) {
+      const label = `${service.name}.dataSources file`;
+      nonEmptyString(file.path, `${label}.path`);
+      if (!file.path.startsWith("/") || file.path.includes("\0")) throw new Error(`${label}.path must be an absolute Pod path`);
+      nonEmptyString(file.clientKey, `${label}.clientKey`);
+      if (keys.has(file.clientKey)) throw new Error(`${label}: duplicate clientKey`);
+      keys.add(file.clientKey);
+      if (!workloadNames.has(file.workload)) throw new Error(`${label}: unknown workload '${file.workload}'`);
+      if (typeof file.createClient !== "function") throw new Error(`${label}.createClient must be a function`);
+      record(file.access, `${label}.access`);
+    }
+    const connections = service.dataSources.filter(source => !isFileDataSource(source));
+    const dataSources = connections.length ? uniqueIdRecords(connections, `${service.name}.dataSources`) : new Map<string, Record<string, unknown>>();
     for (const [id, store] of dataSources) {
       if (store.description !== undefined) nonEmptyString(store.description, `${service.name}.dataSources.${id}.description`);
       const label = `${service.name}.dataSources.${id}`;
@@ -231,7 +247,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
         dependency.dataSource,
         `${service.name}.dependencies.${id}.dataSource`,
       );
-      const store = provider.dataSources?.find((candidate) => candidate.id === storeId);
+      const store = connectionDataSources(provider).find((candidate) => candidate.id === storeId);
       if (!store) {
         throw new Error(
           `${service.name}.dependencies '${id}' references unknown Store '${providerName}/${storeId}'`,
@@ -258,7 +274,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
       const storeId = nonEmptyString(target.dataSource, "trace.source.dataSource.dataSource");
       const service = catalog.find(serviceName);
       if (!service) throw new Error(`trace.source.dataSource references unknown Service '${serviceName}'`);
-      if (!service.dataSources?.some((store) => store.id === storeId)) {
+      if (!connectionDataSources(service).some((store) => store.id === storeId)) {
         throw new Error(
           `trace.source.dataSource references unknown Store '${serviceName}/${storeId}'`,
         );

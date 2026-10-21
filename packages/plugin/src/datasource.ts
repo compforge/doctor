@@ -1,3 +1,4 @@
+import { isFileDataSource, type ServiceFileDataSource } from "./file";
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDefinition } from "./service";
 import type { DatabaseTarget } from "./database";
@@ -148,11 +149,21 @@ export interface ServiceRedisClient extends Client {
   readonly access: RedisAccessApi;
 }
 
-export type ServiceDataSource =
+export type ServiceConnectionDataSource =
   | ServiceDatabaseDataSource
   | ServiceVdbDataSource
   | ServiceS3DataSource
   | ServiceRedisDataSource;
+
+export type ServiceDataSource = ServiceConnectionDataSource | ServiceFileDataSource;
+
+export function connectionDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceConnectionDataSource[] {
+  return (service?.dataSources ?? []).filter((source): source is ServiceConnectionDataSource => !isFileDataSource(source));
+}
+
+export function fileDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceFileDataSource[] {
+  return (service?.dataSources ?? []).filter(isFileDataSource);
+}
 
 /** Native connections first, then a root-owned relay; protocol clients never dispose borrowed transports. */
 export function mysqlTransports(context: PluginClientContext): TcpTransport[] {
@@ -180,8 +191,8 @@ export function serviceDataSources(
   catalog: ServiceCatalog,
   service: string,
   kind?: ServiceDataSourceKind,
-): readonly ServiceDataSource[] {
-  const dataSources = catalog.find(service)?.dataSources ?? [];
+): readonly ServiceConnectionDataSource[] {
+  const dataSources = connectionDataSources(catalog.find(service));
   return kind ? dataSources.filter((store) => store.kind === kind) : dataSources;
 }
 
@@ -189,7 +200,7 @@ export function findServiceDataSource(
   catalog: ServiceCatalog,
   service: string,
   sourceId: string,
-): ServiceDataSource | undefined {
+): ServiceConnectionDataSource | undefined {
   return serviceDataSources(catalog, service).find((source) => source.id === sourceId);
 }
 
@@ -198,6 +209,6 @@ export function servicesWithDataSource<T extends ServiceDefinition>(
   kind?: ServiceDataSourceKind,
 ): T[] {
   return catalog.services.filter((service) =>
-    service.dataSources?.some((store) => !kind || store.kind === kind)
+    connectionDataSources(service).some((store) => !kind || store.kind === kind)
   );
 }

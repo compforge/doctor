@@ -1,3 +1,5 @@
+import { fileDataSources } from "@compforge/doctor-plugin";
+import { fileConfigurationId } from "../model";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type {
   ServiceCatalog,
@@ -339,13 +341,12 @@ export function makeServiceTargetsInspect(
       const services: Record<string, InspectServiceTargetFact> = {};
       for (const serviceName of config.services) {
         const declaredService = catalog.find(serviceName)!;
-        const configurationSupported = !!catalog.find(serviceName)?.configurationInspection;
         const workloads: InspectServiceTargetFact["workloads"] = {};
         for (const definition of declaredService.workloads) {
           const resolved = resolvedWorkloads.get(JSON.stringify([serviceName, definition.name]))!;
           const deployments = [] as typeof workloads[string]["deployments"];
           const unavailableDeployments = [] as typeof workloads[string]["unavailableDeployments"];
-          if (configurationSupported) {
+          if (config.includeDeploymentConfig) {
             for (const deployment of resolved.deployments) {
               const selected = selectWorkloadDeploymentContainer(resolved, deployment);
               if (selected.container) {
@@ -377,12 +378,12 @@ export function makeServiceTargetsInspect(
                 ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
                 : collectedFact("inspect.workload-pods", "service-targets", {
                   pods: resolved.pods.map((pod) => {
-                    const environment = config.field === "env" ? selectWorkloadPodContainer(resolved, pod) : undefined;
+                    const environment = (config.field === "env" || config.field === "config") ? selectWorkloadPodContainer(resolved, pod) : undefined;
                     return {
                       instance: resolved.instances.find(instance => instance.pod === pod.name)!,
                       pod: pod.name,
                       serviceAccountName: pod.serviceAccountName,
-                      ...(config.field === "env" ? {
+                      ...((config.field === "env" || config.field === "config") ? {
                         environmentContainer: environment?.container?.name,
                         environmentUnavailableReason: environment?.reason,
                       } : {}),
@@ -411,7 +412,9 @@ export function makeServiceTargetsInspect(
         services[serviceName] = {
           service: serviceName,
           toolchain: declaredService.toolchain,
-          configurationSupported,
+          files: config.field === "config" ? fileDataSources(declaredService).map(source => ({
+            id: fileConfigurationId(serviceName, source.clientKey), path: source.path, workload: source.workload,
+          })) : undefined,
           workloads,
         };
       }

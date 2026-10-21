@@ -1,3 +1,4 @@
+import { connectionDataSources } from "@compforge/doctor-plugin";
 import { metricConfigurationProviders } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
@@ -99,7 +100,7 @@ export async function resolveMetricConfig(
     services.includes(service.name) && Boolean(extension.access.kubernetes?.length)
   ));
   const hasStoreMetrics = services.some((service) => (
-    catalog.find(service)?.dataSources?.some((store) => (
+    connectionDataSources(catalog.find(service)).some((store) => (
       store.kind === "redis" || (store.kind === "db" && store.backend === "mysql")
     ))
   ));

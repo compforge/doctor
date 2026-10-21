@@ -150,7 +150,8 @@ test("Catalog declaration binds directly to the common Service without mutating 
   const first = bindService(definition, { name: "test", kind: "kubernetes" });
   const second = bindService(definition, { name: "prod", kind: "kubernetes" });
   const shared: import("@compforge/harness-common").Service = first;
-  expect(shared.component).toBe(definition.component);
+  expect(shared.component).toMatchObject(definition.component);
+  expect(shared.component.repository.id()).toBe("github/sample/api");
   expect(shared.workloads).toBe(definition.workloads);
   expect(first.environment.name).toBe("test");
   expect(second.environment.name).toBe("prod");

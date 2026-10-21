@@ -1,3 +1,4 @@
+import { repositoryId, type Component, type Repository } from "@compforge/harness-common";
 import type { Case } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
@@ -407,7 +408,9 @@ export interface ServiceRelationship {
  * @spec Common Service owns identity, structured Knowledge, upstream and Workload declarations.
  * @rule Knowledge is Plugin-authored structured offline content; it must not contain credentials or runtime configuration.
  */
-export interface ServiceDefinition extends Omit<Service, "environment"> {
+export interface ServiceDefinition extends Omit<Service, "environment" | "component"> {
+  /** Offline repository identity fields; binding supplies the Common runtime identity method. */
+  component: Omit<Component, "repository"> & { repository: Omit<Repository, "id"> };
   /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */
   aliases?: readonly string[];
   relationships?: readonly ServiceRelationship[];
@@ -425,8 +428,6 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
   cases?: readonly ServiceCaseSource[];
-  /** Explicit opt-in to configuration inspection. */
-  configurationInspection?: boolean;
   /**
    * Presence enables log collection; default selects the implicit collection scope.
    * errorPatterns declares Service-specific error signatures that do not look like generic
@@ -451,5 +452,7 @@ export interface ServiceDefinition extends Omit<Service, "environment"> {
 export function bindService<T extends ServiceDefinition, E extends Environment>(
   definition: T, environment: E,
 ): T & Service<E> {
-  return { ...definition, environment };
+  return { ...definition, environment, component: { ...definition.component,
+    repository: { ...definition.component.repository, id() { return repositoryId(this); } },
+  } };
 }

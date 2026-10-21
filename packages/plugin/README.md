@@ -12,7 +12,14 @@ Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出
 
 `dataSources` 描述可复用的数据访问资源，`detectors` 注册只读 Evidence 的纯分析函数，
 `environmentProbes` 声明由 Core 执行的环境检查。这些对象各有所有权，不需要包装成可调用函数。
-`configurationInspection` 和 `logs` 控制通用配置与日志采集的参与范围。
+`logs` 控制通用日志采集的参与范围。配置文件通过静态 `dataSources` 声明，
+`doctor inspect --field config` 读取这些文件以及 Pod 环境变量。
+
+`fileDataSource(path, { workload, access, resolve })` 直接作为数组成员，
+无需 Store 的 `id/kind/source` 包装。加载 Catalog 不执行 `resolve`；宿主首次创建客户端时
+传入 `PluginClientContext`，定位 Pod/Container，随后按需读取。底层复用 Quality Harness
+的 `PodFileDataSource`，客户端由根 Command 管理，文件读取有大小与时间上限。
+`configurationInspection` 已移除。
 
 Plugin 作者只需导出 `PluginDefinition` 和 Service Catalog。模型、租户等领域的提供方由 Command
 从 kind 候选中选择；多候选必须按命令规则明确选择，不用注册顺序决定默认提供方。

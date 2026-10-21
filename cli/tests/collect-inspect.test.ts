@@ -182,7 +182,7 @@ test("Service Probe Fact 投影不按 Service 过滤 Core Inspect Facts", () => 
     serviceTargets: collectedFact("inspect.service-targets", "service-targets", {
       services: Object.fromEntries(["api", "worker"].map((service) => [service, {
         service,
-        configurationSupported: false,
+
         workloads: {},
       }])),
     }),
@@ -234,7 +234,7 @@ function runtimeSummaryDiagnosis(): InspectDiagnosis {
           services: {
             "planit-server": {
               service: "planit-server",
-              configurationSupported: false,
+
               workloads: {
                 main: {
                   name: "main",

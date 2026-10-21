@@ -1,3 +1,4 @@
+import { PodFileDataSource } from "@compforge/harness-toolbox/file";
 import { kubernetesCommandError } from "@compforge/harness-toolbox/errors";
 import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
@@ -89,6 +90,7 @@ function createKubernetesAccess(
     target: Parameters<KubernetesAccess["portForward"]>[0],
   ) => ReturnType<KubernetesAccess["portForward"]>,
   podRelay: (namespace: string, target: Parameters<KubernetesAccess["podRelay"]>[0]) => ReturnType<KubernetesAccess["podRelay"]>,
+  readFile: (namespace: string, ...args: Parameters<KubernetesAccess["readFile"]>) => ReturnType<KubernetesAccess["readFile"]>,
 ): KubernetesAccess {
   const scoped = (namespace: string): KubernetesAccess => {
     const assertDeclared = (verb: string, resource: string, resourceName?: string): void => {
@@ -141,6 +143,11 @@ function createKubernetesAccess(
             timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
           }),
         );
+      },
+      readFile: async (target, path, options) => {
+        assertDeclared("create", "pods/exec", target.pod);
+        return readFile(namespace, target, path, { ...options,
+          signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal });
       },
       podRelay: async target => {
         // Check every borrower, including when another Service already started the shared relay.
@@ -201,9 +208,10 @@ export function createPluginContext(
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);
   const clusterKey = clientKey("kubernetes", kube);
+  const clusterSource = { clientKey: clusterKey, createClient: (_clients: Pick<ClientManager, "get">, rootSignal: AbortSignal) => new KubernetesClient(kube, rootSignal, executor) };
   const cluster = () => {
     if (options.environment.kind !== "kubernetes" || !executor) throw new Error("This Extension context has no Kubernetes target");
-    return clients.get({ clientKey: clusterKey, createClient: (_clients, rootSignal) => new KubernetesClient(kube, rootSignal, executor) });
+    return clients.get(clusterSource);
   };
   const relay = async (ns: string) => {
     const kubernetes = await cluster();
@@ -223,7 +231,11 @@ export function createPluginContext(
         run: async (command, runOptions) => (client ?? await cluster()).run(ns, command, runOptions),
         exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
       }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
-      async (ns, target) => (await relay(ns)).connect(target)),
+      async (ns, target) => (await relay(ns)).connect(target),
+      async (namespace, target, path, limits) => {
+        const file = await clients.get(new PodFileDataSource(clusterSource, { namespace, ...target }, path, { concurrency: 4 }));
+        return file.read(limits);
+      }),
     },
     signal: accessSignal,
   });

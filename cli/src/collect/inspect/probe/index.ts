@@ -1,3 +1,5 @@
+import { fileDataSources } from "@compforge/doctor-plugin";
+import { makeFileConfigurationProbe } from "./file-configuration";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type { Probe } from "../../protocol";
 import type { ServiceCatalog, ServiceEvidenceFact } from "@compforge/doctor-plugin";
@@ -30,7 +32,8 @@ export function makeInspectProbes(
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
-    ...(config.field === "env" ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
+    ...(config.field === "config" ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
+    ...((config.field === "env" || config.field === "config") ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>
         Object.values(service.workloads).flatMap((workload) =>
