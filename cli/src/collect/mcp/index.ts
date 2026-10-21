@@ -89,7 +89,6 @@ function failedSummary(traceId: string, reason: string): string {
     `- status: failed`,
     `- reason: ${reason}`,
     "",
-    "已取得的原始证据与失败步骤见 manifest.json 和 raw/。",
     "",
   ].join("\n");
 }

@@ -1,3 +1,4 @@
+import { captureSerializedDirectory } from "./report-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { runCommand } from "../src/app/command";
@@ -15,6 +16,7 @@ for (const [format, logLevel, progress, warnings] of [
     const previousExitCode = process.exitCode;
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     const command = defineCommand({
       name: "fixture",
       prepare: async (_context, input: {}) => {
@@ -42,14 +44,15 @@ for (const [format, logLevel, progress, warnings] of [
       if (format === "summary") {
         expect(out).toContain("Actual summary");
         expect(out).toContain("actual-result");
-        directory = err.split("\n").find(line => line.startsWith("[delivery] Evidence: "))?.slice("[delivery] Evidence: ".length);
+        directory = captured.directory;
+        expect(err).not.toContain("[delivery]");
       } else {
         const record = JSON.parse(out.slice(out.indexOf("{")));
         directory = record.delivery.location.directory;
       }
       expect(directory).toBeDefined();
     } finally {
-      stdout.mockRestore(); stderr.mockRestore();
+      stdout.mockRestore(); stderr.mockRestore(); captured.restore();
       process.exitCode = previousExitCode;
       if (directory) rmSync(directory, { recursive: true, force: true });
     }
@@ -63,6 +66,7 @@ for (const format of ["summary", "text"]) {
     const { writeOutput } = await import("../src/terminal/output");
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     const previousExitCode = process.exitCode;
     try {
       const program = new CliCommand();
@@ -88,7 +92,7 @@ for (const format of ["summary", "text"]) {
         expect(out).toContain("STANDALONE_RESULT");
       }
     } finally {
-      stdout.mockRestore(); stderr.mockRestore(); process.exitCode = previousExitCode;
+      stdout.mockRestore(); stderr.mockRestore(); captured.restore(); process.exitCode = previousExitCode;
     }
   });
 }

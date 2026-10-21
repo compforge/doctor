@@ -26,6 +26,7 @@ interface Session {
   nodes: Node[];
   sources: Map<string, CommandArtifact>;
   onError?: (error: unknown, command: string) => void;
+  summaryPresentation: "result" | "evidence";
 }
 
 /** Local-only writer. Each child gets its own directory; only the session owns result identity. */
@@ -34,8 +35,9 @@ export class SerializeContext {
     private readonly ancestors: ReadonlySet<Node>) {}
 
   static async create<Input extends CommandInput, Output>(root: string, spec: Pick<CommandSpec<Input, Output>, "name" | "serialize">,
-    result: CommandResult<Output>, onError?: Session["onError"]): Promise<SerializeContext> {
-    const session: Session = { root, results: new WeakMap(), nodes: [], sources: new Map(), onError };
+    result: CommandResult<Output>, onError?: Session["onError"],
+    summaryPresentation: Session["summaryPresentation"] = "evidence"): Promise<SerializeContext> {
+    const session: Session = { root, results: new WeakMap(), nodes: [], sources: new Map(), onError, summaryPresentation };
     const node = SerializeContext.node(session, spec, result, ".");
     const context = new SerializeContext(session, node, new Set([node]));
     node.pending = context.run(spec, result);
@@ -59,6 +61,8 @@ export class SerializeContext {
 
   get directory(): string { return join(this.session.root, this.node.path); }
   get root(): string { return this.session.root; }
+  /** Root finish selects one presentation for the entire result tree; evidence is always serialized. */
+  get includeEvidenceNavigation(): boolean { return this.session.summaryPresentation === "evidence"; }
   get failed(): boolean { return this.session.nodes.some(node => node.errors.length > 0); }
   get artifacts(): readonly CommandArtifact[] { return [...this.session.sources.values()]; }
 
@@ -191,7 +195,7 @@ export class SerializeContext {
     }
     body += `\n采集状态：${result.status}\n${reason ? `原因：${summaryText(reason)}\n` : ""}`;
     body += this.node.errors.map(error => `序列化缺口：${summaryText(error)}\n`).join("");
-    const navigation = summaryNavigation(this.directory, files, children);
+    const navigation = summaryNavigation(this.directory, files, children, this.includeEvidenceNavigation);
     for (const [key, file] of Object.entries(files)) if (file.path === "summary.md") delete files[key];
     files.summary = this.writeText("summary.md", `${body.trimEnd()}${navigation.length ? "\n" + navigation.join("\n") : "\n"}`);
     // Publish the inventory only after all successfully written files and child manifests exist.

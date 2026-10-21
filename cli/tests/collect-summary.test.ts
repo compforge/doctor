@@ -9,7 +9,7 @@ import { parseMetricOutputFormat } from "../src/collect/metric/config";
 import { parseTraceOutputFormat } from "../src/collect/trace";
 import { CommandContext, CommandStatus } from "../src/command";
 import { commandOptions } from "../src/command/options";
-import { finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 
 test("collect accepts explicit summary without changing the distribution default", async () => {
   const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
@@ -60,6 +60,7 @@ for (const format of ["summary", "manifest"] as const) {
       : { status: CommandStatus.Failed, artifacts: [], reason: "metrics unavailable" });
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     const render = spyOn(command, "render");
     let directory: string | undefined;
     try {
@@ -70,13 +71,13 @@ for (const format of ["summary", "manifest"] as const) {
       expect(render).not.toHaveBeenCalled();
       const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
       if (format === "summary") {
-        directory = stderr.mock.calls.map(([line]) => String(line))
-          .find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+        directory = captured.directory;
         expect(terminal).toContain("log: ok");
         expect(terminal).toContain("metric: failed");
         expect(terminal).toContain("metrics unavailable");
         expect(terminal).toContain("30 requests collected");
-        expect(terminal).toContain("manifest.json");
+        expect(terminal).not.toContain("manifest.json");
+        expect(terminal).not.toContain("证据导航");
         expect(terminal).not.toContain("request-29");
         expect(terminal.length).toBeLessThan(3000);
       } else {
@@ -94,7 +95,7 @@ for (const format of ["summary", "manifest"] as const) {
       const metric = JSON.parse(readFileSync(join(directory!, manifest.children[1].manifest), "utf8"));
       expect(metric.execution).toMatchObject({ status: "failed", reason: "metrics unavailable" });
     } finally {
-      render.mockRestore(); stdout.mockRestore(); stderr.mockRestore();
+      render.mockRestore(); stdout.mockRestore(); stderr.mockRestore(); captured.restore();
       await context.disposeClients();
       if (directory) rmSync(directory, { recursive: true, force: true });
     }

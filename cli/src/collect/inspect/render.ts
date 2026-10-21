@@ -535,7 +535,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
       ...(search.matches.length ? markdownTable(searchHeaders(diagnosis), searchRows(diagnosis)) : [`未找到匹配的 ${search.field}。`]),
       "", ...diagnosis.coverage.flatMap(item => [
         `- ${item.goal}：${item.status}`, ...item.missingEvidence.map(missing => `  - 缺失：${markdownCell(missing)}`),
-      ]), "", "[完整采集证据](raw/observations.json)",
+      ]), "",
     ].join("\n");
   }
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
@@ -545,7 +545,6 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "# Service Inspect",
     "",
     inspectHighlights(diagnosis, namespace),
-    "[Pod 与镜像](#workload-pods) · [运行事件](#workload-events) · [原始 Facts](raw/facts.json)",
     "",
     `- Service：${services}`,
     `- Pod：${podSummary(diagnosis)}`,
@@ -592,8 +591,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
       workloadProbeRows(diagnosis),
     ),
     "",
-    "[完整 Probe 原始证据](raw/observations.json)",
-    ...(workloadProbeObservations(diagnosis).length > 24 ? [`另有 ${workloadProbeObservations(diagnosis).length - 24} 个 Probe，见原始证据。`] : []),
+    ...(workloadProbeObservations(diagnosis).length > 24 ? [`另有 ${workloadProbeObservations(diagnosis).length - 24} 个 Probe 未在摘要中展示。`] : []),
     "",
     '<a id="workload-events"></a>',
     "### 运行事件（关联所选 Workload）",

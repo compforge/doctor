@@ -49,5 +49,5 @@ export function renderSummary(summary: Summary, data: unknown): string {
   return [`# ${summaryText(projection.title)}`, "",
     ...(projection.text ? [summaryText(projection.text), ""] : []),
     ...projection.fields.map(field => `- ${summaryText(field.label)}：${summaryText(field.value)}`),
-    ...(projection.omitted ? [`- 另有 ${projection.omitted} 个字段，见原始数据。`] : []), ""].join("\n");
+    ...(projection.omitted ? [`- 另有 ${projection.omitted} 个字段未在摘要中展示。`] : []), ""].join("\n");
 }

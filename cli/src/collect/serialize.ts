@@ -80,7 +80,7 @@ export function serializeEvidence(context: SerializeContext, artifacts: readonly
         localFiles.summarySpec = context.writeJson(posix.join(prefix, "summary.json"), binding);
         localFiles.summaryProjection = context.writeJson(posix.join(prefix, "summary-projection.json"), projectSummary(binding.summary, data));
         localFiles.summary = context.writeText(posix.join(prefix, "summary.md"),
-          `${renderSummary(binding.summary, data)}\n采集状态：${description.execution.status}\n\n${localFiles.summary ? readFileSync(context.path(localFiles.summary.path), "utf8") : ""}\n[完整证据](manifest.json)\n`);
+          `${renderSummary(binding.summary, data)}\n采集状态：${description.execution.status}\n\n${localFiles.summary ? readFileSync(context.path(localFiles.summary.path), "utf8") : ""}${context.includeEvidenceNavigation ? "\n[完整证据](manifest.json)\n" : "\n"}`);
       }
       // Prefer semantic keys (facts, summary) over the copy pass's filename aliases.
       for (const [key, file] of Object.entries(localFiles)) {
@@ -89,7 +89,7 @@ export function serializeEvidence(context: SerializeContext, artifacts: readonly
       }
       if (prefix) {
         if (!localFiles.summary) localFiles.summary = context.writeText(`${prefix}/summary.md`,
-          `# ${description.title}\n\n采集状态：${description.execution.status}\n\n[完整证据](manifest.json)\n`);
+          `# ${description.title}\n\n采集状态：${description.execution.status}\n${context.includeEvidenceNavigation ? "\n[完整证据](manifest.json)\n" : "\n"}`);
         const relativeFiles = Object.fromEntries(Object.entries(localFiles).map(([key, file]) =>
           [key, { ...file, path: posix.relative(prefix, file.path) }]));
         const manifest: Manifest = { schemaVersion: 2, kind: "artifact", id: artifact.id,

@@ -254,7 +254,6 @@ export function renderLogResult(
   }
   lines.push(
     "",
-    "结构化时间线见 `timeline.jsonl`，聚合文本见 `service-logs.txt`；逐 pod 原始证据见 `raw/`。",
   );
   if (stats.podCount === 0) {
     lines.push("", "> 未找到目标服务的运行中 pod；请确认 namespace 与 --service。");

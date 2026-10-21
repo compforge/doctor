@@ -1,3 +1,5 @@
+import { spyOn } from "bun:test";
+import { SerializeContext } from "../src/command/serialization/context";
 import { strFromU8, unzipSync } from "fflate";
 import type { CommandContext, CommandInput, CommandResult, Command } from "../src/command";
 import { CommandStatus, commandOutcome } from "../src/command";
@@ -62,4 +64,13 @@ export function finalizeFixture(context: CommandContext, delivery: CommandDelive
     render: async () => fixtureReport(context).report,
   };
   return finalizeCommand({ context, spec, commandInput: {}, result, delivery, code });
+}
+
+/** Observe the internal result directory without requiring terminal evidence announcements. */
+export function captureSerializedDirectory() {
+  const create = spyOn(SerializeContext, "create");
+  return {
+    get directory(): string | undefined { return create.mock.calls.at(-1)?.[0]; },
+    restore: () => create.mockRestore(),
+  };
 }

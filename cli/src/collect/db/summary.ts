@@ -21,13 +21,13 @@ export function databaseDiscoverySummary(discovery: readonly DbDiscovery[], fail
     const state = error ?? (result?.truncated ? "partial（清单截断）" : databases.length ? "ok" : "未发现可见数据库");
     for (const source of provider.dataSources) {
       for (const database of databases.length ? databases : ["—"]) {
-        if (lines.length >= previewRows + 2) return `${lines.join("\n")}\n\n发现清单仅预览前 ${previewRows} 条；完整已采集清单见证据。`;
+        if (lines.length >= previewRows + 2) return `${lines.join("\n")}\n\n发现清单仅预览前 ${previewRows} 条。`;
         lines.push(`| ${cell(source.id)} | ${cell(database)} | ${cell(source.description ?? "—")} | ${cell(state)} |`);
       }
     }
   }
   for (const failure of failures) {
-    if (lines.length >= previewRows + 2) return `${lines.join("\n")}\n\n发现清单仅预览前 ${previewRows} 条；完整已采集清单见证据。`;
+    if (lines.length >= previewRows + 2) return `${lines.join("\n")}\n\n发现清单仅预览前 ${previewRows} 条。`;
     lines.push(`| ${cell(failure.id)} | — | ${cell(failure.description ?? "—")} | ${cell(failure.reason)} |`);
   }
   return lines.join("\n");
@@ -93,12 +93,12 @@ export function databaseSummary(input: DatabaseSummaryInput): string {
       if (item.result) lines.push(resultPreview(item.result));
       if (item.error) lines.push(`原因：${cell(item.error)}`);
     }
-    if (input.action === "tables" && input.discovery.length > 3) lines.push("", "其余来源见完整证据。");
+    if (input.action === "tables" && input.discovery.length > 3) lines.push("", "其余来源未在摘要中展示。");
   }
   const failures = [...input.failures.map(item => `${item.id}: ${item.reason}`),
     ...input.discovery.filter(item => item.error).map(item => `${item.provider.id}: ${item.error}`)];
   if (failures.length) lines.push("", "## 访问失败", "", ...failures.slice(0, 3).map(reason => `- ${cell(reason)}`),
-    ...(failures.length > 3 ? ["- 其余失败见完整证据。"] : []));
-  lines.push("", "完整已采集结果见证据目录；预览省略不代表查询结果截断。", "");
+    ...(failures.length > 3 ? ["- 其余失败未在摘要中展示。"] : []));
+  lines.push("", "预览省略不代表查询结果截断。", "");
   return lines.join("\n");
 }

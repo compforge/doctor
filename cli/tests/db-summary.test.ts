@@ -10,7 +10,7 @@ import type { DbInput } from "../src/collect/db/input";
 import type { DbProvider } from "../src/collect/db/discovery";
 import * as providers from "../src/collect/db/providers";
 import { databaseSummary } from "../src/collect/db/summary";
-import { finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 import { withLogger } from "../src/terminal/log";
 
 const directories: string[] = [];
@@ -75,6 +75,7 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
     const environment = spyOn(ctx, "ensureEnvironment").mockResolvedValue();
     const output = spyOn(process.stdout, "write").mockImplementation(() => true);
     const evidenceOutput = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     const render = spyOn(dbCommand, "render");
     const failed = ["query-failure", "ambiguous", "discovery-failure"].includes(scenario);
     const partial = scenario === "rows" || scenario === "bytes";
@@ -93,7 +94,8 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
       expect(calls.length).toBe(countBeforeDelivery);
       expect(render).not.toHaveBeenCalled();
       const stderr = evidenceOutput.mock.calls.map(([value]) => String(value)).join("");
-      const directory = stderr.split("\n").find(line => line.startsWith("[delivery] Evidence: "))!.slice("[delivery] Evidence: ".length);
+      expect(stderr).not.toContain("[delivery]");
+      const directory = captured.directory!;
       directories.push(directory);
       const manifest = JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
       const summary = readFileSync(join(directory, manifest.files.summary.path), "utf8");
@@ -102,7 +104,8 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
       expect(stdout).not.toContain("never-output");
       expect(stdout).not.toContain(input.execute ?? "SELECT private");
       expect(stdout).toContain("Service：api");
-      expect(stdout).toContain("完整已采集结果见证据目录");
+      expect(stdout).not.toContain("完整已采集结果见证据目录");
+      expect(stdout).not.toContain("证据导航");
       expect(manifest.execution.status).toBe(outcome.status);
       expect(existsSync(join(directory, "report.html"))).toBe(false);
       if (scenario === "query-failure") {
@@ -143,7 +146,7 @@ for (const scenario of ["success", "empty", "rows", "bytes", "query-failure", "a
         }
       }
     } finally {
-      render.mockRestore(); output.mockRestore(); evidenceOutput.mockRestore();
+      render.mockRestore(); output.mockRestore(); evidenceOutput.mockRestore(); captured.restore();
       resolve.mockRestore(); environment.mockRestore(); await ctx.disposeClients();
     }
   });

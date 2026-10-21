@@ -72,7 +72,10 @@ export function forServices<Input extends CommandInput & { service?: string }, O
       const children = await Promise.all(services.map(item => context.serialize(command, item.result)));
       const lines = services.map((item, index) => {
         const summary = posix.join(posix.dirname(children[index]!.manifest), "summary.md");
-        return `- [${summaryText(item.service ?? command.name)}](<${summary}>) · ${item.result.status}`;
+        const label = summaryText(item.service ?? command.name);
+        return context.includeEvidenceNavigation
+          ? `- [${label}](<${summary}>) · ${item.result.status}`
+          : `- ${label} · ${item.result.status}`;
       });
       return { files: { summary: context.writeText("summary.md", `# ${summaryText(command.name)}\n\n${lines.join("\n")}\n`) }, children };
     } : undefined,

@@ -408,7 +408,6 @@ export function buildRedisMarkdown(
     }
   }
 
-  lines.push("", "完整机器可读结果见 `raw/*-redis-probe.json`、`raw/*-redis-key-stats.json` 与 `raw/*-redis-pressure-*.json`，detector 结论见 `raw/*-redis-findings.json`，采集参数与来源见 `manifest.json`。", "");
   return lines.join("\n");
 }
 

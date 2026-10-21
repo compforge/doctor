@@ -194,7 +194,7 @@ describe("stats 与 summary", () => {
     expect(md).toContain("span 总数: 3");
     expect(md).toContain("| gw | 2 |");
     expect(md).toContain("error span 数: 2");
-    expect(md).toContain("spans.jsonl");
+    expect(md).not.toContain("spans.jsonl");
   });
 });
 

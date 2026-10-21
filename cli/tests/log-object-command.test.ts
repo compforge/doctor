@@ -10,7 +10,7 @@ import { inspectExtension } from "../../packages/plugin/tests/extension-fixture"
 import { CommandContext, CommandStatus } from "../src/command";
 import { logCommand } from "../src/collect/log/command";
 import { logService, podDiscoveryExecutor } from "./log-fixture";
-import { finalizeResult } from "./report-fixture";
+import { captureSerializedDirectory, finalizeResult } from "./report-fixture";
 
 for (const variant of ["collected", "partial", "failed"] as const) {
   test(`object-only log command ${variant}: bounded shared capture, attribution and Data child evidence`, async () => {
@@ -46,6 +46,7 @@ for (const variant of ["collected", "partial", "failed"] as const) {
     });
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
+    const captured = captureSerializedDirectory();
     let evidenceDir: string | undefined;
     try {
       const input = { bizIds: ["a", "b"], services: ["api"], sinceTime: "2026-09-16T01:00:00Z" };
@@ -64,7 +65,7 @@ for (const variant of ["collected", "partial", "failed"] as const) {
         expect(timeline.filter(record => record.kind === "log")[0].matches[0]).toMatchObject({ kind: "related-object", identity: { kind: "carrier_id", value: `carrier-${item.bizId}` }, factIndex: 0 });
       }
       await finalizeResult(context, logCommand, result, { format: "summary" }, input);
-      evidenceDir = stderr.mock.calls.map(([line]) => String(line)).find(line => line.startsWith("[delivery] Evidence: "))?.trim().slice("[delivery] Evidence: ".length);
+      evidenceDir = captured.directory;
       expect(evidenceDir).toBeDefined();
       const manifest = JSON.parse(readFileSync(join(evidenceDir!, "manifest.json"), "utf8"));
       const children = manifest.children.map((child: { manifest: string }) => JSON.parse(readFileSync(join(evidenceDir!, child.manifest), "utf8")));
@@ -91,6 +92,7 @@ for (const variant of ["collected", "partial", "failed"] as const) {
       }
     } finally {
       for (const mock of [stdout, stderr, ensure, exec, version, logs]) mock.mockRestore();
+      captured.restore();
       await context.disposeClients();
       for (const artifact of context.artifacts.list()) rmSync(dirname(artifact.path), { recursive: true, force: true });
       if (evidenceDir) rmSync(evidenceDir, { recursive: true, force: true });

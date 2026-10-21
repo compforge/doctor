@@ -78,22 +78,22 @@ export function buildDataEvidenceSummary(items: readonly Item[], source?: DataFa
   for (const item of projected.slice(0, 16)) {
     lines.push(`## ${summaryText(item.id)}（${item.status}）`, "", "### 关联 ID", "",
       ...item.identifiers.slice(0, 40).map(id => `- ${summaryText(id)}`));
-    if (item.identifiers.length > 40) lines.push(`- 另有 ${item.identifiers.length - 40} 个 ID，见原始 Facts。`);
+    if (item.identifiers.length > 40) lines.push(`- 另有 ${item.identifiers.length - 40} 个 ID未在摘要中展示。`);
     lines.push("", "### 诊断发现", "",
       ...(item.findings.length ? item.findings.slice(0, 20).map(text => `- ${summaryText(text)}`) : ["- 未发现已内置异常"]),
       "", "### 采集缺口", "", ...(item.missing.length ? item.missing.slice(0, 20).map(text => `- ${summaryText(text)}`) : ["- 无"]), "");
-    if (item.findings.length > 20 || item.missing.length > 20) lines.push("更多发现或缺口见 diagnosis.json。", "");
+    if (item.findings.length > 20 || item.missing.length > 20) lines.push("更多发现或缺口未在摘要中展示。", "");
     lines.push("", "### 业务记录", "");
     for (const record of selectRecords(item.records, 20)) {
       lines.push(`- ${summaryText(record.title)}`, ...(record.text ? [`  - ${summaryText(record.text)}`] : []), ...record.fields.map(field => `  - ${field}`),
-        `  - [原始证据](raw/facts.json)：${record.references.slice(0, 3).map(path => `\`${path}\``).join("、")}`);
-      if (record.references.length > 3) lines.push(`  - 另有 ${record.references.length - 3} 个来源，见原始 Facts。`);
+        `  - 来源：${record.references.slice(0, 3).map(path => `\`${path}\``).join("、")}`);
+      if (record.references.length > 3) lines.push(`  - 另有 ${record.references.length - 3} 个来源未在摘要中展示。`);
     }
-    if (item.records.length > 20) lines.push(`- 另有 ${item.records.length - 20} 条记录，见原始 Facts。`);
+    if (item.records.length > 20) lines.push(`- 另有 ${item.records.length - 20} 条记录未在摘要中展示。`);
 
   }
-  if (projected.length > 16) lines.push(`另有 ${projected.length - 16} 个输入，见 diagnosis.json。`);
-  lines.push("[诊断与完整缺口](diagnosis.json) · [完整 Facts](raw/facts.json) · [清单](manifest.json)", "");
+  if (projected.length > 16) lines.push(`另有 ${projected.length - 16} 个输入未在摘要中展示。`);
+  lines.push("");
   return lines.join("\n");
 }
 
