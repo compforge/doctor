@@ -1,5 +1,6 @@
 import type { FileReadOptions } from "@compforge/harness-common";
 import type { HttpServiceTarget } from "./http";
+import type { ResourceRef, ResourceListQuery, ResourceList } from "@compforge/harness-toolbox/kubernetes/resources";
 
 export type KubernetesAccessRequirement = "required" | "preferred";
 
@@ -32,16 +33,17 @@ export interface KubernetesExecTarget {
   container?: string;
 }
 
-export interface KubernetesListOptions {
-  labelSelector?: string;
-}
+export type KubernetesResourceRef = Omit<ResourceRef, "namespace">;
+export type KubernetesResourceListQuery = Omit<ResourceListQuery, "namespace">;
+export type KubernetesResourceList<T> = Pick<ResourceList, "apiVersion" | "kind" | "metadata"> & { items: T[]; [field: string]: unknown };
 
 /** Target-scoped Kubernetes transport owned and policy-controlled by Doctor Core. */
 export interface KubernetesAccess {
   /** 派生同一 Target cluster 内指定 namespace 的访问视图；具体 namespace 由 Plugin 自己决定。 */
   inNamespace(namespace: string): KubernetesAccess;
-  get<T>(resource: string, name: string): Promise<T>;
-  list<T>(resource: string, options?: KubernetesListOptions): Promise<T[]>;
+  /** REST resource identity is explicit; no kubectl aliases or implicit API versions. */
+  get<T>(ref: KubernetesResourceRef): Promise<T>;
+  list<T>(query: KubernetesResourceListQuery): Promise<KubernetesResourceList<T>>;
   exec(target: KubernetesExecTarget, command: readonly string[], options?: { stdin?: string; timeoutMs?: number }): Promise<string>;
   /** Bounded raw file bytes from one explicit Container; the host owns transport and client cleanup. */
   readFile(target: Required<KubernetesExecTarget>, path: string, options: FileReadOptions): Promise<Uint8Array>;

@@ -27,7 +27,7 @@ test("Host context reuses root clients without acquiring Kubernetes and respects
   const second = createHostPluginContext(options);
   expect(await first.clients.get(source)).toBe(await second.clients.get(source));
   expect(source.createClient).toHaveBeenCalledTimes(1);
-  await expect(first.infra.kubernetes.list("pods")).rejects.toThrow();
+  await expect(first.infra.kubernetes.list({ apiVersion: "v1", resource: "pods" })).rejects.toThrow();
   const cleanup = mock(() => { });
   first.onDispose(cleanup);
   await first.dispose();

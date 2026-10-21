@@ -7,6 +7,7 @@ import {
   type HtmlReportSection,
 } from "../output/html";
 import type {
+  ConfigSearchMatch,
   DependencyInventoryObservation,
   InspectContainerTerminationFact,
   InspectDiagnosis,
@@ -520,6 +521,49 @@ function searchRows(diagnosis: InspectDiagnosis): string[][] {
     : search.matches.map(item => [item.image, item.imageId ?? "—", item.service, item.workload, item.pod, item.container]);
 }
 
+/**
+ * @spec One Markdown table per matching configuration group; different values or source kinds never collapse.
+ * @why Replicas often expose identical files. Compare only this query's matches, retaining every observed origin.
+ * @see {@link cli/docs/commands/inspect.md}
+ */
+function configSearchTables(matches: readonly ConfigSearchMatch[], namespace: string): string[] {
+  type Origin = Omit<ConfigSearchMatch, "name" | "value">;
+  type Group = { origin: Origin; origins: Origin[]; entries: Array<[string, JsonValue]> };
+  const byOrigin = new Map<string, Group>();
+  for (const { name, value, ...origin } of matches) {
+    origin.namespace ??= namespace;
+    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path,
+      origin.workload, origin.pod, origin.container]);
+    let group = byOrigin.get(key);
+    if (!group) {
+      group = { origin, origins: [origin], entries: [] };
+      byOrigin.set(key, group);
+    }
+    group.entries.push([name, value]);
+  }
+  const groups = new Map<string, Group>();
+  for (const group of byOrigin.values()) {
+    const { origin, entries } = group;
+    entries.sort(([left], [right]) => left.localeCompare(right));
+    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path, entries]);
+    const existing = groups.get(key);
+    if (existing) existing.origins.push(origin);
+    else groups.set(key, group);
+  }
+  return [...groups.values()].flatMap(({ origin, origins, entries }) => [
+    `## ${origin.source === "file" ? `文件：${markdownCell(origin.path)}` : "Pod env"}`,
+    "",
+    `- Service：${markdownCell(origin.service)}`,
+    `- Namespace：${markdownCell(origin.namespace)}`,
+    "- 来源：",
+    ...origins.map(item => `  - ${markdownCell(item.workload)} · Pod：${markdownCell(item.pod)} · Container：${markdownCell(item.container)}`),
+    ...(origins.length > 1 ? ["- 以下匹配项在这些来源中相同。"] : []),
+    "",
+    ...markdownTable(["名称", "值"], entries.map(([name, value]) => [name, displayValue(value)])),
+    "",
+  ]);
+}
+
 function searchStatus(diagnosis: InspectDiagnosis): string {
   const field = diagnosis.evidence.search!.field;
   const goals = field === "config" ? ["container-environment", "file-configuration"]
@@ -534,7 +578,9 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     return [`# Inspect ${search.field}`, "", `- Namespace：${markdownCell(namespace)}`,
       ...(search.keyword !== undefined ? [`- 关键词：${markdownCell(search.keyword)}（忽略大小写）`] : []),
       `- 匹配项：${search.matches.length}；${searchStatus(diagnosis)}`, "",
-      ...(search.matches.length ? markdownTable(searchHeaders(diagnosis), searchRows(diagnosis)) : [`未找到匹配的 ${search.field}。`]),
+      ...(search.matches.length
+        ? search.field === "config" ? configSearchTables(search.matches, namespace) : markdownTable(searchHeaders(diagnosis), searchRows(diagnosis))
+        : [`未找到匹配的 ${search.field}。`]),
       "", ...diagnosis.coverage.flatMap(item => [
         `- ${item.goal}：${item.status}`, ...item.missingEvidence.map(missing => `  - 缺失：${markdownCell(missing)}`),
       ]), "",

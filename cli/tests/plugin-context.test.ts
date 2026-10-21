@@ -1,5 +1,9 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import { createPluginContext, openPluginContext } from "../src/plugin/context";
 import type {
@@ -20,7 +24,35 @@ function result(command: string[], stdout = "", ok = true): ExecResult {
   };
 }
 
+const apiCleanups: Array<() => Promise<void>> = [];
+afterEach(async () => { for (const close of apiCleanups.splice(0)) await close(); });
+
+async function kubernetesApi() {
+  const paths: string[] = [];
+  let connections = 0;
+  let respond: (request: IncomingMessage, response: ServerResponse) => void = (_request, response) => { response.end('{"kind":"Service"}'); };
+  const server = createServer((request, response) => { paths.push(request.url!); respond(request, response); });
+  server.on("connection", () => { connections++; });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected test API port");
+  const directory = mkdtempSync(join(tmpdir(), "doctor-kubernetes-api-"));
+  const kubeconfig = join(directory, "config.json");
+  const endpoint = `http://127.0.0.1:${address.port}`;
+  writeFileSync(kubeconfig, JSON.stringify({ apiVersion: "v1", kind: "Config", "current-context": "test-context",
+    clusters: [{ name: "test", cluster: { server: endpoint } }],
+    contexts: [{ name: "test-context", context: { cluster: "test", user: "test" } }], users: [{ name: "test", user: {} }] }));
+  apiCleanups.push(async () => {
+    server.closeAllConnections();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    rmSync(directory, { recursive: true, force: true });
+  });
+  return { kubeconfig, endpoint, paths, get connections() { return connections; },
+    set respond(value: typeof respond) { respond = value; } };
+}
+
 test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
+  const api = await kubernetesApi();
   const calls: Array<{ kind: "run" | "exec"; command: string[]; options?: RunOptions }> = [];
   const executor: Executor = {
     run: async (command, options) => {
@@ -38,7 +70,7 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
     workloads: []
   };
   const context = createPluginContext(executor, {
-    kubeconfig: "/tmp/test-kubeconfig",
+    kubeconfig: api.kubeconfig,
     context: "test-context",
     namespace: "default",
   }, {
@@ -60,7 +92,7 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
     },
   });
 
-  expect(await context.infra.kubernetes.get<{ kind: string }>("services", "sample-api"))
+  expect(await context.infra.kubernetes.get<{ kind: string }>({ apiVersion: "v1", resource: "services", name: "sample-api" }))
     .toEqual({ kind: "Service" });
   expect(await context.infra.kubernetes.exec({ pod: "sample-api-0" }, ["env"]))
     .toBe("A=B\n");
@@ -73,12 +105,10 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
   expect(context).not.toHaveProperty("kubeconfig");
   expect(context).not.toHaveProperty("kubeContext");
   expect(calls.map(({ kind, command }) => ({ kind, command }))).toEqual([{
-    kind: "run",
-    command: ["get", "services", "sample-api", "-o", "json"],
-  }, {
     kind: "exec",
     command: ["sample-api-0", "env"],
   }]);
+  expect(api.paths).toEqual(["/api/v1/namespaces/default/services/sample-api"]);
   expect(calls.every(({ options }) => options?.timeoutMs === 20_000)).toBe(true);
   expect(calls.every(({ options }) => options?.signal?.aborted === false)).toBe(true);
 
@@ -86,39 +116,25 @@ test("Plugin Kubernetes access is target-scoped and Core-owned", async () => {
   expect(context.signal.aborted).toBe(true);
 });
 
-test("Plugin Kubernetes access normalizes command failures", async () => {
-  let failure = { stderr: "forbidden", timedOut: false };
+test("Plugin Kubernetes access preserves native API failure kinds without running kubectl queries", async () => {
+  const api = await kubernetesApi();
   const executor: Executor = {
-    run: async (command) => ({ ...result(command, "", false), ...failure }),
+    run: async () => { throw new Error("Resource read must use the native transport"); },
     exec: async (_target, command) => result(command, "", false),
   };
-  const context = createPluginContext(executor, { namespace: "default" }, {
-    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
-    service: {
-      name: "sample-api",
-      component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-      workloads: []
-    },
-    capability: {
-      access: {
-        kubernetes: [{
-          rule: { verb: "get", resource: "secrets" },
-          requirement: "required",
-          purpose: "test",
-        }],
-      },
-    },
+  const context = createPluginContext(executor, { namespace: "default", kubeconfig: api.kubeconfig }, {
+    environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: api.endpoint },
+    service: { name: "sample-api", component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, workloads: [] },
+    capability: { access: { kubernetes: [{ rule: { verb: "get", resource: "secrets" }, requirement: "required", purpose: "test" }] } },
   });
-
-  await expect(context.infra.kubernetes.get("secrets", "sample"))
-    .rejects.toMatchObject({ kind: "operation_failed" });
-  for (const [reason, kind] of [["NotFound", "resource_not_found"], ["Forbidden", "permission_denied"], ["Unauthorized", "authentication_failed"]]) {
-    failure = { stderr: `Error from server (${reason}): resource unavailable`, timedOut: false };
-    await expect(context.infra.kubernetes.get("secrets", "sample")).rejects.toMatchObject({ kind });
-  }
-  failure = { stderr: "", timedOut: true };
-  await expect(context.infra.kubernetes.get("secrets", "sample")).rejects.toMatchObject({ kind: "timeout" });
-  await context.dispose();
+  try {
+    for (const [status, kind] of [[404, "resource_not_found"], [403, "permission_denied"], [401, "authentication_failed"], [408, "timeout"]]) {
+      api.respond = (_request, response) => { response.writeHead(status as number); response.end("private credentials"); };
+      const error = await context.infra.kubernetes.get({ apiVersion: "v1", resource: "secrets", name: "sample" }).catch(error => error);
+      expect(error).toMatchObject({ kind, code: status });
+      expect((error as Error).message).not.toContain("private credentials");
+    }
+  } finally { await context.dispose(); }
 });
 
 test("Plugin access preflight only includes the selected Service capability", async () => {
@@ -206,19 +222,28 @@ test("Plugin Kubernetes helper rejects undeclared operations", async () => {
     capability: { access: {} },
   });
 
-  await expect(context.infra.kubernetes.get("secrets", "sample"))
+  await expect(context.infra.kubernetes.get({ apiVersion: "v1", resource: "secrets", name: "sample" }))
     .rejects.toThrow("未声明 Kubernetes access: get secrets");
-  await expect(context.infra.kubernetes.inNamespace("other").get("secrets", "sample"))
+  await expect(context.infra.kubernetes.inNamespace("other").get({ apiVersion: "v1", resource: "secrets", name: "sample" }))
     .rejects.toThrow("未声明 Kubernetes access: get secrets");
   await context.dispose();
 });
 
 test("Plugin Kubernetes access enforces the Core output limit", async () => {
+  const api = await kubernetesApi();
+  api.respond = (_request, response) => response.end("x".repeat(4 * 1024 * 1024 + 1));
   const executor: Executor = {
     run: async (command) => result(command, "x".repeat(4 * 1024 * 1024 + 1)),
     exec: async (_target, command) => result(command),
   };
-  const context = createPluginContext(executor, { namespace: "default" }, {
+  const { ClientManager, clientKey } = await import("@compforge/harness-common");
+  const { KubernetesClient } = await import("@compforge/harness-toolbox/kubernetes/client");
+  const clients = new ClientManager();
+  const kube = { namespace: "default", kubeconfig: api.kubeconfig, context: "test-context" };
+  await clients.get({ clientKey: clientKey("kubernetes", kube),
+    createClient: (_clients, signal) => new KubernetesClient(kube, signal, executor) });
+  const context = createPluginContext(executor, kube, {
+    clients,
     environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" },
     service: {
       name: "sample-api",
@@ -236,9 +261,10 @@ test("Plugin Kubernetes access enforces the Core output limit", async () => {
     },
   });
 
-  await expect(context.infra.kubernetes.get("configmaps", "sample"))
-    .rejects.toThrow("输出超过 4194304 bytes");
+  await expect(context.infra.kubernetes.get({ apiVersion: "v1", resource: "configmaps", name: "sample" }))
+    .rejects.toMatchObject({ kind: "limit_exceeded" });
   await context.dispose();
+  await clients.dispose();
 });
 
 test("Plugin exec forwards stdin under access checks and caps timeout without exposing payload in errors", async () => {
@@ -278,6 +304,7 @@ test("Plugin exec forwards stdin under access checks and caps timeout without ex
 
 // This exercises the actual host adapter, including distinct capability-call lifetimes.
 test("siblings share resources after the first PluginContext is disposed, but never share permissions or targets", async () => {
+  const api = await kubernetesApi();
   const { CommandContext, defineCommand, CommandStatus } = await import("../src/command");
   const root = new CommandContext({});
   let discoveries = 0;
@@ -299,13 +326,13 @@ test("siblings share resources after the first PluginContext is disposed, but ne
   } as const;
   const query = defineCommand<import("../src/command").CommandInput & { id: string }, string>({
     name: "sample", prepare: async (_context, input) => input, run: async (_root, input) => {
-      const context = createPluginContext(executor, { namespace: "test" }, options);
+      const context = createPluginContext(executor, { namespace: "test", kubeconfig: api.kubeconfig }, options);
       const client = await context.clients.get({
         clientKey: "db", createClient: resource => ({
           initialize: async () => { discoveries++; },
           dispose: async () => { closed++; },
           query: async (id: string) => {
-            await resource.infra.kubernetes.get("services", "api");
+            await resource.infra.kubernetes.get({ apiVersion: "v1", resource: "services", name: "api" });
             return id;
           },
         })
@@ -340,7 +367,7 @@ test("siblings share resources after the first PluginContext is disposed, but ne
         const distinct = await ctx.clients.get({ clientKey: "db", createClient: resource => ({ resource, initialize: async () => { }, dispose: async () => { } }) });
         expect(distinct).toHaveProperty("resource");
         if (!("kubernetes" in variant.options.capability.access)) {
-          await expect(distinct.resource.infra.kubernetes.get("services", "api")).rejects.toThrow("未声明");
+          await expect(distinct.resource.infra.kubernetes.get({ apiVersion: "v1", resource: "services", name: "api" })).rejects.toThrow("未声明");
         }
       }
       return { status: CommandStatus.Ok, artifacts: [], output: undefined };
@@ -437,5 +464,66 @@ test("Pod relay is shared across Services, scoped by namespace, and permission c
     await root.dispose();
     connect.mockRestore();
     close.mockRestore();
+  }
+});
+
+/** @case id=file_source_pool,desc=Separate file sources borrow one native resource pool until root disposal */
+test("file source resolution shares native connections across sources and namespaces until root disposal", async () => {
+  const { ClientManager } = await import("@compforge/harness-common");
+  const { fileDataSource } = await import("@compforge/doctor-plugin");
+  const api = await kubernetesApi();
+  const root = new ClientManager();
+  let reads = 0;
+  api.respond = (request, response) => response.end(JSON.stringify(request.url?.includes("/services/")
+    ? { spec: { selector: { app: "api" } } }
+    : { items: [{ metadata: { name: "api-0" } }], metadata: { resourceVersion: "42" } }));
+  const executor: Executor = {
+    run: async () => { throw new Error("File target discovery must not spawn kubectl"); },
+    exec: async (_target, command, options) => {
+      reads++;
+      options?.onStdoutBytes?.(new TextEncoder().encode("endpoint: sandbox-server"));
+      return result(command);
+    },
+  };
+  const needs = [
+    { verb: "get", resource: "services" }, { verb: "list", resource: "pods", allNamespaces: true },
+    { verb: "create", resource: "pods/exec" },
+  ].map(rule => ({ rule, requirement: "required" as const, purpose: "read file configuration" }));
+  const access = { kubernetes: needs };
+  const open = () => createPluginContext(executor, { namespace: "default", kubeconfig: api.kubeconfig }, {
+    clients: root,
+    environment: { name: "test", kind: "kubernetes", context: "test-context", server: api.endpoint },
+    service: { name: "api", workloads: [], component: { name: "fixture", repository: { forge: { name: "test" }, path: "api" } } },
+    capability: { access },
+  });
+  const source = (path: string) => fileDataSource(path, { workload: "main", access, resolve: async context => {
+    const service = await context.infra.kubernetes.get<{ spec: { selector: { app: string } } }>({ apiVersion: "v1", resource: "services", name: "api" });
+    const pods = await context.infra.kubernetes.list<{ metadata: { name: string } }>({
+      apiVersion: "v1", resource: "pods", labelSelector: `app=${service.spec.selector.app}`,
+    });
+    expect(pods.metadata).toEqual({ resourceVersion: "42" });
+    return { namespace: "default", pod: pods.items[0]!.metadata.name, container: "main" };
+  } });
+  const first = open();
+  const second = open();
+  try {
+    const main = await first.clients.get(source("/config.yaml"));
+    await first.dispose();
+    const secret = await second.clients.get(source("/secret/config.yaml"));
+    await second.infra.kubernetes.inNamespace("other").list({ apiVersion: "v1", resource: "pods" });
+    await expect(second.infra.kubernetes.inNamespace("other").get({ apiVersion: "v1", resource: "services", name: "api" })).rejects.toThrow("未声明");
+    await expect(second.infra.kubernetes.list({ apiVersion: "example.io/v1", resource: "pods" })).rejects.toThrow("未声明");
+    expect(api.paths).toHaveLength(5);
+    expect(api.paths[4]).toBe("/api/v1/namespaces/other/pods");
+    expect(api.connections).toBe(1);
+    const limits = { timeoutMs: 1000, maxBytes: 1024 };
+    expect(new TextDecoder().decode(await main.read(limits))).toContain("sandbox-server");
+    expect(new TextDecoder().decode(await secret.read(limits))).toContain("sandbox-server");
+    expect(reads).toBe(2);
+    await root.dispose();
+    await expect(main.read(limits)).rejects.toThrow();
+  } finally {
+    await Promise.all([first.dispose(), second.dispose()]);
+    await root.dispose();
   }
 });

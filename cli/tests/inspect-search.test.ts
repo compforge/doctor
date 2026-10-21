@@ -12,7 +12,7 @@ import { buildInspectEvidence, searchInspectFields } from "../src/collect/inspec
 import { buildInspectHtml, buildInspectHtmlSections, buildInspectSummary } from "../src/collect/inspect/render";
 import { validateInspectInput } from "../src/collect/inspect/options";
 import { createInspectInput } from "../src/collect/inspect/command";
-import type { ContainerEnvironmentObservation, InspectDiagnosis, InspectFacts } from "../src/collect/inspect/model";
+import type { ConfigSearchMatch, ContainerEnvironmentObservation, InspectDiagnosis, InspectFacts } from "../src/collect/inspect/model";
 import { unavailableFact } from "../src/collect/protocol";
 
 const facts: InspectFacts = {
@@ -172,3 +172,56 @@ for (const scenario of [
     }
   });
 }
+
+
+const configMatch = (pod: string, name: string, value: ConfigSearchMatch["value"]): ConfigSearchMatch => ({
+  service: "api", namespace: "qa", workload: pod, pod, container: "main", source: "file", path: "/config.yaml", name, value,
+});
+const configDiagnosis = (matches: ConfigSearchMatch[]): InspectDiagnosis => ({
+  evidence: { ...evidence, search: { field: "config", keyword: "sandbox", matches } }, findings: [],
+  coverage: ["container-environment", "file-configuration"].map(goal => ({
+    goal: goal as "container-environment" | "file-configuration", status: "sufficient", missingEvidence: [],
+  })),
+});
+
+test("Config Markdown uses one table for identical query matches and retains each origin and differing values", () => {
+  const diagnosis = configDiagnosis([
+    configMatch("gateway-a", "sandbox.endpoint", "https://compute-a"), configMatch("gateway-a", "sandbox.enabled", true),
+    configMatch("worker-a", "sandbox.enabled", true), configMatch("worker-a", "sandbox.endpoint", "https://compute-a"),
+    configMatch("worker-b", "sandbox.endpoint", "https://compute-b"), configMatch("worker-b", "sandbox.enabled", true),
+  ]);
+  const before = JSON.stringify(diagnosis);
+  const summary = buildInspectSummary(diagnosis, "qa");
+  expect(summary.match(/\| 名称 \| 值 \|/g)).toHaveLength(2);
+  expect(summary.match(/\| sandbox.endpoint \|/g)).toHaveLength(2);
+  expect(summary).toContain("匹配项：6；采集完整");
+  expect(summary).toContain("https://compute-a"); expect(summary).toContain("https://compute-b");
+  for (const pod of ["gateway-a", "worker-a", "worker-b"]) expect(summary).toContain(`Pod：${pod}`);
+  expect(summary).not.toContain("| Workload |");
+  expect(JSON.stringify(diagnosis)).toBe(before);
+});
+
+test("Config groups keep file/env, Service, namespace, path and value types separate", () => {
+  const base = configMatch("api-a", "sandbox.limit", 80);
+  const summary = buildInspectSummary(configDiagnosis([
+    base, { ...base, pod: "api-b", value: "80" }, { ...base, path: "/overlay.yaml" },
+    { ...base, source: "env", path: undefined, namespace: undefined },
+    { ...base, service: "other" }, { ...base, namespace: "production" },
+  ]), "qa");
+  expect(summary.match(/\| 名称 \| 值 \|/g)).toHaveLength(6);
+  expect(summary).toContain("## Pod env\n\n- Service：api\n- Namespace：qa");
+  expect(summary).toContain("## 文件：/overlay.yaml");
+  expect(summary).toContain("Namespace：production");
+});
+
+test("Grouped Config Markdown preserves escaping and empty-result coverage", () => {
+  const diagnosis = configDiagnosis([configMatch("api-a", "sandbox.<key>", "a|b\n<c>")]);
+  expect(buildInspectSummary(diagnosis)).toContain("| sandbox.&lt;key&gt; | a\\|b<br>&lt;c&gt; |");
+  diagnosis.evidence.search = { field: "config", matches: [] };
+  diagnosis.coverage = [{ goal: "file-configuration", status: "insufficient", missingEvidence: ["unreadable file"] }];
+  const empty = buildInspectSummary(diagnosis);
+  expect(empty).toContain("未找到匹配的 config");
+  expect(empty).toContain("未匹配不代表目标值不存在");
+  expect(empty).toContain("unreadable file");
+  expect(empty).not.toContain("| 名称 | 值 |");
+});
