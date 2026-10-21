@@ -51,6 +51,11 @@ Env、Config 和 Image 查询均默认关闭部署配置与依赖采集；显式
 `--dependencies` 时额外采集相应证据。部署配置仍表示声明，Env 搜索只匹配容器现场观测值。
 
 没有指定 format 或 output 时默认在终端显示结果；显式指定交付格式时沿用该格式。
+Config 的 Markdown 摘要按文件/Pod env 分组，每组一个“名称 / 值”表格。
+同一 Service、Namespace、来源类型和路径下，本次匹配内容完全相同的来源合并展示；
+组头保留全部 Workload、Pod 与 Container，值有差异时单独成组。
+相同匹配项不表示未匹配的文件内容相同；JSON 和完整证据仍逐来源保留。
+
 结构化结果保存在 `analysis/evidence.json` 的 `search` 字段中，包含 field、可选 keyword 和 matches；
 JSON 交付通过证据引用关联该文件。完整 Facts、Observations、Detector 输入和 Coverage 不受过滤影响。
 采集完整但没有匹配时成功返回空结果；采集不足时保留缺口，不将其解释为目标值不存在。

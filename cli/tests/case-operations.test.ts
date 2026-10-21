@@ -47,7 +47,7 @@ test("native producer contexts remain isolated and are disposed on success, fail
       expect(ctx.target.service.name).toBe(service.name);
       ctx.onDispose(disposed);
       // The Service also contributes a more privileged source; it must not grant this one access.
-      await expect(ctx.infra.kubernetes.get("secrets", "private")).rejects.toThrow("未声明");
+      await expect(ctx.infra.kubernetes.get({ apiVersion: "v1", resource: "secrets", name: "private" })).rejects.toThrow("未声明");
       if (outcome === "failure") throw new Error("source unavailable");
       if (outcome === "invalid") return { data: { cases: [], reason: "fixture" } } as never;
       return { data: { cases: [], reason: "fixture" }, summary: { title: "Requests", fields: [] } };

@@ -133,7 +133,7 @@ Plugin archive 使用 tar/tar.gz；所有归档来源统一落到同一安装目
 ```json
 {
   "manifestVersion": 1,
-  "pluginApiVersion": 15,
+  "pluginApiVersion": 17,
   "id": "sample",
   "version": "1.2.0",
   "requiresDoctor": ">=0.1.0",
@@ -355,6 +355,14 @@ DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dis
 属于整棵执行树，没有单次调用的依赖 handle，也无需手动注册共享客户端 cleanup。
 
 `mysqlDataSource` 与 `mysqlTransports(context)` 在原生建连发生网络错误后，通过
+Plugin API 17 的资源查询显式声明 API version 与 REST 资源复数名，例如
+`infra.kubernetes.get({ apiVersion: "v1", resource: "services", name: "api" })` 与
+`infra.kubernetes.list({ apiVersion: "v1", resource: "pods", labelSelector: "app=api" })`。
+列表保留 `items` 与分页 metadata，后续页由调用方显式读取。`inNamespace()` 借用相同根客户端，
+每次操作仍按 API group、resource、name 与 namespace 检查 capability access；不同 API group
+不能借用同名资源的声明。Core 使用 harness-toolbox 的原生 HTTP 连接池，直接保留结构化错误；
+文件源定位与其他 Plugin 查询共享池，根 Command 统一关闭。exec 与 relay 继续使用各自执行通道。
+
 `infra.kubernetes.podRelay` 借用现有 Pod 中转 TCP。该访问需声明 `list pods`、`create pods/exec` 和
 `create pods/portforward`；不创建 Pod，也不要求业务方指定 helper Service 或解释器。
 同一根执行中相同 cluster/namespace 共用 relay，Service 和数据库身份不参与传输身份；每个调用方

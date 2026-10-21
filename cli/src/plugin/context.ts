@@ -1,17 +1,21 @@
 import { PodFileDataSource } from "@compforge/harness-toolbox/file";
-import { kubernetesCommandError } from "@compforge/harness-toolbox/errors";
 import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
 import { ClientManager } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
 import { sharedPodRelay } from "../datasource/pod-relay";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
+import type { NamespaceResources } from "@compforge/harness-toolbox/kubernetes/resources";
+import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type {
   CapabilityWithAccess,
   DatabaseIdentity,
   KubernetesAccess,
+  KubernetesResourceRef,
+  KubernetesResourceListQuery,
+  KubernetesResourceList,
   PluginContext,
   PluginClientContext,
   ResolvedServiceDataSourceDependency,
@@ -71,17 +75,14 @@ function checkedOutput(label: string, result: ExecResult): string {
   throw new Error(`${label} 失败：${reason}`);
 }
 
-function parseJson<T>(label: string, output: string): T {
-  try {
-    return JSON.parse(output) as T;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`${label} 返回了无效 JSON：${detail}`, { cause: error });
-  }
-}
-
+/**
+ * @spec Every resource read checks the borrower's declaration before using the shared native transport.
+ * @rule API group and namespace remain authorization boundaries even when the underlying pool is shared.
+ * @see {@link cli/docs/plugin.md}
+ */
 function createKubernetesAccess(
-  executorForNamespace: (namespace: string) => Executor,
+  resourcesForNamespace: (namespace: string) => Promise<NamespaceResources>,
+  executorForNamespace: (namespace: string) => Pick<Executor, "exec">,
   defaultNamespace: string,
   signal: AbortSignal,
   capability: CapabilityWithAccess,
@@ -108,30 +109,20 @@ function createKubernetesAccess(
     const commandLabel = (command: readonly string[]): string => (
       `kubectl -n ${namespace} ${command.join(" ")}`
     );
-    const run = async (command: readonly string[]): Promise<string> => {
-      const result = await executorForNamespace(namespace).run([...command], {
-        signal, timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS,
-      });
-      signal.throwIfAborted();
-      if (!result.ok) throw kubernetesCommandError(result);
-      return checkedOutput(commandLabel(command), result);
+    const accessOptions = { signal, timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS };
+    const accessResource = (query: { apiVersion: string; resource: string }) => {
+      const [group] = query.apiVersion.includes("/") ? query.apiVersion.split("/") : [];
+      return query.resource + (group ? "." + group : "");
     };
     return {
       inNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
-      get: async <T>(resource: string, name: string) => {
-        assertDeclared("get", resource, name);
-        return parseJson<T>(
-          `Kubernetes ${resource}/${name}`,
-          await run(["get", resource, name, "-o", "json"]),
-        );
+      get: async <T>(ref: KubernetesResourceRef) => {
+        assertDeclared("get", accessResource(ref), ref.name);
+        return await (await resourcesForNamespace(namespace)).get(ref, accessOptions) as T;
       },
-      list: async <T>(resource: string, options?: { labelSelector?: string }) => {
-        assertDeclared("list", resource);
-        const command = ["get", resource];
-        if (options?.labelSelector) command.push("-l", options.labelSelector);
-        command.push("-o", "json");
-        const list = parseJson<{ items?: T[] }>(`Kubernetes ${resource} list`, await run(command));
-        return list.items ?? [];
+      list: async <T>(query: KubernetesResourceListQuery) => {
+        assertDeclared("list", accessResource(query));
+        return await (await resourcesForNamespace(namespace)).list(query, accessOptions) as KubernetesResourceList<T>;
       },
       exec: async (target, command, options) => {
         assertDeclared("create", "pods/exec", target.pod);
@@ -207,19 +198,20 @@ export function createPluginContext(
   const local = root ? undefined : new ClientManager(parentSignal);
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);
-  const clusterKey = clientKey("kubernetes", kube);
-  const clusterSource = { clientKey: clusterKey, createClient: (_clients: Pick<ClientManager, "get">, rootSignal: AbortSignal) => new KubernetesClient(kube, rootSignal, executor) };
+  const resourceLimits = { timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS, concurrency: 4, maxBytes: PLUGIN_KUBERNETES_OUTPUT_LIMIT };
+  // Capacity and byte limits are part of the client contract; a wider pre-existing client cannot satisfy this scope.
+  const clusterKey = clientKey("kubernetes", { ...kube, resourceLimits });
+  const clusterSource = {
+    clientKey: clusterKey,
+    createClient: (_clients: Pick<ClientManager, "get">, rootSignal: AbortSignal) =>
+      new KubernetesClient(kube, rootSignal, executor, resourceLimits),
+  };
   const cluster = () => {
     if (options.environment.kind !== "kubernetes" || !executor) throw new Error("This Extension context has no Kubernetes target");
     return clients.get(clusterSource);
   };
-  const relay = async (ns: string) => {
-    const kubernetes = await cluster();
-    return sharedPodRelay(clients, { ...kube, namespace: ns }, {
-      run: (command, runOptions) => kubernetes.run(ns, command, runOptions),
-      exec: (target, command, runOptions) => kubernetes.exec(ns, target, command, runOptions),
-    });
-  };
+  const relay = (ns: string) => sharedPodRelay(clients, { ...kube, namespace: ns },
+    ns === kube.namespace ? executor : new KubectlExecutor({ ...kube, namespace: ns }));
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
@@ -227,8 +219,7 @@ export function createPluginContext(
     config: options.config ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
-      kubernetes: createKubernetesAccess(ns => ({
-        run: async (command, runOptions) => (client ?? await cluster()).run(ns, command, runOptions),
+      kubernetes: createKubernetesAccess(async ns => (client ?? await cluster()).inNamespace(ns), ns => ({
         exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
       }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
       async (ns, target) => (await relay(ns)).connect(target),

@@ -59,7 +59,7 @@ test("Data prepares only selected Extension access, then invokes native facts.in
       events.push("extension.run");
       expect(events[0]).toBe("auth can-i get configmaps");
       expect(context.target.service.name).toBe("records");
-      await expect(context.infra.kubernetes.list("secrets")).rejects.toThrow("未声明");
+      await expect(context.infra.kubernetes.list({ apiVersion: "v1", resource: "secrets" })).rejects.toThrow("未声明");
       context.onDispose(dispose);
       return [...(await base.run(context, queries)).data].reverse();
     })
