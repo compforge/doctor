@@ -149,8 +149,13 @@ function validateService(value: unknown, index: number): ServiceDefinition {
     const keys = new Set<string>();
     for (const file of files) {
       const label = `${service.name}.dataSources file`;
-      nonEmptyString(file.path, `${label}.path`);
-      if (!file.path.startsWith("/") || file.path.includes("\0")) throw new Error(`${label}.path must be an absolute Pod path`);
+      if (!Array.isArray(file.paths) || !file.paths.length || new Set(file.paths).size !== file.paths.length) {
+        throw new Error(`${label}.paths must be a nonempty array of distinct paths`);
+      }
+      for (const path of file.paths) {
+        nonEmptyString(path, `${label}.paths`);
+        if (!path.startsWith("/") || path.includes("\0")) throw new Error(`${label}.paths must contain absolute Pod paths`);
+      }
       nonEmptyString(file.clientKey, `${label}.clientKey`);
       if (keys.has(file.clientKey)) throw new Error(`${label}: duplicate clientKey`);
       keys.add(file.clientKey);

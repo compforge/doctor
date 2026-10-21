@@ -16,7 +16,7 @@ import type {
   KubernetesContainerState,
   KubernetesContainerTermination,
 } from "@compforge/harness-toolbox/kubernetes/pod";
-import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { KubernetesResourceCapture } from "../../../infra/k8s/resources";
 import {
   deriveDeploymentName,
   matchAutoscalers,
@@ -72,7 +72,7 @@ export function inspectContainerStateFact(
 
 interface LifecycleCapture {
   observedAt?: string;
-  result?: ExecResult;
+  result?: KubernetesResourceCapture;
   error?: string;
 }
 
@@ -82,32 +82,27 @@ async function captureLifecycleSignals(
   config: InspectConfig,
   resolved: Map<string, ResolvedKubernetesWorkload>,
 ): Promise<InspectFacts["lifecycleSignals"]> {
-  const run = async (args: string[]): Promise<LifecycleCapture> => {
-    try {
-      return { result: await ctx.executor.run(args, { timeoutMs: 30_000 }), observedAt: new Date().toISOString() };
-    } catch (error) {
-      return { error: error instanceof Error ? error.message : String(error) };
-    }
-  };
   const [events, hpas] = await Promise.all([
-    run(["get", "events", "-o", "json"]),
-    run(["get", "horizontalpodautoscalers", "-o", "json"]),
-  ]);
+    ctx.resources({ apiVersion: "v1", resource: "events", namespace: config.namespace }),
+    ctx.resources({ apiVersion: "autoscaling/v2", resource: "horizontalpodautoscalers", namespace: config.namespace }),
+  ]).then(captures => captures.map(result => ({ result, error: result.error, observedAt: result.observedAt })));
   const recordStep = (id: string, title: string, capture: LifecycleCapture) => ctx.bundle.addStep({
     id,
     title,
     risk: "observe",
-    status: capture.result?.ok ? "ok" : "failed",
-    reason: capture.error ?? (capture.result ? commandReason(capture.result.ok, capture.result.stderr) : "读取失败"),
-    command: capture.result?.command ?? ["kubectl", ...["get", id === "inspect-events" ? "events" : "horizontalpodautoscalers", "-o", "json"]],
+    status: capture.result?.value !== undefined ? "ok" : "failed",
+    reason: capture.error ?? (capture.result ? capture.result.error : "读取失败"),
+    command: capture.result?.execution?.command,
+    request: capture.result?.request,
+    observedAt: capture.observedAt,
     durationMs: capture.result?.durationMs ?? 0,
   });
   recordStep("inspect-events", "Workload 关联 Event", events);
   recordStep("inspect-hpas", "HPA 自动扩缩", hpas);
 
   const failures = [
-    events.result?.ok ? undefined : `Event：${events.error ?? commandReason(false, events.result?.stderr ?? "")}`,
-    hpas.result?.ok ? undefined : `HPA：${hpas.error ?? commandReason(false, hpas.result?.stderr ?? "")}`,
+    events.result?.value !== undefined ? undefined : `Event：${events.error ?? events.result?.error}`,
+    hpas.result?.value !== undefined ? undefined : `HPA：${hpas.error ?? hpas.result?.error}`,
   ].filter((reason): reason is string => !!reason);
   if (failures.length === 2) {
     return failedFact("inspect.lifecycle-signals", "service-targets", failures.join("；"));
@@ -124,10 +119,10 @@ async function captureLifecycleSignals(
     ...deploymentNames,
   ]);
   let autoscalers: ReturnType<typeof parseKubernetesAutoscalers> = [];
-  if (hpas.result?.ok) {
+  if (hpas.result?.value !== undefined) {
     try {
       autoscalers = matchAutoscalers(
-        parseKubernetesAutoscalers(hpas.result.stdout, config.namespace),
+        parseKubernetesAutoscalers(JSON.stringify(hpas.result.value), config.namespace),
         deploymentNames,
       );
     } catch (error) {
@@ -138,9 +133,9 @@ async function captureLifecycleSignals(
   for (const autoscaler of autoscalers) objectNames.add(autoscaler.name);
   let events2: ReturnType<typeof parseKubernetesEvents> = [];
   let omittedEvents = 0;
-  if (events.result?.ok) {
+  if (events.result?.value !== undefined) {
     try {
-      const selected = selectLifecycleEvents(parseKubernetesEvents(events.result.stdout, config.namespace), objectNames, Infinity, config.timeWindow);
+      const selected = selectLifecycleEvents(parseKubernetesEvents(JSON.stringify(events.result.value), config.namespace), objectNames, Infinity, config.timeWindow);
       omittedEvents = Math.max(0, selected.length - LIFECYCLE_EVENT_LIMIT);
       events2 = selected.slice(-LIFECYCLE_EVENT_LIMIT);
     } catch (error) {
@@ -245,7 +240,7 @@ export function makeServiceTargetsInspect(
     id: "service-targets",
     run: async (ctx) => {
       const capture = await captureKubernetesWorkloadConfig(
-        ctx.executor,
+        ctx.resources,
         config.namespace,
         config.includeDeploymentConfig === true,
         config.services.some((name) => catalog.find(name)?.workloads.some(
@@ -255,11 +250,11 @@ export function makeServiceTargetsInspect(
       const deploymentReasons = config.includeDeploymentConfig ? [
         capture.deploymentParseError
         ?? (capture.deploymentCapture
-          ? commandReason(capture.deploymentCapture.ok, capture.deploymentCapture.stderr)
+          ? capture.deploymentCapture.error
           : "Deployment 未读取"),
         capture.configMapParseError
         ?? (capture.configMapCapture
-          ? commandReason(capture.configMapCapture.ok, capture.configMapCapture.stderr)
+          ? capture.configMapCapture.error
           : "ConfigMap 未读取"),
       ].filter((reason): reason is string => !!reason) : [];
       const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
@@ -268,7 +263,7 @@ export function makeServiceTargetsInspect(
           ? failedFact("inspect.deployment-configuration", "service-targets", deploymentReasons.join("；"))
           : collectedFact("inspect.deployment-configuration", "service-targets", { requested: true });
       const dependencyTargetsFailure = capture.podParseError
-        ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
+        ?? capture.podCapture.error;
       const steps = [
         ...(capture.serviceCapture ? [["inspect-services", "Workload Service 资源", capture.serviceCapture, undefined] as const] : []),
         ["inspect-pods", "Pod 运行态", capture.podCapture, capture.podParseError],
@@ -290,9 +285,11 @@ export function makeServiceTargetsInspect(
           id,
           title,
           risk: "observe",
-          status: result.ok && !parseError ? "ok" : "failed",
-          reason: parseError ?? commandReason(result.ok, result.stderr),
-          command: result.command,
+          status: !result.error && !parseError ? "ok" : "failed",
+          reason: parseError ?? result.error,
+          command: result.execution?.command,
+          request: result.request,
+          reused: result.reused, observedAt: result.observedAt,
           durationMs: result.durationMs,
           // Pod spec、Deployment 与 ConfigMap 都可能包含凭据，只落解析后的脱敏 Fact。
         });
@@ -301,7 +298,7 @@ export function makeServiceTargetsInspect(
       if (!snapshot) {
         const reason = capture.parseError
           ?? (capture.serviceCapture
-            ? commandReason(capture.serviceCapture.ok, capture.serviceCapture.stderr)
+            ? capture.serviceCapture.error
             : undefined)
           ?? "读取 Kubernetes 配置失败";
         return {
@@ -320,13 +317,15 @@ export function makeServiceTargetsInspect(
         for (const definition of catalog.find(serviceName)!.workloads) {
           let captureIndex = 0;
           resolvedWorkloads.set(JSON.stringify([serviceName, definition.name]), await resolveKubernetesWorkload(
-            snapshot, definition, ctx.executor, config.namespace, environment.name,
+            snapshot, definition, ctx.resources, config.namespace, environment.name,
             (result) => ctx.bundle.addStep({
               id: `inspect-workload-${serviceName}-${definition.name}-${++captureIndex}`,
               title: `${serviceName}/${definition.name} Workload 定位`,
-              risk: "observe", status: result.ok ? "ok" : "failed",
-              reason: commandReason(result.ok, result.stderr),
-              command: result.command, durationMs: result.durationMs,
+              risk: "observe", status: !result.error ? "ok" : "failed",
+              reason: result.error,
+              command: result.execution?.command,
+              request: result.request,
+              reused: result.reused, observedAt: result.observedAt, durationMs: result.durationMs,
             }),
           ));
         }
@@ -362,7 +361,7 @@ export function makeServiceTargetsInspect(
             }
           }
           const podFailure = capture.podParseError
-            ?? commandReason(capture.podCapture.ok, capture.podCapture.stderr);
+            ?? capture.podCapture.error;
           workloads[definition.name] = {
             name: definition.name,
             description: definition.description,
@@ -412,9 +411,9 @@ export function makeServiceTargetsInspect(
         services[serviceName] = {
           service: serviceName,
           toolchain: declaredService.toolchain,
-          files: config.field === "config" ? fileDataSources(declaredService).map(source => ({
-            id: fileConfigurationId(serviceName, source.clientKey), path: source.path, workload: source.workload,
-          })) : undefined,
+          files: config.field === "config" ? fileDataSources(declaredService).flatMap(source => source.paths.map(path => ({
+            id: fileConfigurationId(serviceName, source.clientKey, path), path, workload: source.workload,
+          }))) : undefined,
           workloads,
         };
       }

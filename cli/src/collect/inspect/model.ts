@@ -1,3 +1,4 @@
+import type { KubernetesResourceReader } from "../../infra/k8s/resources";
 import type { TimeWindowOptions } from "../time-window";
 import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 import type {
@@ -294,12 +295,14 @@ export interface InspectCommandContext {
   command: CommandContext;
   config: InspectConfig;
   executor: Executor;
+  resources: KubernetesResourceReader;
+  exec: Executor["exec"];
   authorization: KubernetesAccessContext;
   bundle: EvidenceBundle;
   workloadConfig?: KubernetesWorkloadConfigSnapshot;
   log: (line: string) => void;
 }
 
-export function fileConfigurationId(service: string, clientKey: string): string {
-  return `file-config-${service}-${clientKey}`;
+export function fileConfigurationId(service: string, clientKey: string, path: string): string {
+  return `file-config-${service}-${clientKey}-${encodeURIComponent(path)}`;
 }

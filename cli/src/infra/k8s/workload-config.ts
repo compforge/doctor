@@ -1,5 +1,5 @@
-import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { discoverKubernetesWorkload, type DiscoveredKubernetesWorkload } from "./workload";
+import type { KubernetesResourceCapture, KubernetesResourceReader } from "./resources";
+import { discoverKubernetesResourceWorkload, type DiscoveredKubernetesWorkload } from "./workload";
 import type { Workload } from "@compforge/doctor-plugin";
 import { parsePods, type KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
 import { parseServices, type KubernetesService } from "@compforge/harness-toolbox/kubernetes/service";
@@ -44,10 +44,10 @@ export interface KubernetesWorkloadConfigSnapshot {
 }
 
 export interface KubernetesWorkloadConfigCapture {
-  serviceCapture?: ExecResult;
-  deploymentCapture?: ExecResult;
-  configMapCapture?: ExecResult;
-  podCapture: ExecResult;
+  serviceCapture?: KubernetesResourceCapture;
+  deploymentCapture?: KubernetesResourceCapture;
+  configMapCapture?: KubernetesResourceCapture;
+  podCapture: KubernetesResourceCapture;
   snapshot?: KubernetesWorkloadConfigSnapshot;
   parseError?: string;
   deploymentParseError?: string;
@@ -181,12 +181,12 @@ export interface ResolvedKubernetesWorkload extends DiscoveredKubernetesWorkload
 export async function resolveKubernetesWorkload(
   snapshot: KubernetesWorkloadConfigSnapshot,
   definition: Workload,
-  executor: Executor,
+  reader: KubernetesResourceReader,
   namespace: string,
   environment: string,
-  recordCapture: (result: ExecResult) => void,
+  recordCapture: (result: KubernetesResourceCapture) => void,
 ): Promise<ResolvedKubernetesWorkload> {
-  const resolved = await discoverKubernetesWorkload(definition, executor, namespace, environment, recordCapture);
+  const resolved = await discoverKubernetesResourceWorkload(definition, reader, namespace, environment, recordCapture);
   const deployments = definition.namespace && definition.namespace !== namespace ? []
     : definition.location.kind === "resource"
       ? snapshot.deployments.filter(item => definition.location.kind === "resource"
@@ -320,21 +320,21 @@ export function resolveContainerEnvironment(
 }
 
 export async function captureKubernetesWorkloadConfig(
-  executor: Executor,
+  reader: KubernetesResourceReader,
   namespace: string,
   includeDeploymentConfig: boolean,
   includeServices: boolean,
 ): Promise<KubernetesWorkloadConfigCapture> {
   const [serviceCapture, podCapture, deploymentCapture, configMapCapture] = await Promise.all([
     includeServices
-      ? executor.run(["get", "services", "-o", "json"], { timeoutMs: 30_000 })
+      ? reader({ apiVersion: "v1", resource: "services", namespace })
       : Promise.resolve(undefined),
-    executor.run(["get", "pods", "-o", "json"], { timeoutMs: 30_000 }),
+    reader({ apiVersion: "v1", resource: "pods", namespace }),
     includeDeploymentConfig
-      ? executor.run(["get", "deployments", "-o", "json"], { timeoutMs: 30_000 })
+      ? reader({ apiVersion: "apps/v1", resource: "deployments", namespace })
       : Promise.resolve(undefined),
     includeDeploymentConfig
-      ? executor.run(["get", "configmaps", "-o", "json"], { timeoutMs: 30_000 })
+      ? reader({ apiVersion: "v1", resource: "configmaps", namespace })
       : Promise.resolve(undefined),
   ]);
   const result: KubernetesWorkloadConfigCapture = {
@@ -343,10 +343,10 @@ export async function captureKubernetesWorkloadConfig(
     configMapCapture,
     podCapture,
   };
-  if (serviceCapture && !serviceCapture.ok) return result;
+  if (serviceCapture && serviceCapture.error) return result;
   try {
     result.snapshot = {
-      services: serviceCapture ? parseServices(serviceCapture.stdout, namespace) : [],
+      services: serviceCapture ? parseServices(JSON.stringify(serviceCapture.value), namespace) : [],
       deployments: [],
       configMaps: [],
       pods: [],
@@ -355,23 +355,23 @@ export async function captureKubernetesWorkloadConfig(
     result.parseError = error instanceof Error ? error.message : String(error);
   }
   // 三类证据彼此独立；任一可选读取失败都不应抹掉已经取得的其它事实。
-  if (result.snapshot && podCapture.ok) {
+  if (result.snapshot && !podCapture.error) {
     try {
-      result.snapshot.pods = parsePods(podCapture.stdout, namespace);
+      result.snapshot.pods = parsePods(JSON.stringify(podCapture.value), namespace);
     } catch (error) {
       result.podParseError = error instanceof Error ? error.message : String(error);
     }
   }
-  if (result.snapshot && deploymentCapture?.ok) {
+  if (result.snapshot && deploymentCapture && !deploymentCapture.error) {
     try {
-      result.snapshot.deployments = parseDeployments(deploymentCapture.stdout);
+      result.snapshot.deployments = parseDeployments(JSON.stringify(deploymentCapture.value));
     } catch (error) {
       result.deploymentParseError = error instanceof Error ? error.message : String(error);
     }
   }
-  if (result.snapshot && configMapCapture?.ok) {
+  if (result.snapshot && configMapCapture && !configMapCapture.error) {
     try {
-      result.snapshot.configMaps = parseConfigMaps(configMapCapture.stdout);
+      result.snapshot.configMaps = parseConfigMaps(JSON.stringify(configMapCapture.value));
     } catch (error) {
       result.configMapParseError = error instanceof Error ? error.message : String(error);
     }

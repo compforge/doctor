@@ -1,3 +1,4 @@
+import { kubernetesClientSource, capturedResourceAccess, type KubernetesResourceReader } from "../infra/k8s/resources";
 import { PodFileDataSource } from "@compforge/harness-toolbox/file";
 import { hostname } from "node:os";
 import { clientKey } from "@compforge/harness-common";
@@ -36,6 +37,12 @@ const PLUGIN_KUBERNETES_OUTPUT_LIMIT = 4 * 1024 * 1024;
 
 function capabilityAccessNeeds(capability: CapabilityWithAccess): KubernetesAccessNeed[] {
   const needs = [...(capability.access.kubernetes ?? [])];
+  // Native WebSocket exec uses GET; declared exec capability also covers kubectl-backed paths.
+  for (const need of [...needs]) {
+    if (need.rule.verb === "create" && need.rule.resource === "pods/exec") needs.push({
+      ...need, rule: { ...need.rule, verb: "get" }, purpose: "Core 原生 exec WebSocket 握手",
+    });
+  }
   const portForward = needs.find((need) => (
     need.rule.verb === "create" && need.rule.resource === "pods/portforward"
   ));
@@ -91,7 +98,7 @@ function createKubernetesAccess(
     target: Parameters<KubernetesAccess["portForward"]>[0],
   ) => ReturnType<KubernetesAccess["portForward"]>,
   podRelay: (namespace: string, target: Parameters<KubernetesAccess["podRelay"]>[0]) => ReturnType<KubernetesAccess["podRelay"]>,
-  readFile: (namespace: string, ...args: Parameters<KubernetesAccess["readFile"]>) => ReturnType<KubernetesAccess["readFile"]>,
+  readFiles: (namespace: string, ...args: Parameters<KubernetesAccess["readFiles"]>) => ReturnType<KubernetesAccess["readFiles"]>,
 ): KubernetesAccess {
   const scoped = (namespace: string): KubernetesAccess => {
     const assertDeclared = (verb: string, resource: string, resourceName?: string): void => {
@@ -135,9 +142,9 @@ function createKubernetesAccess(
           }),
         );
       },
-      readFile: async (target, path, options) => {
+      readFiles: async (target, paths, options) => {
         assertDeclared("create", "pods/exec", target.pod);
-        return readFile(namespace, target, path, { ...options,
+        return readFiles(namespace, target, paths, { ...options,
           signal: options.signal ? AbortSignal.any([signal, options.signal]) : signal });
       },
       podRelay: async target => {
@@ -166,6 +173,8 @@ interface PluginContextOptions {
   /** An explicitly supplied root owner is useful outside the command async scope. */
   clients?: Pick<ClientManager, "get">;
   config?: Readonly<Record<string, unknown>>;
+  /** Inspect-owned observations; every borrower still checks its declared permissions. */
+  resources?: KubernetesResourceReader;
   databaseIdentity?: DatabaseIdentity;
   service: ServiceDefinition;
   endpoint?: PluginContext["target"]["endpoint"];
@@ -198,14 +207,7 @@ export function createPluginContext(
   const local = root ? undefined : new ClientManager(parentSignal);
   const clients = root ?? local!;
   const namespace = clientNamespace(kube, options);
-  const resourceLimits = { timeoutMs: PLUGIN_KUBERNETES_TIMEOUT_MS, concurrency: 4, maxBytes: PLUGIN_KUBERNETES_OUTPUT_LIMIT };
-  // Capacity and byte limits are part of the client contract; a wider pre-existing client cannot satisfy this scope.
-  const clusterKey = clientKey("kubernetes", { ...kube, resourceLimits });
-  const clusterSource = {
-    clientKey: clusterKey,
-    createClient: (_clients: Pick<ClientManager, "get">, rootSignal: AbortSignal) =>
-      new KubernetesClient(kube, rootSignal, executor, resourceLimits),
-  };
+  const clusterSource = kubernetesClientSource(kube, executor);
   const cluster = () => {
     if (options.environment.kind !== "kubernetes" || !executor) throw new Error("This Extension context has no Kubernetes target");
     return clients.get(clusterSource);
@@ -219,12 +221,13 @@ export function createPluginContext(
     config: options.config ?? {},
     infra: {
       databaseIdentity: options.databaseIdentity,
-      kubernetes: createKubernetesAccess(async ns => (client ?? await cluster()).inNamespace(ns), ns => ({
+      kubernetes: createKubernetesAccess(async ns => options.resources
+        ? capturedResourceAccess(options.resources, ns) : (client ?? await cluster()).inNamespace(ns), ns => ({
         exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
       }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
       async (ns, target) => (await relay(ns)).connect(target),
-      async (namespace, target, path, limits) => {
-        const file = await clients.get(new PodFileDataSource(clusterSource, { namespace, ...target }, path, { concurrency: 4 }));
+      async (namespace, target, paths, limits) => {
+        const file = await clients.get(new PodFileDataSource(clusterSource, { namespace, ...target }, paths, { concurrency: 4 }));
         return file.read(limits);
       }),
     },

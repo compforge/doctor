@@ -1,3 +1,5 @@
+import { kubernetesClientSource, resourceReader, snapshotResourceReader } from "../src/infra/k8s/resources";
+import type { FileReadResult } from "@compforge/harness-common";
 import { afterEach, expect, spyOn, test } from "bun:test";
 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
@@ -5,7 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
-import { createPluginContext, openPluginContext } from "../src/plugin/context";
+import { createPluginContext, openPluginContext, preflightPluginAccess } from "../src/plugin/context";
 import type {
   ExecResult,
   Executor,
@@ -468,7 +470,7 @@ test("Pod relay is shared across Services, scoped by namespace, and permission c
 });
 
 /** @case id=file_source_pool,desc=Separate file sources borrow one native resource pool until root disposal */
-test("file source resolution shares native connections across sources and namespaces until root disposal", async () => {
+test("file source resolution reuses Inspect observations and checks each borrower before sharing native connections", async () => {
   const { ClientManager } = await import("@compforge/harness-common");
   const { fileDataSource } = await import("@compforge/doctor-plugin");
   const api = await kubernetesApi();
@@ -481,7 +483,7 @@ test("file source resolution shares native connections across sources and namesp
     run: async () => { throw new Error("File target discovery must not spawn kubectl"); },
     exec: async (_target, command, options) => {
       reads++;
-      options?.onStdoutBytes?.(new TextEncoder().encode("endpoint: sandbox-server"));
+      options?.onStdoutBytes?.(Buffer.from(`0 ${Buffer.concat([Buffer.from("endpoint: sandbox-server"), Buffer.from([0]), Buffer.from("000")]).toString("base64")}\n`));
       return result(command);
     },
   };
@@ -490,13 +492,18 @@ test("file source resolution shares native connections across sources and namesp
     { verb: "create", resource: "pods/exec" },
   ].map(rule => ({ rule, requirement: "required" as const, purpose: "read file configuration" }));
   const access = { kubernetes: needs };
-  const open = () => createPluginContext(executor, { namespace: "default", kubeconfig: api.kubeconfig }, {
-    clients: root,
+  const observed = snapshotResourceReader(resourceReader(await root.get(kubernetesClientSource({
+    namespace: "default", kubeconfig: api.kubeconfig, context: "test-context",
+  }, executor)), new AbortController().signal));
+  await observed({ apiVersion: "v1", resource: "services", namespace: "default", name: "api" });
+  await observed({ apiVersion: "v1", resource: "pods", namespace: "default", labelSelector: "app=api" });
+  const open = (declared = access) => createPluginContext(executor, { namespace: "default", kubeconfig: api.kubeconfig }, {
+    clients: root, resources: observed,
     environment: { name: "test", kind: "kubernetes", context: "test-context", server: api.endpoint },
     service: { name: "api", workloads: [], component: { name: "fixture", repository: { forge: { name: "test" }, path: "api" } } },
-    capability: { access },
+    capability: { access: declared },
   });
-  const source = (path: string) => fileDataSource(path, { workload: "main", access, resolve: async context => {
+  const source = (path: string) => fileDataSource([path], { workload: "main", access, resolve: async context => {
     const service = await context.infra.kubernetes.get<{ spec: { selector: { app: string } } }>({ apiVersion: "v1", resource: "services", name: "api" });
     const pods = await context.infra.kubernetes.list<{ metadata: { name: string } }>({
       apiVersion: "v1", resource: "pods", labelSelector: `app=${service.spec.selector.app}`,
@@ -506,6 +513,7 @@ test("file source resolution shares native connections across sources and namesp
   } });
   const first = open();
   const second = open();
+  const denied = open({ kubernetes: [] });
   try {
     const main = await first.clients.get(source("/config.yaml"));
     await first.dispose();
@@ -513,17 +521,40 @@ test("file source resolution shares native connections across sources and namesp
     await second.infra.kubernetes.inNamespace("other").list({ apiVersion: "v1", resource: "pods" });
     await expect(second.infra.kubernetes.inNamespace("other").get({ apiVersion: "v1", resource: "services", name: "api" })).rejects.toThrow("未声明");
     await expect(second.infra.kubernetes.list({ apiVersion: "example.io/v1", resource: "pods" })).rejects.toThrow("未声明");
-    expect(api.paths).toHaveLength(5);
-    expect(api.paths[4]).toBe("/api/v1/namespaces/other/pods");
+    await expect(denied.infra.kubernetes.get({ apiVersion: "v1", resource: "services", name: "api" })).rejects.toThrow("未声明");
+    expect(api.paths).toHaveLength(3);
+    expect(api.paths[2]).toBe("/api/v1/namespaces/other/pods");
     expect(api.connections).toBe(1);
-    const limits = { timeoutMs: 1000, maxBytes: 1024 };
-    expect(new TextDecoder().decode(await main.read(limits))).toContain("sandbox-server");
-    expect(new TextDecoder().decode(await secret.read(limits))).toContain("sandbox-server");
+    const limits = { timeoutMs: 1000, maxBytes: 1024, maxTotalBytes: 1024 };
+    expect(new TextDecoder().decode(fileBytes(await main.read(limits)))).toContain("sandbox-server");
+    expect(new TextDecoder().decode(fileBytes(await secret.read(limits)))).toContain("sandbox-server");
     expect(reads).toBe(2);
     await root.dispose();
     await expect(main.read(limits)).rejects.toThrow();
   } finally {
-    await Promise.all([first.dispose(), second.dispose()]);
+    await Promise.all([first.dispose(), second.dispose(), denied.dispose()]);
     await root.dispose();
   }
 });
+
+
+test("native exec preflight checks GET pods/exec in addition to the declared exec capability", async () => {
+  const commands: string[][] = [];
+  const executor: Executor = {
+    run: async args => {
+      commands.push(args);
+      return result(args, args.includes("get") ? "no" : "yes", !args.includes("get"));
+    },
+    exec: async () => { throw new Error("Preflight must not execute commands"); },
+  };
+  await expect(preflightPluginAccess(new KubernetesAccessContext(executor), "inspect", "demo", {
+    access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec", resourceName: "pod" }, purpose: "file" }] },
+  })).rejects.toThrow("缺少必须");
+  expect(commands.some(args => args.includes("get") && args.includes("pods/exec/pod"))).toBe(true);
+});
+
+function fileBytes(results: readonly FileReadResult[]): Uint8Array {
+  const first = results[0]!;
+  if (first.status === "error") throw first.error;
+  return first.bytes;
+}

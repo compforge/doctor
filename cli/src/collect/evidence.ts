@@ -23,6 +23,9 @@ export interface StepInput {
   /** partial/failed/skipped/unavailable 时的原因（降级原因也算证据） */
   reason?: string;
   command?: string[];
+  reused?: boolean;
+  observedAt?: string;
+  request?: { verb: "get" | "list"; apiVersion: string; resource: string; namespace?: string; name?: string; labelSelector?: string };
   exitCode?: number | null;
   durationMs?: number;
   output?: string;
@@ -40,6 +43,9 @@ export interface StepRecord {
   status: EvidenceStatus;
   reason?: string;
   command?: string[];
+  reused?: boolean;
+  observed_at?: string;
+  request?: { verb: "get" | "list"; apiVersion: string; resource: string; namespace?: string; name?: string; labelSelector?: string };
   exit_code?: number | null;
   duration_ms?: number;
   raw_file?: string;
@@ -132,6 +138,9 @@ export class EvidenceBundle {
       status: input.status,
       reason: input.reason,
       command: input.command,
+      request: input.request,
+      reused: input.reused,
+      observed_at: input.observedAt,
       exit_code: input.exitCode,
       duration_ms: input.durationMs,
     };

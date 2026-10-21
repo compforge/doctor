@@ -1,3 +1,5 @@
+import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
+import { kubernetesClientSource, resourceReader, executorResourceReader, snapshotResourceReader } from "../../infra/k8s/resources";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -121,7 +123,7 @@ export async function runCollectInspect(
   }] : [];
   const environmentNeeds = (config.field === "env" || config.field === "config") ? [{
     requirement: "preferred" as const,
-    rule: { verb: "create" as const, resource: "pods/exec" },
+    rule: { verb: "get" as const, resource: "pods/exec" },
     purpose: "逐个 Pod 的业务 Container 读取实际环境变量",
     fallback: "无法读取时将 Pod Env 标记为缺失，不使用 Deployment 声明值替代",
   }] : [];
@@ -187,11 +189,17 @@ export async function runCollectInspect(
   let facts: InspectFacts | undefined;
   let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
+  const clusterKube = injectedExecutor ? config.kube
+    : bindKubernetesEnvironment(config.kube, (await commandContext.environment(executor)).environment);
+  const kubernetes = await commandContext.clients.get(kubernetesClientSource(clusterKube, injectedExecutor));
   const ctx: InspectCommandContext = {
     command: commandContext,
     config,
     executor,
     authorization,
+    resources: snapshotResourceReader(injectedExecutor ? executorResourceReader(executor, config.namespace, commandContext.signal)
+      : resourceReader(kubernetes, commandContext.signal)),
+    exec: (target, command, options) => kubernetes.exec(config.namespace, target, command, options),
     bundle,
     log,
   };

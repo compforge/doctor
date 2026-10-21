@@ -84,20 +84,38 @@ Pod 总数按环境、namespace 和 UID 去重，异常明细保留 Service/Work
 
 ## 关键设计
 
+### Kubernetes 访问与观测复用
+
+Core 的资源查询和 Plugin 借用同一个 Command 持有的 KubernetesClient，复用原生 HTTP
+连接池；资源证据记录实际 API request、observedAt 和耗时，不伪装成 kubectl 命令。
+单次 Inspect 内复用成功观测；完整、无筛选的列表可提供同 namespace 下的已存在对象。
+有分页后续或带 selector 的列表不会被当作完整快照，失败不缓存，跨 Command 不复用观测。
+复用的证据保留原观察时间，并标记 reused，不能解释为再次访问了 API。
+
+文件目标解析借用同一个 Inspect 观测集，仍逐个检查来源声明的资源、API group 与 namespace 权限。
+相同查询复用已取得的结果；不从无关 selector 的列表推断另一查询。
+Pod env 仍逐副本采集，文件按 source 声明的组采集，Probe 顺序与并发保持不变。exec 使用根客户端的流式通道；
+它与资源 HTTP 连接池共享根生命周期，但每次命令都有独立会话，不重放失败的命令。
+WebSocket 握手需要 get pods/exec 权限；Plugin 声明 exec 能力时，Core 补充检查这一传输权限。
+Bun Host 暂不支持 kubeconfig proxy 下的原生 exec，会在执行前明确报错；这种配置需使用 Node Host。
+
 ### 文件声明与运行时读取
 
-`Service.dataSources` 是静态数组。Plugin 使用 `fileDataSource` 声明路径、所属 Workload、
+`Service.dataSources` 是静态数组。Plugin 使用 `fileDataSource` 声明非空、无重复的路径数组、所属 Workload、
 访问需求和目标解析函数；发现 Catalog 不定位 Pod。Core 创建客户端时注入
 `PluginClientContext`，initialize 解析代表 Pod/Container，read 通过 Quality Harness
-`PodFileDataSource` 执行有界读取。根 Command 统一复用与释放客户端。
+`PodFileDataSource` 一次 exec 读取整组。同一 source 只定位一次目标；不同 source 的定位查询
+可以复用本次 Inspect 已取得的观测。根 Command 统一复用与释放客户端。
 
 `--field config` 同时查询 Pod env 和声明的 YAML/JSON 文件。每个文件最多 1 MiB，
-单次读取限时 15 秒；嵌套键展开为 `sandbox.provider.config.endpoint`，数组为 `items[0]`。
+每组总预算为路径数 × 1 MiB，整组读取限时 15 秒（含排队）；嵌套键展开为 `sandbox.provider.config.endpoint`，数组为 `items[0]`。
 结果保留 Service、Workload、Pod、Container 和文件路径，不合并文件/Secret overlay/env 的优先级，
 也不导入 Settings 或声称得到应用解析后的最终配置。无文件声明的 Service 仍查询 Pod env。
 文件通常取一个代表 Pod，而 env 逐个副本采集，报告保留实际来源。
 
-文件不存在、无权限、无法定位目标、超限或解析失败均形成证据缺口；其它来源继续采集。
+每个声明路径均形成独立 Observation 与 Coverage 期待项；文件不存在、无权限、超限或解析失败只形成
+该文件的证据缺口，其它文件保留。无法定位目标、整组超时、总预算或传输失败标记整组缺口。
+文件组共同读取不承诺文件系统原子快照，也不把 env 合并进文件组。
 有效空文件与读取失败分开处理。解析错误不包含文件原文。只查询 env/image 不读取文件。
 `configurationInspection` 已移除，不再控制采集范围。
 
