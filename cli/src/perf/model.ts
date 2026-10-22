@@ -11,6 +11,7 @@ export interface PerfCliOpts {
   levels?: string;
   ramp?: string;
   hold?: string;
+  /** Removed in Harness 0.1; retained only to reject stale embedded inputs explicitly. */
   maxRequests?: string;
   abortErrorRate?: string;
   breakerMinN?: string;
@@ -37,7 +38,6 @@ export interface PerfConfig {
   levels: number[];
   rampSeconds: number;
   holdSeconds: number;
-  maxRequests: number;
   abortErrorRate: number;
   breakerMinN: number;
   gracefulStopSeconds: number;
@@ -48,7 +48,7 @@ export interface PerfConfig {
 }
 
 export interface PerfEvidenceSample {
-  trialId: string;
+  armRunId: string;
   caseId?: string;
   correlationKey: string;
   correlationId: string;

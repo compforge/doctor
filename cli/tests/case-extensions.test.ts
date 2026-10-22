@@ -1,4 +1,4 @@
-import { withSummary } from "@compforge/doctor-plugin";
+import { bindService, withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type CaseCatalog, type CaseRunnerFactory, type ServiceDefinition, type PluginDefinition, type PerfScenariosExtension } from "@compforge/doctor-plugin";
 import { caseRunnerProvider, createCaseRunner, runnableCaseCatalog, runnerCaseCatalog } from "../src/case/runners";
@@ -6,7 +6,7 @@ import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { createHostPluginContext } from "../src/plugin/context";
 import { selectEvalProvider, executeEvalCases } from "../src/eval";
 import { selectPerfProvider, loadPerfScenarios } from "../src/perf/extensions";
-import { workloadFromCaseRunner } from "../src/perf";
+import { perfAdapterFromCaseFactory } from "../src/perf";
 
 const cases = { caseset: "chat", schema_version: 1 as const, facets: {}, cases: [{ id: "hello", input: { query: "hello" } }] };
 const extension: CaseRunnerFactory = {
@@ -40,7 +40,7 @@ test("native Case resource serves both Eval and Perf without legacy capability",
   try {
     const runner = await createCaseRunner(selected.factory, context, { caseSetId: "chat", timeoutMs: 1000 });
     expect((await executeEvalCases(runner, cases.cases, "run", context.signal))[0]?.protocol?.ok).toBe(true);
-    expect(workloadFromCaseRunner(runner)).toBeDefined();
+    expect(perfAdapterFromCaseFactory("app", async () => runner)).toBeDefined();
   } finally { await context.dispose(); }
 });
 
@@ -111,8 +111,7 @@ test("pre-cancelled creation never invokes the factory", async () => {
 });
 
 test("Perf Harness owns lazy creation and cleanup when cancellation races with setup", async () => {
-  const { Engine, rampHold } = await import("@compforge/perf-harness");
-  const { workloadFromCaseFactory } = await import("../src/perf");
+  const { Engine } = await import("@compforge/perf-harness");
   for (const preCancelled of [true, false]) {
     const controller = new AbortController();
     const cleanup = mock(async () => { });
@@ -122,11 +121,13 @@ test("Perf Harness owns lazy creation and cleanup when cancellation races with s
       return { run: fire, cleanup, classify: () => ({ ok: true }) };
     });
     if (preCancelled) controller.abort();
-    await new Engine({
-      name: "test", subject: { name: "test", target: {} },
-      workload: workloadFromCaseFactory(create), caseSet: cases,
-      loads: [rampHold("closed", 1, 0, 1, { max_requests: 1 })], signal: controller.signal,
+    const result = new Engine({
+      name: "test", service: bindService(base, { name: "test" }),
+      ...perfAdapterFromCaseFactory("app", create), caseSet: cases,
+      loads: [{ request_rate: Infinity, max_inflight: 1, hold_s: 1 }], signal: controller.signal,
     }).run();
+    if (preCancelled) expect((await result).executions).toHaveLength(0);
+    else await expect(result).rejects.toBe(controller.signal.reason);
     expect(create).toHaveBeenCalledTimes(preCancelled ? 0 : 1);
     expect(cleanup).toHaveBeenCalledTimes(preCancelled ? 0 : 1);
     expect(fire).not.toHaveBeenCalled();
