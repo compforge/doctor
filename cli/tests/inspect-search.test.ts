@@ -148,7 +148,9 @@ for (const scenario of [
       expect(calls.some(args => args[1] === "configmaps")).toBe(scenario.configuration);
       expect(calls.some(args => args[1] === "deployments")).toBe(scenario.configuration);
       expect(JSON.stringify(result)).not.toContain("do-not-return");
-      expect(result.matches.every(item => item.service === "example-api" && item.container === "main")).toBe(true);
+      if (result.field === "env" || result.field === "image" || result.field === "config") {
+        expect(result.matches.every(item => item.service === "example-api" && item.container === "main")).toBe(true);
+      }
       const summary = readFileSync(join(artifact.path, "summary.md"), "utf8");
       if (scenario.failExec) {
         expect(summary).toContain("证据不完整");

@@ -434,7 +434,7 @@ function findingRows(diagnosis: InspectDiagnosis): string[][] {
 const EVENT_TABLE_HEADERS = ["时间", "级别", "对象", "原因", "次数", "消息"] as const;
 
 function eventRows(diagnosis: InspectDiagnosis): string[][] {
-  const events = lifecycleSignals(diagnosis)?.events ?? [];
+  const events = diagnosis.evidence.search?.field === "event" ? diagnosis.evidence.search.matches : lifecycleSignals(diagnosis)?.events ?? [];
   // 采集侧按时间升序落盘；展示侧最近优先，便于先看触发点。
   return [...events].reverse().map((event) => [
     event.lastAt ?? "—",
@@ -449,7 +449,8 @@ function eventRows(diagnosis: InspectDiagnosis): string[][] {
 const AUTOSCALER_TABLE_HEADERS = ["HPA", "目标", "当前副本", "期望副本", "min", "max", "指标"] as const;
 
 function autoscalerRows(diagnosis: InspectDiagnosis): string[][] {
-  return (lifecycleSignals(diagnosis)?.autoscalers ?? []).map((autoscaler) => [
+  const matches = diagnosis.evidence.search?.field === "hpa" ? diagnosis.evidence.search.matches : lifecycleSignals(diagnosis)?.autoscalers ?? [];
+  return matches.map((autoscaler) => [
     autoscaler.name,
     `${autoscaler.targetKind}/${autoscaler.targetName}`,
     String(autoscaler.currentReplicas ?? "—"),
@@ -507,6 +508,8 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
 }
 
 function searchHeaders(diagnosis: InspectDiagnosis): string[] {
+  if (diagnosis.evidence.search!.field === "event") return [...EVENT_TABLE_HEADERS];
+  if (diagnosis.evidence.search!.field === "hpa") return [...AUTOSCALER_TABLE_HEADERS];
   if (diagnosis.evidence.search!.field === "config") return ["名称", "值", "来源", "文件", "Service", "Workload", "Namespace", "Pod", "Container"];
   return diagnosis.evidence.search!.field === "env"
     ? ["名称", "值", "Service", "Workload", "Pod", "Container"]
@@ -515,6 +518,8 @@ function searchHeaders(diagnosis: InspectDiagnosis): string[] {
 
 function searchRows(diagnosis: InspectDiagnosis): string[][] {
   const search = diagnosis.evidence.search!;
+  if (search.field === "event") return eventRows(diagnosis);
+  if (search.field === "hpa") return autoscalerRows(diagnosis);
   if (search.field === "config") return search.matches.map(item => [item.name, displayValue(item.value), item.source, item.path ?? "—", item.service, item.workload, item.namespace ?? "—", item.pod ?? "—", item.container ?? "—"]);
   return search.field === "env"
     ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.workload, item.pod, item.container])

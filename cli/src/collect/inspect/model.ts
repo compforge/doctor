@@ -20,7 +20,7 @@ import type { EvidenceBundle } from "../evidence";
 export type InspectOutputFormat = "default" | "bundle" | "json" | "html" | "md" | "summary";
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
 
-export type InspectField = "env" | "image" | "config";
+export type InspectField = "env" | "image" | "config" | "event" | "hpa";
 
 export interface CollectInspectCliOpts extends TimeWindowOptions {
   namespace?: string;
@@ -141,7 +141,7 @@ export interface InspectFacts {
     targets: InspectDependencyTarget[];
     missing: string[];
   }, "inspect.dependency-targets">;
-  /** 与所选 Workload 相关的 Event 与 HPA 快照；补充证据，不进入 Coverage 目标（客户环境 RBAC 常不含 events）。 */
+  /** 与所选 Workload 相关的 Event/HPA；完整 Inspect 为补充证据，显式 field 纳入对应 Coverage。 */
   lifecycleSignals: Fact<{
     events: KubernetesWorkloadEvent[];
     eventsObservedAt?: string;
@@ -279,6 +279,8 @@ export type InspectSearchResult = { keyword?: string } & (
   | { field: "env"; matches: EnvSearchMatch[] }
   | { field: "image"; matches: ImageSearchMatch[] }
   | { field: "config"; matches: ConfigSearchMatch[] }
+  | { field: "event"; matches: KubernetesWorkloadEvent[] }
+  | { field: "hpa"; matches: KubernetesAutoscaler[] }
 );
 
 export type InspectFinding = ServiceDetectorFinding;
@@ -288,7 +290,9 @@ export type InspectDiagnosisGoal =
   | "file-configuration"
   | "workload-runtime"
   | "runtime-dependencies"
-  | "workload-observations";
+  | "workload-observations"
+  | "event"
+  | "hpa";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
 
 export interface InspectCommandContext {
@@ -305,4 +309,17 @@ export interface InspectCommandContext {
 
 export function fileConfigurationId(service: string, clientKey: string, path: string): string {
   return `file-config-${service}-${clientKey}-${encodeURIComponent(path)}`;
+}
+
+/** @spec A field selects collection, authorization and coverage; format only selects delivery. */
+export function inspectCollectionScope(config: Pick<InspectConfig, "field" | "includeDeploymentConfig" | "includeDependencies">) {
+  return {
+    env: config.field === "env" || config.field === "config",
+    files: config.field === "config",
+    event: config.field === undefined || config.field === "event",
+    hpa: config.field === undefined || config.field === "hpa",
+    plugins: config.field === undefined,
+    deployment: config.field === undefined && config.includeDeploymentConfig === true,
+    dependencies: config.field === undefined && config.includeDependencies === true,
+  };
 }

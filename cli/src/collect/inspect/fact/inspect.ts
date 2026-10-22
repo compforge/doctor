@@ -1,5 +1,5 @@
 import { fileDataSources } from "@compforge/doctor-plugin";
-import { fileConfigurationId } from "../model";
+import { fileConfigurationId, inspectCollectionScope } from "../model";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type {
   ServiceCatalog,
@@ -19,7 +19,6 @@ import type {
 import type { KubernetesResourceCapture } from "../../../infra/k8s/resources";
 import {
   deriveDeploymentName,
-  matchAutoscalers,
   parseKubernetesAutoscalers,
   parseKubernetesEvents,
   selectLifecycleEvents,
@@ -70,79 +69,71 @@ export function inspectContainerStateFact(
   return { kind: state.kind, ...terminationFact(state) };
 }
 
-interface LifecycleCapture {
-  observedAt?: string;
-  result?: KubernetesResourceCapture;
-  error?: string;
-}
-
 /** 单次只读 list 的生命周期信号采集；失败只降级对应部分，不影响 Pod 运行态事实。 */
 async function captureLifecycleSignals(
   ctx: InspectCommandContext,
   config: InspectConfig,
   resolved: Map<string, ResolvedKubernetesWorkload>,
 ): Promise<InspectFacts["lifecycleSignals"]> {
+  const scope = inspectCollectionScope(config);
+  if (!scope.event && !scope.hpa) return unavailableFact("inspect.lifecycle-signals", "service-targets", "所选字段未纳入 Event/HPA");
   const [events, hpas] = await Promise.all([
-    ctx.resources({ apiVersion: "v1", resource: "events", namespace: config.namespace }),
-    ctx.resources({ apiVersion: "autoscaling/v2", resource: "horizontalpodautoscalers", namespace: config.namespace }),
-  ]).then(captures => captures.map(result => ({ result, error: result.error, observedAt: result.observedAt })));
-  const recordStep = (id: string, title: string, capture: LifecycleCapture) => ctx.bundle.addStep({
-    id,
-    title,
-    risk: "observe",
-    status: capture.result?.value !== undefined ? "ok" : "failed",
-    reason: capture.error ?? (capture.result ? capture.result.error : "读取失败"),
-    command: capture.result?.execution?.command,
-    request: capture.result?.request,
-    observedAt: capture.observedAt,
-    durationMs: capture.result?.durationMs ?? 0,
-  });
+    scope.event ? ctx.resources({ apiVersion: "v1", resource: "events", namespace: config.namespace }) : undefined,
+    scope.hpa ? ctx.resources({ apiVersion: "autoscaling/v2", resource: "horizontalpodautoscalers", namespace: config.namespace }) : undefined,
+  ]);
+  const recordStep = (id: string, title: string, capture: KubernetesResourceCapture | undefined) => {
+    if (!capture) return;
+    ctx.bundle.addStep({ id, title, risk: "observe", status: capture.value !== undefined ? "ok" : "failed",
+      reason: capture.error, command: capture.execution?.command, request: capture.request,
+      observedAt: capture.observedAt, durationMs: capture.durationMs });
+  };
   recordStep("inspect-events", "Workload 关联 Event", events);
   recordStep("inspect-hpas", "HPA 自动扩缩", hpas);
-
   const failures = [
-    events.result?.value !== undefined ? undefined : `Event：${events.error ?? events.result?.error}`,
-    hpas.result?.value !== undefined ? undefined : `HPA：${hpas.error ?? hpas.result?.error}`,
+    events && events.value === undefined ? `Event：${events.error ?? "响应缺失"}` : undefined,
+    hpas && hpas.value === undefined ? `HPA：${hpas.error ?? "响应缺失"}` : undefined,
   ].filter((reason): reason is string => !!reason);
-  if (failures.length === 2) {
-    return failedFact("inspect.lifecycle-signals", "service-targets", failures.join("；"));
-  }
-
-  const workloads = [...resolved.values()];
-  // Deployment 名单除显式采集外，还从 Pod 命名反推——未开 --deployment-config 时 HPA/Deployment 级事件仍要关联得上。
-  const deploymentNames = new Set(workloads.flatMap((workload) => [
-    ...workload.deployments.map((deployment) => deployment.name),
-    ...workload.pods.flatMap((pod) => deriveDeploymentName(pod.name) ?? []),
-  ]));
-  const objectNames = new Set([
-    ...workloads.flatMap((workload) => workload.pods.map((pod) => pod.name)),
-    ...deploymentNames,
+  const workloads = [...resolved.values()].filter(workload => (workload.definition.namespace ?? config.namespace) === config.namespace);
+  const scaleTargets = workloads.flatMap(workload => [
+    ...workload.deployments.map(deployment => ({ kind: "Deployment", name: deployment.name })),
+    ...workload.pods.flatMap(pod => {
+      const name = deriveDeploymentName(pod.name);
+      return name ? [{ kind: "Deployment", name }] : [];
+    }),
+    ...(workload.definition.location.kind === "resource" && ["Deployment", "StatefulSet"].includes(workload.definition.location.resource_kind)
+      ? [{ kind: workload.definition.location.resource_kind, name: workload.definition.location.name }] : []),
   ]);
+  const scaleTargetKeys = new Set(scaleTargets.map(target => `${target.kind}/${target.name}`));
+  const objectNames = new Set(workloads.flatMap(workload => [
+    ...workload.pods.map(pod => pod.name),
+    ...scaleTargets.map(target => target.name),
+    ...(workload.definition.location.kind === "resource" ? [workload.definition.location.name] : []),
+  ]));
   let autoscalers: ReturnType<typeof parseKubernetesAutoscalers> = [];
-  if (hpas.result?.value !== undefined) {
-    try {
-      autoscalers = matchAutoscalers(
-        parseKubernetesAutoscalers(JSON.stringify(hpas.result.value), config.namespace),
-        deploymentNames,
-      );
-    } catch (error) {
-      ctx.log(`[collect] HPA 解析失败：${error instanceof Error ? error.message : String(error)}`);
-    }
+  if (hpas?.value !== undefined) {
+    try { autoscalers = parseKubernetesAutoscalers(JSON.stringify(hpas.value), config.namespace)
+      .filter(hpa => scaleTargetKeys.has(`${hpa.targetKind}/${hpa.targetName}`)); }
+    catch { failures.push("HPA：响应解析失败"); }
   }
-  // HPA 自身的 SuccessfulRescale 事件挂在 HPA 对象上，关联后补入事件筛选范围。
+  // Full Inspect can associate HPA events; event-only mode does not fetch another field's resources.
   for (const autoscaler of autoscalers) objectNames.add(autoscaler.name);
-  let events2: ReturnType<typeof parseKubernetesEvents> = [];
+  let selectedEvents: ReturnType<typeof parseKubernetesEvents> = [];
   let omittedEvents = 0;
-  if (events.result?.value !== undefined) {
+  if (events?.value !== undefined) {
     try {
-      const selected = selectLifecycleEvents(parseKubernetesEvents(JSON.stringify(events.result.value), config.namespace), objectNames, Infinity, config.timeWindow);
+      const selected = selectLifecycleEvents(parseKubernetesEvents(JSON.stringify(events.value), config.namespace), objectNames, Infinity, config.timeWindow);
       omittedEvents = Math.max(0, selected.length - LIFECYCLE_EVENT_LIMIT);
-      events2 = selected.slice(-LIFECYCLE_EVENT_LIMIT);
-    } catch (error) {
-      ctx.log(`[collect] Event 解析失败：${error instanceof Error ? error.message : String(error)}`);
+      selectedEvents = selected.slice(-LIFECYCLE_EVENT_LIMIT);
+    } catch { failures.push("Event：响应解析失败"); }
+  }
+  if (failures.length) {
+    ctx.log(`[collect] Event/HPA 采集缺口：${failures.join("；")}`);
+    if (config.field || failures.length === Number(scope.event) + Number(scope.hpa)) {
+      return failedFact("inspect.lifecycle-signals", "service-targets", failures.join("；"));
     }
   }
-  return collectedFact("inspect.lifecycle-signals", "service-targets", { events: events2, autoscalers, eventsObservedAt: events.observedAt, timeWindow: config.timeWindow, omittedEvents });
+  return collectedFact("inspect.lifecycle-signals", "service-targets", { events: selectedEvents, autoscalers,
+    eventsObservedAt: events?.observedAt, timeWindow: config.timeWindow, omittedEvents });
 }
 
 function dependencyTargets(
@@ -236,18 +227,19 @@ export function makeServiceTargetsInspect(
   config: InspectConfig,
   catalog: ServiceCatalog,
 ): Inspect<InspectFacts, InspectCommandContext> {
+  const scope = inspectCollectionScope(config);
   return {
     id: "service-targets",
     run: async (ctx) => {
       const capture = await captureKubernetesWorkloadConfig(
         ctx.resources,
         config.namespace,
-        config.includeDeploymentConfig === true,
+        scope.deployment,
         config.services.some((name) => catalog.find(name)?.workloads.some(
           (workload) => workload.location.kind === "service",
         )),
       );
-      const deploymentReasons = config.includeDeploymentConfig ? [
+      const deploymentReasons = scope.deployment ? [
         capture.deploymentParseError
         ?? (capture.deploymentCapture
           ? capture.deploymentCapture.error
@@ -257,7 +249,7 @@ export function makeServiceTargetsInspect(
           ? capture.configMapCapture.error
           : "ConfigMap 未读取"),
       ].filter((reason): reason is string => !!reason) : [];
-      const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !config.includeDeploymentConfig
+      const deploymentConfiguration: InspectFacts["deploymentConfiguration"] = !scope.deployment
         ? unavailableFact("inspect.deployment-configuration", "service-targets", DEPLOYMENT_CONFIG_SKIPPED_REASON)
         : deploymentReasons.length
           ? failedFact("inspect.deployment-configuration", "service-targets", deploymentReasons.join("；"))
@@ -304,7 +296,7 @@ export function makeServiceTargetsInspect(
         return {
           serviceTargets: failedFact("inspect.service-targets", "service-targets", reason),
           deploymentConfiguration,
-          dependencyTargets: config.includeDependencies
+          dependencyTargets: scope.dependencies
             ? failedFact("inspect.dependency-targets", "service-targets", reason)
             : unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON),
           lifecycleSignals: unavailableFact("inspect.lifecycle-signals", "service-targets", "Workload 快照未取得，未采集事件与 Autoscaler"),
@@ -330,7 +322,7 @@ export function makeServiceTargetsInspect(
           ));
         }
       }
-      const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !config.includeDependencies
+      const resolvedDependencyTargets: InspectFacts["dependencyTargets"] = !scope.dependencies
         ? unavailableFact("inspect.dependency-targets", "service-targets", DEPENDENCIES_SKIPPED_REASON)
         : dependencyTargetsFailure
           ? failedFact("inspect.dependency-targets", "service-targets", dependencyTargetsFailure)
@@ -345,7 +337,7 @@ export function makeServiceTargetsInspect(
           const resolved = resolvedWorkloads.get(JSON.stringify([serviceName, definition.name]))!;
           const deployments = [] as typeof workloads[string]["deployments"];
           const unavailableDeployments = [] as typeof workloads[string]["unavailableDeployments"];
-          if (config.includeDeploymentConfig) {
+          if (scope.deployment) {
             for (const deployment of resolved.deployments) {
               const selected = selectWorkloadDeploymentContainer(resolved, deployment);
               if (selected.container) {
@@ -411,7 +403,7 @@ export function makeServiceTargetsInspect(
         services[serviceName] = {
           service: serviceName,
           toolchain: declaredService.toolchain,
-          files: config.field === "config" ? fileDataSources(declaredService).flatMap(source => source.paths.map(path => ({
+          files: scope.files ? fileDataSources(declaredService).flatMap(source => source.paths.map(path => ({
             id: fileConfigurationId(serviceName, source.clientKey, path), path, workload: source.workload,
           }))) : undefined,
           workloads,

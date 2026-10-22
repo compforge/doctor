@@ -102,6 +102,13 @@ export function buildInspectEvidence(
 export function searchInspectFields(evidence: InspectEvidence, field: InspectField, keyword?: string): InspectSearchResult {
   const term = keyword?.toLowerCase() ?? "";
   const contains = (text: string) => text.toLowerCase().includes(term);
+  if (field === "event" || field === "hpa") {
+    const lifecycle = evidence.facts.lifecycleSignals;
+    const selected = lifecycle.status === "collected" ? lifecycle : undefined;
+    const matches = (item: object) => Object.values(item).some(value => contains(String(value ?? "")));
+    return field === "event" ? { field, keyword, matches: (selected?.events ?? []).filter(matches) }
+      : { field, keyword, matches: (selected?.autoscalers ?? []).filter(matches) };
+  }
   if (field === "image") {
     const targets = evidence.facts.serviceTargets;
     const matches: ImageSearchMatch[] = [];
@@ -437,6 +444,20 @@ export function buildInspectCoverage(
     }
     coverage.push({ goal: "file-configuration", status: !missing.length && collected === expected
       ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
+  }
+  if (scope?.field === "event" || scope?.field === "hpa") {
+    const fact = evidence.facts.lifecycleSignals;
+    const truncated = scope.field === "event" && fact.status === "collected" && !!fact.omittedEvents;
+    coverage.push({ goal: scope.field, status: fact.status === "collected" ? truncated ? "partial" : "sufficient" : "insufficient",
+      missingEvidence: fact.status !== "collected" ? [fact.reason] : truncated ? [`容量限制省略 ${fact.omittedEvents} 条事件`] : [] });
+  }
+  if (scope?.field) {
+    const goals: Record<InspectField, InspectDiagnosisGoal[]> = {
+      env: ["workload-runtime", "container-environment"],
+      config: ["workload-runtime", "container-environment", "file-configuration"],
+      image: ["workload-runtime"], event: ["workload-runtime", "event"], hpa: ["workload-runtime", "hpa"],
+    };
+    return coverage.filter(item => goals[scope.field!].includes(item.goal));
   }
   // Coverage measures the requested scope, not optional collection the caller never selected.
   return coverage.filter(({ goal }) => !scope

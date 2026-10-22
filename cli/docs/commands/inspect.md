@@ -34,9 +34,11 @@ doctor inspect -s api --field env --search SANDBOX
 doctor inspect -s api --field config --search sandbox -f summary
 doctor inspect -s api --field image
 doctor inspect -s api --field image --search registry.example.com
+doctor inspect -s api --field event --since 30m -f summary
+doctor inspect -s api --field hpa -f summary
 ```
 
-`--field env|config|image` 选择要快速查看的信息；不带关键词时返回该字段的全部条目。
+`--field env|config|image|event|hpa` 选择要采集和查看的信息；不带关键词时返回该字段的全部条目。
 `--search` 对 Env 名称或值、配置键或值、镜像地址或 Image ID 做忽略大小写的字面子串匹配；
 单独使用 `--search` 默认搜索 env。关键词不作为正则表达式，也不拆词；首尾空白会移除，
 空白关键词报错。结果保留原值和 Service、Workload、Pod、Container 来源。
@@ -47,8 +49,17 @@ Env 查询通过 `pods/exec` 在每个 Pod 的业务 Container 内执行 `printe
 缺少权限、Container 未运行、业务容器无法唯一定位或 printenv 不可用时，在 Coverage 中保留缺口；
 不会用 Deployment/ConfigMap 的声明值替代。NUL 分隔保留值中的换行和等号。
 
-Env、Config 和 Image 查询均默认关闭部署配置与依赖采集；显式传入 `--deployment-config` 或
-`--dependencies` 时额外采集相应证据。部署配置仍表示声明，Env 搜索只匹配容器现场观测值。
+指定 `--field` 时，只采集该字段与必要的 Workload/Pod 定位数据，不运行其它 Service Probe/Detector。
+Env 只读取 Pod env，Config 读取声明的文件组和 Pod env，Image 使用 Pod 镜像声明与 imageID，
+Event 只额外读取关联事件，HPA 只额外读取关联 Autoscaler。它们不互相附带采集；
+`--search` 未指定 field 时仍等同于 env。字段选择同时约束权限预检、实际访问和 Coverage。
+`--field/--search` 不能与 `--deployment-config` 或 `--dependencies` 同时使用；完整 Inspect 才支持这两个额外采集开关。
+部署配置仍表示声明，Env 搜索只匹配容器现场观测值。
+
+Event 保留现有的 Warning/生命周期 Normal、时间窗及容量规则；结果含时间、级别、对象、原因、次数和消息。
+事件只关联本次定位的 Pod 与已知 Workload 对象，不为关联 HPA 自身事件额外读取 HPA。
+HPA 展示目标、当前/期望副本、min/max 与指标；两者的 `--search` 均按值忽略大小写匹配。
+读取或解析失败形成字段证据缺口；成功返回空列表表示本次未匹配到对象，事件截断则保留 partial。
 
 没有指定 format 或 output 时默认在终端显示结果；显式指定交付格式时沿用该格式。
 Config 的 Markdown 摘要按文件/Pod env 分组，每组一个“名称 / 值”表格。
@@ -57,7 +68,7 @@ Config 的 Markdown 摘要按文件/Pod env 分组，每组一个“名称 / 值
 相同匹配项不表示未匹配的文件内容相同；JSON 和完整证据仍逐来源保留。
 
 结构化结果保存在 `analysis/evidence.json` 的 `search` 字段中，包含 field、可选 keyword 和 matches；
-JSON 交付通过证据引用关联该文件。完整 Facts、Observations、Detector 输入和 Coverage 不受过滤影响。
+JSON 交付通过证据引用关联该文件。字段范围内的完整 Facts、Observations 和 Coverage 不受关键词过滤影响。
 采集完整但没有匹配时成功返回空结果；采集不足时保留缺口，不将其解释为目标值不存在。
 
 Env 表示容器内新执行进程观察到的环境，不展开挂载 YAML/JSON，也不声称反映应用启动后在进程内修改的环境变量。
