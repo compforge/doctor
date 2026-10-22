@@ -1,37 +1,25 @@
 import { connectionDataSources } from "@compforge/doctor-plugin";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { parseExposition } from "@compforge/prombed";
 import type {
   Database,
   PluginDefinition,
   ServiceCatalog,
   ServiceRedisDataSource,
+  ServiceRedisClient,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../../command";
 import type { KubernetesCommandConfig } from "../../../command/kubernetes-target";
 import { borrowDatabase } from "../../../datasource/database";
 import type { DatabaseTarget } from "../../../infra/database";
-import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import {
-  findPodsForService,
   listServiceNetwork,
   type KubernetesService,
 } from "@compforge/harness-toolbox/kubernetes/service";
-import type { KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
 import type { EmbeddedMetricSource, MetricFetch } from "../../../infra/metric";
-import {
-  discoverRedisTopology,
-  RedisAccess,
-  type RedisEndpoint,
-  type RedisTopology,
-} from "@compforge/harness-toolbox/redis/index";
-import { loadServiceRuntimeConfig } from "../../../datasource/runtime-config";
-import {
-  hasRedisStoreConfiguration,
-  resolveRedisTarget,
-  type RedisTarget,
-} from "../../redis/fact/target";
+import type { RedisEndpoint } from "@compforge/harness-toolbox/redis/index";
+import { borrowServiceClient } from "../../../datasource/client";
 import { STORE_METRIC_NAMES, type MetricStoreKind } from "./contract";
 
 const EXPORTER_MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -88,23 +76,6 @@ export function discoverStoreExporterServices(
       ?? (service.ports.length === 1 ? service.ports[0] : undefined);
     return port ? [{ kind, service: service.name, port: port.port, path: "/metrics" as const }] : [];
   });
-}
-
-function environmentText(environment: ReadonlyMap<string, string>): string {
-  return [...environment].map(([name, value]) => `${name}=${value}`).join("\n");
-}
-
-async function runtimeEnvironment(
-  executor: Executor,
-  pod: KubernetesPod,
-  complete: (environment: Map<string, string>) => boolean,
-): Promise<{ target: ExecTarget; raw: string } | undefined> {
-  for (const container of pod.containers) {
-    const target = { pod: pod.name, container: container.name };
-    const runtime = await loadServiceRuntimeConfig(executor, target, complete);
-    if (complete(runtime.environment)) return { target, raw: environmentText(runtime.environment) };
-  }
-  return undefined;
 }
 
 function numberValue(value: unknown): number {
@@ -170,42 +141,21 @@ export function redisInfoExposition(info: Record<string, unknown>, endpoint: Red
 function redisSampler(
   service: string,
   store: ServiceRedisDataSource,
-  target: RedisTarget,
-  forwarder: ServicePortForwarder,
+  client: ServiceRedisClient,
 ): StoreMetricSampler {
-  const access = new RedisAccess(
-    new PortForwardTransport((endpoint) => forwarder.forward(endpoint)),
-    {
-      username: target.username,
-      password: target.password,
-      useSsl: target.useSsl,
-      timeoutMs: target.timeout * 1_000,
-    },
-  );
-  let topology: RedisTopology | undefined;
   return {
     kind: "redis",
     service,
     store: store.id,
     sample: async () => {
-      topology ??= await discoverRedisTopology(access, {
-        endpoints: target.endpoints.map(([host, port]) => ({ host, port })),
-        database: target.database,
-        username: target.username,
-        password: target.password,
-        clusterType: target.clusterType,
-        sentinelHosts: target.sentinelHosts.map(([host, port]) => ({ host, port })),
-        sentinelMasterName: target.sentinelMasterName,
-        sentinelUsername: target.sentinelUsername,
-        sentinelPassword: target.sentinelPassword,
-      });
+      const topology = await client.topology();
       const samples = await Promise.all(topology.masters.map(async (endpoint) => {
-        const client = await access.connection(endpoint, target.database);
-        return redisInfoExposition(await client.info(), endpoint);
+        const connection = await client.access.connection(endpoint, client.target.database);
+        return redisInfoExposition(await connection.info(), endpoint);
       }));
       return samples.join("");
     },
-    close: () => access.close(),
+    close: async () => {},
   };
 }
 
@@ -247,24 +197,12 @@ function mysqlSampler(
   };
 }
 
-function targetKey(kind: MetricStoreKind, target: RedisTarget | DatabaseTarget): string {
-  if (kind === "redis") {
-    const redis = target as RedisTarget;
-    return [kind, redis.clusterType, redis.endpoints.join(","), redis.database, redis.username ?? ""].join("|");
-  }
-  const mysql = target as DatabaseTarget;
-  return [kind, mysql.host, mysql.port, mysql.database, mysql.user].join("|");
-}
-
 async function prepareDirectSamplers(input: {
   plugin: PluginDefinition;
   commandContext: CommandContext;
   collect: KubernetesCommandConfig;
   services: readonly string[];
   executor: Executor;
-  forwarder: ServicePortForwarder;
-  networkServices: readonly KubernetesService[];
-  pods: readonly KubernetesPod[];
 }): Promise<{
   samplers: StoreMetricSampler[];
   errors: Array<{ kind: MetricStoreKind; message: string }>;
@@ -277,29 +215,15 @@ async function prepareDirectSamplers(input: {
     for (const store of connectionDataSources(service)) {
       try {
         if (store.kind === "redis") {
-          const namespace = input.networkServices.find(item => item.name === serviceName)?.namespace ?? input.collect.kubernetes.namespace;
-          const pod = findPodsForService(input.networkServices, input.pods, serviceName, namespace)[0];
-          if (!pod) {
-            errors.push({ kind: "redis", message: `${serviceName} 没有可用于解析 Store 配置的 Running Pod` });
-            continue;
-          }
-          const runtime = await runtimeEnvironment(
-            input.executor,
-            pod,
-            (environment) => hasRedisStoreConfiguration(environmentText(environment), store),
-          );
-          if (!runtime) {
-            errors.push({ kind: "redis", message: `${serviceName}/${store.id} 未解析出 Redis 运行时配置` });
-            continue;
-          }
-          const target = resolveRedisTarget(runtime.raw, undefined, undefined, store);
-          const key = targetKey("redis", target);
-          if (!samplers.has(key)) samplers.set(key, redisSampler(serviceName, store, target, input.forwarder));
+          const client = await borrowServiceClient(input.commandContext, input.collect, input.executor,
+            serviceName, store, store.source);
+          samplers.set(`${serviceName}/${store.id}`, redisSampler(serviceName, store, client));
         } else if (store.kind === "db" && store.backend === "mysql") {
           const client = await borrowDatabase(input.commandContext, {
             collect: input.collect, service: serviceName, capability: store,
           }, input.executor);
-          const key = targetKey("mysql", client.target);
+          const target = client.target;
+          const key = ["mysql", target.host, target.port, target.database, target.user].join("|");
           if (!samplers.has(key)) samplers.set(key, mysqlSampler(serviceName, store, client.target, client.database));
         }
       } catch (error) {
@@ -307,7 +231,7 @@ async function prepareDirectSamplers(input: {
         errors.push({
           kind,
           message: store.kind === "db" ? `${serviceName}/${store.id} 数据库 source 初始化失败`
-            : `${serviceName}/${store.id} Store 配置解析失败：${error instanceof Error ? error.message : String(error)}`,
+            : `${serviceName}/${store.id} Redis source 初始化失败`,
         });
       }
     }
@@ -434,11 +358,7 @@ export async function prepareStoreMetricCollection(input: {
   ).flat();
   let direct: Awaited<ReturnType<typeof prepareDirectSamplers>>;
   try {
-    direct = await prepareDirectSamplers({
-      ...input,
-      networkServices: network.services,
-      pods: network.pods,
-    });
+    direct = await prepareDirectSamplers(input);
   } catch (error) {
     direct = {
       samplers: [],

@@ -8,10 +8,9 @@ import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";
 import { buildRedisEnvironmentFact, buildRedisTargetFact } from "./fact/model";
-import { failedFact, unavailableFact } from "../protocol";
+import { failedFact } from "../protocol";
 import {
   extractRedisEnvironment,
-  hasRedisStoreConfiguration,
   resolveRedisTarget,
   type RedisTarget,
 } from "./fact/target";
@@ -59,27 +58,11 @@ export async function confirmRedisTarget(
       reason,
     };
   }
-  if (
-    envResult.ok
-    && config.store
-    && !config.url
-    && !config.profile?.url
-    && !hasRedisStoreConfiguration(envResult.stdout, config.store)
-  ) {
-    const reason = `Service '${config.service}' 当前未提供有效 ${config.store.environment?.address}，Redis Store 未启用`;
-    return {
-      targetFact: unavailableFact("redis.target", "redis-target", reason),
-      environmentFact,
-      command: envResult.command,
-      reason,
-    };
-  }
   try {
     const target = resolveRedisTarget(
       envResult.ok ? envResult.stdout : "",
       config.profile,
       config.url,
-      config.store,
     );
     return {
       target,
@@ -114,12 +97,12 @@ class RedisAccessClient implements Client {
       this.signal?.throwIfAborted();
       this.access = new RedisAccess(new PortForwardTransport(endpoint => this.#forwarder!.forward(endpoint)), {
         username: this.target.username, password: this.target.password,
-        useSsl: this.target.useSsl, timeoutMs: this.target.timeout * 1_000,
-      });
-      const initial = this.target.clusterType === "sentinel" && this.target.sentinelHosts.length
-        ? this.target.sentinelHosts : this.target.endpoints;
+        useSsl: this.target.useSsl, timeoutMs: this.target.timeoutMs,
+        connectTimeoutMs: this.target.connectTimeoutMs, acquireTimeoutMs: this.target.acquireTimeoutMs,
+      }, undefined, { signal: this.signal });
+      const initial = this.target.endpoints;
       // Wait for every started forward before failure cleanup can stop the forwarder.
-      const results = await Promise.allSettled(initial.map(([host, port]) => this.#forwarder!.forward({ host, port })));
+      const results = await Promise.allSettled(initial.map(endpoint => this.#forwarder!.forward(endpoint)));
       const failed = results.find(result => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
       this.signal?.throwIfAborted();

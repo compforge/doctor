@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 import {
   collectRedisKeyStats,
-  discoverRedisTopology,
   type RedisConnectionApi,
   type RedisEndpoint,
 } from "@compforge/harness-toolbox/redis/index";
-import { redisTopologyConfig, type RedisCommandContext } from "../context";
+import { redisTopology, type RedisCommandContext } from "../context";
 import type { RedisDatabaseScope } from "../fact/model";
 import type { RedisGroup, RedisKey, RedisNode, RedisScan } from "../model";
 import type { RedisPressureProbeOutput, RedisRuntimeProbeOutput } from "./runtime";
@@ -215,7 +214,7 @@ export async function collectRedisRuntime(
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
   ctx.log("[collect] 正在发现 Redis 拓扑…");
-  const topology = await discoverRedisTopology(access, redisTopologyConfig(ctx));
+  const topology = await redisTopology(ctx);
   ctx.log(`[collect] 拓扑发现完成：${topology.clusterType}，${topology.masters.length} 个 master，${topology.replicas.length} 个 replica`);
   const errors: string[] = [];
   const masters: RedisNode[] = [];
@@ -319,7 +318,7 @@ export async function collectRedisPressure(
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
-  const topology = await discoverRedisTopology(access, redisTopologyConfig(ctx));
+  const topology = await redisTopology(ctx);
   const samples = await Promise.all(topology.masters.map(async (node) => {
     const client = await access.connection(node, target.database);
     return { node, client, started: performance.now(), info: selectedInfo(await client.info()) };

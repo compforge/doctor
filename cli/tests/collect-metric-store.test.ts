@@ -141,7 +141,7 @@ describe("metric Store observability", () => {
         name: "chat-server",
         workloads: [],
         dataSources: [
-          { id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } },
+          { id: "redis", kind: "redis" as const, backend: "redis" as const, source: { clientKey: "redis", createClient: () => { throw new Error("Unexpected Redis access"); } } },
           { id: "database", kind: "db" as const, backend: "mysql" as const, source: { clientKey: "database", createClient: () => { throw new Error("Unexpected database access"); } } },
         ]
       },
@@ -149,7 +149,7 @@ describe("metric Store observability", () => {
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "unrelated-server",
         workloads: [],
-        dataSources: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, environment: { address: "REDIS_HOST" } }]
+        dataSources: [{ id: "redis", kind: "redis" as const, backend: "redis" as const, source: { clientKey: "redis", createClient: () => { throw new Error("Unexpected Redis access"); } } }]
       },
     ]);
 
@@ -175,7 +175,7 @@ describe("metric Store observability", () => {
         id: "redis",
         kind: "redis" as const,
         backend: "redis" as const,
-        environment: { address: "REDIS_HOST" },
+        source: { clientKey: "redis", createClient: () => { throw new Error("Unexpected Redis access"); } },
       }],
       extensions: [metricExtension({
         endpoint: { host: "test-service", port: 8080, path: "/metrics" },

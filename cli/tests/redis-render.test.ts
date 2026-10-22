@@ -14,7 +14,7 @@ const CORE_OBSERVATION_META = {
 
 test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () => {
   const facts = buildRedisInspectionFacts({
-    endpoints: [["redis.example.com", 6379]],
+    endpoints: [{ host: "redis.example.com", port: 6379 }],
     database: 0,
     useSsl: false,
     clusterType: "single",
@@ -84,7 +84,7 @@ test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () =>
 
 test("Redis Key 分布对同一 master 的多个 DB 使用独立 DB 下拉框", () => {
   const facts = buildRedisInspectionFacts({
-    endpoints: [["redis.example.com", 6379]],
+    endpoints: [{ host: "redis.example.com", port: 6379 }],
     database: 7,
     useSsl: false,
     clusterType: "single",

@@ -4,7 +4,7 @@ import {
 } from "../../protocol";
 
 export interface RedisFactTarget {
-  endpoints: Array<[host: string, port: number]>;
+  endpoints: Array<{ host: string; port: number }>;
   database: number;
   username?: string;
   useSsl: boolean;
@@ -80,7 +80,7 @@ export function buildRedisExecutionFact(
 export function buildRedisTargetFact(target: RedisFactTarget): RedisTargetFact {
   const scheme = target.useSsl ? "rediss" : "redis";
   return collectedFact("redis.target", "redis-target", {
-    endpoint: `${scheme}://${target.endpoints.map(([host, port]) => `${displayHost(host)}:${port}`).join(",")}/${target.database}`,
+    endpoint: `${scheme}://${target.endpoints.map(({ host, port }) => `${displayHost(host)}:${port}`).join(",")}/${target.database}`,
     endpointSource: target.endpointSource,
     username: target.username || "(Redis default user)",
     credentialSource: target.credentialSource,

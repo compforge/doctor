@@ -67,11 +67,9 @@ export function makeRedisTargetInspect(
       let available = false;
       let reason = confirmed.reason ?? "Redis 采集准备未完成";
       if (confirmed.target && ctx.redisAccess) {
-        const endpoints = confirmed.target.clusterType === "sentinel" && confirmed.target.sentinelHosts.length
-          ? confirmed.target.sentinelHosts
-          : confirmed.target.endpoints;
+        const endpoints = confirmed.target.endpoints;
         try {
-          const [host, port] = endpoints[0]!;
+          const { host, port } = endpoints[0]!;
           const credentials = confirmed.target.clusterType === "sentinel"
             ? {
                 username: confirmed.target.sentinelUsername,

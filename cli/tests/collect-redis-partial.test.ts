@@ -55,13 +55,11 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
       execTarget: { pod: "app-0" },
       redisAccess: access,
       redisTarget: {
-        endpoints: [[endpoint.host, endpoint.port]],
+        endpoints: [{ host: endpoint.host, port: endpoint.port }],
         database: 7,
         useSsl: false,
         clusterType: "single",
-        timeout: 5,
-        sentinelHosts: [],
-        sentinelMasterName: "mymaster",
+        timeoutMs: 5000,
         endpointSource: "service-env",
         credentialSource: "service-env",
       },
@@ -69,7 +67,7 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
       log: () => undefined,
     } satisfies RedisCommandContext;
     const facts = buildRedisInspectionFacts({
-      endpoints: [[endpoint.host, endpoint.port]],
+      endpoints: [{ host: endpoint.host, port: endpoint.port }],
       database: 7,
       useSsl: false,
       clusterType: "single",
@@ -157,13 +155,11 @@ test("Redis replica 读取失败进入 partial 原因", async () => {
       execTarget: { pod: "app-0" },
       redisAccess: access,
       redisTarget: {
-        endpoints: [[master.host, master.port]],
+        endpoints: [{ host: master.host, port: master.port }],
         database: 7,
         useSsl: false,
         clusterType: "cluster",
-        timeout: 5,
-        sentinelHosts: [],
-        sentinelMasterName: "mymaster",
+        timeoutMs: 5000,
         endpointSource: "service-env",
         credentialSource: "service-env",
       },
@@ -207,13 +203,11 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
         close: async () => undefined,
       },
       redisTarget: {
-        endpoints: [[endpoint.host, endpoint.port]],
+        endpoints: [{ host: endpoint.host, port: endpoint.port }],
         database: 7,
         useSsl: false,
         clusterType: "single",
-        timeout: 5,
-        sentinelHosts: [],
-        sentinelMasterName: "mymaster",
+        timeoutMs: 5000,
         endpointSource: "service-env",
         credentialSource: "service-env",
       },
@@ -221,7 +215,7 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
       log: () => undefined,
     } satisfies RedisCommandContext;
     const facts = buildRedisInspectionFacts({
-      endpoints: [[endpoint.host, endpoint.port]],
+      endpoints: [{ host: endpoint.host, port: endpoint.port }],
       database: 7,
       useSsl: false,
       clusterType: "single",
@@ -255,7 +249,7 @@ test("Redis 基础 Probe 完全失败时记为 failed 后继续抛出", async ()
 
 test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => {
   const facts = buildRedisInspectionFacts({
-    endpoints: [["redis-1.example.com", 6379]],
+    endpoints: [{ host: "redis-1.example.com", port: 6379 }],
     database: 7,
     useSsl: false,
     clusterType: "cluster",

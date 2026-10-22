@@ -1,8 +1,10 @@
 import type { Client } from "@compforge/harness-common";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { PortForwardTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import type { PluginClientContext, PluginDataSource } from "./context";
-import type { ServiceS3Client, ServiceVdbClient, ServiceRedisClient } from "./datasource";
+import { MysqlClient } from "@compforge/harness-toolbox/mysql";
+import { RedisClient } from "@compforge/harness-toolbox/redis/index";
+import type { ServiceS3Client, ServiceVdbClient, ServiceRedisClient, ServiceDatabaseTarget } from "./datasource";
 
 function kubernetesTransport(context: PluginClientContext): PortForwardTransport {
   return new PortForwardTransport(async endpoint => {
@@ -57,13 +59,33 @@ export function vdbDataSource(key: string, resolve: (context: PluginClientContex
 }
 
 export function redisDataSource(key: string, resolve: (context: PluginClientContext) => Promise<ServiceRedisClient["target"]>): PluginDataSource<ServiceRedisClient> {
-  return configuredSource(key, resolve, async (target, context) => {
-    const { RedisClient } = await import("@compforge/harness-toolbox/redis/index");
-    return new RedisClient({
-      resolve: async () => ({ endpoints: target.endpoints.map(([host, port]) => ({ host, port })),
-        database: target.database, useSsl: target.useSsl, timeoutMs: target.timeout * 1_000,
-        username: target.username, password: target.password }),
-      transports: [kubernetesTransport(context)],
-    }, { signal: context.signal });
-  }, client => client.access);
+  return {
+    clientKey: key,
+    createClient: context => new RedisClient({
+      resolve: () => resolve(context),
+      transports: tcpTransports(context),
+    }, { signal: context.signal }),
+  };
+}
+
+/** Native connections first, then a root-owned relay; protocol clients never dispose borrowed transports. */
+export function tcpTransports(context: PluginClientContext): TcpTransport[] {
+  return [
+    kubernetesTransport(context),
+    { kind: "tcp", name: "pod-relay", connect: endpoint => context.infra.kubernetes.podRelay(endpoint) },
+  ];
+}
+
+/** Factory resolution receives root-owned access, never captures a short-lived capability context. */
+export function mysqlDataSource(
+  key: string,
+  resolve: (context: PluginClientContext) => Promise<ServiceDatabaseTarget>,
+): PluginDataSource<MysqlClient<ServiceDatabaseTarget>> {
+  return {
+    clientKey: key,
+    createClient: context => new MysqlClient({
+      resolve: () => resolve(context),
+      transports: tcpTransports(context),
+    }, { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
+  };
 }

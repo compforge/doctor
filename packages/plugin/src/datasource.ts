@@ -2,13 +2,12 @@ import { isFileDataSource, type ServiceFileDataSource } from "./file";
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDefinition } from "./service";
 import type { DatabaseTarget } from "./database";
-import type { PluginClientContext, PluginDataSource } from "./context";
+import type { PluginDataSource } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
-import { MysqlClient } from "@compforge/harness-toolbox/mysql";
-import { PortForwardTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
+import type { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import type { Client } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
-import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
+import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
 import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch/client";
 
 export type ServiceDataSourceKind = "db" | "vdb" | "s3" | "redis";
@@ -97,26 +96,15 @@ export type ServiceS3DataSource = ServiceDataSourceBase & {
   };
 });
 
+/**
+ * @spec Redis configuration belongs to the Plugin; all consumers borrow one root-owned source.
+ * @see {@link component://../../cli/docs/plugin.md}
+ */
 export type ServiceRedisDataSource = ServiceDataSourceBase & {
   kind: "redis";
   backend: "redis";
-} & ({ source: PluginDataSource<ServiceRedisClient>; environment?: never } | {
-  source?: never;
-  environment: {
-    address: string;
-    port?: string;
-    database?: string;
-    username?: string;
-    password?: string;
-    useSsl?: string;
-    clusterType?: string;
-    sentinels?: string;
-    sentinelMasterName?: string;
-    sentinelUsername?: string;
-    sentinelPassword?: string;
-    timeout?: string;
-  };
-});
+  source: PluginDataSource<ServiceRedisClient>;
+};
 
 /** Protocol clients retain their typed operations; configuration provenance is not evidence. */
 export interface ServiceS3Client extends Client {
@@ -129,25 +117,8 @@ export interface ServiceVdbClient extends Client {
   readonly access: OpenSearchReadApi;
 }
 
-export interface ServiceRedisTarget {
-  endpoints: Array<[host: string, port: number]>;
-  database: number;
-  username?: string;
-  password?: string;
-  useSsl: boolean;
-  clusterType: "single" | "sentinel" | "cluster";
-  /** Connection and command timeout in seconds, matching the Redis collection configuration. */
-  timeout: number;
-  sentinelHosts: Array<[string, number]>;
-  sentinelMasterName: string;
-  sentinelUsername?: string;
-  sentinelPassword?: string;
-}
-
-export interface ServiceRedisClient extends Client {
-  readonly target: ServiceRedisTarget;
-  readonly access: RedisAccessApi;
-}
+export type ServiceRedisTarget = RedisDataSourceTarget;
+export type ServiceRedisClient = Pick<RedisClient, "initialize" | "dispose" | "target" | "topology"> & { readonly access: RedisAccessApi };
 
 export type ServiceConnectionDataSource =
   | ServiceDatabaseDataSource
@@ -163,28 +134,6 @@ export function connectionDataSources(service: Pick<ServiceDefinition, "dataSour
 
 export function fileDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceFileDataSource[] {
   return (service?.dataSources ?? []).filter(isFileDataSource);
-}
-
-/** Native connections first, then a root-owned relay; protocol clients never dispose borrowed transports. */
-export function mysqlTransports(context: PluginClientContext): TcpTransport[] {
-  return [
-    new PortForwardTransport(endpoint => context.infra.kubernetes.portForward(endpoint)),
-    { kind: "tcp", name: "pod-relay", connect: endpoint => context.infra.kubernetes.podRelay(endpoint) },
-  ];
-}
-
-/** Factory resolution receives root-owned access, never captures a short-lived capability context. */
-export function mysqlDataSource(
-  key: string,
-  resolve: (context: PluginClientContext) => Promise<ServiceDatabaseTarget>,
-): PluginDataSource<MysqlClient<ServiceDatabaseTarget>> {
-  return {
-    clientKey: key,
-    createClient: context => new MysqlClient({
-      resolve: () => resolve(context),
-      transports: mysqlTransports(context),
-    }, { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
-  };
 }
 
 export function serviceDataSources(
