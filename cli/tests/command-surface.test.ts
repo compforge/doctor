@@ -226,9 +226,9 @@ describe("capability and preflight errors", () => {
   test("case 在非交互环境先列出可用 Case", async () => {
     const result = await runWithPlugin(["case"]);
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("doctor_http (builtin)");
-    expect(result.stdout).toContain("http_get_root");
-    expect(result.stdout).toContain("llm_connectivity");
+    expect(result.stdout).toContain("test_http (plugin/test-store/http)");
+    expect(result.stdout).toContain("ping");
+    expect(result.stdout).not.toContain("builtin");
   });
 
   test("net 在非交互环境未指定 YAML 时给出明确指引", async () => {
@@ -333,12 +333,12 @@ describe("case catalog", () => {
     writeFileSync(join(dir, "doctor-cases.yaml"), `caseset: local_api\nschema_version: 1\nfacets:\n  command: {values: [http]}\ncases:\n  - id: health\n    input: {method: GET, path: /health}\n    facets: {command: http}\n`);
     const result = await run(["case"], { withPlugin: true, cwd: dir });
     expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("local_api (local)");
+    expect(result.stdout).toContain("local_api (local/test-store)");
     expect(result.stdout).toContain("\n  health\n");
   });
 
   test("非交互发送需要目标 URL", async () => {
-    const result = await runWithPlugin(["case", "--send", "--caseset", "doctor_http", "--cases", "http_get_root"]);
+    const result = await runWithPlugin(["case", "--send", "--caseset", "test_http", "--cases", "ping"]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("--base-url");
   });

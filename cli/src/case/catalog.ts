@@ -1,32 +1,35 @@
 import type { Case, CaseSet } from "@compforge/spec-case/model";
-import { loadCaseCatalog, MODEL_CASE_SET, type CaseSupport, type PluginDefinition } from "@compforge/doctor-plugin";
+import { loadCaseCatalog, type CaseSupport, type PluginDefinition } from "@compforge/doctor-plugin";
 import { isInteractive } from "../terminal/policy";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
-import { httpCaseCatalog } from "./core-http";
 import { localCaseCatalog } from "./local";
 
 export type DoctorCaseCommand = "http" | "model" | "perf" | "eval";
 
 export interface DoctorCaseSet {
-  source: "builtin" | "plugin" | "local";
-  service?: string;
+  source: "plugin" | "local";
+  service: string;
   sourceId?: string;
   supports?: CaseSupport;
   file?: string;
   caseSet: CaseSet;
 }
 
-/** Offline assets have one owner; catalog discovery never prepares targets or creates runners. */
-export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
+/**
+ * @spec Every catalog entry has an owning Service; Core never registers unbound built-in Cases.
+ * @why Shared SDK templates become product Cases only when a Service contributes them.
+ */
+export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd(), localService?: string): DoctorCaseSet[] {
+  const contributed = (plugin?.services.caseSources() ?? []).flatMap(({ service, source }) =>
+    loadCaseCatalog(source).map(caseSet => ({ source: "plugin" as const, service: service.name, sourceId: source.id, caseSet })));
   const local = localCaseCatalog(file, cwd);
-  return [
-    ...[{ id: "core.model", load: () => [MODEL_CASE_SET] }, httpCaseCatalog].flatMap(source =>
-      loadCaseCatalog(source).map(caseSet => ({ source: "builtin" as const, caseSet }))),
-    ...(plugin?.services.caseSources() ?? []).flatMap(({ service, source }) =>
-      loadCaseCatalog(source).map(caseSet => ({ source: "plugin" as const, service: service.name, sourceId: source.id, caseSet }))),
-    ...loadCaseCatalog(local).map(caseSet => ({ source: "local" as const, file: local.file, caseSet })),
-  ];
+  const sets = loadCaseCatalog(local);
+  if (!sets.length) return contributed;
+  const owner = localService ? plugin?.services.find(localService)
+    : plugin?.services.services.length === 1 ? plugin.services.services[0] : undefined;
+  if (!owner) throw new Error("本地 Case 文件必须归属一个已声明的 Service；请用 --service 指定");
+  return [...contributed, ...sets.map(caseSet => ({ source: "local" as const, service: owner.name, file: local.file, caseSet }))];
 }
 
 export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): boolean {

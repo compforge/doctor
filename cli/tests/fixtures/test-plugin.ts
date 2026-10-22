@@ -22,6 +22,9 @@ export const testPlugin = {
       workflows: [{ markdown() { return workflowToMarkdown(this); }, id: "flow", title: "Flow", summary: "Read cache → return result\nA cache miss is not a failed Task.", steps: [] }],
     },
     workloads: [],
+    cases: [{ id: "http", load: () => [{ caseset: "test_http", cases: [
+      { id: "ping", input: { method: "GET", path: "/", expect: { status: 200 } } },
+    ] }] }],
     dataSources: [{
       id: "cache",
       kind: "redis",

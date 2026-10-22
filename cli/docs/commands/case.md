@@ -2,9 +2,9 @@
 
 ## 理念 / 概念
 
-Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。Service 通过 `cases` 贡献 Case 来源，与 DataSource、Workload 并列；每个来源集中持有离线定义及可选的运行时 producer、单请求 runner。`doctor case` 列出 Core 内置、Service 和当前目录 `doctor-cases.yaml` 中的 Case；交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。选择发生在执行命令时，CaseSet 不保存本次选择。
+Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。Service 通过 `cases` 贡献 Case 来源，与 DataSource、Workload 并列；每个来源集中持有离线定义及可选的运行时 producer、单请求 runner。`doctor case` 按 Service 列出其贡献的 Case；当前目录 `doctor-cases.yaml` 的输入也必须绑定到一个已声明 Service。交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。选择发生在执行命令时，CaseSet 不保存本次选择。
 
-可执行性由协议决定：HTTP/Model 按输入协议筛选，Perf/Eval 使用来源 runner 的 `supports(case)`。Facet 描述用例分类，不承担命令路由。内置 Model Case 覆盖 LLM、Embedding、Rerank 连通性和 LLM 轻量性能采样；内置 HTTP Case 提供基础 GET 探测。Core 和本地 YAML 使用相同的离线目录接口，不需要创建虚拟 Service。
+可执行性由协议决定：HTTP/Model 按输入协议筛选，Perf/Eval 使用来源 runner 的 `supports(case)`。Facet 描述用例分类，不承担命令路由。SDK 提供 LLM、Embedding、Rerank 连通性与流式性能采样模板，Service 显式贡献后才进入目录；Core 不注册 builtin Model/HTTP Case，也不创建虚拟 Service。
 
 ```yaml
 caseset: doctor_smoke
@@ -48,7 +48,7 @@ Service Case source 是可被多个 Command 引用的资源，不是命令扩展
 统一权限、客户端和清理机制而额外注册。producer 返回后释放调用上下文；runner factory 的上下文保留至
 runner 清理完成。创建期间取消仍必须将已创建的 runner 交给生命周期所有者，不能在返回前丢弃资源。
 
-Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`。
+Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`；本地文件通过 `--service` 指定已有 Service，只有一个 Service 时可唯一确定。
 
 Health 通过自己的 `health.case.bindings` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
 运行时 `subject` 标识被测业务对象，`targets` 保存新鲜地址、凭据与请求正文；两者不改变 canonical Case ID/hash。
@@ -63,7 +63,7 @@ HTTP Collect 区分证据采集完整与请求成功。完整采到 HTTP 500 时
 `doctor case --list`（`-l`）列出 Case、提供方 Service、传递方 `via`、消费方 Service/Workload 和当前 URL。
 列表从 `Service.cases` 加载定义，从 `health.case.bindings` 读取消费关系，再调用选中来源的 producer
 获取本次样本。每个来源只解析一次；不创建 runner、不发送 Case 请求。
-签名 URL 的查询参数脱敏，headers 和 body 不进入列表。无样本、权限失败或截断会保留关系并报告缺口。
+签名 URL 的查询参数脱敏，headers 和 body 不进入列表。无样本、权限失败或截断会保留关系并报告缺口。来源返回的运行时 Case 可以是离线目录的子集；已有样本时只展示实际返回的条目，不补未提供样本的模板。来源的准备失败或截断在缺口中汇总，不覆盖已经解析成功的行。
 
 ```sh
 doctor case -l
@@ -72,8 +72,8 @@ doctor case -l --caseset kb_skill_download --tenant-id TENANT -f json
 ```
 
 `-s/--service` 支持按提供方、传递方、消费方筛选；`--caseset` 和 `--cases` 缩小 Case 范围。
-默认表格输出，`-f json` 提供结构化结果。列表解析 URL 可能读取配置、数据库或调用签名 API，需要环境权限。
-Core/本地静态 Case 未提供目标时显示“未提供 URL”；可用 `--base-url` 解析其相对路径。
+默认按提供方分组，每个 Service 一个 Markdown 表格，没有 builtin 分组；样本列区分同一 Case 绑定的多个模型或业务对象。`-f json` 提供结构化结果。列表解析 URL 可能读取配置、数据库或调用签名 API，需要环境权限。
+Service 静态 Case 未提供目标时显示“静态定义，未绑定运行目标”；可用 `--base-url` 解析其相对路径。
 `--list` 与 `--send` 互斥。URL 已解析只说明取得目标地址，连通性仍需执行 Case 验证。
 
 `HealthCaseBinding.via` 是可选的有序 Service 名列表，记录 URL 的传递方；消费位置仍由绑定所属 Service

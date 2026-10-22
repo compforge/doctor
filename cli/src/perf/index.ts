@@ -270,7 +270,7 @@ export async function runPerf(
   const declaredScenario = scenarios.find((item) => item.id === scenario);
   if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
   const runnerProvider = caseRunnerProvider(plugin.services, declaredScenario.cases.service, declaredScenario.cases.source);
-  const catalog = doctorCaseCatalog(plugin, opts.caseFile);
+  const catalog = doctorCaseCatalog(plugin, opts.caseFile, undefined, runnerProvider.service.name);
   const caseSelection = await selectDoctorCases({
     catalog: runnerCaseCatalog(catalog, runnerProvider),
     supports: runnerProvider.factory.supports,

@@ -22,7 +22,7 @@ export function caseRunnerProvider(catalog: ServiceCatalog, requested?: string, 
 
 /** A selected source cannot accidentally execute another Service's catalog. Local inputs remain explicit. */
 export function runnerCaseCatalog(catalog: readonly DoctorCaseSet[], provider: ReturnType<typeof caseRunnerProvider>) {
-  return catalog.filter(item => item.source === "local" || (item.service === provider.service.name && item.sourceId === provider.source.id));
+  return catalog.filter(item => item.service === provider.service.name && (item.source === "local" || item.sourceId === provider.source.id));
 }
 
 /** Select assets first so multiple sources from one Service remain independently usable. */
@@ -30,8 +30,7 @@ export function runnableCaseCatalog(catalog: readonly DoctorCaseSet[], services:
   const providers = services.caseSources().filter(({ service, source }) => source.runner
     && (requested === undefined || service.name === services.find(requested)?.name));
   return catalog.flatMap(entry => {
-    const owners = providers.filter(({ service, source }) => entry.source === "local"
-      || (entry.service === service.name && entry.sourceId === source.id));
+    const owners = providers.filter(({ service, source }) => entry.service === service.name && (entry.source === "local" || entry.sourceId === source.id));
     const supports = (item: Case) => owners.some(owner => owner.source.runner!.supports(item));
     return entry.caseSet.cases.some(supports) ? [{ ...entry, supports }] : [];
   });

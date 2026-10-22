@@ -38,6 +38,7 @@ export interface OpenModelAccessOptions extends KubernetesCommandInput {
 }
 
 export interface ModelDiscoveryAccess {
+  service: ServiceDefinition;
   config: KubernetesCommandConfig;
   directory: TenantDirectory;
   catalog: ModelCatalog;
@@ -132,6 +133,7 @@ async function prepareModelDiscovery(
       port: options.modelCatalogPort === undefined ? extension.endpoint.port : catalogPort,
     }));
     const access: ModelDiscoveryAccess = {
+      service: catalogService.service,
       config,
       directory,
       catalog,

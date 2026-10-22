@@ -80,14 +80,14 @@ export async function listDoctorCases(catalog: readonly DoctorCaseSet[], plugin:
   const generated = new Map<string, Promise<CaseProduceResult>>();
   for (const set of sets) {
     if (options.caseset && set.caseSet.caseset !== options.caseset) continue;
-    const key = sourceKey(set.service ?? set.source, set.sourceId ?? set.caseSet.caseset);
+    const key = sourceKey(set.service, set.sourceId ?? set.caseSet.caseset);
     const bound = consumers.get(key) ?? [];
-    if (selected && !selected.includes(set.service ?? "")
+    if (selected && !selected.includes(set.service)
       && !bound.some(value => selected.includes(value.service) || value.via.some(via => selected.includes(via)))) continue;
     const definitions = set.caseSet.cases.filter(item => !ids || ids.includes(item.id));
     if (ids && set.caseSet.cases.length && !definitions.length) continue;
     const source = sources.find(item => item.service.name === set.service && item.source.id === set.sourceId);
-    const base = { caseset: set.caseSet.caseset, provider: set.service ?? set.source, source: set.sourceId, consumers: bound };
+    const base = { caseset: set.caseSet.caseset, provider: set.service, source: set.sourceId, consumers: bound };
     let produced: CaseProduceResult | undefined;
     let reason: string | undefined;
     if (source?.source.produce) {
@@ -117,12 +117,13 @@ export async function listDoctorCases(catalog: readonly DoctorCaseSet[], plugin:
       emitted.add(item.case.id);
       result.entries.push({ ...base, caseId: item.case.id, description: item.case.desc, subject: item.subject,
         targets: item.targets.map(target => ({ id: target.id,
-          url: caseError(typeof item.case.input.path === "string" ? new URL(item.case.input.path, target.url).toString() : target.url) })), reason });
+          url: caseError(typeof item.case.input.path === "string" ? new URL(item.case.input.path, target.url).toString() : target.url) })) });
     }
     for (const item of definitions) {
       if (emitted.has(item.id)) continue;
-      const missing = reason ?? (source?.source.produce ? "本次 producer 未提供此 Case 的运行样本" : undefined);
-      if (missing && !reason) result.gaps.push(`${base.provider}/${base.source}/${item.id}: ${missing}`);
+      // A successful runtime sample is the list; catalog-only variants are not failed resolutions.
+      if (produced?.cases.length && !produced.reason) continue;
+      const missing = reason ?? (source?.source.produce ? "本次未提供此 Case 的运行样本" : undefined);
       result.entries.push({ ...base, caseId: item.id, description: item.desc,
         targets: source?.source.produce ? [] : staticTargets(item, options.baseUrl),
         reason: missing });
@@ -142,20 +143,38 @@ function staticTargets(item: Case, baseUrl?: string): CaseListEntry["targets"] {
   return [{ id: "base-url", url: caseError(url.toString()) }];
 }
 
+/**
+ * @spec Group by provider; successful targets keep their own status even when their source is partial.
+ * @why A source can return mutually exclusive runtime variants and several subjects for the same Case.
+ */
 export function formatCaseList(result: CaseListResult): string {
-  const cell = (value: string) => value.replace(/[\t\r\n\x1b]/g, " ");
-  const rows = result.entries.flatMap(entry => {
-    const consumers = entry.consumers.length ? entry.consumers : [undefined];
-    const targets = entry.targets.length ? entry.targets : [undefined];
-    return consumers.flatMap(consumer => targets.map(target => [
-      `${entry.caseset}/${entry.caseId}`, entry.provider,
-      consumer?.via.join(" → ") || "—",
-      consumer ? `${consumer.service}/${consumer.workload}` : "未声明",
-      target?.url ?? "未解析",
-      entry.reason ?? (target ? "已解析，未执行" : "未提供 URL"),
-    ].map(cell).join("\t")));
+  const cell = (value: string) => value.replace(/[\t\r\n\x1b]/g, " ")
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll("|", "\\|");
+  const groups = new Map<string, CaseListEntry[]>();
+  for (const entry of result.entries) {
+    const entries = groups.get(entry.provider) ?? [];
+    entries.push(entry);
+    groups.set(entry.provider, entries);
+  }
+  const tables = [...groups].flatMap(([provider, entries]) => {
+    const rows = entries.flatMap(entry => {
+      const consumers = entry.consumers.length ? entry.consumers : [undefined];
+      const targets = entry.targets.length ? entry.targets : [undefined];
+      const subject = entry.subject
+        ? [entry.subject.label, entry.subject.id].filter(Boolean).join(" · ") : "—";
+      return consumers.flatMap(consumer => targets.map(target => `| ${[
+        `${entry.caseset}/${entry.caseId}`, subject,
+        consumer?.via.join(" → ") || "—",
+        consumer ? `${consumer.service}/${consumer.workload}` : "未声明",
+        target?.url ?? "—",
+        entry.reason ?? (target ? "已解析，未执行" : "静态定义，未绑定运行目标"),
+      ].map(cell).join(" | ")} |`));
+    });
+    return [`## ${cell(provider)}`, "",
+      "| Case | 样本 | 传递方 | 消费方 / Workload | URL | 状态 |",
+      "|---|---|---|---|---|---|", ...rows, ""];
   });
-  return [`Cases: ${result.entries.length}（仅列出；未执行 Case；URL 查询参数已脱敏）`,
-    "CASE\tPROVIDER\tVIA\tCONSUMER/WORKLOAD\tURL\tSTATUS", ...rows,
-    ...result.gaps.map(gap => `缺口: ${cell(gap)}`)].join("\n");
+  return [`Cases: ${result.entries.length}（仅列出；未执行 Case；URL 查询参数已脱敏）`, "",
+    ...tables,
+    ...(result.gaps.length ? ["缺口：", "", ...result.gaps.map(gap => `- ${cell(gap)}`)] : [])].join("\n");
 }
