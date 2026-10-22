@@ -107,7 +107,8 @@ export async function runCollectModel(
     const defaultCase = model.type === "llm"
       ? (isMultimodalModel(model) ? "llm_image" : "llm_connectivity")
       : `${model.type}_connectivity`;
-    const caseCatalog = doctorCaseCatalog(plugin, opts.caseFile);
+    const caseCatalog = doctorCaseCatalog(plugin, opts.caseFile, undefined, access.service.name)
+      .filter(entry => entry.service === access.service.name);
     const caseSelection = await selectDoctorCases({
       catalog: caseCatalog, command: "model",
       caseSetId: opts.caseset, caseIds: opts.cases, modelType: model.type,

@@ -78,12 +78,10 @@ test("binding failure is visible while the independent provider remains listed",
   expect(result.entries[0]?.consumers).toEqual([]);
 });
 
-test("unbound offline Cases do not resolve environment or fabricate URLs", async () => {
+test("a catalog without a Plugin has no builtin Cases or environment access", async () => {
   const f = fixture();
-  const result = await listDoctorCases(doctorCaseCatalog(undefined, undefined, "/tmp"), undefined,
-    { caseset: "doctor_http" }, f.actions);
-  expect(result.entries.length).toBeGreaterThan(0);
-  expect(result.entries.every(entry => entry.targets.length === 0)).toBe(true);
+  const result = await listDoctorCases(doctorCaseCatalog(undefined, undefined, "/tmp"), undefined, {}, f.actions);
+  expect(result.entries).toEqual([]);
   expect(f.produce).not.toHaveBeenCalled();
   expect(f.consume).not.toHaveBeenCalled();
 });
@@ -123,4 +121,61 @@ test("listed URL resolves the Case path exactly as execution does", async () => 
   f.produce.mockResolvedValue({ cases: [{ ...item, case: { ...item.case, input: { ...item.case.input, path: "/probe" } } }] });
   const result = await listDoctorCases(f.catalog, f.plugin, { caseset: "skill-download" }, f.actions);
   expect(result.entries[0]?.targets[0]?.url).toBe("https://files.test/probe");
+});
+
+
+test("summary uses one Markdown table per provider and distinguishes runtime subjects", () => {
+  const entry = { caseset: "models", caseId: "connect", provider: "control", consumers: [], targets: [] };
+  const rendered = formatCaseList({ entries: [
+    { ...entry, subject: { id: "m1", label: "Model | one" }, targets: [{ id: "primary", url: "https://model.test/v1" }] },
+    { ...entry, provider: "kb", caseId: "download", consumers: [
+      { service: "bedbox", workload: "carrier", via: ["control", "hibot"] },
+      { service: "sandbox", workload: "carrier", via: ["control", "hibot"] },
+    ], reason: "lookup failed" },
+    { ...entry, subject: { id: "m2", label: "<script>" } },
+  ], gaps: ["kb: lookup failed"] });
+  expect(rendered.match(/\| Case \|/g)).toHaveLength(2);
+  expect(rendered.match(/^## control$/gm)).toHaveLength(1);
+  expect(rendered.match(/^## kb$/gm)).toHaveLength(1);
+  expect(rendered).not.toContain("PROVIDER");
+  expect(rendered).toContain("Model \\| one · m1");
+  expect(rendered).toContain("&lt;script&gt; · m2");
+  expect(rendered).toContain("control → hibot | bedbox/carrier");
+  expect(rendered).toContain("control → hibot | sandbox/carrier");
+  expect(rendered).toContain("静态定义，未绑定运行目标");
+});
+
+test("a source's partial reason does not mark its resolved targets as failed", async () => {
+  const f = fixture();
+  f.plugin.services.find("kb")!.cases![0]!.load = () => [{ caseset: "skill-download", cases: [item.case,
+    { ...item.case, id: "hello" }] }];
+  f.produce.mockResolvedValue({ cases: [item], reason: "hello preparation failed" });
+  const result = await listDoctorCases(doctorCaseCatalog(f.plugin, undefined, "/tmp"), f.plugin, { services: ["kb"] }, f.actions);
+  expect(result.entries.find(entry => entry.caseId === "download")?.reason).toBeUndefined();
+  expect(result.entries.find(entry => entry.caseId === "hello")?.reason).toBe("hello preparation failed");
+  expect(result.gaps).toEqual(["kb/skills: hello preparation failed"]);
+  expect(formatCaseList(result)).toContain("已解析，未执行");
+});
+
+test("runtime variants may select a subset of the offline catalog without a false gap", async () => {
+  const f = fixture();
+  f.plugin.services.find("kb")!.cases![0]!.load = () => [{ caseset: "skill-download", cases: [item.case,
+    { ...item.case, id: "legacy" }] }];
+  const result = await listDoctorCases(doctorCaseCatalog(f.plugin, undefined, "/tmp"), f.plugin, { services: ["kb"] }, f.actions);
+  expect(result.gaps).toEqual([]);
+  expect(result.entries.map(entry => entry.caseId)).toEqual(["download"]);
+});
+
+
+test("runtime truncation lists exactly the returned samples without filling unbound templates", async () => {
+  const f = fixture();
+  f.plugin.services.find("kb")!.cases![0]!.load = () => [{ caseset: "skill-download", cases: [item.case,
+    { ...item.case, id: "unavailable" }] }];
+  f.produce.mockResolvedValue({ cases: Array.from({ length: 10 }, (_, index) => ({
+    ...item, subject: { id: `model-${index}` },
+  })), truncated: { reason: "limited to ten samples" } });
+  const result = await listDoctorCases(doctorCaseCatalog(f.plugin, undefined, "/tmp"), f.plugin, { services: ["kb"] }, f.actions);
+  expect(result.entries).toHaveLength(10);
+  expect(result.entries.every(entry => entry.targets.length === 1 && entry.reason === undefined)).toBe(true);
+  expect(result.gaps).toEqual(["kb/skills: limited to ten samples"]);
 });

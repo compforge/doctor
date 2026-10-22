@@ -27,7 +27,7 @@ export const caseListCommand = defineCommand<CaseListInput, void>({
   },
   run: async (context, input) => {
     const plugin = await context.resolvePlugin();
-    const catalog = doctorCaseCatalog(plugin, input.caseFile);
+    const catalog = doctorCaseCatalog(plugin, input.caseFile, undefined, input.services?.length === 1 ? input.services[0] : undefined);
     let prepared: Promise<Omit<CaseListActions, "signal">> | undefined;
     const access = () => prepared ??= (async () => {
       await context.ensureEnvironment({ kubernetes: true });

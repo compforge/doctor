@@ -294,11 +294,11 @@ function withTenantOptions(cmd: CommandT): CommandT {
 
 function withCaseOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("-l, --list", "列出 Case 的提供方、传递方、消费方及当前 URL，不执行 Case")
-    .addOption(serviceOption("列表按提供方、传递方或消费方 Service 筛选"))
+    .option("-l, --list", "按提供方 Service 分组列出 Case、传递方、消费方及当前 URL，不执行 Case")
+    .addOption(serviceOption("按提供方筛选 Case；列表也支持传递方或消费方"))
     .option("--tenant-id <id>", "解析 Case URL 使用的租户")
     .option("--user-id <id>", "解析 Case URL 使用的真实用户")
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
+    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要发送的 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--send", "发送选中的 HTTP Case；非交互环境必须显式指定", false)
@@ -350,7 +350,7 @@ function withMcpOptions(cmd: CommandT): CommandT {
 
 function withModelOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
+    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
@@ -390,7 +390,7 @@ function withMetricOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
+    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
     .addOption(serviceOption("提供 perf capability 的 Service；仅一个 provider 时自动选择"))
@@ -414,7 +414,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
 function withEvalOptions(cmd: CommandT): CommandT {
   return cmd
     .addOption(serviceOption("提供 case capability 的 Service；仅一个 provider 时自动选择"))
-    .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
+    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要执行的 canonical CaseSet；仅一个 CaseSet 时自动选择")
     .option("--cases <ids>", "逗号分隔的 Case ID；缺省执行 CaseSet 中全部 Case，每个执行一次")
     .option("--request-timeout <seconds>", "单个 Case 请求超时", "180")
@@ -856,7 +856,7 @@ export function createDoctorProgram(
 结果解读：
   检查请求是否执行及响应判定；一次通过只覆盖该 Case、身份和执行位置，不能代表全部业务可用。
 `),
-  ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean; list?: boolean }, command: CommandT) => {
+  ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean; list?: boolean; services?: string[] }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     if (opts.list) {
       opts.format = command.getOptionValueSource("format") === "cli" ? opts.format : "summary";
@@ -865,15 +865,21 @@ export function createDoctorProgram(
     }
     await withInteractionOptions(opts, () => runStandaloneCommand("doctor case", async () => {
       const active = plugin ?? await loadActivePlugin();
-      const sources = doctorCaseCatalog(active, opts.caseFile);
+      const owners = opts.services?.map(name => {
+        const service = active?.services.find(name);
+        if (!service) throw new Error(`Unknown Service: ${name}`);
+        return service.name;
+      });
+      const sources = doctorCaseCatalog(active, opts.caseFile, undefined, owners?.length === 1 ? owners[0] : undefined)
+        .filter(source => !owners || owners.includes(source.service));
       for (const source of sources) {
-        writeOutput(`${source.caseSet.caseset} (${source.source}${source.service ? `/${source.service}/${source.sourceId}` : ""})\n`);
+        writeOutput(`${source.caseSet.caseset} (${source.source}/${source.service}${source.sourceId ? `/${source.sourceId}` : ""})\n`);
         for (const item of source.caseSet.cases) {
           writeOutput(`  ${item.id}${item.desc ? `  ${item.desc}` : ""}\n`);
         }
       }
       for (const { service, source } of active?.services.caseSources() ?? []) {
-        if (!sources.some(item => item.service === service.name && item.sourceId === source.id)) {
+        if ((!owners || owners.includes(service.name)) && !sources.some(item => item.service === service.name && item.sourceId === source.id)) {
           writeOutput(`${service.name}/${source.id} (plugin · runtime Cases)${source.description ? `  ${source.description}` : ""}\n`);
         }
       }

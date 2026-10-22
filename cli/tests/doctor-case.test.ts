@@ -5,13 +5,20 @@ import { join } from "node:path";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { httpScenarioFromDoctorCases } from "../src/case/http";
 import { createDoctorExtensionRegistry } from "../src/plugin/extension-registry";
-import { createServiceCatalog, withSummary, type CaseCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import { MODEL_CASE_SET, createServiceCatalog, withSummary, type CaseCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+
+const localOwner: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
+  name: "app", component: { name: "app", repository: { forge: { name: "test" }, path: "app" } }, workloads: [],
+}]) };
+const modelOwner: PluginDefinition = { ...localOwner, services: createServiceCatalog([{
+  ...localOwner.services.find("app")!, cases: [{ id: "model-diagnosis", load: () => [MODEL_CASE_SET] }],
+}]) };
 
 test("shared catalog filters one canonical CaseSet by command and selects multiple IDs", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-catalog-"));
   try {
     writeFileSync(join(directory, "doctor-cases.yaml"), `caseset: shared\nschema_version: 1\nfacets:\n  command: {values: [http, model, perf]}\ncases:\n  - id: ping\n    input: {method: GET, path: /ping, expect: {status: 200}}\n    facets: {command: http}\n  - id: health\n    input: {method: GET, path: /health, expect: {status: 204}}\n    facets: {command: http}\n  - id: chat\n    input: {path: /chat/completions, body: {messages: [{role: user, content: hello}]}}\n    facets: {command: model}\n  - id: load\n    input: {query: hello}\n    facets: {command: perf}\n  - id: load_more\n    input: {query: world}\n    facets: {command: perf}\n`);
-    const catalog = doctorCaseCatalog(undefined, undefined, directory);
+    const catalog = doctorCaseCatalog(localOwner, undefined, directory);
     const http = await selectDoctorCases({ catalog, command: "http", caseSetId: "shared", caseIds: "health,ping" });
     expect(http?.cases.map((item) => item.id)).toEqual(["health", "ping"]);
     expect((await selectDoctorCases({ catalog, command: "model", caseSetId: "shared", caseIds: "chat" }))?.cases).toHaveLength(1);
@@ -32,8 +39,8 @@ test("external Case does not require a command facet", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-invalid-"));
   try {
     writeFileSync(join(directory, "doctor-cases.yaml"), "caseset: missing_command\ncases:\n  - id: ping\n    input: {method: GET, path: /ping}\n");
-    expect(doctorCaseCatalog(undefined, undefined, directory).at(-1)?.caseSet.cases[0]?.id).toBe("ping");
-    expect((await selectDoctorCases({ catalog: doctorCaseCatalog(undefined, undefined, directory), command: "http", caseSetId: "missing_command" }))?.cases[0]?.id).toBe("ping");
+    expect(doctorCaseCatalog(localOwner, undefined, directory).at(-1)?.caseSet.cases[0]?.id).toBe("ping");
+    expect((await selectDoctorCases({ catalog: doctorCaseCatalog(localOwner, undefined, directory), command: "http", caseSetId: "missing_command" }))?.cases[0]?.id).toBe("ping");
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -42,7 +49,7 @@ test("external Case does not require a command facet", async () => {
 test("canonical Service HTTP Cases retain their declared judgment when explicitly sent", () => {
   const item = { id: "ping", input: { protocol: "http", method: "GET", path: "/health" },
     judge: { e2e: { http: { status: [204], contentType: "text/plain" } } } };
-  const selection = { source: { source: "plugin" as const, caseSet: { caseset: "api", cases: [item] } }, cases: [item] };
+  const selection = { source: { source: "plugin" as const, service: "api", caseSet: { caseset: "api", cases: [item] } }, cases: [item] };
   const scenario = httpScenarioFromDoctorCases(selection, "http://api.test");
   expect(scenario.requests[0]!.entrypoints[0]!.expect).toMatchObject({ status: [204], contentType: "text/plain" });
   expect(scenario.requests[0]!.entrypoints[0]!.url).toBe("http://api.test/health");
@@ -54,8 +61,8 @@ test("catalog does not auto-load the old doctor-case.yaml filename", () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-old-case-name-"));
   try {
     writeFileSync(join(directory, "doctor-case.yaml"), "caseset: old_name\ncases: []\n");
-    expect(doctorCaseCatalog(undefined, undefined, directory).map((item) => item.caseSet.caseset))
-      .toEqual(["doctor_model", "doctor_http"]);
+    expect(doctorCaseCatalog(localOwner, undefined, directory).map((item) => item.caseSet.caseset))
+      .toEqual([]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
@@ -65,11 +72,11 @@ for (const { caseId, role, roles } of [
   { caseId: "llm_adjacent_assistants", role: "assistant", roles: ["system", "user", "assistant", "assistant", "user"] },
   { caseId: "llm_adjacent_users", role: "user", roles: ["system", "user", "user"] },
 ]) {
-  test(`built-in Model Case keeps adjacent ${role} messages in the request`, async () => {
+  test(`Service-contributed Model Case keeps adjacent ${role} messages in the request`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "doctor-model-adjacent-"));
     try {
       const selected = await selectDoctorCases({
-        catalog: doctorCaseCatalog(undefined, undefined, directory), command: "model",
+        catalog: doctorCaseCatalog(modelOwner, undefined, directory), command: "model",
         caseSetId: "doctor_model", caseIds: caseId, modelType: "llm",
       });
       const messages = (selected?.cases[0]?.input.body as { messages: { role: string }[] }).messages;
@@ -98,7 +105,7 @@ test("Service assets and local Cases are selected by protocol, not command facet
       }]),
     };
     const catalog = doctorCaseCatalog(plugin, undefined, directory);
-    expect(catalog.map((item) => item.caseSet.caseset)).toEqual(["doctor_model", "doctor_http", "plugin_cases", "local_cases"]);
+    expect(catalog.map((item) => item.caseSet.caseset)).toEqual(["plugin_cases", "local_cases"]);
     expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "plugin_cases" }))?.cases.map((item) => item.id)).toEqual(["probe"]);
     expect((await selectDoctorCases({ catalog, command: "http", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_ping"]);
     expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "local_cases" }))?.cases.map((item) => item.id)).toEqual(["local_chat"]);
@@ -163,4 +170,20 @@ test("declaring a different namespace retains registration origin and Service bi
   expect(createDoctorExtensionRegistry(plugin).extensions("custom", "local")).toEqual([{
     namespace: "local", origin: "plugin", extension, service: plugin.services.find("api"),
   }]);
+});
+
+
+test("Core has no builtin Cases and local files require an unambiguous Service owner", () => {
+  const directory = mkdtempSync(join(tmpdir(), "doctor-service-cases-"));
+  try {
+    expect(doctorCaseCatalog(undefined, undefined, directory)).toEqual([]);
+    writeFileSync(join(directory, "doctor-cases.yaml"), "caseset: local\ncases:\n  - id: ping\n    input: {path: /ping}\n");
+    expect(() => doctorCaseCatalog(undefined, undefined, directory)).toThrow("--service");
+    const plugin = { ...localOwner, services: createServiceCatalog([
+      localOwner.services.find("app")!, { ...localOwner.services.find("app")!, name: "other" },
+    ]) };
+    expect(() => doctorCaseCatalog(plugin, undefined, directory)).toThrow("--service");
+    expect(doctorCaseCatalog(plugin, undefined, directory, "other")[0]).toMatchObject({ service: "other", source: "local" });
+    expect(() => doctorCaseCatalog(plugin, undefined, directory, "missing")).toThrow("--service");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

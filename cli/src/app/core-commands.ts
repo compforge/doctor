@@ -101,6 +101,7 @@ export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof ru
 
 export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption> & {
   caseFile?: string;
+  services?: string[];
   caseset?: string;
   cases?: string;
   baseUrl?: string;
@@ -114,8 +115,15 @@ export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
   prepare: async (_context, input) => input,
   run: async (context, input) => {
     if (!input.baseUrl) throw new Error("发送 HTTP Case 需要 --base-url");
+    const plugin = await context.resolvePlugin();
+    const services = input.services?.map(name => {
+      const service = plugin?.services.find(name);
+      if (!service) throw new Error(`Unknown Service: ${name}`);
+      return service.name;
+    });
     const selection = await selectDoctorCases({
-      catalog: doctorCaseCatalog(await context.resolvePlugin(), input.caseFile),
+      catalog: doctorCaseCatalog(plugin, input.caseFile, undefined, services?.length === 1 ? services[0] : undefined)
+        .filter(entry => !services || services.includes(entry.service)),
       command: "http", caseSetId: input.caseset, caseIds: input.cases,
     });
     if (!selection) return commandOutcome(130);

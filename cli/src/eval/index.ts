@@ -211,7 +211,7 @@ export async function runEval(
   commandContext: CommandContext,
 ): Promise<CommandResult<EvalRun>> {
   const config = resolveEvalConfig(opts);
-  const catalog = runnableCaseCatalog(doctorCaseCatalog(plugin, opts.caseFile), plugin.services, config.service);
+  const catalog = runnableCaseCatalog(doctorCaseCatalog(plugin, opts.caseFile, undefined, config.service), plugin.services, config.service);
   const selected = await selectDoctorCases({
     catalog, command: "eval",
     caseSetId: config.caseset, caseIds: config.caseIds?.join(","),

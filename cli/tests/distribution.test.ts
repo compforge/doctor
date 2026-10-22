@@ -1,3 +1,4 @@
+import { testPlugin } from "./fixtures/test-plugin";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -133,10 +134,10 @@ describe("global Kubernetes options", () => {
       test(`${name} forwards target options ${position} the command`, async () => {
         const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
         try {
-          const program = createDoctorProgram();
+          const program = createDoctorProgram(name === "case" ? { plugin: testPlugin } : {});
           const target = ["--kubeconfig", "/explicit/config", "--context", "test-context"];
           const command = name === "collect" ? [name, "--include", "inspect"]
-            : name === "case" ? [name, "--send", "--caseset", "doctor_http", "--cases", "http_get_root", "--base-url", "http://127.0.0.1:8000"]
+            : name === "case" ? [name, "--send", "--caseset", "test_http", "--cases", "ping", "--base-url", "http://127.0.0.1:8000"]
             : [name];
           await program.parseAsync(position === "before" ? [...target, ...command] : [...command, ...target], { from: "user" });
           expect(run).toHaveBeenCalledTimes(1);
