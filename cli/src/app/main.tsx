@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { caseListCommand } from "../case/list-command";
 import { serviceOption } from "./service-option";
 import { isRemoteChat } from "./config/state";
 import { withLogger } from "../terminal/log";
@@ -293,6 +294,10 @@ function withTenantOptions(cmd: CommandT): CommandT {
 
 function withCaseOptions(cmd: CommandT): CommandT {
   return cmd
+    .option("-l, --list", "列出 Case 的提供方、传递方、消费方及当前 URL，不执行 Case")
+    .addOption(serviceOption("列表按提供方、传递方或消费方 Service 筛选"))
+    .option("--tenant-id <id>", "解析 Case URL 使用的租户")
+    .option("--user-id <id>", "解析 Case URL 使用的真实用户")
     .option("--case-file <path>", "外部 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "要发送的 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
@@ -306,7 +311,7 @@ function withCaseOptions(cmd: CommandT): CommandT {
     .option("--timeout <seconds>", "覆盖文件中的单请求超时")
     .option("--inspect-timeout <seconds>", "每个 URL host:port 的 DNS/TCP Inspect 超时", "3")
     .option("--max-size <mib>", "覆盖文件中的单响应最大采集容量")
-    .addOption(deliveryFormatOption(["bundle", "html", "md"]))
+    .addOption(deliveryFormatOption(["bundle", "html", "md", "json", "summary"]))
     .option("--profile <name>", "Pod 执行位置从 profile 取 namespace / kubeconfig")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
@@ -843,13 +848,21 @@ export function createDoctorProgram(
   withCaseOptions(
     catalog.command("case").helpGroup("Collect · 采集与分析:").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
       .addHelpText("after", `
+列表：
+  doctor case --list [-s <service>] [--caseset <id>] [-f json]
+  列表会读取消费绑定并解析当前 URL；不会执行 Case，动态 URL 查询参数脱敏。
 分析思路：
   从 Case 目录选择请求，确认目标与执行位置后实际发送，并保留协议响应和诊断证据。
 结果解读：
   检查请求是否执行及响应判定；一次通过只覆盖该 Case、身份和执行位置，不能代表全部业务可用。
 `),
-  ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean }, command: CommandT) => {
+  ).action(async (opts: CollectHttpCliOpts & { caseFile?: string; caseset?: string; cases?: string; send?: boolean; baseUrl?: string; yes?: boolean; list?: boolean }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
+    if (opts.list) {
+      opts.format = command.getOptionValueSource("format") === "cli" ? opts.format : "summary";
+      await runCommand(caseListCommand, opts, domainInput(opts), commandRuntime);
+      return;
+    }
     await withInteractionOptions(opts, () => runStandaloneCommand("doctor case", async () => {
       const active = plugin ?? await loadActivePlugin();
       const sources = doctorCaseCatalog(active, opts.caseFile);

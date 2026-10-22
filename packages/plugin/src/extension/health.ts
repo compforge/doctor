@@ -8,6 +8,8 @@ export interface HealthCaseBinding {
   readonly id: string;
   readonly workload: string;
   readonly producer: ServiceCaseRef;
+  /** Services that forward the producer's request material, in delivery order. */
+  readonly via?: readonly string[];
 }
 
 export interface HealthCaseBindingsQuery { readonly tenantId?: string }
@@ -38,5 +40,9 @@ export function validateHealthCaseBindings(bindings: readonly HealthCaseBinding[
     if (ids.has(binding.id)) throw new Error(`Duplicate Case binding: ${binding.id}`);
     ids.add(binding.id);
     validateCaseRef(binding.producer);
+    if (binding.via !== undefined && (!Array.isArray(binding.via)
+      || binding.via.some((service: unknown) => typeof service !== "string" || !service.trim()))) {
+      throw new Error("Case binding via must contain canonical Service names");
+    }
   }
 }

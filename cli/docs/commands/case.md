@@ -57,3 +57,24 @@ Health 通过自己的 `health.case.bindings` 关系选择共享来源，再由 
 HTTP Collect 区分证据采集完整与请求成功。完整采到 HTTP 500 时，Finding 会记录失败，但报告仍可完整交付；DNS 不可达、传输中断或产物失败会使覆盖不足。Pod 模式从目标 Container 使用 curl，本机模式使用 Got；两者都归一化为同一 Observation，Detector 不访问网络。
 
 `doctor case` 支持多个 Case 顺序发送；它用于复现和连通性诊断。需要并发负载时使用 `doctor perf`，由 Harness 统一管理随机 Case mix、请求预算和停止条件。
+
+## 列出提供与消费关系
+
+`doctor case --list`（`-l`）列出 Case、提供方 Service、传递方 `via`、消费方 Service/Workload 和当前 URL。
+列表从 `Service.cases` 加载定义，从 `health.case.bindings` 读取消费关系，再调用选中来源的 producer
+获取本次样本。每个来源只解析一次；不创建 runner、不发送 Case 请求。
+签名 URL 的查询参数脱敏，headers 和 body 不进入列表。无样本、权限失败或截断会保留关系并报告缺口。
+
+```sh
+doctor case -l
+doctor case --list -s bedbox --caseset kb_skill_download
+doctor case -l --caseset kb_skill_download --tenant-id TENANT -f json
+```
+
+`-s/--service` 支持按提供方、传递方、消费方筛选；`--caseset` 和 `--cases` 缩小 Case 范围。
+默认表格输出，`-f json` 提供结构化结果。列表解析 URL 可能读取配置、数据库或调用签名 API，需要环境权限。
+Core/本地静态 Case 未提供目标时显示“未提供 URL”；可用 `--base-url` 解析其相对路径。
+`--list` 与 `--send` 互斥。URL 已解析只说明取得目标地址，连通性仍需执行 Case 验证。
+
+`HealthCaseBinding.via` 是可选的有序 Service 名列表，记录 URL 的传递方；消费位置仍由绑定所属 Service
+及 `workload` 决定。它不改变现有 curl 执行方式，也不证明中间 Service 或 hictld 的下载策略已通过。
