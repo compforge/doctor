@@ -180,9 +180,13 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         if (!resolver) throw new Error(`${label}.source is required`);
         if ("inspectTarget" in store) throw new Error(`${label}.inspectTarget is unsupported; declare source`);
       }
-      if (store.kind === "s3" || store.kind === "redis") {
+      if (store.kind === "s3") {
         if (resolver === (store.environment !== undefined)) throw new Error(`${label} must declare exactly one of environment / source`);
         if (!resolver) record(store.environment, `${label}.environment`);
+      }
+      if (store.kind === "redis") {
+        if (!resolver) throw new Error(`${label}.source is required`);
+        if ("environment" in store) throw new Error(`${label}.environment is unsupported; resolve configuration inside source`);
       }
       if (store.kind === "vdb" && resolver && (store.configuration !== undefined)) {
         throw new Error(`${label}.source cannot be combined with inspectTarget / configuration`);

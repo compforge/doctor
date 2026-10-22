@@ -134,6 +134,10 @@ test("Plugin loader validates datasource declarations; describe never constructs
   expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql" }), manifest)).toThrow("source");
   expect(() => validatePluginDefinition(plugin({ ...declaration, source: { clientKey: "primary" } }), manifest)).toThrow("createClient");
   expect(() => validatePluginDefinition(plugin({ id: "primary", kind: "db", backend: "mysql", envPrefix: "DB" }), manifest)).toThrow("envPrefix is unsupported");
+  const redis = { ...declaration, kind: "redis", backend: "redis" };
+  expect(() => validatePluginDefinition(plugin(redis), manifest)).not.toThrow();
+  expect(() => validatePluginDefinition(plugin({ ...redis, source: undefined }), manifest)).toThrow("source is required");
+  expect(() => validatePluginDefinition(plugin({ ...redis, environment: { address: "REDIS_HOST" } }), manifest)).toThrow("environment is unsupported");
   const old = { id: "test", version: "0.0.1", services: { services: [{ component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } }, name: "chat", workloads: [], capabilities: { stores: [declaration] } }] } };
   expect(() => validatePluginDefinition(old, manifest)).toThrow("unsupported Service API");
 });

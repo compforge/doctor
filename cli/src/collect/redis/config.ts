@@ -18,7 +18,6 @@ import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import { serviceDataSources, servicesWithDataSource } from "@compforge/doctor-plugin";
 import type { ServiceRedisDataSource, ServiceRedisClient } from "@compforge/doctor-plugin";
 import { borrowServiceClient } from "../../datasource/client";
-import { resolveDataSourceTarget } from "../../datasource/workload";
 import {
   matchListedChoice,
   printNumberedChoices,
@@ -254,21 +253,13 @@ export async function resolveRedisConfig(
     throw new Error("doctor store 的 Redis 访问地址与凭据来自所选 Service；不支持 --url 覆盖");
   }
   if (catalog && !catalogStore) return undefined;
-  if (!catalogStore?.store.source) await enforceKubernetesAccess(access, {
+  if (!catalogStore) await enforceKubernetesAccess(access, {
     command: "doctor store", needs: [{ requirement: "required",
       rule: { verb: "create", resource: "pods/exec" }, purpose: "读取目标 Container 的 Redis 运行时配置" }],
   });
-  const client = catalogStore?.store.source ? await borrowServiceClient(commandContext, collect, executor,
+  const client = catalogStore ? await borrowServiceClient(commandContext, collect, executor,
     catalogStore.service, catalogStore.store, catalogStore.store.source) : undefined;
-  const selection = {
-    candidateRole: "配置来源", purpose: "读取 Redis 运行时配置",
-    effect: "该选择用于读取 Redis 运行时配置，不代表仅分析该 Pod 自身的数据。",
-  };
-  const target = client ? undefined : catalogStore ? await resolveDataSourceTarget({
-    service: catalog!.find(catalogStore.service)!, pod: podKeyword, container: input.container,
-    executor, namespace: collect.kubernetes.namespace,
-    interactive: isInteractive(input.interactive), commandContext, selection,
-  }) : await resolvePodTarget({
+  const target = client ? undefined : await resolvePodTarget({
     config: collect,
     executor,
     pod: podKeyword,

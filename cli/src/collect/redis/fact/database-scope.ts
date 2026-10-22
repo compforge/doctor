@@ -1,8 +1,7 @@
-import { discoverRedisTopology } from "@compforge/harness-toolbox/redis/index";
 import type { Inspect } from "../../inspection";
 import { selectRedisDatabaseScope } from "../config";
 import {
-  redisTopologyConfig,
+  redisTopology,
   type RedisCommandContext,
 } from "../context";
 import {
@@ -25,7 +24,7 @@ export async function discoverRedisDatabases(
   const access = ctx.redisAccess;
   const target = ctx.redisTarget;
   if (!access || !target) throw new Error("Redis 采集准备未完成");
-  const topology = await discoverRedisTopology(access, redisTopologyConfig(ctx));
+  const topology = await redisTopology(ctx);
   if (topology.clusterType === "cluster") return { clusterType: "cluster", databases: [0] };
   const discovered = new Set<number>();
   for (const endpoint of topology.masters) {

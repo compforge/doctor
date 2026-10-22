@@ -88,13 +88,11 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
     execTarget: { pod: "app-0" },
     redisAccess: access,
     redisTarget: {
-      endpoints: [[endpoint.host, endpoint.port]],
+      endpoints: [{ host: endpoint.host, port: endpoint.port }],
       database: 7,
       useSsl: false,
       clusterType: "single",
-      timeout: 5,
-      sentinelHosts: [],
-      sentinelMasterName: "mymaster",
+      timeoutMs: 5000,
       endpointSource: "service-env",
       credentialSource: "service-env",
     },
@@ -103,7 +101,7 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
   } satisfies RedisCommandContext;
 
   const targetFacts = buildRedisInspectionFacts({
-    endpoints: [[endpoint.host, endpoint.port]],
+    endpoints: [{ host: endpoint.host, port: endpoint.port }],
     database: 7,
     useSsl: false,
     clusterType: "single",
@@ -150,7 +148,7 @@ test("Redis sample 总预算在同一 master 的多个 DB 间分配", async () =
 
 test("Redis database scope Inspect 保留用户取消原因，供 Core 停在 Probe 之前", async () => {
   const targetFacts = buildRedisInspectionFacts({
-    endpoints: [["redis.example.com", 6379]],
+    endpoints: [{ host: "redis.example.com", port: 6379 }],
     database: 0,
     useSsl: false,
     clusterType: "single",
@@ -162,13 +160,11 @@ test("Redis database scope Inspect 保留用户取消原因，供 Core 停在 Pr
   const context = {
     config: { scan: { mode: "sample" } } as RedisConfig,
     redisTarget: {
-      endpoints: [["redis.example.com", 6379]],
+      endpoints: [{ host: "redis.example.com", port: 6379 }],
       database: 0,
       useSsl: false,
       clusterType: "single",
-      timeout: 5,
-      sentinelHosts: [],
-      sentinelMasterName: "mymaster",
+      timeoutMs: 5000,
       endpointSource: "service-env",
       credentialSource: "service-env",
     },

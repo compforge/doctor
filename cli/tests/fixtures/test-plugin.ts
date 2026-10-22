@@ -29,7 +29,7 @@ export const testPlugin = {
       id: "cache",
       kind: "redis",
       backend: "redis",
-      environment: { address: "REDIS_ADDRESS" },
+      source: { clientKey: "redis", createClient: () => { throw new Error("Unexpected Redis access"); } },
     }]
   }]),
 } satisfies PluginDefinition;

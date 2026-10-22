@@ -2,7 +2,7 @@ import type { EvidenceBundle } from "../evidence";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisTarget } from "./fact/target";
 import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
-import type { RedisTopologyConfig } from "@compforge/harness-toolbox/redis/index";
+import { discoverRedisTopology, type RedisTopology } from "@compforge/harness-toolbox/redis/index";
 import type { RedisConfig } from "./config";
 import type { CommandContext } from "../../command";
 
@@ -21,18 +21,9 @@ export interface RedisCommandContext {
   log: (line: string) => void;
 }
 
-export function redisTopologyConfig(ctx: RedisCommandContext): RedisTopologyConfig {
-  const target = ctx.redisTarget;
-  if (!target) throw new Error("Redis 执行态目标未就绪");
-  return {
-    endpoints: target.endpoints.map(([host, port]) => ({ host, port })),
-    database: target.database,
-    username: target.username,
-    password: target.password,
-    clusterType: target.clusterType,
-    sentinelHosts: target.sentinelHosts.map(([host, port]) => ({ host, port })),
-    sentinelMasterName: target.sentinelMasterName,
-    sentinelUsername: target.sentinelUsername,
-    sentinelPassword: target.sentinelPassword,
-  };
+/** @spec Topology is an observation; refresh it while reusing the source's root-owned connections. */
+export function redisTopology(ctx: RedisCommandContext): Promise<RedisTopology> {
+  if (ctx.config.client) return ctx.config.client.topology();
+  if (!ctx.redisTarget || !ctx.redisAccess) throw new Error("Redis 执行态目标未就绪");
+  return discoverRedisTopology(ctx.redisAccess, ctx.redisTarget);
 }

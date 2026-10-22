@@ -321,7 +321,7 @@ S3、VDB、Redis source 的 Kubernetes Service endpoint 按其 DNS 中的 namesp
 保持原始 Host/SNI。跨 namespace 连接需在 capability 的 `pods/portforward` 权限声明中启用
 `allNamespaces`；配置来源的 namespace 不改变对象存储等后端的部署位置。
 
-S3/Redis 环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
+S3 环境变量映射和 VDB 配置投影是内置配置来源，与自定义 source 互斥。内置来源通过 Service.workloads
 定位实际 Pod/container，不要求业务 Service 与 Kubernetes Service 同名；定位失败或来源有歧义时
 明确报错。使用 source 时不要求存在配置来源 Pod，也不额外探测 source 未提供的 Provider HTTP 接口。
 
@@ -354,7 +354,8 @@ DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dis
 外部操作归 initialize；dispose 必须幂等，并能清理初始化失败留下的资源。工厂上下文的 signal 和 infra
 属于整棵执行树，没有单次调用的依赖 handle，也无需手动注册共享客户端 cleanup。
 
-`mysqlDataSource` 与 `mysqlTransports(context)` 在原生建连发生网络错误后，通过
+`mysqlDataSource` 与 `redisDataSource` 复用 `tcpTransports(context)`，原生建连网络失败后尝试 Pod relay。
+
 Plugin API 17 的资源查询显式声明 API version 与 REST 资源复数名，例如
 `infra.kubernetes.get({ apiVersion: "v1", resource: "services", name: "api" })` 与
 `infra.kubernetes.list({ apiVersion: "v1", resource: "pods", labelSelector: "app=api" })`。
@@ -475,3 +476,15 @@ Data/Inspect 共用；未指定参数时不注入公共默认窗口，Log 保留
 事件采集应保留发生时间和实际采集时间；重复事件按发生区间与窗口相交保留，不能因最后一次发生
 在终点之后而丢弃整个事件。缺失时间不能证明事件在窗口外。采集范围与截断应写入证据；
 查询无返回不等于历史上没有事件，API 的保留期可能已经删除它们。
+
+### Redis source
+
+Plugin API 19 要求 Service 的 Redis DataSource 必须提供 `source`，不再声明环境变量映射。
+`redisDataSource(key, resolve)` 的 resolve 由 Plugin 读取并解释自己的配置，返回 toolbox
+`RedisDataSourceTarget`：`endpoints` 是所选模式的种子地址，超时统一使用毫秒；Sentinel
+使用独立的 sentinel 凭据。Core 不再为 Service 猜测 Redis 环境变量名称或配置来源 Pod。
+
+store、metric 与业务 capability 在各自权限检查后借用同一个根生命周期 Client；连接复用，
+拓扑每轮重新发现。MySQL 与 Redis 共用 `tcpTransports` 的原生连接、Pod relay 候选顺序，
+只在映射或握手网络失败时切换，认证失败及已发送的命令不会触发重放。metric 按 Service/source
+保留归属，不以相同 endpoint 合并不同权限与凭据的数据源。源配置及凭据不进入采集证据。

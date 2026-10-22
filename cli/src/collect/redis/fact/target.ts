@@ -1,20 +1,9 @@
 import { isIP } from "node:net";
 import type { RedisProfileConfig } from "../../../app/config/model";
-import type { ServiceRedisDataSource } from "@compforge/doctor-plugin";
+import type { RedisDataSourceTarget } from "@compforge/harness-toolbox/redis/index";
 
 /** 本轮 Redis 连接目标；包含凭据，只能停留在 Inspect / Probe 执行链内。 */
-export interface RedisTarget {
-  endpoints: Array<[host: string, port: number]>;
-  database: number;
-  username?: string;
-  password?: string;
-  useSsl: boolean;
-  clusterType: "single" | "sentinel" | "cluster";
-  timeout: number;
-  sentinelHosts: Array<[string, number]>;
-  sentinelMasterName: string;
-  sentinelUsername?: string;
-  sentinelPassword?: string;
+export type RedisTarget = RedisDataSourceTarget & {
   endpointSource: "flag" | "profile" | "service-env" | "default" | "plugin";
   credentialSource: "url" | "profile" | "service-env" | "none" | "plugin";
 }
@@ -28,47 +17,6 @@ function parseEnv(raw: string): Map<string, string> {
     if (index > 0) env.set(line.slice(0, index), line.slice(index + 1));
   }
   return env;
-}
-
-const REDIS_CANONICAL_ENV = {
-  address: "REDIS_HOST",
-  port: "REDIS_PORT",
-  database: "REDIS_DB",
-  username: "REDIS_USERNAME",
-  password: "REDIS_PASSWORD",
-  useSsl: "REDIS_USE_SSL",
-  clusterType: "REDIS_CLUSTER_TYPE",
-  sentinels: "REDIS_SENTINELS",
-  sentinelMasterName: "REDIS_SENTINEL_MASTER_NAME",
-  sentinelUsername: "REDIS_SENTINEL_USERNAME",
-  sentinelPassword: "REDIS_SENTINEL_PASSWORD",
-  timeout: "REDIS_TIMEOUT",
-} as const;
-
-export function projectRedisStoreEnvironment(
-  raw: string,
-  capability: ServiceRedisDataSource,
-): string {
-  const source = parseEnv(raw);
-  const names = capability.environment;
-  if (!names) throw new Error("Redis DataSource 未声明环境变量映射");
-  const projected = new Map<string, string>();
-  for (const [field, canonicalName] of Object.entries(REDIS_CANONICAL_ENV)) {
-    const sourceName = names[field as keyof typeof names];
-    const value = sourceName ? source.get(sourceName)?.trim() : undefined;
-    if (value) projected.set(canonicalName, value);
-  }
-  if (!names.sentinels && projected.get("REDIS_HOST")) {
-    projected.set("REDIS_SENTINELS", projected.get("REDIS_HOST")!);
-  }
-  return [...projected].map(([name, value]) => `${name}=${value}`).join("\n");
-}
-
-export function hasRedisStoreConfiguration(
-  raw: string,
-  capability: ServiceRedisDataSource,
-): boolean {
-  return !!capability.environment && !!parseEnv(raw).get(capability.environment.address)?.trim();
 }
 
 function parseBoolean(value: string | undefined, fallback = false): boolean {
@@ -170,9 +118,8 @@ export function resolveRedisTarget(
   rawEnv: string,
   profile: RedisProfileConfig | undefined,
   flagUrl?: string,
-  capability?: ServiceRedisDataSource,
 ): RedisTarget {
-  const env = parseEnv(capability ? projectRedisStoreEnvironment(rawEnv, capability) : rawEnv);
+  const env = parseEnv(rawEnv);
   const selectedUrl = flagUrl?.trim() || profile?.url?.trim();
   const endpointSource: RedisTarget["endpointSource"] = flagUrl?.trim()
     ? "flag"
@@ -240,17 +187,17 @@ export function resolveRedisTarget(
     : [];
 
   return {
-    endpoints,
+    endpoints: (clusterType === "sentinel" ? sentinelHosts : endpoints).map(([host, port]) => ({ host, port })),
     database,
     username,
     password,
     useSsl,
-    clusterType,
-    timeout: parsePositive(env.get("REDIS_TIMEOUT"), 5),
-    sentinelHosts,
-    sentinelMasterName: env.get("REDIS_SENTINEL_MASTER_NAME") || "mymaster",
-    sentinelUsername: env.get("REDIS_SENTINEL_USERNAME") || undefined,
-    sentinelPassword: env.get("REDIS_SENTINEL_PASSWORD") || undefined,
+    timeoutMs: parsePositive(env.get("REDIS_TIMEOUT"), 5) * 1_000,
+    ...(clusterType === "sentinel" ? { clusterType,
+      sentinelMasterName: env.get("REDIS_SENTINEL_MASTER_NAME") || "mymaster",
+      sentinelUsername: env.get("REDIS_SENTINEL_USERNAME") || undefined,
+      sentinelPassword: env.get("REDIS_SENTINEL_PASSWORD") || undefined,
+    } : { clusterType }),
     endpointSource,
     credentialSource,
   };

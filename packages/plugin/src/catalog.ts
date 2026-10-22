@@ -51,8 +51,11 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         sources.add(source.id);
       }
       for (const source of connectionDataSources(service)) {
-        if ((source.kind === "s3" || source.kind === "redis") && !!source.source === !!source.environment) {
+        if (source.kind === "s3" && !!source.source === !!source.environment) {
           throw new Error(`${service.name}/${source.id}: source 与 environment 配置映射必须且只能声明一个`);
+        }
+        if (source.kind === "redis" && (!source.source || "environment" in source)) {
+          throw new Error(`${service.name}/${source.id}: Redis 必须声明 source，不支持 environment 配置映射`);
         }
         if (source.kind === "vdb" && source.source && (source.configuration)) {
           throw new Error(`${service.name}/${source.id}: source 不能同时声明其它配置解析入口`);

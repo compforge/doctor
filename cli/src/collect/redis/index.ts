@@ -42,7 +42,6 @@ import {
 } from "./render";
 
 export { parseRedisOutputFormat, REDIS_DEFAULTS } from "./config";
-export { hasRedisStoreConfiguration, projectRedisStoreEnvironment } from "./fact/target";
 
 export interface CollectRedisCliOpts {
   service?: string;

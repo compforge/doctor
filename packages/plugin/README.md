@@ -24,6 +24,11 @@ Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出
 Plugin API 18 使用路径数组和 `infra.kubernetes.readFiles`，Plugin 需按新接口重新构建。
 `configurationInspection` 已移除。
 
+Plugin API 19 要求 Redis DataSource 声明 `source`，不再支持 `environment` 映射。
+`redisDataSource` 接收 toolbox 的完整目标（种子 endpoint、拓扑、独立 Sentinel 凭据和毫秒超时）；
+store/metric 共用连接生命周期，拓扑每轮刷新。MySQL 和 Redis 的原生连接/Pod relay 候选由
+`tcpTransports` 统一提供。
+
 Plugin 作者只需导出 `PluginDefinition` 和 Service Catalog。模型、租户等领域的提供方由 Command
 从 kind 候选中选择；多候选必须按命令规则明确选择，不用注册顺序决定默认提供方。
 

@@ -191,10 +191,11 @@ test("Redis source needs neither same-name K8s Service nor Pod exec and never cl
   let starts = 0, closes = 0;
   const client: ServiceRedisClient = {
     target: {
-      endpoints: [["redis.example.org", 6379]], database: 0, useSsl: false, timeout: 1000,
-      clusterType: "single", sentinelHosts: [], sentinelMasterName: ""
+      endpoints: [{ host: "redis.example.org", port: 6379 }], database: 0, useSsl: false, timeoutMs: 1000,
+      clusterType: "single"
     },
     access: { connection: async () => { throw new Error("No protocol calls in preparation"); }, close: async () => { throw new Error("Borrower cannot close"); } },
+    topology: async () => { throw new Error("No topology in preparation"); },
     initialize: async () => { starts++; }, dispose: async () => { closes++; },
   };
   const service = {
@@ -220,7 +221,7 @@ test("Redis source needs neither same-name K8s Service nor Pod exec and never cl
   expect(closes).toBe(1);
 });
 
-test("Redis source helper preserves the collection timeout unit at the toolbox boundary", async () => {
+test("Redis source helper preserves toolbox target and timeout budgets", async () => {
   const f = executor();
   let timeoutMs: number | undefined;
   const initialize = RedisClient.prototype.initialize;
@@ -228,10 +229,13 @@ test("Redis source helper preserves the collection timeout unit at the toolbox b
     await initialize.call(this);
     timeoutMs = this.target.timeoutMs;
   });
-  const source = redisDataSource("cache", async () => ({
-    endpoints: [["redis.example.org", 6379]],
-    database: 0, useSsl: false, timeout: 2, clusterType: "single", sentinelHosts: [], sentinelMasterName: ""
-  }));
+  const target = {
+    endpoints: [{ host: "sentinel.example.org", port: 26379 }],
+    database: 2, useSsl: true, timeoutMs: 2000, connectTimeoutMs: 1000, acquireTimeoutMs: 3000,
+    clusterType: "sentinel" as const, sentinelMasterName: "primary",
+    username: "data-user", password: "data-password", sentinelUsername: "sentinel-user", sentinelPassword: "sentinel-password",
+  };
+  const source = redisDataSource("cache", async () => target);
   const service = {
     ...logService(),
     workloads: [],
@@ -241,8 +245,9 @@ test("Redis source helper preserves the collection timeout unit at the toolbox b
   };
   const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
   try {
-    await borrowServiceClient(command, { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default", kubeconfigSource: "default" } },
+    const client = await borrowServiceClient(command, { profileName: "default", kubernetes: { namespace: "demo", namespaceSource: "default", kubeconfigSource: "default" } },
       f.exec, service.name, { access: {} }, source);
+    expect(client.target).toEqual(target);
     expect(timeoutMs).toBe(2_000);
   } finally {
     try { await command.disposeClients(); } finally { observed.mockRestore(); }
@@ -334,3 +339,81 @@ for (const crossNamespace of [true, false]) {
     } finally { await command.disposeClients(); forward.mockRestore(); await fixture.close(); }
   });
 }
+
+/** @case id=redis-store-metric-source,desc=`Store and Metric borrow one source and refresh topology`,expect=`one initialization, fresh masters, root-only disposal` */
+test("Redis store and metric share source without Pod config reads; each metric sample refreshes masters", async () => {
+  const { prepareStoreMetricCollection } = await import("../src/collect/metric/store/collector");
+  const { EmbeddedMetricSource } = await import("../src/infra/metric");
+  const f = executor();
+  const exec: Executor = { ...f.exec, run: async (args, options) => {
+    if (args[0] === "get" && ["services", "pods"].includes(args[1]!)) {
+      return { ...ok, stdout: '{"items":[]}', command: args };
+    }
+    return f.exec.run(args, options);
+  } };
+  let starts = 0, closes = 0, discoveries = 0;
+  const visited: string[] = [];
+  const client: ServiceRedisClient = {
+    target: { endpoints: [{ host: "seed", port: 26379 }], database: 2, useSsl: false,
+      timeoutMs: 1000, clusterType: "sentinel", sentinelMasterName: "primary", password: "private-password" },
+    topology: async () => ({ clusterType: "sentinel", replicas: [], slotRanges: [], masters: [{ host: `master-${++discoveries}`, port: 6379 }] }),
+    access: { connection: async (endpoint, database) => {
+      expect(database).toBe(2);
+      visited.push(endpoint.host);
+      return { endpoint, ping: async () => "PONG", info: async () => ({ connected_clients: 3 }),
+        dbSize: async () => 0, command: async () => null, pipeline: async () => [], scan: async () => ({ cursor: "0", keys: [] }) };
+    }, close: async () => { throw new Error("Borrower must not close access"); } },
+    initialize: async () => { starts++; }, dispose: async () => { closes++; },
+  };
+  const service = { ...logService("logical"), workloads: [], dataSources: [{ id: "redis", kind: "redis" as const,
+    backend: "redis" as const, source: { clientKey: "cache", createClient: () => client } }] };
+  const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
+  try {
+    const selected = await resolveRedisConfig({ namespace: "demo", service: service.name,
+      maxKeys: "1", maxKeysPerSecond: "1", top: "1" }, command, exec, command.plugin.services);
+    const metric = await prepareStoreMetricCollection({ plugin: command.plugin, commandContext: command,
+      collect: selected!.config.collect, executor: exec, services: [service.name], namespace: "demo", intervalMs: 1000,
+      forwarder: {} as import("@compforge/harness-toolbox/kubernetes/service-port-forward").ServicePortForwarder });
+    const output = new EmbeddedMetricSource({ retentionMs: 60_000, sampleIntervalMs: 1000 });
+    const ingest = spyOn(output, "ingest");
+    expect(metric.directCount).toBe(1);
+    expect(starts).toBe(1);
+    expect(await metric.sample(output)).toEqual([]);
+    expect(await metric.sample(output)).toEqual([]);
+    expect(visited).toEqual(["master-1", "master-2"]);
+    expect(ingest.mock.calls[0]![1]?.labels).toMatchObject({ doctor_service: "logical", doctor_store: "redis" });
+    expect(JSON.stringify(ingest.mock.calls)).not.toContain("private-password");
+    await metric.close();
+    expect(closes).toBe(0);
+    ingest.mockRestore();
+  } finally { await command.disposeClients(); }
+  expect(closes).toBe(1);
+});
+
+test("TCP sources keep external endpoints direct and authorize Service forwarding in its own namespace", async () => {
+  const { tcpTransports } = await import("@compforge/doctor-plugin");
+  const namespaces: string[] = [];
+  const forwarded: unknown[] = [];
+  const context = {
+    target: { namespace: "app" },
+    infra: { kubernetes: {
+      inNamespace: (namespace: string) => {
+        namespaces.push(namespace);
+        return { portForward: async (endpoint: unknown) => {
+          forwarded.push(endpoint);
+          return { host: "127.0.0.1", port: 16379 };
+        } };
+      },
+      podRelay: async () => { throw new Error("relay permission denied"); },
+    } },
+  } as unknown as import("@compforge/doctor-plugin").PluginClientContext;
+  const routes = tcpTransports(context);
+  const external = { host: "redis.example.org", port: 6379 };
+  expect(await routes[0]!.connect(external)).toEqual(external);
+  expect(namespaces).toEqual([]);
+  const service = { host: "redis.storage.svc.cluster.local", port: 6379 };
+  expect(await routes[0]!.connect(service)).toMatchObject({ host: "127.0.0.1", port: 16379 });
+  expect(namespaces).toEqual(["storage"]);
+  expect(forwarded).toEqual([service]);
+  await expect(routes[1]!.connect(external)).rejects.toThrow("relay permission denied");
+});
