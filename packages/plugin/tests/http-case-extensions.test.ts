@@ -106,3 +106,11 @@ test("model response expectations are validated before execution", () => {
     http: { status: [200] }, model: { type: "llm" },
   } } } }] }, 1)).toThrow("application/json");
 });
+
+test("binding forwarding Services are optional ordered nonempty names", () => {
+  const binding = { id: "skill", workload: "carrier", producer: { service: "kb", source: "skills" } };
+  expect(() => validateHealthCaseBindings([{ ...binding, via: ["control", "hibot"] }])).not.toThrow();
+  for (const via of [null, "hibot", [""], [1]]) {
+    expect(() => validateHealthCaseBindings([{ ...binding, via } as never])).toThrow("via");
+  }
+});

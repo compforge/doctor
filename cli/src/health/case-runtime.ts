@@ -11,13 +11,13 @@ import type { CasePrepareActions } from "./case-prepare";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../case/prepare-identity";
 
-function caseInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
+export function caseOperationInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }, command = "doctor health") {
   return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, label: string, query: I): Promise<O> => {
     const db = context.profile.value.db;
     const managed = await openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, capability: operation, signal: context.signal, clients: context.clients,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      command: `doctor health ${label}`, authorization: context.kubernetes(executor).access,
+      command: `${command} ${label}`, authorization: context.kubernetes(executor).access,
     });
     try { return (await invokeOperation(operation, managed, query)).data; }
     finally { await managed.dispose(); }
@@ -26,7 +26,7 @@ function caseInvoker(context: CommandContext, executor: Executor, kubernetes: Ku
 
 export function casePrepareActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, input: { tenantId?: string; userId?: string }): CasePrepareActions {
-  const invoke = caseInvoker(context, executor, kubernetes);
+  const invoke = caseOperationInvoker(context, executor, kubernetes);
   const directory = discoverTenantDirectory(context.plugin.services, (service, extension) =>
     openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
@@ -43,7 +43,7 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"],
   approve: CaseCheckActions["approve"]): CaseCheckActions {
-  const invoke = caseInvoker(context, executor, kubernetes);
+  const invoke = caseOperationInvoker(context, executor, kubernetes);
   return {
     directory, checkpoint, signal: context.signal,
     approve,

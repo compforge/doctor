@@ -502,6 +502,8 @@ describe("command help", () => {
     expect(result.stdout).toContain("--caseset <id>");
     expect(result.stdout).toContain("--cases <ids>");
     expect(result.stdout).toContain("--send");
+    expect(result.stdout).toContain("-l, --list");
+    expect(result.stdout).toContain("--service <name>");
     expect(result.stdout).toContain("--base-url <url>");
     expect(result.stdout).toContain("--repeat <n>");
     expect(result.stdout).toContain("--interval <seconds>");
@@ -510,7 +512,7 @@ describe("command help", () => {
     expect(result.stdout).toContain("--max-size <mib>");
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout).toContain("--kubeconfig <path>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "manifest"');
+    expect(result.stdout.replace(/\s+/g, " ")).toContain('"bundle", "html", "md", "json", "summary", "manifest"');
     expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
     expect(result.stdout).toContain("--output <path>");
     expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");

@@ -17,7 +17,7 @@ export interface DoctorCaseSet {
   caseSet: CaseSet;
 }
 
-/** Offline assets have one owner; listing never prepares targets or creates runners. */
+/** Offline assets have one owner; catalog discovery never prepares targets or creates runners. */
 export function doctorCaseCatalog(plugin?: PluginDefinition, file?: string, cwd = process.cwd()): DoctorCaseSet[] {
   const local = localCaseCatalog(file, cwd);
   return [
