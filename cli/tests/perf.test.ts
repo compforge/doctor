@@ -1,21 +1,23 @@
+import { bindService } from "@compforge/doctor-plugin";
 import { readBundleExecutions } from "./bundle-fixture";
 import { commandOutcome } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Run, TrialContext } from "@compforge/perf-harness";
+import { Engine, writeRunData, loadRun, type Run, type ArmContext } from "@compforge/perf-harness";
 import {
   parsePerfLevels,
   parsePerfOutputFormat,
   perfLevelsThrough,
   resolvePerfConfig,
+  perfLoadPlans,
 } from "../src/perf/config";
 import {
   formatPerfCaseMix,
   createPerfArtifact,
   selectPerfSamples,
-  workloadFromCaseRunner,
+  perfAdapterFromCaseFactory,
 } from "../src/perf";
 import {
   resolveCaseRequestIdentity,
@@ -26,13 +28,18 @@ import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
 import { CommandContext } from "../src/command";
 import { finalizeFixture } from "./report-fixture";
 
-test("perf defaults scan concurrency 5 through 20 with bounded requests", () => {
+const service = bindService({
+  name: "chat",
+  component: { name: "chat", repository: { forge: { name: "test" }, path: "fixture/chat" } },
+  workloads: [],
+}, { name: "test" });
+
+test("perf defaults scan concurrency 5 through 20 with bounded duration", () => {
   const config = resolvePerfConfig({}, new Date("2026-01-02T03:04:05"));
   expect(config).toMatchObject({
     levels: [5, 10, 15, 20],
     rampSeconds: 10,
     holdSeconds: 60,
-    maxRequests: 100,
     abortErrorRate: 0.1,
     breakerMinN: 10,
     requestTimeoutMs: 180_000,
@@ -40,6 +47,7 @@ test("perf defaults scan concurrency 5 through 20 with bounded requests", () => 
     outputFormat: "default",
     bundleName: "doctor-perf-20260102-030405",
   });
+  expect(() => resolvePerfConfig({ maxRequests: "100" })).toThrow("已移除 --max-requests");
   expect(() => parsePerfLevels("5,0,20")).toThrow("--levels");
   expect(() => parsePerfLevels("5,55")).toThrow("1-50");
   expect(perfLevelsThrough(1)).toEqual([1]);
@@ -126,7 +134,7 @@ test("perf trial output describes the active Case mix and Facets", () => {
 
 test("Service Case runner maps one Probe into one shared Outcome", async () => {
   const lifecycle: string[] = [];
-  const workload = workloadFromCaseRunner({
+  const { runner, judge } = perfAdapterFromCaseFactory("chat", async () => ({
     setup: async () => { lifecycle.push("setup"); },
     run: async ({ input: selected }) => ({
       status: 200,
@@ -137,31 +145,31 @@ test("Service Case runner maps one Probe into one shared Outcome", async () => {
     classify: (observation) => ({ ok: observation.status === 200 }),
     deactivate: async () => { lifecycle.push("deactivate"); },
     cleanup: async () => { lifecycle.push("cleanup"); },
-  });
-  const context: TrialContext = {
-    subject: { name: "chat", target: {} },
+  }));
+  const context: ArmContext = {
+    service,
     arm: {
       id: "5c",
       resources: {},
-      load: { model: "closed", schedule: { start_level: 0, stages: [] } },
+      load: { request_rate: Infinity, max_inflight: 5, hold_s: 1 },
     },
     run_id: "run-1",
     signal: new AbortController().signal,
   };
-  await workload.setup?.(context);
-  const outcome = await workload.fire({
+  await runner.setup?.(context);
+  const outcome = await runner.fire({
     ...context,
     case: { id: "ordinary", input: { query: "hello" } },
   });
-  await workload.deactivate?.(context);
-  await workload.cleanup?.(context);
+  await runner.deactivate?.(context);
+  await runner.cleanup?.(context);
   expect(outcome).toMatchObject({
     status: 200,
     duration_ms: 7000,
     metrics: { first_token_ms: 6500 },
     meta: { trace_id: "trace-1", case_input: { query: "hello" } },
   });
-  expect(workload.judge?.(outcome)).toEqual({ ok: true, error_kind: undefined });
+  expect(judge?.(outcome)).toEqual({ ok: true, error_kind: undefined });
   expect(lifecycle).toEqual(["setup", "deactivate", "cleanup"]);
 });
 
@@ -252,26 +260,25 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
     outcome: {
       status: 200,
       duration_ms: firstTokenMs + 100,
-      ok: true,
       metrics: { first_token_ms: firstTokenMs },
       meta: index === 1 ? { message_id: "message-1" } : { trace_id: `trace-${index}` },
     },
   }));
-  const run = {
-    schema: 3,
+  const run: Run = {
+    schema: 6,
     run_id: "run",
     experiment: "perf",
     created_at: "",
-    subject: "chat",
+    service: "chat",
     passed: true,
-    n_trials: 1,
-    trials: [{
+    artifacts: [],
+    executions: [{
       id: "closed/5c",
-      subject: "chat",
+      service: "chat",
       arm: {
         id: "closed/5c",
         resources: {},
-        load: { model: "closed", schedule: { start_level: 0, stages: [] } },
+        load: { request_rate: Infinity, max_inflight: 5, hold_s: 1 },
       },
       started_at: "",
       finished_at: "",
@@ -280,18 +287,30 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
       slo: [],
       registry: {},
       probe_errors: {},
-      outcomes,
+      phase_errors: [],
+      requests: outcomes.map((item, index) => ({
+        id: String(index), case_id: "ordinary", scheduled_at: item.t, arrived_at: item.t,
+        dispatched_at: item.t, finished_at: item.t + item.outcome.duration_ms / 1000,
+        state: "finished" as const, operation_run_id: String(index), facets: {},
+      })),
+      operation_runs: outcomes.map((item, index) => ({ id: String(index), service, operation: { name: "chat" }, outcome: item.outcome })),
+      evaluations: {},
     }],
-  } satisfies Run;
+  };
 
   expect(selectPerfSamples(run, 2, ["trace_id", "message_id"]).map((item) => item.correlationId))
     .toEqual(["message-1", "trace-2"]);
+  run.executions[0]!.requests[1]!.state = "interrupted";
+  run.executions[0]!.evaluations["0"] = { ok: false, error_kind: "sse-terminal" };
+  const samples = selectPerfSamples(run, 10, ["trace_id", "message_id"]);
+  expect(samples.map(item => item.correlationId)).toEqual(["trace-2", "trace-0"]);
+  expect(samples[1]!.errorKind).toBe("sse-terminal");
   expect(perfEvidenceStatus({
     run,
     outputDir: ".",
     metric: commandOutcome(0),
     samples: [{
-      trialId: "closed/5c",
+      armRunId: "closed/5c",
       correlationKey: "trace_id",
       correlationId: "trace-1",
       durationMs: 5100,
@@ -313,24 +332,26 @@ test("perf report renders Facet values in their declared order", () => {
     error_rate: 0,
     error_breakdown: {},
     n_dropped: 0,
+    arrived: 1, dispatched: 1, completed: 1, succeeded: 1, n_interrupted: 0,
+    arrival_rps: 1, dispatch_rps: 1, success_rps: 1, inflight_peak: 1, inflight_end: 0,
     caveats: [],
     metrics: {},
   };
-  const run = {
-    schema: 3,
+  const run: Run = {
+    schema: 6,
     run_id: "run",
     experiment: "perf",
     created_at: "",
-    subject: "chat",
+    service: "chat",
     passed: true,
-    n_trials: 1,
-    trials: [{
+    artifacts: [],
+    executions: [{
       id: "closed/5c",
-      subject: "chat",
+      service: "chat",
       arm: {
         id: "closed/5c",
         resources: {},
-        load: { model: "closed", schedule: { start_level: 0, stages: [] } },
+        load: { request_rate: Infinity, max_inflight: 5, hold_s: 1 },
       },
       started_at: "",
       finished_at: "",
@@ -352,9 +373,12 @@ test("perf report renders Facet values in their declared order", () => {
       slo: [],
       registry: {},
       probe_errors: {},
-      outcomes: [],
+      phase_errors: [],
+      requests: [],
+      operation_runs: [],
+      evaluations: {},
     }],
-  } satisfies Run;
+  };
   const outputDir = mkdtempSync(join(tmpdir(), "doctor-perf-report-"));
   try {
     const report = writePerfReport({
@@ -373,4 +397,54 @@ test("perf report renders Facet values in their declared order", () => {
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
+});
+
+/** @case id=perf_cancel_evidence,desc=`Host cancels a running Case`,expect=`Request and cleanup see the reason; schema 6 preserves interrupted facts without judging them` */
+test("Perf adapter cancels active Case requests and round-trips interrupted evidence", async () => {
+  const controller = new AbortController();
+  const reason = new Error("doctor perf interrupted");
+  let requestReason: unknown, cleanupReason: unknown, judged = 0;
+  const run = await new Engine({
+    service,
+    ...perfAdapterFromCaseFactory("chat", async () => ({
+      run: async ({ signal }) => new Promise((_, reject) => {
+        signal.addEventListener("abort", () => { requestReason = signal.reason; reject(signal.reason); }, { once: true });
+        controller.abort(reason);
+      }),
+      classify: () => { judged++; return { ok: true }; },
+      cleanup: async ({ signal }) => { cleanupReason = signal.reason; },
+    })),
+    loads: [{ request_rate: Infinity, max_inflight: 1, hold_s: 60, cooldown_timeout_s: 60 }],
+    signal: controller.signal,
+  }).run();
+  expect(requestReason).toBe(reason);
+  expect(cleanupReason).toBe(reason);
+  expect(judged).toBe(0);
+  expect(run.passed).toBe(false);
+  expect(run.executions[0]!.stop).toMatchObject({ reason: "aborted", interrupted: 1 });
+  const directory = mkdtempSync(join(tmpdir(), "doctor-perf-cancel-"));
+  try {
+    writeRunData(run, directory);
+    const restored = loadRun(directory);
+    expect(restored.executions[0]!.requests[0]!.state).toBe("interrupted");
+    expect(restored.executions[0]!.operation_runs).toHaveLength(1);
+    expect(selectPerfSamples(restored, 10, ["trace_id"])).toEqual([]);
+    expect(JSON.parse(readFileSync(join(directory, "evaluations.json"), "utf8")))
+      .toEqual({ [run.executions[0]!.id]: {} });
+    expect(readFileSync(writePerfReport({ run: restored, outputDir: directory, metric: commandOutcome(130), samples: [] }), "utf8"))
+      .toContain("requests.jsonl");
+  } finally { rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("Perf maps concurrency levels into explicit schema 6 ramp and hold stages", () => {
+  const [load] = perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "2", hold: "3", gracefulStop: "4" }));
+  expect(load).toMatchObject({
+    request_rate: Infinity, max_inflight: 1, cooldown_timeout_s: 4,
+    stages: [
+      { kind: "ramp", duration_s: 2, request_rate: Infinity, max_inflight: 5 },
+      { kind: "hold", duration_s: 3, request_rate: Infinity, max_inflight: 5 },
+    ],
+  });
+  expect(perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "0" }))[0]!.max_inflight).toBe(5);
+  expect(() => perfLoadPlans(resolvePerfConfig({ ramp: "0", hold: "0" }))).toThrow("不能同时为 0");
 });

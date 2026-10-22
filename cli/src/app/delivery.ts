@@ -101,6 +101,7 @@ export async function deliverSerialized(input: { directory: string; options: Com
         metadata = { ...metadata, delivery: { status: errors.length ? "failed" : "ok", errors,
           exitCode: code === 130 ? 130 : errors.length ? 1 : code, location: { directory, manifest: manifestPath } } };
         writeFileSync(manifestPath, `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
+        writeOutput(`[delivery] 正在保存 Evidence Bundle: ${archive}…\n`, process.stderr);
         const packed = await packArchiveEntries(readdirSync(directory).map(name => ({ source: join(directory, name), path: name })), archive);
         if (!packed.ok) throw new Error(packed.stderr);
         chmodSync(archive, 0o600);

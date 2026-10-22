@@ -1,3 +1,4 @@
+import type { LoadPlan, Stage } from "@compforge/perf-harness";
 import { join } from "node:path";
 import type { PerfCliOpts, PerfConfig, PerfOutputFormat } from "./model";
 
@@ -62,6 +63,7 @@ export function parsePerfOutputFormat(value: string | undefined): PerfOutputForm
 }
 
 export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConfig {
+  if (opts.maxRequests !== undefined) throw new Error("Perf Harness 0.1 已移除 --max-requests；请使用 --levels、--ramp、--hold 和 --abort-error-rate 控制负载");
   const outputFormat = parsePerfOutputFormat(opts.format);
   const bundleName = perfRunName(now);
   const outputCandidate = opts.output?.trim() || join(".", bundleName);
@@ -83,7 +85,6 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     levels: parsePerfLevels(opts.levels),
     rampSeconds: seconds(opts.ramp, 10, "--ramp"),
     holdSeconds: seconds(opts.hold, 60, "--hold"),
-    maxRequests: integer(opts.maxRequests, 100, "--max-requests", 1),
     abortErrorRate: fraction(opts.abortErrorRate, 0.1, "--abort-error-rate"),
     breakerMinN: integer(opts.breakerMinN, 10, "--breaker-min-n", 1),
     gracefulStopSeconds: seconds(opts.gracefulStop, 60, "--graceful-stop"),
@@ -92,4 +93,27 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     outputFormat,
     bundleName,
   };
+}
+
+/** Saturated load uses concurrency as its only pacing axis; each level has an explicit ramp and hold. */
+export function perfLoadPlans(config: PerfConfig): LoadPlan[] {
+  if (config.holdSeconds + config.rampSeconds <= 0) throw new Error("--ramp 与 --hold 不能同时为 0");
+  return config.levels.map(level => {
+    const stages: Stage[] = [];
+    if (config.rampSeconds > 0) stages.push({
+      kind: "ramp", request_rate: Infinity, max_inflight: level, duration_s: config.rampSeconds,
+    });
+    if (config.holdSeconds > 0) stages.push({
+      kind: "hold", request_rate: Infinity, max_inflight: level, duration_s: config.holdSeconds,
+    });
+    return {
+      request_rate: Infinity,
+      max_inflight: config.rampSeconds > 0 ? 1 : level,
+      hold_s: config.holdSeconds || config.rampSeconds,
+      stages,
+      abort_on_error_rate: config.abortErrorRate,
+      breaker_min_n: config.breakerMinN,
+      cooldown_timeout_s: config.gracefulStopSeconds,
+    };
+  });
 }

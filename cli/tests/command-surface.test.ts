@@ -358,7 +358,8 @@ describe("command help", () => {
     expect(result.stdout).toContain("Usage: doctor perf [options]");
     expect(result.stdout).toContain("--levels <numbers>");
     expect(result.stdout).toContain("最大 50；指定后跳过最高并发询问");
-    expect(result.stdout).toContain("--max-requests <n>");
+    expect(result.stdout).not.toContain("--max-requests");
+    expect(result.stdout).toContain("--hold <seconds>");
     expect(result.stdout).toContain("--trace-samples <n>");
     expect(result.stdout).toContain('(default: "10")');
     expect(result.stdout).toContain("--format <format>");

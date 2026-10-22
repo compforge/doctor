@@ -398,7 +398,6 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
     .option("--ramp <seconds>", "每档升压时间（秒）", "10")
     .option("--hold <seconds>", "每档稳态时间（秒）", "60")
-    .option("--max-requests <n>", "每档最多产生的业务请求数", "100")
     .option("--abort-error-rate <ratio>", "当前档错误率熔断阈值 (0,1]", "0.1")
     .option("--breaker-min-n <n>", "启用错误率熔断前的最少请求数", "10")
     .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")

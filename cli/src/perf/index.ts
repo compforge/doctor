@@ -12,14 +12,12 @@ import type {
 } from "@compforge/doctor-plugin";
 import {
   Engine,
-  rampHold,
   writeRunData,
   type CaseMixEntry,
   type CaseSet,
   type Outcome,
   type Run,
-  type TimedOutcome,
-  type Workload,
+  type Experiment,
 } from "@compforge/perf-harness";
 import { resolveCaseRequestIdentity } from "../case";
 import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
@@ -41,6 +39,7 @@ import {
   PERF_MAX_CONCURRENCY_OPTIONS,
   perfLevelsThrough,
   resolvePerfConfig,
+  perfLoadPlans,
 } from "./config";
 import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
 import { createPerfArtifact } from "./output";
@@ -73,56 +72,51 @@ function toObservation(outcome: Outcome): ServiceCaseObservation {
     nbytes: outcome.nbytes,
     metrics: outcome.metrics,
     meta: outcome.meta,
-    errorKind: outcome.error_kind,
+    errorKind: typeof outcome.meta?.error_kind === "string" ? outcome.meta.error_kind : undefined,
   };
 }
 
-/** Acquire request resources inside the Harness lifecycle, which guarantees cleanup after setup. */
-export function workloadFromCaseFactory(create: () => Promise<ServiceCaseRunner>): Workload {
-  let workload: Workload | undefined;
+/**
+ * @spec The Harness owns runner resources from setup through cleanup, including cancelled setup.
+ * @why Raw protocol observations survive independently of the request verdict in schema 6.
+ */
+export function perfAdapterFromCaseFactory(
+  name: string, create: () => Promise<ServiceCaseRunner>,
+): Pick<Experiment, "runner" | "judge"> {
+  let runner: ServiceCaseRunner | undefined;
   return {
-    setup: async context => {
-      workload ??= workloadFromCaseRunner(await create());
-      await workload.setup?.(context);
+    runner: {
+      name,
+      setup: async ({ run_id, signal }) => {
+        runner ??= await create();
+        signal.throwIfAborted();
+        await runner.setup?.({ runId: run_id, signal });
+      },
+      fire: async ({ case: perfCase, run_id, signal }) => {
+        const observation = await runner!.run({
+          input: { id: perfCase.id, input: perfCase.input, facets: perfCase.facets },
+          runId: run_id, signal,
+        });
+        return {
+          status: observation.status,
+          duration_ms: observation.durationMs,
+          events: observation.events,
+          nbytes: observation.nbytes,
+          metrics: observation.metrics ? { ...observation.metrics } : undefined,
+          meta: { ...observation.meta, ...(observation.errorKind ? { error_kind: observation.errorKind } : {}) },
+        };
+      },
+      deactivate: async ({ run_id, signal }) => {
+        await runner?.deactivate?.({ runId: run_id, signal });
+      },
+      cleanup: async ({ run_id, signal }) => {
+        await runner?.cleanup?.({ runId: run_id, signal });
+      },
     },
-    fire: input => workload!.fire(input),
-    judge: outcome => workload!.judge!(outcome),
-    deactivate: async context => { await workload?.deactivate?.(context); },
-    cleanup: async context => { await workload?.cleanup?.(context); },
-  };
-}
-
-export function workloadFromCaseRunner(runner: ServiceCaseRunner): Workload {
-  return {
-    setup: async ({ run_id, signal }) => {
-      await runner.setup?.({ runId: run_id, signal });
-    },
-    fire: async ({ case: perfCase, run_id, signal }) => {
-      const observation = await runner.run({
-        input: { id: perfCase.id, input: perfCase.input, facets: perfCase.facets },
-        runId: run_id,
-        signal,
-      });
-      return {
-        status: observation.status,
-        duration_ms: observation.durationMs,
-        events: observation.events,
-        nbytes: observation.nbytes,
-        metrics: observation.metrics ? { ...observation.metrics } : undefined,
-        meta: observation.meta ? { ...observation.meta } : undefined,
-        error_kind: observation.errorKind,
-      };
-    },
-    judge: (outcome) => {
+    judge: outcome => {
       if (outcome.meta?.exc) return { ok: false, error_kind: String(outcome.meta.exc) };
-      const verdict = runner.classify(toObservation(outcome));
+      const verdict = runner!.classify(toObservation(outcome));
       return { ok: verdict.ok, error_kind: verdict.errorKind };
-    },
-    deactivate: async ({ run_id, signal }) => {
-      await runner.deactivate?.({ runId: run_id, signal });
-    },
-    cleanup: async ({ run_id, signal }) => {
-      await runner.cleanup?.({ runId: run_id, signal });
     },
   };
 }
@@ -139,11 +133,17 @@ function firstToken(outcome: Outcome): number | undefined {
   return outcome.metrics?.first_token_ms;
 }
 
+interface PerfRequest {
+  outcome: Outcome;
+  ok?: boolean;
+  errorKind?: string;
+}
+
 function percentileOutcome(
-  outcomes: TimedOutcome[],
+  outcomes: PerfRequest[],
   quantile: number,
   correlationKeys: readonly string[],
-): TimedOutcome | undefined {
+): PerfRequest | undefined {
   const values = outcomes.filter((item) => correlation(item.outcome, correlationKeys)).sort(
     (left, right) => (firstToken(left.outcome) ?? left.outcome.duration_ms)
       - (firstToken(right.outcome) ?? right.outcome.duration_ms),
@@ -153,31 +153,39 @@ function percentileOutcome(
 }
 
 export function selectPerfSamples(run: Run, limit: number, correlationKeys: readonly string[]): Array<{
-  trialId: string;
+  armRunId: string;
   correlationKey: string;
   correlationId: string;
   outcome: Outcome;
+  errorKind?: string;
 }> {
   if (limit <= 0) return [];
   const selected: Array<{
-    trialId: string;
+    armRunId: string;
     correlationKey: string;
     correlationId: string;
     outcome: Outcome;
+    errorKind?: string;
   }> = [];
   const seen = new Set<string>();
-  for (const trial of run.trials) {
-    const slowest = [...trial.outcomes].filter(
+  for (const execution of run.executions) {
+    const completed = new Set(execution.requests.filter(item => item.state === "finished").map(item => item.operation_run_id));
+    const outcomes: PerfRequest[] = execution.operation_runs.filter(item => completed.has(item.id)).map(item => ({
+      outcome: item.outcome,
+      ok: execution.evaluations[item.id]?.ok,
+      errorKind: execution.evaluations[item.id]?.error_kind,
+    }));
+    const slowest = [...outcomes].filter(
       (item) => correlation(item.outcome, correlationKeys),
     ).sort(
       (left, right) => (firstToken(right.outcome) ?? right.outcome.duration_ms)
         - (firstToken(left.outcome) ?? left.outcome.duration_ms),
     );
     const candidates = [
-      percentileOutcome(trial.outcomes, 1, correlationKeys),
-      percentileOutcome(trial.outcomes, 0.95, correlationKeys),
-      trial.outcomes.find(
-        (item) => item.outcome.ok === false && correlation(item.outcome, correlationKeys),
+      percentileOutcome(outcomes, 1, correlationKeys),
+      percentileOutcome(outcomes, 0.95, correlationKeys),
+      outcomes.find(
+        (item) => item.ok === false && correlation(item.outcome, correlationKeys),
       ),
       ...slowest,
     ];
@@ -186,10 +194,11 @@ export function selectPerfSamples(run: Run, limit: number, correlationKeys: read
       if (!candidate || !correlated || seen.has(correlated.id)) continue;
       seen.add(correlated.id);
       selected.push({
-        trialId: trial.id,
+        armRunId: execution.id,
         correlationKey: correlated.key,
         correlationId: correlated.id,
         outcome: candidate.outcome,
+        errorKind: candidate.errorKind,
       });
       if (selected.length >= limit) return selected;
     }
@@ -216,6 +225,7 @@ async function collectCorrelatedEvidence(input: {
     input.correlationKeys,
   )) {
     if (input.commandContext.signal.aborted) break;
+    writeOutput(`[perf] 正在采集代表请求的 Trace / Log（${samples.length + 1}/${input.limit}）…\n`, process.stderr);
     const trace = await traceCommand.run(input.commandContext, {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
@@ -225,17 +235,17 @@ async function collectCorrelatedEvidence(input: {
       bizIds: [selected.correlationId],
       namespace: input.namespace,
       services: input.services,
-      sinceTime: input.run.trials.find((trial) => trial.id === selected.trialId)?.started_at,
+      sinceTime: input.run.executions.find((execution) => execution.id === selected.armRunId)?.started_at,
     });
     if (log) input.commandContext.artifacts.add(log.artifacts);
     samples.push({
-      trialId: selected.trialId,
+      armRunId: selected.armRunId,
       caseId: selected.outcome.case_id,
       correlationKey: selected.correlationKey,
       correlationId: selected.correlationId,
       firstTokenMs: firstToken(selected.outcome),
       durationMs: selected.outcome.duration_ms,
-      errorKind: selected.outcome.error_kind,
+      errorKind: selected.errorKind,
       trace,
       log,
     });
@@ -243,12 +253,29 @@ async function collectCorrelatedEvidence(input: {
   return samples;
 }
 
+/** Root cancellation remains visible even when an embedding distribution suppresses info logs. */
 export async function runPerf(
   opts: PerfCliOpts,
   plugin: PluginDefinition,
   commandContext: CommandContext,
 ): Promise<CommandResult<PerfResult>> {
+  const cancelled = () => writeOutput("[perf] 已取消：正在通知请求与采集组件停止，等待清理并保存已有证据…\n", process.stderr);
+  commandContext.signal.addEventListener("abort", cancelled, { once: true });
+  try {
+    commandContext.signal.throwIfAborted();
+    return await executePerf(opts, plugin, commandContext);
+  } finally {
+    commandContext.signal.removeEventListener("abort", cancelled);
+  }
+}
+
+async function executePerf(
+  opts: PerfCliOpts,
+  plugin: PluginDefinition,
+  commandContext: CommandContext,
+): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
+  const loads = perfLoadPlans(config);
   const selected = selectPerfProvider(plugin.services, config.service);
   const provider = selected.service;
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
@@ -344,7 +371,8 @@ export async function runPerf(
     impact: [
       `场景：${provider.name}/${declaredScenario.id}；Case 来源：${runnerProvider.service.name}/${runnerProvider.source.id}`,
       `Case: ${caseSet.caseset}/${caseSelection.cases.map((item) => item.id).join(", ")}；多 Case 等权随机抽取`,
-      `最多发起 ${config.levels.length * config.maxRequests} 个业务请求（每档最多 ${config.maxRequests}）`,
+      `每档 ramp ${config.rampSeconds}s + hold ${config.holdSeconds}s；共 ${config.levels.length * (config.rampSeconds + config.holdSeconds)}s 发压时间`,
+      "按并发与时长持续发送请求，不设置请求总数上限；可随时 Ctrl+C 取消",
       "请求会写入业务数据库、日志和 trace，并可能产生模型调用费用",
       `错误率达到 ${(config.abortErrorRate * 100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）时停止当前档`,
       "压测可能放大目标 Service 及其下游的延迟和资源压力",
@@ -365,6 +393,8 @@ export async function runPerf(
     endpoint: runnerProvider.factory.endpoint,
     capability: runnerProvider.factory,
     command: "doctor perf",
+    signal: commandContext.signal,
+    clients: commandContext.clients,
     authorization,
   });
 
@@ -409,6 +439,7 @@ export async function runPerf(
     };
     rejectMetricStart = rejectReady;
   });
+  writeOutput("[perf] 正在启动 Metric 采集窗口…\n", process.stderr);
   const metricPromise = metricCommand.run(commandContext, {
     services: declaredScenario.observability.metricServices,
     watch: "until-interrupt",
@@ -428,42 +459,43 @@ export async function runPerf(
   let metric: CommandResult<void>;
   try {
     await metricReady;
-    useLogger("perf").info(`metric window ready; starting ${config.levels.join(" → ")} concurrency`);
+    writeOutput(`[perf] Metric 已就绪；开始并发 ${config.levels.join(" → ")}\n`, process.stderr);
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
-      subject: { name: runnerProvider.service.name, target: { service: runnerProvider.service.name, source: runnerProvider.source.id } },
-      workload: workloadFromCaseFactory(() => createCaseRunner(runnerProvider.factory, managed, {
+      service: managed.target.service,
+      ...perfAdapterFromCaseFactory(`${runnerProvider.service.name}/${runnerProvider.source.id}`, () => createCaseRunner(runnerProvider.factory, managed, {
         caseSetId: caseSet.caseset,
         timeoutMs: config.requestTimeoutMs,
         requestIdentity,
       })),
       caseSet,
       caseMix,
-      loads: config.levels.map((level) => rampHold("closed", level, config.rampSeconds, config.holdSeconds, {
-        max_requests: config.maxRequests,
-        abort_on_error_rate: config.abortErrorRate,
-        breaker_min_n: config.breakerMinN,
-        graceful_stop_s: config.gracefulStopSeconds,
-      })),
+      loads,
       signal: commandContext.signal,
-      onTrialStart: (context) => {
-        useLogger("perf").info(`trial ${context.arm.id}; case mix:\n${formatPerfCaseMix(caseSet, caseMix)}`);
+      onArmStart: (context) => {
+        writeOutput(`[perf] 开始 ${context.arm.id}\n${formatPerfCaseMix(caseSet, caseMix)}`, process.stderr);
       },
     }).run();
   } catch (error) {
     loadError = error;
   } finally {
-    metricController.abort();
+    metricController.abort(commandContext.signal.aborted ? commandContext.signal.reason : undefined);
+    writeOutput("[perf] 正在等待 Metric 采集收尾…\n", process.stderr);
     try {
       // Join the child before closing the parent's scope, even when parent cleanup fails.
       metric = await metricPromise;
       commandContext.artifacts.add(metric.artifacts);
     } finally {
+      writeOutput("[perf] 正在释放请求资源…\n", process.stderr);
       await managed.dispose();
     }
   }
-  if (loadError) throw loadError;
+  if (loadError) {
+    if (commandContext.signal.aborted) return { status: CommandStatus.Cancelled, artifacts: commandContext.artifacts.list() };
+    throw loadError;
+  }
   if (!run) throw new Error("Perf Harness 未形成 Run");
+  writeOutput("[perf] 正在保存负载结果…\n", process.stderr);
   writeRunData(run, outputDir);
   const samples = await collectCorrelatedEvidence({
     run,
@@ -487,5 +519,5 @@ export async function runPerf(
   const statuses = [run.passed ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
     [sample.trace.status, ...(sample.log ? [sample.log.status] : [])]
   ))];
-  return { status: aggregateCommandStatus(statuses), output: result, artifacts: commandContext.artifacts.list() };
+  return { status: commandContext.signal.aborted ? CommandStatus.Cancelled : aggregateCommandStatus(statuses), output: result, artifacts: commandContext.artifacts.list() };
 }
