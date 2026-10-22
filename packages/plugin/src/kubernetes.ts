@@ -1,4 +1,4 @@
-import type { FileReadOptions } from "@compforge/harness-common";
+import type { FileReadOptions, FileReadResult } from "@compforge/harness-common";
 import type { HttpServiceTarget } from "./http";
 import type { ResourceRef, ResourceListQuery, ResourceList } from "@compforge/harness-toolbox/kubernetes/resources";
 
@@ -45,8 +45,8 @@ export interface KubernetesAccess {
   get<T>(ref: KubernetesResourceRef): Promise<T>;
   list<T>(query: KubernetesResourceListQuery): Promise<KubernetesResourceList<T>>;
   exec(target: KubernetesExecTarget, command: readonly string[], options?: { stdin?: string; timeoutMs?: number }): Promise<string>;
-  /** Bounded raw file bytes from one explicit Container; the host owns transport and client cleanup. */
-  readFile(target: Required<KubernetesExecTarget>, path: string, options: FileReadOptions): Promise<Uint8Array>;
+  /** One bounded acquisition for a declared file group in one Container; results remain independent per path. */
+  readFiles(target: Required<KubernetesExecTarget>, paths: readonly string[], options: FileReadOptions): Promise<readonly FileReadResult[]>;
   /** Borrow an execution-scoped TCP relay through an existing Pod; requires list pods, exec and portforward. */
   podRelay(target: HttpServiceTarget): Promise<HttpServiceTarget & { servername?: string }>;
   portForward(target: HttpServiceTarget): Promise<HttpServiceTarget & { servername?: string }>;

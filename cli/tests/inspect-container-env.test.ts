@@ -1,3 +1,4 @@
+import { executorResourceReader } from "../src/infra/k8s/resources";
 import { expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -70,13 +71,13 @@ for (const failure of [undefined, "denied", "timeout", "missing-command", "malfo
     const authorization = new KubernetesAccessContext(executor);
     const bundle = new EvidenceBundle(root);
     const ctx: InspectCommandContext = {
-      command, executor, authorization, bundle, log: () => {},
+      command, executor, exec: executor.exec, resources: executorResourceReader(executor, "demo"), authorization, bundle, log: () => {},
       config: { namespace: "demo", namespaceSource: "flag", services: ["api"], servicesExplicit: true,
         field: "env", format: "bundle", reportName: "fixture", profileName: "test", kube: { namespace: "demo" } },
     };
     try {
       if (failure === "denied") await authorization.evaluate({ command: "doctor inspect", needs: [{
-        requirement: "preferred", rule: { verb: "create", resource: "pods/exec" }, purpose: "Pod Env",
+        requirement: "preferred", rule: { verb: "get", resource: "pods/exec" }, purpose: "Pod Env",
       }] });
       const input = facts([pod("api-0"), pod("api-1")]);
       const observations = [];

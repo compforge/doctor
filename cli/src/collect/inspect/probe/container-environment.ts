@@ -37,10 +37,10 @@ export function makeContainerEnvironmentProbe(
       };
       let execution: ExecResult | undefined;
       try {
-        if (ctx.authorization.fact({ verb: "create", resource: "pods/exec" })?.status === "denied") {
+        if (ctx.authorization.fact({ verb: "get", resource: "pods/exec" })?.status === "denied") {
           throw new Error("缺少 pods/exec 权限，无法读取 Pod Env");
         }
-        execution = await ctx.executor.exec({ pod: target.pod, container: target.container },
+        execution = await ctx.exec({ pod: target.pod, container: target.container },
           ["printenv", "-0"], { timeoutMs: ENVIRONMENT_TIMEOUT_MS, signal: currentCommandSignal() });
         if (!execution.ok) throw new Error(execution.timedOut ? "读取 Pod Env 超时（15s）"
           : execution.stderr.trim().split("\n")[0] || `printenv 退出码 ${execution.exitCode}`);

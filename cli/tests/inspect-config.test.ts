@@ -26,13 +26,15 @@ test("configuration parsing preserves nested paths and literals without echoing 
   expect(() => parseFileConfiguration(new TextEncoder().encode('a.b: 1\na: {b: 2}'), "/config.yaml")).toThrow("冲突");
 });
 
-for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denied", "env-only"] as const) {
+for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denied", "env-only", "group-ok", "mixed-missing", "mixed-invalid", "mixed-oversized"] as const) {
   test(`Inspect config collects file sources and Pod env, retaining provenance and gaps: ${scenario}`, async () => {
     const directory = mkdtempSync(join(tmpdir(), "inspect-config-test-"));
     const config = join(directory, "profile.yaml"); writeFileSync(config, "");
     let resolutions = 0;
     let fileReads = 0;
-    const file = fileDataSource("/etc/config.yaml", {
+    const grouped = scenario.startsWith("mixed-") || scenario === "group-ok";
+    const paths = grouped ? ["/etc/config.yaml", "/etc/secret.yaml"] : ["/etc/config.yaml"];
+    const file = fileDataSource(paths, {
       workload: "api", description: "mounted configuration", access: { kubernetes: [{
         requirement: "required", rule: { verb: "create", resource: "pods/exec" }, purpose: "read config",
       }] },
@@ -46,7 +48,7 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
     const plugin = { ...examplePlugin, services: createServiceCatalog([service]) };
     expect(resolutions).toBe(0);
     expect(file).not.toHaveProperty("id"); expect(file).not.toHaveProperty("kind");
-    expect(describeService(service).details.dataSources).toContainEqual({ kind: "file", path: "/etc/config.yaml", workload: "api", description: "mounted configuration" });
+    expect(describeService(service).details.dataSources).toContainEqual({ kind: "file", paths, workload: "api", description: "mounted configuration" });
     const executor: Executor = {
       run: async args => {
         if (args[0] === "config") return response("test\nhttps://cluster.test");
@@ -61,10 +63,16 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
         expect(target).toMatchObject({ pod: "api-0", container: "main" });
         if (args[0] === "printenv") return response("SANDBOX_MODE=pod\0OTHER=keep-in-evidence\0");
         fileReads++;
-        expect(args).toEqual(["head", "-c", "1048577", "/etc/config.yaml"]);
+        expect(args.slice(0, 2)).toEqual(["sh", "-c"]);
+        expect(args.slice(3)).toEqual(["file-source", "1048577", ...paths]);
         if (scenario === "missing") return { ...response(), ok: false, exitCode: 1, stderr: "private-error-line" };
         const raw = scenario === "invalid" ? "password: [private-value" : scenario === "empty" ? "{}" : scenario === "oversized" ? "x".repeat(1048577) : yaml;
-        options?.onStdoutBytes?.(new TextEncoder().encode(raw));
+        options?.onStdoutBytes?.(Buffer.from(`0 ${Buffer.concat([Buffer.from(raw), Buffer.from([0]), Buffer.from("000")]).toString("base64")}\n`));
+        if (grouped) {
+          const body = scenario === "mixed-invalid" ? "password: [private-value" : scenario === "mixed-oversized" ? "x".repeat(1048577) : "extra: true";
+          const status = scenario === "mixed-missing" ? "001" : "000";
+          options?.onStdoutBytes?.(Buffer.from(`1 ${Buffer.concat([Buffer.from(body), Buffer.from([0]), Buffer.from(status)]).toString("base64")}\n`));
+        }
         return response();
       },
     };
@@ -82,8 +90,16 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
       if (search.field !== "config") throw new Error("expected config field");
       if (scenario !== "denied") expect(search.matches.some(match => match.name === "SANDBOX_MODE")).toBe(true);
       const coverage = diagnosis.coverage.find(item => item.goal === "file-configuration")!;
-      expect(coverage.status, JSON.stringify(diagnosis.evidence.observations)).toBe(scenario === "ok" || scenario === "empty" ? "sufficient" : "insufficient");
-      if (scenario === "ok") {
+      expect(coverage.status, JSON.stringify(diagnosis.evidence.observations)).toBe(scenario === "group-ok" || scenario === "ok" || scenario === "empty" ? "sufficient" : grouped ? "partial" : "insufficient");
+      if (scenario !== "denied") { expect(fileReads).toBe(1); expect(resolutions).toBe(1); }
+      if (grouped) {
+        const files = diagnosis.evidence.observations.filter(item => item.kind === "file-configuration");
+        expect(files).toHaveLength(2);
+        expect(files.map(item => item.status)).toEqual(["collected", scenario === "group-ok" ? "collected" : "unavailable"]);
+        expect(files.map(item => item.path)).toEqual(paths);
+        expect(new Set(files.map(item => item.id)).size).toBe(2);
+      }
+      if (scenario === "ok" || grouped) {
         expect(search.matches).toContainEqual({ name: "sandbox.provider.config.endpoint", value: "http://sandbox.example:8080",
           source: "file", service: "api", workload: "api", namespace: "demo", pod: "api-0", container: "main", path: "/etc/config.yaml" });
         expect(diagnosis.evidence.observations.some(item => item.kind === "container-environment" && item.values.OTHER === "keep-in-evidence")).toBe(true);

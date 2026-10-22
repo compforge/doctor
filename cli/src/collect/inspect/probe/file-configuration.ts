@@ -3,7 +3,6 @@ import { extname } from "node:path";
 import { parseDocument } from "yaml";
 import type { ServiceFileDataSource } from "@compforge/doctor-plugin";
 import { openPluginContext } from "../../../plugin/context";
-import { currentCommandSignal } from "../../../command/execution-scope";
 import { PROBE_RUNNABLE, type Probe } from "../../protocol";
 import type { FileConfigurationObservation, InspectCommandContext, InspectConfig, InspectFacts, InspectObservation, JsonValue } from "../model";
 
@@ -53,40 +52,56 @@ export function parseFileConfiguration(bytes: Uint8Array, path: string): Record<
   return values;
 }
 
-/** @spec Failed sources remain evidence gaps and never become an empty successful configuration. */
+/** @spec Acquire each declared group once; preserve independent file observations and evidence gaps. */
 export function makeFileConfigurationProbe(service: string, source: ServiceFileDataSource): Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext> {
-  const id = fileConfigurationId(service, source.clientKey);
+  const id = `file-config-${service}-${source.clientKey}`;
   return {
     id, evaluate: () => PROBE_RUNNABLE,
     run: async ctx => {
-      const observation: FileConfigurationObservation = {
-        id, kind: "file-configuration", schemaVersion: 1,
+      const observations: FileConfigurationObservation[] = source.paths.map(path => ({
+        id: fileConfigurationId(service, source.clientKey, path), kind: "file-configuration", schemaVersion: 1,
         producer: { origin: "core", id: "file-configuration" },
-        service, workload: source.workload, path: source.path, status: "unavailable", values: {},
+        service, workload: source.workload, path, status: "unavailable", values: {},
+      }));
+      const failed = (observation: FileConfigurationObservation, error: unknown) => {
+        observation.reason = `读取配置失败：${service}/${source.workload} ${observation.path}（${error instanceof Error ? error.message : String(error)}）`;
       };
       const started = performance.now();
       try {
         const context = await openPluginContext(ctx.executor, ctx.config.kube, {
-          clients: ctx.command.clients, config: ctx.command.profile.pluginConfig,
+          clients: ctx.command.clients, config: ctx.command.profile.pluginConfig, resources: ctx.resources,
           service: ctx.command.plugin.services.find(service)!, command: "doctor inspect · config",
           capability: { access: source.access }, authorization: ctx.authorization,
         });
         try {
           const file = await context.clients.get(source);
-          Object.assign(observation, file.target);
-          const bytes = await file.read({ maxBytes: 1024 * 1024, timeoutMs: 15_000, signal: currentCommandSignal() });
-          observation.values = parseFileConfiguration(bytes, source.path);
-          observation.status = "collected";
+          for (const observation of observations) Object.assign(observation, file.target);
+          const maxBytes = 1024 * 1024;
+          const results = await file.read({ maxBytes, maxTotalBytes: maxBytes * source.paths.length,
+            timeoutMs: 15_000, signal: ctx.command.signal });
+          if (results.length !== observations.length || results.some((result, index) => result.path !== source.paths[index])) {
+            throw new Error("File source returned a different path group");
+          }
+          for (const [index, result] of results.entries()) {
+            const observation = observations[index]!;
+            if (result.status === "error") { failed(observation, result.error); continue; }
+            try {
+              observation.values = parseFileConfiguration(result.bytes, result.path);
+              observation.status = "collected";
+            } catch (error) { failed(observation, error); }
+          }
         } finally { await context.dispose(); }
       } catch (error) {
-        currentCommandSignal()?.throwIfAborted();
-        observation.reason = `读取配置失败：${service}/${source.workload} ${source.path}（${error instanceof Error ? error.message : String(error)}）`;
+        ctx.command.signal.throwIfAborted();
+        for (const observation of observations) failed(observation, error);
       }
-      ctx.log(`[collect] 配置文件 ${service}/${source.workload} ${source.path}：${observation.status}`);
-      ctx.bundle.addStep({ id, title: `${service}/${source.workload} ${source.path}`, risk: "observe",
-        status: observation.status === "collected" ? "ok" : "unavailable", reason: observation.reason,
-        durationMs: performance.now() - started, output: JSON.stringify(observation, null, 2), ext: "json" });
-      return [observation];
+      const collected = observations.filter(item => item.status === "collected").length;
+      const status = collected === observations.length ? "ok" : collected ? "partial" : "unavailable";
+      ctx.log(`[collect] 配置文件组 ${service}/${source.workload}：${collected}/${observations.length} 个文件已采集`);
+      ctx.bundle.addStep({ id, title: `${service}/${source.workload} 配置文件组`, risk: "observe", status,
+        reason: observations.flatMap(item => item.reason ? [item.reason] : []).join("；") || undefined,
+        durationMs: performance.now() - started, output: JSON.stringify(observations, null, 2), ext: "json" });
+      return observations;
     },
   };
 }

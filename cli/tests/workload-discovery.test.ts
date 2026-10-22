@@ -1,3 +1,4 @@
+import { executorResourceReader, type KubernetesResourceCapture } from "../src/infra/k8s/resources";
 import { expect, test } from "bun:test";
 import type { Workload } from "@compforge/doctor-plugin";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -6,7 +7,7 @@ import { resolveKubernetesWorkload } from "../src/infra/k8s/workload-config";
 const snapshot = { services: [], deployments: [], configMaps: [], pods: [] };
 function fixture(responses: Record<string, unknown>) {
   const calls: string[][] = [];
-  const captures: ExecResult[] = [];
+  const captures: KubernetesResourceCapture[] = [];
   const executor: Executor = {
     run: async args => {
       calls.push(args);
@@ -18,7 +19,7 @@ function fixture(responses: Record<string, unknown>) {
     exec: async () => { throw new Error("Discovery must not exec"); },
   };
   return { calls, captures, resolve: (workload: Workload) => resolveKubernetesWorkload(
-    snapshot, workload, executor, "demo", "test", result => { captures.push(result); },
+    snapshot, workload, executorResourceReader(executor, "demo"), "demo", "test", result => { captures.push(result); },
   ) };
 }
 const pod = (name: string, uid = name + "-uid") => ({
@@ -95,7 +96,7 @@ test("Pod discovery failure does not discard independently collected Deployment 
   };
   const result = await resolveKubernetesWorkload({ ...snapshot, deployments: [deployment] }, {
     name: "main", platform: "kubernetes", location: { kind: "service", name: "api-svc" },
-  }, executor, "demo", "test", () => {});
+  }, executorResourceReader(executor, "demo"), "demo", "test", () => {});
   expect(result.unavailableReason).toBe("pods forbidden");
   expect(result.instances).toEqual([]);
   expect(result.deployments).toEqual([deployment]);

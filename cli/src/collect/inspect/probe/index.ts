@@ -1,3 +1,4 @@
+import { inspectCollectionScope } from "../model";
 import { fileDataSources } from "@compforge/doctor-plugin";
 import { makeFileConfigurationProbe } from "./file-configuration";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
@@ -22,7 +23,8 @@ export function makeInspectProbes(
   catalog: ServiceCatalog,
   probeFacts: readonly ServiceEvidenceFact[],
 ): Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> {
-  const serviceProbes = config.services.flatMap((serviceName) => {
+  const scope = inspectCollectionScope(config);
+  const serviceProbes = (scope.plugins ? config.services : []).flatMap((serviceName) => {
     const service = catalog.find(serviceName);
     const environment = service?.environmentProbes
       ?.map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
@@ -32,8 +34,8 @@ export function makeInspectProbes(
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
-    ...(config.field === "config" ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
-    ...((config.field === "env" || config.field === "config") ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
+    ...(scope.files ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
+    ...(scope.env ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
     ...(facts.serviceTargets.status === "collected"
       ? Object.values(facts.serviceTargets.services).flatMap((service) =>
         Object.values(service.workloads).flatMap((workload) =>

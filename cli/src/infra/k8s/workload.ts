@@ -1,3 +1,4 @@
+import { executorResourceReader, type KubernetesResourceReader, type KubernetesResourceCapture } from "./resources";
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { resolveWorkload } from "@compforge/harness-toolbox/kubernetes/workload";
 import type { Resource, ResourceRef, ResourceListQuery, ResourceList } from "@compforge/harness-toolbox/kubernetes/resources";
@@ -25,6 +26,14 @@ export async function discoverKubernetesWorkload(
   environment: string,
   recordCapture: (result: ExecResult) => void,
 ): Promise<DiscoveredKubernetesWorkload> {
+  return discoverKubernetesResourceWorkload(definition, executorResourceReader(executor, namespace, currentCommandSignal()),
+    namespace, environment, capture => { if (capture.execution) recordCapture(capture.execution); });
+}
+
+export async function discoverKubernetesResourceWorkload(
+  definition: Workload, reader: KubernetesResourceReader, namespace: string, environment: string,
+  recordCapture: (capture: KubernetesResourceCapture) => void,
+): Promise<DiscoveredKubernetesWorkload> {
   const selectedNamespace = definition.namespace ?? namespace;
   // Collector access and snapshots are namespace-bound; a declaration must not silently
   // redirect probes or borrow permissions checked against a different namespace.
@@ -39,13 +48,11 @@ export async function discoverKubernetesWorkload(
     const read = async <T extends Resource | ResourceList>(query: ResourceRef | ResourceListQuery): Promise<T> => {
       const { namespace: ns = selectedNamespace, resource } = query;
       const name = "name" in query ? query.name : undefined;
-      const selector = "labelSelector" in query ? query.labelSelector : undefined;
-      const args = ["get", resource, ...(name ? [name] : []), ...(selector ? ["-l", selector] : []), "-o", "json"];
-      const result = await executor.run(args, { timeoutMs: 30_000, signal });
-      recordCapture(result);
-      if (!result.ok) throw new Error(result.stderr.trim() || "Workload discovery failed");
-      const raw = JSON.parse(result.stdout) as T;
-      const list = name ? JSON.stringify({ items: [raw] }) : result.stdout;
+      const capture = await reader(query);
+      recordCapture(capture);
+      if (capture.error || !capture.value) throw new Error(capture.error ?? "Resource response missing");
+      const raw = capture.value as T;
+      const list = JSON.stringify(name ? { items: [raw] } : raw);
       if (resource === "pods") for (const pod of parsePods(list, ns)) pods.set(pod.name, pod);
       if (resource === "services") service = parseServices(list, ns)[0];
       return raw;

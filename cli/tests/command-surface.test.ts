@@ -424,7 +424,7 @@ describe("command help", () => {
     expect(result.stdout).toContain("Usage: doctor inspect [options]");
     expect(result.stdout).toContain("--search <keyword>");
     expect(result.stdout).toContain("--field <field>");
-    expect(result.stdout).toContain("支持 --field env|config|image 和 --search 快速查值");
+    expect(result.stdout).toContain("env|config|image|event|hpa");
     expect(result.stdout).toContain("Env 逐个 Pod 读取业务 Container 的实际环境变量");
     expect(result.stdout).toContain("-s, --service <name>");
     expect(result.stdout).toContain("--deployment-config");

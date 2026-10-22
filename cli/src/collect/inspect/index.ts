@@ -1,3 +1,6 @@
+import { inspectCollectionScope } from "./model";
+import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
+import { kubernetesClientSource, resourceReader, executorResourceReader, snapshotResourceReader } from "../../infra/k8s/resources";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -108,7 +111,8 @@ export async function runCollectInspect(
   useLogger().info(includeDependencies
       ? "[collect] 应用依赖及版本：纳入采集\n"
       : "[collect] 应用依赖及版本：未纳入本次采集范围");
-  const deploymentNeeds = includeDeploymentConfig ? [{
+  const scope = inspectCollectionScope(config);
+  const deploymentNeeds = scope.deployment ? [{
     requirement: "preferred" as const,
     rule: { verb: "list" as const, resource: "deployments.apps" },
     purpose: "读取 Deployment Container/env 声明",
@@ -119,13 +123,13 @@ export async function runCollectInspect(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod 证据，ConfigMap 配置标记为缺失",
   }] : [];
-  const environmentNeeds = (config.field === "env" || config.field === "config") ? [{
+  const environmentNeeds = scope.env ? [{
     requirement: "preferred" as const,
-    rule: { verb: "create" as const, resource: "pods/exec" },
+    rule: { verb: "get" as const, resource: "pods/exec" },
     purpose: "逐个 Pod 的业务 Container 读取实际环境变量",
     fallback: "无法读取时将 Pod Env 标记为缺失，不使用 Deployment 声明值替代",
   }] : [];
-  const dependencyNeeds = includeDependencies ? [{
+  const dependencyNeeds = scope.dependencies ? [{
     requirement: "preferred" as const,
     rule: { verb: "create" as const, resource: "pods/exec" },
     purpose: "进入每个不同业务镜像的代表 Container 采集应用依赖及版本",
@@ -141,18 +145,18 @@ export async function runCollectInspect(
         purpose: "统计所选 Service 的 Pod、镜像与 Container 资源声明",
         fallback: "权限缺失时仍交付 Env 配置，Pod 运行态标记为缺失",
       },
-      {
-        requirement: "preferred",
+      ...(scope.event ? [{
+        requirement: "preferred" as const,
         rule: { verb: "list", resource: "events" },
         purpose: "关联所选 Workload 的探针失败、重启与扩缩容事件",
         fallback: "权限缺失时仍交付 Pod 运行态，事件关联标记为缺失",
-      },
-      {
-        requirement: "preferred",
+      }] : []),
+      ...(scope.hpa ? [{
+        requirement: "preferred" as const,
         rule: { verb: "list", resource: "horizontalpodautoscalers.autoscaling" },
         purpose: "识别所选 Workload 的 HPA 与近期扩缩",
         fallback: "权限缺失时不影响其它证据",
-      },
+      }] : []),
       ...(selectedDefinitions.some((service) => service.workloads.some(
         (workload) => workload.location.kind === "service",
       )) ? [{
@@ -187,11 +191,17 @@ export async function runCollectInspect(
   let facts: InspectFacts | undefined;
   let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
+  const clusterKube = injectedExecutor ? config.kube
+    : bindKubernetesEnvironment(config.kube, (await commandContext.environment(executor)).environment);
+  const kubernetes = await commandContext.clients.get(kubernetesClientSource(clusterKube, injectedExecutor));
   const ctx: InspectCommandContext = {
     command: commandContext,
     config,
     executor,
     authorization,
+    resources: snapshotResourceReader(injectedExecutor ? executorResourceReader(executor, config.namespace, commandContext.signal)
+      : resourceReader(kubernetes, commandContext.signal)),
+    exec: (target, command, options) => kubernetes.exec(config.namespace, target, command, options),
     bundle,
     log,
   };
@@ -251,7 +261,7 @@ export async function runCollectInspect(
       },
       log,
       buildEvidence: buildInspectEvidence,
-      detectors: makeInspectDetectors(plugin.id, plugin.services, config.services),
+      detectors: scope.plugins ? makeInspectDetectors(plugin.id, plugin.services, config.services) : [],
       buildCoverage: (evidence) => buildInspectCoverage(evidence, config),
     });
     facts = execution.facts;

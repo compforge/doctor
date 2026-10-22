@@ -1,3 +1,4 @@
+import type { FileReadResult } from "@compforge/harness-common";
 import { expect, test } from "bun:test";
 import { ClientManager } from "@compforge/harness-toolbox/client-manager";
 import { createServiceCatalog, fileDataSource, type CapabilityAccess, DOCTOR_PLUGIN_API_VERSION } from "@compforge/doctor-plugin";
@@ -18,7 +19,7 @@ test("file clients reuse the root lifecycle and observe fresh bytes after borrow
   const clients = new ClientManager();
   let resolutions = 0;
   let reads = 0;
-  const file = fileDataSource("/config.yaml", { workload: "main", access, resolve: async () => {
+  const file = fileDataSource(["/config.yaml"], { workload: "main", access, resolve: async () => {
     resolutions++;
     return { namespace: "demo", pod: "api-0", container: "main" };
   } });
@@ -26,9 +27,10 @@ test("file clients reuse the root lifecycle and observe fresh bytes after borrow
     run: async () => { throw new Error("unexpected discovery"); },
     exec: async (_target, command, options) => {
       reads++;
-      expect(command).toEqual(["head", "-c", "1025", "/config.yaml"]);
+      expect(command.slice(0, 2)).toEqual(["sh", "-c"]);
+      expect(command.slice(3)).toEqual(["file-source", "1025", "/config.yaml"]);
       expect(_target).toMatchObject({ namespace: "demo", pod: "api-0", container: "main" });
-      options?.onStdoutBytes?.(new TextEncoder().encode(`version: ${reads}`));
+      options?.onStdoutBytes?.(Buffer.from(`0 ${Buffer.concat([Buffer.from(`version: ${reads}`), Buffer.from([0]), Buffer.from("000")]).toString("base64")}\n`));
       return { ok: true, stdout: "", stderr: "", exitCode: 0, timedOut: false, durationMs: 1, command: [] };
     },
   };
@@ -45,10 +47,10 @@ test("file clients reuse the root lifecycle and observe fresh bytes after borrow
     await first.dispose();
     expect(await second.clients.get(file)).toBe(client);
     expect(resolutions).toBe(1);
-    const limits = { maxBytes: 1024, timeoutMs: 1000 };
-    expect(new TextDecoder().decode(await client.read(limits))).toBe("version: 1");
-    expect(new TextDecoder().decode(await client.read(limits))).toBe("version: 2");
-    await expect(denied.infra.kubernetes.readFile({ pod: "api-0", container: "main" }, "/config.yaml", limits))
+    const limits = { maxBytes: 1024, maxTotalBytes: 1024, timeoutMs: 1000 };
+    expect(new TextDecoder().decode(fileBytes(await client.read(limits)))).toBe("version: 1");
+    expect(new TextDecoder().decode(fileBytes(await client.read(limits)))).toBe("version: 2");
+    await expect(denied.infra.kubernetes.readFiles({ pod: "api-0", container: "main" }, ["/config.yaml"], limits))
       .rejects.toThrow("未声明 Kubernetes access");
     expect(reads).toBe(2);
     const aborted = new AbortController(); aborted.abort(new Error("cancelled read"));
@@ -68,7 +70,7 @@ test("Catalog rejects the removed configurationInspection declaration", () => {
 
 
 test("Plugin boundary accepts direct file declarations and rejects invalid ownership or identity", () => {
-  const file = fileDataSource("/config.yaml", { workload: "main", access, resolve: async () => {
+  const file = fileDataSource(["/config.yaml"], { workload: "main", access, resolve: async () => {
     throw new Error("Catalog validation must stay offline");
   } });
   const manifest = { manifestVersion: 1 as const, pluginApiVersion: DOCTOR_PLUGIN_API_VERSION,
@@ -79,6 +81,12 @@ test("Plugin boundary accepts direct file declarations and rejects invalid owner
   expect(validate([file]).services.find("api")?.dataSources).toEqual([file]);
   expect(() => validate([file, file])).toThrow("duplicate clientKey");
   expect(() => validate([{ ...file, workload: "unknown" }])).toThrow("unknown workload");
-  expect(() => validate([{ ...file, path: "relative.yaml" }])).toThrow("absolute Pod path");
+  expect(() => validate([{ ...file, paths: ["relative.yaml"] }])).toThrow("absolute Pod path");
   expect(() => validate(() => [file])).toThrow("must be an array");
 });
+
+function fileBytes(results: readonly FileReadResult[]): Uint8Array {
+  const first = results[0]!;
+  if (first.status === "error") throw first.error;
+  return first.bytes;
+}

@@ -15,10 +15,13 @@ Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出
 `logs` 控制通用日志采集的参与范围。配置文件通过静态 `dataSources` 声明，
 `doctor inspect --field config` 读取这些文件以及 Pod 环境变量。
 
-`fileDataSource(path, { workload, access, resolve })` 直接作为数组成员，
+`fileDataSource(paths, { workload, access, resolve })` 直接作为数组成员，
 无需 Store 的 `id/kind/source` 包装。加载 Catalog 不执行 `resolve`；宿主首次创建客户端时
 传入 `PluginClientContext`，定位 Pod/Container，随后按需读取。底层复用 Quality Harness
 的 `PodFileDataSource`，客户端由根 Command 管理，文件读取有大小与时间上限。
+`paths` 是非空、无重复的绝对路径数组，表示可以从同一 Pod/Container 一起获取的文件组；
+组内只定位一次目标、发起一次 exec，逐文件返回结果。单文件失败不丢弃成功文件。
+Plugin API 18 使用路径数组和 `infra.kubernetes.readFiles`，Plugin 需按新接口重新构建。
 `configurationInspection` 已移除。
 
 Plugin 作者只需导出 `PluginDefinition` 和 Service Catalog。模型、租户等领域的提供方由 Command
