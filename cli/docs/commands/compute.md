@@ -49,4 +49,6 @@ Ctrl+C 通过 CommandContext 的共享信号停止后续访问，保留已经写
 终端显示两部分汇总及覆盖问题，Node / Pod 明细保留在 HTML 和 JSON 中。
 默认使用 `-f summary`，在根交付阶段输出一次摘要并保留临时证据。
 显式 `-f html` / `-f bundle` 交付详细报告，`-f manifest` 输出证据目录。
+Summary 不接受 `--output`；保存报告请显式选择格式，例如 `doctor compute -f html -o ./report`，
+或使用 `-f default -o ./report` 同时保存 HTML 和 Bundle。
 序列化与 HTML 渲染只消费本地证据，不重新访问 Kubernetes。

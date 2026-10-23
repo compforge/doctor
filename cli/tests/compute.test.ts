@@ -171,6 +171,27 @@ test("Service selection accepts aliases, deduplicates and rejects unknown names 
   await context.disposeClients();
 });
 
+test("summary rejects an output destination before Plugin or Kubernetes access", async () => {
+  const defaults = createDoctorProgram().commands.find(command => command.name() === "compute")!.opts();
+  for (const format of [defaults.format, "summary", " summary "]) {
+    const context = new CommandContext({}, undefined, { format, output: "./report" });
+    const resolvePlugin = spyOn(context, "resolvePlugin");
+    const environment = spyOn(context, "ensureEnvironment");
+    try {
+      const result = await computeCommand.run(context, {});
+      expect(result.status).toBe(CommandStatus.Failed);
+      expect(result.status === CommandStatus.Failed && result.reason).toBe("--format summary 不支持 --output，请选择 html/bundle/manifest/default");
+      expect(resolvePlugin).not.toHaveBeenCalled();
+      expect(environment).not.toHaveBeenCalled();
+      expect(result.artifacts).toEqual([]);
+    } finally {
+      resolvePlugin.mockRestore();
+      environment.mockRestore();
+      await context.disposeClients();
+    }
+  }
+});
+
 test("compute CLI registers selection, global environment and delivery options", async () => {
   const invoke = spyOn(execution, "runCommand").mockResolvedValue(undefined);
   try {
