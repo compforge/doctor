@@ -446,3 +446,9 @@ Query 结果分别运行 Detector；批量执行不合并各请求的业务结�
 iframe 隔离领域脚本，只保留当前报告，切换时释放前一页面；详情下载可以使用浏览器下载能力，
 不能访问外层页面。Trace 的树骨架、节点详情与 span attributes 的分片和渲染归 Trace Harness。
 这些边界同时控制首次解析和解压后的对象数量；内嵌压缩数据仍驻留浏览器，不承诺任意文件规模。
+
+### Service Resource 盘点
+
+`resource` 从 Service.resources 发现持有关系和原生 observe 操作，借用 Common Resource/Snapshot
+与根 Command 生命周期取得有界只读证据。默认终端概览，支持 kind/Service/集合 ID 筛选；
+数量、规模和部分覆盖独立表达，不产生健康判断。具体协议见 [Resource](commands/resource.md)。

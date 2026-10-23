@@ -4,6 +4,7 @@ import type { PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
 import type { ServiceCaseSource, ServiceCaseRef } from "./cases";
+import type { ServiceResourceDefinition } from "./resource";
 import type {
   Fact,
   Identity,
@@ -428,6 +429,7 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
   cases?: readonly ServiceCaseSource[];
+  resources?: readonly ServiceResourceDefinition[];
   /**
    * Presence enables log collection; default selects the implicit collection scope.
    * errorPatterns declares Service-specific error signatures that do not look like generic

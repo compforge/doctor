@@ -1,3 +1,4 @@
+import { validateServiceResource } from "./resource";
 import { connectionDataSources } from "./datasource";
 import { validateKnowledgeDeclaration } from "./knowledge";
 import { validateExtension, type RegisteredExtension } from "./extension";
@@ -11,6 +12,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
+    const resourceKinds = new Map<string, string>();
     for (const service of services) this.identities.set(service.name, service);
     for (const service of services) {
       if ("configurationInspection" in service) throw new Error(`${service.name}.configurationInspection was removed; declare file dataSources`);
@@ -41,6 +43,16 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         const key = JSON.stringify([extension.namespace ?? null, extension.id]);
         if (extensionIds.has(key)) throw new Error(`${service.name}: duplicate Extension id '${extension.id}'`);
         extensionIds.add(key);
+      }
+      if (service.resources !== undefined && !Array.isArray(service.resources)) throw new Error(`${service.name}.resources must be an array`);
+      const resources = new Set<string>();
+      for (const binding of service.resources ?? []) {
+        validateServiceResource(binding);
+        if (resources.has(binding.resource.id)) throw new Error(`${service.name}: duplicate Resource ${binding.resource.id}`);
+        const kind = resourceKinds.get(binding.resource.id);
+        if (kind !== undefined && kind !== binding.resource.kind) throw new Error(`Conflicting kind for Resource ${binding.resource.id}`);
+        resourceKinds.set(binding.resource.id, binding.resource.kind);
+        resources.add(binding.resource.id);
       }
       const workloads = service.workloads.map((workload) => workload.name);
       if (service.cases !== undefined && !Array.isArray(service.cases)) throw new Error(`${service.name}.cases must be an array`);
@@ -75,6 +87,10 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   find(name: string): T | undefined {
     return this.identities.get(name);
+  }
+
+  resourceSources() {
+    return this.services.flatMap(service => (service.resources ?? []).map(binding => ({ service, binding })));
   }
 
   caseSources() {
