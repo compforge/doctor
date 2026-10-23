@@ -52,6 +52,7 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
    统一交付产品知识、多个 Service 及排障 Skill；Service
    是 contribution、capability 和所需 access 的声明单元，Plugin 不重建 Core 访问层；`plugin@version` 的代码
    与 Skills 内容不可变，任一内容变化都必须提升 Plugin version。
+   Resource 通过 Service.resources 贡献 Common 资源声明与原生 observe 操作，kind 是 Plugin 定义的开放类别；只读盘点归 resource 命令。
    Case 与 DataSource、Workload 一样由 Service 贡献；共享定义和运行时对象准备归 Case 来源，Health、Perf、Eval 各自拥有消费流程。
    Case 的 producer、runner factory 是资源自身的原生能力，不通过 Extension 注册或适配；只共享 access、上下文与调用信封。
 3. **确定性诊断以 Evidence 为结果**：Fact 表示本次诊断内足够稳定、可供后续 Probe 复用的信息，

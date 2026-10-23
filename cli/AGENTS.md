@@ -34,6 +34,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 | `overview` | Sample 命令、Facet 选择与 Collect 编排，以及与 Health 共用的统计查询 |
 | `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
+| `resource` | Service 持续管理/使用的资源目录、只读快照与覆盖展示 |
 | `datasource` | Service 数据源的共享配置与访问准备，不属于某个诊断命令 |
 | `infra` | 尚未提取的访问适配与工具选择；通用 DB、Redis、OpenSearch、Kubernetes 执行与转发、进程原语由 `@compforge/harness-toolbox` 提供 |
 | `terminal` / `protocol` | 通用终端交互（含共享租户选择）与可选远端协议 client；chat-tui 只消费 `chat` 投影 |
@@ -83,6 +84,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - `docs/command-output.md` — Command 输出数据的规范与组织：执行结果、Evidence 保存、manifest 清单与交付
 - `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/commands/case.md` — Case 目录、发送与 HTTP 取证边界
+- `docs/commands/resource.md` — Service Resource 声明、只读快照、kind 筛选与覆盖边界
 - `docs/commands/knowledge.md` — 结构化知识、作用域、引用与词典查询
 - `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
 - `docs/commands/sample.md` — Facet / Entry 契约、概览与可选采集

@@ -1,3 +1,4 @@
+import { KubernetesError } from "@compforge/harness-toolbox/errors";
 import {
   accessLabel,
   inspectKubernetesChannel,
@@ -58,7 +59,7 @@ export async function enforceKubernetesAccess(
       .filter((fact) => fact.need.requirement === "required" && fact.status === "denied")
       .map((fact) => `${accessLabel(fact.need.rule)}=${fact.status}`)
       .join("、");
-    throw new Error(`[k8s] ${contract.command} 缺少必须的 Kubernetes 权限：${missing}`);
+    throw new KubernetesError(`[k8s] ${contract.command} 缺少必须的 Kubernetes 权限：${missing}`, { kind: "permission_denied", code: 403 });
   }
   return evaluation;
 }

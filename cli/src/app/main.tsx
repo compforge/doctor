@@ -76,6 +76,7 @@ import { tenantCommand } from "../collect/tenant/command";
 import { tenantDirectoryCommand } from "../collect/tenant/directory";
 import { metricCommand } from "../collect/metric/command";
 import { storeCommand } from "../collect/store/command";
+import { registerResourceCommand } from "../resource/command";
 import { withDbOptions } from "../collect/db/options";
 import { withS3Options } from "../collect/s3/options";
 import { mcpCommand } from "../collect/mcp/command";
@@ -684,6 +685,7 @@ export function createDoctorProgram(
   });
   registerSampleCommand(catalog, commandRuntime);
   registerHealthCommand(catalog, commandRuntime);
+  registerResourceCommand(catalog, commandRuntime);
 
   withCollectOptions(
     catalog.command("collect").helpGroup("Collect · 采集与分析:").description(

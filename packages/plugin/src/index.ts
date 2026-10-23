@@ -4,6 +4,7 @@ export * from "./extension";
 export * from "./summary";
 export * from "./catalog";
 export * from "./cases";
+export * from "./resource";
 export * from "./case-producer";
 export * from "./case-runner";
 export * from "./operation";

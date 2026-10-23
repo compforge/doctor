@@ -1,3 +1,4 @@
+import { workerVolumes } from "./resources";
 import { workerDatabase } from "./database";
 import { articleToMarkdown, conceptToMarkdown, knowledgeToMarkdown, sectionToMarkdown, stepToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import {
@@ -37,7 +38,8 @@ const services = createServiceCatalog([
       dependencyManager: "uv",
     },
     logs: { default: false },
-    dataSources: [workerDatabase]
+    dataSources: [workerDatabase],
+    resources: [workerVolumes]
   },
 ] as const);
 

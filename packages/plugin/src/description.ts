@@ -12,6 +12,7 @@ export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "de
   environmentProbes: string[];
   extensions?: { id: string; kind: string; description?: string }[];
   cases?: { id: string; description?: string; produce: boolean; runner: boolean }[];
+  resources?: { resource: import("./resource").Resource; relationship: "manages" | "uses" }[];
   details: {
     workloads: Workload[];
     dependencies: { id: string; service: string; dataSource: string }[];
@@ -61,8 +62,14 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
       if (source[operation]) access.push({ owner: `cases.${source.id}.${operation}`, requirements: describeAccess(source[operation].access) });
     }
   }
+  for (const binding of service.resources ?? []) {
+    access.push({ owner: `resources.${binding.resource.id}.observe`, requirements: describeAccess(binding.observe.access) });
+  }
   return {
     name: service.name,
+    ...(service.resources?.length ? { resources: service.resources.map(({ resource, relationship }) => ({
+      resource: { id: resource.id, kind: resource.kind, name: resource.name, description: resource.description }, relationship,
+    })) } : {}),
     aliases: [...(service.aliases ?? [])],
     description: service.description,
     knowledge: service.knowledge,

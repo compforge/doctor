@@ -488,3 +488,9 @@ store、metric 与业务 capability 在各自权限检查后借用同一个根�
 拓扑每轮重新发现。MySQL 与 Redis 共用 `tcpTransports` 的原生连接、Pod relay 候选顺序，
 只在映射或握手网络失败时切换，认证失败及已发送的命令不会触发重放。metric 按 Service/source
 保留归属，不以相同 endpoint 合并不同权限与凭据的数据源。源配置及凭据不进入采集证据。
+
+## Service Resource
+
+`Service.resources` 声明持续管理/使用的资源集合及原生 `observe` 操作，复用 Harness Common 的
+Resource/ResourceSnapshot。`doctor resource` 按 Service、资源 ID 或开放 `kind` 读取只读快照；
+业务关联不注册 Extension。协议、预算与权限语义见 [资源盘点](commands/resource.md)。

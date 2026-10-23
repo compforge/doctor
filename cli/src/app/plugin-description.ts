@@ -33,6 +33,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
   }
   lines.push(`    Extensions：${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "无"}`,
     `    Cases：${service.cases?.map(item => `${item.id}${item.produce ? " [produce]" : ""}${item.runner ? " [runner]" : ""}`).join(", ") || "无"}`,
+    `    Resources：${service.resources?.map(item => `${item.resource.id} (${item.resource.kind}, ${item.relationship})`).join(", ") || "无"}`,
     `    Detectors：${service.detectors.join(", ") || "无"}`,
     `    EnvironmentProbes：${service.environmentProbes.join(", ") || "无"}`,
     `    DataSources：${dataSources.map(source => source.kind === "file" ? `${source.workload}:[${source.paths.join(", ")}] (file)${source.description ? ` — ${source.description}` : ""}` : `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
