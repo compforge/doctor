@@ -171,11 +171,34 @@ test("Service selection accepts aliases, deduplicates and rejects unknown names 
   await context.disposeClients();
 });
 
+test("summary rejects an output destination before Plugin or Kubernetes access", async () => {
+  const defaults = createDoctorProgram().commands.find(command => command.name() === "compute")!.opts();
+  for (const format of [defaults.format, "summary", " summary "]) {
+    const context = new CommandContext({}, undefined, { format, output: "./report" });
+    const resolvePlugin = spyOn(context, "resolvePlugin");
+    const environment = spyOn(context, "ensureEnvironment");
+    try {
+      const result = await computeCommand.run(context, {});
+      expect(result.status).toBe(CommandStatus.Failed);
+      expect(result.status === CommandStatus.Failed && result.reason).toBe("--format summary 不支持 --output，请选择 html/bundle/manifest/default");
+      expect(resolvePlugin).not.toHaveBeenCalled();
+      expect(environment).not.toHaveBeenCalled();
+      expect(result.artifacts).toEqual([]);
+    } finally {
+      resolvePlugin.mockRestore();
+      environment.mockRestore();
+      await context.disposeClients();
+    }
+  }
+});
+
 test("compute CLI registers selection, global environment and delivery options", async () => {
   const invoke = spyOn(execution, "runCommand").mockResolvedValue(undefined);
   try {
     const program = createDoctorProgram();
-    expect(program.commands.find(command => command.name() === "compute")?.helpInformation()).toContain("--max-pods");
+    const command = program.commands.find(command => command.name() === "compute")!;
+    expect(command.helpInformation()).toContain("--max-pods");
+    expect(command.opts().format).toBe("summary");
     await program.parseAsync(["compute", "-s", "api", "-s", "worker", "-n", "chosen", "-f", "summary", "--max-pods", "5"], { from: "user" });
     expect(invoke.mock.calls[0]?.[0]).toBe(computeCommand);
     expect(invoke.mock.calls[0]?.[2]).toMatchObject({ services: ["api", "worker"], namespace: "chosen", maxPods: "5" });

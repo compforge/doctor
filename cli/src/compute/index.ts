@@ -43,6 +43,9 @@ export const computeCommand = defineCommand<ComputeInput, ComputeResult, Prepara
   name: "doctor compute",
   validate: input => { computeLimits(input); },
   prepare: async (context, input) => {
+    if (context.options.format?.trim() === "summary" && context.options.output !== undefined) {
+      throw new CommandInputError("--format summary 不支持 --output，请选择 html/bundle/manifest/default");
+    }
     const services = computeServices(await context.resolvePlugin(), input.services);
     await context.ensureEnvironment({ kubernetes: true });
     const kube = await resolveKubernetesCommandConfig({ ...commandOptions(context), ...input,

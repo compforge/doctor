@@ -4,7 +4,7 @@ import { applyCommandDefaults } from "../src/app/command-defaults";
 import { createDoctorProgram } from "../src/app/main";
 import * as execution from "../src/app/command";
 
-for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "collect", "sample", "compute"]) {
+for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "collect", "sample", "compute", "resource"]) {
   test(`${name}: distribution defaults are visible in Help and explicit formats win`, async () => {
     const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
     try {
@@ -17,7 +17,8 @@ for (const name of ["inspect", "data", "trace", "log", "tenant", "metric", "coll
         expect(run.mock.calls.at(-1)![2]).not.toHaveProperty("format");
         expect(run.mock.calls.at(-1)![3]).toMatchObject({ logLevel: "error" });
       }
-      expect(createDoctorProgram().commands.find(item => item.name() === name)!.opts().format).toBeUndefined();
+      expect(createDoctorProgram().commands.find(item => item.name() === name)!.opts().format)
+        .toBe(["compute", "resource"].includes(name) ? "summary" : undefined);
     } finally { run.mockRestore(); }
   });
 }
