@@ -18,6 +18,9 @@ doctor resource --format json -o resources.json
 支持 Service 别名和重复的 `-s`；选择先于环境访问，无匹配声明时明确说明。每个来源默认最多 100 个
 实例、20 秒、1 MiB 快照；`--max-instances` 上限 1000，`--timeout` 上限 300 秒。
 Core 不自动遍历 continuation，不为概览扫描全部资源。`--cursor` 必须唯一选定一个 Service/资源来源。
+默认 summary 展示总量、带统计范围的 measurements 和 Plugin Summary 字段，不展开实例列表。
+未提供 measurements 时，仅按本页实例 state 汇总，缺少状态显示“未知”，不推算全量分布。
+text/HTML 保留实例表，JSON 保留完整快照；切换格式不改变采集范围。
 默认 summary 不创建当前目录报告文件；可显式选择 text、JSON、Markdown、HTML、Bundle 或 manifest。
 输出复用 CommandSpec 的根 finalize，供未来 overview 组合复用。
 

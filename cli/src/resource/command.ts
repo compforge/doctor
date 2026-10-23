@@ -14,7 +14,7 @@ import { useLogger } from "../terminal/log";
 import type { ResourceQuery } from "@compforge/doctor-plugin";
 import { resourceProviders, type ResourceSelection, type ResourceProvider } from "./catalog";
 import { collectResources, resourceDeclaration, type ResourceResult } from "./collect";
-import { resourceHtml, resourceSummary } from "./report";
+import { resourceHtml, resourceSummary, resourceText } from "./report";
 import { observeResource } from "./runtime";
 
 export interface ResourceInput extends CommandInput, ResourceSelection {
@@ -84,7 +84,7 @@ export const resourceCommand = defineCommand<ResourceInput, ResourceResult, Prep
     if (!result.output) return { files: {} };
     const summary = resourceSummary(result.output);
     const files = { output: context.writeJson("output.json", result.output),
-      summary: context.writeText("summary.md", summary), text: context.writeText("resource.txt", summary) };
+      summary: context.writeText("summary.md", summary), text: context.writeText("resource.txt", resourceText(result.output)) };
     const artifact = result.artifacts.find(item => item.command === "resource");
     if (artifact) context.bind(artifact, ".");
     return { files };

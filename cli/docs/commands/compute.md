@@ -20,7 +20,7 @@ namespace 复用全局参数和 profile；Workload 显式声明 namespace 时按
 
 1. 集群：Node capacity、allocatable、已调度 Pod requests、全部活动 Pod requests 和 Node Metrics 使用量；
    Node 明细保留 Ready、是否可调度、指标时间和采样窗口。
-2. Service：已观测 Pod / Ready 数、requests、已声明 limits、实际 CPU / 内存，附 Workload 发现记录和 Pod 明细。
+2. Service：已发现实例的 Workload / 声明 Workload 数、已观测 Pod / Ready 数、requests、已声明 limits、实际 CPU / 内存，附 Workload 发现记录和 Pod 明细。
 
 CPU 以 cores、内存以 GiB 展示；JSON 保留 Toolbox 的 cores / bytes 数值。
 requests 为 Pod spec 的有效需求，包括 init/sidecar 峰值、Pod 级资源与 overhead；不代表实时 cgroup 分配。
@@ -47,5 +47,5 @@ Failed/Succeeded Pod 保留在盘点中，但不计入活动资源汇总。
 
 Ctrl+C 通过 CommandContext 的共享信号停止后续访问，保留已经写入的快照。执行期间打印当前集群 / Service 阶段。
 终端显示两部分汇总及覆盖问题，Node / Pod 明细保留在 HTML 和 JSON 中。
-默认输出终端概览及 HTML + Bundle；`-f summary` 仅显示摘要并保留临时证据，`-f manifest` 输出证据目录。
+默认交付 HTML + Bundle；`-f summary` 在根交付阶段输出一次摘要并保留临时证据，`-f manifest` 输出证据目录。
 序列化与 HTML 渲染只消费本地证据，不重新访问 Kubernetes。
