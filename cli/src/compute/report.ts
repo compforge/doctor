@@ -47,7 +47,11 @@ export function computeTables(result: ComputeResult): Table[] {
     rows: result.services.map(service => {
       const compute = service.compute, summary = compute?.summary.pods;
       const discoveryPartial = service.discovery.some(item => item.issues.length);
-      return [service.service, `${service.discovery.filter(item => item.instances > 0).length} / ${service.discovery.length}${discoveryPartial ? "（发现不完整）" : ""}`, summary ? `${summary.pods} / ${summary.readyPods}${discoveryPartial ? "（发现不完整）" : ""}` : "未知",
+      const discoveredWorkloads = service.discovery.filter(item => item.instances > 0).length;
+      // Failed empty discovery cannot prove absence; successful siblings only establish a lower bound.
+      const unknownWorkloads = service.discovery.some(item => !item.instances && item.issues.length);
+      const workloadCount = unknownWorkloads ? (discoveredWorkloads ? `至少 ${discoveredWorkloads}` : "未知") : discoveredWorkloads;
+      return [service.service, `${workloadCount} / ${service.discovery.length}${discoveryPartial ? "（发现不完整）" : ""}`, summary ? `${summary.pods} / ${summary.readyPods}${discoveryPartial ? "（发现不完整）" : ""}` : "未知",
         quantity(summary?.requests).join(" / "), quantity(summary?.configuredLimits).join(" / "), quantity(compute?.summary.usage).join(" / "),
         !service.discovery.length ? "未声明 Workload" : `${discoveryPartial ? "发现不完整；" : ""}Pod ${coverage(compute?.pods)}；指标 ${coverage(compute?.usage)}`];
     }), notes: [

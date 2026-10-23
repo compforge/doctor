@@ -65,7 +65,22 @@ test("failed discovery is unknown while a successful empty discovery is zero", a
     const entry = result.services[0]!;
     expect(entry.compute?.summary.pods?.pods).toBe(denied ? undefined : 0);
     expect(entry.discovery[0]?.issues.length).toBe(denied ? 1 : 0);
+    const workloadCell = computeTables(result).find(table => table.title.startsWith("2."))!.rows[0]![1];
+    expect(workloadCell).toBe(denied ? "未知 / 1（发现不完整）" : "0 / 1");
     if (denied) expect(computeText(result)).toContain("发现不完整");
+  }
+});
+
+test("successful Workload discoveries remain a lower bound when sibling discovery fails", async () => {
+  const base = access();
+  for (const error of [kubernetesHttpError(403), new Error("discovery unavailable")]) {
+    const result = await run({ ...base, list: query => {
+      if (query.namespace === "denied") throw error;
+      return base.list(query);
+    } }, [service("api", [workload("known"), workload("unknown", "denied")])]);
+    const workloadCell = computeTables(result).find(table => table.title.startsWith("2."))!.rows[0]![1];
+    expect(workloadCell).toBe("至少 1 / 2（发现不完整）");
+    expect(result.services[0]?.compute?.summary.pods?.pods).toBe(1);
   }
 });
 
@@ -93,6 +108,7 @@ test("bounded pagination retains discovered Pods when a later page is forbidden"
   expect(result.services[0]?.compute?.summary.pods?.pods).toBe(1);
   expect(result.services[0]?.discovery[0]?.issues[0]?.kind).toBe("permission_denied");
   expect(computeText(result)).toContain("1 / 1（发现不完整）");
+  expect(computeTables(result).find(table => table.title.startsWith("2."))!.rows[0]![1]).toBe("1 / 1（发现不完整）");
 });
 
 test("discovery limit and repeated pagination tokens remain incomplete", async () => {
