@@ -13,7 +13,7 @@ export function registerComputeCommand(program: Command, runtime: CommandRuntime
     .option("--max-pods <count>", "每个采集范围的 Pod 上限（默认 1000）")
     .option("--max-nodes <count>", "集群 Node 上限（默认 500）")
     .option("--profile <name>", "使用指定 profile")
-    .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
+    .addOption(deliveryFormatOption(["html", "bundle", "summary"]).default("summary"))
     .option("-o, --output <path>", "报告 basename/路径")
     .addHelpText("after", "\n集群权限不足显示无权限，并继续采集 Service；指标缺失显示未知。\nrequests 为声明的资源需求；实际 CPU/内存来自 Metrics API。Service 之间可能共享 Pod，不可直接相加。\n")
     .action(async (opts: ComputeCliOpts, command: Command) => {

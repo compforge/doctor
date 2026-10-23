@@ -47,5 +47,6 @@ Failed/Succeeded Pod 保留在盘点中，但不计入活动资源汇总。
 
 Ctrl+C 通过 CommandContext 的共享信号停止后续访问，保留已经写入的快照。执行期间打印当前集群 / Service 阶段。
 终端显示两部分汇总及覆盖问题，Node / Pod 明细保留在 HTML 和 JSON 中。
-默认交付 HTML + Bundle；`-f summary` 在根交付阶段输出一次摘要并保留临时证据，`-f manifest` 输出证据目录。
+默认使用 `-f summary`，在根交付阶段输出一次摘要并保留临时证据。
+显式 `-f html` / `-f bundle` 交付详细报告，`-f manifest` 输出证据目录。
 序列化与 HTML 渲染只消费本地证据，不重新访问 Kubernetes。

@@ -175,7 +175,9 @@ test("compute CLI registers selection, global environment and delivery options",
   const invoke = spyOn(execution, "runCommand").mockResolvedValue(undefined);
   try {
     const program = createDoctorProgram();
-    expect(program.commands.find(command => command.name() === "compute")?.helpInformation()).toContain("--max-pods");
+    const command = program.commands.find(command => command.name() === "compute")!;
+    expect(command.helpInformation()).toContain("--max-pods");
+    expect(command.opts().format).toBe("summary");
     await program.parseAsync(["compute", "-s", "api", "-s", "worker", "-n", "chosen", "-f", "summary", "--max-pods", "5"], { from: "user" });
     expect(invoke.mock.calls[0]?.[0]).toBe(computeCommand);
     expect(invoke.mock.calls[0]?.[2]).toMatchObject({ services: ["api", "worker"], namespace: "chosen", maxPods: "5" });
