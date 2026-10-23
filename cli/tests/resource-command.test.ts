@@ -8,7 +8,7 @@ import { ToolboxError } from "@compforge/harness-toolbox/errors";
 import { CommandContext, CommandStatus } from "../src/command";
 import { resourceProviders } from "../src/resource/catalog";
 import { collectResources } from "../src/resource/collect";
-import { resourceSummary } from "../src/resource/report";
+import { resourceSummary, resourceText, resourceHtml } from "../src/resource/report";
 import { resourceCommand, registerResourceCommand } from "../src/resource/command";
 import { SerializeContext } from "../src/command/serialization/context";
 import { RenderContext } from "../src/report/context";
@@ -161,4 +161,32 @@ test("Real CLI routes kind/list and emits resource summary without report files"
     expect(child.stdout.toString()).not.toContain("Evidence Bundle");
     expect(child.stdout.toString()).toContain(args.includes("--list") ? "静态声明" : "总量：0");
   }
+});
+
+
+test("Resource summary projects producer fields and aggregates without expanding instance details", () => {
+  const data = { ...snapshot(), totalCount: 40,
+    measurements: [{ name: "state.ready", value: 30, unit: "instances", scope: "total" as const }],
+    instances: [{ ref: { environment: "test", resource: "volumes", id: "private-detail-id" }, state: "ready" }],
+  };
+  const output = { mode: "snapshot" as const, entries: [{ service: "worker", resource, relationship: "uses" as const,
+    snapshot: data, summary: { title: "Volumes", text: "Whole collection, paged details", fields: [
+      { label: "Ready <count>", path: ["measurements", "0", "value"] },
+    ] } }] };
+  const summary = resourceSummary(output);
+  expect(summary).toContain("Ready &lt;count&gt;：30");
+  expect(summary).toContain("state.ready：30 instances（总量）");
+  expect(summary).toContain("总量：40");
+  expect(summary).toContain("First page");
+  expect(summary).not.toContain("private-detail-id");
+  expect(resourceText(output)).toContain("private-detail-id");
+  expect(resourceHtml(output)).toContain("private-detail-id");
+});
+
+test("Generic Resource summary labels retained-page state counts and keeps missing states", () => {
+  const data = snapshot();
+  const output = { mode: "snapshot" as const, entries: [{ service: "worker", resource, relationship: "uses" as const,
+    snapshot: { ...data, instances: [...data.instances!, { ref: { environment: "test", resource: "volumes", id: "v2" }, state: "ready" }] } }] };
+  expect(resourceSummary(output)).toContain("本页状态（已观测实例）：未知 1 · ready 1");
+  expect(resourceSummary(output)).toContain("总量：未知");
 });

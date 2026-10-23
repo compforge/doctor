@@ -43,11 +43,11 @@ export function computeTables(result: ComputeResult): Table[] {
         usage ? `${usage.timestamp} / ${usage.window}` : "未知"];
     }), notes: [] });
   tables.push({ title: "2. Service Workload（各 Service 独立汇总）",
-    headers: ["Service", "已观测 Pod / Ready", "requests CPU / 内存", "声明 limits CPU / 内存", "实际 CPU / 内存", "覆盖"],
+    headers: ["Service", "Workload（已发现实例 / 声明）", "已观测 Pod / Ready", "requests CPU / 内存", "声明 limits CPU / 内存", "实际 CPU / 内存", "覆盖"],
     rows: result.services.map(service => {
       const compute = service.compute, summary = compute?.summary.pods;
       const discoveryPartial = service.discovery.some(item => item.issues.length);
-      return [service.service, summary ? `${summary.pods} / ${summary.readyPods}${discoveryPartial ? "（发现不完整）" : ""}` : "未知",
+      return [service.service, `${service.discovery.filter(item => item.instances > 0).length} / ${service.discovery.length}${discoveryPartial ? "（发现不完整）" : ""}`, summary ? `${summary.pods} / ${summary.readyPods}${discoveryPartial ? "（发现不完整）" : ""}` : "未知",
         quantity(summary?.requests).join(" / "), quantity(summary?.configuredLimits).join(" / "), quantity(compute?.summary.usage).join(" / "),
         !service.discovery.length ? "未声明 Workload" : `${discoveryPartial ? "发现不完整；" : ""}Pod ${coverage(compute?.pods)}；指标 ${coverage(compute?.usage)}`];
     }), notes: [

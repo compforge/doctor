@@ -9,7 +9,6 @@ import { bindKubernetesEnvironment } from "../infra/k8s/environment";
 import { serializeEvidence } from "../collect/serialize";
 import { renderEvidence } from "../report/evidence";
 import { useLogger } from "../terminal/log";
-import { writeOutput } from "../terminal/output";
 import { computeServices, computeStatus, runCompute, type ComputeResult } from "./flow";
 import { buildComputeHtml, computeText } from "./report";
 
@@ -69,7 +68,8 @@ export const computeCommand = defineCommand<ComputeInput, ComputeResult, Prepara
     } catch (error) {
       if (!context.signal.aborted) throw error;
     } finally {
-      if (snapshot) { save(snapshot); writeOutput(computeText(snapshot)); }
+      // Root delivery owns stdout for every format, including cancellation snapshots.
+      if (snapshot) save(snapshot);
     }
     return { status: context.signal.aborted ? CommandStatus.Cancelled : computeStatus(snapshot!),
       output: snapshot!, artifacts: context.artifacts.list() };

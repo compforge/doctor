@@ -8,6 +8,8 @@ import { computeCommand, computeLimits } from "../src/compute";
 import { computeTables, computeText, buildComputeHtml } from "../src/compute/report";
 import { createDoctorProgram } from "../src/app/main";
 import * as execution from "../src/app/command";
+import * as output from "../src/terminal/output";
+import { deliverSerialized } from "../src/app/delivery";
 import * as targets from "../src/command/kubernetes-target";
 import { SerializeContext } from "../src/command/serialization/context";
 import { RenderContext } from "../src/report/context";
@@ -209,16 +211,26 @@ for (const cancel of [false, true]) test(`checked command persists partial evide
     exec: async () => { throw new Error("unexpected exec"); },
   });
   const clients = spyOn(context.clients, "get").mockResolvedValue({ clusterResources: () => api } as never);
+  const stdout = spyOn(output, "writeOutput").mockReturnValue(true);
+  const destination = mkdtempSync(join(tmpdir(), "compute-summary-"));
   try {
     const result = await computeCommand.run(context, { services: ["api"] });
     expect(result.status).toBe(cancel ? CommandStatus.Cancelled : CommandStatus.Ok);
     expect(result.artifacts).toHaveLength(1);
+    expect(stdout).not.toHaveBeenCalled();
+    const serialized = await SerializeContext.create(destination, computeCommand, result);
+    expect(serialized.failed).toBe(false);
+    expect(await deliverSerialized({ directory: destination, options: { format: "summary" }, code: cancel ? 130 : 0, reportName: "compute" })).toBe(true);
+    expect(stdout).toHaveBeenCalledTimes(1);
+    expect(String(stdout.mock.calls[0]![0])).toContain("Kubernetes 集群");
+    expect(String(stdout.mock.calls[0]![0])).not.toContain("Pod 明细");
     const saved = JSON.parse(readFileSync(join(result.artifacts[0]!.path, "diagnosis.json"), "utf8"));
     expect(saved.complete).toBe(!cancel);
     expect(saved.cluster.nodes.issues[0].kind).toBe("permission_denied");
     if (!cancel) expect(saved.services[0].compute.summary.pods.pods).toBe(1);
   } finally {
-    config.mockRestore(); executor.mockRestore(); clients.mockRestore();
+    config.mockRestore(); executor.mockRestore(); clients.mockRestore(); stdout.mockRestore();
+    rmSync(destination, { recursive: true, force: true });
     await context.disposeClients();
     for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
   }
