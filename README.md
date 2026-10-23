@@ -22,6 +22,7 @@ evidence needed for a specific problem:
 
 | Diagnostic surface | Commands | What Doctor investigates |
 |---|---|---|
+| Compute resources | `doctor compute` | Cluster capacity and usage, per-Service Workload requests/limits and Pod metrics, with explicit permission and coverage gaps |
 | Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
 | Business data | `doctor tenant`, `doctor data` | Tenant-scoped contributions plus business-ID-linked data contributed by Services |
 | Observability | `doctor trace`, `doctor log`, `doctor metric` | A request's path, related service logs and metrics over the diagnostic window |

@@ -9,6 +9,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install/resize` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
+- **计算资源概览**：`doctor compute` 分别展示集群容量与 Service Workload 占用；权限不足保留覆盖缺口，不作为健康故障。
 - **系统体检**：`doctor health` 按 Service 复用概览统计并执行消费方 Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
 - **采样取证**：`doctor sample` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
@@ -30,6 +31,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 | `case` | Service Case 目录、协议匹配、身份准备、单次 HTTP/SSE/模型判定及 HTTP Collect 适配 |
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
 | `knowledge` | 离线知识目录查询及文本 / JSON 投影 |
+| `compute` | 集群与 Service Workload 资源采集编排、覆盖及概览；计量复用 Toolbox |
 | `health` | 系统统计与消费方 Case 体检、审批及探测结果报告 |
 | `overview` | Sample 命令、Facet 选择与 Collect 编排，以及与 Health 共用的统计查询 |
 | `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
@@ -86,6 +88,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - `docs/commands/case.md` — Case 目录、发送与 HTTP 取证边界
 - `docs/commands/resource.md` — Service Resource 声明、只读快照、kind 筛选与覆盖边界
 - `docs/commands/knowledge.md` — 结构化知识、作用域、引用与词典查询
+- `docs/commands/compute.md` — 集群容量、Service Workload 资源与权限覆盖
 - `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
 - `docs/commands/sample.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排

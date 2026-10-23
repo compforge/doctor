@@ -36,6 +36,9 @@ Command 输入使用 `services: string[]`，一个 Service 也是长度为 1 的
 原本逐目标执行的 DB、S3、Store、Eval、Perf 复用 Command 准备、执行和结果组合协议逐服务运行；
 每个 Service 保留独立结果和证据，失败不丢弃其它服务结果，取消停止后续执行。
 
+Compute 直接消费 `Service.workloads` 并复用 Toolbox 的集群与实例采集，结果是带覆盖信息的资源快照，
+不执行健康 Detector；权限缺失与部分数据的展示见 [Compute](commands/compute.md)。
+
 ### 全局配置优先级
 
 所有 Command 对同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。

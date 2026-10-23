@@ -21,6 +21,7 @@ Doctor 从组成 Application 的 Service 出发，再从宽泛的服务事实逐
 
 | 诊断面 | 命令 | Doctor 关注的问题 |
 |---|---|---|
+| 计算资源 | `doctor compute` | 集群容量与使用量、Service Workload requests/limits 和 Pod 指标；明确显示权限与覆盖缺口 |
 | Service 状态 | `doctor inspect` | 匹配的 Pod 与 Container、镜像、Ready、重启、终止状态、CPU/内存 requests 与 limits，以及按需取得的配置 |
 | 业务数据 | `doctor tenant`、`doctor data` | 租户维度的配置与模型目录，以及 Service 贡献的 biz-id 关联数据 |
 | 可观测性 | `doctor trace`、`doctor log`、`doctor metric` | 一次请求经过的链路、相关 Service 日志和诊断窗口内的指标 |

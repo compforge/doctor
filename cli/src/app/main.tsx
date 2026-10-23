@@ -51,6 +51,7 @@ import {
   resolveCollectKinds,
   type CollectCliOpts,
 } from "../collect/composite";
+import { registerComputeCommand } from "../compute/command";
 import { registerHealthCommand } from "../health/command";
 import { registerSampleCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
@@ -686,6 +687,7 @@ export function createDoctorProgram(
   registerSampleCommand(catalog, commandRuntime);
   registerHealthCommand(catalog, commandRuntime);
   registerResourceCommand(catalog, commandRuntime);
+  registerComputeCommand(catalog, commandRuntime);
 
   withCollectOptions(
     catalog.command("collect").helpGroup("Collect · 采集与分析:").description(
