@@ -47,6 +47,7 @@ import { probeTrace } from "./probe";
 import { buildTraceSummary } from "./render";
 import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
 import { resolveTraceWindow } from "./window";
+import { traceContributions } from "./contributions";
 
 import { DataSourceHealthSession } from "../../datasource/health/session";
 import { writeDataSourceHealth } from "../../datasource/health/report";
@@ -375,8 +376,6 @@ export async function runCollectTrace(
     }
   }
 
-  // trace-harness 仅在实际执行 trace 时加载，避免拖慢其它 doctor 命令的启动。
-  const { genAiSpecs, mergeTraceContributions } = await import("@compforge/trace-harness");
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
@@ -385,14 +384,7 @@ export async function runCollectTrace(
         namespace: runtime.collect.kubernetes.namespace,
       }
     : undefined;
-  const pluginSpecs = [...(plugin?.trace?.analysis.specs ?? [])];
-  const overriddenKinds = new Set(pluginSpecs.map((spec) => spec.kind));
-  // A kind has one projection owner; appending a second spec silently discards the
-  // Plugin projection and its required facts during assembly.
-  const contributions = mergeTraceContributions(
-    { ...plugin?.trace?.analysis, specs: pluginSpecs },
-    { specs: [...genAiSpecs()].filter((spec) => !overriddenKinds.has(spec.kind)) },
-  );
+  const contributions = await traceContributions(plugin?.trace?.analysis);
   const groupIds = bizIds.length ? bizIds : traces.map(trace => trace.bizId);
   const tasks = groupIds.flatMap((bizId, bizIndex) => traces.filter(trace => trace.bizId === bizId)
     .map((trace, traceIndex) => {
