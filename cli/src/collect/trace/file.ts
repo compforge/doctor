@@ -8,9 +8,13 @@ import { exportTraceSnapshot, TRACE_FILES } from "./snapshot";
 import { accumulateStats, newTraceStats } from "./probe";
 import { buildTraceSummary } from "./render";
 import type { TraceOutput } from "./index";
+import { traceContributions } from "./contributions";
 
 /** Import a complete local Jaeger trace into the same immutable evidence layout as online acquisition. */
 export async function runFileTrace(file: string, context: CommandContext): Promise<CommandResult<TraceOutput>> {
+  // Loading analysis declarations does not prepare the Plugin's online trace source or resolver.
+  const plugin = await context.resolvePlugin();
+  const contributions = await traceContributions(plugin?.trace?.analysis);
   const { JaegerFileSource } = await import("@compforge/trace-harness");
   const path = resolve(file);
   const source = new JaegerFileSource(path, {
@@ -50,7 +54,7 @@ export async function runFileTrace(file: string, context: CommandContext): Promi
   let projected = false;
   let reason: string | undefined;
   try {
-    await exportTraceSnapshot(dir, traceId, { scope: "trace", complete: true });
+    await exportTraceSnapshot(dir, traceId, { scope: "trace", complete: true }, contributions);
     projected = true;
   } catch (error) {
     reason = error instanceof Error ? error.message : String(error);
@@ -59,7 +63,8 @@ export async function runFileTrace(file: string, context: CommandContext): Promi
   bundle.addStep({ id: "file-import", title: "本地 Jaeger 文件导入", risk: "observe", status: "ok",
     output: `trace_id=${traceId} spans=${records.length} file=${basename(path)}` });
   bundle.addStep({ id: "analysis", title: "离线 tree / node 证据投影", risk: "observe",
-    status: projected ? "ok" : "failed", reason });
+    status: projected ? "ok" : "failed", reason,
+    output: `analysis=${context.pluginIdentity ?? "generic"}` });
   const stats = newTraceStats();
   accumulateStats(stats, records);
   bundle.writeSummary(buildTraceSummary({ traceId, inputId: traceId, resolvedAs: "trace_id",
@@ -69,7 +74,7 @@ export async function runFileTrace(file: string, context: CommandContext): Promi
     doctorVersion: DOCTOR_CLI_VERSION,
     target: { trace_id: traceId, input_id: traceId, scope: "trace", resolved_as: "local_file" },
     files: { ...(projected ? TRACE_FILES : { spans: TRACE_FILES.spans }), source: originalName },
-    inspectionFacts: {}, params: { input: "file", source_name: basename(path) },
+    inspectionFacts: {}, params: { input: "file", source_name: basename(path), analysis_plugin: context.pluginIdentity ?? null },
     startedAt, finishedAt: new Date().toISOString(),
   });
   return { status, output: { items: [{ bizId: traceId, traceIds: [traceId], status, artifacts: [artifact], reason }] },

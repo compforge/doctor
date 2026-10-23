@@ -136,11 +136,15 @@ export async function selectTraceView(dir: string, options: TraceViewOptions = {
   return buildView(analysis, request as ViewRequest);
 }
 
-/** Render only a prepared View, preserving collection-time facets and Agent extraction offline. */
+/** @spec One trace is one report result; its prepared views switch inside the same HTML page. */
 export async function renderTraceSnapshot(dir: string): Promise<void> {
   const { render } = await import("@compforge/trace-harness");
   const { existsSync } = await import("node:fs");
+  const snapshot = readTraceSnapshot(dir);
   const view: View = existsSync(join(dir, "view.json"))
-    ? JSON.parse(readFileSync(join(dir, "view.json"), "utf8")) : readTraceSnapshot(dir).views.default;
-  writeFileSync(join(dir, "trace.html"), render(view, { format: "html" }), { mode: 0o600 });
+    ? JSON.parse(readFileSync(join(dir, "view.json"), "utf8")) : snapshot.views.default;
+  const html = view.scope === "trace"
+    ? render([view, ...Object.values(snapshot.views).filter(other => other.view !== view.view)], { format: "html" })
+    : render(view, { format: "html" });
+  writeFileSync(join(dir, "trace.html"), html, { mode: 0o600 });
 }

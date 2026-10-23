@@ -59,12 +59,16 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
    执行 Detector。批量 HTML 按 biz-id 分顶层
    tab，同一 biz-id 的多条 trace 再按来源 message/trace 分子 tab。各组只共享交付壳，不混合 span、
    Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
+   同一条 trace 的 default / agent 是一个结果页内并排的侧重点按钮，不分别占用结果选择器；
+   `--view agent` 使 Agent 首先选中，text / JSON 仍只输出所选视图。
 8. 根入口释放 SearchEngine / forward 并按 format 交付；下载中断时保留已经落盘的 span 和失败上下文，
    尽力为已下载部分建立本地索引，不能把索引成功当作下载完整。
 
 `--trace-file` 是另一条本地入口：trace-harness 解析一条 Jaeger UI JSON、JSON 数组或 JSONL trace，
 Doctor 保存原文件和展开后的 `spans.jsonl`，从投影步骤进入同一套 snapshot、HTML 和 Bundle 交付。
-它不加载 Plugin，也不访问 Kubernetes 或 OpenSearch。一个文件含多条 trace 时需先拆分，以免静默丢失。
+它加载当前 Plugin 的纯分析声明，复用在线入口的 spec、measurement filter 与 AgentRun extractor；
+未配置 Plugin 时使用通用 GenAI 分析。导入不调用业务 ID 解析、不准备数据源，也不访问 Kubernetes 或
+OpenSearch；分析使用的 Plugin 身份写入采集记录。一个文件含多条 trace 时需先拆分，以免静默丢失。
 `--from` 则读取已有 Doctor manifest 和冻结分析结果，只做离线下钻或重渲染，不重新运行 Detector。
 
 ## 离线证据与下钻

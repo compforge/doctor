@@ -291,8 +291,18 @@ test("Agent view reuses acquisition-time extraction in HTML and text", async () 
   const render = new RenderContext(defaultResult.artifacts, "offline");
   const report = await render.render(traceCommand, defaultResult);
   expect(render.failures).toEqual([]);
-  expect(report.sections[0]!.pages).toHaveLength(2);
-  expect(readFileSync(join(defaultResult.artifacts[0]!.path, "agent.html"), "utf8")).toContain("trace-archive");
+  expect(report.sections[0]!.pages).toHaveLength(1);
+  const html = readFileSync(join(defaultResult.artifacts[0]!.path, "trace.html"), "utf8");
+  expect(html).toContain('data-perspective="default" class="active"');
+  expect(html).toContain('data-perspective="agent"');
+  expect(existsSync(join(defaultResult.artifacts[0]!.path, "agent.html"))).toBeFalse();
+  const agentRender = new RenderContext(result.artifacts, "offline");
+  const agentReport = await agentRender.render(traceCommand, result);
+  expect(agentRender.failures).toEqual([]);
+  expect(agentReport.sections[0]!.pages).toHaveLength(1);
+  const agentHtml = readFileSync(join(path, "trace.html"), "utf8");
+  expect(agentHtml).toContain('data-perspective="agent" class="active"');
+  expect(agentHtml).toContain('data-perspective="default"');
   expect(extractions).toBe(1);
 });
 

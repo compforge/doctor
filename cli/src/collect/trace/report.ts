@@ -1,7 +1,5 @@
 import { escapeHtml } from "../output/report/components/content";
-import type { View } from "@compforge/trace-harness";
 import { existsSync } from "node:fs";
-import { readTraceSnapshot } from "./snapshot";
 import type { CommandResult } from "../../command/result";
 import { failureReport, type RenderContext } from "../../report/context";
 import { evidencePage } from "../../report/evidence";
@@ -15,7 +13,6 @@ import { renderTraceEvidence } from "./render";
 
 export async function renderTraceReport(context: RenderContext, result: CommandResult<TraceOutput>): Promise<Report> {
   if (!result.output) return failureReport("doctor trace", result);
-  const { render } = await import("@compforge/trace-harness");
   const pages: ReportPage[] = [];
   const healthPages: ReportPage[] = [];
   for (const artifact of result.artifacts.filter(item => item.command === "datasource-health")) {
@@ -45,17 +42,6 @@ export async function renderTraceReport(context: RenderContext, result: CommandR
           await renderTraceEvidence(context.artifact(artifact.id).path);
           context.write(artifact, context.read(artifact, "trace.html"));
         }));
-      if (pages.at(-1)?.renderError) continue;
-      const dir = context.artifact(artifact.id).path;
-      if (!existsSync(context.path(artifact, "analysis.json"))) continue;
-      const snapshot = readTraceSnapshot(dir);
-      const selected = existsSync(context.path(artifact, "view.json"))
-        ? context.json<View>(artifact, "view.json") : snapshot.views.default;
-      if (selected.scope === "trace" && selected.view === "default" && snapshot.views.agent) {
-        pages.push(await evidencePage(context, artifact,
-          { title: `${snapshot.trace_id} · Agent`, subject, status: item.status, reason: item.reason },
-          () => { context.write(artifact, render(snapshot.views.agent!, { format: "html" }), "agent.html"); }, "agent.html"));
-      }
     }
   }
   return { title: "doctor trace", sections: [{ id: "trace", title: "Trace", status: result.status, pages },
