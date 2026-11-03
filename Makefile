@@ -8,7 +8,7 @@ BIN_DIR ?= $(HOME)/.local/bin
 PLUGIN ?= example
 PLUGIN_ROOT := $(ROOT_DIR)/plugins/$(PLUGIN)
 PLUGIN_VERSION_TOOL := $(ROOT_DIR)/packages/plugin/scripts/version.ts
-PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION),)
+PLUGIN_VERSION_ARGS := $(if $(VERSION),--version $(VERSION))
 CHECK_JOBS ?= 4
 BUNDLE_RUNTIME ?= true
 ifeq ($(filter $(BUNDLE_RUNTIME),true false),)
