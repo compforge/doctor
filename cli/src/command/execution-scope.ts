@@ -1,8 +1,11 @@
+import { CLEANUP_TIMEOUT_MS, disposeWithinBudget } from "./deadline";
+import { executionDiagnostic, type ExecutionDiagnostic } from "./diagnostic";
 import type { ClientManager } from "@compforge/harness-common";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 interface ExecutionScope {
   signal: AbortSignal;
+  diagnostics: ExecutionDiagnostic[];
   clients?: Pick<ClientManager, "get">;
   disposers: Set<() => void | Promise<void>>;
 }
@@ -24,8 +27,14 @@ export function onCommandDispose(dispose: () => void | Promise<void>): () => voi
   return () => { scope?.disposers.delete(dispose); };
 }
 
-export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get">): Promise<T> {
-  const scope: ExecutionScope = { signal, clients, disposers: new Set() };
+/** Record caught failures in the current invocation, including failures that degrade coverage. */
+export function recordExecutionFailure(error: unknown, context: Parameters<typeof executionDiagnostic>[1]): void {
+  execution.getStore()?.diagnostics.push(executionDiagnostic(error, context));
+}
+
+export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get">,
+  options: { diagnostics?: ExecutionDiagnostic[]; cleanupTimeoutMs?: number } = {}): Promise<T> {
+  const scope: ExecutionScope = { signal, clients, diagnostics: options.diagnostics ?? [], disposers: new Set() };
   return execution.run(scope, async () => {
     let failed = false;
     let failure: unknown;
@@ -33,9 +42,15 @@ export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise
     catch (error) { failed = true; failure = error; throw error; }
     finally {
       const errors: unknown[] = [];
+      const deadline = Date.now() + (options.cleanupTimeoutMs ?? CLEANUP_TIMEOUT_MS);
       // Invocation-owned temporary resources are released in reverse acquisition order.
       for (const dispose of [...scope.disposers].reverse()) {
-        try { await dispose(); } catch (error) { errors.push(error); }
+        const startedAt = Date.now();
+        try { await disposeWithinBudget(dispose, deadline - Date.now()); }
+        catch (error) {
+          recordExecutionFailure(error, { phase: "cleanup", target: "invocation resources", startedAt });
+          errors.push(error);
+        }
       }
       if (errors.length) throw new AggregateError(failed ? [failure, ...errors] : errors, "Command resource cleanup failed");
     }

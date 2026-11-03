@@ -1,5 +1,5 @@
 import type { Resource, ResourceSnapshot, ServiceResource } from "@compforge/harness-common";
-import type { JsonObject } from "./json";
+import { immutableJsonValue, type JsonObject } from "./json";
 import { validateOperation, type PluginOperation } from "./operation";
 
 export type { Resource, ResourceCoverage, ResourceInstance, ResourceInstanceRef, ResourceMeasurement,
@@ -70,10 +70,6 @@ export function validateResourceSnapshot(value: ResourceSnapshot<JsonObject>, ex
     nonempty(value.nextCursor, "nextCursor");
     if (value.coverage.status !== "partial") throw new Error("Resource continuation requires partial coverage");
   }
-  const json = JSON.stringify(value, (_key, entry) => {
-    if (typeof entry === "function" || typeof entry === "symbol" || typeof entry === "bigint"
-      || entry instanceof Map || entry instanceof Set || typeof entry === "number" && !Number.isFinite(entry)) throw new Error("Resource snapshot must be JSON evidence");
-    return entry;
-  });
+  const json = JSON.stringify(immutableJsonValue(value, "Resource snapshot"));
   if (new TextEncoder().encode(json).byteLength > query.maxBytes) throw new Error("Resource snapshot byte budget exceeded");
 }

@@ -1,15 +1,24 @@
-import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, Type, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { workloadProbeProviders } from "../src/plugin/workload-extensions";
-const produces = defineObservation({ kind: "health", schemaVersion: 1, schema: Type.Object({ ready: Type.Boolean() }, { additionalProperties: false }) });
+class HealthValue {
+  constructor(readonly ready: boolean) {}
+  summary() { return { title: "Health", fields: [] }; }
+}
+const produces = defineObservation({ kind: "health", schemaVersion: 1, codec: {
+  encode: (value: HealthValue) => ({ ready: value.ready }),
+  decode: (json: unknown) => {
+    if (!json || typeof json !== "object" || !("ready" in json) || typeof json.ready !== "boolean") throw new Error("invalid health");
+    return new HealthValue(json.ready);
+  },
+} });
 const service: ServiceDefinition = {
   name: "app",
   aliases: ["api"],
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: [{ name: "main", platform: "kubernetes", location: { kind: "service", name: "app" } }]
 };
-const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: withSummary({ title: "Probe", fields: [] }, async () => ({ ready: true })) });
+const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => new HealthValue(true) });
 
 test("workload discovery preserves separate probe permissions without calling providers", () => {
   const run = mock(extension.run);
@@ -23,9 +32,9 @@ test("workload discovery preserves separate probe permissions without calling pr
   expect(workloadProbeProviders(catalog, "missing")).toEqual([]);
 });
 
-test("workload references and Observation schemas are checked before scheduling", () => {
+test("workload references and Observation codecs are checked before scheduling", () => {
   const unknown = createServiceCatalog([{ ...service, extensions: [{ ...extension, workload: "missing" }] }]);
   expect(() => workloadProbeProviders(unknown)).toThrow("unknown Workload");
-  const invalid = createServiceCatalog([{ ...service, extensions: [{ ...extension, produces: { ...produces, schema: { type: "object", properties: { ready: { type: "not-a-type" } } } } }] }]);
+  const invalid = createServiceCatalog([{ ...service, extensions: [{ ...extension, produces: { ...produces, codec: { encode: produces.codec.encode } } }] }]);
   expect(() => workloadProbeProviders(invalid)).toThrow();
 });

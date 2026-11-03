@@ -198,3 +198,24 @@ test("multi-artifact summary locates trace evidence by its target and survives r
   expect(summary).toContain("items/actual/summary.md");
   for (const match of summary.matchAll(/\]\(<([^>]+)>\)/g)) expect(existsSync(join(moved, match[1]!))).toBe(true);
 });
+
+/** @case Hung shared-client cleanup still delivers completed data and diagnostic evidence as tar.gz. */
+test("cleanup timeout cannot block archive delivery", async () => {
+  const destination = temporary();
+  const context = new CommandContext({});
+  context.disposeClients = () => new Promise<void>(() => {});
+  const result = ok({ completed: true });
+  const spec = defineCommand({ name: "doctor test", prepare: async (_context, input) => input, run: async () => result,
+    serialize: async (writer, result) => ({ files: { output: writer.writeJson("output.json", result.output) } }),
+  });
+  const archive = join(destination, "result.tar.gz");
+  expect(await finalizeCommand({ commandInput: {}, spec, result, context, code: 0,
+    cleanupTimeoutMs: 10, delivery: { format: "bundle", output: archive } })).toBe(1);
+  const readArchive = (file: string) => {
+    const output = Bun.spawnSync(["tar", "-xOf", archive, `result/${file}`]);
+    expect(output.exitCode).toBe(0); return JSON.parse(output.stdout.toString());
+  };
+  const manifest = readArchive("manifest.json");
+  expect(readArchive(manifest.files.output.path)).toEqual({ completed: true });
+  expect(readArchive(manifest.files["diagnostics.json"].path)).toMatchObject([{ phase: "cleanup", kind: "timeout" }]);
+});

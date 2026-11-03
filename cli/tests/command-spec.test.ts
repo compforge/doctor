@@ -210,13 +210,15 @@ test("parent cancellation reaches active Plugin calls and cleanup retains return
 });
 
 test("cleanup failures preserve staged artifacts and surface failure", async () => {
-  const command = defineCommand<CommandInput, void>({
+  const command = defineCommand<CommandInput, { acquired: boolean }>({
     name: "cleanup", prepare: async (_context, input) => input, run: async (ctx) => {
       onCommandDispose(() => { throw new Error("cannot close"); });
-      return { ...ok(undefined), artifacts: [ctx.artifacts.add({ command: "cleanup", path: "/tmp/retained" })] };
+      return { ...ok({ acquired: true }), artifacts: [ctx.artifacts.add({ command: "cleanup", path: "/tmp/retained" })] };
     }
   });
   const result = await command.run(makeContext(), {});
+  expect(result.output).toEqual({ acquired: true });
+  expect(result.diagnostics).toMatchObject([{ phase: "cleanup" }]);
   expect(result.status).toBe(CommandStatus.Failed);
   expect(result.artifacts).toEqual([{ id: expect.any(String), command: "cleanup", path: "/tmp/retained" }]);
   expect("reason" in result && result.reason).toContain("cleanup failed");

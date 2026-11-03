@@ -267,11 +267,9 @@ test("Workload Probe 在执行前声明完整 Observation contract", () => {
   const validated = validatePluginDefinition(definition({
     kind: "health",
     schemaVersion: 1,
-    schema: {
-      type: "object",
-      properties: { ready: { type: "boolean" } },
-      required: ["ready"],
-      additionalProperties: false,
+    codec: {
+      encode: () => ({ ready: true }),
+      decode: () => ({ summary: () => ({ title: "Health", fields: [] }) }),
     },
   }), manifest).services.extensions("workload.probe")[0]!.extension;
   expect(validated.kind).toBe("workload.probe");

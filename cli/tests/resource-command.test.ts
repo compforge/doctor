@@ -46,7 +46,7 @@ test("Permission denied preserves kind/code and permits a healthy sibling withou
   const providers = resourceProviders(plugin(), {});
   const observed = await collectResources(providers, query, { signal: new AbortController().signal,
     observe: async provider => provider.service.name === "api" ? result({ ...snapshot(), resource: provider.binding.resource, instances: [] })
-      : Promise.reject(new ToolboxError("secret credential URL", { kind: "permission_denied", code: 403 })) });
+      : Promise.reject(new ToolboxError("https://user:secret@service.test/?token=private", { kind: "permission_denied", code: 403 })) });
   expect(observed.status).toBe(CommandStatus.Partial);
   expect(observed.output.entries[0]!.issue).toEqual({ kind: "permission_denied", code: 403, message: "无权限" });
   expect(observed.output.entries[1]!.snapshot?.totalCount).toBeUndefined();
@@ -189,4 +189,26 @@ test("Generic Resource summary labels retained-page state counts and keeps missi
     snapshot: { ...data, instances: [...data.instances!, { ref: { environment: "test", resource: "volumes", id: "v2" }, state: "ready" }] } }] };
   expect(resourceSummary(output)).toContain("本页状态（已观测实例）：未知 1 · ready 1");
   expect(resourceSummary(output)).toContain("总量：未知");
+});
+
+test("failed Resource archives its sanitized cause independently from the concise issue", async () => {
+  const active = plugin();
+  active.services.services[0]!.resources![0]!.observe.run = async () => {
+    throw new ToolboxError("Cannot read volume catalog", { kind: "connection_failed", cause:
+      Object.assign(new Error("connect https://user:private@storage.test:443/?token=signed"), { code: "ECONNREFUSED" }) });
+  };
+  const commandContext = context(active);
+  const output = await resourceCommand.run(commandContext, { services: ["w"] });
+  roots.push(...output.artifacts.map(a => a.path));
+  const root = mkdtempSync(join(tmpdir(), "resource-diagnostic-")); roots.push(root);
+  await SerializeContext.create(root, resourceCommand, output);
+  const manifest = JSON.parse(readFileSync(join(root, "manifest.json"), "utf8"));
+  const saved = readFileSync(join(root, manifest.files["diagnostics.json"].path), "utf8");
+  expect(output.status).toBe(CommandStatus.Failed);
+  expect(JSON.parse(saved)).toMatchObject([{ phase: "resource.observe", target: "worker/volumes", kind: "connection_failed",
+    causes: [{ code: "ECONNREFUSED" }] }]);
+  expect(saved).toContain("storage.test");
+  expect(saved).not.toContain("private");
+  expect(saved).not.toContain("signed");
+  await commandContext.disposeClients();
 });

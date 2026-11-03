@@ -29,7 +29,8 @@ test("Resource catalog is offline, preserves Service association and exposes ope
 
 test("Resource snapshot keeps independent total, page coverage and unknown values", () => {
   expect(() => check(snapshot())).not.toThrow();
-  const unavailable = { ...snapshot(), totalCount: undefined, instances: undefined, nextCursor: undefined,
+  const { totalCount: _count, instances: _instances, nextCursor: _cursor, ...identity } = snapshot();
+  const unavailable: ResourceSnapshot<JsonObject> = { ...identity,
     coverage: { status: "unavailable" as const, reason: "No permission" } };
   expect(() => check(unavailable)).not.toThrow();
   expect(unavailable.totalCount).toBeUndefined();
@@ -49,4 +50,11 @@ test("Resource boundary rejects wrong identity, invalid totals, duplicate instan
 test("Same collection identity must retain its kind across Services", () => {
   expect(() => createServiceCatalog([service, { ...service, name: "api", aliases: [], resources: [{ ...binding,
     resource: { ...resource, kind: "bed" } }] }])).toThrow("Conflicting kind");
+});
+
+test("Resource details reject lossy JSON instead of silently changing producer data", () => {
+  for (const details of [{ omitted: undefined }, { date: new Date() }, { items: [, 1] }]) {
+    const value = snapshot();
+    expect(() => check({ ...value, instances: [{ ...value.instances![0]!, details: details as unknown as JsonObject }] })).toThrow();
+  }
 });

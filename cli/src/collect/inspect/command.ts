@@ -31,7 +31,7 @@ export const inspectCommand = defineCommand<InspectInput, void>({
     render: artifact => {
       const diagnosis = context.json<InspectDiagnosis>(artifact, "diagnosis.json");
       writeEvidencePage(context, artifact, { title: "doctor inspect",
-        summaryHtml: buildInspectHtml(diagnosis), sections: buildInspectHtmlSections(diagnosis, context.readObservationValue),
+        summaryHtml: buildInspectHtml(diagnosis), sections: buildInspectHtmlSections(diagnosis),
       });
     },
   }),

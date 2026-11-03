@@ -1,19 +1,9 @@
-import { validateSummary, type JsonObject, type ObservationDefinition, type ServiceCatalog, type Summary, type Value } from "@compforge/doctor-plugin";
-import { immutableJsonObject } from "./observation";
-import { workloadProbeProviders } from "./workload-extensions";
+import { serializeValue, deserializeValue, type JsonValue, type ObservationDefinition, type Summary, type Value } from "@compforge/doctor-plugin";
 
-function valueSummary(value: Value, label: string): Summary {
-  if (!value || typeof value.summary !== "function") throw new Error(`${label}: Codec must restore a Value with summary()`);
-  const summary = value.summary();
-  validateSummary(summary);
-  return immutableJsonObject(summary, `${label}.summary`) as unknown as Summary;
-}
-
-/** @spec Only encoded JSON crosses the persisted Evidence boundary; decode validates producer output. */
-export function encodeObservationValue(definition: ObservationDefinition, value: Value, label: string): { value: JsonObject; summary: Summary } {
-  const json = immutableJsonObject(definition.codec.encode(value), `${label}.value`);
-  const restored = definition.codec.decode(json);
-  return { value: json, summary: valueSummary(restored, label) };
+/** Adapt the generic Value contract to a persisted workload Observation. */
+export function encodeObservationValue(definition: ObservationDefinition, value: Value, label: string): { value: JsonValue; summary: Summary } {
+  const saved = serializeValue(value, definition.codec, { label, maxBytes: 1024 * 1024 });
+  return { value: saved.data, summary: saved.summary };
 }
 
 export interface StoredValueObservation {
@@ -21,7 +11,7 @@ export interface StoredValueObservation {
   probe: string;
   observationKind: string;
   observationSchemaVersion: number;
-  value: JsonObject;
+  value: JsonValue;
   summary: Summary;
 }
 
@@ -29,28 +19,15 @@ export type RestoredObservationValue =
   | { status: "decoded"; value: Value; summary: Summary }
   | { status: "unavailable"; reason: string; summary: Summary };
 
-export type ObservationValueReader = (observation: StoredValueObservation) => RestoredObservationValue;
-
-/**
- * @spec Offline decoding selects the exact Service/producer/kind/version contract without fetching a Plugin
- * @rule Missing or invalid codecs preserve the saved JSON and Summary for generic archive reading
- */
-export function restoreObservationValue(observation: StoredValueObservation, catalog?: ServiceCatalog): RestoredObservationValue {
-  const label = `${observation.service}/${observation.probe}/${observation.observationKind}@${observation.observationSchemaVersion}`;
-  if (!catalog) return { status: "unavailable", reason: `${label}: 未加载 Plugin Codec，使用已保存摘要`, summary: observation.summary };
+/** Restore a caller-selected data contract without consulting active Probe registrations or replacing saved presentation. */
+export function restoreObservationValue(observation: StoredValueObservation, definition?: ObservationDefinition): RestoredObservationValue {
+  const unavailable = (reason: string): RestoredObservationValue => ({ status: "unavailable", reason, summary: observation.summary });
+  if (!definition || definition.kind !== observation.observationKind || definition.schemaVersion !== observation.observationSchemaVersion) {
+    return unavailable("未提供匹配的 Codec；原始数据和已保存摘要仍可读取");
+  }
   try {
-    const definition = workloadProbeProviders(catalog, observation.service)
-      .find(({ extension }) => extension.id === observation.probe
-        && extension.produces.kind === observation.observationKind
-        && extension.produces.schemaVersion === observation.observationSchemaVersion)?.extension.produces;
-    if (!definition || !("codec" in definition)) return {
-      status: "unavailable", reason: `${label}: 未找到匹配的 Codec，使用已保存摘要`, summary: observation.summary,
-    };
-    const json = immutableJsonObject(observation.value, `${label}.value`);
-    const value = definition.codec.decode(json);
-    return { status: "decoded", value, summary: valueSummary(value, label) };
+    return { status: "decoded", value: deserializeValue(observation.value, definition.codec), summary: observation.summary };
   } catch {
-    // Codec exceptions may contain raw configuration values; retain data in its existing evidence location.
-    return { status: "unavailable", reason: `${label}: Codec 解码失败，使用已保存摘要`, summary: observation.summary };
+    return unavailable("Codec 解码失败；原始数据和已保存摘要仍可读取");
   }
 }

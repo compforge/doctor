@@ -1,3 +1,4 @@
+import { currentCommandSignal } from "../command/execution-scope";
 import type {
   CoverageBuilder,
   Detector,
@@ -24,8 +25,11 @@ export interface CollectEngineInput<
   Ctx = void,
 > {
   ctx: Ctx;
+  signal?: AbortSignal;
   config: Config;
   inspects: readonly Inspect<Facts, Ctx>[];
+  /** Domain-owned projection of completed Inspect batches, including interrupted acquisition. */
+  checkpointPartialFacts?: (facts: Readonly<Partial<Facts>>) => void | Promise<void>;
   /** Persist the complete frozen Facts snapshot before any Probe is planned or run. */
   checkpointFacts?: (facts: Readonly<Facts>) => void | Promise<void>;
   /** Probe planning starts only after every Inspect has completed and Facts are deeply frozen. */
@@ -60,6 +64,7 @@ export interface DiagnosisEngineInput<
   Ctx = void,
 > {
   ctx: Ctx;
+  signal?: AbortSignal;
   facts: Facts;
   config: Config;
   probes: readonly Probe<Observation, Facts, Config, Ctx>[];
@@ -85,6 +90,7 @@ export async function runDiagnosis<
   Ctx = void,
 >({
   ctx,
+  signal = currentCommandSignal(),
   facts,
   config,
   probes,
@@ -102,9 +108,9 @@ export async function runDiagnosis<
   Ctx
 >): Promise<Diagnosis<DomainEvidence, DomainFinding, Goal>> {
   // ctx 到 probe 为止。后续阶段只能从可持久化、可引用的 facts / evidence 推导。
-  const observations = await runProbes(probes, ctx, facts, config, log);
+  const observations = await runProbes(probes, ctx, facts, config, log, signal);
   const evidence = buildEvidence(observations, facts);
-  const findings = runDetectors(detectors, evidence);
+  const findings = signal?.aborted ? [] : runDetectors(detectors, evidence);
   const coverage = buildCoverage(evidence);
   return { evidence, findings, coverage };
 }
@@ -127,9 +133,11 @@ export async function runCollect<
   Ctx = void,
 >({
   ctx,
+  signal = currentCommandSignal(),
   config,
   inspects,
   checkpointFacts,
+  checkpointPartialFacts,
   planProbes,
   log,
   buildEvidence,
@@ -144,13 +152,14 @@ export async function runCollect<
   Config,
   Ctx
 >): Promise<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>> {
-  const facts = await runInspects(inspects, ctx, log);
+  const facts = await runInspects(inspects, ctx, log, signal, checkpointPartialFacts);
   await checkpointFacts?.(facts);
   const diagnosis = await runDiagnosis({
     ctx,
+    signal,
     facts: facts as Facts,
     config,
-    probes: planProbes(facts, config, ctx),
+    probes: signal?.aborted ? [] : planProbes(facts, config, ctx),
     log,
     buildEvidence,
     detectors,
@@ -181,19 +190,20 @@ export async function runCollectBatch<
     projectFacts?: (facts: Readonly<Facts>) => Facts;
   }[];
   concurrency?: number;
-  signal?: AbortSignal;
 }): Promise<{
   facts: Readonly<Facts>;
   items: PromiseSettledResult<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>>[];
 }> {
   const pool = new ConcurrencyPool(input.concurrency ?? 1);
-  input.signal?.throwIfAborted();
-  const facts = await runInspects(input.inspects, input.ctx, input.log);
+  const signal = input.signal ?? currentCommandSignal();
+  signal?.throwIfAborted();
+  const facts = await runInspects(input.inspects, input.ctx, input.log, signal, input.checkpointPartialFacts);
   await input.checkpointFacts?.(facts);
   const items = await Promise.allSettled(input.items.map(item => pool.run(async () => {
     const projected = item.projectFacts ? freezeFacts(item.projectFacts(facts)) : facts;
     const diagnosis = await runDiagnosis({
       ctx: item.ctx,
+      signal,
       config: item.config,
       facts: projected as Facts,
       probes: input.planProbes(projected, item.config, item.ctx),
@@ -203,6 +213,6 @@ export async function runCollectBatch<
       buildCoverage: input.buildCoverage,
     });
     return { facts: projected, diagnosis };
-  }, input.signal)));
+  }, signal)));
   return { facts, items };
 }

@@ -1,4 +1,3 @@
-import { restoreObservationValue } from "../../plugin/value";
 import { inspectCollectionScope } from "./model";
 import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
 import { kubernetesClientSource, resourceReader, executorResourceReader, snapshotResourceReader } from "../../infra/k8s/resources";
@@ -189,7 +188,7 @@ export async function runCollectInspect(
   commandContext.artifacts.add({ command: "inspect", path: staging });
   const bundle = new EvidenceBundle(staging);
   const log = (line: string) => useLogger().info(`${line}`);
-  let facts: InspectFacts | undefined;
+  let facts: Readonly<Partial<InspectFacts>> | undefined;
   let diagnosis: InspectDiagnosis | undefined;
   let diagnosisFailure: string | undefined;
   const clusterKube = injectedExecutor ? config.kube
@@ -248,6 +247,8 @@ export async function runCollectInspect(
     const execution = await runCollect({
       ctx,
       config,
+      signal: commandContext.signal,
+      checkpointPartialFacts: snapshot => { facts = snapshot; writeCollection(); },
       inspects: [makeServiceTargetsInspect(config, plugin.services)],
       planProbes: (collectedFacts) => {
         const probeFacts = immutableServiceProbeFacts(
@@ -279,7 +280,7 @@ export async function runCollectInspect(
     } };
   }
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
-  bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace, observation => restoreObservationValue(observation, plugin.services)));
+  bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
   writeCollection();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (outcome.exitCode !== 0) {

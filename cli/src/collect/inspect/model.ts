@@ -3,6 +3,7 @@ import type { TimeWindowOptions } from "../time-window";
 import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 import type {
   JsonObject,
+  JsonValue as PortableJsonValue,
   Toolchain,
   Workload,
   WorkloadInstance,
@@ -232,7 +233,6 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   summary: import("@compforge/doctor-plugin").Summary;
   kind: "plugin-workload";
   instance: WorkloadInstance;
-  valueEncoding?: "codec";
   observationKind: string;
   observationSchemaVersion: number;
   service: string;
@@ -241,7 +241,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   pod: string;
   container?: string;
   probe: string;
-  value: JsonObject;
+  value: PortableJsonValue;
 }
 
 export type InspectObservation =

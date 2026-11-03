@@ -50,7 +50,7 @@ async function run(args: string[], options: { withPlugin?: boolean; cwd?: string
   // 隔离用户环境里的继承配置；显式 --config 的用例不受影响
   delete process.env.DOCTOR_CONFIG;
   const previousCwd = process.cwd();
-  if (options.cwd) process.chdir(options.cwd);
+  process.chdir(options.cwd ?? workingDir());
   const capture = (command: Command): void => {
     command.exitOverride().configureOutput({
       writeOut: text => { stdout += text; },
@@ -80,7 +80,7 @@ async function run(args: string[], options: { withPlugin?: boolean; cwd?: string
     if (code === 0) code = process.exitCode ?? 0;
   } finally {
     process.exitCode = previousExitCode;
-    if (options.cwd) process.chdir(previousCwd);
+    process.chdir(previousCwd);
     writeOut.mockRestore();
     writeErr.mockRestore();
   }

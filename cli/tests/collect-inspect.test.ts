@@ -3,7 +3,6 @@ import {
   createServiceCatalog,
   defineObservation,
   defineWorkloadProbeExtension,
-  Type,
   type PluginDefinition,
   type ServiceEvidenceFact,
 } from "@compforge/doctor-plugin";
@@ -393,17 +392,12 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
   })).toBe(true);
 });
 
-test.each(["legacy", "native", "codec"] as const)("inspect 分别交付 workload、可选 Service 配置和 partial Coverage (%s)", async (mode) => {
+test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选 Service 配置和 partial Coverage (%s)", async (mode) => {
   class PodValue {
     constructor(readonly pod: string) {}
     summary() { return { title: "Codec probe", text: `Observed ${this.pod}`, fields: [] }; }
   }
   let workloadProbeFacts: readonly ServiceEvidenceFact[] | undefined;
-  const coreFactsVisible = defineObservation({
-    kind: "core-facts-visible",
-    schemaVersion: 1,
-    schema: Type.Object({ pod: Type.String() }, { additionalProperties: false }),
-  });
   const legacyPlugin: PluginDefinition = {
     ...examplePlugin,
     services: createServiceCatalog(examplePlugin.services.services.map((service) => (
@@ -417,7 +411,7 @@ test.each(["legacy", "native", "codec"] as const)("inspect 分别交付 workload
             schemaVersion: 1,
             subject: "workload-service-account",
           }],
-          extensions: [mode === "codec" ? defineWorkloadProbeExtension({
+          extensions: [defineWorkloadProbeExtension({
             id: "core-facts", kind: "workload.probe", workload: "main", access: {},
             produces: defineObservation({ kind: "core-facts-visible", schemaVersion: 1, codec: {
               encode: (value: PodValue) => ({ pod: value.pod }),
@@ -430,17 +424,6 @@ test.each(["legacy", "native", "codec"] as const)("inspect 分别交付 workload
               workloadProbeFacts = input.facts;
               return new PodValue(input.instance.pod);
             },
-          }) : defineWorkloadProbeExtension({
-            id: "core-facts",
-            kind: "workload.probe",
-
-            access: {},
-            workload: "main",
-            produces: coreFactsVisible,
-            run: withSummary({ title: "Probe", fields: [] }, async (_context, input) => {
-              workloadProbeFacts = input.facts;
-              return { pod: input.instance.pod };
-            }),
           })]
         }
         : service
@@ -572,7 +555,7 @@ test.each(["legacy", "native", "codec"] as const)("inspect 分别交付 workload
       output: completeOutput,
     }, pluginWithEnvironmentProbes, executor)).toBe(0);
     const complete = readFileSync(completeOutput, "utf-8");
-    if (mode === "codec") expect(complete).toContain("Observed example-api-0");
+    expect(complete).toContain("Observed example-api-0");
     expect(complete).toContain("| example-api | main | Handles API requests |");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).toContain("example.test/example-api:v1.2.3");
@@ -616,7 +599,7 @@ test.each(["legacy", "native", "codec"] as const)("inspect 分别交付 workload
     }, pluginWithEnvironmentProbes, executor)).toBe(0);
     expect(existsSync(join(dir, "default.html"))).toBe(true);
     expect(existsSync(defaultOutput)).toBe(true);
-    if (mode === "codec") expect(readReport(readFileSync(join(dir, "default.html"), "utf8")).pages).toContain("Observed example-api-0");
+    expect(readReport(readFileSync(join(dir, "default.html"), "utf8")).pages).toContain("Observed example-api-0");
 
     queriedResources.length = 0;
     admissionUnavailable = true;

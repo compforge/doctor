@@ -1,3 +1,4 @@
+import { CLEANUP_TIMEOUT_MS, disposeWithinBudget } from "../command/deadline";
 import { kubernetesClientSource, capturedResourceAccess, type KubernetesResourceReader } from "../infra/k8s/resources";
 import { PodFileDataSource } from "@compforge/harness-toolbox/file";
 import { hostname } from "node:os";
@@ -237,8 +238,11 @@ export function createPluginContext(
     unregister();
     controller.abort();
     const errors: unknown[] = [];
-    for (const close of disposers.reverse()) { try { await close(); } catch (error) { errors.push(error); } }
-    try { await local?.dispose(); } catch (error) { errors.push(error); }
+    const deadline = Date.now() + CLEANUP_TIMEOUT_MS;
+    for (const close of [...disposers.reverse(), () => local?.dispose()]) {
+      try { await disposeWithinBudget(close, deadline - Date.now()); }
+      catch (error) { errors.push(error); }
+    }
     if (errors.length) throw new AggregateError(errors, "Plugin resource cleanup failed");
   })();
   const unregister = onCommandDispose(dispose);

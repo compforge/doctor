@@ -11,7 +11,7 @@ import type {
   InspectQueryResult,
   Query,
 } from "./capability";
-import type { JsonObject } from "./json";
+import type { JsonValue } from "./json";
 import type { ProbeRunner } from "./probe";
 import type { Environment, Service, WorkloadInstance } from "@compforge/harness-common";
 
@@ -259,7 +259,7 @@ export interface ServiceEvidenceFact {
 }
 
 /** One Service-scoped Probe Observation exposed to pure business detectors. */
-export interface ServiceEvidenceObservation<Value extends JsonObject = JsonObject> {
+export interface ServiceEvidenceObservation<Value extends JsonValue = JsonValue> {
   /** Persisted Observation identity; valid as a Finding observation reference. */
   id: string;
   /** Logical Services this Observation describes. */

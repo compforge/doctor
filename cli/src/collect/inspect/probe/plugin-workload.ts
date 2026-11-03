@@ -1,3 +1,4 @@
+import { recordExecutionFailure } from "../../../command/execution-scope";
 import type {
   ServiceDefinition,
   ServiceEvidenceFact,
@@ -7,7 +8,6 @@ import { invokeExtension } from "../../../plugin/extension";
 import { openPluginContext } from "../../../plugin/context";
 import { encodeObservationValue } from "../../../plugin/value";
 import type { Value } from "@compforge/doctor-plugin";
-import { validateObservationValue } from "../../../plugin/observation";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {
@@ -61,17 +61,16 @@ export function makePluginWorkloadProbe(
         const definition = service.workloads.find((item) => item.name === declaration.workload)!;
         const observations: PluginWorkloadObservation[] = [];
         for (const pod of targets(facts)) {
-          managed.signal.throwIfAborted();
+          if (managed.signal.aborted) break;
           const stepId = `${id}-${pod.pod}`;
+          const startedAt = Date.now();
           try {
             const observed = await invokeExtension(declaration, managed, {
               instance: pod.instance,
               facts: probeFacts,
             });
             const label = `${service.name}/${declaration.workload}/${declaration.id}`;
-            const encoded = "codec" in declaration.produces
-              ? encodeObservationValue(declaration.produces, observed.data as Value, label)
-              : { value: validateObservationValue(declaration.produces, observed.data, label), summary: observed.summary };
+            const encoded = encodeObservationValue(declaration.produces, observed.data as Value, label);
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
@@ -88,7 +87,6 @@ export function makePluginWorkloadProbe(
               probe: declaration.id,
               value: encoded.value,
               summary: encoded.summary,
-              ...("codec" in declaration.produces ? { valueEncoding: "codec" as const } : {}),
             };
             observations.push(observation);
             ctx.bundle.addStep({
@@ -100,6 +98,8 @@ export function makePluginWorkloadProbe(
               ext: "json",
             });
           } catch (error) {
+            recordExecutionFailure(error, { phase: "plugin-workload", target: stepId, startedAt });
+            if (managed.signal.aborted) break;
             ctx.bundle.addStep({
               id: stepId,
               title: `${service.name}/${declaration.workload}/${pod.pod} · ${declaration.id}`,
@@ -111,7 +111,9 @@ export function makePluginWorkloadProbe(
         }
         return observations;
       } finally {
-        await managed.dispose();
+        const startedAt = Date.now();
+        try { await managed.dispose(); }
+        catch (error) { recordExecutionFailure(error, { phase: "cleanup", target: id, startedAt }); }
       }
     },
   };

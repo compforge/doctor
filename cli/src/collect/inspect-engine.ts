@@ -1,3 +1,4 @@
+import { currentCommandSignal, recordExecutionFailure } from "../command/execution-scope";
 import type { Inspect } from "./inspection";
 import { validateEvidenceSchemaMeta } from "./evidence-identity";
 
@@ -69,6 +70,8 @@ export async function runInspects<Facts extends object, Ctx = void>(
   inspects: readonly Inspect<Facts, Ctx>[],
   ctx: Ctx,
   log: (line: string) => void = () => {},
+  signal = currentCommandSignal(),
+  checkpoint?: (facts: Readonly<Partial<Facts>>) => void | Promise<void>,
 ): Promise<Readonly<Facts>> {
   validateInspects(inspects);
   const pending = new Set(inspects.map((inspect) => inspect.id));
@@ -76,6 +79,7 @@ export async function runInspects<Facts extends object, Ctx = void>(
   const facts: Partial<Facts> = {};
 
   while (pending.size > 0) {
+    signal?.throwIfAborted();
     const inspect = inspects.find((candidate) => (
       pending.has(candidate.id)
       && (candidate.dependsOn ?? []).every((id) => completed.has(id))
@@ -83,7 +87,13 @@ export async function runInspects<Facts extends object, Ctx = void>(
     if (!inspect) throw new Error(`inspect dependency cycle: ${[...pending].join(", ")}`);
 
     log(`[collect] 执行 Inspect：${inspect.id}…`);
-    const produced = await inspect.run(ctx, Object.freeze({ ...facts }));
+    const startedAt = Date.now();
+    let produced: Partial<Facts>;
+    try { produced = await inspect.run(ctx, Object.freeze({ ...facts })); }
+    catch (error) {
+      recordExecutionFailure(error, { phase: "inspect", target: inspect.id, startedAt, kind: signal?.aborted ? "cancelled" : undefined });
+      throw error;
+    }
     const keys = Object.keys(produced) as (keyof Facts)[];
     for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(facts, key)) {
@@ -94,6 +104,7 @@ export async function runInspects<Facts extends object, Ctx = void>(
       freezeFactValue(value);
       facts[key] = value;
     }
+    await checkpoint?.(freezeFacts({ ...facts }));
     log(`[collect] Inspect 完成：${inspect.id}（${keys.length} 个 Fact）`);
     pending.delete(inspect.id);
     completed.add(inspect.id);
