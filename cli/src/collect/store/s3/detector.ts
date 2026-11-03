@@ -1,5 +1,6 @@
-import type { Detector, DiagnosisCoverage } from "../../protocol";
-import type { S3DiagnosisGoal, S3Evidence, S3Finding, S3PhysicalCapacity } from "./model";
+import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
+import type { Detector, } from "../../protocol";
+import type { S3Evidence, S3Finding, S3PhysicalCapacity } from "./model";
 import { groupS3Observations } from "./model";
 
 const FINDING_META = {
@@ -137,38 +138,26 @@ export function detectS3Findings(evidence: S3Evidence): S3Finding[] {
 
 export const s3Detectors: readonly Detector<S3Evidence, S3Finding>[] = [detectS3Findings];
 
-export function buildS3Coverage(evidence: S3Evidence): DiagnosisCoverage<S3DiagnosisGoal>[] {
+export function detectS3EvidenceGaps(evidence: S3Evidence): EvidenceGapFinding[] {
   const observations = groupS3Observations(evidence.observations);
   const accessReason = evidence.facts.access.status === "collected" ? undefined : evidence.facts.access.reason;
-  const coverage = <Goal extends S3DiagnosisGoal>(goal: Goal, present: boolean, label: string, optional = false) => ({
-    goal,
-    status: present ? "sufficient" as const : optional ? "partial" as const : "insufficient" as const,
-    missingEvidence: present ? [] : [accessReason ?? `${label} 未取得`],
-  });
+  const missing = (goal: string, present: boolean, label: string, optional = false) => (evidenceGaps(goal, present ? [] : [accessReason ?? `${label} 未取得`], evidence));
   const bucketAccess = observations.bucketAccess;
   const inventory = observations.inventory;
   const inventoryComplete = !!inventory
     && inventory.scannedBuckets === inventory.discoveredBuckets
     && inventory.buckets.every((bucket) => bucket.status === "complete");
   return [
-    bucketAccess
-      ? {
-          goal: "bucket-access",
-          status: bucketAccess.discovery === "list-buckets" ? "sufficient" : "partial",
-          missingEvidence: bucketAccess.discoveryReason ? [bucketAccess.discoveryReason] : [],
-        }
-      : coverage("bucket-access", false, "ListBuckets / HeadBucket 结果"),
-    inventory
-      ? {
-          goal: "object-inventory",
-          status: inventoryComplete ? "sufficient" : "partial",
-          missingEvidence: inventoryComplete ? [] : [
+    ...(bucketAccess
+      ? evidenceGaps("bucket-access", bucketAccess.discoveryReason ? [bucketAccess.discoveryReason] : [], evidence)
+      : missing("bucket-access", false, "ListBuckets / HeadBucket 结果")),
+    ...(inventory
+      ? evidenceGaps("object-inventory", inventoryComplete ? [] : [
             `已扫描 ${inventory.scannedBuckets}/${inventory.discoveredBuckets} 个 Bucket；部分对象画像受时间或对象数预算限制`,
-          ],
-        }
-      : coverage("object-inventory", false, "对象画像"),
-    coverage("provider-health", !!observations.providerHealth, "provider health API", true),
-    coverage("drive-capacity", !!observations.driveCapacity, "provider drive capacity metrics", true),
-    coverage("capacity", !!observations.capacity, "对象存储物理容量", true),
+          ], evidence)
+      : missing("object-inventory", false, "对象画像")),
+    ...missing("provider-health", !!observations.providerHealth, "provider health API", true),
+    ...missing("drive-capacity", !!observations.driveCapacity, "provider drive capacity metrics", true),
+    ...missing("capacity", !!observations.capacity, "对象存储物理容量", true),
   ];
 }

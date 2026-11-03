@@ -36,7 +36,7 @@ import {
 } from "../fact/inspect";
 import type { CgroupMemoryFacts } from "../fact/cgroup-memory";
 import {
-  buildMemoryCaptureCoverage,
+  detectMemoryCaptureEvidenceGaps,
   buildMemoryCaptureEvidence,
   memoryCaptureDetectors,
   memoryCaptureObservation,
@@ -199,8 +199,8 @@ export async function runCollectMemory(
       planProbes: () => [makeMemoryCaptureProbe()],
       log,
       buildEvidence: buildMemoryCaptureEvidence,
-      detectors: memoryCaptureDetectors,
-      buildCoverage: buildMemoryCaptureCoverage,
+      detectors: [...memoryCaptureDetectors, detectMemoryCaptureEvidenceGaps],
+
     });
     cgroupMemory = execution.facts.cgroupMemory;
     diagnosis = execution.diagnosis;

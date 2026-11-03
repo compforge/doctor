@@ -55,8 +55,7 @@ export interface TenantFacts {
 
 export type TenantEvidence = Evidence<never, TenantFacts>;
 export type TenantFinding = never;
-export type TenantDiagnosisGoal = string;
-export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding, TenantDiagnosisGoal>;
+export type TenantDiagnosis = Diagnosis<TenantEvidence, TenantFinding>;
 
 export interface TenantCapabilityCollector extends TenantCapabilityIdentity {
   id: string;

@@ -27,7 +27,7 @@ const codec: ValueCodec<Settings> = {
 };
 const definition = defineObservation({ kind: "settings", schemaVersion: 1, codec });
 const probe = defineWorkloadProbeExtension({ id: "settings", kind: "workload.probe", workload: "main", access: {}, produces: definition,
-  run: async () => new Settings({ "custom.key": { enabled: true, ports: [443, 9200] } }),
+  run: async () => ({ value: new Settings({ "custom.key": { enabled: true, ports: [443, 9200] } }), status: "ok" }),
 });
 const catalog = createServiceCatalog([{ name: "app", component: { name: "app", repository: { forge: { name: "github" }, path: "test/app" } },
   workloads: [{ name: "main", platform: "kubernetes", location: { kind: "service", name: "app" } }], extensions: [probe],
@@ -37,9 +37,9 @@ const catalog = createServiceCatalog([{ name: "app", component: { name: "app", r
 test("Value codec preserves data and summary across a persisted Observation", async () => {
   expect(workloadProbeProviders(catalog)).toHaveLength(1);
   const result = await probe.run({} as never, {} as never);
-  expect(result.data).toBeInstanceOf(Settings);
-  expect(result.summary).toEqual(result.data.summary());
-  const snapshot = encodeObservationValue(definition, result.data, "settings");
+  expect(result.data.value).toBeInstanceOf(Settings);
+  expect(result.summary).toEqual(result.data.value.summary());
+  const snapshot = encodeObservationValue(definition, result.data.value, "settings");
   expect(Object.isFrozen(snapshot.value)).toBe(true);
   const observation: StoredValueObservation = { service: "app", probe: "settings", observationKind: "settings", observationSchemaVersion: 1, ...snapshot };
   const directory = mkdtempSync(join(tmpdir(), "doctor-value-codec-"));

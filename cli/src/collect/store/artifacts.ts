@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../app/version";
-import type { CommandContext } from "../../command";
+import { commandOutcome, type CommandResult, type CommandStatus, type CommandContext } from "../../command";
 
 import { useLogger } from "../../terminal/log";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
@@ -86,8 +86,9 @@ export async function finishStoreBundle(input: {
   code: number;
   summary: string;
   inspectionFacts: Record<string, unknown>;
+  status?: CommandStatus;
   htmlReport?: StoreHtmlReportOptions;
-}): Promise<number> {
+}): Promise<CommandResult<void>> {
   const { state, config } = input;
   state.bundle.settle(input.code === 0 ? "本轮未取得该项证据" : "上游步骤失败，未执行");
   state.bundle.writeSummary(input.summary);
@@ -125,7 +126,7 @@ export async function finishStoreBundle(input: {
   });
   if (!artifact.ok) {
     useLogger("collect").error(`交付失败，证据保留在目录: ${state.staging}`);
-    return 1;
+    return commandOutcome(1);
   }
-  return input.code;
+  return input.status ? { status: input.status, output: undefined, artifacts: [] } : commandOutcome(input.code);
 }

@@ -120,16 +120,9 @@ export interface NetworkFinding extends FindingMeta<NetworkFindingKind> {
   status?: number;
 }
 
-export type NetworkCoverageGoal =
-  | "capture-scope"
-  | "protocol-decoding"
-  | "request-correlation"
-  | "response-lifecycle";
-
 export type NetworkDiagnosis = Diagnosis<
   NetworkEvidence,
-  NetworkFinding,
-  NetworkCoverageGoal
+  NetworkFinding
 >;
 
 export interface NetworkAnalysisDocument {

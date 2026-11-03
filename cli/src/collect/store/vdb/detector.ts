@@ -1,5 +1,6 @@
-import type { Detector, DiagnosisCoverage } from "../../protocol";
-import type { VdbEvidence, VdbFinding, VdbDiagnosisGoal } from "./model";
+import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
+import type { Detector, } from "../../protocol";
+import type { VdbEvidence, VdbFinding } from "./model";
 import { groupVdbObservations } from "./model";
 import { detectVdbFindings, effectiveDiskSettings } from "../../../datasource/opensearch/detector";
 export * from "../../../datasource/opensearch/detector";
@@ -8,9 +9,9 @@ export const vdbDetectors: readonly Detector<VdbEvidence, VdbFinding>[] = [
   (evidence) => detectVdbFindings(groupVdbObservations(evidence.observations)),
 ];
 
-export function buildVdbCoverage(
+export function detectVdbEvidenceGaps(
   evidence: VdbEvidence,
-): DiagnosisCoverage<VdbDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   const observations = groupVdbObservations(evidence.observations);
   const accessReason = evidence.facts.access.status === "collected"
     ? undefined
@@ -26,22 +27,8 @@ export function buildVdbCoverage(
   ];
   const shardMissing = observations.shards ? [] : [accessReason ?? "shard state 未取得"];
   return [
-    {
-      goal: "cluster-health",
-      status: healthMissing.length ? "insufficient" : "sufficient",
-      missingEvidence: healthMissing,
-    },
-    {
-      goal: "capacity",
-      status: !observations.allocation
-        ? "insufficient"
-        : capacityMissing.length ? "partial" : "sufficient",
-      missingEvidence: capacityMissing,
-    },
-    {
-      goal: "shard-state",
-      status: shardMissing.length ? "insufficient" : "sufficient",
-      missingEvidence: shardMissing,
-    },
+    ...evidenceGaps("cluster-health", healthMissing, evidence),
+    ...evidenceGaps("capacity", capacityMissing, evidence),
+    ...evidenceGaps("shard-state", shardMissing, evidence),
   ];
 }

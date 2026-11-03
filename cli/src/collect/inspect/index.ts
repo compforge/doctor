@@ -1,3 +1,4 @@
+import { gapMessages } from "../evidence-gaps";
 import { inspectCollectionScope } from "./model";
 import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
 import { kubernetesClientSource, resourceReader, executorResourceReader, snapshotResourceReader } from "../../infra/k8s/resources";
@@ -22,7 +23,7 @@ import { EvidenceBundle } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import {
-  buildInspectCoverage,
+  detectInspectEvidenceGaps,
   buildInspectEvidence,
   makeInspectDetectors,
   projectInspectServiceFacts,
@@ -264,8 +265,8 @@ export async function runCollectInspect(
       },
       log,
       buildEvidence: buildInspectEvidence,
-      detectors: scope.plugins ? makeInspectDetectors(plugin.id, plugin.services, config.services) : [],
-      buildCoverage: (evidence) => buildInspectCoverage(evidence, config),
+      detectors: [...scope.plugins ? makeInspectDetectors(plugin.id, plugin.services, config.services) : [], (evidence) => detectInspectEvidenceGaps(evidence, config)],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -280,12 +281,12 @@ export async function runCollectInspect(
       search: searchInspectFields(diagnosis.evidence, config.field, config.search),
     } };
   }
-  const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
+  const outcome = evaluateCollectOutcome(bundle.getSteps().map(item => item.status));
   bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
   writeCollection();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (outcome.exitCode !== 0) {
-    const reason = diagnosis.coverage.flatMap((item) => item.missingEvidence).join("；") || "未取得完整配置证据";
+    const reason = gapMessages(diagnosis.findings).join("；") || "未取得完整配置证据";
     recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode, reason });
   }
   return collectCommandOutcome(outcome);

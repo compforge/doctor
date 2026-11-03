@@ -7,7 +7,7 @@ import { EvidenceBundle } from "../src/collect/evidence";
 import { runInspects } from "../src/collect/inspect-engine";
 import { collectedFact } from "../src/collect/protocol";
 import {
-  buildTenantCoverage,
+  detectTenantEvidenceGaps,
   buildTenantEvidence,
   buildTenantHtmlSections,
   buildTenantSummary,
@@ -52,13 +52,13 @@ test("Tenant terminal summary keeps capability counts and gaps compact", () => {
         }],
       },
     },
-    findings: [],
-    coverage: [{ goal: "inspect:config-api", status: "partial", missingEvidence: ["runtime unavailable"] }],
+    findings: [{ id: "missing-runtime", kind: "evidence.insufficient", schemaVersion: 1, producer: { origin: "core", id: "fixture" }, severity: "info", confidence: "high", subject: "runtime", message: "runtime unavailable", summary: "runtime unavailable", evidence: [{ factPath: "capabilityFacts", role: "context" }] }],
+
   });
   expect(summary).toContain("租户：Alpha（tenant-1）");
   expect(summary).toContain("Capability：1");
   expect(summary).toContain("config-api · inspect：1 条 Fact");
-  expect(summary).toContain("状态：warning");
+  expect(summary).not.toContain("状态：healthy");
   expect(summary).toContain("runtime unavailable");
 });
 
@@ -133,7 +133,7 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
       expect(persisted).toEqual(facts.capabilityFacts.find((fact) => `tenant-${fact.id}` === step.id));
     }
     const evidence = buildTenantEvidence([], facts);
-    const coverage = buildTenantCoverage(evidence);
+    const coverage = detectTenantEvidenceGaps(evidence);
 
     expect(facts.capabilityFacts[0]).toMatchObject({
       status: "collected",
@@ -166,11 +166,11 @@ test("tenant command combines model catalog and Inspect Capabilities as facts", 
       { value: { intentions: [{ id: "intent-1" }] } },
       { to: { kind: "bot_id", value: "bot-1" } },
     ]);
-    expect(coverage.map((item) => [item.goal, item.status])).toEqual([
-      ["models:model-api/model.query", "sufficient"],
-      ["inspect:config-api", "partial"],
+    expect(coverage.map(item => item.subject)).toEqual([
+
+      "inspect:config-api",
     ]);
-    const sections = buildTenantHtmlSections({ evidence, findings: [], coverage });
+    const sections = buildTenantHtmlSections({ evidence, findings: [],  });
     expect(sections[0]?.html).toContain("Model for tenant-1");
     expect(sections[0]?.html).toContain('class="table-data"');
     expect(sections[1]?.html).toContain("enabled");

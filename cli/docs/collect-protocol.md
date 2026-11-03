@@ -2,19 +2,18 @@
 
 ## 理念 / 概念
 
-Collect 的目标是形成一份诚实、可复查的诊断产物，而不是要求每个外部访问都成功。一次运行由三个
-正交维度描述：命令是否正常终止、诊断证据覆盖是否充分、请求的产物是否成功交付。Target 中是否存在
-critical Finding 是诊断结论，不属于命令成功语义。
+Collect 形成可复查的 Evidence 与 Findings。`CommandStatus` 描述本次选定采集工作的执行结果：
+`ok / partial / failed / cancelled`；产物交付失败会改变最终命令状态。Detector 对已有证据给出判断，
+包括异常和证据不足。Finding 的严重度与数量不决定采集是否成功，也不证明 Target 健康。
 
-Coverage 分为 `sufficient / partial / insufficient`；跨领域的 Evidence 完整度对应为
-`complete / partial / missing`。`partial` 表示已经取得足以形成有效报告的 Facts 或 Observations，同时
-明确知道缺了什么、为什么缺、哪些结论不能支持。它是正常完成状态，不是把未知伪装成健康。
+查询成功但没有记录仍是成功；它可以让 Detector 无法支持某个结论。未选择或已证明无需执行的可选工作
+不降低命令状态。已经选择的工作发生失败、部分返回或预算截断时，保留实际取得的数据与执行原因。
+全部已选工作完成为 `ok`；一部分成功为 `partial`；没有取得任何已请求结果或交付失败为 `failed`。
 
-面向使用者，一次 Collect 最终归为三类：**完整成功**表示请求范围内的证据充分且产物已交付；
-**部分成功**表示已有可用产物，但 Coverage 明确不完整；**失败**表示没有形成可用证据，或产物交付失败。
-部分成功既可能来自现场限制（权限、目标状态、时间窗口或采样预算只允许取得一部分），也可能来自用户
-在确认环节主动缩小采集范围。后者不是执行错误，但仍必须如实记录为用户选择导致的证据缺口，不能把
-较小范围包装成完整证据。
+Diagnosis 只包含 `evidence` 和 `findings`，没有独立的 Coverage、RuleOutcome 或 AssessmentStatus。
+证据不足 Finding 与其它 Finding 共用身份、版本、producer 与 EvidenceRef；只有存在具体限制时才产生，
+不为每个规则或诊断目标生成成功/不适用记录。历史归档中的 coverage 字段不参与新报告或状态推导，
+仍按原有 execution、Facts、Observations 和 Findings 读取。
 
 Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证据面使用 Worksheet 预声明 Outcome，
 每格只填一次；完整取得记为 `ok`，部分取得记为 `partial`，访问失败、前置不可用和已证明无需取得分别
@@ -29,7 +28,7 @@ Doctor Collect 把 OpenTelemetry 的三类基本信号作为正交证据面：Tr
 `doctor perf` 不另造采集协议。它负责产生刺激、封口压测窗口，并从请求 Outcome 中保留 Plugin 声明的
 `trace_id` / `message_id` 等关联键；窗口内调用现有 `doctor metric`，结束后把代表请求的业务 ID 交给
 既有 `traceId` resolver，再调用现有 `doctor trace` 和 `doctor log`。
-某个数据面因权限、保留期或现场部署缺失时，已取得的其它证据仍应交付，并把整体 Coverage 标为
+某个数据面因权限、保留期或现场部署缺失时，已取得的其它证据仍应交付，并把命令结果标为
 partial，而不是把缺数据解释为系统健康。
 
 ## 流程
@@ -50,11 +49,11 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    由领域显式选择公开的 Facts、Service scope、`factPath` 与 value shape，再通过共享 adapter 建立公共投影，
    将同一份 Facts 注入 Core Probe 与选中 Plugin Service 注册的 Probe contribution，再驱动它们产生
    Observations；adapter 保留原始 identity，不递归遍历 Evidence 或派生伪 Fact；当前选出的投影不按
-   Service、producer 或 kind 过滤。单项现场访问失败只影响对应 Coverage，独立 Probe 继续执行。
+   Service、producer 或 kind 过滤。单项现场访问失败写入执行结果，独立 Probe 继续执行。
 4. **Execute / Detector**：Evidence Builder 组合 Inspect Facts、Contribution Facts（含 Relation）与 Observations；
    Core 通过 `runDetectors` 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，
    校验 Finding 的 `id / kind / schemaVersion / producer`、本轮 ID 唯一性及 Evidence 引用后形成 Findings；
-   Coverage 记录证据缺口。
+   同一阶段也用 Finding 解释证据不足及其影响。
 5. **Finalize**：Renderer 只消费 Diagnosis 与产物元数据，随后统一完成 HTML、Markdown 或 Bundle 的
    Delivery，并执行本轮 Cleanup。
 
@@ -86,35 +85,34 @@ partial。依赖 Probe 除 Observations 外还会收到上游的状态和原因�
 继续；runner 不替领域猜测失败后是否值得升级。`dependsOn` 只描述真实数据依赖，`targetAccess` 表达
 整条策略链可能产生的最大影响。
 
-### Coverage、交付与退出码分开
+### 执行状态、诊断判断与交付分开
 
-默认退出规则如下：
+| CommandStatus | 含义 | 退出码 |
+|---|---|---:|
+| ok | 已选工作完成且交付成功，允许查询返回空结果 | 0 |
+| partial | 已选工作部分完成，已取得证据继续交付 | 0 |
+| failed | 已选工作失败或产物交付失败 | 1 |
+| cancelled | 用户取消，保留已取得证据 | 130 |
 
-| 命令终止 | Evidence | 交付 | 退出码 |
-|---|---|---|---:|
-| 正常 | complete | 成功 | 0 |
-| 正常 | partial | 成功 | 0 |
-| 正常 | missing | 任意 | 1 |
-| 正常 | complete / partial | 失败 | 1 |
-| 参数错误 | - | - | 2 |
-| 用户取消 | - | - | 130 |
+参数错误仍返回 2。命令之间传递 `CommandResult`，根 CLI 负责退出码映射。自动化读取命令状态与
+采集记录判断执行是否完成，读取 Findings 判断已有证据说明了什么；不从 Finding 数量、严重度或
+业务记录行数反推执行状态。
 
-命令之间传递 `CommandResult` 和统一的 `CommandStatus`；退出码只由根 CLI 映射。取消停止后续工作，
-已有产物仍进入最终交付，不能因为退出码为 130 而删除已取得的证据。
-
-退出码 `0` 表示 Doctor 正常形成并交付了一份可用产物，不表示 Target 健康，也不表示证据完整。自动化若
-关心完整度，应读取报告或 Evidence 中的 Coverage，而不是把所有非完整情况都折叠成进程失败。
+固定采集结果复用 EvidenceBundle 中声明的 Outcome；中间失败后由后续策略成功取得相同证据时，
+最终 Outcome 为成功，中间失败保留在步骤记录中。Workload Probe 返回 `{ value, status, reason? }`，
+`status` 为 `ok / partial / unavailable`，后两者必须说明原因。Core 保存 Value 与状态，不解析 Plugin
+私有 payload 来猜测是否完整；Codec 只负责数据持久化与恢复。Core 继续通过既有 `Service.workloads`
+发现 `WorkloadInstance`，逐实例调用 Probe。
 
 ### Partial 仍交付用户请求的报告
 
 Partial 报告沿用用户请求的 HTML、Markdown 或 Bundle 格式，并必须展示：已取得的证据、失败或不可用
-步骤、缺失原因、Coverage 以及不能支持的结论。非零退出码不应直接决定产物类型；完全无法形成有效
+步骤、缺失原因和不能支持的结论。非零退出码不应直接决定产物类型；完全无法形成有效
 诊断时仍保留失败原因和原始证据。单个 Renderer 失败不阻断其它页面；渲染与交付错误使根退出码非零，
 并保留临时证据。是否打包按用户选择的 format 决定，子命令不另行交付失败包。
 
-时间或样本预算耗尽时，报告应保留已采样部分和实际停止原因；用户拒绝某个可选采集面时，应把对应
-步骤记为 skipped、对应目标 Coverage 记为不充分。只要其它证据仍足以形成可用报告，两者都按 partial
-正常交付，而不是丢弃已有结果或返回失败。
+时间或样本预算耗尽时，报告保留已采样部分和停止原因。用户拒绝可选采集项时记录 skipped，
+但不把未选择的工作计为失败；Detector 仍可解释该选择限制了哪些结论。
 
 报告保持单文件、离线可读。`CommandSpec.render` 在根 Finalize 中消费本地结果；公共 `report` 模块拥有
 阅读结构、对象联动和按需加载，公共 output 提供 shell 与通用表格/图表；领域 Renderer 决定

@@ -1,6 +1,6 @@
-import type { Detector, DiagnosisCoverage } from "../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
+import type { Detector, } from "../protocol";
 import type {
-  LogDiagnosisGoal,
   LogEvidence,
   LogFinding,
 } from "./model";
@@ -14,56 +14,36 @@ export function buildLogEvidence(
   return { observations, facts };
 }
 
-function insufficient(
-  goal: LogDiagnosisGoal,
-  reason: string,
-): DiagnosisCoverage<LogDiagnosisGoal> {
-  return { goal, status: "insufficient", missingEvidence: [reason] };
-}
-
-export function buildLogCoverage(
+export function detectLogEvidenceGaps(
   evidence: LogEvidence,
-): DiagnosisCoverage<LogDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   if (evidence.facts.runtime.status !== "collected") {
-    return [insufficient("log:runtime", evidence.facts.runtime.reason)];
+    return evidenceGaps("log:runtime", [evidence.facts.runtime.reason], evidence);
   }
   if (evidence.facts.servicePods.status !== "collected") {
-    return [insufficient("log:service-pods", evidence.facts.servicePods.reason)];
+    return evidenceGaps("log:service-pods", [evidence.facts.servicePods.reason], evidence);
   }
 
   const targets = evidence.facts.servicePods;
-  const coverage = evidence.observations.flatMap((observation) => {
+  const findings = evidence.observations.flatMap((observation) => {
     const gaps = targets.missing[observation.service] ?? [];
-    const discovery: DiagnosisCoverage<LogDiagnosisGoal>[] = gaps.length ? [{
-      goal: `log:service:${observation.service}`,
-      status: observation.pods.some(pod => pod.captureStatus !== "unavailable") ? "partial" : "insufficient",
-      missingEvidence: gaps,
-    }] : [];
+    const discovery: EvidenceGapFinding[] = gaps.length ? [...evidenceGaps(`log:service:${observation.service}`, gaps, evidence)] : [];
     if (!observation.pods.length) {
-      return discovery.length ? discovery : [insufficient(
+      return discovery.length ? discovery : evidenceGaps(
         `log:service:${observation.service}`,
-        `Service ${observation.service} 没有可采集日志的运行中 Pod`,
-      )];
+        [`Service ${observation.service} 没有可采集日志的运行中 Pod`], evidence
+      );
     }
-    return [...discovery, ...observation.pods.map((pod): DiagnosisCoverage<LogDiagnosisGoal> => {
+    return [...discovery, ...observation.pods.flatMap((pod): EvidenceGapFinding[] => {
       if (pod.captureStatus === "complete") {
-        return {
-          goal: `log:pod:${observation.service}:${pod.pod}`,
-          status: "sufficient",
-          missingEvidence: [],
-        };
+        return evidenceGaps(`log:pod:${observation.service}:${pod.pod}`, [], evidence);
       }
-      return {
-        goal: `log:pod:${observation.service}:${pod.pod}`,
-        status: pod.captureStatus === "partial" ? "partial" : "insufficient",
-        missingEvidence: [pod.captureStatus === "partial"
+      return evidenceGaps(`log:pod:${observation.service}:${pod.pod}`, [pod.captureStatus === "partial"
           ? `Pod ${pod.pod} 只取得部分 current 日志`
-          : `Pod ${pod.pod} 的 current 日志不可用`],
-      };
+          : `Pod ${pod.pod} 的 current 日志不可用`], evidence);
     })];
   });
 
-  return coverage.length
-    ? coverage
-    : [insufficient("log:collection", "Log Probe 未返回任何 Service 日志证据")];
+  return evidence.observations.length ? findings
+    : evidenceGaps("log:collection", ["Log Probe 未返回任何 Service 日志证据"], evidence);
 }

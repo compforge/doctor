@@ -1,7 +1,7 @@
+import type { EvidenceGapFinding } from "./evidence-gaps";
 export type FindingSeverity = "info" | "warning" | "critical";
 export type FindingConfidence = "low" | "medium" | "high";
 export type EvidenceRole = "supporting" | "contradicting" | "context";
-export type CoverageStatus = "sufficient" | "partial" | "insufficient";
 
 /** Inspect 产出的单个 Fact 是否取得；不是目标能力或 Worksheet 的执行状态。 */
 export type FactStatus = "collected" | "unavailable" | "failed";
@@ -108,12 +108,6 @@ export interface FindingMeta<Kind extends string> extends EvidenceSchemaMeta<Kin
     endedAt: string;
   };
   evidence: readonly EvidenceRef[];
-}
-
-export interface DiagnosisCoverage<Goal extends string> {
-  goal: Goal;
-  status: CoverageStatus;
-  missingEvidence: readonly string[];
 }
 
 /**
@@ -258,7 +252,7 @@ export interface Probe<Observation extends ObservationMeta, Facts, Config, Ctx =
  *
  * facts 在这里，是因为 detector 经常要回答"**为什么**这份证据没拿到"——而原因
  * （tracemalloc 没启动 / handler 没注册 / 工具装不上）只存在于 Facts 里，任何
- * observation 都没有。缺了它，coverage 只能说"缺 tracemalloc 增量"，说不出
+ * observation 都没有。缺了它，detector 只能说"缺 tracemalloc 增量"，说不出
  * "你的进程没开 tracemalloc，加 PYTHONTRACEMALLOC=1 重启就能拿到"——后者才是
  * 现场人员要的。
  *
@@ -287,17 +281,10 @@ export type Detector<
   evidence: DomainEvidence,
 ) => readonly DomainFinding[];
 
-export type CoverageBuilder<
-  DomainEvidence extends Evidence<ObservationMeta>,
-  Goal extends string,
-> = (evidence: DomainEvidence) => readonly DiagnosisCoverage<Goal>[];
-
 export interface Diagnosis<
   DomainEvidence extends Evidence<ObservationMeta>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
 > {
   evidence: DomainEvidence;
-  findings: readonly DomainFinding[];
-  coverage: readonly DiagnosisCoverage<Goal>[];
+  findings: readonly (DomainFinding | EvidenceGapFinding)[];
 }

@@ -1,4 +1,4 @@
-export { buildMcpCoverage } from "./coverage";
+export { detectMcpEvidenceGaps } from "./evidence-gaps";
 export { compareMcpAndHttp } from "./comparison";
 export type { McpDetector, McpFinding, McpFindingKind } from "./types";
 

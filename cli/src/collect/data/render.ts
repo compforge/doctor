@@ -64,7 +64,7 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
   const identifiers = identifierNames(results);
   const columns = ["service", "stage", "resolved as", ...identifiers];
   const rows = resultRows(results, identifiers);
-  const coverage = diagnosis.coverage[0];
+
   return [
     "# 业务数据汇集诊断",
     "",
@@ -82,11 +82,6 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
     "",
     ...(diagnosis.findings.length ? diagnosis.findings.map((item) => `- ${item.message}`) : ["- 未发现已内置的业务数据异常"]),
     "",
-    "## Coverage",
-    "",
-    `- 状态：${coverage?.status ?? "insufficient"}`,
-    ...((coverage?.missingEvidence ?? []).map((item) => `- 缺失：${item}`)),
-    "",
     "完整业务记录按 manifest.json 的 files.facts 索引读取；采集步骤见 raw 目录。",
   ].join("\n");
 }
@@ -94,7 +89,7 @@ export function buildDataSummary(diagnosis: DataDiagnosis): string {
 export function buildDataHtml(diagnosis: DataDiagnosis): string {
   const results = collectedResults(diagnosis);
   const identifiers = identifierNames(results);
-  const coverage = diagnosis.coverage[0];
+
   return [
     htmlHeading(1, "业务数据汇集诊断"),
     htmlTable(
@@ -109,11 +104,7 @@ export function buildDataHtml(diagnosis: DataDiagnosis): string {
     htmlList(diagnosis.findings.length
       ? diagnosis.findings.map((item) => item.message)
       : ["未发现已内置的业务数据异常"]),
-    htmlHeading(2, "Coverage"),
-    htmlList([
-      `状态：${coverage?.status ?? "insufficient"}`,
-      ...(coverage?.missingEvidence ?? []).map((item) => `缺失：${item}`),
-    ]),
+
     htmlParagraph("完整解析过程仍保留在原始证据中。"),
   ].join("\n");
 }

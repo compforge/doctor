@@ -204,8 +204,8 @@ function makeMetricServiceProbe(
       }));
       const failed = observations.filter((item) => item.status === "failed");
       ctx.bundle.fill(id, {
-        status: failed.length === observations.length && observations.length > 0 ? "failed" : "ok",
-        reason: failed.length === observations.length && failed.length > 0
+        status: failed.length === observations.length && observations.length > 0 ? "failed" : failed.length ? "partial" : "ok",
+        reason: failed.length > 0
           ? failed.map((item) => item.error).join("；")
           : undefined,
         output: `${JSON.stringify(observations, null, 2)}\n`,

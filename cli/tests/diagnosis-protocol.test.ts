@@ -1,3 +1,4 @@
+import { evidenceGaps } from "../src/collect/evidence-gaps";
 import { describe, expect, test } from "bun:test";
 import { runCollect, runDiagnosis } from "../src/collect/engine";
 import { runDetectors } from "../src/collect/detector-engine";
@@ -76,11 +77,7 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
     log: () => {},
     buildEvidence,
     detectors: [detector],
-    buildCoverage: () => [{
-      goal: "sum",
-      status: "sufficient",
-      missingEvidence: [],
-    }],
+
   })).resolves.toEqual({
     evidence: {
       observations: [
@@ -104,7 +101,7 @@ test("runDiagnosis 串联 facts、probe、evidence builder 和 detectors", async
       total: 5,
       overLimit: true,
     }],
-    coverage: [{ goal: "sum", status: "sufficient", missingEvidence: [] }],
+
   });
 });
 
@@ -119,7 +116,7 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
   type Ctx = { trace: string[] };
 
   const ctx: Ctx = { trace: [] };
-  const result = await runCollect<Observation, Facts, Evidence, Finding, "sum", {}, Ctx>({
+  const result = await runCollect<Observation, Facts, Evidence, Finding,  {}, Ctx>({
     ctx,
     config: {},
     inspects: [{
@@ -176,10 +173,7 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
           + evidence.observations[0]!.value,
       }];
     }],
-    buildCoverage: () => {
-      ctx.trace.push("coverage");
-      return [{ goal: "sum", status: "sufficient", missingEvidence: [] }];
-    },
+
   });
 
   expect(ctx.trace).toEqual([
@@ -190,13 +184,12 @@ test("runCollect 统一驱动 Inspect → Probe → Detector，并在 Facts 屏�
     "probe:2",
     "evidence",
     "detector:3",
-    "coverage",
   ]);
   expect(result.facts).toEqual({
     core: collectedFact("test.core", "core", { value: 1 }),
     plugin: collectedFact("test.plugin", "plugin", { value: 2 }),
   });
-  expect(result.diagnosis.findings[0]?.value).toBe(6);
+  expect((result.diagnosis.findings[0] as Finding)?.value).toBe(6);
 });
 
 test("runCollect 在 Facts checkpoint 失败时不规划或运行 Probe", async () => {
@@ -219,7 +212,7 @@ test("runCollect 在 Facts checkpoint 失败时不规划或运行 Probe", async 
     log: () => {},
     buildEvidence: (observations, facts) => ({ observations, facts }),
     detectors: [],
-    buildCoverage: () => [],
+
   })).rejects.toThrow("checkpoint unavailable");
   expect(planned).toBe(false);
 });
@@ -228,7 +221,7 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
   type Facts = { tenant: CollectedFact<{ id: string }, "test.tenant"> };
   type Evidence = { observations: readonly never[]; facts: Facts };
 
-  const result = await runCollect<never, Facts, Evidence, never, "tenant", {}, undefined>({
+  const result = await runCollect<never, Facts, Evidence, never,  {}, undefined>({
     ctx: undefined,
     config: {},
     inspects: [{
@@ -242,7 +235,7 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
     log: () => {},
     buildEvidence: (observations, facts) => ({ observations, facts }),
     detectors: [],
-    buildCoverage: () => [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
+
   });
 
   expect(result.diagnosis).toEqual({
@@ -251,7 +244,7 @@ test("runCollect 支持只有 Inspect、没有 Probe 与 Detector 的领域", as
       facts: { tenant: collectedFact("test.tenant", "tenant", { id: "tenant-1" }) },
     },
     findings: [],
-    coverage: [{ goal: "tenant", status: "sufficient", missingEvidence: [] }],
+
   });
 });
 
@@ -348,21 +341,11 @@ test("facts 先于 probe：probe 跑不跑可以由 facts 决定，反过来会�
     probes: [probe],
     log: () => {},
     buildEvidence,
-    detectors: [],
-    buildCoverage: (e) => [{
-      goal: "n",
-      // coverage 能说清"为什么没证据"——这正是 facts 进 Evidence 的理由
-      status: e.observations.length ? "sufficient" : "insufficient",
-      missingEvidence: e.facts.probeAllowed ? [] : ["探针未获准执行"],
-    }],
+    detectors: [e => evidenceGaps("n", e.facts.probeAllowed ? [] : ["探针未获准执行"], e)],
   });
 
   expect(probeRan).toBe(false);
-  expect(diagnosis.coverage[0]).toEqual({
-    goal: "n",
-    status: "insufficient",
-    missingEvidence: ["探针未获准执行"],
-  });
+  expect(diagnosis.findings[0]).toEqual(expect.objectContaining({ kind: "evidence.insufficient", subject: "n", message: ["探针未获准执行"].join("；") }));
 });
 
 describe("runInspects 调度", () => {
@@ -808,7 +791,7 @@ test("cancelled Probe stops scheduling, retains prior observations and skips det
     onFailed: () => { throw new Error("cancel is not a failed target"); },
   }));
   const diagnosis = await runDiagnosis({ ctx: undefined, facts: {}, config: {}, probes, signal: controller.signal,
-    log: () => {}, buildEvidence: (observations, facts) => ({ observations, facts }), buildCoverage: () => [],
+    log: () => {}, buildEvidence: (observations, facts) => ({ observations, facts }),
     detectors: [() => { throw new Error("must not diagnose incomplete evidence"); }],
   });
   expect(ran).toEqual(["done", "cancel"]);

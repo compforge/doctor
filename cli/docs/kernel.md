@@ -8,7 +8,7 @@ Eval、Perf 与 Chat 共用启动上下文和基础设施，但各自拥有不�
 | 主路径 | 主要结果 | 与 Collect 的关系 |
 |---|---|---|
 | Provision | 外部能力、环境准备或显式状态调整完成 | 不隐藏在 Collect 中；由用户显式触发 |
-| Collect | 可复查的 Evidence、Finding、Coverage 与诊断产物 | 确定性诊断主路径 |
+| Collect | 可复查的 Evidence、Finding 与诊断产物 | 确定性诊断主路径 |
 | Eval | Case 执行记录及关联证据 | 复用已有 Collect 入口采集证据 |
 | Perf | 受控负载结果及同窗口证据 | 复用已有 Collect 入口采集证据 |
 | Chat | Agent 会话与 AgentUE 输出 | 面向无法预先固化路径的开放式问题 |
@@ -92,7 +92,7 @@ Execute（Core 驱动）
   → Probe(Facts) [Core Probe + Plugin Service Probe]
   → 汇总 Observations，构建 Evidence
   → Detector(Evidence) [Core Detector + Plugin Service Detector]
-  → Findings / Coverage / Diagnosis
+  → Findings / Diagnosis
   ↓
 Finalize
   → 释放共享 Client
@@ -141,7 +141,7 @@ Execute 的内部流程由命令系列决定；Collect 使用 Inspect → Probe 
 | Prepare | 解析并校验用户意图；选择 Target、Service 与 contribution；绑定已选 capability 的 access 声明；创建本轮上下文和清理责任 | 声明 Service、Workload、capability、dependency、access 与 contribution；校验 Plugin-owned config；不自行创建命令生命周期 |
 | Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一批业务 Inspect Query，逐项返回结果与 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
 | Probe | 根据冻结 Facts 生成计划；向 Probe 注入公共 Fact；控制依赖、策略、授权、风险和资源生命周期；驱动 Core/Plugin Probe | 执行一次业务 Probe，消费 Input/Facts 并返回 Observation；不内建循环、并发或跨 Probe 调度 |
-| Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Coverage 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
+| Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Findings 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
 | Finalize | 释放 Client，序列化结果，按需驱动 Renderer，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
 
 Plugin 不必在每个阶段都有可执行逻辑。Prepare 中它主要提供声明，Execute 中贡献业务采集和判断，
@@ -169,7 +169,7 @@ Fact 在一次 Command 内足够稳定，可被后续 Probe 和 Detector 复用�
 InspectQueryResult 独立表达解析状态、缺失证据与截断，不能把采集状态伪装成领域 Fact。
 Core 与适配后的 Plugin Fact 都携带 `kind + schemaVersion + producer`。`runInspects` 在阶段边界校验
 每个叶子 Fact 的 schema identity，并要求 Core Fact 的 `producer.id` 等于实际执行的 `Inspect.id`；违反
-契约属于实现错误，不能降级成 Coverage 缺口。Fact 不另设对象 ID，Detector 通过本轮 Evidence 中的
+契约属于实现错误，不能伪装为证据不足。Fact 不另设对象 ID，Detector 通过本轮 Evidence 中的
 `factPath` 引用它。
 
 RelationFact 可以形成后续 Query，但只有 Core Command 能决定是否继续，以及查询深度、容量、去重、
@@ -204,8 +204,8 @@ Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答
 - Detector 不接收 `CommandContext`、`PluginContext` 或 infra handle，不执行 I/O。
 - Finding 必须显式引用 Evidence 中的 `factPath` 或 `observationId`。
 - Core 通过同一个 Detector runner 执行 Core Detector 与适配后的 Service Detector，并校验 Finding 身份、
-  producer、Evidence 引用和本轮唯一 ID；违反契约属于实现错误，不能降级成 Coverage 缺口。
-- Coverage 表达诊断目标的证据充分度，不表达 Target 是否健康。
+  producer、Evidence 引用和本轮唯一 ID；违反契约属于实现错误，不能伪装为证据不足。
+- 证据不足由 Detector 产生 Finding，不表达 Target 是否健康，也不决定 CommandStatus。
 
 Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识 payload schema。Core kind 使用保留短名；
 Plugin 本地 kind 由 Core 规范化为 `plugin/<plugin-id>/<service>/<local-kind>`。两者都携带结构化 producer，
@@ -266,7 +266,6 @@ Artifact ID 标识一份具体产物，command 幂等 key 标识一次可复用�
 已携带 ID 时保留身份，并校验其 command 与来源路径一致。父命令添加子结果不会重新分配 ID，幂等返回的
 结果自然引用原产物。文件名和时间戳只用于阅读，不能承担产物唯一性。
 
-
 Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本次调用的资源作用域。显式 dispose
 和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
 执行树，停止后续工作，并保留已生成证据。
@@ -289,7 +288,6 @@ Plugin 工厂接收独立的 PluginClientContext，其 signal 和受权限约束
 某次 capability 调用的上下文或 dependency handle。子调用只清理自己的临时资源。直接嵌入 CommandSpec 的
 宿主同样负责在整棵调用树结束后调用根 Context 的 disposeClients；CLI 在 finalize 中统一完成此操作。
 
-
 ### 结果与 Finalize
 
 CommandSpec 将 run、serialize 和 render 绑定到同一种领域 Output。run 取得数据与诊断结论；serialize
@@ -297,7 +295,7 @@ CommandSpec 将 run、serialize 和 render 绑定到同一种领域 Output。run
 没有持久化结果或报告的命令可省略对应入口。聚合命令显式组合子执行及子报告，框架不猜测领域字段。
 
 `CommandStatus` 统一定义 `ok / partial / failed / cancelled` 四种执行状态，描述命令完成度；业务错误、
-Finding severity 和 Evidence Coverage 保留领域含义。根 CLI 映射退出码：ok/partial 为 0，failed 为非零，
+Finding severity 与证据不足判断保留领域含义。根 CLI 映射退出码：ok/partial 为 0，failed 为非零，
 cancelled 为 130。子命令不设置进程退出码，也不单独执行最终交付。
 
 Finalize 只执行一次：先释放共享 Client，再调用根 serialize，按输出格式选择 render，最后交付整个目录。
@@ -347,13 +345,13 @@ Kubernetes 只是 Doctor Host 到 Target 的一种访问通道。Core 解析 kub
 Collect 的命令终止、证据覆盖度、Target 健康和产物交付是不同维度：
 
 - Finding severity 描述 Target 健康，不决定命令是否成功。
-- Coverage 描述证据是否充分；partial 可以是正常完成状态。
-- 单项 Probe 现场失败只降低对应 Coverage；Doctor 自身不变量错误不能伪装成 partial。
+- CommandStatus 依据已选工作的实际执行结果计算，partial 仍交付已取得数据。
+- 单项 Probe 现场失败写入执行结果；Doctor 自身不变量错误不能伪装成 partial。
 - Delivery 失败会改变最终命令结果，但不能抹掉已经取得的 Evidence。
 
 Collect 以可审计 Evidence 为结果，即使某个 Probe 需要受控副作用，也不能隐藏式发布 image、创建 debug
 environment 或安装工具。Operation 明确描述风险、目标、影响和步骤；授权只覆盖当前动作，不是 blanket
-approval。完整的调度、Coverage、Worksheet、授权、报告和退出码契约见
+approval。完整的调度、证据不足 Finding、Worksheet、授权、报告和退出码契约见
 [`collect-protocol.md`](collect-protocol.md)。
 
 ## 与其它主路径的边界
@@ -381,9 +379,9 @@ cli/src/
 ├── report/              Report、RenderContext、单文件阅读容器
 ├── command/             CommandContext、Target、access 与审批契约
 ├── collect/
-│   ├── protocol.ts      Fact、Observation、Finding、Coverage 共享协议
+│   ├── protocol.ts      Fact、Observation、Finding 共享协议
 │   ├── evidence-identity.ts  Fact/Observation/Finding schema identity 运行时校验
-│   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector / Coverage
+│   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector
 │   ├── inspect-engine.ts  Inspect 依赖调度与 Facts 冻结
 │   ├── probe-engine.ts  Probe 依赖、安全顺序与失败隔离
 │   ├── detector-engine.ts  Core/Plugin Detector 执行与 Finding 契约校验
@@ -415,12 +413,12 @@ collect/<domain> → collect shared protocol + infra ports
 ```
 
 公共协议和调度只有出现跨领域稳定、同语义的重复时才上提；领域数据语义、固定查询、Renderer 和具体
-Failure/Coverage 解释继续留在 `collect/<domain>`。`packages/plugin` 不依赖 CLI，具体 Plugin 不反向依赖
+Failure/证据不足 Finding 解释继续留在 `collect/<domain>`。`packages/plugin` 不依赖 CLI，具体 Plugin 不反向依赖
 CLI 实现。
 
 ## 深入阅读
 
-- [`collect-protocol.md`](collect-protocol.md)：Collect 调度、partial、Coverage、授权、交付与退出码。
+- [`collect-protocol.md`](collect-protocol.md)：Collect 调度、partial、证据不足 Finding、授权、交付与退出码。
 - [`plugin.md`](plugin.md)：Plugin capability、Context、分发和信任边界。
 - [`extension.md`](extension.md)：面向各类 Command 的 Extension 协议、权限与调用边界。
 - [`commands/collect.md`](commands/collect.md)：集合命令如何组合多个 Collect 入口。
@@ -430,7 +428,7 @@ CLI 实现。
 - [`../../toolkit/README.md`](../../toolkit/README.md)：Toolkit 的独立版本与平台资源模型。
 - [`commands/`](commands/)：各领域 Command 的理念、流程和关键设计。
 
-新增 Collect Command 时，先定义 Facts、Observations、Evidence、Findings/Coverage 和纯 Detector，再实现
+新增 Collect Command 时，先定义 Facts、Observations、Evidence、Findings 和纯 Detector，再实现
 Inspect、Probe 与 Renderer；契约测试至少覆盖依赖调度、能力降级、授权拒绝、敏感信息边界和交付结果。
 
 Pod 原始日志通过 Toolkit 的 PodLogDataSource/PodLogClient 访问。根执行注入共享网络并发与字节预算，

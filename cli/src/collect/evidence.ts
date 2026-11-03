@@ -209,6 +209,14 @@ export class EvidenceBundle {
     }
   }
 
+  /** Declared final acquisition results exclude intermediate attempts and recovered fallbacks. */
+  getOutcomes(): readonly StepRecord[] {
+    return [
+      ...this.steps.filter(step => this.filled.has(step.id)),
+      ...[...this.pending.values()].map(decl => ({ ...decl, status: "unavailable" as const, reason: OUTCOME_UNREACHED_REASON })),
+    ];
+  }
+
   getSteps(): readonly StepRecord[] {
     return this.steps;
   }

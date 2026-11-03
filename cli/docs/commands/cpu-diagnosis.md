@@ -22,7 +22,7 @@ Prepare 先解析 Pod 与容器；随后 Core 通过 `runCollect` 驱动全部 I
 全部 Inspect 完成并冻结 Facts 后，Core 才规划 py-spy Probe。执行前会输出本轮 Facts 中的 CPU 和内存占用。
 如果任一指标达到容器 limit 的高占用阈值，命令会提示当前负载和额外采样风险，并要求用户确认后才继续。
 缺少 limit 或 metrics-server 数据时会明确说明没有取得占用比例，不伪造判断。Probe Observation 随后进入
-Evidence、空 Detector 集与线程栈 Coverage，Render 只消费形成的 Diagnosis。
+Evidence 与线程栈证据不足 Detector，Render 只消费形成的 Diagnosis。
 
 三种 mode 控制允许的最大副作用。py-spy 是按需执行的采样器，不是需要常驻启动的服务。CPU probe 不再安装、上传工具或修改 Pod；需要额外工具和 `SYS_PTRACE` 时，由用户先通过 `doctor debug` 显式准备通用临时容器。
 

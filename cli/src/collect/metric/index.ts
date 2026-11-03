@@ -17,7 +17,7 @@ import { EvidenceBundle } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { resolveMetricConfig } from "./config";
-import { buildMetricCoverage, buildMetricEvidence, metricDetectors } from "./detector";
+import { detectMetricEvidenceGaps, buildMetricEvidence, metricDetectors } from "./detector";
 import { makeMetricSourceInspect } from "./fact/inspect";
 import type {
   CollectMetricCliOpts,
@@ -137,8 +137,8 @@ export async function runCollectMetric(
       planProbes: () => makeMetricProbes(config.services, plugin.services, configurations),
       log,
       buildEvidence: buildMetricEvidence,
-      detectors: metricDetectors,
-      buildCoverage: buildMetricCoverage,
+      detectors: [...metricDetectors, detectMetricEvidenceGaps],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -168,7 +168,8 @@ export async function runCollectMetric(
   writeMetricManifest(bundle, config, facts, diagnosis);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   const outcome = evaluateCollectOutcome(
-    diagnosis.coverage.map((item) => item.status),
+    [...bundle.getOutcomes().filter(item => item.id !== "metric-window").map(item => item.status),
+      ...(metricWindow(diagnosis)?.scrapeErrors ?? []).map(() => "unavailable" as const)],
   );
   if (config.format === "html") {
     return collectCommandOutcome(outcome);

@@ -1,7 +1,5 @@
 import type { FindingMeta } from "../protocol";
 
-export type RedisDiagnosisGoal = "redis-memory-capacity" | "redis-memory-distribution";
-
 export interface RedisNodeRef {
   host: string;
   port: number;

@@ -1,3 +1,4 @@
+import { evidenceGaps } from "../src/collect/evidence-gaps";
 import { withSummary } from "@compforge/doctor-plugin";
 import {
   createServiceCatalog,
@@ -30,7 +31,7 @@ import {
 import { inspectCommand } from "../src/collect/inspect/command";
 import { inspectContainerStateFact } from "../src/collect/inspect/fact/inspect";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
-import { CommandContext } from "../src/command";
+import { CommandContext, CommandStatus } from "../src/command";
 
 function result(stdout = ""): ExecResult {
   return {
@@ -78,7 +79,7 @@ function detectorEvidence(): InspectEvidence {
       status: "allowed",
     }, {
       id: "plugin-workload-bedbox-main-health-bedbox-0",
-      kind: "plugin-workload", summary: { title: "Probe", fields: [{ label: "effective", path: ["effective"] }] },
+      kind: "plugin-workload", status: "ok", summary: { title: "Probe", fields: [{ label: "effective", path: ["effective"] }] },
       instance: { platform: "kubernetes", environment: "default", workload: "main", namespace: "demo", pod: "bedbox-0", uid: "bedbox-uid" },
       schemaVersion: 1,
       producer: { origin: "core", id: "plugin-workload-adapter" },
@@ -224,7 +225,7 @@ function runtimeSummaryDiagnosis(): InspectDiagnosis {
   const evidence = detectorEvidence();
   return {
     findings: [],
-    coverage: [{ goal: "workload-runtime", status: "sufficient", missingEvidence: [] }],
+
     evidence: {
       ...evidence,
       facts: {
@@ -308,21 +309,20 @@ test("缺失探测结果不宣称健康，也保留 Detector 发现", () => {
   const { diagnosis, pod } = readyRuntimeFixture();
   pod.containers[0]!.restartCount = 0;
   delete pod.containers[0]!.lastTermination;
-  diagnosis.coverage = [{ goal: "workload-observations", status: "insufficient",
-    missingEvidence: ["planit-server/main: 未取得 health"] }];
+  diagnosis.findings = evidenceGaps("workload-observations", ["planit-server/main: 未取得 health"], diagnosis.evidence);
   let summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("Namespace：demo");
   expect(summary).toContain("状态：unknown");
-  expect(summary).toContain("证据：incomplete");
+  expect(summary).toContain("诊断限制：存在");
   expect(summary).toContain("未取得 health");
-  diagnosis.findings = [{ id: "health-1", kind: "health.failed", schemaVersion: 1,
+  diagnosis.findings = [...diagnosis.findings, { id: "health-1", kind: "health.failed", schemaVersion: 1,
     severity: "critical", confidence: "high", message: "health check failed", evidence: [],
     service: "planit-server", detector: "health",
     producer: { origin: "plugin", plugin: "fixture", service: "planit-server", id: "health" } }];
   summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("状态：degraded");
   expect(summary).toContain("[critical] planit-server/health.failed: health check failed");
-  expect(summary).toContain("证据：incomplete");
+  expect(summary).toContain("诊断限制：存在");
 });
 
 test("Service 没有 Workload 时状态未知", () => {
@@ -354,7 +354,7 @@ test("健康 Pod 且证据完整时才输出 healthy", () => {
   delete pod.containers[0]!.lastTermination;
   const summary = buildInspectSummary(diagnosis, "demo");
   expect(summary).toContain("状态：healthy");
-  expect(summary).toContain("证据：complete");
+  expect(summary).toContain("诊断限制：结合 Findings 与采集范围判断");
 });
 
 test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () => {
@@ -392,11 +392,12 @@ test("Deployment Env/ConfigMap 仅在 flag 或交互确认后采集", async () =
   })).toBe(true);
 });
 
-test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选 Service 配置和 partial Coverage (%s)", async (mode) => {
+test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选 Service 配置和 诊断限制 Findings (%s)", async (mode) => {
   class PodValue {
     constructor(readonly pod: string) {}
     summary() { return { title: "Codec probe", text: `Observed ${this.pod}`, fields: [] }; }
   }
+  let probeStatus: "ok" | "partial" | "unavailable" = "ok";
   let workloadProbeFacts: readonly ServiceEvidenceFact[] | undefined;
   const legacyPlugin: PluginDefinition = {
     ...examplePlugin,
@@ -422,7 +423,8 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
             } }),
             run: async (_context, input) => {
               workloadProbeFacts = input.facts;
-              return new PodValue(input.instance.pod);
+              return probeStatus === "ok" ? { value: new PodValue(input.instance.pod), status: "ok" }
+                : { value: new PodValue(input.instance.pod), status: probeStatus, reason: "config file is forbidden" };
             },
           })]
         }
@@ -567,8 +569,8 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(complete).toContain("REQUEST_TIMEOUT");
     expect(complete).toContain("AppArmor Unconfined：1 个 ServiceAccount 允许");
     expect(complete).toContain("| example-api | demo | example-api | allowed | — |");
-    expect(complete).toContain("environment-config：sufficient");
-    expect(complete).toContain("workload-runtime：sufficient");
+    expect(complete).toContain("Deployment Env/ConfigMap：已采集");
+    expect(complete).not.toContain("Coverage");
     expect(workloadProbeFacts).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: "inspect.service-targets",
@@ -589,6 +591,19 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(JSON.stringify(workloadProbeFacts?.find((fact) => fact.kind === "inspect.service-targets")?.value))
       .toContain('"description":"Handles API requests"');
 
+    for (const status of ["partial", "unavailable"] as const) {
+      probeStatus = status;
+      const context = createCommandContext();
+      const outcome = await runCollectInspect({ namespace: "demo", services: ["example-api"], config: configPath }, pluginWithEnvironmentProbes, context, executor);
+      expect(outcome.status).toBe(CommandStatus.Partial); // Target discovery succeeded; probe acquisition did not.
+      const diagnosis = JSON.parse(readFileSync(join(context.artifacts.list()[0]!.path, "diagnosis.json"), "utf8"));
+      expect(diagnosis).not.toHaveProperty("coverage");
+      expect(diagnosis.evidence.observations).toContainEqual(expect.objectContaining({
+        kind: "plugin-workload", status, value: { pod: "example-api-0" }, reason: "config file is forbidden",
+      }));
+      expect(diagnosis.findings).toContainEqual(expect.objectContaining({ kind: "evidence.insufficient", message: expect.stringContaining("config file is forbidden") }));
+    }
+    probeStatus = "ok";
     const defaultOutput = join(dir, "default.tar.gz");
     expect(await runInspectWithDelivery({
       namespace: "demo",
@@ -616,7 +631,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const partial = readFileSync(partialOutput, "utf-8");
     expect(partial).toContain("Deployment Env/ConfigMap：未采集");
     expect(partial).not.toContain("environment-config：insufficient");
-    expect(partial).toContain("workload-runtime：sufficient");
+    expect(partial).not.toContain("workload-runtime：sufficient");
     expect(partial).toContain("Deployment Env/ConfigMap 未纳入本次采集范围");
     expect(partial).toContain("AppArmor Unconfined：未探测到（best effort）");
     admissionUnavailable = false;
@@ -641,7 +656,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(dependencies).toContain("v22.0.0");
     expect(dependencies).toContain("zod");
     expect(dependencies).toContain("4.4.3");
-    expect(dependencies).toContain("runtime-dependencies：sufficient");
+    expect(dependencies).not.toContain("runtime-dependencies：sufficient");
 
     const pluginWithoutToolchain = {
       ...examplePlugin,
@@ -666,8 +681,8 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     const unavailable = readFileSync(unavailableOutput, "utf-8");
     expect(unavailable).toContain("Plugin 未声明 Toolchain");
     expect(unavailable).toContain("未声明");
-    expect(unavailable).toContain("runtime-dependencies：insufficient");
-    expect(admissionCalls).toBe(4);
+    expect(unavailable).toContain("runtime-dependencies");
+    expect(admissionCalls).toBe(6);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

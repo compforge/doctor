@@ -26,7 +26,7 @@ import { readFacts } from "../../evidence-reader";
 import { runCollect } from "../../engine";
 import { writeHtmlReport } from "../../output/html";
 import {
-  buildNetworkCoverage,
+  detectNetworkEvidenceGaps,
   buildNetworkEvidence,
   networkArtifactObservations,
   networkDetectors,
@@ -353,8 +353,8 @@ export async function analyzeNetworkBundle(
       planProbes: () => [networkPcapProbe],
       log: dependencies.log ?? (() => undefined),
       buildEvidence: buildNetworkEvidence,
-      detectors: networkDetectors,
-      buildCoverage: (evidence) => buildNetworkCoverage(evidence, config),
+      detectors: [...networkDetectors, (evidence) => detectNetworkEvidenceGaps(evidence, config)],
+
     });
     const { diagnosis } = execution;
     const facts = execution.facts.bundle;

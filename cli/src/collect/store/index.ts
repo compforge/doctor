@@ -39,12 +39,12 @@ export async function runCollectStore(
   let failure: CommandResult<void> | undefined;
   for (const kind of kinds) {
     if (commandContext.signal.aborted) { statuses.push(CommandStatus.Cancelled); break; }
-    let code: number;
+    let result: CommandResult<void>;
     const kindOpts = kinds.length > 1
       ? { ...opts, output: undefined, deferDelivery: true }
       : opts;
     if (kind === "redis") {
-      code = await runCollectRedis({
+      result = await runCollectRedis({
         ...kindOpts,
         maxKeys: kindOpts.maxKeys ?? String(REDIS_DEFAULTS.maxKeys),
         maxKeysPerSecond: kindOpts.maxKeysPerSecond ?? String(REDIS_DEFAULTS.maxKeysPerSecond),
@@ -56,9 +56,8 @@ export async function runCollectStore(
         resolved = await resolveStoreConfig({ ...kindOpts, type: kind }, plugin, commandContext);
       } catch (error) {
         useLogger("collect").error(`${error instanceof Error ? error.message : String(error)}`);
-        code = 2;
-        failure ??= commandOutcome(code);
-        statuses.push(commandOutcome(code).status);
+        failure ??= commandOutcome(2);
+        statuses.push(CommandStatus.Failed);
         continue;
       }
       if (!resolved) {
@@ -68,15 +67,15 @@ export async function runCollectStore(
       if (config.capability.kind !== "vdb" && !config.target && !config.capability.source) {
         throw new Error(`Store capability '${config.service}/${config.capability.id}' 未提供配置来源 Pod`);
       }
-      if (config.capability.kind === "db") code = await runStoreDb(config, commandContext, executor);
-      else if (config.capability.kind === "vdb") code = await runStoreVdb(config, commandContext, executor);
-      else code = await runStoreS3(config, commandContext, executor);
+      if (config.capability.kind === "db") result = await runStoreDb(config, commandContext, executor);
+      else if (config.capability.kind === "vdb") result = await runStoreVdb(config, commandContext, executor);
+      else result = await runStoreS3(config, commandContext, executor);
     }
-    if (code === 130) {
-      return commandOutcome(code);
+    if (result.status === CommandStatus.Cancelled) {
+      return result;
     }
-    if (code !== 0) failure ??= commandOutcome(code);
-    statuses.push(commandOutcome(code).status);
+    if (result.status === CommandStatus.Failed) failure ??= result;
+    statuses.push(result.status);
   }
   const status = aggregateCommandStatus(statuses);
   if (status === CommandStatus.Failed && failure) return failure;

@@ -58,12 +58,12 @@ export function buildMetricSummary(diagnosis: MetricDiagnosis): string {
     ? diagnosis.evidence.facts.source.backend
     : "不可用";
   const findingHtml = diagnosis.findings.length
-    ? `<ul>${diagnosis.findings.map((finding) => `<li><strong>${escapeHtml(finding.severity)}</strong> · ${escapeHtml(finding.service)} · ${escapeHtml(finding.message)} 当前值 ${escapeHtml(finding.value.toFixed(2))}，阈值 ${escapeHtml(finding.threshold)}</li>`).join("")}</ul>`
+    ? `<ul>${diagnosis.findings.map((finding) => finding.kind === "evidence.insufficient" ? `<li>${escapeHtml(finding.message)}</li>` : `<li><strong>${escapeHtml(finding.severity)}</strong> · ${escapeHtml(finding.service)} · ${escapeHtml(finding.message)} 当前值 ${escapeHtml(finding.value.toFixed(2))}，阈值 ${escapeHtml(finding.threshold)}</li>`).join("")}</ul>`
     : "<p>未触发已注册 detector。</p>";
   const errors = [
     ...(window?.scrapeErrors ?? []),
     ...queryObservations(diagnosis).flatMap((observation) => observation.error ? [observation.error] : []),
-    ...diagnosis.coverage.flatMap((item) => item.missingEvidence),
+
   ];
   const errorHtml = [...new Set(errors)]
     .map((error) => `<li>${escapeHtml(error)}</li>`).join("");

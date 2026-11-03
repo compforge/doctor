@@ -89,9 +89,8 @@ export interface S3Observations {
 }
 export type S3FindingKind = `s3.${string}`;
 export interface S3Finding extends FindingMeta<S3FindingKind> { summary: string; [key: string]: unknown }
-export type S3DiagnosisGoal = "bucket-access" | "object-inventory" | "provider-health" | "drive-capacity" | "capacity";
 export type S3Evidence = Evidence<S3Observation, S3InspectionFacts>;
-export type S3Diagnosis = Diagnosis<S3Evidence, S3Finding, S3DiagnosisGoal>;
+export type S3Diagnosis = Diagnosis<S3Evidence, S3Finding>;
 
 export function groupS3Observations(observations: readonly S3Observation[]): S3Observations {
   const find = <Kind extends S3Observation["kind"]>(kind: Kind) =>

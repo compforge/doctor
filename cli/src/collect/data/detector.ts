@@ -1,12 +1,12 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import type { ServiceCatalog, ServiceEvidence } from "@compforge/doctor-plugin";
-import type { Detector, DiagnosisCoverage } from "../protocol";
+import type { Detector, } from "../protocol";
 import {
   makeServiceEvidenceDetectors,
 } from "../../plugin/evidence-detector";
 import { projectPluginServiceEvidenceFact } from "../../plugin/evidence";
 import type {
   CollectedDataInspectResult,
-  DataDiagnosisGoal,
   DataEvidence,
   DataFinding,
   DataFacts,
@@ -58,11 +58,10 @@ export function makeDataDetectors(
   });
 }
 
-export function buildDataCoverage(
+export function detectDataEvidenceGaps(
   evidence: DataEvidence,
-): DiagnosisCoverage<DataDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   const missingEvidence: string[] = [];
-  let resolved = 0;
   const services = Object.entries(evidence.facts.services);
   for (const [service, serviceFacts] of services) {
     if (serviceFacts.inspect.status !== "collected") {
@@ -97,15 +96,6 @@ export function buildDataCoverage(
         missingEvidence.push(`${service} 业务 Facts 已截断：${result.result.truncated.reason}`);
       }
     }
-    resolved += 1;
   }
-  return [{
-    goal: "business-data-relations",
-    status: resolved === services.length && services.length > 0 && !missingEvidence.length
-      ? "sufficient"
-      : resolved > 0
-        ? "partial"
-        : "insufficient",
-    missingEvidence,
-  }];
+  return [...evidenceGaps("business-data-relations", missingEvidence, evidence)];
 }

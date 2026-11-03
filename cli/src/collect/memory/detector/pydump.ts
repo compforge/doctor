@@ -1,7 +1,6 @@
-import type { DiagnosisCoverage, FindingMeta } from "../../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
+import type { FindingMeta } from "../../protocol";
 import type { PydumpAnalysis, PydumpRetainedObject, PydumpTypeSummary } from "../pydump-analysis";
-
-export type PydumpDiagnosisGoal = "heap-composition" | "retained-ownership" | "leak-confirmation";
 
 export type PydumpFinding =
   | (FindingMeta<"memory.pydump-type-concentration"> & {
@@ -20,8 +19,7 @@ export type PydumpFinding =
     });
 
 export interface PydumpDiagnosis {
-  findings: PydumpFinding[];
-  coverage: DiagnosisCoverage<PydumpDiagnosisGoal>[];
+  findings: (PydumpFinding | EvidenceGapFinding)[];
 }
 
 const CONCENTRATED_TYPE_SHARE = 0.1;
@@ -50,6 +48,7 @@ function looksLikePathImporterCache(owner: PydumpRetainedObject): boolean {
 }
 
 export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosis {
+  const evidence = { facts: {}, observations: [{ id: "pydump-analysis", kind: "pydump-analysis", schemaVersion: 1, producer: FINDING_META.producer }] };
   const total = analysis.heap.shallow_size_bytes;
   const dominantTypes = analysis.types
     .map((type) => ({ ...type, heap_share: total > 0 ? type.shallow_size_bytes / total : 0 }))
@@ -116,21 +115,10 @@ export function diagnosePydumpAnalysis(analysis: PydumpAnalysis): PydumpDiagnosi
   }
 
   return {
-    findings,
-    coverage: [
-      { goal: "heap-composition", status: "sufficient", missingEvidence: [] },
-      analysis.retained_heap.status === "complete"
-        ? { goal: "retained-ownership", status: "sufficient", missingEvidence: [] }
-        : {
-          goal: "retained-ownership",
-          status: "insufficient",
-          missingEvidence: ["analyzer retained-heap 计算结果"],
-        },
-      {
-        goal: "leak-confirmation",
-        status: "insufficient",
-        missingEvidence: ["同一进程生命周期的多次 heap dump 趋势，或 allocation history"],
-      },
+    findings: [...findings,
+      ...evidenceGaps("heap-composition", [], evidence),
+      ...evidenceGaps("retained-ownership", analysis.retained_heap.status === "complete" ? [] : ["analyzer retained-heap 计算结果"], evidence),
+      ...evidenceGaps("leak-confirmation", ["同一进程生命周期的多次 heap dump 趋势，或 allocation history"], evidence),
     ],
   };
 }

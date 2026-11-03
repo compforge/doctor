@@ -41,11 +41,11 @@ fork-pyheap attach 并流式生成 .pyheap
   ↓
 压缩、分片回传、双端 SHA-256 校验、原子落盘
   ↓
-Capture Observation → Evidence → Coverage（当前无独立 Detector）
+Capture Observation → Evidence → 证据不足 Finding（当前无独立 Detector）
 ```
 
 PID 扫描、Headroom、attach、恢复和 artifact 回传共同属于一次 Memory Capture Probe；它们共享同一次授权与
-恢复边界，不能拆成可并发 Probe。Probe 返回结构化 CaptureResult Observation，Coverage 只回答是否形成可供
+恢复边界，不能拆成可并发 Probe。Probe 返回结构化 CaptureResult Observation，证据不足 Finding 只回答是否形成可供
 `doctor mema` 分析的 heap 与 capture index，不把采集失败解释成内存根因。
 
 默认输出：

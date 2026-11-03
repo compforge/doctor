@@ -8,7 +8,7 @@ import {
 import { detectNodeHealth, detectStreamsWithoutTtl } from "./health";
 import type { RedisDetector } from "./types";
 
-export { buildRedisCoverage } from "./coverage";
+export { detectRedisEvidenceGaps } from "./evidence-gaps";
 export type { RedisDetector } from "./types";
 
 export const redisDetectors: readonly RedisDetector[] = [

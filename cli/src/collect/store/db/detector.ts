@@ -1,6 +1,7 @@
-import type { Detector, DiagnosisCoverage } from "../../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
+import type { Detector, } from "../../protocol";
 import { detectMysqlFindings } from "../mysql-diagnosis";
-import type { DbDiagnosisGoal, DbEvidence, DbFinding } from "./model";
+import type { DbEvidence, DbFinding } from "./model";
 import { groupDbObservations } from "./model";
 
 const SUMMARIES: Record<string, string> = {
@@ -20,7 +21,7 @@ const FINDING_META = {
 export function detectDbFindings(evidence: DbEvidence): DbFinding[] {
   const observations = groupDbObservations(evidence.observations);
   return detectMysqlFindings({
-    // 缺失证据由 Coverage 表达；Detector 不能把“没采到”误判成“查询不健康”。
+    // 缺失证据由独立的证据不足 Finding 表达；Detector 不能把“没采到”误判成“查询不健康”。
     queryable: observations.health?.queryable ?? true,
     load: observations.load,
     locks: observations.lockWaits,
@@ -44,18 +45,14 @@ export function detectDbFindings(evidence: DbEvidence): DbFinding[] {
 
 export const dbDetectors: readonly Detector<DbEvidence, DbFinding>[] = [detectDbFindings];
 
-export function buildDbCoverage(evidence: DbEvidence): DiagnosisCoverage<DbDiagnosisGoal>[] {
+export function detectDbEvidenceGaps(evidence: DbEvidence): EvidenceGapFinding[] {
   const observations = groupDbObservations(evidence.observations);
   const accessReason = evidence.facts.access.status === "collected" ? undefined : evidence.facts.access.reason;
-  const coverage = <Goal extends DbDiagnosisGoal>(goal: Goal, present: boolean, label: string) => ({
-    goal,
-    status: present ? "sufficient" as const : "insufficient" as const,
-    missingEvidence: present ? [] : [accessReason ?? `${label} 未取得`],
-  });
+  const missing = (goal: string, present: boolean, label: string) => (evidenceGaps(goal, present ? [] : [accessReason ?? `${label} 未取得`], evidence));
   return [
-    coverage("health", !!observations.health, "DB 健康证据"),
-    coverage("capacity", !!observations.capacity, "schema 容量"),
-    coverage("load", !!observations.load, "窗口负载"),
-    coverage("lock-waits", !!observations.lockWaits, "事务锁等待"),
+    ...missing("health", !!observations.health, "DB 健康证据"),
+    ...missing("capacity", !!observations.capacity, "schema 容量"),
+    ...missing("load", !!observations.load, "窗口负载"),
+    ...missing("lock-waits", !!observations.lockWaits, "事务锁等待"),
   ];
 }

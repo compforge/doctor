@@ -5,7 +5,7 @@
  *
  * Facts 与 Observations 的边界是**访问规则，不是数据规则**：同一条事实可以两边
  * 都在（memory 的 canExec 既进 inspection_facts，又是 `kind: "target"` Observation
- * 的字段，因为 detector 要靠它判 coverage）——那是**投影**，不是污染。
+ * 的字段，因为 detector 要靠它解释诊断限制）——那是**投影**，不是污染。
  *
  * detector **读得到** Facts（经 Evidence<Observation, Facts>）——它经常要回答"这份证据
  * 为什么没拿到"，而原因只在 Facts 里（tracemallocStartup 来自 /proc/<pid>/environ，

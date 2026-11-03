@@ -1,3 +1,5 @@
+import type { S3Diagnosis } from "./model";
+import { gapMessages } from "../../evidence-gaps";
 import {
   escapeHtml,
   htmlBarChart,
@@ -265,7 +267,7 @@ export function buildS3HtmlReport(observations: S3Observations): {
   };
 }
 
-export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, observations: S3Observations): string {
+export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, observations: S3Observations, findings: S3Diagnosis["findings"] = []): string {
   const access = observations.bucketAccess;
   const health = observations.providerHealth;
   const capacity = observations.capacity;
@@ -298,6 +300,7 @@ export function buildS3Summary(config: StoreConfig, facts: S3InspectionFacts, ob
   return [
     "# S3 Store 诊断摘要",
     "",
+    ...gapMessages(findings).map(message => `- 证据不足：${message}`),
     `- Service: \`${config.service}\``,
     `- Store: \`${config.capability.id}\``,
     `- Service 关注 Bucket: \`${bucket}\`${facts.configuration.status === "collected" && facts.configuration.bucketPrefix ? `，Prefix=\`${facts.configuration.bucketPrefix}\`` : ""}`,

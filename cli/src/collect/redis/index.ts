@@ -1,3 +1,4 @@
+import { commandOutcome, type CommandResult, type CommandStatus } from "../../command";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
@@ -11,7 +12,7 @@ import type { CommandContext } from "../../command";
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { htmlPieCharts, htmlPieChartSection, type HtmlPieChart } from "../output/html";
@@ -20,7 +21,7 @@ import {
   type RedisOutputFormat
 } from "./config";
 import type { RedisCommandContext } from "./context";
-import { buildRedisCoverage, redisDetectors } from "./detector";
+import { detectRedisEvidenceGaps, redisDetectors } from "./detector";
 import { makeRedisDatabaseScopeInspect } from "./fact/database-scope";
 import { makeRedisTargetInspect, sanitizeRedisTarget } from "./fact/inspect";
 import type { RedisInspectionFacts } from "./fact/model";
@@ -105,8 +106,7 @@ export function resolveRedisOutputPath(
  * redis-probe 与 redis-findings 整个不进 manifest——核心那份证据连"为什么没有"
  * 都查不到，只有 summary.md（给人看）写了一句。
  *
- * 注：redis 领域另有一套 coverage 机制声明"quick 模式不做 keyspace 抽样"，那套是对的、
- * 不动；但它只在诊断主链成功后才产生，探针一失败连缺席声明本身都没了——这层由单子兜。
+ * quick 模式未选择的扫描结果由 Probe 标记 unnecessary，不影响命令完成状态。
  */
 const REDIS_OUTCOMES: readonly OutcomeDecl[] = [
   { id: "resolve-target", title: "解析 Redis 目标（已移除凭据）", risk: "observe" },
@@ -130,17 +130,17 @@ export async function runCollectRedis(
   injectedExecutor?: Executor,
   injectedAccess?: RedisAccessApi,
   catalog?: ServiceCatalog,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   let resolved;
   try {
     resolved = await resolveRedisConfig(opts, commandContext, injectedExecutor, catalog);
   } catch (err) {
     useLogger("collect").error(`${err instanceof Error ? err.message : String(err)}`);
-    return 2;
+    return commandOutcome(2);
   }
   if (!resolved) {
     useLogger("collect").warn("已取消");
-    return 130;
+    return commandOutcome(130);
   }
   const { config, executor } = resolved;
   const namespace = config.collect.kubernetes.namespace;
@@ -153,7 +153,7 @@ export async function runCollectRedis(
     resolveRedisOutputPath(config.output, bundleName, format);
   } catch (err) {
     useLogger().error(`${err instanceof Error ? err.message : String(err)}`);
-    return 2;
+    return commandOutcome(2);
   }
   useLogger("collect").info(`Redis scan mode: ${mode}`);
   useLogger("collect").info(`Redis output format: ${format}`);
@@ -184,7 +184,7 @@ export async function runCollectRedis(
   let ttlPieCharts: HtmlPieChart[] = [];
   let facts: Readonly<RedisInspectionFacts> | undefined;
 
-  const finish = async (target: Record<string, unknown>, code: number) => {
+  const finish = async (target: Record<string, unknown>, code: number, status?: CommandStatus): Promise<CommandResult<void>> => {
     const databaseScope = facts?.databaseScope.status === "collected"
       ? facts.databaseScope
       : undefined;
@@ -222,11 +222,11 @@ export async function runCollectRedis(
       finishedAt: new Date().toISOString(),
     });
     if (code === 130) {
-      return 130;
+      return commandOutcome(130);
     }
     if (code !== 0) {
       recordFailureBundle({ bundleDir: staging, collectCode: code });
-      return code;
+      return status ? { status, output: undefined, artifacts: [] } : commandOutcome(code);
     }
     writeFileSync(join(staging, "report-input.json"), JSON.stringify({
       title: "doctor Redis 诊断报告", summaryHtml,
@@ -238,7 +238,7 @@ export async function runCollectRedis(
         ...(ttlPieCharts.length ? [htmlPieChartSection("TTL 分布", ttlPieCharts)] : []),
       ],
     }), { mode: 0o600 });
-    return code;
+    return status ? { status, output: undefined, artifacts: [] } : commandOutcome(code);
   };
 
   ctx.log(
@@ -305,8 +305,8 @@ export async function runCollectRedis(
         ? []
         : probes,
       buildEvidence: buildRedisEvidence,
-      detectors: redisDetectors,
-      buildCoverage: buildRedisCoverage,
+      detectors: [...redisDetectors, detectRedisEvidenceGaps],
+
     });
     facts = execution.facts;
     if (facts.databaseScope.status === "unavailable" && facts.databaseScope.cause === "cancelled") {
@@ -326,10 +326,7 @@ export async function runCollectRedis(
     prefixKeyPieCharts = buildRedisPrefixKeyPieCharts(diagnosis);
     prefixMemoryPieCharts = buildRedisPrefixMemoryPieCharts(diagnosis);
     ttlPieCharts = buildRedisTtlPieCharts(diagnosis);
-    const outcome = evaluateCollectOutcome([
-      facts.capabilities.status === "collected" ? "sufficient" : "insufficient",
-      ...diagnosis.coverage.map((item) => item.status),
-    ]);
+    const outcome = evaluateCollectOutcome(bundle.getOutcomes().filter(item => !item.id.endsWith("findings")).map(item => item.status));
     if (outcome.evidence === "partial") {
       useLogger("collect").warn("部分完成：报告中已标明缺失证据。");
     } else if (outcome.evidence === "missing") {
@@ -343,6 +340,7 @@ export async function runCollectRedis(
     return finish(
       { ...sanitizedTarget, service: config.service, store: config.store?.id },
       disabledCatalogStore ? 0 : outcome.exitCode,
+      disabledCatalogStore ? undefined : collectCommandOutcome(outcome).status,
     );
   } catch (err) {
     reportError(err, { context: "doctor store/redis/runCollect" });

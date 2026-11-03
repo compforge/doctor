@@ -59,7 +59,7 @@ for (const ids of [["a"], ["a", "b", "missing"], ["missing"], ["partial"]]) test
       expect(item.diagnosis).toBeDefined();
       const projected = projectDataServiceEvidence(item.diagnosis!.evidence, "batch");
       expect(projected.sources?.some(source => source.result.status === "failed" && source.result.errorKind === "permission_denied")).toBe(true);
-      expect(item.diagnosis!.coverage[0]?.missingEvidence.join()).toContain("db/records 查询失败");
+      expect(item.diagnosis!.findings.map(finding => finding.message).join()).toContain("db/records 查询失败");
     }
     for (const item of output.items.filter(item => item.status === CommandStatus.Ok)) {
       expect(item.diagnosis!.evidence.facts.capabilityResults.map(query => query.identity.value)).toEqual([item.bizId, "shared"]);

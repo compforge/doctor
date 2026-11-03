@@ -142,7 +142,7 @@ export interface InspectFacts {
     targets: InspectDependencyTarget[];
     missing: string[];
   }, "inspect.dependency-targets">;
-  /** 与所选 Workload 相关的 Event/HPA；完整 Inspect 为补充证据，显式 field 纳入对应 Coverage。 */
+  /** 与所选 Workload 相关的 Event/HPA；完整 Inspect 为补充证据，显式 field 纳入采集结果。 */
   lifecycleSignals: Fact<{
     events: KubernetesWorkloadEvent[];
     eventsObservedAt?: string;
@@ -230,6 +230,8 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
 }
 
 export interface PluginWorkloadObservation extends ObservationMeta {
+  status: "ok" | "partial" | "unavailable";
+  reason?: string;
   summary: import("@compforge/doctor-plugin").Summary;
   kind: "plugin-workload";
   instance: WorkloadInstance;
@@ -294,7 +296,7 @@ export type InspectDiagnosisGoal =
   | "workload-observations"
   | "event"
   | "hpa";
-export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding, InspectDiagnosisGoal>;
+export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding>;
 
 export interface InspectCommandContext {
   command: CommandContext;
@@ -312,7 +314,7 @@ export function fileConfigurationId(service: string, clientKey: string, path: st
   return `file-config-${service}-${clientKey}-${encodeURIComponent(path)}`;
 }
 
-/** @spec A field selects collection, authorization and coverage; format only selects delivery. */
+/** @spec A field selects collection, authorization and execution; format only selects delivery. */
 export function inspectCollectionScope(config: Pick<InspectConfig, "field" | "includeDeploymentConfig" | "includeDependencies">) {
   return {
     env: config.field === "env" || config.field === "config",

@@ -58,7 +58,7 @@ Manifest 输出一份 JSON，`bundle_root` 是命令退出后仍保留的临时�
 7. Evidence Worksheet 分别记录 ID 确认、计数、下载和分析投影状态；Render 消费已保存的分析，不重复
    执行 Detector。批量 HTML 按 biz-id 分顶层
    tab，同一 biz-id 的多条 trace 再按来源 message/trace 分子 tab。各组只共享交付壳，不混合 span、
-   Finding 或 Coverage；bundle 同样按 biz-id/trace 目录隔离。
+   Finding；bundle 同样按 biz-id/trace 目录隔离。
    同一条 trace 的 default / agent 是一个结果页内并排的侧重点按钮，不分别占用结果选择器；
    `--view agent` 使 Agent 首先选中，text / JSON 仍只输出所选视图。
 8. 根入口释放 SearchEngine / forward 并按 format 交付；下载中断时保留已经落盘的 span 和失败上下文，

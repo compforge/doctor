@@ -1,5 +1,6 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import { containerEnvironmentTargets } from "./fact/inspect";
-import type { Detector, DiagnosisCoverage } from "../protocol";
+import type { Detector, } from "../protocol";
 import type {
   ConfigSearchMatch,
   ConfigurationComparisonRow,
@@ -8,7 +9,6 @@ import type {
   InspectSearchResult,
   DependencyInventoryObservation,
   EnvironmentConfigObservation,
-  InspectDiagnosisGoal,
   InspectEvidence,
   InspectFacts,
   InspectFinding,
@@ -96,7 +96,7 @@ export function buildInspectEvidence(
 
 /**
  * @spec Detail search matches literal substrings ignoring case and preserves each source.
- * @rule Search is a projection: full Observations, Detector inputs and Coverage remain unchanged.
+ * @rule Search is a projection: full Observations, Detector inputs and Findings remain unchanged.
  * @see {@link cli/docs/commands/inspect.md}
  */
 export function searchInspectFields(evidence: InspectEvidence, field: InspectField, keyword?: string): InspectSearchResult {
@@ -285,10 +285,10 @@ export function makeInspectDetectors(
   ];
 }
 
-export function buildInspectCoverage(
+export function detectInspectEvidenceGaps(
   evidence: InspectEvidence,
   scope?: { includeDeploymentConfig?: boolean; includeDependencies?: boolean; field?: InspectField },
-): DiagnosisCoverage<InspectDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   const environmentMissing: string[] = [];
   if (evidence.facts.deploymentConfiguration.status !== "collected") {
     environmentMissing.push(evidence.facts.deploymentConfiguration.reason);
@@ -312,40 +312,21 @@ export function buildInspectCoverage(
       }
     }
   }
-  const collectedEnvironment = environmentObservations(evidence.observations).length;
-  const coverage: DiagnosisCoverage<InspectDiagnosisGoal>[] = [{
-    goal: "environment-config",
-    status: environmentMissing.length === 0 && collectedEnvironment > 0
-      ? "sufficient"
-      : collectedEnvironment > 0 ? "partial" : "insufficient",
-    missingEvidence: environmentMissing,
-  }];
+  const findings: EvidenceGapFinding[] = [...evidenceGaps("environment-config", environmentMissing, evidence)];
 
   const workloadMissing: string[] = [];
-  let workloadTargets = 0;
-  let collectedWorkloads = 0;
   if (evidence.facts.serviceTargets.status !== "collected") {
     workloadMissing.push(evidence.facts.serviceTargets.reason);
   } else {
     for (const [service, target] of Object.entries(evidence.facts.serviceTargets.services)) {
       for (const workload of Object.values(target.workloads)) {
-        workloadTargets += 1;
-        if (workload.podRuntime.status === "collected") collectedWorkloads += 1;
-        else workloadMissing.push(`${service}/${workload.name}: ${workload.podRuntime.reason}`);
+        if (workload.podRuntime.status !== "collected") workloadMissing.push(`${service}/${workload.name}: ${workload.podRuntime.reason}`);
       }
     }
   }
-  coverage.push({
-    goal: "workload-runtime",
-    status: workloadTargets > 0 && collectedWorkloads === workloadTargets
-      ? "sufficient"
-      : collectedWorkloads > 0 ? "partial" : "insufficient",
-    missingEvidence: workloadMissing,
-  });
+  findings.push(...evidenceGaps("workload-runtime", workloadMissing, evidence, [{ factPath: "serviceTargets", role: "supporting" }]));
 
   const workloadObservationMissing: string[] = [];
-  let expectedWorkloadObservations = 0;
-  let collectedWorkloadObservations = 0;
   const pluginObservations = evidence.observations.filter((item) => item.kind === "plugin-workload");
   if (evidence.facts.serviceTargets.status === "collected") {
     for (const [serviceName, service] of Object.entries(evidence.facts.serviceTargets.services)) {
@@ -353,31 +334,27 @@ export function buildInspectCoverage(
         if (workload.podRuntime.status !== "collected") continue;
         for (const pod of workload.podRuntime.pods) {
           for (const probe of workload.probes) {
-            expectedWorkloadObservations += 1;
-            if (pluginObservations.some((item) => item.kind === "plugin-workload"
+            const observation = pluginObservations.find((item) => item.kind === "plugin-workload"
               && item.service === serviceName
               && item.workload === workload.name
               && item.pod === pod.pod
-              && item.probe === probe)) {
-              collectedWorkloadObservations += 1;
-            } else {
+              && item.probe === probe);
+            if (!observation) {
               workloadObservationMissing.push(`${serviceName}/${workload.name}/${pod.pod}: 未取得 ${probe}`);
+            } else if (observation.status && observation.status !== "ok") {
+              workloadObservationMissing.push(`${serviceName}/${workload.name}/${pod.pod}: ${observation.reason ?? `${probe} 未完成`}`);
             }
           }
         }
       }
     }
   }
-  coverage.push({
-    goal: "workload-observations",
-    status: expectedWorkloadObservations === 0 || collectedWorkloadObservations === expectedWorkloadObservations
-      ? "sufficient"
-      : collectedWorkloadObservations > 0 ? "partial" : "insufficient",
-    missingEvidence: workloadObservationMissing,
-  });
+  findings.push(...evidenceGaps("workload-observations", workloadObservationMissing, evidence, [
+    { factPath: "serviceTargets", role: "context" },
+    ...pluginObservations.filter(item => item.status && item.status !== "ok").map(item => ({ observationId: item.id, role: "supporting" as const })),
+  ]));
 
   const dependencyMissing: string[] = [];
-  let collectedDependencies = 0;
   if (evidence.facts.dependencyTargets.status !== "collected") {
     dependencyMissing.push(evidence.facts.dependencyTargets.reason);
   } else {
@@ -394,73 +371,51 @@ export function buildInspectCoverage(
           `${target.services.join(", ")}: ${observation.reason ?? "依赖采集不可用"}`,
         );
       } else {
-        collectedDependencies += 1;
         if (observation.truncated) {
           dependencyMissing.push(`${target.services.join(", ")}: 依赖数量超过采集上限`);
         }
       }
     }
   }
-  const dependencyTargets = evidence.facts.dependencyTargets.status === "collected"
-    ? evidence.facts.dependencyTargets.targets.length
-    : 0;
-  coverage.push({
-    goal: "runtime-dependencies",
-    status: dependencyTargets > 0
-      && collectedDependencies === dependencyTargets
-      && dependencyMissing.length === 0
-      ? "sufficient"
-      : collectedDependencies > 0 ? "partial" : "insufficient",
-    missingEvidence: dependencyMissing,
-  });
+  findings.push(...evidenceGaps("runtime-dependencies", dependencyMissing, evidence));
   if (scope?.field === "env" || scope?.field === "config") {
     const { targets, missing } = containerEnvironmentTargets(evidence.facts);
-    let collected = 0;
     for (const target of targets) {
       const observation = evidence.observations.find(item => item.kind === "container-environment"
         && item.service === target.service && item.workload === target.workload
         && item.pod === target.pod && item.container === target.container);
-      if (observation?.kind === "container-environment" && observation.status === "collected") collected++;
-      else missing.push(`${target.service}/${target.workload}/${target.pod}/${target.container}: ${
+      if (observation?.kind !== "container-environment" || observation.status !== "collected") missing.push(`${target.service}/${target.workload}/${target.pod}/${target.container}: ${
         observation?.kind === "container-environment" ? observation.reason ?? "Env 不可用" : "未取得 Pod Env"}`);
     }
-    coverage.push({ goal: "container-environment",
-      status: targets.length > 0 && collected === targets.length && !missing.length
-        ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
+    findings.push(...evidenceGaps("container-environment", missing, evidence));
   }
   if (scope?.field === "config") {
     const missing: string[] = [];
-    let expected = 0;
-    let collected = 0;
     if (evidence.facts.serviceTargets.status !== "collected") missing.push(evidence.facts.serviceTargets.reason);
     else for (const service of Object.values(evidence.facts.serviceTargets.services)) {
       for (const file of service.files ?? []) {
-        expected++;
         const observation = evidence.observations.find(item => item.kind === "file-configuration" && item.id === file.id);
-        if (observation?.kind === "file-configuration" && observation.status === "collected") collected++;
-        else missing.push(observation?.kind === "file-configuration" && observation.reason
+        if (observation?.kind !== "file-configuration" || observation.status !== "collected") missing.push(observation?.kind === "file-configuration" && observation.reason
           ? observation.reason : `${service.service}/${file.workload} ${file.path}: 未取得配置文件`);
       }
     }
-    coverage.push({ goal: "file-configuration", status: !missing.length && collected === expected
-      ? "sufficient" : collected > 0 ? "partial" : "insufficient", missingEvidence: missing });
+    findings.push(...evidenceGaps("file-configuration", missing, evidence));
   }
   if (scope?.field === "event" || scope?.field === "hpa") {
     const fact = evidence.facts.lifecycleSignals;
     const truncated = scope.field === "event" && fact.status === "collected" && !!fact.omittedEvents;
-    coverage.push({ goal: scope.field, status: fact.status === "collected" ? truncated ? "partial" : "sufficient" : "insufficient",
-      missingEvidence: fact.status !== "collected" ? [fact.reason] : truncated ? [`容量限制省略 ${fact.omittedEvents} 条事件`] : [] });
+    findings.push(...evidenceGaps(scope.field, fact.status !== "collected" ? [fact.reason] : truncated ? [`容量限制省略 ${fact.omittedEvents} 条事件`] : [], evidence));
   }
   if (scope?.field) {
-    const goals: Record<InspectField, InspectDiagnosisGoal[]> = {
+    const subjects: Record<InspectField, string[]> = {
       env: ["workload-runtime", "container-environment"],
       config: ["workload-runtime", "container-environment", "file-configuration"],
       image: ["workload-runtime"], event: ["workload-runtime", "event"], hpa: ["workload-runtime", "hpa"],
     };
-    return coverage.filter(item => goals[scope.field!].includes(item.goal));
+    return findings.filter(item => subjects[scope.field!].includes(item.subject));
   }
-  // Coverage measures the requested scope, not optional collection the caller never selected.
-  return coverage.filter(({ goal }) => !scope
-    || (goal !== "environment-config" || scope.includeDeploymentConfig)
-      && (goal !== "runtime-dependencies" || scope.includeDependencies));
+  // Diagnose the selected scope; optional evidence does not imply an unrequested diagnostic obligation.
+  return findings.filter(({ subject }) => !scope
+    || (subject !== "environment-config" || scope.includeDeploymentConfig)
+      && (subject !== "runtime-dependencies" || scope.includeDependencies));
 }

@@ -8,7 +8,7 @@ import { readFacts } from "../evidence-reader";
 import type { DataFacts, DataOutput } from "./model";
 import { buildDataEvidenceSummary, dataNavigationSummary } from "./summary";
 
-/** One invocation snapshot; per-input findings keep their own selection and coverage. */
+/** One invocation snapshot; per-input findings keep their own selection and findings. */
 export async function serializeData(context: SerializeContext, result: CommandResult<DataOutput>): Promise<SerializedOutput> {
   const source = result.artifacts[0];
   if (!source) return { files: {} };
@@ -24,7 +24,7 @@ export async function serializeData(context: SerializeContext, result: CommandRe
       findings: item.diagnosis?.findings.map(finding => ({ ...finding, evidence: finding.evidence.map(ref =>
         "factPath" in ref ? { ...ref, factPath: ref.factPath.replace(/^capabilityResults\.(\d+)/,
           (_match, index) => `capabilityResults.${indices[Number(index)]}`) } : ref) })),
-      coverage: item.diagnosis?.coverage };
+ };
   }) ?? [];
   for (const artifact of result.artifacts) context.bind(artifact, ".");
   // Query response bodies are represented by the authoritative Facts snapshot, not copied per step.

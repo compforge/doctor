@@ -90,8 +90,8 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
       expect(search.field).toBe("config");
       if (search.field !== "config") throw new Error("expected config field");
       if (scenario !== "denied") expect(search.matches.some(match => match.name === "SANDBOX_MODE")).toBe(true);
-      const coverage = diagnosis.coverage.find(item => item.goal === "file-configuration")!;
-      expect(coverage.status, JSON.stringify(diagnosis.evidence.observations)).toBe(scenario === "group-ok" || scenario === "ok" || scenario === "empty" ? "sufficient" : grouped ? "partial" : "insufficient");
+      const gap = diagnosis.findings.find(item => item.kind === "evidence.insufficient" && "subject" in item && item.subject === "file-configuration");
+      expect(Boolean(gap), JSON.stringify(diagnosis.evidence.observations)).toBe(!["group-ok", "ok", "empty"].includes(scenario));
       if (scenario !== "denied") { expect(fileReads).toBe(1); expect(resolutions).toBe(1); }
       if (grouped) {
         const files = diagnosis.evidence.observations.filter(item => item.kind === "file-configuration");

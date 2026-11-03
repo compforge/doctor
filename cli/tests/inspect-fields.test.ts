@@ -78,11 +78,10 @@ for (const { field, mode, search } of cases) test(`Inspect ${field} limits colle
     expect(commands).toHaveLength(field === "config" ? 2 : field === "env" ? 1 : 0);
     expect(fileResolutions).toBe(field === "config" ? 1 : 0);
     expect(diagnosis.evidence.observations.every(item => item.kind === "container-environment" || item.kind === "file-configuration")).toBe(true);
-    expect(diagnosis.coverage.map(item => item.goal)).toEqual(field === "config" ? ["workload-runtime", "container-environment", "file-configuration"]
-      : field === "image" ? ["workload-runtime"] : ["workload-runtime", field === "env" ? "container-environment" : field]);
+    expect(diagnosis).not.toHaveProperty("coverage");
     if (field === "event" || field === "hpa") {
-      const coverage = diagnosis.coverage.find(item => item.goal === field)!;
-      expect(coverage.status).toBe(mode === "denied" || mode === "invalid" ? "insufficient" : mode === "truncated" ? "partial" : "sufficient");
+      const gap = diagnosis.findings.find(item => item.kind === "evidence.insufficient" && "subject" in item && item.subject === field);
+      expect(Boolean(gap)).toBe(mode === "denied" || mode === "invalid" || mode === "truncated");
       const matches = diagnosis.evidence.search!.matches;
       expect(matches).toHaveLength(mode === "truncated" ? 200 : mode === "empty" || mode === "denied" || mode === "invalid" || mode === "other-namespace" || search === "missing" ? 0 : 1);
       const summary = readFileSync(join(artifact.path, "summary.md"), "utf8");

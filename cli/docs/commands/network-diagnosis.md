@@ -87,7 +87,7 @@ READY → ARMING → ARMED → TRACKING 或 WATCHING → DRAINING → STOPPING �
 - 从响应 Header 或 SSE Event 中提取到的一个或多个 trace ID。
 
 跟踪模式可以依靠染色 ID 精确关联；守候模式则依靠短时间窗口、抓包范围和可见 HTTP 请求发现候选调用，
-因此可能包含多条业务请求，Coverage 必须明确 TLS、背景流量和目标请求无法区分造成的不确定性。
+因此可能包含多条业务请求，证据不足 Finding 必须明确 TLS、背景流量和目标请求无法区分造成的不确定性。
 
 ### 4. drain、停止与回传
 
@@ -105,9 +105,9 @@ READY → ARMING → ARMED → TRACKING 或 WATCHING → DRAINING → STOPPING �
 依次报告进度。多个 Pod 的文件传输仍限制并发，但用一条聚合字节进度表示整体完成度；每个 Pod 的开始、
 完成和重试作为独立日志插入。这个阶段不执行流量分析，NetBundle 生成后由 `doctor neta` 离线分析。
 
-NetBundle 的 artifact integrity 与诊断 Coverage 分开判断：文件成功回传并通过摘要校验，表示该 PCAP
+NetBundle 的 artifact integrity 与诊断 证据不足 Finding 分开判断：文件成功回传并通过摘要校验，表示该 PCAP
 可分析；因容量或时限停止只表示预期窗口末段未被观察，不破坏停止前 PCAP 的完整性。前者决定采集命令
-能否成功交付 NetBundle，后者由 `doctor neta` 作为 `capture-scope` Coverage 呈现，不阻止分析报告生成。
+能否成功交付 NetBundle，后者由 `doctor neta` 作为 `capture-scope` 证据不足 Finding 呈现，不阻止分析报告生成。
 `doctor neta` 只有在所有 PCAP 都无法成功解码时才返回分析失败。
 
 ```text
@@ -140,7 +140,7 @@ net-<session>/
 4. 跟踪模式先按染色 ID 或 trace ID 定位目标消息；守候模式重建窗口内所有可见 HTTP 请求，再用连接、
    时间和服务拓扑组织候选调用；
 5. 将重复抓到的同一连接视为多观察点，不误报成两次业务调用；
-6. PCAP Probe 完成后，Detector 根据同一份冻结 Facts 与调用 Observations 生成 Findings/Coverage；
+6. PCAP Probe 完成后，Detector 根据同一份冻结 Facts 与调用 Observations 生成 Findings；
 7. 输出每一跳的请求时间、持续时间、状态、终止方式和证据来源。
 
 `doctor net` 的默认产物名为 `doctor-net-YYYYMMDD-HHmmss.tar.gz`。交互终端直接运行
@@ -179,7 +179,7 @@ Body 截断分别显式标记，不用空白或补造内容掩盖失败。这个
 ### 跟踪 / 守候是 Config，不是 Fact
 
 跟踪或守候表达操作者本轮采用哪种诊断策略：前者围绕已知请求关联流量，后者在布控窗口中发现候选请求。
-它决定 Probe 如何筛选调用、Coverage 如何解释“没有观察到请求”，但不是对目标环境的观察结果。因此该模式
+它决定 Probe 如何筛选调用、证据不足 Finding 如何解释“没有观察到请求”，但不是对目标环境的观察结果。因此该模式
 随 NetBundle 和分析文档的 Config 传递，不进入 `inspection_facts`；Facts 只保留拓扑、Pod、抓包 artifact
 和现场响应等可被证据引用的信息。这里选择 Config 而不是运行时 Context，是因为分析器离线重放时仍需知道
 当时采用哪种策略；Context 中的 decoder、文件句柄和临时目录只服务本次执行，不构成分析素材，也不落 Bundle。
@@ -207,7 +207,7 @@ Header 拼进 BPF 会产生随机漏包。正确模型是：
 ### 全 Pod barrier 保证证据窗口完整
 
 请求路由在触发前未知，只抓一个当前副本会偶发漏掉整跳。所有目标 Pod 先 ARM、请求后统一 drain/stop，
-用空间换确定性。每个 Pod 的启动和停止结果都写入 Worksheet；缺失某个必需 Pod 是 Coverage 缺口，不能
+用空间换确定性。每个 Pod 的启动和停止结果都写入 Worksheet；缺失某个必需 Pod 是 证据缺口，不能
 因其它 Pod 有数据就静默视为成功。
 
 ### 网络证据不能越过加密边界
@@ -218,7 +218,7 @@ Header 拼进 BPF 会产生随机漏包。正确模型是：
 分析器假装解密成功。
 
 因此实现前必须在目标环境确认各跳的 HTTP 版本、TLS 终止位置、压缩方式和染色/trace Header 传播情况。
-这些是现场能力事实，进入 manifest 与 Coverage，不固化为业务链路永远明文的假设。
+这些是现场能力事实，进入 manifest 与 证据不足 Finding，不固化为业务链路永远明文的假设。
 
 ### 499 不一定存在于 PCAP 的 HTTP 响应中
 
@@ -254,7 +254,7 @@ PCAP、请求/响应和采集 metadata 保持原样；HTTP 对象、调用边和
 `doctor net` 将采集模式、当时已经确定的拓扑、runtime readiness、抓包 artifact metadata 和可选的主动请求
 结果写入 NetBundle Facts，并保留原始 PCAP。`doctor neta` 读取这些 Facts，由离线 PCAP Probe 物化 artifact
 校验结果和 HTTP
-调用 hop Observations；纯 Detector 再从 Evidence 生成异常 Findings，Coverage 独立表达哪些 Pod、协议或
+调用 hop Observations；纯 Detector 再从 Evidence 生成异常 Findings，证据不足 Finding 表达哪些 Pod、协议或
 加密边界阻止了完整分析。原始 PCAP 始终是权威证据，分析器升级后可重跑生成新的版本化 analysis JSON。
 
 ## 实现前验证项
@@ -269,4 +269,4 @@ PCAP、请求/响应和采集 metadata 保持原样；HTTP 对象、调用边和
 6. Ctrl+C、本地进程崩溃、Pod 重启、tcpdump 异常退出和部分 Pod 不可达时，stop/watchdog/保留现场是否符合预期。
 
 spike 的通过标准不是“能生成一个 pcap”，而是一次染色请求能够在所有明文跳上被稳定重组，缺失或加密的跳
-有明确 Coverage，且任何失败路径都不会留下无限运行的 tcpdump。
+有明确 证据不足 Finding，且任何失败路径都不会留下无限运行的 tcpdump。

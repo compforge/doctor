@@ -1,7 +1,7 @@
-import type { CoverageBuilder, Detector, DiagnosisCoverage } from "../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
+import type { Detector, } from "../protocol";
 import type {
   ModelDiagnosisConfig,
-  ModelDiagnosisGoal,
   ModelEvidence,
   ModelFinding,
   ModelObservation,
@@ -194,18 +194,14 @@ export const detectModelFindings: Detector<ModelEvidence, ModelFinding> = (evide
 
 export const modelDetectors = [detectModelFindings] as const;
 
-export function buildModelCoverage(
+export function detectModelEvidenceGaps(
   config: ModelDiagnosisConfig,
-): CoverageBuilder<ModelEvidence, ModelDiagnosisGoal> {
-  return (evidence): DiagnosisCoverage<ModelDiagnosisGoal>[] => {
+): Detector<ModelEvidence, EvidenceGapFinding> {
+  return (evidence): EvidenceGapFinding[] => {
     const validation = modelResponseObservation(evidence, "model-validation");
-    const coverage: DiagnosisCoverage<ModelDiagnosisGoal>[] = [{
-      goal: "validation",
-      status: validation?.response ? "sufficient" : "insufficient",
-      missingEvidence: validation?.response
+    const findings: EvidenceGapFinding[] = [...evidenceGaps("validation", validation?.response
         ? []
-        : [validation?.error ?? "模型 validation 响应"],
-    }];
+        : [validation?.error ?? "模型 validation 响应"], evidence)];
     const decision = modelPerformanceDecision(evidence);
     const performanceExpected = decision?.enabled ?? config.performance === true;
     const selected = config.selectedCases?.filter((item) => item.facets?.mode !== "performance");
@@ -215,15 +211,10 @@ export function buildModelCoverage(
       );
       const missing = selected?.filter((item) => !inferences.some((response) => response.caseId === item.id && response.response)) ?? [];
       const inference = inferences[0];
-      coverage.push({
-        goal: "inference",
-        status: selected ? (missing.length === 0 && inferences.length === selected.length ? "sufficient" : "insufficient")
-          : inference?.response ? "sufficient" : "insufficient",
-        missingEvidence: selected ? missing.map((item) => `Case ${item.id} 的模型推理响应`)
-          : inference?.response ? [] : [inference?.error ?? "模型推理响应"],
-      });
+      findings.push(...evidenceGaps("inference", selected ? missing.map((item) => `Case ${item.id} 的模型推理响应`)
+          : inference?.response ? [] : [inference?.error ?? "模型推理响应"], evidence));
     }
-    if (!performanceExpected) return coverage;
+    if (!performanceExpected) return findings;
 
     const observations = modelPerformanceObservations(evidence);
     const attempts = observations.map(analyzeModelPerformanceObservation);
@@ -233,17 +224,9 @@ export function buildModelCoverage(
       && attempt.promptTokens !== undefined
       && (attempt.kind === "prefill" || attempt.tpotMs !== undefined)
     ).length;
-    coverage.push({
-      goal: "performance",
-      status: usable === expected
-        ? "sufficient"
-        : observations.length > 0
-          ? "partial"
-          : "insufficient",
-      missingEvidence: usable === expected
+    findings.push(...evidenceGaps("performance", usable === expected
         ? []
-        : [`指标可用的性能样本 ${usable}/${expected}`],
-    });
-    return coverage;
+        : [`指标可用的性能样本 ${usable}/${expected}`], evidence));
+    return findings;
   };
 }

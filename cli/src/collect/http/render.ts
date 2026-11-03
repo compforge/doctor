@@ -1,3 +1,4 @@
+import type { EvidenceGapFinding } from "../evidence-gaps";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { truncateRaw } from "../evidence";
@@ -151,7 +152,7 @@ export function buildHttpMarkdown(
     `- failed: ${failed.length}`,
     `- findings: ${diagnosis.findings.length}`,
     ...diagnosis.findings.map((finding) => `- finding: ${renderHttpFinding(finding)}`),
-    ...diagnosis.coverage.map((coverage) => `- coverage: ${coverage.goal}=${coverage.status}`),
+
     "",
     "## HTTP 传输观测",
     "",
@@ -184,7 +185,8 @@ export function buildHttpMarkdown(
   ].join("\n");
 }
 
-export function renderHttpFinding(finding: HttpFinding): string {
+export function renderHttpFinding(finding: HttpFinding | EvidenceGapFinding): string {
+  if (finding.kind === "evidence.insufficient") return finding.message;
   if (finding.kind === "http.endpoint-unreachable") {
     return `${finding.endpoint} 在 ${finding.phase.toUpperCase()} 阶段不可达：${finding.reason}；影响 ${finding.affectedRequests.join(", ")}`;
   }
@@ -302,17 +304,7 @@ export function buildHttpHtml(
         execution.findings.length,
       ]),
     ),
-    htmlHeading(2, "Coverage"),
-    diagnosis.coverage.length
-      ? htmlTable(
-          ["goal", "status", "missing evidence"],
-          diagnosis.coverage.map((coverage) => [
-            coverage.goal,
-            coverage.status,
-            coverage.missingEvidence.join("；") || "—",
-          ]),
-        )
-      : htmlParagraph("未生成 Coverage。"),
+
     htmlParagraph("报告展示实际请求 cURL 与异常 Response；未截断的完整响应与每次执行 meta 请使用 --format bundle。"),
   ].join("");
 }

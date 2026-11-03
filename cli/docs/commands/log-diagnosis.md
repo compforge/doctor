@@ -18,7 +18,7 @@
 2. 整批只执行一次 Inspect，根据 Service 的 Workload location 解析实例和 Container status，建立 Service → WorkloadInstance 关系，并确认哪些容器存在可读取的上一次终止实例。定位失败按 Workload 保留缺口；只读取当前 namespace，不跨目标复用快照。
 3. Log Probe 为所选 Service 建立有序 capture plan，按 Container 通过 `@kubernetes/client-node` 的 kubeconfig/auth 能力直连 Pod Log API；默认整个命令树共享最多 4 路并发（profile `log.concurrency` 可配置），每流 64 MiB、整棵命令树共用 512 MiB 字节预算，并以 15 秒 idle timeout 和 120 秒 hard timeout 约束现场访问。瞬态失败最多重试一次，并从最近日志时间戳继续；已取得字节后触发超时或预算上限记为 `partial`，完全没有取得日志才记为 `unavailable`。发生过重启且存在 `lastState.terminated` 的容器仍 best-effort 补采 previous 日志。完成后按 Service、Pod、Container 计划顺序记录 Evidence，并为每个 Service 生成独立 Observation。
 4. Core 通过 `runCollectBatch` 把共享 Inspect Facts 与每个采集项的 Service Observation 分别组成 Evidence；无 ID 模式只有一个服务窗口采集项，不伪造业务 ID。当前没有独立根因
-   Detector，Coverage 按 Pod 记录 current 日志是否取得，并明确 Inspect 失败、无运行中 Pod 或读取失败等
+   Detector，证据不足 Finding 按 Pod 记录 current 日志是否取得，并明确 Inspect 失败、无运行中 Pod 或读取失败等
    缺口。Render 只消费形成的 Diagnosis，生成带来源的 `timeline.jsonl`；纯文本与 HTML 都消费这份结构化时间线。
 5. 命令默认同时交付单文件离线 HTML 和完整 Bundle；批量输入共享配置、Service/Pod 发现与原始日志源，每个 biz-id 独立过滤和判定，在
    交付页按 ID 分 tab。Bundle 按 ID 保存独立子证据包，各自包含 manifest、结构化时间线、聚合文本、
@@ -58,7 +58,7 @@ Pod 和 previous Container 的耗时无意义地累加。Log Probe 因此先建�
 随快照保留，本轮不会因另一个样本需要同一源而隐式重试。复用命令结果的规则不参与日志源身份判断。
 
 并发和总字节预算都只约束实际网络采集，本地补读不占网络名额、不重复消耗预算。下载量由源首次调用
-记账，其余消费者显示复用路数；匹配数、首次命中耗时、Coverage 与采集 wall-clock 仍属于各自的业务证据。
+记账，其余消费者显示复用路数；匹配数、首次命中耗时、证据不足 Finding 与采集 wall-clock 仍属于各自的业务证据。
 
 ### raw 完整性优先，聚合结果保持精简
 

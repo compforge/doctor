@@ -152,7 +152,7 @@ export async function runCollectModel(
     )) {
       useLogger("model").success("模型诊断完成，所需证据已完整取得。");
     }
-    return commandOutcome(result.exitCode);
+    return { status: result.status, output: undefined, artifacts: commandContext.artifacts.list() };
   } catch (error) {
     useLogger("model").error(`${error instanceof Error ? error.message : String(error)}`);
     return commandOutcome(1);

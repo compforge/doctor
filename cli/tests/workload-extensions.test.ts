@@ -18,7 +18,7 @@ const service: ServiceDefinition = {
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: [{ name: "main", platform: "kubernetes", location: { kind: "service", name: "app" } }]
 };
-const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => new HealthValue(true) });
+const extension = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => ({ value: new HealthValue(true), status: "ok" as const }) });
 
 test("workload discovery preserves separate probe permissions without calling providers", () => {
   const run = mock(extension.run);

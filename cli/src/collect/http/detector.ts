@@ -1,7 +1,7 @@
-import type { DiagnosisCoverage } from "../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
+import type { } from "../protocol";
 import type {
   HttpAttemptObservation,
-  HttpCoverageGoal,
   HttpDiagnosis,
   HttpEvidence,
   HttpExecution,
@@ -342,7 +342,7 @@ export function detectHttpEndpointConnectivity(evidence: HttpEvidence): HttpFind
   });
 }
 
-export function detectHttpResponses(evidence: HttpEvidence): readonly HttpFinding[] {
+export function detectHttpResponses(evidence: HttpEvidence): readonly (HttpFinding | EvidenceGapFinding)[] {
   return diagnoseHttp(
     materializeHttpExecutions(evidence.observations, evidence.requestGroups),
     evidence.requestGroups,
@@ -351,9 +351,9 @@ export function detectHttpResponses(evidence: HttpEvidence): readonly HttpFindin
 
 export const httpDetectors = [detectHttpEndpointConnectivity, detectHttpResponses] as const;
 
-export function buildHttpCoverage(
+export function detectHttpEvidenceGaps(
   evidence: HttpEvidence,
-): DiagnosisCoverage<HttpCoverageGoal>[] {
+): EvidenceGapFinding[] {
   const endpointItems = evidence.facts.endpoints.status === "collected"
     ? evidence.facts.endpoints.items
     : [];
@@ -373,27 +373,14 @@ export function buildHttpCoverage(
     ? []
     : [`HTTP response observations: ${complete}/${expected}`];
   return [
-    {
-      goal: "endpoint-connectivity" as HttpCoverageGoal,
-      status: endpointMissing.length ? "partial" as const : "sufficient" as const,
-      missingEvidence: endpointMissing,
-    },
-    {
-      goal: "http-response" as HttpCoverageGoal,
-      status: complete === expected
-        ? "sufficient" as const
-        : complete === 0
-          ? "insufficient" as const
-          : "partial" as const,
-      missingEvidence: responseMissing,
-    },
+    ...evidenceGaps("endpoint-connectivity", endpointMissing, evidence),
+    ...evidenceGaps("http-response", responseMissing, evidence),
   ];
 }
 
 export function buildHttpDiagnosis(
   evidence: HttpEvidence,
-  findings: readonly HttpFinding[],
-  coverage: readonly DiagnosisCoverage<HttpCoverageGoal>[],
+  findings: readonly (HttpFinding | EvidenceGapFinding)[],
 ): HttpDiagnosis {
   const executions = materializeHttpExecutions(evidence.observations, evidence.requestGroups);
   const summarized = diagnoseHttp(executions, evidence.requestGroups);
@@ -403,6 +390,5 @@ export function buildHttpDiagnosis(
     executions,
     findings,
     summaries: summarized.summaries,
-    coverage,
   };
 }

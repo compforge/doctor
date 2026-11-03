@@ -1,3 +1,5 @@
+import { commandOutcome, type CommandResult } from "../../command";
+import type { EvidenceGapFinding } from "../evidence-gaps";
 import { writeOutput } from "../../terminal/output";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,7 +16,7 @@ import {
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { resolveArchivePath, resolveDefaultReportPaths } from "../output/archive";
 import { recordFailureBundle } from "../output/failure-bundle";
 import type { SendHttp } from "../shared/http/capture";
@@ -28,7 +30,7 @@ import type {
 } from "../shared/http/model";
 import type { HttpCommandContext } from "./context";
 import {
-  buildHttpCoverage,
+  detectHttpEvidenceGaps,
   buildHttpDiagnosis,
   buildHttpEvidence,
   httpDetectors
@@ -170,7 +172,7 @@ function sanitizedScenario(scenario: HttpScenario): Record<string, unknown> {
   };
 }
 
-function serializeFinding(finding: HttpFinding): Record<string, unknown> {
+function serializeFinding(finding: HttpFinding | EvidenceGapFinding): Record<string, unknown> {
   return { ...finding };
 }
 
@@ -198,19 +200,19 @@ export async function runCollectHttp(
   sendHttp?: SendHttp,
   inspectEndpoint?: InspectHttpEndpoint,
   preparedScenario?: { scenario: HttpScenario; source: string; caseIds?: readonly string[] },
-): Promise<number> {
+): Promise<CommandResult<void>> {
   if (opts.example !== undefined) {
     if (opts.file) {
       useLogger().error("--example 与 --file 不能同时使用");
-      return 2;
+      return commandOutcome(2);
     }
     try {
       const output = writeHttpScenarioExample(typeof opts.example === "string" ? opts.example : undefined);
       writeOutput(`示例已生成：${output}` + "\n");
-      return 0;
+      return commandOutcome(0);
     } catch (error) {
       useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-      return 2;
+      return commandOutcome(2);
     }
   }
 
@@ -224,7 +226,7 @@ export async function runCollectHttp(
       pod: opts.pod,
       container: opts.container,
     });
-    if (!location) return 130;
+    if (!location) return commandOutcome(130);
     if (location === "local") {
       executionTarget = { kind: "local" };
       activeSendHttp ??= sendHttpRequest;
@@ -232,7 +234,7 @@ export async function runCollectHttp(
       useLogger("http").info("请求执行位置：local（Doctor 本机）");
     } else {
       const execution = await resolvePodHttpExecution(opts, commandContext);
-      if (!execution) return 130;
+      if (!execution) return commandOutcome(130);
       executionTarget = execution.target;
       activeSendHttp ??= execution.sendHttp;
       activeInspectEndpoint ??= execution.inspectEndpoint;
@@ -240,7 +242,7 @@ export async function runCollectHttp(
     }
   } catch (error) {
     useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-    return 2;
+    return commandOutcome(2);
   }
 
   let repeat: number;
@@ -258,7 +260,7 @@ export async function runCollectHttp(
     format = parseHttpOutputFormat(opts.format);
   } catch (error) {
     useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-    return 2;
+    return commandOutcome(2);
   }
 
   let scenarioFile: string;
@@ -269,16 +271,16 @@ export async function runCollectHttp(
       scenario = preparedScenario.scenario;
     } else {
       const file = await resolveHttpScenarioFile({ file: opts.file });
-      if (!file) return 0;
+      if (!file) return commandOutcome(0);
       scenarioFile = file;
       const loaded = loadHttpScenario(scenarioFile, { timeoutSeconds, maxResponseMiB });
       const selected = await resolveHttpScenarioRequests(loaded, { request: opts.request });
-      if (!selected) return 0;
+      if (!selected) return commandOutcome(0);
       scenario = selected;
     }
   } catch (error) {
     useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-    return 2;
+    return commandOutcome(2);
   }
 
   const bundleName = defaultHttpBundleName(new Date());
@@ -286,7 +288,7 @@ export async function runCollectHttp(
     resolveHttpOutputPath(opts.output, bundleName, format);
   } catch (error) {
     useLogger().error(`${error instanceof Error ? error.message : String(error)}`);
-    return 2;
+    return commandOutcome(2);
   }
 
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-case-"));
@@ -345,19 +347,18 @@ export async function runCollectHttp(
       planProbes: () => attempts.map(({ request, round }) => makeHttpRequestProbe(request, round)),
       log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildHttpEvidence(scenario.requests, repeat),
-      detectors: httpDetectors,
-      buildCoverage: buildHttpCoverage,
+      detectors: [...httpDetectors, detectHttpEvidenceGaps],
+
     });
     facts = execution.facts;
     const engineDiagnosis = execution.diagnosis;
     diagnosis = buildHttpDiagnosis(
       engineDiagnosis.evidence,
       engineDiagnosis.findings,
-      engineDiagnosis.coverage,
     );
     bundle.fill("http-findings", {
       status: "ok",
-      output: `${JSON.stringify({ findings: diagnosis.findings, coverage: diagnosis.coverage }, null, 2)}\n`,
+      output: `${JSON.stringify({ findings: diagnosis.findings }, null, 2)}\n`,
       ext: "json",
     });
   } catch (error) {
@@ -385,7 +386,7 @@ export async function runCollectHttp(
       finishedAt: new Date().toISOString(),
     });
     recordFailureBundle({ bundleDir: staging, collectCode: 1, reason });
-    return 1;
+    return commandOutcome(1);
   }
   const finishedAt = new Date();
   const hasFindings = diagnosis.findings.length > 0;
@@ -393,7 +394,6 @@ export async function runCollectHttp(
     observations: diagnosis.observations.map(serializeHttpAttempt),
     summaries: diagnosis.summaries,
     findings: diagnosis.findings.map(serializeFinding),
-    coverage: diagnosis.coverage,
   }, null, 2)}\n`, { mode: 0o600 });
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
@@ -429,7 +429,7 @@ export async function runCollectHttp(
         && observation.entrypointId === request.entrypointId
         && observation.round === round
         && observation.response.captureComplete,
-    ) ? "sufficient" : "insufficient"),
+    ) ? "ok" : "unavailable"),
   );
 
   const generated = writeHttpArtifact(
@@ -439,7 +439,7 @@ export async function runCollectHttp(
   );
   if (!generated) {
     recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "HTTP 诊断产物生成失败" });
-    return 1;
+    return commandOutcome(1);
   }
   if (evidenceOutcome.exitCode !== 0) {
     recordFailureBundle({ bundleDir: staging, collectCode: evidenceOutcome.exitCode, reason: "HTTP 证据不完整" });
@@ -449,5 +449,5 @@ export async function runCollectHttp(
   } else {
     useLogger("http").success("诊断完成");
   }
-  return evidenceOutcome.exitCode;
+  return collectCommandOutcome(evidenceOutcome);
 }

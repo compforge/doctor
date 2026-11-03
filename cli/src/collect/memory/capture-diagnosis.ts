@@ -1,7 +1,7 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import type {
   Detector,
   Diagnosis,
-  DiagnosisCoverage,
   Evidence,
   ObservationMeta,
 } from "../protocol";
@@ -18,11 +18,9 @@ export interface MemoryCaptureObservation extends ObservationMeta {
 
 export type MemoryCaptureEvidence = Evidence<MemoryCaptureObservation, MemoryCaptureFacts>;
 export type MemoryCaptureFinding = never;
-export type MemoryCaptureDiagnosisGoal = "memory-heap-artifact";
 export type MemoryCaptureDiagnosis = Diagnosis<
   MemoryCaptureEvidence,
-  MemoryCaptureFinding,
-  MemoryCaptureDiagnosisGoal
+  MemoryCaptureFinding
 >;
 
 export const memoryCaptureDetectors: readonly Detector<
@@ -45,15 +43,15 @@ export function memoryCaptureObservation(
   );
 }
 
-export function buildMemoryCaptureCoverage(
+export function detectMemoryCaptureEvidenceGaps(
   evidence: MemoryCaptureEvidence,
-): DiagnosisCoverage<MemoryCaptureDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   const capture = memoryCaptureObservation(evidence)?.result;
   if (capture?.code === 0 && capture.heapPath && capture.capturePath) {
-    return [{ goal: "memory-heap-artifact", status: "sufficient", missingEvidence: [] }];
+    return [...evidenceGaps("memory-heap-artifact", [], evidence)];
   }
   const reasons = capture?.reasons?.length
     ? capture.reasons
     : [capture?.reason ?? "未形成可分析的 Python heap artifact"];
-  return [{ goal: "memory-heap-artifact", status: "insufficient", missingEvidence: reasons }];
+  return [...evidenceGaps("memory-heap-artifact", reasons, evidence)];
 }

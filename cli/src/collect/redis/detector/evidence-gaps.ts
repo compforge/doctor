@@ -1,5 +1,5 @@
-import type { DiagnosisCoverage } from "../../protocol";
-import type { RedisDiagnosisGoal } from "../findings";
+import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
+import type { } from "../../protocol";
 import {
   redisMasters,
   redisMemoryCapacity,
@@ -9,8 +9,8 @@ import {
   type RedisOverviewObservation,
 } from "../model";
 
-// coverage 的职责不止"缺什么"，还要"为什么缺、怎么补"（判据见 protocol.ts 的 Evidence 注释）。
-// Inspect 的预期失败现在保留为带 status 的子 Fact；Probe 即使不可运行，Detector/Coverage
+// findings 的职责不止"缺什么"，还要"为什么缺、怎么补"（判据见 protocol.ts 的 Evidence 注释）。
+// Inspect 的预期失败现在保留为带 status 的子 Fact；Probe 即使不可运行，Detector
 // 仍会执行，因此优先用具体 Fact 解释整份 Redis 证据为什么没有取得。
 function prerequisiteGap(e: RedisEvidence): string | undefined {
   const facts = [
@@ -46,16 +46,12 @@ function scansGap(e: RedisEvidence): string {
   return base;
 }
 
-export function buildRedisCoverage(
+export function detectRedisEvidenceGaps(
   e: RedisEvidence,
-): DiagnosisCoverage<RedisDiagnosisGoal>[] {
+): EvidenceGapFinding[] {
   const prerequisite = prerequisiteGap(e);
   if (prerequisite) {
-    return ["redis-memory-capacity", "redis-memory-distribution"].map((goal) => ({
-      goal: goal as RedisDiagnosisGoal,
-      status: "insufficient" as const,
-      missingEvidence: [prerequisite],
-    }));
+    return ["redis-memory-capacity", "redis-memory-distribution"].flatMap((goal) => (evidenceGaps(goal, [prerequisite], e)));
   }
   const masters = redisMasters(e);
   const scans = redisScans(e);
@@ -75,15 +71,7 @@ export function buildRedisCoverage(
     : masters.length;
   if (overview?.scanMode === "quick" || scans.length < expectedScans) missingEvidence.push(scansGap(e));
   return [
-    {
-      goal: "redis-memory-capacity",
-      status: masters.length === 0 ? "insufficient" : capacityGap ? "partial" : "sufficient",
-      missingEvidence: masters.length === 0 ? [mastersGap(e)] : capacityGap ? [capacityGap] : [],
-    },
-    {
-      goal: "redis-memory-distribution",
-      status: missingEvidence.length === 0 ? "sufficient" : masters.length > 0 ? "partial" : "insufficient",
-      missingEvidence,
-    },
+    ...evidenceGaps("redis-memory-capacity", masters.length === 0 ? [mastersGap(e)] : capacityGap ? [capacityGap] : [], e),
+    ...evidenceGaps("redis-memory-distribution", missingEvidence, e),
   ];
 }

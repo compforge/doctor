@@ -32,7 +32,7 @@ function findingSummary(diagnosis: McpDiagnosis): string[] {
     ? diagnosis.findings.map((finding) =>
       `${finding.severity} / ${finding.kind} / confidence=${finding.confidence}：${finding.summary}`
     )
-    : ["本次证据未形成异常 Finding；是否足以排除问题见诊断覆盖度。"];
+    : ["本次证据未形成 Finding；这不代表已排除所有问题。"];
 }
 
 export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
@@ -59,11 +59,7 @@ export function buildMcpReportHtml(diagnosis: McpDiagnosis): string {
     ]),
     htmlHeading(2, "诊断结论"),
     htmlList(findingSummary(diagnosis)),
-    htmlHeading(2, "诊断覆盖度"),
-    htmlTable(
-      ["goal", "status", "missing evidence"],
-      diagnosis.coverage.map((item) => [item.goal, item.status, item.missingEvidence.join("；") || "-"]),
-    ),
+
     htmlHeading(2, "配置与运行时工具"),
     toolRows.length ? htmlTable(["tool", "Plugin 配置", "tools/list"], toolRows) : htmlParagraph("未取得 tool 列表。"),
     htmlHeading(2, "MCP Probe"),
@@ -115,13 +111,8 @@ export function renderMcpSummary(diagnosis: McpDiagnosis): string {
     "",
     ...findingSummary(diagnosis).map((item) => `- ${item}`),
     "",
-    "## Coverage",
-    "",
-    ...diagnosis.coverage.map((item) =>
-      `- ${item.goal}: ${item.status}${item.missingEvidence.length ? `（缺少：${item.missingEvidence.join("；")}）` : ""}`
-    ),
+
     ...(facts.httpPlan?.unsupported ?? []).map((item) => `- mapping unsupported: ${item}`),
-    "",
     "",
   ];
   return lines.join("\n");

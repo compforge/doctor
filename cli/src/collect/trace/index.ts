@@ -667,7 +667,7 @@ export async function collectTrace(
     }),
   );
   log(`[collect] 完成（${probe.downloaded}/${probe.count} span）。`);
-  return finish(evaluateCollectOutcome([probe.complete && exported ? "sufficient" : "insufficient"]).exitCode,
+  return finish(evaluateCollectOutcome([probe.complete && exported ? "ok" : "unavailable"]).exitCode,
     { ...confirmedTarget, base_url: baseUrl });
 }
 

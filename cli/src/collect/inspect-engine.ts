@@ -64,7 +64,7 @@ export function freezeFacts<Facts extends object>(facts: Facts): Readonly<Facts>
  * 当前 Inspect；每批已产出的 JSON-like Fact tree 会被冻结，再交给依赖它的 Inspect。
  *
  * @spec Every emitted Fact carries schema identity and identifies the executing Core Inspect as producer
- * @rule Fact contract violations abort Collect rather than degrade Coverage
+ * @rule Fact contract violations abort Collect rather than hide the failure
  */
 export async function runInspects<Facts extends object, Ctx = void>(
   inspects: readonly Inspect<Facts, Ctx>[],

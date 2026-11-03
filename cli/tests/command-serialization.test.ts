@@ -86,7 +86,7 @@ test("diagnosis body is externalized and render rehydrates it from relocated evi
   const bundle = new EvidenceBundle(source);
   const facts = { text: "large-body-".repeat(100_000) };
   bundle.writeCollection({ doctorVersion: "test", target: {}, inspectionFacts: facts, params: {}, startedAt: "start", finishedAt: "end" });
-  writeFileSync(join(source, "diagnosis.json"), JSON.stringify({ evidence: { facts, observations: [{ id: "one", value: 1 }] }, findings: [], coverage: [] }));
+  writeFileSync(join(source, "diagnosis.json"), JSON.stringify({ evidence: { facts, observations: [{ id: "one", value: 1 }] }, findings: [],  }));
   const artifact = { id: "a", command: "inspect", path: source };
   const result = { ...ok(undefined), artifacts: [artifact] };
   const spec = defineCommand({ name: "doctor inspect", prepare: async (_context, input) => input, run: async () => result, serialize: serializeEvidenceResult });
@@ -108,7 +108,7 @@ test("Data serializes multiple input selections without copying Facts into diagn
   const artifact = { id: "snapshot", command: "data", path: source };
   const items = facts.capabilityResults.map((query, index) => ({ bizId: query.id, status: CommandStatus.Partial, artifacts: [artifact],
     diagnosis: { evidence: { facts: { services: {}, capabilityResults: [query] }, observations: [] },
-      findings: [{ id: `finding-${index}`, evidence: [{ factPath: "capabilityResults.0", role: "supporting" }] }], coverage: [] } }));
+      findings: [{ id: `finding-${index}`, evidence: [{ factPath: "capabilityResults.0", role: "supporting" }] }],  } }));
   const result = { ...ok({ items } as unknown as DataOutput), artifacts: [artifact] };
   const spec = defineCommand({ name: "doctor data", prepare: async (_context, input) => input, run: async () => result, serialize: serializeData });
   const dir = temporary();
@@ -175,7 +175,6 @@ test("HTML assembly failure still delivers serialized evidence in the Bundle", a
   expect(readArchive(manifest.files["raw.txt"].path)).toBe("retained after HTML failure");
   expect(existsSync(source)).toBe(true);
 });
-
 
 test("multi-artifact summary locates trace evidence by its target and survives relocation", async () => {
   const source = temporary(), destination = temporary();

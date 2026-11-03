@@ -147,11 +147,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
   expect(analyzed.analysis.analyzer.decoder).toBe("tshark");
   expect(analyzed.analysis.diagnosis.findings.map((finding) => finding.kind))
     .toEqual(["network.http-error", "network.connection-reset"]);
-  expect(analyzed.analysis.diagnosis.coverage).toContainEqual({
-    goal: "capture-scope",
-    status: "sufficient",
-    missingEvidence: [],
-  });
+  expect(analyzed.analysis.diagnosis.findings).not.toContainEqual(expect.objectContaining({ subject: "capture-scope" }));
   expect(analyzed.markdown).toContain("frontend 的 POST /api/chat 在报文中返回 HTTP 499");
   expect(analyzed.markdown).toContain("## 抓包覆盖矩阵");
   expect(analyzed.markdown).toContain("“未观察到”不等于“下游未收到”");
@@ -185,11 +181,7 @@ test("doctor neta 按染色 ID 选择 TCP stream，并区分 HTTP 499 与 RST", 
     "达到容量上限后提前停止；停止后的流量缺失";
   writeFileSync(join(root, limitedIndex.files.facts), JSON.stringify(limitedFacts));
   const limited = await analyzeNetworkBundle(root, {}, dependencies);
-  expect(limited.analysis.diagnosis.coverage).toContainEqual({
-    goal: "capture-scope",
-    status: "insufficient",
-    missingEvidence: ["chat-0: 达到容量上限后提前停止；停止后的流量缺失"],
-  });
+  expect(limited.analysis.diagnosis.findings).toContainEqual(expect.objectContaining({ kind: "evidence.insufficient", subject: "capture-scope", message: ["chat-0: 达到容量上限后提前停止；停止后的流量缺失"].join("；") }));
 
   const reportBase = join(root, "report");
   expect(await runAnalyzeNetwork(root, { output: reportBase }, dependencies)).toBe(0);
@@ -314,8 +306,8 @@ test("doctor neta 对守候模式 NetBundle 重建窗口内的可见 HTTP 请求
   expect(analyzed.analysis.diagnosis.evidence.facts).not.toHaveProperty("captureMode");
   expect(analyzed.analysis.diagnosis.evidence.facts.bundle.identifiers).toEqual([]);
   expect(analyzed.analysis.summary.hopCount).toBe(1);
-  expect(analyzed.analysis.diagnosis.coverage.find((item) => item.goal === "request-correlation")?.status)
-    .toBe("sufficient");
+  expect(analyzed.analysis.diagnosis.findings.some(item => "subject" in item && item.subject === "request-correlation"))
+    .toBe(false);
   expect(analyzed.markdown).toContain("- 采集模式: 守候");
   expect(analyzed.markdown).toContain("POST /api/chat");
 });
