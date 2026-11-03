@@ -29,7 +29,7 @@ const service: ServiceDefinition = {
     accepts: ["conversation_id"], provides: ["runtime-record"], expands: ["run_id"], dataSource: "database",
     access: {
       kubernetes: [{
-        rule: { verb: "get", resource: "configmaps", resourceName: "runtime", allNamespaces: true },
+        rule: { verb: "get", resource: "configmaps", resourceName: "runtime", namespace: "configuration" },
         requirement: "required", purpose: "Locate storage",
       }]
     },

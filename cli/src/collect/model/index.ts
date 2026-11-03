@@ -56,7 +56,6 @@ export async function runCollectModel(
   try {
     access = await openModelAccess({
       ...opts,
-      command: "doctor model",
       plugin,
       commandContext,
     });

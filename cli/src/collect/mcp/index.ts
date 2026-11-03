@@ -168,9 +168,7 @@ export async function runCollectMcp(
     config: commandContext?.profile.pluginConfig,
     service,
     endpoint: extension.endpoint,
-    command: "doctor mcp",
     capability: extension,
-    authorization: access,
   });
   let configSourceKind: string | undefined;
   let facts: McpFacts | undefined;
@@ -257,7 +255,7 @@ export async function runCollectMcp(
           kubeconfig: collect.kubernetes.kubeconfig,
           context: collect.kubernetes.context,
         }, {
-          service, command: "doctor mcp gateway", authorization: access,
+          service,
           capability: { access: { kubernetes: [{
             requirement: "required", rule: { verb: "create", resource: "pods/portforward" },
             purpose: "连接 MCP gateway 执行协议探测",

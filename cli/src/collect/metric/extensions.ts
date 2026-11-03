@@ -3,7 +3,7 @@ import {
   type MetricConfiguration, type ServiceCatalog,
 } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { resolveKubernetesCommandContext, type CommandContext } from "../../command";
+import type { CommandContext } from "../../command";
 import { createHostPluginContext, openPluginContext } from "../../plugin/context";
 import { invokeExtension } from "../../plugin/extension";
 import type { MetricConfig } from "./model";
@@ -34,9 +34,7 @@ export async function loadMetricConfigurations(
     const options = { service, capability: extension, config: command.profile.pluginConfig, clients: command.clients, signal: command.signal };
     const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
     const context = extension.access.kubernetes?.length
-      ? await openPluginContext(executor, config.kube, {
-        ...options, command: "doctor metric", authorization: resolveKubernetesCommandContext(executor, command).access,
-      })
+      ? await openPluginContext(executor, config.kube, options)
       : createHostPluginContext({ ...options, namespace: config.namespace });
     try {
       configurations.set(name, metricConfigurationOutput((await invokeExtension(extension, context, undefined)).data));

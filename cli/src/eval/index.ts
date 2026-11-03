@@ -15,7 +15,7 @@ import { dataServicesForBizQuery } from "../collect/data";
 import { dataCommand } from "../collect/data/command";
 import { logCommand } from "../collect/log/command";
 import { traceCommand } from "../collect/trace/command";
-import { aggregateCommandStatus, CommandStatus, resolveKubernetesCommandContext, type CommandContext, type CommandResult } from "../command";
+import { aggregateCommandStatus, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
@@ -81,8 +81,6 @@ async function resolveEvalRequestIdentity(input: {
     service,
     endpoint: extension.endpoint,
     capability: extension,
-    command: "doctor eval identity",
-    authorization: resolveKubernetesCommandContext(input.executor, input.commandContext).access,
   }));
   return resolveCaseRequestIdentity({
     configured: { tenantId, userId }, directory, commandLabel: "Eval", logPrefix: "eval",
@@ -264,8 +262,6 @@ export async function runEval(
     service: provider.service,
     endpoint: provider.factory.endpoint,
     capability: provider.factory,
-    command: "doctor eval",
-    authorization: resolveKubernetesCommandContext(executor, commandContext).access,
   });
   let artifact: ReturnType<typeof createEvalArtifact>;
   try {

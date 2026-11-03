@@ -1,7 +1,7 @@
 import type { Client } from "@compforge/harness-common";
 import type { PluginDataSource, ServiceDataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { resolveKubernetesCommandContext, type CommandContext } from "../command";
+import type { CommandContext } from "../command";
 import type { KubernetesCommandConfig } from "../command/kubernetes-target";
 import { openPluginContext } from "../plugin/context";
 
@@ -12,9 +12,8 @@ export async function borrowServiceClient<C extends Client>(
 ): Promise<C> {
   const context = await openPluginContext(executor, collect.kubernetes, {
     clients: command.clients, config: command.profile.pluginConfig,
-    service: command.plugin.services.find(service)!, command: "doctor · datasource",
+    service: command.plugin.services.find(service)!,
     capability: { access: capability.access ?? {} },
-    authorization: resolveKubernetesCommandContext(executor, command).access,
   });
   try { return await context.clients.get(source); }
   finally { await context.dispose(); }

@@ -11,13 +11,12 @@ import type { CasePrepareActions } from "./case-prepare";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../case/prepare-identity";
 
-export function caseOperationInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }, command = "doctor health") {
-  return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, label: string, query: I): Promise<O> => {
+export function caseOperationInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
+  return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, query: I): Promise<O> => {
     const db = context.profile.value.db;
     const managed = await openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, capability: operation, signal: context.signal, clients: context.clients,
       databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-      command: `${command} ${label}`, authorization: context.kubernetes(executor).access,
     });
     try { return (await invokeOperation(operation, managed, query)).data; }
     finally { await managed.dispose(); }
@@ -30,11 +29,10 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
   const directory = discoverTenantDirectory(context.plugin.services, (service, extension) =>
     openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
-      signal: context.signal, clients: context.clients, command: "doctor health identity",
-      authorization: context.kubernetes(executor).access,
+      signal: context.signal, clients: context.clients,
     }), { commandContext: context });
   return {
-    signal: context.signal, consume: (service, extension, query) => invoke(service, extension, `${extension.kind}/${extension.id}`, query),
+    signal: context.signal, consume: (service, extension, query) => invoke(service, extension, query),
     identity: producer => resolveCaseProducerIdentity(context, producer, input, directory),
     tenant: producer => resolveCaseProducerTenant(context, producer, input, directory),
   };
@@ -81,6 +79,6 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       if (!result.ok) throw new Error(result.stderr.trim() || `curl unavailable (exit=${result.exitCode}, timedOut=${result.timedOut})`);
       return createPodHttpSender(executor, target, supportsPodCurlDiagnostics(result.stdout));
     },
-    produce: (service, source, query) => invoke(service, caseProducer(source), `Case ${source.id} produce`, query),
+    produce: (service, source, query) => invoke(service, caseProducer(source), query),
   };
 }

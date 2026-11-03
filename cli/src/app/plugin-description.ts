@@ -58,7 +58,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
     lines.push(`      ${item.owner}:`);
     const rules = item.requirements.kubernetes ?? [];
     for (const { rule, requirement, purpose, fallback } of rules) {
-      lines.push(`        ${requirement}: ${rule.verb} ${rule.resource}${rule.resourceName ? `/${rule.resourceName}` : ""}${rule.allNamespaces ? " (all namespaces)" : ""} — ${purpose}${fallback ? `; fallback: ${fallback}` : ""}`);
+      lines.push(`        ${requirement}: ${rule.verb} ${rule.resource}${rule.resourceName ? `/${rule.resourceName}` : ""}${rule.allNamespaces ? " (all namespaces)" : rule.namespace ? ` (namespace=${rule.namespace})` : ""} — ${purpose}${fallback ? `; fallback: ${fallback}` : ""}`);
     }
     if (!rules.length) lines.push("        未声明 Kubernetes 访问需求");
   }

@@ -136,6 +136,7 @@ export async function runCollectInspect(
     fallback: "权限缺失时仍交付 Pod 与 Env 配置，依赖清单标记为缺失",
   }] : [];
   await enforceKubernetesAccess(authorization, {
+    namespace: config.namespace,
     command: "doctor inspect",
     needs: [
       ...deploymentNeeds,

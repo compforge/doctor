@@ -125,14 +125,14 @@ Command 保持 Prepare → Execute → Finalize 的生命周期。Extension 的�
 
 1. **声明与发现**：Core、Plugin 顶层、本地适配器和 Service 均注册实现。Registry.extensions(kind) 按 kind 返回 namespace 与实现；
    发现只读取声明，不调用 run，不初始化业务 Client。
-2. **Prepare**：Command 按本次输入和提供方范围选择所需扩展；访问 Target 的实现检查自身及 Extension.access 的权限。
+2. **Prepare**：Command 按本次输入和提供方范围选择所需扩展；读取 Extension.access 声明，不预检所有可能的访问路径。
    已选实现可以保存在 Command 自己的 Prepared 中；允许按命令契约发现依赖和补齐身份，真实请求仍在执行阶段审批后触发。
 3. **Execute**：Command.run 执行自身逻辑，在需要的位置通过宿主调用 Extension.run。Command 决定输入、
    调用顺序、并发、分支、重试与结果组合，并遵守对应 kind 的调用前提和错误语义。
 4. **Finalize**：Command 将本次结果交给序列化与渲染。Finalize 消费已取得的本地结果，不继续调用扩展取数。
 
-prepare 确定已知的权限范围，不要求预先列出完整执行路径。运行中才发现的扩展仍须在调用前完成权限
-检查；已有候选检查通过，不代表后续任意调用都已获准。
+prepare 确定已知的声明范围，不要求预先列出完整执行路径。每次操作由宿主检查所属扩展的声明边界，
+目标系统通过实际请求判权；未使用的备用路径不会阻断当前路径。
 
 不同 Command 系列保持自己的执行模型。Collect 的 Inspect、Probe、Detector、Evidence 与预算由 Collect
 拥有。
@@ -147,9 +147,9 @@ Pod/Container，Catalog 加载无 I/O；`inspect --field config` 读取文件并
 ## 权限、上下文与资源
 
 CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数即可读取。命令按本次实际选择的扩展
-及自身动作检查权限，同一 Service 或 Plugin 中未参与的扩展不会扩大检查范围。
+及自身动作确定访问边界，同一 Service 或 Plugin 中未参与的扩展不会扩大访问范围。
 
-汇总权限用于检查，不代表将权限并集交给每个实现。ExtensionContext 只提供该次调用需要的配置、受限
+不汇总所有候选权限作为调用门槛，也不把权限并集交给每个实现。ExtensionContext 只提供该次调用需要的配置、受限
 访问、取消信号和资源管理能力；当前实现复用 PluginContext。调用复用宿主已有的权限、Client 与清理机制。
 
 临时资源随调用作用域回收，共享 Client 由根执行生命周期管理。扩展不能关闭借用的共享 Client；失败、
@@ -206,7 +206,7 @@ Data 使用 [facts.inspect](../../packages/plugin/src/extension/facts-inspect.ts
 
 - input 是 Query 列表，每个 Query 保留 Identity、约束和预算；output 按 Identity 返回 collected / failed outcome。
 - accepts、provides、expands 描述此 kind 的输入匹配和可能产出的 Fact / Relation 类型。
-- Data 的 CommandSpec.prepare 选择实现并检查权限，run 才创建受限上下文和调用取数。
+- Data 的 CommandSpec.prepare 选择实现并保留声明边界，run 才创建受限上下文和调用取数。
 - Data 继续负责批量、Relation 遍历、预算、逐项失败隔离、结果投影与诊断；原生扩展无需数据库式 target。
 
 Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 facts.inspect 实现，多个实现会报歧义。

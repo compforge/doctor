@@ -50,7 +50,7 @@ async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[]
   const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
-  const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor sample");
+  const invoke = overviewInvoker(context, executor, kube.kubernetes);
   // Freeze after target selection, before the first provider query; sampling reuses these exact instants.
   const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
   let collectionResult: CommandResult<CollectOutput> | undefined;

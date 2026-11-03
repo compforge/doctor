@@ -23,52 +23,13 @@ import type {
   ResolvedServiceDataSourceDependency,
 } from "@compforge/doctor-plugin";
 import type {
-  KubernetesAccessContext,
-  KubernetesAccessNeed,
-} from "../infra/k8s/access";
-import type {
   ExecResult,
   Executor,
   KubectlOptions,
 } from "@compforge/harness-toolbox/kubernetes/executor";
-import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
 const PLUGIN_KUBERNETES_TIMEOUT_MS = 20_000;
 const PLUGIN_KUBERNETES_OUTPUT_LIMIT = 4 * 1024 * 1024;
-
-function capabilityAccessNeeds(capability: CapabilityWithAccess): KubernetesAccessNeed[] {
-  const needs = [...(capability.access.kubernetes ?? [])];
-  // Native WebSocket exec uses GET; declared exec capability also covers kubectl-backed paths.
-  for (const need of [...needs]) {
-    if (need.rule.verb === "create" && need.rule.resource === "pods/exec") needs.push({
-      ...need, rule: { ...need.rule, verb: "get" }, purpose: "Core 原生 exec WebSocket 握手",
-    });
-  }
-  const portForward = needs.find((need) => (
-    need.rule.verb === "create" && need.rule.resource === "pods/portforward"
-  ));
-  if (portForward) {
-    needs.push({
-      rule: { verb: "list", resource: "services", allNamespaces: portForward.rule.allNamespaces },
-      requirement: portForward.requirement,
-      purpose: "Core 为 port-forward 解析 Service target",
-      fallback: portForward.fallback,
-    }, {
-      rule: { verb: "list", resource: "pods", allNamespaces: portForward.rule.allNamespaces },
-      requirement: portForward.requirement,
-      purpose: "Core 为 port-forward 解析 Pod target",
-      fallback: portForward.fallback,
-    });
-  }
-  const merged = new Map<string, KubernetesAccessNeed>();
-  for (const need of needs) {
-    const rule = need.rule;
-    const key = `${rule.verb}:${rule.resource}:${rule.resourceName ?? ""}:${rule.allNamespaces ? "all" : ""}`;
-    const previous = merged.get(key);
-    if (!previous || need.requirement === "required") merged.set(key, need);
-  }
-  return [...merged.values()];
-}
 
 function checkedOutput(label: string, result: ExecResult): string {
   const outputBytes = new TextEncoder().encode(result.stdout).byteLength
@@ -108,10 +69,10 @@ function createKubernetesAccess(
         need.rule.verb === verb
         && need.rule.resource === resource
         && (need.rule.resourceName === undefined || need.rule.resourceName === resourceName)
-        && (namespace === defaultNamespace || need.rule.allNamespaces === true)
+        && (namespace === (need.rule.namespace ?? defaultNamespace) || need.rule.allNamespaces === true)
       ));
       if (!declared) {
-        throw new Error(`Plugin capability 未声明 Kubernetes access: ${verb} ${resource}`);
+        throw new Error(`Plugin capability 未声明 Kubernetes access: ${verb} ${resource}${resourceName ? `/${resourceName}` : ""} (namespace=${namespace})`);
       }
     };
     const commandLabel = (command: readonly string[]): string => (
@@ -266,27 +227,18 @@ export function createPluginContext(
   };
 }
 
-/** Check declarations only; prepare must not execute capability code or initialize clients. */
-export async function preflightPluginAccess(
-  authorization: KubernetesAccessContext,
-  command: string,
-  namespace: string,
-  capability: CapabilityWithAccess,
-): Promise<void> {
-  await enforceKubernetesAccess(authorization, { command, namespace, needs: capabilityAccessNeeds(capability) });
-}
-
-/** Authorize the selected capability before exposing its target-scoped transport. */
+/**
+ * @spec Opening a capability never preflights its possible Kubernetes paths.
+ * @why Only operations actually selected by the capability need target permissions; declaration guards remain mandatory.
+ * @see {@link cli/docs/plugin.md}
+ */
 export async function openPluginContext(
   executor: Executor,
   kube: KubectlOptions & { namespace: string },
   options: Omit<PluginContextOptions, "environment"> & {
     environment?: ResolvedKubernetesEnvironment;
-    command: string;
-    authorization: KubernetesAccessContext;
   },
 ): Promise<ManagedPluginContext> {
-  await preflightPluginAccess(options.authorization, `${options.command} · ${options.service.name}`, kube.namespace, options.capability);
   const environment = options.environment ?? await resolveKubernetesEnvironment(executor);
   return createPluginContext(executor, bindKubernetesEnvironment(kube, environment), { ...options, environment });
 }

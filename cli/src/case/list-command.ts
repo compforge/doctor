@@ -34,22 +34,21 @@ export const caseListCommand = defineCommand<CaseListInput, void>({
       const kube = await resolveKubernetesCommandConfig({ ...input, ...commandOptions(context) }, undefined, context);
       if (!kube) throw new Error("已取消 Case 列表的环境选择");
       const executor = createKubernetesExecutor(kube);
-      const invoke = caseOperationInvoker(context, executor, kube.kubernetes, "doctor case list");
+      const invoke = caseOperationInvoker(context, executor, kube.kubernetes);
       const directory = discoverTenantDirectory(plugin!.services, (service, extension) =>
         openPluginContext(executor, kube.kubernetes, {
           config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
-          signal: context.signal, clients: context.clients, command: "doctor case list identity",
-          authorization: context.kubernetes(executor).access,
+          signal: context.signal, clients: context.clients,
         }), { commandContext: context });
       return {
-        consume: (service, extension) => invoke(service, extension, `bindings ${service.name}/${extension.id}`, { tenantId: input.tenantId }),
+        consume: (service, extension) => invoke(service, extension, { tenantId: input.tenantId }),
         produce: async (service, source) => {
           const producer = caseProducer(source);
           const requestIdentity = producer.requestIdentity ? await resolveCaseProducerIdentity(context, producer, input, directory) : undefined;
           const requestTenantId = producer.requestTenant ? await resolveCaseProducerTenant(context, producer, input, directory) : undefined;
           if ((producer.requestIdentity && !requestIdentity) || (producer.requestTenant && !requestTenantId)) throw new Error("已取消 Case 身份选择");
           useLogger("case").info(`解析 ${service.name}/${source.id} 的 Case URL`);
-          return invoke(service, producer, `produce ${service.name}/${source.id}`, {
+          return invoke(service, producer, {
             tenantId: input.tenantId, requestIdentity, requestTenantId, maxCases: 10,
           });
         },

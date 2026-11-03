@@ -20,11 +20,9 @@ import {
   type KubernetesCommandConfig,
   type KubernetesCommandInput,
 } from "../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../command";
 import { openPluginContext, type ManagedPluginContext } from "../plugin/context";
 
 export interface OpenModelAccessOptions extends KubernetesCommandInput {
-  command: string;
   plugin: PluginDefinition;
   commandContext?: CommandContext;
   /** Logical provider identity, independent of endpoint host overrides. */
@@ -83,7 +81,6 @@ async function prepareModelDiscovery(
   const config = await resolveKubernetesCommandConfig(options, undefined, options.commandContext);
   if (!config) return undefined;
   const executor = createKubernetesExecutor(config);
-  const authorization = resolveKubernetesCommandContext(executor, options.commandContext).access;
   const kube = {
     namespace: config.kubernetes.namespace,
     kubeconfig: config.kubernetes.kubeconfig,
@@ -100,9 +97,7 @@ async function prepareModelDiscovery(
       config: options.commandContext?.profile.pluginConfig,
       service: service,
       endpoint,
-      command: options.command,
       capability,
-      authorization,
     });
     const managed: ManagedPluginContext = {
       ...context, dispose: async () => {
@@ -124,9 +119,7 @@ async function prepareModelDiscovery(
         host: options.tenantDirectoryService?.trim() || extension.endpoint.host,
         port: parseModelPort(options.tenantDirectoryPort, extension.endpoint.port, "--tenant-directory-port"),
       },
-      command: options.command,
       capability: extension,
-      authorization,
     }), { service: options.directoryProvider, commandContext: options.commandContext });
     const catalog = extensionModelCatalog(catalogService, (service, extension) => contextFor(service, extension, {
       host: options.modelCatalogService?.trim() || extension.endpoint.host,

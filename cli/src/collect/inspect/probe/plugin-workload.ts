@@ -54,8 +54,6 @@ export function makePluginWorkloadProbe(
         signal: ctx.command.signal,
         service: service,
         capability: declaration,
-        command: "doctor inspect",
-        authorization: ctx.authorization,
       });
       try {
         const definition = service.workloads.find((item) => item.name === declaration.workload)!;

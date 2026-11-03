@@ -182,3 +182,28 @@ test("Kubernetes 通道校验复用启动 Inspect Fact，不重复执行 kubectl
 
   expect(calls).toBe(0);
 });
+
+/** @case id=permission_cache_namespace,desc=Identical verbs and resources in different namespaces retain independent authorization results */
+test("explicit permission diagnostics bind and cache the effective namespace", async () => {
+  const calls: string[][] = [];
+  const executor: Executor = {
+    run: async args => { calls.push(args); return result(args.includes("denied") ? "no" : "yes"); },
+    exec: async () => result(""),
+  };
+  const access = new KubernetesAccessContext(executor);
+  const rule = { verb: "get", resource: "services", resourceName: "sample" };
+  const needs = [{ rule, requirement: "required", purpose: "diagnose access" }] as const;
+  expect((await access.evaluate({ command: "diagnose", namespace: "allowed", needs })).runnable).toBeTrue();
+  expect((await access.evaluate({ command: "diagnose", namespace: "denied", needs })).runnable).toBeFalse();
+  expect((await access.evaluate({ command: "diagnose", namespace: "allowed", needs })).runnable).toBeTrue();
+  expect(access.fact(rule, "denied")?.status).toBe("denied");
+  await access.inspect({ ...rule, namespace: "allowed" }, "denied");
+  expect(calls).toEqual([
+    ["auth", "can-i", "get", "services/sample", "--namespace", "allowed"],
+    ["auth", "can-i", "get", "services/sample", "--namespace", "denied"],
+  ]);
+  await access.inspect({ ...rule, allNamespaces: true }, "allowed");
+  await access.inspect({ ...rule, allNamespaces: true }, "denied");
+  expect(calls.at(-1)).toEqual(["auth", "can-i", "get", "services/sample", "--all-namespaces"]);
+  expect(calls).toHaveLength(3);
+});

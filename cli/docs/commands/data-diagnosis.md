@@ -146,7 +146,7 @@ Plugin 可以在一次数据访问中读到多层关联，但应将关系按当�
 
 Doctor 只确认当前环境和 Service 身份，并托管 port-forward 生命周期；Plugin 决定如何定位运行实例、解释配置、使用哪套
 HTTP/DB client，以及这些 ID 应查询什么。Plugin 与 Doctor 同进程运行，这个接口是协作契约而非沙箱。
-每个上下文只拥有对应 Extension 的声明权限，prepare 的汇总检查不会合并扩展权限。连接凭据只存在于
+每个上下文只拥有对应 Extension 的声明范围，prepare 不批量预检 RBAC；实际操作前检查声明，再由目标系统判权。连接凭据只存在于
 执行态；Inspect 适配入口仍可保留脱敏 target 描述，原生 Extension 不要求数据库字段。扩展的临时资源
 随调用作用域回收，共享 Client 由根 finalize 关闭。
 

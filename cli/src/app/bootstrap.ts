@@ -293,7 +293,6 @@ async function resolveLocalModel(
     );
   }
   const access = await openModelAccess({
-    command: "doctor chat",
     plugin,
     commandContext,
     profile: profileName,

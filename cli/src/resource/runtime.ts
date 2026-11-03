@@ -20,10 +20,7 @@ export async function observeResource(context: CommandContext, provider: Resourc
     return await withDeadline(context.signal, query.timeoutMs, async signal => {
       const options = { service: provider.service, capability: operation, config: context.profile.pluginConfig,
         clients: context.clients, signal, databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined };
-      managed = target ? await openPluginContext(target.executor, target.kube.kubernetes, {
-        ...options, command: `doctor resource ${provider.binding.resource.id}`,
-        authorization: context.kubernetes(target.executor).access,
-      }) : createHostPluginContext(options);
+      managed = target ? await openPluginContext(target.executor, target.kube.kubernetes, options) : createHostPluginContext(options);
       const result = await invokeOperation(operation, managed, query);
       return { environment: managed.target.env, result };
     });

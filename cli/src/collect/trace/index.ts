@@ -382,7 +382,7 @@ export async function runCollectTrace(
       useLogger().error(reason);
       recordStoreDiagnostics("failed");
       bundle.writeSummary(`# OpenSearch Store 准备失败\n\n${reason}\n`);
-      return preparationFailure(`OpenSearch Store 准备失败：${reason}`);
+      return preparationFailure(`OpenSearch Store 准备失败（尚未执行 trace 查询）：${reason}`);
     }
   }
 

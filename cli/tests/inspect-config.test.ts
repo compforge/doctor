@@ -61,6 +61,7 @@ for (const scenario of ["ok", "empty", "missing", "invalid", "oversized", "denie
       },
       exec: async (target, args, options) => {
         expect(target).toMatchObject({ pod: "api-0", container: "main" });
+        if (scenario === "denied") return { ...response(), ok: false, exitCode: 1, stderr: "pods/exec is forbidden" };
         if (args[0] === "printenv") return response("SANDBOX_MODE=pod\0OTHER=keep-in-evidence\0");
         fileReads++;
         expect(args.slice(0, 2)).toEqual(["sh", "-c"]);

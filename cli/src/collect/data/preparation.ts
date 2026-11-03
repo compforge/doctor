@@ -3,7 +3,6 @@ import type {
   ServiceCatalog,
 } from "@compforge/doctor-plugin";
 import { findDataProvider } from "./extensions";
-import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext, type ManagedPluginContext } from "../../plugin/context";
 import type { PreparedDataCommand } from "./context";
 import type {
@@ -50,9 +49,7 @@ export async function prepareDataAccess(
           config: command.profile.pluginConfig,
           databaseIdentity: config.fallbackIdentity,
           service: declared.service,
-          command: "doctor data",
           capability: declared.extension,
-          authorization: resolveKubernetesCommandContext(executor, command).access,
         });
         context = managed;
       }
