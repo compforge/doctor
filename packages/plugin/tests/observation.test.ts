@@ -36,5 +36,27 @@ test("Value persistence accepts compound JSON and restores behavior explicitly",
   expect(Object.isFrozen(saved.data)).toBe(true);
   expect(deserializeValue(JSON.parse(JSON.stringify(saved.data)), codec)).toBeInstanceOf(Tree);
   expect(() => serializeValue(new Tree(saved.data), codec, { maxBytes: 1 })).toThrow("byte budget");
-  expect(() => serializeValue(new Tree({ hidden: undefined } as never), codec)).toThrow("unsupported JSON value");
+  expect(() => serializeValue(new Tree([undefined] as never), codec)).toThrow("unsupported JSON value");
+});
+
+/** @case Codec validation sees normalized data and still owns required-field validation. */
+test("Value serialization normalizes optional fields before decode and measures the saved data", () => {
+  class Label {
+    constructor(readonly name: string, readonly note?: string) {}
+    summary() { return { title: this.name, text: this.note, fields: [] }; }
+  }
+  const codec = {
+    encode: (value: Label) => ({ name: value.name, note: value.note }),
+    decode: (json: unknown) => {
+      if (!json || typeof json !== "object" || !("name" in json) || typeof json.name !== "string") throw new Error("name is required");
+      expect(Object.hasOwn(json, "note")).toBe(false);
+      return new Label(json.name);
+    },
+  };
+  const saved = serializeValue(new Label("Example"), codec, { maxBytes: JSON.stringify({ name: "Example" }).length });
+  expect(saved.data).toEqual({ name: "Example" });
+  expect(saved.summary).toEqual({ title: "Example", fields: [] });
+  expect(Object.hasOwn(saved.summary, "text")).toBe(false);
+  expect(deserializeValue(JSON.parse(JSON.stringify(saved.data)), codec)).toBeInstanceOf(Label);
+  expect(() => serializeValue(new Label("Example"), { ...codec, encode: () => ({ name: undefined }) })).toThrow("name is required");
 });

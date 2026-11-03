@@ -231,10 +231,10 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 取消时停止后续实例。访问上下文在该探测函数的实例批次结束后释放。
 
 Probe 使用 `defineObservation({ kind, schemaVersion, codec })`，其中 `ValueCodec<T>` 提供
-`encode(value): JsonValue` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
+`encode(value): JsonInput` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
 `defineWorkloadProbeExtension` 的作者侧 `run` 直接返回 Value，由工厂生成标准调用信封，
 不再另外声明 `withSummary`。Plugin 可以使用嵌套对象、动态 Map、数字、布尔和数组，领域校验由 Codec 负责。
-Core 只检查编码结果能否无损保存为 JSON，并通过 decode 验证结果、取得摘要。
+Core 先把编码结果规范化为 JSON，再检查大小预算，通过 decode 验证业务结构并取得摘要。
 
 Value 和 Codec 方法必须是纯数据操作，不访问网络或申请资源；外部访问仍归 Probe，跨值判断仍归 Detector。
 归档只存编码后的完整 JSON、kind/schemaVersion 和已生成的 Summary，不序列化实例方法。
@@ -246,8 +246,12 @@ Plugin API 20 只接受 Codec 声明，移除 TypeBox schema、Core 的 addition
 
 Value/Codec 是独立于 Command 的 Core–Plugin 数据契约。SDK 的 `serializeValue` / `deserializeValue`
 可直接用于嵌套对象、数组等复合数据；只有明确保存、恢复数据的边界需要使用它，不要求所有命令输出都实现 Value。
-Resource 等领域模型继续由各 Command 拥有，复用 SDK 的无损 JSON 检查，不改变为 Value 的子类。
-编码必须显式表达 JSON 数据：遗漏可选字段，而非输出 undefined；Date、Map 等需由 Codec 转为约定格式。
+Resource 等领域模型继续由各 Command 拥有，复用 SDK 的 JSON 规范化与合法性检查，不改变为 Value 的子类。
+编码输入 `JsonInput` 允许对象属性为 undefined，Core 递归省略这些属性，协议中表示“未提供”；
+显式 null、false、0 保持原值。规范化后的 `JsonValue` 不含 undefined，保存、大小检查和 Codec 校验使用同一份数据。
+顶层 undefined、数组中的 undefined 和稀疏数组仍拒绝，避免位置或含义变化；Date、Map、自定义实例由 Codec
+显式转为约定格式，函数、符号、循环引用和 accessor 不进入归档。这里保留的是协议数据语义，不是 JS 属性存在性。
+业务必填字段在省略后是否缺失，由 Codec 判断；Core 不增加一套字段 schema。
 Summary 的 path 指向编码后的 JSON。Workload Observation 单条数据预算为 1 MiB。
 
 `datasource.vdb.inspect` 通过 Service 与 `dataSource` ID 绑定 VDB 声明，每个数据源选择唯一实现。

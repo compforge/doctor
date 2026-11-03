@@ -212,3 +212,28 @@ test("failed Resource archives its sanitized cause independently from the concis
   expect(saved).not.toContain("signed");
   await commandContext.disposeClients();
 });
+
+/** @case Changing counts remain unknown through the real Resource command and persisted output. */
+test("Resource snapshots omit undefined optional totals while preserving empty totals and explicit null", async () => {
+  const active = plugin();
+  active.services.services[0]!.resources![0]!.observe.run = withSummary({ title: "Volumes", fields: [] }, async context => ({
+    ...snapshot(context.target.env), totalCount: undefined, measurements: undefined,
+    coverage: { status: "partial", reason: "Count changed during observation" },
+    instances: [{ ref: { environment: context.target.env, resource: "volumes", id: "v1" }, details: { cleared: null, count: 0 } }],
+  }));
+  const commandContext = context(active);
+  try {
+    const output = await resourceCommand.run(commandContext, { services: ["w"] });
+    roots.push(...output.artifacts.map(a => a.path));
+    expect(output.status).toBe(CommandStatus.Partial);
+    const collected = output.output!.entries[0]!.snapshot!;
+    expect(Object.hasOwn(collected, "totalCount")).toBe(false);
+    expect(Object.hasOwn(collected, "measurements")).toBe(false);
+    const root = mkdtempSync(join(tmpdir(), "resource-optional-")); roots.push(root);
+    await SerializeContext.create(root, resourceCommand, output);
+    const saved = JSON.parse(readFileSync(join(root, "output.json"), "utf8")).entries[0].snapshot;
+    expect(saved).toEqual(collected);
+    expect(saved.instances[0].details).toEqual({ cleared: null, count: 0 });
+    expect(saved.coverage.status).toBe("partial");
+  } finally { await commandContext.disposeClients(); }
+});

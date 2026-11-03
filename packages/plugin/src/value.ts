@@ -1,4 +1,4 @@
-import { immutableJsonObject, immutableJsonValue, type JsonValue } from "./json";
+import { immutableJsonObject, immutableJsonValue, type JsonInput, type JsonValue } from "./json";
 import { validateSummary, type Summary } from "./summary";
 
 /** Runtime business data and its producer-owned reading hints. */
@@ -12,7 +12,7 @@ export interface Value {
  * @see ../../../cli/docs/plugin.md
  */
 export interface ValueCodec<T extends Value> {
-  encode(value: T): JsonValue;
+  encode(value: T): JsonInput;
   decode(json: unknown): T;
 }
 
@@ -22,7 +22,7 @@ export interface SerializedValue {
   readonly summary: Summary;
 }
 
-/** @spec Core preserves only lossless JSON; the Codec owns domain validation and reconstruction. */
+/** @spec Core normalizes absent object fields and preserves protocol data; the Codec owns domain validation and reconstruction. */
 export function serializeValue<T extends Value>(value: T, codec: ValueCodec<T>, options: { label?: string; maxBytes?: number } = {}): SerializedValue {
   const label = options.label ?? "Value";
   const data = immutableJsonValue(codec.encode(value), `${label}.data`);

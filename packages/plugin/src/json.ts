@@ -1,4 +1,4 @@
-/** Values that can cross the Plugin boundary without lossy JavaScript-to-JSON conversion. */
+/** Normalized protocol data: object absence is represented by an omitted property. */
 export type JsonPrimitive = null | boolean | number | string;
 
 export type JsonValue =
@@ -9,6 +9,9 @@ export type JsonValue =
 export type JsonObject = {
   readonly [key: string]: JsonValue;
 };
+
+/** Encoder input may express absent object fields as undefined; array elements must have a value. */
+export type JsonInput = JsonPrimitive | readonly JsonInput[] | { readonly [key: string]: JsonInput | undefined };
 
 function propertyPath(path: string, key: string): string {
   return `${path}[${JSON.stringify(key)}]`;
@@ -65,6 +68,7 @@ function cloneJson(
       if (!descriptor.enumerable || !("value" in descriptor)) {
         throw new Error(`${propertyPath(path, key)} must be an enumerable data property`);
       }
+      if (descriptor.value === undefined) continue;
       copy[key] = cloneJson(
         descriptor.value,
         propertyPath(path, key),
@@ -81,12 +85,16 @@ function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }
 
-/** Create a lossless, deeply immutable JSON snapshot without JavaScript coercion. */
+/**
+ * @spec Undefined object properties mean absence and are omitted recursively; null remains explicit.
+ * @rule Top-level undefined, undefined array elements and holes are rejected, never converted to null.
+ * @see {@link ../../../cli/docs/extension.md}
+ */
 export function immutableJsonValue(value: unknown, label: string): JsonValue {
   return cloneJson(value, label, new Set());
 }
 
-/** Create a lossless, deeply immutable JSON object instead of relying on JSON.stringify coercion. */
+/** Normalize optional fields and create a deeply immutable JSON object without coercing unsupported data. */
 export function immutableJsonObject(value: unknown, label: string): JsonObject {
   const snapshot = immutableJsonValue(value, label);
   if (snapshot === null || isJsonArray(snapshot) || typeof snapshot !== "object") {
