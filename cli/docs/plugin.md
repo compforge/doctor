@@ -297,8 +297,9 @@ capability 实际需要的业务输入。`PluginContext` 可以携带有效 Envi
 时按声明解析 Instance 并传入；其它 capability 不会收到与其无关的 Pod 或部署细节。
 
 当逻辑 Service 的配置来源不在当前 Target namespace 时，Plugin 可以通过 Kubernetes access 的
-`inNamespace` 在同一 Target cluster 内自行发现，并为跨 namespace 操作声明 `allNamespaces`
-access。当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
+`inNamespace` 在同一 Target cluster 内自行发现。每条 access rule 的 `namespace` 省略时绑定当前目标，
+指定时只允许该 namespace；多个候选分别声明，只有确需全集访问才使用 `allNamespaces`。
+当前 namespace 是 Core 已知的调用上下文，不是逻辑 Service 必须同名部署于此的假设。
 例如 VDB DataSource 可由 `datasource.vdb.inspect` Extension 自行定位配置来源，再向 Core 返回统一的
 `ServiceVdbTarget`；Core 只消费这个结果完成标准 VDB 诊断。
 
@@ -348,7 +349,7 @@ API、SQL、表结构及诊断知识始终属于具体 Plugin；Kubernetes 查�
 Service 通过 `context.clients.get(dataSource)` 获取已初始化的 Client。DataSource 的 `clientKey` 表达 Plugin 内的
 目标及访问策略；Host 自动按 Kubernetes 环境、namespace、Service、endpoint、配置、数据库身份与声明的
 access 隔离。同一 `clientKey` 必须对应同一种 Client。配置身份只保留内存摘要，不输出凭据；每次 capability
-调用仍先通过自己的 access 预检，客户端复用不扩大权限。
+操作仍检查自己的 access 声明，客户端复用不扩大权限。
 
 DataSource.createClient 接收 PluginClientContext，返回实现 initialize/dispose 的 Client。工厂只构造对象，
 外部操作归 initialize；dispose 必须幂等，并能清理初始化失败留下的资源。工厂上下文的 signal 和 infra
@@ -376,8 +377,9 @@ Client 持有初始化所需的运行时配置，并自行限制并发。MySQL �
 
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
-本轮参与的 Service，再把 Core command 自身需求与这些 capability 的声明合成阶段性的 access plan；
-因此同一 Plugin 中未参与本次命令的 Service 不会扩大预检权限。
+本轮参与的 Service。Core 在每次实际操作前校验该 capability 的声明边界，再由目标系统授权实际请求。
+打开 capability 不执行整批 RBAC 预检，不要求未选择的 fallback 或 transport 权限；显式权限诊断仍可使用
+绑定实际 namespace 的 `can-i`，其结果不能代表业务查询成功。用户审批与 Host 策略独立于目标系统判权。
 
 Plugin 的贡献深度随 command 类型变化：业务型命令由 capability 执行业务访问并返回约定数据；
 基础设施型命令只需要 Plugin 贡献目标或连接信息，标准诊断算法仍由 Core 持有；混合型命令先由 Plugin
@@ -431,7 +433,7 @@ Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；�
 
 Service.extensions 提供开放 kind 的 Extension；Extension、kind 标识及各 kind 的输入输出契约统一定义在
 `packages/plugin`。Catalog 按 kind 离线发现，不调用实现；Extension.access 声明实际访问需求。
-Data 使用 facts.inspect，prepare 先检查所选实现权限，run 再通过宿主的受限上下文取数。输入是 Query
+Data 使用 facts.inspect，prepare 选择实现，run 再通过宿主的受限上下文按操作检查声明并取数。输入是 Query
 列表，输出逐 Identity 关联，复用既有 Fact 与预算校验；它无需数据库式 resolveTarget。
 
 Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 facts.inspect 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。

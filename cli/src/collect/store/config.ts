@@ -256,7 +256,6 @@ export async function resolveStoreProviderConfig(
 ): Promise<ResolvedStoreConfig | undefined> {
   const outputFormat = resolvedOutputFormat ?? parseStoreOutputFormat(opts.format);
   resolveStoreOutputPath(opts.output, "doctor-store", outputFormat);
-  const access = resolveKubernetesCommandContext(executor, commandContext).access;
   const interactive = isInteractive(opts.interactive);
   const [kind] = parseStoreKinds(opts.type);
   if (!kind || kind === "redis") throw new Error("resolveStoreConfig 只处理 db、vdb、s3 单个 Store");
@@ -276,10 +275,8 @@ export async function resolveStoreProviderConfig(
     }, {
       config: commandContext.profile.pluginConfig,
       service: plugin.services.find(service)!,
-      command: "doctor store",
       capability: provider.extension,
       signal: commandContext.signal,
-      authorization: access,
     }));
   } else if (!capability.source) {
     const selection: SelectionContext = {

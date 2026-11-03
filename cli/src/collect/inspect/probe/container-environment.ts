@@ -37,7 +37,7 @@ export function makeContainerEnvironmentProbe(
       };
       let execution: ExecResult | undefined;
       try {
-        if (ctx.authorization.fact({ verb: "get", resource: "pods/exec" })?.status === "denied") {
+        if (ctx.authorization.fact({ verb: "get", resource: "pods/exec" }, ctx.config.namespace)?.status === "denied") {
           throw new Error("缺少 pods/exec 权限，无法读取 Pod Env");
         }
         execution = await ctx.exec({ pod: target.pod, container: target.container },

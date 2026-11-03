@@ -1,7 +1,6 @@
 import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
-import { preflightPluginAccess } from "../../plugin/context";
 import { findDataProvider, type DataProvider } from "./extensions";
-import { CommandInputError, resolveKubernetesCommandContext, type CommandContext } from "../../command";
+import { CommandInputError, type CommandContext } from "../../command";
 
 import { useLogger } from "../../terminal/log";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -48,13 +47,8 @@ export async function prepareDataCommand(
       if (!provider) throw new Error(`Doctor 未注册 Service '${service}' 的 facts.inspect Extension`);
       return provider;
     });
-    // Namespace/channel access is checked by resolveDataConfig; Data itself performs no business I/O.
-    // Preflight every selected Extension before any provider can run. Contexts retain individual grants.
-    const authorization = resolveKubernetesCommandContext(executor, command).access;
-    for (const provider of providers) {
-      command.signal.throwIfAborted();
-      await preflightPluginAccess(authorization, `doctor data · ${provider.name}/${provider.extension.id}`, config.namespace, provider.extension);
-    }
+    // Providers enforce their declarations when executing; unused paths need no RBAC preflight.
+    command.signal.throwIfAborted();
     return { command, config, selections, executor, providers };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);

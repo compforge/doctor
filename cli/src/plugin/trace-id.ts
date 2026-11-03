@@ -6,7 +6,7 @@ import type {
   ResolvedServiceDataSourceDependency,
   ServiceDefinition,
 } from "@compforge/doctor-plugin";
-import { resolveKubernetesCommandContext, type CommandContext } from "../command";
+import type { CommandContext } from "../command";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 
 import { useLogger } from "../terminal/log";
@@ -92,10 +92,8 @@ export async function resolvePluginTraceIds(
         config: opts.commandContext?.profile.pluginConfig,
         service: provider,
         endpoint: extension.endpoint,
-        command: opts.command,
         capability: extension,
         dependencies,
-        authorization: resolveKubernetesCommandContext(executor, opts.commandContext).access,
       });
       context = managed;
     }

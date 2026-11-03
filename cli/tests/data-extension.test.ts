@@ -1,9 +1,9 @@
 import { withSummary } from "@compforge/doctor-plugin";
-import { expect, mock, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { dirname } from "node:path";
 import { createServiceCatalog, FACTS_INSPECT_KIND, type FactsInspectExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
-import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { dataCommand, type DataInput } from "../src/collect/data/command";
 import { CommandContext, CommandStatus, defineCommand } from "../src/command";
 import { prepareDataCommand, runCollectData } from "../src/collect/data";
@@ -57,7 +57,7 @@ test("Data prepares only selected Extension access, then invokes native facts.in
     run: withSummary({ title: "Fixture", fields: [] }, async (context, queries) => {
       calls++;
       events.push("extension.run");
-      expect(events[0]).toBe("auth can-i get configmaps");
+      expect(events.some(event => event.startsWith("auth can-i"))).toBeFalse();
       expect(context.target.service.name).toBe("records");
       await expect(context.infra.kubernetes.list({ apiVersion: "v1", resource: "secrets" })).rejects.toThrow("未声明");
       context.onDispose(dispose);
@@ -70,7 +70,7 @@ test("Data prepares only selected Extension access, then invokes native facts.in
   const context = new CommandContext({});
   try {
     const prepared = await prepareDataCommand(args, configured.services, context, executor(events));
-    expect(events).toEqual(["auth can-i get configmaps"]);
+    expect(events).toEqual([]);
     expect(calls).toBe(0);
     expect(context.artifacts.list()).toEqual([]);
     const result = await runCollectData(prepared!, configured);
@@ -90,12 +90,15 @@ test("Data prepares only selected Extension access, then invokes native facts.in
   } finally { await cleanup(context); }
 });
 
-test("required access denial stops prepare before any provider execution or output", async () => {
-  const run = mock(async () => []);
-  const configured = plugin([service("records", extension({ run: withSummary({ title: "Fixture", fields: [] }, run) }))]);
+test("Data prepare does not preflight unused Extension declarations", async () => {
+  const run = mock(extension().run);
+  const configured = plugin([service("records", extension({ run }))]);
   const context = new CommandContext({});
   try {
-    await expect(prepareDataCommand(args, configured.services, context, executor([], false))).rejects.toThrow("缺少必须");
+    const events: string[] = [];
+    const prepared = await prepareDataCommand(args, configured.services, context, executor(events, false));
+    expect(prepared?.providers).toHaveLength(1);
+    expect(events).toEqual([]);
     expect(run).not.toHaveBeenCalled();
     expect(context.artifacts.list()).toEqual([]);
   } finally { await cleanup(context); }
@@ -133,10 +136,12 @@ test("Data rejects ambiguous facts.inspect producers instead of silently using r
   expect(() => dataProviders(createServiceCatalog([records]))).toThrow("one facts.inspect Extension per Service");
 });
 
-for (const nested of [false, true]) test(`Data checked entry point preflights before run (nested=${nested})`, async () => {
-  const run = mock(async () => []);
-  const configured = plugin([service("records", extension({ run: withSummary({ title: "Fixture", fields: [] }, run) }))]);
-  const denied = executor([], false);
+for (const nested of [false, true]) test(`Data checked entry point invokes providers without preflighting unused access (nested=${nested})`, async () => {
+  const run = mock(extension().run);
+  const configured = plugin([service("records", extension({ run }))]);
+  const events: string[] = [];
+  const denied = executor(events, false);
+  const execute = spyOn(KubectlExecutor.prototype, "run").mockImplementation(denied.run);
   const context = new CommandContext({
     kubernetes: {
       kubeconfig: { source: "test" }, context: "test-context",
@@ -148,11 +153,10 @@ for (const nested of [false, true]) test(`Data checked entry point preflights be
   const parent = defineCommand<DataInput, unknown>({ name: "parent", prepare: async (_context, input) => input, run: (ctx, input) => dataCommand.run(ctx, input) });
   try {
     const result = await (nested ? parent : dataCommand).run(context, args);
-    expect(result.status).toBe(CommandStatus.Failed);
-    expect("reason" in result ? result.reason : undefined).toContain("缺少必须");
-    expect(run).not.toHaveBeenCalled();
-    expect(context.artifacts.list()).toEqual([]);
-  } finally { await cleanup(context); }
+    expect(result.status, JSON.stringify(result)).toBe(CommandStatus.Ok);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(events.some(event => event.startsWith("auth can-i"))).toBeFalse();
+  } finally { execute.mockRestore(); await cleanup(context); }
 });
 
 test("an explicitly selected Service does not inherit an unselected Service's ambiguous kind", async () => {

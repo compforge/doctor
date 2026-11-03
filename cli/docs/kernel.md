@@ -112,7 +112,7 @@ Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service �
 入口先校验输入，再调用 prepare，将其类型化结果传给领域 run。调用者通过封装后的 Command.run 传入
 原始 Input，准备结果由命令内部持有。
 
-Prepare 按输入选择本次依赖，完成 Plugin 能力存在性检查、环境准备和已选实现的访问检查。
+Prepare 按输入选择本次依赖，完成 Plugin 能力存在性检查、环境准备和已选实现的声明绑定。
 公共的能力与环境检查复用 prepareCommandRequirements；没有额外准备工作的命令直接返回输入。
 依赖 Extension 声明的请求身份也由 prepare 补齐：按需发现目录、应用参数与配置优先级，并通过共享 Decision 完成交互选择。
 准备结果向 run 传递已解析的依赖与输入，不让执行中的每个实例重复询问。
@@ -127,7 +127,8 @@ prepare 根据本次输入选择并绑定资源和能力，Service 则提供 Wor
 中止本轮且不进入 run。共享客户端仍由根 Finalize 回收。准备期间的外部访问同样必须先检查 access；
 需要作为 Evidence 留存的现场获取结果继续通过 Inspect 等取证流程处理。
 
-Run 中才能确定的目标和能力，在实际调用前检查对应 access；准备阶段的授权只覆盖已检查的范围。
+Plugin 的每次 Kubernetes 操作都先检查所属 capability 的 access 声明，再由目标 API 判权；不在调用前
+汇总预检所有候选路径。Core 自身的权限诊断与用户审批仍按具体命令执行。
 聚合命令准备自身依赖，子命令在被调用时独立准备，以保留逐项失败隔离和部分完成结果。
 
 Execute 的内部流程由命令系列决定；Collect 使用 Inspect → Probe → Detector，Provision 等系列保留
@@ -137,7 +138,7 @@ Execute 的内部流程由命令系列决定；Collect 使用 Inspect → Probe 
 
 | 阶段 | Core | Plugin Service |
 |---|---|---|
-| Prepare | 解析并校验用户意图；选择 Target、Service 与 contribution；合并 Core/Plugin access needs；创建本轮上下文和清理责任 | 声明 Service、Workload、capability、dependency、access 与 contribution；校验 Plugin-owned config；不自行创建命令生命周期 |
+| Prepare | 解析并校验用户意图；选择 Target、Service 与 contribution；绑定已选 capability 的 access 声明；创建本轮上下文和清理责任 | 声明 Service、Workload、capability、dependency、access 与 contribution；校验 Plugin-owned config；不自行创建命令生命周期 |
 | Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一批业务 Inspect Query，逐项返回结果与 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
 | Probe | 根据冻结 Facts 生成计划；向 Probe 注入公共 Fact；控制依赖、策略、授权、风险和资源生命周期；驱动 Core/Plugin Probe | 执行一次业务 Probe，消费 Input/Facts 并返回 Observation；不内建循环、并发或跨 Probe 调度 |
 | Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Coverage 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
@@ -228,7 +229,7 @@ Service 关联决策，不能再次手写或改写 identity。
 validate domain input
   → required Plugin capability + validated Plugin config
   → declared Host / Kubernetes environment
-  → selected Target + staged access plan + permission check
+  → selected Target + scoped capability declarations
   → domain work or child Command.run calls
   → invocation result + resource cleanup
 ```
@@ -328,7 +329,7 @@ Core 实现可以直接消费进程内领域上下文；Plugin contribution 还�
 | 边界 | 方向 | 所有权 |
 |---|---|---|
 | Inspect / Probe / Detector contribution | Plugin Service → Core | Plugin 提供业务逻辑；Core 选择、驱动并验证结果 |
-| access | Plugin capability → Core | Plugin 声明最小需求；Core 合并、检查并授权 |
+| access | Plugin capability → Core | Plugin 声明最小范围；Core 逐操作检查声明，目标系统判权 |
 | dependencies | Service → Core | Service 声明所需其它 Service capability；Core 解析并注入受限 handle |
 | data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
 | infra | Core → PluginContext | Core 提供当前 Target 的受限访问、取消和资源生命周期 |

@@ -30,6 +30,7 @@ function describeAccess(access: CapabilityAccess): CapabilityAccess {
         verb: rule.verb,
         resource: rule.resource,
         resourceName: rule.resourceName,
+        namespace: rule.namespace,
         allNamespaces: rule.allNamespaces,
       },
       requirement, purpose, fallback,

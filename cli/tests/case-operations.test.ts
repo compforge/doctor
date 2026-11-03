@@ -22,7 +22,7 @@ function executor(allowed: boolean, calls: string[][]): Executor {
   };
 }
 
-test("Health native producer checks its own access before invocation and retains source attribution", async () => {
+test("Health native producer does not preflight unused access", async () => {
   const run = mock(withSummary({ title: "Requests", fields: [] }, async () => ({ cases: [], reason: "fixture" })));
   const source: ServiceCaseSource = { id: "files", load: () => [], produce: {
     access: { kubernetes: [{ rule: { verb: "get", resource: "services", resourceName: "source" },
@@ -34,9 +34,9 @@ test("Health native producer checks its own access before invocation and retains
   const calls: string[][] = [];
   try {
     const actions = caseCheckActions(context, executor(false, calls), { namespace: "ns" }, "/unused", () => {}, approveAll);
-    await expect(actions.produce(service, source, { maxCases: 1 })).rejects.toThrow("Case files produce");
-    expect(run).not.toHaveBeenCalled();
-    expect(calls).toEqual([["auth", "can-i", "get", "services/source"]]);
+    expect(await actions.produce(service, source, { maxCases: 1 })).toEqual({ cases: [], reason: "fixture" });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(calls.every(command => command[0] === "config")).toBe(true);
   } finally { await context.disposeClients(); }
 });
 

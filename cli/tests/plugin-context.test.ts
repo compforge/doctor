@@ -7,7 +7,7 @@ import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
-import { createPluginContext, openPluginContext, preflightPluginAccess } from "../src/plugin/context";
+import { createPluginContext, openPluginContext } from "../src/plugin/context";
 import type {
   ExecResult,
   Executor,
@@ -139,7 +139,7 @@ test("Plugin Kubernetes access preserves native API failure kinds without runnin
   } finally { await context.dispose(); }
 });
 
-test("Plugin access preflight only includes the selected Service capability", async () => {
+test("Opening Plugin access does not preflight unused declared operations", async () => {
   const calls: string[][] = [];
   const executor: Executor = {
     run: async (command) => {
@@ -155,7 +155,6 @@ test("Plugin access preflight only includes the selected Service capability", as
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       workloads: []
     },
-    command: "doctor data",
     capability: {
       access: {
         kubernetes: [{
@@ -165,14 +164,13 @@ test("Plugin access preflight only includes the selected Service capability", as
         }],
       },
     },
-    authorization: new KubernetesAccessContext(executor),
   });
 
-  expect(calls).toEqual([["auth", "can-i", "get", "services"]]);
+  expect(calls).toEqual([]);
   await context.dispose();
 });
 
-test("Core expands port-forward into its Kubernetes transport requirements", async () => {
+test("Unused port-forward does not require discovery permissions", async () => {
   const calls: string[][] = [];
   const executor: Executor = {
     run: async (command) => {
@@ -188,7 +186,6 @@ test("Core expands port-forward into its Kubernetes transport requirements", asy
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       workloads: []
     },
-    command: "doctor model",
     capability: {
       access: {
         kubernetes: [{
@@ -198,14 +195,9 @@ test("Core expands port-forward into its Kubernetes transport requirements", asy
         }],
       },
     },
-    authorization: new KubernetesAccessContext(executor),
   });
 
-  expect(calls).toEqual([
-    ["auth", "can-i", "create", "pods/portforward"],
-    ["auth", "can-i", "list", "services"],
-    ["auth", "can-i", "list", "pods"],
-  ]);
+  expect(calls).toEqual([]);
   await context.dispose();
 });
 
@@ -397,14 +389,17 @@ test("repeated successful access prints once, and reuse never bypasses a caller'
     expect(checks).toBe(1);
     expect(output).toHaveBeenCalledTimes(1);
     const denied = new KubernetesAccessContext({ ...executor, run: async command => result(command, "no", false) });
-    await expect(openPluginContext(executor, { namespace: "test" }, {
+    await expect(enforceKubernetesAccess(denied, contract)).rejects.toThrow("缺少必须");
+    const context = await openPluginContext(executor, { namespace: "test" }, {
       environment: { name: "cluster-test", kind: "kubernetes", context: "test-context", server: "https://cluster.test/" }, service: {
         name: "api",
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         workloads: []
-      }, command: "sample", authorization: denied,
+      },
       capability: { access: { kubernetes: [need] } },
-    })).rejects.toThrow("缺少必须");
+    });
+    await expect(context.infra.kubernetes.get({ apiVersion: "v1", resource: "secrets", name: "private" })).rejects.toThrow("未声明");
+    await context.dispose();
   } finally { output.mockRestore(); }
 });
 
@@ -538,19 +533,54 @@ test("file source resolution reuses Inspect observations and checks each borrowe
 });
 
 
-test("native exec preflight checks GET pods/exec in addition to the declared exec capability", async () => {
+/** @case id=plugin_exec_actual_path,desc=Exec runs without demanding permissions for unused transports */
+test("exec uses the actual transport without a GET plus POST permission preflight", async () => {
   const commands: string[][] = [];
   const executor: Executor = {
-    run: async args => {
-      commands.push(args);
-      return result(args, args.includes("get") ? "no" : "yes", !args.includes("get"));
-    },
-    exec: async () => { throw new Error("Preflight must not execute commands"); },
+    run: async args => { throw new Error(`Unexpected preflight: ${args.join(" ")}`); },
+    exec: async (_target, command) => { commands.push(command); return result(command, "A=B"); },
   };
-  await expect(preflightPluginAccess(new KubernetesAccessContext(executor), "inspect", "demo", {
-    access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec", resourceName: "pod" }, purpose: "file" }] },
-  })).rejects.toThrow("缺少必须");
-  expect(commands.some(args => args.includes("get") && args.includes("pods/exec/pod"))).toBe(true);
+  const context = await openPluginContext(executor, { namespace: "demo" }, {
+    environment: { name: "test", kind: "kubernetes", context: "test", server: "https://test.invalid" },
+    service: { name: "sample", workloads: [], component: { name: "sample", repository: { forge: { name: "test" }, path: "sample" } } },
+    capability: { access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec", resourceName: "pod" }, purpose: "file" }] } },
+  });
+  try {
+    expect(await context.infra.kubernetes.exec({ pod: "pod" }, ["env"])).toBe("A=B");
+    await expect(context.infra.kubernetes.exec({ pod: "other" }, ["env"])).rejects.toThrow("未声明");
+    expect(commands).toEqual([["env"]]);
+  } finally { await context.dispose(); }
+});
+
+/** @case id=plugin_namespace_bounds,desc=Explicit fallback access preserves namespace resource and API group boundaries */
+test("explicit namespaces grant only declared operations without preflighting fallback access", async () => {
+  const api = await kubernetesApi();
+  const executor: Executor = {
+    run: async args => { throw new Error(`Unexpected preflight: ${args.join(" ")}`); },
+    exec: async (_target, command) => result(command),
+  };
+  const context = await openPluginContext(executor, { namespace: "primary", kubeconfig: api.kubeconfig }, {
+    environment: { name: "test", kind: "kubernetes", context: "test-context", server: api.endpoint },
+    service: { name: "sample", workloads: [], component: { name: "sample", repository: { forge: { name: "test" }, path: "sample" } } },
+    capability: { access: { kubernetes: [undefined, "fallback"].map(namespace => ({
+      rule: { verb: "get", resource: "services", resourceName: "sample", namespace },
+      requirement: "required", purpose: "discover configuration",
+    })) } },
+  });
+  const read = (namespace: string, name = "sample", apiVersion = "v1") => context.infra.kubernetes.inNamespace(namespace).get({ apiVersion, resource: "services", name });
+  try {
+    expect(await read("primary")).toEqual({ kind: "Service" });
+    expect(api.paths).toEqual(["/api/v1/namespaces/primary/services/sample"]);
+    await read("fallback");
+    const calls = [...api.paths];
+    await expect(read("unrelated")).rejects.toThrow("namespace=unrelated");
+    await expect(read("fallback", "unrelated")).rejects.toThrow("未声明");
+    await expect(read("fallback", "sample", "example.io/v1")).rejects.toThrow("未声明");
+    expect(api.paths).toEqual(calls);
+    api.respond = (_request, response) => { response.writeHead(403); response.end("private credentials"); };
+    await expect(read("fallback")).rejects.toMatchObject({ kind: "permission_denied", code: 403 });
+    expect(api.paths.at(-1)).toBe("/api/v1/namespaces/fallback/services/sample");
+  } finally { await context.dispose(); }
 });
 
 function fileBytes(results: readonly FileReadResult[]): Uint8Array {

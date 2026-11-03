@@ -9,7 +9,6 @@ import {
   createKubernetesExecutor,
   resolveKubernetesCommandConfig,
 } from "../../command/kubernetes-target";
-import { resolveKubernetesCommandContext } from "../../command";
 import { openPluginContext } from "../../plugin/context";
 import { inspectExtensionQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
 import type {
@@ -38,7 +37,6 @@ export async function openTenantDirectoryAccess(input: {
   if (!config) return undefined;
 
   const executor = createKubernetesExecutor(config);
-  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   const kube = {
     namespace: config.kubernetes.namespace,
     kubeconfig: config.kubernetes.kubeconfig,
@@ -60,17 +58,15 @@ export async function openTenantDirectoryAccess(input: {
       host: options.tenantDirectoryService?.trim() || extension.endpoint.host,
       port: tenantDirectoryPort(options.tenantDirectoryPort, extension.endpoint.port),
     },
-    command: "doctor tenant",
     capability: extension,
-    authorization,
   }), { service: options.directoryProvider, commandContext });
-  return { config, executor, authorization, kube, databaseIdentity, directory };
+  return { config, executor, kube, databaseIdentity, directory };
 }
 
 export async function openTenantAccess(input: Parameters<typeof openTenantDirectoryAccess>[0]): Promise<TenantAccess | undefined> {
   const access = await openTenantDirectoryAccess(input);
   if (!access) return undefined;
-  const { config, executor, authorization, kube, databaseIdentity, directory } = access;
+  const { config, executor, kube, databaseIdentity, directory } = access;
   const { plugin, commandContext } = input;
   const capabilities: TenantCapabilityCollector[] = dataProviders(plugin.services)
     .filter(provider => provider.extension.accepts.includes("tenant_id"))
@@ -84,9 +80,7 @@ export async function openTenantAccess(input: Parameters<typeof openTenantDirect
           config: commandContext.profile.pluginConfig,
           databaseIdentity,
           service: service,
-          command: `doctor tenant · ${service.name} inspect`,
           capability,
-          authorization,
         });
         try {
           const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
@@ -117,8 +111,7 @@ export async function openTenantAccess(input: Parameters<typeof openTenantDirect
           config: commandContext.profile.pluginConfig,
           databaseIdentity,
           service, endpoint: extension.endpoint,
-          command: "doctor tenant · model catalog",
-          capability: extension, authorization,
+          capability: extension,
         }));
         return [{ kind: "models", models: await catalog.query({ identity }) }];
       },

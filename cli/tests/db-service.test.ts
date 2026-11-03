@@ -97,8 +97,7 @@ test("store, db, metric and business consumers share a source without configurat
         name: "logical-api",
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         workloads: []
-      }, command: "doctor data", capability: { access: {} },
-      authorization: resolveKubernetesCommandContext(executor, command).access,
+      }, capability: { access: {} },
     });
     try { expect(await business.clients.get(source)).toBe(first); }
     finally { await business.dispose(); }

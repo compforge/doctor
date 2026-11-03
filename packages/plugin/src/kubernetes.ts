@@ -8,6 +8,8 @@ export interface KubernetesAccessRule {
   verb: string;
   resource: string;
   resourceName?: string;
+  /** Exact namespace; omitted means the capability target namespace. */
+  namespace?: string;
   allNamespaces?: boolean;
 }
 
@@ -18,7 +20,11 @@ export interface KubernetesAccessNeed {
   fallback?: string;
 }
 
-/** Infrastructure access a Plugin capability asks Core to preflight before invocation. */
+/**
+ * @spec Core enforces these declarations on each operation; the target system authorizes actual requests.
+ * @why Unused fallback paths must not require permissions before the selected path can run.
+ * @see {@link cli/docs/plugin.md}
+ */
 export interface CapabilityAccess {
   kubernetes?: readonly KubernetesAccessNeed[];
 }

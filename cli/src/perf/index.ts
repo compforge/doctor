@@ -24,7 +24,7 @@ import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
 import { logCommand } from "../collect/log/command";
 import { metricCommand } from "../collect/metric/command";
 import { traceCommand } from "../collect/trace/command";
-import { CommandStatus, aggregateCommandStatus, resolveKubernetesCommandContext, type CommandContext, type CommandResult } from "../command";
+import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
 import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
@@ -281,7 +281,6 @@ async function executePerf(
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
   if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
   const executor = createKubernetesExecutor(kube);
-  const authorization = resolveKubernetesCommandContext(executor, commandContext).access;
   const scenarios = await loadPerfScenarios(selected, () => {
     const options = {
       service: provider, capability: selected.extension,
@@ -290,7 +289,7 @@ async function executePerf(
     return selected.extension.access.kubernetes?.length
       ? openPluginContext(executor, {
         namespace: kube.kubernetes.namespace, kubeconfig: kube.kubernetes.kubeconfig, context: kube.kubernetes.context,
-      }, { ...options, command: "doctor perf scenarios", authorization })
+      }, options)
       : createHostPluginContext({ ...options, namespace: kube.kubernetes.namespace });
   });
   const scenario = config.scenario ?? scenarios[0]?.id;
@@ -347,8 +346,6 @@ async function executePerf(
         service,
         endpoint: extension.endpoint,
         capability: extension,
-        command: "doctor perf identity",
-        authorization,
       }));
       requestIdentity = await resolveCaseRequestIdentity({
         configured: { tenantId, userId }, directory, commandLabel: "Perf", logPrefix: "perf",
@@ -392,10 +389,8 @@ async function executePerf(
     service: runnerProvider.service,
     endpoint: runnerProvider.factory.endpoint,
     capability: runnerProvider.factory,
-    command: "doctor perf",
     signal: commandContext.signal,
     clients: commandContext.clients,
-    authorization,
   });
 
   const unknownMetric = declaredScenario.observability.metricServices.filter(

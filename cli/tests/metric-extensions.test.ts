@@ -103,7 +103,7 @@ test("Metric rejects ambiguous providers and releases context on malformed outpu
   } finally { await command.disposeClients(); }
 });
 
-test("Metric configuration access is checked before invoking the provider", async () => {
+test("Metric configuration does not preflight unused access before invoking the provider", async () => {
   const run = mock(async () => declaration);
   const services = createServiceCatalog([{
     ...base, extensions: [{
@@ -119,11 +119,14 @@ test("Metric configuration access is checked before invoking the provider", asyn
     const staticServices = createServiceCatalog([{ ...base, extensions: [extension] }]);
     const config = await resolveMetricConfig({ prometheus: "http://prometheus.example" }, staticServices, command, false);
     const executor = {
-      run: mock(async (args: string[]) => ({ ok: false, exitCode: 1, stdout: "no", stderr: "forbidden", durationMs: 1, timedOut: false, command: args })),
+      run: mock(async (args: string[]) => {
+        expect(args[0]).toBe("config");
+        return { ok: true, exitCode: 0, stdout: "test-context\nhttps://test.invalid", stderr: "", durationMs: 1, timedOut: false, command: args };
+      }),
       exec: mock(async () => { throw new Error("unexpected exec"); }),
     };
-    await expect(loadMetricConfigurations(config!, services, command, executor)).rejects.toThrow("权限");
-    expect(run).not.toHaveBeenCalled();
+    await loadMetricConfigurations(config!, services, command, executor);
+    expect(run).toHaveBeenCalledTimes(1);
     expect(executor.exec).not.toHaveBeenCalled();
   } finally { await command.disposeClients(); }
 });

@@ -70,8 +70,8 @@ export function makeFileConfigurationProbe(service: string, source: ServiceFileD
       try {
         const context = await openPluginContext(ctx.executor, ctx.config.kube, {
           clients: ctx.command.clients, config: ctx.command.profile.pluginConfig, resources: ctx.resources,
-          service: ctx.command.plugin.services.find(service)!, command: "doctor inspect · config",
-          capability: { access: source.access }, authorization: ctx.authorization,
+          service: ctx.command.plugin.services.find(service)!,
+          capability: { access: source.access },
         });
         try {
           const file = await context.clients.get(source);

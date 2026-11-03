@@ -42,8 +42,8 @@ export interface KubernetesChannelFact {
   reason?: string;
 }
 
-function accessKey(rule: K8sAccessRule): string {
-  return `${rule.verb}:${rule.resource}:${rule.resourceName ?? ""}:${rule.allNamespaces ? "all" : ""}`;
+function accessKey(rule: K8sAccessRule, namespace?: string): string {
+  return JSON.stringify([rule.verb, rule.resource, rule.resourceName, rule.allNamespaces ? "*" : rule.namespace ?? namespace]);
 }
 
 export function kubernetesResultDetail(result: ExecResult): string {
@@ -54,19 +54,21 @@ export function kubernetesResultDetail(result: ExecResult): string {
 
 export function accessLabel(rule: K8sAccessRule): string {
   return `${rule.verb} ${rule.resource}${rule.resourceName ? `/${rule.resourceName}` : ""}`
-    + `${rule.allNamespaces ? " (all namespaces)" : ""}`;
+    + `${rule.allNamespaces ? " (all namespaces)" : rule.namespace ? ` (namespace=${rule.namespace})` : ""}`;
 }
 
 /** `yes` / `no` are authoritative; transport, authentication and SSAR failures remain unknown. */
 export async function inspectK8sAccess(
   exec: Executor,
   access: K8sAccessRule,
+  namespace?: string,
 ): Promise<{ status: K8sAccessStatus; result: ExecResult }> {
   const resource = access.resourceName
     ? `${access.resource}/${access.resourceName}`
     : access.resource;
   const args = ["auth", "can-i", access.verb, resource];
   if (access.allNamespaces) args.push("--all-namespaces");
+  else if (access.namespace ?? namespace) args.push("--namespace", (access.namespace ?? namespace)!);
   let result: ExecResult;
   try {
     result = await exec.run(args, { timeoutMs: 15_000 });
@@ -101,11 +103,11 @@ export class KubernetesAccessContext {
 
   constructor(private readonly executor: Executor) {}
 
-  inspect(rule: K8sAccessRule): Promise<{ status: K8sAccessStatus; result: ExecResult }> {
-    const key = accessKey(rule);
+  inspect(rule: K8sAccessRule, namespace?: string): Promise<{ status: K8sAccessStatus; result: ExecResult }> {
+    const key = accessKey(rule, namespace);
     let pending = this.#cache.get(key);
     if (!pending) {
-      pending = inspectK8sAccess(this.executor, rule);
+      pending = inspectK8sAccess(this.executor, rule, namespace);
       this.#cache.set(key, pending);
     }
     return pending;
@@ -113,8 +115,8 @@ export class KubernetesAccessContext {
 
   async evaluate(contract: KubernetesAccessContract): Promise<KubernetesAccessEvaluation> {
     const facts = await Promise.all(contract.needs.map(async (need): Promise<KubernetesAccessFact> => {
-      const fact = { need, ...await this.inspect(need.rule) };
-      this.#facts.set(accessKey(need.rule), fact);
+      const fact = { need, ...await this.inspect(need.rule, contract.namespace) };
+      this.#facts.set(accessKey(need.rule, contract.namespace), fact);
       return fact;
     }));
     return {
@@ -126,12 +128,12 @@ export class KubernetesAccessContext {
     };
   }
 
-  fact(rule: K8sAccessRule): KubernetesAccessFact | undefined {
-    return this.#facts.get(accessKey(rule));
+  fact(rule: K8sAccessRule, namespace?: string): KubernetesAccessFact | undefined {
+    return this.#facts.get(accessKey(rule, namespace));
   }
 
-  allowed(rule: K8sAccessRule): boolean {
-    return this.fact(rule)?.status === "allowed";
+  allowed(rule: K8sAccessRule, namespace?: string): boolean {
+    return this.fact(rule, namespace)?.status === "allowed";
   }
 }
 

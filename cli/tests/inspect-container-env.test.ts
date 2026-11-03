@@ -76,7 +76,7 @@ for (const failure of [undefined, "denied", "timeout", "missing-command", "malfo
         field: "env", format: "bundle", reportName: "fixture", profileName: "test", kube: { namespace: "demo" } },
     };
     try {
-      if (failure === "denied") await authorization.evaluate({ command: "doctor inspect", needs: [{
+      if (failure === "denied") await authorization.evaluate({ command: "doctor inspect", namespace: "demo", needs: [{
         requirement: "preferred", rule: { verb: "get", resource: "pods/exec" }, purpose: "Pod Env",
       }] });
       const input = facts([pod("api-0"), pod("api-1")]);

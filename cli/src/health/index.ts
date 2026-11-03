@@ -53,7 +53,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   const sources = new ServiceDependencyRuntime({ plugin: context.plugin, collect: kube, executor,
     command: "doctor health", commandContext: context, index: "*",
     log: line => useLogger("health").info(line) });
-  const invoke = overviewInvoker(context, executor, kube.kubernetes, "doctor health");
+  const invoke = overviewInvoker(context, executor, kube.kubernetes);
   const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
     resolveApprovalGate({ yes: context.options.yes }));
   // Historical statistics share one frozen window; probes describe this execution, not that window.

@@ -2,7 +2,7 @@ import { invokeExtension } from "./extension";
 import { TRACE_RANGE_KIND, requireTraceRangeExtension, traceRangeOutput } from "@compforge/doctor-plugin";
 import type { PluginDefinition, ResolvedServiceDataSourceDependency, ServiceDefinition } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import { resolveKubernetesCommandContext, type CommandContext } from "../command";
+import type { CommandContext } from "../command";
 import { openPluginContext } from "./context";
 import type { ResolvedPluginTraceId } from "./trace-id";
 
@@ -37,10 +37,8 @@ export async function resolvePluginTraceRange(
   const context = await openPluginContext(executor, options.kube, {
     config: options.commandContext.profile.pluginConfig,
     service,
-    command: "doctor trace",
     capability: extension,
     dependencies,
-    authorization: resolveKubernetesCommandContext(executor, options.commandContext).access,
   });
   try {
     const output = traceRangeOutput((await invokeExtension(extension, context, {
