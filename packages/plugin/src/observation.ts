@@ -5,21 +5,34 @@ import type {
   JsonObject,
 } from "./json";
 
+import type { Value, ValueCodec } from "./value";
+
 export { Type };
 
+/** Plugin-owned runtime Value contract; kind/version identify its JSON encoding. */
+export interface ObservationDefinition<T extends Value = Value> {
+  readonly kind: string;
+  readonly schemaVersion: number;
+  readonly codec: ValueCodec<T>;
+}
+
+/** Existing schema-based probes remain supported while producers adopt Value codecs. */
+export type ProbeObservationDefinition = ObservationDefinition | SchemaObservationDefinition;
+
 /** A Plugin-owned, versioned contract for one kind of structured Probe result. */
-export interface ObservationDefinition<Schema extends TObject = TObject> {
+export interface SchemaObservationDefinition<Schema extends TObject = TObject> {
   readonly kind: string;
   readonly schemaVersion: number;
   readonly schema: Schema;
 }
 
-type StaticObservationValue<Definition extends ObservationDefinition> =
-  Static<Definition["schema"]>;
+type StaticObservationValue<Definition extends ProbeObservationDefinition> =
+  Definition extends SchemaObservationDefinition<infer Schema> ? Static<Schema> : never;
 
-/** The deeply read-only payload inferred from an ObservationDefinition's JSON Schema. */
-export type ObservationValue<Definition extends ObservationDefinition> =
-  StaticObservationValue<Definition> extends JsonObject
+/** The runtime Value for a codec, or the immutable JSON payload for a schema-based probe. */
+export type ObservationValue<Definition extends ProbeObservationDefinition> =
+  Definition extends ObservationDefinition<infer T> ? T
+  : StaticObservationValue<Definition> extends JsonObject
   ? DeepReadonlyJson<StaticObservationValue<Definition>>
   : never;
 
@@ -27,15 +40,17 @@ type JsonObjectSchema<Schema extends TObject> =
   [JsonCompatible<Static<Schema>>] extends [never] ? never : Schema;
 
 /**
- * Define one Observation contract from a TypeBox object schema.
+ * Define a versioned Observation using a Value codec, or an existing TypeBox schema.
  *
- * @spec Observation payload types are inferred from the same JSON Schema that Core validates at runtime
- * @why TypeScript types disappear at the dynamic ESM Plugin boundary, while JSON Schema remains portable Evidence metadata
+ * @spec The Codec defines the runtime Value type and validates its persisted JSON representation
+ * @why TypeScript types and methods disappear during JSON persistence; decoding restores the Plugin-owned contract
  */
+export function defineObservation<T extends Value>(definition: ObservationDefinition<T>): ObservationDefinition<T>;
 export function defineObservation<const Schema extends TObject>(definition: {
   readonly kind: string;
   readonly schemaVersion: number;
   readonly schema: JsonObjectSchema<Schema>;
-}): ObservationDefinition<Schema> {
+}): SchemaObservationDefinition<Schema>;
+export function defineObservation(definition: ProbeObservationDefinition): ProbeObservationDefinition {
   return definition;
 }

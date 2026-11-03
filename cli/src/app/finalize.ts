@@ -1,3 +1,4 @@
+import { restoreObservationValue } from "../plugin/value";
 import { writeOutput } from "../terminal/output";
 import { renderBundleAgents } from "./bundle-agents";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -43,8 +44,10 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
     (error, command) => reportError(error, { context: command, summary: "result serialization failed" }),
     input.delivery.format?.trim() === "summary" ? "result" : "evidence");
   if (serialized.failed && code !== 130) code = 1;
+  const valueCatalog = input.context.pluginIdentity ? input.context.plugin.services : undefined;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
-    (error, command) => reportError(error, { context: command, summary: "report render failed" }));
+    (error, command) => reportError(error, { context: command, summary: "report render failed" }),
+    observation => restoreObservationValue(observation, valueCatalog));
   const wantsReport = !["json", "text", "md", "summary", "manifest"].includes(input.delivery.format?.trim() ?? "");
   if (wantsReport && input.spec.render) {
     try {

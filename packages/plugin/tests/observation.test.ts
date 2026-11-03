@@ -56,3 +56,26 @@ test("ObservationDefinition 是 Probe payload 的单一类型与 schema 来源",
   expect((await probe.run({} as never, { facts: [], instance: {} as never })).data)
     .toEqual({ ready: true, details: { latencyMs: 12 } });
 });
+
+
+class CountValue {
+  constructor(readonly count: number) {}
+  summary() { return { title: "Count", text: String(this.count), fields: [] }; }
+}
+const countDefinition = defineObservation({ kind: "count", schemaVersion: 1, codec: {
+  encode: (value: CountValue) => ({ count: value.count }),
+  decode: (json: unknown) => {
+    if (!json || typeof json !== "object" || !("count" in json) || typeof json.count !== "number") throw new Error("invalid count");
+    return new CountValue(json.count);
+  },
+} });
+type _CodecValueIsInferred = Assert<Equal<ObservationValue<typeof countDefinition>, CountValue>>;
+
+test("Codec Probe derives the operation summary from its Value", async () => {
+  const probe = defineWorkloadProbeExtension({ id: "count", kind: "workload.probe", workload: "main", access: {},
+    produces: countDefinition, run: async () => new CountValue(3),
+  });
+  const result = await probe.run({} as never, {} as never);
+  expect(result.data).toBeInstanceOf(CountValue);
+  expect(result.summary).toEqual(result.data.summary());
+});

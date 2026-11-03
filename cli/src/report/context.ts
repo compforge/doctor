@@ -1,3 +1,4 @@
+import type { ObservationValueReader } from "../plugin/value";
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { CommandArtifact } from "../command/artifacts";
@@ -13,7 +14,8 @@ export class RenderContext {
   readonly failures: { command: string; error: unknown }[] = [];
 
   constructor(artifacts: readonly CommandArtifact[], readonly profileName: string,
-    private readonly onError?: (error: unknown, command: string) => void) {
+    private readonly onError?: (error: unknown, command: string) => void,
+    readonly readObservationValue?: ObservationValueReader) {
     this.#artifacts = new Map(artifacts.map(artifact => [artifact.id, artifact]));
   }
 

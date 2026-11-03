@@ -5,6 +5,8 @@ import type {
 } from "@compforge/doctor-plugin";
 import { invokeExtension } from "../../../plugin/extension";
 import { openPluginContext } from "../../../plugin/context";
+import { encodeObservationValue } from "../../../plugin/value";
+import type { Value } from "@compforge/doctor-plugin";
 import { validateObservationValue } from "../../../plugin/observation";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
@@ -66,11 +68,10 @@ export function makePluginWorkloadProbe(
               instance: pod.instance,
               facts: probeFacts,
             });
-            const value = validateObservationValue(
-              declaration.produces,
-              observed.data,
-              `${service.name}/${declaration.workload}/${declaration.id}`,
-            );
+            const label = `${service.name}/${declaration.workload}/${declaration.id}`;
+            const encoded = "codec" in declaration.produces
+              ? encodeObservationValue(declaration.produces, observed.data as Value, label)
+              : { value: validateObservationValue(declaration.produces, observed.data, label), summary: observed.summary };
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
@@ -85,8 +86,9 @@ export function makePluginWorkloadProbe(
               pod: pod.pod,
               container: definition.container,
               probe: declaration.id,
-              value,
-              summary: observed.summary,
+              value: encoded.value,
+              summary: encoded.summary,
+              ...("codec" in declaration.produces ? { valueEncoding: "codec" as const } : {}),
             };
             observations.push(observation);
             ctx.bundle.addStep({

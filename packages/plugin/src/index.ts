@@ -18,6 +18,7 @@ export * from "./model-cases";
 export * from "./definition";
 export * from "./description";
 export * from "./observation";
+export * from "./value";
 export * from "./facet";
 export * from "./duration";
 export * from "./probe";

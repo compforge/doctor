@@ -1,3 +1,4 @@
+import { restoreObservationValue } from "../../plugin/value";
 import { inspectCollectionScope } from "./model";
 import { bindKubernetesEnvironment } from "../../infra/k8s/environment";
 import { kubernetesClientSource, resourceReader, executorResourceReader, snapshotResourceReader } from "../../infra/k8s/resources";
@@ -278,7 +279,7 @@ export async function runCollectInspect(
     } };
   }
   const outcome = evaluateCollectOutcome(diagnosis.coverage.map((item) => item.status));
-  bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace));
+  bundle.writeSummary(buildInspectSummary(diagnosis, config.namespace, observation => restoreObservationValue(observation, plugin.services)));
   writeCollection();
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
   if (outcome.exitCode !== 0) {
