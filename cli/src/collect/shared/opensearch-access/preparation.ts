@@ -58,8 +58,17 @@ class OpenSearchAccessClient implements Client {
     })();
   }
   async #prepare(): Promise<OpenSearchAccessPreparation> {
-    const { opts, log, injectedSearch } = this;
+    const { opts, injectedSearch } = this;
+    const diagnostics: string[] = [];
+    const log = (line: string, tone?: "info" | "warning") => {
+      diagnostics.push(`${new Date().toISOString()} ${line}`);
+      this.log(line, tone);
+    };
     const steps: StepInput[] = [];
+    const recordDiagnostics = (status: "ok" | "failed") => steps.push({
+      id: "opensearch-access", title: "OpenSearch 访问诊断", risk: "observe", status,
+      output: diagnostics.join("\n"), ext: "log",
+    });
     let forwarder: ServicePortForwarder | undefined;
     let search: SearchEngine | undefined;
     const close = this.#close = async () => {
@@ -73,7 +82,11 @@ class OpenSearchAccessClient implements Client {
       title: string,
       reason: string,
       evidenceTarget?: Record<string, unknown>,
-    ): OpenSearchAccessPreparation => ({ steps, failure: { title, reason }, evidenceTarget, close });
+    ): OpenSearchAccessPreparation => {
+      log(`[collect] ${title}：${reason}`, "warning");
+      recordDiagnostics("failed");
+      return { steps, failure: { title, reason }, evidenceTarget, close };
+    };
 
     const connection = opts.connection;
     if (!connection) return failed("OpenSearch 准备失败", "配置确认阶段未提供连接计划");
@@ -111,6 +124,8 @@ class OpenSearchAccessClient implements Client {
         forwarder = await ServicePortForwarder.create(executor, {
           ...kube,
           namespace: service.namespace,
+          signal: this.signal,
+          onDiagnostic: line => log(`[collect] ${line}`),
         });
         log(`[collect] port-forward svc/${service.name}（${service.namespace}，远端端口 ${service.port}）…`);
         const endpoint = await forwarder.forward({ host: service.name, port: service.port });
@@ -126,6 +141,7 @@ class OpenSearchAccessClient implements Client {
         preferredScheme = connection.scheme;
         channel = `port-forward svc/${service.name}（${service.namespace}）`;
       } catch (error) {
+        this.signal?.throwIfAborted();
         const reason = error instanceof Error ? error.message : String(error);
         steps.push({
           id: "port-forward",
@@ -144,9 +160,11 @@ class OpenSearchAccessClient implements Client {
         // 现场配置可能滞后于真实 Service TLS 状态；优先配置值，失败后再试另一种 scheme。
         baseUrl = await probeOpenSearchUrl(hostPort, auth, {
           preferredScheme,
+          signal: this.signal,
+          onDiagnostic: line => log(`[collect] ${line}`),
           ...(connection.kind === "target" && !injectedSearch ? {
             createEngine: (node: string) => ({ ping: async () => {
-              const probe = await openOpenSearch({ resolve: async () => ({ node, auth, requestTimeoutMs: 5_000 }), transports }, { signal: this.signal });
+              const probe = await openOpenSearch({ resolve: async () => ({ node, auth, requestTimeoutMs: 5_000 }), transports }, { signal: this.signal, onDiagnostic: line => log(`[collect] ${line}`) });
               await probe.close();
             } }),
           } : {}),
@@ -168,6 +186,7 @@ class OpenSearchAccessClient implements Client {
             : baseUrl,
         });
       } catch (error) {
+        this.signal?.throwIfAborted();
         const reason = error instanceof Error ? error.message : String(error);
         steps.push({
           id: "probe-scheme",
@@ -185,6 +204,7 @@ class OpenSearchAccessClient implements Client {
         resolve: async () => ({ node: baseUrl, auth, connectTimeoutMs: 10_000 }), transports,
       }, {
         signal: this.signal,
+        onDiagnostic: line => log(`[collect] ${line}`),
         onRoute: route => {
           if (route.transport === "pod-relay") channel = `Pod relay（${opts.kube?.namespace ?? "default"}）`;
           steps.push({ id: "channel", title: "OpenSearch 连接", risk: "observe", status: "ok",
@@ -198,6 +218,7 @@ class OpenSearchAccessClient implements Client {
       steps.push({ id: "channel", title: "OpenSearch 连接", risk: "observe", status: "failed", reason });
       return failed("OpenSearch 连接失败", reason);
     }
+    recordDiagnostics("ok");
     return { search, channel, baseUrl, steps, close };
   }
 }

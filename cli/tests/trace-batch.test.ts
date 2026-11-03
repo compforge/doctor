@@ -1,7 +1,11 @@
+import { tmpdir } from "node:os";
+import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch/client";
+import { finalizeResult } from "./report-fixture";
+import { readBundleText, readBundleIndex } from "./bundle-fixture";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import { expect, test } from "bun:test";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { runCollectTrace } from "../src/collect/trace";
 import { traceCommand } from "../src/collect/trace/command";
@@ -180,5 +184,48 @@ for (const resolved of [true, false]) test(`Trace preserves health evidence with
     await context.disposeClients(); server.stop(true);
     for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
     if (serialized) rmSync(serialized, { recursive: true, force: true });
+  }
+});
+
+
+// @case id=trace_opensearch_failure_archive,desc=`OpenSearch rejects or stalls`,expect=`Failed tar.gz includes access diagnostics`
+for (const store of [false, true]) for (const mode of ["unauthorized", "timeout"] as const) test(`Trace store=${store} ${mode} still delivers a failed archive containing OpenSearch diagnostics`, async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-opensearch-failure-"));
+  const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
+    fetch: () => mode === "timeout" ? new Promise<Response>(() => {}) : new Response(null, { status: 401 }) });
+  const ping = OpenSearchEngine.prototype.ping;
+  const probe = spyOn(OpenSearchEngine.prototype, "ping").mockImplementation(function (this: OpenSearchEngine, signal) {
+    return ping.call(this, signal, 50);
+  });
+  const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{
+    component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
+    name: "api", workloads: [], dataSources: store ? [{ id: "trace", kind: "vdb", backend: "opensearch" }] : [], extensions: [traceExtension({ endpoint: { host: "test", port: 80 }, access: {},
+      resolve: async () => ({ traceId: directTraceId, resolvedAs: "trace_id" }) })],
+  }]) };
+  const context = new CommandContext({ kubernetes: { kubeconfig: { source: "test" }, channel: {
+    available: true, client: { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 0, timedOut: false, command: [] },
+  } } });
+  try {
+    const result = await runCollectTrace({ bizIds: [directTraceId], namespace: "test", endpoint: server.url.href,
+      pageSize: "100" }, plugin, context);
+    expect(result.status).toBe(CommandStatus.Failed);
+    const output = join(root, "failure");
+    expect(await finalizeResult(context, traceCommand, result, { output })).toBe(1);
+    const archive = `${output}.tar.gz`;
+    expect(existsSync(archive)).toBe(true);
+    const manifest = readBundleIndex(archive, "failure");
+    expect(manifest.execution.status).toBe(CommandStatus.Failed);
+    const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString().split("\n");
+    const path = listing.find(path => path.endsWith("-opensearch-access.log"));
+    expect(path).toBeDefined();
+    const log = readBundleText(archive, path!);
+    expect(log).toContain("OpenSearch probe start");
+    expect(log).toContain("OpenSearch probe failed");
+    expect(log).toContain(mode === "timeout" ? "ETIMEDOUT" : "status=401");
+    expect(log).not.toContain("Authorization");
+  } finally {
+    probe.mockRestore(); await context.disposeClients(); server.stop(true);
+    for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });

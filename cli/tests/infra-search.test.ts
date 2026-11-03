@@ -125,3 +125,33 @@ test("OpenSearchEngine 将通用 count/search/request 映射到官方 client", a
   await engine.close();
   expect(closed).toBe(true);
 });
+
+
+test("scheme failure retains both safe causes and closes each probe", async () => {
+  const logs: string[] = [];
+  let closed = 0;
+  const result = probeOpenSearchUrl("os:9200", {}, {
+    preferredScheme: "https", onDiagnostic: line => logs.push(line),
+    createEngine: node => ({
+      ping: async () => { throw Object.assign(new Error("secret response body"), {
+        code: node.startsWith("https:") ? "ETIMEDOUT" : "ECONNRESET",
+      }); }, close: async () => { closed++; },
+    }),
+  });
+  await expect(result).rejects.toThrow("https: error=Error code=ETIMEDOUT; http: error=Error code=ECONNRESET");
+  expect(closed).toBe(2);
+  expect(logs.join("\n")).not.toContain("secret");
+});
+
+
+test("caller cancellation stops scheme fallback and preserves its reason", async () => {
+  const controller = new AbortController();
+  const reason = new Error("caller interrupted");
+  const visited: string[] = [];
+  await expect(probeOpenSearchUrl("os:9200", {}, { signal: controller.signal,
+    createEngine: node => ({ ping: async () => {
+      visited.push(node); controller.abort(reason); throw reason;
+    }, close: async () => {} }),
+  })).rejects.toBe(reason);
+  expect(visited).toEqual(["http://os:9200"]);
+});
