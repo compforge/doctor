@@ -59,7 +59,7 @@ test("Redis 前缀 Key 占比按计数 Top-N 展示并汇总其他前缀", () =>
       top_streams: [],
     },
   }], facts);
-  const diagnosis: RedisDiagnosis = { evidence, findings: [], coverage: [] };
+  const diagnosis: RedisDiagnosis = { evidence, findings: [],  };
 
   expect(buildRedisPrefixKeyPieCharts(diagnosis)).toEqual([{
     title: "redis.example.com:6379 / db0",
@@ -114,7 +114,7 @@ test("Redis Key 分布对同一 master 的多个 DB 使用独立 DB 下拉框", 
   const diagnosis: RedisDiagnosis = {
     evidence: buildRedisEvidence(scans, facts),
     findings: [],
-    coverage: [],
+
   };
 
   const html = buildRedisKeyDistributionHtml(diagnosis);

@@ -110,7 +110,7 @@ test("deriveDeploymentName 只认 Deployment 命名形态", () => {
 function lifecycleDiagnosis(): InspectDiagnosis {
   return {
     findings: [],
-    coverage: [{ goal: "workload-runtime", status: "sufficient", missingEvidence: [] }],
+
     evidence: {
       rows: [],
       observations: [],

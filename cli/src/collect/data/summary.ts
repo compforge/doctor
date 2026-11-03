@@ -43,9 +43,8 @@ export function projectDataSummary(items: readonly Item[], source?: DataFacts): 
     return { id: item.bizId, status: item.status, identifiers: [...identifiers], records: [...records.values()],
       findings: [...new Set(item.diagnosis?.findings.map(finding => finding.message) ?? [])],
       missing: [...new Set([...(item.reason ? [item.reason] : []),
-        ...(item.diagnosis?.coverage.flatMap(coverage => coverage.missingEvidence) ?? []),
         ...(!item.diagnosis ? ["未形成业务诊断"] : []),
-        ...(item.diagnosis?.coverage.some(coverage => coverage.status !== "sufficient") ? ["业务数据关联证据不完整"] : [])])] };
+        ])] };
   });
 }
 
@@ -70,8 +69,7 @@ function selectRecords(records: readonly RecordSummary[], limit: number): Record
 /** Markdown and terminal summaries share one bounded projection and evidence addresses. */
 export function buildDataEvidenceSummary(items: readonly Item[], source?: DataFacts, markdown = true): string {
   const projected = projectDataSummary(items, source);
-  const status = aggregateCommandStatus(items.map((item, index) =>
-    item.status === CommandStatus.Ok && projected[index]!.missing.length ? CommandStatus.Partial : item.status));
+  const status = aggregateCommandStatus(items.map(item => item.status));
   const lines = [markdown ? "# 业务数据摘要" : "业务数据摘要", "", `业务 ID：${items.length}`,
     `采集状态：${items.length ? status : "unknown"}`,
     "业务状态：按下列 Service 记录判读；采集成功不代表业务成功。", ""];

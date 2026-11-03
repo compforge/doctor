@@ -1,5 +1,5 @@
+import type { EvidenceGapFinding } from "../../evidence-gaps";
 import type {
-  DiagnosisCoverage,
   Evidence,
   Fact,
   FindingMeta,
@@ -209,7 +209,7 @@ export interface HttpExecution {
   directory: string;
   response: HttpResponseObservation;
   sse?: SseResponseObservation;
-  findings: readonly HttpFinding[];
+  findings: readonly (HttpFinding | EvidenceGapFinding)[];
   requestSuccess: boolean;
 }
 
@@ -287,14 +287,11 @@ export interface HttpRequestSummary {
 
 export interface HttpExecutionDiagnosis {
   executions: readonly HttpExecution[];
-  findings: readonly HttpFinding[];
+  findings: readonly (HttpFinding | EvidenceGapFinding)[];
   summaries: readonly HttpRequestSummary[];
 }
 
 export interface HttpDiagnosis extends HttpExecutionDiagnosis {
   facts: HttpInspectionFacts;
   observations: readonly HttpAttemptObservation[];
-  coverage: readonly DiagnosisCoverage<HttpCoverageGoal>[];
 }
-
-export type HttpCoverageGoal = "endpoint-connectivity" | "http-response";

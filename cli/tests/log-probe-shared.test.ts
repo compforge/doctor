@@ -8,7 +8,7 @@ import { CommandContext } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { makeLogInspect } from "../src/collect/log/fact/inspect";
 import { makeLogProbe } from "../src/collect/log/probe/service";
-import { buildLogEvidence, buildLogCoverage } from "../src/collect/log/detector";
+import { buildLogEvidence, detectLogEvidenceGaps } from "../src/collect/log/detector";
 import type { LogCommandContext, LogProbeConfig, LogInspectionFacts } from "../src/collect/log/model";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 
@@ -59,7 +59,7 @@ test("two biz-id probes share current/previous sources, retain distinct matching
     expect(two[0]!.pods[0]!.events.join("\n")).not.toContain("trace-a");
     expect(one[0]!.capture?.bytesRead).toBe(200);
     expect(two[0]!.capture).toMatchObject({ bytesRead: 0, reusedCaptureCount: 2, matchedPodCount: 1, scannedPodCount: 1 });
-    for (const observations of [one, two]) expect(buildLogCoverage(buildLogEvidence(observations, facts)).every(item => item.status === "sufficient")).toBeTrue();
+    for (const observations of [one, two]) expect(detectLogEvidenceGaps(buildLogEvidence(observations, facts))).toEqual([]);
     await command.disposeClients();
     for (const ctx of [a, b]) {
       const raws = ctx.bundle.getSteps().filter(step => step.id.startsWith("logs-"));

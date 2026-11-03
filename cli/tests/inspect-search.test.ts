@@ -1,3 +1,4 @@
+import { evidenceGaps } from "../src/collect/evidence-gaps";
 // Exercise the real Inspect collection path with a bounded Kubernetes fixture.
 import { examplePlugin } from "../../plugins/example/src";
 import { CommandContext } from "../src/command";
@@ -64,7 +65,7 @@ test("search rejects empty keywords and allows Pod Env without deployment config
 test("search reports filtered values and distinguishes an empty result from missing evidence", () => {
   const diagnosis: InspectDiagnosis = {
     evidence: { ...evidence, search: searchInspectFields(evidence, "env", "sandbox") }, findings: [],
-    coverage: [{ goal: "container-environment", status: "sufficient", missingEvidence: [] }],
+
   };
   const summary = buildInspectSummary(diagnosis, "qa");
   expect(summary).toContain("http://SandBox-B:80");
@@ -73,13 +74,12 @@ test("search reports filtered values and distinguishes an empty result from miss
   expect(buildInspectHtml(diagnosis)).toContain("匹配项：3");
   expect(buildInspectHtmlSections(diagnosis)[0]?.html).toContain("http://compute-c:80");
   diagnosis.evidence.search = searchInspectFields(evidence, "env", "missing");
-  expect(buildInspectSummary(diagnosis)).toContain("采集完整");
+  expect(buildInspectSummary(diagnosis)).toContain("未匹配不代表目标值不存在");
   expect(buildInspectSummary(diagnosis)).toContain("未找到匹配的 env");
-  diagnosis.coverage = [{ goal: "container-environment", status: "insufficient", missingEvidence: ["pods/exec denied"] }];
+  diagnosis.findings = evidenceGaps("container-environment", ["pods/exec denied"], diagnosis.evidence);
   expect(buildInspectSummary(diagnosis)).toContain("未匹配不代表目标值不存在");
   expect(buildInspectSummary(diagnosis)).toContain("pods/exec denied");
 });
-
 
 for (const scenario of [
   { field: undefined, search: "sAnDbOx", configuration: false, count: 2 },
@@ -153,10 +153,10 @@ for (const scenario of [
       }
       const summary = readFileSync(join(artifact.path, "summary.md"), "utf8");
       if (scenario.failExec) {
-        expect(summary).toContain("证据不完整");
+        expect(summary).toContain("存在诊断限制");
         expect(summary).toContain("pods/exec denied");
       } else {
-        expect(summary).toContain("采集完整");
+        expect(summary).toContain("未匹配不代表目标值不存在");
       }
       if (result.field === "env" && !scenario.failExec) {
         expect(diagnosis.evidence.observations.some(item => item.kind === "container-environment"
@@ -175,15 +175,12 @@ for (const scenario of [
   });
 }
 
-
 const configMatch = (pod: string, name: string, value: ConfigSearchMatch["value"]): ConfigSearchMatch => ({
   service: "api", namespace: "qa", workload: pod, pod, container: "main", source: "file", path: "/config.yaml", name, value,
 });
 const configDiagnosis = (matches: ConfigSearchMatch[]): InspectDiagnosis => ({
   evidence: { ...evidence, search: { field: "config", keyword: "sandbox", matches } }, findings: [],
-  coverage: ["container-environment", "file-configuration"].map(goal => ({
-    goal: goal as "container-environment" | "file-configuration", status: "sufficient", missingEvidence: [],
-  })),
+
 });
 
 test("Config Markdown uses one table for identical query matches and retains each origin and differing values", () => {
@@ -196,7 +193,7 @@ test("Config Markdown uses one table for identical query matches and retains eac
   const summary = buildInspectSummary(diagnosis, "qa");
   expect(summary.match(/\| 名称 \| 值 \|/g)).toHaveLength(2);
   expect(summary.match(/\| sandbox.endpoint \|/g)).toHaveLength(2);
-  expect(summary).toContain("匹配项：6；采集完整");
+  expect(summary).toContain("匹配项：6；未匹配不代表目标值不存在");
   expect(summary).toContain("https://compute-a"); expect(summary).toContain("https://compute-b");
   for (const pod of ["gateway-a", "worker-a", "worker-b"]) expect(summary).toContain(`Pod：${pod}`);
   expect(summary).not.toContain("| Workload |");
@@ -220,7 +217,7 @@ test("Grouped Config Markdown preserves escaping and empty-result coverage", () 
   const diagnosis = configDiagnosis([configMatch("api-a", "sandbox.<key>", "a|b\n<c>")]);
   expect(buildInspectSummary(diagnosis)).toContain("| sandbox.&lt;key&gt; | a\\|b<br>&lt;c&gt; |");
   diagnosis.evidence.search = { field: "config", matches: [] };
-  diagnosis.coverage = [{ goal: "file-configuration", status: "insufficient", missingEvidence: ["unreadable file"] }];
+  diagnosis.findings = evidenceGaps("file-configuration", ["unreadable file"], diagnosis.evidence);
   const empty = buildInspectSummary(diagnosis);
   expect(empty).toContain("未找到匹配的 config");
   expect(empty).toContain("未匹配不代表目标值不存在");

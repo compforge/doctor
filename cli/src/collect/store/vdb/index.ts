@@ -3,19 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../../app/version";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { CommandContext } from "../../../command";
+import { commandOutcome, type CommandResult, type CommandStatus, type CommandContext } from "../../../command";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 
 import { useLogger } from "../../../terminal/log";
 import { runCollect } from "../../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../../evidence";
-import { evaluateCollectOutcome } from "../../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../../outcome";
 import { resolveStoreOutputPath, type StoreConfig } from "../config";
 import { writeStoreArtifacts } from "../artifacts";
 import { vdbConfigFromStore } from "./config";
 import type { VdbCommandContext } from "./context";
-import { buildVdbCoverage, vdbCapacityConclusion, vdbDetectors } from "./detector";
+import { detectVdbEvidenceGaps, vdbCapacityConclusion, vdbDetectors } from "./detector";
 import { makeVdbAccessInspect, makeVdbConfigurationInspect } from "./fact";
 import type { VdbInspectionFacts } from "./fact/model";
 import { groupVdbObservations, type VdbDiagnosis } from "./model";
@@ -54,7 +54,7 @@ export async function runStoreVdb(
   commandContext: CommandContext,
   executor: Executor,
   injectedSearch?: SearchEngine,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const config = vdbConfigFromStore(storeConfig);
   const namespace = config.collect.kubernetes.namespace;
   const kube = {
@@ -89,7 +89,7 @@ export async function runStoreVdb(
     log,
   };
 
-  const finish = async (code: number, summary: string) => {
+  const finish = async (code: number, summary: string, status?: CommandStatus): Promise<CommandResult<void>> => {
     await ctx.preparation?.close();
     bundle.settle(code === 0 ? "本轮未取得该项证据" : "上游步骤失败，未执行");
     bundle.writeSummary(summary);
@@ -122,9 +122,9 @@ export async function runStoreVdb(
     });
     if (!prepared.ok) {
       useLogger("collect").error(`交付失败，证据保留在目录: ${staging}`);
-      return 1;
+      return commandOutcome(1);
     }
-    return code;
+    return status ? { status, output: undefined, artifacts: [] } : commandOutcome(code);
   };
 
   try {
@@ -146,8 +146,8 @@ export async function runStoreVdb(
         observations,
         facts: inspectionFacts,
       }),
-      detectors: vdbDetectors,
-      buildCoverage: buildVdbCoverage,
+      detectors: [...vdbDetectors, detectVdbEvidenceGaps],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -187,16 +187,10 @@ export async function runStoreVdb(
     channel: facts.access.status === "collected" ? facts.access.channel : "unavailable",
     observations,
     findings: diagnosis.findings,
-    coverage: diagnosis.coverage,
   });
   useLogger("collect").info(`${vdbCapacityConclusion(observations)}`);
-  const healthCoverage = diagnosis.coverage.find((item) => item.goal === "cluster-health");
-  const capacityCoverage = diagnosis.coverage.find((item) => item.goal === "capacity");
-  const outcome = evaluateCollectOutcome([
-    healthCoverage?.status ?? "insufficient",
-    capacityCoverage?.status ?? "insufficient",
-  ]);
-  return finish(outcome.exitCode, summary);
+  const outcome = evaluateCollectOutcome(bundle.getOutcomes().filter(item => item.id !== "findings").map(item => item.status));
+  return finish(outcome.exitCode, summary, collectCommandOutcome(outcome).status);
 }
 
 export * from "./configuration";

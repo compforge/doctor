@@ -1,15 +1,15 @@
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { CommandContext } from "../../../command";
+import { commandOutcome, type CommandResult, type CommandStatus, type CommandContext } from "../../../command";
 
 import { useLogger } from "../../../terminal/log";
 import { runCollect } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
-import { evaluateCollectOutcome } from "../../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle, type StoreHtmlReportOptions } from "../artifacts";
 import type { S3CommandContext } from "./context";
-import { buildS3Coverage, s3Detectors } from "./detector";
+import { detectS3EvidenceGaps, s3Detectors } from "./detector";
 import { makeS3AccessInspect, makeS3ConfigurationInspect, makeS3ProviderInspect } from "./fact";
 import type { S3InspectionFacts } from "./fact/model";
 import { groupS3Observations, type S3Diagnosis } from "./model";
@@ -33,7 +33,7 @@ export async function runStoreS3(
   config: StoreConfig,
   commandContext: CommandContext,
   executor: Executor,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const capability = config.capability as ServiceS3DataSource;
   const state = createStoreBundle("s3", config.output, config.outputFormat, S3_OUTCOMES, commandContext);
   const log = (line: string) => useLogger().info(`${line}`);
@@ -48,7 +48,7 @@ export async function runStoreS3(
   let facts: S3InspectionFacts | undefined;
   let diagnosis: S3Diagnosis | undefined;
 
-  const finish = async (code: number, summary: string, htmlReport?: StoreHtmlReportOptions) => {
+  const finish = async (code: number, summary: string, htmlReport?: StoreHtmlReportOptions, status?: CommandStatus) => {
     return finishStoreBundle({
       state,
       config,
@@ -56,6 +56,7 @@ export async function runStoreS3(
       summary,
       inspectionFacts: facts ? { ...facts } : {},
       htmlReport,
+      status,
     });
   };
 
@@ -76,8 +77,8 @@ export async function runStoreS3(
         : makeS3Probes(),
       log,
       buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
-      detectors: s3Detectors,
-      buildCoverage: buildS3Coverage,
+      detectors: [...s3Detectors, detectS3EvidenceGaps],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -103,16 +104,12 @@ export async function runStoreS3(
     ext: "json",
   });
   const observations = groupS3Observations(diagnosis.evidence.observations);
-  const coverage = new Map(diagnosis.coverage.map((item) => [item.goal, item.status]));
-  const outcome = evaluateCollectOutcome([
-    coverage.get("bucket-access") ?? "insufficient",
-    coverage.get("capacity") ?? "insufficient",
-    coverage.get("object-inventory") ?? "insufficient",
-  ]);
+  const outcome = evaluateCollectOutcome(state.bundle.getOutcomes().filter(item => item.id !== "findings").map(item => item.status));
   return finish(
     outcome.exitCode,
-    buildS3Summary(config, facts, observations),
+    buildS3Summary(config, facts, observations, diagnosis.findings),
     buildS3HtmlReport(observations),
+    collectCommandOutcome(outcome).status,
   );
 }
 

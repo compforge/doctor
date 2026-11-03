@@ -1,3 +1,4 @@
+import type { EvidenceGapFinding } from "../../evidence-gaps";
 import {
   escapeHtml,
   htmlHeading,
@@ -29,7 +30,8 @@ function formatTime(epoch: number | undefined): string {
   return new Date(epoch * 1000).toISOString();
 }
 
-function findingLabel(finding: NetworkFinding): string {
+function findingLabel(finding: NetworkFinding | EvidenceGapFinding): string {
+  if (finding.kind === "evidence.insufficient") return finding.message;
   return `[${finding.severity}/${finding.confidence}] ${finding.message}`;
 }
 
@@ -48,8 +50,8 @@ function diagnosisConclusion(
   const hops = networkHopObservations(diagnosis.evidence);
   if (!hops.length) {
     return mode === "watch"
-      ? "守候窗口内没有重建出可见的业务 HTTP 调用；应先检查 Coverage，而不能据此断言页面操作没有到达下游。"
-      : "当前证据没有重建出与 capture ID / trace ID 关联的业务 HTTP 调用；应先检查 Coverage，而不能据此断言下游未收到请求。";
+      ? "守候窗口内没有重建出可见的业务 HTTP 调用；应先检查采集结果与诊断限制，而不能据此断言页面操作没有到达下游。"
+      : "当前证据没有重建出与 capture ID / trace ID 关联的业务 HTTP 调用；应先检查采集结果与诊断限制，而不能据此断言下游未收到请求。";
   }
   const last = hops.at(-1)!;
   return `已重建 ${hops.length} 个调用观察点；最后观察到 ${last.caller} → ${last.callee} 的 ${last.method} ${last.path}。`;
@@ -138,14 +140,6 @@ export function renderNetworkAnalysisMarkdown(document: NetworkAnalysisDocument)
     ...(diagnosis.findings.length
       ? diagnosis.findings.map((finding) => `- ${findingLabel(finding)}`)
       : ["- 当前规则未发现明确的 HTTP 错误、TCP RST 或响应缺失。"]),
-    "",
-    "## Coverage",
-    "",
-    "| 目标 | 状态 | 缺少证据 |",
-    "|---|---|---|",
-    ...diagnosis.coverage.map((coverage) =>
-      `| ${coverage.goal} | ${coverage.status} | ${markdownTableCell(coverage.missingEvidence.join("；") || "—")} |`
-    ),
     "",
     "## 抓包覆盖矩阵",
     "",
@@ -270,27 +264,6 @@ function waterfallDiagram(hops: readonly NetworkHopObservation[]): string {
   return `<div style="overflow-x:auto"><svg role="img" aria-label="调用时间瀑布图" viewBox="0 0 ${width} ${height}" style="min-width:${width}px;width:100%;height:auto">${rows}</svg></div>`;
 }
 
-function coverageCards(diagnosis: NetworkDiagnosis): string {
-  const cards = diagnosis.coverage.map((coverage) => {
-    const tone = coverage.status === "sufficient"
-      ? { border: "#86efac", background: "#f0fdf4", text: "#166534" }
-      : coverage.status === "partial"
-        ? { border: "#fde68a", background: "#fffbeb", text: "#a16207" }
-        : { border: "#fecaca", background: "#fff7f7", text: "#b91c1c" };
-    const missing = coverage.missingEvidence.length
-      ? `<ul style="margin:10px 0 0;padding-left:20px;color:#667085">${coverage.missingEvidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
-      : '<p style="margin:10px 0 0;color:#667085">所需证据已取得。</p>';
-    return `<article style="border:1px solid ${tone.border};border-radius:10px;padding:14px;background:${tone.background}">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <strong>${escapeHtml(coverage.goal)}</strong>
-        <span style="border-radius:999px;padding:2px 9px;color:${tone.text};background:#fff;font-weight:700">${escapeHtml(coverage.status)}</span>
-      </div>
-      ${missing}
-    </article>`;
-  }).join("");
-  return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">${cards}</div>`;
-}
-
 export function buildNetworkAnalysisHtml(document: NetworkAnalysisDocument): string {
   const { diagnosis } = document;
   const facts = diagnosis.evidence.facts.bundle;
@@ -322,8 +295,7 @@ export function buildNetworkAnalysisHtml(document: NetworkAnalysisDocument): str
     htmlList(diagnosis.findings.length
       ? diagnosis.findings.map(findingLabel)
       : ["当前规则未发现明确的 HTTP 错误、TCP RST 或响应缺失。"]),
-    htmlHeading(2, "Coverage"),
-    coverageCards(diagnosis),
+
     htmlHeading(2, "抓包覆盖矩阵"),
     htmlTable(["Service", "Pod", "观测窗口", "SHA256", "解码", "说明"], artifacts),
     htmlHeading(2, "技术时间线"),

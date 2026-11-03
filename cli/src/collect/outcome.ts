@@ -1,5 +1,6 @@
+import { currentCommandSignal } from "../command/execution-scope";
 import { CommandStatus, type CommandResult } from "../command";
-import type { CoverageStatus } from "./protocol";
+import type { EvidenceStatus } from "./evidence";
 export type CollectDeliveryStatus = "complete" | "failed";
 export type CollectEvidenceStatus = "complete" | "partial" | "missing";
 
@@ -9,21 +10,17 @@ export interface CollectOutcome {
   exitCode: 0 | 1;
 }
 
-/**
- * collect 的退出码表达“是否形成并交付了可用诊断产物”，不要求所有证据完整。
- * partial 是带明确证据缺口的正常完成；Finding 严重度属于目标健康，不参与进程成功语义。
- * @rule 调用方必须传递三态 Coverage，不能先压成 boolean，否则全 partial 会被误判为 missing。
+/** Requested acquisition results determine completion; Findings and row counts do not.
+ * @spec Empty successful queries and unnecessary work remain successful; partial evidence is retained.
  */
 export function evaluateCollectOutcome(
-  requirements: readonly CoverageStatus[],
+  requirements: readonly EvidenceStatus[],
   delivery: CollectDeliveryStatus = "complete",
 ): CollectOutcome {
-  const available = requirements.filter((status) => status !== "insufficient").length;
-  const evidence: CollectEvidenceStatus = requirements.length === 0 || available === 0
-    ? "missing"
-    : requirements.every((status) => status === "sufficient")
-      ? "complete"
-      : "partial";
+  const requested = requirements.filter(status => status !== "unnecessary" && status !== "skipped");
+  const available = requested.filter(status => status === "ok" || status === "partial").length;
+  const evidence: CollectEvidenceStatus = requested.every(status => status === "ok") ? "complete"
+    : available ? "partial" : "missing";
   return {
     delivery,
     evidence,
@@ -33,7 +30,7 @@ export function evaluateCollectOutcome(
 
 /** Completion and business health remain independent; partial evidence stays visible to parents. */
 export function collectCommandOutcome(outcome: CollectOutcome): CommandResult<void> {
-  const status = outcome.exitCode !== 0 ? CommandStatus.Failed
+  const status = currentCommandSignal()?.aborted ? CommandStatus.Cancelled : outcome.exitCode !== 0 ? CommandStatus.Failed
     : outcome.evidence === "partial" ? CommandStatus.Partial : CommandStatus.Ok;
   return { status, output: undefined, artifacts: [] };
 }

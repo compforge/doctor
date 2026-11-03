@@ -20,11 +20,11 @@ Redis key 或业务表，并使用 exporter 兼容的指标口径进入同一个
    否则通过 Service selector 找出全部 Running Pod，逐 Pod 建立临时 port-forward，并创建 embedded Prombed source。
    embedded source 同时从已选 Service 的 DataSource 发现 Redis/MySQL exporter 和直采目标，并按实际连接目标去重。
    使用 remote source 时，Kubernetes Store 补充采样属于可选增强：准备失败不会阻断 Service Metrics，Store
-   Probe 会继续查询远端已有的 exporter 指标，并把无数据保留为 Coverage 缺口。
+   Probe 会继续查询远端已有的 exporter 指标，并把无数据保留为 证据缺口。
 3. Inspect 固化本轮 source Fact；`metric-window` Probe 对 embedded source 按窗口抓取 `/metrics`，并在相同采样点
    获取 Store 指标。存在 remote source 时，业务 Service 查询继续使用远端数据，Store 查询使用同期 embedded 数据。
 4. 每个 Service 的 query Probe 通过统一契约执行其声明的 PromQL，产出带成功、空数据或失败状态的
-   Observation；Evidence 形成后，纯 Detector 与 Coverage 复用这些结果，不再访问 source。
+   Observation；Evidence 形成后，纯 Detector 与 证据不足 Finding 复用这些结果，不再访问 source。
 5. Renderer 只消费 Diagnosis，把查询结果、采集缺口、Finding 和图表写入不依赖外部资源的 HTML。
 
 `watch=0` 读取进程启动至今的累计快照；`1m`、`2m`、`5m`、`10m` 表示区间查询。没有外部

@@ -70,17 +70,18 @@ describe("Pydump analysis detector", () => {
     expect(diagnosis.findings.map((finding) => finding.kind)).toEqual([
       "memory.pydump-type-concentration",
       "memory.pydump-retained-owners",
+      "evidence.insufficient",
     ]);
-    expect(diagnosis.coverage.find((item) => item.goal === "retained-ownership")?.status)
-      .toBe("sufficient");
-    expect(diagnosis.coverage.find((item) => item.goal === "leak-confirmation")?.status)
-      .toBe("insufficient");
+    expect(diagnosis.findings.some(item => "subject" in item && item.subject === "retained-ownership"))
+      .toBe(false);
+    expect(diagnosis.findings.some(item => "subject" in item && item.subject === "leak-confirmation"))
+      .toBe(true);
   });
 
   test("没有大 owner 时明确报告持有分散，并渲染人类可读说明", () => {
     const input = analysis();
     const diagnosis = diagnosePydumpAnalysis(input);
-    expect(diagnosis.findings.at(-1)?.kind).toBe("memory.pydump-retained-distributed");
+    expect(diagnosis.findings.some(finding => finding.kind === "memory.pydump-retained-distributed")).toBe(true);
     const html = buildPydumpAnalysisHtml(input, diagnosis);
     expect(html).toContain("没有单个对象保留超过对象堆 5%");
     expect(html).toContain("单次快照不能单独证明内存泄漏");

@@ -1,3 +1,5 @@
+import type { CommandStatus } from "../../command";
+import type { EvidenceGapFinding } from "../evidence-gaps";
 import type {
   ModelCatalog,
   ModelInference,
@@ -12,10 +14,10 @@ import type { CommandContext } from "../../command";
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type OutcomeDecl } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import {
-  buildModelCoverage,
+  detectModelEvidenceGaps,
   buildModelEvidence,
   modelDetectors,
   modelPerformanceAttempts,
@@ -64,6 +66,7 @@ export interface RunModelDiagnosisInput {
 
 export interface RunModelDiagnosisResult {
   exitCode: number;
+  status: CommandStatus;
   diagnosis: ModelDiagnosis;
   attempts: readonly ModelPerformanceAttempt[];
 }
@@ -105,7 +108,7 @@ function modelOutcomes(): OutcomeDecl[] {
   ];
 }
 
-function serializeFindings(findings: readonly ModelFinding[]) {
+function serializeFindings(findings: readonly (ModelFinding | EvidenceGapFinding)[]) {
   return findings.map((finding) => ({
     ...finding,
     evidence: finding.evidence,
@@ -132,7 +135,7 @@ function printResponseStatus(
   }
 }
 
-function printFindings(findings: readonly ModelFinding[]): void {
+function printFindings(findings: readonly (ModelFinding | EvidenceGapFinding)[]): void {
   for (const finding of findings) {
     const line = `[model] ${finding.kind}: ${finding.summary}\n`;
     if (finding.severity === "critical") useLogger().error(line);
@@ -185,8 +188,8 @@ export async function runModelDiagnosis(
       planProbes: () => makeModelProbes(input.model),
       log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildModelEvidence,
-      detectors: modelDetectors,
-      buildCoverage: buildModelCoverage(config),
+      detectors: [...modelDetectors, detectModelEvidenceGaps(config)],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -194,7 +197,6 @@ export async function runModelDiagnosis(
       status: "ok",
       output: `${JSON.stringify({
         findings: serializeFindings(diagnosis.findings),
-        coverage: diagnosis.coverage,
       }, null, 2)}\n`,
       ext: "json",
     });
@@ -224,7 +226,6 @@ export async function runModelDiagnosis(
 
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, { mode: 0o600 });
 
-
     printResponseStatus("validation", diagnosis, "model-validation");
     printResponseStatus("inference", diagnosis, "model-inference");
     for (const line of buildModelPerformanceTerminalSummary(summaries)) {
@@ -232,13 +233,14 @@ export async function runModelDiagnosis(
     }
     printFindings(diagnosis.findings);
     const outcome = evaluateCollectOutcome(
-      diagnosis.coverage.map((item) => item.status),
+      bundle.getOutcomes().filter(item => !item.id.endsWith("findings") && item.id !== MODEL_PERFORMANCE_DECISION_PROBE_ID).map(item => item.status),
     );
     if (outcome.exitCode !== 0) {
       recordFailureBundle({ bundleDir: staging, collectCode: outcome.exitCode });
     }
     return {
       exitCode: outcome.exitCode,
+      status: collectCommandOutcome(outcome).status,
       diagnosis,
       attempts,
     };

@@ -1,3 +1,4 @@
+import type { EvidenceGapFinding } from "../evidence-gaps";
 import {
   htmlHeading,
   htmlList,
@@ -20,7 +21,8 @@ function formatShare(share: number): string {
   return `${(share * 100).toFixed(1)}%`;
 }
 
-function renderFinding(finding: PydumpFinding): string {
+function renderFinding(finding: PydumpFinding | EvidenceGapFinding): string {
+  if (finding.kind === "evidence.insufficient") return finding.message;
   if (finding.kind === "memory.pydump-type-concentration") {
     const names = finding.dominantTypes.map((type) => type.type_name).join("、");
     return `对象堆 shallow size 集中在 ${names}，合计 ${formatShare(finding.combinedHeapShare)}；`
@@ -102,15 +104,7 @@ export function buildPydumpAnalysisHtml(
     htmlList(diagnosis.findings.length > 0
       ? diagnosis.findings.map(renderFinding)
       : ["当前规则未发现显著的类型集中或 retained owner。"]),
-    htmlHeading(2, "诊断覆盖度"),
-    htmlTable(
-      ["目标", "状态", "缺少证据"],
-      diagnosis.coverage.map((coverage) => [
-        coverage.goal,
-        coverage.status,
-        coverage.missingEvidence.join("；") || "-",
-      ]),
-    ),
+
     htmlHeading(2, "类型 shallow size Top-N"),
     htmlTable(
       ["类型", "对象数", "shallow size", "对象堆占比"],

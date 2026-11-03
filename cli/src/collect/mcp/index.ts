@@ -20,11 +20,10 @@ import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { useLogger } from "../../terminal/log";
 import { runCollect } from "../engine";
 import { EvidenceBundle, type EvidenceStatus, type OutcomeDecl } from "../evidence";
-import { evaluateCollectOutcome } from "../outcome";
-import type { CoverageStatus } from "../protocol";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { makeMcpConfigurationInspect, resolveMcpConfiguration } from "./configuration";
-import { buildMcpCoverage, mcpDetectors } from "./detector";
+import { detectMcpEvidenceGaps, mcpDetectors } from "./detector";
 import {
   buildMcpEvidence,
   type McpCommandContext,
@@ -91,21 +90,6 @@ function failedSummary(traceId: string, reason: string): string {
     "",
     "",
   ].join("\n");
-}
-
-function coverageFromEvidenceStatus(status: EvidenceStatus | undefined): CoverageStatus {
-  switch (status) {
-    case "ok":
-    case "unnecessary":
-      return "sufficient";
-    case "partial":
-      return "partial";
-    case "failed":
-    case "skipped":
-    case "unavailable":
-    case undefined:
-      return "insufficient";
-  }
 }
 
 export async function runCollectMcp(
@@ -220,23 +204,24 @@ export async function runCollectMcp(
       startedAt,
       finishedAt: new Date().toISOString(),
     });
-    const collectCode = forcedCode ?? evaluateCollectOutcome([...requiredEvidence].map((id) => {
+    const outcome = evaluateCollectOutcome([...requiredEvidence].map((id) => {
       const status = bundle.getSteps().find((step) => step.id === id)?.status;
-      return coverageFromEvidenceStatus(status);
-    })).exitCode;
+      return status ?? "unavailable";
+    }));
+    const collectCode = forcedCode ?? outcome.exitCode;
     if (collectCode === 130) {
-      return 130;
+      return commandOutcome(130);
     }
     if (collectCode !== 0) {
       recordFailureBundle({ bundleDir: staging, collectCode });
-      return collectCode;
+      return commandOutcome(collectCode);
     }
 
     if (!diagnosis) {
       recordFailureBundle({ bundleDir: staging, collectCode: 1, reason: "成功产物生成失败" });
-      return 1;
+      return commandOutcome(1);
     }
-    return 0;
+    return collectCommandOutcome(outcome);
   };
 
   try {
@@ -268,7 +253,7 @@ export async function runCollectMcp(
       traceparent: trace.traceparent,
       writeArtifact,
     });
-    if (!resolved) return commandOutcome(await finish(130));
+    if (!resolved) return finish(130);
     ({ configSourceKind, facts, client } = resolved);
 
     const ctx: McpCommandContext = {
@@ -291,16 +276,16 @@ export async function runCollectMcp(
       planProbes: () => mcpProbes,
       log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildMcpEvidence,
-      detectors: mcpDetectors,
-      buildCoverage: buildMcpCoverage,
+      detectors: [...mcpDetectors, detectMcpEvidenceGaps],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
-    return commandOutcome(await finish());
+    return finish();
   } catch (error) {
     failureReason = error instanceof Error ? error.message : String(error);
     useLogger("mcp").error(`${failureReason}`);
     bundle.settle(failureReason);
-    return commandOutcome(await finish(1));
+    return finish(1);
   }
 }

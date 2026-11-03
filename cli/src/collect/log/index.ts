@@ -1,3 +1,4 @@
+import { gapMessages } from "../evidence-gaps";
 import { dataCommand } from "../data/command";
 import type { DataOutput } from "../data/model";
 import { logIdentities } from "./correlation";
@@ -39,7 +40,7 @@ import {
   serviceLogErrorPatterns,
   validateLogTimeWindow,
 } from "./config";
-import { buildLogCoverage, buildLogEvidence, logDetectors } from "./detector";
+import { detectLogEvidenceGaps, buildLogEvidence, logDetectors } from "./detector";
 import { makeLogInspect } from "./fact/inspect";
 import type {
   LogCollectOptions,
@@ -207,7 +208,6 @@ async function prepareLogBatch(
     }
   }
 
-
   const selected = services.flatMap(name => plugin.services.find(name)!.workloads)
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
   await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
@@ -274,7 +274,7 @@ export async function runCollectLog(
     const identities = dataItem?.diagnosis && bizId !== undefined
       ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services) : [];
     if (bizId !== undefined && !traces.length && !identities.length) return [];
-    const dataGaps = dataItem?.diagnosis?.coverage.flatMap(item => item.missingEvidence) ?? [];
+    const dataGaps = gapMessages(dataItem?.diagnosis?.findings ?? []);
     const resolutionGaps = prepared.identityResolution && (dataItem?.status ?? prepared.identityResolution.status) !== CommandStatus.Ok
       ? [...new Set(dataGaps.length ? dataGaps : [dataItem?.reason
         ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined)
@@ -366,7 +366,7 @@ export async function collectLog(
           : `\n[collect:log] biz-id: ${config.bizId}`);
         return [makeLogProbe(config.services, executor)];
       }, log,
-      buildEvidence: buildLogEvidence, detectors: logDetectors, buildCoverage: buildLogCoverage,
+      buildEvidence: buildLogEvidence, detectors: [...logDetectors, detectLogEvidenceGaps],
       checkpointFacts: facts => bundle.writeCollection({
         doctorVersion: DOCTOR_CLI_VERSION, target: { namespace: first.namespace, input_ids: requests.flatMap(item => item.bizId === undefined ? [] : [item.bizId]), services: first.services },
         inspectionFacts: { ...facts }, params: {}, startedAt, finishedAt: new Date().toISOString(),
@@ -407,14 +407,21 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
     startedAt, finishedAt: new Date().toISOString(),
   });
   log(`[collect] ${config.bizId ?? "Service 日志"}: ${formatLogCaptureStats(rendered.stats, config.bizId === undefined)}`);
-  const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
+  const outcome = evaluateCollectOutcome([
+    ...(diagnosis.evidence.facts.servicePods.status === "collected"
+      ? Object.values(diagnosis.evidence.facts.servicePods.missing).flat().map(() => "unavailable" as const)
+      : ["unavailable" as const]),
+    ...diagnosis.evidence.observations.flatMap(item => item.pods.length
+      ? item.pods.map(pod => pod.captureStatus === "complete" ? "ok" as const : pod.captureStatus === "partial" ? "partial" as const : "unavailable" as const)
+      : ["unavailable" as const]),
+  ]);
   return {
     status: config.resolutionGaps?.length && collectCommandOutcome(outcome).status === CommandStatus.Ok ? CommandStatus.Partial : collectCommandOutcome(outcome).status,
     // Project the already captured evidence; zero matches cannot stand in for a failed read.
     ...(facts.runtime.status === "collected" && facts.servicePods.status === "collected" ? { stats: rendered.stats } : {}),
-    missingEvidence: [...new Set([...diagnosis.coverage.flatMap(item => item.missingEvidence), ...(config.resolutionGaps ?? [])])],
+    missingEvidence: [...new Set([...gapMessages(diagnosis.findings), ...(config.resolutionGaps ?? [])])],
     ...(config.resolutionGaps?.length ? { resolutionGaps: config.resolutionGaps } : {}),
-    ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见 Coverage" } : {})
+    ...(outcome.evidence !== "complete" ? { reason: "日志证据不完整，详见采集结果与 Findings" } : {})
   };
 }
 

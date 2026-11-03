@@ -26,7 +26,7 @@ Redis 已作为 `doctor store` 的一种类型，保留拓扑、容量、压力�
    `pods/exec env`，并在内存中拼出运行时连接身份。自定义 DB source 则通过受控上下文初始化共享 Client。
 5. Inspect 将脱敏配置和访问通道固化为 Facts；必需配置不完整时结束为“当前未启用”。配置完整时，
    各 Store Probe 通过 Doctor Host 到后端的只读通道产出健康、容量、负载或数据画像 Observations。
-6. Detector 只基于 Facts/Observations 生成 Findings，Coverage 独立说明本轮各诊断目标的证据是否充分；
+6. Detector 只基于 Facts/Observations 生成 Findings，其中证据不足 Finding 说明不能支持的判断；
    DB、VDB、S3、Redis 都走这条共享主链，规则与报告阶段不再访问现场。
 7. 每个 Store command 按 format 准备并注册自己的 Artifact。成功诊断默认由统一 Delivery 同时交付 HTML
    和完整 Bundle；多选时继续触发其余类型，Delivery 把 DB、VDB、S3、Redis 的 HTML 合并到同一个顶部

@@ -335,7 +335,8 @@ test("doctor data 批量 JSON 保留各 biz-id 的选择和覆盖度，Facts 只
     const facts = JSON.parse(readFileSync(join(dirname(report.manifest), manifest.files.facts.path), "utf8"));
     for (const item of report.result.items) {
       expect(item.selection.queryIds).toEqual([`data-query:provide:${service}:biz_id:${item.bizId}`]);
-      expect(item.coverage).toEqual(expect.any(Array));
+      expect(item).not.toHaveProperty("coverage");
+      expect(item.findings).toEqual(expect.any(Array));
       for (const id of item.selection.queryIds) expect(facts.capabilityResults.some((query: { id: string }) => query.id === id)).toBe(true);
       expect(item).not.toHaveProperty("evidence");
     }

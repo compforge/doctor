@@ -76,14 +76,6 @@ export function buildModelMarkdown(
   const lines = [
     "# doctor model diagnosis",
     "",
-    "## Coverage",
-    "",
-    ...diagnosis.coverage.map(
-      (item) => `- ${item.goal}: ${item.status}${
-        item.missingEvidence.length ? `（${item.missingEvidence.join("；")}）` : ""
-      }`,
-    ),
-    "",
     "## Findings",
     "",
     ...(diagnosis.findings.length
@@ -133,15 +125,7 @@ export function buildModelDiagnosisHtml(
   ).length;
   return [
     htmlHeading(1, attempts.length ? "模型推理性能采样" : "模型推理诊断"),
-    htmlHeading(2, "诊断覆盖"),
-    htmlTable(
-      ["目标", "覆盖状态", "缺失证据"],
-      diagnosis.coverage.map((item) => [
-        item.goal,
-        item.status,
-        item.missingEvidence.join("；") || "—",
-      ]),
-    ),
+
     htmlHeading(2, "Probe 响应"),
     htmlTable(
       ["Probe", "HTTP", "耗时", "错误"],

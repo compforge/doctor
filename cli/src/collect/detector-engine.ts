@@ -91,7 +91,7 @@ function validateFinding(
  * Run pure Core and adapted Plugin Detectors over the same Evidence boundary.
  *
  * @spec Evidence Observation ids and emitted Finding ids are unique; every Finding has schema identity, structured producer and valid Evidence references
- * @rule Finding contract violations are implementation bugs and must abort Collect rather than degrade Coverage
+ * @rule Finding contract violations are implementation bugs and must abort Collect rather than hide the failure
  */
 export function runDetectors<
   DomainEvidence extends Evidence<ObservationMeta>,

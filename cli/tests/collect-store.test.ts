@@ -18,7 +18,7 @@ import {
 import { writeStoreArtifacts } from "../src/collect/store/artifacts";
 import { storeCommand } from "../src/collect/store/command";
 import {
-  buildDbCoverage,
+  detectDbEvidenceGaps,
   detectDbFindings,
   makeDbProbes,
   type DbInspectionFacts,
@@ -30,7 +30,7 @@ import {
 } from "../src/collect/store/mysql-diagnosis";
 import { configuredValue, parseEnvironment } from "../src/datasource/runtime-config";
 import {
-  buildS3Coverage,
+  detectS3EvidenceGaps,
   buildS3HtmlReport,
   detectS3CapacityFinding,
   detectS3Findings,
@@ -426,11 +426,11 @@ describe("MySQL basic diagnosis", () => {
       access: unavailableFact("store.db.access", "db-access", "not configured"),
     };
     const evidence = { observations: [], facts };
-    expect(buildDbCoverage(evidence).map((item) => [item.goal, item.status])).toEqual([
-      ["health", "insufficient"],
-      ["capacity", "insufficient"],
-      ["load", "insufficient"],
-      ["lock-waits", "insufficient"],
+    expect(detectDbEvidenceGaps(evidence).map(item => item.subject)).toEqual([
+      "health",
+      "capacity",
+      "load",
+      "lock-waits",
     ]);
     expect(detectDbFindings(evidence)).toEqual([]);
   });
@@ -529,12 +529,12 @@ describe("Store capability runtime state", () => {
       provider: unavailableFact("store.s3.provider", "s3-provider", "not configured"),
     };
     const evidence = { observations: [], facts };
-    expect(buildS3Coverage(evidence).map((item) => [item.goal, item.status])).toEqual([
-      ["bucket-access", "insufficient"],
-      ["object-inventory", "insufficient"],
-      ["provider-health", "partial"],
-      ["drive-capacity", "partial"],
-      ["capacity", "partial"],
+    expect(detectS3EvidenceGaps(evidence).map(item => item.subject)).toEqual([
+      "bucket-access",
+      "object-inventory",
+      "provider-health",
+      "drive-capacity",
+      "capacity",
     ]);
     expect(detectS3Findings(evidence)).toEqual([]);
   });

@@ -1,3 +1,4 @@
+import type { EvidenceGapFinding } from "../evidence-gaps";
 import {
   escapeHtml,
   htmlHeading,
@@ -60,7 +61,8 @@ function assertNever(value: never): never {
   throw new Error(`未处理的 Redis Finding: ${JSON.stringify(value)}`);
 }
 
-export function describeRedisFinding(finding: RedisFinding): string {
+export function describeRedisFinding(finding: RedisFinding | EvidenceGapFinding): string {
+  if (finding.kind === "evidence.insufficient") return finding.message;
   switch (finding.kind) {
     case "redis.memory-skew-with-balanced-keys":
       return `master key 数接近，但数据集内存最大/最小为 ${finding.memoryRatio.toFixed(2)}x，属于 key 平均大小倾斜。`;
@@ -104,7 +106,8 @@ export function describeRedisFinding(finding: RedisFinding): string {
   }
 }
 
-function findingLabel(finding: RedisFinding): string {
+function findingLabel(finding: RedisFinding | EvidenceGapFinding): string {
+  if (finding.kind === "evidence.insufficient") return "证据不足";
   return `${finding.severity} / ${finding.kind} / confidence=${finding.confidence}`;
 }
 
@@ -274,11 +277,10 @@ export function buildRedisMarkdown(
   const configuredClusterType = diagnosis.evidence.facts.target.status === "collected"
     ? diagnosis.evidence.facts.target.configuredClusterType
     : "unknown";
-  const partial = diagnosis.coverage.some((item) => item.status !== "sufficient");
+
   const lines: string[] = [
     "# Redis 诊断摘要",
     "",
-    `- 采集状态: \`${partial ? "partial" : "complete"}\`${partial ? "；缺失证据及影响见诊断覆盖度" : ""}`,
     `- 目标: \`${target.endpoint}\`（${target.endpoint_source}）`,
     `- 拓扑类型: \`${overview?.clusterType ?? configuredClusterType}\``,
     `- 扫描模式: \`${overview?.scanMode ?? "未执行"}\`；深度扫描范围: ${redisDatabaseScopeLabel(overview)}，仅扫描 master，replica 不重复扫描 key`,
@@ -287,15 +289,11 @@ export function buildRedisMarkdown(
     "",
   ];
   if (diagnosis.findings.length === 0) {
-    lines.push("- 本次采集未形成异常 Finding；是否足以排除目标问题见下方诊断覆盖度。");
+    lines.push("- 本次采集未形成异常 Finding；没有 Finding 不代表已排除所有问题。");
   } else {
     for (const finding of diagnosis.findings) {
       lines.push(`- **${findingLabel(finding)}**：${describeRedisFinding(finding)}`);
     }
-  }
-  lines.push("", "## 诊断覆盖度", "", "| goal | status | missing evidence |", "|---|---|---|");
-  for (const coverage of diagnosis.coverage) {
-    lines.push(`| ${coverage.goal} | ${coverage.status} | ${coverage.missingEvidence.join("；") || "-"} |`);
   }
 
   if (overview?.clusterType === "sentinel" || overview?.clusterType === "cluster") {
@@ -421,11 +419,10 @@ export function buildRedisHtml(target: RedisRenderTarget, diagnosis: RedisDiagno
   const configuredClusterType = diagnosis.evidence.facts.target.status === "collected"
     ? diagnosis.evidence.facts.target.configuredClusterType
     : "unknown";
-  const partial = diagnosis.coverage.some((item) => item.status !== "sufficient");
+
   const parts = [
     htmlHeading(1, "Redis 诊断摘要"),
     htmlList([
-      `采集状态: ${partial ? "partial（部分完成；缺失证据及影响见诊断覆盖度）" : "complete"}`,
       `目标: ${target.endpoint}（${target.endpoint_source}）`,
       `拓扑类型: ${overview?.clusterType ?? configuredClusterType}`,
       `扫描模式: ${overview?.scanMode ?? "未执行"}；深度扫描范围: ${redisDatabaseScopeLabel(overview)}，仅扫描 master，replica 不重复扫描 key`,
@@ -435,16 +432,8 @@ export function buildRedisHtml(target: RedisRenderTarget, diagnosis: RedisDiagno
     htmlHeading(2, "诊断结论"),
     diagnosis.findings.length > 0
       ? htmlList(diagnosis.findings.map((finding) => `${findingLabel(finding)}：${describeRedisFinding(finding)}`))
-      : htmlParagraph("本次采集未形成异常 Finding；是否足以排除目标问题见诊断覆盖度。"),
-    htmlHeading(2, "诊断覆盖度"),
-    htmlTable(
-      ["goal", "status", "missing evidence"],
-      diagnosis.coverage.map((coverage) => [
-        coverage.goal,
-        coverage.status,
-        coverage.missingEvidence.join("；") || "-",
-      ]),
-    ),
+      : htmlParagraph("本次采集未形成异常 Finding；没有 Finding 不代表已排除所有问题。"),
+
   ];
 
   if (overview?.clusterType === "sentinel" || overview?.clusterType === "cluster") {

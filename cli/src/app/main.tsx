@@ -929,10 +929,10 @@ export function createDoctorProgram(
   });
   catalog
     .command("neta [input]").helpGroup("Collect · 采集与分析:")
-    .description("纯离线分析 NetBundle，重建业务调用并生成 Findings、Coverage 与可视化报告")
+    .description("纯离线分析 NetBundle，重建业务调用并生成 Findings 与可视化报告")
     .addHelpText("after", `
 分析思路：
-  从已有 NetBundle 重建调用与时间线，结合捕获范围给出 Findings 和 Coverage。
+  从已有 NetBundle 重建调用与时间线，结合捕获范围给出 Findings（含证据不足）。
 结果解读：
   结论受抓包完整性与协议可解析性限制；结合 trace / log 交叉验证，缺口需要重新采集补足。
 `)

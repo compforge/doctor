@@ -13,7 +13,7 @@ flowchart LR
     P --> E[Core 校验并保存结果]
     E -->|Relation 发现新 Identity| Q
     E --> F[按输入投影并冻结 Evidence]
-    F --> D[Detector 判断与 Coverage]
+    F --> D[Detector 判断]
     D --> R[报告与原始证据索引]
 ```
 
@@ -23,7 +23,7 @@ Identity 的出边；后续 Identity 的查询由 Core 调度。这样业务适�
 容量仍由同一个命令管理。
 
 采集结果同时记录领域事实和获取这些事实的过程。`collected` 表示 Query 返回了可接收的证据，来源失败、
-缺失或截断仍会影响 Coverage；业务成功与否由 Detector 或后续分析依据事实判断。不同 Service 的记录
+缺失或截断仍会影响 证据不足 Finding；业务成功与否由 Detector 或后续分析依据事实判断。不同 Service 的记录
 可能取得于不同时间，报告保留来源和观察时间，让读者能识别证据覆盖与时序限制。Detector 和 Render
 消费已冻结的 Evidence，避免在解释和展示时继续查询现场，使同一份结果能够离线复查。
 
@@ -37,7 +37,7 @@ Identity 的出边；后续 Identity 的查询由 Core 调度。这样业务适�
 
 facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected / failed outcome。成功 result 的
 `resolution` 表达对象解析，`sources` 区分成功取得、确认不存在、查询失败与未采集；`missingEvidence`
-补充证据缺口，`truncated` 表达容量截断。命令状态使用完整覆盖度，已解析 ID 的部分采集仍返回 partial。
+补充证据缺口，`truncated` 表达容量截断。命令状态使用 Query 执行结果和来源获取状态，已解析 ID 的部分采集仍返回 partial。
 `facts` 承载可独立消费的稳定信息：
 
 - `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。
@@ -57,7 +57,7 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
 1. `CommandSpec.prepare` 解析 biz ID 和 Service 范围，按 kind 选择 Extension，检查命令自身的环境访问
    与所选 Extension.access。此阶段不调用扩展 run，不查询业务数据、不初始化业务 Client。
 2. `CommandSpec.run` 为各扩展建立独立的受限上下文，并调用 `run(context, queries)`。多个 ID 共享批次
-   访问和扩展遍历，再按每个输入沿有向 Relation 可达的结果分别执行 Detector 与 Coverage。原生扩展自行
+   访问和扩展遍历，再按每个输入沿有向 Relation 可达的结果分别执行 Detector。原生扩展自行
    取得数据，不要求声明或返回数据库连接目标。
 3. 将原始 ID 放入去重 work queue。只要队列发现新 Identity，就调度所有接受该 kind 且尚未查询过它的
    Relation provider；新的 Relation 再把目标 Identity 加入队列，因此扩展不依赖 Service Catalog 顺序。
@@ -67,10 +67,10 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
 5. Command 将 capability 返回的 query result 保存为带状态的 Evidence，其中 Facts 可供后续 Probe 复用，
    并与访问准备阶段的 Inspect Facts
    一起形成 Evidence；`doctor data` 当前没有额外现场取证动作，因此不产生 Probe Observation。
-6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding 与 Coverage；Render 汇总解析方式、
+6. Command 装配 Plugin 提供的纯 Detector 分析 Evidence，形成 Finding（含证据不足判断）；Render 汇总解析方式、
    规范 ID、服务数据和诊断结论。HTML 中的业务 Fact 逐条形成行，支持对全部记录做关键字过滤后再分页；
    批量 HTML 仅在最外层用 tab 组合独立报告。JSON 写入本地文件，并用 `groups` 按原始 ID 分组。
-7. 单个 Service 配置、连接或查询失败只降低该 Service 的 Coverage，其余已取得数据仍然交付。
+7. 单个 Service 配置、连接或查询失败保留在该 Service 的执行结果中，其余已取得数据仍然交付。
 
 ## 终端运行摘要
 
@@ -78,7 +78,7 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
 逐业务 ID 的诊断和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；
 它与其它格式使用相同的采集范围。
 
-摘要显示输入业务 ID 数、已完整解析数量、总体状态，以及异常业务 ID 对应的状态、Coverage 缺口和
+摘要显示输入业务 ID 数、已完整解析数量、总体状态，以及异常业务 ID 对应的状态、证据缺口和
 Detector 原因。摘要用于快速判断本次批量采集是否完整，详细业务记录仍从 Evidence 的
 `manifest.json` 和 Facts 索引读取。
 
@@ -161,5 +161,5 @@ provide 不隐式重试。同一批次的容量预算共同生效，截断明确
 每个输入只沿有向 Relation 投影自己的查询结果，再生成独立 Artifact；批次 Output 保留逐 ID 状态和产物引用。
 
 单元素列表同样经过整批 Inspect、事实投影和逐项诊断。采集引擎在共享事实冻结后推进各项的
-Detector/Coverage，投影不重新执行 Inspect，也不改变原始 Fact producer。JSON 与 Bundle 均保留
+Detector，投影不重新执行 Inspect，也不改变原始 Fact producer。JSON 与 Bundle 均保留
 批次汇总和逐 ID 产物，输出结构不随输入数量变化。

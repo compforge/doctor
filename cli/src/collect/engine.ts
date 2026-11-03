@@ -1,6 +1,6 @@
+import type { EvidenceGapFinding } from "./evidence-gaps";
 import { currentCommandSignal } from "../command/execution-scope";
 import type {
-  CoverageBuilder,
   Detector,
   Diagnosis,
   Evidence,
@@ -20,7 +20,6 @@ export interface CollectEngineInput<
   Facts extends object,
   DomainEvidence extends Evidence<Observation, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
   Config,
   Ctx = void,
 > {
@@ -40,18 +39,16 @@ export interface CollectEngineInput<
   ) => readonly Probe<Observation, Facts, Config, Ctx>[];
   log: (line: string) => void;
   buildEvidence: EvidenceBuilder<Observation, Facts, DomainEvidence>;
-  detectors: readonly Detector<DomainEvidence, DomainFinding>[];
-  buildCoverage: CoverageBuilder<DomainEvidence, Goal>;
+  detectors: readonly Detector<DomainEvidence, DomainFinding | EvidenceGapFinding>[];
 }
 
 export interface CollectEngineResult<
   Facts extends object,
   DomainEvidence extends Evidence<ObservationMeta, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
 > {
   facts: Readonly<Facts>;
-  diagnosis: Diagnosis<DomainEvidence, DomainFinding, Goal>;
+  diagnosis: Diagnosis<DomainEvidence, DomainFinding>;
 }
 
 export interface DiagnosisEngineInput<
@@ -59,7 +56,6 @@ export interface DiagnosisEngineInput<
   Facts,
   DomainEvidence extends Evidence<Observation, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
   Config,
   Ctx = void,
 > {
@@ -70,8 +66,7 @@ export interface DiagnosisEngineInput<
   probes: readonly Probe<Observation, Facts, Config, Ctx>[];
   log: (line: string) => void;
   buildEvidence: EvidenceBuilder<Observation, Facts, DomainEvidence>;
-  detectors: readonly Detector<DomainEvidence, DomainFinding>[];
-  buildCoverage: CoverageBuilder<DomainEvidence, Goal>;
+  detectors: readonly Detector<DomainEvidence, DomainFinding | EvidenceGapFinding>[];
 }
 
 /**
@@ -85,7 +80,6 @@ export async function runDiagnosis<
   Facts,
   DomainEvidence extends Evidence<Observation, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
   Config,
   Ctx = void,
 >({
@@ -97,22 +91,19 @@ export async function runDiagnosis<
   log,
   buildEvidence,
   detectors,
-  buildCoverage,
 }: DiagnosisEngineInput<
   Observation,
   Facts,
   DomainEvidence,
   DomainFinding,
-  Goal,
   Config,
   Ctx
->): Promise<Diagnosis<DomainEvidence, DomainFinding, Goal>> {
+>): Promise<Diagnosis<DomainEvidence, DomainFinding>> {
   // ctx 到 probe 为止。后续阶段只能从可持久化、可引用的 facts / evidence 推导。
   const observations = await runProbes(probes, ctx, facts, config, log, signal);
   const evidence = buildEvidence(observations, facts);
   const findings = signal?.aborted ? [] : runDetectors(detectors, evidence);
-  const coverage = buildCoverage(evidence);
-  return { evidence, findings, coverage };
+  return { evidence, findings };
 }
 
 /**
@@ -128,7 +119,6 @@ export async function runCollect<
   Facts extends object,
   DomainEvidence extends Evidence<Observation, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
   Config,
   Ctx = void,
 >({
@@ -142,16 +132,14 @@ export async function runCollect<
   log,
   buildEvidence,
   detectors,
-  buildCoverage,
 }: CollectEngineInput<
   Observation,
   Facts,
   DomainEvidence,
   DomainFinding,
-  Goal,
   Config,
   Ctx
->): Promise<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>> {
+>): Promise<CollectEngineResult<Facts, DomainEvidence, DomainFinding>> {
   const facts = await runInspects(inspects, ctx, log, signal, checkpointPartialFacts);
   await checkpointFacts?.(facts);
   const diagnosis = await runDiagnosis({
@@ -163,7 +151,6 @@ export async function runCollect<
     log,
     buildEvidence,
     detectors,
-    buildCoverage,
   });
   return { facts, diagnosis };
 }
@@ -180,10 +167,9 @@ export async function runCollectBatch<
   Facts extends object,
   DomainEvidence extends Evidence<Observation, Facts>,
   DomainFinding extends FindingMeta<string>,
-  Goal extends string,
   Config,
   Ctx,
->(input: Omit<CollectEngineInput<Observation, Facts, DomainEvidence, DomainFinding, Goal, Config, Ctx>, "config"> & {
+>(input: Omit<CollectEngineInput<Observation, Facts, DomainEvidence, DomainFinding, Config, Ctx>, "config"> & {
   items: readonly {
     ctx: Ctx;
     config: Config;
@@ -192,7 +178,7 @@ export async function runCollectBatch<
   concurrency?: number;
 }): Promise<{
   facts: Readonly<Facts>;
-  items: PromiseSettledResult<CollectEngineResult<Facts, DomainEvidence, DomainFinding, Goal>>[];
+  items: PromiseSettledResult<CollectEngineResult<Facts, DomainEvidence, DomainFinding>>[];
 }> {
   const pool = new ConcurrencyPool(input.concurrency ?? 1);
   const signal = input.signal ?? currentCommandSignal();
@@ -210,7 +196,6 @@ export async function runCollectBatch<
       log: input.log,
       buildEvidence: input.buildEvidence,
       detectors: input.detectors,
-      buildCoverage: input.buildCoverage,
     });
     return { facts: projected, diagnosis };
   }, signal)));

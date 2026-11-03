@@ -1,3 +1,4 @@
+import { commandExitCode } from "../src/app/command";
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +30,7 @@ import type {
   HttpResponseObservation,
   SseResponseObservation,
 } from "../src/collect/shared/http/model";
-import { CommandContext, commandOutcome } from "../src/command";
+import { CommandContext, type CommandResult } from "../src/command";
 import {
   sendHttpRequest,
   type HttpTransportResponse,
@@ -62,9 +63,9 @@ const createCommandContext = () => new CommandContext({});
 async function deliverHttp(
   context: CommandContext,
   options: { format?: string; output?: string },
-  code: number,
+  code: CommandResult<void>,
 ): Promise<void> {
-  expect(await finalizeResult(context, caseCommand, { ...commandOutcome(code), artifacts: context.artifacts.list() }, options)).toBe(code);
+  expect(await finalizeResult(context, caseCommand, { ...code, artifacts: context.artifacts.list() }, options)).toBe(commandExitCode(code));
 }
 
 const reachableEndpoint: InspectHttpEndpoint = async (endpoint) => ({
@@ -672,7 +673,7 @@ requests:
   }, reachableEndpoint);
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   expect(call).toBe(2);
   const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("doctor case 诊断报告");
@@ -712,7 +713,7 @@ requests:
   }, reachableEndpoint);
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   expect(requestedUrls).toEqual(["https://example.test/v1/judge"]);
 });
 
@@ -753,7 +754,7 @@ requests:
   }, reachableEndpoint);
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   expect(call).toBe(3);
   const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("从 edge-gateway 到 proxy 开始出现响应差异");
@@ -790,7 +791,7 @@ requests:
   }));
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(1);
+  expect(commandExitCode(code)).toBe(1);
   expect(calls).toBe(0);
   const html = readReport(readFileSync(`${output}.html`, "utf-8")).pages;
   expect(html).toContain("missing.example.test:8080");
@@ -818,7 +819,7 @@ requests:
   const code = await runCollectHttp(options, context, async () => response(200, "application/json", "{}"), reachableEndpoint);
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   const archive = `${output}.tar.gz`;
   expect(existsSync(archive)).toBe(true);
   const listing = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString();
@@ -865,7 +866,7 @@ requests:
     output,
   };
   const code = await runCollectHttp(options, context, async () => response(200, "application/json", "{}"), reachableEndpoint);
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   await deliverHttp(context, options, code);
 
   expect(existsSync(htmlPath)).toBe(true);
@@ -894,7 +895,7 @@ requests:
   const code = await runCollectHttp(options, context, async () => response(400, "application/json", '{"error":"invalid request"}'), reachableEndpoint);
   await deliverHttp(context, options, code);
 
-  expect(code).toBe(0);
+  expect(commandExitCode(code)).toBe(0);
   const markdown = readFileSync(`${output}.md`, "utf-8");
   expect(markdown).toContain("# doctor case diagnosis");
   expect(markdown).toContain("- execution: local");

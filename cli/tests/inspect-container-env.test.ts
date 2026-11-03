@@ -8,7 +8,7 @@ import { CommandContext } from "../src/command";
 import { KubernetesAccessContext } from "../src/infra/k8s/access";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
-import { buildInspectCoverage, buildInspectEvidence, searchInspectFields } from "../src/collect/inspect/detector";
+import { detectInspectEvidenceGaps, buildInspectEvidence, searchInspectFields } from "../src/collect/inspect/detector";
 import { containerEnvironmentTargets } from "../src/collect/inspect/fact/inspect";
 import { makeContainerEnvironmentProbe, parseContainerEnvironment } from "../src/collect/inspect/probe/container-environment";
 import type { InspectCommandContext, InspectFacts, InspectPodRuntimeFact } from "../src/collect/inspect/model";
@@ -87,18 +87,18 @@ for (const failure of [undefined, "denied", "timeout", "missing-command", "malfo
       }
       const evidence = buildInspectEvidence(observations, input);
       const search = searchInspectFields(evidence, "env", "sandbox");
-      const coverage = buildInspectCoverage(evidence, { field: "env" }).find(item => item.goal === "container-environment")!;
+      const coverage = detectInspectEvidenceGaps(evidence, { field: "env" }).find(item => item.subject === "container-environment")!;
       if (failure === "denied") {
         expect(execCalls).toBe(0);
-        expect(coverage.status).toBe("insufficient");
-        expect(coverage.missingEvidence.join("\n")).toContain("pods/exec");
+        expect(coverage?.kind).toBe("evidence.insufficient");
+        expect(coverage.message).toContain("pods/exec");
         expect(search.matches).toEqual([]);
       } else {
         expect(execCalls).toBe(2);
         expect(search.matches).toHaveLength(failure ? 1 : 2);
         expect(searchInspectFields(evidence, "env", "image-default").matches).toHaveLength(failure ? 1 : 2);
-        expect(coverage.status).toBe(failure ? "partial" : "sufficient");
-        if (failure) expect(coverage.missingEvidence.join("\n")).toContain(failure === "timeout" ? "超时"
+        expect(Boolean(coverage)).toBe(Boolean(failure));
+        if (failure) expect(coverage.message).toContain(failure === "timeout" ? "超时"
           : failure === "malformed" ? "NUL" : "printenv not found");
       }
     } finally {

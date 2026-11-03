@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildLogCoverage,
+  detectLogEvidenceGaps,
   buildLogEvidence,
   logDetectors,
 } from "../src/collect/log/detector";
@@ -46,21 +46,13 @@ describe("Log diagnosis", () => {
       servicePods: unavailableFact("log.service-pods", "log-target", "kubectl 不可用"),
     };
 
-    expect(buildLogCoverage(buildLogEvidence([], runtimeFailed))).toEqual([{
-      goal: "log:runtime",
-      status: "insufficient",
-      missingEvidence: ["kubectl 不可用"],
-    }]);
+    expect(detectLogEvidenceGaps(buildLogEvidence([], runtimeFailed))).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "log:runtime", message: ["kubectl 不可用"].join("；") })]);
   });
 
   test("无运行中 Pod 时按 Service 记录证据缺口", () => {
     const evidence = buildLogEvidence([observation("worker", [])], collectedFacts);
 
-    expect(buildLogCoverage(evidence)).toEqual([{
-      goal: "log:service:worker",
-      status: "insufficient",
-      missingEvidence: ["Service worker 没有可采集日志的运行中 Pod"],
-    }]);
+    expect(detectLogEvidenceGaps(evidence)).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "log:service:worker", message: ["Service worker 没有可采集日志的运行中 Pod"].join("；") })]);
   });
 
   test("按 Pod 区分完整、部分与不可用的日志证据", () => {
@@ -72,19 +64,7 @@ describe("Log diagnosis", () => {
       ]),
     ], collectedFacts);
 
-    expect(buildLogCoverage(evidence)).toEqual([{
-      goal: "log:pod:api:api-0",
-      status: "sufficient",
-      missingEvidence: [],
-    }, {
-      goal: "log:pod:api:api-1",
-      status: "partial",
-      missingEvidence: ["Pod api-1 只取得部分 current 日志"],
-    }, {
-      goal: "log:pod:api:api-2",
-      status: "insufficient",
-      missingEvidence: ["Pod api-2 的 current 日志不可用"],
-    }]);
+    expect(detectLogEvidenceGaps(evidence)).toEqual([ expect.objectContaining({ kind: "evidence.insufficient", subject: "log:pod:api:api-1", message: ["Pod api-1 只取得部分 current 日志"].join("；") }), expect.objectContaining({ kind: "evidence.insufficient", subject: "log:pod:api:api-2", message: ["Pod api-2 的 current 日志不可用"].join("；") })]);
   });
 });
 
@@ -95,8 +75,8 @@ test("discovery gaps cannot turn a wholly unavailable capture into partial succe
       byService: {}, missing: { api: ["another Workload is unavailable"] },
     }),
   };
-  const coverage = buildLogCoverage(buildLogEvidence([observation("api", [
+  const coverage = detectLogEvidenceGaps(buildLogEvidence([observation("api", [
     { pod: "api-0", events: [], captureStatus: "unavailable" },
   ])], facts));
-  expect(coverage.map(item => item.status)).toEqual(["insufficient", "insufficient"]);
+  expect(coverage.map(item => item.kind)).toEqual(["evidence.insufficient", "evidence.insufficient"]);
 });

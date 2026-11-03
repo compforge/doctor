@@ -154,5 +154,4 @@ export interface ModelFinding extends FindingMeta<ModelFindingKind> {
   expectedMaxMs?: number;
 }
 
-export type ModelDiagnosisGoal = "validation" | "inference" | "performance";
-export type ModelDiagnosis = Diagnosis<ModelEvidence, ModelFinding, ModelDiagnosisGoal>;
+export type ModelDiagnosis = Diagnosis<ModelEvidence, ModelFinding>;

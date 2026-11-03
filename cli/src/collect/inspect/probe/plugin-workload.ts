@@ -1,3 +1,4 @@
+import { validateWorkloadProbeResult } from "@compforge/doctor-plugin";
 import { recordExecutionFailure } from "../../../command/execution-scope";
 import type {
   ServiceDefinition,
@@ -7,7 +8,6 @@ import type {
 import { invokeExtension } from "../../../plugin/extension";
 import { openPluginContext } from "../../../plugin/context";
 import { encodeObservationValue } from "../../../plugin/value";
-import type { Value } from "@compforge/doctor-plugin";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {
@@ -67,11 +67,15 @@ export function makePluginWorkloadProbe(
               instance: pod.instance,
               facts: probeFacts,
             });
+            validateWorkloadProbeResult(observed.data);
+            const result = observed.data;
             const label = `${service.name}/${declaration.workload}/${declaration.id}`;
-            const encoded = encodeObservationValue(declaration.produces, observed.data as Value, label);
+            const encoded = encodeObservationValue(declaration.produces, result.value, label);
             const observation: PluginWorkloadObservation = {
               id: stepId,
               kind: "plugin-workload",
+              status: result.status,
+              ...(result.status !== "ok" ? { reason: result.reason } : {}),
               instance: pod.instance,
               schemaVersion: 1,
               producer: { origin: "core", id: "plugin-workload-adapter" },
@@ -91,7 +95,8 @@ export function makePluginWorkloadProbe(
               id: stepId,
               title: `${service.name}/${declaration.workload}/${pod.pod} · ${declaration.id}`,
               risk: "observe",
-              status: "ok",
+              status: result.status,
+              ...(result.status !== "ok" ? { reason: result.reason } : {}),
               output: JSON.stringify(observation, null, 2),
               ext: "json",
             });

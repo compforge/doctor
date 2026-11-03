@@ -110,7 +110,7 @@ Report 直接引用 Artifact 的视图，例如以 Artifact ID 与 view key 定�
 
 ### 页面上的状态与失败展示
 
-页面展示 CommandStatus 表达采集终态，以 Finding/Coverage 表达目标异常和证据完整度，
+页面展示 CommandStatus 表达采集终态，以 Finding/证据不足 Finding 表达目标异常和证据完整度，
 以 renderError 和加载提示表达阅读失败；不得用页面生成成功替代采集状态。
 
 失败、取消或没有生成页面的业务项仍保留在 Report 中，说明原因及可用证据。单个子 renderer

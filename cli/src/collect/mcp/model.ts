@@ -87,8 +87,7 @@ export interface GatewayLogsObservation extends ObservationMeta {
 
 export type McpObservation = McpCallObservation | HttpCallObservation | GatewayLogsObservation;
 export type McpEvidence = Evidence<McpObservation, McpFacts>;
-export type McpDiagnosisGoal = "mcp-call" | "http-comparison" | "gateway-logs";
-export type McpDiagnosis = Diagnosis<McpEvidence, McpFinding, McpDiagnosisGoal>;
+export type McpDiagnosis = Diagnosis<McpEvidence, McpFinding>;
 
 export function buildMcpEvidence(
   observations: readonly McpObservation[],

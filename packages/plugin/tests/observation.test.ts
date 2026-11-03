@@ -17,11 +17,11 @@ type _CodecValueIsInferred = Assert<Equal<ObservationValue<typeof countDefinitio
 
 test("Codec Probe derives the operation summary from its Value", async () => {
   const probe = defineWorkloadProbeExtension({ id: "count", kind: "workload.probe", workload: "main", access: {},
-    produces: countDefinition, run: async () => new CountValue(3),
+    produces: countDefinition, run: async () => ({ value: new CountValue(3), status: "ok" }),
   });
   const result = await probe.run({} as never, {} as never);
-  expect(result.data).toBeInstanceOf(CountValue);
-  expect(result.summary).toEqual(result.data.summary());
+  expect(result.data.value).toBeInstanceOf(CountValue);
+  expect(result.summary).toEqual(result.data.value.summary());
 });
 
 /** @case A Value can encode a root array with nested compounds, without a Command or Probe registration. */

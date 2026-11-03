@@ -1,3 +1,5 @@
+import type { DbDiagnosis } from "./model";
+import { gapMessages } from "../../evidence-gaps";
 import type { StoreConfig } from "../config";
 import type { DbInspectionFacts } from "./fact/model";
 import type { DbObservations } from "./model";
@@ -17,6 +19,7 @@ export function buildDbSummary(
   config: StoreConfig,
   facts: DbInspectionFacts,
   observations: DbObservations,
+  findings: DbDiagnosis["findings"] = [],
 ): string {
   const health = observations.health;
   const server = observations.serverInfo;
@@ -30,6 +33,7 @@ export function buildDbSummary(
   return [
     "# DB Store 诊断摘要",
     "",
+    ...gapMessages(findings).map(message => `- 证据不足：${message}`),
     `- Service: \`${config.service}\``,
     `- Store: \`${config.capability.id}\``,
     `- Database: \`${database}\``,

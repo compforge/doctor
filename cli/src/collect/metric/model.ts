@@ -104,8 +104,7 @@ export interface MetricFinding extends FindingMeta<"metric.threshold-exceeded"> 
   threshold: number;
 }
 
-export type MetricDiagnosisGoal = `metric:${string}:${"chart" | "detector"}:${string}`;
-export type MetricDiagnosis = Diagnosis<MetricEvidence, MetricFinding, MetricDiagnosisGoal>;
+export type MetricDiagnosis = Diagnosis<MetricEvidence, MetricFinding>;
 
 export interface MetricQueryPlan {
   id: string;

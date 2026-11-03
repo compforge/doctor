@@ -11,7 +11,7 @@ Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Q
 - **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog；Command 将数量投影为
   `model-summary` ValueFact，并将每个 Model 投影为以 model id 为稳定 key 的 `model` RecordFact。
 - **Service Inspect Fact**：来自 `accepts` 包含 `tenant_id` 的 Service Inspect contribution。
-- **Evidence**：由 Tenant Command 负责失败隔离、Coverage、Bundle 与报告展示。
+- **Evidence**：由 Tenant Command 负责失败隔离、证据不足 Finding、Bundle 与报告展示。
 
 ## 流程
 
@@ -21,16 +21,16 @@ Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Q
    `PluginContext`，完成后回收连接与 port-forward。
 4. Model Catalog 与每个 `ServiceInspectResult` 都形成带 query 获取状态的 Tenant Fact；列表实体按
    RecordFact 进入统一的过滤、分页和详情展示，单个 Capability 失败不丢弃其它已取得事实。
-5. Command 汇总 Facts，计算 Coverage，并生成 Evidence、Markdown 与 HTML。
+5. Command 汇总 Facts，产生 Findings，并生成 Evidence、Markdown 与 HTML。
 
 ## 终端运行摘要
 
 使用 `doctor tenant --tenant-id <id> -f summary` 直接打印租户诊断的紧凑摘要，完整 Capability Facts、
-Coverage 和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用
+证据不足 Finding 和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用
 相同的采集范围。
 
 摘要显示租户身份、Capability 数量、每个 Capability 的 Fact 数量或失败原因，以及证据完整性和
-Coverage 缺口。需要查看具体配置时，继续从 Evidence 的 `manifest.json` 和 Facts 索引读取。
+证据缺口。需要查看具体配置时，继续从 Evidence 的 `manifest.json` 和 Facts 索引读取。
 
 Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；
 出现真实场景后，由 Tenant Command 决定是否继续形成 Query，以及深度、数量、去重和失败预算，Capability
@@ -47,14 +47,13 @@ Tenant、Model 与 Chat 消费；Inspect contribution 只声明接受的 Identit
 ### Command 拥有诊断视角
 
 Plugin 不再返回 tenant report contribution，也不拥有 Tenant 报告 schema。Plugin 负责私有存储查询和
-领域 Fact；Command 负责选择哪些 Fact 进入本次 Evidence，以及如何表达 Coverage 和报告。展示逻辑不能
+领域 Fact；Command 负责选择哪些 Fact 进入本次 Evidence，以及如何表达 证据不足 Finding 和报告。展示逻辑不能
 反向驱动 Capability 选择或 Relation 遍历。
 
 ### 主动诊断保持独立
 
 Tenant 只读取当前现状。需要产生业务流量、执行验证或性能采样的领域命令继续通过 Probe/Operation
 产生 Observation，不把主动行为包装成 Fact。
-
 
 ## 只读目录查询
 

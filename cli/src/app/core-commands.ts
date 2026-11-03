@@ -131,11 +131,11 @@ export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
       timeoutSeconds: input.timeout === undefined ? undefined : Number(input.timeout),
       maxResponseMiB: input.maxSize === undefined ? undefined : Number(input.maxSize),
     });
-    return commandOutcome(await runCollectHttp(
+    return runCollectHttp(
       { ...input, ...commandOptions(context) }, context, undefined, undefined,
       { scenario, source: selection.source.file ?? selection.source.caseSet.caseset,
         caseIds: selection.cases.map((item) => item.id) },
-    ));
+    );
   },
 });
 

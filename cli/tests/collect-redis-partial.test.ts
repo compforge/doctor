@@ -7,7 +7,7 @@ import { runProbes } from "../src/collect/probe-engine";
 import type { RedisConfig } from "../src/collect/redis/config";
 import type { RedisCommandContext } from "../src/collect/redis/context";
 import { CommandContext } from "../src/command";
-import { buildRedisCoverage, redisDetectors } from "../src/collect/redis/detector";
+import { detectRedisEvidenceGaps, redisDetectors } from "../src/collect/redis/detector";
 import { buildRedisInspectionFacts } from "../src/collect/redis/fact/model";
 import { buildRedisEvidence } from "../src/collect/redis/model";
 import { collectRedisRuntime } from "../src/collect/redis/probe/collector";
@@ -107,13 +107,13 @@ test("Redis keyspace 抽样失败时保留拓扑和节点证据，并把 Probe �
     const evidence = buildRedisEvidence(observations, facts);
     const diagnosis = {
       evidence,
-      findings: redisDetectors.flatMap((detector) => detector(evidence)),
-      coverage: buildRedisCoverage(evidence),
+      findings: [...redisDetectors.flatMap((detector) => detector(evidence)), ...detectRedisEvidenceGaps(evidence)],
+
     };
     expect(buildRedisMarkdown({ endpoint: "redis://redis.example.com:6379/7", endpoint_source: "test" }, diagnosis))
-      .toContain("采集状态: `partial`");
+      .toContain("SCAN timed out");
     expect(buildRedisHtml({ endpoint: "redis://redis.example.com:6379/7", endpoint_source: "test" }, diagnosis))
-      .toContain("采集状态: partial（部分完成；缺失证据及影响见诊断覆盖度）");
+      .toContain("SCAN timed out");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -304,11 +304,7 @@ test("Redis 多 master 仅部分扫描成功时 coverage 保持 partial", () => 
     },
   ], facts);
 
-  expect(buildRedisCoverage(evidence)).toContainEqual({
-    goal: "redis-memory-distribution",
-    status: "partial",
-    missingEvidence: [
+  expect(detectRedisEvidenceGaps(evidence)).toContainEqual(expect.objectContaining({ kind: "evidence.insufficient", subject: "redis-memory-distribution", message: [
       "Redis keyspace 抽样（redis-2.example.com:6379 keyspace 抽样：SCAN timed out）",
-    ],
-  });
+    ].join("；") }));
 });

@@ -1,3 +1,4 @@
+import { evidenceGaps } from "../src/collect/evidence-gaps";
 import type { Summary } from "@compforge/doctor-plugin";
 import { projectSummary } from "../src/command/summary";
 import { htmlFactTable } from "../src/collect/output/report/components/fact-table";
@@ -24,7 +25,7 @@ function query(id: string, status = "running") {
 }
 function item(queries: DataFacts["capabilityResults"]) {
   const diagnosis: DataDiagnosis = { evidence: { observations: [], facts: { services: {}, capabilityResults: queries } },
-    findings: [], coverage: [{ goal: "business-data-relations", status: "sufficient", missingEvidence: [] }] };
+    findings: [],  };
   return { bizId: "biz-1", status: CommandStatus.Ok, artifacts: [], diagnosis };
 }
 
@@ -54,11 +55,11 @@ test("data summary preserves composite sources, global addresses and producer-se
 
 test("summary bounds record output while keeping raw evidence and coverage gaps", () => {
   const data = item(Array.from({ length: 25 }, (_, i) => query(String(i), String(i))));
-  data.diagnosis = { ...data.diagnosis, coverage: [{ goal: "business-data-relations", status: "partial", missingEvidence: ["runtime unavailable"] }] };
+  data.diagnosis = { ...data.diagnosis, findings: evidenceGaps("business-data-relations", ["runtime unavailable"], data.diagnosis.evidence) };
   const md = buildDataEvidenceSummary([data]);
   expect(md).toContain("另有 5 条记录");
   expect(md).toContain("runtime unavailable");
-  expect(md).toContain("采集状态：partial");
+  expect(md).toContain("采集状态：ok");
   expect(md).not.toContain("[完整 Facts](raw/facts.json)");
   expect(md).not.toContain("manifest.json");
 });
@@ -78,7 +79,6 @@ test("trace summary bounds and orders exception events instead of calling the ea
   expect(summary).not.toContain("<script>");
 });
 
-
 test("a large record group cannot crowd runtime state out of the bounded summary", () => {
   const timeline = Array.from({ length: 25 }, (_, i) => query(`step-${i}`, String(i)));
   const runtime = { ...query("runtime", "waiting"), service: "runtime-service" };
@@ -89,7 +89,6 @@ test("a large record group cannot crowd runtime state out of the bounded summary
   expect(md.indexOf("### 诊断发现")).toBeLessThan(md.indexOf("### 业务记录"));
 });
 
-
 test("summary preserves failed and cancelled collection outcomes", () => {
   for (const status of [CommandStatus.Failed, CommandStatus.Cancelled]) {
     const text = buildDataEvidenceSummary([{ bizId: "biz-1", status, artifacts: [], reason: "collection stopped" }]);
@@ -98,7 +97,6 @@ test("summary preserves failed and cancelled collection outcomes", () => {
     expect(text).toContain("未形成业务诊断");
   }
 });
-
 
 test("producer text reaches Data and parent navigation with exact global Fact addresses", () => {
   const first = query("carrier");

@@ -65,7 +65,6 @@ for (const format of ["summary", "manifest"] as const) {
   });
 }
 
-
 test("Log root surfaces producer Data text and navigates directly to its Fact evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-text-"));
   const context = new CommandContext({});
@@ -83,7 +82,7 @@ test("Log root surfaces producer Data text and navigates directly to its Fact ev
     writeFileSync(join(root, "collection.json"), JSON.stringify({ files: { facts: "facts.json" } }));
     const artifact = context.artifacts.add({ command: "data", path: root });
     const data: DataOutput = { items: [{ bizId: "s1", status: CommandStatus.Ok, artifacts: [artifact],
-      diagnosis: { evidence: { facts, observations: [] }, findings: [], coverage: [] } }] };
+      diagnosis: { evidence: { facts, observations: [] }, findings: [],  } }] };
     const output: LogOutput = { namespace: "test", services: ["sample"], items: [],
       identityResolution: { status: CommandStatus.Ok, output: data, artifacts: [artifact] } };
     const directory = join(root, "delivered");

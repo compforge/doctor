@@ -16,8 +16,8 @@
 
 1. app 注入当前 `PluginDefinition`；Service 选择从 Plugin Catalog 与当前 Namespace 实际 Service 求交集。Service 选择完成后，交互分别询问是否采集 Deployment Env/ConfigMap 和应用依赖；非交互命令只有显式传入对应 flag 才采集。
 2. `service-targets` Inspect 始终读取 Namespace 中的 Service 和 Pod。只有用户确认后才读取 Deployment 和 ConfigMap；Service selector 同时定位其当前 Pod 和对应 Deployment。
-3. Inspect 将每个所选 Service 的 Pod、Container 状态、重启/终止原因、镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 Coverage 中标明缺口。
-4. 用户确认时，部署配置 Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。未选择时不发起这两类 Kubernetes 查询，标为未纳入范围，不计入缺失证据或不足的 Coverage。
+3. Inspect 将每个所选 Service 的 Pod、Container 状态、重启/终止原因、镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 证据不足 Finding 中标明缺口。
+4. 用户确认时，部署配置 Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。未选择时不发起这两类 Kubernetes 查询，标为未纳入范围，不计入缺失证据或不足的 证据不足 Finding。
 5. 用户确认依赖采集时，Inspect 用 Service selector 与 port 定位业务 Container，按实际 `imageID` 去重后每个镜像选择一个 Running Pod。Core 根据 Toolchain 执行有界只读采集，只保存归一化后的包名、版本和现场 runtime version；拒绝后不申请 `pods/exec` 权限。
 6. HTML 和 Markdown 分别展示 Workload 声明、Pod、Toolchain、应用依赖与 Service 配置；Workload 说明和 Toolchain 明确标为声明，依赖与 runtime version 明确标为本次现场观测。
 7. 报告状态按本次选择的范围计算；只采集 Pod 运行态不因未开启可选项而变为 partial。已选择的目标采集不足仍保留真实缺口。完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
@@ -46,13 +46,13 @@ doctor inspect -s api --field hpa -f summary
 Env 查询通过 `pods/exec` 在每个 Pod 的业务 Container 内执行 `printenv -0`，读取现场环境变量；
 包括镜像 ENV、Kubernetes 注入值和已注入容器的 Secret 值。不会额外读取 Secret API。
 按 Workload 声明或 Service port 定位业务 Container，每个副本独立采集，不按镜像合并。
-缺少权限、Container 未运行、业务容器无法唯一定位或 printenv 不可用时，在 Coverage 中保留缺口；
+缺少权限、Container 未运行、业务容器无法唯一定位或 printenv 不可用时，在 证据不足 Finding 中保留缺口；
 不会用 Deployment/ConfigMap 的声明值替代。NUL 分隔保留值中的换行和等号。
 
 指定 `--field` 时，只采集该字段与必要的 Workload/Pod 定位数据，不运行其它 Service Probe/Detector。
 Env 只读取 Pod env，Config 读取声明的文件组和 Pod env，Image 使用 Pod 镜像声明与 imageID，
 Event 只额外读取关联事件，HPA 只额外读取关联 Autoscaler。它们不互相附带采集；
-`--search` 未指定 field 时仍等同于 env。字段选择同时约束权限预检、实际访问和 Coverage。
+`--search` 未指定 field 时仍等同于 env。字段选择同时约束权限预检、实际访问和 证据不足 Finding。
 `--field/--search` 不能与 `--deployment-config` 或 `--dependencies` 同时使用；完整 Inspect 才支持这两个额外采集开关。
 部署配置仍表示声明，Env 搜索只匹配容器现场观测值。
 
@@ -68,7 +68,7 @@ Config 的 Markdown 摘要按文件/Pod env 分组，每组一个“名称 / 值
 相同匹配项不表示未匹配的文件内容相同；JSON 和完整证据仍逐来源保留。
 
 结构化结果保存在 `analysis/evidence.json` 的 `search` 字段中，包含 field、可选 keyword 和 matches；
-JSON 交付通过证据引用关联该文件。字段范围内的完整 Facts、Observations 和 Coverage 不受关键词过滤影响。
+JSON 交付通过证据引用关联该文件。字段范围内的完整 Facts、Observations 和 证据不足 Finding 不受关键词过滤影响。
 采集完整但没有匹配时成功返回空结果；采集不足时保留缺口，不将其解释为目标值不存在。
 
 Env 表示容器内新执行进程观察到的环境，不展开挂载 YAML/JSON，也不声称反映应用启动后在进程内修改的环境变量。
@@ -124,7 +124,7 @@ Bun Host 暂不支持 kubeconfig proxy 下的原生 exec，会在执行前明确
 也不导入 Settings 或声称得到应用解析后的最终配置。无文件声明的 Service 仍查询 Pod env。
 文件通常取一个代表 Pod，而 env 逐个副本采集，报告保留实际来源。
 
-每个声明路径均形成独立 Observation 与 Coverage 期待项；文件不存在、无权限、超限或解析失败只形成
+每个声明路径均形成独立 Observation 与 证据不足 Finding 期待项；文件不存在、无权限、超限或解析失败只形成
 该文件的证据缺口，其它文件保留。无法定位目标、整组超时、总预算或传输失败标记整组缺口。
 文件组共同读取不承诺文件系统原子快照，也不把 env 合并进文件组。
 有效空文件与读取失败分开处理。解析错误不包含文件原文。只查询 env/image 不读取文件。
@@ -132,7 +132,7 @@ Bun Host 暂不支持 kubeconfig proxy 下的原生 exec，会在执行前明确
 
 ### 为什么 Env/ConfigMap 需要单独确认
 
-Pod 数量、镜像和资源声明是常规工作负载事实；Deployment env 与 ConfigMap 则可能直接包含密码、密钥等业务数据。Doctor 在 Service 选择后单独确认，只有用户明确需要时才申请相关读取权限并采集。未选择的 Env 目标不计入 Coverage；已请求但失败的采集仍标为不充分，避免把范围选择混为执行失败。
+Pod 数量、镜像和资源声明是常规工作负载事实；Deployment env 与 ConfigMap 则可能直接包含密码、密钥等业务数据。Doctor 在 Service 选择后单独确认，只有用户明确需要时才申请相关读取权限并采集。未选择的 Env 目标不计入 证据不足 Finding；已请求但失败的采集仍标为不充分，避免把范围选择混为执行失败。
 
 ### 为什么 Toolchain 由 Plugin 声明、依赖由 Core 采集
 
@@ -145,7 +145,7 @@ Service 拥有自己的源码语言和构建方式，Plugin 最适合声明这�
 ### 为什么 Pod 运行态与 Service 配置分开展示
 
 Pod 数量、镜像和资源声明回答“所选 Service 当前落到了哪些工作负载”，Deployment Env/ConfigMap
-回答“这些 workload 声明了什么 Service 配置”。二者更新节奏与缺失原因不同，拆成独立 Fact、Coverage
+回答“这些 workload 声明了什么 Service 配置”。二者更新节奏与缺失原因不同，拆成独立 Fact、证据不足 Finding
 和表格后，Pod 权限不足不会掩盖已经取得的配置证据，也不会把 requests/limits 误解为资源使用指标。
 
 ### ConfigMap 与显式 env 的关系

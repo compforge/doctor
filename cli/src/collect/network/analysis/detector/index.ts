@@ -1,11 +1,10 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../../../evidence-gaps";
 import type {
   Detector,
-  DiagnosisCoverage,
-} from "../../../protocol";
+  } from "../../../protocol";
 import type {
   NetworkAnalysisConfig,
   NetworkArtifactObservation,
-  NetworkCoverageGoal,
   NetworkEvidence,
   NetworkFinding,
   NetworkHopObservation,
@@ -124,55 +123,28 @@ export const networkDetectors: readonly Detector<NetworkEvidence, NetworkFinding
   detectMissingResponses,
 ];
 
-function coverageStatus(
-  succeeded: number,
-  total: number,
-): DiagnosisCoverage<NetworkCoverageGoal>["status"] {
-  if (total > 0 && succeeded === total) return "sufficient";
-  return succeeded > 0 ? "partial" : "insufficient";
-}
-
-export function buildNetworkCoverage(
+export function detectNetworkEvidenceGaps(
   evidence: NetworkEvidence,
   config: NetworkAnalysisConfig,
-): DiagnosisCoverage<NetworkCoverageGoal>[] {
+): EvidenceGapFinding[] {
   const artifacts = networkArtifactObservations(evidence);
   const hops = networkHopObservations(evidence);
-  const covered = artifacts.filter((item) => item.windowComplete && item.verified);
-  const decoded = artifacts.filter((item) => item.decoded);
-  const terminal = hops.filter((item) => item.termination !== "open");
   return [
-    {
-      goal: "capture-scope",
-      status: coverageStatus(covered.length, evidence.facts.bundle.artifacts.length),
-      missingEvidence: artifacts
+    ...evidenceGaps("capture-scope", artifacts
         .filter((item) => !item.windowComplete || !item.verified)
-        .map((item) => `${item.pod}: ${item.reason ?? "PCAP 不完整或校验失败"}`),
-    },
-    {
-      goal: "protocol-decoding",
-      status: coverageStatus(decoded.length, evidence.facts.bundle.artifacts.length),
-      missingEvidence: artifacts
+        .map((item) => `${item.pod}: ${item.reason ?? "PCAP 不完整或校验失败"}`), evidence),
+    ...evidenceGaps("protocol-decoding", artifacts
         .filter((item) => !item.decoded)
-        .map((item) => `${item.pod}: ${item.reason ?? "PCAP 未解码"}`),
-    },
-    {
-      goal: "request-correlation",
-      status: hops.length > 0 ? "sufficient" : "insufficient",
-      missingEvidence: hops.length > 0
+        .map((item) => `${item.pod}: ${item.reason ?? "PCAP 未解码"}`), evidence),
+    ...evidenceGaps("request-correlation", hops.length > 0
         ? []
         : [
             config.mode === "watch"
               ? "守候窗口内未重建出可见 HTTP 请求；可能存在 TLS、操作未命中抓包范围或协议覆盖缺口"
               : "未在可解码 HTTP Header 中找到 capture ID / trace ID；可能存在 TLS、标识未透传或协议覆盖缺口",
-          ],
-    },
-    {
-      goal: "response-lifecycle",
-      status: coverageStatus(terminal.length, hops.length),
-      missingEvidence: hops
+          ], evidence),
+    ...evidenceGaps("response-lifecycle", hops
         .filter((item) => item.termination === "open")
-        .map((item) => `${item.caller} → ${item.callee} ${item.method} ${item.path}: 未观察到响应终态`),
-    },
+        .map((item) => `${item.caller} → ${item.callee} ${item.method} ${item.path}: 未观察到响应终态`), evidence),
   ];
 }

@@ -1,3 +1,4 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import { writeOutput } from "../../terminal/output";
 
 import { useLogger } from "../../terminal/log";
@@ -233,12 +234,8 @@ export async function collectCpu(
     planProbes: () => [pySpyProbe],
     log,
     buildEvidence: buildCpuEvidence,
-    detectors: CPU_DETECTORS,
-    buildCoverage: (evidence) => [{
-      goal: "python-thread-stacks" as const,
-      status: evidence.observations.length > 0 ? "sufficient" as const : "insufficient" as const,
-      missingEvidence: evidence.observations.length > 0 ? [] : ["py-spy Python 线程栈快照"],
-    }],
+    detectors: [...CPU_DETECTORS, (evidence) => [...evidenceGaps("python-thread-stacks" as const, evidence.observations.length > 0 ? [] : ["py-spy Python 线程栈快照"], evidence)]],
+
   });
   facts = execution.facts;
   const { diagnosis } = execution;

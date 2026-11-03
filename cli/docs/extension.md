@@ -232,7 +232,7 @@ Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变
 
 Probe 使用 `defineObservation({ kind, schemaVersion, codec })`，其中 `ValueCodec<T>` 提供
 `encode(value): JsonInput` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
-`defineWorkloadProbeExtension` 的作者侧 `run` 直接返回 Value，由工厂生成标准调用信封，
+`defineWorkloadProbeExtension` 的作者侧 `run` 返回 `{ value, status, reason? }`，由工厂生成标准调用信封，
 不再另外声明 `withSummary`。Plugin 可以使用嵌套对象、动态 Map、数字、布尔和数组，领域校验由 Codec 负责。
 Core 先把编码结果规范化为 JSON，再检查大小预算，通过 decode 验证业务结构并取得摘要。
 
@@ -276,3 +276,9 @@ Search client 和取消信号，不另建 PluginContext、连接或凭据解析�
 在线 trace 在使用数据源解析 ID 时就取得附带健康证据，0 span 或解析无结果时仍交付；它不改变原有 trace
 采集结果。附带证据进入独立 Artifact、HTML 和 views.json/views.txt。离线 trace 不触发网络探测。
 健康异常只能提示可能的存储链路原因，不能证明指定请求未产生或未上报 span。
+
+### Workload Probe 执行结果（API 21）
+
+`defineWorkloadProbeExtension` 的 run 返回 `{ value, status, reason? }`。Value 的 summary 和 codec
+仍负责展示与序列化；status 记录本次实例采集是否完成。`partial` 与 `unavailable` 必须附带 reason，
+并保留已取得的 Value。规则评价仍使用 `ServiceDetector.detect(evidence)`，不增加逐规则结果协议。

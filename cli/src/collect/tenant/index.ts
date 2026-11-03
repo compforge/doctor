@@ -16,7 +16,7 @@ import {
   parseTenantOutputFormat,
   tenantReportName,
 } from "./config";
-import { buildTenantCoverage, buildTenantEvidence, tenantDetectors } from "./detector";
+import { detectTenantEvidenceGaps, buildTenantEvidence, tenantDetectors } from "./detector";
 import { makeTenantInspects } from "./fact/inspect";
 import type {
   CollectTenantCliOptions,
@@ -113,8 +113,8 @@ export async function runCollectTenant(
       planProbes: () => [],
       log: (line) => useLogger().info(`${line}`),
       buildEvidence: buildTenantEvidence,
-      detectors: tenantDetectors,
-      buildCoverage: buildTenantCoverage,
+      detectors: [...tenantDetectors, detectTenantEvidenceGaps],
+
     });
     const facts: Readonly<TenantFacts> = execution.facts;
     const diagnosis: TenantDiagnosis = execution.diagnosis;
@@ -138,7 +138,10 @@ export async function runCollectTenant(
     writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf8");
 
     const outcome = evaluateCollectOutcome(
-      diagnosis.coverage.map((item) => item.status),
+      diagnosis.evidence.facts.capabilityFacts.flatMap(item => item.status !== "collected" ? [item.status] : [
+        item.result.truncated ? "partial" : "ok",
+        ...(item.result.sources ?? []).map(source => source.status === "failed" || source.status === "not_collected" ? "unavailable" as const : "ok" as const),
+      ]),
     );
     // The evidence directory is registered on the shared command context; return
     // its reference so root finalize can serialize and deliver the summary.

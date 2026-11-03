@@ -1,3 +1,4 @@
+import { gapMessages } from "../evidence-gaps";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,7 +14,7 @@ import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
 import { makeDataContributionInspect } from "./capability/collect";
 import type { PreparedDataCommand, DataCommandContext } from "./context";
-import { buildDataCoverage, buildDataEvidence, makeDataDetectors } from "./detector";
+import { detectDataEvidenceGaps, buildDataEvidence, makeDataDetectors } from "./detector";
 import { makeDataInspect } from "./fact/inspect";
 import type {
   DataConfig,
@@ -94,7 +95,7 @@ export async function runCollectData(
         useLogger("collect:data").warn(`biz-id: ${itemConfig.ids[0]}`);
         return [];
       }, log, buildEvidence: buildDataEvidence,
-      detectors: makeDataDetectors(plugin.id, plugin.services, services), buildCoverage: buildDataCoverage,
+      detectors: [...makeDataDetectors(plugin.id, plugin.services, services), detectDataEvidenceGaps],
     });
     diagnoses = execution.items;
   } catch (error) {
@@ -113,11 +114,14 @@ export async function runCollectData(
     const projected = result.status === "fulfilled" ? result.value.facts : projectDataFacts(facts, target.bizId);
     let reason = result.status === "rejected" ? String(result.reason instanceof Error ? result.reason.message : result.reason) : undefined;
     let status = commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed;
-    if (diagnosis) {
-      // Coverage includes source failures and truncation even when identity resolution succeeded.
-      const outcome = evaluateCollectOutcome(diagnosis.coverage.map(item => item.status));
+    if (diagnosis && !commandContext.signal.aborted) {
+      // Query execution is independent of identity resolution and Detector judgements.
+      const outcome = evaluateCollectOutcome(projected.capabilityResults.flatMap(item => item.status !== "collected" ? [item.status] : [
+        item.result.truncated ? "partial" : "ok",
+        ...(item.result.sources ?? []).map(source => source.status === "failed" || source.status === "not_collected" ? "unavailable" as const : "ok" as const),
+      ]));
       status = collectCommandOutcome(outcome).status;
-      if (outcome.exitCode) reason = diagnosis.coverage[0]?.missingEvidence.join("；") || "未取得所选 Service 的业务记录";
+      if (outcome.exitCode) reason = gapMessages(diagnosis.findings).join("；") || "未取得所选 Service 的业务记录";
     }
     try {
       writeDataEvidence(target.bundle, target.config, dataCommand.providers, services, projected, startedAt, diagnosis, reason);

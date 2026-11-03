@@ -1,6 +1,6 @@
+import type { EvidenceGapFinding } from "../../evidence-gaps";
 import { effectiveDiskSettings, vdbCapacityConclusion } from "./detector";
-import type { DiagnosisCoverage } from "../../protocol";
-import type { VdbDiagnosisGoal, VdbFinding, VdbObservations } from "./model";
+import type { VdbFinding, VdbObservations } from "./model";
 
 function formatBytes(value: number | undefined): string {
   if (value === undefined || !Number.isFinite(value)) return "-";
@@ -22,8 +22,7 @@ export function buildVdbSummary(input: {
   source: string;
   channel: string;
   observations: VdbObservations;
-  findings: readonly VdbFinding[];
-  coverage?: readonly DiagnosisCoverage<VdbDiagnosisGoal>[];
+  findings: readonly (VdbFinding | EvidenceGapFinding)[];
 }): string {
   const { observations } = input;
   const health = observations.health;
@@ -84,12 +83,6 @@ export function buildVdbSummary(input: {
   if (observations.missing.length) {
     lines.push("", "## 证据缺口", "", `- ${observations.missing.join("；")}`);
   }
-  if (input.coverage?.length) {
-    lines.push("", "## Coverage", "");
-    for (const item of input.coverage) {
-      lines.push(`- ${item.goal}: ${item.status}`);
-      for (const missing of item.missingEvidence) lines.push(`  - 缺失：${missing}`);
-    }
-  }
+
   return `${lines.join("\n")}\n`;
 }

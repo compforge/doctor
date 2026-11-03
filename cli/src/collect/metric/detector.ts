@@ -1,7 +1,7 @@
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import type { ServiceMetricDetector } from "@compforge/doctor-plugin";
-import type { Detector, DiagnosisCoverage } from "../protocol";
+import type { Detector, } from "../protocol";
 import type {
-  MetricDiagnosisGoal,
   MetricEvidence,
   MetricFinding,
   MetricQueryObservation,
@@ -83,10 +83,10 @@ export const metricDetectors: readonly Detector<MetricEvidence, MetricFinding>[]
   },
 ];
 
-export function buildMetricCoverage(
+export function detectMetricEvidenceGaps(
   evidence: MetricEvidence,
-): DiagnosisCoverage<MetricDiagnosisGoal>[] {
-  const coverage: DiagnosisCoverage<MetricDiagnosisGoal>[] = [];
+): EvidenceGapFinding[] {
+  const findings: EvidenceGapFinding[] = [];
   for (const observation of queryObservations(evidence)) {
     for (const consumer of observation.consumers) {
       const definition = consumer.definition;
@@ -96,12 +96,8 @@ export function buildMetricCoverage(
         : [observation.status === "failed"
             ? `${observation.service} ${definition.title} PromQL 查询失败：${observation.error ?? "未知错误"}`
             : `${observation.service} ${definition.title} PromQL 未返回数据`];
-      coverage.push({
-        goal,
-        status: observation.status === "collected" ? "sufficient" : "insufficient",
-        missingEvidence,
-      });
+      findings.push(...evidenceGaps(goal, missingEvidence, evidence, [{ observationId: observation.id, role: "supporting" }]));
     }
   }
-  return coverage;
+  return findings;
 }

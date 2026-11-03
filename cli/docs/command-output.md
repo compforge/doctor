@@ -149,7 +149,7 @@ result/
 ├── raw/
 │   ├── facts.json
 │   └── observations.json
-├── diagnosis.json            # Finding、Coverage、证据引用
+├── diagnosis.json            # Finding、证据引用
 ├── items/                    # 同一次执行的多个 Artifact
 ├── artifacts/                # 被聚合的 Command 执行
 └── report.html               # 按所选格式生成

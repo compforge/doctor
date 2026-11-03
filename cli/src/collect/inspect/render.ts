@@ -1,3 +1,4 @@
+import { gapMessages } from "../evidence-gaps";
 import { projectSummary } from "../../command/summary";
 import {
   htmlHeading,
@@ -235,8 +236,8 @@ function inspectHighlights(diagnosis: InspectDiagnosis, namespace: string): stri
   const readyPods = pods.filter(podReady).length;
   const issues = runtimeSummaryIssues(diagnosis);
   const missing = [
-    ...diagnosis.coverage.filter((item) => item.status !== "sufficient")
-      .map((item) => `${item.goal}: ${item.status}${item.missingEvidence.length ? ` — ${item.missingEvidence.join("；")}` : ""}`),
+    ...gapMessages(diagnosis.findings),
+
     ...services.filter((service) => !Object.keys(service.workloads).length)
       .map((service) => `${service.service}: 未声明 Workload，无法判断运行状态`),
     ...issues.filter((issue) => !issue.pod).map((issue) => `${issue.service}/${issue.workload}: ${issue.reason}`),
@@ -257,7 +258,7 @@ function inspectHighlights(diagnosis: InspectDiagnosis, namespace: string): stri
     `Workload：${workloads.length}`,
     `Pod：${pods.length} total，${readyPods} ready`,
     `状态：${status}`,
-    `证据：${missing.length ? "incomplete" : "complete"}`,
+    `诊断限制：${missing.length ? "存在，见 Findings" : "结合 Findings 与采集范围判断"}`,
     "",
     "异常实例 / 历史提醒：",
     ...(issues.length ? issues.flatMap((issue) => [
@@ -283,7 +284,7 @@ function inspectHighlights(diagnosis: InspectDiagnosis, namespace: string): stri
     ...autoscalerSummaryLines(autoscalers, lifecycleUnavailable),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((item) => `- ${item}`)] : []),
     ...(diagnosis.findings.length ? ["", "诊断发现：", ...diagnosis.findings.map((finding) =>
-      `- [${finding.severity}] ${finding.service}/${finding.kind}: ${finding.message}`)] : []),
+      `- [${finding.severity}] ${"service" in finding ? finding.service : finding.subject}/${finding.kind}: ${finding.message}`)] : []),
     "",
   ].join("\n");
 }
@@ -570,11 +571,8 @@ function configSearchTables(matches: readonly ConfigSearchMatch[], namespace: st
 }
 
 function searchStatus(diagnosis: InspectDiagnosis): string {
-  const field = diagnosis.evidence.search!.field;
-  const goals = field === "config" ? ["container-environment", "file-configuration"]
-    : [field === "env" ? "container-environment" : "workload-runtime"];
-  const complete = goals.every(goal => diagnosis.coverage.find(item => item.goal === goal)?.status === "sufficient");
-  return complete ? "采集完整" : "证据不完整，未匹配不代表目标值不存在";
+
+  return gapMessages(diagnosis.findings).length ? "存在诊断限制，未匹配不代表目标值不存在" : "未匹配不代表目标值不存在";
 }
 
 export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "—"): string {
@@ -586,9 +584,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
       ...(search.matches.length
         ? search.field === "config" ? configSearchTables(search.matches, namespace) : markdownTable(searchHeaders(diagnosis), searchRows(diagnosis))
         : [`未找到匹配的 ${search.field}。`]),
-      "", ...diagnosis.coverage.flatMap(item => [
-        `- ${item.goal}：${item.status}`, ...item.missingEvidence.map(missing => `  - 缺失：${markdownCell(missing)}`),
-      ]), "",
+      "", ...diagnosis.findings.map(finding => `- ${finding.message}`), "",
     ].join("\n");
   }
   const services = diagnosis.evidence.facts.serviceTargets.status === "collected"
@@ -607,13 +603,6 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     `- 配置项：${diagnosis.evidence.rows.length}`,
     "- Env 来源仅包含 ConfigMap 与 Deployment env。",
     "- AppArmor admission 使用 workload ServiceAccount 做 server-side dry-run；不会创建 Pod，也不验证节点运行时。",
-    "",
-    "## Coverage",
-    "",
-    ...diagnosis.coverage.flatMap((item) => [
-      `- ${item.goal}：${item.status}`,
-      ...item.missingEvidence.map((missing) => `  - 缺失：${missing}`),
-    ]),
     "",
     "## Workload",
     "",
@@ -688,6 +677,8 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
     : 0;
   return [
     htmlHeading(1, "Service Inspect"),
+    htmlHeading(2, "Findings"),
+    htmlList(diagnosis.findings.map(finding => finding.message)),
     htmlList([
       `Service：${services}`,
       `Pod：${podSummary(diagnosis)}`,
@@ -700,11 +691,7 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
     htmlParagraph("显式 Deployment env 按 Kubernetes 语义覆盖同名 ConfigMap 值。"),
     htmlParagraph("Toolchain 来自 Plugin 声明；依赖清单与 runtime version 来自本次 Target 观测。"),
     htmlParagraph("AppArmor admission 使用 workload ServiceAccount 做 server-side dry-run；不会创建 Pod，也不验证节点运行时。"),
-    htmlHeading(2, "Coverage"),
-    htmlList(diagnosis.coverage.flatMap((item) => [
-      `${item.goal}：${item.status}`,
-      ...item.missingEvidence.map((missing) => `缺失：${missing}`),
-    ])),
+
   ].join("\n");
 }
 
@@ -713,12 +700,7 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     title: `匹配的 ${diagnosis.evidence.search.field}`,
     html: diagnosis.evidence.search.matches.length
       ? htmlTable(searchHeaders(diagnosis), searchRows(diagnosis)) : htmlParagraph(`未找到匹配的 ${diagnosis.evidence.search.field}。`),
-  }, {
-    title: "采集完整性",
-    html: htmlList(diagnosis.coverage.flatMap(item => [
-      `${item.goal}：${item.status}`, ...item.missingEvidence,
-    ])),
-  }];
+  }, ];
   return [
     {
       title: "Workload / 声明",

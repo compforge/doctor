@@ -8,8 +8,7 @@ import type { CpuConfig } from "./config";
 export type CpuObservation = CpuPySpyObservation;
 export type CpuEvidence = Evidence<CpuObservation, CpuDiagnosisFacts>;
 export type CpuFinding = FindingMeta<"cpu.thread-stack">;
-export type CpuDiagnosisGoal = "python-thread-stacks";
-export type CpuDiagnosis = Diagnosis<CpuEvidence, CpuFinding, CpuDiagnosisGoal>;
+export type CpuDiagnosis = Diagnosis<CpuEvidence, CpuFinding>;
 
 export interface CpuCheckOptions {
   config: CpuConfig;

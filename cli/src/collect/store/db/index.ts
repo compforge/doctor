@@ -1,15 +1,15 @@
 import type { ServiceDatabaseDataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { CommandContext } from "../../../command";
+import { commandOutcome, type CommandResult, type CommandStatus, type CommandContext } from "../../../command";
 
 import { useLogger } from "../../../terminal/log";
 import { runCollect } from "../../engine";
 import type { OutcomeDecl } from "../../evidence";
-import { evaluateCollectOutcome } from "../../outcome";
+import { collectCommandOutcome, evaluateCollectOutcome } from "../../outcome";
 import type { StoreConfig } from "../config";
 import { createStoreBundle, finishStoreBundle } from "../artifacts";
 import type { DbCommandContext } from "./context";
-import { buildDbCoverage, dbDetectors } from "./detector";
+import { detectDbEvidenceGaps, dbDetectors } from "./detector";
 import { makeDbAccessInspect, makeDbConfigurationInspect } from "./fact";
 import type { DbInspectionFacts } from "./fact/model";
 import { groupDbObservations, type DbDiagnosis } from "./model";
@@ -31,7 +31,7 @@ export async function runStoreDb(
   config: StoreConfig,
   commandContext: CommandContext,
   executor: Executor,
-): Promise<number> {
+): Promise<CommandResult<void>> {
   const capability = config.capability as ServiceDatabaseDataSource;
   const state = createStoreBundle("db", config.output, config.outputFormat, DB_OUTCOMES, commandContext);
   const log = (line: string) => useLogger().info(`${line}`);
@@ -46,11 +46,12 @@ export async function runStoreDb(
   let facts: DbInspectionFacts | undefined;
   let diagnosis: DbDiagnosis | undefined;
 
-  const finish = async (code: number, summary: string) => {
+  const finish = async (code: number, summary: string, status?: CommandStatus) => {
     return finishStoreBundle({
       state,
       config,
       code,
+      status,
       summary,
       inspectionFacts: facts ? { ...facts } : {},
     });
@@ -72,8 +73,8 @@ export async function runStoreDb(
         : makeDbProbes(),
       log,
       buildEvidence: (observations, inspectionFacts) => ({ observations, facts: inspectionFacts }),
-      detectors: dbDetectors,
-      buildCoverage: buildDbCoverage,
+      detectors: [...dbDetectors, detectDbEvidenceGaps],
+
     });
     facts = execution.facts;
     diagnosis = execution.diagnosis;
@@ -99,13 +100,8 @@ export async function runStoreDb(
     ext: "json",
   });
   const observations = groupDbObservations(diagnosis.evidence.observations);
-  const coverage = new Map(diagnosis.coverage.map((item) => [item.goal, item.status]));
-  const outcome = evaluateCollectOutcome([
-    coverage.get("health") ?? "insufficient",
-    coverage.get("capacity") ?? "insufficient",
-    coverage.get("load") ?? "insufficient",
-  ]);
-  return finish(outcome.exitCode, buildDbSummary(config, facts, observations));
+  const outcome = evaluateCollectOutcome(state.bundle.getOutcomes().filter(item => item.id !== "findings").map(item => item.status));
+  return finish(outcome.exitCode, buildDbSummary(config, facts, observations, diagnosis.findings), collectCommandOutcome(outcome).status);
 }
 
 export * from "./detector";

@@ -1,3 +1,4 @@
+import { gapMessages } from "../evidence-gaps";
 import {
   htmlFactTable,
   htmlHeading,
@@ -31,25 +32,20 @@ function capabilitySummary(diagnosis: TenantDiagnosis): string[] {
 export function buildTenantSummary(diagnosis: TenantDiagnosis): string {
   const tenant = diagnosis.evidence.facts.tenant;
   const capabilities = diagnosis.evidence.facts.capabilityFacts;
-  const missing = diagnosis.coverage.flatMap((item) => item.missingEvidence.map((reason) => `${item.goal}：${reason}`));
-  const status = tenant.status !== "collected" || diagnosis.coverage.some((item) => item.status === "insufficient")
-    ? "degraded"
-    : missing.length ? "warning" : "healthy";
+  const missing = gapMessages(diagnosis.findings);
+
   return [
     "# Tenant 摘要",
     tenant.status === "collected"
       ? `租户：${tenant.displayName || tenant.name}（${tenant.id}）`
       : `租户：未取得（${tenant.reason}）`,
     `Capability：${capabilities.length}`,
-    `状态：${status}`,
-    `证据：${missing.length ? "incomplete" : "complete"}`,
     "",
     "Capability：",
     ...(capabilities.length ? capabilities.map((fact) => fact.status === "collected"
       ? `- ${fact.service} · ${fact.capability}：${fact.result.facts.length} 条 Fact`
       : `- ${fact.service} · ${fact.capability}：未取得（${fact.reason}）`) : ["- 无"]),
     ...(missing.length ? ["", "证据缺口：", ...missing.map((reason) => `- ${reason}`)] : []),
-    "",
     "",
   ].join("\n");
 }
@@ -64,12 +60,10 @@ export function buildTenantHtml(diagnosis: TenantDiagnosis): string {
         : `租户：未取得（${tenant.reason}）`,
       ...capabilitySummary(diagnosis),
     ]),
+    htmlHeading(2, "Findings"),
+    htmlList(gapMessages(diagnosis.findings)),
     htmlParagraph("Tenant Command 组合 Model Catalog 与接受 tenant_id 的 Inspect contribution，并将结果保留为 Facts。"),
-    htmlHeading(2, "Coverage"),
-    htmlList(diagnosis.coverage.flatMap((item) => [
-      `${item.goal}：${item.status}`,
-      ...item.missingEvidence.map((missing) => `缺失：${missing}`),
-    ])),
+
   ].join("\n");
 }
 

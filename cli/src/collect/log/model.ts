@@ -84,7 +84,7 @@ export type LogDiagnosisGoal =
   | "log:service-pods"
   | `log:service:${string}`
   | `log:pod:${string}:${string}`;
-export type LogDiagnosis = Diagnosis<LogEvidence, LogFinding, LogDiagnosisGoal>;
+export type LogDiagnosis = Diagnosis<LogEvidence, LogFinding>;
 
 /** raw Pod 日志经 ID 过滤后的结构化投影；TXT 与 HTML renderer 只消费这一份时间线。 */
 export interface LogTimelineRecord {

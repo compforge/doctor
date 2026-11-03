@@ -1,7 +1,7 @@
 import { buildDataEvidenceSummary } from "../src/collect/data/summary";
 import { expect, test } from "bun:test";
 import {
-  buildDataCoverage,
+  detectDataEvidenceGaps,
   projectDataServiceEvidence,
 } from "../src/collect/data/detector";
 import { buildDataHtml } from "../src/collect/data/render";
@@ -28,11 +28,7 @@ test("Data Coverage 保留 capability Fact 的失败原因", () => {
     },
   };
 
-  expect(buildDataCoverage(evidence)).toEqual([{
-    goal: "business-data-relations",
-    status: "insufficient",
-    missingEvidence: ["sample biz_id:biz-1 查询失败：query timeout"],
-  }]);
+  expect(detectDataEvidenceGaps(evidence)).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "business-data-relations", message: ["sample biz_id:biz-1 查询失败：query timeout"].join("；") })]);
 });
 
 test("Data terminal summary keeps batch status and evidence gaps compact", () => {
@@ -44,13 +40,13 @@ test("Data terminal summary keeps batch status and evidence gaps compact", () =>
     diagnosis: {
       evidence: { observations: [], facts: { services: {}, capabilityResults: [] } },
       findings: [],
-      coverage: [{ goal: "business-data-relations", status: "partial", missingEvidence: ["sample: timeout"] }],
+
     },
   }]);
   expect(summary).toContain("业务 ID：1");
   expect(summary).toContain("采集状态：partial");
   expect(summary).toContain("biz-1（partial）");
-  expect(summary).toContain("sample: timeout");
+  expect(summary).toContain("records unavailable");
 });
 
 test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全序列化 JSON", () => {
@@ -104,7 +100,7 @@ test("Data HTML 将已解析的业务结果交给懒加载分页表格并安全�
       },
     },
     findings: [],
-    coverage: [{ goal: "business-data-relations", status: "partial", missingEvidence: [] }],
+
   };
 
   const html = buildDataHtml(diagnosis);

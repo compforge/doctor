@@ -1,6 +1,6 @@
 import type { Diagnosis, Evidence, ObservationMeta } from "../protocol";
 import type { RedisInspectionFacts } from "./fact/model";
-import type { RedisFinding, RedisDiagnosisGoal } from "./findings";
+import type { RedisFinding } from "./findings";
 
 export interface RedisNode {
   host: string;
@@ -123,7 +123,7 @@ export type RedisObservation =
  */
 export type RedisEvidence = Evidence<RedisObservation, RedisInspectionFacts>;
 
-export type RedisDiagnosis = Diagnosis<RedisEvidence, RedisFinding, RedisDiagnosisGoal>;
+export type RedisDiagnosis = Diagnosis<RedisEvidence, RedisFinding>;
 
 export function buildRedisEvidence(
   observations: readonly RedisObservation[],

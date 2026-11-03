@@ -29,7 +29,7 @@ for (const ids of [["a"], ["a", "bad", "b"]]) test(`batch engine freezes once an
       events.push(id);
       return [];
     },
-    log: () => {}, buildEvidence: evidence, detectors: [], buildCoverage: () => [],
+    log: () => {}, buildEvidence: evidence, detectors: [],
   });
   expect(events.filter(event => event === "inspect")).toHaveLength(1);
   expect(result.items.map(item => item.status)).toEqual(ids.map(id => id === "bad" ? "rejected" : "fulfilled"));
@@ -44,7 +44,7 @@ test("queued cancellation yields an outcome for every item without starting its 
     inspects: [{ id: "source", run: async () => ({ records: [] }) }],
     items: ["a", "b", "c"].map(id => ({ ctx: undefined, config: id })),
     planProbes: (_facts, id) => { planned.push(id); controller.abort(new Error("cancelled")); return []; },
-    log: () => {}, buildEvidence: evidence, detectors: [], buildCoverage: () => [],
+    log: () => {}, buildEvidence: evidence, detectors: [],
   });
   expect(planned).toEqual(["a"]);
   expect(result.items.map(item => item.status)).toEqual(["fulfilled", "rejected", "rejected"]);

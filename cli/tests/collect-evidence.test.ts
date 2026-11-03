@@ -225,6 +225,17 @@ describe("EvidenceBundle worksheet", () => {
     ]);
   });
 
+  test("最终采集结果保留未执行项，但恢复成功的中间失败不降低状态", () => {
+    const bundle = new EvidenceBundle(tmp(), OUTCOMES);
+    bundle.addStep({ id: "direct-attempt", title: "direct", risk: "observe", status: "failed", reason: "permission denied" });
+    bundle.fill("probe", { status: "ok", output: "fallback result" });
+    expect(bundle.getOutcomes()).toEqual([
+      expect.objectContaining({ id: "probe", status: "ok" }),
+      expect.objectContaining({ id: "verdict", status: "unavailable" }),
+    ]);
+    expect(bundle.getSteps()).toContainEqual(expect.objectContaining({ id: "direct-attempt", status: "failed" }));
+  });
+
   test("Outcome 可记录 partial 并保留缺失原因", () => {
     const dir = mkdtempSync(join(tmpdir(), "doctor-evidence-test-"));
     const bundle = new EvidenceBundle(dir, [{ id: "sample", title: "sample", risk: "observe" }]);

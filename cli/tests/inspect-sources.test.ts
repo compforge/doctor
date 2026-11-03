@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
 import { normalizeInspectSources, boundInspectSources } from "../src/plugin/inspect-sources";
-import { buildDataCoverage, projectDataServiceEvidence, makeDataDetectors } from "../src/collect/data/detector";
+import { detectDataEvidenceGaps, projectDataServiceEvidence, makeDataDetectors } from "../src/collect/data/detector";
 import { buildDataHtml } from "../src/collect/data/render";
 import { collectedFact } from "../src/collect/protocol";
 import { runDetectors } from "../src/collect/detector-engine";
@@ -44,11 +44,11 @@ test("Source metadata shares Fact count and byte budgets", () => {
 });
 
 test("Confirmed absence is complete evidence, failures and unperformed reads are gaps", () => {
-  expect(buildDataCoverage(evidence([source]))[0]?.status).toBe("sufficient");
+  expect(detectDataEvidenceGaps(evidence([source]))).toEqual([]);
   for (const status of ["failed", "not_collected"] as const) {
-    const coverage = buildDataCoverage(evidence([{ source: "db", status, reason: "reason" }]))[0]!;
-    expect(coverage.status).toBe("partial");
-    expect(coverage.missingEvidence.join()).toContain(status === "failed" ? "查询失败" : "未采集");
+    const coverage = detectDataEvidenceGaps(evidence([{ source: "db", status, reason: "reason" }]))[0]!;
+    expect(coverage.kind).toBe("evidence.insufficient");
+    expect(coverage.message).toContain(status === "failed" ? "查询失败" : "未采集");
   }
 });
 
@@ -62,6 +62,6 @@ test("Plugin detectors can cite acquisition evidence through existing evidence p
       severity: "info", confidence: "high", message: "expected cleanup", evidence: [{ factPath: data.sources![0]!.factPath, role: "supporting" }] }] }],
   }]);
   expect(runDetectors(makeDataDetectors("test", catalog, ["sample"]), input)).toHaveLength(1);
-  const html = buildDataHtml({ evidence: input, findings: [], coverage: buildDataCoverage(input) });
+  const html = buildDataHtml({ evidence: input, findings: [],  });
   expect(html).toContain("确认不存在");
 });

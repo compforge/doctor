@@ -1,6 +1,6 @@
-import type { Detector, DiagnosisCoverage } from "../protocol";
+import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
+import type { Detector, } from "../protocol";
 import type {
-  TenantDiagnosisGoal,
   TenantEvidence,
   TenantFacts,
   TenantFinding,
@@ -12,21 +12,17 @@ export function buildTenantEvidence(_observations: readonly never[], facts: Tena
   return { observations: [], facts };
 }
 
-export function buildTenantCoverage(
+export function detectTenantEvidenceGaps(
   evidence: TenantEvidence,
-): DiagnosisCoverage<TenantDiagnosisGoal>[] {
-  return evidence.facts.capabilityFacts.map((fact) => {
+): EvidenceGapFinding[] {
+  return evidence.facts.capabilityFacts.flatMap((fact) => {
     if (fact.status !== "collected") {
-      return { goal: fact.id, status: "insufficient", missingEvidence: [fact.reason] };
+      return evidenceGaps(fact.id, [fact.reason], evidence);
     }
     const missingEvidence = [
       ...(fact.result.missingEvidence ?? []),
       ...(fact.result.truncated ? [`Facts 已截断：${fact.result.truncated.reason}`] : []),
     ];
-    return {
-      goal: fact.id,
-      status: missingEvidence.length ? "partial" : "sufficient",
-      missingEvidence,
-    };
+    return evidenceGaps(fact.id, missingEvidence, evidence);
   });
 }

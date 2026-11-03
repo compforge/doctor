@@ -36,9 +36,8 @@ export interface DbObservations {
 }
 export type DbFindingKind = `db.${string}`;
 export interface DbFinding extends FindingMeta<DbFindingKind> { summary: string; [key: string]: unknown }
-export type DbDiagnosisGoal = "health" | "capacity" | "load" | "lock-waits";
 export type DbEvidence = Evidence<DbObservation, DbInspectionFacts>;
-export type DbDiagnosis = Diagnosis<DbEvidence, DbFinding, DbDiagnosisGoal>;
+export type DbDiagnosis = Diagnosis<DbEvidence, DbFinding>;
 
 export function groupDbObservations(observations: readonly DbObservation[]): DbObservations {
   const find = <Kind extends DbObservation["kind"]>(kind: Kind) =>

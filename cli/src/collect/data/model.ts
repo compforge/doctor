@@ -75,8 +75,7 @@ export type DataEvidence = Evidence<never, DataFacts>;
 
 export type DataFinding = FindingMeta<string> & ServiceDetectorFinding;
 
-export type DataDiagnosisGoal = "business-data-relations";
-export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding, DataDiagnosisGoal>;
+export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding>;
 
 export interface DataOutput {
   readonly items: readonly {
