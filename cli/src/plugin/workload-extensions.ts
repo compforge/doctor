@@ -11,7 +11,7 @@ export function workloadProbeProviders(catalog: ServiceCatalog, serviceName?: st
       if (!service.workloads.some(workload => workload.name === probe.workload)) {
         throw new Error(`${service.name}/${probe.id}: unknown Workload '${probe.workload}'`);
       }
-      validateObservationSchema(probe.produces.schema, `${service.name}/${probe.id}.produces.schema`);
+      if ("schema" in probe.produces) validateObservationSchema(probe.produces.schema, `${service.name}/${probe.id}.produces.schema`);
       return { service, extension: probe };
     });
 }

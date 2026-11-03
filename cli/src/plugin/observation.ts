@@ -6,7 +6,7 @@ import addFormats from "ajv-formats";
 import type {
   JsonObject,
   JsonValue,
-  ObservationDefinition,
+  SchemaObservationDefinition as ObservationDefinition,
   ObservationValue,
 } from "@compforge/doctor-plugin";
 

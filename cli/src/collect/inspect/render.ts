@@ -1,3 +1,4 @@
+import { restoreObservationValue, type ObservationValueReader } from "../../plugin/value";
 import { projectSummary } from "../../command/summary";
 import {
   htmlHeading,
@@ -415,11 +416,12 @@ function workloadProbeObservations(diagnosis: InspectDiagnosis): PluginWorkloadO
   );
 }
 
-function workloadProbeRows(diagnosis: InspectDiagnosis): string[][] {
+function workloadProbeRows(diagnosis: InspectDiagnosis, readValue?: ObservationValueReader): string[][] {
   return workloadProbeObservations(diagnosis).slice(0, 24).map((observation) => {
-    const summary = projectSummary(observation.summary, observation.value);
+    const restored = observation.valueEncoding === "codec" ? (readValue ?? restoreObservationValue)(observation) : undefined;
+    const summary = projectSummary(restored?.summary ?? observation.summary, observation.value);
     return [observation.service, observation.workload, observation.pod, observation.probe,
-      summary.title, [summary.text, ...summary.fields.map(field => `${field.label}=${field.value}`)].filter(Boolean).join("; ")];
+      summary.title, [restored?.status === "unavailable" ? restored.reason : undefined, summary.text, ...summary.fields.map(field => `${field.label}=${field.value}`)].filter(Boolean).join("; ")];
   });
 }
 
@@ -577,7 +579,7 @@ function searchStatus(diagnosis: InspectDiagnosis): string {
   return complete ? "采集完整" : "证据不完整，未匹配不代表目标值不存在";
 }
 
-export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "—"): string {
+export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "—", readValue?: ObservationValueReader): string {
   if (diagnosis.evidence.search) {
     const search = diagnosis.evidence.search;
     return [`# Inspect ${search.field}`, "", `- Namespace：${markdownCell(namespace)}`,
@@ -641,7 +643,7 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "",
     ...markdownTable(
       ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
-      workloadProbeRows(diagnosis),
+      workloadProbeRows(diagnosis, readValue),
     ),
     "",
     ...(workloadProbeObservations(diagnosis).length > 24 ? [`另有 ${workloadProbeObservations(diagnosis).length - 24} 个 Probe 未在摘要中展示。`] : []),
@@ -708,7 +710,7 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
   ].join("\n");
 }
 
-export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlReportSection[] {
+export function buildInspectHtmlSections(diagnosis: InspectDiagnosis, readValue?: ObservationValueReader): HtmlReportSection[] {
   if (diagnosis.evidence.search) return [{
     title: `匹配的 ${diagnosis.evidence.search.field}`,
     html: diagnosis.evidence.search.matches.length
@@ -736,7 +738,7 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
       title: "Workload / Plugin 探测",
       html: htmlTable(
         ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
-        workloadProbeRows(diagnosis),
+        workloadProbeRows(diagnosis, readValue),
       ),
     },
     {

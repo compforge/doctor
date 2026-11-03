@@ -226,9 +226,22 @@ runner。Command 在主动请求审批后调用创建函数，并持有访问上
 Harness 调度 setup、逐次 run、deactivate 和 cleanup。创建期间发生取消时，已创建的 runner 仍交给
 生命周期所有者清理。
 
-一个 Service 可提供多个 `workload.probe`，各自声明稳定 ID、Workload 名称、Observation schema 和访问权限。
+一个 Service 可提供多个 `workload.probe`，各自声明稳定 ID、Workload 名称、Observation 定义和访问权限。
 Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变 Observation；实例探测失败独立记录，
 取消时停止后续实例。访问上下文在该探测函数的实例批次结束后释放。
+
+新的 Probe 使用 `defineObservation({ kind, schemaVersion, codec })`，其中 `ValueCodec<T>` 提供
+`encode(value): JsonObject` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
+`defineWorkloadProbeExtension` 的作者侧 `run` 直接返回 Value，由工厂生成标准调用信封，
+不再另外声明 `withSummary`。Plugin 可以使用嵌套对象、动态 Map、数字、布尔和数组，领域校验由 Codec 负责。
+Core 只检查编码结果能否无损保存为 JSON，并通过 decode 验证结果、取得摘要。
+
+Value 和 Codec 方法必须是纯数据操作，不访问网络或申请资源；外部访问仍归 Probe，跨值判断仍归 Detector。
+归档只存编码后的完整 JSON、kind/schemaVersion 和已生成的 Summary，不序列化实例方法。
+离线报告在当前已加载 Plugin 中按 Service、Probe ID、kind、schemaVersion 匹配 Codec，恢复 Value；
+缺少匹配项或解码失败时保留原始 JSON 和已保存摘要，并在报告中标明无法解码的原因，不自动下载 Plugin。
+JSON 格式不兼容时提升 schemaVersion；仅增加运行时方法无需改变归档版本。
+既有 TypeBox schema Probe 继续兼容，仍遵循原有 schema 校验规则；本次不要求所有 Probe 一起迁移。
 
 `datasource.vdb.inspect` 通过 Service 与 `dataSource` ID 绑定 VDB 声明，每个数据源选择唯一实现。
 目标解析使用 Extension 自己的访问权限，返回后释放调用上下文；Store 负责后续连接和诊断。

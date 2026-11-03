@@ -232,6 +232,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   summary: import("@compforge/doctor-plugin").Summary;
   kind: "plugin-workload";
   instance: WorkloadInstance;
+  valueEncoding?: "codec";
   observationKind: string;
   observationSchemaVersion: number;
   service: string;
