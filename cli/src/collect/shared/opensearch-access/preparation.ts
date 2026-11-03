@@ -124,6 +124,7 @@ class OpenSearchAccessClient implements Client {
         forwarder = await ServicePortForwarder.create(executor, {
           ...kube,
           namespace: service.namespace,
+          signal: this.signal,
           onDiagnostic: line => log(`[collect] ${line}`),
         });
         log(`[collect] port-forward svc/${service.name}（${service.namespace}，远端端口 ${service.port}）…`);
@@ -140,6 +141,7 @@ class OpenSearchAccessClient implements Client {
         preferredScheme = connection.scheme;
         channel = `port-forward svc/${service.name}（${service.namespace}）`;
       } catch (error) {
+        this.signal?.throwIfAborted();
         const reason = error instanceof Error ? error.message : String(error);
         steps.push({
           id: "port-forward",
@@ -184,6 +186,7 @@ class OpenSearchAccessClient implements Client {
             : baseUrl,
         });
       } catch (error) {
+        this.signal?.throwIfAborted();
         const reason = error instanceof Error ? error.message : String(error);
         steps.push({
           id: "probe-scheme",

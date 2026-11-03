@@ -142,3 +142,16 @@ test("scheme failure retains both safe causes and closes each probe", async () =
   expect(closed).toBe(2);
   expect(logs.join("\n")).not.toContain("secret");
 });
+
+
+test("caller cancellation stops scheme fallback and preserves its reason", async () => {
+  const controller = new AbortController();
+  const reason = new Error("caller interrupted");
+  const visited: string[] = [];
+  await expect(probeOpenSearchUrl("os:9200", {}, { signal: controller.signal,
+    createEngine: node => ({ ping: async () => {
+      visited.push(node); controller.abort(reason); throw reason;
+    }, close: async () => {} }),
+  })).rejects.toBe(reason);
+  expect(visited).toEqual(["http://os:9200"]);
+});

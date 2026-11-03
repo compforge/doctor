@@ -65,12 +65,15 @@ export async function prepareFirstAvailableDataSource<T>(
   candidates: readonly ServiceDataSourceReference[],
   prepare: (candidate: ServiceDataSourceReference) => Promise<T>,
   onFailure: (candidate: ServiceDataSourceReference, reason: string) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   const failures: string[] = [];
   for (const candidate of candidates) {
+    signal?.throwIfAborted();
     try {
       return await prepare(candidate);
     } catch (error) {
+      signal?.throwIfAborted();
       const reason = error instanceof Error ? error.message : String(error);
       failures.push(`${candidate.service}/${candidate.dataSource}: ${reason}`);
       onFailure(candidate, reason);
@@ -146,6 +149,7 @@ export class ServiceDependencyRuntime {
         `[collect] OpenSearch Store ${service}/${dataSource} 不可用，尝试下一个 target：${reason}`,
         "warning",
       ),
+      this.options.commandContext.signal,
     );
   }
 

@@ -58,3 +58,20 @@ test("所有 OpenSearch Store target 失败时汇总原因", async () => {
     "jaeger-collector/trace: jaeger-collector unavailable；kb-server/vdb: kb-server unavailable",
   );
 });
+
+
+test("caller cancellation stops OpenSearch Store fallback and preserves its reason", async () => {
+  const controller = new AbortController();
+  const reason = new Error("caller interrupted");
+  const visited: string[] = [];
+  let reported = 0;
+  await expect(prepareFirstAvailableDataSource([
+    { service: "first", dataSource: "trace" }, { service: "second", dataSource: "trace" },
+  ], async candidate => {
+    visited.push(candidate.service);
+    controller.abort(reason);
+    throw reason;
+  }, () => { reported++; }, controller.signal)).rejects.toBe(reason);
+  expect(visited).toEqual(["first"]);
+  expect(reported).toBe(0);
+});
