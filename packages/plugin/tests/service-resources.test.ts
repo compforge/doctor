@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, describeService, validateResourceSnapshot, withSummary,
+import { createServiceCatalog, describeService, validateResourceSnapshot, immutableJsonObject, withSummary,
   type ServiceDefinition, type ServiceResourceDefinition, type ResourceSnapshot, type JsonObject } from "../src";
 
 const resource = { id: "shared-volumes", kind: "volume", name: "Volumes" };
@@ -29,11 +29,12 @@ test("Resource catalog is offline, preserves Service association and exposes ope
 
 test("Resource snapshot keeps independent total, page coverage and unknown values", () => {
   expect(() => check(snapshot())).not.toThrow();
-  const { totalCount: _count, instances: _instances, nextCursor: _cursor, ...identity } = snapshot();
-  const unavailable: ResourceSnapshot<JsonObject> = { ...identity,
+  const unavailable: ResourceSnapshot<JsonObject> = { ...snapshot(), totalCount: undefined, instances: undefined, nextCursor: undefined,
     coverage: { status: "unavailable" as const, reason: "No permission" } };
   expect(() => check(unavailable)).not.toThrow();
   expect(unavailable.totalCount).toBeUndefined();
+  const saved = immutableJsonObject(unavailable, "snapshot");
+  for (const key of ["totalCount", "instances", "nextCursor"]) expect(Object.hasOwn(saved, key)).toBe(false);
   expect(() => check({ ...snapshot(), coverage: { status: "complete" } })).toThrow("partial coverage");
 });
 
@@ -53,7 +54,7 @@ test("Same collection identity must retain its kind across Services", () => {
 });
 
 test("Resource details reject lossy JSON instead of silently changing producer data", () => {
-  for (const details of [{ omitted: undefined }, { date: new Date() }, { items: [, 1] }]) {
+  for (const details of [{ date: new Date() }, { items: [, 1] }, { items: [undefined] }]) {
     const value = snapshot();
     expect(() => check({ ...value, instances: [{ ...value.instances![0]!, details: details as unknown as JsonObject }] })).toThrow();
   }

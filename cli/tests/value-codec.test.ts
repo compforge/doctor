@@ -69,7 +69,7 @@ test("Value codec preserves data and summary across a persisted Observation", as
 test("Codec rejects invalid producer data and Core rejects lossy encoded JSON", () => {
   expect(() => encodeObservationValue(definition, new Settings({ bad: { enabled: "yes" as never, ports: [] } }), "settings")).toThrow("invalid Settings entry");
   const lossy = defineObservation({ kind: "settings", schemaVersion: 1, codec: { ...codec,
-    encode: () => ({ omitted: undefined }) as unknown as JsonObject,
+    encode: () => ({ items: [undefined] }) as unknown as JsonObject,
   } });
   expect(() => encodeObservationValue(lossy, new Settings({}), "settings")).toThrow("unsupported JSON value");
   const invalid = restoreObservationValue({ service: "app", probe: "settings", observationKind: "settings", observationSchemaVersion: 1,
