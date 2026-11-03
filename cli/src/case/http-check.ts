@@ -1,3 +1,4 @@
+import { diagnosticMessage as caseError } from "../command/diagnostic";
 import { diagnoseHttpFailure, type HttpFailureDiagnosis } from "../collect/shared/http/diagnosis";
 import { caseHash } from "@compforge/spec-case/model";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,20 +30,7 @@ export interface CaseAttempt {
   failure?: HttpFailureDiagnosis;
 }
 
-/** Signed query strings and credentials never belong in a reusable diagnostic report. */
-export function caseError(error: unknown, secrets: readonly string[] = []): string {
-  let text = error instanceof Error ? error.message : String(error);
-  text = text.replace(/https?:\/\/[^\s<>"']+/g, raw => {
-    try {
-      const url = new URL(raw);
-      url.username = ""; url.password = ""; url.hash = "";
-      for (const key of [...url.searchParams.keys()]) url.searchParams.set(key, "[redacted]");
-      return url.toString();
-    } catch { return "[invalid URL]"; }
-  });
-  for (const secret of secrets.filter(Boolean).sort((a, b) => b.length - a.length)) text = text.replaceAll(secret, "[redacted]");
-  return text.replace(/^(authorization|proxy-authorization|cookie|set-cookie|x-api-key):.*$/gim, "$1: [redacted]");
-}
+export { diagnosticMessage as caseError } from "../command/diagnostic";
 
 function bodySecrets(body: string | undefined): string[] {
   if (!body) return [];

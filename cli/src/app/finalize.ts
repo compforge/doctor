@@ -1,4 +1,5 @@
-import { restoreObservationValue } from "../plugin/value";
+import { disposeWithinBudget } from "../command/deadline";
+import { executionDiagnostic } from "../command/diagnostic";
 import { writeOutput } from "../terminal/output";
 import { renderBundleAgents } from "./bundle-agents";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -21,6 +22,7 @@ export interface FinalizeCommandInput<Input extends CommandInput, Output> {
   context: CommandContext;
   delivery: CommandDeliveryOptions;
   code: number;
+  cleanupTimeoutMs?: number;
 }
 
 /**
@@ -29,30 +31,34 @@ export interface FinalizeCommandInput<Input extends CommandInput, Output> {
  */
 export async function finalizeCommand<Input extends CommandInput, Output>(input: FinalizeCommandInput<Input, Output>): Promise<number> {
   let code = input.code;
+  let result = input.result;
   const progress = (message: string) => {
     if (input.spec.name === "doctor perf") writeOutput(`[perf] ${message}…\n`, process.stderr);
   };
   progress("正在释放共享连接");
-  try { await input.context.disposeClients(); }
-  catch (error) { reportError(error, { context: input.spec.name, summary: "client cleanup failed" }); code = 1; }
+  const cleanupStartedAt = Date.now();
+  try { await disposeWithinBudget(() => input.context.disposeClients(), input.cleanupTimeoutMs); }
+  catch (error) {
+    reportError(error, { context: input.spec.name, summary: "client cleanup failed" }); code = 1;
+    result = { ...result, diagnostics: [...(result.diagnostics ?? []),
+      executionDiagnostic(error, { phase: "cleanup", target: "shared clients", startedAt: cleanupStartedAt })] };
+  }
   if (input.context.signal.aborted) code = 130;
   // Non-reporting commands have no file output unless explicitly requested.
-  if (!input.result.artifacts.length && input.result.output === undefined && input.delivery.format !== "manifest") return code;
+  if (!result.artifacts.length && result.output === undefined && !(result.diagnostics?.length && input.spec.serialize) && input.delivery.format !== "manifest") return code;
   const directory = mkdtempSync(join(tmpdir(), "doctor-result-"));
   progress("正在整理已有证据");
-  const serialized = await SerializeContext.create(directory, input.spec, input.result,
+  const serialized = await SerializeContext.create(directory, input.spec, result,
     (error, command) => reportError(error, { context: command, summary: "result serialization failed" }),
     input.delivery.format?.trim() === "summary" ? "result" : "evidence");
   if (serialized.failed && code !== 130) code = 1;
-  const valueCatalog = input.context.pluginIdentity ? input.context.plugin.services : undefined;
   const renderer = new RenderContext(serialized.artifacts, input.context.profile.name,
-    (error, command) => reportError(error, { context: command, summary: "report render failed" }),
-    observation => restoreObservationValue(observation, valueCatalog));
+    (error, command) => reportError(error, { context: command, summary: "report render failed" }));
   const wantsReport = !["json", "text", "md", "summary", "manifest"].includes(input.delivery.format?.trim() ?? "");
   if (wantsReport && input.spec.render) {
     try {
       progress("正在生成报告");
-      const report = await renderer.render(input.spec, input.result);
+      const report = await renderer.render(input.spec, result);
       if (report.sections.length) writeFileSync(join(directory, "report.html"), renderReportHtml(report, renderer), { mode: 0o600 });
     } catch (error) { renderer.failed(input.spec.name, error); }
   }
@@ -66,7 +72,7 @@ export async function finalizeCommand<Input extends CommandInput, Output>(input:
   serialized.writeText("AGENTS.md", renderBundleAgents());
   serialized.indexReports();
   const delivered = await deliverSerialized({ directory, options: input.delivery, code,
-    reportName: input.spec.reportName?.(input.commandInput, input.result, new Date())
+    reportName: input.spec.reportName?.(input.commandInput, result, new Date())
       ?? defaultCommandReportName(input.spec.name, [], new Date()) });
   if (delivered && code === 0 && !serialized.failed && !renderer.failures.length) {
     cleanupTemporaryArtifacts(input.context.artifacts.list().map(artifact => artifact.path));

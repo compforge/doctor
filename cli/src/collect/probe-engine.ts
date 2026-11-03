@@ -1,3 +1,4 @@
+import { currentCommandSignal, recordExecutionFailure } from "../command/execution-scope";
 import type {
   ObservationMeta,
   Probe,
@@ -55,6 +56,7 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
   facts: Facts,
   config: Config,
   log: (line: string) => void = () => {},
+  signal = currentCommandSignal(),
 ): Promise<Observation[]> {
   validateProbes(probes);
   const readIds = probes
@@ -66,6 +68,7 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
   const observations: Observation[] = [];
 
   while (pending.size > 0) {
+    if (signal?.aborted) break;
     const probe = probes.find((candidate) => {
       if (!pending.has(candidate.id)) return false;
       const dependencies = candidate.dependsOn ?? [];
@@ -99,10 +102,13 @@ export async function runProbes<Observation extends ObservationMeta, Facts, Conf
       continue;
     }
     log(`[collect] 执行 Probe：${probe.id}…`);
+    const startedAt = Date.now();
     let probeObservations: readonly Observation[];
     try {
       probeObservations = await probe.run(ctx, facts, config, progress);
     } catch (error) {
+      recordExecutionFailure(error, { phase: "probe", target: probe.id, startedAt, kind: signal?.aborted ? "cancelled" : undefined });
+      if (signal?.aborted) break;
       if (!probe.onFailed) throw error;
       const reason = error instanceof Error ? error.message : String(error);
       probe.onFailed(ctx, reason);

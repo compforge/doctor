@@ -131,3 +131,17 @@ Partial 报告沿用用户请求的 HTML、Markdown 或 Bundle 格式，并必�
 mode 是副作用上限，不是 blanket approval。Operation 描述 `risk / target / impact / steps`，具体执行与
 清理由 Probe 或 Provision 工作流拥有。授权发生在动作真正需要执行时；用户拒绝只终止依赖该 Operation
 的 Strategy，不应吞掉其它只读证据。
+
+## 取消、清理与失败证据
+
+共享执行器在调度 Inspect、Probe、策略和 batch item 前检查当前命令的取消信号。
+取消后保留已完成的 Observation，停止后续调度和 Detector 判定；领域通过 partial Fact checkpoint
+保存已完成的 Inspect 投影，未完成的 Facts 不作为完整输入交给 Probe。
+超时通过共享 deadline 给实际 I/O owner 发送 AbortSignal，由 Client 中断请求；不会用 Promise race
+假装已经停止仍在写入证据的工作。Plugin 同样必须遵守 signal。
+
+临时资源与共享 Client 清理各有 5 秒等待预算；清理失败或超时保留已经返回的 output 和 staged artifacts，
+继续归档。超时不能强制终止不合作的 Plugin 代码，也不重试其 disposer。
+命令结果可携带统一的 diagnostics，归档写为 `diagnostics.json` 并在 manifest 中索引。
+诊断记录阶段、目标、耗时、kind/code 和有界 cause 链，移除 URL 凭据、查询值及常见凭据字段；
+不复制 stack、任意异常属性或协议 body。终端简短原因与这份排障证据分开。

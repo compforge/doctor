@@ -1,5 +1,5 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ProbeObservationDefinition, SchemaObservationDefinition, ObservationDefinition, ObservationValue } from "../observation";
+import type { ObservationDefinition, ObservationValue } from "../observation";
 import type { PluginContext } from "../context";
 import type { Value } from "../value";
 import type { ServiceWorkloadProbeInput } from "../service";
@@ -7,7 +7,7 @@ import type { ServiceWorkloadProbeInput } from "../service";
 export const WORKLOAD_PROBE_KIND = "workload.probe";
 
 /** The Command schedules one invocation per discovered workload instance. */
-export interface WorkloadProbeExtension<Definition extends ProbeObservationDefinition = ProbeObservationDefinition>
+export interface WorkloadProbeExtension<Definition extends ObservationDefinition = ObservationDefinition>
   extends Extension<ServiceWorkloadProbeInput, ObservationValue<Definition>> {
   readonly kind: typeof WORKLOAD_PROBE_KIND;
   readonly workload: string;
@@ -20,15 +20,11 @@ export function defineWorkloadProbeExtension<T extends Value>(
     run(context: PluginContext, input: ServiceWorkloadProbeInput): Promise<T>;
   },
 ): WorkloadProbeExtension<ObservationDefinition<T>>;
-export function defineWorkloadProbeExtension<const Definition extends SchemaObservationDefinition>(
-  extension: WorkloadProbeExtension<Definition>,
-): WorkloadProbeExtension<Definition>;
 export function defineWorkloadProbeExtension(
   extension: Omit<WorkloadProbeExtension, "run"> & {
-    run(context: PluginContext, input: ServiceWorkloadProbeInput): Promise<unknown>;
+    run(context: PluginContext, input: ServiceWorkloadProbeInput): Promise<Value>;
   },
 ): WorkloadProbeExtension {
-  if (!("codec" in extension.produces)) return extension as WorkloadProbeExtension;
   return { ...extension, run: async (context, input) => {
     const value = await extension.run(context, input) as Value;
     return { data: value, summary: value.summary() };
@@ -42,9 +38,7 @@ export function requireWorkloadProbeExtension(extension: RegisteredExtension): W
   const produces = probe.produces;
   if (!produces || typeof produces.kind !== "string" || !produces.kind.trim()
     || !Number.isInteger(produces.schemaVersion) || produces.schemaVersion < 1
-    || ("codec" in produces
-      ? !produces.codec || typeof produces.codec.encode !== "function" || typeof produces.codec.decode !== "function"
-      : !produces.schema || typeof produces.schema !== "object" || Array.isArray(produces.schema))) {
+    || !produces.codec || typeof produces.codec.encode !== "function" || typeof produces.codec.decode !== "function") {
     throw new Error(`${extension.id}: invalid Observation definition`);
   }
   return probe;

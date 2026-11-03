@@ -46,7 +46,7 @@ test("Value codec preserves data and summary across a persisted Observation", as
   try {
     writeFileSync(join(directory, "observation.json"), JSON.stringify(observation));
     const saved = JSON.parse(readFileSync(join(directory, "observation.json"), "utf8"));
-    const restored = restoreObservationValue(saved, catalog);
+    const restored = restoreObservationValue(saved, definition);
     expect(restored.status).toBe("decoded");
     if (restored.status !== "decoded") throw new Error(restored.reason);
     expect(restored.value).toBeInstanceOf(Settings);
@@ -54,8 +54,15 @@ test("Value codec preserves data and summary across a persisted Observation", as
     expect(codec.encode(restored.value as Settings)).toEqual(snapshot.value);
     expect(restoreObservationValue(saved)).toMatchObject({ status: "unavailable", summary: snapshot.summary });
     expect(saved.value).toEqual(snapshot.value);
-    expect(restoreObservationValue({ ...saved, observationSchemaVersion: 2 }, catalog)).toMatchObject({ status: "unavailable" });
-    expect(restoreObservationValue({ ...saved, service: "different" }, catalog)).toMatchObject({ status: "unavailable" });
+    expect(restoreObservationValue({ ...saved, observationSchemaVersion: 2 }, definition)).toMatchObject({ status: "unavailable" });
+    // Restoration requires the data contract, not a current Service/Probe registration.
+    expect(restoreObservationValue({ ...saved, service: "retired" }, definition).status).toBe("decoded");
+    const changed = { ...definition, codec: { ...codec, decode: (json: unknown) => {
+      const value = codec.decode(json);
+      value.summary = () => { throw new Error("history must not recompute summary"); };
+      return value;
+    } } };
+    expect(restoreObservationValue(saved, changed)).toMatchObject({ status: "decoded", summary: saved.summary });
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
@@ -66,7 +73,7 @@ test("Codec rejects invalid producer data and Core rejects lossy encoded JSON", 
   } });
   expect(() => encodeObservationValue(lossy, new Settings({}), "settings")).toThrow("unsupported JSON value");
   const invalid = restoreObservationValue({ service: "app", probe: "settings", observationKind: "settings", observationSchemaVersion: 1,
-    value: { entries: { bad: { enabled: "secret", ports: [] } } }, summary: { title: "Saved", fields: [] } }, catalog);
+    value: { entries: { bad: { enabled: "secret", ports: [] } } }, summary: { title: "Saved", fields: [] } }, definition);
   expect(invalid).toMatchObject({ status: "unavailable", summary: { title: "Saved" } });
   expect(JSON.stringify(invalid)).not.toContain("secret");
 });
@@ -76,4 +83,20 @@ test("Codec method contract is checked before scheduling", () => {
     produces: { ...definition, codec: { encode: codec.encode } },
   }] }]);
   expect(() => workloadProbeProviders(invalid)).toThrow("invalid Observation definition");
+});
+
+test("Observation persistence accepts root arrays, with saved summary paths into the encoding", () => {
+  class Rows { constructor(readonly rows: readonly { count: number }[]) {}
+    summary(): Summary { return { title: "Rows", fields: [{ label: "First", path: ["0", "count"] }] }; }
+  }
+  const definition = defineObservation({ kind: "rows", schemaVersion: 1, codec: {
+    encode: (value: Rows) => value.rows,
+    decode: (json: unknown) => {
+      if (!Array.isArray(json) || json.some(row => typeof row?.count !== "number")) throw new Error("invalid rows");
+      return new Rows(json);
+    },
+  } });
+  expect(encodeObservationValue(definition, new Rows([{ count: 3 }]), "rows")).toEqual({
+    value: [{ count: 3 }], summary: { title: "Rows", fields: [{ label: "First", path: ["0", "count"] }] },
+  });
 });

@@ -793,3 +793,41 @@ describe("runProbes 调度", () => {
     );
   });
 });
+
+/** @case Cancellation preserves completed evidence and never becomes an environmental Probe failure. */
+test("cancelled Probe stops scheduling, retains prior observations and skips detectors", async () => {
+  const controller = new AbortController();
+  const ran: string[] = [];
+  const probes: Probe<ObservationMeta, {}, {}>[] = ["done", "cancel", "later"].map(id => ({
+    id, evaluate: () => PROBE_RUNNABLE,
+    run: async () => {
+      ran.push(id);
+      if (id === "cancel") { controller.abort(new Error("user cancelled")); throw controller.signal.reason; }
+      return [{ id, kind: "test", ...observationMeta(id) }];
+    },
+    onFailed: () => { throw new Error("cancel is not a failed target"); },
+  }));
+  const diagnosis = await runDiagnosis({ ctx: undefined, facts: {}, config: {}, probes, signal: controller.signal,
+    log: () => {}, buildEvidence: (observations, facts) => ({ observations, facts }), buildCoverage: () => [],
+    detectors: [() => { throw new Error("must not diagnose incomplete evidence"); }],
+  });
+  expect(ran).toEqual(["done", "cancel"]);
+  expect(diagnosis.evidence.observations.map(item => item.id)).toEqual(["done"]);
+  expect(diagnosis.findings).toEqual([]);
+});
+
+test("partial Inspect checkpoints survive cancellation without pretending Facts are complete", async () => {
+  const controller = new AbortController();
+  const checkpoints: unknown[] = [];
+  const ran: string[] = [];
+  await expect(runInspects([
+    { id: "first", run: async () => {
+      ran.push("first"); controller.abort(new Error("cancelled"));
+      return { acquired: collectedFact("acquired", "first", { value: 1 }) };
+    } },
+    { id: "later", run: async () => { ran.push("later"); return {}; } },
+  ], undefined, () => {}, controller.signal, facts => { checkpoints.push(facts); })).rejects.toThrow("cancelled");
+  expect(ran).toEqual(["first"]);
+  expect(checkpoints).toHaveLength(1);
+  expect(Object.isFrozen(checkpoints[0])).toBe(true);
+});

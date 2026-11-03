@@ -110,3 +110,12 @@ describe("runProbeStrategies", () => {
     expect(nextRan).toBe(false);
   });
 });
+
+test("cancellation preserves previous strategy attempts without escalating", async () => {
+  const controller = new AbortController();
+  const attempts = await runProbeStrategies<number, {}, void>([
+    { id: "first", run: async () => { controller.abort(); return { status: "failed", decision: "continue", result: 1 }; } },
+    { id: "later", run: async () => { throw new Error("must not escalate"); } },
+  ], undefined, {}, () => {}, controller.signal);
+  expect(attempts.attempts.map(attempt => attempt.strategyId)).toEqual(["first"]);
+});

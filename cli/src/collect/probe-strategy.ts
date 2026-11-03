@@ -1,3 +1,4 @@
+import { currentCommandSignal } from "../command/execution-scope";
 import type {
   ProbeStrategy,
   ProbeStrategyAttempt,
@@ -38,13 +39,17 @@ export async function runProbeStrategies<Result, Facts, Ctx = void>(
   ctx: Ctx,
   facts: Facts,
   log: (line: string) => void = () => {},
+  signal = currentCommandSignal(),
 ): Promise<ProbeStrategyRun<Result>> {
   validateStrategies(strategies);
   const attempts: ProbeStrategyAttempt<Result>[] = [];
 
   for (const strategy of strategies) {
+    if (signal?.aborted) break;
     log(`[collect] 执行 ProbeStrategy：${strategy.id}…`);
-    const outcome = await strategy.run(ctx, facts, attempts);
+    let outcome: Awaited<ReturnType<typeof strategy.run>>;
+    try { outcome = await strategy.run(ctx, facts, attempts); }
+    catch (error) { if (signal?.aborted) break; throw error; }
     const attempt = { strategyId: strategy.id, ...outcome };
     attempts.push(attempt);
     const decision = outcome.decision === "continue" ? "继续升级" : "停止升级";

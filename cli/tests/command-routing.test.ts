@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { afterEach, describe, expect, test } from "bun:test";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DOCTOR_CLI_VERSION } from "../src/app/version";
@@ -25,14 +27,19 @@ function runCliFrom(cwd: string, ...args: string[]) {
   };
 }
 
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function workingDir(): string {
+  const root = mkdtempSync(join(tmpdir(), "doctor-routing-")); roots.push(root); return root;
+}
 function runCli(...args: string[]) {
-  return runCliFrom(CLI_DIR, ...args);
+  return runCliFrom(workingDir(), ...args);
 }
 
 function runCoreCli(...args: string[]) {
   const result = Bun.spawnSync({
     cmd: [process.execPath, "run", CORE_CLI_ENTRY, ...args],
-    cwd: CLI_DIR,
+    cwd: workingDir(),
     env: { ...process.env, NO_COLOR: "1" },
     stdout: "pipe",
     stderr: "pipe",

@@ -187,10 +187,10 @@ Probe 是一次执行原语：可以使用 Core 提供的 Target-scoped infra �
 代表之后的现场。Probe 之间的真实数据依赖显式声明；会产生负担或改变现场的动作必须经过 Operation
 授权。
 
-Plugin Workload Probe 的 Observation 契约由 Plugin 以 `produces: ObservationDefinition` 拥有；其 TypeBox
-object schema 同时驱动 TypeScript payload 推导和 Core 的 Draft 2020-12 运行时验证。Core 不信任
-跨动态 ESM 边界的静态类型；未通过严格 JSON/schema 校验的 payload 不进入 Evidence，校验不会强转、
-补默认值或删字段。
+Plugin Workload Probe 通过 `produces: ObservationDefinition` 声明 kind、schemaVersion 和 ValueCodec。
+Value/Codec 约定 Core 与 Plugin 间复合数据的保存、恢复和摘要，领域结构与校验归 Plugin。
+Core 检查无损 JSON 和大小预算，保存编码数据及采集时 Summary；历史阅读不执行当前 Plugin。
+显式恢复使用调用者提供的匹配 Codec，不依赖当前 Probe 注册。详见 [Extension 数据契约](extension.md)。
 
 ### Evidence、Detector 与 Diagnosis
 

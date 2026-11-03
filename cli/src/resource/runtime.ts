@@ -1,4 +1,5 @@
-import { ToolboxError } from "@compforge/harness-toolbox/errors";
+import { withDeadline } from "../command/deadline";
+import { recordExecutionFailure } from "../command/execution-scope";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { ResourceQuery } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
@@ -12,28 +13,23 @@ export async function observeResource(context: CommandContext, provider: Resourc
   target?: { executor: Executor; kube: KubernetesCommandConfig }): Promise<{
     environment: string; result: Awaited<ReturnType<typeof provider.binding.observe.run>>;
   }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new ToolboxError("Resource observation timed out", { kind: "timeout" })), query.timeoutMs);
-  const signal = AbortSignal.any([context.signal, controller.signal]);
   const operation = provider.binding.observe;
   const db = context.profile.value.db;
-  const options = { service: provider.service, capability: operation, config: context.profile.pluginConfig,
-    clients: context.clients, signal, databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined };
   let managed: ReturnType<typeof createHostPluginContext> | undefined;
   try {
-    managed = target ? await openPluginContext(target.executor, target.kube.kubernetes, {
-      ...options, command: `doctor resource ${provider.binding.resource.id}`,
-      authorization: context.kubernetes(target.executor).access,
-    }) : createHostPluginContext(options);
-    signal.throwIfAborted();
-    const result = await invokeOperation(operation, managed, query);
-    signal.throwIfAborted();
-    return { environment: managed.target.env, result };
-  } catch (error) {
-    signal.throwIfAborted();
-    throw error;
+    return await withDeadline(context.signal, query.timeoutMs, async signal => {
+      const options = { service: provider.service, capability: operation, config: context.profile.pluginConfig,
+        clients: context.clients, signal, databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined };
+      managed = target ? await openPluginContext(target.executor, target.kube.kubernetes, {
+        ...options, command: `doctor resource ${provider.binding.resource.id}`,
+        authorization: context.kubernetes(target.executor).access,
+      }) : createHostPluginContext(options);
+      const result = await invokeOperation(operation, managed, query);
+      return { environment: managed.target.env, result };
+    });
   } finally {
-    clearTimeout(timer);
-    await managed?.dispose();
+    const startedAt = Date.now();
+    try { await managed?.dispose(); }
+    catch (error) { recordExecutionFailure(error, { phase: "cleanup", target: provider.binding.resource.id, startedAt }); }
   }
 }

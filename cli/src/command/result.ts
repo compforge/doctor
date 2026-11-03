@@ -1,8 +1,10 @@
+import type { ExecutionDiagnostic } from "./diagnostic";
 import type { Summary } from "@compforge/doctor-plugin";
 import type { CommandArtifact } from "./artifacts";
 import { CommandStatus } from "./status";
 
 interface CommandResultArtifacts {
+  readonly diagnostics?: readonly ExecutionDiagnostic[];
   readonly summary?: Summary;
   readonly artifacts: readonly CommandArtifact[];
 }

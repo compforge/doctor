@@ -1,20 +1,29 @@
-import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import {
   createServiceCatalog, defineObservation, defineWorkloadProbeExtension,
-  requireWorkloadProbeExtension, Type, type ServiceDefinition
+  requireWorkloadProbeExtension, type ServiceDefinition
 } from "../src";
-const produces = defineObservation({ kind: "health", schemaVersion: 1, schema: Type.Object({ ready: Type.Boolean() }, { additionalProperties: false }) });
+class HealthValue {
+  constructor(readonly ready: boolean) {}
+  summary() { return { title: "Health", fields: [] }; }
+}
+const produces = defineObservation({ kind: "health", schemaVersion: 1, codec: {
+  encode: (value: HealthValue) => ({ ready: value.ready }),
+  decode: (json: unknown) => {
+    if (!json || typeof json !== "object" || !("ready" in json) || typeof json.ready !== "boolean") throw new Error("invalid health");
+    return new HealthValue(json.ready);
+  },
+} });
 const service: ServiceDefinition = {
   name: "app",
   component: { name: "test", repository: { forge: { name: "test" }, path: "test" } },
   workloads: []
 };
-const native = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: withSummary({ title: "Probe", fields: [] }, async () => ({ ready: true })) });
+const native = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: async () => new HealthValue(true) });
 
 test("multiple workload extensions register independently without invocation", () => {
-  const probe = mock(async () => ({ ready: true }));
-  const first = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: withSummary({ title: "Probe", fields: [] }, probe) });
+  const probe = mock(async () => new HealthValue(true));
+  const first = defineWorkloadProbeExtension({ id: "health", kind: "workload.probe", workload: "main", produces, access: {}, run: probe });
   const catalog = createServiceCatalog([{
     ...service,
     extensions: [first, { ...first, id: "health-2" }]
@@ -27,7 +36,7 @@ test("multiple workload extensions register independently without invocation", (
   }])).toThrow("duplicate");
 });
 
-test("workload extension preserves schema types and checks discovery metadata", () => {
+test("workload extension preserves Value types and checks discovery metadata", () => {
   expect(requireWorkloadProbeExtension(native).produces).toBe(produces);
   const missing = { ...native, workload: "" };
   expect(() => requireWorkloadProbeExtension(missing)).toThrow("workload");

@@ -170,6 +170,7 @@ export class SerializeContext {
     } catch (error) {
       this.failure(error);
     }
+    if (result.diagnostics?.length) this.writeJson("diagnostics.json", result.diagnostics);
     const files = { ...output.files };
     const indexed = new Set(Object.values(files).map(file => file.path));
     for (const [key, file] of Object.entries(this.node.files)) if (!indexed.has(file.path)) files[key] = file;

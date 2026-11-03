@@ -1,3 +1,4 @@
+import { executionDiagnostic, diagnosticMessage, type ExecutionDiagnostic } from "./diagnostic";
 import { useLogger } from "../terminal/log";
 import type { CommandContext } from "./context";
 import { inCommandScope } from "./execution-scope";
@@ -48,6 +49,10 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
     ...metadata,
     run: (context, input) => withInteractionOptions({ yes: input.yes ?? context.options.yes }, async (): Promise<CommandResult<Output>> => {
       const execute = async () => {
+        const diagnostics: ExecutionDiagnostic[] = [];
+        let phase = "prepare";
+        let startedAt = Date.now();
+        let completed: CommandResult<Output> | undefined;
         const captured = await context.artifacts.capture(async (): Promise<CommandResult<Output>> => {
           try {
             const result = await inCommandScope(context.signal, async (): Promise<CommandResult<Output>> => {
@@ -58,21 +63,31 @@ export function defineCommand<Input extends CommandInput, Output, Prepared = Inp
                 context.cancel();
                 return { status: CommandStatus.Cancelled, artifacts: [] };
               }
+              phase = "run";
+              startedAt = Date.now();
               const result = await spec.run(context, prepared);
+              completed = result;
               context.artifacts.add(result.artifacts);
               if (result.status === CommandStatus.Cancelled) context.cancel();
               return result;
-            }, context.clients);
+            }, context.clients, { diagnostics });
             return context.signal.aborted ? { ...result, status: CommandStatus.Cancelled } : result;
           } catch (error) {
+            if (!completed || !diagnostics.some(item => item.phase === "cleanup")) {
+              diagnostics.push(executionDiagnostic(error, { phase: completed ? "cleanup" : phase, target: spec.name, startedAt, kind: context.signal.aborted ? "cancelled" : undefined }));
+            }
             if (!context.signal.aborted) context.options.onError?.(error, spec.name);
             return {
+              ...completed,
               status: context.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed,
-              artifacts: [], error, reason: error instanceof Error ? error.message : String(error),
+              artifacts: completed?.artifacts ?? [], error, reason: diagnosticMessage(error),
             };
           }
         });
-        return { ...captured.value, artifacts: captured.artifacts };
+        const value = captured.value.status === CommandStatus.Ok && diagnostics.some(item => item.phase === "cleanup")
+          ? { ...captured.value, status: CommandStatus.Partial as const } : captured.value;
+        return { ...value, artifacts: captured.artifacts,
+          diagnostics: [...(captured.value.diagnostics ?? []), ...diagnostics] };
       };
       try {
         context.signal.throwIfAborted();

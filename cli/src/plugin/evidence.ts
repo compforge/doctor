@@ -9,7 +9,8 @@ import type {
 import type { EvidenceSchemaMeta, ObservationMeta } from "../collect/protocol";
 import {
   immutableJsonObject,
-} from "./observation";
+  immutableJsonValue,
+} from "@compforge/doctor-plugin";
 
 /** Core canonicalizes local Plugin schema kinds instead of trusting hand-written prefixes. */
 export function pluginEvidenceKind(plugin: string, service: string, kind: string): string {
@@ -86,7 +87,7 @@ export function projectServiceEvidenceObservation(input: {
     producer: input.source.producer,
     ...(input.workload ? { workload: input.workload } : {}),
     ...(input.instance ? { instance: input.instance } : {}),
-    value: immutableJsonObject(input.value, `${input.probe} Observation`),
+    value: immutableJsonValue(input.value, `${input.probe} Observation`),
   };
 }
 
@@ -117,7 +118,7 @@ export function projectPluginServiceEvidenceObservation(input: {
     },
     ...(input.workload ? { workload: input.workload } : {}),
     ...(input.instance ? { instance: input.instance } : {}),
-    value: immutableJsonObject(input.value, `${input.probe} Observation`),
+    value: immutableJsonValue(input.value, `${input.probe} Observation`),
   };
 }
 

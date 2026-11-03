@@ -1,63 +1,7 @@
-import { withSummary } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
-
-import {
-  defineObservation,
-  defineWorkloadProbeExtension,
-  Type,
-  type ObservationValue,
-} from "../src";
-
-const HealthObservation = defineObservation({
-  kind: "health",
-  schemaVersion: 1,
-  schema: Type.Object({
-    ready: Type.Boolean(),
-    details: Type.Object({ latencyMs: Type.Number() }, { additionalProperties: false }),
-    note: Type.Optional(Type.String()),
-  }, { additionalProperties: false }),
-});
-
-type Equal<Left, Right> =
-  (<Value>() => Value extends Left ? 1 : 2) extends
-  (<Value>() => Value extends Right ? 1 : 2) ? true : false;
+import { defineObservation, defineWorkloadProbeExtension, serializeValue, deserializeValue, type JsonValue, type ObservationValue } from "../src";
+type Equal<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends (<Value>() => Value extends Right ? 1 : 2) ? true : false;
 type Assert<Condition extends true> = Condition;
-type _HealthPayloadIsInferred = Assert<Equal<
-  ObservationValue<typeof HealthObservation>,
-  { readonly ready: boolean; readonly details: { readonly latencyMs: number }; readonly note?: string }
->>;
-
-const nonJsonSchema = Type.Object({ count: Type.BigInt() }, { additionalProperties: false });
-defineObservation({
-  kind: "non-json",
-  schemaVersion: 1,
-  // @ts-expect-error bigint cannot cross the JSON-only Observation boundary.
-  schema: nonJsonSchema,
-});
-const anySchema = Type.Object({ payload: Type.Any() }, { additionalProperties: false });
-defineObservation({
-  kind: "unconstrained",
-  schemaVersion: 1,
-  // @ts-expect-error any cannot bypass the JSON-only Observation boundary.
-  schema: anySchema,
-});
-
-test("ObservationDefinition 是 Probe payload 的单一类型与 schema 来源", async () => {
-  const probe = defineWorkloadProbeExtension({
-    id: "health",
-    kind: "workload.probe",
-    workload: "main",
-    access: {},
-    produces: HealthObservation,
-    run: withSummary({ title: "Probe", fields: [] }, async () => ({ ready: true, details: { latencyMs: 12 } })),
-  });
-
-  expect(probe.produces).toBe(HealthObservation);
-  expect((await probe.run({} as never, { facts: [], instance: {} as never })).data)
-    .toEqual({ ready: true, details: { latencyMs: 12 } });
-});
-
-
 class CountValue {
   constructor(readonly count: number) {}
   summary() { return { title: "Count", text: String(this.count), fields: [] }; }
@@ -78,4 +22,19 @@ test("Codec Probe derives the operation summary from its Value", async () => {
   const result = await probe.run({} as never, {} as never);
   expect(result.data).toBeInstanceOf(CountValue);
   expect(result.summary).toEqual(result.data.summary());
+});
+
+/** @case A Value can encode a root array with nested compounds, without a Command or Probe registration. */
+test("Value persistence accepts compound JSON and restores behavior explicitly", () => {
+  class Tree {
+    constructor(readonly nodes: JsonValue) {}
+    summary() { return { title: "Tree", fields: [] }; }
+  }
+  const codec = { encode: (tree: Tree) => tree.nodes, decode: (json: unknown) => new Tree(json as JsonValue) };
+  const saved = serializeValue(new Tree([{ children: [1, true, null], settings: { key: "value" } }]), codec);
+  expect(saved.data).toEqual([{ children: [1, true, null], settings: { key: "value" } }]);
+  expect(Object.isFrozen(saved.data)).toBe(true);
+  expect(deserializeValue(JSON.parse(JSON.stringify(saved.data)), codec)).toBeInstanceOf(Tree);
+  expect(() => serializeValue(new Tree(saved.data), codec, { maxBytes: 1 })).toThrow("byte budget");
+  expect(() => serializeValue(new Tree({ hidden: undefined } as never), codec)).toThrow("unsupported JSON value");
 });

@@ -230,18 +230,25 @@ Harness 调度 setup、逐次 run、deactivate 和 cleanup。创建期间发生�
 Command 在 Inspect 完成后按实例调度，校验返回值并保存不可变 Observation；实例探测失败独立记录，
 取消时停止后续实例。访问上下文在该探测函数的实例批次结束后释放。
 
-新的 Probe 使用 `defineObservation({ kind, schemaVersion, codec })`，其中 `ValueCodec<T>` 提供
-`encode(value): JsonObject` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
+Probe 使用 `defineObservation({ kind, schemaVersion, codec })`，其中 `ValueCodec<T>` 提供
+`encode(value): JsonValue` 和 `decode(json: unknown): T`；`T` 实现 `Value.summary(): Summary`。
 `defineWorkloadProbeExtension` 的作者侧 `run` 直接返回 Value，由工厂生成标准调用信封，
 不再另外声明 `withSummary`。Plugin 可以使用嵌套对象、动态 Map、数字、布尔和数组，领域校验由 Codec 负责。
 Core 只检查编码结果能否无损保存为 JSON，并通过 decode 验证结果、取得摘要。
 
 Value 和 Codec 方法必须是纯数据操作，不访问网络或申请资源；外部访问仍归 Probe，跨值判断仍归 Detector。
 归档只存编码后的完整 JSON、kind/schemaVersion 和已生成的 Summary，不序列化实例方法。
-离线报告在当前已加载 Plugin 中按 Service、Probe ID、kind、schemaVersion 匹配 Codec，恢复 Value；
-缺少匹配项或解码失败时保留原始 JSON 和已保存摘要，并在报告中标明无法解码的原因，不自动下载 Plugin。
+普通历史阅读只使用原始 JSON 和采集时保存的 Summary，不调用当前 Plugin，也不重新计算摘要。
+需要恢复运行时行为时，调用者显式选择匹配 kind/schemaVersion 的 Codec；恢复不依赖当前 Service/Probe 注册。
+缺少 Codec 或解码失败不影响原始数据和已保存摘要的读取。
 JSON 格式不兼容时提升 schemaVersion；仅增加运行时方法无需改变归档版本。
-既有 TypeBox schema Probe 继续兼容，仍遵循原有 schema 校验规则；本次不要求所有 Probe 一起迁移。
+Plugin API 20 只接受 Codec 声明，移除 TypeBox schema、Core 的 additionalProperties 校验和旧编码分支。
+
+Value/Codec 是独立于 Command 的 Core–Plugin 数据契约。SDK 的 `serializeValue` / `deserializeValue`
+可直接用于嵌套对象、数组等复合数据；只有明确保存、恢复数据的边界需要使用它，不要求所有命令输出都实现 Value。
+Resource 等领域模型继续由各 Command 拥有，复用 SDK 的无损 JSON 检查，不改变为 Value 的子类。
+编码必须显式表达 JSON 数据：遗漏可选字段，而非输出 undefined；Date、Map 等需由 Codec 转为约定格式。
+Summary 的 path 指向编码后的 JSON。Workload Observation 单条数据预算为 1 MiB。
 
 `datasource.vdb.inspect` 通过 Service 与 `dataSource` ID 绑定 VDB 声明，每个数据源选择唯一实现。
 目标解析使用 Extension 自己的访问权限，返回后释放调用上下文；Store 负责后续连接和诊断。
