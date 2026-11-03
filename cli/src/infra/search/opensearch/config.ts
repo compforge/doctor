@@ -1,4 +1,4 @@
-import { OpenSearchEngine, type OpenSearchAuth } from "@compforge/harness-toolbox/opensearch/client";
+import { describeOpenSearchError, OpenSearchEngine, type OpenSearchAuth } from "@compforge/harness-toolbox/opensearch/client";
 
 const USER_KEYS = ["DOCTOR_OPENSEARCH_USER", "DOCTOR_OPENSEARCH_USERNAME"];
 const PASS_KEYS = ["DOCTOR_OPENSEARCH_PASSWORD"];
@@ -31,6 +31,8 @@ function statusCode(error: unknown): number | undefined {
 
 export interface OpenSearchProbeOptions {
   preferredScheme?: "http" | "https";
+  signal?: AbortSignal;
+  onDiagnostic?: (line: string) => void;
   createEngine?: (
     node: string,
   ) => Pick<OpenSearchEngine, "ping"> & Partial<Pick<OpenSearchEngine, "close">>;
@@ -46,19 +48,26 @@ export async function probeOpenSearchUrl(
     ? ["https", "http"]
     : ["http", "https"];
   const createEngine = options.createEngine
-    ?? ((node: string) => new OpenSearchEngine({ node, auth, requestTimeoutMs: 5_000 }));
+    ?? ((node: string) => new OpenSearchEngine({ node, auth, requestTimeoutMs: 5_000, onDiagnostic: options.onDiagnostic }));
+  const failures: string[] = [];
   for (const scheme of schemes) {
+    options.signal?.throwIfAborted();
     const node = `${scheme}://${hostPort}`;
     const engine = createEngine(node);
     try {
-      await engine.ping();
+      await engine.ping(options.signal, 5_000);
       return node;
     } catch (error) {
+      options.signal?.throwIfAborted();
+      const reason = `${scheme}: ${describeOpenSearchError(error)}`;
+      failures.push(reason);
+      options.onDiagnostic?.(`OpenSearch scheme probe failed ${reason}`);
       const status = statusCode(error);
       if (status !== undefined && ![502, 503, 504].includes(status)) return node;
     } finally {
-      await engine.close?.();
+      try { await engine.close?.(); }
+      catch (error) { options.onDiagnostic?.(`OpenSearch probe cleanup failed ${describeOpenSearchError(error)}`); }
     }
   }
-  throw new Error(`OpenSearch 不可达（http/https 均探测失败）: ${hostPort}`);
+  throw new Error(`OpenSearch 不可达（http/https 均探测失败）: ${hostPort}; ${failures.join("; ")}`);
 }

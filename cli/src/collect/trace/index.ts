@@ -256,6 +256,7 @@ export async function runCollectTrace(
   }
 
   const index = buildIndexExpr(opts.index, opts.indexDate);
+  const storeDiagnostics: string[] = [];
   const dependencyRuntime = runtime && plugin ? new ServiceDependencyRuntime({
     plugin,
     collect: runtime.collect,
@@ -268,6 +269,7 @@ export async function runCollectTrace(
     username: opts.username,
     password: opts.password,
     log: (line, tone) => {
+      storeDiagnostics.push(`${new Date().toISOString()} ${line}`);
       if (tone === "warning") useLogger().warn(`${line}`);
       else useLogger().info(`${line}`);
     },
@@ -349,6 +351,12 @@ export async function runCollectTrace(
     "",
   ].join("\n"));
   const selection = { window, limit: window ? limit : undefined, truncated };
+  const recordStoreDiagnostics = (status: "ok" | "failed") => {
+    if (!storeDiagnostics.length) return;
+    bundle.addStep({ id: "opensearch-access", title: "OpenSearch Store 访问诊断", risk: "observe", status,
+      output: storeDiagnostics.join("\n"), ext: "log" });
+    bundle.writeCollection({ ...rootMeta, finishedAt: new Date().toISOString() });
+  };
   const preparationFailure = (reason: string): CommandResult<TraceOutput> => ({
     status: CommandStatus.Failed, reason, artifacts: [summary, ...healthArtifacts],
     output: { items: [{ bizId: window ? "time_range" : "trace", traceIds: traces.map(trace => trace.traceId),
@@ -372,10 +380,13 @@ export async function runCollectTrace(
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       useLogger().error(reason);
+      recordStoreDiagnostics("failed");
+      bundle.writeSummary(`# OpenSearch Store 准备失败\n\n${reason}\n`);
       return preparationFailure(`OpenSearch Store 准备失败：${reason}`);
     }
   }
 
+  recordStoreDiagnostics("ok");
   const explicitAuth = resolveOpenSearchAuth(opts.username, opts.password);
   const kube: KubectlOptions | undefined = runtime
     ? {
