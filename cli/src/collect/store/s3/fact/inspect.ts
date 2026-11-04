@@ -47,7 +47,7 @@ export function makeS3AccessInspect(): Inspect<S3InspectionFacts, S3CommandConte
     }
     try {
       const prepared = await prepareS3Access(ctx.command, ctx.config.collect, ctx.target, ctx.capability.source ? ctx.client : undefined);
-      ctx.client = prepared.client; ctx.preparedEndpoint = prepared.endpoint;
+      ctx.client = prepared.client; ctx.providerHttp = prepared.http;
       const access = { channel: prepared.channel, endpoint: prepared.endpoint };
       ctx.bundle.fill("access-preparation", { status: "ok", output: JSON.stringify(access), ext: "json" });
       return { access: collectedFact("store.s3.access", "s3-access", access) };
@@ -70,25 +70,31 @@ export function makeS3ProviderInspect(): Inspect<S3InspectionFacts, S3CommandCon
         ctx.bundle.fill("provider-detection", { status: "unavailable", reason });
         return { provider: unavailableFact("store.s3.provider", "s3-provider", reason) };
       }
-      if (facts.access?.status !== "collected" || !ctx.preparedEndpoint) {
+      if (facts.access?.status !== "collected" || !ctx.providerHttp) {
         const reason = facts.access && facts.access.status !== "collected"
           ? facts.access.reason
           : "S3 访问通道未就绪";
         ctx.bundle.fill("provider-detection", { status: "unavailable", reason });
         return { provider: unavailableFact("store.s3.provider", "s3-provider", reason) };
       }
-      const provider = await inspectS3Provider({
-        endpoint: ctx.preparedEndpoint,
-        credentials: ctx.target
-          ? { accessKey: ctx.target.credentials.accessKeyId, secretKey: ctx.target.credentials.secretAccessKey }
-          : undefined,
-      });
-      ctx.bundle.fill("provider-detection", {
-        status: "ok",
-        output: `${JSON.stringify(provider, null, 2)}\n`,
-        ext: "json",
-      });
-      return { provider: collectedFact("store.s3.provider", "s3-provider", provider) };
+      try {
+        const provider = await inspectS3Provider({
+          http: ctx.providerHttp,
+          credentials: ctx.target
+            ? { accessKey: ctx.target.credentials.accessKeyId, secretKey: ctx.target.credentials.secretAccessKey }
+            : undefined,
+        });
+        ctx.bundle.fill("provider-detection", {
+          status: "ok",
+          output: `${JSON.stringify(provider, null, 2)}\n`,
+          ext: "json",
+        });
+        return { provider: collectedFact("store.s3.provider", "s3-provider", provider) };
+      } catch (error) {
+        const reason = `S3 Provider 探测失败：${error instanceof Error ? error.message : String(error)}`;
+        ctx.bundle.fill("provider-detection", { status: "failed", reason });
+        return { provider: failedFact("store.s3.provider", "s3-provider", reason) };
+      }
     },
   };
 }

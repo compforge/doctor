@@ -1,3 +1,5 @@
+import type { HttpClient } from "@compforge/harness-toolbox/http";
+import { makeS3ProviderInspect } from "../src/collect/store/s3/fact/inspect";
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import { clientKey } from "@compforge/harness-toolbox/datasource";
 import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
@@ -42,7 +44,7 @@ function context(target: S3Target, command = new CommandContext({})): S3CommandC
       service: "app", capability, target: { pod: "app-0" },
       s3MaxObjects: 100, s3ScanTimeoutMs: 2000, outputFormat: "bundle",
     },
-    bundle: new EvidenceBundle(dir, ["access-preparation", "bucket-access", "object-inventory"].map(id => ({
+    bundle: new EvidenceBundle(dir, ["access-preparation", "bucket-access", "object-inventory", "provider-detection", "provider-health", "bucket-usage", "drive-capacity"].map(id => ({
       id, title: id, risk: "observe",
     }))),
   };
@@ -207,4 +209,53 @@ test("根取消不会被误当成扫描预算耗尽", async () => {
     } },
     bucket: "configured", maxObjects: 10, timeoutMs: 1000,
   })).rejects.toThrow("root cancelled");
+});
+
+// @case A logical cluster-only endpoint supports both S3 and vendor HTTP over the same root-owned route.
+test("S3 与 MinIO HTTP 共享转发，provider 检测、健康、容量均可访问且保留原始 Host", async () => {
+  const requests: string[] = [];
+  const fixture = await startS3Fixture((url, request) => {
+    const path = new URL(url).pathname;
+    requests.push(path);
+    expect(request.headers.get("host")).toBe("minio.test.svc.cluster.local:9000");
+    if (path.startsWith("/minio/health/")) return new Response("ok");
+    if (path.includes("/metrics/")) {
+      if (!request.headers.has("authorization")) return new Response("forbidden", { status: 403 });
+      expect(request.headers.get("authorization")).toStartWith("Bearer ");
+      return new Response(path.endsWith("/resource") ? `
+minio_node_drive_total_bytes{drive="disk"} 1000
+minio_node_drive_used_bytes{drive="disk"} 400
+minio_node_drive_total_inodes{drive="disk"} 100
+minio_node_drive_used_inodes{drive="disk"} 20
+` : 'minio_cluster_usage_buckets_total_bytes{bucket="configured"} 42');
+    }
+    expect(request.headers.get("authorization")).toContain("AWS4-HMAC-SHA256");
+    return new Response(null);
+  });
+  cleanups.push(() => fixture.close());
+  const ctx = context({ ...fixture.target, endpoint: "http://minio.test.svc.cluster.local:9000" });
+  const initialize = spyOn(ServicePortForwardTransport.prototype, "initialize").mockResolvedValue();
+  cleanups.push(() => initialize.mockRestore());
+  const forward = spyOn(ServicePortForwardTransport.prototype, "connect").mockResolvedValue({ host: "127.0.0.1", port: Number(new URL(fixture.target.endpoint).port) });
+  cleanups.push(() => forward.mockRestore());
+  const accessFacts = await access(ctx);
+  const base = { ...facts(ctx.target!), ...accessFacts };
+  const provider = await makeS3ProviderInspect().run(ctx, base);
+  expect(provider.provider).toMatchObject({ status: "collected", providerId: "minio" });
+  const all = { ...base, ...provider };
+  const run = (id: string) => makeS3Probes().find(item => item.id === id)!.run(ctx, all, ctx.config, []);
+  expect(await run("provider-health")).toMatchObject([{ endpoints: { live: 200, ready: 200, writeQuorum: 200, readQuorum: 200 } }]);
+  expect(await run("bucket-usage")).toMatchObject([{ buckets: [{ bucket: "configured", bytes: 42 }] }]);
+  expect(await run("drive-capacity")).toMatchObject([{ drives: [{ freeBytes: 600, freeInodes: 80 }] }]);
+  await (ctx.providerHttp as HttpClient).dispose();
+  await ctx.client!.headBucket("configured");
+  expect(requests).toContain("/configured/");
+  expect(forward.mock.contexts[0]).toBe(forward.mock.contexts[1]);
+});
+
+test("MinIO provider 网络失败保留失败证据，不降级为 generic-s3", async () => {
+  const ctx = context({ endpoint: "http://cluster.invalid", region: "us-east-1", credentials: { accessKeyId: "key", secretAccessKey: "secret" } });
+  ctx.providerHttp = { request: async () => { throw new Error("forward disconnected"); } };
+  const result = await makeS3ProviderInspect().run(ctx, facts(ctx.target!));
+  expect(result.provider).toMatchObject({ status: "failed", reason: expect.stringContaining("forward disconnected") });
 });

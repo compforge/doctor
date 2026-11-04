@@ -283,6 +283,8 @@ Client.dispose 幂等回收自己拥有的资源。构造函数不执行外部�
 Transport 生命周期覆盖借用它的协议 Client。OpenSearch / Redis / S3 复用根持有的 ServicePortForwardTransport，
 端口转发选择、准备、失效与清理由 Toolbox 拥有；业务调用结束只关闭自己的 Client。OpenSearch 使用同一 Client
 完成协议探测和查询，不再另建 probe 连接或把转发地址写回逻辑 endpoint；Host 与 TLS 身份保留原始目标。
+S3 Provider 的 health/metrics HTTP 请求通过 Toolbox HttpClient 借用同一 Transport，Provider 只持有可请求的 Client，
+不把逻辑 endpoint 当成本机可直连 URL。Provider 网络探测失败保留为失败证据，不降级成已确认的 generic-s3。
 
 同一 DataSource 身份的并发调用等待同一次初始化；成功后复用 Client，失败后先清理部分初始化的资源，
 再允许后续调用重试。身份包含影响访问的配置和凭据，不能使用对象地址。依赖客户端先获取，消费者后初始化；

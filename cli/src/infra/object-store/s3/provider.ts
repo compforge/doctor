@@ -1,8 +1,9 @@
+import type { HttpApi } from "@compforge/harness-toolbox/http";
 import type { ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { S3_PROVIDER as BUILT_IN_PROVIDER } from "./minio/provider";
 
 export interface S3ProviderConnection {
-  endpoint: string;
+  http: HttpApi;
   credentials?: {
     accessKey: string;
     secretKey: string;

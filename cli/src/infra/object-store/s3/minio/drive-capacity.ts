@@ -71,7 +71,7 @@ export async function getMinioDriveCapacity(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const metrics = await requestMinioMetrics({
-      endpoint: connection.endpoint,
+      http: connection.http,
       path: "/minio/v2/metrics/resource",
       credentials: connection.credentials,
       signal: controller.signal,

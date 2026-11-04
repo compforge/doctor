@@ -1,3 +1,4 @@
+import type { HttpApi } from "@compforge/harness-toolbox/http";
 import { createHmac } from "node:crypto";
 
 export interface MinioMetricsCredentials {
@@ -41,22 +42,21 @@ function prometheusBearerToken(credentials: MinioMetricsCredentials): string {
 }
 
 export async function requestMinioMetrics(input: {
-  endpoint: string;
+  http: HttpApi;
   path: string;
   credentials?: MinioMetricsCredentials;
   signal: AbortSignal;
 }): Promise<{ endpoint: string; status: number; body: string }> {
-  const metricsUrl = new URL(input.path, input.endpoint.endsWith("/") ? input.endpoint : `${input.endpoint}/`);
-  let response = await fetch(metricsUrl, { signal: input.signal });
+  let response = await input.http.request(input.path, { signal: input.signal });
   if ((response.status === 401 || response.status === 403) && input.credentials) {
-    response = await fetch(metricsUrl, {
+    response = await input.http.request(input.path, {
       headers: { authorization: `Bearer ${prometheusBearerToken(input.credentials)}` },
       signal: input.signal,
     });
   }
   return {
-    endpoint: metricsUrl.pathname,
+    endpoint: input.path,
     status: response.status,
-    body: response.ok ? await response.text() : "",
+    body: response.status >= 200 && response.status < 300 ? new TextDecoder().decode(response.body) : "",
   };
 }

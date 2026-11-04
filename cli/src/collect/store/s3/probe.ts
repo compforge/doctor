@@ -188,7 +188,7 @@ const PROVIDER_HEALTH_PROBE: S3Probe = {
     const provider = facts.provider;
     if (provider.status !== "collected") return [];
     const health = await getS3ProviderHealth(provider.providerId, {
-      endpoint: ctx.preparedEndpoint!,
+      http: ctx.providerHttp!,
       credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
     });
     const observation = {
@@ -214,7 +214,7 @@ const BUCKET_USAGE_PROBE: S3Probe = {
       const provider = facts.provider;
       if (provider.status !== "collected") return [];
       const usage = await getS3ProviderBucketUsage(provider.providerId, {
-        endpoint: ctx.preparedEndpoint!,
+        http: ctx.providerHttp!,
         credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       ctx.bucketUsage = usage.buckets;
@@ -246,7 +246,7 @@ const DRIVE_CAPACITY_PROBE: S3Probe = {
       const provider = facts.provider;
       if (provider.status !== "collected") return [];
       const capacity = await getS3ProviderDriveCapacity(provider.providerId, {
-        endpoint: ctx.preparedEndpoint!,
+        http: ctx.providerHttp!,
         credentials: { accessKey: ctx.target!.credentials.accessKeyId, secretKey: ctx.target!.credentials.secretAccessKey },
       });
       const observation = {
