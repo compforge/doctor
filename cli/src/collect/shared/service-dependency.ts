@@ -87,7 +87,7 @@ export interface ServiceDependencyRuntimeOptions {
   collect: KubernetesCommandConfig;
   executor: Executor;
   command: "doctor trace" | "doctor log" | "doctor health";
-  onPreparationFailure?(steps: readonly StepInput[]): void;
+  onFailureDiagnostics?(lines: readonly string[]): void;
   onPrepared?(prepared: PreparedServiceDataSourceDependency, source: ServiceDataSourceReference): Promise<void>;
   commandContext: CommandContext;
   index: string;
@@ -289,7 +289,7 @@ export class ServiceDependencyRuntime {
       auth,
     }, this.options.log);
     if (preparation.failure || !preparation.search) {
-      this.options.onPreparationFailure?.(preparation.steps);
+      this.options.onFailureDiagnostics?.(preparation.failure?.diagnostics ?? []);
       const failure = preparation.failure ?? {
         title: "OpenSearch 准备失败",
         reason: "访问通道不完整",

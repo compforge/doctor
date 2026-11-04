@@ -22,7 +22,7 @@ export interface OpenSearchAccessPreparation {
   baseUrl?: string;
   evidenceTarget?: Record<string, unknown>;
   steps: StepInput[];
-  failure?: { title: string; reason: string };
+  failure?: { title: string; reason: string; diagnostics?: readonly string[] };
   close(): Promise<void>;
 }
 
@@ -61,6 +61,7 @@ class OpenSearchAccessClient implements Client {
   async #prepare(): Promise<OpenSearchAccessPreparation> {
     const { opts, injectedSearch } = this;
     const diagnostics: string[] = [];
+    const failureDiagnostics: string[] = [];
     const log = (line: string, tone?: "info" | "warning") => {
       diagnostics.push(`${new Date().toISOString()} ${line}`);
       this.log(line, tone);
@@ -86,7 +87,7 @@ class OpenSearchAccessClient implements Client {
     ): OpenSearchAccessPreparation => {
       log(`[collect] ${title}：${reason}`, "warning");
       recordDiagnostics("failed");
-      return { steps, failure: { title, reason }, evidenceTarget, close };
+      return { steps, failure: { title, reason, diagnostics: failureDiagnostics }, evidenceTarget, close };
     };
 
     const connection = opts.connection;
@@ -97,19 +98,23 @@ class OpenSearchAccessClient implements Client {
     let preferredScheme: "http" | "https" | undefined;
     let auth = opts.auth;
     // @spec Persist bounded original stack frames before preparation failures become summaries.
+    // @why Streamed log lines are already captured by callers; only additional failure evidence is forwarded.
     // Error headers may contain protocol bodies; keep safe codes and sanitized frames in the archive only.
     const recordFailure = (phase: string, error: unknown) => {
+      const lines: string[] = [];
       const secrets = [auth.username ?? "", auth.password ?? ""];
       const seen = new Set<unknown>();
       let cause = error;
       for (let depth = 0; cause instanceof Error && !seen.has(cause) && depth < 4; depth++) {
         seen.add(cause);
-        diagnostics.push(`${new Date().toISOString()} [collect] OpenSearch ${phase} cause=${depth} ${describeOpenSearchError(cause)}`);
+        lines.push(`${new Date().toISOString()} [collect] OpenSearch ${phase} cause=${depth} ${describeOpenSearchError(cause)}`);
         for (const frame of (cause.stack ?? "").split("\n").filter(line => /^\s+at /.test(line)).slice(0, 16)) {
-          diagnostics.push(diagnosticMessage(frame, secrets).slice(0, 1024));
+          lines.push(diagnosticMessage(frame, secrets).slice(0, 1024));
         }
         cause = cause.cause;
       }
+      diagnostics.push(...lines);
+      failureDiagnostics.push(...lines);
     };
     const transports: TcpTransport[] = [new DirectTransport()];
     if (connection.kind !== "service") {

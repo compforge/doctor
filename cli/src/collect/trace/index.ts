@@ -263,9 +263,7 @@ export async function runCollectTrace(
     executor: runtime.executor,
     command: "doctor trace",
     commandContext,
-    onPreparationFailure: steps => {
-      for (const step of steps) if (step.output) storeDiagnostics.push(step.output);
-    },
+    onFailureDiagnostics: lines => storeDiagnostics.push(...lines),
     onPrepared: (prepared, source) => observeStore(prepared.search, { ...prepared.evidenceTarget, ...source, index }),
     index,
     endpoint,

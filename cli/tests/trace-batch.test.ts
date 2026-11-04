@@ -190,7 +190,12 @@ for (const resolved of [true, false]) test(`Trace preserves health evidence with
 
 
 // @case id=trace_opensearch_failure_archive,desc=`OpenSearch rejects or stalls`,expect=`Failed tar.gz includes access diagnostics`
-for (const store of [false, true]) for (const mode of ["unauthorized", "timeout", "invalid-argument"] as const) test(`Trace store=${store} ${mode} still delivers a failed archive containing OpenSearch diagnostics`, async () => {
+const failureModes = [
+  { mode: "unauthorized", evidence: "status=401" },
+  { mode: "timeout", evidence: "ETIMEDOUT" },
+  { mode: "invalid-argument", evidence: "ERR_INVALID_ARG_VALUE" },
+] as const;
+for (const store of [false, true]) for (const { mode, evidence } of failureModes) test(`Trace store=${store} ${mode} still delivers a failed archive containing OpenSearch diagnostics`, async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-opensearch-failure-"));
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
     fetch: () => mode === "timeout" ? new Promise<Response>(() => {}) : new Response(null, { status: 401 }) });
@@ -229,14 +234,16 @@ for (const store of [false, true]) for (const mode of ["unauthorized", "timeout"
     expect(path).toBeDefined();
     const log = readBundleText(archive, path!);
     if (mode !== "invalid-argument") {
-      expect(log).toContain("OpenSearch probe start");
-      expect(log).toContain("OpenSearch probe failed");
+      expect(log.match(/OpenSearch probe start/g)).toHaveLength(1);
+      expect(log.match(/OpenSearch probe failed/g)).toHaveLength(1);
     }
-    expect(log).toContain(mode === "timeout" ? "ETIMEDOUT" : mode === "invalid-argument" ? "ERR_INVALID_ARG_VALUE" : "status=401");
+    expect(log).toContain(evidence);
+    expect(log.match(/OpenSearch route start/g)).toHaveLength(1);
+    expect(log.match(/OpenSearch connect failed/g)).toHaveLength(1);
     if (mode === "invalid-argument") {
-      expect(log).toContain("OpenSearch close failed");
+      expect(log.match(/OpenSearch close failed/g)).toHaveLength(1);
       expect(log).toContain("OpenSearch connect failed error=TypeError");
-      expect(log).toContain("at originalProbe (node:tls:123:45)");
+      expect(log.match(/at originalProbe \(node:tls:123:45\)/g)).toHaveLength(1);
       expect(log).toContain("argument=options.servername");
       for (const secret of ["sensitive protocol body", "reader", "credential", "signed"]) expect(log).not.toContain(secret);
     }
