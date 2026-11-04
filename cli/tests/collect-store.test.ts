@@ -53,6 +53,7 @@ import type { VdbInspectionFacts } from "../src/collect/store/vdb/fact";
 import { CommandContext, CommandStatus } from "../src/command";
 import {
   inspectS3Provider,
+  getS3ProviderHealth,
 } from "../src/infra/object-store";
 import {
   getMinioBucketUsage,
@@ -626,29 +627,20 @@ describe("Store capability runtime state", () => {
   });
 
   test("MinIO Metrics 受保护时使用 S3 身份签发 Prometheus Bearer Token 重试", async () => {
-    const originalFetch = globalThis.fetch;
-    const authorizations: Array<string | null> = [];
-    const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const authorization = new Headers(init?.headers).get("authorization");
+    const authorizations: Array<string | undefined> = [];
+    const http = { request: async (_path: string, options?: { headers?: Record<string, string> }) => {
+      const authorization = options?.headers?.authorization;
       authorizations.push(authorization);
-      if (!authorization) return new Response("forbidden", { status: 403 });
-      return new Response('minio_cluster_usage_buckets_total_bytes{bucket="xai-test"} 1024');
-    };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
-    try {
-      const usage = await getMinioBucketUsage("http://minio.example.com", {
-        accessKey: "doctor-access",
-        secretKey: "doctor-secret",
-      });
-      expect(usage.buckets).toEqual([{ bucket: "xai-test", bytes: 1024 }]);
-      expect(authorizations[0]).toBeNull();
-      const token = authorizations[1]?.replace("Bearer ", "") ?? "";
-      const payload = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8"));
-      expect(payload).toMatchObject({ sub: "doctor-access", iss: "prometheus" });
-      expect(token).not.toContain("doctor-secret");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+      return { status: authorization ? 200 : 403, headers: {},
+        body: new TextEncoder().encode(authorization ? 'minio_cluster_usage_buckets_total_bytes{bucket="xai-test"} 1024' : "forbidden") };
+    } };
+    const usage = await getMinioBucketUsage({ http, credentials: { accessKey: "doctor-access", secretKey: "doctor-secret" } });
+    expect(usage.buckets).toEqual([{ bucket: "xai-test", bytes: 1024 }]);
+    expect(authorizations[0]).toBeUndefined();
+    const token = authorizations[1]?.replace("Bearer ", "") ?? "";
+    const payload = JSON.parse(Buffer.from(token.split(".")[1]!, "base64url").toString("utf8"));
+    expect(payload).toMatchObject({ sub: "doctor-access", iss: "prometheus" });
+    expect(token).not.toContain("doctor-secret");
   });
 
   test("MinIO Resource Metrics 解析逐盘 byte/inode 并复用 Metrics 鉴权", async () => {
@@ -669,55 +661,40 @@ describe("Store capability runtime state", () => {
       freeInodes: 0,
     }]);
 
-    const originalFetch = globalThis.fetch;
-    const authorizations: Array<string | null> = [];
-    const fakeFetch = async (_input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      const authorization = new Headers(init?.headers).get("authorization");
+    const authorizations: Array<string | undefined> = [];
+    const http = { request: async (_path: string, options?: { headers?: Record<string, string> }) => {
+      const authorization = options?.headers?.authorization;
       authorizations.push(authorization);
-      return authorization
-        ? new Response(metrics)
-        : new Response("forbidden", { status: 403 });
-    };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
-    try {
-      const capacity = await getMinioDriveCapacity({
-        endpoint: "http://minio.example.com",
-        credentials: { accessKey: "doctor-access", secretKey: "doctor-secret" },
-      });
-      expect(capacity).toMatchObject({
-        endpoint: "/minio/v2/metrics/resource",
-        minimumFreeInodes: 1_000,
-        maximumRawUsagePercent: 99,
-        drives: [{ freeInodes: 0 }],
-      });
-      expect(authorizations).toHaveLength(2);
-      expect(authorizations[1]).toStartWith("Bearer ");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+      return { status: authorization ? 200 : 403, headers: {},
+        body: new TextEncoder().encode(authorization ? metrics : "forbidden") };
+    } };
+    const capacity = await getMinioDriveCapacity({ http,
+      credentials: { accessKey: "doctor-access", secretKey: "doctor-secret" } });
+    expect(capacity).toMatchObject({ endpoint: "/minio/v2/metrics/resource",
+      minimumFreeInodes: 1_000, maximumRawUsagePercent: 99, drives: [{ freeInodes: 0 }] });
+    expect(authorizations).toHaveLength(2);
+    expect(authorizations[1]).toStartWith("Bearer ");
+  });
+
+  test("MinIO health 单个端点失败仍保留其它端点的状态", async () => {
+    const http = { request: async (path: string) => {
+      if (path === "/minio/health/ready") throw new Error("ready unavailable");
+      return { status: 200, headers: {}, body: new Uint8Array() };
+    } };
+    await expect(getS3ProviderHealth("minio", { http })).resolves.toEqual({
+      endpoints: { live: 200, ready: undefined, writeQuorum: 200, readQuorum: 200 },
+    });
   });
 
   test("Provider Inspect 只启用已识别扩展，未知厂商保留通用 S3 能力", async () => {
-    const originalFetch = globalThis.fetch;
-    const fakeFetch = async (input: string | URL | Request): Promise<Response> => {
-      const url = new URL(input instanceof Request ? input.url : input.toString());
-      return new Response("", { status: url.hostname === "minio.example.com" ? 200 : 404 });
-    };
-    globalThis.fetch = Object.assign(fakeFetch, { preconnect: originalFetch.preconnect });
-    try {
-      await expect(inspectS3Provider({ endpoint: "http://minio.example.com" })).resolves.toMatchObject({
-        providerId: "minio",
-        capabilities: { health: true, bucketUsage: true, driveCapacity: true, physicalCapacity: true },
-      });
-      await expect(inspectS3Provider({ endpoint: "https://s3-compatible.example.com" })).resolves.toEqual({
-        providerId: "generic-s3",
-        displayName: "S3 Compatible",
-        detection: "s3-api",
-        capabilities: { health: false, bucketUsage: false, driveCapacity: false, physicalCapacity: false },
-      });
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const connection = (status: number) => ({ http: { request: async () => ({ status, headers: {}, body: new Uint8Array() }) } });
+    await expect(inspectS3Provider(connection(200))).resolves.toMatchObject({
+      providerId: "minio", capabilities: { health: true, bucketUsage: true, driveCapacity: true, physicalCapacity: true },
+    });
+    await expect(inspectS3Provider(connection(404))).resolves.toEqual({
+      providerId: "generic-s3", displayName: "S3 Compatible", detection: "s3-api",
+      capabilities: { health: false, bucketUsage: false, driveCapacity: false, physicalCapacity: false },
+    });
   });
 
   test("全 Bucket 扫描先覆盖 Service Prefix，再公平推进其它顶层 Prefix", async () => {

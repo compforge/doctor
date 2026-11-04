@@ -270,14 +270,21 @@ Host 创建的 PluginContext 继承当前调用的取消信号，并登记到本
 和执行层兜底清理共用一次回收；子调用只关闭自己的资源，不关闭父调用的资源。用户取消会传播到整轮
 执行树，停止后续工作，并保留已生成证据。
 
-共享基础设施由根 CommandContext 的 ClientManager 持有，命令通过只提供 get 的 `clients` 视图借用。
+共享基础设施由根 CommandContext 的 ClientManager 持有，命令通过 `clients.get` 借用共享实例，
+通过 `clients.create` 创建可提前关闭的独立 Client；两者都不授予根 Manager 的销毁权。
 Service 的 `capabilities.dataSources` 是访问声明的唯一清单，store 只是消费它的诊断视角，
 db 与业务 Inspect 不依赖 Store 命令。声明自描述保持离线，运行时 DataSource 不作为 Fact 持久化。
 中立生命周期归 TypeScript harness-common；协议 Client 与 Transport 归 toolbox。
 
-DataSource 标识目标与访问配置并构造 Client；Client.initialize 按需解析配置、选择 Transport、准备连接，
+DataSource 标识目标与访问配置并构造 Client；Client.initialize 按需解析配置，由 Transport 选择和准备访问路径，
 Client.dispose 幂等回收自己拥有的资源。构造函数不执行外部操作，查询及其结果仍属于各次领域调用。
 普通领域数据保存在相应模块中，不进入通用 Context 缓存。
+
+Transport 生命周期覆盖借用它的协议 Client。OpenSearch / Redis / S3 复用根持有的 ServicePortForwardTransport，
+端口转发选择、准备、失效与清理由 Toolbox 拥有；业务调用结束只关闭自己的 Client。OpenSearch 使用同一 Client
+完成协议探测和查询，不再另建 probe 连接或把转发地址写回逻辑 endpoint；Host 与 TLS 身份保留原始目标。
+S3 Provider 的 health/metrics HTTP 请求通过 Toolbox HttpClient 借用同一 Transport，Provider 只持有可请求的 Client，
+不把逻辑 endpoint 当成本机可直连 URL。Provider 网络探测失败保留为失败证据，不降级成已确认的 generic-s3。
 
 同一 DataSource 身份的并发调用等待同一次初始化；成功后复用 Client，失败后先清理部分初始化的资源，
 再允许后续调用重试。身份包含影响访问的配置和凭据，不能使用对象地址。依赖客户端先获取，消费者后初始化；

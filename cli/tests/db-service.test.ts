@@ -9,6 +9,7 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext, resolveKubernetesCommandContext } from "../src/command";
 import { resolveStoreProviderConfig } from "../src/collect/store/config";
 import { borrowDatabase } from "../src/datasource/database";
+import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import * as databaseAccess from "../src/datasource/database";
 import { resolveDbProviders } from "../src/collect/db/providers";
 import { databaseTargets } from "../src/collect/db/discovery";
@@ -43,7 +44,7 @@ test("store, db, metric and business consumers share a source without configurat
     clientKey: "primary",
     createClient: context => {
       expect(context.target.service.name).toBe("logical-api");
-      return new FakeClient({ resolve: async () => target, transports: [] }, { signal: context.signal, connectTimeoutMs: 100, queryTimeoutMs: 100 });
+      return new FakeClient(target, new DirectTransport(), { signal: context.signal, connectTimeoutMs: 100, queryTimeoutMs: 100 });
     },
   };
   const capability: ServiceDatabaseDataSource = { id: "primary", description: "Canonical records", kind: "db", backend: "mysql", access: {}, source };
@@ -151,7 +152,7 @@ test("different factories remain logical sources with separate clients for the s
   }
   const sources: ServiceDatabaseDataSource[] = ["primary", "secondary"].map(id => ({
     id, kind: "db", backend: "mysql", access: {}, source: {
-      clientKey: `${id}-config`, createClient: context => new FakeClient({ resolve: async () => target, transports: [] },
+      clientKey: `${id}-config`, createClient: context => new FakeClient(target, new DirectTransport(),
         { signal: context.signal, connectTimeoutMs: 100, queryTimeoutMs: 100 }),
     },
   }));

@@ -6,7 +6,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 interface ExecutionScope {
   signal: AbortSignal;
   diagnostics: ExecutionDiagnostic[];
-  clients?: Pick<ClientManager, "get">;
+  clients?: Pick<ClientManager, "get" | "create">;
   disposers: Set<() => void | Promise<void>>;
 }
 
@@ -17,7 +17,7 @@ export function currentCommandSignal(): AbortSignal | undefined {
   return execution.getStore()?.signal;
 }
 
-export function currentCommandClients(): Pick<ClientManager, "get"> | undefined {
+export function currentCommandClients(): Pick<ClientManager, "get" | "create"> | undefined {
   return execution.getStore()?.clients;
 }
 
@@ -32,7 +32,7 @@ export function recordExecutionFailure(error: unknown, context: Parameters<typeo
   execution.getStore()?.diagnostics.push(executionDiagnostic(error, context));
 }
 
-export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get">,
+export async function inCommandScope<T>(signal: AbortSignal, work: () => Promise<T>, clients?: Pick<ClientManager, "get" | "create">,
   options: { diagnostics?: ExecutionDiagnostic[]; cleanupTimeoutMs?: number } = {}): Promise<T> {
   const scope: ExecutionScope = { signal, clients, diagnostics: options.diagnostics ?? [], disposers: new Set() };
   return execution.run(scope, async () => {

@@ -1,9 +1,8 @@
 import type { Client } from "@compforge/harness-common";
-import { clientKey } from "@compforge/harness-common";
+import { ClientManager, clientKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../command/execution-scope";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
-import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";
@@ -85,35 +84,42 @@ export async function confirmRedisTarget(
 class RedisAccessClient implements Client {
   #initialization?: Promise<void>;
   #disposal?: Promise<void>;
-  #forwarder?: ServicePortForwarder;
+  #transport?: ServicePortForwardTransport;
+  #local?: ClientManager;
   access?: RedisAccess;
   constructor(private readonly executor: Executor, private readonly config: RedisConfig,
-    private readonly target: RedisTarget, private readonly signal?: AbortSignal) {}
+    private readonly target: RedisTarget, private readonly signal?: AbortSignal,
+    private readonly clients?: Pick<ClientManager, "get">) {}
   initialize(): Promise<void> {
     return this.#initialization ??= (async () => {
       this.signal?.throwIfAborted();
       const kubernetes = this.config.collect.kubernetes;
-      this.#forwarder = await ServicePortForwarder.create(this.executor, kubernetes);
+      const kube = { kubeconfig: kubernetes.kubeconfig, context: kubernetes.context, namespace: kubernetes.namespace };
+      const clients = this.clients ?? (this.#local ??= new ClientManager(this.signal));
+      this.#transport = await clients.get({
+        clientKey: clientKey("service-port-forward", kube),
+        createClient: (_dependencies, signal) => new ServicePortForwardTransport({ ...kube, signal }, { executor: this.executor }),
+      });
       this.signal?.throwIfAborted();
-      this.access = new RedisAccess(new PortForwardTransport(endpoint => this.#forwarder!.forward(endpoint)), {
+      this.access = new RedisAccess(this.#transport, {
         username: this.target.username, password: this.target.password,
         useSsl: this.target.useSsl, timeoutMs: this.target.timeoutMs,
         connectTimeoutMs: this.target.connectTimeoutMs, acquireTimeoutMs: this.target.acquireTimeoutMs,
       }, undefined, { signal: this.signal });
       const initial = this.target.endpoints;
       // Wait for every started forward before failure cleanup can stop the forwarder.
-      const results = await Promise.allSettled(initial.map(endpoint => this.#forwarder!.forward(endpoint)));
+      const results = await Promise.allSettled(initial.map(endpoint => this.#transport!.connect(endpoint)));
       const failed = results.find(result => result.status === "rejected");
       if (failed?.status === "rejected") throw failed.reason;
       this.signal?.throwIfAborted();
     })();
   }
-  get forwards() { return this.#forwarder?.activeForwards ?? []; }
+  get forwards() { return this.#transport?.activeForwards ?? []; }
   dispose(): Promise<void> {
     return this.#disposal ??= (async () => {
       await this.#initialization?.catch(() => {});
       try { await this.access?.close(); }
-      finally { this.#forwarder?.stop(); }
+      finally { await this.#local?.dispose(); }
     })();
   }
 }
@@ -131,13 +137,12 @@ export async function prepareRedisAccess(
   let local: RedisAccessClient | undefined;
   try {
     const client = clients
-      ? await clients.get({
-          clientKey: clientKey("redis-access", { kubernetes: config.collect.kubernetes, target }),
-          createClient: (_clients, signal) => new RedisAccessClient(executor, config, target, signal),
+      ? await clients.create({
+          createClient: (_clients, signal) => new RedisAccessClient(executor, config, target, signal, _clients),
         })
       : (local = new RedisAccessClient(executor, config, target));
     if (local) await local.initialize();
-    return { access: client.access, forwards: client.forwards, close: local ? () => client.dispose() : async () => {} };
+    return { access: client.access, forwards: client.forwards, close: () => client.dispose() };
   } catch (error) {
     await local?.dispose();
     return { forwards: [], reason: error instanceof Error ? error.message : String(error), close: async () => {} };

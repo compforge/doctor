@@ -1,3 +1,4 @@
+import { Transport as ManagedTransport } from "@compforge/harness-toolbox/transport";
 import type { Client } from "@compforge/harness-common";
 import { PortForwardTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
@@ -41,9 +42,7 @@ function configuredSource<T, C extends Client, A>(key: string,
 export function s3DataSource(key: string, resolve: (context: PluginClientContext) => Promise<ServiceS3Client["target"]>): PluginDataSource<ServiceS3Client> {
   return configuredSource(key, resolve, async (target, context) => {
     const { S3Client } = await import("@compforge/harness-toolbox/s3");
-    return new S3Client({ resolve: async () => target,
-      transports: [kubernetesTransport(context)],
-    }, { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000 }, { signal: context.signal });
+    return new S3Client(async () => target, new ManagedTransport([kubernetesTransport(context)]), { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000 }, { signal: context.signal });
   }, client => client);
 }
 
@@ -51,20 +50,15 @@ export function vdbDataSource(key: string, resolve: (context: PluginClientContex
   return configuredSource(key, resolve, async (target, context) => {
     const { OpenSearchClient } = await import("@compforge/harness-toolbox/opensearch/client");
     if (target.backend !== "opensearch" || !target.endpoint) throw new Error("VDB source 需要 opensearch endpoint");
-    return new OpenSearchClient({ resolve: async () => ({ node: target.endpoint!,
-      auth: { username: target.username, password: target.password }, requestTimeoutMs: 15_000 }),
-      transports: [kubernetesTransport(context)],
-    }, { signal: context.signal });
+    return new OpenSearchClient(async () => ({ node: target.endpoint!,
+      auth: { username: target.username, password: target.password }, requestTimeoutMs: 15_000 }), new ManagedTransport([kubernetesTransport(context)]), { signal: context.signal });
   }, client => client);
 }
 
 export function redisDataSource(key: string, resolve: (context: PluginClientContext) => Promise<ServiceRedisClient["target"]>): PluginDataSource<ServiceRedisClient> {
   return {
     clientKey: key,
-    createClient: context => new RedisClient({
-      resolve: () => resolve(context),
-      transports: tcpTransports(context),
-    }, { signal: context.signal }),
+    createClient: context => new RedisClient(() => resolve(context), new ManagedTransport(tcpTransports(context)), { signal: context.signal }),
   };
 }
 
@@ -83,9 +77,6 @@ export function mysqlDataSource(
 ): PluginDataSource<MysqlClient<ServiceDatabaseTarget>> {
   return {
     clientKey: key,
-    createClient: context => new MysqlClient({
-      resolve: () => resolve(context),
-      transports: tcpTransports(context),
-    }, { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
+    createClient: context => new MysqlClient(() => resolve(context), new ManagedTransport(tcpTransports(context)), { signal: context.signal, connectTimeoutMs: 10_000, queryTimeoutMs: 15_000 }),
   };
 }

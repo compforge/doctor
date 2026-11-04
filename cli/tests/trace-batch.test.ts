@@ -242,14 +242,16 @@ for (const store of [false, true]) for (const { mode, evidence } of failureModes
     expect(log.match(/OpenSearch connect failed/g)).toHaveLength(1);
     if (mode === "invalid-argument") {
       expect(log.match(/OpenSearch close failed/g)).toHaveLength(1);
-      expect(log).toContain("OpenSearch connect failed error=TypeError");
+      expect(log).toContain("OpenSearch connect failed error=AggregateError");
       expect(log.match(/at originalProbe \(node:tls:123:45\)/g)).toHaveLength(1);
       expect(log).toContain("argument=options.servername");
       for (const secret of ["sensitive protocol body", "reader", "credential", "signed"]) expect(log).not.toContain(secret);
     }
     expect(log).not.toContain("Authorization");
   } finally {
-    probe.mockRestore(); close?.mockRestore(); await context.disposeClients(); server.stop(true);
+    probe.mockRestore(); close?.mockRestore();
+    await context.disposeClients();
+    server.stop(true);
     for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }

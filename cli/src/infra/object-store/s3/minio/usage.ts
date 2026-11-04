@@ -1,8 +1,8 @@
+import type { S3ProviderConnection } from "../provider";
 import {
   parsePrometheusSample,
   prometheusLabel,
   requestMinioMetrics,
-  type MinioMetricsCredentials,
 } from "./metrics";
 
 export interface MinioBucketUsage {
@@ -54,8 +54,7 @@ export function parseMinioBucketUsageMetrics(metrics: string): MinioBucketUsage[
 }
 
 export async function getMinioBucketUsage(
-  endpoint: string,
-  credentials?: MinioMetricsCredentials,
+  connection: S3ProviderConnection,
   timeoutMs = 10_000,
 ): Promise<MinioBucketUsageResult> {
   const controller = new AbortController();
@@ -68,7 +67,7 @@ export async function getMinioBucketUsage(
     ];
     const failures: string[] = [];
     for (const path of paths) {
-      const response = await requestMinioMetrics({ endpoint, path, credentials, signal: controller.signal });
+      const response = await requestMinioMetrics({ http: connection.http, path, credentials: connection.credentials, signal: controller.signal });
       if (response.status < 200 || response.status >= 300) {
         failures.push(`${path}=HTTP ${response.status}`);
         continue;

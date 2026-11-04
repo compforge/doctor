@@ -1,3 +1,4 @@
+import type { HttpApi } from "@compforge/harness-toolbox/http";
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
@@ -13,7 +14,7 @@ export interface S3CommandContext {
   capability: ServiceS3DataSource;
   bundle: EvidenceBundle;
   originalEndpoint?: URL;
-  preparedEndpoint?: string;
+  providerHttp?: HttpApi;
   target?: S3Target;
   inventoryPrefix?: string;
   serviceBucket?: string;

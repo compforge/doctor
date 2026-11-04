@@ -1,10 +1,10 @@
 import { clientKey } from "@compforge/harness-common";
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
-import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import type { Executor, ExecResult } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import { S3DataSource, type S3Client, type S3Target } from "@compforge/harness-toolbox/s3";
-import { PortForwardTransport } from "@compforge/harness-toolbox/transport";
+import { HttpClient } from "@compforge/harness-toolbox/http";
+import { DirectTransport, ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import type { CommandContext } from "../command";
 import type { KubernetesCommandConfig, PodTarget } from "../command/kubernetes-target";
 import { borrowServiceClient } from "./client";
@@ -67,25 +67,26 @@ export async function prepareS3Access(command: CommandContext, collect: Kubernet
   endpoint.username = ""; endpoint.password = "";
   if (contributedClient) return { client: contributedClient, channel: "plugin" as const, endpoint: endpoint.toString() };
   const identity = serviceIdentity(endpoint.hostname, collect.kubernetes.namespace);
-  let preparedEndpoint = endpoint.toString();
   let channel: "direct" | "service-port-forward" = "direct";
-  let route: ConstructorParameters<typeof S3DataSource>[2];
+  let transport: DirectTransport | ServicePortForwardTransport;
+  let key: string;
   if (identity) {
     const kube = { namespace: identity.namespace, kubeconfig: collect.kubernetes.kubeconfig, context: collect.kubernetes.context };
-    const key = clientKey("kubernetes", kube);
-    const kubernetes = await command.clients.get({ clientKey: key,
-      createClient: (_clients, signal) => new KubernetesClient(kube, signal) });
-    const port = endpoint.port ? Number(endpoint.port) : endpoint.protocol === "https:" ? 443 : 80;
-    const mapped = await kubernetes.forward(kube.namespace, { host: endpoint.hostname, port });
-    if (mapped.host !== endpoint.hostname || mapped.port !== port) {
-      const local = new URL(endpoint); local.hostname = mapped.host; local.port = String(mapped.port);
-      preparedEndpoint = local.toString();
-    }
-    route = { key, transport: new PortForwardTransport(remote => kubernetes.forward(kube.namespace, remote)) };
+    key = clientKey("service-port-forward", kube);
+    transport = await command.clients.get({ clientKey: key,
+      createClient: (_clients, signal) => new ServicePortForwardTransport({ ...kube, signal }) });
     channel = "service-port-forward";
+  } else {
+    key = clientKey("direct", {});
+    transport = await command.clients.get({ clientKey: key, createClient: () => new DirectTransport() });
   }
   const client = await command.clients.get(new S3DataSource(target, {
     concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000,
-  }, route));
-  return { client, channel, endpoint: preparedEndpoint };
+  }, { key, transport }));
+  const httpTarget = { endpoint: endpoint.toString(), ca: target.ca };
+  const limits = { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000, maxResponseBytes: 4 * 1024 * 1024 };
+  // @rule Provider HTTP and S3 borrow the same route; endpoint remains protocol identity, never a local dial URL.
+  const http = await command.clients.get({ clientKey: clientKey("s3-provider-http", { target: httpTarget, route: key, limits }),
+    createClient: (_clients, signal) => new HttpClient(httpTarget, transport, limits, { signal }) });
+  return { client, http, channel, endpoint: endpoint.toString() };
 }
