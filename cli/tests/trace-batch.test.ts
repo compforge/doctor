@@ -1,4 +1,5 @@
 import { tmpdir } from "node:os";
+import { Client as OpenSearchDriver } from "@opensearch-project/opensearch";
 import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch/client";
 import { finalizeResult } from "./report-fixture";
 import { readBundleText, readBundleIndex } from "./bundle-fixture";
@@ -189,12 +190,20 @@ for (const resolved of [true, false]) test(`Trace preserves health evidence with
 
 
 // @case id=trace_opensearch_failure_archive,desc=`OpenSearch rejects or stalls`,expect=`Failed tar.gz includes access diagnostics`
-for (const store of [false, true]) for (const mode of ["unauthorized", "timeout"] as const) test(`Trace store=${store} ${mode} still delivers a failed archive containing OpenSearch diagnostics`, async () => {
+for (const store of [false, true]) for (const mode of ["unauthorized", "timeout", "invalid-argument"] as const) test(`Trace store=${store} ${mode} still delivers a failed archive containing OpenSearch diagnostics`, async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-opensearch-failure-"));
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0,
     fetch: () => mode === "timeout" ? new Promise<Response>(() => {}) : new Response(null, { status: 401 }) });
+  const close = mode === "invalid-argument"
+    ? spyOn(OpenSearchDriver.prototype, "close").mockImplementation(() => new Promise(() => {}))
+    : undefined;
   const ping = OpenSearchEngine.prototype.ping;
   const probe = spyOn(OpenSearchEngine.prototype, "ping").mockImplementation(function (this: OpenSearchEngine, signal) {
+    if (mode === "invalid-argument") {
+      const error = Object.assign(new TypeError('The "options.servername" property is invalid.'), { code: "ERR_INVALID_ARG_VALUE" });
+      error.stack = 'TypeError: sensitive protocol body\n    at originalProbe (node:tls:123:45)\n    at request (https://reader:credential@fixture.test/client.js?token=signed:9:2)';
+      return Promise.reject(error);
+    }
     return ping.call(this, signal, 50);
   });
   const plugin: PluginDefinition = { id: "test", version: "1", services: createServiceCatalog([{
@@ -219,12 +228,21 @@ for (const store of [false, true]) for (const mode of ["unauthorized", "timeout"
     const path = listing.find(path => path.endsWith("-opensearch-access.log"));
     expect(path).toBeDefined();
     const log = readBundleText(archive, path!);
-    expect(log).toContain("OpenSearch probe start");
-    expect(log).toContain("OpenSearch probe failed");
-    expect(log).toContain(mode === "timeout" ? "ETIMEDOUT" : "status=401");
+    if (mode !== "invalid-argument") {
+      expect(log).toContain("OpenSearch probe start");
+      expect(log).toContain("OpenSearch probe failed");
+    }
+    expect(log).toContain(mode === "timeout" ? "ETIMEDOUT" : mode === "invalid-argument" ? "ERR_INVALID_ARG_VALUE" : "status=401");
+    if (mode === "invalid-argument") {
+      expect(log).toContain("OpenSearch close failed");
+      expect(log).toContain("OpenSearch connect failed error=TypeError");
+      expect(log).toContain("at originalProbe (node:tls:123:45)");
+      expect(log).toContain("argument=options.servername");
+      for (const secret of ["sensitive protocol body", "reader", "credential", "signed"]) expect(log).not.toContain(secret);
+    }
     expect(log).not.toContain("Authorization");
   } finally {
-    probe.mockRestore(); await context.disposeClients(); server.stop(true);
+    probe.mockRestore(); close?.mockRestore(); await context.disposeClients(); server.stop(true);
     for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
     rmSync(root, { recursive: true, force: true });
   }

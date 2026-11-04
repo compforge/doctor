@@ -1,8 +1,9 @@
 import type { Client } from "@compforge/harness-common";
 import { clientKey, ClientManager } from "@compforge/harness-common";
+import { diagnosticMessage } from "../../../command/diagnostic";
 import { currentCommandClients, currentCommandSignal } from "../../../command/execution-scope";
 import { DirectTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
-import { openOpenSearch } from "@compforge/harness-toolbox/opensearch";
+import { describeOpenSearchError, openOpenSearch } from "@compforge/harness-toolbox/opensearch";
 import { KubectlExecutor, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
@@ -95,6 +96,21 @@ class OpenSearchAccessClient implements Client {
     let channel = "";
     let preferredScheme: "http" | "https" | undefined;
     let auth = opts.auth;
+    // @spec Persist bounded original stack frames before preparation failures become summaries.
+    // Error headers may contain protocol bodies; keep safe codes and sanitized frames in the archive only.
+    const recordFailure = (phase: string, error: unknown) => {
+      const secrets = [auth.username ?? "", auth.password ?? ""];
+      const seen = new Set<unknown>();
+      let cause = error;
+      for (let depth = 0; cause instanceof Error && !seen.has(cause) && depth < 4; depth++) {
+        seen.add(cause);
+        diagnostics.push(`${new Date().toISOString()} [collect] OpenSearch ${phase} cause=${depth} ${describeOpenSearchError(cause)}`);
+        for (const frame of (cause.stack ?? "").split("\n").filter(line => /^\s+at /.test(line)).slice(0, 16)) {
+          diagnostics.push(diagnosticMessage(frame, secrets).slice(0, 1024));
+        }
+        cause = cause.cause;
+      }
+    };
     const transports: TcpTransport[] = [new DirectTransport()];
     if (connection.kind !== "service") {
       const normalized = normalizeOpenSearchHost(connection.endpoint);
@@ -196,6 +212,7 @@ class OpenSearchAccessClient implements Client {
           reason,
         });
         forwarder?.stop();
+        recordFailure("scheme probe", error);
         return failed("OpenSearch 不可达", reason);
       }
     }
@@ -216,6 +233,7 @@ class OpenSearchAccessClient implements Client {
       this.signal?.throwIfAborted();
       const reason = error instanceof Error ? error.message : String(error);
       steps.push({ id: "channel", title: "OpenSearch 连接", risk: "observe", status: "failed", reason });
+      recordFailure("connect", error);
       return failed("OpenSearch 连接失败", reason);
     }
     recordDiagnostics("ok");
