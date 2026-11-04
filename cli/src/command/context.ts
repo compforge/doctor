@@ -93,7 +93,7 @@ export class CommandContext {
   #kubernetesPromise?: Promise<KubernetesInspection>;
   #plugin?: PluginDefinition;
   readonly signal: AbortSignal;
-  readonly clients: Pick<ClientManager, "get">;
+  readonly clients: Pick<ClientManager, "get" | "create">;
   readonly #clients: ClientManager;
 
   /** One budget for the entire command tree, independent of the number of child collects. */
@@ -120,7 +120,7 @@ export class CommandContext {
     this.signal = options.signal
       ? AbortSignal.any([options.signal, this.#controller.signal]) : this.#controller.signal;
     this.#clients = new ClientManager(this.signal);
-    this.clients = { get: source => this.#clients.get(source) };
+    this.clients = { get: source => this.#clients.get(source), create: source => this.#clients.create(source) };
   }
 
   /** Root finalize owns this operation; child commands only borrow clients. */

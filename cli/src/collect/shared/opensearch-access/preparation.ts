@@ -2,16 +2,11 @@ import type { Client } from "@compforge/harness-common";
 import { clientKey, ClientManager } from "@compforge/harness-common";
 import { diagnosticMessage } from "../../../command/diagnostic";
 import { currentCommandClients, currentCommandSignal } from "../../../command/execution-scope";
-import { DirectTransport, type TcpTransport } from "@compforge/harness-toolbox/transport";
-import { describeOpenSearchError, openOpenSearch } from "@compforge/harness-toolbox/opensearch";
-import { KubectlExecutor, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import { DirectTransport, Transport, ServicePortForwardTransport, type TransportPath } from "@compforge/harness-toolbox/transport";
+import { describeOpenSearchError, OpenSearchClient } from "@compforge/harness-toolbox/opensearch";
+import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
-import {
-  normalizeOpenSearchHost,
-  probeOpenSearchUrl,
-  type OpenSearchAuth,
-} from "../../../infra/search/opensearch";
+import type { OpenSearchAuth } from "../../../infra/search/opensearch";
 import type { StepInput } from "../../evidence";
 import { sharedPodRelay } from "../../../datasource/pod-relay";
 import type { OpenSearchConnectionPlan } from "./configuration";
@@ -34,6 +29,18 @@ export interface OpenSearchAccessOptions {
 
 class OpenSearchPreparationError extends Error {
   constructor(readonly preparation: OpenSearchAccessPreparation) { super(preparation.failure?.reason); }
+}
+
+/** Root cleanup errors remain with ClientManager; recover the failed preparation's evidence for delivery. */
+function failedPreparation(error: unknown): OpenSearchAccessPreparation | undefined {
+  if (error instanceof OpenSearchPreparationError) return error.preparation;
+  if (error instanceof AggregateError) {
+    for (const cause of error.errors) {
+      const preparation = failedPreparation(cause);
+      if (preparation) return preparation;
+    }
+  }
+  return undefined;
 }
 
 class OpenSearchAccessClient implements Client {
@@ -71,13 +78,11 @@ class OpenSearchAccessClient implements Client {
       id: "opensearch-access", title: "OpenSearch 访问诊断", risk: "observe", status,
       output: diagnostics.join("\n"), ext: "log",
     });
-    let forwarder: ServicePortForwarder | undefined;
     let search: SearchEngine | undefined;
     const close = this.#close = async () => {
       try { await search?.close?.(); }
       finally {
-        try { await this.#localClients?.dispose(); }
-        finally { forwarder?.stop(); }
+        await this.#localClients?.dispose();
       }
     };
     const failed = (
@@ -92,7 +97,6 @@ class OpenSearchAccessClient implements Client {
 
     const connection = opts.connection;
     if (!connection) return failed("OpenSearch 准备失败", "配置确认阶段未提供连接计划");
-    let hostPort = "";
     let baseUrl = "";
     let channel = "";
     let preferredScheme: "http" | "https" | undefined;
@@ -116,115 +120,47 @@ class OpenSearchAccessClient implements Client {
       diagnostics.push(...lines);
       failureDiagnostics.push(...lines);
     };
-    const transports: TcpTransport[] = [new DirectTransport()];
-    if (connection.kind !== "service") {
-      const normalized = normalizeOpenSearchHost(connection.endpoint);
-      baseUrl = normalized.url ?? "";
-      hostPort = normalized.hostPort ?? "";
-      channel = `直连 ${connection.endpoint}`;
-      if (!auth.username && connection.username && connection.password) {
-        auth = { username: connection.username, password: connection.password };
-      }
-      if (connection.kind === "target" && opts.kube) {
-        const kube = { ...opts.kube, namespace: opts.kube.namespace ?? "default" };
-        transports.push({
-          kind: "tcp", name: "pod-relay",
-          connect: async endpoint => {
-            const clients = this.clients ?? (this.#localClients ??= new ClientManager(this.signal));
-            log(`[collect] OpenSearch 直连失败，尝试 Pod relay（${kube.namespace}）`, "warning");
-            return (await sharedPodRelay(clients, kube)).connect(endpoint);
+    const clients = this.clients ?? (this.#localClients ??= new ClientManager(this.signal));
+    const kube = { kubeconfig: opts.kube?.kubeconfig, context: opts.kube?.context, namespace: opts.kube?.namespace ?? "default" };
+    try {
+      let transport: Transport;
+      if (connection.kind === "service") {
+        const service = connection.service;
+        const hostPort = `${service.name}.${service.namespace}.svc:${service.port}`;
+        baseUrl = connection.scheme ? `${connection.scheme}://${hostPort}` : hostPort;
+        preferredScheme = connection.scheme;
+        channel = `port-forward svc/${service.name}（${service.namespace}）`;
+        transport = await clients.get({
+          clientKey: clientKey("service-port-forward", { ...kube, namespace: service.namespace }),
+          createClient: (_dependencies, signal) => new ServicePortForwardTransport({
+            ...kube, namespace: service.namespace, signal,
+          }),
+        });
+      } else {
+        baseUrl = connection.endpoint;
+        channel = `直连 ${connection.endpoint}`;
+        if (!auth.username && connection.username && connection.password) {
+          auth = { username: connection.username, password: connection.password };
+        }
+        transport = await clients.get({
+          clientKey: clientKey("opensearch-transport", { kind: connection.kind, kube }),
+          createClient: (dependencies, signal) => {
+            const paths: TransportPath[] = [new DirectTransport()];
+            if (connection.kind === "target" && opts.kube) paths.push({
+              kind: "tcp", name: "pod-relay",
+              connect: async (endpoint, attempt) => {
+                const relay = await sharedPodRelay(dependencies, kube);
+                attempt?.signal.throwIfAborted();
+                return relay.connect(endpoint);
+              },
+            });
+            return new Transport(paths, signal);
           },
         });
       }
-    } else {
-      const service = connection.service;
-      const kube = opts.kube ?? {};
-      const executor = new KubectlExecutor({ ...kube, namespace: service.namespace });
-      const evidenceTarget = { service: `${service.namespace}/${service.name}` };
-      try {
-        forwarder = await ServicePortForwarder.create(executor, {
-          ...kube,
-          namespace: service.namespace,
-          signal: this.signal,
-          onDiagnostic: line => log(`[collect] ${line}`),
-        });
-        log(`[collect] port-forward svc/${service.name}（${service.namespace}，远端端口 ${service.port}）…`);
-        const endpoint = await forwarder.forward({ host: service.name, port: service.port });
-        const active = forwarder.activeForwards.at(-1);
-        steps.push({
-          id: "port-forward",
-          title: `port-forward svc/${service.name}`,
-          risk: "observe",
-          status: "ok",
-          command: active?.command,
-        });
-        hostPort = `${endpoint.host}:${endpoint.port}`;
-        preferredScheme = connection.scheme;
-        channel = `port-forward svc/${service.name}（${service.namespace}）`;
-      } catch (error) {
-        this.signal?.throwIfAborted();
-        const reason = error instanceof Error ? error.message : String(error);
-        steps.push({
-          id: "port-forward",
-          title: `port-forward svc/${service.name}`,
-          risk: "observe",
-          status: "failed",
-          reason,
-        });
-        forwarder?.stop();
-        return failed("port-forward 失败", reason, evidenceTarget);
-      }
-    }
-
-    if (!baseUrl) {
-      try {
-        // 现场配置可能滞后于真实 Service TLS 状态；优先配置值，失败后再试另一种 scheme。
-        baseUrl = await probeOpenSearchUrl(hostPort, auth, {
-          preferredScheme,
-          signal: this.signal,
-          onDiagnostic: line => log(`[collect] ${line}`),
-          ...(connection.kind === "target" && !injectedSearch ? {
-            createEngine: (node: string) => ({ ping: async () => {
-              const probe = await openOpenSearch({ resolve: async () => ({ node, auth, requestTimeoutMs: 5_000 }), transports }, { signal: this.signal, onDiagnostic: line => log(`[collect] ${line}`) });
-              await probe.close();
-            } }),
-          } : {}),
-        });
-        const selectedScheme = baseUrl.startsWith("https://") ? "https" : "http";
-        if (preferredScheme && selectedScheme !== preferredScheme) {
-          log(
-            `[collect] OpenSearch 配置 scheme=${preferredScheme} 不可用，已回退 ${selectedScheme}`,
-            "warning",
-          );
-        }
-        steps.push({
-          id: "probe-scheme",
-          title: "OpenSearch 连通性探测",
-          risk: "observe",
-          status: "ok",
-          output: preferredScheme
-            ? `configured=${preferredScheme} selected=${selectedScheme}`
-            : baseUrl,
-        });
-      } catch (error) {
-        this.signal?.throwIfAborted();
-        const reason = error instanceof Error ? error.message : String(error);
-        steps.push({
-          id: "probe-scheme",
-          title: "OpenSearch 连通性探测",
-          risk: "observe",
-          status: "failed",
-          reason,
-        });
-        forwarder?.stop();
-        recordFailure("scheme probe", error);
-        return failed("OpenSearch 不可达", reason);
-      }
-    }
-    try {
-      search = injectedSearch ?? await openOpenSearch({
-        resolve: async () => ({ node: baseUrl, auth, connectTimeoutMs: 10_000 }), transports,
-      }, {
+      const client = injectedSearch ? undefined : new OpenSearchClient({
+        node: baseUrl, auth, preferredScheme, connectTimeoutMs: 10_000,
+      }, transport, {
         signal: this.signal,
         onDiagnostic: line => log(`[collect] ${line}`),
         onRoute: route => {
@@ -234,6 +170,9 @@ class OpenSearchAccessClient implements Client {
           log(`[collect] OpenSearch 连接成功：${channel}${route.reason ? `（直连失败：${route.reason}）` : ""}`);
         },
       });
+      search = injectedSearch ?? client;
+      await client?.initialize();
+      baseUrl = client?.node ?? baseUrl;
     } catch (error) {
       this.signal?.throwIfAborted();
       const reason = error instanceof Error ? error.message : String(error);
@@ -246,7 +185,7 @@ class OpenSearchAccessClient implements Client {
   }
 }
 
-/** Acquire shared access; each consumer still creates its own evidence from the preparation facts. */
+/** Each caller owns its protocol client; transports remain shared until root disposal. */
 export async function prepareOpenSearchAccess(
   opts: OpenSearchAccessOptions,
   log: (line: string, tone?: "info" | "warning") => void,
@@ -256,13 +195,21 @@ export async function prepareOpenSearchAccess(
   let local: OpenSearchAccessClient | undefined;
   try {
     const client = clients
-      ? await clients.get({ clientKey: clientKey("opensearch-access", opts), createClient: (_clients, signal) => new OpenSearchAccessClient(opts, log, signal, undefined, _clients) })
+      ? await clients.create({ createClient: (_clients, signal) => new OpenSearchAccessClient(opts, log, signal, undefined, _clients) })
       : (local = new OpenSearchAccessClient(opts, log, currentCommandSignal(), injectedSearch));
     if (local) await local.initialize();
-    return { ...client.preparation, close: local ? () => client.dispose() : async () => {} };
+    return { ...client.preparation, close: () => client.dispose() };
   } catch (error) {
-    await local?.dispose();
-    if (error instanceof OpenSearchPreparationError) return { ...error.preparation, close: async () => {} };
+    const preparation = failedPreparation(error);
+    try { await local?.dispose(); }
+    catch (cleanup) {
+      if (!preparation) throw new AggregateError([error, cleanup], "OpenSearch preparation and cleanup failed", { cause: error });
+      // Standalone callers have no root manager to retain cleanup failures. Keep both failures in their evidence.
+      preparation.steps.push({ id: "opensearch-cleanup", title: "OpenSearch 资源清理", risk: "observe",
+        status: "failed", reason: describeOpenSearchError(cleanup) });
+      preparation.failure!.reason += `; cleanup failed: ${describeOpenSearchError(cleanup)}`;
+    }
+    if (preparation) return { ...preparation, close: async () => {} };
     throw error;
   }
 }

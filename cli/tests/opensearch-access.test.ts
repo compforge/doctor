@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { ClientManager } from "@compforge/harness-common";
-import { PodRelayTransport } from "@compforge/harness-toolbox/transport";
+import { PodRelayTransport, ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { sharedPodRelay } from "../src/datasource/pod-relay";
 import { inCommandScope } from "../src/command/execution-scope";
 import { describe, expect, spyOn, test } from "bun:test";
@@ -173,6 +173,48 @@ test("local target preparation releases its relay when closed", async () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   } finally {
     relay.mockRestore(); dispose.mockRestore();
+    server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
+  }
+});
+
+test("service access preserves logical identity and shares transport across short-lived clients", async () => {
+  const root = new ClientManager();
+  let probes = 0;
+  const server = createServer((request, response) => {
+    expect(request.headers.host).toBe("os.search.svc:9200");
+    if (request.method === "HEAD") probes++;
+    response.setHeader("content-type", "application/json");
+    response.end(request.method === "HEAD" ? undefined : '{"count":3}');
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as { port: number }).port;
+  const initialize = spyOn(ServicePortForwardTransport.prototype, "initialize").mockResolvedValue();
+  const borrowed: object[] = [];
+  const connect = spyOn(ServicePortForwardTransport.prototype, "connect").mockImplementation(function (this: object, endpoint) {
+    expect(endpoint).toEqual({ host: "os.search.svc", port: 9200 });
+    borrowed.push(this);
+    return Promise.resolve({ host: "127.0.0.1", port });
+  });
+  const dispose = spyOn(ServicePortForwardTransport.prototype, "dispose");
+  try {
+    await inCommandScope(root.signal, async () => {
+      for (let i = 0; i < 2; i++) {
+        const access = await prepareOpenSearchAccess({ connection: { kind: "service", scheme: "http",
+          service: { name: "os", namespace: "search", port: 9200 } }, kube: { namespace: "app" }, auth: {} }, () => {});
+        expect(access.failure).toBeUndefined();
+        expect(access.baseUrl).toBe("http://os.search.svc:9200");
+        expect(await access.search!.count("spans", {})).toBe(3);
+        await access.close();
+      }
+    }, root);
+    expect(probes).toBe(2); // One probe per client, reused for its subsequent queries.
+    expect(initialize).toHaveBeenCalledTimes(1);
+    expect(borrowed[0]).toBe(borrowed[1]);
+    expect(dispose).not.toHaveBeenCalled();
+    await root.dispose();
+    expect(dispose).toHaveBeenCalledTimes(1);
+  } finally {
+    await root.dispose(); initialize.mockRestore(); connect.mockRestore(); dispose.mockRestore();
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
   }
 });

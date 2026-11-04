@@ -1,6 +1,6 @@
 import type { ServiceS3DataSource } from "@compforge/doctor-plugin";
 import { clientKey } from "@compforge/harness-toolbox/datasource";
-import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
+import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import type { S3ObjectPage, S3Target } from "@compforge/harness-toolbox/s3";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -90,7 +90,7 @@ test("S3 access 初始化不探测权限；同根同身份共享 Client，由根
   expect(() => second.client!.headBucket("other")).toThrow("disposed");
 });
 
-test("Kubernetes 转发保留 S3 原始 Host 与签名，复用根 Kubernetes Client", async () => {
+test("Kubernetes 转发保留 S3 原始 Host 与签名，复用根 Transport", async () => {
   const hosts: string[] = [];
   const fixture = await startS3Fixture((_url, request) => {
     hosts.push(request.headers.get("host")!);
@@ -100,18 +100,20 @@ test("Kubernetes 转发保留 S3 原始 Host 与签名，复用根 Kubernetes Cl
   cleanups.push(() => fixture.close());
   const ctx = context({ ...fixture.target, endpoint: "http://minio.test.svc.cluster.local:9000" });
   const kube = { namespace: "test", kubeconfig: undefined, context: undefined };
-  const kubernetes = await ctx.command.clients.get({
-    clientKey: clientKey("kubernetes", kube), createClient: (_clients, signal) => new KubernetesClient(kube, signal),
+  const initialize = spyOn(ServicePortForwardTransport.prototype, "initialize").mockResolvedValue();
+  cleanups.push(() => initialize.mockRestore());
+  const transport = await ctx.command.clients.get({
+    clientKey: clientKey("service-port-forward", kube), createClient: (_clients, signal) => new ServicePortForwardTransport({ ...kube, signal }),
   });
-  const forward = spyOn(kubernetes, "forward").mockResolvedValue({
+  const forward = spyOn(transport, "connect").mockResolvedValue({
     host: "127.0.0.1", port: Number(new URL(fixture.target.endpoint).port),
   });
   cleanups.push(() => forward.mockRestore());
   const result = await access(ctx);
-  expect(result.access).toMatchObject({ channel: "service-port-forward", endpoint: fixture.target.endpoint });
+  expect(result.access).toMatchObject({ channel: "service-port-forward", endpoint: "http://minio.test.svc.cluster.local:9000/" });
   await ctx.client!.headBucket("configured");
   expect(hosts).toEqual(["minio.test.svc.cluster.local:9000"]);
-  expect(forward).toHaveBeenCalledWith("test", expect.objectContaining({ host: "minio.test.svc.cluster.local", port: 9000 }));
+  expect(forward).toHaveBeenCalledWith(expect.objectContaining({ host: "minio.test.svc.cluster.local", port: 9000 }), expect.anything());
 });
 
 test.each(["forbidden", "truncated"])("Bucket 发现 %s 时保留原因并检查配置 Bucket", async mode => {
