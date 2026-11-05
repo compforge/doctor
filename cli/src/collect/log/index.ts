@@ -1,6 +1,6 @@
 import { dataLogWindows, type DataLogWindows } from "./data-window";
-import { timePaddingMs, selectLogTimeWindow, type TraceLogWindow } from "./window";
-import { resolveLogWorkloads, mergeLogWorkloads, projectLogFacts } from "./workloads";
+import { timePaddingMs, selectLogTimeWindow, resolveLogTimeWindow, validateLogTimeWindow, type TraceLogWindow } from "./window";
+import { resolveLogWorkloads, mergeLogWorkloads } from "./workloads";
 import { gapMessages } from "../evidence-gaps";
 import { dataCommand } from "../data/command";
 import type { DataOutput } from "../data/model";
@@ -39,12 +39,10 @@ import { buildIndexExpr } from "../trace/opensearch";
 import {
   buildLogPattern,
   resolveLogServiceSelection,
-  resolveLogTimeWindow,
   serviceLogErrorPatterns,
-  validateLogTimeWindow,
 } from "./config";
 import { detectLogEvidenceGaps, buildLogEvidence, logDetectors } from "./detector";
-import { makeLogInspect } from "./fact/inspect";
+import { makeLogInspect, projectLogFacts } from "./fact/inspect";
 import type {
   LogCollectOptions,
   LogCommandContext,
@@ -60,6 +58,7 @@ import { formatLogCaptureStats, renderLogResult, renderTimelineJsonl } from "./r
 import { logSummary } from "./summary";
 
 export * from "./config";
+export { resolveLogTimeWindow, validateLogTimeWindow } from "./window";
 export * from "./detector";
 export * from "./html";
 export * from "./model";

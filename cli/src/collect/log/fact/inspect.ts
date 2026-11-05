@@ -1,6 +1,6 @@
 import type { ExecResult, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { Inspect } from "../../inspection";
-import type { LogCommandContext, LogInspectionFacts, LogWorkloadTarget } from "../model";
+import type { LogCollectOptions, LogCommandContext, LogInspectionFacts, LogWorkloadTarget } from "../model";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import { discoverKubernetesWorkload } from "../../../infra/k8s/workload";
 
@@ -110,4 +110,20 @@ export function makeLogInspect(
       };
     },
   };
+}
+
+/** @rule Shared discovery must not expand another request's Workload or failure scope. */
+export function projectLogFacts(facts: Readonly<LogInspectionFacts>, config: LogCollectOptions): LogInspectionFacts {
+  if (facts.servicePods.status !== "collected") return facts;
+  const source = facts.servicePods;
+  const selected = (name: string, workload: string) => !config.workloads || !!config.workloads[name]?.includes(workload);
+  return { ...facts, servicePods: { ...source,
+    byService: Object.fromEntries(config.services.map(name => [name,
+      (source.byService[name] ?? []).filter(target => selected(name, target.instance.workload))])),
+    missing: Object.fromEntries(config.services.map(name => [name, source.workloadMissing && config.workloads
+      ? (config.workloads[name] ?? []).flatMap(workload => source.workloadMissing?.[name]?.[workload] ?? [])
+      : source.missing[name] ?? []])),
+    workloadMissing: source.workloadMissing && Object.fromEntries(config.services.map(name => [name,
+      Object.fromEntries(Object.entries(source.workloadMissing?.[name] ?? {}).filter(([workload]) => selected(name, workload)))])),
+  } };
 }
