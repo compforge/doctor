@@ -1,3 +1,4 @@
+import { isSecretDataSource, type ServiceSecretDataSource } from "./secret";
 import { isFileDataSource, type ServiceFileDataSource } from "./file";
 import type { ServiceCatalog } from "./catalog";
 import type { ServiceDefinition } from "./service";
@@ -126,14 +127,18 @@ export type ServiceConnectionDataSource =
   | ServiceS3DataSource
   | ServiceRedisDataSource;
 
-export type ServiceDataSource = ServiceConnectionDataSource | ServiceFileDataSource;
+export type ServiceDataSource = ServiceConnectionDataSource | ServiceFileDataSource | ServiceSecretDataSource;
 
 export function connectionDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceConnectionDataSource[] {
-  return (service?.dataSources ?? []).filter((source): source is ServiceConnectionDataSource => !isFileDataSource(source));
+  return (service?.dataSources ?? []).filter((source): source is ServiceConnectionDataSource => !isFileDataSource(source) && !isSecretDataSource(source));
 }
 
 export function fileDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceFileDataSource[] {
   return (service?.dataSources ?? []).filter(isFileDataSource);
+}
+
+export function secretDataSources(service: Pick<ServiceDefinition, "dataSources"> | undefined): readonly ServiceSecretDataSource[] {
+  return (service?.dataSources ?? []).filter(isSecretDataSource);
 }
 
 export function serviceDataSources(

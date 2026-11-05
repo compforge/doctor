@@ -1,5 +1,6 @@
 import { inspectCollectionScope } from "../model";
-import { fileDataSources } from "@compforge/doctor-plugin";
+import { fileDataSources, secretDataSources } from "@compforge/doctor-plugin";
+import { makeSecretConfigurationProbe } from "./secret-configuration";
 import { makeFileConfigurationProbe } from "./file-configuration";
 import { workloadProbeProviders } from "../../../plugin/workload-extensions";
 import type { Probe } from "../../protocol";
@@ -34,6 +35,7 @@ export function makeInspectProbes(
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
+    ...(scope.secrets ? config.services.flatMap(service => secretDataSources(catalog.find(service)).map(source => makeSecretConfigurationProbe(service, source))) : []),
     ...(scope.files ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
     ...(scope.env ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),
     ...(facts.serviceTargets.status === "collected"

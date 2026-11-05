@@ -182,12 +182,30 @@ export interface FileConfigurationObservation extends ObservationMeta {
   reason?: string;
 }
 
+export interface SecretConfigurationObservation extends ObservationMeta {
+  kind: "secret-configuration";
+  service: string;
+  dataSource: string;
+  keys: readonly string[];
+  namespace?: string;
+  name?: string;
+  resourceVersion?: string;
+  observedAt?: string;
+  status: "collected" | "unavailable";
+  values: Record<string, string>;
+  missingKeys: string[];
+  reason?: string;
+}
+
 export interface ConfigSearchMatch {
   name: string;
   value: JsonValue;
-  source: "env" | "file";
+  source: "env" | "file" | "secret";
   service: string;
-  workload: string;
+  workload?: string;
+  secret?: string;
+  dataSource?: string;
+  resourceVersion?: string;
   namespace?: string;
   pod?: string;
   container?: string;
@@ -245,6 +263,7 @@ export type InspectObservation =
   | EnvironmentConfigObservation
   | ContainerEnvironmentObservation
   | FileConfigurationObservation
+  | SecretConfigurationObservation
   | DependencyInventoryObservation
   | KubernetesAppArmorAdmissionObservation
   | PluginWorkloadObservation;
@@ -286,6 +305,7 @@ export type InspectDiagnosisGoal =
   | "environment-config"
   | "container-environment"
   | "file-configuration"
+  | "secret-configuration"
   | "workload-runtime"
   | "runtime-dependencies"
   | "workload-observations"
@@ -314,6 +334,7 @@ export function inspectCollectionScope(config: Pick<InspectConfig, "field" | "in
   return {
     env: config.field === "env" || config.field === "config",
     files: config.field === "config",
+    secrets: config.field === undefined || config.field === "config",
     event: config.field === undefined || config.field === "event",
     hpa: config.field === undefined || config.field === "hpa",
     plugins: config.field === undefined,

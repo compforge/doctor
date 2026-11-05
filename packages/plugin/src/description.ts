@@ -1,4 +1,4 @@
-import { connectionDataSources, fileDataSources } from "./datasource";
+import { connectionDataSources, fileDataSources, secretDataSources } from "./datasource";
 import { requireFactsInspectExtension, type FactsInspectExtension } from "./extension";
 import type { CapabilityAccess } from "./kubernetes";
 import type { ServiceDefinition } from "./service";
@@ -17,6 +17,7 @@ export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "de
     workloads: Workload[];
     dependencies: { id: string; service: string; dataSource: string }[];
     dataSources: ({ id: string; kind: ServiceDataSourceKind; backend: string; description?: string }
+      | { kind: "secret"; id: string; keys: readonly string[]; description?: string }
       | { kind: "file"; paths: readonly string[]; workload: string; description?: string })[];
     inspect?: Pick<FactsInspectExtension, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
     access: { owner: string; requirements: CapabilityAccess }[];
@@ -58,6 +59,9 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
   for (const source of fileDataSources(service)) {
     access.push({ owner: `dataSources.${source.workload}:${source.clientKey}`, requirements: describeAccess(source.access) });
   }
+  for (const source of secretDataSources(service)) {
+    access.push({ owner: `dataSources.${source.id}`, requirements: describeAccess(source.access) });
+  }
   for (const source of service.cases ?? []) {
     for (const operation of ["produce", "runner"] as const) {
       if (source[operation]) access.push({ owner: `cases.${source.id}.${operation}`, requirements: describeAccess(source[operation].access) });
@@ -91,6 +95,7 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
       })),
       dependencies: (service.dependencies ?? []).map(({ id, service, dataSource }) => ({ id, service, dataSource })),
       dataSources: [...connectionDataSources(service).map(({ id, kind, backend, description }) => ({ id, kind, backend, description })),
+        ...secretDataSources(service).map(({ id, keys, description }) => ({ kind: "secret" as const, id, keys: [...keys], description })),
         ...fileDataSources(service).map(({ paths, workload, description }) => ({ kind: "file" as const, paths: [...paths], workload, description }))],
       inspect: inspect ? {
         description: inspect.description,

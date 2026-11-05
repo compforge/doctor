@@ -36,7 +36,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
     `    Resources：${service.resources?.map(item => `${item.resource.id} (${item.resource.kind}, ${item.relationship})`).join(", ") || "无"}`,
     `    Detectors：${service.detectors.join(", ") || "无"}`,
     `    EnvironmentProbes：${service.environmentProbes.join(", ") || "无"}`,
-    `    DataSources：${dataSources.map(source => source.kind === "file" ? `${source.workload}:[${source.paths.join(", ")}] (file)${source.description ? ` — ${source.description}` : ""}` : `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
+    `    DataSources：${dataSources.map(source => source.kind === "file" ? `${source.workload}:[${source.paths.join(", ")}] (file)${source.description ? ` — ${source.description}` : ""}` : source.kind === "secret" ? `${source.id} (secret) keys=[${source.keys.join(", ")}]${source.description ? ` — ${source.description}` : ""}` : `${source.id} (${source.kind}/${source.backend})${source.description ? ` — ${source.description}` : ""}`).join(", ") || "未声明"}`,
     "    Workloads：");
   for (const workload of workloads) {
     const location = workload.location;

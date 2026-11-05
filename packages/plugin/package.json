@@ -11,7 +11,7 @@
     "@compforge/harness-common": "0.5.11",
     "@compforge/spec-case": "0.0.7",
     "@compforge/trace-harness": "0.3.2",
-    "@compforge/harness-toolbox": "0.5.2"
+    "@compforge/harness-toolbox": "0.5.3"
   },
   "devDependencies": {
     "@types/bun": "latest",

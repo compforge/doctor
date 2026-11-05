@@ -508,10 +508,22 @@ function dependencyRows(diagnosis: InspectDiagnosis): string[][] {
   });
 }
 
+const SECRET_TABLE_HEADERS = ["Service", "DataSource", "Namespace", "Secret", "resourceVersion", "Observed at", "Key", "状态", "值 / 原因"];
+
+function secretRows(diagnosis: InspectDiagnosis): string[][] {
+  return diagnosis.evidence.observations.flatMap(observation => {
+    if (observation.kind !== "secret-configuration") return [];
+    const prefix = [observation.service, observation.dataSource, observation.namespace ?? "—", observation.name ?? "—",
+      observation.resourceVersion ?? "—", observation.observedAt ?? "—"];
+    if (observation.status !== "collected") return [[...prefix, "—", "unavailable", observation.reason ?? "读取失败"]];
+    return observation.keys.map(key => [...prefix, key, observation.missingKeys.includes(key) ? "不存在" : "已采集", observation.values[key] ?? "—"]);
+  });
+}
+
 function searchHeaders(diagnosis: InspectDiagnosis): string[] {
   if (diagnosis.evidence.search!.field === "event") return [...EVENT_TABLE_HEADERS];
   if (diagnosis.evidence.search!.field === "hpa") return [...AUTOSCALER_TABLE_HEADERS];
-  if (diagnosis.evidence.search!.field === "config") return ["名称", "值", "来源", "文件", "Service", "Workload", "Namespace", "Pod", "Container"];
+  if (diagnosis.evidence.search!.field === "config") return ["名称", "值", "来源", "文件 / Secret", "Service", "Workload", "Namespace", "Pod", "Container", "resourceVersion"];
   return diagnosis.evidence.search!.field === "env"
     ? ["名称", "值", "Service", "Workload", "Pod", "Container"]
     : ["Image", "Image ID", "Service", "Workload", "Pod", "Container"];
@@ -521,7 +533,7 @@ function searchRows(diagnosis: InspectDiagnosis): string[][] {
   const search = diagnosis.evidence.search!;
   if (search.field === "event") return eventRows(diagnosis);
   if (search.field === "hpa") return autoscalerRows(diagnosis);
-  if (search.field === "config") return search.matches.map(item => [item.name, displayValue(item.value), item.source, item.path ?? "—", item.service, item.workload, item.namespace ?? "—", item.pod ?? "—", item.container ?? "—"]);
+  if (search.field === "config") return search.matches.map(item => [item.name, displayValue(item.value), item.source, item.path ?? item.secret ?? "—", item.service, item.workload ?? "—", item.namespace ?? "—", item.pod ?? "—", item.container ?? "—", item.resourceVersion ?? "—"]);
   return search.field === "env"
     ? search.matches.map(item => [item.name, displayValue(item.value), item.service, item.workload, item.pod, item.container])
     : search.matches.map(item => [item.image, item.imageId ?? "—", item.service, item.workload, item.pod, item.container]);
@@ -538,7 +550,7 @@ function configSearchTables(matches: readonly ConfigSearchMatch[], namespace: st
   const byOrigin = new Map<string, Group>();
   for (const { name, value, ...origin } of matches) {
     origin.namespace ??= namespace;
-    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path,
+    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path, origin.secret, origin.dataSource, origin.resourceVersion,
       origin.workload, origin.pod, origin.container]);
     let group = byOrigin.get(key);
     if (!group) {
@@ -551,18 +563,18 @@ function configSearchTables(matches: readonly ConfigSearchMatch[], namespace: st
   for (const group of byOrigin.values()) {
     const { origin, entries } = group;
     entries.sort(([left], [right]) => left.localeCompare(right));
-    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path, entries]);
+    const key = JSON.stringify([origin.service, origin.namespace, origin.source, origin.path, origin.secret, origin.dataSource, origin.resourceVersion, entries]);
     const existing = groups.get(key);
     if (existing) existing.origins.push(origin);
     else groups.set(key, group);
   }
   return [...groups.values()].flatMap(({ origin, origins, entries }) => [
-    `## ${origin.source === "file" ? `文件：${markdownCell(origin.path)}` : "Pod env"}`,
+    `## ${origin.source === "file" ? `文件：${markdownCell(origin.path)}` : origin.source === "secret" ? `Secret：${markdownCell(origin.secret)}` : "Pod env"}`,
     "",
     `- Service：${markdownCell(origin.service)}`,
     `- Namespace：${markdownCell(origin.namespace)}`,
     "- 来源：",
-    ...origins.map(item => `  - ${markdownCell(item.workload)} · Pod：${markdownCell(item.pod)} · Container：${markdownCell(item.container)}`),
+    ...origins.map(item => item.source === "secret" ? `  - DataSource：${markdownCell(item.dataSource)} · resourceVersion：${markdownCell(item.resourceVersion)}` : `  - ${markdownCell(item.workload)} · Pod：${markdownCell(item.pod)} · Container：${markdownCell(item.container)}`),
     ...(origins.length > 1 ? ["- 以下匹配项在这些来源中相同。"] : []),
     "",
     ...markdownTable(["名称", "值"], entries.map(([name, value]) => [name, displayValue(value)])),
@@ -658,6 +670,10 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "",
     "## 配置",
     "",
+    "### Secret 配置",
+    "",
+    ...markdownTable(SECRET_TABLE_HEADERS, secretRows(diagnosis)),
+    "",
     "### 配置对照",
     "",
     ...markdownTable(["name", "Env（ConfigMap + Deployment env）"], tableRows(diagnosis)),
@@ -748,6 +764,10 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
         dependencyRows(diagnosis),
         { search: { column: 2, placeholder: "按依赖名检索" } },
       ),
+    },
+    {
+      title: "配置 / Secret",
+      html: htmlTable(SECRET_TABLE_HEADERS, secretRows(diagnosis)),
     },
     {
       title: "配置 / 配置对照",
