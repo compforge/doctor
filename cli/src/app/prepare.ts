@@ -10,6 +10,7 @@ import type { CommandDeliveryOptions } from "./delivery";
 import { resolveWorkingProfile, type WorkingProfileOptions } from "./profile";
 
 export type CommandOptions = WorkingProfileOptions & CommandDeliveryOptions & {
+  debug?: boolean;
   yes?: boolean;
   kubeconfig?: string;
   context?: string;

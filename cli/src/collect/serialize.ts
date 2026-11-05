@@ -1,4 +1,4 @@
-import type { Summary } from "@compforge/doctor-plugin";
+import type { Summary } from "@compforge/harness-common";
 import { projectSummary, renderSummary } from "../command/summary";
 import { CommandStatus } from "../command/status";
 import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";

@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
-import { createServiceCatalog, describeService, validateResourceSnapshot, immutableJsonObject, withSummary,
-  type ServiceDefinition, type ServiceResourceDefinition, type ResourceSnapshot, type JsonObject } from "../src";
+import { immutableJsonObject, type JsonObject } from "@compforge/harness-common";
+import { createServiceCatalog, describeService, validateResourceSnapshot, withSummary, type ServiceDefinition, type ServiceResourceDefinition, type ResourceSnapshot } from "../src";
 
 const resource = { id: "shared-volumes", kind: "volume", name: "Volumes" };
 const observe = { access: {}, run: mock(withSummary({ title: "Volumes", fields: [] }, async () => snapshot())) };

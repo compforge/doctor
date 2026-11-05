@@ -1,4 +1,4 @@
-import { validateSummary, type Summary } from "@compforge/doctor-plugin";
+import { validateSummary, type Summary } from "@compforge/harness-common";
 
 /** One bounded projection for terminal, Markdown and HTML. Never walk arbitrary response bodies. */
 export interface SummaryProjection {

@@ -361,9 +361,9 @@ export async function collectLog(
       items: contexts.map(ctx => ({ ctx, config: ctx.config })),
       concurrency, signal: commandContext.signal,
       planProbes: (_facts, config) => {
-        useLogger().warn(config.bizId === undefined
-          ? "\n[collect:log] 按 Service / 时间范围采集（不按业务 ID 过滤）\n"
-          : `\n[collect:log] biz-id: ${config.bizId}`);
+        useLogger().info(config.bizId === undefined
+          ? "[collect:log] 采集阶段：按 Service / 时间范围采集（不按业务 ID 过滤）"
+          : `[collect:log] 采集阶段 biz-id: ${config.bizId}`);
         return [makeLogProbe(config.services, executor)];
       }, log,
       buildEvidence: buildLogEvidence, detectors: [...logDetectors, detectLogEvidenceGaps],

@@ -7,10 +7,7 @@ import type {
   WorkloadInstance,
 } from "@compforge/doctor-plugin";
 import type { EvidenceSchemaMeta, ObservationMeta } from "../collect/protocol";
-import {
-  immutableJsonObject,
-  immutableJsonValue,
-} from "@compforge/doctor-plugin";
+import { immutableJsonObject, immutableJsonValue } from "@compforge/harness-common";
 
 /** Core canonicalizes local Plugin schema kinds instead of trusting hand-written prefixes. */
 export function pluginEvidenceKind(plugin: string, service: string, kind: string): string {

@@ -39,6 +39,8 @@ export interface PluginInfra {
 
 /** Client factories receive root-owned access; never capture a capability call's context. */
 export interface PluginClientContext {
+  /** Host-scoped diagnostic sink; optional for embedded consumers and tests. */
+  readonly logger?: { debug(message: string): void };
   target: PluginTarget;
   /** Profile-scoped opaque config. Its schema and interpretation belong to the Plugin. */
   config: Readonly<Record<string, unknown>>;

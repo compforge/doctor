@@ -1,5 +1,5 @@
 import type { ExecutionDiagnostic } from "./diagnostic";
-import type { Summary } from "@compforge/doctor-plugin";
+import type { Summary } from "@compforge/harness-common";
 import type { CommandArtifact } from "./artifacts";
 import { CommandStatus } from "./status";
 

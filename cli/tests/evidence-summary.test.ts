@@ -1,5 +1,5 @@
 import { evidenceGaps } from "../src/collect/evidence-gaps";
-import type { Summary } from "@compforge/doctor-plugin";
+import type { Summary } from "@compforge/harness-common";
 import { projectSummary } from "../src/command/summary";
 import { htmlFactTable } from "../src/collect/output/report/components/fact-table";
 import { expect, test } from "bun:test";

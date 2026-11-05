@@ -75,7 +75,7 @@ interface Summary {
 }
 ```
 
-`Summary` 定义在 `packages/plugin/src/summary.ts`，也用于 Fact、Observation 和 CommandResult。
+`Summary` 定义在 `@compforge/harness-common`，也用于 Fact、Observation 和 CommandResult。
 `path` 相对伴随的数据，空路径表示数据本身；生产者可通过 `text` 返回本次结果的纯文本描述，与字段投影共存；仅需文本时使用 `fields: []`。
 结构化 data 是程序消费契约，文本用于阅读，不作为后续逻辑的数据来源。
 提供方可用 `withSummary(summary, run)` 包装静态字段选择，动态结果也可直接返回信封。
@@ -244,7 +244,7 @@ Value 和 Codec 方法必须是纯数据操作，不访问网络或申请资源�
 JSON 格式不兼容时提升 schemaVersion；仅增加运行时方法无需改变归档版本。
 Plugin API 20 只接受 Codec 声明，移除 TypeBox schema、Core 的 additionalProperties 校验和旧编码分支。
 
-Value/Codec 是独立于 Command 的 Core–Plugin 数据契约。SDK 的 `serializeValue` / `deserializeValue`
+Value/Codec 是独立于 Command 的 harness-common 数据契约。harness-common 的 `serializeValue` / `deserializeValue`
 可直接用于嵌套对象、数组等复合数据；只有明确保存、恢复数据的边界需要使用它，不要求所有命令输出都实现 Value。
 Resource 等领域模型继续由各 Command 拥有，复用 SDK 的 JSON 规范化与合法性检查，不改变为 Value 的子类。
 编码输入 `JsonInput` 允许对象属性为 undefined，Core 递归省略这些属性，协议中表示“未提供”；
@@ -282,3 +282,7 @@ Search client 和取消信号，不另建 PluginContext、连接或凭据解析�
 `defineWorkloadProbeExtension` 的 run 返回 `{ value, status, reason? }`。Value 的 summary 和 codec
 仍负责展示与序列化；status 记录本次实例采集是否完成。`partial` 与 `unavailable` 必须附带 reason，
 并保留已取得的 Value。规则评价仍使用 `ServiceDetector.detect(evidence)`，不增加逐规则结果协议。
+
+Plugin API 22 将 Value、ValueCodec、Summary 和 JSON 契约移到 `@compforge/harness-common`。
+Core 与 Plugin 直接声明 common 依赖并从该包导入；Doctor Plugin SDK 不再导出这些符号。
+PluginClientContext 可提供宿主 DEBUG logger；数据访问适配器可将它传给 DataLoader，普通执行保持安静。

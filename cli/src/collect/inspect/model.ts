@@ -1,13 +1,8 @@
 import type { KubernetesResourceReader } from "../../infra/k8s/resources";
 import type { TimeWindowOptions } from "../time-window";
 import type { InspectTimeWindow } from "@compforge/doctor-plugin";
-import type {
-  JsonObject,
-  JsonValue as PortableJsonValue,
-  Toolchain,
-  Workload,
-  WorkloadInstance,
-} from "@compforge/doctor-plugin";
+import type { JsonObject, JsonValue as PortableJsonValue } from "@compforge/harness-common";
+import type { Toolchain, Workload, WorkloadInstance } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -232,7 +227,7 @@ export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta 
 export interface PluginWorkloadObservation extends ObservationMeta {
   status: "ok" | "partial" | "unavailable";
   reason?: string;
-  summary: import("@compforge/doctor-plugin").Summary;
+  summary: import("@compforge/harness-common").Summary;
   kind: "plugin-workload";
   instance: WorkloadInstance;
   observationKind: string;

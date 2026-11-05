@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, type JsonObject, type Summary, type Value, type ValueCodec } from "@compforge/doctor-plugin";
+import { type JsonObject, type Summary, type Value, type ValueCodec } from "@compforge/harness-common";
+import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension } from "@compforge/doctor-plugin";
 import { encodeObservationValue, restoreObservationValue, type StoredValueObservation } from "../src/plugin/value";
 import { workloadProbeProviders } from "../src/plugin/workload-extensions";
 

@@ -109,7 +109,7 @@ Help 根据有效入口隐藏 profile 相关选项和 `init/profile` 命令，�
 不受日志级别影响；交互提示、授权说明与原始字节也使用独立 writer。自动化发行版可配置 `error`，
 在非交互执行时直接消费 stdout 的结果；启用过程日志时，stdout 可以同时包含日志与最终交付。
 
-Doctor 不自动生成错误日志文件；错误摘要保留在 stderr，`--debug` 展开 stack 与 cause。需要留存时由调用方重定向 stderr。
+Doctor 不自动生成错误日志文件；错误摘要保留在 stderr，`--debug` 启用 DEBUG 诊断日志，并在错误时展开 stack 与 cause。需要留存时由调用方重定向 stderr。
 
 ### 展示不是权限边界
 

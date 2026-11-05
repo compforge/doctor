@@ -1,5 +1,5 @@
 import { normalizeInspectSources, boundInspectSources } from "./inspect-sources";
-import { validateSummary } from "@compforge/doctor-plugin";
+import { validateSummary } from "@compforge/harness-common";
 import { invokeExtension } from "./extension";
 import type { FactsInspectExtension, FactsInspectInput, FactsInspectOutput } from "@compforge/doctor-plugin";
 import type { PluginContext, ServiceInspectQuery, ServiceInspectQueryOutcome } from "@compforge/doctor-plugin";

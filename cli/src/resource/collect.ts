@@ -1,7 +1,7 @@
 import { executionDiagnostic, type ExecutionDiagnostic } from "../command/diagnostic";
 import { ToolboxError, type ErrorKind } from "@compforge/harness-toolbox/errors";
-import { immutableJsonValue, validateResourceSnapshot, type Resource, type ResourceSnapshot, type JsonObject, type ResourceQuery,
-  type OperationResult, type Summary } from "@compforge/doctor-plugin";
+import { immutableJsonValue, type JsonObject, type Summary } from "@compforge/harness-common";
+import { validateResourceSnapshot, type Resource, type ResourceSnapshot, type ResourceQuery, type OperationResult } from "@compforge/doctor-plugin";
 import { CommandStatus } from "../command";
 import type { ResourceProvider } from "./catalog";
 
