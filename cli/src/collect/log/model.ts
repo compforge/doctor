@@ -15,6 +15,7 @@ export interface LogCollectOptions {
   kubeconfig?: string;
   context?: string;
   services: string[];
+  window?: import("./window").LogTimeWindow;
   since?: string;
   sinceTime?: string;
   untilTime?: string;

@@ -1,3 +1,4 @@
+import { parseDuration } from "@compforge/harness-toolbox/duration";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -76,6 +77,11 @@ function validateProfileShape(value: unknown, name: string): Profile {
     throw new Error(`profile '${name}'.overview.sample_count must be a positive integer`);
   }
   const log = optionalMap(profile.log, `profile '${name}'.log`);
+  if (log?.timePadding !== undefined) {
+    optionalScalar(log.timePadding, "string", `profile '${name}'.log.timePadding`);
+    try { parseDuration(log.timePadding as string); }
+    catch { throw new Error(`profile '${name}'.log.timePadding must be a positive duration, for example 10m`); }
+  }
   for (const [field, value] of [
     ["overview.collect_concurrency", overview?.collect_concurrency],
     ["log.concurrency", log?.concurrency],
