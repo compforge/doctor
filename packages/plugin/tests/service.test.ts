@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { inspectExtension } from "./extension-fixture";
 import { expect, test } from "bun:test";
 
@@ -15,7 +16,8 @@ test("Service aliases resolve one canonical identity without inferring Workload 
     name: "runtime",
     aliases: ["rt", "engine"],
     workloads: [{ name: "worker", platform: "kubernetes", location: { kind: "service", name: "runtime-worker" } }],
-    logs: { default: true }
+    extensions: [allLogWorkloads()],
+    logs: {}
   } satisfies ServiceDefinition;
   const catalog = createServiceCatalog([service]);
   expect(catalog.find("rt")).toBe(service);
@@ -69,12 +71,13 @@ test("Service 不声明 Toolchain 仍可注册其它 capability", () => {
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "legacy-api",
     workloads: [],
-    logs: { default: true }
+    extensions: [allLogWorkloads()],
+    logs: {}
   };
   const catalog = createServiceCatalog([service]);
 
   expect(catalog.find("legacy-api")?.toolchain).toBeUndefined();
-  expect(catalog.find("legacy-api")?.logs!.default).toBe(true);
+  expect(catalog.extensions("log.workloads").map(item => item.service.name)).toContain("legacy-api");
 });
 
 test("Toolchain runtime validator 只校验已提供的声明", () => {

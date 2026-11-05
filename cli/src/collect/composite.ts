@@ -235,7 +235,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         ...common, bizIds: input.bizIds,
         // Capability availability is broader than the Plugin's default collection scope.
         services: plugin.services.services.filter(service => service.logs !== undefined)
-          .filter((service) => service.logs!.default).map((service) => service.name),
+          .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads")).map((service) => service.name),
         since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
       case "metric": return metricCommand.run(context, {

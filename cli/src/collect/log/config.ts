@@ -138,7 +138,7 @@ export async function resolveLogServiceSelection(
 ): Promise<string[] | undefined> {
   if (input.raw !== undefined) return resolveLogServices(input.raw, input.catalog);
   const defaults = input.catalog.services.filter(service => service.logs !== undefined)
-    .filter((service) => service.logs!.default)
+    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
     .map((service) => service.name);
   const interactive = isInteractive(input.interactive);
   if (!interactive) return defaults;

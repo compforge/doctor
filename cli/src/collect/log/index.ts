@@ -1,5 +1,6 @@
 import { dataLogWindows, type DataLogWindows } from "./data-window";
 import { timePaddingMs, selectLogTimeWindow, type TraceLogWindow } from "./window";
+import { resolveLogWorkloads, mergeLogWorkloads, projectLogFacts } from "./workloads";
 import { gapMessages } from "../evidence-gaps";
 import { dataCommand } from "../data/command";
 import type { DataOutput } from "../data/model";
@@ -38,6 +39,7 @@ import { buildIndexExpr } from "../trace/opensearch";
 import {
   buildLogPattern,
   resolveLogServiceSelection,
+  resolveLogTimeWindow,
   serviceLogErrorPatterns,
   validateLogTimeWindow,
 } from "./config";
@@ -48,6 +50,7 @@ import type {
   LogCommandContext,
   LogDiagnosis,
   LogRenderStats,
+  LogInspectionFacts,
 } from "./model";
 import type { LogOutputFormat } from "./output";
 import { parseLogOutputFormat } from "./output";
@@ -161,8 +164,22 @@ async function prepareLogBatch(
     return 2;
   }
   useLogger("collect").info(`services: ${services.join(", ")}`);
+  const selectionIds = opts.bizIds.length ? opts.bizIds : [undefined];
+  const selections = await resolveLogWorkloads(services, selectionIds.map(bizId => ({
+    bizId, ...resolveLogTimeWindow({ ...opts, id: bizId }), untilTime: opts.untilTime,
+  })), plugin.services, commandContext, executor, {
+    namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context,
+  });
+  const workloads = mergeLogWorkloads(selections.map(selection => selection.workloads));
+  selections.forEach((selection, index) => {
+    for (const [service, names] of Object.entries(selection.workloads)) {
+      useLogger("collect:log").info(`${selectionIds[index] ?? "Service"} ${service}: Workload [${names.join(", ")}]${selection.summaries[service]?.text ? `；${selection.summaries[service]!.text}` : ""}`);
+    }
+    for (const gap of selection.gaps) useLogger("collect:log").warn(gap);
+  });
   let identityResolution: CommandResult<DataOutput> | undefined;
   const identityServices = services.filter(name => {
+    if (!workloads[name]?.length) return false;
     const service = plugin.services.find(name);
     return service?.logs?.identityRelations || plugin.services.extensions("facts.inspect")
       .some(item => item.service.name === name && requireFactsInspectExtension(item.extension).provides.includes(COLLECT_WINDOW_KIND));
@@ -175,7 +192,7 @@ async function prepareLogBatch(
   }
   let trace: ResolvedPluginTraceId[] = [];
   // No-ID collection must not resolve business IDs or prepare their database/store dependencies.
-  if (opts.bizIds.length && plugin.services.extensions("trace.resolve").length) {
+  if (opts.bizIds.length && Object.values(workloads).some(names => names.length) && plugin.services.extensions("trace.resolve").length) {
     const dependencyRuntime = new ServiceDependencyRuntime({
       plugin,
       collect,
@@ -218,9 +235,9 @@ async function prepareLogBatch(
     }
   }
 
-  const selected = services.flatMap(name => plugin.services.find(name)!.workloads)
+  const selected = services.flatMap(name => plugin.services.find(name)!.workloads.filter(workload => workloads[name]?.includes(workload.name)))
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
-  await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
+  if (selected.length) await enforceKubernetesAccess(resolveKubernetesCommandContext(executor, commandContext).access, {
     command: "doctor log",
     needs: [{
       requirement: "required", rule: { verb: "get", resource: "pods/log" },
@@ -248,7 +265,7 @@ async function prepareLogBatch(
   const access = new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, resolvedNamespace.namespace), {
     namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, signal: commandContext.signal,
   });
-  return { pattern, format, collect, resolved, resolvedNamespace, executor, trace, services, access, identityResolution };
+  return { pattern, format, collect, resolved, resolvedNamespace, executor, trace, services, access, identityResolution, selections };
 }
 
 /**
@@ -287,10 +304,13 @@ export async function runCollectLog(
     rejected: [...(opts.dataWindows?.rejected ?? []), ...localWindows.rejected],
   };
   const requests: LogCollectOptions[] = requestIds.flatMap((bizId, index) => {
+    const selection = prepared.selections[index]!;
+    const selectedServices = services.filter(name => selection.workloads[name]?.length);
+    if (!selectedServices.length) return [];
     const traces = prepared.trace.filter(trace => trace.bizId === bizId);
     const dataItem = prepared.identityResolution?.output?.items.find(item => item.bizId === bizId);
     const identities = dataItem?.diagnosis && bizId !== undefined
-      ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services) : [];
+      ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services).filter(item => selectedServices.includes(item.service)) : [];
     if (bizId !== undefined && !traces.length) {
       useLogger("collect").warn(`[collect:log] ${bizId} 未找到 trace ID，将根据 Data 窗口或原有日志规则采集`);
     }
@@ -311,8 +331,8 @@ export async function runCollectLog(
       `[collect:log] ${bizId ?? "Service 日志"} window source=${window.contribution ? `${window.contribution.service}/${window.contribution.queryId}#${window.contribution.factIndex}` : "trace"} from-source=${window.fromSource} to-source=${window.toSource} padding=${window.timePadding} padding-source=${window.paddingSource}`);
     if (timeWindow.fallbackReason) useLogger("collect").info(`[collect:log] ${bizId ?? "Service 日志"} ${timeWindow.fallbackReason}`);
     return [{
-      bizId, traceIds: traces.map(trace => trace.traceId), identities, resolutionGaps, namespace: resolvedNamespace.namespace,
-      kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services,
+      bizId, traceIds: traces.map(trace => trace.traceId), identities, resolutionGaps: [...resolutionGaps, ...selection.gaps], workloads: selection.workloads, namespace: resolvedNamespace.namespace,
+      kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services: selectedServices,
       since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime: timeWindow.untilTime ?? untilTime, window: { ...timeWindow, untilTime: timeWindow.untilTime ?? untilTime },
       errorsOnly: !!opts.errorsOnly, pattern: opts.pattern,
       outputDir: join(stagingRoot, bizId === undefined ? "service-logs"
@@ -324,7 +344,15 @@ export async function runCollectLog(
     line => useLogger().info(`${line}`), bundle, access, opts.itemConcurrency);
   const byId = new Map(requests.map((request, index) => [request.bizId, { request, result: results[index]!, artifact: artifacts[index]! }]));
   const items: LogOutput["items"][number][] = [];
-  requestIds.forEach((bizId) => {
+  requestIds.forEach((bizId, index) => {
+    const selection = prepared.selections[index]!;
+    const empty = !Object.values(selection.workloads).some(names => names.length);
+    if (empty && !commandContext.signal.aborted) {
+      items.push({ bizId, status: selection.gaps.length ? CommandStatus.Failed : CommandStatus.Ok, artifacts: [],
+        reason: selection.gaps.length ? selection.gaps.join("；") : "没有与本次输入相关的日志 Workload",
+        ...(selection.gaps.length ? { missingEvidence: selection.gaps } : {}) });
+      return;
+    }
     const collected = byId.get(bizId);
     const status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
     const reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id 或已声明的日志对象身份" : undefined);
@@ -332,6 +360,7 @@ export async function runCollectLog(
       ...(collected ? { stats: collected.result.stats, missingEvidence: collected.result.missingEvidence, resolutionGaps: collected.result.resolutionGaps } : {}) });
   });
   writeFileSync(join(staging, "diagnosis.json"), JSON.stringify({
+    workloadSelections: prepared.selections.map((selection, index) => ({ bizId: requestIds[index], ...selection })),
     items: items.map(({ artifacts, ...item }) => ({
       ...item, artifact_ids: artifacts.map(artifact => artifact.id),
     }))
@@ -362,6 +391,9 @@ export async function collectLog(
   if (!requests.length) return [];
   const startedAt = new Date().toISOString();
   const first = requests[0]!;
+  const services = [...new Set(requests.flatMap(request => request.services))];
+  const workloads = mergeLogWorkloads(requests.map(request => request.workloads ?? Object.fromEntries(
+    request.services.map(name => [name, commandContext.plugin.services.find(name)!.workloads.map(workload => workload.name)]))));
   const { environment } = await commandContext.environment(executor);
   const source = access ?? new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, first.namespace), {
     namespace: first.namespace, signal: commandContext.signal, kubeconfig: first.kubeconfig, context: environment.context,
@@ -383,8 +415,8 @@ export async function collectLog(
   try {
     const execution = await runCollectBatch({
       ctx: { ...contexts[0]!, bundle },
-      inspects: [makeLogInspect(first.services, executor)],
-      items: contexts.map(ctx => ({ ctx, config: ctx.config })),
+      inspects: [makeLogInspect(services, executor, workloads)],
+      items: contexts.map(ctx => ({ ctx, config: ctx.config, projectFacts: (facts: Readonly<LogInspectionFacts>) => projectLogFacts(facts, ctx.config) })),
       concurrency, signal: commandContext.signal,
       planProbes: (_facts, config) => {
         useLogger().info(config.bizId === undefined
@@ -394,7 +426,7 @@ export async function collectLog(
       }, log,
       buildEvidence: buildLogEvidence, detectors: [...logDetectors, detectLogEvidenceGaps],
       checkpointFacts: facts => bundle.writeCollection({
-        doctorVersion: DOCTOR_CLI_VERSION, target: { namespace: first.namespace, input_ids: requests.flatMap(item => item.bizId === undefined ? [] : [item.bizId]), services: first.services },
+        doctorVersion: DOCTOR_CLI_VERSION, target: { namespace: first.namespace, input_ids: requests.flatMap(item => item.bizId === undefined ? [] : [item.bizId]), services },
         inspectionFacts: { ...facts }, params: {}, startedAt, finishedAt: new Date().toISOString(),
       }),
     });
@@ -427,7 +459,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
-    target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, namespace: config.namespace, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
+    target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, workloads: config.workloads, namespace: config.namespace, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
     inspectionFacts: { ...facts },
     params: { window: config.window, since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
     startedAt, finishedAt: new Date().toISOString(),

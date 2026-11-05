@@ -37,3 +37,4 @@ export * from "./workload";
 export * from "./vdb";
 
 export * from "./health";
+export * from "./log";

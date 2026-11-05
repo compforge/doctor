@@ -160,6 +160,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | kind | 输入 → 输出 | 消费方 |
 |---|---|---|
 | facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
+| log.workloads | 业务 ID（可选）、时间窗口 → 本 Service 的 Workload 名称子集 | Log、Collect、Eval |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | facet.summarize | 时间窗口、租户、预算 → Facet 汇总 | Sample / Health |
 | facet.sample | Facet、Entry、窗口、数量 → 代表业务 ID | Sample |
@@ -286,3 +287,16 @@ Search client 和取消信号，不另建 PluginContext、连接或凭据解析�
 Plugin API 22 将 Value、ValueCodec、Summary 和 JSON 契约移到 `@compforge/harness-common`。
 Core 与 Plugin 直接声明 common 依赖并从该包导入；Doctor Plugin SDK 不再导出这些符号。
 PluginClientContext 可提供宿主 DEBUG logger；数据访问适配器可将它传给 DataLoader，普通执行保持安静。
+
+### 日志 Workload 选择（API 23）
+
+Service.workloads 保留静态归属。log.workloads 在日志命令执行时为每个输入返回其中 0 到 N 个名称，
+Core 校验引用后发现实例并采集；不解释提供方如何判断关联。返回空数组是成功选择，无需发现 Pod 或读取日志；
+失败走现有异常机制，记录证据缺口，不回退到全量扫描。摘要随选择结果归档。
+
+注册此扩展的日志 Service 参与默认选择；未注册的 Service 仍可通过显式选择采集静态 Workload。
+logs.default 已移除。固定选择全部 Workload 可使用 SDK 的 allLogWorkloads()，动态选择实现 LogWorkloadsExtension。
+同一 Service 同一 kind 只允许一个实现。数据访问声明在扩展 access 中，共享 Client 和取消沿用宿主生命周期。
+
+多 biz ID 的结果分别保存，实例发现可取并集，但每个请求的 Probe 和 Evidence 只消费自己的 Workload 子集。
+日志内容关联仍通过 logs.identityRelations，错误模式仍通过 logs.errorPatterns 声明。

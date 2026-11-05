@@ -17,6 +17,7 @@ function failureReason(result: ExecResult): string {
 export function makeLogInspect(
   services: readonly string[],
   executor: Executor,
+  workloads?: Readonly<Record<string, readonly string[]>>,
 ): Inspect<LogInspectionFacts, LogCommandContext> {
   return {
     id: "log-target",
@@ -39,6 +40,7 @@ export function makeLogInspect(
       const byService: Record<string, LogWorkloadTarget[]> = {};
       const { environment } = await ctx.command.environment(executor);
       const missing: Record<string, string[]> = {};
+      const workloadMissing: Record<string, Record<string, string[]>> = {};
       for (const serviceName of services) {
         ctx.command.signal.throwIfAborted();
         const service = ctx.command.plugin.services.find(serviceName);
@@ -48,7 +50,10 @@ export function makeLogInspect(
           gaps.push(`${serviceName}: 未声明可采集日志的 Workload`);
           continue;
         }
-        for (const workload of service.workloads) {
+        const selected = service.workloads.filter(workload => !workloads || workloads[serviceName]?.includes(workload.name));
+        workloadMissing[serviceName] = {};
+        for (const workload of selected) {
+          const gaps: string[] = workloadMissing[serviceName]![workload.name] = [];
           ctx.log(`[collect] 定位 ${serviceName}/${workload.name} 的日志实例…`);
           let captureIndex = 0;
           const resolved = await discoverKubernetesWorkload(
@@ -93,12 +98,15 @@ export function makeLogInspect(
         }
         if (changedPods.size) {
           byService[serviceName] = targets.filter(target => !changedPods.has(target.instance.pod));
-          for (const pod of changedPods) gaps.push(`${serviceName}/${pod}: Workload 定位期间 Pod UID 发生变化，请重试`);
+          for (const target of targets.filter(target => changedPods.has(target.instance.pod))) {
+            workloadMissing[serviceName]![target.instance.workload]!.push(`${serviceName}/${target.instance.pod}: Workload 定位期间 Pod UID 发生变化，请重试`);
+          }
         }
+        gaps.push(...Object.values(workloadMissing[serviceName] ?? {}).flat());
       }
       return {
         runtime: collectedFact("log.runtime", "log-target", { kubectlVersion: version.stdout.split("\n")[0]?.trim() || undefined }),
-        servicePods: { ...collectedFact("log.service-pods", "log-target", { byService, missing }), schemaVersion: LOG_TARGET_SCHEMA_VERSION },
+        servicePods: { ...collectedFact("log.service-pods", "log-target", { byService, missing, workloadMissing }), schemaVersion: LOG_TARGET_SCHEMA_VERSION },
       };
     },
   };

@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,8 +22,8 @@ for (const variant of ["collected", "partial", "failed"] as const) {
     const context = new CommandContext({ kubernetes: { kubeconfig: { kubeconfig, source: "flag" }, channel: { available: true, client: ok } } }, {
       name: "test", configPath: "", value: { readonly: true, namespace: "test", kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {},
     }, { format: "summary", plugin: { id: "objects", version: "1", services: createServiceCatalog([{
-      ...logService(), logs: { default: true, identityRelations: { biz_id: ["carrier_id"] } },
-      extensions: [inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["carrier_id"], provides: ["reference"],
+      ...logService(), logs: {  identityRelations: { biz_id: ["carrier_id"] } },
+      extensions: [allLogWorkloads(), inspectExtension({ access: {}, accepts: ["biz_id"], expands: ["carrier_id"], provides: ["reference"],
         inspect: async (_context, queries) => queries.map(({ identity }) => variant === "failed" ? {
           identity, status: "failed" as const, reason: "database unavailable",
         } : { identity, status: "collected" as const, result: {
