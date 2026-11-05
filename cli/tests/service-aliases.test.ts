@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { inspectExtension, metricExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -14,13 +15,13 @@ const service: ServiceDefinition = {
   name: "api-server",
   aliases: ["api"],
   workloads: [],
-  logs: { default: true },
-  extensions: [metricExtension({ endpoint: { host: "api-server", port: 80, path: "/metrics" }, metricNames: [], charts: [] }),
+  logs: {},
+  extensions: [allLogWorkloads(), ...[metricExtension({ endpoint: { host: "api-server", port: 80, path: "/metrics" }, metricNames: [], charts: [] }),
   inspectExtension({
     access: {}, accepts: ["biz_id"], provides: ["record"],
     resolveTarget: async () => { throw new Error("offline"); },
     inspect: async () => { throw new Error("offline"); },
-  })]
+  })]]
 };
 const catalog = createServiceCatalog([service]);
 

@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 import { expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -27,7 +28,8 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
       name,
       workloads: [],
-      logs: { default: name === "chat-server" }
+      extensions: [...(name === "chat-server" ? [allLogWorkloads()] : [])],
+      logs: {}
     }))),
   };
   const context = new CommandContext({}, undefined, { plugin });

@@ -431,13 +431,12 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
   cases?: readonly ServiceCaseSource[];
   resources?: readonly ServiceResourceDefinition[];
   /**
-   * Presence enables log collection; default selects the implicit collection scope.
+   * Presence enables explicit log collection; log.workloads selects automatic collection targets.
    * errorPatterns declares Service-specific error signatures that do not look like generic
    * errors (e.g. WARNING-level lines carrying business error codes); Core merges them into
    * --errors-only filtering. Invalid regex fails the log command explicitly at pattern build.
    */
   logs?: {
-    default: boolean;
     errorPatterns?: readonly string[];
     /** Directed identity edges from facts.inspect that may correlate this Service's logs.
      * Omit reverse edges through shared resources to avoid selecting sibling requests.

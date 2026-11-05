@@ -16,6 +16,7 @@ export interface LogCollectOptions {
   context?: string;
   services: string[];
   window?: import("./window").LogTimeWindow;
+  workloads?: Readonly<Record<string, readonly string[]>>;
   since?: string;
   sinceTime?: string;
   untilTime?: string;
@@ -42,6 +43,7 @@ export interface LogInspectionFacts {
   servicePods: Fact<{
     byService: Record<string, LogWorkloadTarget[]>;
     missing: Record<string, string[]>;
+    workloadMissing?: Record<string, Record<string, string[]>>;
   }, "log.service-pods">;
 }
 

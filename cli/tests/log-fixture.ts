@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { createServiceCatalog, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type { KubernetesPod } from "@compforge/harness-toolbox/kubernetes/pod";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -7,7 +8,8 @@ export const logService = (name = "api"): ServiceDefinition => ({
   name,
   component: { name, repository: { forge: { name: "test" }, path: "fixtures/log" } },
   workloads: [{ name: "main", platform: "kubernetes", location: { kind: "labels", labels: { app: name } } }],
-  logs: { default: true }
+  extensions: [allLogWorkloads()],
+  logs: {}
 });
 export const logPlugin = (...services: ServiceDefinition[]): PluginDefinition => ({
   id: "log-fixture", version: "1.0.0", services: createServiceCatalog(services.length ? services : [logService()]),

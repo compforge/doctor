@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, type Identity, type RelationFact } from "@compforge/doctor-plugin";
 import { collectedFact, failedFact } from "../src/collect/protocol";
@@ -18,7 +19,8 @@ const query = (id: string, identity: Identity, facts: RelationFact[], service = 
     resolution: { inputId: identity.value, resolvedAs: identity.kind, identifiers: {} }, facts,
   } }),
 });
-const catalog = createServiceCatalog([{ ...logService(), logs: { default: true, identityRelations: {
+const catalog = createServiceCatalog([{ ...logService(), extensions: [allLogWorkloads()],
+      logs: {  identityRelations: {
   biz_id: ["sandbox_id"], sandbox_id: ["carrier_id"], carrier_id: ["pod_name"],
 } } }, logService("other")]);
 

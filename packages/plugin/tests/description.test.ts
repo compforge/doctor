@@ -19,7 +19,7 @@ const service: ServiceDefinition = {
     platform: "kubernetes", location: { kind: "labels", labels: { app: "worker" } },
   }],
   dependencies: [{ id: "records", service: "storage", dataSource: "main" }],
-  logs: { default: false },
+  logs: {},
   dataSources: [{ id: "database", kind: "db", backend: "mysql", source: { clientKey: "PRIVATE_DB", createClient: noAccess } }],
   detectors: [{ id: "state", detect: noAccess }],
   extensions: [traceExtension({ access: {}, endpoint: { host: "private-host", port: 80 }, resolve: noAccess }),

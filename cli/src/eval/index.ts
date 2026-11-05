@@ -169,7 +169,7 @@ async function collectEvalEvidence(input: {
   }
 
   const logServices = input.plugin.services.services.filter(service => service.logs !== undefined)
-    .filter((service) => service.logs!.default)
+    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
     .map((service) => service.name);
   if (!input.commandContext.signal.aborted && input.plugin.services.extensions("trace.resolve").length && logServices.length) {
     try {

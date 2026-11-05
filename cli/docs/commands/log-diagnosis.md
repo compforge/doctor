@@ -31,7 +31,7 @@
 
 ### Service 声明拓扑，Core 定位实例
 
-有哪些 Service 属于 Plugin 知识，只在对应 Plugin 的统一 Catalog 定义；是否采集日志以及是否属于默认主链由各 Service 的 log capability 声明，
+有哪些 Service 属于 Plugin 知识，只在对应 Plugin 的统一 Catalog 定义；日志能力由 Service.logs 声明，自动采集候选及逐请求 Workload 选择由 log.workloads Extension 提供，
 Workload 明确贡献资源位置与可选 container；`collect/log` 不维护平行名单，也不把逻辑 Service 名推导成资源名。Service、labels、明确资源的定位语义由 toolbox 统一处理，Core 负责将实例关联到 Service 并形成证据；日志访问仍属于共享 Client。通用多选交互属于 `terminal/`，不进入 infra。
 
 ### 日志传输遵循 kubeconfig 的协议与信任配置

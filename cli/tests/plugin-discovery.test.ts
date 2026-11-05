@@ -1,3 +1,4 @@
+import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { inspectExtension, traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -25,8 +26,8 @@ const injected: PluginDefinition = {
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api",
     workloads: [],
-    logs: { default: true },
-    extensions: [traceExtension({
+    logs: {},
+    extensions: [allLogWorkloads(), traceExtension({
       access: {},
       endpoint: { host: "private-target", port: 80 },
       resolve: async () => { throw new Error("Discovery must not access the target"); },
@@ -51,11 +52,12 @@ describe("Plugin discovery", () => {
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
       services: [{
-        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "facts.inspect" }],
+        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "log-workloads", kind: "log.workloads" }, { id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "facts.inspect" }],
         details: {
           workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
           access: [
+            { owner: "extensions.log-workloads", requirements: { kubernetes: [] } },
             { owner: "extensions.trace.resolve", requirements: { kubernetes: [] } },
             { owner: "extensions.inspect", requirements: { kubernetes: [] } },
           ],

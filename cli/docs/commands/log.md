@@ -9,7 +9,7 @@ doctor log --service api --since-time '2026-09-16T15:00:00+08:00' --until-time '
 doctor log <biz-id> --since 15m      # trace 与已解析对象关联
 ```
 
-`--service` 和时间起点都可省略：非交互使用 Plugin 的默认日志 Service，交互沿用 Service 多选；无 ID 默认回看 6 小时。`--errors-only` 和 `--pattern` 在两种模式下均可用。
+`--service` 和时间起点都可省略：非交互以注册了 `log.workloads` 的 Service 为候选，交互沿用 Service 多选；无 ID 默认回看 6 小时。`--errors-only` 和 `--pattern` 在两种模式下均可用。
 
 ## Workload 与采集范围
 
@@ -69,3 +69,7 @@ Core 不读取 opaque record/value 内的业务字段，也不直接把未解析
 `timeline.jsonl` 的 `matches` 分别记录 `trace` 和 `related-object`，后者保存身份、queryId 及 relation factIndex，
 可回到子 Data 的事实快照核对。TXT 和 HTML 同样标注匹配依据。共享对象命中只表示相关线索，不代表日志属于该请求。
 previous 未过滤尾部仍显式标为 unfiltered，不添加匹配依据。
+
+每个候选 Service 可通过 `log.workloads` 返回本次输入相关的 Workload 子集。空列表表示无需采集，
+不会定位对应 Pod 或下载日志；查询失败记录缺口，其它 Service 继续。显式选择未提供此扩展的 Service
+时使用其静态 Workload。批次中的每个业务 ID 独立选择，选择结果与摘要保存在日志归档的 diagnosis.json。
