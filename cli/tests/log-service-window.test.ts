@@ -13,7 +13,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CommandContext, CommandStatus } from "../src/command";
 import { logCommand, type LogInput } from "../src/collect/log/command";
-import { buildLogPattern, createTraceLineCollector, resolveLogTimeWindow } from "../src/collect/log/config";
+import { buildLogPattern, createTraceLineCollector } from "../src/collect/log/config";
+import { resolveLogTimeWindow } from "../src/collect/log/window";
 import { writeLogHtmlReport } from "../src/collect/log/html";
 
 const plugin: PluginDefinition = {

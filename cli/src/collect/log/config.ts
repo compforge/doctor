@@ -1,4 +1,3 @@
-import { resolveTimeWindow, type TimeWindowOptions } from "../time-window";
 import { containsLogIdentity } from "./correlation";
 import { isInteractive } from "../../terminal/policy";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -25,10 +24,6 @@ const ERROR_PATTERNS = [
   "incomplete chunked read",
 ];
 const ERROR_PATTERN = new RegExp(ERROR_PATTERNS.map((part) => `(?:${part})`).join("|"));
-const DEFAULT_LOG_SINCE = "6h";
-const DEFAULT_LOG_WINDOW_MS = 6 * 60 * 60_000;
-const UUID_V7_LEAD_MS = 60_000;
-const COMPACT_UUID_V7 = /^[0-9a-f]{12}7[0-9a-f]{3}[89ab][0-9a-f]{15}$/i;
 const KUBECTL_PREFIX = /^\[pod\/[^\]]+\]\s+/;
 const RFC3339_PREFIX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})\s+/;
 const STACK_CONTINUATION = /^(?:Traceback \(most recent call last\):|During handling of the above exception|The above exception was the direct cause|Caused by:|Suppressed:|at\s+|\.{3} \d+ more|File\s+".+", line \d+|goroutine \d+ \[|created by |panic:|\S+\([^)]*\)$|[\w.]*(?:Error|Exception|Warning|Interrupt|Exit):)/;
@@ -171,29 +166,6 @@ export function serviceLogErrorPatterns(
   services: readonly string[],
 ): string[] {
   return services.flatMap((name) => [...(catalog.find(name)?.logs?.errorPatterns ?? [])]);
-}
-
-/** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */
-export function resolveLogTimeWindow(input: TimeWindowOptions & { id?: string; now?: Date }): { since?: string; sinceTime?: string } {
-  if (input.sinceTime) return { sinceTime: input.sinceTime };
-  const lookback = (since: string) => input.untilTime
-    ? { sinceTime: resolveTimeWindow({ since, untilTime: input.untilTime })!.from }
-    : { since };
-  if (input.since) return lookback(input.since);
-
-  const compact = input.id?.replaceAll("-", "") ?? "";
-  if (!COMPACT_UUID_V7.test(compact)) return lookback(DEFAULT_LOG_SINCE);
-  const timestampMs = Number.parseInt(compact.slice(0, 12), 16);
-  const nowMs = input.untilTime ? Date.parse(input.untilTime) : (input.now ?? new Date()).getTime();
-  if (timestampMs < nowMs - DEFAULT_LOG_WINDOW_MS || timestampMs > nowMs + UUID_V7_LEAD_MS) {
-    return lookback(DEFAULT_LOG_SINCE);
-  }
-  return { sinceTime: new Date(timestampMs - UUID_V7_LEAD_MS).toISOString() };
-}
-
-/** Reject ambiguous/invalid upper bounds before any remote access. */
-export function validateLogTimeWindow(input: TimeWindowOptions): void {
-  resolveTimeWindow(input);
 }
 
 export function filterTraceLines(stdout: string, traceIds: string | readonly string[], pattern?: RegExp): string[] {

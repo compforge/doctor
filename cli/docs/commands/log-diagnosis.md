@@ -27,6 +27,18 @@
 
 当前没有独立 Detector：命令负责定位和整理日志证据，不把日志文本模式直接解释成根因。
 
+## 代码归属
+
+| 文件（相对于 `cli/src/collect/log/`） | 职责 |
+|---|---|
+| `window.ts` | 日志时间窗口规则：显式参数、Data/Trace 贡献、padding 与默认回看范围 |
+| `data-window.ts` | 从 Data Evidence 提取窗口贡献和来源，保留无效贡献的原因 |
+| `trace-window.ts` | 读取本地 Trace 归档，将完整 span 范围转换为日志窗口贡献 |
+| `workloads.ts` | 调用 `log.workloads` Extension，选择并合并本次请求的 Workload |
+| `fact/inspect.ts` | 共享实例发现，以及按请求选择范围投影 Facts 和采集缺口 |
+
+窗口贡献的适配归日志消费方；窗口规则不读取归档或输出日志。Workload 选择不解释 Pod Fact 的内部结构。
+
 ## 关键设计
 
 ### Service 声明拓扑，Core 定位实例

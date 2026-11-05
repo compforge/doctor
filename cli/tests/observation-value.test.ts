@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { type JsonObject, type Summary, type Value, type ValueCodec } from "@compforge/harness-common";
 import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension } from "@compforge/doctor-plugin";
-import { encodeObservationValue, restoreObservationValue, type StoredValueObservation } from "../src/plugin/value";
+import { encodeObservationValue, restoreObservationValue, type StoredValueObservation } from "../src/plugin/observation-value";
 import { workloadProbeProviders } from "../src/plugin/workload-extensions";
 
 class Settings implements Value {

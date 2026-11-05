@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { freezeTimeWindow, resolveTimeWindow } from "../src/collect/time-window";
-import { resolveLogTimeWindow, validateLogTimeWindow } from "../src/collect/log/config";
+import { resolveLogTimeWindow, validateLogTimeWindow } from "../src/collect/log/window";
 import { parseKubernetesEvents, selectLifecycleEvents } from "../src/infra/k8s/workload-events";
 
 const now = new Date("2026-10-10T10:00:00Z");

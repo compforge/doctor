@@ -7,7 +7,7 @@ import type {
 } from "@compforge/doctor-plugin";
 import { invokeExtension } from "../../../plugin/extension";
 import { openPluginContext } from "../../../plugin/context";
-import { encodeObservationValue } from "../../../plugin/value";
+import { encodeObservationValue } from "../../../plugin/observation-value";
 import type { Probe } from "../../protocol";
 import { PROBE_RUNNABLE, probeUnavailable } from "../../protocol";
 import type {

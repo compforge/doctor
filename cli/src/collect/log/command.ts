@@ -1,4 +1,4 @@
-import { timePaddingMs } from "./window";
+import { timePaddingMs, validateLogTimeWindow } from "./window";
 import { freezeTimeWindow } from "../time-window";
 import { dataCommand } from "../data/command";
 import { prepareCommandRequirements } from "../../command/prepare";
@@ -6,7 +6,6 @@ import { serializeEvidenceResult } from "../serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../../command";
 import { commandOptions, type CommandHostOption } from "../../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../../command/plugin-command-capabilities";
-import { validateLogTimeWindow } from "./config";
 import { runCollectLog } from "./index";
 import { renderLogReport } from "./report";
 

@@ -1,11 +1,7 @@
 import { parseDuration } from "@compforge/harness-toolbox/duration";
 import { CommandInputError } from "../../command";
 import type { DataLogWindow, DataLogWindows, DataWindowRejection } from "./data-window";
-import type { TraceOutput } from "../trace";
-import { readTraceSnapshot } from "../trace/snapshot";
-import type { TimeWindowOptions } from "../time-window";
-import { useLogger } from "../../terminal/log";
-import { resolveLogTimeWindow } from "./config";
+import { resolveTimeWindow, type TimeWindowOptions } from "../time-window";
 
 export interface TraceLogWindow {
   readonly bizId: string;
@@ -14,39 +10,39 @@ export interface TraceLogWindow {
   readonly endMs: number;
 }
 
+const DEFAULT_LOG_SINCE = "6h";
+const DEFAULT_LOG_WINDOW_MS = 6 * 60 * 60_000;
+const UUID_V7_LEAD_MS = 60_000;
+const COMPACT_UUID_V7 = /^[0-9a-f]{12}7[0-9a-f]{3}[89ab][0-9a-f]{15}$/i;
+
+/** 显式窗口优先；UUIDv7 只缩小默认范围，不让旧 ID 扩大原有日志扫描。 */
+export function resolveLogTimeWindow(input: TimeWindowOptions & { id?: string; now?: Date }): { since?: string; sinceTime?: string } {
+  if (input.sinceTime) return { sinceTime: input.sinceTime };
+  const lookback = (since: string) => input.untilTime
+    ? { sinceTime: resolveTimeWindow({ since, untilTime: input.untilTime })!.from }
+    : { since };
+  if (input.since) return lookback(input.since);
+
+  const compact = input.id?.replaceAll("-", "") ?? "";
+  if (!COMPACT_UUID_V7.test(compact)) return lookback(DEFAULT_LOG_SINCE);
+  const timestampMs = Number.parseInt(compact.slice(0, 12), 16);
+  const nowMs = input.untilTime ? Date.parse(input.untilTime) : (input.now ?? new Date()).getTime();
+  if (timestampMs < nowMs - DEFAULT_LOG_WINDOW_MS || timestampMs > nowMs + UUID_V7_LEAD_MS) {
+    return lookback(DEFAULT_LOG_SINCE);
+  }
+  return { sinceTime: new Date(timestampMs - UUID_V7_LEAD_MS).toISOString() };
+}
+
+/** Reject ambiguous/invalid upper bounds before any remote access. */
+export function validateLogTimeWindow(input: TimeWindowOptions): void {
+  resolveTimeWindow(input);
+}
+
 export const DEFAULT_TIME_PADDING = "10m";
 
 export function timePaddingMs(value = DEFAULT_TIME_PADDING): number {
   try { return parseDuration(value); }
   catch { throw new CommandInputError(`time-padding 必须是正时长，例如 10m：${value}`); }
-}
-
-/** @rule Only complete, whole-trace evidence can narrow a default log window. No remote reads. */
-export function traceLogWindows(output: TraceOutput | undefined): TraceLogWindow[] {
-  const windows: TraceLogWindow[] = [];
-  for (const item of output?.items ?? []) {
-    for (const artifact of item.artifacts) {
-      try {
-        const snapshot = readTraceSnapshot(artifact.path);
-        if (snapshot.collection.scope !== "trace" || !snapshot.collection.complete || !snapshot.spans.length) continue;
-        if (!item.traceIds.includes(snapshot.trace_id)) continue;
-        const valid = snapshot.spans.every(span => Number.isFinite(span.start_ms)
-          && Number.isFinite(span.dur_ms) && span.dur_ms >= 0 && Number.isFinite(span.start_ms + span.dur_ms));
-        if (!valid) continue;
-        let startMs = Infinity, endMs = -Infinity;
-        for (const span of snapshot.spans) {
-          startMs = Math.min(startMs, span.start_ms);
-          endMs = Math.max(endMs, span.start_ms + span.dur_ms);
-        }
-        if (!Number.isFinite(new Date(startMs).getTime())
-          || !Number.isFinite(new Date(endMs).getTime())) continue;
-        windows.push({ bizId: item.bizId, traceId: snapshot.trace_id, startMs, endMs });
-      } catch (error) {
-        useLogger("collect:log").warn(`无法读取 ${item.bizId} 的 Trace 时间范围，将保留原日志窗口：${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
-  return windows;
 }
 
 export interface AppliedLogWindow {
