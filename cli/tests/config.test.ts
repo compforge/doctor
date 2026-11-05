@@ -260,3 +260,17 @@ describe("independent collection concurrency", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+
+it("profile validates log timePadding as a positive duration", () => {
+  const dir = mkdtempSync(join(tmpdir(), "doctor-log-padding-config-"));
+  const path = join(dir, "config.yaml");
+  try {
+    writeFileSync(path, "profiles:\n  test:\n    readonly: true\n    log:\n      timePadding: 5m\n");
+    expect(loadConfig(path).profiles.test?.log?.timePadding).toBe("5m");
+    for (const value of ["bad", "-1m", "0s", "3"]) {
+      writeFileSync(path, `profiles:\n  test:\n    readonly: true\n    log:\n      timePadding: ${value}\n`);
+      expect(() => loadConfig(path)).toThrow("log.timePadding");
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});

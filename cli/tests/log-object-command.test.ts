@@ -75,6 +75,7 @@ for (const variant of ["collected", "partial", "failed"] as const) {
       expect(dataChild.serialization.status).toBe("ok");
       const terminal = stdout.mock.calls.map(([line]) => String(line)).join("");
       expect(terminal).toContain(`采集状态：${result.status}`);
+      expect(terminal).toContain("未找到 trace ID，将根据 Data 窗口或原有日志规则采集");
       if (variant === "partial") {
         const [partial, complete] = result.output!.items;
         expect(partial!.resolutionGaps).toEqual(["api db/workspace 查询失败：denied"]);

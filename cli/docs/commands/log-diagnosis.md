@@ -77,3 +77,65 @@ Toolkit 显式接收取消信号，不依赖 CommandContext、Plugin、Evidence 
 
 命令输入是可为空的 ID 列表。一个元素与多个元素走相同的发现、调度、过滤和交付流程；空列表形成一个不按 ID 过滤的采集项，默认截止到命令开始时刻。两种模式复用同一套并发、字节与超时限制，不新增无限跟随路径。共享 Inspect
 原始记录归批次产物，各采集项的 manifest 保留模式及所依据的 Facts，并拥有自己的日志 raw 和时间线。业务 ID 解析失败仍是失败，不退化成全范围采集。
+
+### 自动采集窗口
+
+用户通过 `--since`、`--since-time`、`--until-time` 显式指定范围时沿用原有语义，不自动加余量。
+未指定范围时，Doctor 优先使用 Data 贡献的 `CollectWindow`，其次使用本轮 `collect` 已取得的完整 Trace，
+最后沿用 UUIDv7 / 最近 6 小时的原有策略。独立 `doctor log` 不额外下载 Trace。
+
+Data 通过现有 `facts.inspect` 贡献标准 RecordFact，必须在 Extension 的 `provides` 中声明 `collect.window`：
+
+```ts
+import type { CollectWindowFact } from "@compforge/doctor-plugin";
+
+const window: CollectWindowFact = {
+  factType: "record",
+  kind: "collect.window",
+  schemaVersion: 1,
+  recordKey: "run-a",
+  record: {
+    identity: { kind: "run_id", value: "run-a" },
+    from: "2026-01-01T12:00:00Z",
+    to: "2026-01-01T12:00:20Z",
+    timePadding: "30s",
+  },
+};
+```
+
+`identity` 指明窗口所属对象，`from` / `to` 使用 RFC3339（含边界），可只贡献一端；两端未知时不贡献。
+业务方负责选取该次活动的时间含义，Core 不猜测业务表的时间字段。当前日志请求以输入 biz ID 为粒度，
+只采用 `identity.value` 等于该输入 ID 的窗口；关联 ID 的窗口不会自动传播到根 ID，也不会跨输入 ID 合并。
+组合命令显式传递先前 Data 结果；独立 Log 在所选 Service 声明窗口贡献或日志身份关联时执行 Data。
+窗口只约束范围，不赋予身份匹配权限：不能解析 Trace 或声明的日志身份时仍不进行无过滤采集。
+
+缺失边界按如下规则补齐，再应用 padding：
+
+| Data 贡献 | 补齐规则 |
+|---|---|
+| from 和 to | 直接使用 |
+| 只有 from | 用完整 Trace 的结束时间；无可用 Trace 时用本轮采集开始时间 |
+| 只有 to | 用完整 Trace 的开始时间；无可用 Trace 时从 to 向前回看 6 小时 |
+| 没有可用窗口 | 完整 Trace 范围，否则原有日志策略 |
+
+同一业务 ID 对应的所有已解析 Trace 均具有完整、有效的 spans 时，Trace 范围才可参与计算。
+使用 spans 的最早开始和最晚结束，不把部分 Trace 当成完整活动。补齐后起止冲突、无效时间、
+不支持的窗口版本或 padding 后溢出会记录忽略原因，不静默交换边界；有效兄弟窗口仍可使用。
+若所有 Data 窗口均被忽略，则继续尝试完整 Trace，之后才回退默认策略。
+
+余量优先级为 `--time-padding` > `CollectWindow.timePadding` > profile `log.timePadding` > `10m`。
+使用正时长，如 `30s`、`5m`、`1h`，前后各加一次。同一目标的多个窗口各自选定余量、扩展后再合并，
+避免一个较短余量覆盖其他业务需要的上下文。显式配置值无效时报错，不静默回退。
+
+```yaml
+profiles:
+  test:
+    readonly: true
+    log:
+      timePadding: 10m
+```
+
+配置提供默认策略，Command args 表达本次输入，Data / Trace 是推导依据；推导结果不写回配置。
+INFO 日志展示最终窗口、边界补齐来源和余量来源；无 Trace ID 或无完整 Trace 范围时明确提示。
+每项日志产物的 `collection.json` 中 `params.window` 保存最终范围、原始贡献及其查询/Fact 位置、
+选定余量、补齐依据和忽略原因。原始业务记录继续保留在 Data 证据中。

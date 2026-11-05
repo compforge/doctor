@@ -23,6 +23,8 @@ import { composeReports } from "../report/model";
 import { promptMultiSelect } from "../terminal/multi-select";
 import { dataCommand } from "./data/command";
 import { createInspectInput, inspectCommand } from "./inspect/command";
+import { timePaddingMs, traceLogWindows, type TraceLogWindow } from "./log/window";
+import { dataLogWindows, type DataLogWindows } from "./log/data-window";
 import { logCommand } from "./log/command";
 import { metricCommand } from "./metric/command";
 import { createTenantInput, tenantCommand } from "./tenant/command";
@@ -48,6 +50,7 @@ export interface CollectCliOpts {
   namespace?: string;
   tenantId?: string;
   tenantName?: string;
+  timePadding?: string;
   since?: string;
   sinceTime?: string;
   untilTime?: string;
@@ -206,6 +209,9 @@ function inspectServiceNames(plugin: PluginDefinition): string[] {
 
 function collectDelegate(input: CollectInput, context: CommandContext): CollectDelegate {
   const plugin = context.plugin;
+  let logWindows: readonly TraceLogWindow[] = [];
+  let dataWindows: DataLogWindows | undefined;
+  const collectionStartedAt = new Date().toISOString();
   const common = { namespace: input.namespace };
   const time = { since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime };
   return (kind) => {
@@ -219,9 +225,13 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
       }));
       case "data": return dataCommand.run(context, {
         ...common, ...time, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
+      }).then(result => { dataWindows = dataLogWindows(result.output); return result; });
+      case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds }).then(result => {
+        if (!input.since && !input.sinceTime && !input.untilTime) logWindows = traceLogWindows(result.output);
+        return result;
       });
-      case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds });
       case "log": return logCommand.run(context, {
+        traceWindows: logWindows, dataWindows, collectionStartedAt, timePadding: input.timePadding,
         ...common, bizIds: input.bizIds,
         // Capability availability is broader than the Plugin's default collection scope.
         services: plugin.services.services.filter(service => service.logs !== undefined)
@@ -278,6 +288,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
     reportName: (input, _result, now) => collectReportName(input.bizIds, now),
     validate: (input) => {
       resolveTimeWindow(input);
+      timePaddingMs(input.timePadding);
       if (!input.bizIds.length && input.kinds.some((kind) => ["data", "trace", "log"].includes(kind))) {
         throw new CommandInputError("doctor collect 需要至少一个 biz-id");
       }

@@ -41,7 +41,8 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
 `facts` 承载可独立消费的稳定信息：
 
 - `ValueFact`：每个 kind 至多一条，适合配置、汇总等单值；value 内部 shape 由 Plugin 决定。
-- `RecordFact`：同 kind 可以返回多条，每条有稳定 `recordKey`；record 内部 shape 对 Doctor 不透明。HTML
+- `RecordFact`：同 kind 可以返回多条，每条有稳定 `recordKey`；业务私有 record 内部 shape 对 Doctor 不透明；SDK 定义的标准 `collect.window`
+  由 Log 按[自动采集窗口契约](log-diagnosis.md#自动采集窗口)消费。Data 引擎不推断业务时间。HTML
   将每个 RecordFact 作为一行，先对全部行做关键字过滤，再分页渲染。
 - `RelationFact`：可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。一个 Service
   可以同时提供领域 Fact 与 RelationFact，目标 Identity 也可以交给后续 Service 查询。

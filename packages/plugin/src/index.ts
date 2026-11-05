@@ -1,5 +1,6 @@
 export * from "./artifact";
 export * from "./capability";
+export * from "./collect-window";
 export * from "./extension";
 export * from "./catalog";
 export * from "./cases";

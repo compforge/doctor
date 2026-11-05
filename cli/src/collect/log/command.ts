@@ -1,3 +1,4 @@
+import { timePaddingMs } from "./window";
 import { freezeTimeWindow } from "../time-window";
 import { dataCommand } from "../data/command";
 import { prepareCommandRequirements } from "../../command/prepare";
@@ -20,11 +21,11 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
   name: "doctor log",
   render: renderLogReport,
   validate: (input) => {
-    try { validateLogTimeWindow(input); }
+    try { validateLogTimeWindow(input); timePaddingMs(input.timePadding); }
     catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },
   prepare: async (context, input) => {
-    input = freezeTimeWindow(input);
+    input = { ...freezeTimeWindow(input), collectionStartedAt: input.collectionStartedAt ?? new Date().toISOString() };
     if (context.options.format?.trim() === "summary" && context.options.output) {
       throw new CommandInputError("--format summary 直接输出到终端，不支持 --output");
     }

@@ -43,7 +43,7 @@ export interface Profile {
   registry?: RegistryProfileConfig;
   prometheus?: PrometheusProfileConfig;
   overview?: { sample_count?: number; collect_concurrency?: number };
-  log?: { concurrency?: number };
+  log?: { concurrency?: number; timePadding?: string };
   plugin?: PluginProfileConfig;
   kube?: {
     kubeconfig_path?: string;

@@ -1,3 +1,5 @@
+import { dataLogWindows, type DataLogWindows } from "./data-window";
+import { timePaddingMs, selectLogTimeWindow, type TraceLogWindow } from "./window";
 import { gapMessages } from "../evidence-gaps";
 import { dataCommand } from "../data/command";
 import type { DataOutput } from "../data/model";
@@ -8,7 +10,7 @@ import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResu
 import { useLogger } from "../../terminal/log";
 // Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
-import type { PluginDefinition } from "@compforge/doctor-plugin";
+import { COLLECT_WINDOW_KIND, requireFactsInspectExtension, type PluginDefinition } from "@compforge/doctor-plugin";
 import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
@@ -36,7 +38,6 @@ import { buildIndexExpr } from "../trace/opensearch";
 import {
   buildLogPattern,
   resolveLogServiceSelection,
-  resolveLogTimeWindow,
   serviceLogErrorPatterns,
   validateLogTimeWindow,
 } from "./config";
@@ -65,6 +66,11 @@ export * from "./render";
 export interface CollectLogCliOpts {
   bizIds: readonly string[];
   itemConcurrency?: number;
+  /** Complete trace evidence supplied by an earlier collect stage; never a new remote lookup. */
+  traceWindows?: readonly TraceLogWindow[];
+  dataWindows?: DataLogWindows;
+  collectionStartedAt?: string;
+  timePadding?: string;
   namespace?: string;
   services?: readonly string[];
   since?: string;
@@ -156,7 +162,11 @@ async function prepareLogBatch(
   }
   useLogger("collect").info(`services: ${services.join(", ")}`);
   let identityResolution: CommandResult<DataOutput> | undefined;
-  const identityServices = services.filter(name => plugin.services.find(name)?.logs?.identityRelations);
+  const identityServices = services.filter(name => {
+    const service = plugin.services.find(name);
+    return service?.logs?.identityRelations || plugin.services.extensions("facts.inspect")
+      .some(item => item.service.name === name && requireFactsInspectExtension(item.extension).provides.includes(COLLECT_WINDOW_KIND));
+  });
   if (opts.bizIds.length && identityServices.length) {
     identityResolution = await dataCommand.run(commandContext, {
       since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime,
@@ -250,6 +260,9 @@ export async function runCollectLog(
   plugin: PluginDefinition,
   commandContext: CommandContext,
 ): Promise<CommandResult<LogOutput>> {
+  const collectionStartedAt = opts.collectionStartedAt ?? new Date().toISOString();
+  const profileTimePadding = commandContext.profile.value.log?.timePadding;
+  timePaddingMs(opts.timePadding ?? profileTimePadding);
   const ids = [...new Set(opts.bizIds.map(item => item.trim()).filter(Boolean))];
   const requestIds: (string | undefined)[] = ids.length ? ids : [undefined];
   const untilTime = opts.untilTime ?? (!ids.length ? new Date().toISOString() : undefined);
@@ -268,11 +281,19 @@ export async function runCollectLog(
   const staging = join(stagingRoot, defaultLogBatchName(new Date()));
   const summary = commandContext.artifacts.add({ command: "log", path: staging });
   const bundle = new EvidenceBundle(staging);
+  const localWindows = dataLogWindows(prepared.identityResolution?.output);
+  const dataWindows: DataLogWindows = {
+    windows: [...(opts.dataWindows?.windows ?? []), ...localWindows.windows],
+    rejected: [...(opts.dataWindows?.rejected ?? []), ...localWindows.rejected],
+  };
   const requests: LogCollectOptions[] = requestIds.flatMap((bizId, index) => {
     const traces = prepared.trace.filter(trace => trace.bizId === bizId);
     const dataItem = prepared.identityResolution?.output?.items.find(item => item.bizId === bizId);
     const identities = dataItem?.diagnosis && bizId !== undefined
       ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services) : [];
+    if (bizId !== undefined && !traces.length) {
+      useLogger("collect").warn(`[collect:log] ${bizId} 未找到 trace ID，将根据 Data 窗口或原有日志规则采集`);
+    }
     if (bizId !== undefined && !traces.length && !identities.length) return [];
     const dataGaps = gapMessages(dataItem?.diagnosis?.findings ?? []);
     const resolutionGaps = prepared.identityResolution && (dataItem?.status ?? prepared.identityResolution.status) !== CommandStatus.Ok
@@ -280,14 +301,19 @@ export async function runCollectLog(
         ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined)
         ?? "对象关联采集不完整，详见关联 Data 证据"])] : [];
 
-    const timeWindow = resolveLogTimeWindow({ id: bizId, since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime });
-    if (!opts.since && !opts.sinceTime && timeWindow.sinceTime) {
-      useLogger("collect").info(`${bizId} 从 UUIDv7 ID 推导日志起点: ${timeWindow.sinceTime}`);
-    }
+    const timeWindow = selectLogTimeWindow({ id: bizId, traceIds: traces.map(trace => trace.traceId),
+      traceWindows: opts.traceWindows, dataWindows, timePadding: opts.timePadding, profileTimePadding,
+      now: new Date(collectionStartedAt), since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime });
+    for (const rejection of timeWindow.rejected) useLogger("collect").warn(
+      `[collect:log] ${bizId} 忽略窗口 ${rejection.service}/${rejection.queryId}#${rejection.factIndex}：${rejection.reason}`);
+    useLogger("collect").info(`[collect:log] ${bizId ?? "Service 日志"} window source=${timeWindow.source} from=${timeWindow.sinceTime ?? `since:${timeWindow.since}`} to=${timeWindow.untilTime ?? untilTime ?? "current"}`);
+    for (const window of timeWindow.windows) useLogger("collect").info(
+      `[collect:log] ${bizId ?? "Service 日志"} window source=${window.contribution ? `${window.contribution.service}/${window.contribution.queryId}#${window.contribution.factIndex}` : "trace"} from-source=${window.fromSource} to-source=${window.toSource} padding=${window.timePadding} padding-source=${window.paddingSource}`);
+    if (timeWindow.fallbackReason) useLogger("collect").info(`[collect:log] ${bizId ?? "Service 日志"} ${timeWindow.fallbackReason}`);
     return [{
       bizId, traceIds: traces.map(trace => trace.traceId), identities, resolutionGaps, namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services,
-      since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime,
+      since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime: timeWindow.untilTime ?? untilTime, window: { ...timeWindow, untilTime: timeWindow.untilTime ?? untilTime },
       errorsOnly: !!opts.errorsOnly, pattern: opts.pattern,
       outputDir: join(stagingRoot, bizId === undefined ? "service-logs"
         : `biz-${index + 1}-${defaultLogBundleName(bizId, new Date())}`),
@@ -403,7 +429,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
     target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, namespace: config.namespace, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
     inspectionFacts: { ...facts },
-    params: { since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
+    params: { window: config.window, since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
     startedAt, finishedAt: new Date().toISOString(),
   });
   log(`[collect] ${config.bizId ?? "Service 日志"}: ${formatLogCaptureStats(rendered.stats, config.bizId === undefined)}`);
