@@ -1,24 +1,12 @@
+import type { OpenSearchConnectionPlan } from "../../../datasource/opensearch/access";
+export type { OpenSearchConnectionPlan } from "../../../datasource/opensearch/access";
 import { KubectlExecutor, type Executor, type KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import {
   parseOpenSearchEndpoint,
   pickOpenSearchService,
-  type OpenSearchService,
 } from "../../../infra/search/opensearch";
 import type { StepInput } from "../../evidence";
-
-export type OpenSearchConnectionPlan =
-  | {
-      kind: "direct" | "target";
-      endpoint: string;
-      username?: string;
-      password?: string;
-    }
-  | {
-      kind: "service";
-      service: OpenSearchService;
-      scheme?: "http" | "https";
-    };
 
 export interface OpenSearchConnectionConfirmation {
   connection?: OpenSearchConnectionPlan;

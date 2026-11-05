@@ -283,6 +283,12 @@ Client.dispose 幂等回收自己拥有的资源。构造函数不执行外部�
 Transport 生命周期覆盖借用它的协议 Client。OpenSearch / Redis / S3 复用根持有的 ServicePortForwardTransport，
 端口转发选择、准备、失效与清理由 Toolbox 拥有；业务调用结束只关闭自己的 Client。OpenSearch 使用同一 Client
 完成协议探测和查询，不再另建 probe 连接或把转发地址写回逻辑 endpoint；Host 与 TLS 身份保留原始目标。
+OpenSearch 的访问装配位于 `datasource/opensearch/access.ts`：显式接收 ClientManager、取消信号和
+诊断回调，返回协议访问与关闭入口；它不依赖 CommandContext、Collect Step 或归档布局。
+`collect/shared/opensearch-access/preparation.ts` 负责适配 Command 作用域，将访问诊断、经过脱敏的
+原始异常堆栈和清理失败转换为 Collect Evidence。连接失败是主因，清理失败单独保留；失败清理由
+根 Manager 管理时，Finalize 继续报告清理错误。
+
 S3 Provider 的 health/metrics HTTP 请求通过 Toolbox HttpClient 借用同一 Transport，Provider 只持有可请求的 Client，
 不把逻辑 endpoint 当成本机可直连 URL。Provider 网络探测失败保留为失败证据，不降级成已确认的 generic-s3。
 
