@@ -8,7 +8,7 @@ import { ClientManager } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, bindKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
 import { sharedPodRelay } from "../datasource/pod-relay";
 import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
-import type { NamespaceResources } from "@compforge/harness-toolbox/kubernetes/resources";
+import type { NamespaceResources, ResourceRequestOptions } from "@compforge/harness-toolbox/kubernetes/resources";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { currentCommandClients, currentCommandSignal, onCommandDispose } from "../command/execution-scope";
 import { bindService, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -86,9 +86,12 @@ function createKubernetesAccess(
     };
     return {
       inNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
-      get: async <T>(ref: KubernetesResourceRef) => {
+      get: async <T>(ref: KubernetesResourceRef, options?: ResourceRequestOptions) => {
         assertDeclared("get", accessResource(ref), ref.name);
-        return await (await resourcesForNamespace(namespace)).get(ref, accessOptions) as T;
+        return await (await resourcesForNamespace(namespace)).get(ref, {
+          signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
+          timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
+        }) as T;
       },
       list: async <T>(query: KubernetesResourceListQuery) => {
         assertDeclared("list", accessResource(query));

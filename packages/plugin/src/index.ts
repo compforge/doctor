@@ -28,3 +28,4 @@ export * from "./workload";
 export type { Service, Environment, Component, Repository, Forge, Host, HostEnvironment } from "@compforge/harness-common";
 export * from "./knowledge";
 export * from "./file";
+export * from "./secret";

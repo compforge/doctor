@@ -1,6 +1,6 @@
 import type { FileReadOptions, FileReadResult } from "@compforge/harness-common";
 import type { HttpServiceTarget } from "./http";
-import type { ResourceRef, ResourceListQuery, ResourceList } from "@compforge/harness-toolbox/kubernetes/resources";
+import type { ResourceRef, ResourceListQuery, ResourceList, ResourceRequestOptions } from "@compforge/harness-toolbox/kubernetes/resources";
 
 export type KubernetesAccessRequirement = "required" | "preferred";
 
@@ -48,7 +48,7 @@ export interface KubernetesAccess {
   /** 派生同一 Target cluster 内指定 namespace 的访问视图；具体 namespace 由 Plugin 自己决定。 */
   inNamespace(namespace: string): KubernetesAccess;
   /** REST resource identity is explicit; no kubectl aliases or implicit API versions. */
-  get<T>(ref: KubernetesResourceRef): Promise<T>;
+  get<T>(ref: KubernetesResourceRef, options?: ResourceRequestOptions): Promise<T>;
   list<T>(query: KubernetesResourceListQuery): Promise<KubernetesResourceList<T>>;
   exec(target: KubernetesExecTarget, command: readonly string[], options?: { stdin?: string; timeoutMs?: number }): Promise<string>;
   /** One bounded acquisition for a declared file group in one Container; results remain independent per path. */

@@ -24,18 +24,19 @@ export interface KubernetesResourceCapture {
   execution?: ExecResult;
   reused?: boolean;
 }
-export type KubernetesResourceReader = (query: KubernetesResourceQuery) => Promise<KubernetesResourceCapture>;
+export type KubernetesResourceReader = (query: KubernetesResourceQuery, options?: ResourceRequestOptions) => Promise<KubernetesResourceCapture>;
 
 /** @spec API evidence describes a resource request, never a fabricated kubectl execution. */
 export function resourceReader(client: KubernetesClient, signal: AbortSignal): KubernetesResourceReader {
-  return async query => {
+  return async (query, options) => {
+    const requestSignal = options?.signal ? AbortSignal.any([signal, options.signal]) : signal;
     const started = performance.now();
     const request = { ...query, verb: "name" in query ? "get" as const : "list" as const };
     try {
-      const value = "name" in query ? await client.get(query, { signal }) : await client.list(query, { signal });
+      const value = "name" in query ? await client.get(query, { ...options, signal: requestSignal }) : await client.list(query, { ...options, signal: requestSignal });
       return { request, value, observedAt: new Date().toISOString(), durationMs: performance.now() - started };
     } catch (error) {
-      signal.throwIfAborted();
+      requestSignal.throwIfAborted();
       return { request, error: error instanceof Error ? error.message : String(error),
         observedAt: new Date().toISOString(), durationMs: performance.now() - started };
     }
@@ -44,19 +45,20 @@ export function resourceReader(client: KubernetesClient, signal: AbortSignal): K
 
 /** Adapter for consumers that explicitly supply a command executor, including offline fixtures. */
 export function executorResourceReader(executor: Executor, namespace: string, signal?: AbortSignal): KubernetesResourceReader {
-  return async query => {
+  return async (query, options) => {
+    const requestSignal = options?.signal ? AbortSignal.any([...(signal ? [signal] : []), options.signal]) : signal;
     const started = performance.now();
     const request = { ...query, namespace: query.namespace ?? namespace, verb: "name" in query ? "get" as const : "list" as const };
     let execution: ExecResult | undefined;
     try {
       const args = ["get", query.resource, ...("name" in query ? [query.name] : []),
         ...("labelSelector" in query && query.labelSelector ? ["-l", query.labelSelector] : []), "-o", "json"];
-      execution = await executor.run(args, { timeoutMs: 30_000, signal });
+      execution = await executor.run(args, { timeoutMs: Math.min(options?.timeoutMs ?? 30_000, 30_000), signal: requestSignal });
       if (!execution.ok) throw new Error(execution.stderr.trim() || "Read Kubernetes resource failed");
       return { request, value: JSON.parse(execution.stdout), execution,
         observedAt: new Date().toISOString(), durationMs: execution.durationMs };
     } catch (error) {
-      signal?.throwIfAborted();
+      requestSignal?.throwIfAborted();
       return { request, execution, error: error instanceof Error ? error.message : String(error),
         observedAt: new Date().toISOString(), durationMs: execution?.durationMs ?? performance.now() - started };
     }
@@ -67,10 +69,10 @@ export function executorResourceReader(executor: Executor, namespace: string, si
 export function snapshotResourceReader(read: KubernetesResourceReader): KubernetesResourceReader {
   const observed = new Map<string, KubernetesResourceCapture>();
   const key = (query: KubernetesResourceQuery) => JSON.stringify(Object.entries(query).sort(([a], [b]) => a.localeCompare(b)));
-  return async query => {
+  return async (query, options) => {
     const existing = observed.get(key(query));
     if (existing) return { ...existing, durationMs: 0, reused: true };
-    const capture = await read(query);
+    const capture = await read(query, options);
     if (!capture.error && capture.value) {
       observed.set(key(query), capture);
       if (!("name" in query) && !query.continue && !query.labelSelector && !query.fieldSelector
@@ -90,7 +92,7 @@ export function snapshotResourceReader(read: KubernetesResourceReader): Kubernet
 export function capturedResourceAccess(read: KubernetesResourceReader, namespace: string): NamespaceResources {
   const value = async (query: KubernetesResourceQuery, options?: ResourceRequestOptions) => {
     options?.signal?.throwIfAborted();
-    const capture = await read({ ...query, namespace });
+    const capture = await read({ ...query, namespace }, options);
     options?.signal?.throwIfAborted();
     if (capture.error || !capture.value) throw new Error(capture.error ?? "Resource response missing");
     return capture.value;

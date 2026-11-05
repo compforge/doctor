@@ -158,3 +158,18 @@ Pod 数量、镜像和资源声明回答“所选 Service 当前落到了哪些�
 保留 Warning 与启动、重启、扩缩等相关 Normal 事件，包括镜像 Pulling/Pulled。
 重复事件按发生区间与窗口相交保留。证据保存首次/最近发生时间、采集时间及容量截断数；
 未指定窗口时不额外限制为一小时。空结果只表示当前 API 查询未返回相关事件。
+
+
+### Secret DataSource
+
+Service 使用 `secretDataSource(id, { keys, access, resolve })` 声明需要采集的 Secret 配置。
+`resolve` 只返回 namespace/name，业务 Plugin 决定如何定位引用；`keys` 是非空显式允许列表。
+Doctor SDK 将目标发现和受权限约束的 Kubernetes 访问注入 Toolbox 的 `KubernetesSecretClient`。
+Toolbox 使用同一个 root ClientManager 所拥有的有界 Kubernetes transport 读取 Secret API；Core 将这些 key 的
+base64 UTF-8 值投影为 `secret-configuration` Observation。未声明的 key 不进入证据或日志。
+权限通过 source.access 声明并执行，不会隐式 list Secrets。
+
+默认 inspect（含 collect 内的 inspect）以及 `--field config` 采集这些来源；env/image/event/hpa
+单字段查询不读取 Secret。结果包含 namespace/name、resourceVersion、observedAt、values 和 missingKeys。
+成功读取但缺少 key 是配置事实；403、404、解析失败和定位失败是 unavailable，并报告证据缺口。
+Secret 内容不能证明 Pod 已更新或进程已使用这些值，需和 Pod env、挂载文件等运行态证据对照。

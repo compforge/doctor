@@ -1,4 +1,4 @@
-import { connectionDataSources, isFileDataSource } from "@compforge/doctor-plugin";
+import { connectionDataSources, isFileDataSource, isSecretDataSource } from "@compforge/doctor-plugin";
 import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
 import {
@@ -163,7 +163,21 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       if (typeof file.createClient !== "function") throw new Error(`${label}.createClient must be a function`);
       record(file.access, `${label}.access`);
     }
-    const connections = service.dataSources.filter(source => !isFileDataSource(source));
+    const named = service.dataSources.filter(source => !isFileDataSource(source));
+    if (named.length) uniqueIdRecords(named, `${service.name}.dataSources`);
+    for (const source of named.filter(isSecretDataSource)) {
+      const label = `${service.name}.dataSources.${source.id}`;
+      if (!Array.isArray(source.keys) || !source.keys.length || new Set(source.keys).size !== source.keys.length
+        || source.keys.some(key => typeof key !== "string" || !/^[A-Za-z0-9._-]+$/.test(key))) {
+        throw new Error(`${label}.keys must be nonempty, distinct Kubernetes data keys`);
+      }
+      nonEmptyString(source.clientKey, `${label}.clientKey`);
+      if (keys.has(source.clientKey)) throw new Error(`${label}: duplicate clientKey`);
+      keys.add(source.clientKey);
+      if (typeof source.createClient !== "function") throw new Error(`${label}.createClient must be a function`);
+      record(source.access, `${label}.access`);
+    }
+    const connections = named.filter(source => !isSecretDataSource(source));
     const dataSources = connections.length ? uniqueIdRecords(connections, `${service.name}.dataSources`) : new Map<string, Record<string, unknown>>();
     for (const [id, store] of dataSources) {
       if (store.description !== undefined) nonEmptyString(store.description, `${service.name}.dataSources.${id}.description`);

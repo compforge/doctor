@@ -3,6 +3,7 @@ import { containerEnvironmentTargets } from "./fact/inspect";
 import type { Detector, } from "../protocol";
 import type {
   ConfigSearchMatch,
+  SecretConfigurationObservation,
   ConfigurationComparisonRow,
   InspectField,
   ImageSearchMatch,
@@ -130,9 +131,12 @@ export function searchInspectFields(evidence: InspectEvidence, field: InspectFie
   }
   if (field === "config") {
     const matches: ConfigSearchMatch[] = evidence.observations.flatMap(observation => {
-      if ((observation.kind !== "file-configuration" && observation.kind !== "container-environment") || observation.status !== "collected") return [];
-      return Object.entries(observation.values).flatMap(([name, value]) => {
+      if ((observation.kind !== "file-configuration" && observation.kind !== "container-environment" && observation.kind !== "secret-configuration") || observation.status !== "collected") return [];
+      return Object.entries(observation.values).flatMap<ConfigSearchMatch>(([name, value]) => {
         if (!contains(name) && !contains(typeof value === "string" ? value : JSON.stringify(value))) return [];
+        if (observation.kind === "secret-configuration") return [{ name, value, source: "secret" as const,
+          service: observation.service, namespace: observation.namespace, secret: observation.name,
+          dataSource: observation.dataSource, resourceVersion: observation.resourceVersion }];
         return [{ name, value, source: observation.kind === "file-configuration" ? "file" as const : "env" as const,
           service: observation.service, workload: observation.workload, pod: observation.pod, container: observation.container,
           ...(observation.kind === "file-configuration" ? { namespace: observation.namespace, path: observation.path } : {}) }];
@@ -219,6 +223,16 @@ export function projectInspectServiceEvidence(
           },
         })];
       }
+      if (observation.kind === "secret-configuration") return [projectServiceEvidenceObservation({
+        services: [observation.service], probe: "secret-configuration", source: observation,
+        value: { dataSource: observation.dataSource, keys: [...observation.keys], status: observation.status,
+          values: observation.values, missingKeys: observation.missingKeys,
+          ...(observation.namespace ? { namespace: observation.namespace } : {}),
+          ...(observation.name ? { name: observation.name } : {}),
+          ...(observation.resourceVersion ? { resourceVersion: observation.resourceVersion } : {}),
+          ...(observation.observedAt ? { observedAt: observation.observedAt } : {}),
+          ...(observation.reason ? { reason: observation.reason } : {}) },
+      })];
       if (observation.kind === "file-configuration") return [projectServiceEvidenceObservation({
         services: [observation.service], probe: "file-configuration", source: observation,
         value: { workload: observation.workload, path: observation.path, status: observation.status, values: observation.values,
@@ -401,6 +415,9 @@ export function detectInspectEvidenceGaps(
     }
     findings.push(...evidenceGaps("file-configuration", missing, evidence));
   }
+  const secrets = evidence.observations.filter((item): item is SecretConfigurationObservation => item.kind === "secret-configuration" && item.status === "unavailable");
+  findings.push(...evidenceGaps("secret-configuration", secrets.map(item => item.reason ?? `${item.service}/${item.dataSource}: 未取得 Secret 配置`), evidence,
+    secrets.map(item => ({ observationId: item.id, role: "supporting" as const }))));
   if (scope?.field === "event" || scope?.field === "hpa") {
     const fact = evidence.facts.lifecycleSignals;
     const truncated = scope.field === "event" && fact.status === "collected" && !!fact.omittedEvents;
@@ -409,7 +426,7 @@ export function detectInspectEvidenceGaps(
   if (scope?.field) {
     const subjects: Record<InspectField, string[]> = {
       env: ["workload-runtime", "container-environment"],
-      config: ["workload-runtime", "container-environment", "file-configuration"],
+      config: ["workload-runtime", "container-environment", "file-configuration", "secret-configuration"],
       image: ["workload-runtime"], event: ["workload-runtime", "event"], hpa: ["workload-runtime", "hpa"],
     };
     return findings.filter(item => subjects[scope.field!].includes(item.subject));
