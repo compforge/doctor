@@ -1,3 +1,4 @@
+import { clockObservations, estimatePodClock, unstableClockReferences } from "./clock";
 import { gapMessages } from "../evidence-gaps";
 import { projectSummary } from "../../command/summary";
 import {
@@ -41,6 +42,22 @@ function markdownTable(headers: readonly string[], rows: readonly (readonly stri
     `|${headers.map(() => "---").join("|")}|`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ];
+}
+
+const CLOCK_TABLE_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Doctor Host", "采样时间（Host UTC）", "偏差 ms（Pod − Host）", "误差 ±ms", "RTT ms", "状态"];
+const CLOCK_EXPLANATION = "Doctor Host 是本次采样参照，不保证 UTC 正确。偏差为区间中点，误差包含往返耗时和时间精度；5s 为提示阈值。Node 仅用于定位，Pod 结果不代表整个 Node 或集群；未告警不等于已证明同步。";
+
+function clockRows(diagnosis: InspectDiagnosis): string[][] {
+  const observations = clockObservations(diagnosis.evidence);
+  const unstable = unstableClockReferences(observations);
+  return observations.map(observation => {
+    const result = estimatePodClock(observation);
+    const estimate = unstable.has(observation.reference.id) ? undefined : result.estimate;
+    return [observation.service, observation.workload, observation.pod, observation.container ?? "—", observation.nodeName ?? "—",
+      observation.reference.host, estimate ? new Date(estimate.sampledAtMs).toISOString() : "—",
+      estimate?.offsetMs.toFixed(1) ?? "—", estimate?.uncertaintyMs.toFixed(1) ?? "—", estimate?.roundTripMs.toFixed(1) ?? "—",
+      unstable.has(observation.reference.id) ? "Doctor Host 时钟不稳定" : result.reason ?? observation.reason ?? "已采样"];
+  });
 }
 
 function tableRows(diagnosis: InspectDiagnosis): string[][] {
@@ -627,6 +644,12 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "",
     ...markdownTable(POD_TABLE_HEADERS, podRows(diagnosis)),
     "",
+    "### Pod 时钟",
+    "",
+    CLOCK_EXPLANATION,
+    "",
+    ...markdownTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
+    "",
     "### Toolchain",
     "",
     ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
@@ -725,6 +748,10 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "Workload / Pod 运行态",
       html: htmlTable(POD_TABLE_HEADERS, podRows(diagnosis)),
+    },
+    {
+      title: "Workload / Pod 时钟",
+      html: htmlParagraph(CLOCK_EXPLANATION) + htmlTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
     },
     {
       title: "Workload / Toolchain",

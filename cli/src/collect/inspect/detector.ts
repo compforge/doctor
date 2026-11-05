@@ -1,3 +1,4 @@
+import { detectPodClocks } from "./clock";
 import { evidenceGaps, type EvidenceGapFinding } from "../evidence-gaps";
 import { containerEnvironmentTargets } from "./fact/inspect";
 import type { Detector, } from "../protocol";
@@ -153,7 +154,7 @@ export function searchInspectFields(evidence: InspectEvidence, field: InspectFie
   };
 }
 
-export const inspectDetectors: readonly Detector<InspectEvidence, InspectFinding>[] = [];
+export const inspectDetectors: readonly Detector<InspectEvidence, InspectFinding>[] = [detectPodClocks];
 
 /** Public, schema-identified projection shared by every selected Service Probe and Detector. */
 export function projectInspectServiceFacts(
@@ -239,6 +240,12 @@ export function projectInspectServiceEvidence(
           ...(observation.namespace ? { namespace: observation.namespace } : {}),
           ...(observation.pod ? { pod: observation.pod } : {}), ...(observation.container ? { container: observation.container } : {}),
           ...(observation.reason ? { reason: observation.reason } : {}) },
+      })];
+      if (observation.kind === "pod-clock") return [projectServiceEvidenceObservation({
+        services: [observation.service], probe: "pod-clock", source: observation,
+        workload: observation.workload, instance: observation.instance,
+        value: { pod: observation.pod, container: observation.container, nodeName: observation.nodeName,
+          reference: observation.reference, samples: observation.samples, status: observation.status, reason: observation.reason },
       })];
       if (observation.kind === "container-environment") {
         return [projectServiceEvidenceObservation({

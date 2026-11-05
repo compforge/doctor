@@ -369,12 +369,13 @@ export function makeServiceTargetsInspect(
                 ? unavailableFact("inspect.workload-pods", "service-targets", resolved.unavailableReason)
                 : collectedFact("inspect.workload-pods", "service-targets", {
                   pods: resolved.pods.map((pod) => {
-                    const environment = (config.field === "env" || config.field === "config") ? selectWorkloadPodContainer(resolved, pod) : undefined;
+                    const environment = (scope.env || scope.clock) ? selectWorkloadPodContainer(resolved, pod) : undefined;
                     return {
                       instance: resolved.instances.find(instance => instance.pod === pod.name)!,
                       pod: pod.name,
+                      nodeName: resolved.podNodes?.[pod.name],
                       serviceAccountName: pod.serviceAccountName,
-                      ...((config.field === "env" || config.field === "config") ? {
+                      ...((scope.env || scope.clock) ? {
                         environmentContainer: environment?.container?.name,
                         environmentUnavailableReason: environment?.reason,
                       } : {}),

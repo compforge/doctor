@@ -134,7 +134,8 @@ test("Service Evidence detector 可关联跨 Service Observation", () => {
   }]);
 
   const findings = makeInspectDetectors("agentsphere", catalog, ["sandbox-server", "bedbox"])
-    .flatMap((detector) => detector(detectorEvidence()));
+    .flatMap((detector) => detector(detectorEvidence()))
+    .filter(finding => finding.producer.origin === "plugin");
 
   expect(findings).toEqual([expect.objectContaining({
     id: "service-detector:bedbox:suite-isolation:suite-disabled",
@@ -174,7 +175,7 @@ test("Service Evidence detector 不能引用本次 Evidence 之外的对象", ()
     }]
   }]);
 
-  expect(() => makeInspectDetectors("agentsphere", catalog, ["bedbox"])[0]!(detectorEvidence()))
+  expect(() => makeInspectDetectors("agentsphere", catalog, ["bedbox"]).flatMap(detector => detector(detectorEvidence())))
     .toThrow("references unknown Observation 'missing'");
 });
 
