@@ -18,13 +18,35 @@
 2. `service-targets` Inspect 始终读取 Namespace 中的 Service 和 Pod。只有用户确认后才读取 Deployment 和 ConfigMap；Service selector 同时定位其当前 Pod 和对应 Deployment。
 3. Inspect 将每个所选 Service 的 Pod、Container 状态、重启/终止原因、镜像与资源声明记为独立 Fact；Pod 列表权限或解析失败时保留其它配置证据，并在 证据不足 Finding 中标明缺口。
 4. 用户确认时，部署配置 Probe 解析目标 Container 的 ConfigMap 与 Deployment env。显式 env 按 Kubernetes 语义覆盖同名 ConfigMap；Secret 引用不读取 Secret 对象。未选择时不发起这两类 Kubernetes 查询，标为未纳入范围，不计入缺失证据或不足的 证据不足 Finding。
-5. 用户确认依赖采集时，Inspect 用 Service selector 与 port 定位业务 Container，按实际 `imageID` 去重后每个镜像选择一个 Running Pod。Core 根据 Toolchain 执行有界只读采集，只保存归一化后的包名、版本和现场 runtime version；拒绝后不申请 `pods/exec` 权限。
+5. 用户确认依赖采集时，Inspect 用 Service selector 与 port 定位业务 Container，按实际 `imageID` 去重后每个镜像选择一个 Running Pod。Core 根据 Toolchain 执行有界只读采集，只保存归一化后的包名、版本和现场 runtime version；拒绝后不执行依赖采集；完整 Inspect 的 Pod 时钟探测仍独立使用 `pods/exec`。
 6. HTML 和 Markdown 分别展示 Workload 声明、Pod、Toolchain、应用依赖与 Service 配置；Workload 说明和 Toolchain 明确标为声明，依赖与 runtime version 明确标为本次现场观测。
-7. 报告状态按本次选择的范围计算；只采集 Pod 运行态不因未开启可选项而变为 partial。已选择的目标采集不足仍保留真实缺口。完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
+7. 报告状态按本次选择的范围计算；完整 Inspect 的 Pod 运行态与时钟采样不因未开启可选项而变为 partial；时钟执行失败则保留缺口并标记 partial。已选择的目标采集不足仍保留真实缺口。完全没有形成可用证据或交付失败时才回退失败 Evidence Bundle。Kubernetes 原始响应不落盘，报告只保存归并后的事实。
 
 `-y/--yes` 禁止全部交互，包括 Service 选择与可选采集询问；缺少 `--service` 时在 Plugin
 加载和环境连接前报参数错误。`-y` 不开启可选采集，需显式传 `--deployment-config` 或
 `--dependencies`；对应 `--no-*` 表示明确关闭，即使恢复交互也不再询问该项。
+
+## Pod 时钟
+
+完整 Inspect（包括 Collect 调用的 Inspect）默认对所选 Service → Workload 下的每个 Pod
+采集时钟，不按 Node 或镜像去重。Node 来自 Pod spec，仅用于定位；不扫描未选中的服务或全集群 Node。
+使用已定位的业务 Container 执行 `date +%s.%N`，每个 Pod 最多 3 次，每次超时 5 秒，
+由既有 Probe 调度器执行；失败后保留原因并停止该 Pod 的后续尝试。不安装工具或创建辅助 Pod。
+需要已有 `pods/exec` 访问权限。容器未运行、无法唯一定位、缺少 date 或权限不足均保留证据缺口。
+
+原始 Observation 保存 Doctor Host 名称、同批次参考点、Host 发送/接收壁钟与单调时间、Pod 时间、
+输出精度及失败原因。秒级 date（包括原样输出 `%N`）按 1 秒量化误差处理。
+Detector 使用 `[Pod时间 − Host接收时间, Pod时间 + 精度 − Host发送时间]`（另含 Host 毫秒舍入余量）
+作为偏差区间，展示区间中点及半宽，不假设请求与响应延迟对称。保留全部样本，取最窄区间；
+多次区间不相交时不作稳定偏差结论。批次内 Host 壁钟相对单调时间变化超过 100ms 时，
+整批参照标为不稳定，避免把 Host 校时误报为跨 Pod 差异。
+
+偏差区间完全超出 ±5s 时报告 **Pod 相对 Host 偏差**，不声称 Host 的 UTC 正确；
+同一稳定参照下，两个 Pod 偏差区间之间的最小距离扣除双方 Host 稳定性余量后超过 5s，另报 **跨 Pod 时钟差异**，
+保留双方 Pod、Node 与证据引用。较大误差跨越阈值时报告证据不足，不输出同步结论。
+结果只描述本次采样窗口；不证明历史故障原因、NTP 状态或 Node 的绝对时间正确性。
+HTML/Markdown 展示每个 Pod 的偏差、误差、RTT 和采样状态，原始样本进入证据包。
+`--field` 的定向查询不执行时钟采样或相关 Detector。
 
 ## 快速查看字段
 

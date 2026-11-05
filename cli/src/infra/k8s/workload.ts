@@ -12,6 +12,7 @@ export interface DiscoveredKubernetesWorkload {
   instances: WorkloadInstance[];
   service?: KubernetesService;
   pods: KubernetesPod[];
+  podNodes?: Record<string, string>;
   unavailableReason?: string;
 }
 
@@ -43,6 +44,7 @@ export async function discoverKubernetesResourceWorkload(
   };
   const signal = currentCommandSignal();
   const pods = new Map<string, KubernetesPod>();
+  const podNodes: Record<string, string> = {};
   let service: KubernetesService | undefined;
   try {
     const read = async <T extends Resource | ResourceList>(query: ResourceRef | ResourceListQuery): Promise<T> => {
@@ -53,7 +55,13 @@ export async function discoverKubernetesResourceWorkload(
       if (capture.error || !capture.value) throw new Error(capture.error ?? "Resource response missing");
       const raw = capture.value as T;
       const list = JSON.stringify(name ? { items: [raw] } : raw);
-      if (resource === "pods") for (const pod of parsePods(list, ns)) pods.set(pod.name, pod);
+      if (resource === "pods") {
+        for (const pod of parsePods(list, ns)) pods.set(pod.name, pod);
+        const objects = JSON.parse(list) as { items: Array<{ metadata?: { name?: string }; spec?: { nodeName?: string } }> };
+        for (const pod of objects.items) {
+          if (pod.metadata?.name && typeof pod.spec?.nodeName === "string") podNodes[pod.metadata.name] = pod.spec.nodeName;
+        }
+      }
       if (resource === "services") service = parseServices(list, ns)[0];
       return raw;
     };
@@ -61,7 +69,7 @@ export async function discoverKubernetesResourceWorkload(
       get: query => read<Resource>(query),
       list: query => read<ResourceList>(query),
     }, definition, selectedNamespace, environment);
-    return { definition, service, instances, pods: instances.map(instance => pods.get(instance.pod)!) };
+    return { definition, service, instances, podNodes, pods: instances.map(instance => pods.get(instance.pod)!) };
   } catch (error) {
     signal?.throwIfAborted();
     return { definition, service, pods: [], instances: [],

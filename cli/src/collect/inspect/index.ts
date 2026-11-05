@@ -124,11 +124,11 @@ export async function runCollectInspect(
     purpose: "读取 Deployment 引用的 ConfigMap",
     fallback: "权限缺失时仍交付 Pod 证据，ConfigMap 配置标记为缺失",
   }] : [];
-  const environmentNeeds = scope.env ? [{
+  const environmentNeeds = (scope.env || scope.clock) ? [{
     requirement: "preferred" as const,
     rule: { verb: "get" as const, resource: "pods/exec" },
-    purpose: "逐个 Pod 的业务 Container 读取实际环境变量",
-    fallback: "无法读取时将 Pod Env 标记为缺失，不使用 Deployment 声明值替代",
+    purpose: scope.clock ? "逐个 Pod 的业务 Container 采集时钟样本" : "逐个 Pod 的业务 Container 读取实际环境变量",
+    fallback: "无法读取时保留对应 Pod 的证据缺口",
   }] : [];
   const dependencyNeeds = scope.dependencies ? [{
     requirement: "preferred" as const,

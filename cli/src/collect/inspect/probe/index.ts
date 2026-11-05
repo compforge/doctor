@@ -1,3 +1,4 @@
+import { makePodClockProbes } from "./pod-clock";
 import { inspectCollectionScope } from "../model";
 import { fileDataSources, secretDataSources } from "@compforge/doctor-plugin";
 import { makeSecretConfigurationProbe } from "./secret-configuration";
@@ -35,6 +36,7 @@ export function makeInspectProbes(
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
+    ...(scope.clock ? makePodClockProbes(facts) : []),
     ...(scope.secrets ? config.services.flatMap(service => secretDataSources(catalog.find(service)).map(source => makeSecretConfigurationProbe(service, source))) : []),
     ...(scope.files ? config.services.flatMap(service => fileDataSources(catalog.find(service)).map(source => makeFileConfigurationProbe(service, source))) : []),
     ...(scope.env ? containerEnvironmentTargets(facts).targets.map(makeContainerEnvironmentProbe) : []),

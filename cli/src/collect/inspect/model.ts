@@ -3,7 +3,7 @@ import type { TimeWindowOptions } from "../time-window";
 import type { InspectTimeWindow } from "@compforge/doctor-plugin";
 import type { JsonObject, JsonValue as PortableJsonValue } from "@compforge/harness-common";
 import type { Toolchain, Workload, WorkloadInstance } from "@compforge/doctor-plugin";
-import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
+import type { Diagnosis, Evidence, Fact, FindingMeta, ObservationMeta } from "../protocol";
 import type { ServiceDetectorFinding } from "../../plugin/evidence-detector";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesAccessContext } from "../../infra/k8s/access";
@@ -93,6 +93,7 @@ export interface InspectPodRuntimeFact {
   instance: WorkloadInstance;
   pod: string;
   serviceAccountName: string;
+  nodeName?: string;
   /** Business container resolved from the Workload declaration or Service ports. */
   environmentContainer?: string;
   environmentUnavailableReason?: string;
@@ -167,6 +168,46 @@ export interface ContainerEnvironmentObservation extends ObservationMeta, Contai
   status: "collected" | "unavailable";
   values: Record<string, string>;
   reason?: string;
+}
+
+/** Wall time is a local reference, not an assertion of UTC correctness. */
+export interface PodClockReference {
+  id: string;
+  host: string;
+  wallTimeMs: number;
+  monotonicMs: number;
+}
+
+export interface PodClockSample {
+  hostStartMs: number;
+  hostEndMs: number;
+  monotonicStartMs: number;
+  monotonicEndMs: number;
+  stdout: string;
+  podTimeMs?: number;
+  resolutionMs?: number;
+  reason?: string;
+}
+
+export interface PodClockObservation extends ObservationMeta {
+  kind: "pod-clock";
+  service: string;
+  workload: string;
+  instance: WorkloadInstance;
+  pod: string;
+  container?: string;
+  nodeName?: string;
+  reference: PodClockReference;
+  status: "collected" | "unavailable";
+  reason?: string;
+  samples: PodClockSample[];
+}
+
+export interface PodClockFinding extends FindingMeta<"clock.host-offset" | "clock.pod-spread"> {
+  subject: string;
+  message: string;
+  thresholdMs: number;
+  minimumOffsetMs: number;
 }
 
 export interface FileConfigurationObservation extends ObservationMeta {
@@ -261,6 +302,7 @@ export interface PluginWorkloadObservation extends ObservationMeta {
 
 export type InspectObservation =
   | EnvironmentConfigObservation
+  | PodClockObservation
   | ContainerEnvironmentObservation
   | FileConfigurationObservation
   | SecretConfigurationObservation
@@ -300,7 +342,7 @@ export type InspectSearchResult = { keyword?: string } & (
   | { field: "hpa"; matches: KubernetesAutoscaler[] }
 );
 
-export type InspectFinding = ServiceDetectorFinding;
+export type InspectFinding = ServiceDetectorFinding | PodClockFinding | import("../evidence-gaps").EvidenceGapFinding;
 export type InspectDiagnosisGoal =
   | "environment-config"
   | "container-environment"
@@ -332,6 +374,7 @@ export function fileConfigurationId(service: string, clientKey: string, path: st
 /** @spec A field selects collection, authorization and execution; format only selects delivery. */
 export function inspectCollectionScope(config: Pick<InspectConfig, "field" | "includeDeploymentConfig" | "includeDependencies">) {
   return {
+    clock: config.field === undefined,
     env: config.field === "env" || config.field === "config",
     files: config.field === "config",
     secrets: config.field === undefined || config.field === "config",
