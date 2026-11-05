@@ -1,4 +1,4 @@
-import type { Value, ValueCodec } from "./value";
+import type { Value, ValueCodec } from "@compforge/harness-common";
 
 /** Plugin-owned data contract for one kind of workload Observation. */
 export interface ObservationDefinition<T extends Value = Value> {

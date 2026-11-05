@@ -68,7 +68,7 @@ export async function resolvePluginTraceIds(
   const resolutions: ResolvedPluginTraceId[] = [];
   const failures = new Map(bizIds.map((bizId) => [bizId, [] as string[]]));
 
-  useLogger("collect").info(`正在通过 ${services.join(", ")} 解析 trace_id…`);
+  useLogger().info(`[collect:${opts.command === "doctor log" ? "log" : "trace"}] 正在通过 ${services.join(", ")} 解析 trace_id…`);
   for (const { service: provider, extension: registered } of providers) {
     const extension = requireTraceResolveExtension(registered);
     if (!unresolved.size) break;

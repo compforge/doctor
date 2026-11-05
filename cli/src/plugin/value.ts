@@ -1,4 +1,5 @@
-import { serializeValue, deserializeValue, type JsonValue, type ObservationDefinition, type Summary, type Value } from "@compforge/doctor-plugin";
+import { serializeValue, deserializeValue, type JsonValue, type Summary, type Value } from "@compforge/harness-common";
+import { type ObservationDefinition } from "@compforge/doctor-plugin";
 
 /** Adapt the generic Value contract to a persisted workload Observation. */
 export function encodeObservationValue(definition: ObservationDefinition, value: Value, label: string): { value: JsonValue; summary: Summary } {

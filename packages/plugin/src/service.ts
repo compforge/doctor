@@ -11,7 +11,7 @@ import type {
   InspectQueryResult,
   Query,
 } from "./capability";
-import type { JsonValue } from "./json";
+import type { JsonValue } from "@compforge/harness-common";
 import type { ProbeRunner } from "./probe";
 import type { Environment, Service, WorkloadInstance } from "@compforge/harness-common";
 

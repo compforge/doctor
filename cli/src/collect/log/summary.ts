@@ -1,4 +1,4 @@
-import type { Summary } from "@compforge/doctor-plugin";
+import type { Summary } from "@compforge/harness-common";
 import type { LogOutput } from "./index";
 
 /**

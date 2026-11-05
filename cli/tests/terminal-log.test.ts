@@ -1,6 +1,6 @@
 import { withTerminalInput } from "../src/terminal/interaction";
 import { expect, spyOn, test } from "bun:test";
-import { useLogger, withLogger, type LogLevel } from "../src/terminal/log";
+import { useLogger, withLogger, withCommandLogger, type LogLevel } from "../src/terminal/log";
 import { writeOutput, writeMachineResult } from "../src/terminal/output";
 
 function capture() {
@@ -77,4 +77,16 @@ test("Consola defers background logs while an interactive prompt owns the termin
     expect(output.stdout()).toContain("[collect]");
     expect(output.stdout()).toContain("background progress");
   } finally { finish(); await prompt; output.restore(); }
+});
+
+test("explicit debug enables diagnostics while normal and summary commands stay quiet", () => {
+  const output = capture();
+  try {
+    withCommandLogger({}, () => useLogger().debug("hidden-cache"), "info");
+    expect(output.stdout()).not.toContain("hidden-cache");
+    withCommandLogger({ debug: true }, () => useLogger().debug("visible-cache"), "info");
+    expect(output.stdout()).toContain("visible-cache");
+    withCommandLogger({ debug: true, format: "summary" }, () => useLogger().debug("summary-cache"), "info");
+    expect(output.stdout()).not.toContain("summary-cache");
+  } finally { output.restore(); }
 });

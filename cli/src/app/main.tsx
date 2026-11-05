@@ -470,7 +470,7 @@ export function createDoctorProgram(
       "  主动请求与 image / debug / install / resize 等 Provision 动作会影响目标，执行前核对动作与授权。",
     ].join("\n"))
     .option("-V, --version", "显示发行版名称与版本（离线）")
-    .option("--debug", "错误时将完整技术详情同时输出到 stderr", false)
+    .option("--debug", "显示 DEBUG 诊断日志，并在错误时输出完整技术详情", false)
     .option("-y, --yes", "不询问，使用已解析的参数和默认值并确认所选操作；缺少必要参数时报错", false)
     .option("--no-yes", "关闭自动确认，允许交互终端补齐参数")
     .option("--config <path>", 'Doctor 配置路径（默认 ~/.doctor/config.yaml；空字符串禁用外部配置）')

@@ -1,3 +1,4 @@
+import { useLogger } from "../terminal/log";
 import { CLEANUP_TIMEOUT_MS, disposeWithinBudget } from "../command/deadline";
 import { kubernetesClientSource, capturedResourceAccess, type KubernetesResourceReader } from "../infra/k8s/resources";
 import { PodFileDataSource } from "@compforge/harness-toolbox/file";
@@ -179,6 +180,7 @@ export function createPluginContext(
   const disposers: Array<() => void | Promise<void>> = [];
   let disposal: Promise<void> | undefined;
   const access = (accessSignal: AbortSignal, client?: KubernetesClient): PluginClientContext => ({
+    logger: { debug: message => useLogger("plugin").debug(message) },
     target: { env: options.environment.name, namespace: kube.namespace, service: bindService(options.service, options.environment), endpoint: options.endpoint },
     config: options.config ?? {},
     infra: {

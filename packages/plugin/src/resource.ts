@@ -1,5 +1,5 @@
 import type { Resource, ResourceSnapshot, ServiceResource } from "@compforge/harness-common";
-import { immutableJsonValue, type JsonObject } from "./json";
+import { immutableJsonValue, type JsonObject } from "@compforge/harness-common";
 import { validateOperation, type PluginOperation } from "./operation";
 
 export type { Resource, ResourceCoverage, ResourceInstance, ResourceInstanceRef, ResourceMeasurement,

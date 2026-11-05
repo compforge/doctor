@@ -50,10 +50,11 @@ export function withLogger<T>(level: LogLevel, work: () => T): T {
  * @spec Summary delivery suppresses informational progress for every command action.
  * @rule Preserve an existing error-only policy; result writers are independent of logging.
  */
-export function withCommandLogger<T>(options: { format?: string }, work: () => T, level?: LogLevel): T {
+export function withCommandLogger<T>(options: { format?: string; debug?: boolean }, work: () => T, level?: LogLevel): T {
   if (options.format?.trim() === "summary") {
     const requested = level ? levels[level] : (scope.getStore() ?? startupLogger).level;
     return withLogger(requested <= levels.error ? "error" : "warn", work);
   }
+  if (options.debug) return withLogger("verbose", work);
   return level ? withLogger(level, work) : work();
 }

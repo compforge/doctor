@@ -92,7 +92,7 @@ export async function runCollectData(
       checkpointFacts: snapshot => { facts = snapshot; },
       signal: commandContext.signal,
       planProbes: (_facts, itemConfig) => {
-        useLogger("collect:data").warn(`biz-id: ${itemConfig.ids[0]}`);
+        useLogger().info(`[collect:data] 采集阶段 biz-id: ${itemConfig.ids[0]}`);
         return [];
       }, log, buildEvidence: buildDataEvidence,
       detectors: [...makeDataDetectors(plugin.id, plugin.services, services), detectDataEvidenceGaps],

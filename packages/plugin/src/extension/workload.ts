@@ -1,7 +1,7 @@
 import type { Extension, RegisteredExtension } from "./index";
 import type { ObservationDefinition, ObservationValue } from "../observation";
 import type { PluginContext } from "../context";
-import type { Value } from "../value";
+import type { Value } from "@compforge/harness-common";
 import type { ServiceWorkloadProbeInput } from "../service";
 
 export const WORKLOAD_PROBE_KIND = "workload.probe";

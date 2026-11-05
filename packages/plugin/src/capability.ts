@@ -1,4 +1,4 @@
-import type { Summary } from "./summary";
+import type { Summary } from "@compforge/harness-common";
 import type { PluginContext } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
 

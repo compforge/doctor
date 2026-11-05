@@ -1,17 +1,18 @@
 {
   "name": "@compforge/doctor-plugin-example",
-  "version": "0.0.19",
+  "version": "0.0.20",
   "private": true,
   "type": "module",
   "doctorPlugin": {
-    "requiresDoctor": ">=0.1.218"
+    "requiresDoctor": ">=0.1.240"
   },
   "scripts": {
     "build": "make build",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@compforge/doctor-plugin": "workspace:*"
+    "@compforge/doctor-plugin": "workspace:*",
+    "@compforge/harness-common": "0.5.11"
   },
   "devDependencies": {
     "@types/bun": "latest",

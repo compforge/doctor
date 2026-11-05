@@ -405,7 +405,7 @@ export async function runCollectTrace(
     }));
   const pool = new ConcurrencyPool(concurrency);
   const results = await Promise.allSettled(tasks.map(task => pool.run(async () => {
-    useLogger("collect:trace").info(`trace-id: ${task.trace.traceId}`);
+    useLogger().info(`[collect:trace] 采集阶段 trace-id: ${task.trace.traceId}`);
     const artifact = commandContext.artifacts.add({ command: "trace", path: task.outputDir });
     try {
       const code = await collectTrace({

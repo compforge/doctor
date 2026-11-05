@@ -1,5 +1,6 @@
 import { projectSummary } from "../../command/summary";
-import type { Fact, Summary } from "@compforge/doctor-plugin";
+import type { Summary } from "@compforge/harness-common";
+import type { Fact } from "@compforge/doctor-plugin";
 import { aggregateCommandStatus } from "../../command/result";
 import { CommandStatus } from "../../command/status";
 import { summaryText } from "../../command/summary";
