@@ -10,7 +10,7 @@ import { EvidenceBundle } from "../src/collect/evidence";
 import { collectedFact, unavailableFact } from "../src/collect/protocol";
 import { buildInspectEvidence } from "../src/collect/inspect/detector";
 import { detectPodClocks, estimatePodClock } from "../src/collect/inspect/clock";
-import { makePodClockProbes, parsePodTime } from "../src/collect/inspect/probe/pod-clock";
+import { makePodClockProbes, parsePodTime, parsePodClockOutput } from "../src/collect/inspect/probe/pod-clock";
 import { runCollectInspect } from "../src/collect/inspect";
 import { buildInspectHtmlSections, buildInspectSummary } from "../src/collect/inspect/render";
 import { examplePlugin } from "../../plugins/example/src";
@@ -51,6 +51,40 @@ test("clock parser retains GNU precision and BusyBox second quantization, reject
   expect(parsePodTime("1700000000.123456789\n")).toEqual({ podTimeMs: 1700000000123.4568, resolutionMs: 1 });
   for (const raw of ["1700000000", "1700000000.%N"]) expect(parsePodTime(raw)).toEqual({ podTimeMs: 1700000000000, resolutionMs: 1000 });
   for (const raw of ["", "1700000000.NaN", "not found", "123\n456"]) expect(() => parsePodTime(raw)).toThrow();
+});
+
+test("timezone capture preserves offsets and abbreviations without inferring names or altering epoch", () => {
+  for (const [raw, expected] of [
+    ["1700000000.123456789\n+0800\nCST\n", { utcOffset: "+0800", abbreviation: "CST" }],
+    ["1700000000.%N\n-0600\nCST\n", { utcOffset: "-0600", abbreviation: "CST" }],
+    ["1700000000\n+0545\n+0545\n", { utcOffset: "+0545", abbreviation: "+0545" }],
+    ["1700000000\n+0000\nUTC\n", { utcOffset: "+0000", abbreviation: "UTC" }],
+    ["1700000000\r\n+0000\r\n\r\n", { utcOffset: "+0000", abbreviation: undefined }],
+    ["1700000000\n%z\nUTC\n", { utcOffset: undefined, abbreviation: "UTC" }],
+  ] as const) {
+    const parsed = parsePodClockOutput(raw);
+    expect(parsed.timezone).toEqual(expected);
+    expect(parsed.podTimeMs).toBe(parsePodTime(raw.split(/\r?\n/)[0]!).podTimeMs);
+    expect(parsed.timezone).not.toHaveProperty("name");
+  }
+  for (const raw of ["1700000000\n", "1700000000\n\n\n", "1700000000\n%z\n%Z\n", "1700000000\n+9999\n\n"]) {
+    expect(parsePodClockOutput(raw)).toEqual({ podTimeMs: 1700000000000, resolutionMs: 1000 });
+  }
+  expect(() => parsePodClockOutput("invalid\n+0000\nUTC\n")).toThrow();
+});
+
+test("timezone differences never imply clock skew, and old evidence still renders", () => {
+  const one = observation("one", 0), two = observation("two", 0);
+  one.samples[0]!.timezone = { utcOffset: "+0800", abbreviation: "CST" };
+  two.samples[0]!.timezone = { utcOffset: "-0600", abbreviation: "CST" };
+  const input = evidence([one, two]);
+  expect(detectPodClocks(input)).toEqual([]);
+  one.samples.push({ ...one.samples[0]!, timezone: { utcOffset: "+0000", abbreviation: "UTC" } });
+  let diagnosis: InspectDiagnosis = { evidence: input, findings: [] };
+  expect(buildInspectSummary(diagnosis)).toContain("+0800 / CST; +0000 / UTC");
+  diagnosis = { evidence: evidence([observation("old", 0)]), findings: [] };
+  expect(buildInspectSummary(diagnosis)).toContain("未取得");
+  expect(buildInspectHtmlSections(diagnosis).find(section => section.title.includes("时钟"))?.html).toContain("未取得");
 });
 
 test("clock intervals include whole-second truncation and choose the most precise consistent sample", () => {
@@ -107,11 +141,11 @@ for (const mode of ["ok", "denied", "timeout", "missing-date", "malformed", "sto
       run: async () => response("no"),
       exec: async (target, args, options) => {
         calls.push(target.pod);
-        expect(args).toEqual(["date", "+%s.%N"]);
+        expect(args).toEqual(["date", "+%s.%N%n%z%n%Z"]);
         expect(options?.timeoutMs).toBe(5000);
         if (mode === "cancelled") { abort.abort(new Error("cancelled")); throw abort.signal.reason; }
         if (mode === "timeout" || mode === "missing-date") return { ...response(""), ok: false, exitCode: 1, timedOut: mode === "timeout", stderr: "date not found" };
-        return response(mode === "malformed" ? "invalid" : String(Date.now() / 1000));
+        return response(mode === "malformed" ? "invalid" : `${Date.now() / 1000}\n+0800\nCST\n`);
       },
     };
     const authorization = new KubernetesAccessContext(executor);
@@ -138,9 +172,12 @@ for (const mode of ["ok", "denied", "timeout", "missing-date", "malformed", "sto
       expect(new Set(flat.map(item => item.reference.id)).size).toBe(1);
       if (mode === "ok") {
         expect(calls).toHaveLength(6);
+        expect(flat.every(item => item.samples.every(sample => sample.timezone?.utcOffset === "+0800" && sample.timezone.abbreviation === "CST"))).toBe(true);
         expect(flat.every(item => item.samples.length === 3 && item.status === "collected")).toBe(true);
         const diagnosis = { evidence: buildInspectEvidence(flat, input), findings: [] } as InspectDiagnosis;
         expect(buildInspectSummary(diagnosis)).toContain("偏差 ms（Pod − Host）");
+        expect(buildInspectSummary(diagnosis)).toContain("+0800 / CST");
+        expect(buildInspectHtmlSections(diagnosis).find(section => section.title.includes("时钟"))?.html).toContain("+0800 / CST");
         expect(buildInspectHtmlSections(diagnosis).find(section => section.title.includes("时钟"))?.html).toContain("shared-node");
       } else {
         expect(calls).toHaveLength(["denied", "stopped", "ambiguous"].includes(mode) ? 0 : 2);
@@ -172,7 +209,7 @@ test("full Inspect discovers Node identities and archives all Pod samples withou
       if (["events", "horizontalpodautoscalers"].includes(args[1]!)) return response('{"items":[]}');
       throw new Error(`Unexpected request ${args.join(" ")}`);
     },
-    exec: async (target) => response(String((Date.now() + (target.pod === "two" ? 60_000 : 0)) / 1000)),
+    exec: async (target) => response(`${(Date.now() + (target.pod === "two" ? 60_000 : 0)) / 1000}\n+0000\nUTC\n`),
   };
   const context = new CommandContext({}, undefined, { plugin });
   try {
@@ -181,7 +218,7 @@ test("full Inspect discovers Node identities and archives all Pod samples withou
     const diagnosis: InspectDiagnosis = JSON.parse(readFileSync(join(path, "diagnosis.json"), "utf8"));
     const clocks = diagnosis.evidence.observations.filter(item => item.kind === "pod-clock");
     expect(clocks.map(item => item.nodeName)).toEqual(["node-one", "node-two"]);
-    expect(clocks.every(item => item.samples.length === 3)).toBe(true);
+    expect(clocks.every(item => item.samples.length === 3 && item.samples.every(sample => sample.timezone?.abbreviation === "UTC"))).toBe(true);
     expect(diagnosis.findings.some(item => item.kind === "clock.pod-spread")).toBe(true);
     expect(calls.some(args => args[1] === "nodes" || args[1] === "node")).toBe(false);
   } finally {

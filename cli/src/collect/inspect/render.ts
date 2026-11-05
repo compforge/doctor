@@ -44,8 +44,8 @@ function markdownTable(headers: readonly string[], rows: readonly (readonly stri
   ];
 }
 
-const CLOCK_TABLE_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Doctor Host", "采样时间（Host UTC）", "偏差 ms（Pod − Host）", "误差 ±ms", "RTT ms", "状态"];
-const CLOCK_EXPLANATION = "Doctor Host 是本次采样参照，不保证 UTC 正确。偏差为区间中点，误差包含往返耗时和时间精度；5s 为提示阈值。Node 仅用于定位，Pod 结果不代表整个 Node 或集群；未告警不等于已证明同步。";
+const CLOCK_TABLE_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Doctor Host", "采样时间（Host UTC）", "偏差 ms（Pod − Host）", "误差 ±ms", "RTT ms", "Pod 时区（UTC offset / 缩写）", "状态"];
+const CLOCK_EXPLANATION = "Doctor Host 是本次采样参照，不保证 UTC 正确。偏差为区间中点，误差包含往返耗时和时间精度；5s 为提示阈值。Node 仅用于定位，Pod 结果不代表整个 Node 或集群；未告警不等于已证明同步。时区来自采样进程的 date 输出，缩写不等于 IANA 时区名称；未取得时显示缺失，不影响时钟判定。";
 
 function clockRows(diagnosis: InspectDiagnosis): string[][] {
   const observations = clockObservations(diagnosis.evidence);
@@ -53,9 +53,11 @@ function clockRows(diagnosis: InspectDiagnosis): string[][] {
   return observations.map(observation => {
     const result = estimatePodClock(observation);
     const estimate = unstable.has(observation.reference.id) ? undefined : result.estimate;
+    const timezones = [...new Set(observation.samples.flatMap(sample => sample.timezone
+      ? [[sample.timezone.utcOffset, sample.timezone.abbreviation].filter(Boolean).join(" / ")].filter(Boolean) : []))];
     return [observation.service, observation.workload, observation.pod, observation.container ?? "—", observation.nodeName ?? "—",
       observation.reference.host, estimate ? new Date(estimate.sampledAtMs).toISOString() : "—",
-      estimate?.offsetMs.toFixed(1) ?? "—", estimate?.uncertaintyMs.toFixed(1) ?? "—", estimate?.roundTripMs.toFixed(1) ?? "—",
+      estimate?.offsetMs.toFixed(1) ?? "—", estimate?.uncertaintyMs.toFixed(1) ?? "—", estimate?.roundTripMs.toFixed(1) ?? "—", timezones.join("; ") || "未取得",
       unstable.has(observation.reference.id) ? "Doctor Host 时钟不稳定" : result.reason ?? observation.reason ?? "已采样"];
   });
 }

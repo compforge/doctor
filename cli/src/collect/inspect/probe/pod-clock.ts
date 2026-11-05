@@ -5,7 +5,7 @@ import { currentCommandSignal } from "../../../command/execution-scope";
 import { PROBE_RUNNABLE, type Probe } from "../../protocol";
 import type {
   InspectCommandContext, InspectConfig, InspectFacts, InspectObservation, InspectPodRuntimeFact,
-  PodClockObservation, PodClockReference,
+  PodClockObservation, PodClockReference, PodClockSample,
 } from "../model";
 
 const SAMPLE_COUNT = 3;
@@ -21,6 +21,19 @@ export function parsePodTime(stdout: string): { podTimeMs: number; resolutionMs:
     podTimeMs: Number(match[1]) * 1000 + (fractional ? Number(`0.${fraction}`) * 1000 : 0),
     resolutionMs: fractional ? Math.max(1, 1000 * 10 ** -fraction.length) : 1000,
   };
+}
+
+/**
+ * @spec Timezone metadata is optional and never changes the Unix timestamp or clock diagnosis.
+ * @why %Z can be ambiguous (for example CST); keep the reported abbreviation without inferring an IANA name.
+ * @see {@link cli/docs/commands/inspect.md}
+ */
+export function parsePodClockOutput(stdout: string): ReturnType<typeof parsePodTime> & Pick<PodClockSample, "timezone"> {
+  const [epoch = "", offset = "", zone = ""] = stdout.split(/\r?\n/);
+  const time = parsePodTime(epoch);
+  const utcOffset = /^[+-](?:[01]\d|2[0-3])[0-5]\d$/.test(offset.trim()) ? offset.trim() : undefined;
+  const abbreviation = /^[^\s%]{1,64}$/.test(zone.trim()) ? zone.trim() : undefined;
+  return { ...time, ...(utcOffset || abbreviation ? { timezone: { utcOffset, abbreviation } } : {}) };
 }
 
 /** @spec Probe every discovered Pod in the selected scope; Node and image never deduplicate sampling.
@@ -62,7 +75,7 @@ function makePodClockProbe(service: string, workload: string, pod: InspectPodRun
         let reason: string | undefined;
         execution = undefined;
         try {
-          execution = await ctx.exec({ pod: pod.pod, container: observation.container }, ["date", "+%s.%N"], {
+          execution = await ctx.exec({ pod: pod.pod, container: observation.container }, ["date", "+%s.%N%n%z%n%Z"], {
             timeoutMs: SAMPLE_TIMEOUT_MS, signal,
           });
           if (!execution.ok) reason = execution.timedOut ? "读取 Pod 时间超时（5s）"
@@ -76,7 +89,7 @@ function makePodClockProbe(service: string, workload: string, pod: InspectPodRun
         signal?.throwIfAborted();
         const sample = { hostStartMs, hostEndMs, monotonicStartMs, monotonicEndMs, stdout: execution?.stdout ?? "", reason };
         try {
-          observation.samples.push(reason ? sample : { ...sample, ...parsePodTime(sample.stdout) });
+          observation.samples.push(reason ? sample : { ...sample, ...parsePodClockOutput(sample.stdout) });
         } catch (error) {
           sample.reason = error instanceof Error ? error.message : String(error);
           observation.samples.push(sample);
