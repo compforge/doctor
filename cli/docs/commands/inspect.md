@@ -30,12 +30,18 @@
 
 完整 Inspect（包括 Collect 调用的 Inspect）默认对所选 Service → Workload 下的每个 Pod
 采集时钟，不按 Node 或镜像去重。Node 来自 Pod spec，仅用于定位；不扫描未选中的服务或全集群 Node。
-使用已定位的业务 Container 执行 `date +%s.%N`，每个 Pod 最多 3 次，每次超时 5 秒，
+使用已定位的业务 Container 执行 `date "+%s.%N%n%z%n%Z"`，每个 Pod 最多 3 次，每次超时 5 秒，
 由既有 Probe 调度器执行；失败后保留原因并停止该 Pod 的后续尝试。不安装工具或创建辅助 Pod。
 需要已有 `pods/exec` 访问权限。容器未运行、无法唯一定位、缺少 date 或权限不足均保留证据缺口。
 
 原始 Observation 保存 Doctor Host 名称、同批次参考点、Host 发送/接收壁钟与单调时间、Pod 时间、
 输出精度及失败原因。秒级 date（包括原样输出 `%N`）按 1 秒量化误差处理。
+同一次 date 调用顺带读取 `%z` 的 UTC offset（如 `+0800`）及 `%Z` 的时区缩写（如 `CST`），
+逐样本保存可用字段和原始输出。HTML/Markdown 显示该 Pod 采样中出现的不同 offset/缩写组合。
+缺失或不支持的时区字段不影响有效时间样本，旧归档无该字段时显示“未取得”。
+这些字段表示本次新执行的 date 进程所见时区，不等同于应用内部配置；不读取 `/etc/timezone`
+或推断 IANA 时区名（例如 `CST` 不能唯一确定 `Asia/Shanghai`），也不因时区不同产生时钟偏差告警。
+
 Detector 使用 `[Pod时间 − Host接收时间, Pod时间 + 精度 − Host发送时间]`（另含 Host 毫秒舍入余量）
 作为偏差区间，展示区间中点及半宽，不假设请求与响应延迟对称。保留全部样本，取最窄区间；
 多次区间不相交时不作稳定偏差结论。批次内 Host 壁钟相对单调时间变化超过 100ms 时，

@@ -186,6 +186,8 @@ export interface PodClockSample {
   stdout: string;
   podTimeMs?: number;
   resolutionMs?: number;
+  /** Effective date process output at this sample; abbreviations are not IANA zone identifiers. */
+  timezone?: { utcOffset?: string; abbreviation?: string };
   reason?: string;
 }
 
