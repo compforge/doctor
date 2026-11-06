@@ -24,9 +24,21 @@ export function validateWorkloadDeclaration(value: Workload): void {
     throw new Error("Expected a complete consumer Workload declaration");
   }
   const location = value.location;
-  if (!location || (location.kind === "labels" ? !location.labels || !Object.keys(location.labels).length
-    || Object.entries(location.labels).some(([key, item]) => !text(key) || typeof item !== "string")
-    : location.kind === "service" ? !text(location.name)
-    : location.kind === "resource" ? !text(location.name) || !["Deployment", "StatefulSet", "DaemonSet", "Pod"].includes(location.resource_kind)
-    : true)) throw new Error(`${value.name}: invalid Workload location`);
+  let valid = false;
+  switch (location?.kind) {
+    case "labels": {
+      const labels = location.labels;
+      valid = !!labels && typeof labels === "object" && !Array.isArray(labels)
+        && Object.keys(labels).length > 0
+        && Object.entries(labels).every(([key, item]) => text(key) && typeof item === "string");
+      break;
+    }
+    case "service":
+      valid = text(location.name);
+      break;
+    case "resource":
+      valid = text(location.name) && ["Deployment", "StatefulSet", "DaemonSet", "Pod"].includes(location.resource_kind);
+      break;
+  }
+  if (!valid) throw new Error(`${value.name}: invalid Workload location`);
 }
