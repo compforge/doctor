@@ -53,7 +53,10 @@ export function printHealth(result: HealthResult): void {
       writeOutput(`  ${scopeLabel(check.scope)} Probe ${check.probe}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}\n`);
       for (const finding of check.findings) writeOutput(`    ${finding.severity}: ${finding.message}\n`);
     }
-    for (const check of summary.endpoints ?? []) writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${check.error.kind ?? ""}/${check.error.code ?? ""} ${check.error.message}` : ""}\n`);
+    for (const check of summary.endpoints ?? []) {
+      const errorKind = [check.error?.kind, check.error?.code].filter(Boolean).join("/");
+      writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
+    }
     for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
