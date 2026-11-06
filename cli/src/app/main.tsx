@@ -449,28 +449,18 @@ export function createDoctorProgram(
     .description(distribution.description ?? [
       "面向应用与基础设施的本地诊断工具；默认旁路运行、证据优先。",
       "",
-      "诊断模型：",
-      "  Core 提供通用 Target 访问与证据编排；Plugin 交付产品与 Service 的业务知识、诊断声明和 Skill。",
-      "  Concepts（核心概念）解释业务对象与约束；Workflows（典型流程）说明从触发到完成的业务过程。",
-      "  Service 是业务诊断对象，拥有零到多个 Workload；Pod、Container、Process 提供运行态证据。",
-      "  Doctor Host 是运行 CLI 的机器，Target 是被诊断目标；访问位置会影响观测结果。",
-      "  Facts / Observations 保存事实与观测，Findings 是基于已有证据的规则判断。",
-      "",
       "排查路径：",
-      "  理解产品与服务 → knowledge 查看概念 / 流程；--service <name> 聚焦服务",
-      "  部署主动巡检   → health 检查启动、依赖与业务功能",
-      "  运行问题回顾   → overview 查看统计并选取代表业务 ID → collect 汇集证据",
-      "  已知异常请求   → collect 联合取证，或 trace / log / data 聚焦单个数据面",
-      "  部署与依赖异常 → inspect 查看运行态与配置 → store 检查存储 → db / s3 查询具体数据",
-      "  主动复现问题   → case / model / mcp；批量触发与取证用 eval，受控压测用 perf",
-      "  CPU / 内存 / 网络 → cpu / mem / net 采集；对象堆与网络证据用 mema / neta 离线分析",
-      "  已知错误码     → knowledge lookup <dictionary> 查询词条；开放式问题用 chat 组织调查",
+      "  检查服务是否就绪 → health 主动检查启动状态、依赖连通性与业务功能",
+      "  回顾近期运行情况 → overview 查看错误与耗时分布，按需选取代表业务 ID",
+      "  排查具体问题     → collect 汇集关联证据；trace / log / data 等命令可单独取证",
+      "  检查部署与依赖   → inspect 查看运行态与配置；store / db / s3 检查存储与数据",
+      "  复现与性能分析   → case / model / mcp 发起请求；eval 批量取证，perf 受控压测",
+      "  CPU / 内存 / 网络 → cpu / mem / net 采集，mema / neta 离线分析",
+      "  了解业务与排查方法 → knowledge 查阅知识，chat 交互问诊",
       "",
-      "证据原则：",
-      "  先核对对象、执行位置、时间窗口和采集完整性，再区分观测事实、规则发现与待验证推断。",
-      "  空结果、采集失败、未执行和正常结果含义不同；没有发现异常只能说明本次覆盖范围。",
-      "  报告保留可复查证据；输出格式改变交付视图，具体采集范围由命令参数决定。",
-      "  主动请求与 image / debug / install / resize 等 Provision 动作会影响目标，执行前核对动作与授权。",
+      "使用提示：",
+      "  Plugin 提供业务 Service 与诊断能力；使用 --service 聚焦服务，具体参数见 doctor <command> -h。",
+      "  结合时间窗口与采集覆盖范围解读结果；报告保留可复查证据。",
     ].join("\n"))
     .option("-V, --version", "显示发行版名称与版本（离线）")
     .option("--debug", "显示 DEBUG 诊断日志，并在错误时输出完整技术详情", false)
@@ -694,7 +684,7 @@ export function createDoctorProgram(
 
   withCollectOptions(
     catalog.command("collect").helpGroup("Collect · 采集与分析:").description(
-      "集合命令：选择、编排并汇总 inspect/tenant/data/trace/log/metric；本身不实现具体采集",
+      "围绕问题汇集运行态、业务数据、trace、日志与指标，生成诊断报告和证据包",
     )
       .addHelpText("after", `
 分析思路：

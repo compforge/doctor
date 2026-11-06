@@ -7,7 +7,7 @@ import { domainInput } from "../command/options";
 import { healthCommand, type HealthCliOpts } from "./index";
 
 export function registerHealthCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("health").description("主动检查 Service 启动状态、依赖连通性和业务功能（非只读请求需确认）")
+  program.command("health").description("主动巡检服务启动状态、依赖连通性与业务功能（非只读请求需确认）")
     .addHelpText("after", `
 分析思路：
   按 self、deps、biz 层级，从消费方 Workload 执行本次巡检。

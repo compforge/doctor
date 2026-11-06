@@ -7,7 +7,7 @@ import { domainInput } from "../command/options";
 import { overviewCommand, type OverviewCliOpts } from "./index";
 
 export function registerOverviewCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("overview").description("展示时间窗口内的运行统计，按需选取代表 biz-id 并采集诊断数据")
+  program.command("overview").description("回顾时间窗口内的错误与耗时分布，按需选取代表业务 ID 取证")
     .addHelpText("after", `
 分析思路：
   先查看错误、诊断与耗时分布；支持采样的条目可取得代表 biz-id，再决定是否 collect。
