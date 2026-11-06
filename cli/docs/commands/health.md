@@ -73,7 +73,8 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
-Core 按声明的 Workload 定位实例，每个 Probe 串行检查最多 10 个实例，不过滤未就绪实例；超限保留覆盖缺口。
+Core 按声明的 Workload 定位实例，每个 Probe 仅选第 1 个实例调用一次，不过滤未就绪实例。
+结果保留所选实例身份和代表实例采样范围，不推断其余副本健康。
 结果保留 Observation 和 Detector Finding，`status: "ok"` 表示取得证据，不能代替健康结论。
 访问失败、工具缺失、空实例和取消都不能算健康；终端、HTML 与 diagnosis.json 保留相应原因。
 
@@ -234,7 +235,8 @@ URL 解析可复用 Toolbox 的 `endpointFromUrl`。
 仅声明 Endpoint 的 Service 也进入 Health 候选列表。声明直接提供地址，不包含 resolve operation。
 
 Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，并声明 pods/exec 权限。
-每次探测限时 5 秒，每个 Service 最多 100 个地址、每个 Workload 最多 10 个实例；超出部分逐项记录为
+每次探测限时 5 秒，每个 Service 最多 100 个地址；每个地址仅从其 Workload 的第 1 个 Running 实例探测一次。
+保留所选实例与采样范围，不推断其余副本可达。超出地址上限的部分逐项记录为
 `not-run` 并注明上限原因，不作为 unavailable 取证失败。已执行项全部通过时，覆盖不完整的结果仍为 partial。
 同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
 网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
@@ -259,8 +261,8 @@ Core 独立执行收到的两类贡献，不匹配地址或 id，不覆盖、不
 `defineEndpointProbeExtension` 声明 `id`、`kind: "endpoint.probe"`、完整消费方 `workload`、
 `access`、`produces` 和 `run(context, { instance })`。Extension 自己掌握目标地址和访问方法；
 可以不声明任何 `service.endpoints`，也无需在 `Service.workloads` 再登记该 Workload 名称。
-Core 在 deps 层逐实例调用，复用 Probe 的权限、客户端生命周期、取消、Value codec、Observation 和 Detector。
+Core 在 deps 层为声明的 Workload 选第 1 个实例，调用一次 Probe，复用权限、客户端生命周期、取消、Value codec、Observation 和 Detector。
 返回 `WorkloadProbeResult`（`ok`、`partial` 或 `unavailable` 与 Value）；这表示取证状态，健康判断保留在 Observation/Findings。
 
-通用 exec 探测保留非 Running Pod 的“未执行”及原因，只对 Running 实例应用 10 个实例上限。
+通用 exec 探测仅选第 1 个 Running 实例，不为未选副本重复执行或生成失败记录；结果明确标注代表实例采样范围。
 没有可执行实例时 Endpoint 标为 unavailable；自定义 Probe 的可执行条件由 Plugin 判断。

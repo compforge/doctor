@@ -22,7 +22,7 @@ export interface HealthEndpointCheck {
 }
 
 /** @spec Explicit [] confirms no outbound dependencies; missing execution location preserves unknown coverage.
- * @spec Probe limits retain each excluded Endpoint or instance as not-run, not an acquisition failure.
+ * @spec Each Endpoint is checked once from its Workload's first Running instance; the remaining replicas are outside this sample.
  * @see {@link component://docs/commands/health.md} */
 export async function checkHealthEndpoints(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }): Promise<HealthEndpointCheck[]> {
@@ -39,7 +39,7 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
     const detail = { message: error instanceof Error ? error.message : String(error),
       ...(error instanceof ToolboxError ? { kind: error.kind, code: error.code } : {}) };
     results.push({ ...base, status: context.signal.aborted ? "cancelled" : "unavailable", error: detail });
-    useLogger("health").info(`Endpoint ${provider.name}/${base.source}: 未取得证据 · ${detail.message}`);
+    useLogger("health").warn(`Endpoint ${provider.name}/${base.source}: 未取得证据 · ${detail.message}`);
   };
   for (const [index, endpoint] of provider.endpoints.entries()) {
     const base = { source: endpoint.id ?? `${endpoint.host}:${endpoint.port}`, workload: endpoint.workload?.name, endpoint };
@@ -59,16 +59,13 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
       }
       const discovered = await discovery;
       const running = discovered.instances.filter(found => discovered.pods.some(pod => pod.name === found.pod && pod.phase === "Running"));
-      const selected = new Set(running.slice(0, 10));
-      for (const found of discovered.instances) {
+      for (const found of running.slice(0, 1)) {
         const pod = discovered.pods.find(pod => pod.name === found.pod);
         const instance = { ...found, container: found.container ?? (pod?.containers.length === 1 ? pod.containers[0]!.name : undefined) };
-        const consumer = { ...base, instance };
-        if (context.signal.aborted || !selected.has(found)) {
-          const reason = context.signal.aborted ? "执行前已取消"
-            : pod?.phase !== "Running" ? `Pod 状态 ${pod?.phase ?? "未知"}，无法执行通用 exec 探测` : "超出本轮 10 个运行实例探测上限";
-          results.push({ ...consumer, status: "not-run", reason });
-          useLogger("health").info(`Endpoint ${provider.name}/${base.source}/${instance.pod}: 未执行 · ${reason}`);
+        const consumer = { ...base, instance,
+          ...(discovered.instances.length > 1 ? { reason: `选取 ${discovered.instances.length} 个实例中的第 1 个 Running 实例作为代表；不代表其余副本可达` } : {}) };
+        if (context.signal.aborted) {
+          results.push({ ...consumer, status: "not-run", reason: "执行前已取消" });
           continue;
         }
         try {

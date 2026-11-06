@@ -92,7 +92,7 @@ const statisticsService: ServiceDefinition = { name: "store", workloads: [kubern
   component: { name: "store", repository: { forge: { name: "fixture" }, path: "fixture/store" } }, extensions: [statistics] };
 
 for (const statuses of [["unavailable"], ["unavailable", "unavailable"], ["ok", "unavailable"], ["partial"], ["ok"]] as const) {
-  test(`Probe uses its owner with cross-Service statistics and aggregates ${statuses.join("/")}`, async () => {
+  test(`Probe uses its owner with cross-Service statistics and samples once with ${statuses.join("/")}`, async () => {
     const selectedProbe = defineWorkloadProbeExtension({ ...probe, run: async (_context, input) => {
       const status = statuses[Number(input.instance.uid)]!;
       return status === "ok" ? { status, value: value() }
@@ -118,10 +118,9 @@ for (const statuses of [["unavailable"], ["unavailable", "unavailable"], ["ok", 
     });
     try {
       const checks = await checkSelfHealthProbes(provider, context, executor, { namespace: "test" });
-      const expected = statuses.every(status => status === "unavailable") ? "unavailable"
-        : statuses.every(status => status === "ok") ? "ok" : "partial";
+      const expected = statuses[0];
       expect(checks[0]!.status).toBe(expected);
-      expect(checks[0]!.observations).toHaveLength(statuses.length);
+      expect(checks[0]!.observations).toHaveLength(1);
       expect(checks[0]!.observations.every(item => item.services[0] === "api" && item.producer.origin === "plugin" && item.producer.service === "api")).toBe(true);
     } finally {
       invocation.mockRestore(); workloads.mockRestore(); permission.mockRestore(); environment.mockRestore(); await context.disposeClients();
@@ -173,7 +172,7 @@ test("Probe cancellation preserves earlier observations and records unstarted Pr
   const calls: string[] = [];
   const active = defineWorkloadProbeExtension({ ...probe, id: "active", run: async (plugin, input) => {
     calls.push(`active:${input.instance.pod}`);
-    if (input.instance.pod === "api-1") {
+    if (input.instance.pod === "api-0") {
       const cancelled = new Promise<never>((_resolve, reject) => plugin.signal.addEventListener("abort", () => reject(plugin.signal.reason), { once: true }));
       context.cancel();
       return await cancelled;
@@ -192,8 +191,8 @@ test("Probe cancellation preserves earlier observations and records unstarted Pr
   try {
     const result = await checkSelfHealthProbes(healthProviders(plugin)[0]!, context, {} as Executor, { namespace: "test" });
     expect(result.map(check => check.status)).toEqual(["ok", "cancelled", "not-run"]);
-    expect(result.map(check => check.observations.length)).toEqual([2, 1, 0]);
-    expect(calls).toEqual(["active:api-0", "active:api-1"]);
+    expect(result.map(check => check.observations.length)).toEqual([1, 0, 0]);
+    expect(calls).toEqual(["active:api-0"]);
     expect(workloads).toHaveBeenCalledTimes(2);
     const html = buildHealthHtml({ query: {}, providers: [{ name: "api", namespace: "fixture", probes: result }] });
     expect(html).toContain("已取消"); expect(html).toContain("未执行");

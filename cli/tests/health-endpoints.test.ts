@@ -58,7 +58,7 @@ test("explicit empty declaration avoids discovery and network execution", async 
 
 test("shared consumer discovery is reused and target namespace remains opaque", async () => {
   const { results, commands, discoveries } = await check([endpoint, { ...endpoint, id: "second" }], { pods: ["worker-0", "worker-1"] });
-  expect(results.map(item => item.status)).toEqual(["passed", "passed", "passed", "passed"]);
+  expect(results.map(item => item.status)).toEqual(["passed", "passed"]);
   expect(discoveries).toBe(1);
   expect(commands[0]).toMatchObject({ pod: "worker-0", target: { host: "storage.other-namespace", tls: true } });
 });
@@ -78,13 +78,12 @@ test("missing consumer or instances retain unknown coverage", async () => {
   expect((await check([endpoint], { missing: true })).results[0]!.status).toBe("unavailable");
 });
 
-test("instance caps preserve passing evidence and identify every unexecuted instance", async () => {
-  const capped = await check([endpoint], { pods: Array.from({ length: 11 }, (_, i) => `worker-${i}`) });
-  expect(capped.results.filter(item => item.status === "passed")).toHaveLength(10);
-  expect(capped.results).toHaveLength(11);
-  expect(capped.results[10]).toMatchObject({ status: "not-run", instance: { pod: "worker-10" }, reason: "超出本轮 10 个运行实例探测上限" });
-  expect(capped.results.every(item => item.error === undefined)).toBe(true);
-  expect(capped.commands).toHaveLength(10);
+test("each Endpoint probes once from its Workload's first Running instance", async () => {
+  const sampled = await check([endpoint], { pods: Array.from({ length: 11 }, (_, i) => `worker-${i}`) });
+  expect(sampled.commands).toHaveLength(1);
+  expect(sampled.results).toHaveLength(1);
+  expect(sampled.results[0]).toMatchObject({ status: "passed", instance: { pod: "worker-0" } });
+  expect(sampled.results[0]!.reason).toContain("不代表其余副本可达");
 });
 
 test("address caps retain every unexecuted Endpoint without discovering its consumer", async () => {
@@ -182,7 +181,7 @@ test("unexecutable Pods retain coverage and do not consume Running instance slot
   const result = await check([endpoint], { pods: [...pending, "worker-0"], pending });
   expect(result.commands).toHaveLength(1);
   expect(result.commands[0]!.pod).toBe("worker-0");
-  expect(result.results.filter(item => item.status === "not-run")).toHaveLength(10);
+  expect(result.results).toHaveLength(1);
   expect(result.results.at(-1)!.status).toBe("passed");
   const unavailable = await check([endpoint], { pods: pending, pending });
   expect(unavailable.commands).toEqual([]);
