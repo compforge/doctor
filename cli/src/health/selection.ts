@@ -28,7 +28,11 @@ export async function confirmNextHealthScope(
   return await prompt({
     question: `是否继续 ${label} 巡检？[y/N]: `,
     emptyValue: false,
-    match: answer => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
+    match: answer => {
+      if (/^(y|yes)$/i.test(answer)) return true;
+      if (/^(n|no)$/i.test(answer)) return false;
+      return undefined;
+    },
     invalidMessage: "请输入 y 或 n",
   }) === true;
 }
