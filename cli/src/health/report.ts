@@ -31,6 +31,10 @@ export function printHealth(result: HealthResult): void {
   writeOutput(`Health · 统计窗口 ${result.query.window.from} → ${result.query.window.to} [from, to)；Case 为本次执行\n`);
   for (const summary of result.providers) {
     printOverviewStatistics(summary);
+    for (const check of summary.probes ?? []) {
+      writeOutput(`  ${check.scope} Probe ${check.probe}: ${check.status}${check.reason ? ` · ${check.reason}` : ""}\n`);
+      for (const finding of check.findings) writeOutput(`    ${finding.severity}: ${finding.message}\n`);
+    }
     for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
@@ -54,6 +58,9 @@ export function writeHealthEvidence(
 
 export function buildHealthHtml(result: HealthResult): string {
   const sections = result.providers.map(summary => buildOverviewStatisticsHtml(summary)
+    + (summary.probes ?? []).map(check => `<h3>${escapeHtml(check.scope)} Probe ${escapeHtml(check.probe)} · ${escapeHtml(check.status)}</h3>`
+      + `<p>${escapeHtml(check.reason ?? "")}</p>` + check.findings.map(finding => `<p>${escapeHtml(finding.severity)}: ${escapeHtml(finding.message)}</p>`).join("")
+      + `<details><summary>Observation</summary><pre>${escapeHtml(JSON.stringify(check.observations, null, 2))}</pre></details>`).join("")
     + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
       + (check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
     + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")

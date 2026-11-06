@@ -23,7 +23,11 @@ import { caseCheckActions, casePrepareActions } from "./case-runtime";
 import { createHealthCaseApproval } from "./approval";
 import { buildHealthHtml, printHealth, writeHealthEvidence } from "./report";
 
+import { checkHealthProbes, healthScopes } from "./probes";
+
 export interface HealthCliOpts extends KubernetesCommandInput {
+  scope?: string;
+  bizId?: string;
   since?: string;
   services?: readonly string[];
   tenantId?: string;
@@ -33,6 +37,7 @@ export interface HealthCliOpts extends KubernetesCommandInput {
 }
 
 export function validateHealthOptions(opts: HealthCliOpts): void {
+  healthScopes(opts.scope);
   overviewServiceNames(opts);
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
@@ -64,6 +69,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   try {
     result = await runHealthSession(selected, query, {
       signal: context.signal,
+      probes: provider => checkHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
       dataSources: async provider => {
         const results = [];
         for (const reference of provider.dataSources ?? []) {
@@ -105,6 +111,9 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
     ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
     ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
+    ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
+      : check.status === "partial" ? CommandStatus.Partial
+      : check.findings.some(finding => finding.severity !== "info") ? CommandStatus.Failed : CommandStatus.Ok),
     ...(provider.casesError ? [CommandStatus.Failed] : []),
     ...(provider.dataSources ?? []).map(check => check.error || !check.evidence ? CommandStatus.Failed
       : check.evidence.health.status === "unavailable" ? CommandStatus.Failed
@@ -133,8 +142,17 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
   validate: validateHealthOptions,
   prepare: async (context, input) => {
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.health });
-    const providers = await selectHealthProviders(context.plugin, overviewServiceNames(input), isInteractive());
-    if (!providers) return undefined;
+    const available = await selectHealthProviders(context.plugin, overviewServiceNames(input), isInteractive());
+    if (!available) return undefined;
+    const scopes = healthScopes(input.scope);
+    const providers = available.map(provider => ({ ...provider,
+      probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
+      consumers: scopes.includes("business") ? provider.consumers : [],
+      summarize: scopes.includes("business") ? provider.summarize : undefined,
+      cost: scopes.includes("business") ? provider.cost : undefined,
+      dataSources: scopes.includes("deps") ? provider.dataSources : [],
+    })).filter(provider => provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.summarize || provider.cost);
+    if (!providers.length) throw new Error(`所选 Service 未声明 ${scopes.join(",")} 层级的体检能力`);
     await context.ensureEnvironment({ kubernetes: true });
     const opts = { ...commandOptions(context), ...input };
     const since = opts.since ?? await selectOverviewWindow(isInteractive());

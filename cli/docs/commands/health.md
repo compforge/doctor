@@ -1,7 +1,7 @@
 # Health
 
 `doctor health` 展示系统统计并执行所选 Service 的体检，不查找代表 biz-id，不触发 Collect。
-统计复用 `facet.summarize` 与 `duration.summarize`；当前主动探测由 `health.case.bindings` 引用共享 `Service.cases`。
+统计复用 `facet.summarize` 与 `duration.summarize`；基础探测复用 `workload.probe`；业务检查由 `health.case.bindings` 引用共享 `Service.cases`。
 Health 的目标是系统健康检查，Case 执行是其中一种探测方式；其他检查不必包装为 Case。
 Health 完整展示 summary，包括不可采样的状态条目；不要求对应的 sample Extension。
 两类结果分别说明历史窗口内的情况和本次执行的情况，查询失败不等同于系统异常，也不丢弃其他已取得结果。
@@ -11,6 +11,7 @@ Health 完整展示 summary，包括不可采样的状态条目；不要求对�
 ```bash
 doctor health
 doctor health --since 1h --service example-worker
+doctor health --scope self,deps --service example-worker
 doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ```
 
@@ -24,6 +25,26 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
 报告保存统计结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
 如需从错误等现象定位具体对象，使用 [Sample](sample.md) 查询 biz-ids，再决定是否采集。
+
+## 分层 Probe 与下游关系
+
+`--scope` 支持 `self`、`deps`、`business` 的逗号组合，默认 `all`。
+`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`business` 执行历史统计与业务 Case。
+未选择 `business` 时不准备 Case 身份或执行 Case。所选服务没有对应能力时明确报告不支持。
+
+`workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
+Core 按声明的 Workload 定位实例，每个 Probe 串行检查最多 10 个实例，不过滤未就绪实例；超限保留覆盖缺口。
+结果保留 Observation 和 Detector Finding，`status: "ok"` 表示取得证据，不能代替健康结论。
+访问失败、工具缺失、空实例和取消都不能算健康；终端、HTML 与 diagnosis.json 保留相应原因。
+
+`service.downstreams` 按可选 `bizId` 和消费方 `instance` 返回当前适用的关系：
+`{ id, service, workload, endpoint: { host, port, tls? } }`。
+目标 Service 和消费方 Workload 必须已声明；endpoint 不包含凭据或签名 URL。
+成功返回空列表表示无适用依赖，查询或配置失败必须抛错。`--biz-id` 透传给提供方，具体筛选规则归提供方。
+Core 在每个依赖 Probe 前解析关系，并通过 `input.health.downstreams` 交给 Probe；该机制不引入全局缓存。
+
+网络探测机制属于 Toolbox `network`；Plugin 选择消费方执行位置并解释业务配置。
+从 Host 访问成功不能代替 Pod/沙箱连通，DNS/TCP/TLS 成功也不能证明应用下载策略、HTTP 认证或对象权限通过。
 
 ## 耗时统计
 

@@ -1,4 +1,4 @@
-import { HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { WORKLOAD_PROBE_KIND, requireWorkloadProbeExtension, type WorkloadProbeExtension, HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { serviceHealthDataSources } from "../datasource/health/services";
 import type { ServiceDataSourceReference } from "../collect/shared/service-dependency";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
@@ -6,6 +6,7 @@ import { overviewScopes, overviewStatistics, type OverviewProvider } from "../ov
 
 export interface HealthProvider extends OverviewProvider {
   consumers: readonly HealthCaseBindingsExtension[];
+  probes?: readonly WorkloadProbeExtension[];
   caseService?: ServiceDefinition;
   dataSources?: readonly ServiceDataSourceReference[];
 }
@@ -22,12 +23,14 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       return requireHealthCaseBindingsExtension(entry.extension);
     }) : [];
     const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service) : [];
-    if (!statistics && !consumers.length && !dataSources.length) {
+    const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))
+      .map(extension => requireWorkloadProbeExtension(extension)).filter(probe => probe.health) : [];
+    if (!statistics && !consumers.length && !dataSources.length && !probes.length) {
       if (serviceNames) throw new Error(`${scope.namespace}: 未声明 facet.summarize、duration.summarize 或 health.case.bindings Extension，也没有可探测的数据源`);
       return [];
     }
     return [{ ...(statistics ?? { namespace: scope.namespace, name: scope.name, service: scope.service! }),
-      consumers, caseService: scope.service, dataSources }];
+      consumers, probes, caseService: scope.service, dataSources }];
   });
   if (!providers.length) throw new Error("当前 Plugin 没有支持 health 的 Service");
   return providers;

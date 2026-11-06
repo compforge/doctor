@@ -11,6 +11,8 @@ export interface WorkloadProbeExtension<Definition extends ObservationDefinition
   extends Extension<ServiceWorkloadProbeInput, WorkloadProbeResult<ObservationValue<Definition>>> {
   readonly kind: typeof WORKLOAD_PROBE_KIND;
   readonly workload: string;
+  /** Opt in to Health scheduling; Collect continues to use the same Probe. */
+  readonly health?: "self" | "deps";
   readonly produces: Definition;
 }
 
@@ -50,6 +52,7 @@ export function requireWorkloadProbeExtension(extension: RegisteredExtension): W
   if (extension.kind !== WORKLOAD_PROBE_KIND) throw new Error(`Expected ${WORKLOAD_PROBE_KIND}, got ${extension.kind}`);
   const probe = extension as WorkloadProbeExtension;
   if (typeof probe.workload !== "string" || !probe.workload.trim()) throw new Error(`${extension.id}: workload must be a non-empty name`);
+  if (probe.health !== undefined && !["self", "deps"].includes(probe.health)) throw new Error(`${extension.id}: invalid health scope`);
   const produces = probe.produces;
   if (!produces || typeof produces.kind !== "string" || !produces.kind.trim()
     || !Number.isInteger(produces.schemaVersion) || produces.schemaVersion < 1

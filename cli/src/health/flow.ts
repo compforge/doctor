@@ -13,6 +13,7 @@ export interface HealthDataSourceCheck {
 }
 
 export interface HealthProviderResult extends OverviewProviderResult {
+  probes?: import("./probes").HealthProbeCheck[];
   cases?: CaseCheckResult[];
   casesError?: string;
   dataSources?: HealthDataSourceCheck[];
@@ -25,6 +26,7 @@ export interface HealthResult {
 
 export interface HealthActions extends FacetSummaryQueryActions {
   cases(provider: HealthProvider, query: FacetSummaryQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
+  probes?(provider: HealthProvider): Promise<import("./probes").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   show(result: HealthResult): void;
 }
@@ -38,6 +40,10 @@ export async function runHealthSession(
   for (const [index, provider] of providers.entries()) {
     if (actions.signal?.aborted) return result;
     const summary = result.providers[index]!;
+    if (provider.probes?.length && actions.probes) {
+      summary.probes = await actions.probes(provider);
+      actions.show(result);
+    }
     if (provider.dataSources?.length && actions.dataSources) {
       summary.dataSources = await actions.dataSources(provider);
       actions.show(result);
