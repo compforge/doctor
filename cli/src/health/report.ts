@@ -5,7 +5,7 @@ import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
 import { OVERVIEW_REPORT_STYLE } from "../overview/report";
-import type { CaseCheckResult } from "./cases";
+import type { CaseCheckResult } from "./biz/run";
 import { dataSourceHealthHtml } from "../datasource/health/report";
 import type { HealthResult } from "./flow";
 
@@ -28,6 +28,7 @@ function casesHtml(checks: readonly CaseCheckResult[]): string {
 
 
 export function printHealth(result: HealthResult): void {
+  if (result.notRunScopes?.length) writeOutput(`未执行层级：${result.notRunScopes.map(scope => scope === "business" ? "biz" : scope).join(", ")}\n`);
   writeOutput(`Health · 本次巡检${result.checkedAt ? ` · ${result.checkedAt}` : ""}\n`);
   for (const summary of result.providers) {
     writeOutput(`\n${summary.name} (${summary.namespace})\n`);
@@ -70,5 +71,6 @@ export function buildHealthHtml(result: HealthResult): string {
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>
 <style>${OVERVIEW_REPORT_STYLE}</style>
 <h1>Doctor Health</h1><p>本次巡检${result.checkedAt ? `：${escapeHtml(result.checkedAt)}` : ""}</p>
+${result.notRunScopes?.length ? `<p>未执行层级：${escapeHtml(result.notRunScopes.map(scope => scope === "business" ? "biz" : scope).join(", "))}</p>` : ""}
 <p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · Case 为本次执行；不采集业务诊断数据。</p>${sections}</html>`;
 }

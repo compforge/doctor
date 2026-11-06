@@ -10,7 +10,7 @@ import * as probes from "../src/health/probes";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import * as discovery from "../src/infra/k8s/workload";
 import * as access from "../src/terminal/kubernetes-access";
-import * as caseRuntime from "../src/health/case-runtime";
+import * as caseRuntime from "../src/health/runtime";
 import * as overviewSelection from "../src/overview/selection";
 import { buildHealthHtml } from "../src/health/report";
 import * as targets from "../src/command/kubernetes-target";

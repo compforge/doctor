@@ -12,7 +12,7 @@ A Plugin supplies the application's Service catalog and business knowledge; Core
 
 | When | Command | What you get |
 |---|---|---|
-| After deployment, before serving traffic | `doctor health` | Active checks of startup, dependency connectivity and business functionality |
+| After deployment, before serving traffic | `doctor health` | Active checks of service health, dependency connectivity and business functionality |
 | After the system has been running | `doctor overview` | Errors, diagnostic patterns and duration distributions over a time window, with optional representative samples |
 | When a problem needs investigation | `doctor collect` | Related configuration, business data, traces, logs and metrics in one evidence bundle |
 

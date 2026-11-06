@@ -7,10 +7,10 @@ import { domainInput } from "../command/options";
 import { healthCommand, type HealthCliOpts } from "./index";
 
 export function registerHealthCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("health").description("主动巡检服务启动状态、依赖连通性与业务功能（非只读请求需确认）")
+  program.command("health").description("主动巡检服务自身健康、依赖连通性与业务功能（非只读请求需确认）")
     .addHelpText("after", `
 分析思路：
-  按 self、deps、biz 层级，从消费方 Workload 执行本次巡检。
+  按 self → deps → biz 逐层巡检；交互模式每层结束后询问是否继续，进入 biz 才准备身份。
 结果解读：
   分别查看检查结果、发现的问题与覆盖缺口；回顾运行历史使用 overview。
 `)

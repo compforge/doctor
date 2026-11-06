@@ -3,10 +3,10 @@ import {
   type HealthCaseBinding, type CaseProduceResult, type ServiceCaseSource, type CaseProduceQuery,
   type ServiceDefinition, type WorkloadInstance,
 } from "@compforge/doctor-plugin";
-import type { SendHttp } from "../infra/http";
-import { approvalDeniedReason, type ApprovalDecision } from "../command/approval";
-import type { PreparedCaseCheck } from "./case-prepare";
-import { caseError, checkHttpCase, type CaseAttempt } from "../case/http-check";
+import type { SendHttp } from "../../infra/http";
+import { approvalDeniedReason, type ApprovalDecision } from "../../command/approval";
+import type { PreparedCaseCheck } from "./prepare";
+import { caseError, checkHttpCase, type CaseAttempt } from "../../case/http-check";
 
 export interface CaseCheckResult {
   consumeExtension: string;

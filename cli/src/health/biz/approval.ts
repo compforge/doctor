@@ -1,8 +1,8 @@
-import { defineCommandDecision, type CommandContext } from "../command";
-import type { ApprovalDecision, ApprovalGate } from "../command/approval";
-import { caseError } from "../case/http-check";
-import type { PreparedCaseCheck } from "./case-prepare";
-import type { CaseCheckActions } from "./cases";
+import { defineCommandDecision, type CommandContext } from "../../command";
+import type { ApprovalDecision, ApprovalGate } from "../../command/approval";
+import { caseError } from "../../case/http-check";
+import type { PreparedCaseCheck } from "./prepare";
+import type { CaseCheckActions } from "./run";
 
 const healthApproval = defineCommandDecision<ApprovalDecision>("health.case-approval");
 

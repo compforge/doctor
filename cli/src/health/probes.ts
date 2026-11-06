@@ -6,7 +6,7 @@ import { discoverKubernetesWorkload } from "../infra/k8s/workload";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 import { encodeObservationValue } from "../plugin/observation-value";
 import { useLogger } from "../terminal/log";
-import { caseOperationInvoker } from "./case-runtime";
+import { caseOperationInvoker } from "./runtime";
 import type { HealthProvider } from "./extensions";
 
 export interface HealthProbeCheck {
