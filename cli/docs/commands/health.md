@@ -234,7 +234,8 @@ URL 解析可复用 Toolbox 的 `endpointFromUrl`。
 仅声明 Endpoint 的 Service 也进入 Health 候选列表。声明直接提供地址，不包含 resolve operation。
 
 Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，并声明 pods/exec 权限。
-每次探测限时 5 秒，每个 Service 最多 100 个地址、每个 Workload 最多 10 个实例；超出部分记录覆盖缺口。
+每次探测限时 5 秒，每个 Service 最多 100 个地址、每个 Workload 最多 10 个实例；超出部分逐项记录为
+`not-run` 并注明上限原因，不作为 unavailable 取证失败。已执行项全部通过时，覆盖不完整的结果仍为 partial。
 同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
 网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
 终端、HTML 与 diagnosis.json 展示 Endpoint 结果；它们只证明 DNS/TCP/受支持 TLS 的连通性。
@@ -246,6 +247,8 @@ Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，�
 未开始的 Probe 记录为 `not-run`（未执行），执行中响应取消的 Probe 记录为 `cancelled`（已取消），
 已经完成的 Probe 保留原结果；一个 Probe 已取得的部分 Observation 也保留。
 层级中途取消时，报告逐项展示未执行的 Probe，`notRunScopes` 仅列尚未进入的后续层级。
+尚未开始的通用 Endpoint 同样逐项记录为 `not-run`，包括当前 Service 和后续 Service 的声明；
+停止后的记录补齐不发现实例、不执行网络请求，也不覆盖已经取得的结果。
 
 ### Plugin 自定义 Endpoint 探测
 

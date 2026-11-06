@@ -4,6 +4,7 @@ import { runBusinessChecks } from "./biz";
 import type { CaseCheckResult } from "./biz/run";
 import type { HealthScope } from "./scopes";
 import type { HealthProvider } from "./extensions";
+import { useLogger } from "../terminal/log";
 
 import type { DataSourceHealthEvidence } from "../datasource/health/report";
 
@@ -50,6 +51,7 @@ export interface HealthActions {
 /**
  * @spec Health completes each scope across all selected Services before entering the next.
  * @spec Refusing the next scope retains completed evidence and never prepares its Cases or identities.
+ * @spec Stopping records unstarted Probes and declared Endpoints without executing their access operations.
  * @see {@link component://docs/commands/health.md}
  */
 export async function runHealthSession(
@@ -65,14 +67,21 @@ export async function runHealthSession(
       || (scope === "business" && provider.consumers.length)));
   const stop = (remaining: HealthScope[]) => {
     result.notRunScopes = remaining;
-    // @spec Unstarted work is recorded per Probe; a partially executed scope is never called unexecuted.
+    const reason = actions.signal?.aborted ? "执行前已取消" : "未继续执行该层级";
     for (const [index, provider] of providers.entries()) {
       const summary = result.providers[index]!;
       for (const probe of [...provider.probes ?? [], ...(provider.endpointProbes ?? []).map(probe => ({ id: probe.id, health: "deps" as const }))]) {
         if (!probe.health || !scopes.includes(probe.health)) continue;
         if (summary.probes?.some(check => check.probe === probe.id && check.scope === probe.health)) continue;
         (summary.probes ??= []).push({ probe: probe.id, scope: probe.health, status: "not-run",
-          reason: actions.signal?.aborted ? "执行前已取消" : "未继续执行该层级", observations: [], findings: [] });
+          reason, observations: [], findings: [] });
+      }
+      if (scopes.includes("deps") && provider.endpoints?.length && summary.endpoints === undefined) {
+        summary.endpoints = provider.endpoints.map(endpoint => ({
+          source: endpoint.id ?? `${endpoint.host}:${endpoint.port}`, workload: endpoint.workload?.name,
+          endpoint, status: "not-run", reason,
+        }));
+        useLogger("health").info(`${provider.name}: ${summary.endpoints.length} 个 Endpoint 未执行 · ${reason}`);
       }
     }
     actions.show(result);
