@@ -16,6 +16,10 @@ Inspect/Probe/Detector contribution 声明确定性诊断工作，通过 capabil
 
 ## 诊断能力模型
 
+产品主线是：部署后、承接业务前用 Health 主动巡检；运行一段时间后用 Overview 回顾情况；
+发现问题后用 Collect 汇集证据，并按信息类型进入具体命令。完整职责与衔接见
+[排查主线](cli/docs/kernel.md#排查主线)。
+
 Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Trace、Metric、Log 三类可观测性信号，再
 观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
 通过 capability 提供 store、model、case 等可复用能力，

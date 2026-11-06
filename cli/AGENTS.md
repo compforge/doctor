@@ -4,6 +4,8 @@
 
 Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
 体检、概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+使用主线是部署后的 Health、运行后的 Overview、问题发生后的 Collect 与专项命令，见
+[排查主线](docs/kernel.md#排查主线)。
 
 - **离线知识**：`doctor knowledge` 组织 Plugin/Service 的概念、流程、文章与词典，不准备 Target 访问。
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。

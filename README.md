@@ -4,154 +4,48 @@
 
 > Application-aware diagnostics for Kubernetes applications.
 
-Doctor is an enhanced `kubectl` for diagnosing applications. `kubectl` understands Kubernetes objects;
-Doctor understands a Kubernetes application as a set of Services. A Service is Doctor's basic diagnostic
-unit, while Pods, containers and processes are its runtime targets and evidence sources.
+Doctor is an enhanced `kubectl` for diagnosing applications. It understands an application as a set of
+Services, connects to their runtime instances, and delivers evidence and offline reports to your machine.
+A Plugin supplies the application's Service catalog and business knowledge; Core provides the diagnostic tools.
 
-Doctor runs as a local CLI on a Doctor Host with scoped access to the target Kubernetes environment and
-application. It returns raw evidence and offline reports to the same machine.
+## From deployment to investigation
 
-![Doctor running from a customer-site Linux machine](docs/doctor-usage.svg)
-
-## How Doctor diagnoses an application
-
-Doctor starts from the Services that make up an application, then moves from broad service facts to the
-evidence needed for a specific problem:
-
-![Doctor Command diagnostic flow](docs/doctor-diagnostic-flow.svg)
-
-| Diagnostic surface | Commands | What Doctor investigates |
+| When | Command | What you get |
 |---|---|---|
-| Compute resources | `doctor compute` | Cluster capacity and usage, per-Service Workload requests/limits and Pod metrics, with explicit permission and coverage gaps |
-| Service state | `doctor inspect` | Matching Pods and containers, images, readiness, restarts, termination state, CPU/memory requests and limits, and selected configuration |
-| Business data | `doctor tenant`, `doctor data` | Tenant-scoped contributions plus business-ID-linked data contributed by Services |
-| Observability | `doctor trace`, `doctor log`, `doctor metric` | A request's path, related service logs and metrics over the diagnostic window |
-| Runtime forensics | `doctor cpu`, `doctor mem`, `doctor net` | Thread stacks, heap captures and packet captures for a specific Service runtime |
-| Agent applications | `doctor model`, `doctor mcp` | Model and MCP configuration, connectivity, calls and service-side evidence |
+| After deployment, before serving traffic | `doctor health` | Active checks of startup, dependency connectivity and business functionality |
+| After the system has been running | `doctor overview` | Errors, diagnostic patterns and duration distributions over a time window, with optional representative samples |
+| When a problem needs investigation | `doctor collect` | Related configuration, business data, traces, logs and metrics in one evidence bundle |
 
-`doctor inspect` reports observed workload facts rather than reducing them to a single healthy/unhealthy
-flag. Resource values shown there are Kubernetes requests and limits; actual usage belongs to metric and
-runtime diagnostics.
-
-Business data is organized by lookup scope:
-
-- **Tenant**: `doctor tenant` gathers safe tenant-scoped contributions declared by the active Plugin.
-- **User**: user-linked data; a general user-scoped collector is not yet available.
-- **Business ID**: `doctor data` gathers records contributed by Services and correlates them from a
-  conversation, request or other business identifier.
-
-## Workflows across evidence
-
-- `doctor knowledge` organizes offline concepts, workflows, articles and dictionaries from the selected Plugin,
-  preserving source versions and namespaces. See [Knowledge](cli/docs/commands/knowledge.md).
-- `doctor health` checks Service startup, dependency connectivity and business functionality without collecting business evidence.
-  See [Health](cli/docs/commands/health.md).
-- `doctor overview` shows historical error, diagnostic and duration statistics, with optional representative business IDs,
-  and collects their evidence only with explicit consent. See [Overview](cli/docs/commands/overview.md).
-- `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their
-  reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
-  collectors; Collect does not infer relationships between scopes, create load or change individual
-  command semantics.
-- `doctor case` lists reusable cases and sends selected HTTP cases when reproducing a problem requires an active probe.
-- `doctor eval` executes each selected canonical Case once and captures its protocol observation plus
-  correlated Trace, Log and business Data. It preserves the CaseSet for downstream evaluators but does
-  not score answer quality or interpret `judge.eval`.
-- `doctor perf` generates bounded application load, records request outcomes and correlates the load
-  window with Metric plus representative Trace and Log evidence. Because it creates real traffic and may
-  have business or model cost, it is always an explicit, confirmed workflow.
-- `doctor chat` handles open-ended questions with a model, scoped tools and the selected Plugin's Skills,
-  using the same application knowledge as deterministic commands.
-
-Some investigations need tools or permissions that are not already present in the application container.
-`doctor resize` explicitly raises a running instance’s memory cgroup limit, with an approved plan and operation record;
-see [resize](cli/docs/commands/resize.md).
-
-`doctor image`, `doctor debug` and `doctor install` explicitly prepare a diagnostic image, temporary debug
-environment or tool. Doctor shows and confirms operations that can change the target; preparation is not
-hidden inside a read-only collection.
-
-## Core and Plugins
-
-Doctor Core is business-neutral. It owns Kubernetes access, common collectors and runtime tools, evidence
-orchestration, analysis and delivery. It contains no application-specific Service names, private protocols
-or schemas.
-
-A versioned Plugin describes the application's Service catalog. Each Service can expose Capabilities as
-business extensions to the same Core flow: an Inspect Capability maps a Query to Facts (including Relation),
-while a Probe Capability maps one scheduled Input to an Observation. A Capability contributes business
-semantics and declares the target data and access Doctor must prepare before it runs; Command and Harness
-code still own scheduling, authorization, Evidence and delivery.
-
-For a typical investigation, start with `doctor inspect`, use `doctor collect` to gather the relevant
-tenant, business and observability evidence, then run a targeted runtime or Agent command if the combined
-evidence points to a specific Service or protocol.
-
-## Repository layout
-
-| Path | Purpose |
-|---|---|
-| `cli/` | Doctor Core CLI, collectors, evidence model and offline reports |
-| `toolkit/` | Independently versioned diagnostic tools, debug images and offline system packages |
-| `server/` | Host boundary for an optional Doctor server |
-| `packages/agent/` | Agent runtime shared by local chat and server hosts |
-| `packages/plugin/` | Public Plugin, Service and Capability contracts |
-| `plugins/example/` | Minimal business-neutral Plugin example |
-
-## Development
-
-Requirements: [Bun](https://bun.sh/) and Go.
+Start at the stage that matches your situation. You can also run a focused command such as `inspect`,
+`trace`, `log` or `data` directly; CPU, memory and network investigations have their own tools.
+Read the [diagnostic workflow](cli/docs/kernel.md#排查主线) for how these paths fit together.
 
 ```bash
-bun install
-make lint-all
-make test-all
+doctor health --scope self,deps
+doctor overview --since 1h
+doctor collect <biz-id> --include data,trace,log
 ```
 
-For one Component, run `make -C cli lint test` (or use `packages/agent` or
-`packages/plugin`). Component targets validate only their own sources and tests.
+Available checks and data depend on the active Plugin and target access. Use `doctor plugin` to inspect
+the Service catalog and `doctor <command> --help` for options. Operations that change the target require confirmation.
 
-Build platform binaries into `dist/`:
+## Build and start
 
-```bash
-make build
-```
-
-Kylin artifacts embed Node 26 and retain full-screen chat without a Bun installation.
-They require glibc 2.28+, `libatomic.so.1`, and the Node-compatible C++ runtime on the host.
-Validate the artifact on the target machine before rollout, especially ARM64 systems with 64KB pages.
-
-Build only the local macOS binary:
+Requirements: [Bun](https://bun.sh/) and Go. From the repository root:
 
 ```bash
+make deps
 make build-local
+./dist/doctor --help
 ```
 
-Set `DOCTOR_COMMANDS=inspect,data,trace,log` on either build command to choose the top-level commands
-shown in help (default: `all`). `help` and `version` stay visible; hidden commands remain callable.
-See [CLI build options](cli/README.md#本地构建) for details.
+`make build-local` builds the local macOS artifact; `make build` builds platform artifacts into `dist/`.
+Use a distribution with your application's Plugin, or follow the [Plugin guide](cli/docs/plugin.md) to add one.
+For development checks, run `make lint-all` and `make test-all`.
 
-Doctor supports custom distributions with their own CLI name, description, command visibility and
-optional embedded Plugin. Distributions share the upstream execution contracts; they are not separate
-Plugin identities. See [distribution composition](cli/docs/distribution.md).
+## Learn more
 
-Set `BUNDLE_RUNTIME=false` on `make build`, `make build-local` or `make install` to use the customer's
-Node >= 22.23.1 instead of embedding a runtime. Ship the generated launcher and `.mjs` together;
-application dependencies are bundled, so no customer-side npm install is required.
-
-Build a Toolkit slice for one execution platform, all slices separately, or one combined archive:
-
-```bash
-make -C toolkit build OS=linux ARCH=arm64
-make -C toolkit build-matrix
-make -C toolkit build-all
-```
-
-Core does not embed Toolkit executables. Copy a matching `doctor-toolkit-*.tar` beside Doctor or
-into the working directory; a combined archive may serve a Host and Kubernetes Targets with
-different platforms.
-
-To teach Doctor about a specific application, start with [`plugins/example`](plugins/example) and implement
-a Plugin that describes its Services, Capabilities and Skills.
-
-For design details, see [`cli/docs/kernel.md`](cli/docs/kernel.md),
-[`cli/docs/plugin.md`](cli/docs/plugin.md) and [`docs/chat.md`](docs/chat.md).
+- [CLI usage and build options](cli/README.md) · [Custom distributions](cli/docs/distribution.md)
+- [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
+- [Plugin contracts](cli/docs/plugin.md) · [Example Plugin](plugins/example) · [Toolkit](toolkit/README.md)
+- [Kernel and evidence flow](cli/docs/kernel.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)
