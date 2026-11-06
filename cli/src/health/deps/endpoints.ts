@@ -62,8 +62,7 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
       for (const found of running.slice(0, 1)) {
         const pod = discovered.pods.find(pod => pod.name === found.pod);
         const instance = { ...found, container: found.container ?? (pod?.containers.length === 1 ? pod.containers[0]!.name : undefined) };
-        const consumer = { ...base, instance,
-          ...(discovered.instances.length > 1 ? { reason: `选取 ${discovered.instances.length} 个实例中的第 1 个 Running 实例作为代表；不代表其余副本可达` } : {}) };
+        const consumer = { ...base, instance };
         if (context.signal.aborted) {
           results.push({ ...consumer, status: "not-run", reason: "执行前已取消" });
           continue;

@@ -1,6 +1,6 @@
 # Health
 
-`doctor health` 以 Service 为单位检查系统当前是否具备运行和提供功能的条件。
+`doctor health` 以 Service 为单位主动巡检，发现服务未启动、Endpoint 未联通等明显问题。
 Health 的整体模型按三个层级展开：服务自身健康、能够访问依赖、依赖协作后的功能正常。
 
 ## 三个健康层级
@@ -11,10 +11,8 @@ Health 的整体模型按三个层级展开：服务自身健康、能够访问�
 | 依赖连通（`deps`） | 服务启动后，能否访问当前需要的依赖？ | DataSource 与 downstream Service 的实际入口，包括地址解析、网络连接及所需协议的基本访问条件 | Probe |
 | 功能可用（`biz`） | 具备连通条件后，服务及依赖协作提供的功能是否正常？ | 有明确预期结果的功能操作，例如文件下载、查询或一次业务请求 | 通常由 Case Run 承接 |
 
-三个层级表达的是逐步增强的保证：进程存在或实例 Ready 只能支持相应的启动结论；
-地址可解析、端口可连接或 TLS 握手成功只能支持相应的依赖连通结论；
-功能检查还需要验证操作的实际结果。例如消费方能连接文件服务，并不能证明它能成功下载并读取目标文件。
-一项功能 Case 通过，也只覆盖它所代表的功能、身份与输入，不能据此推断整个系统的所有功能正常。
+三个层级逐步深入：self 检查服务自身状态；deps 从消费方检查 Endpoint 的地址解析、网络连接和协议访问；
+biz 验证具体功能操作的结果，例如下载并读取文件。
 
 每个 Service 拥有自己的健康条件。DataSource 表达服务使用的数据源，downstream Service 表达它调用的服务；
 两者都属于依赖层，不能因为依赖对象自身健康就推断消费方能够访问它。
@@ -74,7 +72,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
 Core 按声明的 Workload 定位实例，每个 Probe 仅选第 1 个实例调用一次，不过滤未就绪实例。
-结果保留所选实例身份和代表实例采样范围，不推断其余副本健康。
+结果保留实际探测实例和检查结果。
 结果保留 Observation 和 Detector Finding，`status: "ok"` 表示取得证据，不能代替健康结论。
 访问失败、工具缺失、空实例和取消都不能算健康；终端、HTML 与 diagnosis.json 保留相应原因。
 
@@ -236,7 +234,7 @@ URL 解析可复用 Toolbox 的 `endpointFromUrl`。
 
 Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，并声明 pods/exec 权限。
 每次探测限时 5 秒，每个 Service 最多 100 个地址；每个地址仅从其 Workload 的第 1 个 Running 实例探测一次。
-保留所选实例与采样范围，不推断其余副本可达。超出地址上限的部分逐项记录为
+保留实际探测实例与检查结果。超出地址上限的部分逐项记录为
 `not-run` 并注明上限原因，不作为 unavailable 取证失败。已执行项全部通过时，覆盖不完整的结果仍为 partial。
 同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
 网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
@@ -264,5 +262,5 @@ Core 独立执行收到的两类贡献，不匹配地址或 id，不覆盖、不
 Core 在 deps 层为声明的 Workload 选第 1 个实例，调用一次 Probe，复用权限、客户端生命周期、取消、Value codec、Observation 和 Detector。
 返回 `WorkloadProbeResult`（`ok`、`partial` 或 `unavailable` 与 Value）；这表示取证状态，健康判断保留在 Observation/Findings。
 
-通用 exec 探测仅选第 1 个 Running 实例，不为未选副本重复执行或生成失败记录；结果明确标注代表实例采样范围。
+通用 exec 探测仅选第 1 个 Running 实例，不为未选副本重复执行或生成失败记录。
 没有可执行实例时 Endpoint 标为 unavailable；自定义 Probe 的可执行条件由 Plugin 判断。

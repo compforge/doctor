@@ -83,7 +83,7 @@ test("each Endpoint probes once from its Workload's first Running instance", asy
   expect(sampled.commands).toHaveLength(1);
   expect(sampled.results).toHaveLength(1);
   expect(sampled.results[0]).toMatchObject({ status: "passed", instance: { pod: "worker-0" } });
-  expect(sampled.results[0]!.reason).toContain("不代表其余副本可达");
+  expect(sampled.results[0]!.reason).toBeUndefined();
 });
 
 test("address caps retain every unexecuted Endpoint without discovering its consumer", async () => {
