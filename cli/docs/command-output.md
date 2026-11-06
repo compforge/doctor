@@ -37,7 +37,7 @@
 本次调用的位置，“领域 / 聚合”描述输出职责，两者是独立维度。例如：
 
 ```text
-sample                         # 根执行，聚合 Command
+overview                        # 根执行，聚合 Command
 └── collect                      # 子执行，同时也是聚合 Command
     ├── trace                    # 领域 Command
     ├── log                      # 领域 Command
@@ -51,9 +51,9 @@ sample                         # 根执行，聚合 Command
 执行关系通过清单递归表达，物理目录在交付根的 `artifacts/` 中统一组织，避免层层复制子树：
 
 ```text
-doctor-sample/
-├── manifest.json                # sample：引用 collect
-├── analysis/                    # sample 自身的汇总
+doctor-overview-<window>/
+├── manifest.json                # overview：引用 collect
+├── analysis/                    # overview 自身的汇总
 └── artifacts/
     ├── <id>-collect/
     │   └── manifest.json        # collect：引用 trace、log、data
