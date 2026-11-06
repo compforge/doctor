@@ -21,10 +21,10 @@ export type HealthScope = "self" | "deps" | "business";
 export function healthScopes(value = "all"): readonly HealthScope[] {
   if (value === "all") return ["self", "deps", "business"];
   const scopes = value.split(",");
-  if (!scopes.length || scopes.some(scope => !["self", "deps", "business"].includes(scope))) {
-    throw new Error("--scope 必须为 self、deps、business 的逗号组合或 all");
+  if (!scopes.length || scopes.some(scope => !["self", "deps", "biz"].includes(scope))) {
+    throw new Error("--scope 必须为 self、deps、biz 的逗号组合或 all");
   }
-  return [...new Set(scopes)] as HealthScope[];
+  return [...new Set(scopes)].map(scope => scope === "biz" ? "business" : scope) as HealthScope[];
 }
 
 export function validateDownstreams(service: ServiceDefinition, services: readonly ServiceDefinition[], values: readonly ServiceDownstream[]): void {

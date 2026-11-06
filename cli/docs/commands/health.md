@@ -1,10 +1,40 @@
 # Health
 
-`doctor health` 展示系统统计并执行所选 Service 的体检，不查找代表 biz-id，不触发 Collect。
-统计复用 `facet.summarize` 与 `duration.summarize`；基础探测复用 `workload.probe`；业务检查由 `health.case.bindings` 引用共享 `Service.cases`。
-Health 的目标是系统健康检查，Case 执行是其中一种探测方式；其他检查不必包装为 Case。
-Health 完整展示 summary，包括不可采样的状态条目；不要求对应的 sample Extension。
-两类结果分别说明历史窗口内的情况和本次执行的情况，查询失败不等同于系统异常，也不丢弃其他已取得结果。
+`doctor health` 以 Service 为单位检查系统当前是否具备运行和提供功能的条件，并结合历史统计帮助判断影响。
+Health 的整体模型按三个层级展开：自身成功启动、能够访问依赖、依赖协作后的功能正常。
+
+## 三个健康层级
+
+| 层级 | 要回答的问题 | 检查对象 | 常用机制 |
+|---|---|---|---|
+| 自身启动（`self`） | 服务自己是否成功启动？ | 进程或执行实例、初始化结果、监听与就绪状态，以及启动必需的配置 | Probe |
+| 依赖连通（`deps`） | 服务启动后，能否访问当前需要的依赖？ | DataSource 与 downstream Service 的实际入口，包括地址解析、网络连接及所需协议的基本访问条件 | Probe |
+| 功能可用（`biz`） | 具备连通条件后，服务及依赖协作提供的功能是否正常？ | 有明确预期结果的功能操作，例如文件下载、查询或一次业务请求 | 通常由 Case Run 承接 |
+
+三个层级表达的是逐步增强的保证：进程存在或实例 Ready 只能支持相应的启动结论；
+地址可解析、端口可连接或 TLS 握手成功只能支持相应的依赖连通结论；
+功能检查还需要验证操作的实际结果。例如消费方能连接文件服务，并不能证明它能成功下载并读取目标文件。
+一项功能 Case 通过，也只覆盖它所代表的功能、身份与输入，不能据此推断整个系统的所有功能正常。
+
+每个 Service 拥有自己的健康条件。DataSource 表达服务使用的数据源，downstream Service 表达它调用的服务；
+两者都属于依赖层，不能因为依赖对象自身健康就推断消费方能够访问它。
+依赖检查必须从消费方实际运行的 Pod、Container 或沙箱出发，并保留具体执行位置。
+服务声明与运行配置、可选业务上下文共同决定本次适用的依赖；可选依赖未启用时不应作为故障，
+依赖解析失败则需要保留为未知或覆盖缺口。
+
+这也是排查时的递进顺序：先看自身是否启动，再看失败功能所需的依赖能否访问，最后判断功能结果。
+启动依赖也可能在第一层就暴露问题，例如数据库配置错误导致初始化失败；同一问题可以分别保留启动现象与依赖侧证据。
+逻辑上的递进不要求把三层绑定成一个不可拆分的流程，也不要求下层失败就丢弃其它层的证据。
+Health 可以按需执行自身和依赖探测，基础检查无需先构造业务 Case。
+
+Health 负责选择和启动 Probe、Case Run，并汇总结果；Service/Plugin 负责声明自身条件、适用依赖及功能预期。
+Case 是承接功能验证的常用方式，Health 的范围同时包含独立的启动与依赖 Probe。
+每层结果都应保留检查范围、实例、时间、证据和覆盖缺口，区分已验证通过、已验证失败与无法验证。
+查询失败、工具缺失、没有适用实例或未执行的检查都不能当作通过。
+
+历史统计是判断健康的辅助视角：它描述一个时间窗口内已经发生的情况，本次 Probe 与 Case Run 描述当前执行取得的证据。
+统计正常不能代替本次功能验证，统计查询失败也不能直接归因于目标服务异常。
+Health 展示完整统计，包括不可采样的状态条目；不查找代表 biz-id，也不触发 Collect。
 
 ## 使用
 
@@ -17,7 +47,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize` 或 `health.case.bindings`，以及声明了受支持 DataSource 或数据源依赖的 Service，
+候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize`、`health.case.bindings` 或已标注 Health 层级的 `workload.probe`，以及声明了受支持 DataSource 或数据源依赖的 Service，
 不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
@@ -26,11 +56,11 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 报告保存统计结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
 如需从错误等现象定位具体对象，使用 [Sample](sample.md) 查询 biz-ids，再决定是否采集。
 
-## 分层 Probe 与下游关系
+## 探测接入与下游关系
 
-`--scope` 支持 `self`、`deps`、`business` 的逗号组合，默认 `all`。
-`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`business` 执行历史统计与业务 Case。
-未选择 `business` 时不准备 Case 身份或执行 Case。所选服务没有对应能力时明确报告不支持。
+`--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
+`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`biz` 执行历史统计与业务 Case。
+未选择 `biz` 时不准备 Case 身份或执行 Case。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
 Core 按声明的 Workload 定位实例，每个 Probe 串行检查最多 10 个实例，不过滤未就绪实例；超限保留覆盖缺口。

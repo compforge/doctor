@@ -14,7 +14,7 @@ export function registerHealthCommand(program: Command, runtime: CommandRuntime 
 结果解读：
   区分历史统计与本次探测，查询失败或未执行不能当作正常；定位具体请求时用 sample 再 collect。
 `)
-    .option("--scope <scopes>", "体检层级：self、deps、business，逗号组合或 all（默认）")
+    .option("--scope <scopes>", "体检层级：self、deps、biz，逗号组合或 all（默认）")
     .option("--biz-id <id>", "按业务 ID 解析本次适用的下游依赖")
     .option("--since <duration>", "统计时间范围：10m、1h、6h、1d、3d；非交互默认 1h")
     .addOption(serviceOption("体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service"))
