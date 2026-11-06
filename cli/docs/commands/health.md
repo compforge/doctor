@@ -46,8 +46,9 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `health.case.bindings` 或已标注 Health 层级的 `workload.probe`，以及声明了受支持 DataSource 或数据源依赖的 Service，
-不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
+候选包括声明了受支持 DataSource、数据源依赖或 `endpoints` 的 Service，以及在自身精确 namespace 下提供
+`health.case.bindings`、已标注 Health 层级的 `workload.probe` 或 `endpoint.probe` 的 Service。
+显式 `endpoints: []` 也进入候选列表，表示没有对外 Endpoint 依赖。不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
 

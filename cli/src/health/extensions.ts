@@ -17,7 +17,11 @@ export interface HealthProvider {
   endpointProbes?: readonly EndpointProbeExtension[];
 }
 
-/** @spec Health selects Service scopes only; omission means every Service with Case consumers, supported DataSources or opted-in Health workload Probes. */
+/**
+ * @spec Health selects Service scopes only. Omission selects every Service with Case consumers,
+ * supported DataSources, opted-in Health workload Probes, endpoint.probe Extensions,
+ * or an explicit endpoints declaration (including [] for no external Endpoint dependencies).
+ */
 export function healthProviders(plugin: PluginDefinition, serviceNames?: readonly string[]): HealthProvider[] {
   const registry = createDoctorExtensionRegistry(plugin);
   const names = serviceNames ?? plugin.services.services.map(service => service.name);
@@ -36,7 +40,7 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       return requireEndpointProbeExtension(entry.extension);
     });
     if (!consumers.length && !dataSources.length && !probes.length && !endpointProbes.length && endpoints === undefined) {
-      if (serviceNames) throw new Error(`${scope.namespace}: 未声明 health.case.bindings Extension，也没有可探测的数据源或标注 health: self/deps 的 workload.probe`);
+      if (serviceNames) throw new Error(`${scope.namespace}: 未声明 health.case.bindings Extension，也没有可探测的数据源、标注 health: self/deps 的 workload.probe、endpoints 声明或 endpoint.probe Extension`);
       return [];
     }
     return [{ namespace: scope.namespace, name: scope.name, service: scope.service!,
