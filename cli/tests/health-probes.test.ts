@@ -5,8 +5,10 @@ import { createServiceCatalog, defineWorkloadProbeExtension, defineObservation, 
 import { CommandContext, CommandStatus } from "../src/command";
 import { healthCommand } from "../src/health";
 import { healthProviders } from "../src/health/extensions";
-import { healthScopes, validateDownstreams } from "../src/health/probes";
-import * as probes from "../src/health/probes";
+import { healthScopes } from "../src/health/scopes";
+import { checkDependencyHealthProbes, validateDownstreams } from "../src/health/deps/probes";
+import { checkSelfHealthProbes } from "../src/health/self/probes";
+import * as probes from "../src/health/probe-runner";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import * as discovery from "../src/infra/k8s/workload";
 import * as access from "../src/terminal/kubernetes-access";
@@ -53,7 +55,7 @@ test(`self-only command skips business preparation and preserves ${acquisitionSt
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture", kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" } });
   const executor = spyOn(targets, "createKubernetesExecutor").mockReturnValue({ run: async args => ({ ok: true, stdout: "fixture\nhttps://cluster.example", stderr: "", exitCode: 0, command: args, durationMs: 1, timedOut: false }), exec: async () => { throw new Error("unexpected exec"); } });
   const windowSelection = spyOn(overviewSelection, "selectOverviewWindow").mockResolvedValue(undefined);
-  const checks = spyOn(probes, "checkHealthProbes").mockImplementation(async provider => {
+  const checks = spyOn(probes, "runHealthProbes").mockImplementation(async provider => {
     expect(provider.probes).toEqual([probe]);
     return [{ probe: "startup", scope: "self", status: acquisitionStatus, reason: "fixture", observations: [], findings: [{
       id: "warning", kind: "fixture", schemaVersion: 1, severity: "warning", confidence: "high", message: "degraded", evidence: [],
@@ -115,7 +117,7 @@ for (const statuses of [["unavailable"], ["unavailable", "unavailable"], ["ok", 
       return (await operation.run({} as PluginContext, input)).data;
     });
     try {
-      const checks = await probes.checkHealthProbes(provider, context, executor, { namespace: "test" });
+      const checks = await checkSelfHealthProbes(provider, context, executor, { namespace: "test" });
       const expected = statuses.every(status => status === "unavailable") ? "unavailable"
         : statuses.every(status => status === "ok") ? "ok" : "partial";
       expect(checks[0]!.status).toBe(expected);
@@ -124,5 +126,45 @@ for (const statuses of [["unavailable"], ["unavailable", "unavailable"], ["ok", 
     } finally {
       invocation.mockRestore(); workloads.mockRestore(); permission.mockRestore(); environment.mockRestore(); await context.disposeClients();
     }
+  });
+}
+
+for (const scope of ["self", "deps"] as const) {
+  test(`${scope} Probe prepares only its own layer's input for each consumer instance`, async () => {
+    const calls: string[] = [];
+    const relation = { id: "store", service: "api", workload: "main", endpoint: { host: "store.fixture", port: 443, tls: true } };
+    const extension: import("@compforge/doctor-plugin").ServiceDownstreamsExtension = {
+      id: "downstreams", kind: "service.downstreams", access: {},
+      run: withSummary({ title: "Dependencies", fields: [] }, async (_context, input) => {
+        calls.push(`${input.instance?.pod}:${input.bizId}`);
+        return [relation];
+      }),
+    };
+    const definition = { ...api, extensions: [
+      { ...probe, health: scope }, extension,
+      { ...extension, id: "other-namespace", namespace: "plugin/fixture", run: withSummary({ title: "Wrong scope", fields: [] }, async () => {
+        throw new Error("must not read another namespace");
+      }) },
+    ] };
+    const context = new CommandContext({}, undefined, { plugin: { id: "fixture", version: "1", services: createServiceCatalog([definition]) } });
+    const provider = healthProviders(context.plugin, ["api"])[0]!;
+    const unavailable = async (): Promise<never> => { throw new Error("unexpected external execution"); };
+    const executor: Executor = { run: unavailable, exec: unavailable };
+    const invoke = spyOn(caseRuntime, "caseOperationInvoker").mockReturnValue(async (owner, operation, input) => {
+      expect(owner.name).toBe("api");
+      return (await operation.run({} as PluginContext, input)).data;
+    });
+    const run = spyOn(probes, "runHealthProbes").mockImplementation(async (_provider, _context, _executor, _kube, prepare) => {
+      for (const pod of ["api-0", "api-1"]) {
+        const input = await prepare({ platform: "kubernetes", environment: "fixture", namespace: "test", workload: "main", pod, uid: pod, container: "server" });
+        expect(input).toEqual({ bizId: "business-1", downstreams: scope === "deps" ? [relation] : [] });
+      }
+      return [];
+    });
+    try {
+      const check = scope === "self" ? checkSelfHealthProbes : checkDependencyHealthProbes;
+      await check(provider, context, executor, { namespace: "test" }, "business-1");
+      expect(calls).toEqual(scope === "deps" ? ["api-0:business-1", "api-1:business-1"] : []);
+    } finally { run.mockRestore(); invoke.mockRestore(); await context.disposeClients(); }
   });
 }

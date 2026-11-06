@@ -7,7 +7,7 @@ export async function runDependencyChecks(provider: HealthProvider, result: Heal
   actions: Pick<HealthActions, "probes" | "dataSources" | "signal">, checkpoint: () => void): Promise<void> {
   const probes = provider.probes?.filter(probe => probe.health === "deps");
   if (probes?.length && actions.probes) {
-    result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes })];
+    result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes }, "deps")];
     checkpoint();
   }
   if (!actions.signal?.aborted && provider.dataSources?.length && actions.dataSources) {

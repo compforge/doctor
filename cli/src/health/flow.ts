@@ -2,7 +2,7 @@ import { runSelfChecks } from "./self";
 import { runDependencyChecks } from "./deps";
 import { runBusinessChecks } from "./biz";
 import type { CaseCheckResult } from "./biz/run";
-import type { HealthScope } from "./probes";
+import type { HealthScope } from "./scopes";
 import type { HealthProvider } from "./extensions";
 
 import type { DataSourceHealthEvidence } from "../datasource/health/report";
@@ -18,7 +18,7 @@ export interface HealthProviderResult {
   namespace: string;
   name: string;
   unsupported?: string;
-  probes?: import("./probes").HealthProbeCheck[];
+  probes?: import("./probe-runner").HealthProbeCheck[];
   cases?: CaseCheckResult[];
   casesError?: string;
   dataSources?: HealthDataSourceCheck[];
@@ -40,7 +40,7 @@ export interface HealthActions {
   enterScope?(scope: HealthScope, result: HealthResult): Promise<boolean>;
   leaveScope?(scope: HealthScope, result: HealthResult): void;
   cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
-  probes?(provider: HealthProvider): Promise<import("./probes").HealthProbeCheck[]>;
+  probes?(provider: HealthProvider, scope: "self" | "deps"): Promise<import("./probe-runner").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   show(result: HealthResult): void;
 }

@@ -5,6 +5,6 @@ export async function runSelfChecks(provider: HealthProvider, result: HealthProv
   actions: Pick<HealthActions, "probes">, checkpoint: () => void): Promise<void> {
   const probes = provider.probes?.filter(probe => probe.health === "self");
   if (!probes?.length || !actions.probes) return;
-  result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes })];
+  result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes }, "self")];
   checkpoint();
 }

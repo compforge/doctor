@@ -63,7 +63,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ## 代码组织
 
 `health/self/` 负责服务自身健康检查，`health/deps/` 负责数据源及下游依赖检查，`health/biz/` 负责 Case 准备、身份与执行授权、请求检查。
-顶层 `flow.ts` 负责按层级推进与证据检查点，`index.ts` 装配命令、交互及共享资源；`probes.ts` 与 `runtime.ts` 提供跨层复用的探测和 Plugin 调用机制，`report.ts` 汇总展示结果。
+顶层 `flow.ts` 负责按层级推进与证据检查点，`index.ts` 装配命令、交互及共享资源；各层 `probes.ts` 准备相应 Probe 输入，依赖层同时解析和校验下游关系；`probe-runner.ts` 与 `runtime.ts` 提供跨层复用的探测执行和 Plugin 调用机制，`report.ts` 汇总展示结果。
 
 ## 探测接入与下游关系
 

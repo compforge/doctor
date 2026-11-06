@@ -1,5 +1,5 @@
-import { SERVICE_DOWNSTREAMS_KIND, requireServiceDownstreamsExtension, validateWorkloadProbeResult,
-  type ServiceDefinition, type ServiceDownstream, type ServiceEvidenceObservation, type ServiceFinding } from "@compforge/doctor-plugin";
+import { validateWorkloadProbeResult,
+  type ServiceWorkloadProbeInput, type WorkloadInstance, type ServiceEvidenceObservation, type ServiceFinding } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../command";
 import { discoverKubernetesWorkload } from "../infra/k8s/workload";
@@ -17,34 +17,10 @@ export interface HealthProbeCheck {
   observations: ServiceEvidenceObservation[];
   findings: ServiceFinding[];
 }
-export type HealthScope = "self" | "deps" | "business";
-export function healthScopes(value = "all"): readonly HealthScope[] {
-  if (value === "all") return ["self", "deps", "business"];
-  const scopes = value.split(",");
-  if (!scopes.length || scopes.some(scope => !["self", "deps", "biz"].includes(scope))) {
-    throw new Error("--scope 必须为 self、deps、biz 的逗号组合或 all");
-  }
-  return [...new Set(scopes)].map(scope => scope === "biz" ? "business" : scope) as HealthScope[];
-}
-
-export function validateDownstreams(service: ServiceDefinition, services: readonly ServiceDefinition[], values: readonly ServiceDownstream[]): void {
-  if (!Array.isArray(values)) throw new Error("service.downstreams 必须返回列表");
-  const ids = new Set<string>();
-  for (const value of values) {
-    if (!value?.id || ids.has(value.id) || !services.some(item => item.name === value.service)
-      || !service.workloads.some(workload => workload.name === value.workload)
-      || typeof value.endpoint?.host !== "string" || !value.endpoint.host.trim() || /[\s/\\?#@]/.test(value.endpoint.host)
-      || !Number.isInteger(value.endpoint.port) || value.endpoint.port < 1 || value.endpoint.port > 65535
-      || (value.endpoint.tls !== undefined && typeof value.endpoint.tls !== "boolean")) {
-      throw new Error("service.downstreams 返回了无效、未声明或重复的下游关系");
-    }
-    ids.add(value.id);
-  }
-}
-
 /** @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
-export async function checkHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
-  kubernetes: KubectlOptions & { namespace: string }, bizId?: string): Promise<HealthProbeCheck[]> {
+export async function runHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
+  kubernetes: KubectlOptions & { namespace: string },
+  healthInput: (instance: WorkloadInstance) => Promise<NonNullable<ServiceWorkloadProbeInput["health"]>>): Promise<HealthProbeCheck[]> {
   const service = provider.service;
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
@@ -77,15 +53,8 @@ export async function checkHealthProbes(provider: HealthProvider, context: Comma
           ?? (pod?.containers.length === 1 ? pod.containers[0]!.name : undefined) };
         context.signal.throwIfAborted();
         try {
-          const downstreams: ServiceDownstream[] = [];
-          if (probe.health === "deps") {
-            for (const extension of service.extensions ?? []) {
-              if (extension.kind !== SERVICE_DOWNSTREAMS_KIND || (extension.namespace && extension.namespace !== provider.namespace)) continue;
-              downstreams.push(...await invoke(service, requireServiceDownstreamsExtension(extension), { instance, bizId }));
-            }
-            validateDownstreams(service, context.plugin.services.services, downstreams);
-          }
-          const observed = await invoke(service, probe, { instance, facts: [], health: { bizId, downstreams } });
+          const health = await healthInput(instance);
+          const observed = await invoke(service, probe, { instance, facts: [], health });
           validateWorkloadProbeResult(observed);
           const encoded = encodeObservationValue(probe.produces, observed.value, label);
           check.observations.push({ id: `${label}/${instance.pod}`, services: [service.name], probe: probe.id,

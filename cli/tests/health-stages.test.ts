@@ -10,7 +10,7 @@ import { healthProviders } from "../src/health/extensions";
 import { buildHealthHtml } from "../src/health/report";
 import { confirmNextHealthScope } from "../src/health/selection";
 import * as selection from "../src/health/selection";
-import * as probes from "../src/health/probes";
+import * as probes from "../src/health/probe-runner";
 import * as targets from "../src/command/kubernetes-target";
 import * as caseRuntime from "../src/health/biz/runtime";
 import { withInteractionOptions } from "../src/terminal/policy";
@@ -105,7 +105,7 @@ for (const identity of ["tenant", "user"] as const) for (const proceed of [false
       run: async args => ({ ok: true, stdout: "fixture\nhttps://cluster.example", stderr: "", exitCode: 0, command: args, durationMs: 1, timedOut: false }),
       exec: async () => { throw new Error("unexpected exec"); },
     });
-    const checks = spyOn(probes, "checkHealthProbes").mockImplementation(async provider => {
+    const checks = spyOn(probes, "runHealthProbes").mockImplementation(async provider => {
       const scope = provider.probes![0]!.health!; calls.push(scope);
       return [{ probe: scope, scope, status: "ok", observations: [], findings: [] }];
     });

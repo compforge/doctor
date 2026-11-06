@@ -22,7 +22,9 @@ import { createHealthCaseApproval } from "./biz/approval";
 import { buildHealthHtml, printHealth, writeHealthEvidence } from "./report";
 
 import { checkHealthDataSources } from "./deps";
-import { checkHealthProbes, healthScopes } from "./probes";
+import { healthScopes } from "./scopes";
+import { checkSelfHealthProbes } from "./self/probes";
+import { checkDependencyHealthProbes } from "./deps/probes";
 
 export interface HealthCliOpts extends KubernetesCommandInput {
   scope?: string;
@@ -87,7 +89,9 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
       leaveScope: scope => {
         useLogger("health").info(`${scope === "business" ? "biz" : scope} 层级完成`);
       },
-      probes: provider => checkHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
+      probes: (provider, scope) => scope === "self"
+        ? checkSelfHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId)
+        : checkDependencyHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
       dataSources: provider => checkHealthDataSources(provider, sources, healthSession, context.signal),
       cases: (provider, _input, checkpoint) => {
         if (!approve) throw new Error("biz 层级尚未准备 Case 检查");

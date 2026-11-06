@@ -1,7 +1,7 @@
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { promptListedChoice } from "../terminal/selection";
 import { promptMultiSelect } from "../terminal/multi-select";
-import type { HealthScope } from "./probes";
+import type { HealthScope } from "./scopes";
 import { healthProviders, type HealthProvider } from "./extensions";
 
 export async function selectHealthProviders(
