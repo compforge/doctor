@@ -1,0 +1,130 @@
+import { expect, test, spyOn } from "bun:test";
+import { createServiceCatalog, kubernetesServiceWorkload, type ServiceDefinition, type PluginContext } from "@compforge/doctor-plugin";
+import type { Endpoint, WorkloadInstance } from "@compforge/harness-common";
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { rmSync } from "node:fs";
+import { healthCommand } from "../src/health";
+import { CommandStatus } from "../src/command";
+import * as endpointChecks from "../src/health/deps/endpoints";
+import * as targets from "../src/command/kubernetes-target";
+import { CommandContext } from "../src/command";
+import { checkHealthEndpoints } from "../src/health/deps/endpoints";
+import { healthProviders } from "../src/health/extensions";
+import { runHealthSession } from "../src/health/flow";
+import { buildHealthHtml } from "../src/health/report";
+import * as workloads from "../src/health/workloads";
+import * as runtime from "../src/health/runtime";
+
+const service: ServiceDefinition = { name: "worker", workloads: [kubernetesServiceWorkload("worker")],
+  component: { name: "worker", repository: { forge: { name: "fixture" }, path: "fixture/worker" } } };
+const endpoint: Endpoint = { id: "download", workload: "main", scheme: "https", host: "storage.other-namespace", port: 443, secure: true };
+const instance = (pod: string): WorkloadInstance => ({ platform: "kubernetes", environment: "fixture", namespace: "demo", workload: "main", pod, uid: pod, container: "worker" });
+async function check(endpoints: readonly Endpoint[], options: { pods?: string[]; toolError?: boolean; networkFailure?: boolean; missing?: boolean } = {}) {
+  const definition = { ...service, endpoints };
+  const context = new CommandContext({}, undefined, { plugin: { id: "fixture", version: "1", services: createServiceCatalog([definition]) } });
+  const provider = healthProviders(context.plugin)[0]!;
+  const commands: Array<{ pod: string; target: unknown }> = [];
+  const discovery = spyOn(workloads, "discoverHealthWorkload").mockImplementation(async () => {
+    if (options.missing) throw new Error("no instances");
+    return { definition: definition.workloads[0]!, instances: (options.pods ?? ["worker-0"]).map(instance), pods: [] };
+  });
+  const invoker = spyOn(runtime, "caseOperationInvoker").mockReturnValue(async (owner, operation, input) => {
+    expect(owner.name).toBe("worker");
+    expect(operation.access.kubernetes).toContainEqual(expect.objectContaining({ rule: { verb: "create", resource: "pods/exec" } }));
+    return (await operation.run({ signal: context.signal, infra: { kubernetes: {
+      exec: async (target: { pod: string; container?: string }, _command: readonly string[], opts: { stdin: string; timeoutMs: number }) => {
+        expect(target.container).toBe("worker"); expect(opts.timeoutMs).toBe(5000);
+        commands.push({ pod: target.pod, target: JSON.parse(opts.stdin) });
+        if (options.toolError) throw new Error("python unavailable");
+        return JSON.stringify(options.networkFailure
+          ? { status: "failed", stages: [{ stage: "dns", status: "failed", elapsedMs: 1, error: "gaierror" }] }
+          : { status: "passed", stages: ["dns", "tcp", "tls"].map(stage => ({ stage, status: "passed", elapsedMs: 1 })) });
+      },
+    } } } as unknown as PluginContext, input)).data;
+  });
+  try {
+    const results = await checkHealthEndpoints(provider, context, {} as Executor, { namespace: "demo" });
+    return { results, commands, discoveries: discovery.mock.calls.length };
+  } finally { discovery.mockRestore(); invoker.mockRestore(); await context.disposeClients(); }
+}
+
+test("explicit empty declaration avoids discovery and network execution", async () => {
+  const { results, commands, discoveries } = await check([]);
+  expect(results).toMatchObject([{ status: "none" }]);
+  expect(commands).toEqual([]);
+  expect(discoveries).toBe(0);
+  expect(buildHealthHtml({ query: {}, providers: [{ name: "worker", namespace: "fixture", endpoints: results }] })).toContain("没有对外 Endpoint 依赖");
+});
+
+test("shared consumer discovery is reused and target namespace remains opaque", async () => {
+  const { results, commands, discoveries } = await check([endpoint, { ...endpoint, id: "second" }], { pods: ["worker-0", "worker-1"] });
+  expect(results.map(item => item.status)).toEqual(["passed", "passed", "passed", "passed"]);
+  expect(discoveries).toBe(1);
+  expect(commands[0]).toMatchObject({ pod: "worker-0", target: { host: "storage.other-namespace", tls: true } });
+});
+
+test("network failure is observed; tool failure and unsupported protocol are unavailable", async () => {
+  expect((await check([endpoint], { networkFailure: true })).results[0]).toMatchObject({ status: "failed", evidence: { status: "failed" } });
+  expect((await check([endpoint], { toolError: true })).results[0]).toMatchObject({ status: "unavailable", error: { message: "python unavailable" } });
+  const unsupported = await check([{ ...endpoint, scheme: "mysql", host: "db.demo", port: 3306, secure: true }]);
+  expect(unsupported.results[0]).toMatchObject({ status: "unavailable", error: { kind: "protocol", code: "Unsupported" } });
+  expect(unsupported.commands).toEqual([]);
+});
+
+test("missing consumer or instances retain unknown coverage", async () => {
+  const missing = await check([{ ...endpoint, workload: undefined }]);
+  expect(missing.results[0]!.status).toBe("unavailable");
+  expect(missing.discoveries).toBe(0);
+  expect((await check([endpoint], { missing: true })).results[0]!.status).toBe("unavailable");
+  const capped = await check([endpoint], { pods: Array.from({ length: 11 }, (_, i) => `worker-${i}`) });
+  expect(capped.results[0]!.status).toBe("unavailable");
+  expect(capped.commands).toHaveLength(10);
+});
+
+test("endpoint-only services are discovered offline and executed only in deps", async () => {
+  const definition = { ...service, endpoints: [] };
+  const plugin = { id: "fixture", version: "1", services: createServiceCatalog([definition]) };
+  const providers = healthProviders(plugin);
+  let calls = 0;
+  const entered: string[] = [];
+  const actions = { endpoints: async () => { calls++; return [{ source: "download", workload: "main", status: "none" as const }]; }, cases: async () => [], show: () => {} };
+  await runHealthSession(providers, {}, { ...actions, scopes: ["self"] });
+  expect(calls).toBe(0);
+  const result = await runHealthSession(providers, {}, { ...actions, scopes: ["deps"], enterScope: async scope => { entered.push(scope); return true; } });
+  expect(calls).toBe(1); expect(entered).toEqual(["deps"]);
+  expect(result.providers[0]!.endpoints?.[0]!.status).toBe("none");
+  await runHealthSession(providers, {}, { ...actions, signal: AbortSignal.abort() });
+  expect(calls).toBe(1);
+});
+
+test("catalog rejects duplicate identities, invalid addresses and unknown consumers", () => {
+  for (const endpoints of [[endpoint, endpoint], [{ ...endpoint, workload: "missing" }], [{ ...endpoint, port: 0 }]]) {
+    expect(() => createServiceCatalog([{ ...service, endpoints }])).toThrow();
+  }
+});
+
+test("health command selects Endpoint-only deps and propagates failed and empty outcomes", async () => {
+  const definition = { ...service, endpoints: [] };
+  const context = new CommandContext({}, undefined, { yes: true, plugin: { id: "fixture", version: "1", services: createServiceCatalog([definition]) } });
+  context.ensureEnvironment = async () => {};
+  const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture", kubernetes: { namespace: "demo", namespaceSource: "flag", kubeconfigSource: "flag" } });
+  const executor = spyOn(targets, "createKubernetesExecutor").mockReturnValue({ run: async args => ({ ok: true, stdout: "fixture\nhttps://cluster.example", stderr: "", exitCode: 0, command: args, durationMs: 1, timedOut: false }), exec: async () => { throw new Error("unexpected exec"); } });
+  let status: "failed" | "none" = "failed";
+  const checks = spyOn(endpointChecks, "checkHealthEndpoints").mockImplementation(async provider => {
+    expect(provider.endpoints).toEqual(definition.endpoints);
+    return [{ source: "download", workload: "main", status }];
+  });
+  const artifacts: Array<{ path: string }> = [];
+  try {
+    for (const outcome of ["failed", "none"] as const) {
+      status = outcome;
+      const result = await healthCommand.run(context, { services: ["worker"], scope: "deps" });
+      artifacts.push(...result.artifacts);
+      expect(result.status).toBe(outcome === "failed" ? CommandStatus.Failed : CommandStatus.Ok);
+      expect(result.output!.providers[0]!.endpoints?.[0]?.status).toBe(outcome);
+    }
+  } finally {
+    checks.mockRestore(); config.mockRestore(); executor.mockRestore(); await context.disposeClients();
+    for (const artifact of artifacts) rmSync(artifact.path, { recursive: true, force: true });
+  }
+});

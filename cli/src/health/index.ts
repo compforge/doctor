@@ -1,3 +1,4 @@
+import { checkHealthEndpoints } from "./deps/endpoints";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { prepareCommandRequirements } from "../command/prepare";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
@@ -92,6 +93,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
       probes: (provider, scope) => scope === "self"
         ? checkSelfHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId)
         : checkDependencyHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
+      endpoints: provider => checkHealthEndpoints(provider, context, executor, kube.kubernetes),
       dataSources: provider => checkHealthDataSources(provider, sources, healthSession, context.signal),
       cases: (provider, _input, checkpoint) => {
         if (!approve) throw new Error("biz 层级尚未准备 Case 检查");
@@ -117,6 +119,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
     }
   }
   const statuses: CommandStatus[] = result.providers.flatMap(provider => [
+    ...(provider.endpoints ?? []).map(check => check.status === "failed" || check.status === "unavailable" ? CommandStatus.Failed : CommandStatus.Ok),
     ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
       : CommandStatus.Ok),
@@ -155,8 +158,9 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const providers = available.map(provider => ({ ...provider,
       probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
       consumers: scopes.includes("business") ? provider.consumers : [],
+      endpoints: scopes.includes("deps") ? provider.endpoints : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length
+    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpoints !== undefined
       ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
     if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });

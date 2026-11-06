@@ -22,6 +22,7 @@ export interface HealthProviderResult {
   cases?: CaseCheckResult[];
   casesError?: string;
   dataSources?: HealthDataSourceCheck[];
+  endpoints?: import("./deps/endpoints").HealthEndpointCheck[];
 }
 
 /** Basic probes and Cases have no historical statistics window. */
@@ -42,6 +43,7 @@ export interface HealthActions {
   cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   probes?(provider: HealthProvider, scope: "self" | "deps"): Promise<import("./probe-runner").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
+  endpoints?(provider: HealthProvider): Promise<import("./deps/endpoints").HealthEndpointCheck[]>;
   show(result: HealthResult): void;
 }
 
@@ -59,7 +61,7 @@ export async function runHealthSession(
   const scopes = (["self", "deps", "business"] as const).filter(scope =>
     (!actions.scopes || actions.scopes.includes(scope)) && providers.some(provider =>
       provider.probes?.some(probe => probe.health === scope)
-      || (scope === "deps" && provider.dataSources?.length)
+      || (scope === "deps" && (provider.dataSources?.length || provider.endpoints !== undefined))
       || (scope === "business" && provider.consumers.length)));
   for (const [scopeIndex, scope] of scopes.entries()) {
     let entered = !actions.signal?.aborted;

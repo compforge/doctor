@@ -500,3 +500,12 @@ store、metric 与业务 capability 在各自权限检查后借用同一个根�
 `Service.resources` 声明持续管理/使用的资源集合及原生 `observe` 操作，复用 Harness Common 的
 Resource/ResourceSnapshot。`doctor resource` 按 Service、资源 ID 或开放 `kind` 读取只读快照；
 业务关联不注册 Extension。协议、预算与权限语义见 [资源盘点](commands/resource.md)。
+
+### Service Endpoints
+
+`ServiceDefinition.endpoints?: readonly Endpoint[]` declares outbound dependencies directly using
+`Endpoint` from `@compforge/harness-common`. Optional `id` and `description` identify the dependency;
+`workload` identifies its consumer. Catalog discovery validates addresses, explicit IDs and workload
+references. Doctor owns instance discovery and health scheduling. Omission means undeclared;
+explicit `[]` confirms no outbound Endpoint dependencies. Missing consumer location retains unknown coverage.
+See [Health](commands/health.md#对外-endpoint-依赖) for execution location, limits and evidence.

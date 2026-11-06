@@ -4,10 +4,14 @@ import type { HealthProvider } from "../extensions";
 import type { HealthActions, HealthDataSourceCheck, HealthProviderResult } from "../flow";
 
 export async function runDependencyChecks(provider: HealthProvider, result: HealthProviderResult,
-  actions: Pick<HealthActions, "probes" | "dataSources" | "signal">, checkpoint: () => void): Promise<void> {
+  actions: Pick<HealthActions, "probes" | "dataSources" | "endpoints" | "signal">, checkpoint: () => void): Promise<void> {
   const probes = provider.probes?.filter(probe => probe.health === "deps");
   if (probes?.length && actions.probes) {
     result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes }, "deps")];
+    checkpoint();
+  }
+  if (!actions.signal?.aborted && provider.endpoints !== undefined && actions.endpoints) {
+    result.endpoints = await actions.endpoints(provider);
     checkpoint();
   }
   if (!actions.signal?.aborted && provider.dataSources?.length && actions.dataSources) {

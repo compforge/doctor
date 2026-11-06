@@ -430,6 +430,8 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
   /** Open, kind-based functions. A Service may provide several kinds. */
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
+  /** Outbound Endpoint dependencies; omission means no dependency information was declared. */
+  endpoints?: readonly import("@compforge/harness-common").Endpoint[];
   cases?: readonly ServiceCaseSource[];
   resources?: readonly ServiceResourceDefinition[];
   /**

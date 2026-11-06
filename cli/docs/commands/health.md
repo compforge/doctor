@@ -220,3 +220,19 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
 越过 low 水位就给出预警；读取水位失败时注明默认值与较低置信度。报告中标明本次探测时间，
 当前容量证据仅描述本次探测时的状态。采集完整性与健康 Finding 分别报告。
+
+### 对外 Endpoint 依赖
+
+Plugin Service 通过 `endpoints?: readonly Endpoint[]` 直接声明对外访问依赖。
+`Endpoint` 从 `@compforge/harness-common` 导入，包含地址字段及可选 `id`、`description`、`workload`。
+`workload` 指消费方逻辑 Workload，Doctor 据此定位探测实例；缺少该字段时保留未知覆盖，不猜测执行位置。
+URL 解析可复用 Toolbox 的 `endpointFromUrl`。
+
+未声明表示未提供依赖信息；显式 `[]` 表示没有对外 Endpoint 依赖，不发现实例或执行网络请求。
+仅声明 Endpoint 的 Service 也进入 Health 候选列表。声明直接提供地址，不包含 resolve operation。
+
+Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，并声明 pods/exec 权限。
+每次探测限时 5 秒，每个 Service 最多 100 个地址、每个 Workload 最多 10 个实例；超出部分记录覆盖缺口。
+同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
+网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
+终端、HTML 与 diagnosis.json 展示 Endpoint 结果；它们只证明 DNS/TCP/受支持 TLS 的连通性。
