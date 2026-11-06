@@ -113,10 +113,9 @@ describe("root surface", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor [options] [command]");
     expect(result.stdout).toContain("面向应用与基础设施的本地诊断工具");
-    expect(result.stdout).toContain("Core 提供通用 Target 访问与证据编排");
-    expect(result.stdout).toContain("Plugin 交付产品与 Service 的业务知识、诊断声明和 Skill");
-    expect(result.stdout).toContain("Concepts（核心概念）");
-    expect(result.stdout).toContain("Workflows（典型流程）");
+    expect(result.stdout).toContain("检查服务是否就绪 → health");
+    expect(result.stdout).toContain("回顾近期运行情况 → overview");
+    expect(result.stdout).toContain("排查具体问题     → collect");
     expect(result.stdout).toContain("默认旁路运行、证据优先");
     expect(result.stdout).toContain("chat [options]");
     expect(result.stdout).toContain("init [options]");
@@ -379,12 +378,11 @@ describe("command help", () => {
     expect(result.stdout).toContain("-y, --yes");
   });
 
-  test("collect is an aggregate command rather than another collector", async () => {
+  test("collect help describes combined evidence and selectable collection domains", async () => {
     const result = await runCore(["collect", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor collect [options] [biz-ids...]");
-    expect(result.stdout).toContain("集合命令");
-    expect(result.stdout).toContain("本身不实现具体采集");
+    expect(result.stdout).toContain("生成诊断报告和证据包");
     expect(result.stdout).toContain("--include <kinds>");
     expect(result.stdout).toContain("inspect、tenant、data、trace、log、metric");
     expect(result.stdout).toContain("--biz-id <id>");

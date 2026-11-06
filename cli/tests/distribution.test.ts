@@ -81,9 +81,8 @@ describe("Doctor distributions", () => {
   test("retains the upstream identity by default", () => {
     const help = createDoctorProgram().helpInformation();
     expect(help).toContain("Usage: doctor [options] [command]");
-    expect(help).toContain("诊断模型：");
     expect(help).toContain("排查路径：");
-    expect(help).toContain("证据原则：");
+    expect(help).toContain("使用提示：");
   });
 
   test("customizes root and nested Help without changing Plugin identity", () => {
@@ -92,9 +91,8 @@ describe("Doctor distributions", () => {
     expect(help).toContain("Usage: samplectl [options] [command]");
     expect(program.description()).toBe("Sample diagnostics");
     expect(help).toContain("Sample diagnostics");
-    expect(help).not.toContain("诊断模型：");
     expect(help).not.toContain("排查路径：");
-    expect(help).not.toContain("证据原则：");
+    expect(help).not.toContain("使用提示：");
     expect(help).not.toMatch(/^  chat /m);
     for (const command of program.commands) {
       expect(command.helpInformation()).toContain(`Usage: samplectl ${command.name()}`);
