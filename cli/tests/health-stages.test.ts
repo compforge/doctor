@@ -151,18 +151,44 @@ for (const lastProvider of [false, true]) {
   test(`mid-scope cancellation records unstarted Probes, last provider=${lastProvider}`, async () => {
     const controller = new AbortController();
     const calls: string[] = [];
-    const result = await runHealthSession(healthProviders(plugin), {}, {
+    const selected = healthProviders(plugin).map(provider => ({ ...provider,
+      endpoints: [{ id: "storage", host: "storage.example", port: 80, workload: provider.service.workloads[0]! }] }));
+    const endpointCalls: string[] = [];
+    const result = await runHealthSession(selected, {}, {
       signal: controller.signal, scopes: ["deps", "business"],
       probes: async provider => {
         calls.push(provider.name);
         if (provider.name === (lastProvider ? "worker" : "api")) controller.abort();
         return [{ probe: "deps", scope: "deps", status: "ok", observations: [], findings: [] }];
+      }, endpoints: async provider => {
+        endpointCalls.push(provider.name);
+        return [{ source: "storage", endpoint: provider.endpoints![0], status: "passed" }];
       }, cases: async () => { throw new Error("must not run Cases"); }, show: () => {},
     });
     expect(calls).toEqual(lastProvider ? ["api", "worker"] : ["api"]);
     expect(result.notRunScopes).toEqual(["business"]);
     expect(result.providers[0]!.probes![0]!.status).toBe("ok");
     expect(result.providers[1]!.probes![0]!.status).toBe(lastProvider ? "ok" : "not-run");
+    expect(endpointCalls).toEqual(lastProvider ? ["api"] : []);
+    expect(result.providers[0]!.endpoints).toMatchObject([{ source: "storage", status: lastProvider ? "passed" : "not-run" }]);
+    expect(result.providers[1]!.endpoints).toMatchObject([{ source: "storage", endpoint: selected[1]!.endpoints[0],
+      status: "not-run", reason: "执行前已取消" }]);
     expect(buildHealthHtml(result)).not.toContain("未执行层级：deps");
+  });
+}
+
+for (const aborted of [false, true]) {
+  test(`stopping before deps preserves declared Endpoint coverage without execution; aborted=${aborted}`, async () => {
+    const selected = healthProviders(plugin).map(provider => ({ ...provider,
+      endpoints: [{ host: "storage.example", port: 80, workload: provider.service.workloads[0]! }] }));
+    const result = await runHealthSession(selected, {}, { scopes: ["deps"],
+      signal: aborted ? AbortSignal.abort() : undefined, enterScope: async () => false,
+      endpoints: async () => { throw new Error("must not execute Endpoints"); },
+      cases: async () => [], show: () => {} });
+    expect(result.notRunScopes).toEqual(["deps"]);
+    for (const provider of result.providers) {
+      expect(provider.endpoints).toMatchObject([{ source: "storage.example:80", workload: "main", status: "not-run",
+        reason: aborted ? "执行前已取消" : "未继续执行该层级" }]);
+    }
   });
 }

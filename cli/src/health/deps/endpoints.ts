@@ -21,7 +21,9 @@ export interface HealthEndpointCheck {
   error?: { message: string; kind?: string; code?: string | number };
 }
 
-/** @spec Explicit [] confirms no outbound dependencies; missing execution location preserves unknown coverage. */
+/** @spec Explicit [] confirms no outbound dependencies; missing execution location preserves unknown coverage.
+ * @spec Probe limits retain each excluded Endpoint or instance as not-run, not an acquisition failure.
+ * @see {@link component://docs/commands/health.md} */
 export async function checkHealthEndpoints(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }): Promise<HealthEndpointCheck[]> {
   if (provider.endpoints === undefined) return [];
@@ -39,11 +41,12 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
     results.push({ ...base, status: context.signal.aborted ? "cancelled" : "unavailable", error: detail });
     useLogger("health").info(`Endpoint ${provider.name}/${base.source}: 未取得证据 · ${detail.message}`);
   };
-  if (provider.endpoints.length > 100) unavailable({ source: provider.name }, new Error(`仅探测 ${provider.endpoints.length} 个地址中的前 100 个`));
-  for (const endpoint of provider.endpoints.slice(0, 100)) {
+  for (const [index, endpoint] of provider.endpoints.entries()) {
     const base = { source: endpoint.id ?? `${endpoint.host}:${endpoint.port}`, workload: endpoint.workload?.name, endpoint };
-    if (context.signal.aborted) {
-      results.push({ ...base, status: "not-run", reason: "执行前已取消" });
+    if (context.signal.aborted || index >= 100) {
+      const reason = context.signal.aborted ? "执行前已取消" : "超出本轮 100 个地址探测上限";
+      results.push({ ...base, status: "not-run", reason });
+      useLogger("health").info(`Endpoint ${provider.name}/${base.source}: 未执行 · ${reason}`);
       continue;
     }
     try {
@@ -56,7 +59,6 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
       }
       const discovered = await discovery;
       const running = discovered.instances.filter(found => discovered.pods.some(pod => pod.name === found.pod && pod.phase === "Running"));
-      if (running.length > 10) unavailable(base, new Error(`仅探测 ${running.length} 个运行实例中的前 10 个`));
       const selected = new Set(running.slice(0, 10));
       for (const found of discovered.instances) {
         const pod = discovered.pods.find(pod => pod.name === found.pod);

@@ -1,11 +1,12 @@
 import { expect, test, spyOn } from "bun:test";
-import { createServiceCatalog, defineEndpointProbeExtension, defineObservation, kubernetesServiceWorkload,
+import { createServiceCatalog, defineEndpointProbeExtension, defineObservation, defineWorkloadProbeExtension, kubernetesServiceWorkload,
   type PluginContext, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext } from "../src/command";
 import { healthProviders } from "../src/health/extensions";
 import { runHealthSession } from "../src/health/flow";
 import { checkDependencyHealthProbes } from "../src/health/deps/probes";
+import { checkSelfHealthProbes } from "../src/health/self/probes";
 import * as workloads from "../src/health/workloads";
 import * as runtime from "../src/health/runtime";
 
@@ -43,8 +44,6 @@ for (const mode of ["ok", "failure", "cancelled"] as const) {
       expect(providers[0]!.endpoints).toBeUndefined();
       const actions = { signal: context.signal, probes: (provider: typeof providers[number]) => checkDependencyHealthProbes(provider, context, {} as Executor, { namespace: "demo" }),
         endpoints: async () => { throw new Error("no generic fallback or inferred Endpoint"); }, cases: async () => [], show: () => {} };
-      await runHealthSession(providers, {}, { ...actions, scopes: ["self"] });
-      expect(calls).toEqual([]);
       const result = await runHealthSession(providers, {}, { ...actions, scopes: ["deps"] });
       expect(calls).toEqual(["worker-0"]);
       const check = result.providers[0]!.probes![0]!;
@@ -54,6 +53,32 @@ for (const mode of ["ok", "failure", "cancelled"] as const) {
     } finally { invocation.mockRestore(); discovered.mockRestore(); await context.disposeClients(); }
   });
 }
+
+test("self probes execute without invoking an independent endpoint.probe", async () => {
+  const calls: string[] = [];
+  const self = defineWorkloadProbeExtension({ id: "self", kind: "workload.probe", health: "self", workload: workload.name,
+    access: {}, produces: observation, run: async () => { calls.push("self"); return { status: "ok", value: observation.codec.decode({}) }; } });
+  const custom = defineEndpointProbeExtension({ id: "custom", kind: "endpoint.probe", workload, access: {}, produces: observation,
+    run: async () => { calls.push("custom"); return { status: "ok", value: observation.codec.decode({}) }; } });
+  const plugin = { id: "fixture", version: "1", services: createServiceCatalog([{ ...service, workloads: [workload], extensions: [self, custom] }]) };
+  const context = new CommandContext({}, undefined, { plugin });
+  const discovered = spyOn(workloads, "discoverHealthWorkload").mockResolvedValue({ definition: workload, pods: [],
+    instances: [{ platform: "kubernetes", environment: "fixture", namespace: "demo", workload: workload.name, pod: "worker-0", uid: "uid", container: "server" }] });
+  const invocation = spyOn(runtime, "caseOperationInvoker").mockReturnValue(async (_service, operation, input) =>
+    (await operation.run({ signal: context.signal } as PluginContext, input)).data);
+  const entered: string[] = [];
+  try {
+    const result = await runHealthSession(healthProviders(plugin), {}, { scopes: ["self"],
+      enterScope: async scope => { entered.push(scope); return true; },
+      probes: (provider, scope) => {
+        expect(scope).toBe("self");
+        return checkSelfHealthProbes(provider, context, {} as Executor, { namespace: "demo" });
+      }, cases: async () => [], show: () => {} });
+    expect(entered).toEqual(["self"]);
+    expect(calls).toEqual(["self"]);
+    expect(result.providers[0]!.probes).toMatchObject([{ probe: "self", status: "ok" }]);
+  } finally { invocation.mockRestore(); discovered.mockRestore(); await context.disposeClients(); }
+});
 
 test("Core schedules both contribution lists without matching addresses or ids", async () => {
   const extension = defineEndpointProbeExtension({ id: "same-label", kind: "endpoint.probe", workload, access: {}, produces: observation,

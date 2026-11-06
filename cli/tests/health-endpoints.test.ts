@@ -1,5 +1,5 @@
 import { expect, test, spyOn } from "bun:test";
-import { createServiceCatalog, kubernetesServiceWorkload, type ServiceDefinition, type PluginContext } from "@compforge/doctor-plugin";
+import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, kubernetesServiceWorkload, type ServiceDefinition, type PluginContext } from "@compforge/doctor-plugin";
 import type { Endpoint, WorkloadInstance } from "@compforge/harness-common";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { rmSync } from "node:fs";
@@ -76,25 +76,61 @@ test("missing consumer or instances retain unknown coverage", async () => {
   expect(missing.results[0]!.status).toBe("unavailable");
   expect(missing.discoveries).toBe(0);
   expect((await check([endpoint], { missing: true })).results[0]!.status).toBe("unavailable");
+});
+
+test("instance caps preserve passing evidence and identify every unexecuted instance", async () => {
   const capped = await check([endpoint], { pods: Array.from({ length: 11 }, (_, i) => `worker-${i}`) });
-  expect(capped.results[0]!.status).toBe("unavailable");
+  expect(capped.results.filter(item => item.status === "passed")).toHaveLength(10);
+  expect(capped.results).toHaveLength(11);
+  expect(capped.results[10]).toMatchObject({ status: "not-run", instance: { pod: "worker-10" }, reason: "超出本轮 10 个运行实例探测上限" });
+  expect(capped.results.every(item => item.error === undefined)).toBe(true);
   expect(capped.commands).toHaveLength(10);
 });
 
-test("endpoint-only services are discovered offline and executed only in deps", async () => {
+test("address caps retain every unexecuted Endpoint without discovering its consumer", async () => {
+  const endpoints = Array.from({ length: 102 }, (_, i) => ({ ...endpoint, id: `endpoint-${i}`,
+    workload: kubernetesServiceWorkload(`consumer-${i}`) }));
+  const capped = await check(endpoints);
+  expect(capped.commands).toHaveLength(100);
+  expect(capped.discoveries).toBe(100);
+  expect(capped.results).toHaveLength(102);
+  expect(capped.results.filter(item => item.status === "passed")).toHaveLength(100);
+  expect(capped.results.slice(100)).toMatchObject(endpoints.slice(100).map(endpoint => ({
+    source: endpoint.id, endpoint, status: "not-run", reason: "超出本轮 100 个地址探测上限",
+  })));
+  expect(capped.results.every(item => item.error === undefined)).toBe(true);
+});
+
+test("endpoint-only services are discovered offline and execute in deps", async () => {
   const definition = { ...service, endpoints: [] };
   const plugin = { id: "fixture", version: "1", services: createServiceCatalog([definition]) };
   const providers = healthProviders(plugin);
   let calls = 0;
   const entered: string[] = [];
   const actions = { endpoints: async () => { calls++; return [{ source: "download", workload: "main", status: "none" as const }]; }, cases: async () => [], show: () => {} };
-  await runHealthSession(providers, {}, { ...actions, scopes: ["self"] });
-  expect(calls).toBe(0);
   const result = await runHealthSession(providers, {}, { ...actions, scopes: ["deps"], enterScope: async scope => { entered.push(scope); return true; } });
   expect(calls).toBe(1); expect(entered).toEqual(["deps"]);
   expect(result.providers[0]!.endpoints?.[0]!.status).toBe("none");
   await runHealthSession(providers, {}, { ...actions, signal: AbortSignal.abort() });
   expect(calls).toBe(1);
+});
+
+test("generic Endpoint actions stay outside an executing self scope", async () => {
+  const value = { summary: () => ({ title: "Self", fields: [] }) };
+  const observation = defineObservation({ kind: "self", schemaVersion: 1, codec: { encode: () => ({}), decode: () => value } });
+  const self = defineWorkloadProbeExtension({ id: "self", kind: "workload.probe", health: "self", workload: "main",
+    access: {}, produces: observation, run: async () => ({ status: "ok", value }) });
+  const plugin = { id: "fixture", version: "1", services: createServiceCatalog([{ ...service, endpoints: [endpoint], extensions: [self] }]) };
+  const calls: string[] = [];
+  const result = await runHealthSession(healthProviders(plugin), {}, { scopes: ["self"],
+    enterScope: async scope => { calls.push(`enter:${scope}`); return true; },
+    probes: async (provider, scope) => {
+      expect(provider.probes).toEqual([self]);
+      calls.push(scope);
+      return [{ probe: "self", scope, status: "ok", observations: [], findings: [] }];
+    }, endpoints: async () => { calls.push("endpoints"); return []; }, cases: async () => [], show: () => {} });
+  expect(calls).toEqual(["enter:self", "self"]);
+  expect(result.providers[0]!.endpoints).toBeUndefined();
 });
 
 test("catalog rejects duplicate identities, invalid addresses and name-only consumers", () => {
@@ -109,18 +145,18 @@ test("health command selects Endpoint-only deps and propagates failed and empty 
   context.ensureEnvironment = async () => {};
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture", kubernetes: { namespace: "demo", namespaceSource: "flag", kubeconfigSource: "flag" } });
   const executor = spyOn(targets, "createKubernetesExecutor").mockReturnValue({ run: async args => ({ ok: true, stdout: "fixture\nhttps://cluster.example", stderr: "", exitCode: 0, command: args, durationMs: 1, timedOut: false }), exec: async () => { throw new Error("unexpected exec"); } });
-  let status: "failed" | "none" = "failed";
+  let status: "failed" | "none" | "not-run" = "failed";
   const checks = spyOn(endpointChecks, "checkHealthEndpoints").mockImplementation(async provider => {
     expect(provider.endpoints).toEqual(definition.endpoints);
     return [{ source: "download", workload: "main", status }];
   });
   const artifacts: Array<{ path: string }> = [];
   try {
-    for (const outcome of ["failed", "none"] as const) {
+    for (const [outcome, expected] of [["failed", CommandStatus.Failed], ["none", CommandStatus.Ok], ["not-run", CommandStatus.Partial]] as const) {
       status = outcome;
       const result = await healthCommand.run(context, { services: ["worker"], scope: "deps" });
       artifacts.push(...result.artifacts);
-      expect(result.status).toBe(outcome === "failed" ? CommandStatus.Failed : CommandStatus.Ok);
+      expect(result.status).toBe(expected);
       expect(result.output!.providers[0]!.endpoints?.[0]?.status).toBe(outcome);
     }
   } finally {
