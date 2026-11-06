@@ -120,7 +120,8 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   }
   const statuses: CommandStatus[] = result.providers.flatMap(provider => [
     ...(provider.endpoints ?? []).map(check => check.status === "failed" || check.status === "unavailable" ? CommandStatus.Failed : CommandStatus.Ok),
-    ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
+    ...(provider.probes ?? []).filter(check => check.status !== "not-run").map(check => check.status === "cancelled" ? CommandStatus.Cancelled
+      : check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
       : CommandStatus.Ok),
     ...(provider.unsupported ? [CommandStatus.Failed] : []),

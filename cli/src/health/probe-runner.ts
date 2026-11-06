@@ -11,12 +11,13 @@ import type { HealthProvider } from "./extensions";
 export interface HealthProbeCheck {
   probe: string;
   scope: "self" | "deps";
-  status: "ok" | "partial" | "unavailable";
+  status: "ok" | "partial" | "unavailable" | "cancelled" | "not-run";
   reason?: string;
   observations: ServiceEvidenceObservation[];
   findings: ServiceFinding[];
 }
-/** @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
+/** @spec Cancellation preserves completed evidence, marks the active Probe cancelled and leaves later Probes not-run.
+ * @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
 export async function runHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string },
   healthInput: (instance: WorkloadInstance) => Promise<NonNullable<ServiceWorkloadProbeInput["health"]>>): Promise<HealthProbeCheck[]> {
@@ -24,9 +25,13 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
   for (const probe of provider.probes ?? []) {
-    if (context.signal.aborted) break;
     const check: HealthProbeCheck = { probe: probe.id, scope: probe.health!, status: "ok", observations: [], findings: [] };
     results.push(check);
+    if (context.signal.aborted) {
+      check.status = "not-run";
+      check.reason = "执行前已取消";
+      continue;
+    }
     const label = `${service.name}/${probe.workload}/${probe.id}`;
     useLogger("health").info(`执行 ${check.scope} Probe：${label}`);
     try {
@@ -41,6 +46,7 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
         context.signal.throwIfAborted();
         try {
           const health = await healthInput(instance);
+          context.signal.throwIfAborted();
           const observed = await invoke(service, probe, { instance, facts: [], health });
           validateWorkloadProbeResult(observed);
           const encoded = encodeObservationValue(probe.produces, observed.value, label);
@@ -53,14 +59,19 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
             check.reason = [check.reason, `${instance.pod}: ${observed.reason}`].filter(Boolean).join("; ");
           }
         } catch (error) {
+          if (context.signal.aborted) {
+            check.status = "cancelled";
+            check.reason = "执行中已取消，保留已取得的证据";
+            break;
+          }
           check.status = "partial";
           const reason = `${instance.pod}: ${error instanceof Error ? error.message : String(error)}`;
           check.reason = check.reason ? `${check.reason}; ${reason}` : reason;
         }
       }
-      if (!usableInstances) check.status = "unavailable";
+      if (!usableInstances && check.status !== "cancelled") check.status = "unavailable";
       for (const detector of service.detectors ?? []) check.findings.push(...detector.detect({ facts: [], observations: check.observations }));
-    } catch (error) { check.status = "unavailable"; check.reason = error instanceof Error ? error.message : String(error); }
+    } catch (error) { check.status = context.signal.aborted ? "cancelled" : "unavailable"; check.reason = context.signal.aborted ? "执行中已取消，保留已取得的证据" : error instanceof Error ? error.message : String(error); }
     useLogger("health").info(`Probe 完成：${label} · ${check.status} · ${check.findings.length} 条 Finding${check.reason ? ` · ${check.reason}` : ""}`);
   }
   return results;

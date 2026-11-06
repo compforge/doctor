@@ -49,7 +49,7 @@ for (const stop of [undefined, "deps", "business"] as const) {
     if (stop !== "deps") expected.push("api:deps", "worker:deps", "done:deps", "enter:business");
     if (!stop) expected.push("api:business", "worker:business", "done:business");
     expect(calls).toEqual(expected);
-    expect(result.providers[0]?.probes?.map(check => check.scope)).toEqual(stop === "deps" ? ["self"] : ["self", "deps"]);
+    expect(result.providers[0]?.probes?.filter(check => check.status !== "not-run").map(check => check.scope)).toEqual(stop === "deps" ? ["self"] : ["self", "deps"]);
     if (stop) {
       expect(result.notRunScopes).toEqual(stop === "deps" ? ["deps", "business"] : ["business"]);
       expect(buildHealthHtml(result)).toContain("未执行层级");
@@ -70,7 +70,7 @@ test("cancellation while awaiting the next scope keeps earlier evidence", async 
     cases: async () => { throw new Error("must not execute Cases"); },
     show: () => {},
   });
-  expect(result.providers.every(provider => provider.probes?.length === 1)).toBe(true);
+  expect(result.providers.every(provider => provider.probes?.filter(check => check.status !== "not-run").length === 1)).toBe(true);
   expect(result.notRunScopes).toEqual(["deps", "business"]);
 });
 
@@ -146,3 +146,23 @@ test("--yes suppresses continuation prompts even on a terminal", async () => {
   });
   expect(prompted).toBe(false);
 });
+
+for (const lastProvider of [false, true]) {
+  test(`mid-scope cancellation records unstarted Probes, last provider=${lastProvider}`, async () => {
+    const controller = new AbortController();
+    const calls: string[] = [];
+    const result = await runHealthSession(healthProviders(plugin), {}, {
+      signal: controller.signal, scopes: ["deps", "business"],
+      probes: async provider => {
+        calls.push(provider.name);
+        if (provider.name === (lastProvider ? "worker" : "api")) controller.abort();
+        return [{ probe: "deps", scope: "deps", status: "ok", observations: [], findings: [] }];
+      }, cases: async () => { throw new Error("must not run Cases"); }, show: () => {},
+    });
+    expect(calls).toEqual(lastProvider ? ["api", "worker"] : ["api"]);
+    expect(result.notRunScopes).toEqual(["business"]);
+    expect(result.providers[0]!.probes![0]!.status).toBe("ok");
+    expect(result.providers[1]!.probes![0]!.status).toBe(lastProvider ? "ok" : "not-run");
+    expect(buildHealthHtml(result)).not.toContain("未执行层级：deps");
+  });
+}

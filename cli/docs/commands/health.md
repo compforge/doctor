@@ -236,3 +236,11 @@ Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，�
 同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
 网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
 终端、HTML 与 diagnosis.json 展示 Endpoint 结果；它们只证明 DNS/TCP/受支持 TLS 的连通性。
+
+### Probe 取消语义
+
+取消信号通过 PluginContext.signal 传递给 Probe 及其访问操作。Probe 应将该信号传给底层请求，
+并在耗时计算中主动检查；Host 不会强行终止不响应信号的 Plugin 代码。
+未开始的 Probe 记录为 `not-run`（未执行），执行中响应取消的 Probe 记录为 `cancelled`（已取消），
+已经完成的 Probe 保留原结果；一个 Probe 已取得的部分 Observation 也保留。
+层级中途取消时，报告逐项展示未执行的 Probe，`notRunScopes` 仅列尚未进入的后续层级。

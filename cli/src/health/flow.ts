@@ -63,6 +63,21 @@ export async function runHealthSession(
       provider.probes?.some(probe => probe.health === scope)
       || (scope === "deps" && (provider.dataSources?.length || provider.endpoints !== undefined))
       || (scope === "business" && provider.consumers.length)));
+  const stop = (remaining: HealthScope[]) => {
+    result.notRunScopes = remaining;
+    // @spec Unstarted work is recorded per Probe; a partially executed scope is never called unexecuted.
+    for (const [index, provider] of providers.entries()) {
+      const summary = result.providers[index]!;
+      for (const probe of provider.probes ?? []) {
+        if (!probe.health || !scopes.includes(probe.health)) continue;
+        if (summary.probes?.some(check => check.probe === probe.id && check.scope === probe.health)) continue;
+        (summary.probes ??= []).push({ probe: probe.id, scope: probe.health, status: "not-run",
+          reason: actions.signal?.aborted ? "执行前已取消" : "未继续执行该层级", observations: [], findings: [] });
+      }
+    }
+    actions.show(result);
+    return result;
+  };
   for (const [scopeIndex, scope] of scopes.entries()) {
     let entered = !actions.signal?.aborted;
     if (entered && actions.enterScope) {
@@ -73,15 +88,11 @@ export async function runHealthSession(
       }
     }
     if (!entered || actions.signal?.aborted) {
-      result.notRunScopes = scopes.slice(scopeIndex);
-      actions.show(result);
-      return result;
+      return stop(scopes.slice(scopeIndex));
     }
     for (const [index, provider] of providers.entries()) {
       if (actions.signal?.aborted) {
-        result.notRunScopes = scopes.slice(scopeIndex);
-        actions.show(result);
-        return result;
+        return stop(scopes.slice(scopeIndex + 1));
       }
       const summary = result.providers[index]!;
       const checkpoint = () => actions.show(result);
@@ -89,7 +100,8 @@ export async function runHealthSession(
       else if (scope === "deps") await runDependencyChecks(provider, summary, actions, checkpoint);
       else await runBusinessChecks(provider, summary, query, actions, checkpoint);
     }
-    if (!actions.signal?.aborted) actions.leaveScope?.(scope, result);
+    if (actions.signal?.aborted) return stop(scopes.slice(scopeIndex + 1));
+    actions.leaveScope?.(scope, result);
   }
   return result;
 }

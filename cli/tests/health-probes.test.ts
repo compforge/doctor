@@ -168,3 +168,36 @@ for (const scope of ["self", "deps"] as const) {
     } finally { run.mockRestore(); invoke.mockRestore(); await context.disposeClients(); }
   });
 }
+
+test("Probe cancellation preserves earlier observations and records unstarted Probes", async () => {
+  const calls: string[] = [];
+  const active = defineWorkloadProbeExtension({ ...probe, id: "active", run: async (plugin, input) => {
+    calls.push(`active:${input.instance.pod}`);
+    if (input.instance.pod === "api-1") {
+      const cancelled = new Promise<never>((_resolve, reject) => plugin.signal.addEventListener("abort", () => reject(plugin.signal.reason), { once: true }));
+      context.cancel();
+      return await cancelled;
+    }
+    return { status: "ok", value: value() };
+  } });
+  const last = defineWorkloadProbeExtension({ ...probe, id: "last", run: async () => { throw new Error("must not run"); } });
+  const plugin = { id: "fixture", version: "1", services: createServiceCatalog([{ ...api, extensions: [probe, active, last] }]) };
+  const context = new CommandContext({}, undefined, { plugin });
+  const environment = spyOn(context, "environment").mockResolvedValue({ environment: { name: "fixture" } } as Awaited<ReturnType<CommandContext["environment"]>>);
+  const permission = spyOn(access, "enforceKubernetesAccess").mockResolvedValue({ command: "fixture", facts: [], runnable: true });
+  const workloads = spyOn(discovery, "discoverKubernetesWorkload").mockImplementation(async definition => ({ definition, pods: [],
+    instances: [0, 1].map(index => ({ platform: "kubernetes" as const, environment: "fixture", namespace: "test", workload: "main", pod: `api-${index}`, uid: String(index), container: "server" })) }));
+  const invoke = spyOn(caseRuntime, "caseOperationInvoker").mockReturnValue(async (_service, operation, input) =>
+    (await operation.run({ signal: context.signal } as PluginContext, input)).data);
+  try {
+    const result = await checkSelfHealthProbes(healthProviders(plugin)[0]!, context, {} as Executor, { namespace: "test" });
+    expect(result.map(check => check.status)).toEqual(["ok", "cancelled", "not-run"]);
+    expect(result.map(check => check.observations.length)).toEqual([2, 1, 0]);
+    expect(calls).toEqual(["active:api-0", "active:api-1"]);
+    expect(workloads).toHaveBeenCalledTimes(2);
+    const html = buildHealthHtml({ query: {}, providers: [{ name: "api", namespace: "fixture", probes: result }] });
+    expect(html).toContain("已取消"); expect(html).toContain("未执行");
+  } finally {
+    invoke.mockRestore(); workloads.mockRestore(); permission.mockRestore(); environment.mockRestore(); await context.disposeClients();
+  }
+});
