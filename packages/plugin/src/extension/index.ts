@@ -38,3 +38,4 @@ export * from "./vdb";
 
 export * from "./health";
 export * from "./log";
+export * from "./downstreams";

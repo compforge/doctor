@@ -300,6 +300,8 @@ export interface ServiceProbeInput {
 
 export interface ServiceWorkloadProbeInput extends ServiceProbeInput {
   instance: WorkloadInstance;
+  /** Present only when scheduled by Health. Relations are resolved for this exact instance. */
+  health?: { bizId?: string; downstreams: readonly import("./extension/downstreams").ServiceDownstream[] };
 }
 
 /** Absolute RFC3339 bounds, inclusive. Absence leaves the provider's default scope unchanged. */

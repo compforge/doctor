@@ -175,6 +175,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
 | datasource.vdb.inspect | 无入参 → VDB 连接配置与来源 | Store |
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
+| service.downstreams | 可选业务 ID、消费方实例 → 当前下游关系与网络入口 | Health deps |
 | health.case.bindings | 租户条件 → producer 引用与消费者 Workload 的关系列表 | Health |
 | perf.scenarios | 无入参 → Case 来源引用、观测预设与可观测性引用 | Perf |
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
