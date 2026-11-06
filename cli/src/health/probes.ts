@@ -45,7 +45,7 @@ export function validateDownstreams(service: ServiceDefinition, services: readon
 /** @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
 export async function checkHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, bizId?: string): Promise<HealthProbeCheck[]> {
-  const service = provider.service;
+  const service = provider.probeService ?? provider.service;
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
   for (const probe of provider.probes ?? []) {
@@ -69,6 +69,8 @@ export async function checkHealthProbes(provider: HealthProvider, context: Comma
       if (discovered.unavailableReason) throw new Error(discovered.unavailableReason);
       if (!discovered.instances.length) throw new Error("未发现实例，无法判断健康状态");
       if (discovered.instances.length > 10) { check.status = "partial"; check.reason = `仅检查 ${discovered.instances.length} 个实例中的前 10 个`; }
+      // @rule Retained placeholder Values are not evidence that an instance was acquired.
+      let usableInstances = 0;
       for (const discoveredInstance of discovered.instances.slice(0, 10)) {
         const pod = discovered.pods.find(item => item.name === discoveredInstance.pod);
         const instance = { ...discoveredInstance, container: discoveredInstance.container
@@ -89,6 +91,7 @@ export async function checkHealthProbes(provider: HealthProvider, context: Comma
           check.observations.push({ id: `${label}/${instance.pod}`, services: [service.name], probe: probe.id,
             kind: `plugin/${context.plugin.id}/${service.name}/${probe.produces.kind}`, schemaVersion: probe.produces.schemaVersion,
             producer: { origin: "plugin", plugin: context.plugin.id, service: service.name, id: probe.id }, workload: probe.workload, instance, value: encoded.value });
+          if (observed.status !== "unavailable") usableInstances++;
           if (observed.status !== "ok") {
             check.status = "partial";
             check.reason = [check.reason, `${instance.pod}: ${observed.reason}`].filter(Boolean).join("; ");
@@ -99,7 +102,7 @@ export async function checkHealthProbes(provider: HealthProvider, context: Comma
           check.reason = check.reason ? `${check.reason}; ${reason}` : reason;
         }
       }
-      if (!check.observations.length) check.status = "unavailable";
+      if (!usableInstances) check.status = "unavailable";
       for (const detector of service.detectors ?? []) check.findings.push(...detector.detect({ facts: [], observations: check.observations }));
     } catch (error) { check.status = "unavailable"; check.reason = error instanceof Error ? error.message : String(error); }
     useLogger("health").info(`Probe 完成：${label} · ${check.status} · ${check.findings.length} 条 Finding${check.reason ? ` · ${check.reason}` : ""}`);

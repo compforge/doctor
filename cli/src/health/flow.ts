@@ -13,19 +13,24 @@ export interface HealthDataSourceCheck {
 }
 
 export interface HealthProviderResult extends OverviewProviderResult {
+  unsupported?: string;
   probes?: import("./probes").HealthProbeCheck[];
   cases?: CaseCheckResult[];
   casesError?: string;
   dataSources?: HealthDataSourceCheck[];
 }
 
+/** Basic probes and Cases have no historical statistics window. */
+export type HealthQuery = Omit<FacetSummaryQuery, "window"> & { window?: FacetSummaryQuery["window"] };
+
 export interface HealthResult {
-  query: FacetSummaryQuery;
+  checkedAt?: string;
+  query: HealthQuery;
   providers: HealthProviderResult[];
 }
 
 export interface HealthActions extends FacetSummaryQueryActions {
-  cases(provider: HealthProvider, query: FacetSummaryQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
+  cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   probes?(provider: HealthProvider): Promise<import("./probes").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   show(result: HealthResult): void;
@@ -33,9 +38,13 @@ export interface HealthActions extends FacetSummaryQueryActions {
 
 /** @spec Health queries statistics and runs approved probes, never samples or invokes Collect. */
 export async function runHealthSession(
-  providers: readonly HealthProvider[], query: FacetSummaryQuery, actions: HealthActions,
+  providers: readonly HealthProvider[], query: HealthQuery, actions: HealthActions,
 ): Promise<HealthResult> {
-  const result: HealthResult = { query, providers: await queryOverview(providers, query, actions) };
+  if (!query.window && providers.some(provider => provider.summarize || provider.cost)) throw new Error("Statistics require a window");
+  const result: HealthResult = { checkedAt: new Date().toISOString(), query,
+    providers: query.window ? await queryOverview(providers, query as FacetSummaryQuery, actions)
+      : providers.map(provider => ({ namespace: provider.namespace, name: provider.name, facets: [] })) };
+  result.providers.forEach((summary, index) => { summary.unsupported = providers[index]!.unsupported; });
   actions.show(result);
   for (const [index, provider] of providers.entries()) {
     if (actions.signal?.aborted) return result;

@@ -16,7 +16,7 @@ import { DataSourceHealthSession } from "../datasource/health/session";
 import { useLogger } from "../terminal/log";
 import type { HealthProvider } from "./extensions";
 import { selectHealthProviders } from "./selection";
-import { runHealthSession, type HealthResult } from "./flow";
+import { runHealthSession, type HealthQuery, type HealthResult } from "./flow";
 import { checkServiceCases, type CaseCheckResult } from "./cases";
 import { prepareServiceCases, type PreparedCaseCheck } from "./case-prepare";
 import { caseCheckActions, casePrepareActions } from "./case-runtime";
@@ -47,7 +47,7 @@ interface HealthPreparation {
   input: HealthCliOpts;
   selected: readonly HealthProvider[];
   cases: ReadonlyMap<HealthProvider, PreparedCaseCheck[]>;
-  since: string;
+  since?: string;
   kube: NonNullable<Awaited<ReturnType<typeof resolveKubernetesCommandConfig>>>;
   executor: ReturnType<typeof createKubernetesExecutor>;
 }
@@ -62,7 +62,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
     resolveApprovalGate({ yes: context.options.yes }));
   // Historical statistics share one frozen window; probes describe this execution, not that window.
-  const query = { window: overviewWindow(since), tenantId: opts.tenantId, maxEntries: 100 };
+  const query: HealthQuery = { ...(since ? { window: overviewWindow(since) } : {}), tenantId: opts.tenantId, maxEntries: 100 };
   let snapshot: HealthResult | undefined;
   let reportDirectory: string | undefined;
   let result: HealthResult;
@@ -113,7 +113,8 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
     ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
     ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
-      : check.findings.some(finding => finding.severity !== "info") ? CommandStatus.Failed : CommandStatus.Ok),
+      : CommandStatus.Ok),
+    ...(provider.unsupported ? [CommandStatus.Failed] : []),
     ...(provider.casesError ? [CommandStatus.Failed] : []),
     ...(provider.dataSources ?? []).map(check => check.error || !check.evidence ? CommandStatus.Failed
       : check.evidence.health.status === "unavailable" ? CommandStatus.Failed
@@ -129,14 +130,14 @@ export type HealthInput = CommandInput & Omit<HealthCliOpts, Exclude<CommandHost
 export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPreparation>({
   name: "doctor health",
   reportName: (_input, result) => result.output
-    ? `doctor-health-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
+    ? `doctor-health-${(result.output.query.window?.to ?? result.output.checkedAt ?? new Date().toISOString()).replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
     const artifacts = result.artifacts.filter(artifact => artifact.command === "health");
     return serializeEvidence(context, artifacts, new Map(artifacts.map(artifact => [artifact.id,
       { title: "Health", execution: { status: result.status } }])));
   },
   render: (context, result) => renderEvidence(context, result, {
-    command: "health", title: "Health", scope: "体检 / 统计窗口",
+    command: "health", title: "Health", scope: "系统体检",
     render: artifact => context.write(artifact, buildHealthHtml(context.json<HealthResult>(artifact, "diagnosis.json"))),
   }),
   validate: validateHealthOptions,
@@ -151,12 +152,14 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
       summarize: scopes.includes("business") ? provider.summarize : undefined,
       cost: scopes.includes("business") ? provider.cost : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).filter(provider => provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.summarize || provider.cost);
-    if (!providers.length) throw new Error(`所选 Service 未声明 ${scopes.join(",")} 层级的体检能力`);
+    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.summarize || provider.cost
+      ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
+    if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });
     const opts = { ...commandOptions(context), ...input };
-    const since = opts.since ?? await selectOverviewWindow(isInteractive());
-    if (!since) return undefined;
+    const needsStatistics = providers.some(provider => provider.summarize || provider.cost);
+    const since = needsStatistics ? opts.since ?? await selectOverviewWindow(isInteractive()) : undefined;
+    if (needsStatistics && !since) return undefined;
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
     if (!kube) return undefined;
     const executor = createKubernetesExecutor(kube);

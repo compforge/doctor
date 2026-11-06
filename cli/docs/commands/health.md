@@ -60,7 +60,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 `--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
 `self` 检查自身运行态，`deps` 检查数据源和下游依赖，`biz` 执行历史统计与业务 Case。
-未选择 `biz` 时不准备 Case 身份或执行 Case。所选服务没有对应能力时明确报告不支持。
+未选择 `biz` 时不准备 Case 身份或执行 Case。只有本轮实际查询统计时才选择和展示历史窗口；单独的 Probe 或 Case 检查保留本次执行时间。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
 Core 按声明的 Workload 定位实例，每个 Probe 串行检查最多 10 个实例，不过滤未就绪实例；超限保留覆盖缺口。
