@@ -65,7 +65,7 @@ test(`self-only command skips business preparation and preserves ${acquisitionSt
     artifacts.push(...result.artifacts);
     expect(businessCalled).toBe(false);
     expect(windowSelection).not.toHaveBeenCalled();
-    expect(result.output?.query.window).toBeUndefined();
+    expect(result.output?.query).not.toHaveProperty("window");
     expect(result.output?.checkedAt).toBeDefined();
     expect(buildHealthHtml(result.output!)).not.toContain("统计窗口");
     expect(result.status).toBe(includeUnsupported ? CommandStatus.Partial : acquisitionStatus === "ok" ? CommandStatus.Ok : CommandStatus.Failed);
@@ -99,8 +99,7 @@ for (const statuses of [["unavailable"], ["unavailable", "unavailable"], ["ok", 
     const service: ServiceDefinition = { ...api, extensions: [selectedProbe] };
     const plugin = { id: "fixture", version: "1", services: createServiceCatalog([service, statisticsService]) };
     const provider = healthProviders(plugin, ["api"])[0]!;
-    expect(provider.service.name).toBe("store");
-    expect(provider.probeService?.name).toBe("api");
+    expect(provider.service.name).toBe("api");
     const context = new CommandContext({}, undefined, { plugin });
     const unavailable = async (): Promise<never> => { throw new Error("unexpected external execution"); };
     const executor: Executor = { run: unavailable, exec: unavailable };

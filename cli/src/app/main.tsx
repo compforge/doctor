@@ -53,7 +53,7 @@ import {
 } from "../collect/composite";
 import { registerComputeCommand } from "../compute/command";
 import { registerHealthCommand } from "../health/command";
-import { registerSampleCommand } from "../overview/command";
+import { registerOverviewCommand } from "../overview/command";
 import type { CliFlags } from "../protocol";
 import { reportError } from "./error-report";
 import { runInit } from "./init";
@@ -458,7 +458,8 @@ export function createDoctorProgram(
       "",
       "排查路径：",
       "  理解产品与服务 → knowledge 查看概念 / 流程；--service <name> 聚焦服务",
-      "  系统整体异常   → health 查看统计与体检 → sample 选取代表业务 ID → collect 汇集证据",
+      "  部署主动巡检   → health 检查启动、依赖与业务功能",
+      "  运行问题回顾   → overview 查看统计并选取代表业务 ID → collect 汇集证据",
       "  已知异常请求   → collect 联合取证，或 trace / log / data 聚焦单个数据面",
       "  部署与依赖异常 → inspect 查看运行态与配置 → store 检查存储 → db / s3 查询具体数据",
       "  主动复现问题   → case / model / mcp；批量触发与取证用 eval，受控压测用 perf",
@@ -686,7 +687,7 @@ export function createDoctorProgram(
     opts = commandOptionsWithSources(command);
     await runCommand(cpuCommand, opts, domainInput(opts), commandRuntime);
   });
-  registerSampleCommand(catalog, commandRuntime);
+  registerOverviewCommand(catalog, commandRuntime);
   registerHealthCommand(catalog, commandRuntime);
   registerResourceCommand(catalog, commandRuntime);
   registerComputeCommand(catalog, commandRuntime);

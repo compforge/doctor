@@ -41,7 +41,7 @@ export interface FacetEntryChoice {
   entry: FacetEntry;
 }
 
-export interface OverviewActions extends Omit<FacetSummaryQueryActions, "cost"> {
+export interface OverviewActions extends FacetSummaryQueryActions {
   sampleCount?: number;
   selectEntries?(entries: readonly FacetEntryChoice[], defaultCount: number): Promise<readonly FacetEntryChoice[] | undefined>;
   sample(provider: OverviewProvider, query: FacetSampleQuery): Promise<readonly FacetSample[]>;
@@ -79,14 +79,12 @@ export async function runOverviewSession(
 ): Promise<OverviewResult> {
   const result: OverviewResult = {
     query,
-    providers: (await queryOverview(providers, query, actions)).map(summary => ({
+    providers: (await queryOverview(providers, query, actions)).map((summary, index) => ({
       ...summary,
-      // Validate complete provider output first, then project only entries useful for object selection.
-      // Empty/truncated facets retain query coverage; complete display-only facets belong to Health.
-      facets: summary.facets.flatMap(facet => {
-        const entries = facet.entries.filter(entry => entry.canSample);
-        return entries.length || !facet.entries.length || facet.truncated ? [{ ...facet, entries }] : [];
-      }),
+      // Preserve every statistic; a sampleable Entry also needs a namespace-local provider.
+      facets: summary.facets.map(facet => ({ ...facet,
+        entries: facet.entries.map(entry => ({ ...entry, canSample: !!providers[index]!.sample && entry.canSample })),
+      })),
     })),
     sampleAllocations: [], samples: [], collection: "not-requested",
   };

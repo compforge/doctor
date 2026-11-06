@@ -418,13 +418,17 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 定制 CLI 的名称、描述和命令展示由 [Distribution](distribution.md) 表达，通过 `startDoctor`
 的发行配置注入；它属于发行装配，不进入 Plugin 业务协议。
 
-### Service Sample 与 Health
+### Service Overview 与 Health
 
-`facet.summarize` 与 `facet.sample` Extension 声明静态 Facet 和动态 Entry 的 `summarize` / `sample` 方法。Entry data 可以是数值或
-文字，Sample 只展示 `canSample` 的条目，用于选取 biz-ids；Health 则完整展示统计。Core 负责时间窗口、展示、用户确认、跨 Service 样本去重及
-Collect 编排；Plugin 负责匹配条件、统计口径与代表请求选择。`duration.summarize` 只供 Health 展示；Health 通过 `health.case.bindings` 选择来源，再调用来源的 `produce` 准备体检用例，不进入样本查询或 Collect。
-Health 只发现 Service namespace，未指定服务时默认全选支持体检的服务；产品级 Sample 的统计若也用于体检，应将同一实现注册到对应 Service namespace。
-详见 [Sample](commands/sample.md) 与 [Health](commands/health.md)。
+Overview 通过 `facet.summarize` 展示维度统计，通过 `duration.summarize` 展示耗时分布。
+Entry data 可以是数值或文字；全部条目都保留，只有同一 namespace 声明 `facet.sample` 且 Entry
+支持 `canSample` 时才开放采样。Core 负责冻结窗口、展示、用户确认、样本去重及 Collect 编排；
+Plugin 负责统计口径与代表请求选择。
+
+Health 通过标注 `health: "self" | "deps"` 的 `workload.probe`、DataSource 检查和
+`health.case.bindings` 执行本次巡检，业务 Case 来源的 `produce` 负责准备用例。
+Health 只发现 Service namespace，未指定服务时默认选择支持巡检的服务；历史统计由 Overview 展示。
+详见 [Overview](commands/overview.md) 与 [Health](commands/health.md)。
 
 Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；凭据与协议参数应走 stdin，
 不得放入命令参数。取消信号、权限检查及资源生命周期继续由宿主管理。

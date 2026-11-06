@@ -44,10 +44,10 @@ Business data is organized by lookup scope:
 
 - `doctor knowledge` organizes offline concepts, workflows, articles and dictionaries from the selected Plugin,
   preserving source versions and namespaces. See [Knowledge](cli/docs/commands/knowledge.md).
-- `doctor health` shows system statistics and runs Service checks without collecting business evidence.
+- `doctor health` checks Service startup, dependency connectivity and business functionality without collecting business evidence.
   See [Health](cli/docs/commands/health.md).
-- `doctor sample` shows selectable entries grouped by Service and Facet to help choose representative business IDs,
-  and collects their evidence only with explicit consent. See [Sample](cli/docs/commands/sample.md).
+- `doctor overview` shows historical error, diagnostic and duration statistics, with optional representative business IDs,
+  and collects their evidence only with explicit consent. See [Overview](cli/docs/commands/overview.md).
 - `doctor collect` runs selected Inspect, Tenant, Data, Trace, Log and Metric collectors and combines their
   reports into one offline delivery. Tenant and business identifiers remain inputs to their corresponding
   collectors; Collect does not infer relationships between scopes, create load or change individual

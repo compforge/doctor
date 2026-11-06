@@ -1,24 +1,24 @@
 import { expect, mock, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
-import { createServiceCatalog, withSummary, type FacetSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type HealthCaseBindingsExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
 import { healthCommand } from "../src/health";
 import { healthProviders } from "../src/health/extensions";
 import * as selection from "../src/health/selection";
 import * as targets from "../src/command/kubernetes-target";
 
-const results = [{ facetId: "status", description: "Status", entries: [] }];
-const summarize: FacetSummarizeExtension = {
-  id: "summary", kind: "facet.summarize", access: {}, facets: [{ id: "status", title: "Status", description: "Status" }],
-  run: withSummary({ title: "Summary", fields: [] }, async () => results),
+const results = { bindings: [] };
+const bindings: HealthCaseBindingsExtension = {
+  id: "checks", kind: "health.case.bindings", access: {},
+  run: withSummary({ title: "Bindings", fields: [] }, async () => results),
 };
 function service(name: string, extensions: ServiceDefinition["extensions"] = []): ServiceDefinition {
   return { name, aliases: [`${name}-alias`], workloads: [], extensions,
     component: { name, repository: { forge: { name: "fixture" }, path: `fixture/${name}` } } };
 }
 const plugin = { id: "fixture", version: "1", services: createServiceCatalog([
-  service("api", [summarize, { ...summarize, namespace: "plugin/fixture" }]),
-  service("worker", [summarize]), service("unrelated"),
+  service("api", [bindings, { ...bindings, namespace: "plugin/fixture" }]),
+  service("worker", [bindings]), service("unrelated"),
 ]) };
 
 test("default health discovers every supported Service, not product statistics or unrelated Services", () => {
@@ -31,7 +31,7 @@ test("default health discovers every supported Service, not product statistics o
   expect(() => healthProviders(plugin, ["unrelated"])).toThrow("health.case.bindings");
   expect(() => healthProviders(plugin, ["missing"])).toThrow("Unknown Service");
   expect(() => healthProviders(plugin, [])).toThrow("empty");
-  for (const services of [[], [service("unrelated")], [service("api", [{ ...summarize, namespace: "plugin/fixture" }])]]) {
+  for (const services of [[], [service("unrelated")], [service("api", [{ ...bindings, namespace: "plugin/fixture" }])]]) {
     expect(() => healthProviders({ ...plugin, services: createServiceCatalog(services) })).toThrow("没有支持 health");
   }
 });
@@ -62,19 +62,19 @@ test("cancelling Service selection stops health before environment preparation",
   const environment = mock(async () => {});
   context.ensureEnvironment = async requirements => { if (requirements.kubernetes) await environment(); };
   try {
-    expect((await healthCommand.run(context, { since: "1h" })).status).toBe(CommandStatus.Cancelled);
+    expect((await healthCommand.run(context, {})).status).toBe(CommandStatus.Cancelled);
     expect(environment).not.toHaveBeenCalled();
   } finally { selected.mockRestore(); await context.disposeClients(); }
 });
 
 test("noninteractive command runs all supported Services once, or only explicitly selected Services", async () => {
   const calls: string[] = [];
-  const summary = { ...summarize, run: withSummary({ title: "Summary", fields: [] }, async context => {
+  const checks = { ...bindings, run: withSummary({ title: "Bindings", fields: [] }, async context => {
     calls.push(context.target.service.name); return results;
   }) };
   const definition = { ...plugin, services: createServiceCatalog([
-    service("api", [summary, { ...summary, namespace: "plugin/fixture" }]),
-    service("worker", [summary]), service("unrelated"),
+    service("api", [checks, { ...checks, namespace: "plugin/fixture" }]),
+    service("worker", [checks]), service("unrelated"),
   ]) };
   const config = spyOn(targets, "resolveKubernetesCommandConfig").mockResolvedValue({ profileName: "fixture",
     kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" } });
@@ -90,7 +90,7 @@ test("noninteractive command runs all supported Services once, or only explicitl
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
-        const result = await healthCommand.run(context, { since: "1h", services: service === undefined ? undefined : [service], yes: true });
+        const result = await healthCommand.run(context, { services: service === undefined ? undefined : [service], yes: true });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(calls).toEqual(service ? ["worker"] : ["api", "worker"]);
         expect(result.output?.providers.map(provider => provider.name)).toEqual(calls);

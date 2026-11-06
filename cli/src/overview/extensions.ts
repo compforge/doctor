@@ -48,22 +48,17 @@ export function overviewStatistics(
   return { namespace: scope.namespace, name: scope.name, service, summarize, cost, costService: costs[0]?.service };
 }
 
-/** @spec Sample selects objects: it requires a summary/sample pair in the same exact namespace, never cost-only statistics. */
+/** @spec Overview shows statistics even without sampling; optional samples belong to the same exact namespace. */
 export function overviewProviders(plugin: PluginDefinition, serviceNames?: readonly string[]): OverviewProvider[] {
   const registry = createDoctorExtensionRegistry(plugin);
   return overviewScopes(plugin, serviceNames).map(scope => {
-    const summaries = registry.extensions(FACET_SUMMARIZE_KIND, scope.namespace);
+    const statistics = overviewStatistics(registry, scope);
+    if (!statistics) throw new Error(`${scope.namespace}: 未声明 facet.summarize 或 duration.summarize；可使用 --service 选择提供统计的 Service`);
     const samples = registry.extensions(FACET_SAMPLE_KIND, scope.namespace);
-    if (summaries.length > 1 || samples.length > 1) throw new Error(`${scope.namespace}: ambiguous overview Extension`);
-    const summarize = summaries[0] ? requireFacetSummarizeExtension(summaries[0].extension) : undefined;
-    const service = summaries[0]?.service;
-    if (summarize && !service) throw new Error(`${scope.namespace}: executable overview Extensions require a providing Service`);
-    if (!summarize || !samples.length) {
-      throw new Error(`${scope.namespace}: 选取数据需要同一 namespace 的 facet.summarize 与 facet.sample；可使用 --service 选择支持下钻的 Service，纯统计请使用 doctor health`);
-    }
-    const sample = requireFacetSampleExtension(samples[0]!.extension);
+    if (samples.length > 1) throw new Error(`${scope.namespace}: ambiguous overview Extension`);
+    const sample = samples[0] ? requireFacetSampleExtension(samples[0].extension) : undefined;
     const sampleService = samples[0]?.service;
     if (sample && !sampleService) throw new Error(`${scope.namespace}: executable overview Extensions require a providing Service`);
-    return { namespace: scope.namespace, name: scope.name, service: service!, summarize, sample, sampleService };
+    return { ...statistics, sample, sampleService };
   });
 }

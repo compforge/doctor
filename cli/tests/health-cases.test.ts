@@ -102,8 +102,7 @@ test("Health runs bindings automatically and retains history when checks fail", 
   const f = fixture({ sender: async () => async () => ({ statusCode: 403, statusText: "Forbidden", headers: {}, body: new Response("denied").body }) });
   try {
     const selected = healthProviders(plugin, ["sandbox"]);
-    const result = await runHealthSession(selected, { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 }, {
-      summarize: async () => [],
+    const result = await runHealthSession(selected, {}, {
       show: () => {}, cases: () => f.run(),
     });
     expect(result).not.toHaveProperty("collection");
@@ -199,8 +198,8 @@ test("real Case adapter executes only in consumer container and delivers failed 
     expect(calls[1]!.command).toContain(file.targets[0]!.url);
     expect(calls[1]!.command).not.toContain("--insecure");
     expect(calls[1]!.command).not.toContain("--noproxy");
-    const output = { query: { window: { from: "2026-01-01T00:00:00Z", to: "2026-01-01T01:00:00Z" }, maxEntries: 10 },
-      providers: [{ namespace: "plugin/test/service/sandbox", name: "sandbox", facets: [], cases: checks }] };
+    const output = { query: {},
+      providers: [{ namespace: "plugin/test/service/sandbox", name: "sandbox", cases: checks }] };
     writeHealthEvidence(output, context, f.directory);
     writeHealthEvidence(output, context, f.directory);
     expect(context.artifacts.list()).toHaveLength(1);
@@ -226,8 +225,8 @@ test("consumer data is resolved during preparation and invalid relationships nev
       expect(result!.consumeExtension).toBe("downloads");
       expect(result!.error).toBeDefined();
       expect(f.calls).toEqual([]);
-      expect(buildHealthHtml({ query: { window: { from: "a", to: "b" }, maxEntries: 1 },
-        providers: [{ namespace: "sandbox", name: "sandbox", facets: [], cases: [result!] }] })).toContain("downloads");
+      expect(buildHealthHtml({ query: {},
+        providers: [{ namespace: "sandbox", name: "sandbox", cases: [result!] }] })).toContain("downloads");
     } finally { f.cleanup(); }
   }
 });

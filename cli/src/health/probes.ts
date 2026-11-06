@@ -45,7 +45,7 @@ export function validateDownstreams(service: ServiceDefinition, services: readon
 /** @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
 export async function checkHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, bizId?: string): Promise<HealthProbeCheck[]> {
-  const service = provider.probeService ?? provider.service;
+  const service = provider.service;
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
   for (const probe of provider.probes ?? []) {

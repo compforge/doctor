@@ -287,11 +287,40 @@ test("a single selected Entry receives the entire sample budget", async () => {
 
 test("sample count honors CLI over profile and rejects invalid numbers", async () => {
   const { overviewSampleCount } = await import("../src/overview/options");
-  const { validateSampleOptions } = await import("../src/overview");
+  const { validateOverviewOptions } = await import("../src/overview");
   expect(overviewSampleCount()).toBe(5);
   expect(overviewSampleCount(undefined, 3)).toBe(3);
   expect(overviewSampleCount(2, 3)).toBe(2);
   for (const count of [0, -1, 1.5, NaN, Infinity]) {
-    expect(() => validateSampleOptions({ sampleCount: count })).toThrow("正整数");
+    expect(() => validateOverviewOptions({ sampleCount: count })).toThrow("正整数");
   }
+});
+
+test("summary-only Overview retains all entries without offering sampling or Collect", async () => {
+  const selected = { ...provider("stats"), sample: undefined, sampleService: undefined };
+  const select = mock(async () => "errors");
+  const sample = mock(async () => []);
+  const collect = mock(async () => commandOutcome(0));
+  const result = await runOverviewSession([selected], query, actions({ select, sample, collect }));
+  expect(result.providers[0]!.facets[0]!.entries).toEqual(summary[0]!.entries.map(entry => ({ ...entry, canSample: false })));
+  expect(select).not.toHaveBeenCalled();
+  expect(sample).not.toHaveBeenCalled();
+  expect(collect).not.toHaveBeenCalled();
+  expect(summary[0]!.entries.every(entry => entry.canSample)).toBe(true);
+});
+
+test("mixed Overview keeps statistics but samples only capable providers and entries", async () => {
+  const stats = { ...provider("stats"), sample: undefined, sampleService: undefined };
+  const sampled = provider("sampled");
+  const calls: string[] = [];
+  const result = await runOverviewSession([stats, sampled], query, actions({
+    summarize: async () => [{ ...summary[0]!, entries: [summary[0]!.entries[0]!, { ...summary[0]!.entries[1]!, canSample: false }] }],
+    select: async () => "errors",
+    sample: async (owner, input) => { calls.push(`${owner.name}/${input.entryKey}`); return [{ bizId: "trace-1" }]; },
+    confirmCollect: async () => false,
+  }));
+  expect(result.providers.map(item => item.facets[0]!.entries.length)).toEqual([2, 2]);
+  expect(calls).toEqual(["sampled/E1"]);
+  expect(result.samples).toHaveLength(1);
+  expect(result.collection).toBe("not-requested");
 });
