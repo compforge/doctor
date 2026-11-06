@@ -1,5 +1,3 @@
-import type { FacetSummaryQuery } from "@compforge/doctor-plugin";
-import { queryOverview, type OverviewProviderResult, type FacetSummaryQueryActions } from "../overview/query";
 import type { CaseCheckResult } from "./cases";
 import type { HealthProvider } from "./extensions";
 
@@ -12,7 +10,9 @@ export interface HealthDataSourceCheck {
   error?: string;
 }
 
-export interface HealthProviderResult extends OverviewProviderResult {
+export interface HealthProviderResult {
+  namespace: string;
+  name: string;
   unsupported?: string;
   probes?: import("./probes").HealthProbeCheck[];
   cases?: CaseCheckResult[];
@@ -21,7 +21,7 @@ export interface HealthProviderResult extends OverviewProviderResult {
 }
 
 /** Basic probes and Cases have no historical statistics window. */
-export type HealthQuery = Omit<FacetSummaryQuery, "window"> & { window?: FacetSummaryQuery["window"] };
+export interface HealthQuery { tenantId?: string }
 
 export interface HealthResult {
   checkedAt?: string;
@@ -29,22 +29,20 @@ export interface HealthResult {
   providers: HealthProviderResult[];
 }
 
-export interface HealthActions extends FacetSummaryQueryActions {
+export interface HealthActions {
+  signal?: AbortSignal;
   cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   probes?(provider: HealthProvider): Promise<import("./probes").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   show(result: HealthResult): void;
 }
 
-/** @spec Health queries statistics and runs approved probes, never samples or invokes Collect. */
+/** @spec Health runs current Probe, DataSource and Case checks; historical statistics belong to Overview. */
 export async function runHealthSession(
   providers: readonly HealthProvider[], query: HealthQuery, actions: HealthActions,
 ): Promise<HealthResult> {
-  if (!query.window && providers.some(provider => provider.summarize || provider.cost)) throw new Error("Statistics require a window");
   const result: HealthResult = { checkedAt: new Date().toISOString(), query,
-    providers: query.window ? await queryOverview(providers, query as FacetSummaryQuery, actions)
-      : providers.map(provider => ({ namespace: provider.namespace, name: provider.name, facets: [] })) };
-  result.providers.forEach((summary, index) => { summary.unsupported = providers[index]!.unsupported; });
+    providers: providers.map(provider => ({ namespace: provider.namespace, name: provider.name, unsupported: provider.unsupported })) };
   actions.show(result);
   for (const [index, provider] of providers.entries()) {
     if (actions.signal?.aborted) return result;

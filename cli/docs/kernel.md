@@ -2,11 +2,44 @@
 
 ## 理念 / 概念
 
-Doctor CLI 的 Kernel 定义跨 Command 稳定的生命周期、数据流、扩展边界和信任边界。Provision、Collect、
-Eval、Perf 与 Chat 共用启动上下文和基础设施，但各自拥有不同的领域结果：
+Doctor CLI 的 Kernel 定义跨 Command 稳定的生命周期、数据流、扩展边界和信任边界。Health、Overview、Collect、
+Provision、Eval、Perf 与 Chat 共用启动上下文和基础设施，但各自拥有不同的领域结果：
+
+### 排查主线
+
+Doctor 围绕系统运行过程提供三个入口，组成从主动巡检、运行回顾到问题取证的一套排查工具：
+
+| 时机 | 入口 | 要回答的问题 | 结果 |
+|---|---|---|---|
+| 部署后、开始承接业务前 | [Health](commands/health.md) | 系统能否启动、访问依赖并完成基本功能？ | 本次 Probe 与 Case 的检查结果、发现的问题和覆盖缺口 |
+| 系统运行一段时间后 | [Overview](commands/overview.md) | 这段时间运行得怎么样，出现了哪些错误或慢请求？ | 窗口内的统计分布，以及按需查询的代表业务 ID |
+| 发现具体问题后 | [Collect](commands/collect.md) | 需要哪些现场信息来解释问题？ | 多个数据面的原始证据、分析结果和可离线阅读的报告 |
+
+Health 主动执行 `self / deps / biz` 检查。典型时机是部署验证，也可在配置变更后或运行中重新检查；
+结论对应本次实际覆盖的服务、依赖和功能。Overview 查询已经发生的运行记录，保留时间窗口、统计口径和
+数据覆盖范围；支持采样的条目可以取得代表 biz-id，再经确认进入 Collect。
+
+Collect 汇集解释问题所需的信息，各具体命令按信息类型拥有查询、采集和分析能力。集合命令当前组合
+Inspect、Tenant、Data、Trace、Log 和 Metric；这些命令也能单独运行。其它专项工具按问题需要显式调用：
+
+| 所需信息 | 具体命令 |
+|---|---|
+| Service 运行状态、配置与资源 | `inspect`、`compute`、`resource` |
+| 租户与业务对象记录 | `tenant`、`data` |
+| 请求链路、日志与指标 | `trace`、`log`、`metric` |
+| 存储状态与具体数据库记录、对象 | `store`、`db`、`s3` |
+| CPU、内存与网络现场 | `cpu`、`mem`、`net`；`mema`、`neta` 分析离线产物 |
+
+这是一条可按需要进入、深入和复查的路径。已知失败请求的 biz-id 时可以直接 Collect；已知要查日志时
+可以直接 Log；Health 发现配置或依赖问题时也可以直接 Inspect。修复后再运行相关 Health 检查，并在后续
+Overview 中观察实际业务表现。读取结果时结合原始证据、采集完整度和 Finding，查询失败或没有覆盖不能当作正常。
+
+### 其它路径与共享执行模型
 
 | 主路径 | 主要结果 | 与 Collect 的关系 |
 |---|---|---|
+| Health | 本次主动巡检证据与检查结果 | 根据问题按需继续取证 |
+| Overview | 历史统计与可选代表样本 | 用户确认后按样本复用 Collect |
 | Provision | 外部能力、环境准备或显式状态调整完成 | 不隐藏在 Collect 中；由用户显式触发 |
 | Collect | 可复查的 Evidence、Finding 与诊断产物 | 确定性诊断主路径 |
 | Eval | Case 执行记录及关联证据 | 复用已有 Collect 入口采集证据 |
@@ -15,6 +48,8 @@ Eval、Perf 与 Chat 共用启动上下文和基础设施，但各自拥有不�
 
 Collect Command 的最小模型是：**Core 统一驱动 Prepare、Execute、Finalize；Execute 固定沿
 Inspect → Probe → Detector 推进；Core 与 Plugin Service 在同一流程中贡献能力，不形成两套执行框架。**
+
+![Command 生命周期与证据流程](../../docs/doctor-diagnostic-flow.svg)
 
 ## Collect Command Kernel
 
@@ -245,7 +280,7 @@ Input 可以提供 `idempotencyKey(): string`，显式声明本次逻辑执行�
 
 Inspect 和 Tenant 的 Input 构造函数按检查范围、租户及采集参数生成 key，Collect 使用这些 Input 调用
 子命令。调用方仍显式纳入子产物，Artifacts 按产物 ID 去重，因此多个 Collect 可引用同一份环境/租户证据，
-最终报告只交付一份。Sample 无需识别第一次或后续 Collect。
+最终报告只交付一份。Overview 无需识别第一次或后续 Collect。
 
 ### Context 与调用归属
 

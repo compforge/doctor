@@ -5,7 +5,7 @@ import { createDoctorProgram } from "../src/app/main";
 import { CommandContext, CommandInputError, CommandStatus, defineCommand, type CommandInput } from "../src/command";
 import { forServices } from "../src/command/services";
 
-const serviceCommands = ["plugin", "sample", "health", "store", "db", "s3", "log", "data", "inspect", "net", "metric", "debug", "perf", "eval"];
+const serviceCommands = ["plugin", "overview", "health", "store", "db", "s3", "log", "data", "inspect", "net", "metric", "debug", "perf", "eval"];
 
 describe("shared Service selection", () => {
   for (const name of serviceCommands) {

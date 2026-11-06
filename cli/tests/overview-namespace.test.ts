@@ -5,7 +5,7 @@ import {
 } from "@compforge/doctor-plugin";
 import { overviewProviders } from "../src/overview/extensions";
 import { healthProviders } from "../src/health/extensions";
-import { sampleCommand, validateSampleOptions } from "../src/overview";
+import { overviewCommand, validateOverviewOptions } from "../src/overview";
 import { overviewServiceNames } from "../src/overview/options";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
@@ -30,17 +30,15 @@ function plugin(product: readonly (FacetSummarizeExtension | FacetSampleExtensio
     services: createServiceCatalog([service("api", [summarize, sample, ...product]), service("store")]) };
 }
 
-test("health uses Service statistics instead of a product summary provided by the same Service", () => {
+test("overview accepts a summary without borrowing a sampler from another namespace", () => {
   const run = mock(async () => []);
   const definition = plugin([{ ...summarize, namespace: "plugin/fixture", run: withSummary({ title: "Errors", fields: [] }, run) }]);
-  const selected = healthProviders(definition);
-  expect(() => overviewProviders(definition)).toThrow("facet.sample");
+  const selected = overviewProviders(definition);
   expect(selected).toHaveLength(1);
-  expect(selected[0]?.namespace).toBe("plugin/fixture/service/api");
-  expect(selected[0]?.summarize).toBe(summarize);
+  expect(selected[0]?.namespace).toBe("plugin/fixture");
   expect(selected[0]?.service.name).toBe("api");
-  // A Service-scoped sample must not be borrowed by a product-scoped summary from the same provider.
   expect(selected[0]?.sample).toBeUndefined();
+  expect(() => healthProviders(definition)).toThrow("没有支持 health");
   expect(run).not.toHaveBeenCalled();
 });
 
@@ -96,7 +94,7 @@ test("Overview rejects invalid selection before Kubernetes preparation", async (
     const accesses = mock(async () => { throw new Error("unexpected environment access"); });
     context.ensureEnvironment = async requirements => { if (requirements.kubernetes) await accesses(); };
     try {
-      const result = await sampleCommand.run(context, { since: "1h", ...input });
+      const result = await overviewCommand.run(context, { since: "1h", ...input });
       expect(result.status).toBe(CommandStatus.Failed);
       expect("reason" in result ? result.reason : undefined).toContain(reason);
       expect(accesses).not.toHaveBeenCalled();
@@ -105,13 +103,13 @@ test("Overview rejects invalid selection before Kubernetes preparation", async (
 });
 
 test("CLI exposes explicit Service selection and rejects conflicting or empty selectors", () => {
-  const command = createDoctorProgram().commands.find(command => command.name() === "sample")!;
+  const command = createDoctorProgram().commands.find(command => command.name() === "overview")!;
   expect(command.helpInformation()).toContain("--service <name>");
   expect(overviewServiceNames({})).toBeUndefined();
   expect(overviewServiceNames({ services: ["short"] })).toEqual(["short"]);
   expect(overviewServiceNames({ services: ["api", "store"] })).toEqual(["api", "store"]);
   for (const opts of [{ services: [] }, { services: [""] }, { services: ["api", "", "store"] }]) {
-    expect(() => validateSampleOptions(opts)).toThrow("--service");
+    expect(() => validateOverviewOptions(opts)).toThrow("--service");
   }
 });
 
@@ -170,7 +168,7 @@ test("Overview command invokes the namespace provider using its original Service
       const context = new CommandContext({}, undefined, { plugin: definition });
       context.ensureEnvironment = async () => {};
       try {
-        const result = await sampleCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
+        const result = await overviewCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
         expect(result.status).toBe(CommandStatus.Ok);
         expect(result.output?.providers.map(provider => provider.namespace)).toEqual([
           selection ? "plugin/fixture/service/api" : "plugin/fixture",

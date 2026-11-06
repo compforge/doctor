@@ -4,6 +4,9 @@ Doctor 是面向应用与基础设施的诊断客户端。直接运行 `doctor` 
 `doctor <command> --help` 查看某条命令的参数。默认显示全部命令；当前 Plugin 缺少 required
 capability 时，CLI 会在访问环境前说明具体缺口。
 
+部署后用 `health` 主动巡检，运行一段时间后用 `overview` 回顾情况，发现问题后用 `collect` 或具体领域命令取证。
+职责与衔接见[排查主线](docs/kernel.md#排查主线)。
+
 ## 选择 Kubernetes 环境
 
 `--kubeconfig` 与 `--context` 是全局选项，根 Help 和子命令 Help 都会展示。参数可放在子命令前后：
@@ -23,11 +26,16 @@ doctor inspect --kubeconfig /path/to/config --context staging --service api -n a
 `--no-yes` 可覆盖。`inspect -y --service api` 默认只采集基础信息，可选配置与依赖分别用
 `--deployment-config` / `--dependencies` 开启，或用对应 `--no-*` 显式关闭。
 
+![Doctor 现场使用方式](../docs/doctor-usage.svg)
+
 ## 本地构建
 
 ```bash
 make build
 ```
+
+Kylin 产物内嵌 Node 26，并保留全屏 Chat；宿主需 glibc 2.28+、`libatomic.so.1` 与 Node 兼容的 C++ runtime。
+发布前应在目标机器验证产物，尤其是使用 64KB pages 的 ARM64 系统。
 
 默认内嵌运行时，接收方无需安装 Node。已有 Node >= 22.23.1 时可交付不带运行时的 bundle：
 
@@ -99,7 +107,9 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
-| `doctor collect [id...]` | 集合选择并汇总 Data、Trace、Log、Metric；自身不实现具体采集 |
+| `doctor health` | 主动检查 Service 启动、依赖连通性与业务功能 |
+| `doctor overview` | 展示历史统计与耗时分布，按需采样并进入 Collect |
+| `doctor collect [id...]` | 集合选择并汇总 Inspect、Tenant、Data、Trace、Log、Metric；自身不实现具体采集 |
 | `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线选择 trace/node view，渲染 text / JSON / HTML / Bundle（[说明](docs/commands/trace.md)） |
 | `doctor s3 ls/stat/cat` | 按 Service 连接浏览 bucket / 目录前缀、检查对象元数据和有界读取内容 |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |

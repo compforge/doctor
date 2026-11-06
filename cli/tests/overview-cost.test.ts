@@ -3,11 +3,11 @@ import { rmSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createServiceCatalog, withSummary, type DurationSummarizeExtension, type DurationSummary,
   type FacetSummarizeExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
-import { healthProviders } from "../src/health/extensions";
+import { overviewProviders } from "../src/overview/extensions";
 import { checkedCost } from "../src/overview/cost";
-import { runHealthSession } from "../src/health/flow";
-import { buildHealthHtml } from "../src/health/report";
-import { healthCommand } from "../src/health";
+import { runOverviewSession } from "../src/overview/flow";
+import { buildOverviewHtml } from "../src/overview/report";
+import { overviewCommand } from "../src/overview";
 import { CommandContext, CommandStatus } from "../src/command";
 import * as targets from "../src/command/kubernetes-target";
 
@@ -29,12 +29,12 @@ const service = (name: string, extensions: ServiceDefinition["extensions"]): Ser
 const plugin = (extensions: ServiceDefinition["extensions"]) => ({ id: "fixture", version: "1",
   services: createServiceCatalog([service("api", extensions)]) });
 
-test("health supports cost-only namespaces without borrowing summary or sample", () => {
+test("overview supports cost-only namespaces without borrowing summary or sample", () => {
   const definition = plugin([cost, { ...summarize, namespace: "plugin/fixture" }]);
-  expect(healthProviders(definition, ["api"])[0]).toMatchObject({ cost, costService: { name: "api" }, summarize: undefined });
-  expect(healthProviders(definition)[0]?.cost).toBe(cost);
-  expect(healthProviders(definition)[0]?.summarize).toBeUndefined();
-  expect(() => healthProviders(plugin([cost, { ...cost, id: "other" }]), ["api"])).toThrow("ambiguous");
+  expect(overviewProviders(definition, ["api"])[0]).toMatchObject({ cost, costService: { name: "api" }, summarize: undefined });
+  expect(overviewProviders(definition, ["api"])[0]?.cost).toBe(cost);
+  expect(overviewProviders(definition, ["api"])[0]?.summarize).toBeUndefined();
+  expect(() => overviewProviders(plugin([cost, { ...cost, id: "other" }]), ["api"])).toThrow("ambiguous");
 });
 
 test("duration validation rejects fake zeros, invalid statistics and over-budget populations", () => {
@@ -51,21 +51,22 @@ test("duration validation rejects fake zeros, invalid statistics and over-budget
 
 test("summary and cost fail independently and cost-only never samples", async () => {
   for (const failed of ["summary", "cost", "neither"] as const) {
-    const providers = healthProviders(plugin(failed === "neither" ? [cost] : [cost, summarize]), ["api"]);
-    const cases = mock(async () => []);
-    const result = await runHealthSession(providers, query, {
+    const providers = overviewProviders(plugin(failed === "neither" ? [cost] : [cost, summarize]), ["api"]);
+    const sample = mock(async () => []);
+    const result = await runOverviewSession(providers, query, {
       summarize: async () => { if (failed === "summary") throw new Error("summary failed"); return [{ facetId: "errors", description: "Errors", entries: [] }]; },
       cost: async (_provider, input) => { expect(input.maxRecords).toBe(1000); expect(input.window).toEqual(query.window);
         if (failed === "cost") throw new Error("cost failed"); return costResult; },
-      cases, show: () => {},
+      sample, select: async () => undefined, confirmCollect: async () => false,
+      collect: async () => { throw new Error("unexpected collect"); }, show: () => {},
     });
     const output = result.providers[0]!;
     expect(output.error).toBe(failed === "summary" ? "summary failed" : undefined);
     expect(output.costError).toBe(failed === "cost" ? "cost failed" : undefined);
     expect(output.cost).toEqual(failed === "cost" ? undefined : costResult);
     expect(output.facets.length).toBe(failed === "cost" ? 1 : 0);
-    expect(cases).not.toHaveBeenCalled();
-    const html = buildHealthHtml(result);
+    expect(sample).not.toHaveBeenCalled();
+    const html = buildOverviewHtml(result);
     if (output.cost) { expect(html).toContain("&lt;start&gt;"); expect(html).toContain("P95 ms"); expect(html).toContain("—"); }
   }
 });
@@ -95,11 +96,11 @@ test("command retains independent owners, typed evidence and partial status, inc
       context.ensureEnvironment = async () => {};
       let artifacts: readonly { command: string; path: string }[] = [];
       try {
-        const result = await healthCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
+        const result = await overviewCommand.run(context, { since: "1h", services: selection === undefined ? undefined : [selection] });
         expect(result.status).toBe(selection === "store" ? CommandStatus.Ok : CommandStatus.Partial);
         expect(result.output?.providers[0]?.cost).toEqual(costResult);
         artifacts = result.artifacts;
-        const artifact = artifacts.find(item => item.command === "health")!;
+        const artifact = artifacts.find(item => item.command === "overview")!;
         expect(JSON.parse(readFileSync(join(artifact.path, "diagnosis.json"), "utf8")).providers[0].cost).toEqual(costResult);
       } finally {
         await context.disposeClients();

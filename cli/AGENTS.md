@@ -2,16 +2,18 @@
 
 ## 项目定位与边界
 
-Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
+Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
 体检、概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
+使用主线是部署后的 Health、运行后的 Overview、问题发生后的 Collect 与专项命令，见
+[排查主线](docs/kernel.md#排查主线)。
 
 - **离线知识**：`doctor knowledge` 组织 Plugin/Service 的概念、流程、文章与词典，不准备 Target 访问。
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
 - **能力准备**：`doctor image/debug/install/resize` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
 - **计算资源概览**：`doctor compute` 分别展示集群容量与 Service Workload 占用；权限不足保留覆盖缺口，不作为健康故障。
-- **系统体检**：`doctor health` 按 Service 复用概览统计并执行消费方 Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
-- **采样取证**：`doctor sample` 展示可下钻的 Facet / Entry 以选取 biz-id，确认后复用 Collect；纯展示统计和耗时分布归 Health。
+- **系统体检**：`doctor health` 按 Service 执行 self/deps Probe 与 biz Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
+- **运行概览**：`doctor overview` 展示历史统计和耗时分布，按需从可下钻条目选取 biz-id，确认后复用 Collect。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
@@ -32,8 +34,8 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 | `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
 | `knowledge` | 离线知识目录查询及文本 / JSON 投影 |
 | `compute` | 集群与 Service Workload 资源采集编排、覆盖及概览；计量复用 Toolbox |
-| `health` | 系统统计与消费方 Case 体检、审批及探测结果报告 |
-| `overview` | Sample 命令、Facet 选择与 Collect 编排，以及与 Health 共用的统计查询 |
+| `health` | Service 主动巡检、消费方 Case 审批及探测结果报告 |
+| `overview` | Overview 命令、历史统计、Facet 选择与 Collect 编排 |
 | `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
 | `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
 | `resource` | Service 持续管理/使用的资源目录、只读快照与覆盖展示 |
@@ -91,7 +93,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Sample、Collect、E
 - `docs/commands/knowledge.md` — 结构化知识、作用域、引用与词典查询
 - `docs/commands/compute.md` — 集群容量、Service Workload 资源与权限覆盖
 - `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
-- `docs/commands/sample.md` — Facet / Entry 契约、概览与可选采集
+- `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
 - `docs/commands/perf.md` — Perf 主动施压、共享契约与可观测证据编排
 - `docs/commands/tenant.md` — Tenant 作用域、通用 contribution 协议与安全报告 IR 边界
 - `docs/commands/s3.md` — Service S3 连接、mc 风格路径与有界对象取证

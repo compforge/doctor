@@ -18,7 +18,7 @@ import { overviewCollectConcurrency, overviewSampleCount, overviewServiceNames }
 import { buildOverviewHtml, printOverview, writeOverviewEvidence } from "./report";
 import { confirmOverviewCollection, overviewWindow, selectOverviewEntries, selectOverviewFacet, selectOverviewWindow } from "./selection";
 
-export interface SampleCliOpts extends KubernetesCommandInput {
+export interface OverviewCliOpts extends KubernetesCommandInput {
   since?: string;
   services?: readonly string[];
   tenantId?: string;
@@ -31,7 +31,7 @@ export interface SampleCliOpts extends KubernetesCommandInput {
   format?: string;
 }
 
-export function validateSampleOptions(opts: SampleCliOpts): void {
+export function validateOverviewOptions(opts: OverviewCliOpts): void {
   overviewServiceNames(opts);
   if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
@@ -40,7 +40,7 @@ export function validateSampleOptions(opts: SampleCliOpts): void {
   overviewCollectConcurrency(opts.collectConcurrency);
 }
 
-async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[], context: CommandContext): Promise<CommandResult<SampleOutput>> {
+async function overview(opts: OverviewCliOpts, selected: readonly OverviewProvider[], context: CommandContext): Promise<CommandResult<OverviewOutput>> {
   // Keep persisted profile keys independent of the user-facing command name.
   const sampleCount = overviewSampleCount(opts.sampleCount, context.profile.value.overview?.sample_count);
   const concurrency = overviewCollectConcurrency(opts.collectConcurrency, context.profile.value.overview?.collect_concurrency);
@@ -64,6 +64,7 @@ async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[]
       sampleCount,
       selectEntries: (entries, count) => selectOverviewEntries(entries, count, interactive),
       summarize: (provider, input) => invoke(provider, provider.summarize!, input),
+      cost: (provider, input) => invoke(provider, provider.cost!, input),
       sample: (provider, input) => {
         const extension = provider.sample;
         if (!extension) throw new Error(`${provider.name}: missing facet.sample Extension`);
@@ -71,11 +72,11 @@ async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[]
       },
       select: (facets) => selectOverviewFacet(facets, opts, interactive),
       confirmCollect: (bizIds) => confirmOverviewCollection(bizIds, opts.collect, interactive),
-      warn: (message) => useLogger("sample").warn(`${message}`),
+      warn: (message) => useLogger("overview").warn(`${message}`),
       show: (result) => {
         if (!snapshot) printOverview(result);
         if (result.samples.length && !samplesShown) {
-          for (const sample of result.samples) useLogger("sample").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
+          for (const sample of result.samples) useLogger("overview").info(`${sample.namespace}/${sample.facetId}/${sample.entryKey}: ${sample.bizId ?? sample.error}`);
           samplesShown = true;
         }
         snapshot = result;
@@ -98,37 +99,38 @@ async function sample(opts: SampleCliOpts, selected: readonly OverviewProvider[]
   }
   const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
     ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
+    ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
   ]);
   if (result.collection !== "not-requested" && result.collection !== "no-samples") statuses.push(result.collection);
   if (result.samples.some((sample) => sample.error)) statuses.push(CommandStatus.Failed);
   return { status: aggregateCommandStatus(statuses), output: { ...result, collectionResult }, artifacts: context.artifacts.list() };
 }
 
-export interface SampleOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
+export interface OverviewOutput extends OverviewResult { readonly collectionResult?: CommandResult<CollectOutput> }
 
-export type SampleInput = CommandInput & Omit<SampleCliOpts, Exclude<CommandHostOption, "format">>;
-export const sampleCommand = defineCommand<SampleInput, SampleOutput, { input: SampleInput; providers: OverviewProvider[] }>({
-  name: "doctor sample",
+export type OverviewInput = CommandInput & Omit<OverviewCliOpts, Exclude<CommandHostOption, "format">>;
+export const overviewCommand = defineCommand<OverviewInput, OverviewOutput, { input: OverviewInput; providers: OverviewProvider[] }>({
+  name: "doctor overview",
   reportName: (_input, result) => result.output
-    ? `doctor-sample-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
+    ? `doctor-overview-${result.output.query.window.to.replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
-    const artifacts = result.artifacts.filter(artifact => artifact.command === "sample");
+    const artifacts = result.artifacts.filter(artifact => artifact.command === "overview");
     const own = serializeEvidence(context, artifacts, new Map(artifacts.map(artifact => [artifact.id,
-      { title: "Sample", execution: { status: result.status } }])));
+      { title: "Overview", execution: { status: result.status } }])));
     const collected = result.output?.collectionResult;
     return { ...own, children: collected ? [await context.serialize(collectCommand, collected)] : [] };
   },
   render: async (context, result) => {
     const dashboard = await renderEvidence(context, result, {
-      command: "sample", title: "Sample", scope: "采样窗口",
+      command: "overview", title: "Overview", scope: "统计窗口",
       render: artifact => context.write(artifact, buildOverviewHtml(context.json<OverviewResult>(artifact, "diagnosis.json"))),
     });
     const collected = result.output?.collectionResult;
-    return composeReports("doctor sample", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
+    return composeReports("doctor overview", [dashboard, ...(collected ? [await context.render(collectCommand, collected)] : [])]);
   },
-  validate: validateSampleOptions,
+  validate: validateOverviewOptions,
   prepare: async (context, input) => {
-    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.sample });
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.overview });
     const providers = overviewProviders(context.plugin, overviewServiceNames(input));
     if (input.facet && !providers.some(provider => provider.summarize?.facets.some(facet => facet.id === input.facet))) {
       throw new Error(`未声明的 Facet: ${input.facet}`);
@@ -137,5 +139,5 @@ export const sampleCommand = defineCommand<SampleInput, SampleOutput, { input: S
     await context.ensureEnvironment({ kubernetes: true });
     return { input, providers };
   },
-  run: (context, { input, providers }) => sample({ ...commandOptions(context), ...input }, providers, context),
+  run: (context, { input, providers }) => overview({ ...commandOptions(context), ...input }, providers, context),
 });

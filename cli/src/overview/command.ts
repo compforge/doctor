@@ -4,18 +4,18 @@ import { commandOptionsWithSources } from "../app/option-sources";
 import { runCommand, type CommandRuntime } from "../app/command";
 import { deliveryFormatOption } from "../app/command-defaults";
 import { domainInput } from "../command/options";
-import { sampleCommand, type SampleCliOpts } from "./index";
+import { overviewCommand, type OverviewCliOpts } from "./index";
 
-export function registerSampleCommand(program: Command, runtime: CommandRuntime = {}): void {
-  program.command("sample").description("按条件选取代表 biz-id，可选采集诊断数据；完整统计与体检使用 health")
+export function registerOverviewCommand(program: Command, runtime: CommandRuntime = {}): void {
+  program.command("overview").description("展示时间窗口内的运行统计，按需选取代表 biz-id 并采集诊断数据")
     .addHelpText("after", `
 分析思路：
-  Facet 表示观察维度，Entry 表示其中可采样的条目；选择条目取得代表 biz-id，再决定是否 collect。
+  先查看错误、诊断与耗时分布；支持采样的条目可取得代表 biz-id，再决定是否 collect。
 结果解读：
-  代表样本受查询条件和预算限制；样本数不等于总体数量，完整统计与主动体检应使用 health。
+  统计口径与覆盖范围由各提供方说明；样本数不等于总体数量，主动巡检使用 health。
 `)
     .option("--since <duration>", "近 10m、1h、6h、1d、3d；交互选择，非交互默认 1h")
-    .addOption(serviceOption("从指定 Service 选取样本；未指定时使用产品级采样入口"))
+    .addOption(serviceOption("查看指定 Service 的运行统计；未指定时使用产品级概览"))
     .option("--tenant-id <id>", "只查看该租户")
     .option("--facet <id>", "选择 Facet 并查询代表对象；本身不触发采集")
     .option("--sample-count <number>", "代表请求的总采样上限（默认 5）", Number)
@@ -25,8 +25,8 @@ export function registerSampleCommand(program: Command, runtime: CommandRuntime 
     .option("--profile <name>", "使用指定 profile")
     .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("-o, --output <path>", "报告 basename/路径")
-    .action(async (opts: SampleCliOpts, command: Command) => {
+    .action(async (opts: OverviewCliOpts, command: Command) => {
       opts = commandOptionsWithSources(command);
-      await runCommand(sampleCommand, opts, domainInput(opts), runtime);
+      await runCommand(overviewCommand, opts, domainInput(opts), runtime);
     });
 }

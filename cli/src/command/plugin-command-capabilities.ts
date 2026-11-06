@@ -6,12 +6,12 @@ import type { CollectKind } from "../collect/composite";
 export const PLUGIN_COMMAND_CAPABILITIES = {
   health: {
     command: "doctor health",
-    // Exact statistics/Case discovery runs before environment preparation.
+    // Exact Probe/DataSource/Case discovery runs before environment preparation.
     needs: [],
   },
-  sample: {
-    command: "doctor sample",
-    // Object selection requires a summary/sample pair in one namespace, validated before I/O.
+  overview: {
+    command: "doctor overview",
+    // Statistics are required; sampling is optional and stays in the same namespace.
     needs: [],
   },
   trace: {

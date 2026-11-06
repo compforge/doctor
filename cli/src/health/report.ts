@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
-import { buildOverviewStatisticsHtml, printOverviewStatistics, OVERVIEW_REPORT_STYLE } from "../overview/report";
+import { OVERVIEW_REPORT_STYLE } from "../overview/report";
 import type { CaseCheckResult } from "./cases";
 import { dataSourceHealthHtml } from "../datasource/health/report";
 import type { HealthResult } from "./flow";
@@ -28,11 +28,9 @@ function casesHtml(checks: readonly CaseCheckResult[]): string {
 
 
 export function printHealth(result: HealthResult): void {
-  const window = result.query.window;
-  writeOutput(window ? `Health · 统计窗口 ${window.from} → ${window.to} [from, to)；Probe / Case 为本次执行\n`
-    : `Health · 本次 Probe / Case 检查${result.checkedAt ? ` · ${result.checkedAt}` : ""}\n`);
+  writeOutput(`Health · 本次巡检${result.checkedAt ? ` · ${result.checkedAt}` : ""}\n`);
   for (const summary of result.providers) {
-    printOverviewStatistics(summary);
+    writeOutput(`\n${summary.name} (${summary.namespace})\n`);
     if (summary.unsupported) writeOutput(`  未执行：${summary.unsupported}\n`);
     for (const check of summary.probes ?? []) {
       writeOutput(`  ${check.scope} Probe ${check.probe}: ${check.status}${check.reason ? ` · ${check.reason}` : ""}\n`);
@@ -60,7 +58,7 @@ export function writeHealthEvidence(
 }
 
 export function buildHealthHtml(result: HealthResult): string {
-  const sections = result.providers.map(summary => buildOverviewStatisticsHtml(summary)
+  const sections = result.providers.map(summary => `<h2>${escapeHtml(summary.name)}</h2><p>${escapeHtml(summary.namespace)}</p>`
     + (summary.unsupported ? `<p>未执行：${escapeHtml(summary.unsupported)}</p>` : "")
     + (summary.probes ?? []).map(check => `<h3>${escapeHtml(check.scope)} Probe ${escapeHtml(check.probe)} · ${escapeHtml(check.status)}</h3>`
       + `<p>${escapeHtml(check.reason ?? "")}</p>` + check.findings.map(finding => `<p>${escapeHtml(finding.severity)}: ${escapeHtml(finding.message)}</p>`).join("")
@@ -71,8 +69,6 @@ export function buildHealthHtml(result: HealthResult): string {
     + (summary.cases ? casesHtml(summary.cases) : "")).join("");
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>
 <style>${OVERVIEW_REPORT_STYLE}</style>
-<h1>Doctor Health</h1>${result.query.window
-  ? `<p>统计窗口：${escapeHtml(result.query.window.from)} → ${escapeHtml(result.query.window.to)} [from, to)</p>`
-  : `<p>本次 Probe / Case 检查${result.checkedAt ? `：${escapeHtml(result.checkedAt)}` : ""}</p>`}
+<h1>Doctor Health</h1><p>本次巡检${result.checkedAt ? `：${escapeHtml(result.checkedAt)}` : ""}</p>
 <p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · Case 为本次执行；不采集业务诊断数据。</p>${sections}</html>`;
 }

@@ -94,8 +94,7 @@ test("Health includes DataSource owners and declared consumers without selecting
   const selected = healthProviders(plugin, ["search"]);
   expect(selected[0]?.dataSources).toEqual([{ service: "collector", dataSource: "trace" }]);
   const health = await OPENSEARCH_HEALTH_EXTENSION.run({ search: fixture().search });
-  const result = await runHealthSession(selected, { window: { from: "2026-10-16T00:00:00Z", to: "2026-10-16T01:00:00Z" }, maxEntries: 10 }, {
-    summarize: async () => { throw new Error("must not query statistics"); },
+  const result = await runHealthSession(selected, {}, {
     cases: async () => { throw new Error("must not run Cases"); },
     dataSources: async () => [{ service: "collector", dataSource: "trace", evidence: { target: {}, health } }],
     show: () => {},

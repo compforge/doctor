@@ -54,11 +54,11 @@ test("overview discovers native operations without invoking them or combining th
   expect(provider.summarize!.access).toEqual({});
   expect(provider.sample?.access).toEqual(sample.access);
   expect(run).not.toHaveBeenCalled();
-  expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.sample).runnable).toBe(true);
+  expect(evaluatePluginCapabilities({ id: "test", version: "1", services }, PLUGIN_COMMAND_CAPABILITIES.overview).runnable).toBe(true);
 });
 
-test("overview requires sampling and rejects ambiguous producers", () => {
-  expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])).toThrow("doctor health");
+test("overview accepts statistics without sampling and rejects ambiguous producers", () => {
+  expect(overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize])]) }, ["chat"])[0]?.sample).toBeUndefined();
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]) }, ["chat"])).toThrow("ambiguous");
   const invalid: FacetSummarizeExtension = { ...summarize, facets: [facet, facet] };
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [invalid])]) }, ["chat"])).toThrow("duplicate");

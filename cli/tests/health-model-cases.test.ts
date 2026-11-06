@@ -84,8 +84,8 @@ test("Health prepares only the tenant; producer owns model choice and consumer o
     expect(result[0]!.attempts.map(attempt => attempt.status)).toEqual(["passed", "failed", "passed"]);
     expect(result[0]!.attempts[1]!.modelCheck?.errors).toEqual(["Model response contains an error"]);
     expect(JSON.stringify(result)).not.toContain("probe-tenant");
-    const html = buildHealthHtml({ query: { window: { from: "2026-01-01", to: "2026-01-02" }, maxEntries: 10 },
-      providers: [{ namespace: "plugin/test/service/worker", name: "worker", facets: [], cases: result }] });
+    const html = buildHealthHtml({ query: {},
+      providers: [{ namespace: "plugin/test/service/worker", name: "worker", cases: result }] });
     expect(html).toContain("Model response contains an error");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

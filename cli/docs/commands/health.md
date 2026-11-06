@@ -1,6 +1,6 @@
 # Health
 
-`doctor health` 以 Service 为单位检查系统当前是否具备运行和提供功能的条件，并结合历史统计帮助判断影响。
+`doctor health` 以 Service 为单位检查系统当前是否具备运行和提供功能的条件。
 Health 的整体模型按三个层级展开：自身成功启动、能够访问依赖、依赖协作后的功能正常。
 
 ## 三个健康层级
@@ -32,35 +32,34 @@ Case 是承接功能验证的常用方式，Health 的范围同时包含独立�
 每层结果都应保留检查范围、实例、时间、证据和覆盖缺口，区分已验证通过、已验证失败与无法验证。
 查询失败、工具缺失、没有适用实例或未执行的检查都不能当作通过。
 
-历史统计是判断健康的辅助视角：它描述一个时间窗口内已经发生的情况，本次 Probe 与 Case Run 描述当前执行取得的证据。
-统计正常不能代替本次功能验证，统计查询失败也不能直接归因于目标服务异常。
-Health 展示完整统计，包括不可采样的状态条目；不查找代表 biz-id，也不触发 Collect。
+历史错误、诊断和耗时统计由 [Overview](overview.md) 展示，用于回顾系统运行情况并按需选取代表样本。
+Health 专注本次主动巡检，适用于部署后、接流量前及运行中的复查。
 
 ## 使用
 
 ```bash
 doctor health
-doctor health --since 1h --service example-worker
+doctor health --service example-worker
 doctor health --scope self,deps --service example-worker
 doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ```
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `facet.summarize`、`duration.summarize`、`health.case.bindings` 或已标注 Health 层级的 `workload.probe`，以及声明了受支持 DataSource 或数据源依赖的 Service，
-不查询 Plugin 产品 namespace；统计应注册到对应 Service 作用域。未声明体检能力的服务不进入默认列表，
+候选来自各 Service 精确 namespace 下的 `health.case.bindings` 或已标注 Health 层级的 `workload.probe`，以及声明了受支持 DataSource 或数据源依赖的 Service，
+不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
 
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
-报告保存统计结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
-如需从错误等现象定位具体对象，使用 [Sample](sample.md) 查询 biz-ids，再决定是否采集。
+报告保存本次检查结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
+如需从错误等现象定位具体对象，使用 [Overview](overview.md) 查询 biz-ids，再决定是否采集。
 
 ## 探测接入与下游关系
 
 `--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
-`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`biz` 执行历史统计与业务 Case。
-未选择 `biz` 时不准备 Case 身份或执行 Case。只有本轮实际查询统计时才选择和展示历史窗口；单独的 Probe 或 Case 检查保留本次执行时间。所选服务没有对应能力时明确报告不支持。
+`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`biz` 执行业务 Case。
+未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
 Core 按声明的 Workload 定位实例，每个 Probe 串行检查最多 10 个实例，不过滤未就绪实例；超限保留覆盖缺口。
@@ -76,30 +75,15 @@ Core 在每个依赖 Probe 前解析关系，并通过 `input.health.downstreams
 网络探测机制属于 Toolbox `network`；Plugin 选择消费方执行位置并解释业务配置。
 从 Host 访问成功不能代替 Pod/沙箱连通，DNS/TCP/TLS 成功也不能证明应用下载策略、HTTP 认证或对象权限通过。
 
-## 耗时统计
-
-`duration.summarize` 是独立 Extension，可与 `facet.summarize` 在同一 namespace 共存，也可单独提供。
-Core 使用相同的冻结窗口和租户条件调用它，以提供该 Extension 的原始 Service 准备 access；
-两类查询独立记录成功或失败，一项失败不丢弃另一项的结果。
-
-Provider 接收 `DurationSummaryQuery`（`maxEntries` 约束统计条目，`maxRecords` 约束源记录，当前为 1000），
-返回 `DurationSummary`：description 说明样本总体、时间字段、区间与百分位算法，entries 以稳定 key、
-label、sampleCount、missingCount 和 durationMs（min/avg/p50/p95/max）描述耗时。
-单位固定为毫秒；没有有效样本时省略 durationMs，不能用零替代未知值。缺失、不完整或无效区间计入
-missingCount。Provider 在源头限制读取，并说明截断；Core 校验统计数据并限制展示条目。
-
-终端和 HTML 显示耗时表，diagnosis.json 保留类型化统计。耗时条目当前仅供查看，不进入
-`facet.sample` 或自动触发 Collect。具体数据位置与统计口径由 Plugin 持有。
-
 ## 消费方 HTTP Case 检查
 
 Service 通过 `health.case.bindings` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
-指定 Service 的 Health 在统计查询后执行这些检查。GET/HEAD 自动执行；
+指定 Service 的 Health 在 `biz` 层执行这些检查。GET/HEAD 自动执行；
 非只读方法在首次请求前统一确认一次，提示列出本轮消费方 Workload、Case 来源及执行上限。
 决定通过 `CommandContext.decide()` 按准备好的检查范围保存，本轮跨服务、实例和 Case 复用同意或拒绝；
 拒绝后跳过后续非只读请求，GET/HEAD 继续执行。下一次命令重新确认，非交互可通过全局 `-y/--yes` 预先批准。
-没有 Facet 或耗时统计的 Service 也可以只提供 `health.case.bindings`。
+Service 可以只提供 `health.case.bindings`。
 
 Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源，
 以 `workload` 引用消费方已声明的 Workload。消费扩展与来源的 `produce` 均遵循调用契约：声明 `access`，
@@ -123,8 +107,7 @@ GET/HEAD Case 可给出有序备用 URL，主地址不满足预期时继续尝�
 二进制文件保留受预算限制的响应内容；响应摘要对应下载流，文本附件可能经脱敏。
 
 无法取得消费关系、无法准备 Pod、无法取得 Case、空 Case 列表和请求失败分别记录阶段和原因；它们不是网络成功。
-单个消费扩展或绑定失败不丢失其他结果；证据同时保留消费扩展 ID 与 binding ID，取消保留已完成的尝试。Case 时间是本次执行时间，
-`--since` 的历史窗口只用于统计查询。`doctor case` 的现有目录与发送入口保持独立。
+单个消费扩展或绑定失败不丢失其他结果；证据同时保留消费扩展 ID 与 binding ID，取消保留已完成的尝试。Case 时间是本次执行时间。`doctor case` 的现有目录与发送入口保持独立。
 
 消费方声明示例（提供方已在其 Service.cases 贡献 `file-downloads`）：
 
@@ -177,14 +160,14 @@ Health prepare 按显式 `--tenant-id` / `--user-id`、Plugin 配置的优先级
 显式切换租户时不沿用原配置租户的用户，需重新选择或提供 `--user-id`。
 
 身份通过 `CaseProduceQuery.requestIdentity` 传入，不修改 profile，也不写入报告。
-Case 身份的租户不改变整轮统计范围；只有显式 `--tenant-id` 限定统计。
+Case 身份的租户只用于相应来源的本次请求，不写入用户未显式选择的整轮租户条件。
 非交互（包括 `-y`）缺参时，相关绑定记录为 identity 阶段 unavailable，不进入 Pod 或调用 producer；
 取消身份选择记录为 cancelled，其余独立检查继续。选择身份不是批准真实请求，非只读 Case 仍需审批。
 签名 URL 与独立会话仍由 producer 在每个实例执行前生成，避免准备阶段产生的临时数据过期。
 
 仅需要租户的 producer 声明 `requestTenant: { configured(config) }`，返回配置中的租户 ID 或 undefined，
 不声明 `requestIdentity`。Health 复用相同的租户选择，按 CLI 参数、Plugin 配置、交互选择的顺序准备
-`CaseProduceQuery.requestTenantId`，不查询用户，也不缩小统计范围。缺参或取消遵循同样的 identity 阶段处理。
+`CaseProduceQuery.requestTenantId`，不查询用户。缺参或取消遵循同样的 identity 阶段处理。
 
 ### 模型功能探测
 
@@ -226,4 +209,4 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 
 检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
 越过 low 水位就给出预警；读取水位失败时注明默认值与较低置信度。报告中标明本次探测时间，
-不把当前容量状态解释为 `--since` 窗口内一直如此。采集完整性与健康 Finding 分别报告。
+当前容量证据仅描述本次探测时的状态。采集完整性与健康 Finding 分别报告。

@@ -9,8 +9,6 @@ import { renderEvidence } from "../report/evidence";
 import { isInteractive } from "../terminal/policy";
 import { resolveApprovalGate } from "../terminal/approval";
 import { overviewServiceNames } from "../overview/options";
-import { overviewWindow, selectOverviewWindow } from "../overview/selection";
-import { overviewInvoker } from "../overview/runtime";
 import { ServiceDependencyRuntime } from "../collect/shared/service-dependency";
 import { DataSourceHealthSession } from "../datasource/health/session";
 import { useLogger } from "../terminal/log";
@@ -28,7 +26,6 @@ import { checkHealthProbes, healthScopes } from "./probes";
 export interface HealthCliOpts extends KubernetesCommandInput {
   scope?: string;
   bizId?: string;
-  since?: string;
   services?: readonly string[];
   tenantId?: string;
   userId?: string;
@@ -39,7 +36,6 @@ export interface HealthCliOpts extends KubernetesCommandInput {
 export function validateHealthOptions(opts: HealthCliOpts): void {
   healthScopes(opts.scope);
   overviewServiceNames(opts);
-  if (opts.since) overviewWindow(opts.since);
   parseCollectOutputFormat(opts.format);
 }
 
@@ -47,22 +43,19 @@ interface HealthPreparation {
   input: HealthCliOpts;
   selected: readonly HealthProvider[];
   cases: ReadonlyMap<HealthProvider, PreparedCaseCheck[]>;
-  since?: string;
   kube: NonNullable<Awaited<ReturnType<typeof resolveKubernetesCommandConfig>>>;
   executor: ReturnType<typeof createKubernetesExecutor>;
 }
 
 async function health(prepared: HealthPreparation, context: CommandContext): Promise<CommandResult<HealthResult>> {
-  const { input: opts, selected, cases, since, kube, executor } = prepared;
+  const { input: opts, selected, cases, kube, executor } = prepared;
   const healthSession = new DataSourceHealthSession();
   const sources = new ServiceDependencyRuntime({ plugin: context.plugin, collect: kube, executor,
     command: "doctor health", commandContext: context, index: "*",
     log: line => useLogger("health").info(line) });
-  const invoke = overviewInvoker(context, executor, kube.kubernetes);
   const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
     resolveApprovalGate({ yes: context.options.yes }));
-  // Historical statistics share one frozen window; probes describe this execution, not that window.
-  const query: HealthQuery = { ...(since ? { window: overviewWindow(since) } : {}), tenantId: opts.tenantId, maxEntries: 100 };
+  const query: HealthQuery = { tenantId: opts.tenantId };
   let snapshot: HealthResult | undefined;
   let reportDirectory: string | undefined;
   let result: HealthResult;
@@ -84,8 +77,6 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
         }
         return results;
       },
-      summarize: (provider, input) => invoke(provider, provider.summarize!, input),
-      cost: (provider, input) => invoke(provider, provider.cost!, input),
       cases: (provider, _input, checkpoint) => {
         const snapshots: CaseCheckResult[] = [];
         return checkServiceCases(cases.get(provider) ?? [],
@@ -108,9 +99,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
       printHealth(snapshot);
     }
   }
-  const statuses: CommandStatus[] = result.providers.flatMap((provider, index) => [
-    ...(selected[index]!.summarize ? [provider.error ? CommandStatus.Failed : CommandStatus.Ok] : []),
-    ...(selected[index]!.cost ? [provider.costError ? CommandStatus.Failed : CommandStatus.Ok] : []),
+  const statuses: CommandStatus[] = result.providers.flatMap(provider => [
     ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
       : CommandStatus.Ok),
@@ -130,7 +119,7 @@ export type HealthInput = CommandInput & Omit<HealthCliOpts, Exclude<CommandHost
 export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPreparation>({
   name: "doctor health",
   reportName: (_input, result) => result.output
-    ? `doctor-health-${(result.output.query.window?.to ?? result.output.checkedAt ?? new Date().toISOString()).replace(/[:.]/g, "-")}` : undefined,
+    ? `doctor-health-${(result.output.checkedAt ?? new Date().toISOString()).replace(/[:.]/g, "-")}` : undefined,
   serialize: async (context, result) => {
     const artifacts = result.artifacts.filter(artifact => artifact.command === "health");
     return serializeEvidence(context, artifacts, new Map(artifacts.map(artifact => [artifact.id,
@@ -149,17 +138,12 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const providers = available.map(provider => ({ ...provider,
       probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
       consumers: scopes.includes("business") ? provider.consumers : [],
-      summarize: scopes.includes("business") ? provider.summarize : undefined,
-      cost: scopes.includes("business") ? provider.cost : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.summarize || provider.cost
+    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length
       ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
     if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });
     const opts = { ...commandOptions(context), ...input };
-    const needsStatistics = providers.some(provider => provider.summarize || provider.cost);
-    const since = needsStatistics ? opts.since ?? await selectOverviewWindow(isInteractive()) : undefined;
-    if (needsStatistics && !since) return undefined;
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
     if (!kube) return undefined;
     const executor = createKubernetesExecutor(kube);
@@ -167,10 +151,10 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const cases = new Map<HealthProvider, PreparedCaseCheck[]>();
     for (const provider of providers) {
       if (!provider.consumers.length) continue;
-      cases.set(provider, await prepareServiceCases(context.plugin, provider.caseService!, provider.consumers, opts.tenantId, actions));
+      cases.set(provider, await prepareServiceCases(context.plugin, provider.service, provider.consumers, opts.tenantId, actions));
       if (context.signal.aborted) break;
     }
-    return { input: opts, selected: providers, cases, since, kube, executor };
+    return { input: opts, selected: providers, cases, kube, executor };
   },
   run: (context, prepared) => health(prepared, context),
 });
