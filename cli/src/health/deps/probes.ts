@@ -33,5 +33,5 @@ export function checkDependencyHealthProbes(provider: HealthProvider, context: C
     }
     validateDownstreams(provider.service, context.plugin.services.services, downstreams);
     return { bizId, downstreams };
-  });
+  }, provider.endpointProbes);
 }

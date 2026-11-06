@@ -61,14 +61,14 @@ export async function runHealthSession(
   const scopes = (["self", "deps", "business"] as const).filter(scope =>
     (!actions.scopes || actions.scopes.includes(scope)) && providers.some(provider =>
       provider.probes?.some(probe => probe.health === scope)
-      || (scope === "deps" && (provider.dataSources?.length || provider.endpoints !== undefined))
+      || (scope === "deps" && (provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined))
       || (scope === "business" && provider.consumers.length)));
   const stop = (remaining: HealthScope[]) => {
     result.notRunScopes = remaining;
     // @spec Unstarted work is recorded per Probe; a partially executed scope is never called unexecuted.
     for (const [index, provider] of providers.entries()) {
       const summary = result.providers[index]!;
-      for (const probe of provider.probes ?? []) {
+      for (const probe of [...provider.probes ?? [], ...(provider.endpointProbes ?? []).map(probe => ({ id: probe.id, health: "deps" as const }))]) {
         if (!probe.health || !scopes.includes(probe.health)) continue;
         if (summary.probes?.some(check => check.probe === probe.id && check.scope === probe.health)) continue;
         (summary.probes ??= []).push({ probe: probe.id, scope: probe.health, status: "not-run",

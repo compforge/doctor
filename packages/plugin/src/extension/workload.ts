@@ -1,5 +1,5 @@
 import type { Extension, RegisteredExtension } from "./index";
-import type { ObservationDefinition, ObservationValue } from "../observation";
+import { validateObservationDefinition, type ObservationDefinition, type ObservationValue } from "../observation";
 import type { PluginContext } from "../context";
 import type { Value } from "@compforge/harness-common";
 import type { ServiceWorkloadProbeInput } from "../service";
@@ -53,11 +53,6 @@ export function requireWorkloadProbeExtension(extension: RegisteredExtension): W
   const probe = extension as WorkloadProbeExtension;
   if (typeof probe.workload !== "string" || !probe.workload.trim()) throw new Error(`${extension.id}: workload must be a non-empty name`);
   if (probe.health !== undefined && !["self", "deps"].includes(probe.health)) throw new Error(`${extension.id}: invalid health scope`);
-  const produces = probe.produces;
-  if (!produces || typeof produces.kind !== "string" || !produces.kind.trim()
-    || !Number.isInteger(produces.schemaVersion) || produces.schemaVersion < 1
-    || !produces.codec || typeof produces.codec.encode !== "function" || typeof produces.codec.decode !== "function") {
-    throw new Error(`${extension.id}: invalid Observation definition`);
-  }
+  validateObservationDefinition(probe.produces, extension.id);
   return probe;
 }

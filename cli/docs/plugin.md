@@ -505,7 +505,14 @@ Resource/ResourceSnapshot。`doctor resource` 按 Service、资源 ID 或开放 
 
 `ServiceDefinition.endpoints?: readonly Endpoint[]` declares outbound dependencies directly using
 `Endpoint` from `@compforge/harness-common`. Optional `id` and `description` identify the dependency;
-`workload` identifies its consumer. Catalog discovery validates addresses, explicit IDs and workload
-references. Doctor owns instance discovery and health scheduling. Omission means undeclared;
+`workload` carries its complete consumer Workload declaration. Catalog discovery validates addresses,
+explicit IDs and the consumer declaration. Endpoint consumers need no separate name registration in
+`Service.workloads`; discovery uses the supplied location directly. Doctor owns instance discovery and health scheduling. Omission means undeclared;
 explicit `[]` confirms no outbound Endpoint dependencies. Missing consumer location retains unknown coverage.
 See [Health](commands/health.md#对外-endpoint-依赖) for execution location, limits and evidence.
+
+`endpoint.probe` is an independent deps Probe contribution using `defineEndpointProbeExtension`.
+It declares a complete consumer `workload`, `access`, `produces` and `run(context, { instance })`;
+it need not declare or reference `Service.endpoints`. Core invokes every contributed Probe and
+checks every generic Endpoint independently. Plugin authors choose one form for each dependency;
+Core does not infer targets, deduplicate contributions, apply overrides or fall back after errors.

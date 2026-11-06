@@ -17,16 +17,16 @@ import * as runtime from "../src/health/runtime";
 
 const service: ServiceDefinition = { name: "worker", workloads: [kubernetesServiceWorkload("worker")],
   component: { name: "worker", repository: { forge: { name: "fixture" }, path: "fixture/worker" } } };
-const endpoint: Endpoint = { id: "download", workload: "main", scheme: "https", host: "storage.other-namespace", port: 443, secure: true };
+const endpoint: Endpoint = { id: "download", workload: service.workloads[0]!, scheme: "https", host: "storage.other-namespace", port: 443, secure: true };
 const instance = (pod: string): WorkloadInstance => ({ platform: "kubernetes", environment: "fixture", namespace: "demo", workload: "main", pod, uid: pod, container: "worker" });
-async function check(endpoints: readonly Endpoint[], options: { pods?: string[]; toolError?: boolean; networkFailure?: boolean; missing?: boolean } = {}) {
+async function check(endpoints: readonly Endpoint[], options: { pods?: string[]; pending?: string[]; toolError?: boolean; networkFailure?: boolean; missing?: boolean } = {}) {
   const definition = { ...service, endpoints };
   const context = new CommandContext({}, undefined, { plugin: { id: "fixture", version: "1", services: createServiceCatalog([definition]) } });
   const provider = healthProviders(context.plugin)[0]!;
   const commands: Array<{ pod: string; target: unknown }> = [];
-  const discovery = spyOn(workloads, "discoverHealthWorkload").mockImplementation(async () => {
+  const discovery = spyOn(workloads, "discoverHealthWorkload").mockImplementation(async workload => {
     if (options.missing) throw new Error("no instances");
-    return { definition: definition.workloads[0]!, instances: (options.pods ?? ["worker-0"]).map(instance), pods: [] };
+    return { definition: workload, instances: (options.pods ?? ["worker-0"]).map(instance), pods: (options.pods ?? ["worker-0"]).map(name => ({ name, namespace: "demo", kind: "pod" as const, serviceAccountName: "default", conditions: [], labels: {}, phase: options.pending?.includes(name) ? "Pending" : "Running", containers: [] })) };
   });
   const invoker = spyOn(runtime, "caseOperationInvoker").mockReturnValue(async (owner, operation, input) => {
     expect(owner.name).toBe("worker");
@@ -44,7 +44,7 @@ async function check(endpoints: readonly Endpoint[], options: { pods?: string[];
   });
   try {
     const results = await checkHealthEndpoints(provider, context, {} as Executor, { namespace: "demo" });
-    return { results, commands, discoveries: discovery.mock.calls.length };
+    return { results, commands, discoveries: discovery.mock.calls.length, declarations: discovery.mock.calls.map(call => call[0]) };
   } finally { discovery.mockRestore(); invoker.mockRestore(); await context.disposeClients(); }
 }
 
@@ -97,8 +97,8 @@ test("endpoint-only services are discovered offline and executed only in deps", 
   expect(calls).toBe(1);
 });
 
-test("catalog rejects duplicate identities, invalid addresses and unknown consumers", () => {
-  for (const endpoints of [[endpoint, endpoint], [{ ...endpoint, workload: "missing" }], [{ ...endpoint, port: 0 }]]) {
+test("catalog rejects duplicate identities, invalid addresses and name-only consumers", () => {
+  for (const endpoints of [[endpoint, endpoint], [{ ...endpoint, workload: "main" as unknown as NonNullable<Endpoint["workload"]> }], [{ ...endpoint, port: 0 }]]) {
     expect(() => createServiceCatalog([{ ...service, endpoints }])).toThrow();
   }
 });
@@ -127,4 +127,28 @@ test("health command selects Endpoint-only deps and propagates failed and empty 
     checks.mockRestore(); config.mockRestore(); executor.mockRestore(); await context.disposeClients();
     for (const artifact of artifacts) rmSync(artifact.path, { recursive: true, force: true });
   }
+});
+
+
+test("Endpoint carries its consumer declaration without Service name lookup or same-name conflation", async () => {
+  const first = kubernetesServiceWorkload("consumer-one", { name: "inline", namespace: "demo", container: "worker" });
+  const second = kubernetesServiceWorkload("consumer-two", { name: "inline", namespace: "demo", container: "worker" });
+  const result = await check([{ ...endpoint, workload: first }, { ...endpoint, id: "second", workload: second }]);
+  expect(result.results.map(item => item.status)).toEqual(["passed", "passed"]);
+  expect(result.declarations).toEqual([first, second]);
+  expect(result.discoveries).toBe(2);
+  expect(result.results.map(item => item.endpoint?.workload)).toEqual([first, second]);
+});
+
+
+test("unexecutable Pods retain coverage and do not consume Running instance slots", async () => {
+  const pending = Array.from({ length: 10 }, (_, i) => `pending-${i}`);
+  const result = await check([endpoint], { pods: [...pending, "worker-0"], pending });
+  expect(result.commands).toHaveLength(1);
+  expect(result.commands[0]!.pod).toBe("worker-0");
+  expect(result.results.filter(item => item.status === "not-run")).toHaveLength(10);
+  expect(result.results.at(-1)!.status).toBe("passed");
+  const unavailable = await check([endpoint], { pods: pending, pending });
+  expect(unavailable.commands).toEqual([]);
+  expect(unavailable.results.at(-1)!.status).toBe("unavailable");
 });

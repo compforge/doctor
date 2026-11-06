@@ -119,7 +119,9 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
     }
   }
   const statuses: CommandStatus[] = result.providers.flatMap(provider => [
-    ...(provider.endpoints ?? []).map(check => check.status === "failed" || check.status === "unavailable" ? CommandStatus.Failed : CommandStatus.Ok),
+    ...(provider.endpoints ?? []).map(check => check.status === "cancelled" ? CommandStatus.Cancelled
+      : check.status === "not-run" ? CommandStatus.Partial
+      : check.status === "failed" || check.status === "unavailable" ? CommandStatus.Failed : CommandStatus.Ok),
     ...(provider.probes ?? []).filter(check => check.status !== "not-run").map(check => check.status === "cancelled" ? CommandStatus.Cancelled
       : check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
@@ -159,9 +161,10 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const providers = available.map(provider => ({ ...provider,
       probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
       consumers: scopes.includes("business") ? provider.consumers : [],
+      endpointProbes: scopes.includes("deps") ? provider.endpointProbes : [],
       endpoints: scopes.includes("deps") ? provider.endpoints : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpoints !== undefined
+    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined
       ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
     if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });

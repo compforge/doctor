@@ -1,3 +1,5 @@
+import { validateWorkloadDeclaration } from "./workload";
+import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension } from "./extension/endpoint-probe";
 import { validateEndpoint } from "@compforge/harness-toolbox/endpoint";
 import { validateServiceResource } from "./resource";
 import { connectionDataSources } from "./datasource";
@@ -66,8 +68,12 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
           endpointIds.add(endpoint.id);
         }
         if (endpoint.description !== undefined && typeof endpoint.description !== "string") throw new Error(`${service.name}: Endpoint description must be a string`);
-        if (endpoint.workload !== undefined && !workloads.includes(endpoint.workload)) throw new Error(`${service.name}/${endpoint.id ?? endpoint.host}: Endpoint consumer Workload is not declared`);
+        if (endpoint.workload !== undefined) validateWorkloadDeclaration(endpoint.workload);
       }
+      for (const extension of service.extensions ?? []) {
+        if (extension.kind === ENDPOINT_PROBE_KIND) requireEndpointProbeExtension(extension);
+      }
+
       const sources = new Set<string>();
       for (const source of service.cases ?? []) {
         validateCaseSource(source);

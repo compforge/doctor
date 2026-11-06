@@ -1,3 +1,4 @@
+import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension, type EndpointProbeExtension } from "@compforge/doctor-plugin";
 import { WORKLOAD_PROBE_KIND, requireWorkloadProbeExtension, type WorkloadProbeExtension, HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { serviceHealthDataSources } from "../datasource/health/services";
 import type { ServiceDataSourceReference } from "../collect/shared/service-dependency";
@@ -13,6 +14,7 @@ export interface HealthProvider {
   probes?: readonly WorkloadProbeExtension[];
   dataSources?: readonly ServiceDataSourceReference[];
   endpoints?: ServiceDefinition["endpoints"];
+  endpointProbes?: readonly EndpointProbeExtension[];
 }
 
 /** @spec Health selects Service scopes only; omission means every Service with Case consumers, supported DataSources or opted-in Health workload Probes. */
@@ -29,12 +31,16 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
     const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))
       .map(extension => requireWorkloadProbeExtension(extension)).filter(probe => probe.health) : [];
     const endpoints = scope.service?.endpoints;
-    if (!consumers.length && !dataSources.length && !probes.length && endpoints === undefined) {
+    const endpointProbes = registry.extensions(ENDPOINT_PROBE_KIND, scope.namespace).map(entry => {
+      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: endpoint.probe must belong to the selected Service`);
+      return requireEndpointProbeExtension(entry.extension);
+    });
+    if (!consumers.length && !dataSources.length && !probes.length && !endpointProbes.length && endpoints === undefined) {
       if (serviceNames) throw new Error(`${scope.namespace}: 未声明 health.case.bindings Extension，也没有可探测的数据源或标注 health: self/deps 的 workload.probe`);
       return [];
     }
     return [{ namespace: scope.namespace, name: scope.name, service: scope.service!,
-      consumers, probes, dataSources, endpoints }];
+      consumers, probes, dataSources, endpoints, endpointProbes }];
   });
   if (!providers.length) throw new Error("当前 Plugin 没有支持 health 的 Service");
   return providers;

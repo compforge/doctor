@@ -1,14 +1,12 @@
-import type { ServiceDefinition } from "@compforge/doctor-plugin";
+import type { Workload } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../command";
 import { discoverKubernetesWorkload } from "../infra/k8s/workload";
 import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
 
-export async function discoverHealthWorkload(service: ServiceDefinition, workloadName: string, context: CommandContext,
+export async function discoverHealthWorkload(workload: Workload, context: CommandContext,
   executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
   const { environment } = await context.environment(executor);
-  const workload = service.workloads.find(item => item.name === workloadName);
-  if (!workload) throw new Error(`未声明 Workload ${workloadName}`);
   const location = workload.location;
   const resource = location.kind === "service" ? "services" : location.kind === "resource" ? `${location.resource_kind.toLowerCase()}s` : undefined;
   await enforceKubernetesAccess(context.kubernetes(executor).access, { command: "doctor health", needs: [

@@ -225,7 +225,8 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 
 Plugin Service 通过 `endpoints?: readonly Endpoint[]` 直接声明对外访问依赖。
 `Endpoint` 从 `@compforge/harness-common` 导入，包含地址字段及可选 `id`、`description`、`workload`。
-`workload` 指消费方逻辑 Workload，Doctor 据此定位探测实例；缺少该字段时保留未知覆盖，不猜测执行位置。
+`workload` 携带消费方完整 Workload 声明（platform、location、namespace、container），Doctor 直接据此定位探测实例，
+不再按 name 查询 Service.workloads；缺少该字段时保留未知覆盖，不猜测执行位置。
 URL 解析可复用 Toolbox 的 `endpointFromUrl`。
 
 未声明表示未提供依赖信息；显式 `[]` 表示没有对外 Endpoint 依赖，不发现实例或执行网络请求。
@@ -244,3 +245,18 @@ Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，�
 未开始的 Probe 记录为 `not-run`（未执行），执行中响应取消的 Probe 记录为 `cancelled`（已取消），
 已经完成的 Probe 保留原结果；一个 Probe 已取得的部分 Observation 也保留。
 层级中途取消时，报告逐项展示未执行的 Probe，`notRunScopes` 仅列尚未进入的后续层级。
+
+### Plugin 自定义 Endpoint 探测
+
+Service 对每个依赖二选一：贡献 `service.endpoints` 使用 Core 通用探测，或贡献 `endpoint.probe`
+Extension 实现个性化探测。避免对同一依赖重复贡献是 Plugin 的责任。
+Core 独立执行收到的两类贡献，不匹配地址或 id，不覆盖、不去重，也不在自定义探测失败后回退。
+
+`defineEndpointProbeExtension` 声明 `id`、`kind: "endpoint.probe"`、完整消费方 `workload`、
+`access`、`produces` 和 `run(context, { instance })`。Extension 自己掌握目标地址和访问方法；
+可以不声明任何 `service.endpoints`，也无需在 `Service.workloads` 再登记该 Workload 名称。
+Core 在 deps 层逐实例调用，复用 Probe 的权限、客户端生命周期、取消、Value codec、Observation 和 Detector。
+返回 `WorkloadProbeResult`（`ok`、`partial` 或 `unavailable` 与 Value）；这表示取证状态，健康判断保留在 Observation/Findings。
+
+通用 exec 探测保留非 Running Pod 的“未执行”及原因，只对 Running 实例应用 10 个实例上限。
+没有可执行实例时 Endpoint 标为 unavailable；自定义 Probe 的可执行条件由 Plugin 判断。

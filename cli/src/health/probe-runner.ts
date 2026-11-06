@@ -1,4 +1,4 @@
-import { validateWorkloadProbeResult,
+import { ENDPOINT_PROBE_KIND, type EndpointProbeExtension, validateWorkloadProbeResult,
   type ServiceWorkloadProbeInput, type WorkloadInstance, type ServiceEvidenceObservation, type ServiceFinding } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { CommandContext } from "../command";
@@ -20,22 +20,25 @@ export interface HealthProbeCheck {
  * @spec Probe acquisition and Detector findings remain separate; an acquired failure is not healthy. */
 export async function runHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string },
-  healthInput: (instance: WorkloadInstance) => Promise<NonNullable<ServiceWorkloadProbeInput["health"]>>): Promise<HealthProbeCheck[]> {
+  healthInput: (instance: WorkloadInstance) => Promise<NonNullable<ServiceWorkloadProbeInput["health"]>>,
+  endpointProbes: readonly EndpointProbeExtension[] = []): Promise<HealthProbeCheck[]> {
   const service = provider.service;
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
-  for (const probe of provider.probes ?? []) {
-    const check: HealthProbeCheck = { probe: probe.id, scope: probe.health!, status: "ok", observations: [], findings: [] };
+  for (const probe of [...provider.probes ?? [], ...endpointProbes]) {
+    const check: HealthProbeCheck = { probe: probe.id, scope: probe.kind === ENDPOINT_PROBE_KIND ? "deps" : probe.health!, status: "ok", observations: [], findings: [] };
     results.push(check);
     if (context.signal.aborted) {
       check.status = "not-run";
       check.reason = "执行前已取消";
       continue;
     }
-    const label = `${service.name}/${probe.workload}/${probe.id}`;
+    const label = `${service.name}/${probe.kind === ENDPOINT_PROBE_KIND ? probe.workload.name : probe.workload}/${probe.id}`;
     useLogger("health").info(`执行 ${check.scope} Probe：${label}`);
     try {
-      const discovered = await discoverHealthWorkload(service, probe.workload, context, executor, kubernetes);
+      const workload = probe.kind === ENDPOINT_PROBE_KIND ? probe.workload : service.workloads.find(item => item.name === probe.workload);
+      if (!workload) throw new Error(`未声明 Workload ${probe.workload}`);
+      const discovered = await discoverHealthWorkload(workload, context, executor, kubernetes);
       if (discovered.instances.length > 10) { check.status = "partial"; check.reason = `仅检查 ${discovered.instances.length} 个实例中的前 10 个`; }
       // @rule Retained placeholder Values are not evidence that an instance was acquired.
       let usableInstances = 0;
@@ -45,14 +48,14 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
           ?? (pod?.containers.length === 1 ? pod.containers[0]!.name : undefined) };
         context.signal.throwIfAborted();
         try {
-          const health = await healthInput(instance);
-          context.signal.throwIfAborted();
-          const observed = await invoke(service, probe, { instance, facts: [], health });
+          const observed = probe.kind === ENDPOINT_PROBE_KIND
+            ? await invoke(service, probe, { instance })
+            : await invoke(service, probe, { instance, facts: [], health: await healthInput(instance) });
           validateWorkloadProbeResult(observed);
           const encoded = encodeObservationValue(probe.produces, observed.value, label);
           check.observations.push({ id: `${label}/${instance.pod}`, services: [service.name], probe: probe.id,
             kind: `plugin/${context.plugin.id}/${service.name}/${probe.produces.kind}`, schemaVersion: probe.produces.schemaVersion,
-            producer: { origin: "plugin", plugin: context.plugin.id, service: service.name, id: probe.id }, workload: probe.workload, instance, value: encoded.value });
+            producer: { origin: "plugin", plugin: context.plugin.id, service: service.name, id: probe.id }, workload: workload.name, instance, value: encoded.value });
           if (observed.status !== "unavailable") usableInstances++;
           if (observed.status !== "ok") {
             check.status = "partial";
