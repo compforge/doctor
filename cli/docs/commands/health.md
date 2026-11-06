@@ -1,13 +1,13 @@
 # Health
 
 `doctor health` 以 Service 为单位检查系统当前是否具备运行和提供功能的条件。
-Health 的整体模型按三个层级展开：自身成功启动、能够访问依赖、依赖协作后的功能正常。
+Health 的整体模型按三个层级展开：服务自身健康、能够访问依赖、依赖协作后的功能正常。
 
 ## 三个健康层级
 
 | 层级 | 要回答的问题 | 检查对象 | 常用机制 |
 |---|---|---|---|
-| 自身启动（`self`） | 服务自己是否成功启动？ | 进程或执行实例、初始化结果、监听与就绪状态，以及启动必需的配置 | Probe |
+| 自身健康（`self`） | 服务自身是否存在异常？ | Service 声明的自身健康条件；当前已有检查主要覆盖启动、初始化与就绪状态 | Probe |
 | 依赖连通（`deps`） | 服务启动后，能否访问当前需要的依赖？ | DataSource 与 downstream Service 的实际入口，包括地址解析、网络连接及所需协议的基本访问条件 | Probe |
 | 功能可用（`biz`） | 具备连通条件后，服务及依赖协作提供的功能是否正常？ | 有明确预期结果的功能操作，例如文件下载、查询或一次业务请求 | 通常由 Case Run 承接 |
 
@@ -22,13 +22,13 @@ Health 的整体模型按三个层级展开：自身成功启动、能够访问�
 服务声明与运行配置、可选业务上下文共同决定本次适用的依赖；可选依赖未启用时不应作为故障，
 依赖解析失败则需要保留为未知或覆盖缺口。
 
-这也是排查时的递进顺序：先看自身是否启动，再看失败功能所需的依赖能否访问，最后判断功能结果。
+这也是排查时的递进顺序：先看服务自身是否异常，再看失败功能所需的依赖能否访问，最后判断功能结果。
 启动依赖也可能在第一层就暴露问题，例如数据库配置错误导致初始化失败；同一问题可以分别保留启动现象与依赖侧证据。
 逻辑上的递进不要求把三层绑定成一个不可拆分的流程，也不要求下层失败就丢弃其它层的证据。
 Health 可以按需执行自身和依赖探测，基础检查无需先构造业务 Case。
 
 Health 负责选择和启动 Probe、Case Run，并汇总结果；Service/Plugin 负责声明自身条件、适用依赖及功能预期。
-Case 是承接功能验证的常用方式，Health 的范围同时包含独立的启动与依赖 Probe。
+Case 是承接功能验证的常用方式，Health 的范围同时包含独立的自身健康与依赖 Probe。
 每层结果都应保留检查范围、实例、时间、证据和覆盖缺口，区分已验证通过、已验证失败与无法验证。
 查询失败、工具缺失、没有适用实例或未执行的检查都不能当作通过。
 
@@ -46,19 +46,30 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
 显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选来自各 Service 精确 namespace 下的 `health.case.bindings` 或已标注 Health 层级的 `workload.probe`，以及声明了受支持 DataSource 或数据源依赖的 Service，
-不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
+候选包括声明了受支持 DataSource、数据源依赖或 `endpoints` 的 Service，以及在自身精确 namespace 下提供
+`health.case.bindings`、已标注 Health 层级的 `workload.probe` 或 `endpoint.probe` 的 Service。
+显式 `endpoints: []` 也进入候选列表，表示没有对外 Endpoint 依赖。不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
 显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
 选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
+
+交互模式按 `self → deps → biz` 逐层执行所选服务，完成一层后展示结果，再询问是否继续下一层。
+只对本次所选范围内有可用能力的层级执行和询问；拒绝或取消继续时，报告保留已完成的证据并标出未执行层级。
+进入 `biz` 后才解析消费关系并补齐租户和用户，继续层级的确认不代替非只读 Case 的操作授权。
+非交互模式及 `-y/--yes` 不询问，按 `--scope` 指定范围执行。
 
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
 报告保存本次检查结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
 如需从错误等现象定位具体对象，使用 [Overview](overview.md) 查询 biz-ids，再决定是否采集。
 
+## 代码组织
+
+`health/self/` 负责服务自身健康检查，`health/deps/` 负责数据源及下游依赖检查，`health/biz/` 负责 Case 准备、身份与执行授权、请求检查。
+顶层 `flow.ts` 负责按层级推进与证据检查点，`index.ts` 装配命令、交互及共享资源；各层 `probes.ts` 准备相应 Probe 输入，依赖层同时解析和校验下游关系；`probe-runner.ts` 与 `runtime.ts` 提供跨层复用的探测执行和 Plugin 调用机制，`report.ts` 汇总展示结果。
+
 ## 探测接入与下游关系
 
 `--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
-`self` 检查自身运行态，`deps` 检查数据源和下游依赖，`biz` 执行业务 Case。
+`self` 检查服务自身健康，`deps` 检查数据源和下游依赖，`biz` 执行业务 Case。
 未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
@@ -94,8 +105,8 @@ Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源�
 探测哪些业务对象由 producer 决定，例如模型/Agent 提供方选取模型与 Agent，文件提供方选取下载文件。
 Health 不选择这些业务对象，只补齐声明需要的上下文，控制执行预算、审批和结果汇总。
 
-Health 在 Command prepare 阶段调用消费方扩展取得本次关系、解析实际依赖的 producer，并补齐其声明的请求身份。
-run 消费准备好的绑定与身份，解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
+Health 在进入 `biz` 层级后调用消费方扩展取得本次关系、解析实际依赖的 producer，并补齐其声明的请求身份。
+随后消费准备好的绑定与身份，解析消费方实例并确认 curl/exec 可用，再为每个实例获取新鲜 Cases，直接从消费方容器执行。
 每个绑定最多检查 10 个 Running 实例，每个实例最多 10 个 Cases；提供方应在数据源处限制结果，
 超限或提供方截断在报告中明确展示。实例未配置 container 且存在多个容器时报告缺口，不猜测业务容器。
 请求沿用 HTTP Collect 的超时和响应容量预算，串行执行；代理与 TLS 使用目标容器 curl 的正常行为，
@@ -155,7 +166,7 @@ Health 要求明确的 `judge.e2e.http`。GET/HEAD 不接受 body；非只读请
 
 需要真实租户/用户的 `produce` 可声明 `requestIdentity: { configured(config) }`，
 复用 `ServiceCaseIdentityRequirement`；Plugin 解释自己的配置，Core 只消费返回的 tenantId/userId。
-Health prepare 按显式 `--tenant-id` / `--user-id`、Plugin 配置的优先级补齐身份。
+Health 在进入 `biz` 后按显式 `--tenant-id` / `--user-id`、Plugin 配置的优先级补齐身份。
 缺失时通过 `tenant.list`、`user.search` 选择启用租户及该租户中的真实用户；同一身份只询问一次。
 显式切换租户时不沿用原配置租户的用户，需重新选择或提供 `--user-id`。
 
@@ -210,3 +221,43 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
 越过 low 水位就给出预警；读取水位失败时注明默认值与较低置信度。报告中标明本次探测时间，
 当前容量证据仅描述本次探测时的状态。采集完整性与健康 Finding 分别报告。
+
+### 对外 Endpoint 依赖
+
+Plugin Service 通过 `endpoints?: readonly Endpoint[]` 直接声明对外访问依赖。
+`Endpoint` 从 `@compforge/harness-common` 导入，包含地址字段及可选 `id`、`description`、`workload`。
+`workload` 携带消费方完整 Workload 声明（platform、location、namespace、container），Doctor 直接据此定位探测实例，
+不再按 name 查询 Service.workloads；缺少该字段时保留未知覆盖，不猜测执行位置。
+URL 解析可复用 Toolbox 的 `endpointFromUrl`。
+
+未声明表示未提供依赖信息；显式 `[]` 表示没有对外 Endpoint 依赖，不发现实例或执行网络请求。
+仅声明 Endpoint 的 Service 也进入 Health 候选列表。声明直接提供地址，不包含 resolve operation。
+
+Core 在 deps 层从消费方 Kubernetes Container 执行通用 connectivity，并声明 pods/exec 权限。
+每次探测限时 5 秒，每个 Service 最多 100 个地址、每个 Workload 最多 10 个实例；超出部分记录覆盖缺口。
+同一 Workload 的实例发现结果在本轮检查内复用。目标地址按原样探测，不根据 DNS namespace 推断服务关系。
+网络失败保留阶段证据；工具缺失、无法定位实例及不支持的加密协议保留 unavailable 和错误 kind/code。
+终端、HTML 与 diagnosis.json 展示 Endpoint 结果；它们只证明 DNS/TCP/受支持 TLS 的连通性。
+
+### Probe 取消语义
+
+取消信号通过 PluginContext.signal 传递给 Probe 及其访问操作。Probe 应将该信号传给底层请求，
+并在耗时计算中主动检查；Host 不会强行终止不响应信号的 Plugin 代码。
+未开始的 Probe 记录为 `not-run`（未执行），执行中响应取消的 Probe 记录为 `cancelled`（已取消），
+已经完成的 Probe 保留原结果；一个 Probe 已取得的部分 Observation 也保留。
+层级中途取消时，报告逐项展示未执行的 Probe，`notRunScopes` 仅列尚未进入的后续层级。
+
+### Plugin 自定义 Endpoint 探测
+
+Service 对每个依赖二选一：贡献 `service.endpoints` 使用 Core 通用探测，或贡献 `endpoint.probe`
+Extension 实现个性化探测。避免对同一依赖重复贡献是 Plugin 的责任。
+Core 独立执行收到的两类贡献，不匹配地址或 id，不覆盖、不去重，也不在自定义探测失败后回退。
+
+`defineEndpointProbeExtension` 声明 `id`、`kind: "endpoint.probe"`、完整消费方 `workload`、
+`access`、`produces` 和 `run(context, { instance })`。Extension 自己掌握目标地址和访问方法；
+可以不声明任何 `service.endpoints`，也无需在 `Service.workloads` 再登记该 Workload 名称。
+Core 在 deps 层逐实例调用，复用 Probe 的权限、客户端生命周期、取消、Value codec、Observation 和 Detector。
+返回 `WorkloadProbeResult`（`ok`、`partial` 或 `unavailable` 与 Value）；这表示取证状态，健康判断保留在 Observation/Findings。
+
+通用 exec 探测保留非 Running Pod 的“未执行”及原因，只对 Running 实例应用 10 个实例上限。
+没有可执行实例时 Endpoint 标为 unavailable；自定义 Probe 的可执行条件由 Plugin 判断。

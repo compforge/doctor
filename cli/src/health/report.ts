@@ -5,9 +5,25 @@ import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
 import { writeOutput } from "../terminal/output";
 import { OVERVIEW_REPORT_STYLE } from "../overview/report";
-import type { CaseCheckResult } from "./cases";
+import type { CaseCheckResult } from "./biz/run";
 import { dataSourceHealthHtml } from "../datasource/health/report";
 import type { HealthResult } from "./flow";
+import type { HealthScope } from "./scopes";
+import type { HealthProbeCheck } from "./probe-runner";
+import type { HealthEndpointCheck } from "./deps/endpoints";
+
+function scopeLabel(scope: HealthScope): string {
+  return scope === "business" ? "biz" : scope;
+}
+
+function probeStatusLabel(status: HealthProbeCheck["status"] | HealthEndpointCheck["status"]): string {
+  switch (status) {
+    case "not-run": return "未执行";
+    case "cancelled": return "已取消";
+    case "none": return "没有对外 Endpoint 依赖";
+    default: return status;
+  }
+}
 
 function casesHtml(checks: readonly CaseCheckResult[]): string {
   return `<h3>Case 检查（本次执行）</h3>` + (checks.length ? "" : "<p>本次没有适用的 Case 消费关系</p>") + checks.map(check =>
@@ -28,13 +44,18 @@ function casesHtml(checks: readonly CaseCheckResult[]): string {
 
 
 export function printHealth(result: HealthResult): void {
+  if (result.notRunScopes?.length) writeOutput(`未执行层级：${result.notRunScopes.map(scopeLabel).join(", ")}\n`);
   writeOutput(`Health · 本次巡检${result.checkedAt ? ` · ${result.checkedAt}` : ""}\n`);
   for (const summary of result.providers) {
     writeOutput(`\n${summary.name} (${summary.namespace})\n`);
     if (summary.unsupported) writeOutput(`  未执行：${summary.unsupported}\n`);
     for (const check of summary.probes ?? []) {
-      writeOutput(`  ${check.scope} Probe ${check.probe}: ${check.status}${check.reason ? ` · ${check.reason}` : ""}\n`);
+      writeOutput(`  ${scopeLabel(check.scope)} Probe ${check.probe}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}\n`);
       for (const finding of check.findings) writeOutput(`    ${finding.severity}: ${finding.message}\n`);
+    }
+    for (const check of summary.endpoints ?? []) {
+      const errorKind = [check.error?.kind, check.error?.code].filter(Boolean).join("/");
+      writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
     }
     for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
@@ -60,9 +81,10 @@ export function writeHealthEvidence(
 export function buildHealthHtml(result: HealthResult): string {
   const sections = result.providers.map(summary => `<h2>${escapeHtml(summary.name)}</h2><p>${escapeHtml(summary.namespace)}</p>`
     + (summary.unsupported ? `<p>未执行：${escapeHtml(summary.unsupported)}</p>` : "")
-    + (summary.probes ?? []).map(check => `<h3>${escapeHtml(check.scope)} Probe ${escapeHtml(check.probe)} · ${escapeHtml(check.status)}</h3>`
+    + (summary.probes ?? []).map(check => `<h3>${escapeHtml(scopeLabel(check.scope))} Probe ${escapeHtml(check.probe)} · ${escapeHtml(probeStatusLabel(check.status))}</h3>`
       + `<p>${escapeHtml(check.reason ?? "")}</p>` + check.findings.map(finding => `<p>${escapeHtml(finding.severity)}: ${escapeHtml(finding.message)}</p>`).join("")
       + `<details><summary>Observation</summary><pre>${escapeHtml(JSON.stringify(check.observations, null, 2))}</pre></details>`).join("")
+    + (summary.endpoints ?? []).map(check => `<h3>Endpoint ${escapeHtml(check.source)} · ${escapeHtml(probeStatusLabel(check.status))}</h3><pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
     + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
       + (check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
     + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")
@@ -70,5 +92,6 @@ export function buildHealthHtml(result: HealthResult): string {
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>
 <style>${OVERVIEW_REPORT_STYLE}</style>
 <h1>Doctor Health</h1><p>本次巡检${result.checkedAt ? `：${escapeHtml(result.checkedAt)}` : ""}</p>
+${result.notRunScopes?.length ? `<p>未执行层级：${escapeHtml(result.notRunScopes.map(scopeLabel).join(", "))}</p>` : ""}
 <p>Tenant: ${escapeHtml(result.query.tenantId ?? "全部")} · Case 为本次执行；不采集业务诊断数据。</p>${sections}</html>`;
 }

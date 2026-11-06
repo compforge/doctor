@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, modelHttpCases, withSummary,
   type CaseProducer, type CaseModelType, type Model, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { inspectCaseModel } from "../src/case/model-check";
-import { prepareServiceCases } from "../src/health/case-prepare";
-import { checkServiceCases } from "../src/health/cases";
+import { prepareServiceCases } from "../src/health/biz/prepare";
+import { checkServiceCases } from "../src/health/biz/run";
 import { buildHealthHtml } from "../src/health/report";
 
 test("model response checks reject HTTP-200 error envelopes and unusable results without judging answers", () => {

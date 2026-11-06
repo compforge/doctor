@@ -1,3 +1,4 @@
+import { checkHealthEndpoints } from "./deps/endpoints";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { prepareCommandRequirements } from "../command/prepare";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
@@ -13,15 +14,18 @@ import { ServiceDependencyRuntime } from "../collect/shared/service-dependency";
 import { DataSourceHealthSession } from "../datasource/health/session";
 import { useLogger } from "../terminal/log";
 import type { HealthProvider } from "./extensions";
-import { selectHealthProviders } from "./selection";
+import { confirmNextHealthScope, selectHealthProviders } from "./selection";
 import { runHealthSession, type HealthQuery, type HealthResult } from "./flow";
-import { checkServiceCases, type CaseCheckResult } from "./cases";
-import { prepareServiceCases, type PreparedCaseCheck } from "./case-prepare";
-import { caseCheckActions, casePrepareActions } from "./case-runtime";
-import { createHealthCaseApproval } from "./approval";
+import { checkServiceCases, type CaseCheckResult } from "./biz/run";
+import { prepareServiceCases, type PreparedCaseCheck } from "./biz/prepare";
+import { caseCheckActions, casePrepareActions } from "./biz/runtime";
+import { createHealthCaseApproval } from "./biz/approval";
 import { buildHealthHtml, printHealth, writeHealthEvidence } from "./report";
 
-import { checkHealthProbes, healthScopes } from "./probes";
+import { checkHealthDataSources } from "./deps";
+import { healthScopes } from "./scopes";
+import { checkSelfHealthProbes } from "./self/probes";
+import { checkDependencyHealthProbes } from "./deps/probes";
 
 export interface HealthCliOpts extends KubernetesCommandInput {
   scope?: string;
@@ -42,19 +46,19 @@ export function validateHealthOptions(opts: HealthCliOpts): void {
 interface HealthPreparation {
   input: HealthCliOpts;
   selected: readonly HealthProvider[];
-  cases: ReadonlyMap<HealthProvider, PreparedCaseCheck[]>;
   kube: NonNullable<Awaited<ReturnType<typeof resolveKubernetesCommandConfig>>>;
   executor: ReturnType<typeof createKubernetesExecutor>;
 }
 
 async function health(prepared: HealthPreparation, context: CommandContext): Promise<CommandResult<HealthResult>> {
-  const { input: opts, selected, cases, kube, executor } = prepared;
+  const { input: opts, selected, kube, executor } = prepared;
+  const cases = new Map<HealthProvider, PreparedCaseCheck[]>();
   const healthSession = new DataSourceHealthSession();
   const sources = new ServiceDependencyRuntime({ plugin: context.plugin, collect: kube, executor,
     command: "doctor health", commandContext: context, index: "*",
     log: line => useLogger("health").info(line) });
-  const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
-    resolveApprovalGate({ yes: context.options.yes }));
+  let approve: ReturnType<typeof createHealthCaseApproval> | undefined;
+  let enteredScope = false;
   const query: HealthQuery = { tenantId: opts.tenantId };
   let snapshot: HealthResult | undefined;
   let reportDirectory: string | undefined;
@@ -62,22 +66,37 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   try {
     result = await runHealthSession(selected, query, {
       signal: context.signal,
-      probes: provider => checkHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
-      dataSources: async provider => {
-        const results = [];
-        for (const reference of provider.dataSources ?? []) {
-          if (context.signal.aborted) break;
-          try {
-            const prepared = await sources.prepareDataSource(reference.service, reference.dataSource);
-            const health = await healthSession.probe(prepared.search, context.signal);
-            results.push({ ...reference, evidence: { target: { ...prepared.evidenceTarget, ...reference }, health } });
-          } catch (error) {
-            results.push({ ...reference, error: error instanceof Error ? error.message : String(error) });
-          }
+      scopes: healthScopes(opts.scope),
+      enterScope: async (scope, current) => {
+        if (enteredScope && isInteractive()) printHealth(current);
+        if (enteredScope && !await confirmNextHealthScope(scope, isInteractive())) {
+          useLogger("health").info("已结束巡检，保留已完成的检查结果");
+          return false;
         }
-        return results;
+        enteredScope = true;
+        useLogger("health").info(`开始 ${scope === "business" ? "biz" : scope} 层级巡检`);
+        if (scope === "business") {
+          const actions = casePrepareActions(context, executor, kube.kubernetes, opts);
+          for (const provider of selected) {
+            if (context.signal.aborted) break;
+            if (!provider.consumers.length) continue;
+            cases.set(provider, await prepareServiceCases(context.plugin, provider.service, provider.consumers, opts.tenantId, actions));
+          }
+          approve = createHealthCaseApproval(context, kube.kubernetes.namespace, [...cases.values()].flat(),
+            resolveApprovalGate({ yes: context.options.yes }));
+        }
+        return !context.signal.aborted;
       },
+      leaveScope: scope => {
+        useLogger("health").info(`${scope === "business" ? "biz" : scope} 层级完成`);
+      },
+      probes: (provider, scope) => scope === "self"
+        ? checkSelfHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId)
+        : checkDependencyHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
+      endpoints: provider => checkHealthEndpoints(provider, context, executor, kube.kubernetes),
+      dataSources: provider => checkHealthDataSources(provider, sources, healthSession, context.signal),
       cases: (provider, _input, checkpoint) => {
+        if (!approve) throw new Error("biz 层级尚未准备 Case 检查");
         const snapshots: CaseCheckResult[] = [];
         return checkServiceCases(cases.get(provider) ?? [],
           caseCheckActions(context, executor, kube.kubernetes, reportDirectory!, check => {
@@ -100,7 +119,11 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
     }
   }
   const statuses: CommandStatus[] = result.providers.flatMap(provider => [
-    ...(provider.probes ?? []).map(check => check.status === "unavailable" ? CommandStatus.Failed
+    ...(provider.endpoints ?? []).map(check => check.status === "cancelled" ? CommandStatus.Cancelled
+      : check.status === "not-run" ? CommandStatus.Partial
+      : check.status === "failed" || check.status === "unavailable" ? CommandStatus.Failed : CommandStatus.Ok),
+    ...(provider.probes ?? []).filter(check => check.status !== "not-run").map(check => check.status === "cancelled" ? CommandStatus.Cancelled
+      : check.status === "unavailable" ? CommandStatus.Failed
       : check.status === "partial" ? CommandStatus.Partial
       : CommandStatus.Ok),
     ...(provider.unsupported ? [CommandStatus.Failed] : []),
@@ -138,8 +161,10 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const providers = available.map(provider => ({ ...provider,
       probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
       consumers: scopes.includes("business") ? provider.consumers : [],
+      endpointProbes: scopes.includes("deps") ? provider.endpointProbes : [],
+      endpoints: scopes.includes("deps") ? provider.endpoints : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length
+    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined
       ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
     if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });
@@ -147,14 +172,7 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
     if (!kube) return undefined;
     const executor = createKubernetesExecutor(kube);
-    const actions = casePrepareActions(context, executor, kube.kubernetes, opts);
-    const cases = new Map<HealthProvider, PreparedCaseCheck[]>();
-    for (const provider of providers) {
-      if (!provider.consumers.length) continue;
-      cases.set(provider, await prepareServiceCases(context.plugin, provider.service, provider.consumers, opts.tenantId, actions));
-      if (context.signal.aborted) break;
-    }
-    return { input: opts, selected: providers, cases, kube, executor };
+    return { input: opts, selected: providers, kube, executor };
   },
   run: (context, prepared) => health(prepared, context),
 });

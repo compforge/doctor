@@ -1,3 +1,6 @@
+import { validateWorkloadDeclaration } from "./workload";
+import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension } from "./extension/endpoint-probe";
+import { validateEndpoint } from "@compforge/harness-toolbox/endpoint";
 import { validateServiceResource } from "./resource";
 import { connectionDataSources } from "./datasource";
 import { validateKnowledgeDeclaration } from "./knowledge";
@@ -56,6 +59,21 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       }
       const workloads = service.workloads.map((workload) => workload.name);
       if (service.cases !== undefined && !Array.isArray(service.cases)) throw new Error(`${service.name}.cases must be an array`);
+      if (service.endpoints !== undefined && !Array.isArray(service.endpoints)) throw new Error(`${service.name}.endpoints must be an array`);
+      const endpointIds = new Set<string>();
+      for (const endpoint of service.endpoints ?? []) {
+        validateEndpoint(endpoint);
+        if (endpoint.id !== undefined) {
+          if (typeof endpoint.id !== "string" || !endpoint.id.trim() || endpointIds.has(endpoint.id)) throw new Error(`${service.name}: invalid or duplicate Endpoint id`);
+          endpointIds.add(endpoint.id);
+        }
+        if (endpoint.description !== undefined && typeof endpoint.description !== "string") throw new Error(`${service.name}: Endpoint description must be a string`);
+        if (endpoint.workload !== undefined) validateWorkloadDeclaration(endpoint.workload);
+      }
+      for (const extension of service.extensions ?? []) {
+        if (extension.kind === ENDPOINT_PROBE_KIND) requireEndpointProbeExtension(extension);
+      }
+
       const sources = new Set<string>();
       for (const source of service.cases ?? []) {
         validateCaseSource(source);

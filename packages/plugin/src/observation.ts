@@ -13,3 +13,12 @@ export type ObservationValue<Definition extends ObservationDefinition> =
 export function defineObservation<T extends Value>(definition: ObservationDefinition<T>): ObservationDefinition<T> {
   return definition;
 }
+
+/** Validate the shared acquired-data declaration before invoking a Probe. */
+export function validateObservationDefinition(definition: ObservationDefinition, label: string): void {
+  if (!definition || typeof definition.kind !== "string" || !definition.kind.trim()
+    || !Number.isInteger(definition.schemaVersion) || definition.schemaVersion < 1
+    || !definition.codec || typeof definition.codec.encode !== "function" || typeof definition.codec.decode !== "function") {
+    throw new Error(`${label}: invalid Observation definition`);
+  }
+}

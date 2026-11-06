@@ -15,3 +15,30 @@ export function kubernetesServiceWorkload(
     container: options.container,
   };
 }
+
+/** Complete consumer location; a bare name requires a separate lookup and is not a declaration. */
+export function validateWorkloadDeclaration(value: Workload): void {
+  const text = (value: unknown) => typeof value === "string" && !!value.trim();
+  if (!value || typeof value !== "object" || !text(value.name) || value.platform !== "kubernetes"
+    || (value.namespace !== undefined && !text(value.namespace)) || (value.container !== undefined && !text(value.container))) {
+    throw new Error("Expected a complete consumer Workload declaration");
+  }
+  const location = value.location;
+  let valid = false;
+  switch (location?.kind) {
+    case "labels": {
+      const labels = location.labels;
+      valid = !!labels && typeof labels === "object" && !Array.isArray(labels)
+        && Object.keys(labels).length > 0
+        && Object.entries(labels).every(([key, item]) => text(key) && typeof item === "string");
+      break;
+    }
+    case "service":
+      valid = text(location.name);
+      break;
+    case "resource":
+      valid = text(location.name) && ["Deployment", "StatefulSet", "DaemonSet", "Pod"].includes(location.resource_kind);
+      break;
+  }
+  if (!valid) throw new Error(`${value.name}: invalid Workload location`);
+}

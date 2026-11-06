@@ -3,8 +3,8 @@ import {
   type HealthCaseBinding, type HealthCaseBindingsExtension, type HealthCaseBindingsQuery, type HealthCaseBindingsResult,
   type CaseProducer, type ServiceCaseSource, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
-import { caseError } from "../case/http-check";
-import type { CaseCheckResult } from "./cases";
+import { caseError } from "../../case/http-check";
+import type { CaseCheckResult } from "./run";
 
 export interface PreparedCaseCheck {
   result: CaseCheckResult;
@@ -26,7 +26,7 @@ export interface CasePrepareActions {
   tenant?(producer: CaseProducer): Promise<string | undefined>;
 }
 
-/** @spec Resolve only selected dependencies and identities in Command.prepare; never generate Cases or enter consumer Pods. */
+/** @spec Resolve only selected dependencies and identities when entering the biz scope; never generate Cases or enter consumer Pods. */
 export async function prepareServiceCases(plugin: PluginDefinition, consumer: ServiceDefinition,
   extensions: readonly HealthCaseBindingsExtension[], tenantId: string | undefined, actions: CasePrepareActions): Promise<PreparedCaseCheck[]> {
   const prepared: PreparedCaseCheck[] = [];

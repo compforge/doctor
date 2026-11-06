@@ -3,7 +3,7 @@ import { createServiceCatalog, withSummary, type CaseProducer, type ServiceCaseS
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext } from "../src/command";
 import { approveAll } from "../src/command/approval";
-import { caseCheckActions } from "../src/health/case-runtime";
+import { caseCheckActions } from "../src/health/biz/runtime";
 import { createHostPluginContext } from "../src/plugin/context";
 import { invokeOperation } from "../src/plugin/operation";
 

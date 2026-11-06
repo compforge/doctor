@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
   type HealthCaseBindingsExtension, type CaseProducer, type HealthCaseBinding, type CaseProduceResult, type ServiceDefinition, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { HttpTransportError } from "../src/infra/http";
-import { prepareServiceCases, type CasePrepareActions } from "../src/health/case-prepare";
-import { checkServiceCases, type CaseCheckActions } from "../src/health/cases";
+import { prepareServiceCases, type CasePrepareActions } from "../src/health/biz/prepare";
+import { checkServiceCases, type CaseCheckActions } from "../src/health/biz/run";
 import { healthProviders } from "../src/health/extensions";
 import { runHealthSession } from "../src/health/flow";
 import { buildHealthHtml } from "../src/health/report";
@@ -151,7 +151,7 @@ test("replica tool/provider failures preserve their identity and do not hide ano
 
 
 test("real Case adapter executes only in consumer container and delivers failed HTTP evidence", async () => {
-  const { caseCheckActions, casePrepareActions } = await import("../src/health/case-runtime");
+  const { caseCheckActions, casePrepareActions } = await import("../src/health/biz/runtime");
   const { writeHealthEvidence } = await import("../src/health/report");
   const { healthCommand } = await import("../src/health");
   const { finalizeResult, readReport } = await import("./report-fixture");
@@ -233,7 +233,7 @@ test("consumer data is resolved during preparation and invalid relationships nev
 
 test("consume extensions isolate failures and preserve duplicate binding IDs across extensions", async () => {
   const f = fixture();
-  const snapshots: import("../src/health/cases").CaseCheckResult[] = [];
+  const snapshots: import("../src/health/biz/run").CaseCheckResult[] = [];
   f.actions.checkpoint = result => { if (!snapshots.includes(result)) snapshots.push(result); };
   f.actions.consume = async (_service, extension) => {
     if (extension.id === "broken") throw new Error("cannot read consumer config");

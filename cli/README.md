@@ -107,7 +107,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
 | `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
-| `doctor health` | 主动检查 Service 启动、依赖连通性与业务功能 |
+| `doctor health` | 主动检查 Service 自身健康、依赖连通性与业务功能 |
 | `doctor overview` | 展示历史统计与耗时分布，按需采样并进入 Collect |
 | `doctor collect [id...]` | 集合选择并汇总 Inspect、Tenant、Data、Trace、Log、Metric；自身不实现具体采集 |
 | `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线选择 trace/node view，渲染 text / JSON / HTML / Bundle（[说明](docs/commands/trace.md)） |

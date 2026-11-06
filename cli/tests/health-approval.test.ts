@@ -7,9 +7,9 @@ import { kubernetesServiceWorkload, withSummary, type CaseProducer, type Service
 import { CommandContext } from "../src/command";
 import type { ApprovalDecision, ApprovalRequest } from "../src/command/approval";
 import { resolveApprovalGate } from "../src/terminal/approval";
-import { createHealthCaseApproval } from "../src/health/approval";
-import type { PreparedCaseCheck } from "../src/health/case-prepare";
-import { checkServiceCases } from "../src/health/cases";
+import { createHealthCaseApproval } from "../src/health/biz/approval";
+import type { PreparedCaseCheck } from "../src/health/biz/prepare";
+import { checkServiceCases } from "../src/health/biz/run";
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "test" } };
 const producer: CaseProducer = { access: {},

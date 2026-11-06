@@ -14,7 +14,7 @@ import { overviewCommand } from "../src/overview";
 import { runOverviewSession } from "../src/overview/flow";
 import { buildOverviewHtml } from "../src/overview/report";
 import * as targets from "../src/command/kubernetes-target";
-import * as caseRuntime from "../src/health/case-runtime";
+import * as caseRuntime from "../src/health/biz/runtime";
 
 const query = { window: { from: "2026-10-01T00:00:00Z", to: "2026-10-01T01:00:00Z" }, maxEntries: 10 };
 const facet = { id: "errors", title: "Errors", description: "Recorded errors" };

@@ -1,27 +1,15 @@
 import type { KubectlOptions, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { caseProducer, type WorkloadInstance, type PluginOperation, type ServiceDefinition } from "@compforge/doctor-plugin";
-import type { CommandContext } from "../command";
-import { discoverKubernetesWorkload } from "../infra/k8s/workload";
-import { enforceKubernetesAccess } from "../terminal/kubernetes-access";
-import { createPodHttpSender, supportsPodCurlDiagnostics } from "../infra/http/pod";
-import { openPluginContext } from "../plugin/context";
-import { invokeOperation } from "../plugin/operation";
-import type { CaseCheckActions } from "./cases";
-import type { CasePrepareActions } from "./case-prepare";
-import { discoverTenantDirectory } from "../plugin/tenant-directory";
-import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../case/prepare-identity";
-
-export function caseOperationInvoker(context: CommandContext, executor: Executor, kubernetes: KubectlOptions & { namespace: string }) {
-  return async <I, O>(service: ServiceDefinition, operation: PluginOperation<I, O>, query: I): Promise<O> => {
-    const db = context.profile.value.db;
-    const managed = await openPluginContext(executor, kubernetes, {
-      config: context.profile.pluginConfig, service, capability: operation, signal: context.signal, clients: context.clients,
-      databaseIdentity: db?.user ? { user: db.user, password: db.password ?? "" } : undefined,
-    });
-    try { return (await invokeOperation(operation, managed, query)).data; }
-    finally { await managed.dispose(); }
-  };
-}
+import { caseProducer, type WorkloadInstance } from "@compforge/doctor-plugin";
+import type { CommandContext } from "../../command";
+import { discoverKubernetesWorkload } from "../../infra/k8s/workload";
+import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
+import { createPodHttpSender, supportsPodCurlDiagnostics } from "../../infra/http/pod";
+import { openPluginContext } from "../../plugin/context";
+import { caseOperationInvoker } from "../runtime";
+import type { CaseCheckActions } from "./run";
+import type { CasePrepareActions } from "./prepare";
+import { discoverTenantDirectory } from "../../plugin/tenant-directory";
+import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../../case/prepare-identity";
 
 export function casePrepareActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, input: { tenantId?: string; userId?: string }): CasePrepareActions {

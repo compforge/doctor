@@ -2,7 +2,7 @@ import { caseProducer } from "@compforge/doctor-plugin";
 import { CommandInputError, CommandStatus, defineCommand, type CommandInput } from "../command";
 import { commandOptions } from "../command/options";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig } from "../command/kubernetes-target";
-import { caseOperationInvoker } from "../health/case-runtime";
+import { caseOperationInvoker } from "../health/runtime";
 import { openPluginContext } from "../plugin/context";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { writeOutput } from "../terminal/output";

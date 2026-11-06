@@ -3,8 +3,8 @@ import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
   type CaseProducer, type ServiceRequestIdentity, type TenantDirectory } from "@compforge/doctor-plugin";
 import { CommandContext } from "../src/command";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../src/case/prepare-identity";
-import { prepareServiceCases } from "../src/health/case-prepare";
-import { checkServiceCases } from "../src/health/cases";
+import { prepareServiceCases } from "../src/health/biz/prepare";
+import { checkServiceCases } from "../src/health/biz/run";
 import { resolveTenant } from "../src/terminal/tenant";
 import { withInteractionOptions } from "../src/terminal/policy";
 

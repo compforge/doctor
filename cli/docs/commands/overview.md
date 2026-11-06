@@ -6,7 +6,7 @@
 
 所选 namespace 提供 `facet.summarize` 或 `duration.summarize` 即可展示统计，`facet.sample` 可选。
 不可采样条目、空维度和截断信息均保留；只有同一 namespace 存在采样实现且 Entry 声明 `canSample` 时才开放采样。
-主动启动、依赖连通性与功能检查归 [Health](health.md)。
+服务自身健康、依赖连通性与功能的主动检查归 [Health](health.md)。
 
 ## 使用
 
