@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
-import { writeOutput } from "../terminal/output";
+import { styleTerminalText, writeOutput } from "../terminal/output";
 import { OVERVIEW_REPORT_STYLE } from "../overview/report";
 import type { CaseCheckResult } from "./biz/run";
 import { dataSourceHealthHtml } from "../datasource/health/report";
@@ -14,6 +14,11 @@ import type { HealthEndpointCheck } from "./deps/endpoints";
 
 function scopeLabel(scope: HealthScope): string {
   return scope === "business" ? "biz" : scope;
+}
+
+function terminalStatus(status: HealthProbeCheck["status"] | HealthEndpointCheck["status"]): string {
+  const label = probeStatusLabel(status);
+  return status === "unavailable" ? styleTerminalText(label, "warning") : label;
 }
 
 function probeStatusLabel(status: HealthProbeCheck["status"] | HealthEndpointCheck["status"]): string {
@@ -50,12 +55,12 @@ export function printHealth(result: HealthResult): void {
     writeOutput(`\n${summary.name} (${summary.namespace})\n`);
     if (summary.unsupported) writeOutput(`  未执行：${summary.unsupported}\n`);
     for (const check of summary.probes ?? []) {
-      writeOutput(`  ${scopeLabel(check.scope)} Probe ${check.probe}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}\n`);
+      writeOutput(`  ${scopeLabel(check.scope)} Probe ${check.probe}: ${terminalStatus(check.status)}${check.reason ? ` · ${check.reason}` : ""}\n`);
       for (const finding of check.findings) writeOutput(`    ${finding.severity}: ${finding.message}\n`);
     }
     for (const check of summary.endpoints ?? []) {
       const errorKind = [check.error?.kind, check.error?.code].filter(Boolean).join("/");
-      writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${probeStatusLabel(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
+      writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${terminalStatus(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
     }
     for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
