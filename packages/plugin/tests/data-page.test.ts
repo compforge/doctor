@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { dataPageOutput, requireDataPageExtension, withSummary } from "../src";
+import { dataPageOutput, requireDataPageExtension, withSummary, pageOffset, pageTotal } from "../src";
 const query = { page: 3, pageSize: 2, maxBytes: 1000 };
 test("data.page requires valid page metadata but leaves Service records opaque", () => {
   const page = { page: 3, pageSize: 2, total: 4, items: [] };
@@ -23,4 +23,24 @@ test("tenant filtering support is explicit registration metadata", () => {
   expect(requireDataPageExtension(extension).supportsTenant).toBe(true);
   const invalid = { ...extension, supportsTenant: "true" };
   expect(() => requireDataPageExtension(invalid)).toThrow("supportsTenant");
+});
+
+
+test("page offsets reject invalid dimensions and unsafe integer arithmetic", () => {
+  expect(pageOffset({ page: 1, pageSize: 20 })).toBe(0);
+  expect(pageOffset({ page: 3, pageSize: 20 })).toBe(40);
+  for (const query of [{ page: 0, pageSize: 20 }, { page: 1.5, pageSize: 20 },
+    { page: 2, pageSize: 0 }, { page: 2, pageSize: 1.5 }, { page: Infinity, pageSize: 20 },
+    { page: Number.MAX_SAFE_INTEGER, pageSize: 20 }]) {
+    expect(() => pageOffset(query)).toThrow("Invalid pagination");
+  }
+});
+
+test("page totals accept source numeric representations but never turn missing counts into zero", () => {
+  for (const value of [0, "0", 0n]) expect(pageTotal(value)).toBe(0);
+  for (const value of [42, "42", 42n]) expect(pageTotal(value)).toBe(42);
+  for (const value of [undefined, null, "", " ", false, true, {}, -1, 1.5, "bad", Infinity, NaN,
+    Number.MAX_SAFE_INTEGER + 1, 9007199254740993n]) {
+    expect(() => pageTotal(value)).toThrow("Count is unavailable or invalid");
+  }
 });

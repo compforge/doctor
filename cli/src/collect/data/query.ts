@@ -1,3 +1,4 @@
+import { pageOffset } from "@compforge/doctor-plugin";
 import type { CollectDataCliOpts } from "./model";
 
 export function parseDataQueries(opts: CollectDataCliOpts) {
@@ -21,6 +22,7 @@ export function parseDataPagination(opts: Pick<CollectDataCliOpts, "page" | "pag
   };
   const page = integer(opts.page, 1, "--page");
   const pageSize = integer(opts.pageSize, 20, "--page-size");
-  if (pageSize > 1000 || !Number.isSafeInteger((page - 1) * pageSize)) throw new Error("分页范围超出限制（page-size 最大 1000）");
+  if (pageSize > 1000) throw new Error("分页范围超出限制（page-size 最大 1000）");
+  pageOffset({ page, pageSize });
   return { page, pageSize };
 }
