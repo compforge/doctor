@@ -92,11 +92,11 @@ export type DataTypeResult = {
   extension: string;
   bizType: string;
 } & (
-  | { status: import("../../command").CommandStatus.Ok | import("../../command").CommandStatus.Partial; data: import("@compforge/doctor-plugin").DataPage }
+  | { status: import("../../command").CommandStatus.Ok | import("../../command").CommandStatus.Partial; data: import("@compforge/doctor-plugin").DataPage<import("@compforge/harness-common").SerializedValue> }
   | { status: import("../../command").CommandStatus.Failed | import("../../command").CommandStatus.Cancelled; reason: string }
 );
 
-export type DataTypeFact = Fact<{ data: import("@compforge/doctor-plugin").DataPage }, "data.type-result">
+export type DataTypeFact = Fact<{ data: import("@compforge/doctor-plugin").DataPage<import("@compforge/harness-common").SerializedValue> }, "data.type-result">
   & Pick<DataTypeResult, "service" | "extension" | "bizType"> & { cancelled?: boolean };
 
 export interface DataOutput {

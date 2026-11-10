@@ -1,16 +1,18 @@
+import { serializeValue, deserializeValue } from "@compforge/harness-common";
+import { PageValue, pageCodec } from "./page-value-fixture";
 import { expect, test } from "bun:test";
-import { boundDataPage, dataPageOutput, requireDataPageExtension, withSummary, pageOffset, pageTotal } from "../src";
+import { serializeDataPage, dataPageOutput, requireDataPageExtension, withSummary, pageOffset, pageTotal } from "../src";
 const query = { page: 3, pageSize: 2, maxBytes: 1000 };
 test("data.page requires valid page metadata but leaves Service records opaque", () => {
   const page = { page: 3, pageSize: 2, total: 4, items: [] };
   expect(dataPageOutput(page, query)).toEqual(page);
-  expect(dataPageOutput({ ...page, items: [{ serviceOwned: true }] }, query).items).toEqual([{ serviceOwned: true }]);
+  expect(dataPageOutput({ ...page, items: [new PageValue({ serviceOwned: true })] }, query).items[0]).toEqual(new PageValue({ serviceOwned: true }));
   for (const invalid of [{ total: -1 }, { total: "4" }, { total: 1.5 }, { page: 1 }, { pageSize: 3 }, { items: [1, 2, 3] }, { truncated: {} }]) {
     expect(() => dataPageOutput({ ...page, ...invalid }, query)).toThrow();
   }
 });
 test("business type and description are static registration requirements", () => {
-  const extension = { id: "bots", kind: "data.page", access: {}, bizType: "bot", description: "Bots", run: withSummary({ title: "Bots", fields: [] }, async () => ({ items: [], page: 1, pageSize: 20, total: 0 })) };
+  const extension = { id: "bots", kind: "data.page", codec: pageCodec, access: {}, bizType: "bot", description: "Bots", run: withSummary({ title: "Bots", fields: [] }, async () => ({ items: [], page: 1, pageSize: 20, total: 0 })) };
   expect(requireDataPageExtension(extension).bizType).toBe("bot");
   const invalid = { ...extension, bizType: " " };
   expect(() => requireDataPageExtension(invalid)).toThrow();
@@ -18,7 +20,7 @@ test("business type and description are static registration requirements", () =>
 });
 
 test("tenant filtering support is explicit registration metadata", () => {
-  const extension = { id: "bots", kind: "data.page", access: {}, bizType: "bot", description: "Bots", supportsTenant: true,
+  const extension = { id: "bots", kind: "data.page", codec: pageCodec, access: {}, bizType: "bot", description: "Bots", supportsTenant: true,
     run: withSummary({ title: "Bots", fields: [] }, async () => ({ items: [], page: 1, pageSize: 20, total: 0 })) };
   expect(requireDataPageExtension(extension).supportsTenant).toBe(true);
   const invalid = { ...extension, supportsTenant: "true" };
@@ -46,23 +48,28 @@ test("page totals accept source numeric representations but never turn missing c
 });
 
 
-test("page byte bounds retain a stable UTF-8 prefix and the original pagination", () => {
-  const first = { value: "中文" };
-  const page = { items: [first, { value: "large".repeat(100) }, { value: "x" }], page: 2, pageSize: 3, total: 17 };
-  const budget = Buffer.byteLength(JSON.stringify(first), "utf8");
-  expect(boundDataPage(page, budget)).toEqual({ ...page, items: [first], truncated: { reason: expect.any(String) } });
-  expect(boundDataPage(page, budget - 1).items).toEqual([]);
-  expect(boundDataPage(page, 0).truncated).toBeDefined();
-  expect(page.items).toHaveLength(3);
-  const fullBudget = page.items.reduce((sum, item) => sum + Buffer.byteLength(JSON.stringify(item), "utf8"), 0);
-  expect(boundDataPage(page, fullBudget)).toBe(page);
-  const partial = { ...page, truncated: { reason: "Upstream limit" } };
-  expect(boundDataPage(partial, budget).truncated).toEqual(partial.truncated);
-  expect(boundDataPage({ ...page, items: [] }, 0).truncated).toBeUndefined();
+test("page serialization uses codec projections, preserves summaries and rejects aggregate overflow", () => {
+  const first = new PageValue({ name: "中文" });
+  const serialized = serializeValue(first, pageCodec);
+  const budget = Buffer.byteLength(JSON.stringify(serialized), "utf8");
+  const page = { items: [first], page: 2, pageSize: 2, total: 17, truncated: { reason: "Service field projection" } };
+  const output = serializeDataPage(page, pageCodec, budget);
+  expect(output).toEqual({ ...page, items: [serialized] });
+  expect(deserializeValue(output.items[0]!.data, pageCodec).summary()).toEqual(first.summary());
+  expect(() => serializeDataPage(page, pageCodec, budget - 1)).toThrow("byte budget");
+  expect(() => serializeDataPage({ ...page, items: [first, first] }, pageCodec, budget)).toThrow("byte budget");
+  expect(page.items).toEqual([first]);
+  expect(serializeDataPage({ ...page, items: [] }, pageCodec, 0).total).toBe(17);
 });
 
-test("page byte bounds reject invalid budgets", () => {
+test("page serialization validates codecs, values and budgets without silently pruning records", () => {
+  const page = { items: [new PageValue({ name: "kept" })], page: 1, pageSize: 2, total: 1 };
   for (const budget of [-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-    expect(() => boundDataPage({ items: [], page: 1, pageSize: 1, total: 0 }, budget)).toThrow("Invalid data page byte budget");
+    expect(() => serializeDataPage(page, pageCodec, budget)).toThrow("Invalid data page byte budget");
   }
+  const invalid = { ...pageCodec, decode: () => { throw new Error("bad record"); } };
+  expect(() => serializeDataPage(page, invalid, 1000)).toThrow("bad record");
+  expect(() => dataPageOutput({ ...page, items: [{}] }, { ...query, page: 1 })).toThrow("implement Value");
+  const extension = { id: "records", kind: "data.page", bizType: "record", description: "Records" };
+  expect(() => requireDataPageExtension(extension as never)).toThrow("ValueCodec");
 });

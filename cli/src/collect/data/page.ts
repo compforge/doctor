@@ -1,5 +1,5 @@
 import { collectedFact, failedFact } from "../protocol";
-import { boundDataPage, dataPageOutput, type DataPage } from "@compforge/doctor-plugin";
+import { serializeDataPage, dataPageOutput, type DataPage } from "@compforge/doctor-plugin";
 import { CommandStatus } from "../../command";
 import { invokeExtension } from "../../plugin/extension";
 import type { Inspect } from "../inspection";
@@ -28,7 +28,7 @@ export function makeDataPageInspect(access: DataAccessPreparation): Inspect<Data
         }
         const query = { ...(ctx.config.tenantId ? { tenantId: ctx.config.tenantId } : {}), page: pagination.page, pageSize: pagination.pageSize, maxBytes };
         const output = await invokeExtension(extension, prepared.context, query);
-        const data = boundDataPage(dataPageOutput(output.data, query), maxBytes);
+        const data = serializeDataPage(dataPageOutput(output.data, query), extension.codec, maxBytes);
         result = { ...identity, status: data.truncated ? CommandStatus.Partial : CommandStatus.Ok, data };
         ctx.log(`[data] ${service}/${extension.bizType}: ${data.items.length} items, total=${data.total}${data.truncated ? `; ${data.truncated.reason}` : ""}`);
       } catch (error) {

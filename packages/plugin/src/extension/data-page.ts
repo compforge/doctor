@@ -1,3 +1,4 @@
+import { serializeValue, type Value, type ValueCodec, type SerializedValue } from "@compforge/harness-common";
 import type { Extension, RegisteredExtension } from "./index";
 
 export const DATA_PAGE_KIND = "data.page";
@@ -7,11 +8,11 @@ export interface DataPageQuery {
   tenantId?: string;
   page: number;
   pageSize: number;
-  /** Bound the sum of item JSON bytes at the source; page metadata is excluded. The host enforces this too. */
+  /** Bound the sum of serialized record bytes, including summaries; page metadata is excluded. */
   maxBytes: number;
 }
 
-export interface DataPage<T = unknown> {
+export interface DataPage<T = Value> {
   items: readonly T[];
   page: number;
   pageSize: number;
@@ -22,9 +23,11 @@ export interface DataPage<T = unknown> {
 }
 
 /** @spec Each Service registers one provider per business type; record fields belong to the Service. */
-export interface DataPageExtension<T = unknown> extends Extension<DataPageQuery, DataPage<T>> {
+export interface DataPageExtension<T extends Value = Value> extends Extension<DataPageQuery, DataPage<T>> {
   readonly kind: typeof DATA_PAGE_KIND;
   readonly bizType: string;
+  /** Service-owned encoding, validation and restoration of each record. */
+  readonly codec: ValueCodec<T>;
   /** Explicit opt-in; hosts must never send tenant queries to unscoped providers. */
   readonly supportsTenant?: boolean;
   readonly description: string;
@@ -39,6 +42,8 @@ export function requireDataPageExtension(extension: RegisteredExtension): DataPa
     }
   }
   if (item.supportsTenant !== undefined && typeof item.supportsTenant !== "boolean") throw new Error(`${extension.id}.supportsTenant must be a boolean`);
+  const codec = item.codec as ValueCodec<Value> | undefined;
+  if (!codec || typeof codec.encode !== "function" || typeof codec.decode !== "function") throw new Error(`${extension.id}: data.page requires a ValueCodec`);
   return extension as DataPageExtension;
 }
 
@@ -72,19 +77,19 @@ export function dataPageOutput(value: unknown, query: DataPageQuery): DataPage {
   if (page.truncated !== undefined && (!page.truncated || typeof page.truncated.reason !== "string" || !page.truncated.reason.trim())) {
     throw new Error("data.page truncation requires a reason");
   }
+  if (page.items.some(item => !item || typeof item.summary !== "function")) throw new Error("data.page records must implement Value");
   return page;
 }
 
-/** @spec Keep a stable prefix within the item byte budget; truncation never changes source counts or pagination. */
-export function boundDataPage<T>(page: DataPage<T>, maxBytes: number): DataPage<T> {
+/** @spec Serialize Service-owned records without pruning them; an over-budget provider fails explicitly. */
+export function serializeDataPage<T extends Value>(page: DataPage<T>, codec: ValueCodec<T>, maxBytes: number): DataPage<SerializedValue> {
   if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("Invalid data page byte budget");
-  let bytes = 0;
-  const items: T[] = [];
-  for (const item of page.items) {
-    const size = Buffer.byteLength(JSON.stringify(item), "utf8");
-    if (bytes + size > maxBytes) return { ...page, items, truncated: page.truncated ?? { reason: "Data page byte budget exceeded" } };
-    bytes += size;
-    items.push(item);
-  }
-  return page;
+  let remaining = maxBytes;
+  const items = page.items.map(item => {
+    const value = serializeValue(item, codec, { maxBytes: remaining, label: "Data page record" });
+    remaining -= Buffer.byteLength(JSON.stringify(value), "utf8");
+    if (remaining < 0) throw new Error("Data page exceeds serialized record byte budget");
+    return value;
+  });
+  return { ...page, items };
 }

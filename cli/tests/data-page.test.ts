@@ -1,3 +1,4 @@
+import { PageValue, pageCodec } from "../../packages/plugin/tests/page-value-fixture";
 import { dataTypeResult } from "../src/collect/data/page";
 import { expect, test, mock } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -18,11 +19,11 @@ import { inspectExtension } from "../../packages/plugin/tests/extension-fixture"
 const calls: string[] = [];
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "data" } };
 const list = (bizType: string, fail = false): DataPageExtension => ({
-  id: `list-${bizType}`, kind: "data.page", supportsTenant: true, bizType, description: `${bizType} records`, access: {},
+  id: `list-${bizType}`, kind: "data.page", codec: pageCodec, supportsTenant: true, bizType, description: `${bizType} records`, access: {},
   run: withSummary({ title: bizType, fields: [] }, async (context, query) => {
     calls.push(`${context.target.service.name}/${bizType}`);
     if (fail) throw new Error("source offline");
-    return { items: [{ customField: `${context.target.service.name}-${query.page}` }], page: query.page, pageSize: query.pageSize, total: 42 };
+    return { items: [new PageValue({ customField: `${context.target.service.name}-${query.page}` })], page: query.page, pageSize: query.pageSize, total: 42 };
   }),
 });
 const service = (name: string, extensions: ServiceDefinition["extensions"]): ServiceDefinition => ({ name, aliases: [`alias-${name}`], component, workloads: [], extensions });
@@ -49,7 +50,7 @@ for (const mixed of [false, true]) test(`type queries preserve independent pages
     expect(result.status).toBe(CommandStatus.Partial);
     expect(result.output!.items).toHaveLength(mixed ? 1 : 0);
     expect(result.output!.typeResults).toMatchObject([
-      { service: "first", bizType: "bot", status: "ok", data: { page: 2, pageSize: 3, total: 42, items: [{ customField: "first-2" }] } },
+      { service: "first", bizType: "bot", status: "ok", data: { page: 2, pageSize: 3, total: 42, items: [{ data: { customField: "first-2" }, summary: { title: "Record" } }] } },
       { service: "first", bizType: "skill", status: "ok", data: { total: 42 } },
       { service: "second", bizType: "bot", status: "failed", reason: "source offline" },
     ]);
