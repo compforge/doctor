@@ -7,7 +7,7 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { PodLogRequest, KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { CommandContext, CommandStatus } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
-import { collectLog, resolveLogServiceSelection } from "../src/collect/log";
+import { collectLog, resolveLogServiceSelection, type LogCollectOptions } from "../src/collect/log";
 import { logPlugin, logService } from "./log-fixture";
 
 const ok = { ok: true, exitCode: 0, stderr: "", stdout: "", durationMs: 1, timedOut: false, command: [] };
@@ -22,7 +22,7 @@ const pod = (name: string, uid = name + "-uid") => ({
   })) },
 });
 
-async function capture(services: ServiceDefinition[], responses: Record<string, unknown>) {
+async function capture(services: ServiceDefinition[], responses: Record<string, unknown>, selection: Pick<LogCollectOptions, "pod" | "container"> | Pick<LogCollectOptions, "pod" | "container">[] = {}) {
   const root = mkdtempSync(join(tmpdir(), "doctor-workload-log-"));
   const command = new CommandContext({}, undefined, { plugin: logPlugin(...services) });
   const calls: string[] = [];
@@ -53,14 +53,17 @@ async function capture(services: ServiceDefinition[], responses: Record<string, 
     },
   };
   try {
-    const results = await collectLog([{
-      namespace: "test", services: services.map(service => service.name), traceIds: [], errorsOnly: false,
-      sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", outputDir: join(root, "item"),
-    }], command, executor, () => {}, new EvidenceBundle(join(root, "sources")), access);
+    const selections = Array.isArray(selection) ? selection : [selection];
+    const results = await collectLog(selections.map((selected, index) => ({
+      namespace: "test", services: services.map(service => service.name), traceIds: [], errorsOnly: false, ...selected,
+      sinceTime: "2026-09-16T01:00:00Z", untilTime: "2026-09-16T02:00:00Z", outputDir: join(root, `item${index}`),
+    })), command, executor, () => {}, new EvidenceBundle(join(root, "sources")), access);
     const manifest = JSON.parse(readFileSync(join(root, "sources", "collection.json"), "utf8"));
-    const itemManifest = JSON.parse(readFileSync(join(root, "item", "collection.json"), "utf8"));
+    const itemManifests = selections.map((_, index) => JSON.parse(readFileSync(join(root, `item${index}`, "collection.json"), "utf8")));
+    const itemFacts = itemManifests.map((manifest, index) => JSON.parse(readFileSync(join(root, `item${index}`, manifest.files.facts), "utf8")));
+    const itemManifest = itemManifests[0]!;
     const facts = JSON.parse(readFileSync(join(root, "sources", manifest.files.facts), "utf8"));
-    return { results, calls, reads, manifest, itemManifest, facts };
+    return { results, calls, reads, manifest, itemManifest, facts, itemFacts };
   } finally { await command.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 }
 
@@ -105,7 +108,7 @@ test("failed and cross-namespace Workloads leave coverage gaps without suppressi
   const missing: string[] = result.facts.servicePods.missing.api;
   expect(missing.join("\n")).toContain("api/denied: pods forbidden");
   expect(missing.join("\n")).toContain("--namespace other");
-  expect(missing.join("\n")).toContain("api/empty: 没有 Running Pod");
+  expect(missing.join("\n")).toContain("api/empty: 没有 Pod");
   expect(result.calls.some(call => call.includes("remote"))).toBe(false);
 });
 
@@ -156,4 +159,52 @@ test("Pod replacement during overlapping discovery is a gap, not a misleading so
   expect(result.reads).toEqual([]);
   expect(result.facts.servicePods.byService.api).toEqual([]);
   expect(result.facts.servicePods.missing.api.join("\n")).toContain("Pod UID");
+});
+
+// @case Explicit Pod selection keeps restart evidence without reading neighboring replicas.
+test("exact Pod and container selection captures current and previous only for that instance", async () => {
+  const result = await capture([{ ...logService(), workloads: [labels("web"), labels("jobs"), labels("app-only", "app")] }], {
+    "get pods -l app=web -o json": { items: [pod("web-1"), pod("web-10")] },
+    "get pods -l app=jobs -o json": { items: [] },
+  }, { pod: "web-1", container: "sidecar" });
+  expect(result.results[0]?.status).toBe(CommandStatus.Ok);
+  expect(result.reads.map(request => [request.pod, request.container, !!request.previous])).toEqual([
+    ["web-1", "sidecar", false], ["web-1", "sidecar", true],
+  ]);
+  expect(result.itemManifest.target).toMatchObject({ pod: "web-1", container: "sidecar" });
+});
+
+test.each([{ pod: "web" }, { container: "absent" }, { pod: "web-1", container: "sidecar" }])(
+  "unmatched instance selector %j never broadens the declared Workload", async selection => {
+    const result = await capture([{ ...logService(), workloads: [labels("web", "app")] }], {
+      "get pods -l app=web -o json": { items: [pod("web-1")] },
+    }, selection);
+    expect(result.results[0]?.status).toBe(CommandStatus.Failed);
+    expect(result.reads).toEqual([]);
+    expect(result.results[0]?.missingEvidence?.join("\n")).toContain("没有匹配");
+  },
+);
+
+test.each(["Failed", "Succeeded"])("%s Pods retain readable container logs", async phase => {
+  const terminated = pod("finished");
+  terminated.status.phase = phase;
+  const result = await capture([{ ...logService(), workloads: [labels("job", "app")] }], {
+    "get pods -l app=job -o json": { items: [terminated] },
+  });
+  expect(result.results[0]?.status).toBe(CommandStatus.Ok);
+  expect(result.reads.map(request => [request.pod, !!request.previous])).toEqual([
+    ["finished", false], ["finished", true],
+  ]);
+});
+
+test("shared discovery projects each request's Pod and container independently", async () => {
+  const result = await capture([{ ...logService(), workloads: [labels("web")] }], {
+    "get pods -l app=web -o json": { items: [pod("web-1"), pod("web-2")] },
+  }, [{ pod: "web-1", container: "app" }, { pod: "web-2", container: "sidecar" }]);
+  expect(result.results.map(item => item.status)).toEqual([CommandStatus.Ok, CommandStatus.Ok]);
+  expect(result.itemFacts.map(facts => facts.servicePods.byService.api.map((target: { instance: { pod: string; container: string } }) =>
+    [target.instance.pod, target.instance.container]))).toEqual([[["web-1", "app"]], [["web-2", "sidecar"]]]);
+  expect(result.reads.map(request => [request.pod, request.container, !!request.previous])).toEqual([
+    ["web-1", "app", false], ["web-1", "app", true], ["web-2", "sidecar", false], ["web-2", "sidecar", true],
+  ]);
 });

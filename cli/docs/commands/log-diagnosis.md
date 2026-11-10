@@ -4,7 +4,7 @@
 
 `doctor log [biz-id...]` 是按 Service / 时间窗口采集日志、或按业务标识聚合关联日志的确定性 collect command；业务 ID 也可通过
 重复 `--biz-id` 传入。不带 ID 时直接采集窗口内的服务日志，仅要求 log capability，不准备 traceId provider 的业务依赖；Service 与起点都可省略，沿用交互选择、Catalog 默认 Service 和默认回看窗口。app 注入当前 Plugin；带 ID 时 `collect/log` 先调用 `traceId` capability，把每个业务 ID
-解析为一条或多条规范 `trace_id`，再从通用 Service Catalog 选择具备 log capability 的 Service，并读取各声明的默认主链策略。它不 import 业务 Plugin 或识别具体 Service 名。Core 消费 Service 的 Workload 声明，复用 toolbox 解析 Running Pod 实例；共享 PodLogClient 负责有界读取日志。
+解析为一条或多条规范 `trace_id`，再从通用 Service Catalog 选择具备 log capability 的 Service，并读取各声明的默认主链策略。它不 import 业务 Plugin 或识别具体 Service 名。Core 消费 Service 的 Workload 声明，复用 toolbox 解析 Pod 实例（包括终止 Pod），按显式 Pod / Container 名缩小采集范围；共享 PodLogClient 负责有界读取日志。
 
 采集链路包含三层用途不同的产物：
 

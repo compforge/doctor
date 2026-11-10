@@ -49,10 +49,10 @@ describe("Log diagnosis", () => {
     expect(detectLogEvidenceGaps(buildLogEvidence([], runtimeFailed))).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "log:runtime", message: ["kubectl 不可用"].join("；") })]);
   });
 
-  test("无运行中 Pod 时按 Service 记录证据缺口", () => {
+  test("无日志 Pod 实例时按 Service 记录证据缺口", () => {
     const evidence = buildLogEvidence([observation("worker", [])], collectedFacts);
 
-    expect(detectLogEvidenceGaps(evidence)).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "log:service:worker", message: ["Service worker 没有可采集日志的运行中 Pod"].join("；") })]);
+    expect(detectLogEvidenceGaps(evidence)).toEqual([expect.objectContaining({ kind: "evidence.insufficient", subject: "log:service:worker", message: ["Service worker 没有可采集日志的 Pod"].join("；") })]);
   });
 
   test("按 Pod 区分完整、部分与不可用的日志证据", () => {

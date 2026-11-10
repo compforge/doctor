@@ -6,6 +6,7 @@ import type { Command } from "commander";
 import { createDoctorProgram, main } from "../src/app/main";
 import { DOCTOR_CLI_VERSION } from "../src/app/version";
 import { withLogger } from "../src/terminal/log";
+import { logCommand } from "../src/collect/log/command";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { commandOutcome } from "../src/command";
 import { testPlugin } from "./fixtures/test-plugin";
@@ -391,9 +392,29 @@ describe("command help", () => {
     expect(result.stdout).toContain("--watch <duration>");
   });
 
+  test("log forwards exact instance selectors and rejects empty names before target access", async () => {
+    const inputs: Array<{ pod?: string; container?: string }> = [];
+    const mock = spyOn(logCommand, "run").mockImplementation(async (_context, input) => {
+      inputs.push({ pod: input.pod, container: input.container });
+      return { ...commandOutcome(0), output: { items: [] } };
+    });
+    try {
+      expect((await runWithPlugin(["log", "-s", "example-api", "--pod", "api-1", "--container", "app"])).exitCode).toBe(0);
+      expect(inputs).toEqual([{ pod: "api-1", container: "app" }]);
+    } finally { mock.mockRestore(); }
+    for (const flag of ["--pod", "--container"]) {
+      const result = await runCore(["log", flag, ""]);
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain(`${flag} 需要非空名称`);
+    }
+  });
+
   test("log defaults to HTML plus a full Evidence Bundle", async () => {
     const result = await runWithPlugin(["log", "--help"]);
     expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("--pod <name>");
+    expect(result.stdout).toContain("--container <name>");
+    expect(result.stdout).toContain("previous（上一次重启前）");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("[biz-ids...]");
     expect(result.stdout).not.toContain("--id <id>");

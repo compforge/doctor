@@ -5,6 +5,7 @@ Doctor 从 Plugin Service 的 Workload 声明定位日志实例，再通过共�
 ```bash
 doctor log                         # 默认 Service / 时间窗口；交互时可选择 Service
 doctor log --service api -n prod --since 15m
+doctor log --service api --pod api-abc --container app --since 15m
 doctor log --service api --since-time '2026-09-16T15:00:00+08:00' --until-time '2026-09-16T15:15:00+08:00'
 doctor log <biz-id> --since 15m      # trace 与已解析对象关联
 ```
@@ -13,10 +14,12 @@ doctor log <biz-id> --since 15m      # trace 与已解析对象关联
 
 ## Workload 与采集范围
 
-Service 可以声明多个 Workload，位置可以是 Kubernetes Service、labels 或具体资源。Core 解析其 Running Pod，
+Service 可以声明多个 Workload，位置可以是 Kubernetes Service、labels 或具体资源。Core 解析其 Pod（包括已终止的 Pod），
 并按声明的 container 采集；未限定 container 时采集 Pod 的 application containers。交互候选来自 Plugin Catalog，
 不要求逻辑名称与集群 Service 同名。没有 Workload 声明、没有实例或定位失败都形成明确的证据缺口，
 不回退为同名资源查询，也不抹掉其它 Workload 已取得的日志。
+
+`--pod` 与 `--container` 按完整名称缩小上述范围，不绕过 Workload 的 container 声明。找不到目标会报告证据缺口，不回退采集其它实例。读取自动包含 current 与可用的 previous（上一次重启前）日志，无需额外开关；Pod 已删除或日志已回收时无法恢复，读取失败会保留原因。
 
 每次命令仍限定一个 namespace。Workload 声明其它 namespace 时提示用 `--namespace` 单独采集，
 不会静默切换目标。Manifest 的 Inspect Facts 保留 Service → WorkloadInstance 关联和定位缺口，

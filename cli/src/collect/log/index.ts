@@ -74,6 +74,8 @@ export interface CollectLogCliOpts {
   collectionStartedAt?: string;
   timePadding?: string;
   namespace?: string;
+  pod?: string;
+  container?: string;
   services?: readonly string[];
   since?: string;
   sinceTime?: string;
@@ -246,7 +248,7 @@ async function prepareLogBatch(
       const needs: import("@compforge/doctor-plugin").KubernetesAccessNeed[] = [];
       if (location.kind !== "resource" || location.resource_kind !== "Pod") needs.push({
         requirement: "preferred", rule: { verb: "list", resource: "pods" },
-        purpose: "定位 Workload 的 Running Pod", fallback: "记录对应 Workload 的证据缺口",
+        purpose: "定位 Workload 的 Pod", fallback: "记录对应 Workload 的证据缺口",
       });
       if (location.kind !== "labels") needs.push({
         requirement: "preferred",
@@ -333,7 +335,7 @@ export async function runCollectLog(
       bizId, traceIds: traces.map(trace => trace.traceId), identities, resolutionGaps: [...resolutionGaps, ...selection.gaps], workloads: selection.workloads, namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services: selectedServices,
       since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime: timeWindow.untilTime ?? untilTime, window: { ...timeWindow, untilTime: timeWindow.untilTime ?? untilTime },
-      errorsOnly: !!opts.errorsOnly, pattern: opts.pattern,
+      errorsOnly: !!opts.errorsOnly, pattern: opts.pattern, pod: opts.pod, container: opts.container,
       outputDir: join(stagingRoot, bizId === undefined ? "service-logs"
         : `biz-${index + 1}-${defaultLogBundleName(bizId, new Date())}`),
     }];
@@ -413,7 +415,10 @@ export async function collectLog(
   let executions: PromiseSettledResult<{ diagnosis: LogDiagnosis }>[];
   try {
     const execution = await runCollectBatch({
-      ctx: { ...contexts[0]!, bundle },
+      ctx: { ...contexts[0]!, bundle, config: { ...contexts[0]!.config,
+        pod: requests.every(request => request.pod === first.pod) ? first.pod : undefined,
+        container: requests.every(request => request.container === first.container) ? first.container : undefined,
+      } },
       inspects: [makeLogInspect(services, executor, workloads)],
       items: contexts.map(ctx => ({ ctx, config: ctx.config, projectFacts: (facts: Readonly<LogInspectionFacts>) => projectLogFacts(facts, ctx.config) })),
       concurrency, signal: commandContext.signal,
@@ -458,7 +463,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
-    target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, workloads: config.workloads, namespace: config.namespace, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
+    target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, workloads: config.workloads, namespace: config.namespace, pod: config.pod, container: config.container, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
     inspectionFacts: { ...facts },
     params: { window: config.window, since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
     startedAt, finishedAt: new Date().toISOString(),

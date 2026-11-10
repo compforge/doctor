@@ -50,7 +50,8 @@ export function makeLogInspect(
           gaps.push(`${serviceName}: 未声明可采集日志的 Workload`);
           continue;
         }
-        const selected = service.workloads.filter(workload => !workloads || workloads[serviceName]?.includes(workload.name));
+        const selected = service.workloads.filter(workload => (!workloads || workloads[serviceName]?.includes(workload.name))
+          && (!ctx.config.container || !workload.container || workload.container === ctx.config.container));
         workloadMissing[serviceName] = {};
         for (const workload of selected) {
           const gaps: string[] = workloadMissing[serviceName]![workload.name] = [];
@@ -72,12 +73,14 @@ export function makeLogInspect(
             gaps.push(`${serviceName}/${workload.name}: ${resolved.unavailableReason}`);
             continue;
           }
-          const running = resolved.pods.filter(pod => pod.phase === "Running");
-          if (!running.length) gaps.push(`${serviceName}/${workload.name}: 没有 Running Pod`);
-          for (const pod of running) {
+          // @rule Pod phase does not establish log availability; terminated containers may retain logs.
+          const pods = resolved.pods.filter(pod => !ctx.config.pod || pod.name === ctx.config.pod);
+          if (!pods.length && !ctx.config.pod) gaps.push(`${serviceName}/${workload.name}: 没有 Pod`);
+          for (const pod of pods) {
             const instance = resolved.instances.find(instance => instance.pod === pod.name)!;
-            const containers = pod.containers.filter(container => !workload.container || container.name === workload.container);
-            if (!containers.length) gaps.push(`${serviceName}/${workload.name}/${pod.name}: 没有可读取的 application container${workload.container ? " '" + workload.container + "'" : ""}`);
+            const containers = pod.containers.filter(container => (!workload.container || container.name === workload.container)
+              && (!ctx.config.container || container.name === ctx.config.container));
+            if (!containers.length) gaps.push(`${serviceName}/${workload.name}/${pod.name}: 没有可读取的 application container${ctx.config.container || workload.container ? " '" + (ctx.config.container ?? workload.container) + "'" : ""}`);
             for (const container of containers) targets.push({
               instance: { ...instance, container: container.name },
               current: container.containerId ? JSON.stringify([instance.uid, container.containerId]) : undefined,
@@ -112,17 +115,28 @@ export function makeLogInspect(
   };
 }
 
-/** @rule Shared discovery must not expand another request's Workload or failure scope. */
+/**
+ * @rule Shared discovery must not expand another request's Workload or failure scope.
+ * @rule Explicit instance filters narrow declared Workloads and never fall back to other containers.
+ */
 export function projectLogFacts(facts: Readonly<LogInspectionFacts>, config: LogCollectOptions): LogInspectionFacts {
   if (facts.servicePods.status !== "collected") return facts;
   const source = facts.servicePods;
   const selected = (name: string, workload: string) => !config.workloads || !!config.workloads[name]?.includes(workload);
-  return { ...facts, servicePods: { ...source,
-    byService: Object.fromEntries(config.services.map(name => [name,
-      (source.byService[name] ?? []).filter(target => selected(name, target.instance.workload))])),
-    missing: Object.fromEntries(config.services.map(name => [name, source.workloadMissing && config.workloads
+  const byService = Object.fromEntries(config.services.map(name => [name,
+    (source.byService[name] ?? []).filter(({ instance }) => selected(name, instance.workload)
+      && (!config.pod || instance.pod === config.pod)
+      && (!config.container || instance.container === config.container))]));
+  const missing = Object.fromEntries(config.services.map(name => {
+    const gaps = source.workloadMissing && config.workloads
       ? (config.workloads[name] ?? []).flatMap(workload => source.workloadMissing?.[name]?.[workload] ?? [])
-      : source.missing[name] ?? []])),
+      : source.missing[name] ?? [];
+    const selection = [config.pod && `Pod '${config.pod}'`, config.container && `container '${config.container}'`].filter(Boolean).join(" / ");
+    return [name, selection && !byService[name]?.length
+      ? [...gaps, `${name}: 声明的 Workload 范围内没有匹配 ${selection} 的日志实例`]
+      : gaps];
+  }));
+  return { ...facts, servicePods: { ...source, byService, missing,
     workloadMissing: source.workloadMissing && Object.fromEntries(config.services.map(name => [name,
       Object.fromEntries(Object.entries(source.workloadMissing?.[name] ?? {}).filter(([workload]) => selected(name, workload)))])),
   } };
