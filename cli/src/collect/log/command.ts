@@ -20,6 +20,9 @@ export const logCommand = defineCommand<LogInput, import("./index").LogOutput>({
   name: "doctor log",
   render: renderLogReport,
   validate: (input) => {
+    for (const name of ["pod", "container"] as const) {
+      if (input[name] !== undefined && !input[name]?.trim()) throw new CommandInputError(`--${name} 需要非空名称`);
+    }
     try { validateLogTimeWindow(input); timePaddingMs(input.timePadding); }
     catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },

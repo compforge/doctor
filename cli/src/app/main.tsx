@@ -218,6 +218,8 @@ function withLogOptions(cmd: CommandT, defaultServices: string): CommandT {
   const defaultDescription = defaultServices || "当前 Plugin 声明的默认 Service";
   return withBizIdInputs(cmd, "可选业务 ID；提供时解析 trace 或已声明的关联对象，省略时按 Service / 时间范围采集；可重复传入")
     .addOption(serviceOption(`Kubernetes Service；缺省时交互多选，非交互默认 ${defaultDescription}`))
+    .option("-p, --pod <name>", "在所选 Service 中精确匹配 Pod 名")
+    .option("-c, --container <name>", "在 Workload 声明范围内精确匹配 application container 名")
     .option("--since <duration>", "kubectl 日志回看窗口（缺省时优先从 UUIDv7 ID 推导，否则为 6h）")
     .option("--since-time <timestamp>", "从指定时间开始，优先于 --since")
     .option("--until-time <timestamp>", "日志截止时间（RFC3339，包含边界）；无业务 ID 时默认命令开始时刻，读过终点即停止")
@@ -770,6 +772,7 @@ export function createDoctorProgram(
       .addHelpText("after", `
 分析思路：
   按 Service 与时间窗口读取日志；有业务 ID 时关联 trace 与对象日志，保留各来源结果。
+  自动采集 current 与可用的 previous（上一次重启前）日志；终止 Pod 也会尝试读取。
 结果解读：
   无匹配日志不证明请求未发生；先检查窗口、目标副本、日志保留范围及读取失败或截断。
 `),

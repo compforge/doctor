@@ -12,6 +12,8 @@ export interface LogCollectOptions {
   identities?: readonly import("./correlation").LogIdentityMatch[];
   resolutionGaps?: readonly string[];
   namespace: string;
+  pod?: string;
+  container?: string;
   kubeconfig?: string;
   context?: string;
   services: string[];

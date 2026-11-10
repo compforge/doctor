@@ -7,7 +7,7 @@ export const COLLECT_WINDOW_KIND = "collect.window";
 /**
  * @spec Business-owned collection bounds for exactly one Identity; at least one bound is required.
  * @why A related object's lifetime does not automatically describe the requested activity.
- * @see {@link ../../../cli/docs/commands/log-diagnosis.md}
+ * @see {@link ../../../cli/docs/commands/log.md#自动采集窗口}
  */
 export interface CollectWindow {
   identity: Identity;

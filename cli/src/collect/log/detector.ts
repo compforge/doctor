@@ -31,7 +31,7 @@ export function detectLogEvidenceGaps(
     if (!observation.pods.length) {
       return discovery.length ? discovery : evidenceGaps(
         `log:service:${observation.service}`,
-        [`Service ${observation.service} 没有可采集日志的运行中 Pod`], evidence
+        [`Service ${observation.service} 没有可采集日志的 Pod`], evidence
       );
     }
     return [...discovery, ...observation.pods.flatMap((pod): EvidenceGapFinding[] => {

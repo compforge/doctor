@@ -67,7 +67,7 @@ export interface LogTimeWindow extends TimeWindowOptions {
 /**
  * @spec Explicit ranges win; otherwise pad each business window before union, then fall back to complete traces or existing policy.
  * @rule A missing bound is filled independently. Conflicting or unrepresentable intervals are rejected, never swapped.
- * @see {@link ../../../docs/commands/log-diagnosis.md}
+ * @see {@link ../../../docs/commands/log.md#自动采集窗口}
  */
 export function selectLogTimeWindow(input: TimeWindowOptions & {
   id?: string; traceIds: readonly string[]; traceWindows?: readonly TraceLogWindow[];
