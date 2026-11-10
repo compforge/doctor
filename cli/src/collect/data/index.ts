@@ -1,4 +1,4 @@
-import { makeDataListInspect, dataListSummary, dataTypeFact, dataTypeResult } from "./list";
+import { makeDataPageInspect, dataPageSummary, dataTypeFact, dataTypeResult } from "./page";
 import { gapMessages } from "../evidence-gaps";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -61,19 +61,20 @@ export async function runCollectData(
   injectedContexts?: Readonly<Record<string, PluginContext>>,
 ): Promise<CommandResult<DataOutput>> {
   const { config, selections, command: commandContext } = dataCommand;
+  const commandName = config.tenantId ? "tenant" : "data";
   const services = selections.map(item => item.service);
   const log = (line: string) => useLogger().info(`${line}`);
   log(`[collect] namespace: ${config.namespace}（${config.namespaceSource}）`);
   const outcomes = dataOutcomes(dataCommand.providers);
   const stagingRoot = mkdtempSync(join(tmpdir(), "doctor-data-"));
   const staging = join(stagingRoot, config.reportName);
-  const summary = commandContext.artifacts.add({ command: "data", path: staging });
+  const summary = commandContext.artifacts.add({ command: commandName, path: staging });
   const bundle = new EvidenceBundle(staging, outcomes);
   const startedAt = new Date().toISOString();
   // Each item has its own evidence directory from the outset, including singleton input.
   const targets = config.ids.map((bizId, index) => {
     const path = join(stagingRoot, `${config.reportName}-biz-${index + 1}`);
-    return { bizId, artifact: commandContext.artifacts.add({ command: "data", path }),
+    return { bizId, artifact: commandContext.artifacts.add({ command: commandName, path }),
       bundle: new EvidenceBundle(path, outcomes), config: { ...config, ids: [bizId] } };
   });
   let facts: DataFacts = { services: {}, capabilityResults: [] };
@@ -86,7 +87,7 @@ export async function runCollectData(
     const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
     const execution = await runCollectBatch({
       ctx,
-      inspects: [...(config.list ? [makeDataListInspect(access)] : []), makeDataInspect(access), makeDataContributionInspect({ selections, config })],
+      inspects: [...(config.list ? [makeDataPageInspect(access)] : []), makeDataInspect(access), makeDataContributionInspect({ selections, config })],
       items: targets.map(target => ({
         ctx: { ...ctx, config: target.config, bundle: target.bundle }, config: target.config,
         projectFacts: (snapshot: Readonly<DataFacts>) => projectDataFacts(snapshot, target.bizId),
@@ -103,11 +104,11 @@ export async function runCollectData(
     diagnoses = execution.items;
   } catch (error) {
     collectionFailure = error instanceof Error ? error.message : String(error);
-    reportError(error, { context: "doctor data/collect", summary: "Data 采集失败" });
+    reportError(error, { context: `doctor ${commandName}/collect`, summary: "Data 采集失败" });
     diagnoses = targets.map(() => ({ status: "rejected", reason: error }));
   } finally {
     try { await access?.close(); }
-    catch (error) { reportError(error, { context: "doctor data/close", summary: "Data 访问资源回收失败" }); }
+    catch (error) { reportError(error, { context: `doctor ${commandName}/close`, summary: "Data 访问资源回收失败" }); }
   }
 
   const items: DataOutput["items"][number][] = [];
@@ -132,7 +133,7 @@ export async function runCollectData(
     } catch (error) {
       reason = error instanceof Error ? error.message : String(error);
       status = CommandStatus.Failed;
-      reportError(error, { context: `doctor data/output ${target.bizId}`, summary: "Data 产物写入失败" });
+      reportError(error, { context: `doctor ${commandName}/output ${target.bizId}`, summary: "Data 产物写入失败" });
     }
     items.push({ bizId: target.bizId, status, artifacts: [target.artifact], diagnosis, ...(reason ? { reason } : {}) });
     groups[target.bizId] = diagnosis ?? { error: reason ?? "未形成诊断结果" };
@@ -147,11 +148,11 @@ export async function runCollectData(
   }
   if (config.list) facts = { ...facts, typeResults: typeResults.map(dataTypeFact) };
   writeDataManifest(bundle, config, dataCommand.providers, config.services, facts, startedAt);
-  bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n${dataListSummary(typeResults)}\n`);
+  bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n${dataPageSummary(typeResults)}\n`);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
 
   return { status: aggregateCommandStatus([...items.map(item => item.status), ...typeResults.map(item => item.status)]),
-    output: { items, ...(config.list ? { typeResults } : {}) },
+    output: { ...(config.tenantId ? { tenant: { id: config.tenantId, name: config.tenantName } } : {}), items, ...(config.list ? { typeResults } : {}) },
     artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
 }
 
@@ -161,7 +162,7 @@ function writeDataManifest(
 ): void {
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
-    target: { namespace: config.namespace, input_ids: config.ids, ...(config.list ? { input_types: config.list.bizTypes } : {}), services },
+    target: { namespace: config.namespace, ...(config.tenantId ? { tenant_id: config.tenantId, tenant_name: config.tenantName } : {}), input_ids: config.ids, ...(config.list ? { input_types: config.list.bizTypes } : {}), services },
     inspectionFacts: facts,
     params: { time_window: config.timeWindow, services, list: config.list, inspect_capabilities: Object.fromEntries(providers.map(({ name: service, extension: capability }) => {
       return [service, { provides: capability.provides, expands: capability.expands ?? [] }];

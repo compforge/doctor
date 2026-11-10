@@ -1,59 +1,33 @@
-# Tenant 数据采集
+# Tenant 数据查询
 
-## 理念 / 概念
+`doctor tenant` 查看指定租户下的数据。通过 `--tenant-id` 直接指定 ID，或用 `--tenant-name`
+精确解析名称；两者互斥。交互终端可从目录选择，查询开始前必须确定租户。
 
-`doctor tenant` 与 `doctor data` 都是数据采集 Command。前者以 tenant-id 为根 Identity，采集租户粒度
-Fact（包括表达 Identity 关系的 Relation）；后者以 biz-id 为根 Identity，采集消息、会话等业务对象粒度的 Fact。
-`doctor tenant` 通过租户目录确定 Identity，再组合 Plugin 已经提供的可复用 Capability，把返回的
-Model 或 `ServiceInspectResult` 组织为 Tenant Evidence；同一次 Inspect Query 可以返回多个领域 Fact。
+## 类型选择与分页
 
-- **Tenant identity**：由 Plugin 声明的 `tenantDirectory` capability 解析。
-- **Model Fact**：直接复用 Plugin `model.catalogService` 指向的 Model Catalog；Command 将数量投影为
-  `model-summary` ValueFact，并将每个 Model 投影为以 model id 为稳定 key 的 `model` RecordFact。
-- **Service Inspect Fact**：来自 `accepts` 包含 `tenant_id` 的 Service Inspect contribution。
-- **Evidence**：由 Tenant Command 负责失败隔离、证据不足 Finding、Bundle 与报告展示。
+`--biz-type` 可重复传入多个类型；省略时查询所有已注册且支持租户过滤的类型。`-s` 限定数据提供方
+Service，省略时调用所有匹配提供方。命令不接受业务 ID；具体业务对象的关联查询使用 `doctor data`。
 
-## 流程
+```bash
+doctor tenant --tenant-name demo --biz-type model --biz-type intention
+doctor tenant --tenant-id <id> -s control --biz-type bot --page 2 --page-size 20
+```
 
-1. Core 解析 profile、namespace 与 Kubernetes 连接，通过租户目录确定 tenant-id。
-2. Command 形成 `{ identity: { kind: "tenant_id", value } }` Query。
-3. Command 查询 Model Catalog，并选择接受 `tenant_id` 的 Inspect contribution；每次调用独立准备 access 和
-   `PluginContext`，完成后回收连接与 port-forward。
-4. Model Catalog 与每个 `ServiceInspectResult` 都形成带 query 获取状态的 Tenant Fact；列表实体按
-   RecordFact 进入统一的过滤、分页和详情展示，单个 Capability 失败不丢弃其它已取得事实。
-5. Command 汇总 Facts，产生 Findings，并生成 Evidence、Markdown 与 HTML。
+业务类型由 Service 静态注册，配置、模型、意图等只是 Plugin 定义的类型，Core 不维护类型枚举。
+Help 展示支持租户过滤的类型及提供方，不访问目标环境。目录提供方与数据提供方独立选择。
 
-## 终端运行摘要
+## 数据能力与执行边界
 
-使用 `doctor tenant --tenant-id <id> -f summary` 直接打印租户诊断的紧凑摘要，完整 Capability Facts、
-证据不足 Finding 和 Evidence 仍保留在输出目录中。该格式不生成 HTML，不支持 `--output`；它与其它格式使用
-相同的采集范围。
+Tenant 解析租户后使用共享的数据查询流程，通过 `data.page` 请求分页数据，不另设 Tenant 数据协议。
+Service 必须声明 `supportsTenant`，并将 `tenantId` 同时用于记录查询和计数；不支持时显式失败，
+不能忽略条件后返回环境数据。省略类型时不选择这些提供方；显式选择的类型保留各来源的失败结果。
 
-摘要显示租户身份、Capability 数量、每个 Capability 的 Fact 数量或失败原因，以及证据完整性和
-证据缺口。需要查看具体配置时，继续从 Evidence 的 `manifest.json` 和 Facts 索引读取。
+每个 Service/类型独立返回 `items`、`page`、`pageSize`、`total`，记录结构归 Service；Core 不跨来源
+合并总数。稳定排序和准确计数归提供方；当前页不表示完整租户盘点，预算截断和查询失败须明确区分。
 
-Tenant Command 当前只消费返回的 Fact，尚不沿 Relation 继续查询。协议仍保留 Capability 返回的 Relation；
-出现真实场景后，由 Tenant Command 决定是否继续形成 Query，以及深度、数量、去重和失败预算，Capability
-不自行递归。
-
-## 关键设计
-
-### Query 作用域与 Capability 归属分开
-
-Tenant 与 Data 分别以 tenant-id、biz-id 形成数据采集入口，但不因此复制数据能力。Model Catalog 可同时被
-Tenant、Model 与 Chat 消费；Inspect contribution 只声明接受的 Identity 与提供的 Fact / Relation，不感知
-调用它的 Command。
-
-### Command 拥有诊断视角
-
-Plugin 不再返回 tenant report contribution，也不拥有 Tenant 报告 schema。Plugin 负责私有存储查询和
-领域 Fact；Command 负责选择哪些 Fact 进入本次 Evidence，以及如何表达 证据不足 Finding 和报告。展示逻辑不能
-反向驱动 Capability 选择或 Relation 遍历。
-
-### 主动诊断保持独立
-
-Tenant 只读取当前现状。需要产生业务流量、执行验证或性能采样的领域命令继续通过 Probe/Operation
-产生 Observation，不把主动行为包装成 Fact。
+身份解析、访问准备、查询、Evidence 与输出按同一次调用管理。租户、类型及分页条件参与结果复用键。
+JSON、Summary、HTML 和 Bundle 使用同一份已采集证据，一个来源失败仍保留其它来源的成功结果。
+模型的实际调用验证仍使用 Model 命令；数据查询成功不代表业务执行成功。
 
 ## 只读目录查询
 
@@ -75,4 +49,4 @@ doctor tenant users --tenant-name <name> --query <keyword> --page 1 --page-size 
 total 和 users。空列表是成功结果，能力缺失、未找到或访问失败不伪装为空列表。
 输出只包含身份 ID、名称、显示名称和查询分页信息，可通过 shell 重定向保存；不支持 `-o`。
 这些命令只准备所需目录能力的访问，不采集配置或模型事实。原有 `doctor tenant --tenant-id/--tenant-name`
-继续运行租户诊断；其中 ID 参数表示诊断范围，不承担目录存在性验证。
+继续运行租户数据查询；其中 ID 参数表示诊断范围，不承担目录存在性验证。

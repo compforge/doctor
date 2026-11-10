@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-Data 支持两种查询：按业务 ID 汇集关联证据，或按业务类型浏览 Service 拥有的数据。两种入口共享
+`doctor data` 按业务 ID 汇集关联证据；`doctor tenant` 按业务类型浏览租户数据。两种入口共享
 Service 发现、访问准备、执行与证据交付。Core 定义接口规则并汇总结果；业务类型、字段及查询含义由
 Service 提供，Core 不维护业务类型枚举。
 
@@ -32,21 +32,9 @@ Identity 的出边；后续 Identity 的查询由 Core 调度。这样业务适�
 
 ### 类型查询与分页
 
-`--biz-type` 可以重复传入多个类型，重复值只执行一次；可与业务 ID 同次查询，分页仅作用于类型查询。
-Service 为每种类型注册一个 `data.list` Extension，包含 `bizType`、描述、访问声明及查询实现。
-同一 Service 的同一类型只能注册一次，不同 Service 可以提供同名类型和不同的记录字段。
-
-`data --help` 从已加载 Plugin 的静态注册生成类型、Service 和说明，不访问目标环境；指定 `-s` 时只展示
-选定 Service 的类型。能力声明不代表当前环境连接、权限或数据可用。
-
-未指定 `-s` 时，Core 调用所有注册了所请求类型的 Service；指定后仅在该范围内匹配。类型无人支持时
-在访问环境前报错。每个 Service/类型独立返回 `items`、`page`、`pageSize` 和 `total`；Core 按来源分组，
-不跨 Service 去重、关联记录或构造全局总数。一个提供方失败仍保留其他提供方取得的数据。
-
-Service 在数据源侧使用稳定排序分页，并按相同查询范围返回准确 `total`。越界页可以为空，仍保留
-总数；计数失败不能用零或本页条数代替。分页期间数据可以变化，不承诺跨请求的快照一致性。
-命令限制每页条数及证据容量；预算缩短页面时必须标记 `truncated` 并保留原始总数，避免被误读为末页。
-类型页面与 ID 查询事实一起保存为本次执行的证据，展示和序列化不再次查询现场。
+Tenant 使用共享的 `data.page` 协议查询指定租户的数据；类型注册、租户过滤及分页规则见
+[Tenant 数据查询](tenant.md)。`doctor data` 的命令界面只提供业务 ID 查询，不提供租户或类型选择参数。
+`data.page` 表达分页返回，不使用暗示返回全部数据的 `data.list` 命名。
 
 ### ID 查询与事实
 
@@ -108,7 +96,7 @@ Detector 原因。摘要用于快速判断本次批量采集是否完整，详�
 
 ### Catalog 按 kind 发现 Extension，编排器不认识业务名
 
-`collect/data` 只解释阶段和 `data.id` / `data.list` 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
+`collect/data` 只解释阶段和 `data.id` / `data.page` 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
 Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schema、关联键、连接规则和固定查询图留在
 具体 Plugin。新增 Plugin 或 Service 不需要修改通用 data 编排器。
 

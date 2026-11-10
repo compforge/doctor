@@ -8,7 +8,7 @@ export type DataIdOutput = readonly ServiceInspectQueryOutcome[];
 /**
  * Identity matching and Fact declarations belong to this kind, not the generic Extension protocol.
  *
- * @see {@link ../../../../cli/docs/commands/data-diagnosis.md#identity-关系驱动跨-service-采集}
+ * @see {@link ../../../../cli/docs/commands/data.md#identity-关系驱动跨-service-采集}
  */
 export interface DataIdExtension extends Extension<DataIdInput, DataIdOutput> {
   readonly kind: typeof DATA_ID_KIND;

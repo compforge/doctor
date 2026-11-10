@@ -238,10 +238,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
     ? defaultServiceNames.join(",")
     : "当前 Plugin 中提供 Inspect contribution 的 Service";
   return withBizIdInputs(cmd, "需要汇集关联数据的业务 ID；可重复传入")
-    .option("--biz-type <type>", "业务类型；可重复传入，支持类型见下方静态目录", (value: string, previous: string[]) => [...previous, value], [])
-    .option("--page <number>", "每个 Service/类型的页号，从 1 开始（默认 1）")
-    .option("--page-size <number>", "每个 Service/类型每页条数（默认 20，最大 1000）")
-    .addOption(serviceOption(`提供业务数据的 Service；类型查询缺省执行所有匹配提供方；ID 查询默认 ${defaultDescription}`))
+    .addOption(serviceOption(`提供业务数据的 Service；ID 查询默认 ${defaultDescription}`))
     .option("--since <duration>", "事件回看窗口，例如 30m、2h")
     .option("--since-time <timestamp>", "事件起点（RFC3339；优先于 --since）")
     .option("--until-time <timestamp>", "事件终点（RFC3339，包含边界；指定窗口时缺省为命令开始时刻）")
@@ -295,6 +292,10 @@ function withTenantOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
     .option("--tenant-name <name>", "通过租户目录精确解析租户名")
+    .option("--biz-type <type>", "租户数据类型；可重复传入，缺省查询所有支持租户过滤的类型", (value: string, previous: string[]) => [...previous, value], [])
+    .addOption(serviceOption("提供租户数据的 Service；缺省执行所有匹配提供方"))
+    .option("--page <number>", "每个 Service/类型的页号（默认 1）")
+    .option("--page-size <number>", "每页条数（默认 20，最大 1000）")
     .option("--directory-provider <service[/extension]>", "租户目录 Extension 提供方")
     .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
     .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
@@ -788,21 +789,18 @@ export function createDoctorProgram(
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withDataOptions(
-    catalog.command("data").helpGroup("Collect · 采集与分析:").description("按业务 ID 汇集关联数据，或按业务类型分页查询各 Service 的数据（只读）")
+    catalog.command("data").helpGroup("Collect · 采集与分析:").description("按业务 ID 汇集各 Service 的关联数据（只读）")
       .addHelpText("after", `
 分析思路：
-  --biz-id 沿 Identity 关系汇集记录；--biz-type 分页浏览类型，可重复传入多个类型。
-  不指定 -s 时执行所有注册该类型的 Service；分页和 total 按 Service/类型独立返回。
+  --biz-id 沿 Identity 关系汇集记录；可重复传入多个 ID。
 结果解读：
   采集成功表示取得数据，业务是否成功仍需解释记录；核对来源、观察时间和关联范围内的缺口。
-`)
-      .addHelpText("after", ({ command }) => plugin ? dataTypesHelp(plugin.services, command.opts().services) : "\n加载 Plugin 后可查看其注册的 biz-type。\n"),
+`),
     [],
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts> & { bizType?: string[] }, command: CommandT) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    const dataOpts = { ...commandOpts, bizTypes: opts.bizType };
-    await runCommand(dataCommand, dataOpts, domainInput(dataOpts), commandRuntime);
+    await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withInspectOptions(
     catalog.command("inspect").helpGroup("Collect · 采集与分析:").description("检查 Service 的 workload、配置与依赖；支持 --field env|config|image|event|hpa 和 --search 快速查值（只读）")
@@ -826,13 +824,16 @@ export function createDoctorProgram(
     catalog.command("tenant").helpGroup("Collect · 采集与分析:").description("汇总 Plugin 提供的租户粒度业务事实（只读）")
       .addHelpText("after", `
 分析思路：
-  以租户身份汇集 Plugin 提供的业务事实，保留各来源的配置与能力信息。
+  确定租户后按 biz-type 查询数据；缺省查询所有支持租户过滤的类型。
+  各 Service/类型独立分页，total 为该租户过滤后的总数；当前页不代表完整盘点。
 结果解读：
   租户可见的配置或模型目录不证明实际调用成功；模型调用用 model，单请求记录用 data / trace。
-`),
-  ).action(async (opts: CollectTenantCliOptions, command: CommandT) => {
+`)
+      .addHelpText("after", ({ command }) => plugin ? dataTypesHelp(plugin.services, command.opts().services, true) : ""),
+  ).action(async (opts: CollectTenantCliOptions & { bizType?: string[] }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
-    await runCommand(tenantCommand, opts, domainInput(opts), commandRuntime);
+    const tenantOpts = { ...opts, bizTypes: opts.bizType };
+    await runCommand(tenantCommand, tenantOpts, domainInput(tenantOpts), commandRuntime);
   });
   for (const [operation, description] of [
     ["list", "列出启用租户的 ID、名称和显示名称（只读）"],
@@ -847,6 +848,9 @@ export function createDoctorProgram(
       .option("--page-size <number>", "每页数量 1..100，默认 20", Number);
     child.action(async (_options, command: CommandT) => {
       const opts = commandOptionsWithSources(command);
+      // Parent and directory commands share pagination flags; normalize their values at this boundary.
+      if (opts.page !== undefined) opts.page = Number(opts.page);
+      if (opts.pageSize !== undefined) opts.pageSize = Number(opts.pageSize);
       // Parent diagnostic defaults must not override an explicit directory format.
       opts.format = command.opts().format ?? (tenant.getOptionValueSource("format") === "cli" ? tenant.opts().format : "text");
       await runCommand(tenantDirectoryCommand, opts, { ...domainInput(opts), operation }, commandRuntime);
@@ -1043,15 +1047,15 @@ export async function main(embedded: Distribution = {}, host: DoctorHostOptions 
         ? embedded.plugin
         : await loadInstalledPlugin(manifest.plugin)
       : undefined;
-    const dataHelp = argv.includes("data") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"));
-    const helpPlugin = dataHelp && manifest.plugin && !plugin
+    const tenantHelp = argv.includes("tenant") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"));
+    const helpPlugin = tenantHelp && manifest.plugin && !plugin
       ? embedded.plugin && `${embedded.plugin.id}@${embedded.plugin.version}` === manifest.plugin
         ? embedded.plugin
         : existsSync(installedPluginPath(manifest.plugin)) ? await loadInstalledPlugin(manifest.plugin) : undefined
       : undefined;
     distribution = { ...manifest, plugin: plugin ?? helpPlugin };
   }
-  if (!path && !distribution.plugin && argv.includes("data") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"))) {
+  if (!path && !distribution.plugin && argv.includes("tenant") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"))) {
     distribution = { ...distribution, plugin: await loadActivePlugin() };
   }
   const program = createDoctorProgram(distribution, host);

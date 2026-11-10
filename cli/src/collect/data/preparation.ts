@@ -50,6 +50,9 @@ export async function prepareDataAccess(
     let managed: ManagedPluginContext | undefined;
     try {
       command.signal.throwIfAborted();
+      if (config.tenantId && "bizType" in declared.extension && !declared.extension.supportsTenant) {
+        throw new Error(`${declared.name}/${declared.extension.bizType} 不支持租户过滤`);
+      }
       if (!context) {
         managed = await openPluginContext(executor, config.kube, {
           config: command.profile.pluginConfig,

@@ -23,7 +23,7 @@ export function validateExtension(value: unknown): asserts value is RegisteredEx
 }
 
 export * from "./data-id";
-export * from "./data-list";
+export * from "./data-page";
 export * from "./trace-resolve";
 export * from "./trace-range";
 export * from "./facet";

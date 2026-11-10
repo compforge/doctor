@@ -1,13 +1,13 @@
-import { dataTypeResult } from "../src/collect/data/list";
+import { dataTypeResult } from "../src/collect/data/page";
 import { expect, test, mock } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createServiceCatalog, withSummary, type PluginContext, type DataListExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type PluginContext, type DataPageExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { CommandContext, CommandStatus } from "../src/command";
 import { prepareDataCommand, runCollectData } from "../src/collect/data";
 import { dataCommand } from "../src/collect/data/command";
-import { dataListProviders } from "../src/collect/data/extensions";
+import { dataPageProviders } from "../src/collect/data/extensions";
 import { parseDataQueries } from "../src/collect/data/query";
 import { selectDataQueryServices } from "../src/collect/data/config";
 import { createDoctorProgram } from "../src/app/main";
@@ -17,8 +17,8 @@ import { inspectExtension } from "../../packages/plugin/tests/extension-fixture"
 
 const calls: string[] = [];
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "data" } };
-const list = (bizType: string, fail = false): DataListExtension => ({
-  id: `list-${bizType}`, kind: "data.list", bizType, description: `${bizType} records`, access: {},
+const list = (bizType: string, fail = false): DataPageExtension => ({
+  id: `list-${bizType}`, kind: "data.page", supportsTenant: true, bizType, description: `${bizType} records`, access: {},
   run: withSummary({ title: bizType, fields: [] }, async (context, query) => {
     calls.push(`${context.target.service.name}/${bizType}`);
     if (fail) throw new Error("source offline");
@@ -38,7 +38,7 @@ const executor = { run: async () => { throw new Error("unexpected target access"
 for (const mixed of [false, true]) test(`type queries preserve independent pages, failures and ID results (mixed=${mixed})`, async () => {
   calls.length = 0;
   const context = new CommandContext({});
-  const serialized = mkdtempSync(join(tmpdir(), "doctor-data-list-test-"));
+  const serialized = mkdtempSync(join(tmpdir(), "doctor-data-page-test-"));
   try {
     const prepared = await prepareDataCommand({ bizIds: mixed ? ["id-a"] : [], bizTypes: ["bot", "skill", "bot"], namespace: "test", page: 2, pageSize: 3 }, plugin.services, context, executor);
     const contexts = Object.fromEntries(["first", "second"].map(name => [name, {
@@ -76,9 +76,9 @@ test("service filtering and static help discover types without executing provide
   expect(() => selectDataQueryServices({ bizIds: [], bizTypes: ["skill"], services: ["first"] }, catalog)).toThrow("不支持");
   const program = createDoctorProgram({ plugin: { ...plugin, services: catalog } }).exitOverride();
   let help = "";
-  const command = program.commands.find(command => command.name() === "data")!.exitOverride();
+  const command = program.commands.find(command => command.name() === "tenant")!.exitOverride();
   command.configureOutput({ writeOut: text => { help += text; }, writeErr: () => {} });
-  try { await program.parseAsync(["data", "-s", "first", "--help"], { from: "user" }); } catch (error) {
+  try { await program.parseAsync(["tenant", "-s", "first", "--help"], { from: "user" }); } catch (error) {
     expect((error as { code: string }).code).toBe("commander.helpDisplayed");
   }
   expect(help).toContain("bot records");
@@ -88,7 +88,7 @@ test("service filtering and static help discover types without executing provide
 
 test("duplicate type registrations and invalid pagination fail before target access", () => {
   const catalog = createServiceCatalog([service("first", [list("bot"), { ...list("bot"), id: "duplicate" }])]);
-  expect(() => dataListProviders(catalog)).toThrow("Duplicate");
+  expect(() => dataPageProviders(catalog)).toThrow("Duplicate");
   for (const opts of [{ page: 0 }, { page: 1.5 }, { pageSize: 1001 }, { page: "NaN" }]) {
     expect(() => parseDataQueries({ bizIds: [], bizTypes: ["bot"], ...opts })).toThrow();
   }

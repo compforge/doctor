@@ -1,5 +1,3 @@
-import { modelCatalogExtensions, extensionModelCatalog } from "../../model/extensions";
-import { dataProviders } from "../data/extensions";
 import { discoverTenantDirectory } from "../../plugin/tenant-directory";
 import type {
   PluginDefinition,
@@ -10,11 +8,8 @@ import {
   resolveKubernetesCommandConfig,
 } from "../../command/kubernetes-target";
 import { openPluginContext } from "../../plugin/context";
-import { inspectExtensionQueries, normalizeServiceInspectResult } from "../../plugin/inspect";
 import type {
   CollectTenantCliOptions,
-  TenantAccess,
-  TenantCapabilityCollector,
 } from "./model";
 
 function tenantDirectoryPort(value: string | undefined, fallback: number): number {
@@ -61,66 +56,4 @@ export async function openTenantDirectoryAccess(input: {
     capability: extension,
   }), { service: options.directoryProvider, commandContext });
   return { config, executor, kube, databaseIdentity, directory };
-}
-
-export async function openTenantAccess(input: Parameters<typeof openTenantDirectoryAccess>[0]): Promise<TenantAccess | undefined> {
-  const access = await openTenantDirectoryAccess(input);
-  if (!access) return undefined;
-  const { config, executor, kube, databaseIdentity, directory } = access;
-  const { plugin, commandContext } = input;
-  const capabilities: TenantCapabilityCollector[] = dataProviders(plugin.services)
-    .filter(provider => provider.extension.accepts.includes("tenant_id"))
-    .map(({ service, extension }) => ({
-      id: `inspect:${service.name}`,
-      service: service.name,
-      capability: "inspect" as const,
-      query: async (identity) => {
-        const capability = extension;
-        const context = await openPluginContext(executor, kube, {
-          config: commandContext.profile.pluginConfig,
-          databaseIdentity,
-          service: service,
-          capability,
-        });
-        try {
-          const budget = { maxFacts: 1_000, maxBytes: 8 * 1024 * 1024 };
-          const [outcome] = await inspectExtensionQueries(capability, context, [{ identity, results: new Map(), budget }]);
-          if (!outcome || outcome.status === "failed") throw new Error(outcome?.reason ?? "Missing Inspect outcome");
-          const result = normalizeServiceInspectResult({
-            value: outcome.result,
-            service: service.name,
-            queryIdentity: identity,
-            capability,
-            budget,
-          });
-          return [{ kind: "data" as const, result }];
-        } finally {
-          await context.dispose();
-        }
-      },
-    }));
-  for (const { service: declared, extension: query } of plugin.services.extensions("model.query")) {
-    const provider = modelCatalogExtensions(plugin.services, declared.name, query.id);
-    const { service } = provider;
-    capabilities.unshift({
-      id: `models:${service.name}/${query.id}`,
-      service: service.name,
-      capability: "modelCatalog",
-      query: async (identity) => {
-        const catalog = extensionModelCatalog(provider, (service, extension) => openPluginContext(executor, kube, {
-          config: commandContext.profile.pluginConfig,
-          databaseIdentity,
-          service, endpoint: extension.endpoint,
-          capability: extension,
-        }));
-        return [{ kind: "models", models: await catalog.query({ identity }) }];
-      },
-    });
-  }
-  return {
-    config,
-    directory,
-    capabilities,
-    dispose: async () => { },
-  };
 }

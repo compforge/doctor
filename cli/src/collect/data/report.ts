@@ -1,4 +1,4 @@
-import { dataListSummary } from "./list";
+import { dataPageSummary } from "./page";
 import { escapeHtml } from "../../report/escape";
 import type { CommandResult } from "../../command/result";
 import { failureReport, type RenderContext } from "../../report/context";
@@ -9,6 +9,8 @@ import { buildDataHtml } from "./render";
 
 export async function renderDataReport(context: RenderContext, result: CommandResult<DataOutput>): Promise<Report> {
   if (!result.output) return failureReport("doctor data", result);
+  const tenant = result.output.tenant;
+  const title = tenant ? "doctor tenant" : "doctor data";
   const pages: ReportPage[] = [];
   for (const [index, item] of result.output.items.entries()) {
     const subject = { key: item.bizId, label: item.bizId };
@@ -26,9 +28,9 @@ export async function renderDataReport(context: RenderContext, result: CommandRe
     const artifact = result.artifacts[0];
     const file = result.output.items.length ? "data-types.html" : "report.html";
     pages.push(await evidencePage(context, artifact, { title: "业务类型查询", status: result.status }, () => writeEvidencePage(context, artifact, {
-      title: "业务类型查询", summaryHtml: `<pre>${escapeHtml(dataListSummary(result.output!.typeResults!))}</pre>`,
+      title: "业务类型查询", summaryHtml: `<pre>${tenant ? escapeHtml(`租户：${tenant.name ?? tenant.id}（${tenant.id}）\n\n`) : ""}${escapeHtml(dataPageSummary(result.output!.typeResults!))}</pre>`,
       inspectionFacts: { typeResults: result.output!.typeResults },
     }, file), file));
   }
-  return { title: "doctor data", sections: [{ id: "data", title: "Data", status: result.status, pages }] };
+  return { title, sections: [{ id: tenant ? "tenant" : "data", title: tenant ? "Tenant" : "Data", status: result.status, pages }] };
 }

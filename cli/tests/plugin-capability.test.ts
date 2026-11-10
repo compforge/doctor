@@ -84,12 +84,9 @@ test("model command 不依赖租户配置采集能力", () => {
   ]);
 });
 
-test("tenant command 组合租户身份、模型与通用 Inspect contribution", () => {
-  expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map((need) => need.capability)).toEqual([
-    { scope: "extension", name: "tenant.list" },
-    { scope: "extension", name: "tenant.resolve" },
-    { scope: "extension", name: "model.query" },
-    { scope: "extension", name: "data.id" },
+test("tenant consumes paged data; identity lookup is required only when selected", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map(need => need.capability)).toEqual([
+    { scope: "extension", name: "data.page" },
   ]);
 });
 

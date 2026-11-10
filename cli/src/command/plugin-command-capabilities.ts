@@ -60,25 +60,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   },
   tenant: {
     command: "doctor tenant",
-    needs: [{
-      requirement: "preferred",
-      capability: { scope: "extension", name: "tenant.list" },
-      purpose: "列出可诊断租户",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "extension", name: "tenant.resolve" },
-      purpose: "按名称解析要 Inspect 的租户",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "extension", name: "model.query" },
-      purpose: "查询租户可用模型 Facts",
-      fallback: "跳过模型目录",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "extension", name: DATA_ID_KIND },
-      purpose: "查询接受 tenant_id 的业务 Facts",
-      fallback: "仅汇总租户身份与模型目录",
-    }],
+    needs: [{ requirement: "required", capability: { scope: "extension", name: "data.page" }, purpose: "查询租户数据" }],
   },
   mcp: {
     command: "doctor mcp",

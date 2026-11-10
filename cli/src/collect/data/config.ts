@@ -1,6 +1,6 @@
 import { parseDataQueries } from "./query";
 import { resolveTimeWindow } from "../time-window";
-import { dataListProviders, dataProviders, findDataProvider } from "./extensions";
+import { dataPageProviders, dataProviders, findDataProvider } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -129,11 +129,12 @@ export async function resolveDataConfig(
   executor?: Executor,
 ): Promise<DataConfig | undefined> {
   const { ids, list } = parseDataQueries(opts);
+  if (list && !list.bizTypes.length) list.bizTypes = [...new Set(dataPageProviders(catalog, opts.services).filter(provider => !opts.tenantId || provider.extension.supportsTenant).map(provider => provider.extension.bizType))];
   const services = selectDataQueryServices(opts, catalog);
   const timeWindow = resolveTimeWindow(opts);
   const format = parseDataOutputFormat(opts.format);
   if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
-  const reportName = dataReportName(new Date());
+  const reportName = dataReportName(new Date()).replace("doctor-data", opts.tenantId ? "doctor-tenant" : "doctor-data");
   const outputPath = format === "default"
     ? resolveDefaultReportPaths(opts.output, reportName).html
     : format === "html"
@@ -154,6 +155,7 @@ export async function resolveDataConfig(
   const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
   if (!collect) return undefined;
   return {
+    tenantId: opts.tenantId?.trim(), tenantName: opts.tenantName,
     timeWindow,
     ids,
     list,
@@ -178,7 +180,9 @@ export function selectDataQueryServices(opts: CollectDataCliOpts, catalog: Servi
   const queries = parseDataQueries(opts);
   if (!queries.list) return parseDataServices(opts.services, catalog);
   const selected = opts.services ? catalog.resolveNames([...opts.services]) : undefined;
-  const providers = dataListProviders(catalog, selected);
+  const providers = dataPageProviders(catalog, selected).filter(provider => !opts.tenantId || queries.list!.bizTypes.length || provider.extension.supportsTenant);
+  if (!queries.list.bizTypes.length) queries.list.bizTypes = [...new Set(providers.map(provider => provider.extension.bizType))];
+  if (!queries.list.bizTypes.length) throw new Error("选定 Service 未注册支持本次查询的 biz-type");
   for (const type of queries.list.bizTypes) {
     if (!providers.some(provider => provider.extension.bizType === type)) {
       throw new Error(`选定 Service 不支持 biz-type '${type}'；可用类型：${[...new Set(providers.map(provider => provider.extension.bizType))].join(", ") || "无"}`);
