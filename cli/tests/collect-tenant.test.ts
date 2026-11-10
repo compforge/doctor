@@ -1,3 +1,4 @@
+import { PageValue, pageCodec } from "../../packages/plugin/tests/page-value-fixture";
 import { expect, mock, spyOn, test } from "bun:test";
 import { dirname, join } from "node:path";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -15,12 +16,12 @@ import { renderForDelivery } from "./report-fixture";
 
 const queries: unknown[] = [];
 const bots: DataPageExtension = {
-  id: "bots", kind: "data.page", bizType: "bot", description: "Tenant bots", supportsTenant: true, access: {},
+  id: "bots", kind: "data.page", codec: pageCodec, bizType: "bot", description: "Tenant bots", supportsTenant: true, access: {},
   run: withSummary({ title: "Bots", fields: [] }, async (_context, query) => {
     queries.push(query);
     const records = [{ id: "a", tenantId: "t1" }, { id: "b", tenantId: "t2" }, { id: "c", tenantId: "t1" }];
     const selected = records.filter(record => !query.tenantId || record.tenantId === query.tenantId);
-    return { items: selected.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: selected.length, page: query.page, pageSize: query.pageSize };
+    return { items: selected.slice((query.page - 1) * query.pageSize, query.page * query.pageSize).map(record => new PageValue(record)), total: selected.length, page: query.page, pageSize: query.pageSize };
   }),
 };
 const unscoped = { ...bots, id: "global", bizType: "global", supportsTenant: false, run: mock(bots.run) };
@@ -41,7 +42,7 @@ test("tenant pages preserve tenant constraints, totals, failures and evidence th
     expect(unscoped.run).not.toHaveBeenCalled();
     expect(result.status).toBe(CommandStatus.Partial);
     expect(result.output).toMatchObject({ tenant: { id: "t1", name: "alpha" }, items: [], typeResults: [
-      { bizType: "bot", status: "ok", data: { total: 2, items: [{ id: "c", tenantId: "t1" }] } },
+      { bizType: "bot", status: "ok", data: { total: 2, items: [{ data: { id: "c", tenantId: "t1" } }] } },
       { bizType: "global", status: "failed", reason: expect.stringContaining("不支持租户过滤") },
       { bizType: "offline", status: "failed", reason: "source offline" },
     ] });

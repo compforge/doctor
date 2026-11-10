@@ -183,6 +183,11 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
+`data.page` 的记录采用 Common `Value`，Service 声明对应 `ValueCodec`，负责查询、字段投影以及主动缩减。
+宿主通过 `serializeValue` 保存记录 JSON 与摘要，并校验整页记录（含摘要）的累计字节数；分页元数据不计入预算。
+超过预算或 codec 无法还原记录时，本次 Service 查询明确失败，宿主不裁剪业务对象。Service 主动缩减记录时
+保留原始总数并声明截断原因；截断不是自然页尾，也不保证后续翻页可取回遗漏记录。
+
 Facet 描述可汇总、可下钻的数据维度，由 Overview 展示并按需采样；Duration 独立提供耗时统计。
 `health.case.bindings` 只选择共享 Case 来源与消费方 Workload，不返回 Case 内容或执行探测。
 

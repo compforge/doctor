@@ -1,5 +1,5 @@
 import { collectedFact, failedFact } from "../protocol";
-import { dataPageOutput, type DataPage } from "@compforge/doctor-plugin";
+import { serializeDataPage, dataPageOutput, type DataPage } from "@compforge/doctor-plugin";
 import { CommandStatus } from "../../command";
 import { invokeExtension } from "../../plugin/extension";
 import type { Inspect } from "../inspection";
@@ -7,19 +7,6 @@ import type { DataCommandContext } from "./context";
 import type { DataFacts, DataTypeFact, DataTypeResult } from "./model";
 import type { DataAccessPreparation } from "./preparation";
 import { MAX_DATA_FACT_BYTES } from "./capability/collect";
-
-/** Keep source counts intact when host evidence capacity shortens a page. */
-export function boundDataPage(page: DataPage, maxBytes: number): DataPage {
-  let bytes = 0;
-  const items: unknown[] = [];
-  for (const item of page.items) {
-    const size = Buffer.byteLength(JSON.stringify(item), "utf8");
-    if (bytes + size > maxBytes) return { ...page, items, truncated: { reason: "Data page byte budget exceeded" } };
-    bytes += size;
-    items.push(item);
-  }
-  return page;
-}
 
 /** @spec Service × biz-type owns pagination and failure; one failed source cannot erase another page. */
 export function makeDataPageInspect(access: DataAccessPreparation): Inspect<DataFacts, DataCommandContext> {
@@ -41,7 +28,7 @@ export function makeDataPageInspect(access: DataAccessPreparation): Inspect<Data
         }
         const query = { ...(ctx.config.tenantId ? { tenantId: ctx.config.tenantId } : {}), page: pagination.page, pageSize: pagination.pageSize, maxBytes };
         const output = await invokeExtension(extension, prepared.context, query);
-        const data = boundDataPage(dataPageOutput(output.data, query), maxBytes);
+        const data = serializeDataPage(dataPageOutput(output.data, query), extension.codec, maxBytes);
         result = { ...identity, status: data.truncated ? CommandStatus.Partial : CommandStatus.Ok, data };
         ctx.log(`[data] ${service}/${extension.bizType}: ${data.items.length} items, total=${data.total}${data.truncated ? `; ${data.truncated.reason}` : ""}`);
       } catch (error) {
