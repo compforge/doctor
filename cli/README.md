@@ -136,7 +136,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Metric 诊断](docs/commands/metric-diagnosis.md)
 - [Memory 诊断](docs/commands/memory-diagnosis.md)
 - [CPU 诊断](docs/commands/cpu-diagnosis.md)
-- [Log 采集](docs/commands/log-diagnosis.md)
+- [Log 采集](docs/commands/log.md)
 - [Data 汇集诊断](docs/commands/data-diagnosis.md)
 - [Trace 采集](docs/commands/trace-diagnosis.md)
 - [Store 诊断](docs/commands/store-diagnosis.md)
