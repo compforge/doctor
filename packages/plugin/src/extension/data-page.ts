@@ -7,7 +7,7 @@ export interface DataPageQuery {
   tenantId?: string;
   page: number;
   pageSize: number;
-  /** Bound the returned JSON at the source; the host enforces this limit too. */
+  /** Bound the sum of item JSON bytes at the source; page metadata is excluded. The host enforces this too. */
   maxBytes: number;
 }
 
@@ -71,6 +71,20 @@ export function dataPageOutput(value: unknown, query: DataPageQuery): DataPage {
   }
   if (page.truncated !== undefined && (!page.truncated || typeof page.truncated.reason !== "string" || !page.truncated.reason.trim())) {
     throw new Error("data.page truncation requires a reason");
+  }
+  return page;
+}
+
+/** @spec Keep a stable prefix within the item byte budget; truncation never changes source counts or pagination. */
+export function boundDataPage<T>(page: DataPage<T>, maxBytes: number): DataPage<T> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new Error("Invalid data page byte budget");
+  let bytes = 0;
+  const items: T[] = [];
+  for (const item of page.items) {
+    const size = Buffer.byteLength(JSON.stringify(item), "utf8");
+    if (bytes + size > maxBytes) return { ...page, items, truncated: page.truncated ?? { reason: "Data page byte budget exceeded" } };
+    bytes += size;
+    items.push(item);
   }
   return page;
 }

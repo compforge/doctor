@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { dataPageOutput, requireDataPageExtension, withSummary, pageOffset, pageTotal } from "../src";
+import { boundDataPage, dataPageOutput, requireDataPageExtension, withSummary, pageOffset, pageTotal } from "../src";
 const query = { page: 3, pageSize: 2, maxBytes: 1000 };
 test("data.page requires valid page metadata but leaves Service records opaque", () => {
   const page = { page: 3, pageSize: 2, total: 4, items: [] };
@@ -42,5 +42,27 @@ test("page totals accept source numeric representations but never turn missing c
   for (const value of [undefined, null, "", " ", false, true, {}, -1, 1.5, "bad", Infinity, NaN,
     Number.MAX_SAFE_INTEGER + 1, 9007199254740993n]) {
     expect(() => pageTotal(value)).toThrow("Count is unavailable or invalid");
+  }
+});
+
+
+test("page byte bounds retain a stable UTF-8 prefix and the original pagination", () => {
+  const first = { value: "中文" };
+  const page = { items: [first, { value: "large".repeat(100) }, { value: "x" }], page: 2, pageSize: 3, total: 17 };
+  const budget = Buffer.byteLength(JSON.stringify(first), "utf8");
+  expect(boundDataPage(page, budget)).toEqual({ ...page, items: [first], truncated: { reason: expect.any(String) } });
+  expect(boundDataPage(page, budget - 1).items).toEqual([]);
+  expect(boundDataPage(page, 0).truncated).toBeDefined();
+  expect(page.items).toHaveLength(3);
+  const fullBudget = page.items.reduce((sum, item) => sum + Buffer.byteLength(JSON.stringify(item), "utf8"), 0);
+  expect(boundDataPage(page, fullBudget)).toBe(page);
+  const partial = { ...page, truncated: { reason: "Upstream limit" } };
+  expect(boundDataPage(partial, budget).truncated).toEqual(partial.truncated);
+  expect(boundDataPage({ ...page, items: [] }, 0).truncated).toBeUndefined();
+});
+
+test("page byte bounds reject invalid budgets", () => {
+  for (const budget of [-1, NaN, Infinity, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(() => boundDataPage({ items: [], page: 1, pageSize: 1, total: 0 }, budget)).toThrow("Invalid data page byte budget");
   }
 });
