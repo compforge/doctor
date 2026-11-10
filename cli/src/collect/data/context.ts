@@ -1,5 +1,5 @@
 import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
-import { dataListProviders, findDataProvider, type DataListProvider, type DataProvider } from "./extensions";
+import { dataPageProviders, findDataProvider, type DataPageProvider, type DataProvider } from "./extensions";
 import { CommandInputError, type CommandContext } from "../../command";
 
 import { useLogger } from "../../terminal/log";
@@ -15,7 +15,7 @@ export interface PreparedDataCommand {
   selections: readonly DataServiceSelection[];
   executor: Executor;
   providers: readonly DataProvider[];
-  listProviders?: readonly DataListProvider[];
+  listProviders?: readonly DataPageProvider[];
 }
 
 /** Data command 的完整执行作用域；同一个对象继续交给 Capability、Inspect 与 Probe。 */
@@ -51,7 +51,7 @@ export async function prepareDataCommand(
     // Providers enforce their declarations when executing; unused paths need no RBAC preflight.
     command.signal.throwIfAborted();
     return { command, config, selections: providers.map(({ name }) => ({ service: name })), executor, providers,
-      listProviders: config.list ? dataListProviders(catalog, config.services).filter(provider => config.list!.bizTypes.includes(provider.extension.bizType)) : [] };
+      listProviders: config.list ? dataPageProviders(catalog, config.services).filter(provider => config.list!.bizTypes.includes(provider.extension.bizType) && (!config.tenantId || opts.bizTypes?.some(type => type.trim()) || provider.extension.supportsTenant)) : [] };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new CommandInputError(reason, { cause: error });

@@ -1,8 +1,10 @@
 import type { Extension, RegisteredExtension } from "./index";
 
-export const DATA_LIST_KIND = "data.list";
+export const DATA_PAGE_KIND = "data.page";
 
-export interface DataListQuery {
+export interface DataPageQuery {
+  /** When provided, both items and total must be restricted to this tenant. */
+  tenantId?: string;
   page: number;
   pageSize: number;
   /** Bound the returned JSON at the source; the host enforces this limit too. */
@@ -20,34 +22,37 @@ export interface DataPage<T = unknown> {
 }
 
 /** @spec Each Service registers one provider per business type; record fields belong to the Service. */
-export interface DataListExtension<T = unknown> extends Extension<DataListQuery, DataPage<T>> {
-  readonly kind: typeof DATA_LIST_KIND;
+export interface DataPageExtension<T = unknown> extends Extension<DataPageQuery, DataPage<T>> {
+  readonly kind: typeof DATA_PAGE_KIND;
   readonly bizType: string;
+  /** Explicit opt-in; hosts must never send tenant queries to unscoped providers. */
+  readonly supportsTenant?: boolean;
   readonly description: string;
 }
 
-export function requireDataListExtension(extension: RegisteredExtension): DataListExtension {
-  if (extension.kind !== DATA_LIST_KIND) throw new Error(`Expected ${DATA_LIST_KIND}, got ${extension.kind}`);
+export function requireDataPageExtension(extension: RegisteredExtension): DataPageExtension {
+  if (extension.kind !== DATA_PAGE_KIND) throw new Error(`Expected ${DATA_PAGE_KIND}, got ${extension.kind}`);
   const item = extension as unknown as Record<string, unknown>;
   for (const field of ["bizType", "description"] as const) {
     if (typeof item[field] !== "string" || !item[field].trim() || item[field] !== item[field].trim()) {
       throw new Error(`${extension.id}.${field} must be a non-empty, trimmed string`);
     }
   }
-  return extension as DataListExtension;
+  if (item.supportsTenant !== undefined && typeof item.supportsTenant !== "boolean") throw new Error(`${extension.id}.supportsTenant must be a boolean`);
+  return extension as DataPageExtension;
 }
 
 /** Validate the pagination contract without interpreting Service-owned records. */
-export function dataPageOutput(value: unknown, query: DataListQuery): DataPage {
-  if (!value || typeof value !== "object") throw new Error("data.list must return a page");
+export function dataPageOutput(value: unknown, query: DataPageQuery): DataPage {
+  if (!value || typeof value !== "object") throw new Error("data.page must return a page");
   const page = value as DataPage;
   if (!Array.isArray(page.items) || page.items.length > query.pageSize
     || page.page !== query.page || page.pageSize !== query.pageSize
     || !Number.isSafeInteger(page.total) || page.total < 0) {
-    throw new Error("data.list returned invalid items/page/pageSize/total");
+    throw new Error("data.page returned invalid items/page/pageSize/total");
   }
   if (page.truncated !== undefined && (!page.truncated || typeof page.truncated.reason !== "string" || !page.truncated.reason.trim())) {
-    throw new Error("data.list truncation requires a reason");
+    throw new Error("data.page truncation requires a reason");
   }
   return page;
 }

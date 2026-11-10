@@ -43,7 +43,7 @@ test("directory discovery validates native bindings without calling an extension
     requiresDoctor: ">=0.1.0", contentDigest: `sha256:${"0".repeat(64)}`, main: "./plugin.mjs", skills: [],
   });
   expect(tenantDirectoryExtensions(services, "iam").list?.id).toBe("list");
-  expect(evaluatePluginCapabilities(plugin, PLUGIN_COMMAND_CAPABILITIES.tenant).runnable).toBe(true);
+  expect(evaluatePluginCapabilities(plugin, PLUGIN_COMMAND_CAPABILITIES.tenant).runnable).toBe(false);
   expect(run).not.toHaveBeenCalled();
   expect(() => tenantDirectoryExtensions(createServiceCatalog([service([list, { ...list, id: "duplicate" }])]), "directory")).toThrow("ambiguous");
 });

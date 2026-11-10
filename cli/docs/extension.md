@@ -30,7 +30,7 @@ packages/plugin/src/
 ├── extension/
 │   ├── index.ts          # Extension、ExtensionContext、公共声明校验与统一导出
 │   ├── data-id.ts        # 按 Identity 查询业务事实与关系
-│   ├── data-list.ts      # 按业务类型分页查询 Service 数据
+│   ├── data-page.ts      # 按业务类型分页查询 Service 数据
 │   ├── trace-resolve.ts  # trace.resolve 的领域契约
 │   ├── facet.ts          # facet.summarize / facet.sample 的领域契约
 │   ├── duration.ts       # duration.summarize 的领域契约
@@ -160,7 +160,8 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 
 | kind | 输入 → 输出 | 消费方 |
 |---|---|---|
-| data.id | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
+| data.id | Query 列表 → 逐项 Fact 获取结果 | Data |
+| data.page | 类型、租户条件与分页 → items、page、pageSize、total | Tenant |
 | log.workloads | 业务 ID（可选）、时间窗口 → 本 Service 的 Workload 名称子集 | Log、Collect、Eval |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | facet.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
@@ -170,7 +171,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | tenant.resolve | 显式租户 ID 或名称 → 租户身份 | Tenant、Model/Chat |
 | user.search | 租户、关键词、分页 → 启用用户页 | Eval、Perf |
 | mcp.configuration | 超时预算 → MCP server、工具与连接配置投影 | MCP |
-| model.query | 租户 Identity、模型类型 → 模型列表 | Model、Chat、Tenant |
+| model.query | 租户 Identity、模型类型 → 模型列表 | Model、Chat |
 | model.backend.inspect | 模型 → Backend 公共身份或不存在 | Model |
 | model.backend.validate | 模型、超时预算 → 校验响应 | Model |
 | model.invoke | 推理目标、路径、请求体、超时预算 → 完整响应 | Model |
@@ -214,7 +215,7 @@ Data 使用 [data.id](../../packages/plugin/src/extension/data-id.ts) 接入这�
 
 Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 data.id 实现，多个实现会报歧义。
 
-Data 的具体行为见 [Data 汇集诊断](commands/data-diagnosis.md)；Plugin 的加载、分发与信任边界见
+Data 的具体行为见 [Data 汇集诊断](commands/data.md)；Plugin 的加载、分发与信任边界见
 [Plugin](plugin.md)，Command 生命周期见 [Kernel](kernel.md)。
 
 Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共用该快照。配置函数的访问权限与

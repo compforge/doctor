@@ -1,5 +1,4 @@
 import { freezeTimeWindow, resolveTimeWindow } from "../time-window";
-import { DATA_LIST_KIND } from "@compforge/doctor-plugin";
 import { parseDataQueries } from "./query";
 import { selectDataQueryServices } from "./config";
 import { prepareCommandRequirements } from "../../command/prepare";
@@ -12,26 +11,20 @@ import { prepareDataCommand, type PreparedDataCommand } from "./context";
 import type { CollectDataCliOpts, DataOutput } from "./model";
 import { renderDataReport } from "./report";
 
-export type DataInput = CommandInput & Omit<CollectDataCliOpts, CommandHostOption>;
+export type DataInput = CommandInput & Omit<CollectDataCliOpts, CommandHostOption | "tenantId" | "tenantName" | "bizTypes" | "page" | "pageSize">;
 
 export const dataCommand = defineCommand<DataInput, DataOutput, PreparedDataCommand>({
   serialize: serializeData,
   name: "doctor data",
   validate: (input) => {
+    if (!input.bizIds?.some(id => id.trim())) throw new CommandInputError("doctor data 需要至少一个 biz-id");
     resolveTimeWindow(input);
     try { parseDataQueries(input); } catch (error) { throw new CommandInputError(error instanceof Error ? error.message : String(error)); }
   },
   render: renderDataReport,
   prepare: async (context, input) => {
     input = freezeTimeWindow(input);
-    const queries = parseDataQueries(input);
-    await prepareCommandRequirements(context, { plugin: {
-      command: PLUGIN_COMMAND_CAPABILITIES.data.command,
-      needs: [
-        ...(queries.ids.length ? PLUGIN_COMMAND_CAPABILITIES.data.needs : []),
-        ...(queries.list ? [{ requirement: "required" as const, capability: { scope: "extension" as const, name: DATA_LIST_KIND }, purpose: "按业务类型分页查询数据" }] : []),
-      ],
-    } });
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.data });
     selectDataQueryServices(input, context.plugin.services);
     await prepareCommandRequirements(context, { environment: { kubernetes: true } });
     return prepareDataCommand(

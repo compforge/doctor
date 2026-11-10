@@ -22,7 +22,7 @@ export function boundDataPage(page: DataPage, maxBytes: number): DataPage {
 }
 
 /** @spec Service × biz-type owns pagination and failure; one failed source cannot erase another page. */
-export function makeDataListInspect(access: DataAccessPreparation): Inspect<DataFacts, DataCommandContext> {
+export function makeDataPageInspect(access: DataAccessPreparation): Inspect<DataFacts, DataCommandContext> {
   return { id: "data-type-queries", run: async ctx => {
     const typeResults: DataTypeResult[] = [];
     const providers = ctx.listProviders ?? [];
@@ -32,14 +32,14 @@ export function makeDataListInspect(access: DataAccessPreparation): Inspect<Data
       const identity = { service, extension: extension.id, bizType: extension.bizType };
       const prepared = access.lists.get(JSON.stringify([service, extension.id]));
       const pagination = ctx.config.list!;
-      ctx.log(`[data] ${service}/${extension.bizType} page=${pagination.page} pageSize=${pagination.pageSize}`);
+      ctx.log(`[data] ${service}/${extension.bizType} page=${pagination.page} pageSize=${pagination.pageSize}${ctx.config.tenantId ? ` tenant=${ctx.config.tenantId}` : ""}`);
       let result: DataTypeResult;
       try {
         ctx.command.signal.throwIfAborted();
         if (!prepared?.context || prepared.access.status !== "collected") {
           throw new Error(prepared?.access.status !== "collected" ? prepared?.access.reason ?? "Data access unavailable" : "Data context unavailable");
         }
-        const query = { page: pagination.page, pageSize: pagination.pageSize, maxBytes };
+        const query = { ...(ctx.config.tenantId ? { tenantId: ctx.config.tenantId } : {}), page: pagination.page, pageSize: pagination.pageSize, maxBytes };
         const output = await invokeExtension(extension, prepared.context, query);
         const data = boundDataPage(dataPageOutput(output.data, query), maxBytes);
         result = { ...identity, status: data.truncated ? CommandStatus.Partial : CommandStatus.Ok, data };
@@ -50,7 +50,7 @@ export function makeDataListInspect(access: DataAccessPreparation): Inspect<Data
         ctx.log(`[data] ${service}/${extension.bizType}: ${result.status}: ${reason}`);
       }
       typeResults.push(result);
-      ctx.bundle.addStep({ id: `data-list-${typeResults.length}`, title: `${service} / ${extension.bizType}`, risk: "observe",
+      ctx.bundle.addStep({ id: `data-page-${typeResults.length}`, title: `${service} / ${extension.bizType}`, risk: "observe",
         status: result.status === CommandStatus.Cancelled ? "failed" : result.status,
         reason: "reason" in result ? result.reason : result.data.truncated?.reason });
     }
@@ -73,7 +73,7 @@ export function dataTypeResult(fact: DataTypeFact): DataTypeResult {
     : { ...identity, status: fact.cancelled ? CommandStatus.Cancelled : CommandStatus.Failed, reason: fact.reason };
 }
 
-export function dataListSummary(results: readonly DataTypeResult[]): string {
+export function dataPageSummary(results: readonly DataTypeResult[]): string {
   return results.map(result => {
     const title = `${result.service} / ${result.bizType}: ${result.status}`;
     if (!("data" in result)) return `- ${title}: ${result.reason}`;

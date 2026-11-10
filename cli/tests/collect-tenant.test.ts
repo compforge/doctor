@@ -1,210 +1,124 @@
-import { expect, test } from "bun:test";
+import { expect, mock, spyOn, test } from "bun:test";
+import { dirname, join } from "node:path";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { CommandContext } from "../src/command";
-import { EvidenceBundle } from "../src/collect/evidence";
-import { runInspects } from "../src/collect/inspect-engine";
-import { collectedFact } from "../src/collect/protocol";
-import {
-  detectTenantEvidenceGaps,
-  buildTenantEvidence,
-  buildTenantHtmlSections,
-  buildTenantSummary,
-  makeTenantInspects,
-  safeTenantId,
-  tenantReportName,
-  type TenantCommandContext,
-  type TenantConfig,
-} from "../src/collect/tenant";
+import { createServiceCatalog, withSummary, type DataPageExtension, type PluginContext, type PluginDefinition } from "@compforge/doctor-plugin";
+import { CommandContext, CommandStatus } from "../src/command";
+import { prepareDataCommand, runCollectData } from "../src/collect/data";
+import { tenantCommand, createTenantInput } from "../src/collect/tenant/command";
+import { createDoctorProgram } from "../src/app/main";
+import * as execution from "../src/app/command";
+import * as tenantAccess from "../src/collect/tenant/access";
+import * as dataContext from "../src/collect/data/context";
+import { SerializeContext } from "../src/command/serialization/context";
+import { renderForDelivery } from "./report-fixture";
 
-test("tenant report name keeps the tenant identity", () => {
-  const now = new Date(2026, 7, 19, 15, 4, 5);
-  expect(safeTenantId("tenant/team:1")).toBe("tenant-team-1");
-  expect(tenantReportName("tenant/team:1", now))
-    .toBe("doctor-tenant-tenant-team-1-20260819-150405");
+const queries: unknown[] = [];
+const bots: DataPageExtension = {
+  id: "bots", kind: "data.page", bizType: "bot", description: "Tenant bots", supportsTenant: true, access: {},
+  run: withSummary({ title: "Bots", fields: [] }, async (_context, query) => {
+    queries.push(query);
+    const records = [{ id: "a", tenantId: "t1" }, { id: "b", tenantId: "t2" }, { id: "c", tenantId: "t1" }];
+    const selected = records.filter(record => !query.tenantId || record.tenantId === query.tenantId);
+    return { items: selected.slice((query.page - 1) * query.pageSize, query.page * query.pageSize), total: selected.length, page: query.page, pageSize: query.pageSize };
+  }),
+};
+const unscoped = { ...bots, id: "global", bizType: "global", supportsTenant: false, run: mock(bots.run) };
+const offline = { ...bots, id: "offline", bizType: "offline", run: withSummary({ title: "Offline", fields: [] }, async () => { throw new Error("source offline"); }) };
+const plugin: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
+  name: "control", component: { name: "control", repository: { forge: { name: "test" }, path: "control" } }, workloads: [], extensions: [bots, unscoped, offline],
+}]) };
+const executor = { run: async () => { throw new Error("unexpected target access"); }, exec: async () => { throw new Error("unexpected target access"); } };
+
+test("tenant pages preserve tenant constraints, totals, failures and evidence through shared execution", async () => {
+  const context = new CommandContext({});
+  const root = mkdtempSync(join(tmpdir(), "tenant-pages-"));
+  queries.length = 0;
+  try {
+    const prepared = await prepareDataCommand({ tenantId: "t1", tenantName: "alpha", bizTypes: ["bot", "offline", "global"], page: 2, pageSize: 1, namespace: "ns" }, plugin.services, context, executor);
+    const result = await runCollectData(prepared!, plugin, { control: { signal: context.signal, target: { service: { name: "control" } } } as PluginContext });
+    expect(queries).toEqual([{ tenantId: "t1", page: 2, pageSize: 1, maxBytes: expect.any(Number) }]);
+    expect(unscoped.run).not.toHaveBeenCalled();
+    expect(result.status).toBe(CommandStatus.Partial);
+    expect(result.output).toMatchObject({ tenant: { id: "t1", name: "alpha" }, items: [], typeResults: [
+      { bizType: "bot", status: "ok", data: { total: 2, items: [{ id: "c", tenantId: "t1" }] } },
+      { bizType: "global", status: "failed", reason: expect.stringContaining("不支持租户过滤") },
+      { bizType: "offline", status: "failed", reason: "source offline" },
+    ] });
+    expect(result.artifacts.every(artifact => artifact.command === "tenant")).toBeTrue();
+    await SerializeContext.create(root, tenantCommand, result);
+    expect(JSON.parse(readFileSync(join(root, "collection.json"), "utf8")).target.tenant_id).toBe("t1");
+    expect(readFileSync(join(root, "summary.md"), "utf8")).toContain("alpha（t1）");
+    const rendered = await renderForDelivery(context, tenantCommand, result);
+    expect(rendered.context.failures).toEqual([]);
+    expect(rendered.report.title).toBe("doctor tenant");
+  } finally {
+    for (const artifact of context.artifacts.list()) rmSync(dirname(artifact.path), { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
+    await context.disposeClients();
+  }
 });
 
-test("tenant capabilities share one generic Inspect entry", () => {
-  expect(makeTenantInspects([]).map((inspect) => inspect.id)).toEqual([
-    "tenant-identity",
-    "tenant-capabilities",
-  ]);
+test("tenant without types selects only registered tenant-capable types", async () => {
+  const context = new CommandContext({});
+  const prepared = await prepareDataCommand({ tenantId: "t1", namespace: "ns" }, plugin.services, context, executor);
+  expect(prepared!.listProviders!.map(provider => provider.extension.bizType)).toEqual(["bot", "offline"]);
+  await expect(prepareDataCommand({ tenantId: "t1", namespace: "ns", bizTypes: ["missing"] }, plugin.services, context, executor)).rejects.toThrow("不支持");
+  await context.disposeClients();
 });
 
-test("Tenant terminal summary keeps capability counts and gaps compact", () => {
-  const summary = buildTenantSummary({
-    evidence: {
-      observations: [],
-      facts: {
-        tenant: collectedFact("tenant.identity", "tenant", {
-          id: "tenant-1", name: "alpha", displayName: "Alpha",
-        }),
-        capabilityFacts: [{
-          id: "inspect:config-api",
-          service: "config-api",
-          capability: "inspect",
-          status: "collected",
-          producer: { origin: "core", id: "tenant-capabilities" },
-          kind: "tenant.capability-result",
-          schemaVersion: 1,
-          result: { resolution: { inputId: "tenant-1", resolvedAs: "tenant_id", identifiers: {} }, facts: [{ factType: "value", kind: "config", schemaVersion: 1, value: {} }] },
-        }],
-      },
-    },
-    findings: [{ id: "missing-runtime", kind: "evidence.insufficient", schemaVersion: 1, producer: { origin: "core", id: "fixture" }, severity: "info", confidence: "high", subject: "runtime", message: "runtime unavailable", summary: "runtime unavailable", evidence: [{ factPath: "capabilityFacts", role: "context" }] }],
+test("Tenant and Data expose distinct selectors; tenant forwards repeated types and pagination", async () => {
+  const program = createDoctorProgram({ plugin });
+  const tenant = program.commands.find(command => command.name() === "tenant")!;
+  const data = program.commands.find(command => command.name() === "data")!;
+  expect(tenant.helpInformation()).toContain("--biz-type");
+  expect(tenant.helpInformation()).not.toContain("--biz-id");
+  expect(data.helpInformation()).not.toContain("--biz-type");
+  expect(data.helpInformation()).not.toContain("--tenant");
+  const run = spyOn(execution, "runCommand").mockResolvedValue(undefined);
+  try {
+    await program.parseAsync(["tenant", "--tenant-name", "alpha", "--biz-type", "bot", "--biz-type", "offline", "-s", "control", "--page", "2"], { from: "user" });
+    expect(run.mock.calls[0]![0]).toBe(tenantCommand);
+    expect(run.mock.calls[0]![2]).toMatchObject({ tenantName: "alpha", bizTypes: ["bot", "offline"], services: ["control"], page: "2" });
+  } finally { run.mockRestore(); }
+});
 
+test("tenant query reuse includes identity, types, services and page", () => {
+  const input = { tenantId: "t1", bizTypes: ["bot"], services: ["control"], page: 1 };
+  const key = createTenantInput(input).idempotencyKey!();
+  for (const change of [{ tenantId: "t2" }, { bizTypes: ["model"] }, { services: ["other"] }, { page: 2 }, { pageSize: 1 }]) {
+    expect(createTenantInput({ ...input, ...change }).idempotencyKey!()).not.toBe(key);
+  }
+});
+
+for (const input of [{ tenantId: " " }, { tenantName: " " }, { tenantId: "t1", tenantName: "alpha" }, { tenantId: "t1", page: 0 }]) {
+  test(`invalid tenant query fails before external work: ${JSON.stringify(input)}`, async () => {
+    const loadPlugin = mock(async () => plugin);
+    const context = new CommandContext({}, undefined, { loadPlugin });
+    const result = await tenantCommand.run(context, input);
+    expect(result.status).toBe(CommandStatus.Failed);
+    expect(loadPlugin).not.toHaveBeenCalled();
   });
-  expect(summary).toContain("租户：Alpha（tenant-1）");
-  expect(summary).toContain("Capability：1");
-  expect(summary).toContain("config-api · inspect：1 条 Fact");
-  expect(summary).not.toContain("状态：healthy");
-  expect(summary).toContain("runtime unavailable");
-});
+}
 
-test("tenant command combines model catalog and Inspect Capabilities as facts", async () => {
-  const root = mkdtempSync(join(tmpdir(), "doctor-tenant-test-"));
-  const config: TenantConfig = {
-    tenant: { id: "tenant-1", name: "alpha", displayName: "Alpha" },
-    format: "json",
-    reportName: "tenant-test",
-    profileName: "test",
-  };
-  const ctx: TenantCommandContext = {
-    command: new CommandContext({}),
-    config,
-    bundle: new EvidenceBundle(root),
-    capabilities: [{
-      id: "models:model-api/model.query",
-      service: "model-api",
-      capability: "modelCatalog",
-      query: async (identity) => [{
-        kind: "models",
-        models: [{
-          id: "model-1",
-          name: `Model for ${identity.value}`,
-          type: "llm",
-          provider: "test",
-          apiKey: "must-not-leak",
-        } as never],
-      }],
-    }, {
-      id: "inspect:config-api",
-      service: "config-api",
-      capability: "inspect",
-      query: async (identity) => [{
-        kind: "data",
-        result: {
-          resolution: {
-            inputId: identity.value,
-            resolvedAs: "tenant_id",
-            identifiers: { tenant_id: identity.value },
-          },
-          facts: [{
-            factType: "value",
-            kind: "tenant-configuration",
-            schemaVersion: 1,
-            value: { configuration: { enabled: true } },
-          }, {
-            factType: "value",
-            kind: "tenant-intention",
-            schemaVersion: 1,
-            value: { intentions: [{ id: "intent-1" }] },
-          }, {
-            factType: "relation",
-            kind: "owns",
-            schemaVersion: 1,
-            from: identity,
-            to: { kind: "bot_id", value: "bot-1" },
-          }],
-          missingEvidence: ["runtime: unavailable"],
-        },
-      }],
-    }],
-  };
+
+for (const byName of [false, true]) test(`Tenant resolves names but accepts IDs without directory access (name=${byName})`, async () => {
+  const resolve = mock(async () => ({ id: "t1", name: "alpha", displayName: "Alpha" }));
+  const list = mock(async () => []);
+  const directoryExtension = { id: "resolve", kind: "tenant.resolve", endpoint: { host: "directory", port: 80 }, access: {},
+    run: withSummary({ title: "Tenant", fields: [] }, async () => ({ id: "t1", name: "alpha", displayName: "Alpha" })) };
+  const catalog = createServiceCatalog(plugin.services.services.map(service => ({ ...service, extensions: [...service.extensions ?? [], directoryExtension] })));
+  const context = new CommandContext({}, undefined, { plugin: { ...plugin, services: catalog } });
+  const environment = spyOn(context, "ensureEnvironment").mockResolvedValue(undefined);
+  const access = spyOn(tenantAccess, "openTenantDirectoryAccess").mockResolvedValue({
+    config: { profileName: "test", kubernetes: { namespace: "ns", namespaceSource: "flag", kubeconfigSource: "test" } },
+    executor, kube: { namespace: "ns", kubeconfig: undefined, context: undefined }, databaseIdentity: undefined, directory: { listActive: list, getByName: resolve },
+  });
+  const prepare = spyOn(dataContext, "prepareDataCommand").mockResolvedValue(undefined);
   try {
-    const facts = await runInspects(makeTenantInspects(ctx.capabilities), ctx);
-    expect(facts.capabilityFacts).toHaveLength(2);
-    expect(ctx.bundle.getSteps()).toHaveLength(2);
-    for (const step of ctx.bundle.getSteps()) {
-      expect(step.status).toBe("ok");
-      expect(step.raw_file).toBeDefined();
-      const persisted = JSON.parse(readFileSync(join(root, step.raw_file!), "utf8"));
-      expect(persisted).toEqual(facts.capabilityFacts.find((fact) => `tenant-${fact.id}` === step.id));
-    }
-    const evidence = buildTenantEvidence([], facts);
-    const coverage = detectTenantEvidenceGaps(evidence);
-
-    expect(facts.capabilityFacts[0]).toMatchObject({
-      status: "collected",
-      id: "models:model-api/model.query",
-      kind: "tenant.capability-result",
-      result: {
-        resolution: { identifiers: { models: "1" } },
-        facts: [
-          { factType: "value", kind: "model-summary", value: { count: 1 } },
-          { factType: "record", kind: "model", recordKey: "model-1", record: { name: "Model for tenant-1" } },
-        ],
-      },
-    });
-    expect(JSON.stringify(facts.capabilityFacts[0])).not.toContain("must-not-leak");
-    const inspectFact = facts.capabilityFacts[1];
-    expect(inspectFact).toMatchObject({
-      status: "collected",
-      id: "inspect:config-api",
-      kind: "tenant.capability-result",
-      result: {
-        resolution: { inputId: "tenant-1", resolvedAs: "tenant_id" },
-        missingEvidence: ["runtime: unavailable"],
-      },
-    });
-    if (inspectFact?.status !== "collected") {
-      throw new Error("expected collected inspect data");
-    }
-    expect(inspectFact.result.facts).toMatchObject([
-      { value: { configuration: { enabled: true } } },
-      { value: { intentions: [{ id: "intent-1" }] } },
-      { to: { kind: "bot_id", value: "bot-1" } },
-    ]);
-    expect(coverage.map(item => item.subject)).toEqual([
-
-      "inspect:config-api",
-    ]);
-    const sections = buildTenantHtmlSections({ evidence, findings: [],  });
-    expect(sections[0]?.html).toContain("Model for tenant-1");
-    expect(sections[0]?.html).toContain('class="table-data"');
-    expect(sections[1]?.html).toContain("enabled");
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-test("tenant command retains capability failures as evidence", async () => {
-  const root = mkdtempSync(join(tmpdir(), "doctor-tenant-failure-test-"));
-  const ctx: TenantCommandContext = {
-    command: new CommandContext({}),
-    config: {
-      tenant: { id: "tenant-1", name: "alpha", displayName: "Alpha" },
-      format: "json",
-      reportName: "tenant-failure-test",
-      profileName: "test",
-    },
-    bundle: new EvidenceBundle(root),
-    capabilities: [{
-      id: "inspect:unsafe-api",
-      service: "unsafe-api",
-      capability: "inspect",
-      query: async () => { throw new Error("source unavailable"); },
-    }],
-  };
-  try {
-    const facts = await runInspects(makeTenantInspects(ctx.capabilities), ctx);
-    expect(facts.capabilityFacts[0]).toMatchObject({
-      status: "failed",
-      id: "inspect:unsafe-api",
-      reason: "source unavailable",
-    });
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
+    await tenantCommand.run(context, { ...(byName ? { tenantName: "alpha" } : { tenantId: "t1" }), bizTypes: ["bot"] });
+    expect(prepare.mock.calls[0]![0]).toMatchObject({ tenantId: "t1", bizTypes: ["bot"] });
+    expect(resolve).toHaveBeenCalledTimes(byName ? 1 : 0);
+    expect(list).not.toHaveBeenCalled();
+  } finally { prepare.mockRestore(); access.mockRestore(); environment.mockRestore(); await context.disposeClients(); }
 });

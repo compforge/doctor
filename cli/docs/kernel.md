@@ -471,7 +471,7 @@ CLI 实现。
 - [`extension.md`](extension.md)：面向各类 Command 的 Extension 协议、权限与调用边界。
 - [`commands/collect.md`](commands/collect.md)：集合命令如何组合多个 Collect 入口。
 - [`commands/tenant.md`](commands/tenant.md) 与
-  [`commands/data-diagnosis.md`](commands/data-diagnosis.md)：Application 数据的 Query 作用域。
+  [`commands/data.md`](commands/data.md)：Application 数据的 Query 作用域。
 - [`commands/eval.md`](commands/eval.md) 与 [`commands/perf.md`](commands/perf.md)：Case 执行和主动负载。
 - [`../../toolkit/README.md`](../../toolkit/README.md)：Toolkit 的独立版本与平台资源模型。
 - [`commands/`](commands/)：各领域 Command 的理念、流程和关键设计。

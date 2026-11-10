@@ -13,6 +13,9 @@ export type DataOutputFormat = "default" | "bundle" | "json" | "html" | "summary
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts extends TimeWindowOptions {
+  /** Internal query constraint; the Data CLI does not expose tenant selectors. */
+  tenantId?: string;
+  tenantName?: string;
   bizIds?: readonly string[];
   bizTypes?: readonly string[];
   page?: string | number;
@@ -28,6 +31,8 @@ export interface CollectDataCliOpts extends TimeWindowOptions {
 }
 
 export interface DataConfig {
+  tenantId?: string;
+  tenantName?: string;
   timeWindow?: InspectTimeWindow;
   ids: string[];
   list?: { bizTypes: string[]; page: number; pageSize: number };
@@ -95,6 +100,7 @@ export type DataTypeFact = Fact<{ data: import("@compforge/doctor-plugin").DataP
   & Pick<DataTypeResult, "service" | "extension" | "bizType"> & { cancelled?: boolean };
 
 export interface DataOutput {
+  readonly tenant?: { id: string; name?: string };
   readonly typeResults?: readonly DataTypeResult[];
   readonly items: readonly {
     bizId: string;

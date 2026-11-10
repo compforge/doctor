@@ -440,7 +440,7 @@ Service.extensions 提供开放 kind 的 Extension；Extension、kind 标识及�
 Data 使用 data.id，prepare 选择实现，run 再通过宿主的受限上下文按操作检查声明并取数。输入是 Query
 列表，输出逐 Identity 关联，复用既有 Fact 与预算校验；它无需数据库式 resolveTarget。
 
-Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 data.id 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
+Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 data.id 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data.md)。
 
 ### Inspect 批量调用
 
