@@ -1,3 +1,5 @@
+import { dataListSummary } from "./list";
+import { escapeHtml } from "../../report/escape";
 import type { CommandResult } from "../../command/result";
 import { failureReport, type RenderContext } from "../../report/context";
 import { evidencePage, writeEvidencePage } from "../../report/evidence";
@@ -19,6 +21,14 @@ export async function renderDataReport(context: RenderContext, result: CommandRe
       { title: "Data", subject, status: item.status, reason: item.reason }, () => writeEvidencePage(context, artifact, {
         title: "doctor Data 业务数据汇集报告", summaryHtml: buildDataHtml(item.diagnosis!), inspectionFacts: { ...item.diagnosis!.evidence.facts },
       }, file), file));
+  }
+  if (result.output.typeResults?.length && result.artifacts[0]) {
+    const artifact = result.artifacts[0];
+    const file = result.output.items.length ? "data-types.html" : "report.html";
+    pages.push(await evidencePage(context, artifact, { title: "业务类型查询", status: result.status }, () => writeEvidencePage(context, artifact, {
+      title: "业务类型查询", summaryHtml: `<pre>${escapeHtml(dataListSummary(result.output!.typeResults!))}</pre>`,
+      inspectionFacts: { typeResults: result.output!.typeResults },
+    }, file), file));
   }
   return { title: "doctor data", sections: [{ id: "data", title: "Data", status: result.status, pages }] };
 }

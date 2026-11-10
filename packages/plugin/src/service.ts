@@ -442,7 +442,7 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
    */
   logs?: {
     errorPatterns?: readonly string[];
-    /** Directed identity edges from facts.inspect that may correlate this Service's logs.
+    /** Directed identity edges from data.id that may correlate this Service's logs.
      * Omit reverse edges through shared resources to avoid selecting sibling requests.
      * Matching remains related-object evidence, never proof of request ownership. */
     identityRelations?: Readonly<Record<string, readonly string[]>>;

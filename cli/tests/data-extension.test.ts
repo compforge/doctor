@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { createServiceCatalog, FACTS_INSPECT_KIND, type FactsInspectExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, DATA_ID_KIND, type DataIdExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { dataCommand, type DataInput } from "../src/collect/data/command";
 import { CommandContext, CommandStatus, defineCommand } from "../src/command";
@@ -14,8 +14,8 @@ import { PLUGIN_COMMAND_CAPABILITIES } from "../src/command/plugin-command-capab
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "fixture" } };
 const need = (resource: string) => ({ rule: { verb: "get", resource }, requirement: "required" as const, purpose: "test data access" });
-const extension = (overrides: Partial<FactsInspectExtension> = {}): FactsInspectExtension => ({
-  id: "records", kind: FACTS_INSPECT_KIND, access: { kubernetes: [need("configmaps")] },
+const extension = (overrides: Partial<DataIdExtension> = {}): DataIdExtension => ({
+  id: "records", kind: DATA_ID_KIND, access: { kubernetes: [need("configmaps")] },
   accepts: ["biz_id"], provides: ["record"], run: withSummary({ title: "Fixture", fields: [] }, async (_context, queries) => queries.map(({ identity }) => ({
     identity, status: "collected", result: {
       resolution: { inputId: identity.value, resolvedAs: "record", identifiers: {} },
@@ -23,7 +23,7 @@ const extension = (overrides: Partial<FactsInspectExtension> = {}): FactsInspect
     },
   }))), ...overrides,
 });
-const service = (name: string, ext: FactsInspectExtension): ServiceDefinition => ({
+const service = (name: string, ext: DataIdExtension): ServiceDefinition => ({
   name,
   component,
   workloads: [],
@@ -47,7 +47,7 @@ async function cleanup(context: CommandContext) {
   await context.disposeClients();
 }
 
-test("Data prepares only selected Extension access, then invokes native facts.inspect with scoped context and producer identity", async () => {
+test("Data prepares only selected Extension access, then invokes native data.id with scoped context and producer identity", async () => {
   const events: string[] = [];
   const dispose = mock(() => { });
   const otherKind = mock(async () => ["static"]);
@@ -130,10 +130,10 @@ test("Data validates a malformed outcome per query and retains a healthy sibling
   } finally { await cleanup(context); }
 });
 
-test("Data rejects ambiguous facts.inspect producers instead of silently using registration order", () => {
+test("Data rejects ambiguous data.id producers instead of silently using registration order", () => {
   const records = service("records", extension());
   records.extensions = [extension(), extension({ id: "other" })];
-  expect(() => dataProviders(createServiceCatalog([records]))).toThrow("one facts.inspect Extension per Service");
+  expect(() => dataProviders(createServiceCatalog([records]))).toThrow("one data.id Extension per Service");
 });
 
 for (const nested of [false, true]) test(`Data checked entry point invokes providers without preflighting unused access (nested=${nested})`, async () => {

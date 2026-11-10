@@ -1,5 +1,6 @@
+import { parseDataQueries } from "./query";
 import { resolveTimeWindow } from "../time-window";
-import { dataProviders, findDataProvider } from "./extensions";
+import { dataListProviders, dataProviders, findDataProvider } from "./extensions";
 import { isInteractive } from "../../terminal/policy";
 import { join } from "node:path";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
@@ -83,7 +84,7 @@ export function parseDataServices(raw: readonly string[] | undefined, catalog: S
   if (!services.length) throw new Error("--service 未解析出任何 Service");
   const unsupported = services.filter((service) => !findDataProvider(catalog, service));
   if (unsupported.length) {
-    throw new Error(`Doctor 未注册以下 Service 的 facts.inspect Extension：${unsupported.join(", ")}`);
+    throw new Error(`Doctor 未注册以下 Service 的 data.id Extension：${unsupported.join(", ")}`);
   }
   return catalog.resolveNames(services);
 }
@@ -104,10 +105,10 @@ export async function resolveDataServiceSelection(
   if (!input.config.services.length) {
     services = dataServicesForBizQuery(input.catalog);
   }
-  if (interactive && !input.config.servicesExplicit) {
+  if (interactive && !input.config.servicesExplicit && !input.config.list) {
     const choices = dataServicesForBizQuery(input.catalog).map((name) => ({ name }));
     if (!choices.length) {
-      throw new Error("当前 Plugin 未声明 facts.inspect Extension");
+      throw new Error("当前 Plugin 未声明 data.id Extension");
     }
     const selected = await (input.promptServices ?? promptNamedChoices)({
       choices,
@@ -127,10 +128,8 @@ export async function resolveDataConfig(
   commandContext: CommandContext,
   executor?: Executor,
 ): Promise<DataConfig | undefined> {
-  const ids = [...new Set([
-    ...(opts.bizIds ?? []),
-  ].map((bizId) => bizId.trim()).filter(Boolean))];
-  if (!ids.length) throw new Error("doctor data 需要至少一个 biz-id");
+  const { ids, list } = parseDataQueries(opts);
+  const services = selectDataQueryServices(opts, catalog);
   const timeWindow = resolveTimeWindow(opts);
   const format = parseDataOutputFormat(opts.format);
   if (format === "summary" && opts.output) throw new Error("--format summary 直接输出到终端，不支持 --output");
@@ -154,10 +153,10 @@ export async function resolveDataConfig(
     : undefined;
   const collect = await resolveKubernetesCommandConfig(opts, executor, commandContext);
   if (!collect) return undefined;
-  const services = parseDataServices(opts.services, catalog);
   return {
     timeWindow,
     ids,
+    list,
     format,
     outputPath,
     reportName,
@@ -173,4 +172,23 @@ export async function resolveDataConfig(
       context: collect.kubernetes.context,
     },
   };
+}
+
+export function selectDataQueryServices(opts: CollectDataCliOpts, catalog: ServiceCatalog): string[] {
+  const queries = parseDataQueries(opts);
+  if (!queries.list) return parseDataServices(opts.services, catalog);
+  const selected = opts.services ? catalog.resolveNames([...opts.services]) : undefined;
+  const providers = dataListProviders(catalog, selected);
+  for (const type of queries.list.bizTypes) {
+    if (!providers.some(provider => provider.extension.bizType === type)) {
+      throw new Error(`选定 Service 不支持 biz-type '${type}'；可用类型：${[...new Set(providers.map(provider => provider.extension.bizType))].join(", ") || "无"}`);
+    }
+  }
+  const listServices = providers.filter(provider => queries.list!.bizTypes.includes(provider.extension.bizType)).map(provider => provider.name);
+  const idServices = queries.ids.length ? (selected ? selected.filter(service => findDataProvider(catalog, service)) : dataServicesForBizQuery(catalog)) : [];
+  if (queries.ids.length && !idServices.length) throw new Error("选定 Service 未注册 data.id Extension");
+  const services = [...new Set([...idServices, ...listServices])];
+  const unsupported = selected?.filter(service => !services.includes(service)) ?? [];
+  if (unsupported.length) throw new Error(`选定 Service 不支持本次数据查询：${unsupported.join(", ")}`);
+  return services;
 }

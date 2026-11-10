@@ -1,3 +1,4 @@
+import { makeDataListInspect, dataListSummary, dataTypeFact, dataTypeResult } from "./list";
 import { gapMessages } from "../evidence-gaps";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -78,18 +79,20 @@ export async function runCollectData(
   let facts: DataFacts = { services: {}, capabilityResults: [] };
   let diagnoses: PromiseSettledResult<{ facts: Readonly<DataFacts>; diagnosis: DataDiagnosis }>[];
   let access: DataAccessPreparation | undefined;
+  let collectionFailure: string | undefined;
   try {
     access = await prepareDataAccess(dataCommand, injectedContexts);
     const pluginContexts = Object.fromEntries(access.confirmed.flatMap(item => item.context ? [[item.service, item.context]] : []));
     const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
     const execution = await runCollectBatch({
       ctx,
-      inspects: [makeDataInspect(access), makeDataContributionInspect({ selections, config })],
+      inspects: [...(config.list ? [makeDataListInspect(access)] : []), makeDataInspect(access), makeDataContributionInspect({ selections, config })],
       items: targets.map(target => ({
         ctx: { ...ctx, config: target.config, bundle: target.bundle }, config: target.config,
         projectFacts: (snapshot: Readonly<DataFacts>) => projectDataFacts(snapshot, target.bizId),
       })),
       checkpointFacts: snapshot => { facts = snapshot; },
+      checkpointPartialFacts: snapshot => { facts = { ...facts, ...snapshot }; },
       signal: commandContext.signal,
       planProbes: (_facts, itemConfig) => {
         useLogger().info(`[collect:data] 采集阶段 biz-id: ${itemConfig.ids[0]}`);
@@ -99,6 +102,7 @@ export async function runCollectData(
     });
     diagnoses = execution.items;
   } catch (error) {
+    collectionFailure = error instanceof Error ? error.message : String(error);
     reportError(error, { context: "doctor data/collect", summary: "Data 采集失败" });
     diagnoses = targets.map(() => ({ status: "rejected", reason: error }));
   } finally {
@@ -134,11 +138,20 @@ export async function runCollectData(
     groups[target.bizId] = diagnosis ?? { error: reason ?? "未形成诊断结果" };
 
   }
-  writeDataManifest(bundle, config, dataCommand.providers, services, facts, startedAt);
-  bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n`);
+  const typeResults = (facts.typeResults ?? []).map(dataTypeResult);
+  for (const provider of dataCommand.listProviders ?? []) {
+    if (typeResults.some(result => result.service === provider.name && result.extension === provider.extension.id)) continue;
+    typeResults.push({ service: provider.name, extension: provider.extension.id, bizType: provider.extension.bizType,
+      status: commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed,
+      reason: collectionFailure ?? "类型查询未执行" });
+  }
+  if (config.list) facts = { ...facts, typeResults: typeResults.map(dataTypeFact) };
+  writeDataManifest(bundle, config, dataCommand.providers, config.services, facts, startedAt);
+  bundle.writeSummary(`# 业务数据汇集\n\n${items.map(item => `- ${item.bizId}: ${item.status}`).join("\n")}\n${dataListSummary(typeResults)}\n`);
   writeFileSync(join(staging, "diagnosis.json"), `${JSON.stringify({ groups }, null, 2)}\n`, "utf8");
 
-  return { status: aggregateCommandStatus(items.map(item => item.status)), output: { items },
+  return { status: aggregateCommandStatus([...items.map(item => item.status), ...typeResults.map(item => item.status)]),
+    output: { items, ...(config.list ? { typeResults } : {}) },
     artifacts: [summary, ...items.flatMap(item => item.artifacts)] };
 }
 
@@ -148,10 +161,9 @@ function writeDataManifest(
 ): void {
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
-    target: { namespace: config.namespace, input_ids: config.ids, services },
+    target: { namespace: config.namespace, input_ids: config.ids, ...(config.list ? { input_types: config.list.bizTypes } : {}), services },
     inspectionFacts: facts,
-    params: { time_window: config.timeWindow, services, inspect_capabilities: Object.fromEntries(services.map(service => {
-      const capability = providers.find(provider => provider.name === service)!.extension;
+    params: { time_window: config.timeWindow, services, list: config.list, inspect_capabilities: Object.fromEntries(providers.map(({ name: service, extension: capability }) => {
       return [service, { provides: capability.provides, expands: capability.expands ?? [] }];
     })), output_format: config.format },
     startedAt, finishedAt: new Date().toISOString(),

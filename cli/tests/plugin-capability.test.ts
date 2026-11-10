@@ -49,7 +49,7 @@ test("required Plugin capability 缺失时阻止命令并保留 provider", () =>
       purpose: "选择日志 Service",
     }, {
       requirement: "required",
-      capability: { scope: "extension", name: "facts.inspect" },
+      capability: { scope: "extension", name: "data.id" },
       purpose: "读取业务数据",
     }],
   };
@@ -89,7 +89,7 @@ test("tenant command 组合租户身份、模型与通用 Inspect contribution",
     { scope: "extension", name: "tenant.list" },
     { scope: "extension", name: "tenant.resolve" },
     { scope: "extension", name: "model.query" },
-    { scope: "extension", name: "facts.inspect" },
+    { scope: "extension", name: "data.id" },
   ]);
 });
 
@@ -119,7 +119,7 @@ test("eval command 只强依赖 Case，并把关联证据能力作为可降级�
     }),
     expect.objectContaining({
       requirement: "preferred",
-      capability: { scope: "extension", name: "facts.inspect" },
+      capability: { scope: "extension", name: "data.id" },
     }),
   ]);
 });

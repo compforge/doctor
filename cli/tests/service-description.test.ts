@@ -1,7 +1,7 @@
 import { conceptToMarkdown, knowledgeToMarkdown, workflowToMarkdown } from "@compforge/doctor-plugin";
 import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
-import { createServiceCatalog, describeService, requireFactsInspectExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, describeService, requireDataIdExtension, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { formatPluginDescription, formatServiceDescription } from "../src/app/plugin-description";
@@ -30,7 +30,7 @@ const manifest: PluginManifest = {
 
 function validate(candidate: unknown) {
   const result = validatePluginDefinition({ id: "sample", version: "1.0.0", services: { services: [candidate] } }, manifest);
-  for (const { extension } of result.services.extensions("facts.inspect")) requireFactsInspectExtension(extension);
+  for (const { extension } of result.services.extensions("data.id")) requireDataIdExtension(extension);
   return result;
 }
 
@@ -47,14 +47,14 @@ test("Plugin loading validates optional description fields without executing the
     expect(() => validate({
       ...service,
       extensions: [inspectExtension({
-        ...requireFactsInspectExtension(service.extensions![0]!), inspect: async () => [], [field]: value,
+        ...requireDataIdExtension(service.extensions![0]!), inspect: async () => [], [field]: value,
       })]
     })).toThrow(field);
   }
   expect(validate({
     ...service,
     extensions: [inspectExtension({
-      ...requireFactsInspectExtension(service.extensions![0]!), inspect: async () => [], limitations: [],
+      ...requireDataIdExtension(service.extensions![0]!), inspect: async () => [], limitations: [],
     })]
   }).services.find("api")).toBeDefined();
 });
@@ -112,13 +112,13 @@ test("text distinguishes absent declarations and absent explanatory prose", () =
   expect(legacy).not.toContain("Concepts");
   expect(legacy).not.toContain("Workflows");
   expect(formatPluginDescription({})).toBe("");
-  expect(legacy).toContain("未声明 facts.inspect Extension");
+  expect(legacy).toContain("未声明 data.id Extension");
   expect(legacy).toContain("Extensions：无");
   expect(legacy).toContain("EnvironmentProbes：无");
   const missing = formatServiceDescription(describeService({
     ...service,
     extensions: [inspectExtension({
-      ...requireFactsInspectExtension(service.extensions![0]!), inspect: async () => [], description: undefined, limitations: undefined,
+      ...requireDataIdExtension(service.extensions![0]!), inspect: async () => [], description: undefined, limitations: undefined,
     })]
   }));
   expect(missing).toContain("用途：未提供");

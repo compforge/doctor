@@ -1,7 +1,7 @@
 import { normalizeInspectSources, boundInspectSources } from "./inspect-sources";
 import { validateSummary } from "@compforge/harness-common";
 import { invokeExtension } from "./extension";
-import type { FactsInspectExtension, FactsInspectInput, FactsInspectOutput } from "@compforge/doctor-plugin";
+import type { DataIdExtension, DataIdInput, DataIdOutput } from "@compforge/doctor-plugin";
 import type { PluginContext, ServiceInspectQuery, ServiceInspectQueryOutcome } from "@compforge/doctor-plugin";
 import type {
   Fact,
@@ -41,7 +41,7 @@ function validateRelation(input: {
   fact: Record<string, unknown>;
   label: string;
   queryIdentity: Identity;
-  capability: Pick<FactsInspectExtension, "provides" | "expands">;
+  capability: Pick<DataIdExtension, "provides" | "expands">;
 }): RelationFact {
   const { fact, label, queryIdentity, capability } = input;
   const from = identity(fact.from, `${label}.from`);
@@ -62,7 +62,7 @@ function validateFact(input: {
   index: number;
   service: string;
   queryIdentity: Identity;
-  capability: Pick<FactsInspectExtension, "provides" | "expands">;
+  capability: Pick<DataIdExtension, "provides" | "expands">;
   valueKinds: Set<string>;
   recordKeys: Set<string>;
   relationKeys: Set<string>;
@@ -149,7 +149,7 @@ export function normalizeServiceInspectResult(input: {
   value: unknown;
   service: string;
   queryIdentity: Identity;
-  capability: Pick<FactsInspectExtension, "provides" | "expands">;
+  capability: Pick<DataIdExtension, "provides" | "expands">;
   budget: ServiceInspectBudget;
 }): ServiceInspectResult {
   const { service, queryIdentity, capability, budget } = input;
@@ -245,7 +245,7 @@ export function normalizeServiceInspectResult(input: {
 
 /** Correlate by identity, never by provider response order. A malformed response fails only its query. */
 export async function inspectServiceQueries(
-  capability: { run(context: PluginContext, queries: FactsInspectInput): Promise<FactsInspectOutput> }, context: PluginContext, queries: readonly ServiceInspectQuery[],
+  capability: { run(context: PluginContext, queries: DataIdInput): Promise<DataIdOutput> }, context: PluginContext, queries: readonly ServiceInspectQuery[],
 ): Promise<readonly ServiceInspectQueryOutcome[]> {
   let outcomes: readonly ServiceInspectQueryOutcome[];
   try { outcomes = await capability.run(context, queries); }
@@ -268,9 +268,9 @@ export async function inspectServiceQueries(
   });
 }
 
-/** Same query isolation as Inspect, with the function supplied by the facts.inspect contract. */
+/** Same query isolation as Inspect, with the function supplied by the data.id contract. */
 export async function inspectExtensionQueries(
-  extension: FactsInspectExtension, context: PluginContext, queries: FactsInspectInput,
-): Promise<FactsInspectOutput> {
+  extension: DataIdExtension, context: PluginContext, queries: DataIdInput,
+): Promise<DataIdOutput> {
   return inspectServiceQueries({ run: async (ctx, input) => (await invokeExtension(extension, ctx, input)).data }, context, queries);
 }

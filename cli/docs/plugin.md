@@ -437,14 +437,14 @@ Plugin Kubernetes `exec` 支持 stdin 和不超过宿主上限的 timeoutMs；�
 
 Service.extensions 提供开放 kind 的 Extension；Extension、kind 标识及各 kind 的输入输出契约统一定义在
 `packages/plugin`。Catalog 按 kind 离线发现，不调用实现；Extension.access 声明实际访问需求。
-Data 使用 facts.inspect，prepare 选择实现，run 再通过宿主的受限上下文按操作检查声明并取数。输入是 Query
+Data 使用 data.id，prepare 选择实现，run 再通过宿主的受限上下文按操作检查声明并取数。输入是 Query
 列表，输出逐 Identity 关联，复用既有 Fact 与预算校验；它无需数据库式 resolveTarget。
 
-Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 facts.inspect 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
+Service 的其它 kind 不扩大 Data 的权限范围；当前 Data 每个 Service 只接受一个 data.id 实现。\n通用扩展协议见 [Extension](extension.md)，Data 领域规则见 [Data](commands/data-diagnosis.md)。
 
 ### Inspect 批量调用
 
-`FactsInspectExtension.run(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
+`DataIdExtension.run(context, queries)` 返回 `ServiceInspectQueryOutcome[]`。每个输入 Identity 恰好有一个
 collected 或 failed outcome，成功项携带原有 `ServiceInspectResult`；对象解析由 resolution 表达，精确查询确认不存在由 sources 的 not_found 表达。
 Core 负责遍历、分批、去重和预算，Plugin 负责本 Service 的批量数据访问。provider 在整批开始时准备共享
 Client / Repository，按数据源能力合并或逐条查询，并隔离各 Query 的查询失败。共享准备失败可拒绝整次调用，

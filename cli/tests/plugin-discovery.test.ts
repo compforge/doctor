@@ -52,7 +52,7 @@ describe("Plugin discovery", () => {
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
       services: [{
-        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "log-workloads", kind: "log.workloads" }, { id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "facts.inspect" }],
+        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "log-workloads", kind: "log.workloads" }, { id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "data.id" }],
         details: {
           workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
@@ -174,7 +174,7 @@ describe("doctor plugin CLI", () => {
     expect(output).toContain("Aliases：store");
     expect(output).not.toContain("A Cache stores task results.");
     expect(output).toContain("Upstream：test-api");
-    for (const internal of ["Extensions", "Cases", "Detectors", "EnvironmentProbes", "DataSources", "Workloads", "访问需求", "facts.inspect", "redis/redis"]) {
+    for (const internal of ["Extensions", "Cases", "Detectors", "EnvironmentProbes", "DataSources", "Workloads", "访问需求", "data.id", "redis/redis"]) {
       expect(output).not.toContain(internal);
     }
     expect(result.stderr.toString()).toBe("");

@@ -99,7 +99,7 @@ async function queryIdentities(input: {
     return batches;
   }
   const pluginContext = ctx.pluginContexts[declared.name];
-  if (!pluginContext) throw new Error(`Service '${declared.name}' facts.inspect Extension 缺少 PluginContext`);
+  if (!pluginContext) throw new Error(`Service '${declared.name}' data.id Extension 缺少 PluginContext`);
   // Divide the remaining capacity before dispatch; siblings cannot each spend the whole batch budget.
   const budget = { maxFacts: Math.floor(remaining.facts / identities.length), maxBytes: Math.floor(remaining.bytes / identities.length) };
   const metadata = (identity: Identity) => ({ id: resultId(stage, declared.name, identity), stage, service: declared.name, extension: declared.extension.id, identity });
@@ -245,7 +245,7 @@ async function collectExpansionResults(input: {
 }
 
 /**
- * Run selected Service facts.inspect Extensions and retain query-level results that may feed later Probes.
+ * Run selected Service data.id Extensions and retain query-level results that may feed later Probes.
  * Command owns traversal and budgets; contribution implementations answer batches without owning traversal.
  */
 export async function collectDataInspectResults(input: {
@@ -259,7 +259,7 @@ export async function collectDataInspectResults(input: {
   const remaining = { facts: MAX_DATA_FACTS, bytes: MAX_DATA_FACT_BYTES };
   const declaredServices = selections.map(({ service }) => {
     const declared = ctx.providers.find(provider => provider.name === service);
-    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 facts.inspect Extension`);
+    if (!declared) throw new Error(`Doctor 未注册 Service '${service}' 的 data.id Extension`);
     return declared;
   });
   const expansion = await collectExpansionResults({
@@ -298,7 +298,7 @@ export async function collectDataInspectResults(input: {
   return collected;
 }
 
-/** Adapt the selected Plugin Service facts.inspect Extensions into Core's Inspect phase. */
+/** Adapt the selected Plugin Service data.id Extensions into Core's Inspect phase. */
 export function makeDataContributionInspect(input: {
   selections: readonly DataServiceSelection[];
   config: DataConfig;

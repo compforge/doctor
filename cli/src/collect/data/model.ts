@@ -13,7 +13,10 @@ export type DataOutputFormat = "default" | "bundle" | "json" | "html" | "summary
 export type SupportedDataService = string;
 
 export interface CollectDataCliOpts extends TimeWindowOptions {
-  bizIds: readonly string[];
+  bizIds?: readonly string[];
+  bizTypes?: readonly string[];
+  page?: string | number;
+  pageSize?: string | number;
   namespace?: string;
   kubeconfig?: string;
   context?: string;
@@ -27,6 +30,7 @@ export interface CollectDataCliOpts extends TimeWindowOptions {
 export interface DataConfig {
   timeWindow?: InspectTimeWindow;
   ids: string[];
+  list?: { bizTypes: string[]; page: number; pageSize: number };
   format: DataOutputFormat;
   outputPath?: string;
   reportName: string;
@@ -69,6 +73,7 @@ export type CollectedDataInspectResult = Extract<DataInspectResult, { status: "c
 
 export interface DataFacts extends DataInspectionFacts {
   capabilityResults: readonly DataInspectResult[];
+  typeResults?: readonly DataTypeFact[];
 }
 
 export type DataEvidence = Evidence<never, DataFacts>;
@@ -77,7 +82,20 @@ export type DataFinding = FindingMeta<string> & ServiceDetectorFinding;
 
 export type DataDiagnosis = Diagnosis<DataEvidence, DataFinding>;
 
+export type DataTypeResult = {
+  service: string;
+  extension: string;
+  bizType: string;
+} & (
+  | { status: import("../../command").CommandStatus.Ok | import("../../command").CommandStatus.Partial; data: import("@compforge/doctor-plugin").DataPage }
+  | { status: import("../../command").CommandStatus.Failed | import("../../command").CommandStatus.Cancelled; reason: string }
+);
+
+export type DataTypeFact = Fact<{ data: import("@compforge/doctor-plugin").DataPage }, "data.type-result">
+  & Pick<DataTypeResult, "service" | "extension" | "bizType"> & { cancelled?: boolean };
+
 export interface DataOutput {
+  readonly typeResults?: readonly DataTypeResult[];
   readonly items: readonly {
     bizId: string;
     status: import("../../command").CommandStatus;

@@ -52,7 +52,7 @@ test("invalid input and missing capabilities prevent binding and execution", asy
       await prepareCommandRequirements(context, {
         plugin: {
           command: "unavailable", needs: [{
-            capability: { scope: "extension", name: "facts.inspect" }, requirement: "required", purpose: "test",
+            capability: { scope: "extension", name: "data.id" }, requirement: "required", purpose: "test",
           }]
         }
       });

@@ -184,7 +184,7 @@ describe("capability and preflight errors", () => {
   test("loaded Plugin missing a required capability reports that capability", async () => {
     const result = await runWithPlugin(["data", "--biz-id", "biz-1"]);
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("extension.facts.inspect");
+    expect(result.stderr).toContain("extension.data.id");
     expect(result.stderr).toContain("Plugin 'test'");
     expect(result.stderr).toContain("Plugin test@0.0.1");
     expect(result.stderr).not.toContain("Kubernetes");
@@ -262,7 +262,7 @@ describe("capability and preflight errors", () => {
     const positional = await runWithPlugin(["data", "biz-1"]);
     expect(positional.exitCode).not.toBe(0);
     expect(positional.stderr).not.toContain("required option '--biz-id <id>' not specified");
-    expect(positional.stderr).toContain("extension.facts.inspect");
+    expect(positional.stderr).toContain("extension.data.id");
   });
 
   test("install rejects unsupported programs", async () => {

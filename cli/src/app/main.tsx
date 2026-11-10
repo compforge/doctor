@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { existsSync } from "node:fs";
 import { caseListCommand } from "../case/list-command";
 import { serviceOption } from "./service-option";
 import { isRemoteChat } from "./config/state";
@@ -60,7 +61,7 @@ import { runInit } from "./init";
 import { runProfile } from "./profile";
 import { configureProfileHelp } from "./profile-help";
 import { applyOptionDefaults } from "./command-defaults";
-import { loadActivePlugin, loadInstalledPlugin } from "../plugin";
+import { loadActivePlugin, loadInstalledPlugin, installedPluginPath } from "../plugin";
 import { registerPluginInfo, runPluginInstall, runPluginUninstall } from "./plugin";
 import { registerKnowledgeCommand } from "../knowledge/command";
 import { runCommand, runStandaloneCommand } from "./command";
@@ -71,6 +72,7 @@ import { domainInput } from "../command/options";
 import { chatCommand, imageCommand, debugCommand, installCommand, resizeCommand, memCommand, memaCommand, cpuCommand, caseCommand, netCommand } from "./core-commands";
 import { traceCommand } from "../collect/trace/command";
 import { logCommand } from "../collect/log/command";
+import { dataTypesHelp } from "../collect/data/extensions";
 import { dataCommand } from "../collect/data/command";
 import { inspectCommand } from "../collect/inspect/command";
 import { tenantCommand } from "../collect/tenant/command";
@@ -236,7 +238,10 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
     ? defaultServiceNames.join(",")
     : "当前 Plugin 中提供 Inspect contribution 的 Service";
   return withBizIdInputs(cmd, "需要汇集关联数据的业务 ID；可重复传入")
-    .addOption(serviceOption(`提供 Inspect contribution 的 Service；缺省交互选择，非交互默认 ${defaultDescription}`))
+    .option("--biz-type <type>", "业务类型；可重复传入，支持类型见下方静态目录", (value: string, previous: string[]) => [...previous, value], [])
+    .option("--page <number>", "每个 Service/类型的页号，从 1 开始（默认 1）")
+    .option("--page-size <number>", "每个 Service/类型每页条数（默认 20，最大 1000）")
+    .addOption(serviceOption(`提供业务数据的 Service；类型查询缺省执行所有匹配提供方；ID 查询默认 ${defaultDescription}`))
     .option("--since <duration>", "事件回看窗口，例如 30m、2h")
     .option("--since-time <timestamp>", "事件起点（RFC3339；优先于 --since）")
     .option("--until-time <timestamp>", "事件终点（RFC3339，包含边界；指定窗口时缺省为命令开始时刻）")
@@ -783,18 +788,21 @@ export function createDoctorProgram(
     await runCommand(logCommand, commandOpts, domainInput(commandOpts), commandRuntime);
   });
   withDataOptions(
-    catalog.command("data").helpGroup("Collect · 采集与分析:").description("先扩展业务 ID，再汇集 Service Catalog 声明的数据（由当前 Plugin 声明，只读）")
+    catalog.command("data").helpGroup("Collect · 采集与分析:").description("按业务 ID 汇集关联数据，或按业务类型分页查询各 Service 的数据（只读）")
       .addHelpText("after", `
 分析思路：
-  从业务 ID 出发，沿现场证据中的 Identity 关系汇集各 Service 的关联记录。
+  --biz-id 沿 Identity 关系汇集记录；--biz-type 分页浏览类型，可重复传入多个类型。
+  不指定 -s 时执行所有注册该类型的 Service；分页和 total 按 Service/类型独立返回。
 结果解读：
   采集成功表示取得数据，业务是否成功仍需解释记录；核对来源、观察时间和关联范围内的缺口。
-`),
+`)
+      .addHelpText("after", ({ command }) => plugin ? dataTypesHelp(plugin.services, command.opts().services) : "\n加载 Plugin 后可查看其注册的 biz-type。\n"),
     [],
-  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts>, command: CommandT) => {
+  ).action(async (positionalBizIds, opts: RawBizIdOptions<CollectDataCliOpts> & { bizType?: string[] }, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     const commandOpts = normalizeBizIdOptions(positionalBizIds, opts);
-    await runCommand(dataCommand, commandOpts, domainInput(commandOpts), commandRuntime);
+    const dataOpts = { ...commandOpts, bizTypes: opts.bizType };
+    await runCommand(dataCommand, dataOpts, domainInput(dataOpts), commandRuntime);
   });
   withInspectOptions(
     catalog.command("inspect").helpGroup("Collect · 采集与分析:").description("检查 Service 的 workload、配置与依赖；支持 --field env|config|image|event|hpa 和 --search 快速查值（只读）")
@@ -1035,7 +1043,16 @@ export async function main(embedded: Distribution = {}, host: DoctorHostOptions 
         ? embedded.plugin
         : await loadInstalledPlugin(manifest.plugin)
       : undefined;
-    distribution = { ...manifest, plugin };
+    const dataHelp = argv.includes("data") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"));
+    const helpPlugin = dataHelp && manifest.plugin && !plugin
+      ? embedded.plugin && `${embedded.plugin.id}@${embedded.plugin.version}` === manifest.plugin
+        ? embedded.plugin
+        : existsSync(installedPluginPath(manifest.plugin)) ? await loadInstalledPlugin(manifest.plugin) : undefined
+      : undefined;
+    distribution = { ...manifest, plugin: plugin ?? helpPlugin };
+  }
+  if (!path && !distribution.plugin && argv.includes("data") && (argv.includes("--help") || argv.includes("-h") || argv.includes("help"))) {
+    distribution = { ...distribution, plugin: await loadActivePlugin() };
   }
   const program = createDoctorProgram(distribution, host);
 
