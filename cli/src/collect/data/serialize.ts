@@ -1,3 +1,4 @@
+import { dataListSummary, dataTypeResult } from "./list";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { CommandResult } from "../../command/result";
@@ -38,7 +39,7 @@ export async function serializeData(context: SerializeContext, result: CommandRe
     summaryProjection: context.writeJson("summary-projection.json", projectSummary(summary, facts)),
     collection: context.writeJson("collection.json", { ...metadata, files: { facts: factsFile.path }, steps }),
     facts: factsFile,
-    diagnosis: context.writeJson("diagnosis.json", { items }),
-    summary: context.writeText("summary.md", buildDataEvidenceSummary(result.output?.items ?? [], facts)),
+    diagnosis: context.writeJson("diagnosis.json", { items, ...(facts.typeResults?.length ? { typeQueries: facts.typeResults.map((result, index) => ({ service: result.service, bizType: result.bizType, status: result.status, selection: { file: "facts", path: ["typeResults", index] } })) } : {}) }),
+    summary: context.writeText("summary.md", (result.output?.items.length ? buildDataEvidenceSummary(result.output.items, facts) : `# 业务类型查询\n\n采集状态：${result.status}\n`) + "\n" + dataListSummary((facts.typeResults ?? []).map(dataTypeResult))),
   } };
 }

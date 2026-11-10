@@ -102,8 +102,12 @@ export function dataNavigationSummary(items: readonly Item[], source: DataFacts)
     .filter(record => record.text)
     .map(record => ({ ...record, group: `${item.id}/${record.group}`, title: `${item.id} / ${record.title}` })));
   const selected = selectRecords(records, 6);
-  return { title: "业务数据关键事实", fields: selected.map(record => ({
+  return { title: "业务数据关键事实", fields: [...selected.map(record => ({
     label: `${record.title} · ${record.references[0]}`,
     path: [...record.references[0]!.split("."), "summary", "text"],
-  })) };
+  })), ...(source.typeResults ?? []).flatMap((result, index) => [
+    { label: `${result.service} / ${result.bizType} 状态`, path: ["typeResults", String(index), "status"] },
+    ...("data" in result ? [{ label: `${result.service} / ${result.bizType} 总数`, path: ["typeResults", String(index), "data", "total"] }]
+      : [{ label: `${result.service} / ${result.bizType} 失败原因`, path: ["typeResults", String(index), "reason"] }]),
+  ])] };
 }

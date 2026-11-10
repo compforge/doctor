@@ -7,7 +7,7 @@ Service 描述业务身份、运行负载和数据源，并注册可供 Doctor �
 ## 接入方式
 
 Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出，Command 决定选用哪些实现和如何组合。
-例如 `facts.inspect` 返回业务记录与关系，`model.query` 返回模型清单，`workload.probe` 返回现场观察。
+例如 `data.id` 返回业务记录与关系，`model.query` 返回模型清单，`workload.probe` 返回现场观察。
 声明和发现不执行函数；调用时宿主提供受权限约束的上下文、取消信号与资源生命周期。
 
 `dataSources` 描述可复用的数据访问资源，`detectors` 注册只读 Evidence 的纯分析函数，

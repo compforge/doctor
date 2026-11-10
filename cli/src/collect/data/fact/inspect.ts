@@ -19,7 +19,7 @@ export function makeDataInspect(
             : unavailableFact("data.inspect-capability", "data-service-targets", confirmed.access.reason);
         ctx.bundle.addStep({
           id: `data-inspect-${confirmed.service}`,
-          title: `${confirmed.service} facts.inspect Extension`,
+          title: `${confirmed.service} data.id Extension`,
           risk: "observe",
           status: inspect.status === "collected" ? "ok" : inspect.status,
           reason: inspect.status === "collected" ? undefined : inspect.reason,

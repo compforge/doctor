@@ -1,5 +1,5 @@
 import { connectionDataSources, fileDataSources, secretDataSources } from "./datasource";
-import { requireFactsInspectExtension, type FactsInspectExtension } from "./extension";
+import { requireDataIdExtension, type DataIdExtension } from "./extension";
 import type { CapabilityAccess } from "./kubernetes";
 import type { ServiceDefinition } from "./service";
 import type { ServiceDataSourceKind } from "./datasource";
@@ -19,7 +19,7 @@ export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "de
     dataSources: ({ id: string; kind: ServiceDataSourceKind; backend: string; description?: string }
       | { kind: "secret"; id: string; keys: readonly string[]; description?: string }
       | { kind: "file"; paths: readonly string[]; workload: string; description?: string })[];
-    inspect?: Pick<FactsInspectExtension, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
+    inspect?: Pick<DataIdExtension, "description" | "limitations" | "accepts" | "provides" | "expands" | "dataSource">;
     access: { owner: string; requirements: CapabilityAccess }[];
   };
 }
@@ -45,8 +45,8 @@ function describeAccess(access: CapabilityAccess): CapabilityAccess {
  * @rule accepts describes input Identity kinds; provides/expands describe possible outputs, not guaranteed results.
  */
 export function describeService(service: ServiceDefinition): ServiceDescription {
-  const factsExtension = service.extensions?.find(extension => extension.kind === "facts.inspect");
-  const inspect = factsExtension ? requireFactsInspectExtension(factsExtension) : undefined;
+  const factsExtension = service.extensions?.find(extension => extension.kind === "data.id");
+  const inspect = factsExtension ? requireDataIdExtension(factsExtension) : undefined;
   const access: ServiceDescription["details"]["access"] = [];
   for (const extension of service.extensions ?? []) {
     access.push({ owner: `extensions.${extension.id}`, requirements: describeAccess(extension.access) });

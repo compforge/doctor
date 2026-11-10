@@ -21,7 +21,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
   const lines = serviceDescriptionLines(service);
   const { inspect, workloads, dependencies, dataSources, access } = service.details;
   if (inspect) {
-    lines.push("    数据查询（facts.inspect Extension，不是同名 CLI 命令）",
+    lines.push("    数据查询（data.id Extension，不是同名 CLI 命令）",
       `      用途：${inspect.description ?? "未提供"}`,
       `      输入 ID（每个 Query 选一种）：${inspect.accepts.join(" / ")}`,
       `      可能提供的事实：${inspect.provides.join(", ")}`,
@@ -29,7 +29,7 @@ export function formatServiceDescription(service: ServiceDescription): string {
     if (inspect.dataSource) lines.push(`      DataSource：${inspect.dataSource}`);
     lines.push(`      限制说明：${inspect.limitations?.join("；") || "未提供（不代表无限制）"}`);
   } else {
-    lines.push("    数据查询：未声明 facts.inspect Extension");
+    lines.push("    数据查询：未声明 data.id Extension");
   }
   lines.push(`    Extensions：${service.extensions?.map(item => `${item.id} (${item.kind})`).join(", ") || "无"}`,
     `    Cases：${service.cases?.map(item => `${item.id}${item.produce ? " [produce]" : ""}${item.runner ? " [runner]" : ""}`).join(", ") || "无"}`,

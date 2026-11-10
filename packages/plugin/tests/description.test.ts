@@ -1,7 +1,7 @@
 import { conceptToMarkdown, knowledgeToMarkdown, workflowToMarkdown } from "../src";
 import { inspectExtension, traceExtension } from "./extension-fixture";
 import { expect, test } from "bun:test";
-import { describeService, requireFactsInspectExtension, type ServiceDefinition } from "../src";
+import { describeService, requireDataIdExtension, type ServiceDefinition } from "../src";
 
 function noAccess(): never { throw new Error("offline discovery must not execute a handler"); }
 
@@ -42,7 +42,7 @@ test("description projects the execution declaration without confusing inputs an
   expect(result.name).toBe("runtime");
   expect(result.description).toBe("Session and run evidence");
   expect(JSON.parse(JSON.stringify(result))).toMatchObject({ knowledge: JSON.parse(JSON.stringify(service.knowledge)) });
-  expect(result.extensions?.map(item => item.kind)).toEqual(["trace.resolve", "facts.inspect"]);
+  expect(result.extensions?.map(item => item.kind)).toEqual(["trace.resolve", "data.id"]);
   expect(result.detectors).toEqual(["state"]);
   expect(result.details.inspect).toEqual({
     description: "Find persisted sessions and runs", limitations: ["Only retained records can be returned"],
@@ -54,7 +54,7 @@ test("description projects the execution declaration without confusing inputs an
   expect(result.details.dataSources).toEqual([{ id: "database", kind: "db", backend: "mysql", description: undefined }]);
   expect(result.details.access).toEqual([
     { owner: "extensions.trace.resolve", requirements: { kubernetes: [] } },
-    { owner: "extensions.inspect", requirements: requireFactsInspectExtension(service.extensions![1]!).access },
+    { owner: "extensions.inspect", requirements: requireDataIdExtension(service.extensions![1]!).access },
   ]);
 });
 
@@ -69,10 +69,10 @@ test("explicit projection excludes credentials, configuration and functions even
     })),
     dependencies: service.dependencies!.map(dependency => ({ ...dependency, password: secret })),
     extensions: [inspectExtension({
-      ...requireFactsInspectExtension(service.extensions![1]!), inspect: noAccess,
+      ...requireDataIdExtension(service.extensions![1]!), inspect: noAccess,
       access: {
         kubernetes: [{
-          ...requireFactsInspectExtension(service.extensions![1]!).access.kubernetes![0]!,
+          ...requireDataIdExtension(service.extensions![1]!).access.kubernetes![0]!,
           rule: Object.assign({ verb: "get", resource: "configmaps" }, { password: secret }),
         }]
       },
@@ -94,7 +94,7 @@ test("omitted metadata and empty declarations do not invent capabilities", () =>
     name: "legacy", aliases: [], description: undefined, knowledge: undefined, upstream: undefined, detectors: [], environmentProbes: [],
     details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] }
   });
-  const withoutExplanation = { ...requireFactsInspectExtension(service.extensions![1]!), description: undefined, limitations: undefined };
+  const withoutExplanation = { ...requireDataIdExtension(service.extensions![1]!), description: undefined, limitations: undefined };
   expect(describeService({
     ...service,
     extensions: [{ ...withoutExplanation }]
@@ -159,7 +159,7 @@ test("description follows declaration changes and projects Kubernetes Service wo
   const result = describeService({
     ...service,
     workloads: [{ name: "api", platform: "kubernetes", location: { kind: "service", name: "api-svc" } }],
-    extensions: [Object.assign({}, requireFactsInspectExtension(service.extensions![1]!), { accepts: ["tenant_id"], provides: ["tenant-record"] })]
+    extensions: [Object.assign({}, requireDataIdExtension(service.extensions![1]!), { accepts: ["tenant_id"], provides: ["tenant-record"] })]
   });
   expect(result.details.inspect?.accepts).toEqual(["tenant_id"]);
   expect(result.details.inspect?.provides).toEqual(["tenant-record"]);

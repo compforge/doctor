@@ -26,6 +26,7 @@ export interface ConfirmedDataServiceTarget {
 
 export interface DataAccessPreparation {
   confirmed: readonly ConfirmedDataServiceTarget[];
+  lists: ReadonlyMap<string, ConfirmedDataServiceTarget>;
   close(): Promise<void>;
 }
 
@@ -37,8 +38,13 @@ export async function prepareDataAccess(
   const { command, config, executor } = dataCommand;
   const confirmed: ConfirmedDataServiceTarget[] = [];
   const managedContexts: ManagedPluginContext[] = [];
+  const lists = new Map<string, ConfirmedDataServiceTarget>();
 
-  for (const declared of dataCommand.providers) {
+  for (const declared of [...dataCommand.providers, ...dataCommand.listProviders ?? []]) {
+    const record = (value: ConfirmedDataServiceTarget) => {
+      if ("bizType" in declared.extension) lists.set(JSON.stringify([declared.name, declared.extension.id]), value);
+      else confirmed.push(value);
+    };
     const selection = { service: declared.name };
     let context = injectedContexts?.[selection.service];
     let managed: ManagedPluginContext | undefined;
@@ -54,7 +60,7 @@ export async function prepareDataAccess(
         context = managed;
       }
       if (managed) managedContexts.push(managed);
-      confirmed.push({
+      record({
         ...selection,
         context,
         access: {
@@ -63,7 +69,7 @@ export async function prepareDataAccess(
       });
     } catch (error) {
       await Promise.allSettled(managed ? [managed.dispose()] : []);
-      confirmed.push({
+      record({
         ...selection,
         access: {
           status: "failed",
@@ -75,6 +81,7 @@ export async function prepareDataAccess(
 
   return {
     confirmed,
+    lists,
     close: async () => {
       const settled = await Promise.allSettled(managedContexts.map((context) => context.dispose()));
       const failure = settled.find((result) => result.status === "rejected");

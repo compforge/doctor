@@ -199,7 +199,7 @@ export async function runCollectDelegates(
 }
 
 function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string[] {
-  const kind = capability === "inspect" ? "facts.inspect" : "metric.configuration";
+  const kind = capability === "inspect" ? "data.id" : "metric.configuration";
   return [...new Set(plugin.services.extensions(kind).map(({ service }) => service.name))];
 }
 

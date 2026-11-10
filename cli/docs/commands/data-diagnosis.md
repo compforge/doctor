@@ -2,9 +2,12 @@
 
 ## 理念 / 概念
 
-用户通常从一个业务 ID 开始排查，而相关记录分散在多个 Service。Data 的目标是围绕这个输入建立一份
-有来源、有范围、可复查的证据：哪些对象实际相关、各 Service 取得了什么、还缺什么，以及已有证据
-支持哪些判断。关联范围由现场证明的 Identity 关系逐步形成，Catalog 提供可参与查询的能力。
+Data 支持两种查询：按业务 ID 汇集关联证据，或按业务类型浏览 Service 拥有的数据。两种入口共享
+Service 发现、访问准备、执行与证据交付。Core 定义接口规则并汇总结果；业务类型、字段及查询含义由
+Service 提供，Core 不维护业务类型枚举。
+
+业务 ID 的关联范围由现场证明的 Identity 关系逐步形成；类型查询的范围由 Service 的静态声明解释。
+两者都保留来源、读取范围与失败信息，使结果可以离线复查。
 
 ```mermaid
 flowchart LR
@@ -27,15 +30,33 @@ Identity 的出边；后续 Identity 的查询由 Core 调度。这样业务适�
 可能取得于不同时间，报告保留来源和观察时间，让读者能识别证据覆盖与时序限制。Detector 和 Render
 消费已冻结的 Evidence，避免在解释和展示时继续查询现场，使同一份结果能够离线复查。
 
-### 查询与事实
+### 类型查询与分页
+
+`--biz-type` 可以重复传入多个类型，重复值只执行一次；可与业务 ID 同次查询，分页仅作用于类型查询。
+Service 为每种类型注册一个 `data.list` Extension，包含 `bizType`、描述、访问声明及查询实现。
+同一 Service 的同一类型只能注册一次，不同 Service 可以提供同名类型和不同的记录字段。
+
+`data --help` 从已加载 Plugin 的静态注册生成类型、Service 和说明，不访问目标环境；指定 `-s` 时只展示
+选定 Service 的类型。能力声明不代表当前环境连接、权限或数据可用。
+
+未指定 `-s` 时，Core 调用所有注册了所请求类型的 Service；指定后仅在该范围内匹配。类型无人支持时
+在访问环境前报错。每个 Service/类型独立返回 `items`、`page`、`pageSize` 和 `total`；Core 按来源分组，
+不跨 Service 去重、关联记录或构造全局总数。一个提供方失败仍保留其他提供方取得的数据。
+
+Service 在数据源侧使用稳定排序分页，并按相同查询范围返回准确 `total`。越界页可以为空，仍保留
+总数；计数失败不能用零或本页条数代替。分页期间数据可以变化，不承诺跨请求的快照一致性。
+命令限制每页条数及证据容量；预算缩短页面时必须标记 `truncated` 并保留原始总数，避免被误读为末页。
+类型页面与 ID 查询事实一起保存为本次执行的证据，展示和序列化不再次查询现场。
+
+### ID 查询与事实
 
 `doctor data [biz-id...]` 汇集一个或多个业务 ID 在当前 Plugin 中的关联数据，ID 也可通过重复
 `--biz-id` 传入。它不是通用 SQL 控制台，也不在
 `collect/data` 写死 Plugin、Service 或业务对象：每个 Service 通过 Plugin 的 Service Catalog 声明自己的
-`facts.inspect` Extension，声明 `accepts` Identity 类型、`provides` Fact 类型及访问权限。Extension 接口、kind
+`data.id` Extension，声明 `accepts` Identity 类型、`provides` Fact 类型及访问权限。Extension 接口、kind
 及输入输出契约定义在 `packages/plugin`，业务解析与查询实现归 Service。
 
-facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected / failed outcome。成功 result 的
+data.id 的 input 是 Query 列表，output 是逐 Identity 的 collected / failed outcome。成功 result 的
 `resolution` 表达对象解析，`sources` 区分成功取得、确认不存在、查询失败与未采集；`missingEvidence`
 补充证据缺口，`truncated` 表达容量截断。命令状态使用 Query 执行结果和来源获取状态，已解析 ID 的部分采集仍返回 partial。
 `facts` 承载可独立消费的稳定信息：
@@ -53,7 +74,7 @@ facts.inspect 的 input 是 Query 列表，output 是逐 Identity 的 collected 
 具体 Plugin capability 自己解释 Service 环境、建立数据库访问并执行固定查询；Catalog 的 Inspect 契约
 只回答“能贡献什么业务数据”，不会把 Database client 或业务连接规则注入 Plugin。
 
-## 流程
+## ID 查询流程
 
 1. `CommandSpec.prepare` 解析 biz ID 和 Service 范围，按 kind 选择 Extension，检查命令自身的环境访问
    与所选 Extension.access。此阶段不调用扩展 run，不查询业务数据、不初始化业务 Client。
@@ -87,13 +108,12 @@ Detector 原因。摘要用于快速判断本次批量采集是否完整，详�
 
 ### Catalog 按 kind 发现 Extension，编排器不认识业务名
 
-`collect/data` 只解释阶段和 facts.inspect 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
+`collect/data` 只解释阶段和 `data.id` / `data.list` 协议，不 import `plugins/<plugin>` 的具体 Service。Plugin 通过
 Catalog 决定哪些 Service 可扩展 ID、哪些只提供数据；服务 schema、关联键、连接规则和固定查询图留在
 具体 Plugin。新增 Plugin 或 Service 不需要修改通用 data 编排器。
 
-一个 Service 可以提供多个 kind，Data 只选择 facts.inspect。当前结果按 Service 归属，因此每个 Service
-只接受一个该 kind 的实现，多个实现明确报歧义。尚未迁移的 Inspect contribution 由适配入口生成同一
-Extension 视图；不能与原生 facts.inspect 重复注册。其它命令不必同时迁移。
+一个 Service 可以提供多个 kind。ID 查询选择 `data.id`；当前 ID 结果按 Service 归属，因此每个 Service
+只接受一个 `data.id` 实现，多个实现明确报歧义。类型查询按 Service 与 `bizType` 区分提供方。
 
 ### Identity 关系驱动跨 Service 采集
 

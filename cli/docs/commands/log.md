@@ -32,7 +32,7 @@ Service 可以声明多个 Workload，位置可以是 Kubernetes Service、label
 ## 对象关联日志
 
 Service 的 `logs.identityRelations` 声明可用于日志关联的有向身份边；Core 复用 Data Command 的
-`facts.inspect` 查询、预算和获取状态，从输入 `biz_id` 沿这些边选择身份，仅匹配声明该规则的 Service 日志。
+`data.id` 查询、预算和获取状态，从输入 `biz_id` 沿这些边选择身份，仅匹配声明该规则的 Service 日志。
 Plugin 不应声明共享资源到其它会话/运行实例的反向边，避免把同 Carrier 的兄弟会话扩大为当前查询目标。
 Core 不读取 opaque record/value 内的业务字段，也不直接把未解析的输入当成搜索关键字。
 
@@ -55,7 +55,7 @@ Kubernetes Log API 只接受时间起点。Doctor 按容器运行时日志时间
 其次使用本轮 `collect` 已取得的完整 Trace，最后沿用 UUIDv7 / 默认回看策略。独立 `doctor log`
 不额外下载 Trace。窗口选择和默认策略见 [window.ts](../../src/collect/log/window.ts)。
 
-Data 通过 `facts.inspect` 贡献 `collect.window` RecordFact，并在 Extension 的 `provides` 中声明。
+Data 通过 `data.id` 贡献 `collect.window` RecordFact，并在 Extension 的 `provides` 中声明。
 [CollectWindow](../../../packages/plugin/src/collect-window.ts) 表达一个对象的活动范围：边界使用
 RFC3339，包含端点，允许只贡献一端；两端未知时不贡献。业务方负责选择活动时间，Core 不猜测业务表字段。
 

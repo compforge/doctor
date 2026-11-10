@@ -69,7 +69,7 @@ describe("CLI 冷启动冒烟", () => {
   test("capability 错误在真实进程中以 exit 1 结束", () => {
     const result = runCli("data", "--biz-id", "biz-1");
     expect(result.exitCode).toBe(1);
-    expect(result.stderr).toContain("extension.facts.inspect");
+    expect(result.stderr).toContain("extension.data.id");
   });
 
   test("输入校验错误在真实进程中以 exit 2 结束", () => {

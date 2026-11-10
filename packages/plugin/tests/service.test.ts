@@ -136,7 +136,7 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
   };
   const catalog = createServiceCatalog([service]);
 
-  expect(catalog.extensions("facts.inspect").map(item => item.extension.id))
+  expect(catalog.extensions("data.id").map(item => item.extension.id))
     .toEqual(["inspect"]);
   expect(catalog.find("api")?.environmentProbes?.[0]?.id)
     .toBe("apparmor");

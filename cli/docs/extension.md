@@ -29,7 +29,8 @@ Extension、kind 及其对应的 input / output 契约统一定义在 Plugin SDK
 packages/plugin/src/
 ├── extension/
 │   ├── index.ts          # Extension、ExtensionContext、公共声明校验与统一导出
-│   ├── facts-inspect.ts  # facts.inspect 的领域契约
+│   ├── data-id.ts        # 按 Identity 查询业务事实与关系
+│   ├── data-list.ts      # 按业务类型分页查询 Service 数据
 │   ├── trace-resolve.ts  # trace.resolve 的领域契约
 │   ├── facet.ts          # facet.summarize / facet.sample 的领域契约
 │   ├── duration.ts       # duration.summarize 的领域契约
@@ -159,7 +160,7 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 
 | kind | 输入 → 输出 | 消费方 |
 |---|---|---|
-| facts.inspect | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
+| data.id | Query 列表 → 逐项 Fact 获取结果 | Data、Tenant |
 | log.workloads | 业务 ID（可选）、时间窗口 → 本 Service 的 Workload 名称子集 | Log、Collect、Eval |
 | trace.resolve | 不透明输入 ID（业务 ID 或 trace ID）→ 一条或多条 Trace 定位结果，包含来源与解析类型 | Trace、Log，以及调用它们的组合命令 |
 | facet.summarize | 时间窗口、租户、预算 → Facet 汇总 | Overview |
@@ -202,16 +203,16 @@ MCP 配置扩展负责把私有来源投影为公共 server/tool 契约，Comman
 保留背压，并显式传递读取错误和取消信号。正常结束、消费方取消、请求取消及父命令取消都会触发资源释放；普通
 查询和非流式调用在结果返回后释放。只提供流式或非流式推理的 Service 可供相应消费路径单独使用。
 
-## 接入示例：Data 使用 facts.inspect
+## 接入示例：Data 使用 data.id
 
-Data 使用 [facts.inspect](../../packages/plugin/src/extension/facts-inspect.ts) 接入这套协议：
+Data 使用 [data.id](../../packages/plugin/src/extension/data-id.ts) 接入这套协议：
 
 - input 是 Query 列表，每个 Query 保留 Identity、约束和预算；output 按 Identity 返回 collected / failed outcome。
 - accepts、provides、expands 描述此 kind 的输入匹配和可能产出的 Fact / Relation 类型。
 - Data 的 CommandSpec.prepare 选择实现并保留声明边界，run 才创建受限上下文和调用取数。
 - Data 继续负责批量、Relation 遍历、预算、逐项失败隔离、结果投影与诊断；原生扩展无需数据库式 target。
 
-Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 facts.inspect 实现，多个实现会报歧义。
+Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 data.id 实现，多个实现会报歧义。
 
 Data 的具体行为见 [Data 汇集诊断](commands/data-diagnosis.md)；Plugin 的加载、分发与信任边界见
 [Plugin](plugin.md)，Command 生命周期见 [Kernel](kernel.md)。

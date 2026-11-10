@@ -1,5 +1,5 @@
 import type { PluginContext, ServiceCatalog } from "@compforge/doctor-plugin";
-import { findDataProvider, type DataProvider } from "./extensions";
+import { dataListProviders, findDataProvider, type DataListProvider, type DataProvider } from "./extensions";
 import { CommandInputError, type CommandContext } from "../../command";
 
 import { useLogger } from "../../terminal/log";
@@ -15,6 +15,7 @@ export interface PreparedDataCommand {
   selections: readonly DataServiceSelection[];
   executor: Executor;
   providers: readonly DataProvider[];
+  listProviders?: readonly DataListProvider[];
 }
 
 /** Data command 的完整执行作用域；同一个对象继续交给 Capability、Inspect 与 Probe。 */
@@ -42,14 +43,15 @@ export async function prepareDataCommand(
       return undefined;
     }
     const executor = injectedExecutor ?? new KubectlExecutor(config.kube);
-    const providers = selections.map(({ service }) => {
+    const providers = (config.ids.length ? selections.filter(({ service }) => findDataProvider(catalog, service)) : []).map(({ service }) => {
       const provider = findDataProvider(catalog, service);
-      if (!provider) throw new Error(`Doctor 未注册 Service '${service}' 的 facts.inspect Extension`);
+      if (!provider) throw new Error(`Doctor 未注册 Service '${service}' 的 data.id Extension`);
       return provider;
     });
     // Providers enforce their declarations when executing; unused paths need no RBAC preflight.
     command.signal.throwIfAborted();
-    return { command, config, selections, executor, providers };
+    return { command, config, selections: providers.map(({ name }) => ({ service: name })), executor, providers,
+      listProviders: config.list ? dataListProviders(catalog, config.services).filter(provider => config.list!.bizTypes.includes(provider.extension.bizType)) : [] };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
     throw new CommandInputError(reason, { cause: error });

@@ -1,17 +1,17 @@
 import type { Extension, RegisteredExtension } from "./index";
 import type { ServiceInspectQuery, ServiceInspectQueryOutcome } from "../service";
 
-export const FACTS_INSPECT_KIND = "facts.inspect";
-export type FactsInspectInput = readonly ServiceInspectQuery[];
-export type FactsInspectOutput = readonly ServiceInspectQueryOutcome[];
+export const DATA_ID_KIND = "data.id";
+export type DataIdInput = readonly ServiceInspectQuery[];
+export type DataIdOutput = readonly ServiceInspectQueryOutcome[];
 
 /**
  * Identity matching and Fact declarations belong to this kind, not the generic Extension protocol.
  *
  * @see {@link ../../../../cli/docs/commands/data-diagnosis.md#identity-关系驱动跨-service-采集}
  */
-export interface FactsInspectExtension extends Extension<FactsInspectInput, FactsInspectOutput> {
-  readonly kind: typeof FACTS_INSPECT_KIND;
+export interface DataIdExtension extends Extension<DataIdInput, DataIdOutput> {
+  readonly kind: typeof DATA_ID_KIND;
   readonly accepts: readonly string[];
   readonly provides: readonly string[];
   readonly expands?: readonly string[];
@@ -20,8 +20,8 @@ export interface FactsInspectExtension extends Extension<FactsInspectInput, Fact
 }
 
 /** Validate domain metadata at consumption; an open kind string alone is not type proof. */
-export function requireFactsInspectExtension(extension: RegisteredExtension): FactsInspectExtension {
-  if (extension.kind !== FACTS_INSPECT_KIND) throw new Error(`Expected ${FACTS_INSPECT_KIND}, got ${extension.kind}`);
+export function requireDataIdExtension(extension: RegisteredExtension): DataIdExtension {
+  if (extension.kind !== DATA_ID_KIND) throw new Error(`Expected ${DATA_ID_KIND}, got ${extension.kind}`);
   const item = extension as unknown as Record<string, unknown>;
   for (const field of ["accepts", "provides", "expands", "limitations"] as const) {
     const values = item[field];
@@ -32,5 +32,5 @@ export function requireFactsInspectExtension(extension: RegisteredExtension): Fa
     }
   }
   if (item.dataSource !== undefined && typeof item.dataSource !== "string") throw new Error(`${extension.id}.dataSource must be a string`);
-  return extension as FactsInspectExtension;
+  return extension as DataIdExtension;
 }

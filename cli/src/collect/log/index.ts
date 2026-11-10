@@ -11,7 +11,7 @@ import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResu
 import { useLogger } from "../../terminal/log";
 // Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
-import { COLLECT_WINDOW_KIND, requireFactsInspectExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { COLLECT_WINDOW_KIND, requireDataIdExtension, type PluginDefinition } from "@compforge/doctor-plugin";
 import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
@@ -182,8 +182,8 @@ async function prepareLogBatch(
   const identityServices = services.filter(name => {
     if (!workloads[name]?.length) return false;
     const service = plugin.services.find(name);
-    return service?.logs?.identityRelations || plugin.services.extensions("facts.inspect")
-      .some(item => item.service.name === name && requireFactsInspectExtension(item.extension).provides.includes(COLLECT_WINDOW_KIND));
+    return service?.logs?.identityRelations || plugin.services.extensions("data.id")
+      .some(item => item.service.name === name && requireDataIdExtension(item.extension).provides.includes(COLLECT_WINDOW_KIND));
   });
   if (opts.bizIds.length && identityServices.length) {
     identityResolution = await dataCommand.run(commandContext, {

@@ -1,6 +1,6 @@
 import { withSummary } from "@compforge/doctor-plugin";
 import type {
-  ExtensionContext, FactsInspectExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
+  ExtensionContext, DataIdExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
   CaseRunnerFactory, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
   MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension, ServiceEnvironmentProbe,
@@ -10,7 +10,7 @@ import type {
 } from "../src";
 import { modelBackendOutput } from "../src";
 export type DataRun<E extends { run: (...args: any[]) => Promise<{ data: unknown }> }> = (...args: Parameters<E["run"]>) => Promise<Awaited<ReturnType<E["run"]>>["data"]>;
-type Access = FactsInspectExtension["access"];
+type Access = DataIdExtension["access"];
 type Endpoint = { access: Access; endpoint: ServiceEndpoint };
 
 // Test fixtures compose native operations; production SDK has no legacy registration adapters.
@@ -71,12 +71,12 @@ export function inferenceExtensions(value: Endpoint & {
     } satisfies ModelStreamExtension,
   ];
 }
-export function inspectExtension(value: Omit<FactsInspectExtension, "id" | "kind" | "run"> & {
-  inspect: DataRun<FactsInspectExtension>;
+export function inspectExtension(value: Omit<DataIdExtension, "id" | "kind" | "run"> & {
+  inspect: DataRun<DataIdExtension>;
   resolveTarget?: (context: ExtensionContext) => Promise<unknown>;
-}): FactsInspectExtension {
+}): DataIdExtension {
   const { inspect: run, resolveTarget: _target, ...declaration } = value;
-  return { ...declaration, id: "inspect", kind: "facts.inspect", run: withSummary({ title: "Fixture", fields: [] }, run) };
+  return { ...declaration, id: "inspect", kind: "data.id", run: withSummary({ title: "Fixture", fields: [] }, run) };
 }
 export function caseRunnerFixture(value: Endpoint & {
   requestIdentity?: ServiceCaseIdentityRequirement;

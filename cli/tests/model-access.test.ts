@@ -36,7 +36,7 @@ test("Plugin Inspect contribution 必须提供 inspect", () => {
         component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
         name: "records",
         workloads: [],
-        extensions: [{ id: "inspect", kind: "facts.inspect", ...inspect }]
+        extensions: [{ id: "inspect", kind: "data.id", ...inspect }]
       }]
     },
   });

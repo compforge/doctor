@@ -1,10 +1,10 @@
 import { withSummary } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
-import type { FactsInspectExtension } from "@compforge/doctor-plugin";
+import type { DataIdExtension } from "@compforge/doctor-plugin";
 import { normalizeServiceInspectResult } from "../src/plugin/inspect";
 
 const capability = {
-  id: "inspect", kind: "facts.inspect", access: {},
+  id: "inspect", kind: "data.id", access: {},
   accepts: ["tenant_id"],
   provides: ["intention", "tenant-configuration"],
   expands: ["bot_id"],
@@ -18,7 +18,7 @@ const capability = {
       facts: [],
     },
   }))),
-} satisfies FactsInspectExtension;
+} satisfies DataIdExtension;
 
 const identity = { kind: "tenant_id", value: "tenant-1" };
 const budget = { maxFacts: 10, maxBytes: 1024 * 1024 };
