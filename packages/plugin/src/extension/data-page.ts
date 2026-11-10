@@ -42,6 +42,24 @@ export function requireDataPageExtension(extension: RegisteredExtension): DataPa
   return extension as DataPageExtension;
 }
 
+/** Validate page arithmetic before a provider uses the offset with its data source. */
+export function pageOffset(query: Pick<DataPageQuery, "page" | "pageSize">): number {
+  const offset = (query.page - 1) * query.pageSize;
+  if (!Number.isSafeInteger(query.page) || query.page < 1 || !Number.isSafeInteger(query.pageSize)
+    || query.pageSize < 1 || !Number.isSafeInteger(offset)) throw new Error("Invalid pagination");
+  return offset;
+}
+
+/** Normalize a source count without treating missing values as an empty collection. */
+export function pageTotal(value: unknown): number {
+  if (typeof value !== "number" && typeof value !== "bigint" && (typeof value !== "string" || !value.trim())) {
+    throw new Error("Count is unavailable or invalid");
+  }
+  const total = Number(value);
+  if (!Number.isSafeInteger(total) || total < 0) throw new Error("Count is unavailable or invalid");
+  return total;
+}
+
 /** Validate the pagination contract without interpreting Service-owned records. */
 export function dataPageOutput(value: unknown, query: DataPageQuery): DataPage {
   if (!value || typeof value !== "object") throw new Error("data.page must return a page");
