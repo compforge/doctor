@@ -1,17 +1,18 @@
-import { dataLogWindows, type DataLogWindows } from "./data-window";
+import { factsLogWindows, type DataLogWindows } from "./data-window";
 import { timePaddingMs, selectLogTimeWindow, resolveLogTimeWindow, validateLogTimeWindow, type TraceLogWindow } from "./window";
 import { resolveLogWorkloads, mergeLogWorkloads } from "./workloads";
 import { gapMessages } from "../evidence-gaps";
-import { dataCommand } from "../data/command";
-import type { DataOutput } from "../data/model";
-import { logIdentities } from "./correlation";
+import { collectLogAssociations } from "./association";
+import { projectDataFacts } from "../data/projection";
+import { detectDataEvidenceGaps } from "../data/detector";
+import { logIdentities, logKeys } from "./correlation";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 
 import { useLogger } from "../../terminal/log";
 // Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
-import { COLLECT_WINDOW_KIND, requireDataIdExtension, type PluginDefinition } from "@compforge/doctor-plugin";
+import { type PluginDefinition } from "@compforge/doctor-plugin";
 import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
@@ -178,63 +179,6 @@ async function prepareLogBatch(
     }
     for (const gap of selection.gaps) useLogger("collect:log").warn(gap);
   });
-  let identityResolution: CommandResult<DataOutput> | undefined;
-  const identityServices = services.filter(name => {
-    if (!workloads[name]?.length) return false;
-    const service = plugin.services.find(name);
-    return service?.logs?.identityRelations || plugin.services.extensions("data.id")
-      .some(item => item.service.name === name && requireDataIdExtension(item.extension).provides.includes(COLLECT_WINDOW_KIND));
-  });
-  if (opts.bizIds.length && identityServices.length) {
-    identityResolution = await dataCommand.run(commandContext, {
-      since: opts.since, sinceTime: opts.sinceTime, untilTime: opts.untilTime,
-      bizIds: opts.bizIds, namespace: resolvedNamespace.namespace, services: identityServices,
-    });
-  }
-  let trace: ResolvedPluginTraceId[] = [];
-  // No-ID collection must not resolve business IDs or prepare their database/store dependencies.
-  if (opts.bizIds.length && Object.values(workloads).some(names => names.length) && plugin.services.extensions("trace.resolve").length) {
-    const dependencyRuntime = new ServiceDependencyRuntime({
-      plugin,
-      collect,
-      executor,
-      command: "doctor log",
-      commandContext,
-      index: buildIndexExpr(),
-      endpoint: process.env.DOCTOR_OPENSEARCH_URL?.trim(),
-      log: (line, tone) => {
-        if (tone === "warning") useLogger().warn(`${line}`);
-        else useLogger().info(`${line}`);
-      },
-    });
-    try {
-      trace = await resolvePluginTraceIds({
-        bizIds: opts.bizIds,
-        namespace: resolvedNamespace.namespace,
-        kubeconfig: resolved.kubeconfig,
-        context: collect.kubernetes.context,
-        profileName: collect.profileName,
-        command: "doctor log",
-        commandContext,
-        resolveDependencies: (service) => dependencyRuntime.resolve(service),
-      }, plugin, executor);
-    } catch (err) {
-      useLogger("collect").warn(`trace 解析未完成，将保留已解析的对象关联：${err instanceof Error ? err.message : String(err)}`);
-    } finally {
-      try {
-        await dependencyRuntime.close();
-      } catch (error) {
-        useLogger("collect").warn(`Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-    if (!trace) {
-      useLogger("collect").warn("已取消");
-      return 130;
-    }
-    for (const item of trace) {
-      useLogger("collect").info(`biz-id: ${item.bizId} → trace-id: ${item.traceId}（${item.service} 按 ${item.resolvedAs} 解析）`);
-    }
-  }
 
   const selected = services.flatMap(name => plugin.services.find(name)!.workloads.filter(workload => workloads[name]?.includes(workload.name)))
     .filter(workload => !workload.namespace || workload.namespace === resolvedNamespace.namespace);
@@ -266,11 +210,11 @@ async function prepareLogBatch(
   const access = new ClientNodePodLogAccess(new KubectlPodLogAccess(executor, resolvedNamespace.namespace), {
     namespace: resolvedNamespace.namespace, kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, signal: commandContext.signal,
   });
-  return { pattern, format, collect, resolved, resolvedNamespace, executor, trace, services, access, identityResolution, selections };
+  return { pattern, format, collect, resolved, resolvedNamespace, executor, services, access, selections };
 }
 
 /**
- * @spec IDs select trace or declared, evidenced object correlations; absent IDs select Service logs without business resolution.
+ * @spec IDs always select literal input keys plus trace or declared, evidenced object correlations; absent IDs select Service logs without business resolution.
  * @rule Unresolved identities never fall back to unfiltered Service collection.
  */
 export async function runCollectLog(
@@ -299,7 +243,55 @@ export async function runCollectLog(
   const staging = join(stagingRoot, defaultLogBatchName(new Date()));
   const summary = commandContext.artifacts.add({ command: "log", path: staging });
   const bundle = new EvidenceBundle(staging);
-  const localWindows = dataLogWindows(prepared.identityResolution?.output);
+  const associationServices = services.filter(name => prepared.selections.some(selection => selection.workloads[name]?.length));
+  const associations = await collectLogAssociations({ ...opts, bizIds: ids, services: associationServices,
+    namespace: resolvedNamespace.namespace }, plugin, commandContext, executor, join(staging, "associations"),
+    line => useLogger("collect:log").info(line));
+  writeFileSync(join(staging, "associations.json"), JSON.stringify(associations, null, 2));
+  let trace: ResolvedPluginTraceId[] = [];
+  let traceFailure: string | undefined;
+  // No-ID collection must not resolve business IDs or prepare their database/store dependencies.
+  if (ids.length && prepared.selections.some(selection => Object.values(selection.workloads).some(names => names.length)) && plugin.services.extensions("trace.resolve").length) {
+    const dependencyRuntime = new ServiceDependencyRuntime({
+      plugin,
+      collect,
+      executor,
+      command: "doctor log",
+      commandContext,
+      index: buildIndexExpr(),
+      endpoint: process.env.DOCTOR_OPENSEARCH_URL?.trim(),
+      log: (line, tone) => {
+        if (tone === "warning") useLogger().warn(`${line}`);
+        else useLogger().info(`${line}`);
+      },
+    });
+    try {
+      trace = await resolvePluginTraceIds({
+        bizIds: ids,
+        namespace: resolvedNamespace.namespace,
+        kubeconfig: resolved.kubeconfig,
+        context: collect.kubernetes.context,
+        profileName: collect.profileName,
+        command: "doctor log",
+        commandContext,
+        resolveDependencies: (service) => dependencyRuntime.resolve(service),
+      }, plugin, executor);
+    } catch (err) {
+      traceFailure = err instanceof Error ? err.message : String(err);
+      useLogger("collect").warn(`trace 解析未完成，继续按输入 key 和对象关联采集：${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      try {
+        await dependencyRuntime.close();
+      } catch (error) {
+        useLogger("collect").warn(`Service capability 依赖清理失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    for (const item of trace) {
+      useLogger("collect").info(`biz-id: ${item.bizId} → trace-id: ${item.traceId}（${item.service} 按 ${item.resolvedAs} 解析）`);
+    }
+  }
+
+  const localWindows = factsLogWindows(ids.map(bizId => ({ bizId, facts: associations.facts })));
   const dataWindows: DataLogWindows = {
     windows: [...(opts.dataWindows?.windows ?? []), ...localWindows.windows],
     rejected: [...(opts.dataWindows?.rejected ?? []), ...localWindows.rejected],
@@ -308,19 +300,14 @@ export async function runCollectLog(
     const selection = prepared.selections[index]!;
     const selectedServices = services.filter(name => selection.workloads[name]?.length);
     if (!selectedServices.length) return [];
-    const traces = prepared.trace.filter(trace => trace.bizId === bizId);
-    const dataItem = prepared.identityResolution?.output?.items.find(item => item.bizId === bizId);
-    const identities = dataItem?.diagnosis && bizId !== undefined
-      ? logIdentities(dataItem.diagnosis.evidence.facts, bizId, plugin.services).filter(item => selectedServices.includes(item.service)) : [];
-    if (bizId !== undefined && !traces.length) {
-      useLogger("collect").warn(`[collect:log] ${bizId} 未找到 trace ID，将根据 Data 窗口或原有日志规则采集`);
-    }
-    if (bizId !== undefined && !traces.length && !identities.length) return [];
-    const dataGaps = gapMessages(dataItem?.diagnosis?.findings ?? []);
-    const resolutionGaps = prepared.identityResolution && (dataItem?.status ?? prepared.identityResolution.status) !== CommandStatus.Ok
-      ? [...new Set(dataGaps.length ? dataGaps : [dataItem?.reason
-        ?? ("reason" in prepared.identityResolution ? prepared.identityResolution.reason : undefined)
-        ?? "对象关联采集不完整，详见关联 Data 证据"])] : [];
+    const traces = trace.filter(trace => trace.bizId === bizId);
+    const associationFacts = bizId === undefined ? undefined : projectDataFacts(associations.facts, bizId);
+    const identities = associationFacts && bizId !== undefined
+      ? logIdentities(associationFacts, bizId, plugin.services).filter(item => selectedServices.includes(item.service)) : [];
+    const resolutionGaps = [...associations.gaps,
+      ...(bizId !== undefined && plugin.services.extensions("trace.resolve").length && !traces.length
+        ? [traceFailure ?? `${bizId} 未取得 trace 关联，保留输入 key 与已知对象关联`] : []), ...(associationFacts
+      ? gapMessages(detectDataEvidenceGaps({ facts: associationFacts, observations: [] })) : [])];
 
     const timeWindow = selectLogTimeWindow({ id: bizId, traceIds: traces.map(trace => trace.traceId),
       traceWindows: opts.traceWindows, dataWindows, timePadding: opts.timePadding, profileTimePadding,
@@ -332,7 +319,8 @@ export async function runCollectLog(
       `[collect:log] ${bizId ?? "Service 日志"} window source=${window.contribution ? `${window.contribution.service}/${window.contribution.queryId}#${window.contribution.factIndex}` : "trace"} from-source=${window.fromSource} to-source=${window.toSource} padding=${window.timePadding} padding-source=${window.paddingSource}`);
     if (timeWindow.fallbackReason) useLogger("collect").info(`[collect:log] ${bizId ?? "Service 日志"} ${timeWindow.fallbackReason}`);
     return [{
-      bizId, traceIds: traces.map(trace => trace.traceId), identities, resolutionGaps: [...resolutionGaps, ...selection.gaps], workloads: selection.workloads, namespace: resolvedNamespace.namespace,
+      bizId, keys: logKeys({ bizId, keys: traces.map(trace => ({ kind: "trace", identity: { kind: "trace_id", value: trace.traceId },
+        resolution: { service: trace.service, resolvedAs: trace.resolvedAs, sourceId: trace.sourceId } })), identities }), associationFacts, resolutionGaps: [...resolutionGaps, ...selection.gaps], workloads: selection.workloads, namespace: resolvedNamespace.namespace,
       kubeconfig: resolved.kubeconfig, context: collect.kubernetes.context, services: selectedServices,
       since: timeWindow.since, sinceTime: timeWindow.sinceTime, untilTime: timeWindow.untilTime ?? untilTime, window: { ...timeWindow, untilTime: timeWindow.untilTime ?? untilTime },
       errorsOnly: !!opts.errorsOnly, pattern: opts.pattern, pod: opts.pod, container: opts.container,
@@ -356,7 +344,7 @@ export async function runCollectLog(
     }
     const collected = byId.get(bizId);
     const status = collected?.result.status ?? (commandContext.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed);
-    const reason = collected?.result.reason ?? (!collected ? "无法解析 trace_id 或已声明的日志对象身份" : undefined);
+    const reason = collected?.result.reason ?? (!collected ? "日志请求未完成" : undefined);
     items.push({ bizId, status, artifacts: collected ? [collected.artifact] : [], ...(reason ? { reason } : {}),
       ...(collected ? { stats: collected.result.stats, missingEvidence: collected.result.missingEvidence, resolutionGaps: collected.result.resolutionGaps } : {}) });
   });
@@ -366,7 +354,7 @@ export async function runCollectLog(
       ...item, artifact_ids: artifacts.map(artifact => artifact.id),
     }))
   }, null, 2));
-  const output: LogOutput = { namespace: resolvedNamespace.namespace, services, items, identityResolution: prepared.identityResolution };
+  const output: LogOutput = { namespace: resolvedNamespace.namespace, services, items };
   return { status: aggregateCommandStatus(items.map(item => item.status)), output,
     summary: logSummary(output), artifacts: [summary, ...artifacts] };
 }
@@ -401,11 +389,11 @@ export async function collectLog(
   });
   const contexts: LogCommandContext[] = requests.map(opts => {
     validateLogTimeWindow(opts);
-    if (opts.bizId !== undefined && !opts.traceIds.length && !opts.identities?.length) throw new Error("按业务 ID 采集需要 trace_id 或已解析对象身份");
+    if (opts.bizId !== undefined && !logKeys(opts).length) throw new Error("按 ID 采集需要非空日志 key");
     return {
       command: commandContext, startedAtMs: Date.parse(startedAt),
       config: {
-        ...opts, context: environment.context,
+        ...opts, keys: logKeys(opts), context: environment.context,
         linePattern: buildLogPattern(opts.errorsOnly, opts.pattern,
           serviceLogErrorPatterns(commandContext.plugin.services, opts.services)),
       },
@@ -455,6 +443,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   const { config, bundle, log } = ctx;
   const facts = diagnosis.evidence.facts;
   const rendered = renderLogResult(config, diagnosis);
+  if (config.associationFacts) writeFileSync(join(bundle.dir, "associations.json"), JSON.stringify(config.associationFacts, null, 2));
   writeFileSync(join(bundle.dir, "timeline.jsonl"), renderTimelineJsonl(rendered.timeline), "utf-8");
   writeFileSync(join(bundle.dir, "service-logs.txt"), rendered.serviceLogs, "utf-8");
   writeFileSync(join(bundle.dir, "diagnosis.json"), `${JSON.stringify(diagnosis, null, 2)}\n`, "utf-8");
@@ -463,7 +452,7 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
   bundle.writeCollection({
     doctorVersion: DOCTOR_CLI_VERSION,
     kubectlVersion: facts.runtime.status === "collected" ? facts.runtime.kubectlVersion : undefined,
-    target: { mode: config.bizId === undefined ? "service" : "correlated", identities: config.identities, resolution_gaps: config.resolutionGaps, workloads: config.workloads, namespace: config.namespace, pod: config.pod, container: config.container, biz_id: config.bizId, trace_ids: config.traceIds, services: config.services },
+    target: { mode: config.bizId === undefined ? "service" : "correlated", keys: logKeys(config), resolution_gaps: config.resolutionGaps, workloads: config.workloads, namespace: config.namespace, pod: config.pod, container: config.container, biz_id: config.bizId, services: config.services },
     inspectionFacts: { ...facts },
     params: { window: config.window, since: config.since, since_time: config.sinceTime, until_time: config.untilTime, errors_only: config.errorsOnly, pattern: config.pattern },
     startedAt, finishedAt: new Date().toISOString(),
@@ -488,7 +477,6 @@ function writeLogEvidence(ctx: LogCommandContext, diagnosis: LogDiagnosis, start
 }
 
 export interface LogOutput {
-  readonly identityResolution?: CommandResult<DataOutput>;
   readonly namespace?: string;
   readonly services?: readonly string[];
   readonly items: readonly {

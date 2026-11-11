@@ -15,7 +15,7 @@ interface ServiceResult<Output> {
 /**
  * @spec A service-scoped command always receives a selection array. Each selected Service owns
  * its preparation and result; failures retain sibling evidence and cancellation stops the batch.
- * @link cli/docs/kernel.md
+ * @link cli/docs/command-lifecycle.md#service-选择
  */
 export function forServices<Input extends CommandInput & { service?: string }, Output>(
   command: Command<Input, Output>,

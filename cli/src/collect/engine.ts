@@ -112,7 +112,7 @@ export async function runDiagnosis<
  * @spec runCollect completes and freezes all Inspect Facts before planning or running any Probe
  * @spec runCollect checkpoints frozen Facts before Probe planning and aborts if the checkpoint fails
  * @rule Core alone advances Inspect → Probe → Detector; contributions provide work but never drive phases
- * @see {@link ../../docs/kernel.md}
+ * @see {@link ../../docs/collect-protocol.md#流程}
  */
 export async function runCollect<
   Observation extends ObservationMeta,

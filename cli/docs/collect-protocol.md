@@ -27,9 +27,76 @@ Doctor Collect 把 OpenTelemetry 的三类基本信号作为正交证据面：Tr
 
 `doctor perf` 不另造采集协议。它负责产生刺激、封口压测窗口，并从请求 Outcome 中保留 Plugin 声明的
 `trace_id` / `message_id` 等关联键；窗口内调用现有 `doctor metric`，结束后把代表请求的业务 ID 交给
-既有 `traceId` resolver，再调用现有 `doctor trace` 和 `doctor log`。
+现有 `doctor trace` 和 `doctor log`；Log 自行匹配输入 key 并按声明扩展关联，不要求 Trace 成功。
 某个数据面因权限、保留期或现场部署缺失时，已取得的其它证据仍应交付，并把命令结果标为
 partial，而不是把缺数据解释为系统健康。
+
+## 执行数据模型
+
+### Inspect 与 Fact
+
+Inspect 回答“本轮诊断中已经知道什么”。Core Command 根据诊断目标形成由 `Identity + Constraints`
+组成的 Query，并选择 Core Inspect 或接受该 Identity 的 Service Inspect contribution：
+
+```text
+Query(Identity + Constraints)
+  → Inspect
+  → InspectQueryResult
+  → ValueFact / RecordFact / RelationFact
+```
+
+- `ValueFact` 表达一个 kind 至多一个的领域值。
+- `RecordFact` 表达同 kind 可重复、带稳定 `recordKey` 的独立记录。
+- `RelationFact` 表达两个 Identity 之间已经由现场数据证明的关系。
+
+Fact 在一次 Command 内足够稳定，可被后续 Probe 和 Detector 复用，但不是跨时间永远成立的真理。
+InspectQueryResult 独立表达解析状态、缺失证据与截断，不能把采集状态伪装成领域 Fact。
+Core 与适配后的 Plugin Fact 都携带 `kind + schemaVersion + producer`。`runInspects` 在阶段边界校验
+每个叶子 Fact 的 schema identity，并要求 Core Fact 的 `producer.id` 等于实际执行的 `Inspect.id`；违反
+契约属于实现错误，不能伪装为证据不足。Fact 不另设对象 ID，Detector 通过本轮 Evidence 中的
+`factPath` 引用它。
+
+RelationFact 可以形成后续 Query，但只有 Core Command 能决定是否继续，以及查询深度、容量、去重、
+失败隔离和停止条件。Plugin 拥有 Identity、Fact、Relation 的业务语义与固定查询，不拥有自递归调度。
+
+### Probe 与 Observation
+
+Probe 回答“针对已确认目标，本次主动观察到了什么”。Core 根据冻结 Facts 选择并驱动 Core Probe 与
+Service Probe。领域先显式选择可公开的 Fact、Service scope、`factPath` 与 value shape，再由共享
+Service Evidence adapter 保留原始 `kind + schemaVersion + producer` 并形成公共投影；adapter 不递归遍历
+Evidence，也不把 Fact payload 的子对象派生成新的伪 Fact。当前选出的公共 Fact 不再按 Service、producer
+或 kind 过滤；所有 Probe 共享同一份深冻结快照，只能消费，不能修改或追加 Fact。
+
+Probe 是一次执行原语：可以使用 Core 提供的 Target-scoped infra 和授权入口，但不拥有 Command 的循环、
+并发、预算、停止条件或 Evidence。Observation 只陈述某个探测时间点或时间窗口看到的状态，不能默认
+代表之后的现场。Probe 之间的真实数据依赖显式声明；会产生负担或改变现场的动作必须经过 Operation
+授权。
+
+Plugin Workload Probe 通过 `produces: ObservationDefinition` 声明 kind、schemaVersion 和 ValueCodec。
+Value/Codec 约定 Core 与 Plugin 间复合数据的保存、恢复和摘要，领域结构与校验归 Plugin。
+Core 检查无损 JSON 和大小预算，保存编码数据及采集时 Summary；历史阅读不执行当前 Plugin。
+显式恢复使用调用者提供的匹配 Codec，不依赖当前 Probe 注册。详见 [Extension 数据契约](extension.md)。
+
+### Evidence、Detector 与 Diagnosis
+
+Evidence 的持久化布局、清单与正文边界见 [Command 输出规范](command-output.md)。
+
+Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答“已有证据说明什么”：
+
+- Core Detector 提供跨业务通用判断。
+- Service Detector 提供业务判断，可以关联跨 producer、跨 Service 的 Evidence。
+- Detector 不接收 `CommandContext`、`PluginContext` 或 infra handle，不执行 I/O。
+- Finding 必须显式引用 Evidence 中的 `factPath` 或 `observationId`。
+- Core 通过同一个 Detector runner 执行 Core Detector 与适配后的 Service Detector，并校验 Finding 身份、
+  producer、Evidence 引用和本轮唯一 ID；违反契约属于实现错误，不能伪装为证据不足。
+- 证据不足由 Detector 产生 Finding，不表达 Target 是否健康，也不决定 CommandStatus。
+
+Fact、Observation 与 Finding 使用 `kind + schemaVersion` 标识 payload schema。Core kind 使用保留短名；
+Plugin 本地 kind 由 Core 规范化为 `plugin/<plugin-id>/<service>/<local-kind>`。两者都携带结构化 producer，
+消费方不能通过解析 kind 字符串猜测来源。Plugin version 标识实现版本，`schemaVersion` 只标识数据契约。
+`cli/src/plugin/evidence.ts` 是 Core/Plugin Service Evidence 的统一适配边界：Core Fact/Observation 原样继承
+已持久化 identity，Plugin 本地 schema 在这里统一补 namespace 与 producer；领域 projector 只拥有披露和
+Service 关联决策，不能再次手写或改写 identity。
 
 ## 流程
 
@@ -54,8 +121,8 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    Core 通过 `runDetectors` 驱动自身通用 Detector 与本次选中 Plugin Service 注册的纯 Evidence Detector，
    校验 Finding 的 `id / kind / schemaVersion / producer`、本轮 ID 唯一性及 Evidence 引用后形成 Findings；
    同一阶段也用 Finding 解释证据不足及其影响。
-5. **Finalize**：Renderer 只消费 Diagnosis 与产物元数据，随后统一完成 HTML、Markdown 或 Bundle 的
-   Delivery，并执行本轮 Cleanup。
+5. **Finalize**：根入口释放共享 Client，序列化完整结果，再按格式触发本地 Renderer 和 Delivery；
+   具体阶段顺序见 [Command 生命周期](command-lifecycle.md#三阶段生命周期)。
 
 `runInspects`、`runProbes` 与 `runDiagnosis` 是 Collect engine 的低层实现入口；新增领域 Command 必须通过
 `runCollect` 进入 Execute。所有领域 Command 已完成迁移，架构测试禁止 `collect/<domain>` 直接调用这些
@@ -64,13 +131,14 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
 Facts、Config 和执行态 Ctx 必须分开：Facts 不保存密码、原始 DSN 或 Probe 运行结果；带凭据 Target
 只存在于本轮 Ctx，进入 manifest 和 Detector 前使用领域脱敏投影。Detector 可以读取 Evidence 中领域
 显式选择的 Facts 解释证据为何缺失，但不能追加 I/O。
-Core 与适配后的 Plugin Fact、Observation、Finding 都使用 `kind + schemaVersion` 标识数据契约，并携带
-结构化 producer provenance；Plugin kind 的命名空间由 Core 补充，Detector 不接收未限定来源的 Plugin
-schema。Fact 不另设对象 ID，由 Evidence 内的 `factPath` 引用；Observation 与 Finding 使用本轮唯一 ID。
-Core Fact/Observation 的 identity 必须由共享 Service Evidence adapter 从持久化对象原样继承，领域
-projector 不能手写替代值；Plugin 本地 schema 的 namespace 与 producer 也只在同一 adapter 中规范化。
 缺失身份、producer 不匹配、重复 ID、空 Evidence 或引用本轮不存在的 `factPath / observationId` 都是
-Collect 契约错误，不能伪装成 partial。
+Collect 契约错误，不能伪装成 partial。身份与投影规则见上方执行数据模型。
+
+### 批量执行
+
+`runCollectBatch` 是共享采集引擎的列表入口：一次 Inspect 和 Facts checkpoint 完成后，再对各项
+投影事实并执行 Probe → Detector。单项异常和排队取消有独立结果；并发调度只决定业务项何时推进，
+实际外部访问仍受根 Context 的容量约束。投影继承原始事实身份，不通过回放 Inspect 制造另一轮采集。
 
 ## 关键设计
 

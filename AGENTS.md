@@ -17,8 +17,7 @@ Inspect/Probe/Detector contribution 声明确定性诊断工作，通过 capabil
 ## 诊断能力模型
 
 产品主线是：部署后、承接业务前用 Health 主动巡检；运行一段时间后用 Overview 回顾情况；
-发现问题后用 Collect 汇集证据，并按信息类型进入具体命令。完整职责与衔接见
-[排查主线](cli/docs/kernel.md#排查主线)。
+发现问题后用 Collect 汇集证据，并按信息类型进入具体命令。
 
 Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Trace、Metric、Log 三类可观测性信号，再
 观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
@@ -30,6 +29,35 @@ Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Tra
 `image`、`debug`、`install`、`resize` 属于 Provision，负责显式准备镜像、临时环境和工具，以及调整当前实例的资源限制。确定性问题由 Core 的
 通用能力与 Plugin 的业务 capability 协作形成 Evidence 和报告；无法预先固化路径的开放式问题交给
 Doctor Chat，由通用 Agent runtime 使用当前 Plugin 随版本交付的 Skill。
+
+## 排查主线
+
+Doctor 围绕系统运行过程提供三个入口，组成从主动巡检、运行回顾到问题取证的一套排查工具：
+
+| 时机 | 入口 | 要回答的问题 | 结果 |
+|---|---|---|---|
+| 部署后、开始承接业务前 | [Health](cli/docs/commands/health.md) | 服务自身是否健康，能否访问依赖并完成基本功能？ | 本次 Probe 与 Case 的检查结果、发现的问题和覆盖缺口 |
+| 系统运行一段时间后 | [Overview](cli/docs/commands/overview.md) | 这段时间运行得怎么样，出现了哪些错误或慢请求？ | 窗口内的统计分布，以及按需查询的代表业务 ID |
+| 发现具体问题后 | [Collect](cli/docs/commands/collect.md) | 需要哪些现场信息来解释问题？ | 多个数据面的原始证据、分析结果和可离线阅读的报告 |
+
+Health 主动执行 `self / deps / biz` 检查。典型时机是部署验证，也可在配置变更后或运行中重新检查；
+结论对应本次实际覆盖的服务、依赖和功能。Overview 查询已经发生的运行记录，保留时间窗口、统计口径和
+数据覆盖范围；支持采样的条目可以取得代表 biz-id，再经确认进入 Collect。
+
+Collect 汇集解释问题所需的信息，各具体命令按信息类型拥有查询、采集和分析能力。集合命令当前组合
+Inspect、Tenant、Data、Trace、Log 和 Metric；这些命令也能单独运行。其它专项工具按问题需要显式调用：
+
+| 所需信息 | 具体命令 |
+|---|---|
+| Service 运行状态、配置与资源 | `inspect`、`compute`、`resource` |
+| 租户与业务对象记录 | `tenant`、`data` |
+| 请求链路、日志与指标 | `trace`、`log`、`metric` |
+| 存储状态与具体数据库记录、对象 | `store`、`db`、`s3` |
+| CPU、内存与网络现场 | `cpu`、`mem`、`net`；`mema`、`neta` 分析离线产物 |
+
+这是一条可按需要进入、深入和复查的路径。已知失败请求的 biz-id 时可以直接 Collect；已知要查日志时
+可以直接 Log；Health 发现配置或依赖问题时也可以直接 Inspect。修复后再运行相关 Health 检查，并在后续
+Overview 中观察实际业务表现。读取结果时结合原始证据、采集完整度和 Finding，查询失败或没有覆盖不能当作正常。
 
 ## 代码地图与核心模块
 
@@ -77,15 +105,40 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
    正常新增或修改；这不意味着必须更新索引。`specgen` / `specgen:check` 及 `spec.json` 生成只在维护者
    明确要求时执行，agent 不因普通代码、文档或 mark 变更主动触发。
 
-9. **全局配置优先级**：同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。
-   CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可复用配置，默认值只补齐未指定项。
-   CLI 库填入的默认值不算显式参数；选定值无效或执行失败时应报错，不回退到低优先级配置。
-   配置来源与宿主边界见 `cli/docs/kernel.md` 的“全局配置优先级”。
+## 全局配置优先级
+
+所有 Command 对同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。
+CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可复用的运行配置；默认值补齐两者都未指定的项。
+高优先级值覆盖低优先级值是正常选择，不作为配置冲突拒绝执行，也不修改持久化的 profile。
+
+- 按配置项确定有效值；未提供某个 CLI 参数时，仍可使用该项的 profile 配置。
+- 保留“显式提供”与“自动填入默认值”的区别。Commander 或 Distribution 提供的默认值属于默认层，
+  不能因为已经出现在解析结果里就覆盖 profile。是否提供参数不能用 truthiness 判断；合法的 `false`
+  或 `0` 也表达用户意图，空值是否合法由该参数的契约决定。
+- 优先级只决定取值来源，不是失败重试顺序。选定值无效、目标不可达或执行失败时，应报告对应错误，
+  不自动尝试低优先级的配置。配置结构校验、参数约束与权限校验仍须执行。
+
+例如，显式 `--kubeconfig` 覆盖 profile 中的 kubeconfig；该文件不存在或解析失败时直接报错，
+不能改用 profile 或默认集群。只有上层未指定时，才进入该参数已有的默认查找规则。
+这条约定适用于所有配置项，不限于 Kubernetes；不要求每个 CLI 参数都新增对应的 profile 字段。
+
+
+宿主或 Skill 将业务环境名解析为通用参数后交给 Doctor；Core 不解释具体产品的环境名。
+目标展示和后续访问使用同一份有效配置，并保留来源。具体解析与 Environment 身份见
+[配置与目标](cli/docs/configuration.md)。
+
+## 文档归属
+
+`AGENTS.md` 直接维护开发所需的核心模型、主流程、职责地图与全局约束；子目录的 `AGENTS.md`
+补充该模块的边界。具体机制和设计理由由对应的 `docs/<topic>.md` 维护，已有主题直接更新，
+其它文档只保留必要摘要和链接。`README.md` 面向使用和接入。
 
 ## References
 
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
-- `cli/docs/kernel.md` — CLI 核心分层、Collect/Evidence 与授权契约
+- [Command 生命周期](cli/docs/command-lifecycle.md) — 命令准备、调用作用域、幂等复用与取消
+- [Collect 协议](cli/docs/collect-protocol.md) — 采集数据模型、调度、授权与执行状态
+- [配置与目标](cli/docs/configuration.md) — 参数来源、Environment 身份与宿主目标传递
 - `cli/docs/plugin.md` — Plugin capability、上下文、分发与信任边界
 - `cli/docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/chat.md` — Doctor Chat 数据流、Agent 复用边界与 Plugin Skill 生命周期

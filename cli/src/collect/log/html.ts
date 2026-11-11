@@ -8,6 +8,7 @@ import {
 import type { CollectionRecord } from "../output/html";
 import { LOG_REPORT_SCRIPT, LOG_REPORT_STYLES } from "./html-assets";
 import { formatLogCaptureStats } from "./render";
+import type { LogKey } from "./correlation";
 import type { LogRenderStats, LogTimelineRecord } from "./model";
 
 export function parseLogTimelineJsonl(text: string): LogTimelineRecord[] {
@@ -66,6 +67,9 @@ function buildLogSummary(manifest: CollectionRecord, records: readonly LogTimeli
   const logCount = records.filter((record) => record.kind === "log").length;
   const errorCount = records.length - logCount;
   const services = Array.isArray(target.services) ? target.services.join(", ") : String(target.services ?? "");
+  const keys = Array.isArray(target.keys)
+    ? (target.keys as LogKey[]).map(key => `${key.kind}:${key.identity.kind}=${key.identity.value}${key.service ? ` (${key.service})` : ""}`).join(", ")
+    : (Array.isArray(target.trace_ids) ? target.trace_ids.join(", ") : String(target.trace_id ?? ""));
   const timeWindow = params.since_time
     ? `since-time=${String(params.since_time)}`
     : `since=${String(params.since ?? "")}`;
@@ -75,7 +79,7 @@ function buildLogSummary(manifest: CollectionRecord, records: readonly LogTimeli
     <ul>
       <li>Namespace：<code>${escapeHtml(target.namespace ?? "")}</code></li>
       ${target.mode === "service" ? "<li>模式：Service / 时间范围（不按业务 ID 过滤）</li>" : `<li>Biz ID：<code>${escapeHtml(target.biz_id ?? "")}</code></li>
-      <li>Trace IDs：<code>${escapeHtml(Array.isArray(target.trace_ids) ? target.trace_ids.join(", ") : target.trace_id ?? "")}</code></li>`}
+      <li>匹配 keys：<code>${escapeHtml(keys)}</code></li>`}
       <li>Services：${escapeHtml(services)}</li>
       <li>时间窗口：<code>${escapeHtml(`${timeWindow}${params.until_time ? ` until-time=${params.until_time}（含边界）` : ""}`)}</code></li>
       <li>日志事件：${logCount} 条；采集失败：${errorCount} 项</li>

@@ -1,13 +1,13 @@
 # Log 采集
 
-Doctor 从 Plugin Service 的 Workload 声明定位日志实例，再通过共享 Client 读取 Pod 日志；逻辑 Service 名不作为 Kubernetes 资源名。不带业务 ID 时采集时间窗口内的日志，不调用 trace resolver 或准备其业务依赖；带 ID 时搜索关联 trace 及 Plugin 声明的对象日志，全部解析失败不会降级成无过滤采集。某个 Pod 命中只触发即时反馈，不减少其他 Pod 的覆盖；current 与可用的 previous 容器日志都保留来源。
+Doctor 从 Plugin Service 的 Workload 声明定位日志实例，再通过共享 Client 读取 Pod 日志；逻辑 Service 名不作为 Kubernetes 资源名。不带业务 ID 时采集时间窗口内的日志，不调用 trace resolver 或准备其业务依赖；带 ID 时始终搜索原始输入 key，并按声明扩展 trace 和对象 key；关联解析失败仍搜索输入，不会降级成无过滤采集。某个 Pod 命中只触发即时反馈，不减少其他 Pod 的覆盖；current 与可用的 previous 容器日志都保留来源。
 
 ```bash
 doctor log                         # 默认 Service / 时间窗口；交互时可选择 Service
 doctor log --service api -n prod --since 15m
 doctor log --service api --pod api-abc --container app --since 15m
 doctor log --service api --since-time '2026-09-16T15:00:00+08:00' --until-time '2026-09-16T15:15:00+08:00'
-doctor log <biz-id> --since 15m      # trace 与已解析对象关联
+doctor log <biz-id> --since 15m      # 输入 key、trace 与已解析对象关联
 ```
 
 `--service` 和时间起点都可省略：非交互以注册了 `log.workloads` 的 Service 为候选，交互沿用 Service 多选；无 ID 使用默认回看窗口。`--errors-only` 和 `--pattern` 在两种模式下均可用。
@@ -31,17 +31,32 @@ Service 可以声明多个 Workload，位置可以是 Kubernetes Service、label
 
 ## 对象关联日志
 
-Service 的 `logs.identityRelations` 声明可用于日志关联的有向身份边；Core 复用 Data Command 的
-`data.id` 查询、预算和获取状态，从输入 `biz_id` 沿这些边选择身份，仅匹配声明该规则的 Service 日志。
-Plugin 不应声明共享资源到其它会话/运行实例的反向边，避免把同 Carrier 的兄弟会话扩大为当前查询目标。
-Core 不读取 opaque record/value 内的业务字段，也不直接把未解析的输入当成搜索关键字。
+输入 ID 是一个 literal key，不要求先解析为 trace。Core 将输入、trace 和关联对象统一为日志 keys，
+在 Service 范围内按 OR 匹配，再与 `--pattern` / `--errors-only` 按 AND 组合。匹配采用 token 边界，
+不会把一个 ID 当正则或匹配另一个 ID 的前缀。关联失败不会丢弃原始 key，也不会隐式无过滤采集。
 
-有 trace 或关联对象任一证据即可采集；关联查询不完整时保留日志并报告 partial，相关 Data 证据作为子结果交付。
-无业务 ID 时不执行这次查询。时间窗、字节预算、current/previous 和错误堆栈规则继续共用原日志流程。
+Service 的 `logs.identityRelations` 声明该 Service 允许用于日志匹配的有向身份边。
+Core 通过共享的 `data.id` Inspect 查询和关系扩展，从输入 `biz_id` 获取关联身份与 `collect.window`；
+产出关系的 Service 可以和消费关系筛选日志的 Service 不同。Core 不读取 opaque record/value 内的业务字段。
+Plugin 不应声明共享资源到其它会话/运行实例的反向边，避免扩大到兄弟请求。
 
-`timeline.jsonl` 的 `matches` 分别记录 `trace` 和 `related-object`，后者保存身份、queryId 及 relation factIndex，
-可回到子 Data 的事实快照核对。TXT 和 HTML 同样标注匹配依据。共享对象命中只表示相关线索，不代表日志属于该请求。
+独立 `doctor log <id>` 与 `doctor collect <id> --include log` 都能自行准备关联，
+不调用 Data Command 的报告或业务 Detector。`--include data,log` 只增加 Data 输出；
+同一根 CommandContext 中，等价的查询复用本轮结果，未覆盖的 ID / Service 查询仍按需执行。
+查询作用域包括 Target、Service/Extension、Identity、约束和上游 Facts。失败、部分结果及截断都是证据，
+不会因后续阶段自动重试；复用后仍应用当前消费者的预算并保留缺口。结果不跨命令轮次持久缓存。
+Trace resolver 的成功与失败同样在本轮按输入和 Target 复用，Log 无需再次解析已查询的 ID。
+
+无 ID 时不执行关联查询。时间窗、字节预算、current/previous 和错误堆栈规则共用同一日志流程。
+关联不完整时，已取得的日志保留并报告 partial；关联缺口与日志读取缺口分开表达。
+
+`timeline.jsonl` 的 `matches` 记录 `input`、`trace` 或 `related-object`；trace 保留 resolver 来源，
+关联对象保存 queryId 及 relation factIndex，可回到该日志项的 `associations.json` 核对原始 Facts。
+TXT 和 HTML 同样标注匹配依据。共享对象命中只表示相关线索，不代表日志属于该请求。
 previous 未过滤尾部仍显式标为 unfiltered，不添加匹配依据。
+
+Pod 原始日志通过 Toolbox 的 PodLogDataSource/PodLogClient 访问。根执行注入共享网络并发与字节预算，
+Client 管理快照和回放；Core Log 持有业务 ID、筛选与诊断。
 
 ## 时间范围与读取
 
@@ -60,8 +75,8 @@ Data 通过 `data.id` 贡献 `collect.window` RecordFact，并在 Extension 的 
 RFC3339，包含端点，允许只贡献一端；两端未知时不贡献。业务方负责选择活动时间，Core 不猜测业务表字段。
 
 只采用窗口身份值等于本次输入 biz ID 的贡献；关联对象的窗口不会自动传播到根 ID，也不会跨输入合并。
-组合命令显式传递先前 Data 结果；独立 Log 在所选 Service 声明窗口贡献或日志身份关联时执行 Data。
-窗口只约束范围，不赋予身份匹配权限：不能解析 Trace 或声明的日志身份时仍不进行无过滤采集。
+组合命令传递先前 Data 的窗口证据；独立 Log 按 Service 声明执行共享 Inspect，查询可复用本轮 Data 的结果。
+窗口只约束时间范围，输入和已证实的关联 keys 决定匹配范围。
 
 缺失边界按如下规则补齐，再应用 padding：
 
@@ -106,7 +121,7 @@ Pod Log API 按 kubeconfig 中 cluster 的 `server` URL 选择 HTTP 或 HTTPS。
 
 ## 流式反馈与证据
 
-每条流独立匹配 trace 或声明的对象身份；无 ID 时接收窗口内日志。首次命中立即报告来源，
+每条流独立匹配输入、trace 或声明的对象 key；无 ID 时接收窗口内日志。首次命中立即报告来源，
 不缩小其它实例的覆盖范围。报告最终按时间排序，避免为全局排序等待无命中的 Pod 才反馈结果。
 
 ### 调度与共享日志源

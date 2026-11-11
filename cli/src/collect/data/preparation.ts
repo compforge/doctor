@@ -1,3 +1,4 @@
+import { defineExecutionRecord } from "../../command/context";
 import type {
   PluginContext,
   ServiceCatalog,
@@ -30,6 +31,8 @@ export interface DataAccessPreparation {
   close(): Promise<void>;
 }
 
+const accessFailures = defineExecutionRecord<ConfirmedDataServiceTarget>("data.access-failure");
+
 /** Doctor 只注入当前环境与 Service 身份；运行态定位和数据源访问由 Plugin 持有。 */
 export async function prepareDataAccess(
   dataCommand: PreparedDataCommand,
@@ -45,6 +48,10 @@ export async function prepareDataAccess(
       if ("bizType" in declared.extension) lists.set(JSON.stringify([declared.name, declared.extension.id]), value);
       else confirmed.push(value);
     };
+    const scope = [JSON.stringify([command.pluginIdentity, config.kube, config.profileName, config.fallbackIdentity,
+      config.tenantId, declared.name, declared.extension.id])];
+    const failed = command.latestRecord(accessFailures, scope);
+    if (failed) { record(failed); continue; }
     const selection = { service: declared.name };
     let context = injectedContexts?.[selection.service];
     let managed: ManagedPluginContext | undefined;
@@ -72,13 +79,15 @@ export async function prepareDataAccess(
       });
     } catch (error) {
       await Promise.allSettled(managed ? [managed.dispose()] : []);
-      record({
+      const failure: ConfirmedDataServiceTarget = {
         ...selection,
         access: {
           status: "failed",
           reason: error instanceof Error ? error.message : String(error),
         },
-      });
+      };
+      command.record(accessFailures, scope, failure);
+      record(failure);
     }
   }
 

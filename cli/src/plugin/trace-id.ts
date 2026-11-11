@@ -7,6 +7,7 @@ import type {
   ServiceDefinition,
 } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../command";
+import { defineExecutionRecord } from "../command/context";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 
 import { useLogger } from "../terminal/log";
@@ -34,6 +35,10 @@ export interface ResolvedPluginTraceId {
   resolvedAs: string;
   sourceId?: string;
 }
+
+const traceResolutions = defineExecutionRecord<{
+  resolutions: readonly ResolvedPluginTraceId[]; failures: readonly string[];
+}>("trace.identity-resolution");
 
 /**
  * 调用 Plugin 声明的 trace.resolve provider。Core 只注入已选 Kubernetes 环境和 Service
@@ -68,37 +73,49 @@ export async function resolvePluginTraceIds(
   const resolutions: ResolvedPluginTraceId[] = [];
   const failures = new Map(bizIds.map((bizId) => [bizId, [] as string[]]));
 
+  const scope = (id: string) => [JSON.stringify([plugin.id, plugin.version, kube, opts.profileName, id,
+    providers.map(({ service, extension }) => [service.name, extension.id])])];
+  const reused = new Set<string>();
+  for (const id of bizIds) {
+    const cached = opts.commandContext?.latestRecord(traceResolutions, scope(id));
+    if (!cached) continue;
+    reused.add(id);
+    unresolved.delete(id);
+    resolutions.push(...cached.resolutions);
+    failures.set(id, [...cached.failures]);
+  }
+
   useLogger().info(`[collect:${opts.command === "doctor log" ? "log" : "trace"}] 正在通过 ${services.join(", ")} 解析 trace_id…`);
   for (const { service: provider, extension: registered } of providers) {
     const extension = requireTraceResolveExtension(registered);
     if (!unresolved.size) break;
     let context = injectedContexts?.[provider.name];
     let managed: ManagedPluginContext | undefined;
-    if (!context) {
-      let dependencies: Readonly<Record<string, ResolvedServiceDataSourceDependency>> = {};
-      if (provider.dependencies?.length) {
-        if (!opts.resolveDependencies) {
-          throw new Error(`Service '${provider.name}' 声明了 capability 依赖，但 Core 未提供依赖解析器`);
-        }
-        dependencies = await opts.resolveDependencies(provider);
-        const missing = provider.dependencies.filter((dependency) => !dependencies[dependency.id]);
-        if (missing.length) {
-          throw new Error(
-            `Service '${provider.name}' capability 依赖未解析：${missing.map((item) => item.id).join(", ")}`,
-          );
-        }
-      }
-      managed = await openPluginContext(executor, kube, {
-        config: opts.commandContext?.profile.pluginConfig,
-        service: provider,
-        endpoint: extension.endpoint,
-        capability: extension,
-        dependencies,
-      });
-      context = managed;
-    }
-
     try {
+      if (!context) {
+        let dependencies: Readonly<Record<string, ResolvedServiceDataSourceDependency>> = {};
+        if (provider.dependencies?.length) {
+          if (!opts.resolveDependencies) {
+            throw new Error(`Service '${provider.name}' 声明了 capability 依赖，但 Core 未提供依赖解析器`);
+          }
+          dependencies = await opts.resolveDependencies(provider);
+          const missing = provider.dependencies.filter((dependency) => !dependencies[dependency.id]);
+          if (missing.length) {
+            throw new Error(
+              `Service '${provider.name}' capability 依赖未解析：${missing.map((item) => item.id).join(", ")}`,
+            );
+          }
+        }
+        managed = await openPluginContext(executor, kube, {
+          config: opts.commandContext?.profile.pluginConfig,
+          service: provider,
+          endpoint: extension.endpoint,
+          capability: extension,
+          dependencies,
+        });
+        context = managed;
+      }
+
       for (const bizId of [...unresolved]) {
         try {
           const result = (await invokeExtension(extension, context, { bizId })).data;
@@ -140,12 +157,19 @@ export async function resolvePluginTraceIds(
     }
   }
 
+  for (const id of bizIds) {
+    if (!reused.has(id)) opts.commandContext?.record(traceResolutions, scope(id), {
+      resolutions: resolutions.filter(item => item.bizId === id), failures: failures.get(id)!,
+    });
+    if (!resolutions.some(item => item.bizId === id)) unresolved.add(id);
+  }
+
   if (unresolved.size) {
     const detail = [...unresolved].map((bizId) => (
       `${bizId}: ${failures.get(bizId)!.join("；")}`
     )).join("；");
     if (!resolutions.length) throw new Error(`无法从输入 ID 解析出 trace_id：${detail}`);
-    useLogger("collect").warn(`部分请求没有可用 trace，跳过其 Trace/Log：${detail}`);
+    useLogger("collect").warn(`部分请求没有可用 trace，跳过其 Trace：${detail}`);
   }
   const seen = new Set<string>();
   return resolutions.filter((item) => {

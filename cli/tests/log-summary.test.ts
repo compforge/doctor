@@ -1,11 +1,10 @@
 import { createServiceCatalog } from "@compforge/doctor-plugin";
 import { createCollectCommand } from "../src/collect/composite";
 import { expect, spyOn, test } from "bun:test";
-import { readFileSync, rmSync, mkdtempSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync, mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { SerializeContext } from "../src/command/serialization/context";
 import { collectedFact } from "../src/collect/protocol";
-import type { DataOutput } from "../src/collect/data/model";
 import { join } from "node:path";
 import { createDoctorProgram } from "../src/app/main";
 import { CommandContext, CommandStatus } from "../src/command";
@@ -65,7 +64,7 @@ for (const format of ["summary", "manifest"] as const) {
   });
 }
 
-test("Log root surfaces producer Data text and navigates directly to its Fact evidence", async () => {
+test("Log serializes producer association Facts locally without a Data child", async () => {
   const root = mkdtempSync(join(tmpdir(), "doctor-log-text-"));
   const context = new CommandContext({});
   try {
@@ -78,24 +77,21 @@ test("Log root surfaces producer Data text and navigates directly to its Fact ev
           summary: { title: "Run", text: "Carrier Ready; Sandbox observation absent", fields: [] } }],
       } }),
     }] };
-    writeFileSync(join(root, "facts.json"), JSON.stringify(facts));
-    writeFileSync(join(root, "collection.json"), JSON.stringify({ files: { facts: "facts.json" } }));
-    const artifact = context.artifacts.add({ command: "data", path: root });
-    const data: DataOutput = { items: [{ bizId: "s1", status: CommandStatus.Ok, artifacts: [artifact],
-      diagnosis: { evidence: { facts, observations: [] }, findings: [],  } }] };
-    const output: LogOutput = { namespace: "test", services: ["sample"], items: [],
-      identityResolution: { status: CommandStatus.Ok, output: data, artifacts: [artifact] } };
+    const source = join(root, "source");
+    mkdirSync(source);
+    writeFileSync(join(source, "associations.json"), JSON.stringify(facts));
+    writeFileSync(join(source, "collection.json"), JSON.stringify({ files: { associations: "associations.json" } }));
+    const artifact = context.artifacts.add({ command: "log", path: source });
+    const output: LogOutput = { namespace: "test", services: ["sample"], items: [] };
     const directory = join(root, "delivered");
     await SerializeContext.create(directory, logCommand, {
-      status: CommandStatus.Ok, output, summary: logSummary(output), artifacts: [],
+      status: CommandStatus.Ok, output, summary: logSummary(output), artifacts: [artifact],
     });
-    const text = readFileSync(join(directory, "summary.md"), "utf8");
-    expect(text).toContain("Carrier Ready; Sandbox observation absent");
-    expect(text).toContain("capabilityResults.0.result.facts.0");
-    const path = /\[facts\]\(<([^>]+)>\)/.exec(text)![1]!;
-    const stored = JSON.parse(readFileSync(join(directory, path), "utf8"));
-    expect(stored.capabilityResults[0].result.facts[0].record).toEqual({ ready: true, observation: null });
     const manifest = JSON.parse(readFileSync(join(directory, "manifest.json"), "utf8"));
+    const stored = JSON.parse(readFileSync(join(directory, manifest.files.associations.path), "utf8"));
+    expect(stored.capabilityResults[0].result.facts[0].record).toEqual({ ready: true, observation: null });
+    expect(stored.capabilityResults[0].result.facts[0].summary.text).toBe("Carrier Ready; Sandbox observation absent");
+    expect(manifest.children).toEqual([]);
     expect(manifest.serialization.status).toBe("ok");
   } finally { await context.disposeClients(); rmSync(root, { recursive: true, force: true }); }
 });

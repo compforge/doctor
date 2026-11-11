@@ -12,7 +12,7 @@ export interface Identity {
  * A read intent passed from a Core command to a capability.
  *
  * @spec Query keeps one typed identity separate from capability-specific constraints; it does not carry command DTOs
- * @see {@link ../../../cli/docs/kernel.md}
+ * @see {@link ../../../cli/docs/plugin.md#core-与-plugin-service-的职责}
  */
 export interface Query<
   I extends Identity = Identity,

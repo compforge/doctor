@@ -154,7 +154,7 @@ async function collectEvalEvidence(input: {
     return { trace: unavailable(reason), log: unavailable(reason), data: unavailable(reason) };
   }
   let trace = unavailable("当前 Plugin 未声明 traceId capability");
-  let log = unavailable("当前 Plugin 未同时声明 traceId/log capability");
+  let log = unavailable("当前 Plugin 未声明 log capability");
   let data = unavailable("当前 Plugin 没有可从 biz_id 到达的 Inspect contribution");
 
   if (input.plugin.services.extensions("trace.resolve").length) {
@@ -168,22 +168,7 @@ async function collectEvalEvidence(input: {
     }
   }
 
-  const logServices = input.plugin.services.services.filter(service => service.logs !== undefined)
-    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
-    .map((service) => service.name);
-  if (!input.commandContext.signal.aborted && input.plugin.services.extensions("trace.resolve").length && logServices.length) {
-    try {
-      log = collected(await logCommand.run(input.commandContext, {
-        bizIds: [...input.correlations],
-        namespace: input.namespace,
-        services: logServices,
-        sinceTime: input.startedAt,
-      }), input.commandContext);
-    } catch (error) {
-      log = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
-    }
-  }
-
+  const untilTime = new Date().toISOString();
   const dataServices = dataServicesForBizQuery(input.plugin.services);
   if (!input.commandContext.signal.aborted && dataServices.length) {
     try {
@@ -191,11 +176,28 @@ async function collectEvalEvidence(input: {
         bizIds: [...input.correlations],
         namespace: input.namespace,
         services: dataServices,
+        sinceTime: input.startedAt, untilTime,
       }), input.commandContext);
     } catch (error) {
       data = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
     }
   }
+  const logServices = input.plugin.services.services.filter(service => service.logs !== undefined)
+    .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads"))
+    .map((service) => service.name);
+  if (!input.commandContext.signal.aborted && logServices.length) {
+    try {
+      log = collected(await logCommand.run(input.commandContext, {
+        bizIds: [...input.correlations],
+        namespace: input.namespace,
+        services: logServices,
+        sinceTime: input.startedAt, untilTime,
+      }), input.commandContext);
+    } catch (error) {
+      log = { status: CommandStatus.Failed, reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   return { trace, log, data };
 }
 

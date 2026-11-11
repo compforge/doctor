@@ -1,3 +1,4 @@
+import { logKeys, serviceLogKeys } from "../correlation";
 import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../../../command/log-policy";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -15,7 +16,7 @@ import type {
   PreviousContainerLogObservation,
   ServiceLogObservation,
 } from "../model";
-import { createTraceLineCollector } from "../config";
+import { createLogLineCollector } from "../config";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { instanceLogAccess } from "../../../infra/k8s/instance-log";
 
@@ -77,11 +78,11 @@ function prepareCapture(
     ctx.log(`[collect] 命中 ${input.service}/${input.pod}/${input.container}${suffix}：${label}（${elapsed} ms；继续搜索全部 Pod）`);
   };
   // 无筛选时窗口日志本就全量保留，tail 只在筛选会丢弃上下文时才启用。
-  const identityValues = (config.identities ?? []).filter(item => item.service === input.service).map(item => item.identity.value);
-  const filterActive = config.linePattern !== undefined || config.bizId !== undefined || config.traceIds.length > 0;
-  const collector = createTraceLineCollector(config.traceIds, config.linePattern, noteMatch, {
+  const keys = serviceLogKeys(logKeys(config), input.service).map(item => item.identity.value);
+  const filterActive = config.linePattern !== undefined || config.bizId !== undefined || keys.length > 0;
+  const collector = createLogLineCollector(keys, config.linePattern, noteMatch, {
     keepTail: input.previous && filterActive ? PREVIOUS_UNFILTERED_TAIL_LINES : 0,
-    identityValues, requireIdentity: config.bizId !== undefined,
+    requireIdentity: config.bizId !== undefined || logKeys(config).length > 0,
   });
   target.events = collector.events;
   target.drainTail = collector.drainTail;
@@ -97,7 +98,7 @@ function prepareCapture(
       untilTime: config.untilTime,
       rawFilePath,
       onLine: line => {
-        if (config.bizId === undefined && !config.traceIds.length && target.firstMatchMs === undefined) noteMatch("时间范围内日志");
+        if (config.bizId === undefined && !keys.length && target.firstMatchMs === undefined) noteMatch("时间范围内日志");
         collector.push(line);
       },
     },

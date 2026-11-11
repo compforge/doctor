@@ -7,9 +7,9 @@
 Service、Workload 和 WorkloadInstance 的基础语义来自 `@compforge/harness-common`。
 Doctor 的 `ServiceDefinition extends Omit<Service, "environment">` 只增加诊断声明：
 Catalog 保留 Component/Repository 归属、Workload 和 capability，不绑定某个现场环境。
-调用时 Core 用 `bindService` 注入当前 profile 对应的 Environment，形成
+调用时 Core 用 `bindService` 注入本次有效目标的 Environment，形成
 `context.target.service: Service`；实际连接与 namespace 仍由本次有效参数及受限 infra 管理。
-环境名是逻辑 profile 身份，不是集群唯一标识，连接缓存仍按实际 Kubernetes 配置隔离。
+profile 是配置来源，Environment 依据选定的 cluster/context 建立；详见 [配置与目标](configuration.md#environment-与配置来源)。
 
 Workload 直接使用 common 的 `platform / location / namespace / container`；
 location 支持 Kubernetes Service、labels 或明确的 Deployment/StatefulSet/DaemonSet/Pod。
@@ -47,8 +47,9 @@ Service Catalog 可包含组成同一应用的多个 Service，每个 Service �
 同一 Plugin 也可携带多个 Skill。Plugin manifest 只定位代码和 Skill，loader 再把已解析的 Skill runtime view 附到
 `PluginDefinition.skills`，不重复声明 store、log、data、model 等能力。
 例如输入 ID 到规范 `trace_id` 的转换由 Service 的 `trace.resolve` Extension 声明：输入可为业务 ID 或
-trace ID，由 provider 判定类型；一个输入可返回一条或多条 trace resolution，并可携带直接承载 trace 的来源 ID。`trace`/`log` 只消费其约定结果，不通过
-通用 data 查询或 span tag 猜测业务关系；命令批量输入的调度和按 ID 分组交付仍由 Core 负责。
+trace ID，由 provider 判定类型；一个输入可返回一条或多条 trace resolution，并可携带直接承载 trace 的来源 ID。
+`trace` 消费规范解析结果；`log` 将 trace 作为一种 key，还可通过声明的 `data.id` 关系取得其它 key，
+不读取私有 record/value 字段或 span tag 猜测关系。批量调度和按 ID 分组交付由 Core 负责，见 [Log](commands/log.md)。
 
 monorepo 中的源码按依赖方向分为三层：
 
@@ -106,6 +107,48 @@ Profile ──> target / access / Plugin-owned config
 
 一个 Plugin 可同时携带多个 Service 和多个 Skill。切换 profile 只改变它们面对的环境、权限和配置，
 不会加载或卸载 Plugin。当前加载一个业务 Plugin，不为多个业务 Plugin 的并行组合设计额外生命周期。
+
+## Core 与 Plugin Service 的职责
+
+Core 与 Plugin 使用同一套 Inspect、Probe、Detector 词汇。Service 是业务 contribution、Workload 和运行时
+依赖的归属单元；Plugin 是多个 Service 与 Skill 的版本化分发单元。具体 Plugin 只依赖公共 Plugin SDK，
+CLI Core 不依赖任何具体 Plugin 实现。
+
+这里统一的是概念、执行阶段和 Evidence 语义，不要求 Core 与 Plugin 直接复用同一个代码 interface。
+Core 实现可以直接消费进程内领域上下文；Plugin contribution 还必须携带 Service、版本、access 与分发
+边界所需的信息。CLI composition root 负责把选中的 Plugin contribution 适配进同一 Execute 流程，不能
+为了统一函数签名丢掉边界信息，也不让 `packages/plugin` 反向依赖 CLI Core。
+
+双方边界分为两层：
+
+| 边界 | 方向 | 所有权 |
+|---|---|---|
+| Inspect / Probe / Detector contribution | Plugin Service → Core | Plugin 提供业务逻辑；Core 选择、驱动并验证结果 |
+| access | Plugin capability → Core | Plugin 声明最小范围；Core 逐操作检查声明，目标系统判权 |
+| dependencies | Service → Core | Service 声明所需其它 Service capability；Core 解析并注入受限 handle |
+| data | Core ↔ Plugin capability | 公共包定义类型化输入输出；私有 schema 留在 Plugin 内 |
+| infra | Core → PluginContext | Core 提供当前 Target 的受限访问、取消和资源生命周期 |
+| config | Profile/Core → PluginContext | Core 不透明保存和透传；schema、校验和解释归 Plugin |
+
+这些边界不能互相替代：取得 infra handle 不代表获得任意权限；config 不承载 kubeconfig 等 Core-owned
+连接状态；业务返回值不能泄露整包私有配置；Plugin contribution 不能推进或绕过 Core 生命周期。
+
+Kubernetes 只是 Doctor Host 到 Target 的一种访问通道。Core 解析 kubeconfig/context，托管查询、超时、
+输出上限、取消和 port-forward 回收；Plugin 通过 Workload discovery 描述业务部署拓扑，通过 capability
+持有专有 API 与业务语义。Plugin 不持有 kubeconfig，也不自行启动 kubectl。
+
+### 执行阶段分工
+
+| 阶段 | Core | Plugin Service |
+|---|---|---|
+| Prepare | 解析并校验用户意图；选择 Target、Service 与 contribution；绑定已选 capability 的 access 声明；创建本轮上下文和清理责任 | 声明 Service、Workload、capability、dependency、access 与 contribution；校验 Plugin-owned config；不自行创建命令生命周期 |
+| Inspect | 形成 Query；决定 Inspect 的依赖、顺序、预算、遍历、去重和失败隔离；驱动 Core/Plugin Inspect；规范化并冻结 Facts | 执行一批业务 Inspect Query，逐项返回结果与 Fact/Relation；拥有私有协议和业务数据语义，不拥有遍历或后续调度 |
+| Probe | 根据冻结 Facts 生成计划；向 Probe 注入公共 Fact；控制依赖、策略、授权、风险和资源生命周期；驱动 Core/Plugin Probe | 执行一次业务 Probe，消费 Input/Facts 并返回 Observation；不内建循环、并发或跨 Probe 调度 |
+| Detector | 构建 Evidence；统一执行 Core/Plugin Detector；校验证据引用与 provenance；形成 Findings 和 Diagnosis | 提供纯业务 Detector，消费只读 Evidence，返回带显式证据引用的 Finding；不接收运行上下文或发起 I/O |
+| Finalize | 释放 Client，序列化结果，按需驱动 Renderer，完成 Delivery、Cleanup 与最终退出语义 | 不拥有阶段或资源生命周期；业务语义已通过 Fact、Observation 与 Finding 进入 Diagnosis |
+
+Plugin 不必在每个阶段都有可执行逻辑。Prepare 中它主要提供声明，Execute 中贡献业务采集和判断，
+Finalize 则由 Core 收口。Renderer 的领域逻辑归 Command 所属模块，通过 `CommandSpec.render` 在根 Finalize 中驱动；只消费本地结果与证据。
 
 ## 流程
 
@@ -373,7 +416,8 @@ Plugin API 17 的资源查询显式声明 API version 与 REST 资源复数名�
 Client 持有初始化所需的运行时配置，并自行限制并发。MySQL 使用单个查询槽位，
 通过借用的 TCP 通道复用原生连接，保留连接与查询超时。ClientManager 合并并发初始化，失败清理后允许重试；
 根 finalize 集中关闭消费者和其依赖的 Kubernetes Client。借用的 Kubernetes 通道不能由某个数据库客户端关闭。
-客户端复用只覆盖访问准备和连接，各次 SQL、Sample Entry 查询与诊断结果独立执行。
+客户端复用只覆盖访问准备和连接；领域层是否复用查询由其显式的本轮执行契约决定。
+共享 Client/Transport 的完整生命周期与 Core 访问装配见 [数据源生命周期](datasource.md)。
 
 
 access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大权限。Doctor 先根据命令和用户选择确定
@@ -383,8 +427,8 @@ access 跟随实际被调用的 capability，而不是汇总成 Plugin 的最大
 
 Plugin 的贡献深度随 command 类型变化：业务型命令由 capability 执行业务访问并返回约定数据；
 基础设施型命令只需要 Plugin 贡献目标或连接信息，标准诊断算法仍由 Core 持有；混合型命令先由 Plugin
-完成业务 ID、私有配置等投影，再交给 Core 的标准采集阶段。分类、典型命令和 Kubernetes 分工统一见
-[`kernel.md`](kernel.md#业务型基础设施型与混合型命令)。
+完成业务 ID、私有配置等投影，再交给 Core 的标准采集阶段。各阶段和访问边界见
+[Core 与 Plugin Service 的职责](#core-与-plugin-service-的职责)。
 
 ### 分发机制不进入业务层
 

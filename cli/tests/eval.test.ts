@@ -1,3 +1,7 @@
+import { logService, podDiscoveryExecutor } from "./log-fixture";
+import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
+import { logCommand } from "../src/collect/log/command";
+import { traceCommand } from "../src/collect/trace/command";
 import { caseRunnerFixture } from "../../packages/plugin/tests/extension-fixture";
 import {
   createServiceCatalog,
@@ -6,10 +10,10 @@ import {
   type ServiceCaseRunner,
 } from "@compforge/doctor-plugin";
 import type { CaseSet } from "@compforge/spec-case/model";
-import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { expect, spyOn, test } from "bun:test";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { finalizeResult, readReport } from "./report-fixture";
 import { CommandContext, CommandStatus } from "../src/command";
@@ -17,6 +21,7 @@ import {
   createEvalArtifact,
   evalRunName,
   executeEvalCases,
+  runEval,
   resolveEvalConfig,
   selectEvalProvider,
   writeEvalArtifact,
@@ -169,5 +174,39 @@ test("eval artifact keeps CaseSet, observations and offline report in one delive
   } finally {
     rmSync(parent, { recursive: true, force: true });
     rmSync(artifact.temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+
+test("Eval collects task-ID logs when the Plugin has no trace resolver", async () => {
+  const root = mkdtempSync(join(tmpdir(), "doctor-eval-log-only-"));
+  const kubeconfig = join(root, "kubeconfig");
+  writeFileSync(kubeconfig, "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\n");
+  const base = testPlugin();
+  const plugin: PluginDefinition = { ...base, services: createServiceCatalog([{
+    ...logService("chat"), cases: [{ ...base.services.find("chat")!.cases![0]!, runner: caseRunnerFixture({
+      endpoint: { host: "fixture", port: 80 }, access: {}, createRunner: async () => ({
+        run: async () => ({ status: 200, durationMs: 1, meta: { task_id: "task-a" } }), classify: () => ({ ok: true }),
+      }),
+    }) }],
+  }]) };
+  const command = new CommandContext({ kubernetes: { kubeconfig: { kubeconfig, source: "flag" }, channel: {
+    available: true, client: { ok: true, exitCode: 0, stdout: "", stderr: "", durationMs: 1, timedOut: false, command: [] },
+  } } }, { name: "test", configPath: "", value: { namespace: "test", readonly: true, kube: { kubeconfig_path: kubeconfig } }, pluginConfig: {} }, { plugin });
+  const executor = spyOn(KubectlExecutor.prototype, "run").mockImplementation(args => podDiscoveryExecutor([]).run(args));
+  const logs = spyOn(logCommand, "run").mockResolvedValue({ status: CommandStatus.Ok, artifacts: [], output: { items: [] } });
+  const traces = spyOn(traceCommand, "run").mockRejectedValue(new Error("unexpected trace"));
+  try {
+    const result = await runEval({ caseset: "ordinary-chat", cases: "hello", namespace: "test", kubeconfig, yes: true }, plugin, command);
+    expect(result.output?.evidence.log.status).toBe(CommandStatus.Ok);
+    expect(result.output?.evidence.trace.status).toBe("unavailable");
+    expect(logs).toHaveBeenCalledTimes(1);
+    expect(logs.mock.calls[0]![1]).toMatchObject({ bizIds: ["task-a"], services: ["chat"] });
+    expect(traces).not.toHaveBeenCalled();
+  } finally {
+    for (const mock of [executor, logs, traces]) mock.mockRestore();
+    await command.disposeClients();
+    for (const artifact of command.artifacts.list()) rmSync(dirname(artifact.path), { recursive: true, force: true });
+    rmSync(root, { recursive: true, force: true });
   }
 });

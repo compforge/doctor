@@ -1,6 +1,6 @@
 import { gapMessages } from "../evidence-gaps";
 import { logEvidenceImpact } from "./summary";
-import { logMatches } from "./correlation";
+import { logKeys, matchLogKeys } from "./correlation";
 import stripAnsi from "strip-ansi";
 import type {
   LogDiagnosis,
@@ -117,14 +117,14 @@ export function renderTimelineJsonl(records: readonly LogTimelineRecord[]): stri
 }
 
 export function renderServiceLogs(
-  traceIdsInput: string | readonly string[],
+  keysInput: string | readonly string[],
   namespace: string,
   services: readonly string[],
   records: readonly LogTimelineRecord[],
 ): string {
-  const traceIds = typeof traceIdsInput === "string" ? [traceIdsInput] : traceIdsInput;
+  const keys = typeof keysInput === "string" ? [keysInput] : keysInput;
   const lines = [
-    `trace_ids=${traceIds.join(",")}`,
+    `keys=${keys.join(",")}`,
     `namespace=${namespace}`,
     `services=${services.join(",")}`,
     "",
@@ -207,11 +207,11 @@ export function renderLogResult(
   const timeline = buildLogTimeline(observations);
   for (const record of timeline) {
     if (record.kind === "log" && !record.unfiltered && config.bizId !== undefined) {
-      record.matches = logMatches(record.message.split("\n")[0]!, config.traceIds, config.identities ?? [], record.service);
+      record.matches = matchLogKeys(record.message.split("\n")[0]!, logKeys(config), record.service);
     }
   }
   const serviceLogs = renderServiceLogs(
-    config.traceIds,
+    logKeys(config).map(key => key.identity.value),
     config.namespace,
     config.services,
     timeline,
@@ -219,7 +219,7 @@ export function renderLogResult(
   const failed = failureSummary(facts);
   if (failed) return { timeline, serviceLogs, summary: failed, stats };
 
-  const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "trace 或已解析对象关联日志（共享对象命中不代表请求归属）";
+  const scopeLabel = config.bizId === undefined ? "全部窗口日志" : "输入 key 或已解析对象关联日志（共享对象命中不代表请求归属）";
   const lines = [
     `# log 采集摘要：${config.bizId === undefined ? "Service / 时间范围" : config.bizId}`,
     "",
