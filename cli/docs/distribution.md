@@ -18,6 +18,9 @@ Plugin 与发行版是两个独立维度：同一 Plugin 可以被不同发行�
 
 ## 装配流程
 
+CLI composition root 先接收可选 Distribution，再构造完整 Commander 命令目录，通过 `addCommand`
+装配入口。发行配置的命令选择固化在发行物中，独立于 Plugin capability 与环境可用性。
+
 发行方通过 `doctor-cli/embed` 的公共入口传入包含可选 Plugin 的 `Distribution`：
 
 ```ts

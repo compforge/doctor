@@ -31,7 +31,8 @@ Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会�
   真实业务请求由 Plugin runner 决定。Runner 可以在 ArmRun 生命周期内 setup/cleanup，但不能自行启动隐藏
   的请求循环，否则 Core 无法执行预算、熔断和 Window 归属。
 - `doctor metric`、`doctor trace`、`doctor log` 仍分别拥有三个可观测数据面的采集与报告；Perf 只负责
-  统一窗口，并把 Plugin 声明的业务 ID 交给既有 `traceId` resolver 做关联。
+  统一窗口，并把 Plugin 声明的业务 ID 分别交给各领域入口。Log 直接匹配输入 key 并自行扩展关联，
+  不要求 Trace 成功；已执行的 trace resolver 查询在同一轮中复用。
 
 ## 流程
 

@@ -221,7 +221,7 @@ Data 使用 [data.id](../../packages/plugin/src/extension/data-id.ts) 接入这�
 Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 data.id 实现，多个实现会报歧义。
 
 Data 的具体行为见 [Data 汇集诊断](commands/data.md)；Plugin 的加载、分发与信任边界见
-[Plugin](plugin.md)，Command 生命周期见 [Kernel](kernel.md)。
+[Plugin](plugin.md)，Command 生命周期见 [Command 生命周期](command-lifecycle.md)。
 
 Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共用该快照。配置函数的访问权限与
 Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需求的函数使用 Host 上下文，

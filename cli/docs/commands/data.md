@@ -56,8 +56,8 @@ data.id 的 input 是 Query 列表，output 是逐 Identity 的 collected / fail
 - `RelationFact`：可选通过 `expands` 声明目标 Identity kind，并返回已由现场数据证明的关联。一个 Service
   可以同时提供领域 Fact 与 RelationFact，目标 Identity 也可以交给后续 Service 查询。
 
-这里的 expansion 只服务 `doctor data` 的多 Service 数据汇集，不是其它命令的隐式通用依赖。需要规范
-`trace_id` 的 `doctor trace` 和 `doctor log` 使用更窄的 `service.traceId` capability。
+Identity expansion 由共享 Inspect 执行，Data 与 Log 可按各自声明的范围调用；需要规范 `trace_id` 的
+Trace 使用 `trace.resolve`。Log 的独立关联查询与本轮复用见 [Log](log.md#对象关联日志)。
 
 具体 Plugin capability 自己解释 Service 环境、建立数据库访问并执行固定查询；Catalog 的 Inspect 契约
 只回答“能贡献什么业务数据”，不会把 Database client 或业务连接规则注入 Plugin。
@@ -172,3 +172,11 @@ provide 不隐式重试。同一批次的容量预算共同生效，截断明确
 单元素列表同样经过整批 Inspect、事实投影和逐项诊断。采集引擎在共享事实冻结后推进各项的
 Detector，投影不重新执行 Inspect，也不改变原始 Fact producer。JSON 与 Bundle 均保留
 批次汇总和逐 ID 产物，输出结构不随输入数量变化。
+
+
+### 与 Log 共用本轮查询
+
+Data 和 Log 共用 `data.id` 的访问准备、Inspect、关系遍历及预算。Log 可以独立执行这些查询，
+`collect --include` 只选择交付的证据领域。同一根 CommandContext 对同一 Target、Service/Extension、
+Identity、约束和上游 Facts 的查询复用获取结果，未查询的身份继续补充。失败、截断和来源缺口随结果保留，
+不会被复用标为完整，也不会被后续阶段静默重试。消费者仍按自己的预算限制保留内容。

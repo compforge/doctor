@@ -29,7 +29,7 @@ canonical Case，每个 Case 只执行一次，并把 CaseSet 快照、协议 Ob
 2. 若 Case 声明需要请求身份，则从 Plugin profile 读取；交互运行可通过其声明的租户目录补齐。
 3. 展示 Case 数量、目标 Service、真实业务写入和可能的模型费用，并在用户确认后开始执行。
 4. 顺序触发每个 Case 一次，记录起止时间、Facet、完整协议 Observation、协议判定及首个可识别关联 ID。
-5. 对去重后的关联 ID 调用现有 Trace、Log、Data 采集入口，并把所有 Artifact 交给统一 finalize。
+5. 对去重后的关联 ID 调用现有 Trace、Data、Log 采集入口，并把所有 Artifact 交给统一 finalize。Log 不要求 `trace.resolve`；Data 与 Log 使用同一冻结窗口并复用本轮查询。
 
 Eval 自身目录至少包含：
 

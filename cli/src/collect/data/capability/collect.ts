@@ -5,7 +5,8 @@ import type {
   ServiceInspectResult,
 } from "@compforge/doctor-plugin";
 import type { DataProvider } from "../extensions";
-import { inspectExtensionQueries, normalizeServiceInspectResult } from "../../../plugin/inspect";
+import { queryDataIdentities } from "./query";
+import { normalizeServiceInspectResult } from "../../../plugin/inspect";
 import type { Inspect } from "../../inspection";
 import { collectedFact, failedFact, unavailableFact } from "../../protocol";
 import type { DataCommandContext } from "../context";
@@ -108,7 +109,7 @@ async function queryIdentities(input: {
   ));
   ctx.command.signal.throwIfAborted();
   const capability = declared.extension;
-  const outcomes = await inspectExtensionQueries(capability, pluginContext, identities.map(identity => ({ identity, results, budget, ...(ctx.config.timeWindow ? { constraints: { timeWindow: ctx.config.timeWindow } } : {}) })));
+  const outcomes = await queryDataIdentities(ctx, declared.name, capability, pluginContext, identities.map(identity => ({ identity, results, budget, ...(ctx.config.timeWindow ? { constraints: { timeWindow: ctx.config.timeWindow } } : {}) })));
   return outcomes.map(outcome => {
     try {
       if (outcome.status === "failed") {
@@ -176,7 +177,6 @@ interface QueuedIdentity {
  * Expand Relations to a bounded identity closure, independent of Service Catalog order.
  *
  * @spec Data Relation expansion uses a deduplicated work queue with explicit depth, identity, Fact count, and Fact byte budgets
- * @see {@link ../../../../docs/kernel.md}
  * @see {@link ../../../../docs/commands/data.md#identity-关系驱动跨-service-采集}
  */
 async function collectExpansionResults(input: {

@@ -18,7 +18,7 @@ A Plugin supplies the application's Service catalog and business knowledge; Core
 
 Start at the stage that matches your situation. You can also run a focused command such as `inspect`,
 `trace`, `log` or `data` directly; CPU, memory and network investigations have their own tools.
-Read the [diagnostic workflow](cli/docs/kernel.md#排查主线) for how these paths fit together.
+Read the [diagnostic workflow](AGENTS.md#排查主线) for how these paths fit together.
 
 ```bash
 doctor health --scope self,deps
@@ -48,4 +48,4 @@ For development checks, run `make lint-all` and `make test-all`.
 - [CLI usage and build options](cli/README.md) · [Custom distributions](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
 - [Plugin contracts](cli/docs/plugin.md) · [Example Plugin](plugins/example) · [Toolkit](toolkit/README.md)
-- [Kernel and evidence flow](cli/docs/kernel.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)
+- [Collect evidence protocol](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)

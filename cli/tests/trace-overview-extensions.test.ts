@@ -1,3 +1,4 @@
+import { CommandContext } from "../src/command";
 import type { DataRun } from "../../packages/plugin/tests/extension-fixture";
 import { withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
@@ -62,4 +63,27 @@ test("overview accepts statistics without sampling and rejects ambiguous produce
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [summarize, { ...summarize, id: "second" }])]) }, ["chat"])).toThrow("ambiguous");
   const invalid: FacetSummarizeExtension = { ...summarize, facets: [facet, facet] };
   expect(() => overviewProviders({ id: "test", version: "1", services: createServiceCatalog([service("chat", [invalid])]) }, ["chat"])).toThrow("duplicate");
+});
+
+
+test("Trace then Log reuse successful and failed resolutions, supplement IDs and isolate targets", async () => {
+  const commandContext = new CommandContext({});
+  const resolve = mock(async (_ctx: PluginContext, { bizId }: { bizId: string }) => {
+    if (bizId === "missing") throw new Error("database unavailable");
+    return { traceId: `trace-${bizId}`, resolvedAs: "task_id", sourceId: bizId };
+  });
+  const plugin = { id: "test", version: "1", services: createServiceCatalog([service("control", [trace(resolve)])]) };
+  const executor = { run: async () => { throw new Error("unexpected I/O"); }, exec: async () => { throw new Error("unexpected I/O"); } };
+  const contexts = { control: { signal: commandContext.signal } as PluginContext };
+  const options = { namespace: "test", profileName: "test", commandContext };
+  try {
+    await resolvePluginTraceIds({ ...options, command: "doctor trace", bizIds: ["a", "missing"] }, plugin, executor, contexts);
+    const logs = await resolvePluginTraceIds({ ...options, command: "doctor log", bizIds: ["a", "missing", "b"] }, plugin, executor, contexts);
+    expect(resolve).toHaveBeenCalledTimes(3);
+    expect(logs.map(item => item.traceId)).toEqual(["trace-a", "trace-b"]);
+    await expect(resolvePluginTraceIds({ ...options, command: "doctor log", bizIds: ["missing"] }, plugin, executor, contexts)).rejects.toThrow("database unavailable");
+    expect(resolve).toHaveBeenCalledTimes(3);
+    await resolvePluginTraceIds({ ...options, namespace: "other", command: "doctor log", bizIds: ["a"] }, plugin, executor, contexts);
+    expect(resolve).toHaveBeenCalledTimes(4);
+  } finally { await commandContext.disposeClients(); }
 });

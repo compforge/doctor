@@ -104,7 +104,7 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       requirement: "preferred",
       capability: { scope: "extension", name: "trace.resolve" },
       purpose: "把 Case Observation 的业务关联 ID 解析为 trace_id",
-      fallback: "只保留 Case Observation，不采集 Trace/Log",
+      fallback: "保留 Case Observation，继续采集可用的 Log / Data，跳过 Trace",
     }, {
       requirement: "preferred",
       capability: { scope: "resource", name: "logs" },
@@ -133,9 +133,9 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "压测窗口内复用 doctor metric 采集指标",
     }, {
       requirement: "preferred",
-      fallback: "保留压测结果，跳过不可用的 Trace/Log",
+      fallback: "保留压测结果，跳过不可用的 Trace",
       capability: { scope: "extension", name: "trace.resolve" },
-      purpose: "复用 doctor trace/log 收集代表请求的链路证据",
+      purpose: "复用 doctor trace 收集代表请求的链路证据",
     }, {
       requirement: "preferred",
       fallback: "保留压测结果和其它已取得证据",

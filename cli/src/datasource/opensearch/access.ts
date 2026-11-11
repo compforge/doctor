@@ -131,7 +131,7 @@ class OpenSearchAccessClient implements Client {
 /**
  * @spec Each access owns its protocol client; borrowed transports live until root disposal.
  * @rule Without a root manager, access owns and disposes its local transports as well.
- * @see {@link ../../../docs/kernel.md}
+ * @see {@link ../../../docs/datasource.md}
  */
 export async function openOpenSearchAccess(opts: OpenSearchAccessOptions, injectedSearch?: SearchEngine): Promise<OpenSearchAccess> {
   let local: OpenSearchAccessClient | undefined;

@@ -37,7 +37,7 @@ function isStackContinuation(line: string): boolean {
   return !text.trim() || /^\s+/.test(text) || STACK_CONTINUATION.test(text);
 }
 
-export interface TraceLineCollector {
+export interface LogLineCollector {
   readonly lines: string[];
   /** 每项是一条逻辑日志事件；错误首行和其堆栈续行以换行连接。 */
   readonly events: string[];
@@ -46,14 +46,14 @@ export interface TraceLineCollector {
   drainTail(): string[];
 }
 
-/** Empty traceIds selects the time-window logs; matching errors retain their stack continuation. */
-export function createTraceLineCollector(
-  traceIds: string | readonly string[],
+/** Empty keys selects the time-window logs; matching errors retain their stack continuation. */
+export function createLogLineCollector(
+  keys: string | readonly string[],
   pattern?: RegExp,
-  onTraceMatch?: (traceId: string) => void,
+  onKeyMatch?: (key: string) => void,
   options?: { keepTail?: number; identityValues?: readonly string[]; requireIdentity?: boolean },
-): TraceLineCollector {
-  const ids = [...(typeof traceIds === "string" ? [traceIds] : traceIds), ...(options?.identityValues ?? [])];
+): LogLineCollector {
+  const ids = [...(typeof keys === "string" ? [keys] : keys), ...(options?.identityValues ?? [])];
   const lines: string[] = [];
   const events: string[] = [];
   let collectingStack = false;
@@ -71,12 +71,12 @@ export function createTraceLineCollector(
     lines,
     events,
     push: (line) => {
-      const matchesTrace = ids.some((traceId) => containsLogIdentity(applicationLogText(line), traceId));
-      if (matchesTrace && onTraceMatch) {
-        for (const traceId of ids) {
-          if (!notified.has(traceId) && containsLogIdentity(applicationLogText(line), traceId)) {
-            notified.add(traceId);
-            onTraceMatch(traceId);
+      const matchesKey = ids.some((key) => containsLogIdentity(applicationLogText(line), key));
+      if (matchesKey && onKeyMatch) {
+        for (const key of ids) {
+          if (!notified.has(key) && containsLogIdentity(applicationLogText(line), key)) {
+            notified.add(key);
+            onKeyMatch(key);
           }
         }
       }
@@ -86,7 +86,7 @@ export function createTraceLineCollector(
         pushTail(line, true);
         return;
       }
-      const selected = (ids.length === 0 && !options?.requireIdentity || matchesTrace) && (!pattern || pattern.test(line));
+      const selected = (ids.length === 0 && !options?.requireIdentity || matchesKey) && (!pattern || pattern.test(line));
       if (selected) {
         lines.push(line);
         events.push(line);
@@ -168,10 +168,14 @@ export function serviceLogErrorPatterns(
   return services.flatMap((name) => [...(catalog.find(name)?.logs?.errorPatterns ?? [])]);
 }
 
-export function filterTraceLines(stdout: string, traceIds: string | readonly string[], pattern?: RegExp): string[] {
-  const collector = createTraceLineCollector(traceIds, pattern);
+export function filterTraceLines(stdout: string, keys: string | readonly string[], pattern?: RegExp): string[] {
+  const collector = createLogLineCollector(keys, pattern);
   const lines = stdout.split(/\r?\n/);
   if (lines.at(-1) === "") lines.pop();
   for (const line of lines) collector.push(line);
   return collector.lines;
 }
+
+/** Compatibility aliases for callers using the earlier trace-specific names. */
+export type TraceLineCollector = LogLineCollector;
+export const createTraceLineCollector = createLogLineCollector;

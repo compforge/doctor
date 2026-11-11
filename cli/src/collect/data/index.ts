@@ -1,4 +1,4 @@
-import { makeDataPageInspect, dataPageSummary, dataTypeFact, dataTypeResult } from "./page";
+import { dataPageSummary, dataTypeFact, dataTypeResult } from "./page";
 import { gapMessages } from "../evidence-gaps";
 import type { PluginContext, PluginDefinition } from "@compforge/doctor-plugin";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -10,13 +10,12 @@ import { CommandStatus, aggregateCommandStatus, type CommandResult } from "../..
 
 import { useLogger } from "../../terminal/log";
 import { runCollectBatch } from "../engine";
-import { EvidenceBundle, type OutcomeDecl } from "../evidence";
+import { EvidenceBundle } from "../evidence";
 import { collectCommandOutcome, evaluateCollectOutcome } from "../outcome";
 import { recordFailureBundle } from "../output/failure-bundle";
-import { makeDataContributionInspect } from "./capability/collect";
-import type { PreparedDataCommand, DataCommandContext } from "./context";
+import { dataOutcomes, prepareDataInspection } from "./inspection";
+import type { PreparedDataCommand } from "./context";
 import { detectDataEvidenceGaps, buildDataEvidence, makeDataDetectors } from "./detector";
-import { makeDataInspect } from "./fact/inspect";
 import type {
   DataConfig,
   DataDiagnosis,
@@ -24,7 +23,6 @@ import type {
   DataOutput,
 } from "./model";
 import type { DataProvider } from "./extensions";
-import { prepareDataAccess, type DataAccessPreparation } from "./preparation";
 import { projectDataFacts } from "./projection";
 import { buildDataSummary } from "./render";
 
@@ -33,23 +31,6 @@ export * from "./config";
 export * from "./context";
 export * from "./detector";
 export * from "./model";
-
-function dataOutcomes(providers: readonly DataProvider[]): OutcomeDecl[] {
-  return providers.flatMap(({ name: service, extension: capability }) => {
-    return [
-      ...(capability.expands?.length ? [{
-        id: `data-expand-${service}`,
-        title: `${service} 业务 ID 扩展`,
-        risk: "observe" as const,
-      }] : []),
-      {
-        id: `data-provide-${service}`,
-        title: `${service} 业务数据贡献`,
-        risk: "observe" as const,
-      },
-    ];
-  });
-}
 
 /**
  * @spec Every Data invocation acquires the complete ID list once and diagnoses each root projection
@@ -79,15 +60,14 @@ export async function runCollectData(
   });
   let facts: DataFacts = { services: {}, capabilityResults: [] };
   let diagnoses: PromiseSettledResult<{ facts: Readonly<DataFacts>; diagnosis: DataDiagnosis }>[];
-  let access: DataAccessPreparation | undefined;
+  let inspection: Awaited<ReturnType<typeof prepareDataInspection>> | undefined;
   let collectionFailure: string | undefined;
   try {
-    access = await prepareDataAccess(dataCommand, injectedContexts);
-    const pluginContexts = Object.fromEntries(access.confirmed.flatMap(item => item.context ? [[item.service, item.context]] : []));
-    const ctx: DataCommandContext = { ...dataCommand, pluginContexts, bundle, log };
+    inspection = await prepareDataInspection(dataCommand, bundle, log, injectedContexts);
+    const { ctx } = inspection;
     const execution = await runCollectBatch({
       ctx,
-      inspects: [...(config.list ? [makeDataPageInspect(access)] : []), makeDataInspect(access), makeDataContributionInspect({ selections, config })],
+      inspects: inspection.inspects,
       items: targets.map(target => ({
         ctx: { ...ctx, config: target.config, bundle: target.bundle }, config: target.config,
         projectFacts: (snapshot: Readonly<DataFacts>) => projectDataFacts(snapshot, target.bizId),
@@ -107,7 +87,7 @@ export async function runCollectData(
     reportError(error, { context: `doctor ${commandName}/collect`, summary: "Data 采集失败" });
     diagnoses = targets.map(() => ({ status: "rejected", reason: error }));
   } finally {
-    try { await access?.close(); }
+    try { await inspection?.close(); }
     catch (error) { reportError(error, { context: `doctor ${commandName}/close`, summary: "Data 访问资源回收失败" }); }
   }
 

@@ -1,9 +1,11 @@
+import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
+import { logAssociationServices } from "../src/collect/log/association";
 import { allLogWorkloads } from "@compforge/doctor-plugin";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, type Identity, type RelationFact } from "@compforge/doctor-plugin";
 import { collectedFact, failedFact } from "../src/collect/protocol";
 import type { DataFacts, DataInspectResult } from "../src/collect/data/model";
-import { containsLogIdentity, logIdentities, logMatches } from "../src/collect/log/correlation";
+import { containsLogIdentity, logIdentities, logKeys, matchLogKeys } from "../src/collect/log/correlation";
 import { createTraceLineCollector } from "../src/collect/log/config";
 import { logService } from "./log-fixture";
 
@@ -29,7 +31,7 @@ test("directed relation closure selects descendants, not siblings of shared reso
     query("carrier", carrier, [relation(carrier, sibling), relation(carrier, pod)]),
     query("root", root, [relation(root, sandbox), relation(sandbox, carrier)]),
     query("unrelated", sibling, [relation(sibling, { kind: "carrier_id", value: "wrong-carrier" })]),
-    query("other", root, [relation(root, { kind: "sandbox_id", value: "other-service" })], "other"),
+    query("other", root, [relation(root, { kind: "private_id", value: "other-service" })], "other"),
     { id: "failed", identity: root, service: "api", stage: "expand", ...failedFact("data.inspect-result", "test", "unavailable") },
     { ...query("opaque", root, []), ...collectedFact("data.inspect-result", "test", { result: {
       resolution: { inputId: root.value, resolvedAs: "sandbox_id", identifiers: { sandbox_id: "opaque-id" } },
@@ -44,11 +46,11 @@ test("directed relation closure selects descendants, not siblings of shared reso
 
 test("literal token OR matching is service scoped and keeps trace and related-object provenance", () => {
   const identities = [{ service: "api", identity: carrier, queryId: "root", factIndex: 1 }];
-  expect(logMatches('INFO carrier_id="shared-carrier"', [], identities, "api")).toEqual([
-    { kind: "related-object", identity: carrier, queryId: "root", factIndex: 1 },
+  expect(matchLogKeys('INFO carrier_id="shared-carrier"', logKeys({ identities }), "api")).toEqual([
+    { kind: "related-object", service: "api", identity: carrier, queryId: "root", factIndex: 1 },
   ]);
-  expect(logMatches("shared-carrier", [], identities, "other")).toEqual([]);
-  expect(logMatches("trace-a shared-carrier", ["trace-a"], identities, "api").map(match => match.kind)).toEqual(["trace", "related-object"]);
+  expect(matchLogKeys("shared-carrier", logKeys({ identities }), "other")).toEqual([]);
+  expect(matchLogKeys("trace-a shared-carrier", logKeys({ traceIds: ["trace-a"], identities }), "api").map(match => match.kind)).toEqual(["trace", "related-object"]);
   for (const text of ["shared-carrier-extra", "other-shared-carrier", "shared-carrier_2", "shared-carrier1"]) {
     expect(containsLogIdentity(text, carrier.value)).toBeFalse();
   }
@@ -67,4 +69,33 @@ test("object-only association preserves stacks, applies content filters afterwar
   const unresolved = createTraceLineCollector([], undefined, undefined, { requireIdentity: true });
   unresolved.push("ERROR arbitrary log");
   expect(unresolved.lines).toEqual([]);
+});
+
+
+test("consumer log Service follows declared relations produced by another Service", () => {
+  const services = createServiceCatalog([logService("control"), {
+    ...logService("worker"), logs: { identityRelations: { biz_id: ["sandbox_id"] } },
+  }]);
+  const facts: DataFacts = { services: {}, capabilityResults: [query("control-query", root, [relation(root, sandbox)], "control")] };
+  const keys = logKeys({ bizId: root.value, identities: logIdentities(facts, root.value, services) });
+  expect(matchLogKeys("input-a", keys, "control").map(key => key.kind)).toEqual(["input"]);
+  expect(matchLogKeys("sandbox-a", keys, "control")).toEqual([]);
+  expect(matchLogKeys("sandbox-a", keys, "worker")).toMatchObject([{ kind: "related-object", queryId: "control-query", factIndex: 0 }]);
+  expect(matchLogKeys("input-a-other", keys, "worker")).toEqual([]);
+});
+
+
+test("association planning includes upstream producers but excludes unrelated data services", () => {
+  const provider = (name: string, accepts: string[], expands: string[]) => ({
+    ...logService(name), extensions: [inspectExtension({ access: {}, accepts, expands, provides: ["reference"], inspect: async () => [] })],
+  });
+  const services = createServiceCatalog([
+    provider("control", ["biz_id"], ["task_id"]),
+    provider("scheduler", ["task_id"], ["worker_id"]),
+    provider("unrelated", ["biz_id"], ["invoice_id"]),
+    { ...logService("worker"), logs: { identityRelations: { biz_id: ["task_id"], task_id: ["worker_id"] } } },
+  ]);
+  expect(logAssociationServices(services, ["worker"])).toEqual(["control", "scheduler"]);
+  expect(logAssociationServices(services, [])).toEqual([]);
+  expect(logAssociationServices(services, ["unrelated"])).toEqual([]);
 });

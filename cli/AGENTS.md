@@ -5,7 +5,7 @@
 Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect、Eval、Perf 和 Chat 七条并列主路径组织能力准备、
 体检、概览、确定性诊断、数据集采集、主动施压和开放式问答；具体业务目标、私有数据位置和数据语义由外部 Plugin 提供。
 使用主线是部署后的 Health、运行后的 Overview、问题发生后的 Collect 与专项命令，见
-[排查主线](docs/kernel.md#排查主线)。
+[排查主线](../AGENTS.md#排查主线)。
 
 - **离线知识**：`doctor knowledge` 组织 Plugin/Service 的概念、流程、文章与词典，不准备 Target 访问。
 - **配置与入口**：`doctor init/profile` 管理本地 profile，bare `doctor` 展示当前能力索引。
@@ -21,30 +21,81 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 
 ## 代码地图与核心模块
 
-| 模块 | 所有权 |
-|---|---|
-| `app` | 命令入口、profile 与 composition root |
-| `chat` | AgentUE model、Session/Controller，以及 Server wire protocol adapter |
-| `model` | Chat 与 Model Collect 共用的模型发现、选择和 inference 访问 |
-| `report` | Report、RenderContext、共享导航及离线页面加载 |
-| `command` | CommandSpec、结构化结果、共享 Context、调用作用域及环境/access/审批契约 |
-| `provision` | 为诊断显式准备 image、debug environment、工具及调整实例资源限制 |
-| `collect` | 确定性诊断共享协议、执行引擎、Evidence 与领域实现 |
-| `case` | Service Case 目录、协议匹配、身份准备、单次 HTTP/SSE/模型判定及 HTTP Collect 适配 |
-| `eval` | 逐例触发 canonical CaseSet，并编排关联 trace/log/data 证据 |
-| `knowledge` | 离线知识目录查询及文本 / JSON 投影 |
-| `compute` | 集群与 Service Workload 资源采集编排、覆盖及概览；计量复用 Toolbox |
-| `health` | Service 主动巡检、消费方 Case 审批及探测结果报告 |
-| `overview` | Overview 命令、历史统计、Facet 选择与 Collect 编排 |
-| `perf` | 对选中的 Case 加压、Perf Harness 适配与跨 trace/log/metric 报告 |
-| `plugin` | Plugin 宿主侧的选择、上下文与加载边界 |
-| `resource` | Service 持续管理/使用的资源目录、只读快照与覆盖展示 |
-| `datasource` | Service 数据源的共享配置与访问准备，不属于某个诊断命令 |
-| `infra` | 尚未提取的访问适配与工具选择；通用 DB、Redis、OpenSearch、Kubernetes 执行与转发、进程原语由 `@compforge/harness-toolbox` 提供 |
-| `terminal` / `protocol` | 通用终端交互（含共享租户选择）与可选远端协议 client；chat-tui 只消费 `chat` 投影 |
+```text
+cli/src/
+├── app/                 Prepare / Execute / Finalize composition root
+├── report/              Report、RenderContext、单文件阅读容器
+├── command/             CommandContext、Target、access 与审批契约
+├── collect/
+│   ├── protocol.ts      Fact、Observation、Finding 共享协议
+│   ├── evidence-identity.ts  Fact/Observation/Finding schema identity 运行时校验
+│   ├── engine.ts        runCollect：Inspect → Probe → Evidence → Detector
+│   ├── inspect-engine.ts  Inspect 依赖调度与 Facts 冻结
+│   ├── probe-engine.ts  Probe 依赖、安全顺序与失败隔离
+│   ├── detector-engine.ts  Core/Plugin Detector 执行与 Finding 契约校验
+│   ├── evidence.ts      Worksheet 与 Evidence Bundle
+│   ├── operation.ts     副作用授权与审计
+│   ├── output/          通用格式与交付原语
+│   └── <domain>/        领域 Config、Inspect、Probe、Detector、Renderer
+├── provision/           image、debug environment、工具准备及实例资源调整
+├── eval/                Case 顺序执行与关联证据编排
+├── health/              Service self/deps/biz 主动巡检
+├── overview/            历史统计、采样与按需 Collect
+├── compute/             集群容量与 Service Workload 占用
+├── resource/            Service Resource 只读盘点
+├── knowledge/           离线知识目录
+├── case/                共享 Case 目录、身份与单请求执行
+├── datasource/          Service 数据源访问装配
+├── perf/                受控负载与跨数据面证据编排
+├── chat/                Session / Controller 与 AgentUE adapter
+├── plugin/              Plugin 宿主选择、加载与公共协议适配
+├── model/               Model Collect 与 Chat 共用的模型访问
+├── terminal/            选择、确认与输出边界
+├── protocol/            可选远端协议 client
+└── infra/               Host、Target、Kubernetes 与外部资源 adapter
 
-展开的目录地图、依赖方向和领域所有权见 `docs/kernel.md`；Collect 共享协议见
-`docs/collect-protocol.md`。
+packages/plugin/         Plugin、Service、capability 与 Inspect/Probe/Detector contribution 公共协议
+packages/agent/          CLI/server 共用的 Agent runtime
+plugins/<plugin>/        具体 Service 实现、固定查询与 Skills
+toolkit/                 独立版本的诊断工具和平台资源
+```
+
+依赖方向保持：
+
+```text
+cli/collect → packages/plugin ← plugins/<plugin>
+app → command / collect / provision / eval / perf / chat / infra
+collect/<domain> → collect shared protocol + infra ports
+```
+
+公共协议和调度只有出现跨领域稳定、同语义的重复时才上提；领域数据语义、固定查询、Renderer 和具体
+Failure/证据不足 Finding 解释继续留在 `collect/<domain>`。`packages/plugin` 不依赖 CLI，具体 Plugin 不反向依赖
+CLI 实现。
+
+## 执行模型与调用归属
+
+Core 统一驱动 `Prepare → Execute → Finalize`。Prepare 校验输入、解析有效配置和目标、选择并绑定
+已声明能力；Collect 的 Execute 固定沿 `Inspect → 冻结 Facts → Probe → Evidence → Detector` 推进。
+所有领域 Collect 通过 `runCollect` 或 `runCollectBatch` 进入共享引擎，不能直接调用低层 runner。
+Finalize 在根入口释放 Client、序列化本地结果、按需渲染并交付，子命令不单独交付或设置进程退出码。
+
+每个常规命令提供 `CommandSpec`；独立命令和聚合子命令共用 `Command.run(context, input)`，各自完成
+prepare 和 run。组合命令保留逐项失败隔离，不能把所有子命令的必要条件合并为全局门槛。
+Service 只声明和实现能力，不接收 Command DTO，也不按命令名切换业务行为。
+
+`CommandContext` 属于整轮执行树，持有 Profile、Plugin、Environment、Decision、ExecutionRecord、
+共享 ClientManager 与取消信号；领域 Context 持有单次调用的 Target、Bundle 和运行状态；
+PluginContext 只暴露所选 Service 的受限依赖。领域 Input / Output 不放进通用 Context。
+每次调用只返回自己的 Artifact 引用，父命令显式纳入子结果；Artifact ID、执行幂等 key 和文件名职责不同。
+共享客户端由根回收，局部资源由其调用回收，取消传播到整轮并保留已生成证据。
+
+`ok / partial / failed / cancelled` 表达执行完成度，Finding 表达证据支持的诊断判断；证据覆盖、
+Target 健康和产物交付分别记录。partial 保留已有结果，不把现场缺口当作正常，也不把 Core 契约错误伪装成 partial。
+执行幂等只在同一根 Context 内复用，包含 partial/failed，不能隐式重试或跨轮复用现场结果。
+
+新能力先确定所在主路径和 owner，再定义领域 Input / Output；新增 Collect 先定义 Facts、Observations、
+Evidence、Findings 和纯 Detector，再实现 Inspect、Probe 与 Renderer。按涉及的边界验证依赖调度、
+能力降级、授权拒绝、敏感信息和交付结果。详细机制见下方 topic 文档。
 
 ## 关键约定
 
@@ -80,7 +131,9 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 
 ## References
 
-- `docs/kernel.md` — CLI 核心分层、Collect/Evidence、Doctor Host/Target 与授权契约
+- [Command 生命周期](docs/command-lifecycle.md) — 准备扩展点、Service 选择、幂等调用和资源归属
+- [配置与目标](docs/configuration.md) — 参数来源、Environment 身份和 Chat/Skill 目标传递
+- [数据源生命周期](docs/datasource.md) — ClientManager、DataSource、Transport 与协议访问装配
 - `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
 - `docs/rendering.md` — 基于 Command Output 的 HTML 页面组织、交互导航与离线加载
 - `docs/plugin.md` — Plugin capability、上下文、分发与信任边界

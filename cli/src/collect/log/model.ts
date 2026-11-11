@@ -8,7 +8,10 @@ import type { CommandContext } from "../../command";
 export interface LogCollectOptions {
   /** Absent for Service/time-window collection; never invent a business ID for that mode. */
   bizId?: string;
-  traceIds: readonly string[];
+  /** Compatibility input; normalized into keys before capture. */
+  traceIds?: readonly string[];
+  keys?: readonly import("./correlation").LogKey[];
+  associationFacts?: import("../data/model").DataFacts;
   identities?: readonly import("./correlation").LogIdentityMatch[];
   resolutionGaps?: readonly string[];
   namespace: string;
@@ -27,8 +30,7 @@ export interface LogCollectOptions {
   outputDir: string;
 }
 
-export interface LogProbeConfig extends Omit<LogCollectOptions, "traceIds"> {
-  traceIds: readonly string[];
+export interface LogProbeConfig extends LogCollectOptions {
   linePattern?: RegExp;
 }
 

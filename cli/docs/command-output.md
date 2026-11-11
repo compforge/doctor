@@ -4,7 +4,7 @@
 怎样表达状态与完整度，以及如何通过 manifest 找到它们。Command Output 独立于 HTML，
 脚本、离线分析和 Renderer 都消费同一份输出契约。
 
-跨 Command 生命周期见 [Kernel](kernel.md)。[HTML 报告渲染](rendering.md) 基于本规范定义的输出
+跨 Command 生命周期见 [Command 生命周期](command-lifecycle.md)。[HTML 报告渲染](rendering.md) 基于本规范定义的输出
 生成页面，不另行定义输出数据格式或存储布局。
 
 显式传入的 `--output` 路径若已存在，框架在 Prepare 阶段报错退出，不执行采集或生成失败报告。
@@ -164,8 +164,15 @@ result/
 
 ## Finalize 与格式
 
-根 Finalize 释放共享 Client，序列化，按格式渲染，然后交付整个结果目录。Renderer 只读取本地证据，
-不重新采集。交付失败保留证据；成功交付后才清理本次暂存资源。
+根 Finalize 只执行一次：释放共享 Client，调用根 serialize，按格式渲染，然后交付整个结果目录。
+SerializeContext 和 RenderContext 只允许本地操作，不重新取得远端 Client 或执行采集。
+同一 spec 的同一结果对象在本轮内共享序列化与渲染；独立结果即使内容相同也保留各自身份。
+清理、序列化或渲染失败仍保留可用证据，阶段错误与原执行状态分别记录，取消优先返回 130。
+成功交付后才清理本次暂存资源。
+
+SerializeContext 分配执行目录与清单引用；HTML 生成器消费显式 Report，不按目录名猜测导航或反解析
+子 HTML。Delivery 交付已序列化的目录及阅读文件，不重建调用关系。报告名称由根 CommandSpec 的
+`reportName(input, result, now)` 推导；具体命名与 Artifact 身份见 [调用归属](command-lifecycle.md#context-与调用归属)。
 
 | 格式 | 行为 |
 |---|---|

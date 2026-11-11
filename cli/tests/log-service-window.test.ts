@@ -126,10 +126,15 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       const fullOutput = JSON.parse(readFileSync(join(evidenceDir!, "output.json"), "utf8"));
       expect(fullOutput.items).toHaveLength(1);
       if (variant === "unresolved") {
-        expect(result.status).toBe(CommandStatus.Failed);
+        expect(result.status).toBe(CommandStatus.Partial);
         expect(resolutions).toBe(1);
-        expect(discoveries).toBe(0);
-        expect(logs).not.toHaveBeenCalled();
+        expect(discoveries).toBe(1);
+        expect(logs).toHaveBeenCalledTimes(2);
+        expect(result.output!.items[0]!.stats!.matchedEventCount).toBe(0);
+        expect(result.output!.items[0]!.resolutionGaps?.join()).toContain("无法从输入 ID");
+        const records = readFileSync(join(result.output!.items[0]!.artifacts[0]!.path, "timeline.jsonl"), "utf8").trim();
+        // The explicit previous-container tail remains available, but unmatched current logs never leak.
+        expect(records.split("\n").filter(Boolean).map(line => JSON.parse(line)).every(record => record.unfiltered)).toBe(true);
         return;
       }
       expect(resolutions).toBe(0);
@@ -165,7 +170,7 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
       const manifest = JSON.parse(readFileSync(join(outputDir, "collection.json"), "utf8"));
       expect(manifest.target.mode).toBe("service");
       expect(manifest.target.biz_id).toBeUndefined();
-      expect(manifest.target.trace_ids).toEqual([]);
+      expect(manifest.target.keys).toEqual([]);
       const timeline = readFileSync(join(outputDir, "timeline.jsonl"), "utf8");
       expect(item.stats).toEqual(JSON.parse(readFileSync(join(outputDir, "log-stats.json"), "utf8")));
       if (variant === "zero" || variant === "unavailable") {
@@ -205,15 +210,15 @@ for (const variant of ["defaults", "explicit", "partial", "trace-provider", "unr
   });
 }
 
-test("without object relations, business ID still requires trace resolution before environment access", async () => {
+test("business ID without trace or relations proceeds to environment preparation", async () => {
   const context = new CommandContext({}, undefined, { plugin });
   const ensure = spyOn(context, "ensureEnvironment").mockImplementation(async () => { throw new Error("unexpected environment access"); });
   try {
     const result = await logCommand.run(context, { bizIds: ["request-1"] });
     expect(result.status).toBe(CommandStatus.Failed);
     if (result.status !== CommandStatus.Failed) throw new Error("expected failure");
-    expect(result.reason).toContain("trace.resolve");
-    expect(ensure).not.toHaveBeenCalled();
+    expect(result.reason).toContain("unexpected environment access");
+    expect(ensure).toHaveBeenCalledTimes(1);
   } finally { ensure.mockRestore(); await context.disposeClients(); }
 });
 

@@ -1,5 +1,5 @@
 import { COLLECT_WINDOW_KIND, validateCollectWindow, type CollectWindow } from "@compforge/doctor-plugin";
-import type { DataOutput } from "../data/model";
+import type { DataOutput, DataFacts } from "../data/model";
 
 export interface DataLogWindow {
   bizId: string;
@@ -27,9 +27,13 @@ export interface DataLogWindows {
  * @why Data projections include related records whose lifetimes may be much broader than the selected activity.
  */
 export function dataLogWindows(output: DataOutput | undefined): DataLogWindows {
+  return factsLogWindows((output?.items ?? []).map(item => ({ bizId: item.bizId, facts: item.diagnosis?.evidence.facts })));
+}
+
+export function factsLogWindows(items: readonly { bizId: string; facts?: DataFacts }[]): DataLogWindows {
   const windows: DataLogWindow[] = [], rejected: DataWindowRejection[] = [];
-  for (const item of output?.items ?? []) {
-    for (const query of item.diagnosis?.evidence.facts.capabilityResults ?? []) {
+  for (const item of items) {
+    for (const query of item.facts?.capabilityResults ?? []) {
       if (query.status !== "collected") continue;
       query.result.facts.forEach((fact, factIndex) => {
         if (fact.kind !== COLLECT_WINDOW_KIND) return;

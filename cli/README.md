@@ -5,7 +5,7 @@ Doctor 是面向应用与基础设施的诊断客户端。直接运行 `doctor` 
 capability 时，CLI 会在访问环境前说明具体缺口。
 
 部署后用 `health` 主动巡检，运行一段时间后用 `overview` 回顾情况，发现问题后用 `collect` 或具体领域命令取证。
-职责与衔接见[排查主线](docs/kernel.md#排查主线)。
+职责与衔接见[排查主线](../AGENTS.md#排查主线)。
 
 ## 选择 Kubernetes 环境
 
@@ -130,7 +130,7 @@ Coverage 独立，只有采集批次和交付页面共享。
 
 ## 详细文档
 
-- [CLI Kernel 与 Collect 共享协议](docs/kernel.md)
+- [Command 生命周期](docs/command-lifecycle.md) · [Collect 共享协议](docs/collect-protocol.md)
 - [Collect 集合采集](docs/commands/collect.md)
 - [Service Inspect](docs/commands/inspect.md)
 - [Metric 诊断](docs/commands/metric-diagnosis.md)

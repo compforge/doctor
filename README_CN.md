@@ -16,7 +16,7 @@ Doctor 是面向应用排查的增强版 `kubectl`：理解一个应用由哪些
 | 发现问题，需要排查时 | `doctor collect` | 汇集相关配置、业务数据、Trace、Log 和 Metric，交付证据包 |
 
 按当前问题选择入口，也可以直接使用 `inspect`、`trace`、`log`、`data` 等命令聚焦某类信息；
-CPU、内存和网络问题有对应的专项工具。完整思路见[排查主线](cli/docs/kernel.md#排查主线)。
+CPU、内存和网络问题有对应的专项工具。完整思路见[排查主线](AGENTS.md#排查主线)。
 
 ```bash
 doctor health --scope self,deps
@@ -46,4 +46,4 @@ make build-local
 - [CLI 使用与构建选项](cli/README.md) · [自定义发行版](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
 - [Plugin 契约](cli/docs/plugin.md) · [Plugin 示例](plugins/example) · [Toolkit](toolkit/README.md)
-- [Kernel 与证据流程](cli/docs/kernel.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)
+- [Collect 证据协议](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)
