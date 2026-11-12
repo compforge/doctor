@@ -3,7 +3,7 @@ import type {
   ExtensionContext, DataIdExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
   CaseRunnerFactory, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
-  MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension, ServiceEnvironmentProbe,
+  MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension,
   TenantListExtension, TenantResolveExtension, UserSearchExtension, ModelQueryExtension,
   ModelBackendInspectExtension, ModelBackendValidateExtension, ModelInvokeExtension, ModelStreamExtension,
   McpConfigurationExtension, MetricConfigurationExtension, PerfScenariosExtension,

@@ -54,6 +54,21 @@ Detector 使用 `[Pod时间 − Host接收时间, Pod时间 + 精度 − Host发
 HTML/Markdown 展示每个 Pod 的偏差、误差、RTT 和采样状态，原始样本进入证据包。
 `--field` 的定向查询不执行时钟采样或相关 Detector。
 
+## Service 按需探测
+
+Service 在 `extensions` 注册 `inspect.probe`，通过 `produces` 声明 ValueCodec 与 Observation 身份。
+完整 Inspect（含 Collect）在 Facts 收集后对每个选中 Service 的每个 extension 调用一次，传入已有 Facts。
+未注册时不执行；`--field` 定向查询也不执行。提供方拥有目标解析、采样数量、工具调用和 Value 摘要，
+目标不必是 Workload。逐 Pod 执行的检查继续使用 `workload.probe`。
+
+Core 统一提供声明式访问约束、取消、清理、失败隔离、Value 编码、Evidence 投影和通用摘要渲染，
+不枚举具体环境 probe，也不解释 Plugin 数据。结果为 `ok / partial / unavailable`，后两者必须有原因；
+已取得的数据保留在 Value 中。Plugin 可直接复用 Toolbox 的环境和 admission 探测工具。
+
+Kubernetes `clusterResources()` 读取须声明 `clusterScoped: true`，不会继承 namespace。
+`execResult` 与 `exec` 共用 pods/exec 访问约束。`podAdmission()` 只接受固定的 server-side Pod create dry-run
+命令，校验 namespace、ServiceAccount、manifest 和 create/impersonate 声明，禁止持久化或切换 cluster。
+
 ## 快速查看字段
 
 ```sh

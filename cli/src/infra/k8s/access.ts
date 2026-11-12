@@ -43,7 +43,7 @@ export interface KubernetesChannelFact {
 }
 
 function accessKey(rule: K8sAccessRule, namespace?: string): string {
-  return JSON.stringify([rule.verb, rule.resource, rule.resourceName, rule.allNamespaces ? "*" : rule.namespace ?? namespace]);
+  return JSON.stringify([rule.verb, rule.resource, rule.resourceName, rule.clusterScoped ? "cluster" : rule.allNamespaces ? "*" : rule.namespace ?? namespace]);
 }
 
 export function kubernetesResultDetail(result: ExecResult): string {
@@ -54,7 +54,7 @@ export function kubernetesResultDetail(result: ExecResult): string {
 
 export function accessLabel(rule: K8sAccessRule): string {
   return `${rule.verb} ${rule.resource}${rule.resourceName ? `/${rule.resourceName}` : ""}`
-    + `${rule.allNamespaces ? " (all namespaces)" : rule.namespace ? ` (namespace=${rule.namespace})` : ""}`;
+    + `${rule.clusterScoped ? " (cluster)" : rule.allNamespaces ? " (all namespaces)" : rule.namespace ? ` (namespace=${rule.namespace})` : ""}`;
 }
 
 /** `yes` / `no` are authoritative; transport, authentication and SSAR failures remain unknown. */
@@ -68,7 +68,7 @@ export async function inspectK8sAccess(
     : access.resource;
   const args = ["auth", "can-i", access.verb, resource];
   if (access.allNamespaces) args.push("--all-namespaces");
-  else if (access.namespace ?? namespace) args.push("--namespace", (access.namespace ?? namespace)!);
+  else if (!access.clusterScoped && (access.namespace ?? namespace)) args.push("--namespace", (access.namespace ?? namespace)!);
   let result: ExecResult;
   try {
     result = await exec.run(args, { timeoutMs: 15_000 });

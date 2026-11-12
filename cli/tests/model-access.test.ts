@@ -182,37 +182,6 @@ test("Plugin Toolchain 可省略，提供时必须满足公共协议", () => {
   }, manifest)).toThrow("Plugin Service 'api'.toolchain is invalid");
 });
 
-test("Service probes 只接受 Core 支持的声明式共同 Probe", () => {
-  const probe = {
-    id: "apparmor-unconfined",
-    kind: "kubernetes.apparmor-unconfined-admission",
-    schemaVersion: 1,
-    subject: "workload-service-account",
-  } as const;
-  const plugin = (candidate: Record<string, unknown>) => ({
-    id: "test",
-    version: "0.0.1",
-    services: {
-      services: [{
-        component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
-        name: "runtime-api",
-        workloads: [],
-        environmentProbes: [candidate]
-      }]
-    },
-  });
-
-  expect(validatePluginDefinition(plugin(probe), manifest).services
-    .find("runtime-api")?.environmentProbes)
-    .toEqual([probe]);
-  expect(() => validatePluginDefinition(plugin({ ...probe, kind: "custom.exec" }), manifest))
-    .toThrow("uses unsupported kind 'custom.exec'");
-  expect(() => validatePluginDefinition(plugin({ ...probe, subject: "fixed-service-account" }), manifest))
-    .toThrow("uses unsupported subject 'fixed-service-account'");
-  expect(() => validatePluginDefinition(plugin({ ...probe, schemaVersion: 2 }), manifest))
-    .toThrow("uses unsupported schemaVersion '2'");
-});
-
 test("Service detector 必须有唯一 id 与纯 detect 入口", () => {
   const definition = (detectors: unknown) => ({
     id: "test",

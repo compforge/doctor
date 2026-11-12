@@ -139,7 +139,7 @@ prepare 确定已知的声明范围，不要求预先列出完整执行路径。
 拥有。
 
 命令扩展注册在 `extensions`，共享 Case 来源注册在 `cases`，数据源注册在 `dataSources`；纯 Evidence 分析放在
-`detectors`，由 Core 实现的声明式环境检查放在 `environmentProbes`。配置和日志采集通过
+`detectors`，Service 按需检查注册 `inspect.probe` Extension。配置和日志采集通过
 `logs` 显式加入 Core 通用日志采集；配置文件通过 `Service.dataSources` 中的静态
 `fileDataSource(path, { workload, access, resolve })` 声明。`resolve` 在客户端初始化时获取
 Pod/Container，Catalog 加载无 I/O；`inspect --field config` 读取文件并查询 Pod env。

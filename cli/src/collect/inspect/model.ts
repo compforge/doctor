@@ -275,16 +275,6 @@ export interface DependencyInventoryObservation extends ObservationMeta {
   reason?: string;
 }
 
-export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta {
-  kind: "kubernetes-apparmor-unconfined-admission";
-  service: string;
-  probe: string;
-  namespace: string;
-  serviceAccountName: string;
-  status: "allowed" | "denied";
-  reason?: string;
-}
-
 export interface PluginWorkloadObservation extends ObservationMeta {
   status: "ok" | "partial" | "unavailable";
   reason?: string;
@@ -302,6 +292,10 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   value: PortableJsonValue;
 }
 
+export interface PluginInspectObservation extends Omit<PluginWorkloadObservation, "kind" | "instance" | "workload" | "namespace" | "pod" | "container"> {
+  kind: "plugin-inspect";
+}
+
 export type InspectObservation =
   | EnvironmentConfigObservation
   | PodClockObservation
@@ -309,8 +303,8 @@ export type InspectObservation =
   | FileConfigurationObservation
   | SecretConfigurationObservation
   | DependencyInventoryObservation
-  | KubernetesAppArmorAdmissionObservation
-  | PluginWorkloadObservation;
+  | PluginWorkloadObservation
+  | PluginInspectObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;
@@ -353,6 +347,7 @@ export type InspectDiagnosisGoal =
   | "workload-runtime"
   | "runtime-dependencies"
   | "workload-observations"
+  | "service-observations"
   | "event"
   | "hpa";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding>;

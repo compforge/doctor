@@ -1,3 +1,4 @@
+import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { FileReadOptions, FileReadResult } from "@compforge/harness-common";
 import type { HttpServiceTarget } from "./http";
 import type { ResourceRef, ResourceListQuery, ResourceList, ResourceRequestOptions } from "@compforge/harness-toolbox/kubernetes/resources";
@@ -11,6 +12,8 @@ export interface KubernetesAccessRule {
   /** Exact namespace; omitted means the capability target namespace. */
   namespace?: string;
   allNamespaces?: boolean;
+  /** Explicit cluster scope; namespace permissions do not authorize cluster resources. */
+  clusterScoped?: boolean;
 }
 
 export interface KubernetesAccessNeed {
@@ -47,9 +50,14 @@ export type KubernetesResourceList<T> = Pick<ResourceList, "apiVersion" | "kind"
 export interface KubernetesAccess {
   /** 派生同一 Target cluster 内指定 namespace 的访问视图；具体 namespace 由 Plugin 自己决定。 */
   inNamespace(namespace: string): KubernetesAccess;
+  clusterResources(): Pick<import("@compforge/harness-toolbox/kubernetes/resources").ResourceAccess, "get">;
+  /** Borrow raw exec results for Toolbox functions; the same declared pods/exec access is enforced. */
+  execResult: Executor["exec"];
+  /** Restricted executor: only stdin Pod create with server dry-run and ServiceAccount impersonation. */
+  podAdmission(): Pick<Executor, "run">;
   /** REST resource identity is explicit; no kubectl aliases or implicit API versions. */
   get<T>(ref: KubernetesResourceRef, options?: ResourceRequestOptions): Promise<T>;
-  list<T>(query: KubernetesResourceListQuery): Promise<KubernetesResourceList<T>>;
+  list<T>(query: KubernetesResourceListQuery, options?: ResourceRequestOptions): Promise<KubernetesResourceList<T>>;
   exec(target: KubernetesExecTarget, command: readonly string[], options?: { stdin?: string; timeoutMs?: number }): Promise<string>;
   /** One bounded acquisition for a declared file group in one Container; results remain independent per path. */
   readFiles(target: Required<KubernetesExecTarget>, paths: readonly string[], options: FileReadOptions): Promise<readonly FileReadResult[]>;

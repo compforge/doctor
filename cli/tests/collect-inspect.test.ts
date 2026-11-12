@@ -70,14 +70,14 @@ function detectorEvidence(): InspectEvidence {
     rows: [],
     observations: [{
       id: "environment-probe-sandbox-server-apparmor-sandbox",
-      kind: "kubernetes-apparmor-unconfined-admission",
+      kind: "plugin-inspect",
+      observationKind: "admission", observationSchemaVersion: 1,
+      summary: { title: "Admission", fields: [] },
       schemaVersion: 1,
       producer: { origin: "core", id: "kubernetes.apparmor-unconfined-admission" },
       service: "sandbox-server",
       probe: "apparmor-unconfined",
-      namespace: "demo",
-      serviceAccountName: "sandbox-server",
-      status: "allowed",
+      status: "ok", value: { status: "allowed" },
     }, {
       id: "plugin-workload-bedbox-main-health-bedbox-0",
       kind: "plugin-workload", status: "ok", summary: { title: "Probe", fields: [{ label: "effective", path: ["effective"] }] },
@@ -110,7 +110,7 @@ test("Service Evidence detector 可关联跨 Service Observation", () => {
       detect: (evidence) => {
         const appArmor = evidence.observations.find((item) => (
           item.services.includes("sandbox-server")
-          && item.kind === "kubernetes-apparmor-unconfined-admission"
+          && item.kind === "plugin/agentsphere/sandbox-server/admission"
         ));
         const health = evidence.observations.find((item) => (
           item.services.includes("bedbox")
@@ -408,12 +408,6 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
         ? {
           ...service,
           workloads: service.workloads.map((workload) => ({ ...workload, description: "Handles API requests" })),
-          environmentProbes: [{
-            id: "apparmor-unconfined",
-            kind: "kubernetes.apparmor-unconfined-admission",
-            schemaVersion: 1,
-            subject: "workload-service-account",
-          }],
           extensions: [defineWorkloadProbeExtension({
             id: "core-facts", kind: "workload.probe", workload: "main", access: {},
             produces: defineObservation({ kind: "core-facts-visible", schemaVersion: 1, codec: {
@@ -569,8 +563,6 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(complete).toContain("waiting: CrashLoopBackOff");
     expect(complete).toContain("last=terminated: OOMKilled, exit=137");
     expect(complete).toContain("REQUEST_TIMEOUT");
-    expect(complete).toContain("AppArmor Unconfined：1 个 ServiceAccount 允许");
-    expect(complete).toContain("| example-api | demo | example-api | allowed | — |");
     expect(complete).toContain("Deployment Env/ConfigMap：已采集");
     expect(complete).not.toContain("Coverage");
     expect(workloadProbeFacts).toEqual(expect.arrayContaining([
@@ -635,7 +627,6 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(partial).not.toContain("environment-config：insufficient");
     expect(partial).not.toContain("workload-runtime：sufficient");
     expect(partial).toContain("Deployment Env/ConfigMap 未纳入本次采集范围");
-    expect(partial).toContain("AppArmor Unconfined：未探测到（best effort）");
     admissionUnavailable = false;
 
     const dependenciesOutput = join(dir, "dependencies.md");
@@ -685,7 +676,7 @@ test.each(["legacy", "native"] as const)("inspect 分别交付 workload、可选
     expect(unavailable).toContain("Plugin 未声明 Toolchain");
     expect(unavailable).toContain("未声明");
     expect(unavailable).toContain("runtime-dependencies");
-    expect(admissionCalls).toBe(6);
+    expect(admissionCalls).toBe(0);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

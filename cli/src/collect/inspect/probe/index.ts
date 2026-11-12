@@ -1,3 +1,5 @@
+import { INSPECT_PROBE_KIND, requireInspectProbeExtension } from "@compforge/doctor-plugin";
+import { makePluginInspectProbe } from "./plugin-inspect";
 import { makePodClockProbes } from "./pod-clock";
 import { inspectCollectionScope } from "../model";
 import { fileDataSources, secretDataSources } from "@compforge/doctor-plugin";
@@ -16,7 +18,6 @@ import { containerEnvironmentTargets } from "../fact/inspect";
 import { makeContainerEnvironmentProbe } from "./container-environment";
 import { makeServiceConfigProbe } from "./service-environment";
 import { makeDependencyInventoryProbe } from "./dependencies";
-import { makeAppArmorUnconfinedAdmissionProbe } from "./apparmor";
 import { makePluginWorkloadProbe } from "./plugin-workload";
 
 export function makeInspectProbes(
@@ -28,11 +29,11 @@ export function makeInspectProbes(
   const scope = inspectCollectionScope(config);
   const serviceProbes = (scope.plugins ? config.services : []).flatMap((serviceName) => {
     const service = catalog.find(serviceName);
-    const environment = service?.environmentProbes
-      ?.map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
+    const extensions = (service?.extensions ?? []).filter(extension => extension.kind === INSPECT_PROBE_KIND)
+      .map(extension => makePluginInspectProbe(service!, requireInspectProbeExtension(extension), probeFacts));
     const workloads = workloadProbeProviders(catalog, serviceName)
       .map(({ service, extension }) => makePluginWorkloadProbe(service, extension, probeFacts));
-    return [...environment, ...workloads];
+    return [...extensions, ...workloads];
   });
   const probes: Array<Probe<InspectObservation, InspectFacts, InspectConfig, InspectCommandContext>> = [
     ...serviceProbes,
@@ -56,5 +57,4 @@ export function makeInspectProbes(
 
 export * from "./service-environment";
 export * from "./dependencies";
-export * from "./apparmor";
 export * from "./plugin-workload";

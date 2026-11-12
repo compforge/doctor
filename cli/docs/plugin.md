@@ -68,7 +68,7 @@ Service 的命令扩展通过 Extension 注册；kind 契约由 SDK 定义，Com
 
 资源声明与调用协议分别建模：`dataSources` 保存可复用访问资源，`dependencies` 通过
 Service 与 dataSource ID 引用其它 Service 的资源。宿主解析依赖并注入受限 handle，管理共享 Client
-及其清理。`detectors` 是只消费 Evidence 的纯分析函数；`environmentProbes` 是 Core 执行的环境检查声明。
+及其清理。`detectors` 是只消费 Evidence 的纯分析函数；`inspect.probe` 由 Service 提供，Core 统一执行并保存 Value/summary。
 
 `cases` 与 DataSource、Workload 一样是 Service 贡献。一个 `ServiceCaseSource` 用稳定 ID 集中提供
 离线 CaseSet、可选的运行时 `produce` 和单请求 `runner`；来源引用是 `{ service, source }`。

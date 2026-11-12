@@ -91,7 +91,7 @@ test("omitted metadata and empty declarations do not invent capabilities", () =>
     workloads: []
   });
   expect(result).toEqual({
-    name: "legacy", aliases: [], description: undefined, knowledge: undefined, upstream: undefined, detectors: [], environmentProbes: [],
+    name: "legacy", aliases: [], description: undefined, knowledge: undefined, upstream: undefined, detectors: [],
     details: { workloads: [], dependencies: [], dataSources: [], inspect: undefined, access: [] }
   });
   const withoutExplanation = { ...requireDataIdExtension(service.extensions![1]!), description: undefined, limitations: undefined };

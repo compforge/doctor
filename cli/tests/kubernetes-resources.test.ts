@@ -56,6 +56,9 @@ test("Core snapshot and workload discovery share a native client and preserve AP
     expect(denied.error).toBeDefined();
     expect(denied.error).not.toContain("credential");
     expect(denied.execution).toBeUndefined();
+    const node = await read({ apiVersion: "v1", resource: "nodes", name: "worker" });
+    expect(node.request.namespace).toBeUndefined();
+    expect(paths.at(-1)).toBe("/api/v1/nodes/worker");
   } finally {
     await clients.dispose();
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));

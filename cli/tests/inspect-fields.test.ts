@@ -29,7 +29,7 @@ for (const { field, mode, search } of cases) test(`Inspect ${field} limits colle
   }] }, resolve: async () => { fileResolutions++; return { namespace: "demo", pod: "api-0", container: "main" }; } });
   const service: ServiceDefinition = { name: "api", component: { name: "api", repository: { forge: { name: "test" }, path: "api" } },
     workloads: [{ name: "main", platform: "kubernetes", namespace: mode === "other-namespace" ? "other" : undefined, container: "main", location: { kind: "resource", resource_kind: mode === "statefulset" ? "StatefulSet" : "Deployment", name: "api" } }],
-    dataSources: [file], environmentProbes: [{ id: "admission", kind: "kubernetes.apparmor-unconfined-admission", schemaVersion: 1, subject: "workload-service-account" }] };
+    dataSources: [file] };
   const plugin = { ...examplePlugin, services: createServiceCatalog([service]) };
   const executor: Executor = {
     run: async args => {

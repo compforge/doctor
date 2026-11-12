@@ -1,4 +1,4 @@
-import { repositoryId, type Component, type Repository } from "@compforge/harness-common";
+import { repositoryId, Service, type Component, type Repository } from "@compforge/harness-common";
 import type { Case } from "@compforge/spec-case/model";
 import type { PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
@@ -13,7 +13,7 @@ import type {
 } from "./capability";
 import type { JsonValue } from "@compforge/harness-common";
 import type { ProbeRunner } from "./probe";
-import type { Environment, Service, WorkloadInstance } from "@compforge/harness-common";
+import type { Environment, WorkloadInstance } from "@compforge/harness-common";
 
 export interface ServiceEndpoint {
   /** Explicit network host; a logical Service name is never treated as transport identity. */
@@ -93,23 +93,6 @@ export interface ServiceMetricDetector {
   severity: "warning" | "critical";
   message: string;
 }
-
-/** Common identity carried by every Plugin-side Probe contribution. */
-export interface ServiceProbe {
-  id: string;
-  kind: string;
-  schemaVersion: number;
-}
-
-export interface KubernetesAppArmorUnconfinedInspectionProbe extends ServiceProbe {
-  kind: "kubernetes.apparmor-unconfined-admission";
-  schemaVersion: 1;
-  /** Resolve the caller identity and probe image from this Service's running workload. */
-  subject: "workload-service-account";
-}
-
-/** Service-owned declarations adapted to common probes by Doctor. */
-export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProbe;
 
 /** Service-owned Prometheus contract consumed by doctor metric. */
 export interface MetricConfiguration {
@@ -411,7 +394,7 @@ export interface ServiceRelationship {
  * @spec Common Service owns identity, structured Knowledge, upstream and Workload declarations.
  * @rule Knowledge is Plugin-authored structured offline content; it must not contain credentials or runtime configuration.
  */
-export interface ServiceDefinition extends Omit<Service, "environment" | "component"> {
+export interface ServiceDefinition extends Omit<Service, "environment" | "component" | "id"> {
   /** Offline repository identity fields; binding supplies the Common runtime identity method. */
   component: Omit<Component, "repository"> & { repository: Omit<Repository, "id"> };
   /** Exact input synonyms for this whole Service, not Workload or telemetry selectors. */
@@ -425,8 +408,6 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
   dependencies?: readonly ServiceDataSourceDependency[];
   /** Pure rules over the evidence selected by Collect. */
   detectors?: readonly ServiceDetector[];
-  /** Declarations executed by Core environment probes. */
-  environmentProbes?: readonly ServiceEnvironmentProbe[];
   /** Open, kind-based functions. A Service may provide several kinds. */
   extensions?: readonly RegisteredExtension[];
   dataSources?: readonly ServiceDataSource[];
@@ -457,7 +438,8 @@ export interface ServiceDefinition extends Omit<Service, "environment" | "compon
 export function bindService<T extends ServiceDefinition, E extends Environment>(
   definition: T, environment: E,
 ): T & Service<E> {
-  return { ...definition, environment, component: { ...definition.component,
+  const component = { ...definition.component,
     repository: { ...definition.component.repository, id() { return repositoryId(this); } },
-  } };
+  };
+  return Object.assign(new Service({ ...definition, environment, component }), definition, { component });
 }

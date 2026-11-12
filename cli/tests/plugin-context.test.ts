@@ -588,3 +588,34 @@ function fileBytes(results: readonly FileReadResult[]): Uint8Array {
   if (first.status === "error") throw first.error;
   return first.bytes;
 }
+
+/** @case Cluster reads omit namespace and server dry-run cannot become a persisted create. */
+test("Inspection access keeps cluster scope and admission operations explicit", async () => {
+  const calls: string[][] = [];
+  const resources: { namespace?: string; resource: string }[] = [];
+  const executor: Executor = { run: async args => { calls.push(args); return result(args, "{}"); }, exec: async () => result([], "0") };
+  const service = { name: "api", component: { name: "api", repository: { forge: { name: "test" }, path: "api" } }, workloads: [] };
+  const context = createPluginContext(executor, { namespace: "demo", context: "test" }, {
+    environment: { kind: "kubernetes", name: "test", context: "test", server: "https://test.invalid" }, service,
+    resources: async query => { resources.push(query); return { request: { ...query, verb: "get" }, value: { metadata: {} }, observedAt: "now", durationMs: 0 }; },
+    capability: { access: { kubernetes: [
+      { requirement: "preferred", purpose: "node", rule: { verb: "get", resource: "nodes", clusterScoped: true } },
+      { requirement: "preferred", purpose: "admission", rule: { verb: "create", resource: "pods" } },
+      { requirement: "preferred", purpose: "identity", rule: { verb: "impersonate", resource: "serviceaccounts", resourceName: "sandbox" } },
+    ] } },
+  });
+  try {
+    await context.infra.kubernetes.clusterResources().get({ apiVersion: "v1", resource: "nodes", name: "one" });
+    expect(resources).toMatchObject([{ namespace: undefined, resource: "nodes" }]);
+    await expect(context.infra.kubernetes.get({ apiVersion: "v1", resource: "nodes", name: "one" })).rejects.toThrow("未声明");
+    const args = ["create", "-f", "-", "--dry-run=server", "-o", "json", "--namespace", "demo", "--as", "system:serviceaccount:demo:sandbox"];
+    const options = { stdin: JSON.stringify({ apiVersion: "v1", kind: "Pod", metadata: { namespace: "demo" }, spec: { serviceAccountName: "sandbox" } }), timeoutMs: 5000 };
+    await context.infra.kubernetes.podAdmission().run(args, options);
+    expect(calls).toEqual([args]);
+    for (const altered of [args.filter(arg => arg !== "--dry-run=server"), [...args, "--context", "other"], args.map(arg => arg === "demo" ? "other" : arg), args.map(arg => arg.endsWith(":sandbox") ? "system:serviceaccount:demo:other" : arg)]) {
+      await expect(context.infra.kubernetes.podAdmission().run(altered, options)).rejects.toThrow();
+    }
+    await expect(context.infra.kubernetes.podAdmission().run(args, { ...options, stdin: options.stdin.replace('"Pod"', '"Deployment"') })).rejects.toThrow();
+    expect(calls).toHaveLength(1);
+  } finally { await context.dispose(); }
+});
