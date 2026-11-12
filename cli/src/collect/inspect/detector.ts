@@ -241,6 +241,13 @@ export function projectInspectServiceEvidence(
           ...(observation.pod ? { pod: observation.pod } : {}), ...(observation.container ? { container: observation.container } : {}),
           ...(observation.reason ? { reason: observation.reason } : {}) },
       })];
+      if (observation.kind === "kubernetes-workload-environment") return [projectServiceEvidenceObservation({
+        services: [observation.service], probe: observation.probe, source: observation,
+        workload: observation.workload, instance: observation.instance,
+        value: { namespace: observation.namespace, pod: observation.pod, container: observation.container,
+          nodeName: observation.nodeName, observedAt: observation.observedAt, podIpForward: observation.podIpForward,
+          nodeInfo: observation.nodeInfo, status: observation.status, reason: observation.reason },
+      })];
       if (observation.kind === "pod-clock") return [projectServiceEvidenceObservation({
         services: [observation.service], probe: "pod-clock", source: observation,
         workload: observation.workload, instance: observation.instance,

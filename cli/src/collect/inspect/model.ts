@@ -302,6 +302,24 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   value: PortableJsonValue;
 }
 
+/** @spec ip_forward belongs to the sampled Pod network namespace; OS metadata belongs to its Node. */
+export interface WorkloadEnvironmentObservation extends ObservationMeta {
+  kind: "kubernetes-workload-environment";
+  service: string;
+  workload: string;
+  probe: string;
+  instance: WorkloadInstance;
+  namespace: string;
+  pod: string;
+  container: string;
+  nodeName?: string;
+  observedAt: string;
+  status: "ok" | "partial" | "unavailable";
+  reason?: string;
+  podIpForward?: 0 | 1;
+  nodeInfo: Partial<Record<"operatingSystem" | "osImage" | "kernelVersion" | "architecture", string>>;
+}
+
 export type InspectObservation =
   | EnvironmentConfigObservation
   | PodClockObservation
@@ -310,7 +328,8 @@ export type InspectObservation =
   | SecretConfigurationObservation
   | DependencyInventoryObservation
   | KubernetesAppArmorAdmissionObservation
-  | PluginWorkloadObservation;
+  | PluginWorkloadObservation
+  | WorkloadEnvironmentObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;

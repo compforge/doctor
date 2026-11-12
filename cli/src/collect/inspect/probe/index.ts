@@ -1,3 +1,4 @@
+import { makeWorkloadEnvironmentProbe } from "./workload-environment";
 import { makePodClockProbes } from "./pod-clock";
 import { inspectCollectionScope } from "../model";
 import { fileDataSources, secretDataSources } from "@compforge/doctor-plugin";
@@ -29,7 +30,9 @@ export function makeInspectProbes(
   const serviceProbes = (scope.plugins ? config.services : []).flatMap((serviceName) => {
     const service = catalog.find(serviceName);
     const environment = service?.environmentProbes
-      ?.map(probe => makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
+      ?.map(probe => probe.kind === "kubernetes.workload-environment"
+        ? makeWorkloadEnvironmentProbe(serviceName, probe)
+        : makeAppArmorUnconfinedAdmissionProbe(serviceName, probe)) ?? [];
     const workloads = workloadProbeProviders(catalog, serviceName)
       .map(({ service, extension }) => makePluginWorkloadProbe(service, extension, probeFacts));
     return [...environment, ...workloads];

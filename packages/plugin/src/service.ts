@@ -108,8 +108,15 @@ export interface KubernetesAppArmorUnconfinedInspectionProbe extends ServiceProb
   subject: "workload-service-account";
 }
 
+/** Core samples one running container and its Node; the Service only selects the Workload. */
+export interface KubernetesWorkloadEnvironmentProbe extends ServiceProbe {
+  kind: "kubernetes.workload-environment";
+  schemaVersion: 1;
+  workload: string;
+}
+
 /** Service-owned declarations adapted to common probes by Doctor. */
-export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProbe;
+export type ServiceEnvironmentProbe = KubernetesAppArmorUnconfinedInspectionProbe | KubernetesWorkloadEnvironmentProbe;
 
 /** Service-owned Prometheus contract consumed by doctor metric. */
 export interface MetricConfiguration {

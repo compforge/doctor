@@ -536,3 +536,19 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
     }
   });
 }
+
+
+test("Workload environment declarations require a known workload and supported schema", () => {
+  const probe = { id: "runtime-environment", kind: "kubernetes.workload-environment", schemaVersion: 1, workload: "main" } as const;
+  const definition = (candidate: Record<string, unknown>) => ({
+    id: "test", version: "0.0.1", services: { services: [{
+      name: "api", component: { name: "api", repository: { forge: { name: "test" }, path: "api" } },
+      workloads: [{ name: "main", platform: "kubernetes", container: "main", location: { kind: "labels", labels: { app: "api" } } }],
+      environmentProbes: [candidate],
+    }] },
+  });
+  expect(validatePluginDefinition(definition(probe), manifest).services.find("api")?.environmentProbes).toEqual([probe]);
+  expect(() => validatePluginDefinition(definition({ ...probe, workload: "absent" }), manifest)).toThrow("unknown workload");
+  expect(() => validatePluginDefinition(definition({ ...probe, workload: "" }), manifest)).toThrow("non-empty");
+  expect(() => validatePluginDefinition(definition({ ...probe, schemaVersion: 2 }), manifest)).toThrow("unsupported schemaVersion");
+});

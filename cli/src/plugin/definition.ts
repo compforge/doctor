@@ -138,6 +138,10 @@ function validateService(value: unknown, index: number): ServiceDefinition {
         if (probe.subject !== "workload-service-account") {
           throw new Error(`${label} uses unsupported subject '${String(probe.subject)}'`);
         }
+      } else if (probe.kind === "kubernetes.workload-environment") {
+        if (probe.schemaVersion !== 1) throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
+        const workload = nonEmptyString(probe.workload, `${label}.workload`);
+        if (!workloadNames.has(workload)) throw new Error(`${label}: unknown workload '${workload}'`);
       } else {
         throw new Error(`${label} uses unsupported kind '${String(probe.kind)}'`);
       }

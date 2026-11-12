@@ -44,6 +44,16 @@ function markdownTable(headers: readonly string[], rows: readonly (readonly stri
   ];
 }
 
+const ENVIRONMENT_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Pod ip_forward", "Node OS", "Node OS version", "Node kernel", "Node architecture", "采集时间（UTC）", "状态", "缺口"];
+const ENVIRONMENT_EXPLANATION = "每个声明的 Workload 仅采一个运行中 Pod 及其 Node。ip_forward 来自该 Pod 的网络命名空间；OS、OS version、kernel、architecture 来自对应 Node 的 status.nodeInfo，结果不代表所有 Node。";
+function environmentRows(diagnosis: InspectDiagnosis): string[][] {
+  return diagnosis.evidence.observations.filter(item => item.kind === "kubernetes-workload-environment").map(item => [
+    item.service, item.workload, item.pod, item.container, item.nodeName ?? "—", String(item.podIpForward ?? "—"),
+    ...[item.nodeInfo.operatingSystem, item.nodeInfo.osImage, item.nodeInfo.kernelVersion, item.nodeInfo.architecture].map(value => value ?? "—"),
+    item.observedAt, item.status, item.reason ?? "—",
+  ]);
+}
+
 const CLOCK_TABLE_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Doctor Host", "采样时间（Host UTC）", "偏差 ms（Pod − Host）", "误差 ±ms", "RTT ms", "Pod 时区（UTC offset / 缩写）", "状态"];
 const CLOCK_EXPLANATION = "Doctor Host 是本次采样参照，不保证 UTC 正确。偏差为区间中点，误差包含往返耗时和时间精度；5s 为提示阈值。Node 仅用于定位，Pod 结果不代表整个 Node 或集群；未告警不等于已证明同步。时区来自采样进程的 date 输出，缩写不等于 IANA 时区名称；未取得时显示缺失，不影响时钟判定。";
 
@@ -652,6 +662,8 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "",
     ...markdownTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
     "",
+    ...(environmentRows(diagnosis).length ? ["### Workload 环境", "", ENVIRONMENT_EXPLANATION, "",
+      ...markdownTable(ENVIRONMENT_HEADERS, environmentRows(diagnosis)), ""] : []),
     "### Toolchain",
     "",
     ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
@@ -755,6 +767,9 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
       title: "Workload / Pod 时钟",
       html: htmlParagraph(CLOCK_EXPLANATION) + htmlTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
     },
+    ...(environmentRows(diagnosis).length ? [{ title: "Workload / 环境",
+      html: htmlParagraph(ENVIRONMENT_EXPLANATION) + htmlTable(ENVIRONMENT_HEADERS, environmentRows(diagnosis)),
+    }] : []),
     {
       title: "Workload / Toolchain",
       html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),

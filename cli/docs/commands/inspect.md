@@ -54,6 +54,22 @@ Detector 使用 `[Pod时间 − Host接收时间, Pod时间 + 精度 − Host发
 HTML/Markdown 展示每个 Pod 的偏差、误差、RTT 和采样状态，原始样本进入证据包。
 `--field` 的定向查询不执行时钟采样或相关 Detector。
 
+## Workload 环境
+
+Service 可通过 `environmentProbes` 声明 `{ id, kind: "kubernetes.workload-environment", schemaVersion: 1, workload }`。
+Core 沿用该 Workload 的 selector 与 Container 定义，按 Pod 名排序选一个 Running 且目标 Container
+处于 running 状态的 Pod。只探测该 Pod 及其 `spec.nodeName` 对应的一个 Node，不扫描全集群，失败后不改选其它副本。
+完整 Inspect（含 Collect）执行；未声明该 probe 的 Service 和 `--field` 定向查询不执行。
+
+通过 Pod exec 读取 `/proc/sys/net/ipv4/ip_forward`，通过单个 Node GET 读取
+`status.nodeInfo.operatingSystem/osImage/kernelVersion/architecture`，两项读取各有 5 秒超时。
+`podIpForward` 表示该 Pod 网络命名空间的值，不推断宿主机网络命名空间配置；Node OS version 保存
+完整 `osImage` 发行版字符串，架构保留 Kubernetes 原值（如 `amd64`、`arm64`），不使用容器 `/etc/os-release`。
+需要 `get pods/exec` 和对应 Node 的 `get` 权限，不需要 `list nodes`。权限不足、读取失败和字段缺失
+分别保留原因及已取得值；全部取得为 `ok`，部分取得为 `partial`，无值为 `unavailable`。
+无可运行目标时记录 unavailable 步骤。HTML/Markdown 和 Observation 保留采样 Pod、Container、Node 与采集时间，
+不据此宣称其它 Node 配置相同，也不将 `ip_forward=0` 本身判定为业务故障。
+
 ## 快速查看字段
 
 ```sh
