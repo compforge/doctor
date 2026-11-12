@@ -4,6 +4,8 @@ import type { PluginContext } from "../context";
 import type { Value } from "@compforge/harness-common";
 import type { ServiceWorkloadProbeInput } from "../service";
 
+import { validateProbeResult as validateWorkloadProbeResult, type ProbeResult } from "./probe-result";
+
 export const WORKLOAD_PROBE_KIND = "workload.probe";
 
 /** The Command schedules one invocation per discovered workload instance. */
@@ -16,19 +18,8 @@ export interface WorkloadProbeExtension<Definition extends ObservationDefinition
   readonly produces: Definition;
 }
 
-/** Execution belongs to the Probe; the Value codec only describes the acquired data. */
-export type WorkloadProbeResult<T extends Value = Value> = { readonly value: T } & (
-  | { readonly status: "ok" }
-  | { readonly status: "partial" | "unavailable"; readonly reason: string }
-);
-
-export function validateWorkloadProbeResult(result: WorkloadProbeResult): void {
-  if (!result || !["ok", "partial", "unavailable"].includes(result.status)
-    || !result.value || typeof result.value.summary !== "function"
-    || (result.status !== "ok" && (typeof result.reason !== "string" || !result.reason.trim()))) {
-    throw new Error("Workload Probe requires a Value and an execution status; incomplete results require a reason");
-  }
-}
+export { validateProbeResult as validateWorkloadProbeResult } from "./probe-result";
+export type WorkloadProbeResult<T extends Value = Value> = ProbeResult<T>;
 
 /** Infer the acquired Value from its declaration and retain partial data in the result. */
 export function defineWorkloadProbeExtension<T extends Value>(

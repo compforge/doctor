@@ -9,7 +9,6 @@ import type { Workload } from "./workload";
 export interface ServiceDescription extends Pick<ServiceDefinition, "name" | "description" | "knowledge" | "upstream"> {
   aliases: string[];
   detectors: string[];
-  environmentProbes: string[];
   extensions?: { id: string; kind: string; description?: string }[];
   cases?: { id: string; description?: string; produce: boolean; runner: boolean }[];
   resources?: { resource: import("./resource").Resource; relationship: "manages" | "uses" }[];
@@ -80,7 +79,6 @@ export function describeService(service: ServiceDefinition): ServiceDescription 
     knowledge: service.knowledge,
     upstream: service.upstream,
     detectors: (service.detectors ?? []).map(item => item.id),
-    environmentProbes: (service.environmentProbes ?? []).map(item => item.id),
     ...(service.cases?.length ? { cases: service.cases.map(source => ({ id: source.id, description: source.description,
       produce: Boolean(source.produce), runner: Boolean(source.runner) })) } : {}),
     ...(service.extensions?.length ? { extensions: service.extensions.map(({ id, kind, description }) => ({ id, kind, description })) } : {}),

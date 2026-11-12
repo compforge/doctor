@@ -51,8 +51,9 @@ function checkedOutput(label: string, result: ExecResult): string {
  * @see {@link cli/docs/plugin.md}
  */
 function createKubernetesAccess(
-  resourcesForNamespace: (namespace: string) => Promise<NamespaceResources>,
+  resourcesForNamespace: (namespace: string | undefined) => Promise<NamespaceResources>,
   executorForNamespace: (namespace: string) => Pick<Executor, "exec">,
+  admissionExecutor: Pick<Executor, "run">,
   defaultNamespace: string,
   signal: AbortSignal,
   capability: CapabilityWithAccess,
@@ -64,13 +65,13 @@ function createKubernetesAccess(
   readFiles: (namespace: string, ...args: Parameters<KubernetesAccess["readFiles"]>) => ReturnType<KubernetesAccess["readFiles"]>,
 ): KubernetesAccess {
   const scoped = (namespace: string): KubernetesAccess => {
-    const assertDeclared = (verb: string, resource: string, resourceName?: string): void => {
+    const assertDeclared = (verb: string, resource: string, resourceName?: string, clusterScoped = false): void => {
       signal.throwIfAborted();
       const declared = capability.access.kubernetes?.some((need) => (
         need.rule.verb === verb
         && need.rule.resource === resource
         && (need.rule.resourceName === undefined || need.rule.resourceName === resourceName)
-        && (namespace === (need.rule.namespace ?? defaultNamespace) || need.rule.allNamespaces === true)
+        && (clusterScoped ? need.rule.clusterScoped === true : !need.rule.clusterScoped && (namespace === (need.rule.namespace ?? defaultNamespace) || need.rule.allNamespaces === true))
       ));
       if (!declared) {
         throw new Error(`Plugin capability 未声明 Kubernetes access: ${verb} ${resource}${resourceName ? `/${resourceName}` : ""} (namespace=${namespace})`);
@@ -84,7 +85,41 @@ function createKubernetesAccess(
       const [group] = query.apiVersion.includes("/") ? query.apiVersion.split("/") : [];
       return query.resource + (group ? "." + group : "");
     };
+    const execResult: Executor["exec"] = async (target, command, options) => {
+      assertDeclared("create", "pods/exec", target.pod);
+      return executorForNamespace(namespace).exec(target, command, {
+        ...options, signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
+        timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
+      });
+    };
     return {
+      execResult,
+      clusterResources: () => ({ get: async (ref, options) => {
+        if (ref.namespace !== undefined) throw new Error("Cluster resource read must omit namespace");
+        assertDeclared("get", accessResource(ref), ref.name, true);
+        return (await resourcesForNamespace(undefined)).get(ref, {
+          signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
+          timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
+        });
+      } }),
+      podAdmission: () => ({ run: async (args, options) => {
+        // @rule This borrowed executor cannot persist a Pod, switch cluster/namespace, or impersonate an undeclared identity.
+        const prefix = ["create", "-f", "-", "--dry-run=server", "-o", "json", "--namespace", namespace, "--as"];
+        if (args.length !== prefix.length + 1 || prefix.some((arg, index) => args[index] !== arg)
+          || !args[9]?.startsWith(`system:serviceaccount:${namespace}:`)) throw new Error("Only server-side Pod admission dry-run is supported");
+        const account = args[9].slice(`system:serviceaccount:${namespace}:`.length);
+        if (!/^[a-z0-9][a-z0-9.-]*$/.test(account)) throw new Error("Invalid admission ServiceAccount");
+        if (typeof options?.stdin !== "string") throw new Error("Admission requires a JSON manifest on stdin");
+        const manifest = JSON.parse(options.stdin);
+        if (manifest?.apiVersion !== "v1" || manifest.kind !== "Pod" || manifest.metadata?.namespace !== namespace
+          || manifest.spec?.serviceAccountName !== account) throw new Error("Admission manifest must match the Pod target and ServiceAccount");
+        assertDeclared("create", "pods");
+        assertDeclared("impersonate", "serviceaccounts", account);
+        return admissionExecutor.run(args, { ...options,
+          signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
+          timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
+        });
+      } }),
       inNamespace: (selected) => scoped(selected.trim() || defaultNamespace),
       get: async <T>(ref: KubernetesResourceRef, options?: ResourceRequestOptions) => {
         assertDeclared("get", accessResource(ref), ref.name);
@@ -93,21 +128,12 @@ function createKubernetesAccess(
           timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
         }) as T;
       },
-      list: async <T>(query: KubernetesResourceListQuery) => {
+      list: async <T>(query: KubernetesResourceListQuery, options?: ResourceRequestOptions) => {
         assertDeclared("list", accessResource(query));
-        return await (await resourcesForNamespace(namespace)).list(query, accessOptions) as KubernetesResourceList<T>;
+        return await (await resourcesForNamespace(namespace)).list(query, { ...accessOptions, ...options, signal: options?.signal ? AbortSignal.any([signal, options.signal]) : signal,
+          timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS) }) as KubernetesResourceList<T>;
       },
-      exec: async (target, command, options) => {
-        assertDeclared("create", "pods/exec", target.pod);
-        return checkedOutput(
-          commandLabel(["exec", target.pod]),
-          await executorForNamespace(namespace).exec(target, [...command], {
-            signal,
-            stdin: options?.stdin,
-            timeoutMs: Math.min(options?.timeoutMs ?? PLUGIN_KUBERNETES_TIMEOUT_MS, PLUGIN_KUBERNETES_TIMEOUT_MS),
-          }),
-        );
-      },
+      exec: async (target, command, options) => checkedOutput(commandLabel(["exec", target.pod]), await execResult(target, [...command], options)),
       readFiles: async (target, paths, options) => {
         assertDeclared("create", "pods/exec", target.pod);
         return readFiles(namespace, target, paths, { ...options,
@@ -189,9 +215,12 @@ export function createPluginContext(
     infra: {
       databaseIdentity: options.databaseIdentity,
       kubernetes: createKubernetesAccess(async ns => options.resources
-        ? capturedResourceAccess(options.resources, ns) : (client ?? await cluster()).inNamespace(ns), ns => ({
+        ? capturedResourceAccess(options.resources, ns) : ns === undefined ? (client ?? await cluster()).clusterResources() : (client ?? await cluster()).inNamespace(ns), ns => ({
         exec: async (target, command, runOptions) => (client ?? await cluster()).exec(ns, target, command, runOptions),
-      }), kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
+      }), { run: async (args, runOptions) => {
+        if (!executor || options.environment.kind !== "kubernetes") throw new Error("This Extension context has no Kubernetes target");
+        return executor.run(args, runOptions);
+      } }, kube.namespace, accessSignal, options.capability, async (ns, target) => (client ?? await cluster()).forward(ns, target),
       async (ns, target) => (await relay(ns)).connect(target),
       async (namespace, target, paths, limits) => {
         const file = await clients.get(new PodFileDataSource(clusterSource, { namespace, ...target }, paths, { concurrency: 4 }));

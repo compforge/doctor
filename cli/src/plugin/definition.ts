@@ -1,3 +1,4 @@
+import { INSPECT_PROBE_KIND, requireInspectProbeExtension } from "@compforge/doctor-plugin";
 import { connectionDataSources, isFileDataSource, isSecretDataSource } from "@compforge/doctor-plugin";
 import { vdbTargetProviders } from "../datasource/vdb-extension";
 import { workloadProbeProviders } from "./workload-extensions";
@@ -125,28 +126,7 @@ function validateService(value: unknown, index: number): ServiceDefinition {
       }
     }
   }
-  if (service.environmentProbes !== undefined) {
-    for (const [probeId, probe] of uniqueIdRecords(
-      service.environmentProbes,
-      `${service.name}.environmentProbes`,
-    )) {
-      const label = `${service.name}.environmentProbes.${probeId}`;
-      if (probe.kind === "kubernetes.apparmor-unconfined-admission") {
-        if (probe.schemaVersion !== 1) {
-          throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
-        }
-        if (probe.subject !== "workload-service-account") {
-          throw new Error(`${label} uses unsupported subject '${String(probe.subject)}'`);
-        }
-      } else if (probe.kind === "kubernetes.workload-environment") {
-        if (probe.schemaVersion !== 1) throw new Error(`${label} uses unsupported schemaVersion '${String(probe.schemaVersion)}'`);
-        const workload = nonEmptyString(probe.workload, `${label}.workload`);
-        if (!workloadNames.has(workload)) throw new Error(`${label}: unknown workload '${workload}'`);
-      } else {
-        throw new Error(`${label} uses unsupported kind '${String(probe.kind)}'`);
-      }
-    }
-  }
+  if (service.environmentProbes !== undefined) throw new Error(`${service.name}.environmentProbes was removed; register inspect.probe extensions`);
   if (service.dataSources !== undefined) {
     if (!Array.isArray(service.dataSources)) throw new Error(`${service.name}.dataSources must be an array`);
     const files = service.dataSources.filter(isFileDataSource);
@@ -241,6 +221,7 @@ export function validatePluginDefinition(value: unknown, manifest: PluginManifes
   const services = sourceCatalog.services.map(validateService);
   const catalog = createServiceCatalog(services);
   workloadProbeProviders(catalog);
+  for (const { extension } of catalog.extensions(INSPECT_PROBE_KIND)) requireInspectProbeExtension(extension);
   vdbTargetProviders(catalog);
 
   for (const service of services) {

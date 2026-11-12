@@ -15,6 +15,7 @@ import type {
   InspectFacts,
   InspectFinding,
   InspectObservation,
+  PluginInspectObservation,
   JsonValue,
 } from "./model";
 import type {
@@ -197,7 +198,7 @@ export function projectInspectServiceEvidence(
   return {
     facts: projectInspectServiceFacts(evidence.facts, services),
     observations: evidence.observations.flatMap<ServiceEvidenceObservation>((observation) => {
-      if (observation.kind === "plugin-workload") {
+      if (observation.kind === "plugin-workload" || observation.kind === "plugin-inspect") {
         return [projectPluginServiceEvidenceObservation({
           id: observation.id,
           plugin,
@@ -206,22 +207,8 @@ export function projectInspectServiceEvidence(
           probe: observation.probe,
           kind: observation.observationKind,
           schemaVersion: observation.observationSchemaVersion,
-          workload: observation.workload,
-          instance: observation.instance,
+          ...(observation.kind === "plugin-workload" ? { workload: observation.workload, instance: observation.instance } : {}),
           value: observation.value,
-        })];
-      }
-      if (observation.kind === "kubernetes-apparmor-unconfined-admission") {
-        return [projectServiceEvidenceObservation({
-          services: [observation.service],
-          probe: observation.probe,
-          source: observation,
-          value: {
-            namespace: observation.namespace,
-            serviceAccountName: observation.serviceAccountName,
-            status: observation.status,
-            ...(observation.reason ? { reason: observation.reason } : {}),
-          },
         })];
       }
       if (observation.kind === "secret-configuration") return [projectServiceEvidenceObservation({
@@ -240,13 +227,6 @@ export function projectInspectServiceEvidence(
           ...(observation.namespace ? { namespace: observation.namespace } : {}),
           ...(observation.pod ? { pod: observation.pod } : {}), ...(observation.container ? { container: observation.container } : {}),
           ...(observation.reason ? { reason: observation.reason } : {}) },
-      })];
-      if (observation.kind === "kubernetes-workload-environment") return [projectServiceEvidenceObservation({
-        services: [observation.service], probe: observation.probe, source: observation,
-        workload: observation.workload, instance: observation.instance,
-        value: { namespace: observation.namespace, pod: observation.pod, container: observation.container,
-          nodeName: observation.nodeName, observedAt: observation.observedAt, podIpForward: observation.podIpForward,
-          nodeInfo: observation.nodeInfo, status: observation.status, reason: observation.reason },
       })];
       if (observation.kind === "pod-clock") return [projectServiceEvidenceObservation({
         services: [observation.service], probe: "pod-clock", source: observation,
@@ -381,6 +361,10 @@ export function detectInspectEvidenceGaps(
     { factPath: "serviceTargets", role: "context" },
     ...pluginObservations.filter(item => item.status && item.status !== "ok").map(item => ({ observationId: item.id, role: "supporting" as const })),
   ]));
+
+  const inspectMissing = evidence.observations.filter((item): item is PluginInspectObservation => item.kind === "plugin-inspect" && item.status !== "ok");
+  findings.push(...evidenceGaps("service-observations", inspectMissing.map(item => `${item.service}/${item.probe}: ${item.reason}`), evidence,
+    inspectMissing.map(item => ({ observationId: item.id, role: "supporting" as const }))));
 
   const dependencyMissing: string[] = [];
   if (evidence.facts.dependencyTargets.status !== "collected") {

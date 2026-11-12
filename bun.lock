@@ -14,8 +14,8 @@
         "@compforge/agentue": "github:compforge/agentue#6ae15d278298b2a9e7744ec08f700791555652d1",
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
-        "@compforge/harness-common": "0.5.15",
-        "@compforge/harness-toolbox": "0.5.6",
+        "@compforge/harness-common": "0.6.0",
+        "@compforge/harness-toolbox": "0.6.1",
         "@compforge/perf-harness": "0.1.3",
         "@compforge/prombed": "0.0.2",
         "@compforge/spec-case": "0.0.7",
@@ -78,8 +78,8 @@
         "doctor-plugin-version": "./scripts/version.ts",
       },
       "dependencies": {
-        "@compforge/harness-common": "0.5.15",
-        "@compforge/harness-toolbox": "0.5.6",
+        "@compforge/harness-common": "0.6.0",
+        "@compforge/harness-toolbox": "0.6.1",
         "@compforge/spec-case": "0.0.7",
         "@compforge/trace-harness": "0.3.2",
       },
@@ -90,10 +90,10 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.22",
+      "version": "0.0.24",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
-        "@compforge/harness-common": "0.5.11",
+        "@compforge/harness-common": "0.6.0",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -160,9 +160,9 @@
 
     "@compforge/doctor-plugin-example": ["@compforge/doctor-plugin-example@workspace:plugins/example"],
 
-    "@compforge/harness-common": ["@compforge/harness-common@0.5.15", "", {}, "sha512-DaSRSp5bfPSABecn3yLrA5MdARikW1H3n6EPJd6emDbCkclsgu9rphYWIAFvVjAVlG53wp4RvN2U3NvBYdMDTg=="],
+    "@compforge/harness-common": ["@compforge/harness-common@0.6.0", "", {}, "sha512-iCLEUPyjtcRVgWkvVE+4hEGHpfpQWa+j9ik9ftcSOSwdCJUZ7hrx2BGfx1wsDMgRimRVMijlIE4uRWtKicwBEg=="],
 
-    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.5.6", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@compforge/harness-common": "0.5.13", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-9kQc/UkSQ1ozbZCxcIlyH8Z4q6ZgSls172cu9zgZRS2BdZYMJPw1Tuw678qFy/JPq+LyufecRWBLLw1PF2Z99w=="],
+    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.6.1", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@compforge/harness-common": "0.6.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-4sWEyBV7O11/0+oHRX47oZ9a4VLsFitjO9f5tatS1DlZR+KQBIdxhiKelIOa3NnSBLRm9y/S4qKvaUZqdHhGVw=="],
 
     "@compforge/perf-harness": ["@compforge/perf-harness@0.1.3", "", { "dependencies": { "@compforge/harness-common": "^0.3.1", "@compforge/spec-case": "^0.0.4" } }, "sha512-AVElwyHPrJKIO3pAytPxL/w9Fz2xZU98OPy4S3wCxOhI9iMMrt89A4pAt79QxkKq+RosH9jjLabjSFMjQJl+RQ=="],
 
@@ -879,10 +879,6 @@
     "@aws-sdk/token-providers/@smithy/core": ["@smithy/core@3.35.0", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A=="],
 
     "@aws-sdk/token-providers/@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
-
-    "@compforge/doctor-plugin-example/@compforge/harness-common": ["@compforge/harness-common@0.5.11", "", {}, "sha512-EEfffurrv8rJc4BYWsvS5+C1ErVBd8g82UEwS3UCvRd3FYrc/lE7PJ+G6eXCmNtQJtDVyQ4PqjfMun8j51dLwA=="],
-
-    "@compforge/harness-toolbox/@compforge/harness-common": ["@compforge/harness-common@0.5.13", "", {}, "sha512-BRClbuxXWWdQplY3/RreYlQh6JKN6cJoPcOVjqiM4Qm8UfRBlpqXbleutYIyHgkZ0gnpESW9WlBdCAiV/3oqrQ=="],
 
     "@compforge/perf-harness/@compforge/harness-common": ["@compforge/harness-common@0.3.7", "", {}, "sha512-QB/st+2XkfT+msRG+Dh2H0ejEmnut5D0xdotUoizM6DYgUPu9liXC5PbAWKCje1uvkAYNSckaSXBNehJHaoBwA=="],
 

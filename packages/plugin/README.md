@@ -11,7 +11,7 @@ Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出
 声明和发现不执行函数；调用时宿主提供受权限约束的上下文、取消信号与资源生命周期。
 
 `dataSources` 描述可复用的数据访问资源，`detectors` 注册只读 Evidence 的纯分析函数，
-`environmentProbes` 声明由 Core 执行的环境检查。这些对象各有所有权，不需要包装成可调用函数。
+`inspect.probe` Extension 提供按需执行的 Service 检查。这些对象各有所有权，不需要包装成可调用函数。
 `logs` 控制通用日志采集的参与范围。配置文件通过静态 `dataSources` 声明，
 `doctor inspect --field config` 读取这些文件以及 Pod 环境变量。
 

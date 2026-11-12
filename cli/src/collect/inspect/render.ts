@@ -16,7 +16,7 @@ import type {
   InspectPodContainerFact,
   InspectPodRuntimeFact,
   JsonValue,
-  KubernetesAppArmorAdmissionObservation,
+  PluginInspectObservation,
   PluginWorkloadObservation,
 } from "./model";
 import type { KubernetesAutoscaler, KubernetesWorkloadEvent } from "../../infra/k8s/workload-events";
@@ -42,16 +42,6 @@ function markdownTable(headers: readonly string[], rows: readonly (readonly stri
     `|${headers.map(() => "---").join("|")}|`,
     ...rows.map((row) => `| ${row.map(markdownCell).join(" | ")} |`),
   ];
-}
-
-const ENVIRONMENT_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Pod ip_forward", "Node OS", "Node OS version", "Node kernel", "Node architecture", "采集时间（UTC）", "状态", "缺口"];
-const ENVIRONMENT_EXPLANATION = "每个声明的 Workload 仅采一个运行中 Pod 及其 Node。ip_forward 来自该 Pod 的网络命名空间；OS、OS version、kernel、architecture 来自对应 Node 的 status.nodeInfo，结果不代表所有 Node。";
-function environmentRows(diagnosis: InspectDiagnosis): string[][] {
-  return diagnosis.evidence.observations.filter(item => item.kind === "kubernetes-workload-environment").map(item => [
-    item.service, item.workload, item.pod, item.container, item.nodeName ?? "—", String(item.podIpForward ?? "—"),
-    ...[item.nodeInfo.operatingSystem, item.nodeInfo.osImage, item.nodeInfo.kernelVersion, item.nodeInfo.architecture].map(value => value ?? "—"),
-    item.observedAt, item.status, item.reason ?? "—",
-  ]);
 }
 
 const CLOCK_TABLE_HEADERS = ["Service", "Workload", "Pod", "Container", "Node", "Doctor Host", "采样时间（Host UTC）", "偏差 ms（Pod − Host）", "误差 ±ms", "RTT ms", "Pod 时区（UTC offset / 缩写）", "状态"];
@@ -414,41 +404,16 @@ function dependencyLabel(diagnosis: InspectDiagnosis): string {
   return `已采集 ${collected}/${targets.targets.length} 个镜像`;
 }
 
-function appArmorObservations(diagnosis: InspectDiagnosis): KubernetesAppArmorAdmissionObservation[] {
+function workloadProbeObservations(diagnosis: InspectDiagnosis): (PluginWorkloadObservation | PluginInspectObservation)[] {
   return diagnosis.evidence.observations.filter(
-    (item): item is KubernetesAppArmorAdmissionObservation => (
-      item.kind === "kubernetes-apparmor-unconfined-admission"
-    ),
-  );
-}
-
-function appArmorLabel(diagnosis: InspectDiagnosis): string {
-  const observations = appArmorObservations(diagnosis);
-  if (!observations.length) return "未探测到（best effort）";
-  const denied = observations.filter((item) => item.status === "denied").length;
-  return denied ? `${denied} 个 ServiceAccount 被拒绝` : `${observations.length} 个 ServiceAccount 允许`;
-}
-
-function appArmorRows(diagnosis: InspectDiagnosis): string[][] {
-  return appArmorObservations(diagnosis).map((observation) => [
-    observation.service,
-    observation.namespace,
-    observation.serviceAccountName,
-    observation.status,
-    observation.reason ?? "—",
-  ]);
-}
-
-function workloadProbeObservations(diagnosis: InspectDiagnosis): PluginWorkloadObservation[] {
-  return diagnosis.evidence.observations.filter(
-    (item): item is PluginWorkloadObservation => item.kind === "plugin-workload",
+    (item): item is PluginWorkloadObservation | PluginInspectObservation => item.kind === "plugin-workload" || item.kind === "plugin-inspect",
   );
 }
 
 function workloadProbeRows(diagnosis: InspectDiagnosis): string[][] {
   return workloadProbeObservations(diagnosis).slice(0, 24).map((observation) => {
     const summary = projectSummary(observation.summary, observation.value);
-    return [observation.service, observation.workload, observation.pod, observation.probe,
+    return [observation.service, observation.kind === "plugin-workload" ? observation.workload : "—", observation.kind === "plugin-workload" ? observation.pod : "—", observation.probe,
       summary.title, [summary.text, ...summary.fields.map(field => `${field.label}=${field.value}`)].filter(Boolean).join("; ")];
   });
 }
@@ -640,10 +605,8 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     `- Pod：${podSummary(diagnosis)}`,
     `- Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
     `- 应用依赖：${dependencyLabel(diagnosis)}`,
-    `- AppArmor Unconfined：${appArmorLabel(diagnosis)}`,
     `- 配置项：${diagnosis.evidence.rows.length}`,
     "- Env 来源仅包含 ConfigMap 与 Deployment env。",
-    "- AppArmor admission 使用 workload ServiceAccount 做 server-side dry-run；不会创建 Pod，也不验证节点运行时。",
     "",
     "## Workload",
     "",
@@ -662,20 +625,11 @@ export function buildInspectSummary(diagnosis: InspectDiagnosis, namespace = "�
     "",
     ...markdownTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
     "",
-    ...(environmentRows(diagnosis).length ? ["### Workload 环境", "", ENVIRONMENT_EXPLANATION, "",
-      ...markdownTable(ENVIRONMENT_HEADERS, environmentRows(diagnosis)), ""] : []),
     "### Toolchain",
     "",
     ...markdownTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
     "",
-    "### AppArmor Unconfined admission（best effort）",
-    "",
-    ...markdownTable(
-      ["Service", "Namespace", "ServiceAccount", "Admission", "Reason"],
-      appArmorRows(diagnosis),
-    ),
-    "",
-    "### Plugin Workload 探测",
+    "### Plugin 探测",
     "",
     ...markdownTable(
       ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
@@ -737,7 +691,6 @@ export function buildInspectHtml(diagnosis: InspectDiagnosis): string {
       `Pod：${podSummary(diagnosis)}`,
       `Deployment Env/ConfigMap：${deploymentConfigLabel(diagnosis)}`,
       `应用依赖：${dependencyLabel(diagnosis)}`,
-      `AppArmor Unconfined：${appArmorLabel(diagnosis)}`,
       `配置项：${diagnosis.evidence.rows.length}`,
     ]),
     htmlParagraph("同名配置合并为一行。Env 列来自 ConfigMap 与 Deployment env。"),
@@ -767,15 +720,12 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
       title: "Workload / Pod 时钟",
       html: htmlParagraph(CLOCK_EXPLANATION) + htmlTable(CLOCK_TABLE_HEADERS, clockRows(diagnosis)),
     },
-    ...(environmentRows(diagnosis).length ? [{ title: "Workload / 环境",
-      html: htmlParagraph(ENVIRONMENT_EXPLANATION) + htmlTable(ENVIRONMENT_HEADERS, environmentRows(diagnosis)),
-    }] : []),
     {
       title: "Workload / Toolchain",
       html: htmlTable(TOOLCHAIN_TABLE_HEADERS, toolchainRows(diagnosis)),
     },
     {
-      title: "Workload / Plugin 探测",
+      title: "Service / Plugin 探测",
       html: htmlTable(
         ["Service", "Workload", "Pod", "Probe", "摘要", "关键字段"],
         workloadProbeRows(diagnosis),
@@ -793,13 +743,6 @@ export function buildInspectHtmlSections(diagnosis: InspectDiagnosis): HtmlRepor
     {
       title: "Findings",
       html: htmlTable(["Severity", "Kind", "Message"], findingRows(diagnosis)),
-    },
-    {
-      title: "Workload / AppArmor Unconfined admission（best effort）",
-      html: htmlTable(
-        ["Service", "Namespace", "ServiceAccount", "Admission", "Reason"],
-        appArmorRows(diagnosis),
-      ),
     },
     {
       title: "Workload / 应用依赖",

@@ -275,16 +275,6 @@ export interface DependencyInventoryObservation extends ObservationMeta {
   reason?: string;
 }
 
-export interface KubernetesAppArmorAdmissionObservation extends ObservationMeta {
-  kind: "kubernetes-apparmor-unconfined-admission";
-  service: string;
-  probe: string;
-  namespace: string;
-  serviceAccountName: string;
-  status: "allowed" | "denied";
-  reason?: string;
-}
-
 export interface PluginWorkloadObservation extends ObservationMeta {
   status: "ok" | "partial" | "unavailable";
   reason?: string;
@@ -302,22 +292,8 @@ export interface PluginWorkloadObservation extends ObservationMeta {
   value: PortableJsonValue;
 }
 
-/** @spec ip_forward belongs to the sampled Pod network namespace; OS metadata belongs to its Node. */
-export interface WorkloadEnvironmentObservation extends ObservationMeta {
-  kind: "kubernetes-workload-environment";
-  service: string;
-  workload: string;
-  probe: string;
-  instance: WorkloadInstance;
-  namespace: string;
-  pod: string;
-  container: string;
-  nodeName?: string;
-  observedAt: string;
-  status: "ok" | "partial" | "unavailable";
-  reason?: string;
-  podIpForward?: 0 | 1;
-  nodeInfo: Partial<Record<"operatingSystem" | "osImage" | "kernelVersion" | "architecture", string>>;
+export interface PluginInspectObservation extends Omit<PluginWorkloadObservation, "kind" | "instance" | "workload" | "namespace" | "pod" | "container"> {
+  kind: "plugin-inspect";
 }
 
 export type InspectObservation =
@@ -327,9 +303,8 @@ export type InspectObservation =
   | FileConfigurationObservation
   | SecretConfigurationObservation
   | DependencyInventoryObservation
-  | KubernetesAppArmorAdmissionObservation
   | PluginWorkloadObservation
-  | WorkloadEnvironmentObservation;
+  | PluginInspectObservation;
 
 export interface ConfigurationComparisonRow {
   name: string;
@@ -372,6 +347,7 @@ export type InspectDiagnosisGoal =
   | "workload-runtime"
   | "runtime-dependencies"
   | "workload-observations"
+  | "service-observations"
   | "event"
   | "hpa";
 export type InspectDiagnosis = Diagnosis<InspectEvidence, InspectFinding>;

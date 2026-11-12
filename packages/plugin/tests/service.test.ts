@@ -105,12 +105,6 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
     component: { name: "fixture", repository: { forge: { name: "test" }, path: "fixtures/app" } },
     name: "api",
     workloads: [],
-    environmentProbes: [{
-      id: "apparmor",
-      kind: "kubernetes.apparmor-unconfined-admission",
-      schemaVersion: 1,
-      subject: "workload-service-account",
-    }],
     detectors: [{ id: "health", detect: () => [] }],
     extensions: [inspectExtension({
       access: {},
@@ -138,8 +132,6 @@ test("Service Catalog 统一查找 Inspect、Probe 与 Detector contribution", (
 
   expect(catalog.extensions("data.id").map(item => item.extension.id))
     .toEqual(["inspect"]);
-  expect(catalog.find("api")?.environmentProbes?.[0]?.id)
-    .toBe("apparmor");
   expect(catalog.services.filter(item => item.detectors?.length).map(({ name }) => name))
     .toEqual(["api"]);
 });

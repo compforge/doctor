@@ -52,7 +52,7 @@ describe("Plugin discovery", () => {
     expect(result).toEqual([{
       id: "discovery-test", version: "1.0.0", source: "injected",
       services: [{
-        name: "api", aliases: [], detectors: [], environmentProbes: [], extensions: [{ id: "log-workloads", kind: "log.workloads" }, { id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "data.id" }],
+        name: "api", aliases: [], detectors: [], extensions: [{ id: "log-workloads", kind: "log.workloads" }, { id: "trace.resolve", kind: "trace.resolve" }, { id: "inspect", kind: "data.id" }],
         details: {
           workloads: [], dependencies: [], dataSources: [],
           inspect: { accepts: ["message_id"], provides: ["message"], expands: [], limitations: [] },
@@ -76,8 +76,8 @@ describe("Plugin discovery", () => {
     expect(result).toMatchObject([{
       id: "example", version: examplePackage.version, source: "installed",
       services: [
-        { name: "example-api", detectors: [], environmentProbes: [] },
-        { name: "example-worker", detectors: [], environmentProbes: [] },
+        { name: "example-api", detectors: [] },
+        { name: "example-worker", detectors: [] },
       ],
     }]);
   });

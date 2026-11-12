@@ -93,7 +93,7 @@ export function snapshotResourceReader(read: KubernetesResourceReader): Kubernet
 }
 
 /** Borrow Inspect observations after capability authorization, without extending their lifetime beyond the command. */
-export function capturedResourceAccess(read: KubernetesResourceReader, namespace: string): NamespaceResources {
+export function capturedResourceAccess(read: KubernetesResourceReader, namespace: string | undefined): NamespaceResources {
   const value = async (query: KubernetesResourceQuery, options?: ResourceRequestOptions) => {
     options?.signal?.throwIfAborted();
     const capture = await read({ ...query, namespace }, options);
