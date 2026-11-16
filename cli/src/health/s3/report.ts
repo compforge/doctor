@@ -4,7 +4,7 @@ import type { S3HealthCheck, S3HealthStep } from "./probe";
 
 const labels = { upload: "上传", presign: "生成预签名 URL", download: "预签名下载并校验内容", cleanup: "清理" };
 function detail(step: S3HealthStep): string {
-  return [step.response?.httpStatus ? `HTTP ${step.response.httpStatus}` : undefined, step.failure?.reason, step.reason, step.error, (step.response?.requestId ?? step.failure?.requestId) ? `RequestId=${step.response?.requestId ?? step.failure?.requestId}` : undefined].filter(Boolean).join(" · ");
+  return [step.response?.httpStatus ? `HTTP ${step.response.httpStatus}` : undefined, step.failure?.message, step.reason, step.error, (step.response?.requestId ?? step.failure?.requestId) ? `RequestId=${step.response?.requestId ?? step.failure?.requestId}` : undefined].filter(Boolean).join(" · ");
 }
 export function printS3Health(check: S3HealthCheck): void {
   writeOutput(`  S3 读写检查 ${check.service}/${check.dataSource} · Doctor host → ${check.endpoint ?? "未解析"}: ${check.status}\n`);

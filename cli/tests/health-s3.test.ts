@@ -1,3 +1,4 @@
+import { S3Error } from "@compforge/harness-toolbox/s3";
 import { expect, test } from "bun:test";
 import { checkS3ReadWrite, type S3HealthCheck, type S3ReadWriteClient } from "../src/health/s3/probe";
 import { createServiceCatalog, type ServiceDefinition } from "@compforge/doctor-plugin";
@@ -224,10 +225,10 @@ test("S3 response evidence retains diagnostics and removes credentials before tr
     expect(JSON.stringify(response)).not.toContain(secret);
   }
   expect(captureS3HttpResponse({ status: 500, headers: {}, body: Buffer.from("x".repeat(5000)) }, [])).toMatchObject({ bodyTruncated: true });
-  const sdk = captureS3ErrorResponse(Object.assign(new Error("Invalid access-secret credentials"), {
+  const sdk = captureS3ErrorResponse(S3Error.from(Object.assign(new Error("Invalid access-secret credentials"), {
     name: "AccessDenied", Region: "eu-west-1", $metadata: { httpStatusCode: 403, requestId: "put-1", extendedRequestId: "put-host", attempts: 1 },
     $response: { headers: { "x-amz-bucket-region": "eu-west-1" } },
-  }), ["access-secret"]);
+  })), ["access-secret"]);
   expect(sdk).toMatchObject({ httpStatus: 403, requestId: "put-1", extendedRequestId: "put-host", attempts: 1 });
   expect(sdk?.body).toContain("Invalid [redacted] credentials");
 });
@@ -248,7 +249,7 @@ test("network failures use the shared connectivity probe without replacing S3 ev
   });
   expect(f.result.status).toBe("failed"); expect(f.result.steps[0]!.failure?.code).toBe("ENOTFOUND");
   expect(f.result.connectivity?.status).toBe("failed"); expect(calls).toBe(1);
-  f.result.steps[0]!.failure = { code: "AccessDenied", httpStatus: 403, reason: "denied" };
+  f.result.steps[0]!.failure = new S3Error({ code: "AccessDenied", httpStatus: 403 }).toJSON();
   await supplementS3Connectivity(f.result, target, f.controller.signal, async () => { throw new Error("unexpected probe"); });
   expect(f.result.connectivity?.status).toBe("failed");
 });

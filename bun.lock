@@ -15,7 +15,7 @@
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/harness-common": "0.7.0",
-        "@compforge/harness-toolbox": "0.7.3",
+        "@compforge/harness-toolbox": "0.7.4",
         "@compforge/perf-harness": "0.8.0",
         "@compforge/prombed": "0.0.2",
         "@compforge/spec-case": "0.0.7",
@@ -79,7 +79,7 @@
       },
       "dependencies": {
         "@compforge/harness-common": "0.7.0",
-        "@compforge/harness-toolbox": "0.7.3",
+        "@compforge/harness-toolbox": "0.7.4",
         "@compforge/spec-case": "0.0.7",
         "@compforge/trace-harness": "0.3.2",
       },
@@ -164,7 +164,7 @@
 
     "@compforge/harness-common": ["@compforge/harness-common@0.7.0", "", {}, "sha512-zJZi/3yNvXlfB8ZBo3E1tlslCpoHjUlNDn64uCtqQo3GLMR14/tX1fmKyD5dXLz6N3y6Y2+YLhfGz0/5HW4SWw=="],
 
-    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.7.3", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@aws-sdk/s3-request-presigner": "3.1133.0", "@compforge/harness-common": "^0.7.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-kg9MIGgA74O2KroK+XpdlXiP4C5blJGE1j0KrwjOArPJBS6iVCwJ9aYgYXtJy15SsRZ1NX8GV/TxRzEdzlYFVw=="],
+    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.7.4", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@aws-sdk/s3-request-presigner": "3.1133.0", "@compforge/harness-common": "^0.7.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-DrQw20Au9hVFR5Wg9Km4IMnYPr/Sbd14gzK3rCg488dph0ck3+0nRkXpRr0DLy9lOLkN8PA4fe/dR6iepu+SyQ=="],
 
     "@compforge/perf-harness": ["@compforge/perf-harness@0.8.0", "", { "dependencies": { "@compforge/harness-common": "^0.7.0", "@compforge/harness-toolbox": "^0.7.1", "@compforge/spec-case": "^0.0.4" } }, "sha512-soTsOFA4xan81V5WTHxb0qEQnNuWrfY0Cn8xSQDxJC63UGXsPbGJ8cky+zs4v/20o26KffOBn0ZXUAbuSrMezg=="],
 

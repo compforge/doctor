@@ -1,9 +1,8 @@
 import { randomUUID, createHash } from "node:crypto";
 import type { ConnectivityResult } from "@compforge/harness-toolbox/network";
 import type { HttpResponse } from "@compforge/harness-toolbox/http";
-import type { S3Client } from "@compforge/harness-toolbox/s3";
 import type { ApprovalGate } from "../../command/approval";
-import { s3Failure, type S3Failure } from "../../datasource/s3-failure";
+import { S3Error, type S3Client, type S3ErrorDetails } from "@compforge/harness-toolbox/s3";
 
 import { captureS3HttpResponse, captureS3ErrorResponse, s3ResponseText, type S3HealthResponse } from "./response";
 
@@ -17,7 +16,7 @@ export interface S3HealthStep {
   expiresInSeconds?: number;
   bytes?: number;
   sha256?: string;
-  failure?: S3Failure;
+  failure?: S3ErrorDetails;
   reason?: string;
 }
 export interface S3HealthCheck {
@@ -94,8 +93,7 @@ export async function checkS3ReadWrite(input: {
     if (download.status !== 200) {
       // Classify from the protocol code; the response snapshot above owns bounded, sanitized detail.
       const code = Buffer.from(download.body).toString("utf8").match(/<Code>([A-Za-z0-9_.-]{1,200})<\/Code>/)?.[1];
-      throw Object.assign(new Error("S3 presigned download failed"), { name: code ?? "HttpError",
-        $metadata: { httpStatusCode: download.status, requestId: download.headers["x-amz-request-id"] } });
+      throw new S3Error({ code: code ?? "HttpError", httpStatus: download.status, requestId: download.headers["x-amz-request-id"] });
     }
     stage.bytes = download.body.length;
     stage.sha256 = createHash("sha256").update(download.body).digest("hex");
@@ -111,8 +109,8 @@ export async function checkS3ReadWrite(input: {
       if (error instanceof Error) stage.error = s3ResponseText(error.message, secrets).slice(0, 1024);
     }
     if (stage) Object.assign(stage, { status: signal.aborted ? "cancelled" : "failed",
-      durationMs: Date.now() - started, failure: s3Failure(error), reason: failureHint(error) });
-    else result.reason = signal.aborted ? "执行前已取消" : s3Failure(error).reason;
+      durationMs: Date.now() - started, failure: S3Error.from(error).toJSON(), reason: failureHint(error) });
+    else result.reason = signal.aborted ? "执行前已取消" : S3Error.from(error).message;
   } finally {
     if (uploaded) {
       const cleanup = result.steps[3]!;
@@ -124,7 +122,7 @@ export async function checkS3ReadWrite(input: {
       } catch (error) {
         cleanup.status = "failed";
         if (error instanceof Error) cleanup.error = s3ResponseText(error.message, secrets).slice(0, 1024);
-        cleanup.response = captureS3ErrorResponse(error, secrets); cleanup.failure = s3Failure(error); cleanup.reason = failureHint(error);
+        cleanup.response = captureS3ErrorResponse(error, secrets); cleanup.failure = S3Error.from(error).toJSON(); cleanup.reason = failureHint(error);
         if (result.status !== "cancelled") result.status = "failed";
         result.reason = "测试对象清理失败；请按报告中的 bucket、key 和 versionId 清理";
       }
@@ -138,7 +136,7 @@ export async function checkS3ReadWrite(input: {
 }
 
 function failureHint(error: unknown): string {
-  const { code, httpStatus } = s3Failure(error);
+  const { code, httpStatus } = S3Error.from(error);
   const hints: Record<string, string> = {
     AccessDenied: "核对当前操作的对象权限和 Bucket policy；PUT、GET、DELETE 权限分别检查。",
     NoSuchBucket: "核对服务配置的 Bucket 和 Endpoint。",

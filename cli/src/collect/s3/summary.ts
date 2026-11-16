@@ -30,6 +30,6 @@ export function s3Summary(request: S3Request, result: S3Result | undefined, iden
     }
   }
   if (result.stoppedReason) lines.push(`停止原因：${result.stoppedReason}`);
-  if (result.failure) lines.push(`失败：${result.failure.reason}`);
+  if (result.failure) lines.push(`失败：${result.failure.message}`);
   return lines.join("\n") + "\n";
 }

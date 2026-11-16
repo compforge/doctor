@@ -1,3 +1,4 @@
+import { S3Error } from "@compforge/harness-toolbox/s3";
 import { forServices } from "../../command/services";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -12,7 +13,7 @@ import { EvidenceBundle } from "../evidence";
 import { escapeHtml } from "../output/html";
 import { serializeEvidenceResult } from "../serialize";
 import { promptS3Request, validateS3Input, type S3Input, type S3Request } from "./input";
-import { executeS3, s3Failure, type S3Result } from "./operations";
+import { executeS3, type S3Result } from "./operations";
 import { resolveS3Provider } from "./provider";
 import { s3Summary } from "./summary";
 
@@ -56,7 +57,7 @@ const s3ServiceCommand = defineCommand<S3Input, void, PreparedS3>({
       result = await executeS3(provider.client, request);
       if (!result.complete) {
         status = result.entries.length || result.bytes ? CommandStatus.Partial : result.failure || result.stoppedReason === "time-limit" ? CommandStatus.Failed : CommandStatus.Partial;
-        reason = result.failure?.reason ?? result.stoppedReason;
+        reason = result.failure?.message ?? result.stoppedReason;
       }
       const { bytes, ...observation } = result;
       if (bytes) writeFileSync(join(directory, "content.bin"), bytes, { mode: 0o600 });
@@ -66,7 +67,7 @@ const s3ServiceCommand = defineCommand<S3Input, void, PreparedS3>({
       resultFile = bundle.addStep({ id: request.action, title: `S3 ${request.action}`, risk: "observe", status, reason, rawFilePath: path, ext: "json" }).raw_file;
     } catch (error) {
       status = error instanceof ParameterCancelled || context.signal.aborted ? CommandStatus.Cancelled : CommandStatus.Failed;
-      reason = status === CommandStatus.Cancelled ? "操作已取消" : error instanceof CommandInputError ? error.message : s3Failure(error).reason;
+      reason = status === CommandStatus.Cancelled ? "操作已取消" : error instanceof CommandInputError ? error.message : S3Error.from(error).message;
       bundle.addStep({ id: "operation", title: `S3 ${request.action}`, risk: "observe", status: "failed", reason });
     }
     const summary = s3Summary(request, result, identity, reason);

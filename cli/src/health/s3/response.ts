@@ -1,3 +1,4 @@
+import { S3Error } from "@compforge/harness-toolbox/s3";
 import type { HttpResponse } from "@compforge/harness-toolbox/http";
 import { diagnosticMessage } from "../../command/diagnostic";
 
@@ -34,15 +35,15 @@ export function captureS3HttpResponse(response: HttpResponse, secrets: readonly 
 
 /** SDK errors have already consumed the wire response; preserve parsed error details and response headers. */
 export function captureS3ErrorResponse(error: unknown, secrets: readonly string[]): S3HealthResponse | undefined {
-  if (!error || typeof error !== "object") return undefined;
-  const value = error as { name?: string; message?: string; Region?: string; Endpoint?: string;
-    $metadata?: { httpStatusCode?: number; requestId?: string; extendedRequestId?: string; attempts?: number };
-    $response?: { headers?: Record<string, string> } };
-  if (!value.$metadata?.httpStatusCode) return undefined;
+  const failure = S3Error.from(error);
+  if (!failure.httpStatus) return undefined;
+  const raw = failure.cause;
+  const value = raw && typeof raw === "object" ? raw as { name?: string; message?: string; Region?: string; Endpoint?: string;
+    $response?: { headers?: Record<string, string> } } : {};
   const body = [value.name, value.message, value.Region && `Region=${value.Region}`, value.Endpoint && `Endpoint=${value.Endpoint}`]
     .filter(Boolean).join("\n");
-  const response = captureS3HttpResponse({ status: value.$metadata.httpStatusCode,
+  const response = captureS3HttpResponse({ status: failure.httpStatus,
     headers: value.$response?.headers ?? {}, body: Buffer.from(body) }, secrets);
-  return { ...response, requestId: value.$metadata.requestId ?? response.requestId,
-    extendedRequestId: value.$metadata.extendedRequestId ?? response.extendedRequestId, attempts: value.$metadata.attempts };
+  return { ...response, requestId: failure.requestId ?? response.requestId,
+    extendedRequestId: failure.extendedRequestId ?? response.extendedRequestId, attempts: failure.$metadata.attempts };
 }

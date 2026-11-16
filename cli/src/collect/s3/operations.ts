@@ -1,6 +1,4 @@
-import { s3Failure, type S3Failure } from "../../datasource/s3-failure";
-export { s3Failure, type S3Failure } from "../../datasource/s3-failure";
-import type { S3Client, S3ObjectMetadata } from "@compforge/harness-toolbox/s3";
+import { S3Error, type S3ErrorDetails, type S3Client, type S3ObjectMetadata } from "@compforge/harness-toolbox/s3";
 import type { S3Request } from "./input";
 
 export interface S3Entry {
@@ -17,7 +15,7 @@ export interface S3Result {
   stoppedReason?: string;
   metadata?: S3ObjectMetadata;
   bytes?: Uint8Array;
-  failure?: S3Failure;
+  failure?: S3ErrorDetails;
 }
 
 type S3Access = Pick<S3Client, "signal" | "listBuckets" | "listObjects" | "headBucket" | "headObject" | "readObject">;
@@ -76,7 +74,7 @@ export async function executeS3(client: S3Access, request: S3Request): Promise<S
   } catch (error) {
     client.signal.throwIfAborted();
     if (deadline.aborted) result.stoppedReason = "time-limit";
-    else result.failure = s3Failure(error);
+    else result.failure = S3Error.from(error).toJSON();
   }
   return result;
 }

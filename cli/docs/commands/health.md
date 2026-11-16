@@ -243,6 +243,7 @@ S3 下载使用有效期 60 秒的 GET 预签名 URL，固定为本次上传返�
 发送不带 Authorization header 的 GET，要求 HTTP 200 且内容精确等于 `hello world`；响应有 16 KiB 上限，
 不跟随重定向。报告区分上传、预签名、下载校验与清理四个步骤；签名 URL、凭据和签名计算材料不进入日志或归档。
 
+S3 错误分类复用 Toolbox `S3Error` 的 kind/code 与安全序列化；Doctor 负责排查建议和响应展示。
 每一步保留耗时、错误码、HTTP 状态、RequestId/HostId 及本次对象 key；PUT 保存 ETag/versionId，
 GET 保存允许的响应头和最多 4 KiB 的脱敏正文，HTML 可展开查看。报告同时记录配置的 region、寻址方式
 与实际预签名下载的 origin；不会存储 URL query。网络类错误后复用 Toolbox `probeConnectivity`
