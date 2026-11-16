@@ -10,13 +10,13 @@ export function createHealthCaseApproval(context: CommandContext, namespace: str
   gate: ApprovalGate): CaseCheckActions["approve"] {
   return (target, item, check) => {
     const scope = [context.profile.name, namespace, JSON.stringify([
-      check?.consumer, check?.consumeExtension, check?.bindingId,
+      check?.scope ?? "biz", check?.consumer, check?.consumeExtension, check?.bindingId,
       target.pod, target.uid, target.container, item.case, item.subject, item.targets,
     ])];
     const readOnly = ["GET", "HEAD"].includes(item.case.input.method);
     return context.decide(healthApproval, scope, () => gate({
       id: "health-case", risk: readOnly ? "observe" : "disrupt",
-      title: `业务检查：${item.case.id}${item.subject ? ` · ${item.subject.label ?? item.subject.id}` : ""}`,
+      title: `${check?.scope === "deps" ? "依赖访问检查" : "业务检查"}：${item.case.id}${item.subject ? ` · ${item.subject.label ?? item.subject.id}` : ""}`,
       target: `${check?.consumer ?? target.workload} / ${target.namespace}/${target.pod}/${target.container ?? ""}`,
       impact: [
         ...item.targets.map(endpoint => `${item.case.input.method} ${caseError(endpoint.url)}`),

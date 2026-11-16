@@ -1,11 +1,9 @@
-import { defineCommandDecision, type CommandContext } from "../command";
-import { approveAll, type ApprovalDecision, type ApprovalGate, type ApprovalRequest } from "../command/approval";
+import { type CommandContext } from "../command";
+import { approveAll, type ApprovalGate, type ApprovalRequest } from "../command/approval";
 import { resolveApprovalGate } from "../terminal/approval";
 import { isInteractive } from "../terminal/policy";
 import { promptListedChoice } from "../terminal/selection";
 import { writeOutput } from "../terminal/output";
-
-const dependencyApproval = defineCommandDecision<ApprovalDecision>("health.dependency-approval");
 
 /** @spec A declined item is skipped; ending a session never grants approval to later items. */
 export class HealthInteraction {
@@ -13,10 +11,6 @@ export class HealthInteraction {
   constructor(private readonly context: CommandContext,
     private readonly interactive = isInteractive(),
     private readonly prompt: typeof promptListedChoice = promptListedChoice) {}
-
-  approveOnce(key: string, request: ApprovalRequest): ReturnType<ApprovalGate> {
-    return this.context.decide(dependencyApproval, [key], () => this.approve(request));
-  }
 
   readonly approve: ApprovalGate = async (request: ApprovalRequest) => {
     if (this.stopped) return { approved: false, source: "prompt" };

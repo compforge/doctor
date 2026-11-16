@@ -50,7 +50,7 @@ runner 清理完成。创建期间取消仍必须将已创建的 runner 交给�
 
 Case 描述“发什么”，命令提供“发向哪里、发多少”。这让同一个 CaseSet 可以用于不同环境，也让报告中的 Case ID 保持稳定。目录发现不创建 runner 或连接 Target；`doctor case` 只发送 HTTP Case，模型目标由 `doctor model` 注入，Perf 的业务鉴权和请求协议由 Plugin runner 负责。当前目录默认读取 `doctor-cases.yaml` / `.yml`；本地文件通过 `--service` 指定已有 Service，只有一个 Service 时可唯一确定。
 
-Health 通过自己的 `health.case.bindings` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
+Health 通过自己的 `healthcheck.*` 关系选择共享来源，再由 producer 决定本次探测哪些 model、agent、file。
 运行时 `subject` 标识被测业务对象，`targets` 保存新鲜地址、凭据与请求正文；两者不改变 canonical Case ID/hash。
 同一用例可以绑定多个对象，执行实例是另一维度。Health、Perf 和 Eval 共享 Case 能力，各自负责体检、加压或证据采集。
 
@@ -61,7 +61,7 @@ HTTP Collect 区分证据采集完整与请求成功。完整采到 HTTP 500 时
 ## 列出提供与消费关系
 
 `doctor case --list`（`-l`）列出 Case、提供方 Service、传递方 `via`、消费方 Service/Workload 和当前 URL。
-列表从 `Service.cases` 加载定义，从 `health.case.bindings` 读取消费关系，再调用选中来源的 producer
+列表从 `Service.cases` 加载定义，从 `healthcheck.*` 读取消费关系，再调用选中来源的 producer
 获取本次样本。每个来源只解析一次；不创建 runner、不发送 Case 请求。
 签名 URL 的查询参数脱敏，headers 和 body 不进入列表。无样本、权限失败或截断会保留关系并报告缺口。来源返回的运行时 Case 可以是离线目录的子集；已有样本时只展示实际返回的条目，不补未提供样本的模板。来源的准备失败或截断在缺口中汇总，不覆盖已经解析成功的行。
 

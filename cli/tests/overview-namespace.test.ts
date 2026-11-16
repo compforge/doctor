@@ -38,7 +38,7 @@ test("overview accepts a summary without borrowing a sampler from another namesp
   expect(selected[0]?.namespace).toBe("plugin/fixture");
   expect(selected[0]?.service.name).toBe("api");
   expect(selected[0]?.sample).toBeUndefined();
-  expect(() => healthProviders(definition)).toThrow("没有支持 health");
+  expect(() => healthProviders(definition)).toThrow("没有声明所选 scope 的 HealthCheck");
   expect(run).not.toHaveBeenCalled();
 });
 

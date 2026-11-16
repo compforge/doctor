@@ -7,9 +7,9 @@ import { kubernetesServiceWorkload, withSummary, type CaseProducer, type Service
 import { CommandContext } from "../src/command";
 import type { ApprovalDecision, ApprovalRequest } from "../src/command/approval";
 import { resolveApprovalGate } from "../src/terminal/approval";
-import { createHealthCaseApproval } from "../src/health/biz/approval";
-import type { PreparedCaseCheck } from "../src/health/biz/prepare";
-import { checkServiceCases } from "../src/health/biz/run";
+import { createHealthCaseApproval } from "../src/health/cases/approval";
+import type { PreparedCaseCheck } from "../src/health/cases/prepare";
+import { checkServiceCases } from "../src/health/cases/run";
 
 const component = { name: "fixture", repository: { forge: { name: "test" }, path: "test" } };
 const producer: CaseProducer = { access: {},
@@ -34,7 +34,7 @@ function prepared(name: string): PreparedCaseCheck {
   return {
     result: { consumeExtension: "checks", bindingId: binding.id, consumer: name, workload: binding.workload,
       producer: binding.producer, startedAt: new Date().toISOString(), stage: "binding", status: "unavailable", targets: [], attempts: [] },
-    execution: { consumer, binding, consumeIndex: 0, bindingIndex: 0, service: source, source: caseSource, query: { maxCases: 10 } },
+    execution: { consumer, binding, bindingIndex: 0, service: source, source: caseSource, query: { maxCases: 10 } },
   };
 }
 

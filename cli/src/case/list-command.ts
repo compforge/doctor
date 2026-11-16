@@ -2,7 +2,7 @@ import { caseProducer } from "@compforge/doctor-plugin";
 import { CommandInputError, CommandStatus, defineCommand, type CommandInput } from "../command";
 import { commandOptions } from "../command/options";
 import { createKubernetesExecutor, resolveKubernetesCommandConfig } from "../command/kubernetes-target";
-import { caseOperationInvoker } from "../health/runtime";
+import { createPluginOperationInvoker } from "../plugin/operation-invoker";
 import { openPluginContext } from "../plugin/context";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { writeOutput } from "../terminal/output";
@@ -34,7 +34,7 @@ export const caseListCommand = defineCommand<CaseListInput, void>({
       const kube = await resolveKubernetesCommandConfig({ ...input, ...commandOptions(context) }, undefined, context);
       if (!kube) throw new Error("已取消 Case 列表的环境选择");
       const executor = createKubernetesExecutor(kube);
-      const invoke = caseOperationInvoker(context, executor, kube.kubernetes);
+      const invoke = createPluginOperationInvoker(context, executor, kube.kubernetes);
       const directory = discoverTenantDirectory(plugin!.services, (service, extension) =>
         openPluginContext(executor, kube.kubernetes, {
           config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,

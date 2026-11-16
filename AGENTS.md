@@ -40,7 +40,7 @@ Doctor 围绕系统运行过程提供三个入口，组成从主动巡检、运�
 | 系统运行一段时间后 | [Overview](cli/docs/commands/overview.md) | 这段时间运行得怎么样，出现了哪些错误或慢请求？ | 窗口内的统计分布，以及按需查询的代表业务 ID |
 | 发现具体问题后 | [Collect](cli/docs/commands/collect.md) | 需要哪些现场信息来解释问题？ | 多个数据面的原始证据、分析结果和可离线阅读的报告 |
 
-Health 主动执行 `self / deps / biz` 检查。典型时机是部署验证，也可在配置变更后或运行中重新检查；
+Health 按 `infra → self → deps → biz` 调度各 Service 贡献的探测项，完成一个 scope 的所有 Service 后再进入下一层。典型时机是部署验证，也可在配置变更后或运行中重新检查；
 结论对应本次实际覆盖的服务、依赖和功能。Overview 查询已经发生的运行记录，保留时间窗口、统计口径和
 数据覆盖范围；支持采样的条目可以取得代表 biz-id，再经确认进入 Collect。
 

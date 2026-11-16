@@ -393,11 +393,11 @@ describe("command help", () => {
     expect(result.stdout).toContain("--watch <duration>");
   });
 
-  test("health forwards S3 configuration source selectors", async () => {
+  test("health forwards Plugin instance selectors", async () => {
     const inputs: Array<{ pod?: string; container?: string }> = [];
     const mock = spyOn(healthCommand, "run").mockImplementation(async (_context, input) => {
       inputs.push({ pod: input.pod, container: input.container });
-      return { ...commandOutcome(0), output: { query: {}, providers: [] } };
+      return { ...commandOutcome(0), output: { checkedAt: "now", query: {}, providers: [] } };
     });
     try {
       expect((await runWithPlugin(["health", "-s", "example-api", "--scope", "biz", "--pod", "api-1", "--container", "app"])).exitCode).toBe(0);

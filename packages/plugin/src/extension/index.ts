@@ -41,7 +41,6 @@ export * from "./health";
 export * from "./log";
 export * from "./downstreams";
 
-export * from "./endpoint-probe";
 
 export * from "./inspect";
 export * from "./probe-result";

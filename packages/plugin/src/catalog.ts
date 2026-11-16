@@ -1,5 +1,4 @@
 import { validateWorkloadDeclaration } from "./workload";
-import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension } from "./extension/endpoint-probe";
 import { validateEndpoint } from "@compforge/harness-toolbox/endpoint";
 import { validateServiceResource } from "./resource";
 import { connectionDataSources } from "./datasource";
@@ -39,7 +38,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       const extensionIds = new Set<string>();
       for (const extension of (service.extensions ?? [])) {
         if (["case.catalog", "case.produce", "case.runner.create", "case.consume"].includes(extension.kind)) {
-          throw new Error(`${service.name}: ${extension.kind} is not a Service Extension; use Service.cases and health.case.bindings`);
+          throw new Error(`${service.name}: ${extension.kind} is not a Service Extension; use Service.cases and healthcheck.*`);
         }
         validateExtension(extension);
         // The host resolves omitted namespaces once the Plugin identity is known.
@@ -69,9 +68,6 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         }
         if (endpoint.description !== undefined && typeof endpoint.description !== "string") throw new Error(`${service.name}: Endpoint description must be a string`);
         if (endpoint.workload !== undefined) validateWorkloadDeclaration(endpoint.workload);
-      }
-      for (const extension of service.extensions ?? []) {
-        if (extension.kind === ENDPOINT_PROBE_KIND) requireEndpointProbeExtension(extension);
       }
 
       const sources = new Set<string>();

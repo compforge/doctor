@@ -24,7 +24,7 @@ export async function selectHealthScope(scope: string | undefined, interactive: 
 /** @spec Only biz asks for Services; infra/self/deps discover their checks; explicit filters and noninteractive calls keep their resolved candidates. */
 export async function selectHealthBusinessProviders(providers: readonly HealthProvider[], interactive: boolean,
   prompt: typeof promptMultiSelect = promptMultiSelect): Promise<readonly HealthProvider[] | undefined> {
-  const candidates = providers.filter(provider => provider.consumers.length);
+  const candidates = providers.filter(provider => provider.checks.some(check => check.kind === "healthcheck.biz"));
   if (!interactive || !candidates.length) return candidates;
   const selected = await prompt({ choices: candidates, defaults: candidates.map(provider => provider.name),
     title: "选择要检查业务功能的 Service（请求执行前逐项确认）" });

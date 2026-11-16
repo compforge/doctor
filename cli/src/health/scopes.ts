@@ -1,10 +1,8 @@
-export type HealthScope = "infra" | "self" | "deps" | "business";
+import { HEALTH_SCOPES, type HealthScope } from "@compforge/doctor-plugin";
+export type { HealthScope };
 export function healthScopes(value = "all"): readonly HealthScope[] {
-  if (value === "all") return ["infra", "self", "deps", "business"];
-  const scopes = value.split(",");
-  if (!scopes.length || scopes.some(scope => !["infra", "self", "deps", "biz"].includes(scope))) {
-    throw new Error("--scope 必须为 infra、self、deps、biz 的逗号组合或 all");
-  }
-  return [...new Set(scopes)].map(scope => scope === "biz" ? "business" : scope) as HealthScope[];
+  if (value === "all") return HEALTH_SCOPES;
+  const selected = value.split(",");
+  if (selected.some(scope => !HEALTH_SCOPES.includes(scope as HealthScope))) throw new Error("--scope 必须为 infra、self、deps、biz 的逗号组合或 all");
+  return [...new Set(selected)] as HealthScope[];
 }
-

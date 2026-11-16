@@ -1,59 +1,23 @@
-import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension, type EndpointProbeExtension } from "@compforge/doctor-plugin";
-import { WORKLOAD_PROBE_KIND, requireWorkloadProbeExtension, type WorkloadProbeExtension, HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
-import { serviceHealthDataSources, serviceHealthS3DataSources, serviceHealthDatabaseSources } from "../datasource/health/services";
-import type { ServiceDataSourceReference } from "../collect/shared/service-dependency";
+import { HEALTH_CHECK_KINDS, healthCheckScope, requireHealthCheckExtension,
+  type HealthCheckExtension, type HealthScope, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 import { overviewScopes } from "../overview/extensions";
 
-export interface HealthProvider {
-  namespace: string;
-  name: string;
-  service: ServiceDefinition;
-  unsupported?: string;
-  consumers: readonly HealthCaseBindingsExtension[];
-  probes?: readonly WorkloadProbeExtension[];
-  dataSources?: readonly ServiceDataSourceReference[];
-  databaseSources?: readonly ServiceDataSourceReference[];
-  s3Sources?: readonly ServiceDataSourceReference[];
-  endpoints?: ServiceDefinition["endpoints"];
-  endpointProbes?: readonly EndpointProbeExtension[];
-}
-
-/**
- * @spec S3 references use canonical owner names so shared results and stopped-scope accounting use the same identity.
- * @spec Health selects Service scopes only. Omission selects every Service with Case consumers,
- * supported DataSources, opted-in Health workload Probes, endpoint.probe Extensions,
- * or an explicit endpoints declaration (including [] for no external Endpoint dependencies).
- */
-export function healthProviders(plugin: PluginDefinition, serviceNames?: readonly string[]): HealthProvider[] {
+export interface HealthProvider { namespace: string; name: string; service: ServiceDefinition; checks: readonly HealthCheckExtension[]; unsupported?: string }
+/** @spec Only explicit Service HealthCheck contributions enter Health; data sources and Collect probes do not opt in implicitly. */
+export function healthProviders(plugin: PluginDefinition, serviceNames?: readonly string[], selected?: readonly HealthScope[]): HealthProvider[] {
   const registry = createDoctorExtensionRegistry(plugin);
   const names = serviceNames ?? plugin.services.services.map(service => service.name);
-  const scopes = !serviceNames && !names.length ? [] : overviewScopes(plugin, names);
-  const providers = scopes.flatMap(scope => {
-    const consumers = scope.service ? registry.extensions(HEALTH_CASE_BINDINGS_KIND, scope.namespace).map(entry => {
-      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: health.case.bindings must belong to the selected Service`);
-      return requireHealthCaseBindingsExtension(entry.extension);
-    }) : [];
-    const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service)
-      .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
-    const databaseSources = scope.service ? serviceHealthDatabaseSources(plugin, scope.service)
-      .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
-    const s3Sources = scope.service ? serviceHealthS3DataSources(plugin, scope.service)
-      .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
-    const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))
-      .map(extension => requireWorkloadProbeExtension(extension)).filter(probe => probe.health) : [];
-    const endpoints = scope.service?.endpoints;
-    const endpointProbes = registry.extensions(ENDPOINT_PROBE_KIND, scope.namespace).map(entry => {
-      if (entry.service !== scope.service) throw new Error(`${scope.namespace}: endpoint.probe must belong to the selected Service`);
-      return requireEndpointProbeExtension(entry.extension);
-    });
-    if (!databaseSources.length && !s3Sources.length && !consumers.length && !dataSources.length && !probes.length && !endpointProbes.length && endpoints === undefined) {
-      if (serviceNames) throw new Error(`${scope.namespace}: 未声明 health.case.bindings Extension，也没有可探测的数据源、标注 health: self/deps 的 workload.probe、endpoints 声明或 endpoint.probe Extension`);
-      return [];
-    }
-    return [{ namespace: scope.namespace, name: scope.name, service: scope.service!,
-      consumers, probes, dataSources, databaseSources, s3Sources, endpoints, endpointProbes }];
+  const providers = overviewScopes(plugin, names).flatMap(scope => {
+    if (!scope.service) return [];
+    const checks = HEALTH_CHECK_KINDS.flatMap(kind => registry.extensions(kind, scope.namespace).map(entry => {
+      if (entry.service !== scope.service) throw new Error(`${scope.name}: HealthCheck must belong to its Service`);
+      return requireHealthCheckExtension(entry.extension);
+    })).filter(check => !selected || selected.includes(healthCheckScope(check)));
+    if (!checks.length && !serviceNames) return [];
+    return [{ namespace: scope.namespace, name: scope.name, service: scope.service, checks,
+      ...(!checks.length ? { unsupported: "未声明所选 scope 的 HealthCheck" } : {}) }];
   });
-  if (!providers.length) throw new Error("当前 Plugin 没有支持 health 的 Service");
+  if (!providers.length) throw new Error("当前 Plugin 没有声明所选 scope 的 HealthCheck");
   return providers;
 }

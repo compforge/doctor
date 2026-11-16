@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import {
-  FACET_SUMMARIZE_KIND, FACET_SAMPLE_KIND, DURATION_SUMMARIZE_KIND, HEALTH_CASE_BINDINGS_KIND,
+  FACET_SUMMARIZE_KIND, FACET_SAMPLE_KIND, DURATION_SUMMARIZE_KIND,
   requireFacetSummarizeExtension, requireFacetSampleExtension, requireDurationSummarizeExtension,
-  requireHealthCaseBindingsExtension, withSummary,
+  requireHealthCaseExtension, withSummary,
 } from "../src";
 
 const summary = { title: "Fixture", fields: [] };
@@ -26,16 +26,16 @@ const contracts = [
     require: requireDurationSummarizeExtension,
   },
   {
-    kind: HEALTH_CASE_BINDINGS_KIND, expected: "health.case.bindings", previous: "health.cases",
-    extension: { id: "bindings", kind: HEALTH_CASE_BINDINGS_KIND, access: {},
+    kind: "healthcheck.biz", expected: "healthcheck", previous: "health.case.bindings",
+    extension: { id: "bindings", kind: "healthcheck.biz", execution: "cases", description: "Bindings", access: {},
       run: withSummary(summary, async () => ({ bindings: [] })) },
-    require: requireHealthCaseBindingsExtension,
+    require: requireHealthCaseExtension,
   },
 ] as const;
 
 for (const contract of contracts) {
   test(`${contract.expected} is exported and validated without a legacy alias`, () => {
-    expect(contract.kind).toBe(contract.expected);
+    expect(contract.kind).toContain(contract.expected);
     expect(contract.require(contract.extension)).toBe(contract.extension);
     expect(() => contract.require({ ...contract.extension, kind: contract.previous })).toThrow(contract.expected);
   });

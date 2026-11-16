@@ -1,7 +1,7 @@
 import type { Case } from "@compforge/spec-case/model";
 import { caseProducer, validateCaseProduceResult, validateHealthCaseBindingsResult,
-  requireHealthCaseBindingsExtension, type CaseProduceResult,
-  type HealthCaseBindingsExtension, type HealthCaseBindingsResult, type PluginDefinition,
+  HEALTH_CHECK_KINDS, requireHealthCaseExtension, type CaseProduceResult,
+  type HealthCaseExtension, type HealthCaseBindingsResult, type PluginDefinition,
   type ServiceCaseSource, type ServiceDefinition } from "@compforge/doctor-plugin";
 import type { DoctorCaseSet } from "./catalog";
 import { caseError } from "./http-check";
@@ -26,7 +26,7 @@ export interface CaseListEntry {
 export interface CaseListResult { entries: CaseListEntry[]; gaps: string[] }
 export interface CaseListActions {
   signal: AbortSignal;
-  consume(service: ServiceDefinition, extension: HealthCaseBindingsExtension): Promise<HealthCaseBindingsResult>;
+  consume(service: ServiceDefinition, extension: HealthCaseExtension): Promise<HealthCaseBindingsResult>;
   produce(service: ServiceDefinition, source: ServiceCaseSource): Promise<CaseProduceResult>;
 }
 
@@ -46,10 +46,10 @@ export async function listDoctorCases(catalog: readonly DoctorCaseSet[], plugin:
   const consumers = new Map<string, CaseConsumer[]>();
   for (const service of plugin?.services.services ?? []) {
     for (const raw of service.extensions ?? []) {
-      if (raw.kind !== "health.case.bindings") continue;
+      if (!HEALTH_CHECK_KINDS.includes(raw.kind as never) || (raw as { execution?: string }).execution !== "cases") continue;
       actions.signal.throwIfAborted();
       try {
-        const extension = requireHealthCaseBindingsExtension(raw);
+        const extension = requireHealthCaseExtension(raw);
         const data = await actions.consume(service, extension);
         validateHealthCaseBindingsResult(data);
         for (const binding of data.bindings) {

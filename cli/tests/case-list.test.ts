@@ -28,7 +28,7 @@ function fixture() {
     }] },
     { component, name: "hibot", workloads: [] },
     ...["bedbox", "sandbox"].map(name => ({ component, name, workloads: [kubernetesServiceWorkload(name)],
-      extensions: [{ id: "downloads", kind: "health.case.bindings" as const, access: {},
+      extensions: [{ id: "downloads", kind: "healthcheck.biz" as const, execution: "cases" as const, description: "Fixture check", access: {},
         run: withSummary({ title: "Downloads", fields: [] }, async () => bindings) }] })),
   ]) };
   return { plugin, produce, consume, runner, actions: { produce, consume, signal: new AbortController().signal },

@@ -27,15 +27,3 @@ test("read-only noninteractive probes run, writes need yes, and yes never prompt
   expect((await new HealthInteraction(new CommandContext({}, undefined, { yes: true }), true, prompt).approve({ ...request, risk: "disrupt" })).approved).toBe(true);
   await withInteractionOptions({ yes: true }, async () => expect(isInteractive(true)).toBe(false));
 });
-
-test("shared source reuses refusal, while separate sources and sessions ask again", async () => {
-  let prompts = 0;
-  const interaction = new HealthInteraction(new CommandContext({}), true, async input => { prompts++; return input.match("n"); });
-  const [first, second] = await Promise.all([interaction.approveOnce("source-a", request), interaction.approveOnce("source-a", request)]);
-  expect(first).toBe(second);
-  expect(first.approved).toBe(false);
-  await interaction.approveOnce("source-b", request);
-  expect(prompts).toBe(2);
-  await new HealthInteraction(new CommandContext({}), true, async input => { prompts++; return input.match("y"); }).approveOnce("source-a", request);
-  expect(prompts).toBe(3);
-});
