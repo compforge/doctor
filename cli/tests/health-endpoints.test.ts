@@ -1,3 +1,4 @@
+import { HealthInteraction } from "../src/health/interaction";
 import { expect, test, spyOn } from "bun:test";
 import { createServiceCatalog, defineObservation, defineWorkloadProbeExtension, kubernetesServiceWorkload, type ServiceDefinition, type PluginContext } from "@compforge/doctor-plugin";
 import type { Endpoint, WorkloadInstance } from "@compforge/harness-common";
@@ -19,7 +20,7 @@ const service: ServiceDefinition = { name: "worker", workloads: [kubernetesServi
   component: { name: "worker", repository: { forge: { name: "fixture" }, path: "fixture/worker" } } };
 const endpoint: Endpoint = { id: "download", workload: service.workloads[0]!, scheme: "https", host: "storage.other-namespace", port: 443, secure: true };
 const instance = (pod: string): WorkloadInstance => ({ platform: "kubernetes", environment: "fixture", namespace: "demo", workload: "main", pod, uid: pod, container: "worker" });
-async function check(endpoints: readonly Endpoint[], options: { pods?: string[]; pending?: string[]; toolError?: boolean; networkFailure?: boolean; missing?: boolean } = {}) {
+async function check(endpoints: readonly Endpoint[], options: { pods?: string[]; pending?: string[]; toolError?: boolean; networkFailure?: boolean; missing?: boolean; interaction?: HealthInteraction } = {}) {
   const definition = { ...service, endpoints };
   const context = new CommandContext({}, undefined, { plugin: { id: "fixture", version: "1", services: createServiceCatalog([definition]) } });
   const provider = healthProviders(context.plugin)[0]!;
@@ -43,7 +44,7 @@ async function check(endpoints: readonly Endpoint[], options: { pods?: string[];
     } } } as unknown as PluginContext, input)).data;
   });
   try {
-    const results = await checkHealthEndpoints(provider, context, {} as Executor, { namespace: "demo" });
+    const results = await checkHealthEndpoints(provider, context, {} as Executor, { namespace: "demo" }, options.interaction);
     return { results, commands, discoveries: discovery.mock.calls.length, declarations: discovery.mock.calls.map(call => call[0]) };
   } finally { discovery.mockRestore(); invoker.mockRestore(); await context.disposeClients(); }
 }
@@ -186,4 +187,14 @@ test("unexecutable Pods retain coverage and do not consume Running instance slot
   const unavailable = await check([endpoint], { pods: pending, pending });
   expect(unavailable.commands).toEqual([]);
   expect(unavailable.results.at(-1)!.status).toBe("unavailable");
+});
+
+for (const answer of ["n", "q"] as const) test(`Endpoint ${answer} never sends the declined probe and preserves subsequent coverage`, async () => {
+  const answers: string[] = [answer, "y"];
+  const interaction = new HealthInteraction(new CommandContext({}), true, async input => input.match(answers.shift()!));
+  const { results, commands } = await check([endpoint, { ...endpoint, id: "second" }], { interaction });
+  expect(results.map(result => result.status)).toEqual(answer === "n" ? ["skipped", "passed"] : ["not-run", "not-run"]);
+  expect(commands).toHaveLength(answer === "n" ? 1 : 0);
+  expect(buildHealthHtml({ query: {}, providers: [{ name: "worker", namespace: "fixture", endpoints: results }] }))
+    .toContain(answer === "n" ? "已跳过" : "未执行");
 });

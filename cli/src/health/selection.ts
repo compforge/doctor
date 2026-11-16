@@ -1,38 +1,33 @@
-import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { promptListedChoice } from "../terminal/selection";
 import { promptMultiSelect } from "../terminal/multi-select";
-import type { HealthScope } from "./scopes";
-import { healthProviders, type HealthProvider } from "./extensions";
+import { healthScopes } from "./scopes";
+import type { HealthProvider } from "./extensions";
 
-export async function selectHealthProviders(
-  plugin: PluginDefinition, serviceNames: readonly string[] | undefined, interactive: boolean,
-  prompt: typeof promptMultiSelect = promptMultiSelect,
-): Promise<HealthProvider[] | undefined> {
-  const providers = healthProviders(plugin, serviceNames);
-  if (serviceNames || !interactive) return providers;
+/** @spec Scope selection precedes target preparation; cancellation never falls back to all. */
+export async function selectHealthScope(scope: string | undefined, interactive: boolean,
+  prompt: typeof promptMultiSelect = promptMultiSelect): Promise<string | undefined> {
+  if (scope !== undefined || !interactive) return scope ?? "all";
   const selected = await prompt({
-    choices: providers, defaults: providers.map(provider => provider.name),
-    title: "选择要体检的 Service（默认全选；非只读请求另行确认）",
+    title: "选择体检范围", defaults: ["infra", "self", "deps"],
+    choices: [
+      { name: "infra", description: "基础设施可用性（DB、Host S3、OpenSearch）" },
+      { name: "self", description: "服务运行状态" },
+      { name: "deps", description: "服务对依赖的访问能力" },
+      { name: "biz", description: "业务功能（进入时选择 Service）" },
+    ],
   });
   if (!selected?.length) return undefined;
-  return providers.filter(provider => selected.includes(provider.name));
+  const value = selected.join(",");
+  healthScopes(value);
+  return value;
 }
 
-/** Continuing a scope is separate from authorizing non-readonly Case requests. */
-export async function confirmNextHealthScope(
-  scope: HealthScope, interactive: boolean,
-  prompt: typeof promptListedChoice = promptListedChoice,
-): Promise<boolean> {
-  if (!interactive) return true;
-  const label = scope === "business" ? "biz（业务功能，将按需选择租户和用户）" : "deps（依赖连通性）";
-  return await prompt({
-    question: `是否继续 ${label} 巡检？[y/N]: `,
-    emptyValue: false,
-    match: answer => {
-      if (/^(y|yes)$/i.test(answer)) return true;
-      if (/^(n|no)$/i.test(answer)) return false;
-      return undefined;
-    },
-    invalidMessage: "请输入 y 或 n",
-  }) === true;
+/** @spec Only biz asks for Services; infra/self/deps discover their checks; explicit filters and noninteractive calls keep their resolved candidates. */
+export async function selectHealthBusinessProviders(providers: readonly HealthProvider[], interactive: boolean,
+  prompt: typeof promptMultiSelect = promptMultiSelect): Promise<readonly HealthProvider[] | undefined> {
+  const candidates = providers.filter(provider => provider.consumers.length);
+  if (!interactive || !candidates.length) return candidates;
+  const selected = await prompt({ choices: candidates, defaults: candidates.map(provider => provider.name),
+    title: "选择要检查业务功能的 Service（请求执行前逐项确认）" });
+  if (!selected?.length) return undefined;
+  return candidates.filter(provider => selected.includes(provider.name));
 }

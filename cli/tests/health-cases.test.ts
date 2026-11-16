@@ -310,7 +310,7 @@ test("non-read Cases are never sent when approval is denied; GET Cases remain au
     sender: async () => async () => { sent++; throw new Error("must not send"); } });
   try {
     const [result] = await f.run();
-    expect(result!.status).toBe("cancelled");
+    expect(result!.status).toBe("not-run");
     expect(result!.error).toContain("非交互");
     expect(result!.attempts).toEqual([]);
     expect(sent).toBe(0);

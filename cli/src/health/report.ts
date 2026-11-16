@@ -24,6 +24,7 @@ function terminalStatus(status: HealthProbeCheck["status"] | HealthEndpointCheck
 
 function probeStatusLabel(status: HealthProbeCheck["status"] | HealthEndpointCheck["status"]): string {
   switch (status) {
+    case "skipped": return "已跳过";
     case "not-run": return "未执行";
     case "cancelled": return "已取消";
     case "none": return "没有对外 Endpoint 依赖";
@@ -63,8 +64,10 @@ export function printHealth(result: HealthResult): void {
       const errorKind = [check.error?.kind, check.error?.code].filter(Boolean).join("/");
       writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${terminalStatus(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
     }
-    for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
+    for (const check of summary.databases ?? []) writeOutput(`  infra DB ${check.service}/${check.dataSource}: ${terminalStatus(check.status)}${check.target ? ` · ${check.target.host}:${check.target.port}/${check.target.database}` : ""}${check.reason ? ` · ${check.reason}` : ""}\n`);
+    for (const check of summary.dataSources ?? []) writeOutput(`  infra 数据源 ${check.service}/${check.dataSource}: ${check.reason ?? check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     for (const check of summary.s3 ?? []) printS3Health(check);
+    if (summary.casesSkipped) writeOutput(`  biz 已跳过：${summary.casesSkipped}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
       writeOutput(`  Case ${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}: ${check.status} (${check.stage})\n`);
@@ -92,9 +95,13 @@ export function buildHealthHtml(result: HealthResult): string {
       + `<p>${escapeHtml(check.reason ?? "")}</p>` + check.findings.map(finding => `<p>${escapeHtml(finding.severity)}: ${escapeHtml(finding.message)}</p>`).join("")
       + `<details><summary>Observation</summary><pre>${escapeHtml(JSON.stringify(check.observations, null, 2))}</pre></details>`).join("")
     + (summary.endpoints ?? []).map(check => `<h3>Endpoint ${escapeHtml(check.source)} · ${escapeHtml(probeStatusLabel(check.status))}</h3><pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
-    + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
-      + (check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
+    + (summary.databases ?? []).map(check => `<h3>infra DB ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)} · ${escapeHtml(probeStatusLabel(check.status))}</h3>`
+      + `<pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
+    + (summary.dataSources ?? []).map(check => `<h3>infra 数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
+      + (check.status ? `<p>${probeStatusLabel(check.status)}：${escapeHtml(check.reason ?? "")}</p>`
+        : check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
     + (summary.s3 ?? []).map(s3HealthHtml).join("")
+    + (summary.casesSkipped ? `<p>biz 已跳过：${escapeHtml(summary.casesSkipped)}</p>` : "")
     + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")
     + (summary.cases ? casesHtml(summary.cases) : "")).join("");
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>

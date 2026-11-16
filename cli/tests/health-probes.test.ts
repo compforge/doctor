@@ -30,7 +30,7 @@ test("health discovers opted-in Probes without Cases; unmarked workload probes s
   expect(() => healthProviders({ ...plugin, services: createServiceCatalog([{ ...api, extensions: [{ ...probe, health: undefined }] }]) })).toThrow("没有支持 health");
   expect(() => healthProviders({ ...plugin, services: createServiceCatalog([{ ...api, extensions: [{ ...probe, namespace: "plugin/fixture" }] }]) })).toThrow("没有支持 health");
   expect(healthScopes("biz")).toEqual(["business"]);
-  expect(healthScopes()).toEqual(["self", "deps", "business"]);
+  expect(healthScopes()).toEqual(["infra", "self", "deps", "business"]);
   expect(healthScopes("deps,self,self")).toEqual(["deps", "self"]);
   expect(() => healthScopes("deps,unknown")).toThrow("--scope");
 });

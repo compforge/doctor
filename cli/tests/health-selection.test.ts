@@ -42,22 +42,22 @@ test("interactive health preselects every candidate and respects the user's subs
     expect(input.defaults).toEqual(["api", "worker"]);
     return ["worker"];
   });
-  const selected = await selection.selectHealthProviders(plugin, undefined, true, prompt);
+  const selected = await selection.selectHealthBusinessProviders(healthProviders(plugin), true, prompt);
   expect(selected?.map(provider => provider.name)).toEqual(["worker"]);
   expect(prompt).toHaveBeenCalledTimes(1);
 });
 
 test("explicit Services and noninteractive defaults skip prompting; cancellation does not default back to all", async () => {
   const prompt = mock(async () => undefined);
-  expect((await selection.selectHealthProviders(plugin, ["worker-alias"], true, prompt))?.map(provider => provider.name)).toEqual(["worker"]);
-  expect((await selection.selectHealthProviders(plugin, undefined, false, prompt))?.map(provider => provider.name)).toEqual(["api", "worker"]);
+  expect((await selection.selectHealthBusinessProviders(healthProviders(plugin, ["worker-alias"]), false, prompt))?.map(provider => provider.name)).toEqual(["worker"]);
+  expect((await selection.selectHealthBusinessProviders(healthProviders(plugin), false, prompt))?.map(provider => provider.name)).toEqual(["api", "worker"]);
   expect(prompt).not.toHaveBeenCalled();
-  expect(await selection.selectHealthProviders(plugin, undefined, true, prompt)).toBeUndefined();
-  expect(await selection.selectHealthProviders(plugin, undefined, true, async () => [])).toBeUndefined();
+  expect(await selection.selectHealthBusinessProviders(healthProviders(plugin), true, prompt)).toBeUndefined();
+  expect(await selection.selectHealthBusinessProviders(healthProviders(plugin), true, async () => [])).toBeUndefined();
 });
 
-test("cancelling Service selection stops health before environment preparation", async () => {
-  const selected = spyOn(selection, "selectHealthProviders").mockResolvedValue(undefined);
+test("cancelling scope selection stops health before environment preparation", async () => {
+  const selected = spyOn(selection, "selectHealthScope").mockResolvedValue(undefined);
   const context = new CommandContext({}, undefined, { plugin });
   const environment = mock(async () => {});
   context.ensureEnvironment = async requirements => { if (requirements.kubernetes) await environment(); };
@@ -100,4 +100,19 @@ test("noninteractive command runs all supported Services once, or only explicitl
       }
     }
   } finally { config.mockRestore(); executor.mockRestore(); }
+});
+
+
+test("interactive scope selection defaults to infra/self/deps; explicit scopes and noninteractive calls do not ask", async () => {
+  const prompt = mock(async (input: { defaults?: readonly string[]; choices: readonly { name: string }[] }) => {
+    expect(input.defaults).toEqual(["infra", "self", "deps"]);
+    expect(input.choices.map(choice => choice.name)).toEqual(["infra", "self", "deps", "biz"]);
+    return ["deps", "biz"];
+  });
+  expect(await selection.selectHealthScope(undefined, true, prompt)).toBe("deps,biz");
+  expect(await selection.selectHealthScope("all", true, prompt)).toBe("all");
+  expect(await selection.selectHealthScope("biz", true, prompt)).toBe("biz");
+  expect(await selection.selectHealthScope(undefined, false, prompt)).toBe("all");
+  expect(prompt).toHaveBeenCalledTimes(1);
+  expect(await selection.selectHealthScope(undefined, true, async () => [])).toBeUndefined();
 });

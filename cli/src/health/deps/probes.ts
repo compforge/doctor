@@ -1,3 +1,4 @@
+import type { HealthInteraction } from "../interaction";
 import { SERVICE_DOWNSTREAMS_KIND, requireServiceDownstreamsExtension,
   type ServiceDefinition, type ServiceDownstream } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -23,7 +24,7 @@ export function validateDownstreams(service: ServiceDefinition, services: readon
 
 /** @spec Dependency relations are resolved for the exact consumer instance and business context, immediately before its Probe. */
 export function checkDependencyHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
-  kubernetes: KubectlOptions & { namespace: string }, bizId?: string) {
+  kubernetes: KubectlOptions & { namespace: string }, bizId?: string, interaction?: HealthInteraction) {
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   return runHealthProbes(provider, context, executor, kubernetes, async instance => {
     const downstreams: ServiceDownstream[] = [];
@@ -33,5 +34,5 @@ export function checkDependencyHealthProbes(provider: HealthProvider, context: C
     }
     validateDownstreams(provider.service, context.plugin.services.services, downstreams);
     return { bizId, downstreams };
-  }, provider.endpointProbes);
+  }, provider.endpointProbes, interaction);
 }

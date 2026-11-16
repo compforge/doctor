@@ -1,3 +1,4 @@
+import type { HealthInteraction } from "./interaction";
 import { ENDPOINT_PROBE_KIND, type EndpointProbeExtension, validateWorkloadProbeResult,
   type ServiceWorkloadProbeInput, type WorkloadInstance, type ServiceEvidenceObservation, type ServiceFinding } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
@@ -11,7 +12,7 @@ import type { HealthProvider } from "./extensions";
 export interface HealthProbeCheck {
   probe: string;
   scope: "self" | "deps";
-  status: "ok" | "partial" | "unavailable" | "cancelled" | "not-run";
+  status: "ok" | "partial" | "unavailable" | "cancelled" | "not-run" | "skipped";
   reason?: string;
   observations: ServiceEvidenceObservation[];
   findings: ServiceFinding[];
@@ -22,14 +23,14 @@ export interface HealthProbeCheck {
 export async function runHealthProbes(provider: HealthProvider, context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string },
   healthInput: (instance: WorkloadInstance) => Promise<NonNullable<ServiceWorkloadProbeInput["health"]>>,
-  endpointProbes: readonly EndpointProbeExtension[] = []): Promise<HealthProbeCheck[]> {
+  endpointProbes: readonly EndpointProbeExtension[] = [], interaction?: HealthInteraction): Promise<HealthProbeCheck[]> {
   const service = provider.service;
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   const results: HealthProbeCheck[] = [];
   for (const probe of [...provider.probes ?? [], ...endpointProbes]) {
     const check: HealthProbeCheck = { probe: probe.id, scope: probe.kind === ENDPOINT_PROBE_KIND ? "deps" : probe.health!, status: "ok", observations: [], findings: [] };
     results.push(check);
-    if (context.signal.aborted) {
+    if (context.signal.aborted || interaction?.stopped) {
       check.status = "not-run";
       check.reason = "执行前已取消";
       continue;
@@ -48,6 +49,18 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
           ?? (pod?.containers.length === 1 ? pod.containers[0]!.name : undefined) };
         context.signal.throwIfAborted();
         try {
+          if (check.scope === "deps" && interaction) {
+            const decision = await interaction.approve({ id: `health-probe-${probe.id}`, risk: "observe",
+              title: `依赖检查：${probe.description ?? probe.id}`,
+              target: `${service.name} / ${instance.pod}/${instance.container ?? "未指定 Container"}`,
+              impact: ["从上述实例执行 Plugin 声明的依赖探测。"],
+            });
+            if (!decision.approved) {
+              check.status = context.signal.aborted ? "cancelled" : interaction.stopped ? "not-run" : "skipped";
+              check.reason = interaction.stopped ? "用户结束巡检" : "用户跳过该依赖检查";
+              break;
+            }
+          }
           const observed = probe.kind === ENDPOINT_PROBE_KIND
             ? await invoke(service, probe, { instance })
             : await invoke(service, probe, { instance, facts: [], health: await healthInput(instance) });
@@ -72,7 +85,7 @@ export async function runHealthProbes(provider: HealthProvider, context: Command
           check.reason = check.reason ? `${check.reason}; ${reason}` : reason;
         }
       }
-      if (!usableInstances && check.status !== "cancelled") check.status = "unavailable";
+      if (!usableInstances && !["cancelled", "skipped", "not-run"].includes(check.status)) check.status = "unavailable";
       for (const detector of service.detectors ?? []) check.findings.push(...detector.detect({ facts: [], observations: check.observations }));
     } catch (error) { check.status = context.signal.aborted ? "cancelled" : "unavailable"; check.reason = context.signal.aborted ? "执行中已取消，保留已取得的证据" : error instanceof Error ? error.message : String(error); }
     useLogger("health")[check.status === "unavailable" ? "warn" : "info"](`Probe 完成：${label} · ${check.status} · ${check.findings.length} 条 Finding${check.reason ? ` · ${check.reason}` : ""}`);

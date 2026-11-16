@@ -10,7 +10,7 @@ import { S3HealthSession } from "../src/health/s3/runtime";
 import * as approval from "../src/terminal/approval";
 import * as kubernetes from "../src/command/kubernetes-target";
 
-function fixture(outcome: "passed" | "failed" | "cancelled" | "unavailable" = "passed", distinct = false) {
+function fixture(outcome: "passed" | "failed" | "skipped" | "unavailable" = "passed", distinct = false) {
   const methods: string[] = []; const keys = new Set<string>();
   let approvals = 0; let preparations = 0;
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
@@ -46,7 +46,7 @@ function fixture(outcome: "passed" | "failed" | "cancelled" | "unavailable" = "p
   const collect: kubernetes.KubernetesCommandConfig = { profileName: "fixture",
     kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" } };
   const gate = spyOn(approval, "resolveApprovalGate").mockReturnValue(async () => {
-    approvals++; return { approved: outcome !== "cancelled", source: "prompt" };
+    approvals++; return { approved: outcome !== "skipped", source: "prompt" };
   });
   return { command, plugin, executor, collect, methods, keys, counts: () => ({ approvals, preparations }),
     close: async () => {
@@ -56,15 +56,15 @@ function fixture(outcome: "passed" | "failed" | "cancelled" | "unavailable" = "p
     } };
 }
 
-for (const outcome of ["passed", "failed", "cancelled", "unavailable"] as const) {
+for (const outcome of ["passed", "failed", "skipped", "unavailable"] as const) {
   test(`Health shares ${outcome} S3 evidence between owner and dependent alias without repeating operations`, async () => {
     const f = fixture(outcome);
     const config = spyOn(kubernetes, "resolveKubernetesCommandConfig").mockResolvedValue(f.collect);
     const executor = spyOn(kubernetes, "createKubernetesExecutor").mockReturnValue(f.executor);
     f.command.ensureEnvironment = async () => {};
     try {
-      const result = await healthCommand.run(f.command, { scope: "biz", services: ["owner", "consumer"], yes: true });
-      expect(result.status).toBe(outcome === "passed" ? CommandStatus.Ok : outcome === "cancelled" ? CommandStatus.Cancelled : CommandStatus.Failed);
+      const result = await healthCommand.run(f.command, { scope: "infra", services: ["owner", "consumer"], yes: true });
+      expect(result.status).toBe(outcome === "passed" ? CommandStatus.Ok : outcome === "skipped" ? CommandStatus.Partial : CommandStatus.Failed);
       expect(result.output?.providers.map(provider => provider.name)).toEqual(["owner", "consumer"]);
       const checks = result.output!.providers.map(provider => provider.s3!);
       expect(checks.map(items => items.length)).toEqual([1, 1]);
@@ -114,7 +114,7 @@ test("stopping after an aliased consumer reuses evidence does not add a false no
   try {
     const session = new S3HealthSession(f.command, f.collect, f.executor);
     const result = await runHealthSession(healthProviders(f.plugin), {}, {
-      scopes: ["business"], signal: controller.signal, cases: async () => [],
+      scopes: ["infra"], signal: controller.signal, cases: async () => [],
       s3: (provider, checkpoint) => session.check(provider, checkpoint),
       show: current => { if (current.providers[1]?.s3?.length) controller.abort(); },
     });

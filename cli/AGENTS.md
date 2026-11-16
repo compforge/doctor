@@ -12,7 +12,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 - **能力准备**：`doctor image/debug/install/resize` 显式改变 Registry、Doctor Host 或 Target 状态。
 - **确定性诊断**：各领域命令共用 Collect、Evidence 和风险授权协议，不依赖具体业务实现。
 - **计算资源概览**：`doctor compute` 分别展示集群容量与 Service Workload 占用；权限不足保留覆盖缺口，不作为健康故障。
-- **系统体检**：`doctor health` 按 Service 执行 self/deps Probe 与 biz Case，默认全选支持体检的服务，不查询代表 biz-id 或触发 Collect。
+- **系统体检**：`doctor health` 交互时先选 scope；按 infra → self → deps → biz 递进；infra/self/deps 自动发现检查项，infra 包含 DB、Host S3 与 OpenSearch，infra/deps 逐项确认；进入 biz 才选 Service 和准备 Case。不查询代表 biz-id 或触发 Collect。
 - **运行概览**：`doctor overview` 展示历史统计和耗时分布，按需从可下钻条目选取 biz-id，确认后复用 Collect。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
 - **Case 与主动施压**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 发压并采集同窗口证据。
@@ -39,7 +39,7 @@ cli/src/
 │   └── <domain>/        领域 Config、Inspect、Probe、Detector、Renderer
 ├── provision/           image、debug environment、工具准备及实例资源调整
 ├── eval/                Case 顺序执行与关联证据编排
-├── health/              Service self/deps/biz 主动巡检
+├── health/              Service infra/self/deps/biz 主动巡检
 ├── overview/            历史统计、采样与按需 Collect
 ├── compute/             集群容量与 Service Workload 占用
 ├── resource/            Service Resource 只读盘点

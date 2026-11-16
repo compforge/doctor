@@ -39,92 +39,75 @@ function prepared(name: string): PreparedCaseCheck {
 }
 
 for (const approved of [true, false]) {
-  test(`Health shares ${approved ? "approval" : "refusal"} across Services, replicas and Cases`, async () => {
+  test(`Health decides each Case and instance independently; approved=${approved}`, async () => {
     const context = new CommandContext({});
-    const checks = [prepared("worker"), prepared("executor")];
     const requests: ApprovalRequest[] = [];
     const sent: string[] = [];
     const directory = mkdtempSync(join(tmpdir(), "health-approval-"));
+    const approve = createHealthCaseApproval(context, "ns", async request => {
+      requests.push(request); return { approved, source: "prompt" };
+    });
     try {
-      for (const check of checks) {
-        const approve = createHealthCaseApproval(context, "ns", checks, async request => {
-          expect(sent).toEqual([]);
-          requests.push(request);
-          return { approved, source: "prompt" };
-        });
+      for (const check of [prepared("worker"), prepared("executor")]) {
         const [result] = await checkServiceCases([check], {
           directory, signal: context.signal, checkpoint: () => {}, approve,
           targets: async () => ({ targets: [target, { ...target, pod: "worker-2", uid: "uid-2" }] }),
           sender: async () => async request => {
             sent.push(request.method);
             return { statusCode: 200, statusText: "OK", headers: {}, body: new Response("ok").body };
-          },
-          produce: async () => ({ cases: [post, { ...post, case: { ...post.case, id: "embedding" } }, read,
-            { ...read, case: { ...read.case, id: "head", input: { protocol: "http", method: "HEAD" } } }] }),
+          }, produce: async () => ({ cases: [post, read] }),
         });
-        expect(result!.status).toBe(approved ? "passed" : "cancelled");
-        expect(result!.attempts).toHaveLength(approved ? 8 : 4);
+        expect(result!.status).toBe(approved ? "passed" : "skipped");
+        expect(result!.attempts).toHaveLength(approved ? 4 : 0);
       }
-      expect(requests).toHaveLength(1);
-      expect(requests[0]!.title).toBe("执行本轮 Health 的非只读 Case 检查");
-      expect(requests[0]!.target).toBe("ns: worker/main, executor/main");
-      expect(requests[0]!.impact).toContain("worker/main → models/probes");
-      expect(requests[0]!.impact).toContain("executor/main → models/probes");
-      expect(requests[0]!.impact.some(line => line.includes("10 个 Running 实例"))).toBe(true);
+      expect(requests).toHaveLength(8);
+      expect(requests.filter(request => request.risk === "observe")).toHaveLength(4);
+      expect(requests[0]!.target).toContain("worker / ns/worker-1/app");
       expect(JSON.stringify(requests)).not.toContain("SECRET");
-      expect(sent.filter(method => method === "POST")).toHaveLength(approved ? 8 : 0);
-      expect(sent.filter(method => method === "GET" || method === "HEAD")).toHaveLength(8);
-    } finally { rmSync(directory, { recursive: true, force: true }); }
+      expect(sent).toHaveLength(approved ? 8 : 0);
+    } finally { rmSync(directory, { recursive: true, force: true }); await context.disposeClients(); }
   });
 }
 
-test("GET/HEAD-only Health does not ask for approval", async () => {
+test("refusing one Case still runs the next Case", async () => {
   const context = new CommandContext({});
-  const checks = [prepared("worker")];
-  const directory = mkdtempSync(join(tmpdir(), "health-read-"));
-  let asked = 0;
+  const directory = mkdtempSync(join(tmpdir(), "health-skip-"));
+  const sent: string[] = [];
   try {
-    const results = await checkServiceCases(checks, {
+    const [result] = await checkServiceCases([prepared("worker")], {
       directory, signal: context.signal, checkpoint: () => {},
-      approve: createHealthCaseApproval(context, "ns", checks, async () => {
-        asked++;
-        return { approved: false, source: "prompt" };
-      }),
+      approve: createHealthCaseApproval(context, "ns", async request => ({ approved: request.risk === "observe", source: "prompt" })),
       targets: async () => ({ targets: [target] }),
-      sender: async () => async () => ({ statusCode: 200, statusText: "OK", headers: {}, body: new Response("ok").body }),
-      produce: async () => ({ cases: [read, { ...read, case: { ...read.case, id: "head", input: { protocol: "http", method: "HEAD" } } }] }),
+      sender: async () => async request => { sent.push(request.method); return { statusCode: 200, statusText: "OK", headers: {}, body: new Response("ok").body }; },
+      produce: async () => ({ cases: [post, read] }),
     });
-    expect(asked).toBe(0);
-    expect(results[0]!.status).toBe("passed");
-    expect(results[0]!.attempts).toHaveLength(2);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+    expect(sent).toEqual(["GET"]);
+    expect(result!.status).toBe("skipped");
+    expect(result!.error).toContain("用户跳过");
+  } finally { rmSync(directory, { recursive: true, force: true }); await context.disposeClients(); }
 });
 
-test("changed Health scope and a new CommandContext ask again", async () => {
+test("identical decisions reuse within one command, but another consumer or instance asks again", async () => {
   const context = new CommandContext({});
-  const checks = [prepared("worker")];
+  const next = new CommandContext({});
   let asked = 0;
-  const gate = async (): Promise<ApprovalDecision> => { asked++; return { approved: true, source: "prompt" }; };
-  await createHealthCaseApproval(context, "ns", checks, gate)(target, post);
-  await createHealthCaseApproval(context, "ns", checks, gate)(target, post);
-  expect(asked).toBe(1);
-  await createHealthCaseApproval(context, "ns", [...checks, prepared("executor")], gate)(target, post);
-  expect(asked).toBe(2);
-  await createHealthCaseApproval(new CommandContext({}), "ns", checks, gate)(target, post);
-  expect(asked).toBe(3);
+  const gate = async (): Promise<ApprovalDecision> => { asked++; return { approved: false, source: "prompt" }; };
+  const approve = createHealthCaseApproval(context, "ns", gate);
+  try {
+    await approve(target, post, prepared("worker").result);
+    await approve(target, post, prepared("worker").result);
+    expect(asked).toBe(1);
+    await approve(target, post, prepared("executor").result);
+    await approve({ ...target, uid: "new-instance" }, post, prepared("worker").result);
+    await createHealthCaseApproval(next, "ns", gate)(target, post);
+    expect(asked).toBe(4);
+  } finally { await context.disposeClients(); await next.disposeClients(); }
 });
 
-test("Health preserves assume-yes and non-interactive refusal decisions", async () => {
-  const checks = [prepared("worker")];
+test("Health preserves assume-yes and noninteractive refusal", async () => {
   const context = new CommandContext({}, undefined, { yes: true });
-  expect(await createHealthCaseApproval(context, "ns", checks, resolveApprovalGate(context.options))(target, post))
-    .toEqual({ approved: true, source: "assume-yes" });
-  let asked = 0;
-  const approve = createHealthCaseApproval(new CommandContext({}), "ns", checks, async () => {
-    asked++;
-    return { approved: false, source: "non-interactive" };
-  });
-  expect(await approve(target, post)).toEqual({ approved: false, source: "non-interactive" });
-  expect(await approve({ ...target, uid: "uid-2" }, post)).toEqual({ approved: false, source: "non-interactive" });
-  expect(asked).toBe(1);
+  try {
+    expect(await createHealthCaseApproval(context, "ns", resolveApprovalGate(context.options))(target, post))
+      .toEqual({ approved: true, source: "assume-yes" });
+  } finally { await context.disposeClients(); }
 });
