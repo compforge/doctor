@@ -103,10 +103,10 @@ test("noninteractive command runs all supported Services once, or only explicitl
 });
 
 
-test("interactive scope selection defaults to self/deps; explicit scopes and noninteractive calls do not ask", async () => {
+test("interactive scope selection defaults to infra/self/deps; explicit scopes and noninteractive calls do not ask", async () => {
   const prompt = mock(async (input: { defaults?: readonly string[]; choices: readonly { name: string }[] }) => {
-    expect(input.defaults).toEqual(["self", "deps"]);
-    expect(input.choices.map(choice => choice.name)).toEqual(["self", "deps", "biz"]);
+    expect(input.defaults).toEqual(["infra", "self", "deps"]);
+    expect(input.choices.map(choice => choice.name)).toEqual(["infra", "self", "deps", "biz"]);
     return ["deps", "biz"];
   });
   expect(await selection.selectHealthScope(undefined, true, prompt)).toBe("deps,biz");

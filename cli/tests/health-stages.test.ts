@@ -242,3 +242,25 @@ test("quitting deps retains self results and records remaining deps and biz with
   expect(result.providers[1]?.probes).toMatchObject([{ status: "ok" }, { status: "not-run", reason: "用户结束巡检" }]);
   expect(result.notRunScopes).toEqual(["business"]);
 });
+
+test("infra precedes self/deps/biz regardless of requested order, and deps does not run Host checks", async () => {
+  const selected = healthProviders(plugin).map(provider => ({ ...provider,
+    databaseSources: [{ service: provider.name, dataSource: "db" }],
+    s3Sources: [{ service: provider.name, dataSource: "s3" }],
+    dataSources: [{ service: provider.name, dataSource: "search" }],
+  }));
+  for (const infra of [true, false]) {
+    const calls: string[] = [];
+    await runHealthSession(selected, {}, { scopes: infra ? ["business", "deps", "self", "infra"] : ["deps"],
+      enterScope: async scope => { calls.push(`enter:${scope}`); return true; },
+      databases: async provider => { calls.push(`db:${provider.name}`); return []; },
+      s3: async provider => { calls.push(`s3:${provider.name}`); return []; },
+      dataSources: async provider => { calls.push(`search:${provider.name}`); return []; },
+      probes: async (provider, scope) => { calls.push(`${scope}:${provider.name}`); return []; },
+      cases: async provider => { calls.push(`biz:${provider.name}`); return []; }, show: () => {},
+    });
+    expect(calls).toEqual(infra ? ["enter:infra", "db:api", "search:api", "s3:api", "db:worker", "search:worker", "s3:worker",
+      "enter:self", "self:api", "self:worker", "enter:deps", "deps:api", "deps:worker", "enter:business", "biz:api", "biz:worker"]
+      : ["enter:deps", "deps:api", "deps:worker"]);
+  }
+});

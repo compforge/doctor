@@ -7,10 +7,11 @@ export async function selectHealthScope(scope: string | undefined, interactive: 
   prompt: typeof promptMultiSelect = promptMultiSelect): Promise<string | undefined> {
   if (scope !== undefined || !interactive) return scope ?? "all";
   const selected = await prompt({
-    title: "选择体检范围", defaults: ["self", "deps"],
+    title: "选择体检范围", defaults: ["infra", "self", "deps"],
     choices: [
+      { name: "infra", description: "基础设施可用性（DB、Host S3、OpenSearch）" },
       { name: "self", description: "服务运行状态" },
-      { name: "deps", description: "基础依赖可用性（包括 Host S3 读写）" },
+      { name: "deps", description: "服务对依赖的访问能力" },
       { name: "biz", description: "业务功能（进入时选择 Service）" },
     ],
   });
@@ -20,7 +21,7 @@ export async function selectHealthScope(scope: string | undefined, interactive: 
   return value;
 }
 
-/** @spec Only biz asks for Services; explicit filters and noninteractive calls keep their resolved candidates. */
+/** @spec Only biz asks for Services; infra/self/deps discover their checks; explicit filters and noninteractive calls keep their resolved candidates. */
 export async function selectHealthBusinessProviders(providers: readonly HealthProvider[], interactive: boolean,
   prompt: typeof promptMultiSelect = promptMultiSelect): Promise<readonly HealthProvider[] | undefined> {
   const candidates = providers.filter(provider => provider.consumers.length);

@@ -1,35 +1,39 @@
 # Health
 
-`doctor health` 以 Service 为单位主动巡检，发现服务未启动、Endpoint 未联通等明显问题。
-Health 的整体模型按三个层级展开：服务自身健康、能够访问依赖、依赖协作后的功能正常。
+`doctor health` 以 Service 为单位进行体检式主动巡检，用有限且有明确判定标准的检查，
+提前发现基础设施不可用、服务未启动、依赖访问失败或业务功能异常等问题，起到预警作用。
 
-Health 的定位类似体检：通过表示本次已执行的检查项在探测时正常。巡检用于发现明显异常；
-系统在后续运行、其它输入或负载条件下仍可能暴露问题，届时再通过 Overview 回顾情况、Collect 汇集证据。
-这一定位在设计文档中统一说明；终端聚焦检查结果、实际探测实例和失败原因，不在每项结果后重复附加免责声明。
+检查通过，只表示本次检查范围、条件和时间点内未发现异常，不保证真实业务、其它输入或负载下没有问题。
+检查不通过，应明确说明哪项条件不满足、观察到了什么证据及可能影响什么；证据不足时不推断唯一根因。
+无法检查和用户跳过表示覆盖缺口，不能计作通过，也不能直接认定目标故障。
+这一定位集中说明于本文；终端展示检查结果、实际执行位置与失败原因，不在每项结果后重复免责声明。
 
-## 三个健康层级
+## 四个递进的健康层级
 
-| 层级 | 要回答的问题 | 检查对象 | 常用机制 |
+Health 沿 `infra → self → deps → biz` 逐步深入查验服务健康度：先看基础条件，再看服务是否正常启动，
+随后验证服务对依赖的访问，最后验证业务功能。前层结果帮助判断后续检查是否具备条件和诊断价值。
+
+| 层级 | 要回答的问题 | 检查对象 | 当前机制 |
 |---|---|---|---|
-| 自身健康（`self`） | 服务自身是否存在异常？ | Service 声明的自身健康条件；当前已有检查主要覆盖启动、初始化与就绪状态 | Probe |
-| 依赖可用（`deps`） | 基础依赖是否可用？ | DataSource 与 downstream Service 的实际入口，包括连通性、数据源健康和 Host S3 读写 | Probe / DataSource 检查 |
-| 功能可用（`biz`） | 具备连通条件后，服务及依赖协作提供的功能是否正常？ | 有明确预期结果的功能操作，例如文件下载、查询或一次业务请求 | 通常由 Case Run 承接 |
+| 基础设施（`infra`） | 服务启动所需的基础条件是否可用？ | MySQL 连接与只读查询、Host S3 读写、OpenSearch 数据源健康 | Host DataSource 检查 |
+| 自身健康（`self`） | 服务是否正常启动并就绪？ | Service 声明的启动、初始化与就绪条件 | Probe |
+| 依赖访问（`deps`） | 已运行的服务能否访问需要的依赖？ | 消费方实例到 Endpoint、下游 Service 的访问 | Probe / Endpoint 检查 |
+| 功能可用（`biz`） | 服务及依赖协作后的业务功能是否正常？ | 有明确预期的业务操作，例如 Sandbox 文件下载、Agent 请求 | Case Run |
 
-三个层级按检查目的划分：self 检查服务自身状态；deps 检查基础依赖可用性；
-biz 验证业务消费链路，例如 Sandbox 在 egress 策略约束下下载文件。执行机制不决定层级。
-当前模型 Case 保留在 biz，基础模型调用迁移另行处理。
+基础设施不可用可能导致服务启动失败；服务尚未启动时，直接执行依赖其运行的业务请求通常缺乏诊断价值。
+应优先处理已明确的前置问题，暂缓依赖该前提的检查，并保留原因。这个原则限定于受影响的服务与检查链，
+不妨碍其它独立检查，也不排除为解释启动失败而继续检查基础设施，例如核实数据库是否可达。
+缺少某层检查能力或无法取得证据不等于前置条件已通过或已失败。
+
+当前实现按所选 scope 顺序执行，尚未根据前层结果自动阻断后续层级；交互时可据已有证据跳过检查或结束巡检。
+按需单独选择 scope 仍然有效，不强制重跑所有前层。当前模型 Case 保留在 biz，基础模型调用迁移另行处理。
 
 每个 Service 拥有自己的健康条件。DataSource 表达服务使用的数据源，downstream Service 表达它调用的服务；
-两者都属于依赖层，不能因为依赖对象自身健康就推断消费方能够访问它。
+基础设施自身可用与服务能访问它是不同的检查结论，不能由前者推断后者。
 每项检查明确执行位置：Endpoint 探测从声明的消费方实例发起，Host S3 读写从 Doctor Host 发起。
-Host S3 成功不能替代 Sandbox 文件下载结果，后者属于 biz 并覆盖实际 egress 与网络策略约束。
+Host S3 属于 infra，其成功不能替代 Sandbox 文件下载结果；后者属于 biz，并覆盖实际 egress 与网络策略约束。
 服务声明与运行配置、可选业务上下文共同决定本次适用的依赖；可选依赖未启用时不应作为故障，
 依赖解析失败则需要保留为未知或覆盖缺口。
-
-这也是排查时的递进顺序：先看服务自身是否异常，再看失败功能所需的依赖能否访问，最后判断功能结果。
-启动依赖也可能在第一层就暴露问题，例如数据库配置错误导致初始化失败；同一问题可以分别保留启动现象与依赖侧证据。
-逻辑上的递进不要求把三层绑定成一个不可拆分的流程，也不要求下层失败就丢弃其它层的证据。
-Health 可以按需执行自身和依赖探测，基础检查无需先构造业务 Case。
 
 Health 负责选择和启动 Probe、Case Run，并汇总结果；Service/Plugin 负责声明自身条件、适用依赖及功能预期。
 Case 是承接功能验证的常用方式，Health 的范围同时包含独立的自身健康与依赖 Probe。
@@ -48,11 +52,11 @@ doctor health --scope self,deps --service example-worker
 doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ```
 
-交互模式未指定 `--scope` 时，先多选 scope，默认勾选 self/deps；取消选择不连接目标环境。
-显式 `--scope` 跳过 scope 选择。按 self → deps → biz 执行已选范围，不逐层重复询问是否继续。
+交互模式未指定 `--scope` 时，先多选 scope，默认勾选 infra/self/deps；取消选择不连接目标环境。
+显式 `--scope` 跳过 scope 选择。按 infra → self → deps → biz 执行已选范围，不逐层重复询问是否继续。
 
-self/deps 自动发现范围内支持对应层级的 Service，不弹 Service 选择列表。self 自动执行；
-deps 逐项展示配置来源、目标、执行位置和操作，输入 y 执行、n 跳过、q 结束巡检，默认 n。
+infra/self/deps 自动发现范围内支持对应层级的 Service，不弹 Service 选择列表。self 自动执行；
+infra/deps 逐项展示配置来源、目标、执行位置和操作，输入 y 执行、n 跳过、q 结束巡检，默认 n。
 S3 上传、预签名下载、校验和清理是一项，仅批准一次，成功上传后的清理不另行询问。
 进入 biz 后才选择有 Case 消费关系的 Service，再准备这些服务所需的租户、用户和业务样本。
 业务请求按 Case 与消费方实例逐项确认，GET/HEAD 在交互模式也可跳过；选择范围或身份不批准请求。
@@ -64,7 +68,8 @@ S3 上传、预签名下载、校验和清理是一项，仅批准一次，成�
 
 跳过当前项继续检查其他项；结束巡检或取消 biz Service 选择保留已完成证据及未执行范围。
 结果区分通过、失败、无法执行、用户跳过、未执行与执行中取消，跳过表示覆盖不足而非故障或通过。
-单项失败不阻断其他独立检查；同一 S3 配置来源在本轮复用确认与结果，不因拒绝而再次询问。
+当前运行器不会因单项失败终止整轮，使用者应区分不依赖失败前提的独立检查与应暂缓的检查。
+同一 DB 或 S3 配置来源在本轮复用确认与结果，不因拒绝而再次询问。
 
 非交互及 `-y/--yes` 不询问 scope、Service 或检查项，未指定 scope 时保留 all。
 非交互只读检查自动执行，写操作仍需 `-y`；缺少批准记录为未执行，不能当作通过。
@@ -75,13 +80,13 @@ S3 上传、预签名下载、校验和清理是一项，仅批准一次，成�
 
 ## 代码组织
 
-`health/self/` 负责服务自身健康检查，`health/deps/` 负责数据源及下游依赖检查，`health/biz/` 负责 Case 准备、身份与执行授权、请求检查。
+`health/infra/` 负责 Host 数据源检查，`health/self/` 负责服务自身健康检查，`health/deps/` 负责消费方到依赖的访问检查，`health/biz/` 负责 Case 准备、身份与执行授权、请求检查。
 顶层 `flow.ts` 负责按层级推进与证据检查点，`index.ts` 装配命令、交互及共享资源；各层 `probes.ts` 准备相应 Probe 输入，依赖层同时解析和校验下游关系；`probe-runner.ts` 与 `runtime.ts` 提供跨层复用的探测执行和 Plugin 调用机制，`report.ts` 汇总展示结果。
 
 ## 探测接入与下游关系
 
-`--scope` 支持 `self`、`deps`、`biz` 的逗号组合及 `all`。
-`self` 检查服务自身健康，`deps` 检查数据源、下游依赖与 Host S3 读写，`biz` 执行业务 Case。
+`--scope` 支持 `infra`、`self`、`deps`、`biz` 的逗号组合及 `all`。
+`infra` 检查基础设施，`self` 检查服务自身健康，`deps` 检查消费方对依赖的访问，`biz` 执行业务 Case。
 未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
@@ -225,10 +230,21 @@ sse: {
 Case 报告根据本次 Pod 请求的退出码、错误文本与响应分类 DNS、代理 DNS、连接、超时、TLS 证书、TLS 握手和 HTTP 状态错误。`wrong version number` 等证据只给出“疑似 HTTP 配成 HTTPS”，因为代理或 TLS 配置也可能产生相同错误；服务端明确返回“HTTP 发到了 HTTPS 端口”则记录该响应事实。
 报告保留目标 URL 的 scheme/端口、Pod/container、对端 IP、阶段耗时及原始错误；不自动切换 scheme、跳过证书校验或把备用成功覆盖原始失败。旧 curl 没有阶段耗时，也保留退出码和 stderr。
 
-## 数据源健康
+## 基础设施检查
+
+### DB 连接与只读查询
+
+Service 自身或显式依赖的 MySQL DataSource 自动进入 infra。交互时在读取数据源并初始化连接之前确认，
+拒绝不建立连接；通过现有 Plugin source 与根 ClientManager 复用配置、访问通道、连接预算和清理生命周期。
+连接后执行 `SELECT 1 AS doctor_health`，使用有界只读查询，限时 10 秒，最多 1 行、1 KiB，不访问业务表。
+报告记录配置来源、目标 host/port/database、阶段、耗时、结果是否符合预期及安全错误码，不保存用户名、密码或驱动原始错误。
+同一 canonical Service/DataSource 本轮共享检查结果，包括失败或跳过；配置/访问准备缺口与已观察到的连接、查询失败分开记录。
+配置来源无法读取时保留无法检查，不能据此判断数据库故障。该检查验证配置中的数据库连接与基本查询，不验证业务表或全部权限。
+
+### OpenSearch 数据源健康
 
 Service 自身的 OpenSearch VDB DataSource，以及 `dependencies` 显式引用的 OpenSearch DataSource，
-由 Core builtin `datasource.health` 探测；不要求额外注册 Service Extension 或把集群检查包装成 Case。
+在 infra 层由 Core builtin `datasource.health` 探测；不要求额外注册 Service Extension 或把集群检查包装成 Case。
 Health 按声明的来源准备访问，失败时保留来源与错误，不替换成其它集群。相同来源在本次命令中复用准备和探测结果。
 
 检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
@@ -237,11 +253,11 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 
 ### S3 读写检查
 
-声明 S3 DataSource 的 Service 在 `deps` 层执行 S3 读写检查，例如：
+声明 S3 DataSource 的 Service 在 `infra` 层执行 S3 读写检查，例如：
 
 ```bash
-doctor health -s files --scope deps
-doctor health -s files --scope deps --pod files-0 --container app -y
+doctor health -s files --scope infra
+doctor health -s files --scope infra --pod files-0 --container app -y
 ```
 
 从 Workload 环境读取配置时，交互模式按配置所属 Service 选择 Pod/Container；取消选择即取消该项检查。
@@ -276,6 +292,8 @@ GET 保存允许的响应头和最多 4 KiB 的脱敏正文，HTML 可展开查�
 
 交互时在创建测试对象前确认，非交互使用 `-y/--yes` 预先批准；拒绝或未执行不能算检查通过。
 检查只证明 Doctor host 对本次 S3 对象的读写结果，不代表 sandbox 消费链路通过。
+
+## 依赖访问检查
 
 ### 对外 Endpoint 依赖
 

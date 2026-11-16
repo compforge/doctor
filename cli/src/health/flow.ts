@@ -1,3 +1,5 @@
+import { runInfrastructureChecks } from "./infra";
+import type { HealthDatabaseCheck } from "./infra/database";
 import { runSelfChecks } from "./self";
 import { runDependencyChecks } from "./deps";
 import { runBusinessChecks } from "./biz";
@@ -26,6 +28,7 @@ export interface HealthProviderResult {
   cases?: CaseCheckResult[];
   casesError?: string;
   casesSkipped?: string;
+  databases?: HealthDatabaseCheck[];
   s3?: S3HealthCheck[];
   dataSources?: HealthDataSourceCheck[];
   endpoints?: import("./deps/endpoints").HealthEndpointCheck[];
@@ -50,6 +53,7 @@ export interface HealthActions {
   leaveScope?(scope: HealthScope, result: HealthResult): void;
   cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   probes?(provider: HealthProvider, scope: "self" | "deps"): Promise<import("./probe-runner").HealthProbeCheck[]>;
+  databases?(provider: HealthProvider, checkpoint: (checks: HealthDatabaseCheck[]) => void): Promise<HealthDatabaseCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
   s3?(provider: HealthProvider, checkpoint: (checks: S3HealthCheck[]) => void): Promise<S3HealthCheck[]>;
   endpoints?(provider: HealthProvider): Promise<import("./deps/endpoints").HealthEndpointCheck[]>;
@@ -68,10 +72,11 @@ export async function runHealthSession(
   const result: HealthResult = { checkedAt: new Date().toISOString(), query,
     providers: providers.map(provider => ({ namespace: provider.namespace, name: provider.name, unsupported: provider.unsupported })) };
   actions.show(result);
-  const scopes = (["self", "deps", "business"] as const).filter(scope =>
+  const scopes = (["infra", "self", "deps", "business"] as const).filter(scope =>
     (!actions.scopes || actions.scopes.includes(scope)) && providers.some(provider =>
       provider.probes?.some(probe => probe.health === scope)
-      || (scope === "deps" && (provider.s3Sources?.length || provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined))
+      || (scope === "infra" && (provider.databaseSources?.length || provider.s3Sources?.length || provider.dataSources?.length))
+      || (scope === "deps" && (provider.endpointProbes?.length || provider.endpoints !== undefined))
       || (scope === "business" && provider.consumers.length)));
   const stop = (remaining: HealthScope[]) => {
     result.notRunScopes = remaining;
@@ -84,7 +89,16 @@ export async function runHealthSession(
         (summary.probes ??= []).push({ probe: probe.id, scope: probe.health, status: "not-run",
           reason, observations: [], findings: [] });
       }
-      if (scopes.includes("deps") && provider.s3Sources?.length) {
+      if (scopes.includes("infra") && provider.databaseSources?.length) {
+        for (const source of provider.databaseSources) {
+          if (summary.databases?.some(check => check.service === source.service && check.dataSource === source.dataSource)) continue;
+          const shared = result.providers.flatMap(provider => provider.databases ?? []).find(check =>
+            check.service === source.service && check.dataSource === source.dataSource);
+          (summary.databases ??= []).push(shared ?? { ...source, executionLocation: "doctor-host",
+            status: "not-run", startedAt: new Date().toISOString(), reason });
+        }
+      }
+      if (scopes.includes("infra") && provider.s3Sources?.length) {
         for (const source of provider.s3Sources) {
           if (summary.s3?.some(check => check.service === source.service && check.dataSource === source.dataSource)) continue;
           const shared = result.providers.flatMap(provider => provider.s3 ?? []).find(check =>
@@ -96,7 +110,7 @@ export async function runHealthSession(
       if (scopes.includes("business") && provider.consumers.length && !summary.cases && !summary.casesError) {
         summary.casesSkipped ??= reason;
       }
-      if (scopes.includes("deps") && provider.dataSources?.length) {
+      if (scopes.includes("infra") && provider.dataSources?.length) {
         for (const source of provider.dataSources) {
           if (summary.dataSources?.some(check => check.service === source.service && check.dataSource === source.dataSource)) continue;
           (summary.dataSources ??= []).push({ ...source, status: "not-run", reason });
@@ -146,7 +160,8 @@ export async function runHealthSession(
       if (!scopeProviders.includes(provider)) continue;
       const summary = result.providers[index]!;
       const checkpoint = () => actions.show(result);
-      if (scope === "self") await runSelfChecks(provider, summary, actions, checkpoint);
+      if (scope === "infra") await runInfrastructureChecks(provider, summary, actions, checkpoint);
+      else if (scope === "self") await runSelfChecks(provider, summary, actions, checkpoint);
       else if (scope === "deps") await runDependencyChecks(provider, summary, actions, checkpoint);
       else await runBusinessChecks(provider, summary, query, actions, checkpoint);
     }

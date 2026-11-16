@@ -123,11 +123,11 @@ const service: ServiceDefinition = { name: "files", component: { name: "files", 
   dataSources: [{ id: "s3", kind: "s3", backend: "s3-compatible", environment: { endpoint: "ENDPOINT", bucket: "BUCKET", region: "REGION", accessKey: "AK", secretKey: "SK" } }] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([service]) };
 
-test("S3-only Service participates in deps and renders upload/download/cleanup evidence", async () => {
+test("S3-only Service participates in infra and renders upload/download/cleanup evidence", async () => {
   const providers = healthProviders(plugin, ["files"]);
   expect(providers[0]!.s3Sources).toEqual([{ service: "files", dataSource: "s3" }]);
   const f = fixture();
-  const result = await runHealthSession(providers, {}, { scopes: ["deps"], show: () => {},
+  const result = await runHealthSession(providers, {}, { scopes: ["infra"], show: () => {},
     cases: async () => { throw new Error("no HTTP Cases"); },
     s3: async (_provider, checkpoint) => { await checkS3ReadWrite(f.input); checkpoint([f.result]); return [f.result]; },
   });
@@ -137,7 +137,7 @@ test("S3-only Service participates in deps and renders upload/download/cleanup e
 });
 
 test("skipped S3 scope has explicit not-run evidence without preparing a client", async () => {
-  const result = await runHealthSession(healthProviders(plugin, ["files"]), {}, { scopes: ["deps"], show: () => {},
+  const result = await runHealthSession(healthProviders(plugin, ["files"]), {}, { scopes: ["infra"], show: () => {},
     enterScope: async () => false, cases: async () => [], s3: async () => { throw new Error("not run"); },
   });
   expect(result.providers[0]!.s3?.[0]!.status).toBe("not-run");
@@ -294,7 +294,7 @@ test("network failures use the shared connectivity probe without replacing S3 ev
 test("biz scope does not prepare or execute Host S3 checks", async () => {
   const result = await runHealthSession(healthProviders(plugin), {}, { scopes: ["business"], show: () => {},
     cases: async () => { throw new Error("no business consumers"); },
-    s3: async () => { throw new Error("Host S3 belongs to deps"); },
+    s3: async () => { throw new Error("Host S3 belongs to infra"); },
   });
   expect(result.providers[0]?.s3).toBeUndefined();
 });

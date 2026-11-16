@@ -23,6 +23,10 @@ export function serviceHealthDataSources(plugin: PluginDefinition, service: Serv
   return dataSourceReferences(plugin, service, "vdb", source => source.kind === "vdb" && source.backend === "opensearch");
 }
 
+export function serviceHealthDatabaseSources(plugin: PluginDefinition, service: ServiceDefinition): ServiceDataSourceReference[] {
+  return dataSourceReferences(plugin, service, "db");
+}
+
 export function serviceHealthS3DataSources(plugin: PluginDefinition, service: ServiceDefinition): ServiceDataSourceReference[] {
   return dataSourceReferences(plugin, service, "s3");
 }

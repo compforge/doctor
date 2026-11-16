@@ -63,7 +63,7 @@ for (const outcome of ["passed", "failed", "skipped", "unavailable"] as const) {
     const executor = spyOn(kubernetes, "createKubernetesExecutor").mockReturnValue(f.executor);
     f.command.ensureEnvironment = async () => {};
     try {
-      const result = await healthCommand.run(f.command, { scope: "deps", services: ["owner", "consumer"], yes: true });
+      const result = await healthCommand.run(f.command, { scope: "infra", services: ["owner", "consumer"], yes: true });
       expect(result.status).toBe(outcome === "passed" ? CommandStatus.Ok : outcome === "skipped" ? CommandStatus.Partial : CommandStatus.Failed);
       expect(result.output?.providers.map(provider => provider.name)).toEqual(["owner", "consumer"]);
       const checks = result.output!.providers.map(provider => provider.s3!);
@@ -114,7 +114,7 @@ test("stopping after an aliased consumer reuses evidence does not add a false no
   try {
     const session = new S3HealthSession(f.command, f.collect, f.executor);
     const result = await runHealthSession(healthProviders(f.plugin), {}, {
-      scopes: ["deps"], signal: controller.signal, cases: async () => [],
+      scopes: ["infra"], signal: controller.signal, cases: async () => [],
       s3: (provider, checkpoint) => session.check(provider, checkpoint),
       show: current => { if (current.providers[1]?.s3?.length) controller.abort(); },
     });

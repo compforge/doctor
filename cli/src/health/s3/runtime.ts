@@ -29,7 +29,7 @@ export function validateHealthS3SourceSelection(providers: readonly HealthProvid
     return source?.kind === "s3" && !source.source ? [plugin.services.find(reference.service)!.name] : [];
   })));
   if (owners.size !== 1) throw new CommandInputError(
-    "health --pod/--container 仅适用于一个从 Workload 读取 S3 配置的 Service；请用 --service 和 --scope deps 限定检查范围",
+    "health --pod/--container 仅适用于一个从 Workload 读取 S3 配置的 Service；请用 --service 和 --scope infra 限定检查范围",
   );
 }
 

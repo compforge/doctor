@@ -64,7 +64,8 @@ export function printHealth(result: HealthResult): void {
       const errorKind = [check.error?.kind, check.error?.code].filter(Boolean).join("/");
       writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${terminalStatus(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
     }
-    for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.reason ?? check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
+    for (const check of summary.databases ?? []) writeOutput(`  infra DB ${check.service}/${check.dataSource}: ${terminalStatus(check.status)}${check.target ? ` · ${check.target.host}:${check.target.port}/${check.target.database}` : ""}${check.reason ? ` · ${check.reason}` : ""}\n`);
+    for (const check of summary.dataSources ?? []) writeOutput(`  infra 数据源 ${check.service}/${check.dataSource}: ${check.reason ?? check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
     for (const check of summary.s3 ?? []) printS3Health(check);
     if (summary.casesSkipped) writeOutput(`  biz 已跳过：${summary.casesSkipped}\n`);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
@@ -94,7 +95,9 @@ export function buildHealthHtml(result: HealthResult): string {
       + `<p>${escapeHtml(check.reason ?? "")}</p>` + check.findings.map(finding => `<p>${escapeHtml(finding.severity)}: ${escapeHtml(finding.message)}</p>`).join("")
       + `<details><summary>Observation</summary><pre>${escapeHtml(JSON.stringify(check.observations, null, 2))}</pre></details>`).join("")
     + (summary.endpoints ?? []).map(check => `<h3>Endpoint ${escapeHtml(check.source)} · ${escapeHtml(probeStatusLabel(check.status))}</h3><pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
-    + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
+    + (summary.databases ?? []).map(check => `<h3>infra DB ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)} · ${escapeHtml(probeStatusLabel(check.status))}</h3>`
+      + `<pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
+    + (summary.dataSources ?? []).map(check => `<h3>infra 数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
       + (check.status ? `<p>${probeStatusLabel(check.status)}：${escapeHtml(check.reason ?? "")}</p>`
         : check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
     + (summary.s3 ?? []).map(s3HealthHtml).join("")
