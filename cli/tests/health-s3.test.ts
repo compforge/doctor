@@ -209,6 +209,20 @@ test("presign failure is separate from download and still cleans up the upload",
   expect(JSON.stringify(f.result)).not.toContain("SECRET");
 });
 
+for (const status of [301, 307]) test(`S3 HTTP ${status} evidence retains Location but redacts signing parameters`, async () => {
+  const { captureS3HttpResponse } = await import("../src/health/s3/response");
+  const response = captureS3HttpResponse({ status, headers: {
+    location: "https://store/key?X-Amz-Signature=signature-secret&X-Amz-Credential=access-secret&X-Amz-Security-Token=session-secret",
+  }, body: Buffer.from("") }, []);
+  expect(response.httpStatus).toBe(status);
+  const location = new URL(response.headers!.location!);
+  expect(location.origin + location.pathname).toBe("https://store/key");
+  for (const parameter of ["X-Amz-Signature", "X-Amz-Credential", "X-Amz-Security-Token"]) {
+    expect(location.searchParams.get(parameter)).toBe("[redacted]");
+  }
+  for (const secret of ["signature-secret", "access-secret", "session-secret"]) expect(JSON.stringify(response)).not.toContain(secret);
+});
+
 test("S3 response evidence retains diagnostics and removes credentials before truncation", async () => {
   const { captureS3HttpResponse, captureS3ErrorResponse } = await import("../src/health/s3/response");
   const body = '<Error><Code>SignatureDoesNotMatch</Code><Message>wrong region</Message><Region>eu-west-1</Region>'
@@ -220,6 +234,7 @@ test("S3 response evidence retains diagnostics and removes credentials before tr
     ["access-secret", "signature-secret"]);
   expect(response).toMatchObject({ httpStatus: 403, requestId: "req-1", extendedRequestId: "host-1",
     headers: { "x-amz-bucket-region": "eu-west-1" }, bodyTruncated: false });
+  expect(response.headers).not.toHaveProperty("set-cookie");
   expect(response.body).toContain("SignatureDoesNotMatch"); expect(response.body).toContain("wrong region");
   for (const secret of ["access-secret", "signature-secret", "binary-secret", "session-secret", "GET /private key"]) {
     expect(JSON.stringify(response)).not.toContain(secret);
