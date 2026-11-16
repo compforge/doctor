@@ -146,11 +146,20 @@ test("runtime resolves Service configuration and performs signed S3 traffic dire
   let content = "";
   const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: async request => {
     calls.push(request.method);
+    const query = new URL(request.url).searchParams;
+    const date = (request.method === "GET" ? query.get("X-Amz-Date") : request.headers.get("x-amz-date"))!;
+    expect(date).toMatch(/^\d{8}T\d{6}Z$/);
+    const credential = `fixture-ak/${date.slice(0, 8)}/region-1/s3/aws4_request`;
     if (request.method === "GET") {
       expect(request.headers.get("authorization")).toBeNull();
-      expect(new URL(request.url).searchParams.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
-      expect(new URL(request.url).searchParams.get("X-Amz-Expires")).toBe("60");
-    } else expect(request.headers.get("authorization")).toContain("AWS4-HMAC-SHA256");
+      expect(query.get("X-Amz-Algorithm")).toBe("AWS4-HMAC-SHA256");
+      expect(query.get("X-Amz-Expires")).toBe("60");
+      expect(query.get("X-Amz-Credential")).toBe(credential);
+      expect(query.get("X-Amz-Security-Token")).toBe("SESSION-TOKEN");
+    } else {
+      expect(request.headers.get("authorization")).toStartWith(`AWS4-HMAC-SHA256 Credential=${credential},`);
+      expect(request.headers.get("x-amz-security-token")).toBe("SESSION-TOKEN");
+    }
     expect(new URL(request.url).pathname).toMatch(/^\/bucket\/prefix\/doctor-health\/[^/]+\/hello.txt$/);
     if (request.method === "PUT") { content = await request.text(); return new Response(null, { headers: { "x-amz-version-id": "test-version" } }); }
     expect(new URL(request.url).searchParams.get("versionId")).toBe("test-version");
@@ -158,7 +167,7 @@ test("runtime resolves Service configuration and performs signed S3 traffic dire
     return new Response(null, { status: 204 });
   } });
   const target = { endpoint: `http://127.0.0.1:${server.port}`, bucket: "bucket", bucketPrefix: "prefix", region: "region-1",
-    credentials: { accessKeyId: "fixture-ak", secretAccessKey: "SECRET-KEY" }, forcePathStyle: true };
+    credentials: { accessKeyId: "fixture-ak", secretAccessKey: "SECRET-KEY", sessionToken: "SESSION-TOKEN" }, forcePathStyle: true };
   const sourceService: ServiceDefinition = { ...service, dataSources: [{ id: "s3", kind: "s3", backend: "s3-compatible",
     source: { clientKey: "s3-health-fixture", createClient: () => ({ target, access: {} as never, initialize: async () => {}, dispose: async () => {} }) } }] };
   const selected = { ...plugin, services: createServiceCatalog([sourceService]) };
@@ -174,9 +183,10 @@ test("runtime resolves Service configuration and performs signed S3 traffic dire
     const checks = await checkHealthS3(healthProviders(selected, ["files"])[0]!, context,
       { kubernetes: { namespace: "ns" } } as import("../src/command/kubernetes-target").KubernetesCommandConfig, executor, () => {});
     expect(checks[0]!.status, checks[0]!.reason).toBe("passed");
+    expect(checks[0]).toMatchObject({ region: "region-1", addressStyle: "path" });
     expect(calls).toEqual(["PUT", "GET", "DELETE"]);
     expect(content).toBe("hello world");
-    expect(JSON.stringify(checks)).not.toContain("SECRET-KEY");
+    for (const secret of ["fixture-ak", "SECRET-KEY", "SESSION-TOKEN"]) expect(JSON.stringify(checks)).not.toContain(secret);
     const output = { query: {}, providers: [{ name: "files", namespace: "ns", s3: checks }] };
     writeHealthEvidence(output, context, mkdtempSync(join(directory, "source-")));
     const delivery = join(directory, "result.html");
@@ -184,7 +194,7 @@ test("runtime resolves Service configuration and performs signed S3 traffic dire
     const report = readReport(readFileSync(delivery, "utf8"));
     expect(report.pages).toContain("S3 读写检查");
     expect(report.pages).toContain("Doctor host");
-    expect(report.pages).not.toContain("SECRET-KEY");
+    for (const secret of ["fixture-ak", "SECRET-KEY", "SESSION-TOKEN"]) expect(report.pages).not.toContain(secret);
     expect(report.pages).not.toContain("X-Amz-Signature");
   } finally { server.stop(true); await context.disposeClients(); rmSync(directory, { recursive: true, force: true }); }
 });
