@@ -32,58 +32,88 @@ export function validateHealthS3SourceSelection(providers: readonly HealthProvid
   );
 }
 
-export async function checkHealthS3(provider: HealthProvider, command: CommandContext,
-  collect: KubernetesCommandConfig, executor: Executor, checkpoint: (checks: S3HealthCheck[]) => void,
-  selection: S3HealthSourceSelection & { interactive?: boolean } = {}): Promise<S3HealthCheck[]> {
-  const results: S3HealthCheck[] = [];
-  for (const reference of provider.s3Sources ?? []) {
-    const result: S3HealthCheck = { ...reference, executionLocation: "doctor-host", channel: "direct",
-      startedAt: new Date().toISOString(), status: "unavailable", steps: [] };
-    results.push(result);
-    let client: S3Client | undefined;
-    let http: HttpClient | undefined;
-    try {
-      command.signal.throwIfAborted();
-      const capability = serviceDataSources(command.plugin.services, reference.service, "s3").find(source => source.id === reference.dataSource);
-      if (!capability || capability.kind !== "s3") throw new Error("S3 DataSource 未注册");
-      const target = capability.source ? undefined : await resolveDataSourceTarget({
-        service: command.plugin.services.find(reference.service)!, executor, namespace: collect.kubernetes.namespace,
-        pod: selection.pod, container: selection.container,
-        interactive: !command.options.yes && canPrompt(selection), commandContext: command,
-        selection: { candidateRole: "配置来源", purpose: `读取 Service '${reference.service}' 的 S3 读写检查连接配置`, effect: "下载请求从 Doctor host 直接发起" },
-      });
-      if (!capability.source && !target) {
-        result.status = "cancelled"; result.reason = "已取消 S3 配置来源选择"; continue;
+/**
+ * @spec One Health execution probes each canonical Service/DataSource once, including failed and cancelled checks.
+ * @spec Concurrent consumers share the in-flight operation through cleanup; separate sessions never share results.
+ */
+export class S3HealthSession {
+  private readonly checks = new Map<string, Promise<S3HealthCheck>>();
+
+  constructor(private readonly command: CommandContext, private readonly collect: KubernetesCommandConfig,
+    private readonly executor: Executor, private readonly selection: S3HealthSourceSelection & { interactive?: boolean } = {}) {}
+
+  async check(provider: HealthProvider, checkpoint: (checks: S3HealthCheck[]) => void): Promise<S3HealthCheck[]> {
+    const results: S3HealthCheck[] = [];
+    for (const reference of provider.s3Sources ?? []) {
+      const service = this.command.plugin.services.find(reference.service)?.name ?? reference.service;
+      const dataSource = reference.dataSource;
+      if (results.some(check => check.service === service && check.dataSource === dataSource)) continue;
+      const key = JSON.stringify([service, dataSource]);
+      let pending = this.checks.get(key);
+      if (!pending) {
+        const result: S3HealthCheck = { service, dataSource, executionLocation: "doctor-host", channel: "direct",
+          startedAt: new Date().toISOString(), status: "unavailable", steps: [] };
+        results.push(result);
+        pending = Promise.resolve().then(() => checkS3Source(result, this.command, this.collect, this.executor,
+          () => checkpoint(results), this.selection));
+        this.checks.set(key, pending);
+        await pending;
+      } else {
+        results.push(await pending);
+        useLogger("health").debug(`${service}/${dataSource}: 复用本次 S3 读写检查结果`);
       }
-      const resolved = await resolveS3Configuration(command, { collect, service: reference.service, capability, target }, executor);
-      if (!resolved.target || !resolved.bucket) throw new Error(resolved.reason ?? "S3 endpoint 或 bucket 配置缺失");
-      result.endpoint = new URL(resolved.target.endpoint).toString(); result.bucket = resolved.bucket;
-      result.region = resolved.target.region; result.addressStyle = resolved.target.forcePathStyle === false ? "virtual-hosted" : "path";
-      // Own this bounded client's lifetime through cleanup, even when the command's root clients are cancelled.
-      const transport = new Transport([new DirectTransport()]);
-      client = new S3Client(resolved.target, transport, {
-        concurrency: 1, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000,
-      });
-      await client.initialize();
-      await checkS3ReadWrite({ result, bucket: resolved.bucket, prefix: resolved.bucketPrefix, signal: command.signal,
-        secrets: Object.values(resolved.target.credentials).filter((value): value is string => typeof value === "string"),
-        client, download: async (url, signal) => {
-          http = new HttpClient({ endpoint: new URL(url).origin, ca: resolved.target!.ca }, transport, {
-            concurrency: 1, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000, maxResponseBytes: 16_384,
-          });
-          return http.request(url, { signal });
-        }, approve: resolveApprovalGate({ yes: command.options.yes }), checkpoint: () => checkpoint(results) });
-      await supplementS3Connectivity(result, resolved.target, command.signal);
-    } catch (error) {
-      result.status = command.signal.aborted ? "cancelled" : "unavailable";
-      result.reason = diagnosticMessage(error);
-    } finally {
-      await http?.dispose();
-      await client?.dispose();
-      result.finishedAt ??= new Date().toISOString();
-      useLogger("health").info(`${reference.service}/${reference.dataSource}: S3 读写检查 ${result.status}`);
       checkpoint(results);
     }
+    return results;
   }
-  return results;
+}
+
+async function checkS3Source(result: S3HealthCheck, command: CommandContext,
+  collect: KubernetesCommandConfig, executor: Executor, checkpoint: () => void,
+  selection: S3HealthSourceSelection & { interactive?: boolean }): Promise<S3HealthCheck> {
+  let client: S3Client | undefined;
+  let http: HttpClient | undefined;
+  try {
+    command.signal.throwIfAborted();
+    const capability = serviceDataSources(command.plugin.services, result.service, "s3").find(source => source.id === result.dataSource);
+    if (!capability || capability.kind !== "s3") throw new Error("S3 DataSource 未注册");
+    const target = capability.source ? undefined : await resolveDataSourceTarget({
+      service: command.plugin.services.find(result.service)!, executor, namespace: collect.kubernetes.namespace,
+      pod: selection.pod, container: selection.container,
+      interactive: !command.options.yes && canPrompt(selection), commandContext: command,
+      selection: { candidateRole: "配置来源", purpose: `读取 Service '${result.service}' 的 S3 读写检查连接配置`, effect: "下载请求从 Doctor host 直接发起" },
+    });
+    if (!capability.source && !target) {
+      result.status = "cancelled"; result.reason = "已取消 S3 配置来源选择"; return result;
+    }
+    const resolved = await resolveS3Configuration(command, { collect, service: result.service, capability, target }, executor);
+    if (!resolved.target || !resolved.bucket) throw new Error(resolved.reason ?? "S3 endpoint 或 bucket 配置缺失");
+    result.endpoint = new URL(resolved.target.endpoint).toString(); result.bucket = resolved.bucket;
+    result.region = resolved.target.region; result.addressStyle = resolved.target.forcePathStyle === false ? "virtual-hosted" : "path";
+    // Own this bounded client's lifetime through cleanup, even when the command's root clients are cancelled.
+    const transport = new Transport([new DirectTransport()]);
+    client = new S3Client(resolved.target, transport, {
+      concurrency: 1, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000,
+    });
+    await client.initialize();
+    await checkS3ReadWrite({ result, bucket: resolved.bucket, prefix: resolved.bucketPrefix, signal: command.signal,
+      secrets: Object.values(resolved.target.credentials).filter((value): value is string => typeof value === "string"),
+      client, download: async (url, signal) => {
+        http = new HttpClient({ endpoint: new URL(url).origin, ca: resolved.target!.ca }, transport, {
+          concurrency: 1, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000, maxResponseBytes: 16_384,
+        });
+        return http.request(url, { signal });
+      }, approve: resolveApprovalGate({ yes: command.options.yes }), checkpoint });
+    await supplementS3Connectivity(result, resolved.target, command.signal);
+  } catch (error) {
+    result.status = command.signal.aborted ? "cancelled" : "unavailable";
+    result.reason = diagnosticMessage(error);
+  } finally {
+    await http?.dispose();
+    await client?.dispose();
+    result.finishedAt ??= new Date().toISOString();
+    useLogger("health").info(`${result.service}/${result.dataSource}: S3 读写检查 ${result.status}`);
+    checkpoint();
+  }
+  return result;
 }

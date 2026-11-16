@@ -144,7 +144,7 @@ test("skipped S3 scope has explicit not-run evidence without preparing a client"
 });
 
 test("runtime resolves Service configuration and performs signed S3 traffic directly from Host", async () => {
-  const { checkHealthS3 } = await import("../src/health/s3/runtime");
+  const { S3HealthSession } = await import("../src/health/s3/runtime");
   const { CommandContext } = await import("../src/command");
   const { healthCommand } = await import("../src/health");
   const { CommandStatus } = await import("../src/command");
@@ -191,8 +191,9 @@ test("runtime resolves Service configuration and performs signed S3 traffic dire
   };
   const directory = mkdtempSync(join(tmpdir(), "health-s3-evidence-"));
   try {
-    const checks = await checkHealthS3(healthProviders(selected, ["files"])[0]!, context,
-      { kubernetes: { namespace: "ns" } } as import("../src/command/kubernetes-target").KubernetesCommandConfig, executor, () => {});
+    const checks = await new S3HealthSession(context,
+      { kubernetes: { namespace: "ns" } } as import("../src/command/kubernetes-target").KubernetesCommandConfig, executor)
+      .check(healthProviders(selected, ["files"])[0]!, () => {});
     expect(checks[0]!.status, checks[0]!.reason).toBe("passed");
     expect(checks[0]).toMatchObject({ region: "region-1", addressStyle: "path" });
     expect(calls).toEqual(["PUT", "GET", "DELETE"]);

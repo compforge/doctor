@@ -19,6 +19,7 @@ export interface HealthProvider {
 }
 
 /**
+ * @spec S3 references use canonical owner names so shared results and stopped-scope accounting use the same identity.
  * @spec Health selects Service scopes only. Omission selects every Service with Case consumers,
  * supported DataSources, opted-in Health workload Probes, endpoint.probe Extensions,
  * or an explicit endpoints declaration (including [] for no external Endpoint dependencies).
@@ -33,7 +34,8 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       return requireHealthCaseBindingsExtension(entry.extension);
     }) : [];
     const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service) : [];
-    const s3Sources = scope.service ? serviceHealthS3DataSources(plugin, scope.service) : [];
+    const s3Sources = scope.service ? serviceHealthS3DataSources(plugin, scope.service)
+      .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
     const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))
       .map(extension => requireWorkloadProbeExtension(extension)).filter(probe => probe.health) : [];
     const endpoints = scope.service?.endpoints;

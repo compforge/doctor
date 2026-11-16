@@ -245,6 +245,10 @@ doctor health -s files --scope biz --pod files-0 --container app -y
 `hello world`（11 bytes，无换行）。确认写操作后依次 PUT、GET 并校验字节、DELETE。
 不要求 ListBuckets/ListObjects 权限，不读取或覆盖客户已有对象。
 
+同一次 Health 执行按 canonical Service + DataSource ID 共享一份 S3 检查结果。
+所有引用它的 Service 都保留报告关联，配置读取、审批及读写清理仅执行一次；失败或取消也不会因其他 Service 引用而自动重试。
+不同 DataSource 即使使用同一 bucket 仍分别检查；下一次 Health 执行重新探测。
+
 S3 下载使用有效期 60 秒的 GET 预签名 URL，固定为本次上传返回的版本。Doctor Host 通过共享 HTTP client
 发送不带 Authorization header 的 GET，要求 HTTP 200 且内容精确等于 `hello world`；响应有 16 KiB 上限，
 不跟随重定向。报告区分上传、预签名、下载校验与清理四个步骤；签名 URL、凭据和签名计算材料不进入日志或归档。

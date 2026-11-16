@@ -4,7 +4,7 @@ import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext } from "../src/command";
 import { validateHealthOptions } from "../src/health";
 import { healthProviders } from "../src/health/extensions";
-import { checkHealthS3, validateHealthS3SourceSelection } from "../src/health/s3/runtime";
+import { S3HealthSession, validateHealthS3SourceSelection } from "../src/health/s3/runtime";
 import * as parameters from "../src/terminal/parameters";
 import * as pods from "../src/infra/k8s/pod-selection";
 import * as containers from "../src/infra/k8s/container-selection";
@@ -53,9 +53,9 @@ for (const scenario of ["explicit", "interactive", "cancel-pod", "cancel-contain
       : scenario === "invalid-container" ? { pod: "files-2", container: "missing" }
       : scenario === "ambiguous-container" ? { pod: "files-2" } : {};
     try {
-      const [check] = await checkHealthS3(healthProviders(plugin)[0]!, command,
+      const [check] = await new S3HealthSession(command,
         { profileName: "fixture", kubernetes: { namespace: "test", namespaceSource: "flag", kubeconfigSource: "flag" } },
-        executor, () => {}, selection);
+        executor, selection).check(healthProviders(plugin)[0]!, () => {});
       if (scenario === "explicit") {
         expect(check?.status, check?.reason).toBe("passed");
         expect(calls).toEqual(["PUT", "GET", "DELETE"]);

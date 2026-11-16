@@ -1,4 +1,4 @@
-import { checkHealthS3, validateHealthS3SourceSelection, type S3HealthSourceSelection } from "./s3/runtime";
+import { S3HealthSession, validateHealthS3SourceSelection, type S3HealthSourceSelection } from "./s3/runtime";
 import { checkHealthEndpoints } from "./deps/endpoints";
 import { CommandInputError, CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { prepareCommandRequirements } from "../command/prepare";
@@ -58,6 +58,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   const { input: opts, selected, kube, executor } = prepared;
   const cases = new Map<HealthProvider, PreparedCaseCheck[]>();
   const healthSession = new DataSourceHealthSession();
+  const s3Session = new S3HealthSession(context, kube, executor, opts);
   const sources = new ServiceDependencyRuntime({ plugin: context.plugin, collect: kube, executor,
     command: "doctor health", commandContext: context, index: "*",
     log: line => useLogger("health").info(line) });
@@ -99,7 +100,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
         : checkDependencyHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
       endpoints: provider => checkHealthEndpoints(provider, context, executor, kube.kubernetes),
       dataSources: provider => checkHealthDataSources(provider, sources, healthSession, context.signal),
-      s3: (provider, checkpoint) => checkHealthS3(provider, context, kube, executor, checkpoint, opts),
+      s3: (provider, checkpoint) => s3Session.check(provider, checkpoint),
       cases: (provider, _input, checkpoint) => {
         if (!approve) throw new Error("biz 层级尚未准备 Case 检查");
         const snapshots: CaseCheckResult[] = [];
