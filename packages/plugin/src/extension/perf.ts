@@ -26,11 +26,7 @@ export function perfScenariosOutput(value: unknown): readonly ServicePerfScenari
     }
     ids.add(scenario.id);
     validateCaseRef(scenario.cases);
-    const observations = scenario.observability;
-    if (!observations || [observations.metricServices, observations.logServices, observations.correlationKeys]
-      .some(items => !Array.isArray(items) || !items.length || !items.every(text))) {
-      throw new Error(`perf.scenarios '${scenario.id}' has invalid observability references`);
-    }
+
   }
   return scenarios;
 }

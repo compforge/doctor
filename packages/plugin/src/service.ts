@@ -148,19 +148,11 @@ export interface ServiceCaseProbeOptions {
   requestIdentity?: ServiceRequestIdentity;
 }
 
-export interface ServicePerfObservability {
-  metricServices: readonly string[];
-  logServices: readonly string[];
-  /** Ordered Outcome.meta keys accepted by the Service traceId resolver. */
-  correlationKeys: readonly string[];
-}
-
 export interface ServicePerfScenario {
   cases: ServiceCaseRef;
   id: string;
   title: string;
   description: string;
-  observability: ServicePerfObservability;
 }
 
 export interface ServiceInspectResolution {

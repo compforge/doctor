@@ -95,6 +95,13 @@ function validateProfileShape(value: unknown, name: string): Profile {
     if (typeof prometheus.url !== "string" || !prometheus.url) {
       throw new Error(`profile '${name}'.prometheus.url must be a non-empty string`);
     }
+    if (prometheus.kind !== undefined && !["prometheus", "victoriametrics"].includes(String(prometheus.kind))) throw new Error(`profile '${name}'.prometheus.kind is invalid`);
+    if (prometheus.concurrency !== undefined && (typeof prometheus.concurrency !== "number" || !Number.isSafeInteger(prometheus.concurrency) || prometheus.concurrency <= 0)) throw new Error(`profile '${name}'.prometheus.concurrency must be a positive integer`);
+    const parameters = optionalMap(prometheus.parameters, `profile '${name}'.prometheus.parameters`);
+    for (const [service, value] of Object.entries(parameters ?? {})) {
+      const labels = optionalMap(value, `prometheus.parameters.${service}`);
+      if (!labels || Object.values(labels).some(item => typeof item !== "string" || !item)) throw new Error(`prometheus.parameters.${service} must contain non-empty label values`);
+    }
     optionalScalar(prometheus.username, "string", `profile '${name}'.prometheus.username`);
     optionalScalar(prometheus.password, "string", `profile '${name}'.prometheus.password`);
     optionalScalar(prometheus.timeout_ms, "number", `profile '${name}'.prometheus.timeout_ms`);

@@ -89,7 +89,6 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     breakerMinN: integer(opts.breakerMinN, 10, "--breaker-min-n", 1),
     gracefulStopSeconds: seconds(opts.gracefulStop, 60, "--graceful-stop"),
     requestTimeoutMs: integer(opts.requestTimeout, 180, "--request-timeout", 1) * 1000,
-    traceSamples: integer(opts.traceSamples, 10, "--trace-samples", 0),
     outputFormat,
     bundleName,
   };

@@ -20,6 +20,8 @@ export interface CaseCatalog {
  * @why Producer and runner share the source identity, not separate Extension registrations.
  */
 export interface ServiceCaseSource extends CaseCatalog {
+  /** Static capability exercised by these Cases; input variations do not change Operation identity. */
+  readonly operation?: string;
   readonly produce?: CaseProducer;
   readonly runner?: CaseRunnerFactory;
 }
@@ -39,6 +41,7 @@ export function caseRunner(source: ServiceCaseSource): CaseRunnerFactory {
 
 export function validateCaseSource(source: ServiceCaseSource): void {
   if (!source || typeof source.id !== "string" || !source.id.trim() || typeof source.load !== "function") throw new Error("Invalid Service Case source");
+  if (source.operation !== undefined && (typeof source.operation !== "string" || !source.operation.trim())) throw new Error("Case source operation must be a non-empty Operation ID");
   if (source.produce !== undefined) caseProducer(source);
   if (source.runner !== undefined) caseRunner(source);
 }

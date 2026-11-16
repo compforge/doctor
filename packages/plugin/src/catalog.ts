@@ -14,6 +14,21 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
   constructor(readonly services: readonly T[]) {
     const names = services.map((service) => service.name);
     if (new Set(names).size !== names.length) throw new Error("Service Catalog 包含重复名称");
+    const operationIds = new Set<string>();
+    for (const service of services) {
+      if (service.operations !== undefined && !Array.isArray(service.operations)) throw new Error(`${service.name}.operations must be an array`);
+      for (const operation of service.operations ?? []) {
+        if (!operation || typeof operation.id !== "function" || operation.serviceName !== service.name) throw new Error(`${service.name}: invalid Operation owner`);
+        const id = operation.id();
+        if (operationIds.has(id)) throw new Error(`Duplicate Operation: ${id}`);
+        operationIds.add(id);
+      }
+    }
+    for (const { operation } of this.operations()) {
+      for (const target of [...operation.calls ?? [], ...operation.mayCalls ?? []]) {
+        if (!operationIds.has(target)) throw new Error(`Unknown downstream Operation: ${target}`);
+      }
+    }
     const resourceKinds = new Map<string, string>();
     for (const service of services) this.identities.set(service.name, service);
     for (const service of services) {
@@ -73,6 +88,7 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
       const sources = new Set<string>();
       for (const source of service.cases ?? []) {
         validateCaseSource(source);
+        if (source.operation !== undefined && this.operation(source.operation).service.name !== service.name) throw new Error(`${service.name}: Case source Operation must belong to its Service`);
         if (sources.has(source.id)) throw new Error(`${service.name}: duplicate Case source '${source.id}'`);
         sources.add(source.id);
       }
@@ -105,6 +121,16 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
 
   resourceSources() {
     return this.services.flatMap(service => (service.resources ?? []).map(binding => ({ service, binding })));
+  }
+
+  operations() {
+    return this.services.flatMap(service => (service.operations ?? []).map(operation => ({ service, operation })));
+  }
+
+  operation(id: string) {
+    const found = this.operations().find(item => item.operation.id() === id);
+    if (!found) throw new Error(`Missing Service Operation: ${id}`);
+    return found;
   }
 
   caseSources() {

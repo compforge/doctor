@@ -387,11 +387,6 @@ test("Plugin case catalog owns CaseSet validation independently of the runner", 
             cases: { service: "chat", source: "chat" },
             title: "普通 Chat",
             description: "SSE Chat",
-            observability: {
-              metricServices: ["chat"],
-              logServices: ["chat"],
-              correlationKeys: ["message_id"],
-            },
           }],
         })]
       }]

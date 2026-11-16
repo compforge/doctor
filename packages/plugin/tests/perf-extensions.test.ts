@@ -8,7 +8,6 @@ import {
 const scenario: ServicePerfScenario = {
   id: "chat", title: "Chat", description: "Chat load",
   cases: { service: "app", source: "chat" },
-  observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const service: ServiceDefinition = {
   name: "app",
@@ -35,9 +34,9 @@ test("Perf declarations adapt without executing a provider during discovery", as
   }])).toThrow("duplicate");
 });
 
-test("Perf output validates identities and observability references", () => {
+test("Perf output validates identities and Case references", () => {
   expect(perfScenariosOutput([scenario])).toEqual([scenario]);
   for (const invalid of [[], [scenario, scenario],
-  [{ ...scenario, observability: { ...scenario.observability, metricServices: [] } }],
+  [{ ...scenario, cases: { service: "", source: "chat" } }],
   ]) expect(() => perfScenariosOutput(invalid)).toThrow();
 });

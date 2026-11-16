@@ -21,6 +21,10 @@ export interface RegistryProfileConfig {
 }
 
 export interface PrometheusProfileConfig {
+  kind?: "prometheus" | "victoriametrics";
+  concurrency?: number;
+  /** PromQL label values, keyed by canonical Service name. */
+  parameters?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   url: string;
   username?: string;
   password?: string;

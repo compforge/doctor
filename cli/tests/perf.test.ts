@@ -17,7 +17,6 @@ import {
 import {
   formatPerfCaseMix,
   createPerfArtifact,
-  selectPerfSamples,
   perfAdapterFromCaseFactory,
 } from "../src/perf";
 import {
@@ -25,7 +24,7 @@ import {
   resolveUserSearchPromptAction,
   selectUserFromSearch,
 } from "../src/case";
-import { perfEvidenceStatus, writePerfReport } from "../src/perf/report";
+import { writePerfReport } from "../src/perf/report";
 import { CommandContext } from "../src/command";
 import { finalizeFixture } from "./report-fixture";
 
@@ -44,7 +43,6 @@ test("perf defaults scan concurrency 5 through 20 with bounded duration", () => 
     abortErrorRate: 0.1,
     breakerMinN: 10,
     requestTimeoutMs: 180_000,
-    traceSamples: 10,
     outputFormat: "default",
     bundleName: "doctor-perf-20260102-030405",
   });
@@ -58,7 +56,7 @@ test("perf defaults scan concurrency 5 through 20 with bounded duration", () => 
   expect(parsePerfOutputFormat("bundle")).toBe("bundle");
   expect(() => parsePerfOutputFormat("json")).toThrow("html 或 bundle");
   expect(resolvePerfConfig({ format: "bundle", output: "perf-result" }, new Date("2026-01-02T03:04:05")))
-    .toMatchObject({ outputFormat: "bundle", traceSamples: 10 });
+    .toMatchObject({ outputFormat: "bundle" });
   expect(() => resolvePerfConfig({ format: "html", output: "perf.tar.gz" })).toThrow("不能使用");
   expect(() => resolvePerfConfig({ format: "bundle", output: "perf.html" })).toThrow("不能使用");
 });
@@ -255,73 +253,6 @@ test("Perf preserves configured identity and only queries missing user", async (
   expect(listedTenants).toBe(0);
 });
 
-test("representative evidence selects slow correlation IDs and deduplicates", () => {
-  const outcomes = [1000, 5000, 3000].map((firstTokenMs, index) => ({
-    t: index,
-    outcome: {
-      status: 200,
-      duration_ms: firstTokenMs + 100,
-      metrics: { first_token_ms: firstTokenMs },
-      meta: index === 1 ? { message_id: "message-1" } : { trace_id: `trace-${index}` },
-    },
-  }));
-  const run: Run = {
-    schema: 12,
-    run_id: "run",
-    experiment: "perf",
-    created_at: "",
-    service: "chat",
-    status: "completed",
-    environment: "test",
-    artifacts: [],
-    executions: [{
-      id: "closed/5c",
-      service: "chat",
-      arm: {
-        id: "closed/5c",
-        resources: {},
-        load: { request_rate: Infinity, max_inflight: 5, hold_s: 1 },
-      },
-      started_at: "",
-      finished_at: "",
-      windows: [],
-      stop: { reason: "deadline", inflight_at_stop: 0, interrupted: 0, force_cancelled: false },
-      phases: [],
-      registry: {},
-      probe_errors: {},
-      phase_errors: [],
-      requests: outcomes.map((item, index) => ({
-        id: String(index), case_id: "ordinary", scheduled_at: item.t, arrived_at: item.t,
-        dispatched_at: item.t, finished_at: item.t + item.outcome.duration_ms / 1000,
-        state: "finished" as const, operation_run_id: String(index), facets: {},
-      })),
-      operation_runs: outcomes.map((item, index) => ({ id: String(index), service, operation: new Operation({ name: "chat", serviceName: service.name }), outcome: item.outcome })),
-      evaluations: {},
-    }],
-  };
-
-  expect(selectPerfSamples(run, 2, ["trace_id", "message_id"]).map((item) => item.correlationId))
-    .toEqual(["message-1", "trace-2"]);
-  run.executions[0]!.requests[1]!.state = "interrupted";
-  run.executions[0]!.evaluations["0"] = { code: "sse-terminal" };
-  const samples = selectPerfSamples(run, 10, ["trace_id", "message_id"]);
-  expect(samples.map(item => item.correlationId)).toEqual(["trace-2", "trace-0"]);
-  expect(samples[1]!.errorKind).toBe("sse-terminal");
-  expect(perfEvidenceStatus({
-    run,
-    outputDir: ".",
-    metric: commandOutcome(0),
-    samples: [{
-      armRunId: "closed/5c",
-      correlationKey: "trace_id",
-      correlationId: "trace-1",
-      durationMs: 5100,
-      trace: commandOutcome(0),
-      log: commandOutcome(1),
-    }],
-  })).toBe("partial");
-});
-
 test("perf report renders Facet values in their declared order", () => {
   const stats = {
     n: 1,
@@ -389,8 +320,7 @@ test("perf report renders Facet values in their declared order", () => {
     const report = writePerfReport({
       run,
       outputDir,
-      metric: commandOutcome(0),
-      samples: [],
+      metricsComplete: true,
       caseFacets: {
         difficulty: { values: ["simple", "medium", "complex"], ordered: true },
       },
@@ -433,10 +363,9 @@ test("Perf adapter cancels active Case requests and round-trips interrupted evid
     const restored = loadRun(directory);
     expect(restored.executions[0]!.requests[0]!.state).toBe("interrupted");
     expect(restored.executions[0]!.operation_runs).toHaveLength(1);
-    expect(selectPerfSamples(restored, 10, ["trace_id"])).toEqual([]);
     expect(JSON.parse(readFileSync(join(directory, "evaluations.json"), "utf8")))
       .toEqual({ [run.executions[0]!.id]: {} });
-    expect(readFileSync(writePerfReport({ run: restored, outputDir: directory, metric: commandOutcome(130), samples: [] }), "utf8"))
+    expect(readFileSync(writePerfReport({ run: restored, outputDir: directory, metricsComplete: false }), "utf8"))
       .toContain("requests.jsonl");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

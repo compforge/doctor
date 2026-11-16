@@ -7,7 +7,6 @@ import { loadPerfScenarios, selectPerfProvider } from "../src/perf/extensions";
 const scenario: ServicePerfScenario = {
   id: "chat", title: "Chat", description: "Chat load",
   cases: { service: "app", source: "chat" },
-  observability: { metricServices: ["app"], logServices: ["app"], correlationKeys: ["trace_id"] }
 };
 const createRunner = mock(async () => ({ run: async () => ({ status: 200, durationMs: 1 }), classify: () => ({ ok: true }) }));
 const service: ServiceDefinition = {
@@ -51,7 +50,7 @@ test("Perf selects its workflow independently of the scenario's Case owner", () 
 });
 
 test("Perf validates scenario metadata and releases configuration scope on failure", async () => {
-  for (const invalid of [{ ...scenario, id: "" }, { ...scenario, observability: { ...scenario.observability, metricServices: [] } }]) {
+  for (const invalid of [{ ...scenario, id: "" }, { ...scenario, title: "" }]) {
     const cleanup = mock(() => { });
     const provider = providerFor({ ...extension, run: withSummary({ title: "Fixture", fields: [] }, async context => { context.onDispose(cleanup); return [invalid]; }) });
     await expect(loadPerfScenarios(provider, () => createHostPluginContext({ service, capability: extension }))).rejects.toThrow("invalid");
