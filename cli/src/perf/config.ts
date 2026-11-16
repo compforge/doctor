@@ -101,7 +101,7 @@ export function perfLoadPlans(config: PerfConfig): LoadPlan[] {
   return config.levels.map(level => {
     const stages: Stage[] = [];
     if (config.rampSeconds > 0) stages.push({
-      kind: "ramp", request_rate: Infinity, max_inflight: level, duration_s: config.rampSeconds,
+      kind: "warmup", request_rate: Infinity, max_inflight: level, duration_s: config.rampSeconds,
     });
     if (config.holdSeconds > 0) stages.push({
       kind: "hold", request_rate: Infinity, max_inflight: level, duration_s: config.holdSeconds,
