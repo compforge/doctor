@@ -15,7 +15,7 @@
         "@compforge/doctor-agent": "workspace:*",
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/harness-common": "0.7.0",
-        "@compforge/harness-toolbox": "0.7.1",
+        "@compforge/harness-toolbox": "0.7.4",
         "@compforge/perf-harness": "0.8.0",
         "@compforge/prombed": "0.0.2",
         "@compforge/spec-case": "0.0.7",
@@ -79,7 +79,7 @@
       },
       "dependencies": {
         "@compforge/harness-common": "0.7.0",
-        "@compforge/harness-toolbox": "0.7.1",
+        "@compforge/harness-toolbox": "0.7.4",
         "@compforge/spec-case": "0.0.7",
         "@compforge/trace-harness": "0.3.2",
       },
@@ -90,7 +90,7 @@
     },
     "plugins/example": {
       "name": "@compforge/doctor-plugin-example",
-      "version": "0.0.25",
+      "version": "0.0.26",
       "dependencies": {
         "@compforge/doctor-plugin": "workspace:*",
         "@compforge/harness-common": "0.7.0",
@@ -140,6 +140,8 @@
 
     "@aws-sdk/nested-clients": ["@aws-sdk/nested-clients@3.997.45", "", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@aws-sdk/signature-v4-multi-region": "^3.996.46", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/fetch-http-handler": "^5.7.2", "@smithy/node-http-handler": "^4.11.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-mooq9Q+jLa18VoM7HouczmslZU60iiB0aKc/Ztnq/luIL1ud0z4DnYprLR/ZO1gp331S9tJctM1HZr7u6YKBXQ=="],
 
+    "@aws-sdk/s3-request-presigner": ["@aws-sdk/s3-request-presigner@3.1133.0", "", { "dependencies": { "@aws-sdk/core": "^3.978.0", "@aws-sdk/signature-v4-multi-region": "^3.996.46", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-8e9ouff7Lenl1d6XF5o2n/BxFq1cdq8mSvFy9/PjXG2OKSLmTBvaX3d8QnOCTGMZe7Pptr7fVEYb+Va+JpaV+w=="],
+
     "@aws-sdk/signature-v4-multi-region": ["@aws-sdk/signature-v4-multi-region@3.996.46", "", { "dependencies": { "@aws-sdk/types": "^3.974.5", "@smithy/signature-v4": "^5.6.12", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-L+2xZTye/2T96f3lwCws0Zw6GG2JHZW9e8FpVgGBeeExSKyeoZ6CWRpBml/7DNiK/O26jrgPM9F+Ay8VkgzUWQ=="],
 
     "@aws-sdk/token-providers": ["@aws-sdk/token-providers@3.1127.0", "", { "dependencies": { "@aws-sdk/core": "^3.977.9", "@aws-sdk/nested-clients": "^3.997.44", "@aws-sdk/types": "^3.974.5", "@smithy/core": "^3.33.3", "@smithy/types": "^4.17.2", "tslib": "^2.6.2" } }, "sha512-Dv2TMWBshJ+tF6ahs2Sy5bh4Iabsd4GAQqVvE9XZmYmnoaVbpS2QKIKE/HRacc7bTtbjEEvP+laGzHvHlf1CiQ=="],
@@ -162,7 +164,7 @@
 
     "@compforge/harness-common": ["@compforge/harness-common@0.7.0", "", {}, "sha512-zJZi/3yNvXlfB8ZBo3E1tlslCpoHjUlNDn64uCtqQo3GLMR14/tX1fmKyD5dXLz6N3y6Y2+YLhfGz0/5HW4SWw=="],
 
-    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.7.1", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@compforge/harness-common": "^0.7.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-EVc7OKLXCCNX8ERbRt+Jrh06qHGv7DoEdCnA7n7kwYxgnb8rLkUPI8uwhWtGNeA+YQPO/z5ZYENfHyG/aQIbog=="],
+    "@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.7.4", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@aws-sdk/s3-request-presigner": "3.1133.0", "@compforge/harness-common": "^0.7.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-DrQw20Au9hVFR5Wg9Km4IMnYPr/Sbd14gzK3rCg488dph0ck3+0nRkXpRr0DLy9lOLkN8PA4fe/dR6iepu+SyQ=="],
 
     "@compforge/perf-harness": ["@compforge/perf-harness@0.8.0", "", { "dependencies": { "@compforge/harness-common": "^0.7.0", "@compforge/harness-toolbox": "^0.7.1", "@compforge/spec-case": "^0.0.4" } }, "sha512-soTsOFA4xan81V5WTHxb0qEQnNuWrfY0Cn8xSQDxJC63UGXsPbGJ8cky+zs4v/20o26KffOBn0ZXUAbuSrMezg=="],
 
@@ -874,11 +876,21 @@
 
     "@aws-sdk/middleware-websocket/@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
 
+    "@aws-sdk/s3-request-presigner/@aws-sdk/core": ["@aws-sdk/core@3.978.1", "", { "dependencies": { "@aws-sdk/types": "^3.974.6", "@aws-sdk/xml-builder": "^3.972.41", "@aws/lambda-invoke-store": "^0.3.0", "@smithy/core": "^3.35.0", "@smithy/signature-v4": "^5.7.3", "@smithy/types": "^4.19.0", "bowser": "^2.11.0", "tslib": "^2.6.2" } }, "sha512-LbY9aGsEiznDWmUc30Nwv3aIX/+dbwTx8KfS0yOC3NPYMO+O91e6jkT1azf34FwjOndq8/Q+RcVVZz5xnerwdg=="],
+
+    "@aws-sdk/s3-request-presigner/@aws-sdk/types": ["@aws-sdk/types@3.974.6", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-v/clNZzZnDxGyvpHMOGpJKVXFAExJzUNAAjaWGdcx8QAcXLGwTaOkw33p5SHAi0YAioK32xB3hWwOekRVfmfKg=="],
+
+    "@aws-sdk/s3-request-presigner/@smithy/core": ["@smithy/core@3.35.0", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A=="],
+
+    "@aws-sdk/s3-request-presigner/@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
+
     "@aws-sdk/token-providers/@aws-sdk/types": ["@aws-sdk/types@3.974.6", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-v/clNZzZnDxGyvpHMOGpJKVXFAExJzUNAAjaWGdcx8QAcXLGwTaOkw33p5SHAi0YAioK32xB3hWwOekRVfmfKg=="],
 
     "@aws-sdk/token-providers/@smithy/core": ["@smithy/core@3.35.0", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-zRMhfkByhT2snNdr1si24vJitU6Cr9ix2MikUfWmkAgp4jrNP0GcKSP5YvwQ+TlI8AZXER5QOGJn3JsVtSD9/A=="],
 
     "@aws-sdk/token-providers/@smithy/types": ["@smithy/types@4.19.0", "", { "dependencies": { "tslib": "^2.6.2" } }, "sha512-r7jh49VJxGerfAcTQA6gXcKc+98zOp/tqRwzYjgOE+iSQsP6cEU1hq2QzbuipmP68QtYdY9wKEhiCQZIzHgZ4Q=="],
+
+    "@compforge/perf-harness/@compforge/harness-toolbox": ["@compforge/harness-toolbox@0.7.1", "", { "dependencies": { "@aws-sdk/client-s3": "3.1133.0", "@compforge/harness-common": "^0.7.0", "@kubernetes/client-node": "1.4.0", "@opensearch-project/opensearch": "3.6.0", "@redis/client": "6.1.0", "@smithy/core": "3.34.1", "@smithy/node-http-handler": "4.12.1", "mysql2": "3.23.1", "node-fetch": "2.7.0", "race-signal": "2.0.2", "ws": "8.21.3" } }, "sha512-EVc7OKLXCCNX8ERbRt+Jrh06qHGv7DoEdCnA7n7kwYxgnb8rLkUPI8uwhWtGNeA+YQPO/z5ZYENfHyG/aQIbog=="],
 
     "@compforge/perf-harness/@compforge/spec-case": ["@compforge/spec-case@0.0.4", "", { "dependencies": { "typescript": ">=6.0.3 <7", "yaml": "^2.8.1" }, "bin": { "specgen": "dist/src/cli.js" } }, "sha512-QGeD7d3cu5OA381ilKzRky6XQKow7LKApnD7hF953v5XGxCZbPOzwF5GAGBOjfCypY8sUrUknPetTqy2rTfGKQ=="],
 
@@ -949,6 +961,10 @@
     "type-is/mime-types": ["mime-types@3.0.2", "", { "dependencies": { "mime-db": "^1.54.0" } }, "sha512-Lbgzdk0h4juoQ9fCKXW4by0UJqj+nOOrI9MJ1sSj4nI8aI2eo1qmvQEie4VD1glsS250n15LsWsYtCugiStS5A=="],
 
     "@aws-sdk/middleware-websocket/@aws-sdk/core/@aws-sdk/xml-builder": ["@aws-sdk/xml-builder@3.972.41", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-ctjVSyCMegrWfXlx6VqzSBFI6UqmQ5ZlnfMhdLIiWmhoH8UAQxSCP5N3OpG7X3k4LnS7ou74C4mt20+bfTW2aQ=="],
+
+    "@aws-sdk/s3-request-presigner/@aws-sdk/core/@aws-sdk/xml-builder": ["@aws-sdk/xml-builder@3.972.41", "", { "dependencies": { "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-ctjVSyCMegrWfXlx6VqzSBFI6UqmQ5ZlnfMhdLIiWmhoH8UAQxSCP5N3OpG7X3k4LnS7ou74C4mt20+bfTW2aQ=="],
+
+    "@aws-sdk/s3-request-presigner/@aws-sdk/core/@smithy/signature-v4": ["@smithy/signature-v4@5.7.4", "", { "dependencies": { "@smithy/core": "^3.35.0", "@smithy/types": "^4.19.0", "tslib": "^2.6.2" } }, "sha512-tHy0K0VtqNd5Y7Y41h0a0Lhh0L1GzC08dTWg0F7vRJWFtTENg7IZikf3wQkanYIRdb7ngoIPMTmqgUi401fEeQ=="],
 
     "@compforge/perf-harness/@compforge/spec-case/typescript": ["typescript@6.0.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw=="],
 

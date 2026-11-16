@@ -5,6 +5,7 @@ import { escapeHtml } from "../collect/output/report/components/content";
 import type { CommandContext } from "../command";
 import { styleTerminalText, writeOutput } from "../terminal/output";
 import { OVERVIEW_REPORT_STYLE } from "../overview/report";
+import { s3HealthHtml, printS3Health } from "./s3/report";
 import type { CaseCheckResult } from "./biz/run";
 import { dataSourceHealthHtml } from "../datasource/health/report";
 import type { HealthResult } from "./flow";
@@ -63,6 +64,7 @@ export function printHealth(result: HealthResult): void {
       writeOutput(`  Endpoint ${check.source} · ${check.instance?.pod ?? check.workload ?? summary.name}: ${terminalStatus(check.status)}${check.reason ? ` · ${check.reason}` : ""}${check.endpoint ? ` · ${check.endpoint.host}:${check.endpoint.port}` : ""}${check.error ? ` · ${[errorKind, check.error.message].filter(Boolean).join(" ")}` : ""}\n`);
     }
     for (const check of summary.dataSources ?? []) writeOutput(`  数据源 ${check.service}/${check.dataSource}: ${check.error ?? check.evidence?.health.summary ?? "未取得证据"}\n`);
+    for (const check of summary.s3 ?? []) printS3Health(check);
     if (summary.casesError) writeOutput(`  Case 检查失败：${summary.casesError}\n`);
     for (const check of summary.cases ?? []) {
       writeOutput(`  Case ${check.consumeExtension}${check.bindingId ? `/${check.bindingId}` : ""}: ${check.status} (${check.stage})\n`);
@@ -92,6 +94,7 @@ export function buildHealthHtml(result: HealthResult): string {
     + (summary.endpoints ?? []).map(check => `<h3>Endpoint ${escapeHtml(check.source)} · ${escapeHtml(probeStatusLabel(check.status))}</h3><pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre>`).join("")
     + (summary.dataSources ?? []).map(check => `<h3>数据源 ${escapeHtml(check.service)}/${escapeHtml(check.dataSource)}</h3>`
       + (check.evidence ? dataSourceHealthHtml(check.evidence) : `<p>探测失败：${escapeHtml(check.error ?? "未取得证据")}</p>`)).join("")
+    + (summary.s3 ?? []).map(s3HealthHtml).join("")
     + (summary.casesError ? `<p>Case 检查失败：${escapeHtml(summary.casesError)}</p>` : "")
     + (summary.cases ? casesHtml(summary.cases) : "")).join("");
   return `<!doctype html><html lang="zh"><meta charset="utf-8"><title>Doctor Health</title>

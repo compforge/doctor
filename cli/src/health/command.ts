@@ -17,6 +17,8 @@ export function registerHealthCommand(program: Command, runtime: CommandRuntime 
     .option("--scope <scopes>", "体检层级：self、deps、biz，逗号组合或 all（默认）")
     .option("--biz-id <id>", "按业务 ID 解析本次适用的下游依赖")
     .addOption(serviceOption("体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service"))
+    .option("--pod <pod>", "单个 S3 配置所属 Service 中读取配置的 Pod 精确名称")
+    .option("--container <name>", "读取 S3 配置的 Container 精确名称")
     .option("--tenant-id <id>", "Case 请求使用的租户")
     .option("--user-id <id>", "Case 请求使用的真实用户；未指定时读取 Plugin 配置或交互选择")
     .option("--profile <name>", "使用指定 profile")
