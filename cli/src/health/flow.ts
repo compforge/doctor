@@ -1,6 +1,7 @@
 import { runSelfChecks } from "./self";
 import { runDependencyChecks } from "./deps";
 import { runBusinessChecks } from "./biz";
+import type { S3HealthCheck } from "./s3/probe";
 import type { CaseCheckResult } from "./biz/run";
 import type { HealthScope } from "./scopes";
 import type { HealthProvider } from "./extensions";
@@ -22,6 +23,7 @@ export interface HealthProviderResult {
   probes?: import("./probe-runner").HealthProbeCheck[];
   cases?: CaseCheckResult[];
   casesError?: string;
+  s3?: S3HealthCheck[];
   dataSources?: HealthDataSourceCheck[];
   endpoints?: import("./deps/endpoints").HealthEndpointCheck[];
 }
@@ -44,6 +46,7 @@ export interface HealthActions {
   cases(provider: HealthProvider, query: HealthQuery, checkpoint: (results: CaseCheckResult[]) => void): Promise<CaseCheckResult[]>;
   probes?(provider: HealthProvider, scope: "self" | "deps"): Promise<import("./probe-runner").HealthProbeCheck[]>;
   dataSources?(provider: HealthProvider): Promise<HealthDataSourceCheck[]>;
+  s3?(provider: HealthProvider, checkpoint: (checks: S3HealthCheck[]) => void): Promise<S3HealthCheck[]>;
   endpoints?(provider: HealthProvider): Promise<import("./deps/endpoints").HealthEndpointCheck[]>;
   show(result: HealthResult): void;
 }
@@ -64,7 +67,7 @@ export async function runHealthSession(
     (!actions.scopes || actions.scopes.includes(scope)) && providers.some(provider =>
       provider.probes?.some(probe => probe.health === scope)
       || (scope === "deps" && (provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined))
-      || (scope === "business" && provider.consumers.length)));
+      || (scope === "business" && (provider.consumers.length || provider.s3Sources?.length))));
   const stop = (remaining: HealthScope[]) => {
     result.notRunScopes = remaining;
     const reason = actions.signal?.aborted ? "执行前已取消" : "未继续执行该层级";
@@ -75,6 +78,13 @@ export async function runHealthSession(
         if (summary.probes?.some(check => check.probe === probe.id && check.scope === probe.health)) continue;
         (summary.probes ??= []).push({ probe: probe.id, scope: probe.health, status: "not-run",
           reason, observations: [], findings: [] });
+      }
+      if (scopes.includes("business") && provider.s3Sources?.length) {
+        for (const source of provider.s3Sources) {
+          if (summary.s3?.some(check => check.service === source.service && check.dataSource === source.dataSource)) continue;
+          (summary.s3 ??= []).push({ ...source, executionLocation: "doctor-host", channel: "direct",
+            startedAt: new Date().toISOString(), status: "not-run", reason, steps: [] });
+        }
       }
       if (scopes.includes("deps") && provider.endpoints?.length && summary.endpoints === undefined) {
         summary.endpoints = provider.endpoints.map(endpoint => ({

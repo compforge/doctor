@@ -1,3 +1,5 @@
+import { s3Failure, type S3Failure } from "../../datasource/s3-failure";
+export { s3Failure, type S3Failure } from "../../datasource/s3-failure";
 import type { S3Client, S3ObjectMetadata } from "@compforge/harness-toolbox/s3";
 import type { S3Request } from "./input";
 
@@ -6,12 +8,6 @@ export interface S3Entry {
   name: string;
   size?: number;
   modified?: Date;
-}
-export interface S3Failure {
-  code: string;
-  httpStatus?: number;
-  requestId?: string;
-  reason: string;
 }
 export interface S3Result {
   entries: S3Entry[];
@@ -22,21 +18,6 @@ export interface S3Result {
   metadata?: S3ObjectMetadata;
   bytes?: Uint8Array;
   failure?: S3Failure;
-}
-
-/** SDK messages can contain signed URLs. Retain protocol fields without echoing the raw message. */
-export function s3Failure(error: unknown): S3Failure {
-  const value = error && typeof error === "object" ? error as {
-    name?: unknown; code?: unknown; $metadata?: { httpStatusCode?: number; requestId?: string };
-  } : {};
-  const identifier = (candidate: unknown) => typeof candidate === "string" && /^[a-zA-Z0-9_.:/+=-]{1,200}$/.test(candidate) ? candidate : undefined;
-  const code = identifier(value.code) ?? identifier(value.name) ?? "S3Error";
-  const httpStatus = value.$metadata?.httpStatusCode;
-  const requestId = identifier(value.$metadata?.requestId);
-  const detail = httpStatus === 403 ? "访问被拒绝，无法判断对象是否存在"
-    : httpStatus === 404 ? "目标未找到；HEAD 响应不足以区分 bucket、对象或版本缺失"
-    : "S3 请求未取得有效结果";
-  return { code, httpStatus, requestId, reason: `${detail}（${code}${httpStatus ? `，HTTP ${httpStatus}` : ""}）` };
 }
 
 type S3Access = Pick<S3Client, "signal" | "listBuckets" | "listObjects" | "headBucket" | "headObject" | "readObject">;

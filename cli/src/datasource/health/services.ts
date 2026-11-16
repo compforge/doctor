@@ -17,3 +17,16 @@ export function serviceHealthDataSources(plugin: PluginDefinition, service: Serv
     seen.add(key); return true;
   });
 }
+
+/** S3 read/write probes use only explicitly owned or depended-on S3 sources. */
+export function serviceHealthS3DataSources(plugin: PluginDefinition, service: ServiceDefinition): ServiceDataSourceReference[] {
+  const seen = new Set<string>();
+  return [...connectionDataSources(service).map(source => ({ service: service.name, dataSource: source.id })),
+    ...(service.dependencies ?? []).map(dependency => ({ service: dependency.service, dataSource: dependency.dataSource }))]
+    .filter(reference => {
+      if (!serviceDataSources(plugin.services, reference.service, "s3").some(source => source.id === reference.dataSource)) return false;
+      const key = `${reference.service}/${reference.dataSource}`;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+}

@@ -1,3 +1,4 @@
+import { checkHealthS3 } from "./s3/runtime";
 import { checkHealthEndpoints } from "./deps/endpoints";
 import { CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
 import { prepareCommandRequirements } from "../command/prepare";
@@ -95,6 +96,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
         : checkDependencyHealthProbes(provider, context, executor, kube.kubernetes, opts.bizId),
       endpoints: provider => checkHealthEndpoints(provider, context, executor, kube.kubernetes),
       dataSources: provider => checkHealthDataSources(provider, sources, healthSession, context.signal),
+      s3: (provider, checkpoint) => checkHealthS3(provider, context, kube, executor, checkpoint),
       cases: (provider, _input, checkpoint) => {
         if (!approve) throw new Error("biz 层级尚未准备 Case 检查");
         const snapshots: CaseCheckResult[] = [];
@@ -127,6 +129,8 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
       : check.status === "partial" ? CommandStatus.Partial
       : CommandStatus.Ok),
     ...(provider.unsupported ? [CommandStatus.Failed] : []),
+    ...(provider.s3 ?? []).map(check => check.status === "passed" ? CommandStatus.Ok
+      : check.status === "cancelled" ? CommandStatus.Cancelled : check.status === "not-run" ? CommandStatus.Partial : CommandStatus.Failed),
     ...(provider.casesError ? [CommandStatus.Failed] : []),
     ...(provider.dataSources ?? []).map(check => check.error || !check.evidence ? CommandStatus.Failed
       : check.evidence.health.status === "unavailable" ? CommandStatus.Failed
@@ -160,11 +164,12 @@ export const healthCommand = defineCommand<HealthInput, HealthResult, HealthPrep
     const scopes = healthScopes(input.scope);
     const providers = available.map(provider => ({ ...provider,
       probes: provider.probes?.filter(probe => scopes.includes(probe.health!)),
+      s3Sources: scopes.includes("business") ? provider.s3Sources : [],
       consumers: scopes.includes("business") ? provider.consumers : [],
       endpointProbes: scopes.includes("deps") ? provider.endpointProbes : [],
       endpoints: scopes.includes("deps") ? provider.endpoints : undefined,
       dataSources: scopes.includes("deps") ? provider.dataSources : [],
-    })).map(provider => ({ ...provider, unsupported: provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined
+    })).map(provider => ({ ...provider, unsupported: provider.s3Sources?.length || provider.probes?.length || provider.consumers.length || provider.dataSources?.length || provider.endpointProbes?.length || provider.endpoints !== undefined
       ? undefined : `${provider.name}: 未声明 ${input.scope ?? "all"} 层级的体检能力` }));
     if (providers.every(provider => provider.unsupported)) throw new Error(providers.map(provider => provider.unsupported).join("；"));
     await context.ensureEnvironment({ kubernetes: true });

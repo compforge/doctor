@@ -71,7 +71,7 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ## 探测接入与下游关系
 
 `--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
-`self` 检查服务自身健康，`deps` 检查数据源和下游依赖，`biz` 执行业务 Case。
+`self` 检查服务自身健康，`deps` 检查数据源和下游依赖，`biz` 执行功能检查（Case 与 S3 读写）。
 未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
@@ -224,6 +224,37 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 检查包括集群状态、节点剩余空间、实时 low/high/flood-stage 水位、主副分片和索引写入限制。
 越过 low 水位就给出预警；读取水位失败时注明默认值与较低置信度。报告中标明本次探测时间，
 当前容量证据仅描述本次探测时的状态。采集完整性与健康 Finding 分别报告。
+
+### S3 读写检查
+
+声明 S3 DataSource 的 Service 在 `biz` 层执行 S3 读写检查，例如：
+
+```bash
+doctor health -s files --scope biz
+```
+
+检查复用 Service 的实际 endpoint、region、bucket、prefix、凭据和寻址方式，从 Doctor host
+直接调用 S3；不经过业务资源登记、AS 文件代理或消费方 Pod，也不自动使用端口转发。
+在配置的 prefix 下为本次检查生成唯一的 `doctor-health/<uuid>/hello.txt`，内容精确为
+`hello world`（11 bytes，无换行）。确认写操作后依次 PUT、GET 并校验字节、DELETE。
+不要求 ListBuckets/ListObjects 权限，不读取或覆盖客户已有对象。
+
+S3 下载使用有效期 60 秒的 GET 预签名 URL，固定为本次上传返回的版本。Doctor Host 通过共享 HTTP client
+发送不带 Authorization header 的 GET，要求 HTTP 200 且内容精确等于 `hello world`；响应有 16 KiB 上限，
+不跟随重定向。报告区分上传、预签名、下载校验与清理四个步骤；签名 URL、凭据和签名计算材料不进入日志或归档。
+
+每一步保留耗时、错误码、HTTP 状态、RequestId/HostId 及本次对象 key；PUT 保存 ETag/versionId，
+GET 保存允许的响应头和最多 4 KiB 的脱敏正文，HTML 可展开查看。报告同时记录配置的 region、寻址方式
+与实际预签名下载的 origin；不会存储 URL query。网络类错误后复用 Toolbox `probeConnectivity`
+在 Host 补充 DNS/TCP/TLS 证据（5 秒预算），不覆盖 S3 原始失败；工具缺失单独标为 unavailable。
+配置自定义 CA 时补充探测仅检查 DNS/TCP，避免系统 CA 与实际请求不同导致误判。
+启用版本控制时使用 PUT 返回的 versionId 下载和清理，避免只增加 delete marker。
+下载失败或命令取消后仍以独立的 10 秒期限清理已确认上传的对象；清理失败明确保留待清理对象。
+上传失败且未取得成功响应时不假定写入未发生，报告保留 key 供核对可能残留。
+请求并发为 1，连接/请求各限时 10 秒；不自动重试写操作。
+
+交互时在创建测试对象前确认，非交互使用 `-y/--yes` 预先批准；拒绝或未执行不能算检查通过。
+检查只证明 Doctor host 对本次 S3 对象的读写结果，不代表 sandbox 消费链路通过。
 
 ### 对外 Endpoint 依赖
 

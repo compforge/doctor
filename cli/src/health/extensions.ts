@@ -1,6 +1,6 @@
 import { ENDPOINT_PROBE_KIND, requireEndpointProbeExtension, type EndpointProbeExtension } from "@compforge/doctor-plugin";
 import { WORKLOAD_PROBE_KIND, requireWorkloadProbeExtension, type WorkloadProbeExtension, HEALTH_CASE_BINDINGS_KIND, requireHealthCaseBindingsExtension, type HealthCaseBindingsExtension, type PluginDefinition, type ServiceDefinition } from "@compforge/doctor-plugin";
-import { serviceHealthDataSources } from "../datasource/health/services";
+import { serviceHealthDataSources, serviceHealthS3DataSources } from "../datasource/health/services";
 import type { ServiceDataSourceReference } from "../collect/shared/service-dependency";
 import { createDoctorExtensionRegistry } from "../plugin/extension-registry";
 import { overviewScopes } from "../overview/extensions";
@@ -13,6 +13,7 @@ export interface HealthProvider {
   consumers: readonly HealthCaseBindingsExtension[];
   probes?: readonly WorkloadProbeExtension[];
   dataSources?: readonly ServiceDataSourceReference[];
+  s3Sources?: readonly ServiceDataSourceReference[];
   endpoints?: ServiceDefinition["endpoints"];
   endpointProbes?: readonly EndpointProbeExtension[];
 }
@@ -32,6 +33,7 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       return requireHealthCaseBindingsExtension(entry.extension);
     }) : [];
     const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service) : [];
+    const s3Sources = scope.service ? serviceHealthS3DataSources(plugin, scope.service) : [];
     const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))
       .map(extension => requireWorkloadProbeExtension(extension)).filter(probe => probe.health) : [];
     const endpoints = scope.service?.endpoints;
@@ -39,12 +41,12 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       if (entry.service !== scope.service) throw new Error(`${scope.namespace}: endpoint.probe must belong to the selected Service`);
       return requireEndpointProbeExtension(entry.extension);
     });
-    if (!consumers.length && !dataSources.length && !probes.length && !endpointProbes.length && endpoints === undefined) {
+    if (!s3Sources.length && !consumers.length && !dataSources.length && !probes.length && !endpointProbes.length && endpoints === undefined) {
       if (serviceNames) throw new Error(`${scope.namespace}: 未声明 health.case.bindings Extension，也没有可探测的数据源、标注 health: self/deps 的 workload.probe、endpoints 声明或 endpoint.probe Extension`);
       return [];
     }
     return [{ namespace: scope.namespace, name: scope.name, service: scope.service!,
-      consumers, probes, dataSources, endpoints, endpointProbes }];
+      consumers, probes, dataSources, s3Sources, endpoints, endpointProbes }];
   });
   if (!providers.length) throw new Error("当前 Plugin 没有支持 health 的 Service");
   return providers;
