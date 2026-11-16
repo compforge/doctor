@@ -1,3 +1,4 @@
+import { Operation } from "@compforge/harness-common";
 import { bindService } from "@compforge/doctor-plugin";
 import { readBundleExecutions } from "./bundle-fixture";
 import { commandOutcome } from "../src/command";
@@ -169,7 +170,7 @@ test("Service Case runner maps one Probe into one shared Outcome", async () => {
     metrics: { first_token_ms: 6500 },
     meta: { trace_id: "trace-1", case_input: { query: "hello" } },
   });
-  expect(judge?.(outcome)).toEqual({ ok: true, error_kind: undefined });
+  expect(judge?.(outcome)).toEqual({ code: "success" });
   expect(lifecycle).toEqual(["setup", "deactivate", "cleanup"]);
 });
 
@@ -265,12 +266,13 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
     },
   }));
   const run: Run = {
-    schema: 6,
+    schema: 12,
     run_id: "run",
     experiment: "perf",
     created_at: "",
     service: "chat",
-    passed: true,
+    status: "completed",
+    environment: "test",
     artifacts: [],
     executions: [{
       id: "closed/5c",
@@ -284,7 +286,7 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
       finished_at: "",
       windows: [],
       stop: { reason: "deadline", inflight_at_stop: 0, interrupted: 0, force_cancelled: false },
-      slo: [],
+      phases: [],
       registry: {},
       probe_errors: {},
       phase_errors: [],
@@ -293,7 +295,7 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
         dispatched_at: item.t, finished_at: item.t + item.outcome.duration_ms / 1000,
         state: "finished" as const, operation_run_id: String(index), facets: {},
       })),
-      operation_runs: outcomes.map((item, index) => ({ id: String(index), service, operation: { name: "chat" }, outcome: item.outcome })),
+      operation_runs: outcomes.map((item, index) => ({ id: String(index), service, operation: new Operation({ name: "chat", serviceName: service.name }), outcome: item.outcome })),
       evaluations: {},
     }],
   };
@@ -301,7 +303,7 @@ test("representative evidence selects slow correlation IDs and deduplicates", ()
   expect(selectPerfSamples(run, 2, ["trace_id", "message_id"]).map((item) => item.correlationId))
     .toEqual(["message-1", "trace-2"]);
   run.executions[0]!.requests[1]!.state = "interrupted";
-  run.executions[0]!.evaluations["0"] = { ok: false, error_kind: "sse-terminal" };
+  run.executions[0]!.evaluations["0"] = { code: "sse-terminal" };
   const samples = selectPerfSamples(run, 10, ["trace_id", "message_id"]);
   expect(samples.map(item => item.correlationId)).toEqual(["trace-2", "trace-0"]);
   expect(samples[1]!.errorKind).toBe("sse-terminal");
@@ -331,6 +333,7 @@ test("perf report renders Facet values in their declared order", () => {
     mean_ms: 10,
     error_rate: 0,
     error_breakdown: {},
+    completed_by_code: { success: 1 }, throughput_by_code: { success: 1 }, unjudged: 0, interrupted: 0, n_judged: 1, unjudged_rps: 0, n_pending: 0,
     n_dropped: 0,
     arrived: 1, dispatched: 1, completed: 1, succeeded: 1, n_interrupted: 0,
     arrival_rps: 1, dispatch_rps: 1, success_rps: 1, inflight_peak: 1, inflight_end: 0,
@@ -338,12 +341,13 @@ test("perf report renders Facet values in their declared order", () => {
     metrics: {},
   };
   const run: Run = {
-    schema: 6,
+    schema: 12,
     run_id: "run",
     experiment: "perf",
     created_at: "",
     service: "chat",
-    passed: true,
+    status: "completed",
+    environment: "test",
     artifacts: [],
     executions: [{
       id: "closed/5c",
@@ -358,7 +362,8 @@ test("perf report renders Facet values in their declared order", () => {
       windows: [{
         id: "measurement",
         name: "measurement",
-        kind: "measurement",
+        kind: "phase",
+        phase: "hold",
         start_s: 0,
         end_s: 1,
         complete: true,
@@ -370,7 +375,7 @@ test("perf report renders Facet values in their declared order", () => {
         probe_metrics: {},
       }],
       stop: { reason: "deadline", inflight_at_stop: 0, interrupted: 0, force_cancelled: false },
-      slo: [],
+      phases: [],
       registry: {},
       probe_errors: {},
       phase_errors: [],
@@ -399,7 +404,7 @@ test("perf report renders Facet values in their declared order", () => {
   }
 });
 
-/** @case id=perf_cancel_evidence,desc=`Host cancels a running Case`,expect=`Request and cleanup see the reason; schema 6 preserves interrupted facts without judging them` */
+/** @case id=perf_cancel_evidence,desc=`Host cancels a running Case`,expect=`Request and cleanup see the reason; schema 12 preserves interrupted facts without judging them` */
 test("Perf adapter cancels active Case requests and round-trips interrupted evidence", async () => {
   const controller = new AbortController();
   const reason = new Error("doctor perf interrupted");
@@ -420,7 +425,7 @@ test("Perf adapter cancels active Case requests and round-trips interrupted evid
   expect(requestReason).toBe(reason);
   expect(cleanupReason).toBe(reason);
   expect(judged).toBe(0);
-  expect(run.passed).toBe(false);
+  expect(run.status).toBe("stopped");
   expect(run.executions[0]!.stop).toMatchObject({ reason: "aborted", interrupted: 1 });
   const directory = mkdtempSync(join(tmpdir(), "doctor-perf-cancel-"));
   try {
@@ -436,15 +441,30 @@ test("Perf adapter cancels active Case requests and round-trips interrupted evid
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("Perf maps concurrency levels into explicit schema 6 ramp and hold stages", () => {
+test("Perf maps concurrency levels into explicit schema 12 warmup and hold stages", () => {
   const [load] = perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "2", hold: "3", gracefulStop: "4" }));
   expect(load).toMatchObject({
     request_rate: Infinity, max_inflight: 1, cooldown_timeout_s: 4,
     stages: [
-      { kind: "ramp", duration_s: 2, request_rate: Infinity, max_inflight: 5 },
+      { kind: "warmup", duration_s: 2, request_rate: Infinity, max_inflight: 5 },
       { kind: "hold", duration_s: 3, request_rate: Infinity, max_inflight: 5 },
     ],
   });
   expect(perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "0" }))[0]!.max_inflight).toBe(5);
   expect(() => perfLoadPlans(resolvePerfConfig({ ramp: "0", hold: "0" }))).toThrow("不能同时为 0");
+});
+
+/** @case id=perf_judge_code,desc=`Plugin failure classification`,expect=`Failures never become Harness success; exception details stay in Outcome` */
+test("Perf adapter preserves failure codes and reserves success for successful verdicts", async () => {
+  for (const [errorKind, expected] of [["sse-terminal", "sse-terminal"], ["success", "failure"], ["  ", "failure"]]) {
+    const { runner, judge } = perfAdapterFromCaseFactory("chat", async () => ({
+      run: async () => ({ status: 500, durationMs: 1 }),
+      classify: () => ({ ok: false, errorKind }),
+    }));
+    const context: ArmContext = { service, arm: { id: "test", resources: {}, load: { request_rate: 1, max_inflight: 1, hold_s: 1 } }, run_id: "test", signal: new AbortController().signal };
+    await runner.setup?.(context);
+    expect(judge!({ status: 500, duration_ms: 1 })).toEqual({ code: expected! });
+    expect(judge!({ status: null, duration_ms: 1, meta: { exc: "success" } })).toEqual({ code: "exception" });
+    await runner.cleanup?.(context);
+  }
 });

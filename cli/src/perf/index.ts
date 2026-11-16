@@ -78,7 +78,7 @@ function toObservation(outcome: Outcome): ServiceCaseObservation {
 
 /**
  * @spec The Harness owns runner resources from setup through cleanup, including cancelled setup.
- * @why Raw protocol observations survive independently of the request verdict in schema 6.
+ * @why Raw protocol observations survive independently of the request verdict in schema 12.
  */
 export function perfAdapterFromCaseFactory(
   name: string, create: () => Promise<ServiceCaseRunner>,
@@ -114,9 +114,11 @@ export function perfAdapterFromCaseFactory(
       },
     },
     judge: outcome => {
-      if (outcome.meta?.exc) return { ok: false, error_kind: String(outcome.meta.exc) };
+      if (outcome.meta?.exc) return { code: "exception" };
       const verdict = runner!.classify(toObservation(outcome));
-      return { ok: verdict.ok, error_kind: verdict.errorKind };
+      if (verdict.ok) return { code: "success" };
+      const code = verdict.errorKind?.trim();
+      return { code: code && code !== "success" ? code : "failure" };
     },
   };
 }
@@ -172,8 +174,8 @@ export function selectPerfSamples(run: Run, limit: number, correlationKeys: read
     const completed = new Set(execution.requests.filter(item => item.state === "finished").map(item => item.operation_run_id));
     const outcomes: PerfRequest[] = execution.operation_runs.filter(item => completed.has(item.id)).map(item => ({
       outcome: item.outcome,
-      ok: execution.evaluations[item.id]?.ok,
-      errorKind: execution.evaluations[item.id]?.error_kind,
+      ok: execution.evaluations[item.id] ? execution.evaluations[item.id]!.code === "success" : undefined,
+      errorKind: execution.evaluations[item.id]?.code === "success" ? undefined : execution.evaluations[item.id]?.code,
     }));
     const slowest = [...outcomes].filter(
       (item) => correlation(item.outcome, correlationKeys),
@@ -511,7 +513,7 @@ async function executePerf(
     samples,
     caseFacets: caseSet.facets,
   };
-  const statuses = [run.passed ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
+  const statuses = [run.status === "completed" ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
     [sample.trace.status, ...(sample.log ? [sample.log.status] : [])]
   ))];
   return { status: commandContext.signal.aborted ? CommandStatus.Cancelled : aggregateCommandStatus(statuses), output: result, artifacts: commandContext.artifacts.list() };

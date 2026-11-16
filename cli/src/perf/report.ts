@@ -49,7 +49,7 @@ function orderedFacetValues(result: PerfResult, facet: string, values: string[])
 export function writePerfReport(result: PerfResult): string {
   const evidenceStatus = perfEvidenceStatus(result);
   const armRows = result.run.executions.map((armRun) => {
-    const stats = armRun.windows.find((window) => window.id === "measurement")?.request;
+    const stats = armRun.windows.find((window) => window.kind === "phase" && window.phase === "hold")?.request;
     const firstToken = stats?.metrics.first_token_ms;
     return `<tr><td>${escapeHtml(armRun.id)}</td><td>${escapeHtml(Math.max(armRun.arm.load.max_inflight, ...(armRun.arm.load.stages ?? []).map(stage => stage.max_inflight)))}</td>`
       + `<td>${escapeHtml(stats?.n ?? 0)}</td><td>${escapeHtml(stats?.throughput_rps.toFixed(2) ?? "0")}</td>`
@@ -60,7 +60,7 @@ export function writePerfReport(result: PerfResult): string {
       + `<td>${escapeHtml(armRun.stop.reason)}</td></tr>`;
   }).join("\n");
   const caseRows = result.run.executions.flatMap((armRun) => {
-    const window = armRun.windows.find((candidate) => candidate.id === "measurement");
+    const window = armRun.windows.find((candidate) => candidate.kind === "phase" && candidate.phase === "hold");
     return Object.entries(window?.by_case ?? {}).map(([caseId, stats]) => {
       const firstToken = stats.metrics.first_token_ms;
       return `<tr><td>${escapeHtml(armRun.id)}</td><td>${escapeHtml(caseId)}</td>`
@@ -72,7 +72,7 @@ export function writePerfReport(result: PerfResult): string {
     });
   }).join("\n") || "<tr><td colspan=\"8\">没有带 Case ID 的请求结果</td></tr>";
   const facetRows = result.run.executions.flatMap((armRun) => {
-    const window = armRun.windows.find((candidate) => candidate.id === "measurement");
+    const window = armRun.windows.find((candidate) => candidate.kind === "phase" && candidate.phase === "hold");
     return Object.entries(window?.by_facet ?? {}).sort(([left], [right]) => left.localeCompare(right))
       .flatMap(([facet, values]) => orderedFacetValues(result, facet, Object.keys(values)).map((value) => {
         const stats = values[value]!;
@@ -93,7 +93,7 @@ export function writePerfReport(result: PerfResult): string {
     : `Metric 采集未完成（${result.metric.status}）`;
   const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>doctor perf</title>
 <style>body{font:14px system-ui;margin:32px;color:#17202a}table{border-collapse:collapse;width:100%;margin:16px 0 28px}th,td{border:1px solid #d9e0e6;padding:8px;text-align:left}th{background:#f4f7f9}code{font-size:12px}a{color:#075dcc}</style></head><body>
-<h1>doctor perf</h1><p>run <code>${escapeHtml(result.run.run_id)}</code> · service ${escapeHtml(result.run.service)} · ${result.run.passed ? "completed" : "incomplete"} · observability evidence ${evidenceStatus}</p>
+<h1>doctor perf</h1><p>run <code>${escapeHtml(result.run.run_id)}</code> · service ${escapeHtml(result.run.service)} · ${escapeHtml(result.run.status)} · observability evidence ${evidenceStatus}</p>
 <p>${metric}</p>
 <h2>负载结果</h2><table><thead><tr><th>ArmRun</th><th>并发</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th><th>停止原因</th></tr></thead><tbody>${armRows}</tbody></table>
 <h2>按 Case</h2><table><thead><tr><th>ArmRun</th><th>Case</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${caseRows}</tbody></table>

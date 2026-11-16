@@ -54,21 +54,23 @@ Trace/Log 的部分采集失败不会抹掉负载与 Metric 事实；综合报�
 命令结果保留 Metric 和各代表请求的 Trace/Log 状态，部分证据失败时为 partial，用户取消时为 cancelled。
 Metric 窗口正常封口只停止该采集窗口，不取消整轮 Perf；根取消信号则同时停止负载和正在执行的采集。
 
-## Harness 0.1 接入
+## Harness 0.8 接入
 
 旧版 `--max-requests` 已移除；使用并发、ramp/hold 时长及错误率熔断控制负载。请求总数不设上限，
 实际调用量取决于响应速度，执行确认会明确展示这一点。旧 CLI 参数或嵌入调用的 maxRequests 会报错，不静默忽略。
 
 Doctor 使用 Runner 记录单次请求的 Outcome，独立 Judge 调用 Plugin 的协议分类；原始错误信息保留在
-Outcome.meta，判定写入 evaluations。schema 6 的 Run.executions 保存 ArmRun，每笔请求通过
+Outcome.meta，判定写入 evaluations。schema 12 的 Run.executions 保存 ArmRun，每笔请求通过
 operation_run_id 关联 OperationRun。代表请求仅从已完成请求中选取，错误类型读取独立判定；被取消的
 在途请求保留为 interrupted，不参加判定和延迟分布。
 
 每档使用 request_rate=Infinity 的饱和加压，由 max_inflight 控制并发；显式 Stage 从 1 并发 ramp 到目标，
-再 hold。measurement 只统计 hold 发出的请求，ramp 与 cooldown 分别保留，避免混入稳定负载指标。
+再 hold。报告读取 phase=hold 窗口；请求耗时按 dispatch 归窗，吞吐按窗口内完成事件计数。warmup 与 cooldown 分别保留，避免混入稳定负载指标。
 
 Ctrl+C 由 Doctor 宿主转换为共享 AbortSignal，同时通知 Harness、请求资源上下文和 Metric 窗口。
 Harness 立即停止新请求、取消在途请求并等待它们退出，再执行 cleanup；取消时跳过常规 cooldown 等待。
 Plugin runner 必须响应 signal。正常结束仍使用 --graceful-stop 限制在途请求的收尾等待。
 取消、Metric 收尾、资源清理、报告生成和 Bundle 保存会向 stderr 显示进度，不受日志级别过滤。
 已取消的运行保留已采集证据并以 130 退出，不继续采集新的代表请求。
+
+Run.status 表示执行完成度（completed / stopped / error）；请求判定使用 code，success 表示成功，其余非空 code 表示失败。Plugin 的 ok/errorKind 由 Core adapter 转换，原始 Outcome 保留用于复查。
