@@ -1,29 +1,28 @@
 import { defineCommandDecision, type CommandContext } from "../../command";
 import type { ApprovalDecision, ApprovalGate } from "../../command/approval";
 import { caseError } from "../../case/http-check";
-import type { PreparedCaseCheck } from "./prepare";
 import type { CaseCheckActions } from "./run";
 
 const healthApproval = defineCommandDecision<ApprovalDecision>("health.case-approval");
 
-/** @spec Approve the prepared Health scope once per CommandContext, including refusal, across Cases and consumer replicas. */
+/** @spec Approval covers one Case at one consumer instance, never unrelated Cases or Services. */
 export function createHealthCaseApproval(context: CommandContext, namespace: string,
-  prepared: readonly PreparedCaseCheck[], gate: ApprovalGate): CaseCheckActions["approve"] {
-  const checks = prepared.flatMap(check => check.execution ? [check.execution] : []);
-  const scope = [context.profile.name, namespace, ...checks.map(check => JSON.stringify([
-    check.consumer.name, check.binding, check.query,
-  ])).sort()];
-  const consumers = [...new Set(checks.map(check => `${check.consumer.name}/${check.binding.workload}`))];
-  return (target, item) => context.decide(healthApproval, scope, () => gate({
-    id: "health-case", risk: "disrupt",
-    title: "执行本轮 Health 的非只读 Case 检查",
-    target: `${namespace}: ${consumers.join(", ")}`,
-    impact: [
-      ...checks.map(check => `${check.consumer.name}/${check.binding.workload} → ${check.binding.producer.service}/${check.binding.producer.source}`),
-      `首个消费方实例：${target.namespace}/${target.pod}/${target.container ?? ""}`,
-      `首个请求：${item.case.input.method} ${caseError(item.targets[0]!.url)}`,
-      "确认覆盖上述消费关系的全部非只读 Case；可能创建会话、产生模型费用或触发所选服务的业务动作。",
-      "每个绑定最多检查 10 个 Running 实例，每个实例最多 10 个 Case；单个 Case 每实例执行一次，无自动重试。",
-    ],
-  }));
+  gate: ApprovalGate): CaseCheckActions["approve"] {
+  return (target, item, check) => {
+    const scope = [context.profile.name, namespace, JSON.stringify([
+      check?.consumer, check?.consumeExtension, check?.bindingId,
+      target.pod, target.uid, target.container, item.case, item.subject, item.targets,
+    ])];
+    const readOnly = ["GET", "HEAD"].includes(item.case.input.method);
+    return context.decide(healthApproval, scope, () => gate({
+      id: "health-case", risk: readOnly ? "observe" : "disrupt",
+      title: `业务检查：${item.case.id}${item.subject ? ` · ${item.subject.label ?? item.subject.id}` : ""}`,
+      target: `${check?.consumer ?? target.workload} / ${target.namespace}/${target.pod}/${target.container ?? ""}`,
+      impact: [
+        ...item.targets.map(endpoint => `${item.case.input.method} ${caseError(endpoint.url)}`),
+        readOnly ? "从上述实例读取并验证响应。" : "执行该项请求，可能创建会话、产生模型费用或触发业务动作。",
+        "本次确认仅覆盖当前 Case 在上述实例的请求，不批准其他检查。",
+      ],
+    }));
+  };
 }

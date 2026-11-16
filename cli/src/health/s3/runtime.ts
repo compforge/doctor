@@ -1,3 +1,4 @@
+import type { HealthInteraction } from "../interaction";
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { S3Client } from "@compforge/harness-toolbox/s3";
 import { DirectTransport, Transport } from "@compforge/harness-toolbox/transport";
@@ -28,7 +29,7 @@ export function validateHealthS3SourceSelection(providers: readonly HealthProvid
     return source?.kind === "s3" && !source.source ? [plugin.services.find(reference.service)!.name] : [];
   })));
   if (owners.size !== 1) throw new CommandInputError(
-    "health --pod/--container 仅适用于一个从 Workload 读取 S3 配置的 Service；请用 --service 和 --scope biz 限定检查范围",
+    "health --pod/--container 仅适用于一个从 Workload 读取 S3 配置的 Service；请用 --service 和 --scope deps 限定检查范围",
   );
 }
 
@@ -40,11 +41,12 @@ export class S3HealthSession {
   private readonly checks = new Map<string, Promise<S3HealthCheck>>();
 
   constructor(private readonly command: CommandContext, private readonly collect: KubernetesCommandConfig,
-    private readonly executor: Executor, private readonly selection: S3HealthSourceSelection & { interactive?: boolean } = {}) {}
+    private readonly executor: Executor, private readonly selection: S3HealthSourceSelection & { interactive?: boolean; interaction?: HealthInteraction } = {}) {}
 
   async check(provider: HealthProvider, checkpoint: (checks: S3HealthCheck[]) => void): Promise<S3HealthCheck[]> {
     const results: S3HealthCheck[] = [];
     for (const reference of provider.s3Sources ?? []) {
+      if (this.selection.interaction?.stopped || this.command.signal.aborted) break;
       const service = this.command.plugin.services.find(reference.service)?.name ?? reference.service;
       const dataSource = reference.dataSource;
       if (results.some(check => check.service === service && check.dataSource === dataSource)) continue;
@@ -70,7 +72,7 @@ export class S3HealthSession {
 
 async function checkS3Source(result: S3HealthCheck, command: CommandContext,
   collect: KubernetesCommandConfig, executor: Executor, checkpoint: () => void,
-  selection: S3HealthSourceSelection & { interactive?: boolean }): Promise<S3HealthCheck> {
+  selection: S3HealthSourceSelection & { interactive?: boolean; interaction?: HealthInteraction }): Promise<S3HealthCheck> {
   let client: S3Client | undefined;
   let http: HttpClient | undefined;
   try {
@@ -103,7 +105,10 @@ async function checkS3Source(result: S3HealthCheck, command: CommandContext,
           concurrency: 1, connectTimeoutMs: 10_000, requestTimeoutMs: 10_000, maxResponseBytes: 16_384,
         });
         return http.request(url, { signal });
-      }, approve: resolveApprovalGate({ yes: command.options.yes }), checkpoint });
+      }, approve: selection.interaction?.approve ?? resolveApprovalGate({ yes: command.options.yes }), checkpoint });
+    if (selection.interaction?.stopped && result.status === "skipped") {
+      result.status = "not-run"; result.reason = "用户结束巡检，未执行 S3 读写检查";
+    }
     await supplementS3Connectivity(result, resolved.target, command.signal);
   } catch (error) {
     result.status = command.signal.aborted ? "cancelled" : "unavailable";

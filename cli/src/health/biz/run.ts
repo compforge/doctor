@@ -17,7 +17,7 @@ export interface CaseCheckResult {
   startedAt: string;
   finishedAt?: string;
   stage: "consume" | "binding" | "identity" | "execution" | "provider" | "approval" | "request";
-  status: "passed" | "failed" | "unavailable" | "empty" | "cancelled";
+  status: "passed" | "failed" | "unavailable" | "empty" | "cancelled" | "skipped" | "not-run";
   error?: string;
   truncated?: string;
   targets: WorkloadInstance[];
@@ -26,11 +26,12 @@ export interface CaseCheckResult {
 
 export interface CaseCheckActions {
   signal: AbortSignal;
+  stopped?(): boolean;
   directory: string;
   /** Core prepares each target independently; one missing curl cannot hide another replica's result. */
   targets(service: ServiceDefinition, binding: HealthCaseBinding): Promise<{ targets: WorkloadInstance[]; truncated?: string }>;
   sender(target: WorkloadInstance): Promise<SendHttp>;
-  approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number]): Promise<ApprovalDecision>;
+  approve(target: WorkloadInstance, item: CaseProduceResult["cases"][number], check?: CaseCheckResult): Promise<ApprovalDecision>;
   produce(service: ServiceDefinition, source: ServiceCaseSource, query: CaseProduceQuery): Promise<CaseProduceResult>;
   checkpoint(result: CaseCheckResult): void;
 }
@@ -42,6 +43,10 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
     const { result, execution } = check;
     results.push(result);
     if (!execution) { actions.checkpoint(result); continue; }
+    if (actions.stopped?.()) {
+      result.status = "not-run"; result.error = "用户结束巡检，未执行该检查";
+      actions.checkpoint(result); continue;
+    }
     const { consumer, binding, consumeIndex, bindingIndex, service, source, query } = execution;
     try {
       actions.signal.throwIfAborted();
@@ -52,6 +57,7 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
       if (!result.targets.length) throw new Error("No runnable consumer Pod/Container");
       for (const [targetIndex, target] of result.targets.entries()) {
         actions.signal.throwIfAborted();
+        if (actions.stopped?.()) break;
         result.stage = "execution";
         let send: SendHttp;
         try { send = await actions.sender(target); }
@@ -82,15 +88,14 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
         result.stage = "request";
         for (const [caseIndex, item] of provided.cases.entries()) {
           actions.signal.throwIfAborted();
-          if (!["GET", "HEAD"].includes(item.case.input.method)) {
-            result.stage = "approval";
-            const decision = await actions.approve(target, item);
-            if (!decision.approved) {
-              result.status = "cancelled";
-              result.error = [result.error, `${target.pod}/${target.container} ${item.case.id}: ${approvalDeniedReason(decision.source)}`].filter(Boolean).join("\n");
-              actions.checkpoint(result);
-              continue;
-            }
+          if (actions.stopped?.()) break;
+          result.stage = "approval";
+          const decision = await actions.approve(target, item, result);
+          if (!decision.approved) {
+            result.status = actions.signal.aborted ? "cancelled" : actions.stopped?.() || decision.source !== "prompt" ? "not-run" : "skipped";
+            result.error = [result.error, `${target.pod}/${target.container} ${item.case.id}: ${actions.stopped?.() ? "用户结束巡检" : decision.source === "prompt" ? "用户跳过该检查" : approvalDeniedReason(decision.source)}`].filter(Boolean).join("\n");
+            actions.checkpoint(result);
+            continue;
           }
           result.stage = "request";
           result.attempts.push(...await checkHttpCase({ item, target, send, signal: actions.signal,
@@ -98,7 +103,8 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
           actions.checkpoint(result);
         }
       }
-      if (result.attempts.length && result.status !== "cancelled") result.status = result.error || result.truncated || result.attempts.some(attempt => attempt.status === "failed") ? "failed" : "passed";
+      if (result.attempts.some(attempt => attempt.status === "failed")) result.status = "failed";
+      else if (result.attempts.length && !["cancelled", "skipped", "not-run"].includes(result.status)) result.status = result.error || result.truncated ? "failed" : "passed";
     } catch (error) {
       result.error = [result.error, caseError(error)].filter(Boolean).join("\n");
       result.status = actions.signal.aborted ? "cancelled" : result.stage === "request" || result.stage === "provider" ? "failed" : "unavailable";

@@ -1,32 +1,49 @@
+import type { HealthInteraction } from "../interaction";
 import type { ServiceDependencyRuntime } from "../../collect/shared/service-dependency";
 import type { DataSourceHealthSession } from "../../datasource/health/session";
 import type { HealthProvider } from "../extensions";
 import type { HealthActions, HealthDataSourceCheck, HealthProviderResult } from "../flow";
 
 export async function runDependencyChecks(provider: HealthProvider, result: HealthProviderResult,
-  actions: Pick<HealthActions, "probes" | "dataSources" | "endpoints" | "signal">, checkpoint: () => void): Promise<void> {
+  actions: Pick<HealthActions, "probes" | "dataSources" | "endpoints" | "s3" | "signal" | "stopped">, checkpoint: () => void): Promise<void> {
   const probes = provider.probes?.filter(probe => probe.health === "deps");
   if ((probes?.length || provider.endpointProbes?.length) && actions.probes) {
     result.probes = [...(result.probes ?? []), ...await actions.probes({ ...provider, probes }, "deps")];
     checkpoint();
   }
-  if (!actions.signal?.aborted && provider.endpoints !== undefined && actions.endpoints) {
+  if (!actions.signal?.aborted && !actions.stopped?.() && provider.endpoints !== undefined && actions.endpoints) {
     result.endpoints = await actions.endpoints(provider);
     checkpoint();
   }
-  if (!actions.signal?.aborted && provider.dataSources?.length && actions.dataSources) {
+  if (!actions.signal?.aborted && !actions.stopped?.() && provider.dataSources?.length && actions.dataSources) {
     result.dataSources = await actions.dataSources(provider);
+    checkpoint();
+  }
+  if (!actions.signal?.aborted && !actions.stopped?.() && provider.s3Sources?.length && actions.s3) {
+    result.s3 = await actions.s3(provider, checks => { result.s3 = checks; checkpoint(); });
     checkpoint();
   }
 }
 
 export async function checkHealthDataSources(provider: HealthProvider, sources: ServiceDependencyRuntime,
-  session: DataSourceHealthSession, signal: AbortSignal): Promise<HealthDataSourceCheck[]> {
+  session: DataSourceHealthSession, signal: AbortSignal, interaction?: HealthInteraction): Promise<HealthDataSourceCheck[]> {
   const results: HealthDataSourceCheck[] = [];
   for (const reference of provider.dataSources ?? []) {
-    if (signal.aborted) break;
+    if (signal.aborted || interaction?.stopped) break;
     try {
       const prepared = await sources.prepareDataSource(reference.service, reference.dataSource);
+      if (interaction) {
+        const decision = await interaction.approveOnce(JSON.stringify(["datasource", reference.service, reference.dataSource]), {
+          id: "health-datasource", risk: "observe", title: "OpenSearch 数据源健康检查",
+          target: `${reference.service}/${reference.dataSource} · ${String(prepared.evidenceTarget.endpoint ?? "Plugin 提供的连接")}`,
+          impact: ["从 Doctor Host 经已配置的访问通道读取集群、节点、磁盘水位和索引状态。"],
+        });
+        if (!decision.approved) {
+          results.push({ ...reference, status: interaction.stopped ? "not-run" : "skipped",
+            reason: interaction.stopped ? "用户结束巡检" : "用户跳过数据源检查" });
+          continue;
+        }
+      }
       const health = await session.probe(prepared.search, signal);
       results.push({ ...reference, evidence: { target: { ...prepared.evidenceTarget, ...reference }, health } });
     } catch (error) {

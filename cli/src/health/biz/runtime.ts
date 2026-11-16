@@ -1,3 +1,4 @@
+import type { HealthInteraction } from "../interaction";
 import type { KubectlOptions, Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { caseProducer, type WorkloadInstance } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
@@ -28,11 +29,11 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
 
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"],
-  approve: CaseCheckActions["approve"]): CaseCheckActions {
+  approve: CaseCheckActions["approve"], interaction?: HealthInteraction): CaseCheckActions {
   const invoke = caseOperationInvoker(context, executor, kubernetes);
   return {
     directory, checkpoint, signal: context.signal,
-    approve,
+    approve, stopped: () => interaction?.stopped ?? false,
     targets: async (service, binding) => {
       const definition = service.workloads.find(workload => workload.name === binding.workload)!;
       const location = definition.location;

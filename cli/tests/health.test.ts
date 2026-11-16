@@ -64,7 +64,7 @@ test("Health prepares producer identity before checks and never persists it as a
     directory, checkpoint, signal: context.signal,
     targets: async () => { calls.push("targets"); return { targets: [] }; },
     sender: async () => { throw new Error("unexpected sender"); },
-    approve: async () => { throw new Error("unexpected approval"); },
+    approve: async () => ({ approved: true, source: "assume-yes" }),
     produce: async () => { throw new Error("unexpected production"); },
   }));
   try {

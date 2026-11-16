@@ -33,7 +33,8 @@ export function healthProviders(plugin: PluginDefinition, serviceNames?: readonl
       if (entry.service !== scope.service) throw new Error(`${scope.namespace}: health.case.bindings must belong to the selected Service`);
       return requireHealthCaseBindingsExtension(entry.extension);
     }) : [];
-    const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service) : [];
+    const dataSources = scope.service ? serviceHealthDataSources(plugin, scope.service)
+      .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
     const s3Sources = scope.service ? serviceHealthS3DataSources(plugin, scope.service)
       .map(reference => ({ ...reference, service: plugin.services.find(reference.service)!.name })) : [];
     const probes = scope.service ? (scope.service.extensions ?? []).filter(extension => extension.kind === WORKLOAD_PROBE_KIND && (!extension.namespace || extension.namespace === scope.namespace))

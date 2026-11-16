@@ -1,3 +1,4 @@
+import type { HealthInteraction } from "../interaction";
 import { withSummary, type WorkloadInstance } from "@compforge/doctor-plugin";
 import type { Endpoint, Workload } from "@compforge/harness-common";
 import { validateEndpoint } from "@compforge/harness-toolbox/endpoint";
@@ -15,7 +16,7 @@ export interface HealthEndpointCheck {
   workload?: string;
   instance?: WorkloadInstance;
   endpoint?: Endpoint;
-  status: "passed" | "failed" | "none" | "unavailable" | "not-run" | "cancelled";
+  status: "passed" | "failed" | "none" | "unavailable" | "not-run" | "cancelled" | "skipped";
   evidence?: ConnectivityResult;
   reason?: string;
   error?: { message: string; kind?: string; code?: string | number };
@@ -25,7 +26,7 @@ export interface HealthEndpointCheck {
  * @spec Each Endpoint is checked once from its Workload's first Running instance; the remaining replicas are outside this sample.
  * @see {@link component://docs/commands/health.md} */
 export async function checkHealthEndpoints(provider: HealthProvider, context: CommandContext, executor: Executor,
-  kubernetes: KubectlOptions & { namespace: string }): Promise<HealthEndpointCheck[]> {
+  kubernetes: KubectlOptions & { namespace: string }, interaction?: HealthInteraction): Promise<HealthEndpointCheck[]> {
   if (provider.endpoints === undefined) return [];
   if (!provider.endpoints.length) {
     useLogger("health").info(`${provider.name}: 没有对外 Endpoint 依赖`);
@@ -43,8 +44,8 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
   };
   for (const [index, endpoint] of provider.endpoints.entries()) {
     const base = { source: endpoint.id ?? `${endpoint.host}:${endpoint.port}`, workload: endpoint.workload?.name, endpoint };
-    if (context.signal.aborted || index >= 100) {
-      const reason = context.signal.aborted ? "执行前已取消" : "超出本轮 100 个地址探测上限";
+    if (context.signal.aborted || interaction?.stopped || index >= 100) {
+      const reason = context.signal.aborted ? "执行前已取消" : interaction?.stopped ? "用户结束巡检" : "超出本轮 100 个地址探测上限";
       results.push({ ...base, status: "not-run", reason });
       useLogger("health").info(`Endpoint ${provider.name}/${base.source}: 未执行 · ${reason}`);
       continue;
@@ -69,6 +70,17 @@ export async function checkHealthEndpoints(provider: HealthProvider, context: Co
         }
         try {
           if (!instance.container) throw new Error("无法确定消费方 Container，不能判断 Endpoint 连通性");
+          if (interaction) {
+            const decision = await interaction.approve({ id: `health-endpoint-${base.source}`, risk: "observe",
+              title: `Endpoint 连通性：${base.source}`, target: `${endpoint.host}:${endpoint.port}`,
+              impact: [`从 ${provider.name} / ${instance.pod}/${instance.container} 检查 DNS、TCP 与受支持的 TLS，限时 5 秒。`],
+            });
+            if (!decision.approved) {
+              results.push({ ...consumer, status: context.signal.aborted ? "cancelled" : interaction.stopped ? "not-run" : "skipped",
+                reason: interaction.stopped ? "用户结束巡检" : "用户跳过 Endpoint 检查" });
+              continue;
+            }
+          }
           useLogger("health").info(`探测 Endpoint ${provider.name}/${base.source}/${instance.pod} → ${endpoint.host}:${endpoint.port}`);
           const evidence = await invoke(provider.service, {
             access: { kubernetes: [{ requirement: "required", rule: { verb: "create", resource: "pods/exec" }, purpose: "从消费方实例探测 Endpoint" }] },

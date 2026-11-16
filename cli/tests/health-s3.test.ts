@@ -103,7 +103,7 @@ test("approval denial and cancellation before execution never touch S3", async (
       expect(request.target).toContain(f.result.key!);
       return { approved: false, source: "prompt" };
     } });
-    expect(f.result.status).toBe("cancelled");
+    expect(f.result.status).toBe(cancel ? "cancelled" : "skipped");
     expect(f.calls).toEqual([]);
   }
 });
@@ -113,8 +113,8 @@ for (const [source, reason] of [
 ] as const) test(`S3 approval denial preserves ${source} reason without accessing storage`, async () => {
   const f = fixture();
   await checkS3ReadWrite({ ...f.input, approve: async () => ({ approved: false, source }) });
-  expect(f.result.status).toBe("cancelled");
-  expect(f.result.reason).toBe(`${reason}，已取消该操作`);
+  expect(f.result.status).toBe(source === "prompt" ? "skipped" : "not-run");
+  expect(f.result.reason).toBe(source === "prompt" ? "用户跳过 S3 读写检查" : `${reason}，已取消该操作`);
   expect(f.result.steps.every(step => step.status === "not-run")).toBe(true);
   expect(f.calls).toEqual([]);
 });
@@ -123,11 +123,11 @@ const service: ServiceDefinition = { name: "files", component: { name: "files", 
   dataSources: [{ id: "s3", kind: "s3", backend: "s3-compatible", environment: { endpoint: "ENDPOINT", bucket: "BUCKET", region: "REGION", accessKey: "AK", secretKey: "SK" } }] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([service]) };
 
-test("S3-only Service participates in biz and renders upload/download/cleanup evidence", async () => {
+test("S3-only Service participates in deps and renders upload/download/cleanup evidence", async () => {
   const providers = healthProviders(plugin, ["files"]);
   expect(providers[0]!.s3Sources).toEqual([{ service: "files", dataSource: "s3" }]);
   const f = fixture();
-  const result = await runHealthSession(providers, {}, { scopes: ["business"], show: () => {},
+  const result = await runHealthSession(providers, {}, { scopes: ["deps"], show: () => {},
     cases: async () => { throw new Error("no HTTP Cases"); },
     s3: async (_provider, checkpoint) => { await checkS3ReadWrite(f.input); checkpoint([f.result]); return [f.result]; },
   });
@@ -137,7 +137,7 @@ test("S3-only Service participates in biz and renders upload/download/cleanup ev
 });
 
 test("skipped S3 scope has explicit not-run evidence without preparing a client", async () => {
-  const result = await runHealthSession(healthProviders(plugin, ["files"]), {}, { scopes: ["business"], show: () => {},
+  const result = await runHealthSession(healthProviders(plugin, ["files"]), {}, { scopes: ["deps"], show: () => {},
     enterScope: async () => false, cases: async () => [], s3: async () => { throw new Error("not run"); },
   });
   expect(result.providers[0]!.s3?.[0]!.status).toBe("not-run");
@@ -289,4 +289,12 @@ test("network failures use the shared connectivity probe without replacing S3 ev
   f.result.steps[0]!.failure = new S3Error({ code: "AccessDenied", httpStatus: 403 }).toJSON();
   await supplementS3Connectivity(f.result, target, f.controller.signal, async () => { throw new Error("unexpected probe"); });
   expect(f.result.connectivity?.status).toBe("failed");
+});
+
+test("biz scope does not prepare or execute Host S3 checks", async () => {
+  const result = await runHealthSession(healthProviders(plugin), {}, { scopes: ["business"], show: () => {},
+    cases: async () => { throw new Error("no business consumers"); },
+    s3: async () => { throw new Error("Host S3 belongs to deps"); },
+  });
+  expect(result.providers[0]?.s3).toBeUndefined();
 });

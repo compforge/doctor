@@ -34,7 +34,7 @@ export interface S3HealthCheck {
   versionId?: string;
   startedAt: string;
   finishedAt?: string;
-  status: "passed" | "failed" | "unavailable" | "cancelled" | "not-run";
+  status: "passed" | "failed" | "unavailable" | "cancelled" | "not-run" | "skipped";
   reason?: string;
   steps: S3HealthStep[];
 }
@@ -63,11 +63,16 @@ export async function checkS3ReadWrite(input: {
   try {
     signal.throwIfAborted();
     const decision = await input.approve({ id: "health-s3-read-write", risk: "disrupt", title: "S3 读写检查",
+      purpose: `配置来源：${result.service}/${result.dataSource}`,
       target: `Doctor host → ${result.endpoint} · ${bucket}/${key}`,
       impact: ["上传 hello.txt（11 bytes，内容 hello world），通过预签名 URL 下载后校验内容，再删除本次测试对象。",
         "仅操作上述唯一 key；已启用版本控制时按上传返回的 versionId 清理。"],
     });
-    if (!decision.approved) { result.status = "cancelled"; result.reason = approvalDeniedReason(decision.source); return; }
+    if (!decision.approved) {
+      result.status = signal.aborted ? "cancelled" : decision.source === "prompt" ? "skipped" : "not-run";
+      result.reason = result.status === "skipped" ? "用户跳过 S3 读写检查" : approvalDeniedReason(decision.source);
+      return;
+    }
     signal.throwIfAborted();
     stage = result.steps[0]!; started = Date.now(); uploadAttempted = true;
     const upload = await client.putObject(bucket, key, CONTENT, { maxBytes: CONTENT.length, contentType: "text/plain", signal });

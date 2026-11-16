@@ -91,7 +91,7 @@ test("Health instance selectors require one configuration owner and nonempty nam
   expect(() => validateHealthS3SourceSelection(healthProviders(plugin), plugin, { pod: "a-1" })).toThrow("--service");
   expect(() => validateHealthS3SourceSelection(healthProviders(plugin, ["consumer"]), plugin, { container: "app" })).toThrow("--service");
   expect(() => validateHealthS3SourceSelection(healthProviders(plugin, ["a"]), plugin, { pod: "a-1" })).not.toThrow();
-  expect(() => validateHealthS3SourceSelection([], plugin, { pod: "a-1" })).toThrow("--scope biz");
+  expect(() => validateHealthS3SourceSelection([], plugin, { pod: "a-1" })).toThrow("--scope deps");
   expect(() => validateHealthS3SourceSelection(healthProviders(plugin), plugin, {})).not.toThrow();
   for (const name of ["pod", "container"] as const) expect(() => validateHealthOptions({ [name]: " " })).toThrow(`--${name} 需要非空名称`);
 });

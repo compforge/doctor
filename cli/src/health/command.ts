@@ -10,13 +10,13 @@ export function registerHealthCommand(program: Command, runtime: CommandRuntime 
   program.command("health").description("主动巡检服务自身健康、依赖连通性与业务功能（非只读请求需确认）")
     .addHelpText("after", `
 分析思路：
-  按 self → deps → biz 逐层巡检；交互模式每层结束后询问是否继续，进入 biz 才准备身份。
+  按 self → deps → biz 逐层巡检；交互模式先选 scope，deps 逐项确认，进入 biz 才选择 Service 和准备身份。
 结果解读：
   分别查看检查结果、发现的问题与覆盖缺口；回顾运行历史使用 overview。
 `)
-    .option("--scope <scopes>", "体检层级：self、deps、biz，逗号组合或 all（默认）")
+    .option("--scope <scopes>", "体检层级：self、deps、biz，逗号组合或 all；交互未指定时选择，非交互默认 all")
     .option("--biz-id <id>", "按业务 ID 解析本次适用的下游依赖")
-    .addOption(serviceOption("体检指定 Service；未指定时交互选择并默认全选，非交互检查全部支持体检的 Service"))
+    .addOption(serviceOption("体检指定 Service；过滤整轮范围；未指定时仅 biz 交互选择 Service，self/deps 自动发现"))
     .option("--pod <pod>", "单个 S3 配置所属 Service 中读取配置的 Pod 精确名称")
     .option("--container <name>", "读取 S3 配置的 Container 精确名称")
     .option("--tenant-id <id>", "Case 请求使用的租户")

@@ -12,15 +12,17 @@ Health 的定位类似体检：通过表示本次已执行的检查项在探测�
 | 层级 | 要回答的问题 | 检查对象 | 常用机制 |
 |---|---|---|---|
 | 自身健康（`self`） | 服务自身是否存在异常？ | Service 声明的自身健康条件；当前已有检查主要覆盖启动、初始化与就绪状态 | Probe |
-| 依赖连通（`deps`） | 服务启动后，能否访问当前需要的依赖？ | DataSource 与 downstream Service 的实际入口，包括地址解析、网络连接及所需协议的基本访问条件 | Probe |
+| 依赖可用（`deps`） | 基础依赖是否可用？ | DataSource 与 downstream Service 的实际入口，包括连通性、数据源健康和 Host S3 读写 | Probe / DataSource 检查 |
 | 功能可用（`biz`） | 具备连通条件后，服务及依赖协作提供的功能是否正常？ | 有明确预期结果的功能操作，例如文件下载、查询或一次业务请求 | 通常由 Case Run 承接 |
 
-三个层级逐步深入：self 检查服务自身状态；deps 从消费方检查 Endpoint 的地址解析、网络连接和协议访问；
-biz 验证具体功能操作的结果，例如下载并读取文件。
+三个层级按检查目的划分：self 检查服务自身状态；deps 检查基础依赖可用性；
+biz 验证业务消费链路，例如 Sandbox 在 egress 策略约束下下载文件。执行机制不决定层级。
+当前模型 Case 保留在 biz，基础模型调用迁移另行处理。
 
 每个 Service 拥有自己的健康条件。DataSource 表达服务使用的数据源，downstream Service 表达它调用的服务；
 两者都属于依赖层，不能因为依赖对象自身健康就推断消费方能够访问它。
-依赖检查必须从消费方实际运行的 Pod、Container 或沙箱出发，并保留具体执行位置。
+每项检查明确执行位置：Endpoint 探测从声明的消费方实例发起，Host S3 读写从 Doctor Host 发起。
+Host S3 成功不能替代 Sandbox 文件下载结果，后者属于 biz 并覆盖实际 egress 与网络策略约束。
 服务声明与运行配置、可选业务上下文共同决定本次适用的依赖；可选依赖未启用时不应作为故障，
 依赖解析失败则需要保留为未知或覆盖缺口。
 
@@ -46,18 +48,26 @@ doctor health --scope self,deps --service example-worker
 doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 ```
 
-未指定 Service 时，交互模式展示服务多选列表，默认全选；非交互模式检查全部支持体检的 Service。
-显式 `-s/--service` 跳过选择，只检查指定服务，支持别名并按规范名去重。
-候选包括声明了受支持 DataSource、数据源依赖或 `endpoints` 的 Service，以及在自身精确 namespace 下提供
-`health.case.bindings`、已标注 Health 层级的 `workload.probe` 或 `endpoint.probe` 的 Service。
-显式 `endpoints: []` 也进入候选列表，表示没有对外 Endpoint 依赖。不查询 Plugin 产品 namespace。未声明体检能力的服务不进入默认列表，
-显式选择时报告不支持。仅提供 Case 的服务由消费方引用执行。
-选择取消时不连接目标环境；默认全选并不批准非只读请求，执行前仍走统一确认。
+交互模式未指定 `--scope` 时，先多选 scope，默认勾选 self/deps；取消选择不连接目标环境。
+显式 `--scope` 跳过 scope 选择。按 self → deps → biz 执行已选范围，不逐层重复询问是否继续。
 
-交互模式按 `self → deps → biz` 逐层执行所选服务，完成一层后展示结果，再询问是否继续下一层。
-只对本次所选范围内有可用能力的层级执行和询问；拒绝或取消继续时，报告保留已完成的证据并标出未执行层级。
-进入 `biz` 后才解析消费关系并补齐租户和用户，继续层级的确认不代替非只读 Case 的操作授权。
-非交互模式及 `-y/--yes` 不询问，按 `--scope` 指定范围执行。
+self/deps 自动发现范围内支持对应层级的 Service，不弹 Service 选择列表。self 自动执行；
+deps 逐项展示配置来源、目标、执行位置和操作，输入 y 执行、n 跳过、q 结束巡检，默认 n。
+S3 上传、预签名下载、校验和清理是一项，仅批准一次，成功上传后的清理不另行询问。
+进入 biz 后才选择有 Case 消费关系的 Service，再准备这些服务所需的租户、用户和业务样本。
+业务请求按 Case 与消费方实例逐项确认，GET/HEAD 在交互模式也可跳过；选择范围或身份不批准请求。
+
+显式 `-s/--service` 过滤整轮范围并跳过 biz Service 选择，支持别名并按规范名去重。
+未显式选择 Service 时，当前 scope 没有能力的 Service 不进入清单；显式选择时报告不支持。
+候选来自 Service 声明的受支持 DataSource、数据源依赖、endpoints、health.case.bindings、
+标注 Health 层级的 workload.probe 或 endpoint.probe。显式 endpoints: [] 表示没有对外 Endpoint 依赖。
+
+跳过当前项继续检查其他项；结束巡检或取消 biz Service 选择保留已完成证据及未执行范围。
+结果区分通过、失败、无法执行、用户跳过、未执行与执行中取消，跳过表示覆盖不足而非故障或通过。
+单项失败不阻断其他独立检查；同一 S3 配置来源在本轮复用确认与结果，不因拒绝而再次询问。
+
+非交互及 `-y/--yes` 不询问 scope、Service 或检查项，未指定 scope 时保留 all。
+非交互只读检查自动执行，写操作仍需 `-y`；缺少批准记录为未执行，不能当作通过。
 
 体检结果默认交付 HTML 和 Bundle，支持 `--format` 与 `--output`。
 报告保存本次检查结果、覆盖缺口和有界探测响应，不进入业务 data/trace/log 采集流程。
@@ -70,8 +80,8 @@ doctor health -s example-api -s example-worker --tenant-id <tenant-id>
 
 ## 探测接入与下游关系
 
-`--scope` 支持 `self`、`deps`、`biz` 的逗号组合，默认 `all`。
-`self` 检查服务自身健康，`deps` 检查数据源和下游依赖，`biz` 执行功能检查（Case 与 S3 读写）。
+`--scope` 支持 `self`、`deps`、`biz` 的逗号组合及 `all`。
+`self` 检查服务自身健康，`deps` 检查数据源、下游依赖与 Host S3 读写，`biz` 执行业务 Case。
 未选择 `biz` 时不准备 Case 身份或执行 Case。所有检查保留本次执行时间，Health 不接收 `--since` 或询问统计窗口。所选服务没有对应能力时明确报告不支持。
 
 `workload.probe` 通过可选的 `health: "self" | "deps"` 加入 Health；未标注的 Probe 保持 Collect 行为。
@@ -93,10 +103,10 @@ Core 在每个依赖 Probe 前解析关系，并通过 `input.health.downstreams
 
 Service 通过 `health.case.bindings` Extension 返回消费关系，表示它必须从自身 Workload 访问某个提供方产生的地址。
 例如文件服务提供下载请求，消费方的容器必须能够访问该 URL；Doctor Host 的访问结果不能代替这一关系。
-指定 Service 的 Health 在 `biz` 层执行这些检查。GET/HEAD 自动执行；
-非只读方法在首次请求前统一确认一次，提示列出本轮消费方 Workload、Case 来源及执行上限。
-决定通过 `CommandContext.decide()` 按准备好的检查范围保存，本轮跨服务、实例和 Case 复用同意或拒绝；
-拒绝后跳过后续非只读请求，GET/HEAD 继续执行。下一次命令重新确认，非交互可通过全局 `-y/--yes` 预先批准。
+指定 Service 的 Health 在 `biz` 层执行这些检查。交互时每个 Case 在实际消费方实例执行前确认，
+显示消费方、请求方法与脱敏目标；拒绝当前项不影响后续独立 Case。
+决定通过 `CommandContext.decide()` 按消费关系、实例和具体 Case 保存，不能跨不同检查扩大批准范围。
+非交互 GET/HEAD 自动执行，非只读请求需全局 `-y/--yes` 预先批准；新一轮命令重新决策。
 Service 可以只提供 `health.case.bindings`。
 
 Binding 以 `producer.service + producer.source` 定位 Service 的 Case 来源，
@@ -227,11 +237,11 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 
 ### S3 读写检查
 
-声明 S3 DataSource 的 Service 在 `biz` 层执行 S3 读写检查，例如：
+声明 S3 DataSource 的 Service 在 `deps` 层执行 S3 读写检查，例如：
 
 ```bash
-doctor health -s files --scope biz
-doctor health -s files --scope biz --pod files-0 --container app -y
+doctor health -s files --scope deps
+doctor health -s files --scope deps --pod files-0 --container app -y
 ```
 
 从 Workload 环境读取配置时，交互模式按配置所属 Service 选择 Pod/Container；取消选择即取消该项检查。
