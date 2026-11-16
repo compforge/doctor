@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseBindingsExtension, validateCaseProduceResult, type CaseProduceResult, validateCaseProducer } from "../src";
+import { validateHealthCaseBindings, validateHealthCaseBindingsResult, validateExtension, withSummary, type HealthCaseExtension, validateCaseProduceResult, type CaseProduceResult, validateCaseProducer } from "../src";
 
 test("Case producers declare optional identity requirements before execution", () => {
   const extension = { access: {},
@@ -48,8 +48,8 @@ test("binding references exact provider identity and a consumer Workload", () =>
   expect(() => validateHealthCaseBindings([binding, binding])).toThrow("Duplicate");
 });
 
-test("health.case.bindings is an ordinary executable Extension returning relationship data", async () => {
-  const extension: HealthCaseBindingsExtension = { id: "downloads", kind: "health.case.bindings", access: {},
+test("Case HealthCheck is an ordinary executable Extension returning relationship data", async () => {
+  const extension: HealthCaseExtension = { id: "downloads", kind: "healthcheck.biz", execution: "cases", description: "Fixture check", access: {},
     run: withSummary({ title: "Downloads", fields: [] }, async (_context, query) => ({ bindings: query.tenantId ? [{
       id: "file", workload: "main", producer: { service: "files", source: "downloads" },
     }] : [] })) };

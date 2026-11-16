@@ -9,7 +9,7 @@ Use it as a starting point for a separately distributed Plugin. Business service
 queries and access implementations belong in that Plugin rather than in the Doctor CLI.
 
 The API Service contributes a shared connectivity Case through `Service.cases`; `doctor case` lists it offline.
-The Worker's `health.case.bindings` references that source. Running `doctor health --service example-worker` requires
+The Worker's `healthcheck.*` references that source. Running `doctor health --service example-worker` requires
 a matching deployment and checks the API from the Worker container; it does not use the Doctor Host's network path.
 
 The Worker's database source reads `database.host`, `port` (default 3306), `database`, `user`, and

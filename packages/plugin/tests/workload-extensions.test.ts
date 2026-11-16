@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import {
-  createServiceCatalog, defineEndpointProbeExtension, defineObservation, defineWorkloadProbeExtension,
+  createServiceCatalog, defineObservation, defineWorkloadProbeExtension,
   requireWorkloadProbeExtension, type ServiceDefinition
 } from "../src";
 class HealthValue {
@@ -62,10 +62,7 @@ test("incomplete workload results retain typed data and require an execution rea
 test("Endpoint consumer selectors reject non-record labels at catalog construction", () => {
   for (const labels of ["app=worker", ["app=worker"], null, 7, {}, { app: 7 }]) {
     const workload = { name: "consumer", platform: "kubernetes" as const, location: { kind: "labels" as const, labels: labels as never } };
-    const custom = defineEndpointProbeExtension({ id: "custom", kind: "endpoint.probe", workload, access: {}, produces,
-      run: async () => ({ status: "ok", value: new HealthValue(true) }) });
     expect(() => createServiceCatalog([{ ...service, endpoints: [{ host: "storage.example", port: 80, workload }] }])).toThrow("invalid Workload location");
-    expect(() => createServiceCatalog([{ ...service, extensions: [custom] }])).toThrow("invalid Workload location");
   }
   const workload = { name: "consumer", platform: "kubernetes" as const, location: { kind: "labels" as const, labels: { app: "worker", optional: "" } } };
   expect(() => createServiceCatalog([{ ...service, endpoints: [{ host: "storage.example", port: 80, workload }] }])).not.toThrow();

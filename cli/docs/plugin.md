@@ -72,7 +72,7 @@ Service 与 dataSource ID 引用其它 Service 的资源。宿主解析依赖并
 
 `cases` 与 DataSource、Workload 一样是 Service 贡献。一个 `ServiceCaseSource` 用稳定 ID 集中提供
 离线 CaseSet、可选的运行时 `produce` 和单请求 `runner`；来源引用是 `{ service, source }`。
-Health 的 `health.case.bindings` 扩展引用它并声明消费方 Workload，Perf 场景引用它并决定负载流程，
+Health 的 `healthcheck.*` 扩展引用它并声明消费方 Workload，Perf 场景引用它并决定负载流程，
 Case 命令离线展示它。来源决定探测哪些业务对象，命令只补齐所声明的上下文和控制运行策略。
 
 `load()` 不访问 Target；`produce` / `runner` 分别声明 access，并复用宿主的结果信封和资源生命周期。
@@ -469,8 +469,8 @@ Entry data 可以是数值或文字；全部条目都保留，只有同一 names
 支持 `canSample` 时才开放采样。Core 负责冻结窗口、展示、用户确认、样本去重及 Collect 编排；
 Plugin 负责统计口径与代表请求选择。
 
-Health 通过标注 `health: "self" | "deps"` 的 `workload.probe`、DataSource 检查和
-`health.case.bindings` 执行本次巡检，业务 Case 来源的 `produce` 负责准备用例。
+Health 只执行显式的 `healthcheck.infra/self/deps/biz`，按 scope 跨 Service 递进。
+Plugin 拥有检查与判定；Core 负责调度、批准和证据交付。共享 Case 来源的 `produce` 负责准备用例。
 Health 只发现 Service namespace，未指定服务时默认选择支持巡检的服务；历史统计由 Overview 展示。
 详见 [Overview](commands/overview.md) 与 [Health](commands/health.md)。
 
@@ -547,16 +547,6 @@ Resource/ResourceSnapshot。`doctor resource` 按 Service、资源 ID 或开放 
 
 ### Service Endpoints
 
-`ServiceDefinition.endpoints?: readonly Endpoint[]` declares outbound dependencies directly using
-`Endpoint` from `@compforge/harness-common`. Optional `id` and `description` identify the dependency;
-`workload` carries its complete consumer Workload declaration. Catalog discovery validates addresses,
-explicit IDs and the consumer declaration. Endpoint consumers need no separate name registration in
-`Service.workloads`; discovery uses the supplied location directly. Doctor owns instance discovery and health scheduling. Omission means undeclared;
-explicit `[]` confirms no outbound Endpoint dependencies. Missing consumer location retains unknown coverage.
-See [Health](commands/health.md#对外-endpoint-依赖) for execution location, limits and evidence.
-
-`endpoint.probe` is an independent deps Probe contribution using `defineEndpointProbeExtension`.
-It declares a complete consumer `workload`, `access`, `produces` and `run(context, { instance })`;
-it need not declare or reference `Service.endpoints`. Core invokes every contributed Probe and
-checks every generic Endpoint independently. Plugin authors choose one form for each dependency;
-Core does not infer targets, deduplicate contributions, apply overrides or fall back after errors.
+`ServiceDefinition.endpoints` 保存声明的对外依赖地址及可选消费方 Workload，Catalog 校验声明。
+它不自动触发 Health。需要主动验证的依赖由 Service 显式贡献 `healthcheck.deps`，
+Plugin 选择实例、解析运行时配置并复用 Toolbox 网络探测；详细契约见 [Health](commands/health.md)。

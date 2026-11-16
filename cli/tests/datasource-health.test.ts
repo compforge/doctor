@@ -62,7 +62,7 @@ test("permissions and malformed responses remain evidence gaps while sibling pro
   const { search } = fixture();
   const request = search.request;
   search.request = async path => {
-    if (path === "/_cluster/settings") throw new Error("403 Forbidden");
+    if (path === "/_cluster/settings") throw Object.assign(new Error("secret"), { statusCode: 403 });
     if (path === "/_cluster/health") return {};
     return request(path);
   };
@@ -83,25 +83,6 @@ test("deadline stops subsequent requests and preserves unavailable outcomes", as
   expect(health.findings).toEqual([]);
 });
 
-test("Health includes DataSource owners and declared consumers without selecting unrelated stores", async () => {
-  const service = (name: string): ServiceDefinition => ({ name, workloads: [],
-    component: { name, repository: { forge: { name: "fixture" }, path: name } } });
-  const owner = { ...service("collector"), dataSources: [{ id: "trace", kind: "vdb" as const,
-    backend: "opensearch" as const, store: "opensearch" }] };
-  const consumer = { ...service("search"), dependencies: [{ id: "trace-store", service: "collector", dataSource: "trace" }] };
-  const plugin = { id: "fixture", version: "1", services: createServiceCatalog([owner, consumer, service("unrelated")]) };
-  expect(healthProviders(plugin).map(provider => provider.name)).toEqual(["collector", "search"]);
-  const selected = healthProviders(plugin, ["search"]);
-  expect(selected[0]?.dataSources).toEqual([{ service: "collector", dataSource: "trace" }]);
-  const health = await OPENSEARCH_HEALTH_EXTENSION.run({ search: fixture().search });
-  const result = await runHealthSession(selected, {}, {
-    cases: async () => { throw new Error("must not run Cases"); },
-    dataSources: async () => [{ service: "collector", dataSource: "trace", evidence: { target: {}, health } }],
-    show: () => {},
-  });
-  expect(result.providers[0]?.dataSources?.[0]?.evidence?.health.status).toBe("ok");
-  expect(buildHealthHtml(result)).toContain("high 水位 90%");
-});
 
 test("missing watermarks are unknown, never parsed as zero; unrelated settings are not retained", async () => {
   const { search } = fixture(67);

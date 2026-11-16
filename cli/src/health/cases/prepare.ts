@@ -1,6 +1,6 @@
 import {
-  caseProducer, validateHealthCaseBindingsResult,
-  type HealthCaseBinding, type HealthCaseBindingsExtension, type HealthCaseBindingsQuery, type HealthCaseBindingsResult,
+  caseProducer, healthCheckScope, validateHealthCaseBindingsResult,
+  type HealthCaseBinding, type HealthCaseExtension, type HealthCheckQuery, type HealthCaseBindingsResult,
   type CaseProducer, type ServiceCaseSource, type CaseProduceQuery, type PluginDefinition, type ServiceDefinition, type ServiceRequestIdentity,
 } from "@compforge/doctor-plugin";
 import { caseError } from "../../case/http-check";
@@ -11,7 +11,6 @@ export interface PreparedCaseCheck {
   execution?: {
     consumer: ServiceDefinition;
     binding: HealthCaseBinding;
-    consumeIndex: number;
     bindingIndex: number;
     service: ServiceDefinition;
     source: ServiceCaseSource;
@@ -21,18 +20,18 @@ export interface PreparedCaseCheck {
 
 export interface CasePrepareActions {
   signal: AbortSignal;
-  consume(service: ServiceDefinition, extension: HealthCaseBindingsExtension, query: HealthCaseBindingsQuery): Promise<HealthCaseBindingsResult>;
+  consume(service: ServiceDefinition, extension: HealthCaseExtension, query: HealthCheckQuery): Promise<HealthCaseBindingsResult>;
   identity(producer: CaseProducer): Promise<ServiceRequestIdentity | undefined>;
   tenant?(producer: CaseProducer): Promise<string | undefined>;
 }
 
-/** @spec Resolve only selected dependencies and identities when entering the biz scope; never generate Cases or enter consumer Pods. */
+/** @spec Resolve only selected dependencies and identities when entering their declared scope; never generate Cases or enter consumer Pods. */
 export async function prepareServiceCases(plugin: PluginDefinition, consumer: ServiceDefinition,
-  extensions: readonly HealthCaseBindingsExtension[], tenantId: string | undefined, actions: CasePrepareActions): Promise<PreparedCaseCheck[]> {
+  extensions: readonly HealthCaseExtension[], tenantId: string | undefined, actions: CasePrepareActions): Promise<PreparedCaseCheck[]> {
   const prepared: PreparedCaseCheck[] = [];
-  for (const [consumeIndex, extension] of extensions.entries()) {
+  for (const extension of extensions) {
     const base = (): CaseCheckResult => ({
-      consumeExtension: extension.id, consumer: consumer.name, startedAt: new Date().toISOString(),
+      scope: healthCheckScope(extension), consumeExtension: extension.id, consumer: consumer.name, startedAt: new Date().toISOString(),
       stage: "consume", status: "unavailable", targets: [], attempts: [],
     });
     try {
@@ -60,7 +59,7 @@ export async function prepareServiceCases(plugin: PluginDefinition, consumer: Se
             result.status = "cancelled";
             result.error = "已取消 Case 身份选择，未执行检查";
           } else {
-            check.execution = { consumer, binding, consumeIndex, bindingIndex, service: registered.service,
+            check.execution = { consumer, binding, bindingIndex, service: registered.service,
               source: registered.source, query: { tenantId, requestIdentity, requestTenantId, maxCases: 10 } };
           }
         } catch (error) {

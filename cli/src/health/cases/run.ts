@@ -9,6 +9,7 @@ import type { PreparedCaseCheck } from "./prepare";
 import { caseError, checkHttpCase, type CaseAttempt } from "../../case/http-check";
 
 export interface CaseCheckResult {
+  scope?: import("@compforge/doctor-plugin").HealthScope;
   consumeExtension: string;
   bindingId?: string;
   consumer: string;
@@ -47,7 +48,7 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
       result.status = "not-run"; result.error = "用户结束巡检，未执行该检查";
       actions.checkpoint(result); continue;
     }
-    const { consumer, binding, consumeIndex, bindingIndex, service, source, query } = execution;
+    const { consumer, binding, bindingIndex, service, source, query } = execution;
     try {
       actions.signal.throwIfAborted();
       result.stage = "execution";
@@ -99,7 +100,7 @@ export async function checkServiceCases(prepared: readonly PreparedCaseCheck[], 
           }
           result.stage = "request";
           result.attempts.push(...await checkHttpCase({ item, target, send, signal: actions.signal,
-            directory: actions.directory, prefix: `cases/${encodeURIComponent(consumer.name)}/${consumeIndex}/${bindingIndex}/${targetIndex}/${caseIndex}` }));
+            directory: actions.directory, prefix: `cases/${result.scope && result.scope !== "biz" ? `${result.scope}/` : ""}${encodeURIComponent(consumer.name)}/${encodeURIComponent(result.consumeExtension)}/${bindingIndex}/${targetIndex}/${caseIndex}` }));
           actions.checkpoint(result);
         }
       }

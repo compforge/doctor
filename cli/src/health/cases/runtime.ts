@@ -6,7 +6,7 @@ import { discoverKubernetesWorkload } from "../../infra/k8s/workload";
 import { enforceKubernetesAccess } from "../../terminal/kubernetes-access";
 import { createPodHttpSender, supportsPodCurlDiagnostics } from "../../infra/http/pod";
 import { openPluginContext } from "../../plugin/context";
-import { caseOperationInvoker } from "../runtime";
+import { createPluginOperationInvoker } from "../../plugin/operation-invoker";
 import type { CaseCheckActions } from "./run";
 import type { CasePrepareActions } from "./prepare";
 import { discoverTenantDirectory } from "../../plugin/tenant-directory";
@@ -14,7 +14,7 @@ import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../../ca
 
 export function casePrepareActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, input: { tenantId?: string; userId?: string }): CasePrepareActions {
-  const invoke = caseOperationInvoker(context, executor, kubernetes);
+  const invoke = createPluginOperationInvoker(context, executor, kubernetes);
   const directory = discoverTenantDirectory(context.plugin.services, (service, extension) =>
     openPluginContext(executor, kubernetes, {
       config: context.profile.pluginConfig, service, endpoint: extension.endpoint, capability: extension,
@@ -30,7 +30,7 @@ export function casePrepareActions(context: CommandContext, executor: Executor,
 export function caseCheckActions(context: CommandContext, executor: Executor,
   kubernetes: KubectlOptions & { namespace: string }, directory: string, checkpoint: CaseCheckActions["checkpoint"],
   approve: CaseCheckActions["approve"], interaction?: HealthInteraction): CaseCheckActions {
-  const invoke = caseOperationInvoker(context, executor, kubernetes);
+  const invoke = createPluginOperationInvoker(context, executor, kubernetes);
   return {
     directory, checkpoint, signal: context.signal,
     approve, stopped: () => interaction?.stopped ?? false,

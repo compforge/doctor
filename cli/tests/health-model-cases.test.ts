@@ -5,8 +5,9 @@ import { join } from "node:path";
 import { createServiceCatalog, kubernetesServiceWorkload, modelHttpCases, withSummary,
   type CaseProducer, type CaseModelType, type Model, type WorkloadInstance } from "@compforge/doctor-plugin";
 import { inspectCaseModel } from "../src/case/model-check";
-import { prepareServiceCases } from "../src/health/biz/prepare";
-import { checkServiceCases } from "../src/health/biz/run";
+import { prepareServiceCases } from "../src/health/cases/prepare";
+import { checkServiceCases } from "../src/health/cases/run";
+import { caseHealthReport } from "./health-report-fixture";
 import { buildHealthHtml } from "../src/health/report";
 
 test("model response checks reject HTTP-200 error envelopes and unusable results without judging answers", () => {
@@ -37,7 +38,7 @@ const producer: CaseProducer = { access: {},
   run: withSummary({ title: "Model Cases", fields: [] }, async () => ({ cases: modelHttpCases(model) })) };
 const component = { name: "test", repository: { forge: { name: "test" }, path: "test" } };
 const binding = { id: "models", workload: "main", producer: { service: "catalog", source: "models" } };
-const consume = { id: "requests", kind: "health.case.bindings" as const, access: {},
+const consume = { id: "requests", kind: "healthcheck.biz" as const, execution: "cases" as const, description: "Fixture check", access: {},
   run: withSummary({ title: "Requests", fields: [] }, async () => ({ bindings: [binding] })) };
 const consumer = { name: "worker", component, workloads: [kubernetesServiceWorkload("worker")], extensions: [consume] };
 const source = { name: "catalog", component, workloads: [], cases: [{ id: "models", load: () => [], produce: producer }] };
@@ -84,8 +85,7 @@ test("Health prepares only the tenant; producer owns model choice and consumer o
     expect(result[0]!.attempts.map(attempt => attempt.status)).toEqual(["passed", "failed", "passed"]);
     expect(result[0]!.attempts[1]!.modelCheck?.errors).toEqual(["Model response contains an error"]);
     expect(JSON.stringify(result)).not.toContain("probe-tenant");
-    const html = buildHealthHtml({ query: {},
-      providers: [{ namespace: "plugin/test/service/worker", name: "worker", cases: result }] });
+    const html = buildHealthHtml(caseHealthReport(result));
     expect(html).toContain("Model response contains an error");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
