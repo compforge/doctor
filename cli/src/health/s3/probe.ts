@@ -1,7 +1,7 @@
 import { randomUUID, createHash } from "node:crypto";
 import type { ConnectivityResult } from "@compforge/harness-toolbox/network";
 import type { HttpResponse } from "@compforge/harness-toolbox/http";
-import type { ApprovalGate } from "../../command/approval";
+import { approvalDeniedReason, type ApprovalGate } from "../../command/approval";
 import { S3Error, type S3Client, type S3ErrorDetails } from "@compforge/harness-toolbox/s3";
 
 import { captureS3HttpResponse, captureS3ErrorResponse, s3ResponseText, type S3HealthResponse } from "./response";
@@ -67,7 +67,7 @@ export async function checkS3ReadWrite(input: {
       impact: ["上传 hello.txt（11 bytes，内容 hello world），通过预签名 URL 下载后校验内容，再删除本次测试对象。",
         "仅操作上述唯一 key；已启用版本控制时按上传返回的 versionId 清理。"],
     });
-    if (!decision.approved) { result.status = "cancelled"; result.reason = "未批准 S3 测试对象的上传与清理"; return; }
+    if (!decision.approved) { result.status = "cancelled"; result.reason = approvalDeniedReason(decision.source); return; }
     signal.throwIfAborted();
     stage = result.steps[0]!; started = Date.now(); uploadAttempted = true;
     const upload = await client.putObject(bucket, key, CONTENT, { maxBytes: CONTENT.length, contentType: "text/plain", signal });

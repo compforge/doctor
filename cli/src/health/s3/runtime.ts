@@ -1,21 +1,40 @@
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { S3Client } from "@compforge/harness-toolbox/s3";
 import { DirectTransport, Transport } from "@compforge/harness-toolbox/transport";
-import { serviceDataSources } from "@compforge/doctor-plugin";
+import { serviceDataSources, type PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { CommandContext } from "../../command";
+import { CommandInputError, type CommandContext } from "../../command";
 import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
 import { resolveS3Configuration } from "../../datasource/s3";
 import { resolveDataSourceTarget } from "../../datasource/workload";
 import { diagnosticMessage } from "../../command/diagnostic";
+import { canPrompt } from "../../terminal/parameters";
 import { resolveApprovalGate } from "../../terminal/approval";
 import { useLogger } from "../../terminal/log";
 import type { HealthProvider } from "../extensions";
 import { supplementS3Connectivity } from "./connectivity";
 import { checkS3ReadWrite, type S3HealthCheck } from "./probe";
 
+export interface S3HealthSourceSelection {
+  pod?: string;
+  container?: string;
+}
+
+/** @spec Explicit instance selectors apply to one configuration-owning Service, never unrelated Services in a batch. */
+export function validateHealthS3SourceSelection(providers: readonly HealthProvider[], plugin: PluginDefinition, selection: S3HealthSourceSelection): void {
+  if (selection.pod === undefined && selection.container === undefined) return;
+  const owners = new Set(providers.flatMap(provider => (provider.s3Sources ?? []).flatMap(reference => {
+    const source = serviceDataSources(plugin.services, reference.service, "s3").find(source => source.id === reference.dataSource);
+    return source?.kind === "s3" && !source.source ? [plugin.services.find(reference.service)!.name] : [];
+  })));
+  if (owners.size !== 1) throw new CommandInputError(
+    "health --pod/--container 仅适用于一个从 Workload 读取 S3 配置的 Service；请用 --service 和 --scope biz 限定检查范围",
+  );
+}
+
 export async function checkHealthS3(provider: HealthProvider, command: CommandContext,
-  collect: KubernetesCommandConfig, executor: Executor, checkpoint: (checks: S3HealthCheck[]) => void): Promise<S3HealthCheck[]> {
+  collect: KubernetesCommandConfig, executor: Executor, checkpoint: (checks: S3HealthCheck[]) => void,
+  selection: S3HealthSourceSelection & { interactive?: boolean } = {}): Promise<S3HealthCheck[]> {
   const results: S3HealthCheck[] = [];
   for (const reference of provider.s3Sources ?? []) {
     const result: S3HealthCheck = { ...reference, executionLocation: "doctor-host", channel: "direct",
@@ -29,9 +48,13 @@ export async function checkHealthS3(provider: HealthProvider, command: CommandCo
       if (!capability || capability.kind !== "s3") throw new Error("S3 DataSource 未注册");
       const target = capability.source ? undefined : await resolveDataSourceTarget({
         service: command.plugin.services.find(reference.service)!, executor, namespace: collect.kubernetes.namespace,
-        interactive: false, commandContext: command,
-        selection: { candidateRole: "配置来源", purpose: "读取 S3 读写检查的连接配置", effect: "下载请求从 Doctor host 直接发起" },
+        pod: selection.pod, container: selection.container,
+        interactive: !command.options.yes && canPrompt(selection), commandContext: command,
+        selection: { candidateRole: "配置来源", purpose: `读取 Service '${reference.service}' 的 S3 读写检查连接配置`, effect: "下载请求从 Doctor host 直接发起" },
       });
+      if (!capability.source && !target) {
+        result.status = "cancelled"; result.reason = "已取消 S3 配置来源选择"; continue;
+      }
       const resolved = await resolveS3Configuration(command, { collect, service: reference.service, capability, target }, executor);
       if (!resolved.target || !resolved.bucket) throw new Error(resolved.reason ?? "S3 endpoint 或 bucket 配置缺失");
       result.endpoint = new URL(resolved.target.endpoint).toString(); result.bucket = resolved.bucket;

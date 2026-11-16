@@ -231,7 +231,13 @@ Health 按声明的来源准备访问，失败时保留来源与错误，不替�
 
 ```bash
 doctor health -s files --scope biz
+doctor health -s files --scope biz --pod files-0 --container app -y
 ```
+
+从 Workload 环境读取配置时，交互模式按配置所属 Service 选择 Pod/Container；取消选择即取消该项检查。
+非交互或 `-y` 模式遇到多个候选时，需通过 `--pod/--container` 精确指定，不自动选择第一个副本。
+这两个参数只用于 S3 配置来源，要求本次范围内只有一个从 Workload 读取 S3 配置的 Service；
+存在多个配置所属 Service 时，用 `--service` 分开检查。Plugin 直接提供 S3 client 时不需要这些参数。
 
 检查复用 Service 的实际 endpoint、region、bucket、prefix、凭据和寻址方式，从 Doctor host
 直接调用 S3；不经过业务资源登记、AS 文件代理或消费方 Pod，也不自动使用端口转发。

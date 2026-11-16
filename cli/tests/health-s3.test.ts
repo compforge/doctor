@@ -108,6 +108,17 @@ test("approval denial and cancellation before execution never touch S3", async (
   }
 });
 
+for (const [source, reason] of [
+  ["prompt", "用户未确认"], ["non-interactive", "非交互终端无法取得确认（可用 -y/--yes 预先批准）"], ["gate-error", "确认环节出错"],
+] as const) test(`S3 approval denial preserves ${source} reason without accessing storage`, async () => {
+  const f = fixture();
+  await checkS3ReadWrite({ ...f.input, approve: async () => ({ approved: false, source }) });
+  expect(f.result.status).toBe("cancelled");
+  expect(f.result.reason).toBe(`${reason}，已取消该操作`);
+  expect(f.result.steps.every(step => step.status === "not-run")).toBe(true);
+  expect(f.calls).toEqual([]);
+});
+
 const service: ServiceDefinition = { name: "files", component: { name: "files", repository: { forge: { name: "test" }, path: "files" } }, workloads: [],
   dataSources: [{ id: "s3", kind: "s3", backend: "s3-compatible", environment: { endpoint: "ENDPOINT", bucket: "BUCKET", region: "REGION", accessKey: "AK", secretKey: "SK" } }] };
 const plugin = { id: "test", version: "1", services: createServiceCatalog([service]) };

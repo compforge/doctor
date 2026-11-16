@@ -6,6 +6,7 @@ import type { Command } from "commander";
 import { createDoctorProgram, main } from "../src/app/main";
 import { DOCTOR_CLI_VERSION } from "../src/app/version";
 import { withLogger } from "../src/terminal/log";
+import { healthCommand } from "../src/health";
 import { logCommand } from "../src/collect/log/command";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { commandOutcome } from "../src/command";
@@ -390,6 +391,18 @@ describe("command help", () => {
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
     expect(result.stdout).toContain("--watch <duration>");
+  });
+
+  test("health forwards S3 configuration source selectors", async () => {
+    const inputs: Array<{ pod?: string; container?: string }> = [];
+    const mock = spyOn(healthCommand, "run").mockImplementation(async (_context, input) => {
+      inputs.push({ pod: input.pod, container: input.container });
+      return { ...commandOutcome(0), output: { query: {}, providers: [] } };
+    });
+    try {
+      expect((await runWithPlugin(["health", "-s", "example-api", "--scope", "biz", "--pod", "api-1", "--container", "app"])).exitCode).toBe(0);
+      expect(inputs).toEqual([{ pod: "api-1", container: "app" }]);
+    } finally { mock.mockRestore(); }
   });
 
   test("log forwards exact instance selectors and rejects empty names before target access", async () => {
