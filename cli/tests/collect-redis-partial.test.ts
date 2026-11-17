@@ -13,7 +13,7 @@ import { buildRedisEvidence } from "../src/collect/redis/model";
 import { collectRedisRuntime } from "../src/collect/redis/probe/collector";
 import { makeRedisRuntimeProbe } from "../src/collect/redis/probe/runtime";
 import { buildRedisHtml, buildRedisMarkdown } from "../src/collect/redis/render";
-import type { RedisAccessApi, RedisConnectionApi } from "@compforge/harness-toolbox/redis";
+import type { RedisAccessApi, RedisConnectionApi } from "@compforge/harness-toolbox/kv/redis";
 
 const CORE_OBSERVATION_META = {
   schemaVersion: 1,

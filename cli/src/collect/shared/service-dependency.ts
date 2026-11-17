@@ -9,7 +9,7 @@ import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
 import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import type { SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import {
   parseOpenSearchEndpoint,
   resolveOpenSearchAuth,

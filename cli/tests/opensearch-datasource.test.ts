@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { ClientManager } from "@compforge/harness-common";
-import { OpenSearchClient } from "@compforge/harness-toolbox/opensearch";
+import { OpenSearchClient } from "@compforge/harness-toolbox/vectordb/opensearch";
 import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
 import { expect, spyOn, test } from "bun:test";
 import { openOpenSearchAccess, OpenSearchAccessError } from "../src/datasource/opensearch/access";

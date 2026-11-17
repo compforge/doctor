@@ -1,30 +1,21 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clientKey, type Operation } from "@compforge/harness-common";
-import { HttpClient } from "@compforge/harness-toolbox/http";
-import { DirectTransport } from "@compforge/harness-toolbox/transport";
-import { PrometheusClient, type PrometheusReader } from "@compforge/harness-toolbox/prometheus";
+import type { Operation } from "@compforge/harness-common";
+import type { MetricDBReader } from "@compforge/harness-toolbox/metricdb";
 import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
+import { openMetricDB } from "../datasource/metricdb";
 import { createPerfArtifact } from "./output";
 import { resolvePerfConfig } from "./config";
 import type { PerfCliOpts, PerfResult } from "./model";
 
 /** Borrow the command's bounded HTTP pool. Credentials never enter persisted query identity. */
-export async function perfMetricSource(context: CommandContext, url?: string): Promise<PrometheusReader | undefined> {
-  const profile = context.profile.value.prometheus;
+export async function perfMetricSource(context: CommandContext, url?: string): Promise<MetricDBReader | undefined> {
+  const profile = context.profile.value.metricdb;
   const endpoint = url?.trim() || profile?.url;
-  if (!endpoint) return undefined;
-  const limits = { concurrency: 4, connectTimeoutMs: 10_000, requestTimeoutMs: 30_000, maxResponseBytes: 4 * 1024 * 1024 };
-  const transport = await context.clients.get({ clientKey: clientKey("direct", {}), createClient: () => new DirectTransport() });
-  const target = { endpoint };
-  const http = await context.clients.get({ clientKey: clientKey("perf-prometheus-http", { target, limits }),
-    createClient: (_clients, signal) => new HttpClient(target, transport, limits, { signal }) });
-  const headers = profile?.username !== undefined || profile?.password !== undefined
-    ? { Authorization: `Basic ${Buffer.from(`${profile?.username ?? ""}:${profile?.password ?? ""}`).toString("base64")}` } : undefined;
-  return PrometheusClient.connect(http, { url: endpoint, headers }, context.signal);
+  return endpoint ? openMetricDB(context, { ...profile, url: endpoint }) : undefined;
 }
 
 export function perfMetricsComplete(run: Run): boolean {
@@ -35,7 +26,7 @@ export function perfMetricsComplete(run: Run): boolean {
     Object.values(node.properties.perf.metrics).some(metric => metric.queries.length > 0 && metric.status !== "observed"))));
 }
 
-export async function collectPerfMetrics(run: Run, directory: string, source: PrometheusReader, signal: AbortSignal): Promise<void> {
+export async function collectPerfMetrics(run: Run, directory: string, source: MetricDBReader, signal: AbortSignal): Promise<void> {
   try { await collectMetrics(run, [source], { signal }); }
   catch (error) { if (!signal.aborted) throw error; }
   finally { writeRunData(run, directory); }
@@ -43,7 +34,7 @@ export async function collectPerfMetrics(run: Run, directory: string, source: Pr
 
 export interface PreparedPerfMetrics {
   declared: boolean;
-  source?: PrometheusReader;
+  source?: MetricDBReader;
   probes: PrometheusProbe[];
   issues: string[];
 }
@@ -61,7 +52,7 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
   try {
     prepared.source = await perfMetricSource(context, url);
     if (!prepared.source) {
-      missing("Operation 已声明 probe，但未配置 Prometheus/VM；本轮仅保留运行窗口与已有请求事实");
+      missing("Operation 已声明 probe，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
     } else {
       for (const operation of declared) {
         try {

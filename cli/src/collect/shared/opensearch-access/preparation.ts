@@ -1,4 +1,4 @@
-import { describeOpenSearchError, type SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import { describeOpenSearchError, type SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { OpenSearchAuth } from "../../../infra/search/opensearch";
 import { diagnosticMessage } from "../../../command/diagnostic";

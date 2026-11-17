@@ -1,4 +1,4 @@
-import type * as health from "@compforge/harness-toolbox/opensearch/health";
+import type * as health from "@compforge/harness-toolbox/vectordb/opensearch/health";
 import type { FindingMeta, ObservationMeta } from "../../collect/protocol";
 
 // Harness owns protocol identity and analysis; Doctor adds evidence provenance.
@@ -8,7 +8,7 @@ export type OpenSearchStatsObservation = health.OpenSearchStatsObservation & Obs
 export type OpenSearchShardObservation = health.OpenSearchShardObservation & ObservationMeta;
 export type OpenSearchDiskSettingsObservation = health.OpenSearchDiskSettingsObservation & ObservationMeta;
 export type OpenSearchIndexBlocksObservation = health.OpenSearchIndexBlocksObservation & ObservationMeta;
-export type { OpenSearchAllocationNode, OpenSearchDiskWatermark } from "@compforge/harness-toolbox/opensearch/health";
+export type { OpenSearchAllocationNode, OpenSearchDiskWatermark } from "@compforge/harness-toolbox/vectordb/opensearch/health";
 export type VdbObservation = health.OpenSearchObservation & ObservationMeta;
 export type VdbFindingKind = health.OpenSearchFindingKind;
 export type VdbFinding = health.OpenSearchFinding & FindingMeta<VdbFindingKind>;

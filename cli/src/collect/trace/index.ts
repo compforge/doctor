@@ -5,7 +5,7 @@ import { useLogger } from "../../terminal/log";
 // Render consumes that evidence; root Delivery owns the final files and their lifetime.
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import type { SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import type { TraceContributions } from "@compforge/trace-harness";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
 import { existsSync, mkdtempSync, writeFileSync } from "node:fs";

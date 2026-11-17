@@ -476,7 +476,7 @@ for (const requirement of [undefined, "preferred", "required"] as const) {
     try {
       const opening = openModelDiscoveryAccess({
         plugin,
-        namespace: "test", context: "test-context", kubeconfig, interactive: false
+        namespace: "test", context: "test-context", kubeconfig, interactive: false, config: ""
       });
       const discovery = await opening;
       expect(created).toBe(0);

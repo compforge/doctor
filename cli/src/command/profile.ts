@@ -1,3 +1,5 @@
+import type { MetricDBKind } from "@compforge/harness-toolbox/metricdb";
+
 export interface DbCredentials {
   user: string;
   password: string;
@@ -20,9 +22,10 @@ export interface RegistryProfileConfig {
   password?: string;
 }
 
-/** Metric source access only; Operation probes own queries and the client identifies the backend. */
-export interface PrometheusProfileConfig {
+/** Metric source access only; Operation probes own queries. An omitted kind enables capability detection. */
+export interface MetricDBProfileConfig {
   url: string;
+  kind?: MetricDBKind;
   username?: string;
   password?: string;
 }
@@ -40,7 +43,7 @@ export interface Profile {
   db?: DbCredentials;
   redis?: RedisProfileConfig;
   registry?: RegistryProfileConfig;
-  prometheus?: PrometheusProfileConfig;
+  metricdb?: MetricDBProfileConfig;
   overview?: { sample_count?: number; collect_concurrency?: number };
   log?: { concurrency?: number; timePadding?: string };
   plugin?: PluginProfileConfig;

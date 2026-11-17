@@ -26,7 +26,7 @@ export function configureProfileHelp(program: Command): void {
         if (disabled()) {
           if (option.attributeName() === "kubeconfig") return "Kubernetes 配置路径；仅访问 Kubernetes 时使用";
           if (option.attributeName() === "config") return 'Doctor 配置路径；空字符串禁用外部配置（当前已禁用）';
-          if (option.attributeName() === "prometheus") return "Prometheus 地址";
+          if (option.attributeName() === "prometheus") return "MetricDB 地址";
         }
         return Help.prototype.optionDescription.call(this, option);
       },

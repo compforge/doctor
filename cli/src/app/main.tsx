@@ -394,7 +394,7 @@ function withMetricOptions(cmd: CommandT): CommandT {
     .addOption(serviceOption("metric provider；缺省时交互多选，非交互使用全部已注册 Service"))
     .option("--watch <duration>", "采集窗口：0、1m、2m、5m、10m 或 until-interrupt；非交互默认 0")
     .option("--interval <duration>", "内嵌 Prombed 抓取间隔（500ms..60s）", "5s")
-    .option("--prometheus <url>", "Prometheus 地址；优先于 profile.prometheus.url")
+    .option("--prometheus <url>", "MetricDB 地址；优先于 profile.metricdb.url")
     .addOption(deliveryFormatOption(["html", "bundle"]))
     .option("--profile <name>", "从 profile 取 Prometheus 或 namespace / kubeconfig")
     .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");

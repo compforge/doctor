@@ -2,7 +2,7 @@ import { afterEach, expect, spyOn, test } from "bun:test";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { createServiceCatalog } from "@compforge/doctor-plugin";
-import type { DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
+import type { DatabaseQueryResult } from "@compforge/harness-toolbox/db/mysql";
 import { CommandContext, CommandStatus } from "../src/command";
 import { createDoctorProgram } from "../src/app/main";
 import { dbCommand } from "../src/collect/db/command";

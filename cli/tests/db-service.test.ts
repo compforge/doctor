@@ -4,7 +4,7 @@ import { prepareStoreMetricCollection } from "../src/collect/metric/store/collec
 import { EmbeddedMetricSource } from "../src/infra/metric";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, describeService, type PluginDefinition, type PluginDataSource, type ServiceDatabaseDataSource, type ServiceDatabaseTarget } from "@compforge/doctor-plugin";
-import { MysqlClient, MysqlDatabase } from "@compforge/harness-toolbox/mysql";
+import { MysqlClient, MysqlDatabase } from "@compforge/harness-toolbox/db/mysql";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { CommandContext, resolveKubernetesCommandContext } from "../src/command";
 import { resolveStoreProviderConfig } from "../src/collect/store/config";

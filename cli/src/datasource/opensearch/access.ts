@@ -1,6 +1,6 @@
 import { clientKey, ClientManager, type Client } from "@compforge/harness-common";
 import { DirectTransport, Transport, ServicePortForwardTransport, type TransportPath } from "@compforge/harness-toolbox/transport";
-import { OpenSearchClient, type OpenSearchAuth, type OpenSearchLifecycle, type SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import { OpenSearchClient, type OpenSearchAuth, type OpenSearchLifecycle, type SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import type { KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { OpenSearchService } from "../../infra/search/opensearch/k8s";
 import { sharedPodRelay } from "../pod-relay";

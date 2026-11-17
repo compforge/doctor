@@ -1,3 +1,4 @@
+import { openMetricDB } from "../../datasource/metricdb";
 import { loadMetricConfigurations } from "./extensions";
 import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
@@ -33,12 +34,12 @@ export interface MetricSourcePreparation {
 }
 
 function remoteMetricSourcePreparation(
-  prometheus: NonNullable<MetricConfig["prometheus"]>,
+  source: RemoteMetricSource,
   serviceCount: number,
   storeFallbackReason?: string,
 ): MetricSourcePreparation {
   return {
-    source: new RemoteMetricSource(prometheus),
+    source,
     sourceKind: "remote",
     targetCount: serviceCount,
     exporterStoreTargets: 0,
@@ -55,13 +56,17 @@ export async function prepareMetricSource(
   injectedExecutor?: Executor,
   configurations?: ReadonlyMap<string, MetricConfiguration>,
 ): Promise<MetricSourcePreparation> {
+  // MetricDB failure is not a Kubernetes supplement failure and must not trigger another connection attempt.
+  const remoteSource = config.metricdb
+    ? new RemoteMetricSource(await openMetricDB(commandContext, config.metricdb), commandContext.signal)
+    : undefined;
   const storeKinds = selectedMetricStoreKinds(plugin.services, config.services);
-  if (config.prometheus && storeKinds.length === 0) {
-    return remoteMetricSourcePreparation(config.prometheus, config.services.length);
+  if (remoteSource && storeKinds.length === 0) {
+    return remoteMetricSourcePreparation(remoteSource, config.services.length);
   }
-  if (config.prometheus && config.storeSupplementUnavailableReason) {
+  if (remoteSource && config.storeSupplementUnavailableReason) {
     return remoteMetricSourcePreparation(
-      config.prometheus,
+      remoteSource,
       config.services.length,
       config.storeSupplementUnavailableReason,
     );
@@ -115,7 +120,7 @@ export async function prepareMetricSource(
     forwarder = await ServicePortForwarder.create(executor, config.kube);
     const targets: EmbeddedMetricTarget[] = [];
     const resolved = configurations ?? await loadMetricConfigurations(config, plugin.services, commandContext, executor);
-    if (!config.prometheus) {
+    if (!remoteSource) {
       for (const serviceName of config.services) {
         const capability = resolved.get(serviceName);
         if (!capability) throw new Error(`Missing metric configuration for ${serviceName}`);
@@ -162,9 +167,9 @@ export async function prepareMetricSource(
       });
     }
     return {
-      source: config.prometheus ? new RemoteMetricSource(config.prometheus) : embeddedSource,
-      storeSource: config.prometheus ? embeddedSource : undefined,
-      sourceKind: config.prometheus ? "hybrid" : "embedded",
+      source: remoteSource ?? embeddedSource,
+      storeSource: remoteSource ? embeddedSource : undefined,
+      sourceKind: remoteSource ? "hybrid" : "embedded",
       embeddedSource,
       collectSupplement: storeCollection
         ? (source) => storeCollection!.sample(source)
@@ -180,9 +185,9 @@ export async function prepareMetricSource(
   } catch (error) {
     await storeCollection?.close().catch(() => undefined);
     forwarder?.stop();
-    if (config.prometheus) {
+    if (remoteSource) {
       return remoteMetricSourcePreparation(
-        config.prometheus,
+        remoteSource,
         config.services.length,
         error instanceof Error ? error.message : String(error),
       );

@@ -16,7 +16,7 @@ Redis key 或业务表，并使用 exporter 兼容的指标口径进入同一个
 ## 流程
 
 1. 从 Service Catalog 选择本次参与的 Metric Service，并确认 watch 窗口。
-2. preparation 选择统一 `MetricQuerySource`：profile 或 `--prometheus` 提供地址时优先查询 remote source；
+2. preparation 选择统一 `MetricQuerySource`：profile.metricdb（含可选 kind）或 `--prometheus` 提供地址时优先查询 remote source；
    否则通过 Service selector 找出全部 Running Pod，逐 Pod 建立临时 port-forward，并创建 embedded Prombed source。
    embedded source 同时从已选 Service 的 DataSource 发现 Redis/MySQL exporter 和直采目标，并按实际连接目标去重。
    使用 remote source 时，Kubernetes Store 补充采样属于可选增强：准备失败不会阻断 Service Metrics，Store

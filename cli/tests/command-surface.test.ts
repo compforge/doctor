@@ -10,6 +10,7 @@ import { healthCommand } from "../src/health";
 import { logCommand } from "../src/collect/log/command";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { commandOutcome } from "../src/command";
+import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { testPlugin } from "./fixtures/test-plugin";
 
 // CLI 表面断言（help / version / 错误路径 / profile 与 init）全部在进程内完成：
@@ -50,7 +51,7 @@ async function run(args: string[], options: { withPlugin?: boolean; cwd?: string
   const previousExitCode = process.exitCode;
   process.exitCode = 0;
   // 隔离用户环境里的继承配置；显式 --config 的用例不受影响
-  delete process.env.DOCTOR_CONFIG;
+  process.env.DOCTOR_CONFIG = join(workingDir(), "config.yaml");
   const previousCwd = process.cwd();
   process.chdir(options.cwd ?? workingDir());
   const capture = (command: Command): void => {
@@ -240,9 +241,22 @@ describe("capability and preflight errors", () => {
   });
 
   test("mem no longer asks for a mode in non-interactive use", async () => {
-    const result = await runWithPlugin(["mem"]);
-    expect(result.stderr).toContain("请显式指定 --pod <pod>");
-    expect(result.stderr).not.toContain("--mode");
+    const kubectl = spyOn(KubectlExecutor.prototype, "run").mockImplementation(async command => {
+      let stdout: string;
+      if (command[0] === "auth") stdout = "yes";
+      else if (command[0] === "config") stdout = command.join(" ").includes("current-context") ? "fixture\nhttps://cluster.test/" : "https://cluster.test/";
+      else if (command[0] === "version" || command.join(" ") === "get --raw=/version") stdout = '{"gitVersion":"v1.30.0"}';
+      else if (command[0] === "get" && command[1] === "pods") stdout = JSON.stringify({items:[{
+        metadata:{name:"fixture-pod"},spec:{containers:[{name:"app"}]},status:{phase:"Running"},
+      }]});
+      else throw new Error(`Unexpected Kubernetes call: ${command.join(" ")}`);
+      return {command,stdout,stderr:"",ok:true,exitCode:0,durationMs:0,timedOut:false};
+    });
+    try {
+      const result = await runWithPlugin(["mem", "--namespace", "fixture"]);
+      expect(result.stderr).toContain("请显式指定 --pod <pod>");
+      expect(result.stderr).not.toContain("--mode");
+    } finally { kubectl.mockRestore(); }
   });
 
   test("store redis rejects non-positive key budgets before collection", async () => {

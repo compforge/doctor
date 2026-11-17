@@ -16,7 +16,7 @@ function runCliFrom(cwd: string, ...args: string[]) {
   const result = Bun.spawnSync({
     cmd: [process.execPath, "run", CLI_ENTRY, ...args],
     cwd,
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NO_COLOR: "1", DOCTOR_CONFIG: join(cwd, "config.yaml") },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -37,10 +37,11 @@ function runCli(...args: string[]) {
 }
 
 function runCoreCli(...args: string[]) {
+  const cwd = workingDir();
   const result = Bun.spawnSync({
     cmd: [process.execPath, "run", CORE_CLI_ENTRY, ...args],
-    cwd: workingDir(),
-    env: { ...process.env, NO_COLOR: "1" },
+    cwd,
+    env: { ...process.env, NO_COLOR: "1", DOCTOR_CONFIG: join(cwd, "config.yaml") },
     stdout: "pipe",
     stderr: "pipe",
   });

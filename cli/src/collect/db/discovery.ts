@@ -1,5 +1,5 @@
 import type { ServiceDatabaseDataSource, ServiceDatabaseTarget } from "@compforge/doctor-plugin";
-import type { DatabaseQueryLimits, DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
+import type { DatabaseQueryLimits, DatabaseQueryResult } from "@compforge/harness-toolbox/db/mysql";
 import { clientKey } from "@compforge/harness-common";
 import { CommandInputError } from "../../command";
 import { chooseParameter } from "../../terminal/parameters";

@@ -28,7 +28,7 @@ test("perf 通过 Harness 与外部指标协议采集，不调用 collect 信号
 
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|chat)(?:\/[^"']*)?["']/);
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/collect\/(?:metric|trace|log)\/command["']/);
-  expect(sources).toContain('from "@compforge/harness-toolbox/prometheus"');
+  expect(sources).toContain('from "@compforge/harness-toolbox/metricdb"');
 });
 
 test("eval 只编排 Case 与 collect 的稳定数据入口，不依赖 provision、perf 或 chat", () => {
