@@ -50,14 +50,15 @@ test("empty offline paths are usage errors and never enter online preparation", 
   }
 });
 
-/** @case id=perf_external_replay,desc=`Two Cases enter one API`,expect=`Frozen query plan and requests survive metric gaps; replay does not load Plugin or send requests` */
+/** @case id=perf_external_replay,desc=`Declared Cases share one API`,expect=`Sampled Case payloads and saved request facts survive metric gaps; replay performs no external I/O` */
 test("two Chat Cases share identity; external metrics and offline replay preserve request facts", async () => {
   let requests = 0, metrics = 0;
+  const receivedInputs: unknown[] = [];
   let response: "observed" | "missing" | "error" = "observed";
   const directory = mkdtempSync(join(tmpdir(), "doctor-perf-observations-"));
-  const server = Bun.serve({ port: 0, fetch(request) {
+  const server = Bun.serve({ port: 0, async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === "/chat") { requests++; return new Response('data: {"done":true}\n\n', { headers: { "Content-Type": "text/event-stream" } }); }
+    if (url.pathname === "/chat") { requests++; receivedInputs.push(await request.json()); return new Response('data: {"done":true}\n\n', { headers: { "Content-Type": "text/event-stream" } }); }
     expect(url.pathname).toBe("/api/v1/query"); metrics++;
     expect(readFileSync(join(directory, "run.json"), "utf8")).toContain("source_url");
     if (response === "error") return new Response("upstream failed", { status: 503 });
@@ -92,6 +93,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     const before = readFileSync(join(directory, "requests.jsonl"), "utf8");
     const persisted = before.trim().split("\n").map(line => JSON.parse(line));
     expect(persisted).toHaveLength(requests);
+    expect(receivedInputs).toEqual(persisted.map(row => cases.cases.find(item => item.id === row.request.case_id)!.input));
     expect(persisted.map(row => row.operation_run.id)).toEqual(run.executions.flatMap(arm => arm.operation_runs.map(item => item.id)));
     for (const row of persisted) {
       expect(row.request).toMatchObject({ state: "finished", operation_run_id: row.operation_run.id });

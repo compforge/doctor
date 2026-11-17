@@ -129,7 +129,7 @@ test("perf trial output describes the active Case mix and Facets", () => {
   );
 });
 
-test("Service Case runner maps one Probe into one shared Outcome", async () => {
+test("Service Case runner preserves distinct Case inputs in shared Outcomes", async () => {
   const lifecycle: string[] = [];
   const { runner, judge } = perfAdapterFromCaseFactory("chat", async () => ({
     setup: async () => { lifecycle.push("setup"); },
@@ -158,6 +158,11 @@ test("Service Case runner maps one Probe into one shared Outcome", async () => {
     ...context,
     case: { id: "ordinary", input: { query: "hello" } },
   });
+  const python = await runner.fire({
+    ...context,
+    case: { id: "python", input: { query: "use Python to calculate 1+1" } },
+  });
+  expect(python.meta?.case_input).toEqual({ query: "use Python to calculate 1+1" });
   await runner.deactivate?.(context);
   await runner.cleanup?.(context);
   expect(outcome).toMatchObject({
