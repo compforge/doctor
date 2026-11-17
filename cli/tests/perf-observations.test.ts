@@ -65,6 +65,17 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(unavailable.metricIssues?.join()).toContain("未配置 Prometheus");
     expect(metrics).toBe(0);
     const before = readFileSync(join(directory, "requests.jsonl"), "utf8");
+    const persisted = before.trim().split("\n").map(line => JSON.parse(line));
+    expect(persisted).toHaveLength(requests);
+    expect(persisted.map(row => row.operation_run.id)).toEqual(run.executions.flatMap(arm => arm.operation_runs.map(item => item.id)));
+    for (const row of persisted) {
+      expect(row.request).toMatchObject({ state: "finished", operation_run_id: row.operation_run.id });
+      expect(cases.cases.map(item => item.id)).toContain(row.request.case_id);
+      expect(row.operation_run).toMatchObject({
+        service: { name: "chat" }, operation: { name: "chat", method: "POST", path: "/chat" },
+        outcome: { status: 200, meta: { trace_id: "manual-follow-up" } },
+      });
+    }
     expect(before).not.toContain('"probes"');
     expect(before).not.toContain('"calls"');
     const automatic = await observePerf(run, directory, [operation], context, 'qa"safe');

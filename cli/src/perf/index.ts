@@ -26,6 +26,8 @@ import {
 import { resolveCaseRequestIdentity } from "../case";
 import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
 import { CommandStatus, type CommandContext, type CommandResult } from "../command";
+import { diagnosticMessage } from "../command/diagnostic";
+import { recordExecutionFailure } from "../command/execution-scope";
 import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
@@ -300,7 +302,14 @@ async function executePerf(
   } finally {
     // Persist request evidence even if resource disposal or later observation fails.
     try { if (run) writeRunData(run, outputDir); }
-    finally { try { await managed.dispose(); } catch (error) { loadError ??= error; } }
+    finally {
+      const startedAt = Date.now();
+      try { await managed.dispose(); }
+      catch (error) {
+        recordExecutionFailure(error, { phase: "cleanup", target: runnerProvider.service.name, startedAt });
+        loadError ??= error;
+      }
+    }
   }
   if (!run) {
     if (commandContext.signal.aborted) return { status: CommandStatus.Cancelled, artifacts: commandContext.artifacts.list() };
@@ -310,7 +319,7 @@ async function executePerf(
   writeFileSync(join(outputDir, "perf.json"), JSON.stringify({ ...metadata, ...metrics }, null, 2));
   return { status: commandContext.signal.aborted ? CommandStatus.Cancelled
     : loadError || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
-    reason: loadError ? "请求资源清理未完成；已有结果已保存" : undefined,
+    reason: loadError ? `请求资源清理未完成；已有结果已保存：${diagnosticMessage(loadError)}` : undefined,
     output: { run, outputDir, ...metrics, caseFacets: caseSet.facets },
     artifacts: commandContext.artifacts.list() };
 }
