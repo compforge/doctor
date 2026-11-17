@@ -20,16 +20,11 @@ export interface RegistryProfileConfig {
   password?: string;
 }
 
+/** Metric source access only; Operation probes own queries and the client identifies the backend. */
 export interface PrometheusProfileConfig {
-  kind?: "prometheus" | "victoriametrics";
-  concurrency?: number;
-  /** PromQL label values, keyed by canonical Service name. */
-  parameters?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   url: string;
   username?: string;
   password?: string;
-  timeout_ms?: number;
-  max_response_bytes?: number;
 }
 
 export interface PluginProfileConfig {

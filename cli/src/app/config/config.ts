@@ -95,21 +95,11 @@ function validateProfileShape(value: unknown, name: string): Profile {
     if (typeof prometheus.url !== "string" || !prometheus.url) {
       throw new Error(`profile '${name}'.prometheus.url must be a non-empty string`);
     }
-    if (prometheus.kind !== undefined && !["prometheus", "victoriametrics"].includes(String(prometheus.kind))) throw new Error(`profile '${name}'.prometheus.kind is invalid`);
-    if (prometheus.concurrency !== undefined && (typeof prometheus.concurrency !== "number" || !Number.isSafeInteger(prometheus.concurrency) || prometheus.concurrency <= 0)) throw new Error(`profile '${name}'.prometheus.concurrency must be a positive integer`);
-    const parameters = optionalMap(prometheus.parameters, `profile '${name}'.prometheus.parameters`);
-    for (const [service, value] of Object.entries(parameters ?? {})) {
-      const labels = optionalMap(value, `profile '${name}'.prometheus.parameters.${service}`);
-      if (!labels || Object.values(labels).some(item => typeof item !== "string" || !item)) throw new Error(`profile '${name}'.prometheus.parameters.${service} must contain non-empty label values`);
+    for (const key of Object.keys(prometheus)) {
+      if (!["url", "username", "password"].includes(key)) throw new Error(`profile '${name}'.prometheus.${key} is not supported; configure only URL and credentials`);
     }
     optionalScalar(prometheus.username, "string", `profile '${name}'.prometheus.username`);
     optionalScalar(prometheus.password, "string", `profile '${name}'.prometheus.password`);
-    optionalScalar(prometheus.timeout_ms, "number", `profile '${name}'.prometheus.timeout_ms`);
-    optionalScalar(
-      prometheus.max_response_bytes,
-      "number",
-      `profile '${name}'.prometheus.max_response_bytes`,
-    );
   }
   return profile as unknown as Profile;
 }
@@ -229,12 +219,6 @@ export function validateProfile(
     }
     if (!!p.prometheus.username !== !!p.prometheus.password) {
       errors.push("prometheus.username / prometheus.password 必须成对配置");
-    }
-    if (p.prometheus.timeout_ms !== undefined && p.prometheus.timeout_ms <= 0) {
-      errors.push("prometheus.timeout_ms 必须大于 0");
-    }
-    if (p.prometheus.max_response_bytes !== undefined && p.prometheus.max_response_bytes <= 0) {
-      errors.push("prometheus.max_response_bytes 必须大于 0");
     }
   }
 

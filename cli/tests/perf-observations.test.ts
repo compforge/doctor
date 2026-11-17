@@ -15,10 +15,16 @@ import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
 const operation = new SSEOperation({ serviceName: "chat", name: "chat", method: "POST", path: "/chat",
-  probes: [{ type: "prometheus", metrics: { qps: { expression: 'sum(rate(chat_total{namespace={{namespace}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
+  probes: [{ type: "prometheus", metrics: { qps: { expression: 'sum(rate(chat_total{namespace="declared-scope"}[$window]))', unit: "rps", semantics: "completed" } } }] });
 const definition = { name: "chat", component: { name: "chat", repository: { forge: { name: "test" }, path: "fixture/chat" } }, workloads: [], operations: [operation],
   cases: [{ id: "chat.cases", operation: operation.id(), load: () => [] }] };
 const service = bindService(definition, { name: "test" });
+
+function backendDetection(url: URL): Response | undefined {
+  if (url.searchParams.get("query") !== "increase_prometheus(vector(0)[1m:1m])") return;
+  return Response.json({status:"error",errorType:"bad_data",error:'unknown function with name "increase_prometheus"'}, {status:400});
+}
+
 
 test("Case sources statically reference owned Operations without runner callbacks", () => {
   const catalog = createServiceCatalog([definition]);
@@ -48,13 +54,14 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
   const directory = mkdtempSync(join(tmpdir(), "doctor-perf-observations-"));
   const server = Bun.serve({ port: 0, async fetch(request) {
     const url = new URL(request.url);
+    const detection = backendDetection(url); if (detection) return detection;
     if (url.pathname === "/chat") { requests++; receivedInputs.push(await request.json()); return new Response('data: {"done":true}\n\n', { headers: { "Content-Type": "text/event-stream" } }); }
     expect(url.pathname).toBe("/api/v1/query"); metrics++;
     expect(readFileSync(join(directory, "run.json"), "utf8")).toContain("source_url");
     if (response === "error") return new Response("upstream failed", { status: 503 });
     return Response.json({ status: "success", data: { resultType: "vector", result: response === "missing" ? [] : [{ metric: {}, value: [Number(url.searchParams.get("time")), "0"] }] } });
   } });
-  const context = new CommandContext({}, { name: "test", configPath: "", pluginConfig: {}, value: { readonly: true, prometheus: { url: server.url.toString(), concurrency: 2 } } },
+  const context = new CommandContext({}, { name: "test", configPath: "", pluginConfig: {}, value: { readonly: true, prometheus: { url: server.url.toString() } } },
     { loadPlugin: async () => { throw new Error("offline replay must not load Plugin"); } });
   const artifactPaths: string[] = [];
   const noSource = new CommandContext({}, { name: "test", configPath: "", pluginConfig: {}, value: { readonly: true } });
@@ -74,9 +81,9 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(new Set(run.executions.flatMap(arm => arm.operation_runs.map(item => item.operation.id())))).toEqual(new Set([operation.id()]));
     writeRunData(run, directory);
     const mixedRun = loadRun(directory), failedRun = loadRun(directory);
-    const noProbes = await observePerf(run, directory, [], context, "qa");
+    const noProbes = await observePerf(run, directory, [], context);
     expect(noProbes.metricsComplete).toBe(true);
-    const unavailable = await observePerf(run, directory, [operation], noSource, "qa");
+    const unavailable = await observePerf(run, directory, [operation], noSource);
     expect(unavailable.metricsComplete).toBe(false);
     expect(unavailable.metricIssues?.join()).toContain("未配置 Prometheus");
     expect(metrics).toBe(0);
@@ -95,7 +102,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     }
     expect(before).not.toContain('"probes"');
     expect(before).not.toContain('"calls"');
-    const automatic = await observePerf(run, directory, [operation], context, 'qa"safe');
+    const automatic = await observePerf(run, directory, [operation], context);
     expect(automatic).toEqual({ metricsComplete: true, metricIssues: [] });
     expect(metrics).toBeGreaterThan(0);
     expect(perfMetricsComplete(run)).toBe(true);
@@ -104,7 +111,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(existsSync(join(directory, "callgraph.json"))).toBe(false);
     const invalid = new SSEOperation({ serviceName: "chat", name: "missing-parameter", method: "POST", path: "/other",
       probes: [{ type: "prometheus", metrics: { qps: { expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
-    const partial = await observePerf(mixedRun, directory, [invalid, operation], context, "qa");
+    const partial = await observePerf(mixedRun, directory, [invalid, operation], context);
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
@@ -116,9 +123,9 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(perfMetricsComplete(run)).toBe(false);
     expect(JSON.stringify(buildCallgraph(run))).toContain('"status":"missing"');
     response = "error";
-    const failed = await observePerf(failedRun, directory, [operation], context, "qa");
+    const failed = await observePerf(failedRun, directory, [operation], context);
     expect(failed.metricsComplete).toBe(false);
-    expect(failed.metricIssues?.join()).toContain("部分指标查询失败");
+    expect(failed.metricIssues?.join()).toContain("查询失败");
     expect(JSON.stringify(buildCallgraph(failedRun))).toContain('"status":"error"');
     expect(JSON.stringify(loadRun(directory).executions[0]!.prometheus_observations)).toContain("Prometheus HTTP 503");
     for (const invalid of ["{", '{"schema":2}', "null"]) {
@@ -167,7 +174,7 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
   const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
   let queries=0;
   const server=Bun.serve({port:0,fetch(request) {
-    const url=new URL(request.url);expect(url.pathname).toBe("/api/v1/query");queries++;
+    const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;expect(url.pathname).toBe("/api/v1/query");queries++;
     return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
   }});
   const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
@@ -197,18 +204,51 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
 });
 
 /** Metric configuration is checked before running; preparation never sends a history query. */
-test("metric preflight reports unavailable sources and binds probes without querying", async () => {
+test("metric preflight detects backend without querying application metrics", async () => {
   let calls = 0;
-  const server = Bun.serve({ port: 0, fetch: () => { calls++; return new Response("unexpected"); } });
+  const server = Bun.serve({ port: 0, fetch: request => {
+    calls++; const response = backendDetection(new URL(request.url));
+    expect(response).toBeDefined(); return response!;
+  } });
   const missing = new CommandContext({});
   const context = new CommandContext({}, {name:"test",configPath:"",pluginConfig:{},value:{readonly:true,
     prometheus:{url:server.url.toString()}}});
   try {
-    const unavailable = await preparePerfMetrics([operation], missing, "test");
+    const unavailable = await preparePerfMetrics([operation], missing);
     expect(unavailable.issues.join()).toContain("未配置 Prometheus");
-    const ready = await preparePerfMetrics([operation], context, "test");
+    const ready = await preparePerfMetrics([operation], context);
     expect(ready.issues).toEqual([]);
     expect(ready.probes.length).toBeGreaterThan(0);
-    expect(calls).toBe(0);
+    expect(calls).toBe(1);
   } finally { await context.disposeClients(); await missing.disposeClients(); server.stop(true); }
+});
+
+/** @case A declared RED probe does not guarantee metric storage; successful siblings remain usable. */
+test("natural observation preserves independent observed, missing and failed RED metrics", async () => {
+  const red = new SSEOperation({serviceName:"chat",name:"chat",method:"POST",path:"/chat",probes:[{
+    type:"prometheus",metrics:{qps:{unit:"rps",expression:"fixture_qps"},
+      p95:{unit:"s",expression:"fixture_latency"},error_rate:{unit:"ratio",expression:"fixture_errors"}},
+  }]});
+  const server = Bun.serve({port:0,fetch: request => {
+    const url = new URL(request.url), detection = backendDetection(url); if (detection) return detection;
+    const expression = url.searchParams.get("query");
+    if (expression === "fixture_latency") return new Response("unavailable",{status:503});
+    return Response.json({status:"success",data:{resultType:"vector",result:expression === "fixture_errors" ? []
+      : [{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
+  }});
+  const plugin = {id:"fixture",version:"1",services:createServiceCatalog([{...definition,operations:[red],
+    cases:[{id:"chat.cases",operation:red.id(),load:()=>[{caseset:"chat",cases:[{id:"natural",input:{}}]}]}],
+  }])};
+  const context = new CommandContext({}, {name:"test",configPath:"",pluginConfig:{},value:{readonly:true,
+    prometheus:{url:server.url.toString()}}},{plugin});
+  try {
+    const result = await perfCommand.run(context,{qps:"0",hold:"0.02"});
+    expect(result.status).toBe(CommandStatus.Partial);
+    const metrics = buildCallgraph(result.output!.run)!.arms[0]!.windows[0]!.nodes[0]!.properties.perf.metrics;
+    expect(metrics.qps).toMatchObject({status:"observed",value:7});
+    expect(metrics.p95).toMatchObject({status:"error",value:null,reason:"query_error"});
+    expect(metrics.error_rate).toMatchObject({status:"missing",value:null,reason:"no_samples"});
+    expect(result.output!.metricIssues?.join()).toContain("查询成功但无可用样本");
+    expect(result.output!.metricIssues?.join()).toContain("p95：查询失败");
+  } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));}
 });
