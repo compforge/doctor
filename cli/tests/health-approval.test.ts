@@ -17,7 +17,7 @@ const producer: CaseProducer = { access: {},
 const caseSource: ServiceCaseSource = { id: "probes", load: () => [], produce: producer };
 const source: ServiceDefinition = { name: "models", component, workloads: [], cases: [caseSource] };
 const post: CaseProduceResult["cases"][number] = {
-  case: { id: "chat", input: { protocol: "http", method: "POST", body: "{}" },
+  case: { id: "chat", desc: "验证模型能够响应基础问答", input: { protocol: "http", method: "POST", body: "{}" },
     judge: { e2e: { http: { status: [200] } } } },
   targets: [{ id: "primary", url: "http://inference.test/chat?token=SECRET" }],
 };
@@ -63,6 +63,8 @@ for (const approved of [true, false]) {
       expect(requests).toHaveLength(8);
       expect(requests.filter(request => request.risk === "observe")).toHaveLength(4);
       expect(requests[0]!.target).toContain("worker / ns/worker-1/app");
+      expect(requests[0]!.purpose).toBe("验证模型能够响应基础问答");
+      expect(requests[1]!.purpose).toBeUndefined();
       expect(JSON.stringify(requests)).not.toContain("SECRET");
       expect(sent).toHaveLength(approved ? 8 : 0);
     } finally { rmSync(directory, { recursive: true, force: true }); await context.disposeClients(); }

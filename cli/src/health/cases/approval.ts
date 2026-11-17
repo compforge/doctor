@@ -17,6 +17,7 @@ export function createHealthCaseApproval(context: CommandContext, namespace: str
     return context.decide(healthApproval, scope, () => gate({
       id: "health-case", risk: readOnly ? "observe" : "disrupt",
       title: `${check?.scope === "deps" ? "依赖访问检查" : "业务检查"}：${item.case.id}${item.subject ? ` · ${item.subject.label ?? item.subject.id}` : ""}`,
+      purpose: item.case.desc?.trim() || undefined,
       target: `${check?.consumer ?? target.workload} / ${target.namespace}/${target.pod}/${target.container ?? ""}`,
       impact: [
         ...item.targets.map(endpoint => `${item.case.input.method} ${caseError(endpoint.url)}`),

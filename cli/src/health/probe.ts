@@ -22,13 +22,13 @@ export function createHealthProbeRunner(context: CommandContext, providers: read
       return structuredClone({ status: value.status, summary: value.summary, evidence: value.evidence });
     };
     const save = (value: HealthProbeResult) => checkpoint(project(value));
-    const approve = async () => {
+    const approve = async (target = check.approval.target) => {
       if (healthCheckScope(check) === "self" && check.approval.risk === "observe") return { approved: true, source: "assume-yes" as const };
-      return interaction.approve({ id: `healthcheck:${provider.namespace}:${check.id}`, title: check.description, ...check.approval });
+      return interaction.approve({ id: `healthcheck:${provider.namespace}:${check.id}`, title: check.description, ...check.approval, target });
     };
-    const execute = async (run: () => Promise<HealthProbeResult>): Promise<Partial<HealthCheckResult>> => {
+    const execute = async (run: () => Promise<HealthProbeResult>, target?: string): Promise<Partial<HealthCheckResult>> => {
       context.signal.throwIfAborted();
-      const decision = await approve();
+      const decision = await approve(target);
       if (!decision.approved) return { status: interaction.stopped || decision.source !== "prompt" ? "not-run" : "skipped", summary: approvalDeniedReason(decision.source) };
       context.signal.throwIfAborted();
       return project(await run());
@@ -57,7 +57,7 @@ export function createHealthProbeRunner(context: CommandContext, providers: read
           try {
             return (await check.run(plugin, { ...input, client: () => clients.get(source), checkpoint: save })).data;
           } finally { await clients.dispose(); }
-        });
+        }, source.description?.trim() || check.approval.target);
         const retained = { ...result, dataSourceId: id };
         if (!context.signal.aborted && !interaction.stopped && result.status !== "cancelled" && result.status !== "not-run") {
           results.set(key, { service: provider.name, check: check.id, result: structuredClone(retained) });
