@@ -57,21 +57,20 @@ HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标�
 ## Profile 与证据
 
 ```yaml
-namespace: production
 prometheus:
   url: https://metrics.example.net
-  kind: prometheus # 或 victoriametrics
-  concurrency: 4
-  timeout_ms: 30000
-  max_response_bytes: 4194304
-  parameters:
-    app:
-      namespace: production
+  # username: ...
+  # password: ...
 ```
 
-自然观测的 namespace 来自参数/profile，无需访问 Kubernetes；跨 namespace 的 Service 通过 parameters 覆盖。
-`{{name}}` 绑定经过 JSON 字符串转义的标签值，`$window` 绑定实际窗口。缺参数、后端不匹配和重复 producer
-保留明确错误，不猜测配置。Perf 读取外部历史指标，不启动内嵌 Prometheus。
+Profile 只提供地址和必要认证。指标客户端用不读取业务时序的常量查询识别 Prometheus/VM，
+按 `datasourceKind` 选择 Operation Probe；认证、连接和无法识别的响应保留错误，不猜测后端。
+Operation Probe 提供完整查询选择条件，Core 不从 Kubernetes namespace 或用户参数拼接范围；
+`$window` 由 Harness 绑定实际窗口。查询并发、超时和响应大小由客户端统一限定。
+
+声明 Probe 只表示知道如何查询，不证明指标已写入 Prometheus。每个 RED 指标分别保留有结果、
+查询成功但无可用样本、查询失败或未采集的状态；兄弟指标成功时仍展示。无样本不补零，也不直接
+归因为 scrape 故障。Perf 只读已有历史数据，不抓取服务 /metrics、不读取日志、不管理 scrape。
 
 运行事实先保存，查询计划在指标 I/O 前冻结；`run.json`、`requests.jsonl`、`evaluations.json`、`perf.json`
 保留窗口、入口、拓扑、注入事实和指标覆盖情况。请求统计及 Case/Facet 分组只在存在注入请求证据时展示。

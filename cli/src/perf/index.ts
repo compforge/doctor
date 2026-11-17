@@ -136,7 +136,6 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const operation = plugin.services.operation(selected.source.operation!).operation;
   const declarations = plugin.services.operations().map(item => item.operation);
   let service = bindService(selected.service, {name: context.profile.name});
-  let namespace = opts.namespace?.trim() || context.profile.value.namespace || "";
   let managed: Awaited<ReturnType<typeof openPluginContext>> | undefined;
   let adapter: Pick<Experiment, "runner" | "judge"> = {};
   if (config.qps > 0) {
@@ -151,7 +150,6 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     if (!approved.approved) return {status:CommandStatus.Cancelled, artifacts:[]};
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
     if (!kube) return {status:CommandStatus.Cancelled, artifacts:[]};
-    namespace = kube.kubernetes.namespace;
     const executor = createKubernetesExecutor(kube);
     const environment = await resolveKubernetesEnvironment(executor);
     service = bindService(selected.service, environment);
@@ -171,7 +169,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
         timeoutMs:config.requestTimeoutMs, requestIdentity});
     }, operation);
   }
-  const preparedMetrics = await preparePerfMetrics(declarations, context, namespace, opts.prometheus);
+  const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus);
   writeOutput(formatPerfCaseMix(selection.source.caseSet, selection.cases.map(item => ({id:item.id, weight:1}))), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
@@ -203,7 +201,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
       if (context.signal.aborted) return {status:CommandStatus.Cancelled, artifacts:context.artifacts.list()};
       throw failure ?? new Error("Perf 未形成运行记录");
     }
-    const metrics = await observePerf(run, outputDir, declarations, context, namespace, opts.prometheus, preparedMetrics);
+    const metrics = await observePerf(run, outputDir, declarations, context, opts.prometheus, preparedMetrics);
     writePerfMetadata(outputDir, metadata, metrics);
     writeOutput(formatPerfSummary(run, metrics.metricIssues), process.stderr);
     return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,

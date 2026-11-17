@@ -182,24 +182,21 @@ describe("validateProfile", () => {
     }).errors.some((e) => e.includes("registry.password"))).toBe(true);
   });
 
-  it("validates Prometheus URL, credentials and request limits", () => {
+  it("validates Prometheus URL and credentials", () => {
     expect(validateProfile({
       readonly: true,
       prometheus: {
         url: "https://prometheus.example/prefix",
         username: "doctor",
         password: "secret",
-        timeout_ms: 5_000,
-        max_response_bytes: 1024,
       },
     }).errors).toEqual([]);
     const invalid = validateProfile({
       readonly: true,
-      prometheus: { url: "redis://prometheus", username: "doctor", timeout_ms: 0 },
+      prometheus: { url: "redis://prometheus", username: "doctor" },
     });
     expect(invalid.errors.some((error) => error.includes("prometheus.url"))).toBe(true);
     expect(invalid.errors.some((error) => error.includes("prometheus.password"))).toBe(true);
-    expect(invalid.errors.some((error) => error.includes("prometheus.timeout_ms"))).toBe(true);
   });
 });
 
@@ -273,4 +270,11 @@ it("profile validates log timePadding as a positive duration", () => {
       expect(() => loadConfig(path)).toThrow("log.timePadding");
     }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+it("Prometheus profile rejects query scope and backend settings instead of silently ignoring them", () => {
+  for (const key of ["parameters", "kind", "concurrency", "timeout_ms", "max_response_bytes"]) {
+    const path = makeTmpFile("old-metrics.yaml", `profiles:\n  test:\n    readonly: true\n    prometheus:\n      url: http://metrics\n      ${key}: invalid\n`);
+    expect(() => loadConfig(path)).toThrow(`prometheus.${key} is not supported`);
+  }
 });
