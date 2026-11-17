@@ -357,8 +357,10 @@ describe("command help", () => {
     const result = await runCore(["perf", "--help"]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("Usage: doctor perf [options]");
-    expect(result.stdout).toContain("--levels <numbers>");
-    expect(result.stdout).toContain("最大 50；指定后跳过最高并发询问");
+    expect(result.stdout).toContain("--qps <number>");
+    expect(result.stdout).toContain("--max-inflight <number>");
+    expect(result.stdout).not.toContain("--service");
+    expect(result.stdout).not.toContain("--scenario");
     expect(result.stdout).not.toContain("--max-requests");
     expect(result.stdout).toContain("--hold <seconds>");
     expect(result.stdout).not.toContain("--trace-samples");

@@ -1,48 +1,23 @@
+import { createInterface } from "node:readline";
 import { writeOutput } from "../terminal/output";
-import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/runners";
-import { selectPerfProvider, loadPerfScenarios } from "./extensions";
-import { bindService } from "@compforge/doctor-plugin";
+import { caseRunnerProvider, createCaseRunner } from "../case/runners";
+import { bindService, loadCaseCatalog, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
+import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
 import { observePerf } from "./observations";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
-import type {
-  PluginDefinition,
-  ServiceCaseObservation,
-  ServiceCaseRunner,
-  ServiceRequestIdentity,
-} from "@compforge/doctor-plugin";
-import {
-  Engine,
-  writeRunData,
-  type CaseMixEntry,
-  type CaseSet,
-  type Outcome,
-  type Run,
-  type Experiment,
-} from "@compforge/perf-harness";
 import { resolveCaseRequestIdentity } from "../case";
-import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
-import { CommandStatus, type CommandContext, type CommandResult } from "../command";
+import { selectDoctorCases } from "../case/catalog";
+import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { diagnosticMessage } from "../command/diagnostic";
-import { recordExecutionFailure } from "../command/execution-scope";
-import { approvalDeniedReason } from "../command/approval";
-import {
-  createKubernetesExecutor,
-  resolveKubernetesCommandConfig,
-} from "../command/kubernetes-target";
-import { openPluginContext, createHostPluginContext } from "../plugin/context";
+import { createKubernetesExecutor, resolveKubernetesCommandConfig } from "../command/kubernetes-target";
+import { resolveKubernetesEnvironment } from "../infra/k8s/environment";
+import { openPluginContext } from "../plugin/context";
 import { resolveApprovalGate } from "../terminal/approval";
-
-import { useLogger } from "../terminal/log";
 import { promptListedChoice } from "../terminal/selection";
-import {
-  PERF_MAX_CONCURRENCY_OPTIONS,
-  perfLevelsThrough,
-  resolvePerfConfig,
-  perfLoadPlans,
-} from "./config";
-import type { PerfCliOpts, PerfResult } from "./model";
+import { resolvePerfConfig, perfLoadPlans } from "./config";
+import type { PerfCliOpts, PerfResult, PerfConfig } from "./model";
 import { createPerfArtifact, writePerfMetadata } from "./output";
 
 export * from "./config";
@@ -83,7 +58,7 @@ function toObservation(outcome: Outcome): ServiceCaseObservation {
  */
 export function perfAdapterFromCaseFactory(
   name: string, create: () => Promise<ServiceCaseRunner>, operation?: Operation,
-): Pick<Experiment, "runner" | "judge"> {
+): Required<Pick<Experiment, "runner" | "judge">> {
   let runner: ServiceCaseRunner | undefined;
   return {
     runner: {
@@ -125,199 +100,114 @@ export function perfAdapterFromCaseFactory(
   };
 }
 
-/** Root cancellation remains visible even when an embedding distribution suppresses info logs. */
-export async function runPerf(
-  opts: PerfCliOpts,
-  plugin: PluginDefinition,
-  commandContext: CommandContext,
-): Promise<CommandResult<PerfResult>> {
-  const cancelled = () => writeOutput("[perf] 已取消：正在通知请求与采集组件停止，等待清理并保存已有证据…\n", process.stderr);
-  commandContext.signal.addEventListener("abort", cancelled, { once: true });
-  try {
-    commandContext.signal.throwIfAborted();
-    return await executePerf(opts, plugin, commandContext);
-  } finally {
-    commandContext.signal.removeEventListener("abort", cancelled);
+async function selectParameters(opts: PerfCliOpts, config: PerfConfig): Promise<boolean> {
+  if (!isInteractive()) return true;
+  for (const [option, key, title, integer, positive] of [
+    ["qps", "qps", "注入 QPS（0 只观测自然流量）", false, false],
+    ["maxInflight", "maxInflight", "最大在途请求数", true, true],
+    ["hold", "holdSeconds", "hold 观测秒数", false, true],
+  ] as const) {
+    if (option === "maxInflight" && config.qps > 0) config.maxInflight = resolvePerfConfig({...opts, qps: String(config.qps)}).maxInflight;
+    if (opts[option] !== undefined || (option === "maxInflight" && config.qps === 0)) continue;
+    const value = await promptListedChoice({question: `${title}（默认 ${config[key]}，q 取消）：`,
+      emptyValue: config[key], invalidMessage: "请输入有效数值。",
+      match: answer => {
+        const n = Number(answer.trim());
+        return Number.isFinite(n) && (positive ? n > 0 : n >= 0) && (!integer || Number.isInteger(n)) ? n : undefined;
+      }});
+    if (value === undefined) return false;
+    config[key] = value;
   }
+  return true;
 }
 
-async function executePerf(
-  opts: PerfCliOpts,
-  plugin: PluginDefinition,
-  commandContext: CommandContext,
-): Promise<CommandResult<PerfResult>> {
+/** Case selects the observation entry. Only positive injection acquires business access. */
+export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, context: CommandContext): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
-  const selected = selectPerfProvider(plugin.services, config.service);
-  const provider = selected.service;
-  const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
-  if (!kube) return { status: CommandStatus.Cancelled, artifacts: [] };
-  const executor = createKubernetesExecutor(kube);
-  const scenarios = await loadPerfScenarios(selected, () => {
-    const options = {
-      service: provider, capability: selected.extension,
-      config: commandContext.profile.pluginConfig, clients: commandContext.clients, signal: commandContext.signal,
-    };
-    return selected.extension.access.kubernetes?.length
-      ? openPluginContext(executor, {
-        namespace: kube.kubernetes.namespace, kubeconfig: kube.kubernetes.kubeconfig, context: kube.kubernetes.context,
-      }, options)
-      : createHostPluginContext({ ...options, namespace: kube.kubernetes.namespace });
-  });
-  const scenario = config.scenario ?? scenarios[0]?.id;
-  const declaredScenario = scenarios.find((item) => item.id === scenario);
-  if (!declaredScenario) throw new Error(`Service '${provider.name}' 未声明 perf scenario '${scenario}'`);
-  const runnerProvider = caseRunnerProvider(plugin.services, declaredScenario.cases.service, declaredScenario.cases.source);
-  const catalog = doctorCaseCatalog(plugin, opts.caseFile, undefined, runnerProvider.service.name);
-  const caseSelection = await selectDoctorCases({
-    catalog: runnerCaseCatalog(catalog, runnerProvider),
-    supports: runnerProvider.factory.supports,
-    command: "perf",
-    caseSetId: opts.caseset,
-    caseIds: opts.cases,
-  });
-  if (!caseSelection) return { status: CommandStatus.Cancelled, artifacts: [] };
-  const caseSet = caseSelection.source.caseSet;
-  const caseMix = caseSelection.cases.map((item) => ({ id: item.id, weight: 1 }));
-
-  if (!opts.levels?.trim() && isInteractive()) {
-    writeOutput(`可选最高并发：${PERF_MAX_CONCURRENCY_OPTIONS.join(" / ")}（默认 20）` + "\n");
-    const maxConcurrency = await promptListedChoice({
-      question: "请选择最高并发（输入并发值，直接回车使用 20，q 取消）：",
-      match: (answer) => {
-        const value = Number(answer.trim());
-        return PERF_MAX_CONCURRENCY_OPTIONS.includes(
-          value as (typeof PERF_MAX_CONCURRENCY_OPTIONS)[number],
-        ) ? value : undefined;
-      },
-      invalidMessage: `最高并发只支持 ${PERF_MAX_CONCURRENCY_OPTIONS.join("、")}`,
-      emptyValue: 20,
-    });
-    if (maxConcurrency === undefined) return { status: CommandStatus.Cancelled, artifacts: [] };
-    config.levels = perfLevelsThrough(maxConcurrency);
-  }
-
+  const sources = plugin.services.caseSources().filter(item => item.source.operation);
+  if (!sources.length) throw new CommandInputError("没有绑定 Operation 的 Case 来源，无法确定观测入口");
+  const catalog = sources.flatMap(({service, source}) => loadCaseCatalog(source).map(caseSet => ({
+    source: "plugin" as const, service: service.name, sourceId: source.id, caseSet,
+  })));
+  const selection = await selectDoctorCases({catalog, command: "perf", caseSetId: opts.caseset, caseIds: opts.cases, supports: () => true});
+  if (!selection || !await selectParameters(opts, config)) return {status: CommandStatus.Cancelled, artifacts: []};
   const loads = perfLoadPlans(config);
-  const operationId = runnerProvider.source.operation;
-  if (!operationId) throw new Error("Perf Case source must declare its Operation");
-  const operation = plugin.services.operation(operationId).operation;
-  // Bind the catalog to the same resolved environment as the request runner below.
+  const selected = sources.find(item => item.service.name === selection.source.service && item.source.id === selection.source.sourceId)!;
+  const operation = plugin.services.operation(selected.source.operation!).operation;
   const declarations = plugin.services.operations().map(item => item.operation);
-
-  let requestIdentity: ServiceRequestIdentity | undefined;
-  const identityRequirement = runnerProvider.factory.requestIdentity;
-  if (identityRequirement) {
-    const configured = identityRequirement.configured(commandContext.profile.pluginConfig);
-    const tenantId = configured.tenantId?.trim();
-    const userId = configured.userId?.trim();
-    if (tenantId && userId) {
-      requestIdentity = { tenantId, userId };
-    } else {
-      if (!(isInteractive())) {
-        throw new Error("非交互环境的 Perf Case 必须由 Plugin profile 配置提供 tenant_id 和 user_id");
-      }
-      const directory = discoverTenantDirectory(plugin.services, (service, extension) => openPluginContext(executor, {
-        namespace: kube.kubernetes.namespace,
-        kubeconfig: kube.kubernetes.kubeconfig,
-        context: kube.kubernetes.context,
-      }, {
-        config: commandContext.profile.pluginConfig,
-        service,
-        endpoint: extension.endpoint,
-        capability: extension,
-      }));
-      requestIdentity = await resolveCaseRequestIdentity({
-        configured: { tenantId, userId }, directory, commandLabel: "Perf", logPrefix: "perf",
-      });
-      if (!requestIdentity) {
-        useLogger("perf").warn("已取消身份选择");
-        return { status: CommandStatus.Cancelled, artifacts: [] };
-      }
-    }
-    useLogger("perf").info(`identity: tenant=${requestIdentity.tenantId} user=${requestIdentity.userId}`);
+  let service = bindService(selected.service, {name: context.profile.name});
+  let namespace = opts.namespace?.trim() || context.profile.value.namespace || "";
+  let managed: Awaited<ReturnType<typeof openPluginContext>> | undefined;
+  let adapter: Pick<Experiment, "runner" | "judge"> = {};
+  if (config.qps > 0) {
+    const provider = caseRunnerProvider(plugin.services, selected.service.name, selected.source.id);
+    if (selection.cases.some(item => !provider.factory.supports(item))) throw new CommandInputError("所选 Case 不受其 runner 支持");
+    const approved = await resolveApprovalGate(opts)({id:"perf-load", risk:"disrupt", title:"执行 Perf 加压",
+      purpose:"观察系统在受控注入流量下的表现", target:`${context.profile.name}/${selected.service.name}`,
+      impact:[`注入 QPS ${config.qps}，最大在途 ${config.maxInflight}，hold ${config.holdSeconds}s，warmup ${config.rampSeconds}s`,
+        `Case: ${selection.cases.map(item => item.id).join(", ")}；多 Case 等权随机抽取`,
+        "真实业务请求可能写入数据、产生模型费用并增加下游压力；不设置请求总数上限",
+        `错误率 ${(config.abortErrorRate*100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）熔断；Ctrl+C 取消`]});
+    if (!approved.approved) return {status:CommandStatus.Cancelled, artifacts:[]};
+    const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
+    if (!kube) return {status:CommandStatus.Cancelled, artifacts:[]};
+    namespace = kube.kubernetes.namespace;
+    const executor = createKubernetesExecutor(kube);
+    const environment = await resolveKubernetesEnvironment(executor);
+    service = bindService(selected.service, environment);
+    const configured = provider.factory.requestIdentity?.configured(context.profile.pluginConfig);
+    const requestIdentity = configured ? await resolveCaseRequestIdentity({configured,
+      directory: discoverTenantDirectory(plugin.services, (owner, extension) => openPluginContext(executor, kube.kubernetes, {
+        config:context.profile.pluginConfig, service:owner, endpoint:extension.endpoint, capability:extension,
+        clients:context.clients, signal:context.signal, environment,
+      })), commandLabel:"Perf", logPrefix:"perf"}) : undefined;
+    if (configured && !requestIdentity) return {status:CommandStatus.Cancelled, artifacts:[]};
+    // Lazy access: Engine owns the setup boundary and QPS=0 never enters this factory.
+    adapter = perfAdapterFromCaseFactory(`${selected.service.name}/${selected.source.id}`, async () => {
+      managed = await openPluginContext(executor, kube.kubernetes, {config:context.profile.pluginConfig,
+        service:selected.service, endpoint:provider.factory.endpoint, capability:provider.factory,
+        clients:context.clients, signal:context.signal, environment});
+      return createCaseRunner(provider.factory, managed, {caseSetId:selection.source.caseSet.caseset,
+        timeoutMs:config.requestTimeoutMs, requestIdentity});
+    }, operation);
   }
-
-  const decision = await resolveApprovalGate(opts)({
-    id: "perf-load",
-    risk: "disrupt",
-    title: `执行 ${declaredScenario.title} 压测`,
-    purpose: declaredScenario.description,
-    target: `${kube.profileName}/${kube.kubernetes.namespace}/${runnerProvider.service.name}`
-      + ` · concurrency ${config.levels.join(" → ")}`,
-    impact: [
-      `场景：${provider.name}/${declaredScenario.id}；Case 来源：${runnerProvider.service.name}/${runnerProvider.source.id}`,
-      `Case: ${caseSet.caseset}/${caseSelection.cases.map((item) => item.id).join(", ")}；多 Case 等权随机抽取`,
-      `每档 ramp ${config.rampSeconds}s + hold ${config.holdSeconds}s；共 ${config.levels.length * (config.rampSeconds + config.holdSeconds)}s 发压时间`,
-      "按并发与时长持续发送请求，不设置请求总数上限；可随时 Ctrl+C 取消",
-      "请求会写入业务数据库、日志和 trace，并可能产生模型调用费用",
-      `错误率达到 ${(config.abortErrorRate * 100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）时停止当前档`,
-      "压测可能放大目标 Service 及其下游的延迟和资源压力",
-    ],
-  });
-  if (!decision.approved) {
-    useLogger("perf").warn(`${approvalDeniedReason(decision.source)}`);
-    return { status: CommandStatus.Cancelled, artifacts: [] };
-  }
-
-  const artifact = createPerfArtifact(config);
-  const outputDir = artifact.path;
-  commandContext.artifacts.add({ command: "perf", path: outputDir });
-  const metadata = { caseSource: declaredScenario.cases,
-    operation: operation.id(), caseFacets: caseSet.facets ?? {}, caseIds: caseSelection.cases.map(item => item.id) };
+  writeOutput(formatPerfCaseMix(selection.source.caseSet, selection.cases.map(item => ({id:item.id, weight:1}))), process.stderr);
+  const artifact = createPerfArtifact(config), outputDir = artifact.path;
+  context.artifacts.add({command:"perf", path:outputDir});
+  const metadata = {caseSource:{service:selected.service.name, source:selected.source.id}, operation:operation.id(),
+    caseFacets:selection.source.caseSet.facets ?? {}, caseIds:selection.cases.map(item => item.id)};
   writePerfMetadata(outputDir, metadata);
-
-  const managed = await openPluginContext(executor, {
-    namespace: kube.kubernetes.namespace,
-    kubeconfig: kube.kubernetes.kubeconfig,
-    context: kube.kubernetes.context,
-  }, {
-    config: commandContext.profile.pluginConfig,
-    service: runnerProvider.service,
-    endpoint: runnerProvider.factory.endpoint,
-    capability: runnerProvider.factory,
-    signal: commandContext.signal,
-    clients: commandContext.clients,
-  });
-
-  let run: Run | undefined;
-  let loadError: unknown;
+  const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
+    source:`declared:plugin/${plugin.id}`, version:plugin.version});
+  const stop = new AbortController();
+  let input: ReturnType<typeof createInterface> | undefined;
+  let run: Run | undefined, failure: unknown;
   try {
-  const graph = graphFromServices(plugin.services.services.map(service => bindService(service, managed.target.service.environment)), {
-    source: `declared:plugin/${plugin.id}`, version: plugin.version,
-  });
-    writeOutput(`[perf] 开始并发 ${config.levels.join(" → ")}\n`, process.stderr);
-    run = await new Engine({
-      name: `doctor-${provider.name}-${declaredScenario.id}`,
-      service: managed.target.service,
-      graph: graph.toJSON(),
-      ...perfAdapterFromCaseFactory(`${runnerProvider.service.name}/${runnerProvider.source.id}`, () => createCaseRunner(runnerProvider.factory, managed, {
-        caseSetId: caseSet.caseset, timeoutMs: config.requestTimeoutMs, requestIdentity,
-      }), operation),
-      caseSet, caseMix, loads, signal: commandContext.signal,
-      onArmStart: context => { writeOutput(`[perf] 开始 ${context.arm.id}\n${formatPerfCaseMix(caseSet, caseMix)}`, process.stderr); },
+    run = await new Engine({name:`doctor-${selected.service.name}-perf`, service, graph:graph.toJSON(),
+      entryIds:[operation.id()], ...adapter, caseSet:selection.source.caseSet,
+      caseMix:selection.cases.map(item => ({id:item.id, weight:1})), loads, signal:context.signal, stopSignal:stop.signal,
+      onArmStart: () => {
+        writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
+        if (isInteractive()) {
+          writeOutput("[perf] 回车结束本轮观测并生成报告；Ctrl+C 取消。\n", process.stderr);
+          input = createInterface({input:process.stdin, output:process.stderr});
+          input.once("line", () => stop.abort());
+        }
+      },
     }).run();
-  } catch (error) {
-    loadError = error;
-  } finally {
-    // Persist request evidence even if resource disposal or later observation fails.
+  } catch (error) { failure = error; }
+  finally {
+    input?.close();
     try { if (run) writeRunData(run, outputDir); }
-    finally {
-      const startedAt = Date.now();
-      try { await managed.dispose(); }
-      catch (error) {
-        recordExecutionFailure(error, { phase: "cleanup", target: runnerProvider.service.name, startedAt });
-        loadError ??= error;
-      }
-    }
+    finally { try { await managed?.dispose(); } catch (error) { failure ??= error; } }
   }
   if (!run) {
-    if (commandContext.signal.aborted) return { status: CommandStatus.Cancelled, artifacts: commandContext.artifacts.list() };
-    throw loadError ?? new Error("Perf Harness 未形成 Run");
+    if (context.signal.aborted) return {status:CommandStatus.Cancelled, artifacts:context.artifacts.list()};
+    throw failure ?? new Error("Perf 未形成运行记录");
   }
-  const metrics = await observePerf(run, outputDir, declarations, commandContext, kube.kubernetes.namespace, opts.prometheus);
+  const metrics = await observePerf(run, outputDir, declarations, context, namespace, opts.prometheus);
   writePerfMetadata(outputDir, metadata, metrics);
-  return { status: commandContext.signal.aborted ? CommandStatus.Cancelled
-    : loadError || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
-    reason: loadError ? `请求资源清理未完成；已有结果已保存：${diagnosticMessage(loadError)}` : undefined,
-    output: { run, outputDir, ...metrics, caseFacets: caseSet.facets },
-    artifacts: commandContext.artifacts.list() };
+  return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
+    reason:failure ? diagnosticMessage(failure) : undefined,
+    output:{run, outputDir, ...metrics, caseFacets:selection.source.caseSet.facets}, artifacts:context.artifacts.list()};
 }

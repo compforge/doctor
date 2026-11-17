@@ -26,7 +26,7 @@ import { writeOutput } from "../terminal/output";
 //   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
 //   doctor metric            → 基于 Prometheus 或内嵌 Prombed 采集并可视化 Service metrics
 //   doctor eval              → 按 canonical CaseSet 顺序触发请求，采集关联 trace/log/data，不做质量评分
-//   doctor perf              → 发起受控业务压测，并在同一窗口采集 metric、trace、log
+//   doctor perf              → 观测流量下的性能，按需加压并采集外部指标
 //   doctor install           → 向选定 Pod container 安装 GDB
 //   doctor resize            → 手动调整当前实例的内存 cgroup 上限
 //   doctor init              → 首次初始化 local profile
@@ -402,15 +402,13 @@ function withMetricOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
-    .addOption(serviceOption("提供 perf capability 的 Service；仅一个 provider 时自动选择"))
-    .option("--scenario <id>", "Plugin 声明的压测观测配置；默认第一个")
-    .option("--levels <numbers>", "逗号分隔的并发档位（最大 50；指定后跳过最高并发询问）")
-    .option("--ramp <seconds>", "每档升压时间（秒）", "10")
-    .option("--hold <seconds>", "每档稳态时间（秒）", "60")
-    .option("--abort-error-rate <ratio>", "当前档错误率熔断阈值 (0,1]", "0.1")
+    .option("--qps <number>", "注入 QPS；0 只观测自然流量（默认 0）")
+    .option("--max-inflight <number>", "最大在途请求数（默认 20）；QPS=0 时不参与执行")
+    .option("--ramp <seconds>", "warmup 升压时间（秒），QPS=0 时跳过", "10")
+    .option("--hold <seconds>", "hold 观测时间（秒，默认 60）")
+    .option("--abort-error-rate <ratio>", "注入请求错误率熔断阈值 (0,1]", "0.1")
     .option("--breaker-min-n <n>", "启用错误率熔断前的最少请求数", "10")
     .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")
     .option("--request-timeout <seconds>", "单请求超时", "180")
@@ -999,10 +997,11 @@ export function createDoctorProgram(
     await runCommand(evalCommand, opts, domainInput(opts), commandRuntime);
   });
   withPerfOptions(
-    catalog.command("perf").description("发起受控业务压测，关联 Operation graph 与外部指标窗口")
+    catalog.command("perf").description("观测流量下的性能，按需加压并关联 Operation graph")
       .addHelpText("after", `
 分析思路：
-  按所选 Case 产生受控负载，查询外部 Prometheus/VM 历史窗口，离线渲染 Callgraph。
+  以所选 Case 的 Operation 为入口观测；QPS=0 使用自然流量，正 QPS 叠加加压。
+  查询外部 Prometheus/VM 同窗口指标，离线渲染 Report 与 Callgraph。
 结果解读：
   比较实际负载、错误率、延迟与证据覆盖；单次结果仅适用于本次目标、Case 和负载条件。
 `),

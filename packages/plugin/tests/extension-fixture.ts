@@ -3,10 +3,10 @@ import type {
   ExtensionContext, DataIdExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
   CaseRunnerFactory, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
-  MetricConfiguration, ServicePerfScenario, WorkloadProbeExtension,
+  MetricConfiguration, WorkloadProbeExtension,
   TenantListExtension, TenantResolveExtension, UserSearchExtension, ModelQueryExtension,
   ModelBackendInspectExtension, ModelBackendValidateExtension, ModelInvokeExtension, ModelStreamExtension,
-  McpConfigurationExtension, MetricConfigurationExtension, PerfScenariosExtension,
+  McpConfigurationExtension, MetricConfigurationExtension,
 } from "../src";
 import { modelBackendOutput } from "../src";
 export type DataRun<E extends { run: (...args: any[]) => Promise<{ data: unknown }> }> = (...args: Parameters<E["run"]>) => Promise<Awaited<ReturnType<E["run"]>>["data"]>;
@@ -104,7 +104,4 @@ export function overviewExtensions(value: {
 }
 export function metricExtension(value: MetricConfiguration): MetricConfigurationExtension {
   return { id: "metric.configuration", kind: "metric.configuration" as const, access: {}, run: withSummary({ title: "指标配置", fields: [] }, async () => value) };
-}
-export function perfExtension(value: { scenarios: readonly ServicePerfScenario[] }): PerfScenariosExtension {
-  return { id: "perf.scenarios", kind: "perf.scenarios" as const, access: {}, run: withSummary({ title: "性能场景", fields: [] }, async () => value.scenarios) };
 }

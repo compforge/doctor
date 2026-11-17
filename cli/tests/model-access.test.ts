@@ -2,7 +2,7 @@ import { withSummary } from "@compforge/doctor-plugin";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { caseRunnerFixture, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension, perfExtension } from "../../packages/plugin/tests/extension-fixture";
+import { caseRunnerFixture, catalogExtensions, directoryExtensions, inferenceExtensions, inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, spyOn, test } from "bun:test";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import { loadCaseCatalog, requireWorkloadProbeExtension, requireModelInvokeExtension, DOCTOR_PLUGIN_API_VERSION, type CaseCatalog } from "@compforge/doctor-plugin";
@@ -381,19 +381,11 @@ test("Plugin case catalog owns CaseSet validation independently of the runner", 
           access: {},
           createRunner: async () => { throw new Error("factory must not run"); },
         }) }],
-        extensions: [perfExtension({
-          scenarios: [{
-            id: "ordinary-chat",
-            cases: { service: "chat", source: "chat" },
-            title: "普通 Chat",
-            description: "SSE Chat",
-          }],
-        })]
       }]
     },
   };
   const validated = validatePluginDefinition(base, manifest);
-  expect(validated.services.extensions("perf.scenarios")).toHaveLength(1);
+  expect(validated.services.caseSources()).toHaveLength(1);
   expect(loadCaseCatalog(catalog)).toMatchObject([caseSet]);
   expect(() => loadCaseCatalog({ ...catalog, load: () => [{ ...caseSet, facets: undefined }] }))
     .toThrow("unknown facet 'difficulty'");

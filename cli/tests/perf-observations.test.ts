@@ -27,16 +27,6 @@ test("Case sources statically reference owned Operations without runner callback
   expect(() => createServiceCatalog([{ ...definition, operations: [operation, operation] }])).toThrow("Duplicate Operation");
 });
 
-test("offline Perf rejects a Service selection as a usage error before preparing resources", async () => {
-  const context = new CommandContext({}, undefined, {
-    loadPlugin: async () => { throw new Error("invalid input must not load a Plugin"); },
-  });
-  const result = await perfCommand.run(context, { from: "/unused-perf-evidence", services: ["chat"] });
-  expect("error" in result && result.error).toBeInstanceOf(CommandInputError);
-  expect("reason" in result && result.reason).toBe("--from uses saved Service identity; omit --service");
-  expect(commandExitCode(result)).toBe(2);
-  expect(result.artifacts).toEqual([]);
-});
 
 test("empty offline paths are usage errors and never enter online preparation", async () => {
   const context = new CommandContext({}, undefined, {
@@ -118,7 +108,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
-    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖缺口");
+    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("Metric coverage");
     response = "missing";
     const source = await perfMetricSource(context);
     if (!source) throw new Error("fixture Prometheus source missing");
@@ -149,7 +139,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     const counts = [requests, metrics];
     const replay = await perfCommand.run(context, { from: directory });
     artifactPaths.push(...replay.artifacts.map(artifact => artifact.path));
-    const replayed = replay.output?.services[0]?.result.output;
+    const replayed = replay.output;
     expect(replayed?.run.run_id).toBe(run.run_id);
     expect(replayed?.metricsComplete).toBe(false);
     expect(replayed?.metricIssues).toEqual(partial.metricIssues);
@@ -161,8 +151,8 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     const fallback = await perfCommand.run(context, { from: directory });
     artifactPaths.push(...fallback.artifacts.map(artifact => artifact.path));
     expect(fallback.status).toBe(CommandStatus.Ok);
-    expect(fallback.output?.services[0]?.result.output?.metricsComplete).toBe(true);
-    expect(fallback.output?.services[0]?.result.output?.caseFacets).toBeUndefined();
+    expect(fallback.output?.metricsComplete).toBe(true);
+    expect(fallback.output?.caseFacets).toBeUndefined();
     expect([requests, metrics]).toEqual(counts);
     expect(loadRun(directory).executions[0]!.operation_runs[0]!.operation.id()).toBe(operation.id());
   } finally {
@@ -170,4 +160,38 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     cleanupTemporaryArtifacts([...artifactPaths, ...context.artifacts.list().map(artifact => artifact.path)]);
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+/** @case Natural traffic observation requires only a Case/Operation and metric source, without business access. */
+test("QPS zero observes all registered probes without Kubernetes, identity, runner or approval", async () => {
+  const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
+  let queries=0;
+  const server=Bun.serve({port:0,fetch(request) {
+    const url=new URL(request.url);expect(url.pathname).toBe("/api/v1/query");queries++;
+    return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
+  }});
+  const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
+  const plugin={id:"test",version:"1",services:createServiceCatalog([
+    {...definition,cases:[{id:"chat.cases",operation:operation.id(),load:()=>[{caseset:"chat",cases:[{id:"hello",input:{}}]}]}]},
+    {...definition,name:"other",operations:[other],cases:[]},
+  ])};
+  const context=new CommandContext({}, {name:"production",configPath:"",pluginConfig:{},value:{readonly:true,
+    namespace:"production",prometheus:{url:server.url.toString()}}}, {plugin});
+  try {
+    const result=await perfCommand.run(context,{qps:"0",hold:"0.03"});
+    expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
+    expect(queries).toBeGreaterThanOrEqual(4);
+    const run=result.output!.run;
+    expect(run.entry_ids).toEqual([operation.id()]);
+    expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
+    expect(run.executions[0]!.requests).toEqual([]);
+    expect(run.executions[0]!.phases.map(p=>p.kind)).toEqual(["hold"]);
+    const graph=buildCallgraph(run)!;
+    expect(graph.arms[0]!.windows[0]!.nodes).toHaveLength(2);
+    expect(graph.arms[0]!.windows[0]!.nodes.every(n=>n.properties.perf.metrics.qps!.value===7)).toBe(true);
+    const file=writePerfReport(result.output!);
+    const html=readFileSync(file,"utf8");
+    expect(html).toContain("Case entry");expect(html).toContain("Full graph");
+    expect(html).not.toContain("Injected request windows");
+  } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 });

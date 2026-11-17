@@ -32,7 +32,6 @@ export * from "./tenant";
 export * from "./mcp";
 export * from "./model";
 export * from "./metric";
-export * from "./perf";
 export * from "./registry";
 export * from "./workload";
 export * from "./vdb";

@@ -6,9 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Engine, writeRunData, loadRun, type Run, type ArmContext } from "@compforge/perf-harness";
 import {
-  parsePerfLevels,
   parsePerfOutputFormat,
-  perfLevelsThrough,
   resolvePerfConfig,
   perfLoadPlans,
 } from "../src/perf/config";
@@ -32,10 +30,10 @@ const service = bindService({
   workloads: [],
 }, { name: "test" });
 
-test("perf defaults scan concurrency 5 through 20 with bounded duration", () => {
+test("perf defaults to bounded observation without injection", () => {
   const config = resolvePerfConfig({}, new Date("2026-01-02T03:04:05"));
   expect(config).toMatchObject({
-    levels: [5, 10, 15, 20],
+    qps: 0, maxInflight: undefined,
     rampSeconds: 10,
     holdSeconds: 60,
     abortErrorRate: 0.1,
@@ -45,12 +43,8 @@ test("perf defaults scan concurrency 5 through 20 with bounded duration", () => 
     bundleName: "doctor-perf-20260102-030405",
   });
   expect(() => resolvePerfConfig({ maxRequests: "100" })).toThrow("已移除 --max-requests");
-  expect(() => parsePerfLevels("5,0,20")).toThrow("--levels");
-  expect(() => parsePerfLevels("5,55")).toThrow("1-50");
-  expect(perfLevelsThrough(1)).toEqual([1]);
-  expect(perfLevelsThrough(20)).toEqual([5, 10, 15, 20]);
-  expect(perfLevelsThrough(50)).toEqual([5, 10, 15, 20, 25, 30, 35, 40, 45, 50]);
-  expect(() => perfLevelsThrough(15)).toThrow("只支持");
+  expect(() => resolvePerfConfig({ qps: "-1" })).toThrow("--qps");
+  expect(() => resolvePerfConfig({ qps: "1", maxInflight: "0" })).toThrow("--max-inflight");
   expect(parsePerfOutputFormat("bundle")).toBe("bundle");
   expect(() => parsePerfOutputFormat("json")).toThrow("html 或 bundle");
   expect(resolvePerfConfig({ format: "bundle", output: "perf-result" }, new Date("2026-01-02T03:04:05")))
@@ -330,7 +324,7 @@ test("perf report preserves literal data and renders Facet values in their decla
       },
     });
     const html = readFileSync(report, "utf-8");
-    expect(html).toContain("按 Facet");
+    expect(html).toContain("By Facet");
     expect(html).toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
     expect(html.indexOf("<td>simple</td>")).toBeLessThan(html.indexOf("<td>medium</td>"));
     expect(html.indexOf("<td>medium</td>")).toBeLessThan(html.indexOf("<td>complex</td>"));
@@ -375,17 +369,17 @@ test("Perf adapter cancels active Case requests and round-trips interrupted evid
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
-test("Perf maps concurrency levels into explicit schema 12 warmup and hold stages", () => {
-  const [load] = perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "2", hold: "3", gracefulStop: "4" }));
+test("Perf maps independent QPS and inflight controls into warmup and hold", () => {
+  const [load] = perfLoadPlans(resolvePerfConfig({ qps: "10", maxInflight: "5", ramp: "2", hold: "3", gracefulStop: "4" }));
   expect(load).toMatchObject({
-    request_rate: Infinity, max_inflight: 1, cooldown_timeout_s: 4,
+    request_rate: 1, max_inflight: 5, cooldown_timeout_s: 4,
     stages: [
-      { kind: "warmup", duration_s: 2, request_rate: Infinity, max_inflight: 5 },
-      { kind: "hold", duration_s: 3, request_rate: Infinity, max_inflight: 5 },
+      { kind: "warmup", duration_s: 2, request_rate: 10, max_inflight: 5 },
+      { kind: "hold", duration_s: 3, request_rate: 10, max_inflight: 5 },
     ],
   });
-  expect(perfLoadPlans(resolvePerfConfig({ levels: "5", ramp: "0" }))[0]!.max_inflight).toBe(5);
-  expect(() => perfLoadPlans(resolvePerfConfig({ ramp: "0", hold: "0" }))).toThrow("不能同时为 0");
+  expect(perfLoadPlans(resolvePerfConfig({ qps: "10", maxInflight: "5", ramp: "0" }))[0]!.max_inflight).toBe(5);
+  expect(() => perfLoadPlans(resolvePerfConfig({ ramp: "0", hold: "0" }))).toThrow("--hold 必须大于 0");
 });
 
 /** @case id=perf_judge_code,desc=`Plugin failure classification`,expect=`Failures never become Harness success; exception details stay in Outcome` */

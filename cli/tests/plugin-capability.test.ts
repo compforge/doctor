@@ -90,13 +90,9 @@ test("tenant consumes paged data; identity lookup is required only when selected
   ]);
 });
 
-test("perf command 声明刺激和 OTel 三类数据所需能力", () => {
-  expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map((need) => need.capability)).toEqual([
-    { scope: "extension", name: "perf.scenarios" },
+test("perf observes Case entries without requiring a runner or metric.configuration", () => {
+  expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map(need => need.capability)).toEqual([
     { scope: "resource", name: "cases" },
-    { scope: "extension", name: "metric.configuration" },
-    { scope: "extension", name: "trace.resolve" },
-    { scope: "resource", name: "logs" },
   ]);
 });
 

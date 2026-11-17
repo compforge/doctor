@@ -1,4 +1,3 @@
-import { forServices } from "../command/services";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
 import { CommandInputError, defineCommand, type CommandInput } from "../command";
@@ -11,11 +10,10 @@ import type { PerfCliOpts, PerfResult } from "./model";
 import { writePerfReport } from "./report";
 
 type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
-const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
+export const perfCommand = defineCommand<PerfServiceInput, PerfResult>({
   name: "doctor perf",
   validate: input => {
     if (input.from !== undefined && !input.from.trim()) throw new CommandInputError("--from 不能为空");
-    if (input.from && input.service) throw new CommandInputError("--from uses saved Service identity; omit --service");
   },
   serialize: async (context, result) => serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "perf")),
   render: (context, result) => renderEvidence(context, result, {
@@ -28,10 +26,8 @@ const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   }),
   prepare: async (context, input) => {
     if (input.from) return input;
-    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf, environment: { kubernetes: true } });
+    await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf });
     return input;
   },
   run: (context, input) => input.from ? replayPerf({ ...input, ...commandOptions(context) }, context) : runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
 });
-
-export const perfCommand = forServices(perfServiceCommand);
