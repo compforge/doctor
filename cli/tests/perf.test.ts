@@ -1,7 +1,5 @@
-import { Operation } from "@compforge/harness-common";
 import { bindService } from "@compforge/doctor-plugin";
 import { readBundleExecutions } from "./bundle-fixture";
-import { commandOutcome } from "../src/command";
 import { expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
