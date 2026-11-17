@@ -5,8 +5,7 @@ import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
 import { bindService } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
-import { operationMetricProbes, planMetrics } from "@compforge/perf-harness";
-import { perfMetricSource, collectPerfMetrics, perfMetricsComplete } from "./observations";
+import { observePerf } from "./observations";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
@@ -198,16 +197,11 @@ async function executePerf(
   }
 
   const loads = perfLoadPlans(config);
-  const source = await perfMetricSource(commandContext, opts.prometheus);
   const operationId = runnerProvider.source.operation;
   if (!operationId) throw new Error("Perf Case source must declare its Operation");
   const operation = plugin.services.operation(operationId).operation;
   // Bind the catalog to the same resolved environment as the request runner below.
   const declarations = plugin.services.operations().map(item => item.operation);
-  const probes = operationMetricProbes(declarations, source.kind, operation => ({
-    namespace: kube.kubernetes.namespace,
-    ...commandContext.profile.value.prometheus?.parameters?.[operation.serviceName],
-  }));
 
   let requestIdentity: ServiceRequestIdentity | undefined;
   const identityRequirement = runnerProvider.factory.requestIdentity;
@@ -267,8 +261,9 @@ async function executePerf(
   const artifact = createPerfArtifact(config);
   const outputDir = artifact.path;
   commandContext.artifacts.add({ command: "perf", path: outputDir });
-  writeFileSync(join(outputDir, "perf.json"), JSON.stringify({ schema: 1, caseSource: declaredScenario.cases,
-    operation: operation.id(), caseFacets: caseSet.facets ?? {}, caseIds: caseSelection.cases.map(item => item.id) }, null, 2));
+  const metadata = { schema: 1, caseSource: declaredScenario.cases,
+    operation: operation.id(), caseFacets: caseSet.facets ?? {}, caseIds: caseSelection.cases.map(item => item.id) };
+  writeFileSync(join(outputDir, "perf.json"), JSON.stringify(metadata, null, 2));
 
   const managed = await openPluginContext(executor, {
     namespace: kube.kubernetes.namespace,
@@ -289,7 +284,7 @@ async function executePerf(
   const graph = graphFromServices(plugin.services.services.map(service => bindService(service, managed.target.service.environment)), {
     source: `declared:plugin/${plugin.id}`, version: plugin.version,
   });
-    writeOutput(`[perf] 开始并发 ${config.levels.join(" → ")}；指标源 ${source.kind} ${source.url}\n`, process.stderr);
+    writeOutput(`[perf] 开始并发 ${config.levels.join(" → ")}\n`, process.stderr);
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       service: managed.target.service,
@@ -311,14 +306,11 @@ async function executePerf(
     if (commandContext.signal.aborted) return { status: CommandStatus.Cancelled, artifacts: commandContext.artifacts.list() };
     throw loadError ?? new Error("Perf Harness 未形成 Run");
   }
-  planMetrics(run, probes, source);
-  writeRunData(run, outputDir);
-  writeOutput("[perf] 请求与查询计划已保存；查询外部指标窗口…\n", process.stderr);
-  await collectPerfMetrics(run, outputDir, source, commandContext.signal);
-  const metricsComplete = perfMetricsComplete(run);
+  const metrics = await observePerf(run, outputDir, declarations, commandContext, kube.kubernetes.namespace, opts.prometheus);
+  writeFileSync(join(outputDir, "perf.json"), JSON.stringify({ ...metadata, ...metrics }, null, 2));
   return { status: commandContext.signal.aborted ? CommandStatus.Cancelled
-    : loadError || run.status !== "completed" || !metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
+    : loadError || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
     reason: loadError ? "请求资源清理未完成；已有结果已保存" : undefined,
-    output: { run, outputDir, metricsComplete, caseFacets: caseSet.facets },
+    output: { run, outputDir, ...metrics, caseFacets: caseSet.facets },
     artifacts: commandContext.artifacts.list() };
 }

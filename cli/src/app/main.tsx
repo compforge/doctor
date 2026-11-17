@@ -415,7 +415,6 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")
     .option("--request-timeout <seconds>", "单请求超时", "180")
     .option("--from <directory>", "从已有 Perf 产物离线生成报告")
-    .option("--collect-metrics", "按 --from 保存的查询计划重新采集外部指标")
     .option("--prometheus <url>", "外部 Prometheus/VM 地址；缺省读取 profile")
     .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Plugin config")
     .addOption(deliveryFormatOption(["html", "bundle"], "--format <format>"))

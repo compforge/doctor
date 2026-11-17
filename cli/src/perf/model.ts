@@ -17,7 +17,6 @@ export interface PerfCliOpts {
   gracefulStop?: string;
   requestTimeout?: string;
   from?: string;
-  collectMetrics?: boolean;
   prometheus?: string;
   namespace?: string;
   kubeconfig?: string;
@@ -49,5 +48,6 @@ export interface PerfResult {
   run: Run;
   outputDir: string;
   metricsComplete: boolean;
+  metricIssues?: readonly string[];
   caseFacets?: Readonly<Record<string, FacetSpec>>;
 }

@@ -27,7 +27,6 @@ const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   }),
   prepare: async (context, input) => {
     if (input.from) return input;
-    if (input.collectMetrics) throw new Error("--collect-metrics requires --from");
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf, environment: { kubernetes: true } });
     return input;
   },

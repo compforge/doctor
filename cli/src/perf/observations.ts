@@ -1,21 +1,22 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { clientKey } from "@compforge/harness-common";
+import { clientKey, type Operation } from "@compforge/harness-common";
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import { PrometheusClient, type PrometheusReader } from "@compforge/harness-toolbox/prometheus";
-import { buildCallgraph, collectMetrics, loadRun, recollectMetrics, writeRunData, type Run } from "@compforge/perf-harness";
+import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, type Run, type PrometheusProbe } from "@compforge/perf-harness";
 import { CommandStatus, type CommandContext, type CommandResult } from "../command";
-import { writeOutput } from "../terminal/output";
+import { useLogger } from "../terminal/log";
+import { diagnosticMessage } from "../command/diagnostic";
 import { createPerfArtifact } from "./output";
 import { resolvePerfConfig } from "./config";
 import type { PerfCliOpts, PerfResult } from "./model";
 
 /** Borrow the command's bounded HTTP pool. Credentials never enter persisted query identity. */
-export async function perfMetricSource(context: CommandContext, url?: string): Promise<PrometheusReader> {
+export async function perfMetricSource(context: CommandContext, url?: string): Promise<PrometheusReader | undefined> {
   const profile = context.profile.value.prometheus;
   const endpoint = url?.trim() || profile?.url;
-  if (!endpoint) throw new Error("Perf requires an external Prometheus/VM URL (--prometheus or profile.prometheus.url)");
+  if (!endpoint) return undefined;
   const limits = { concurrency: profile?.concurrency ?? 4, connectTimeoutMs: 10_000,
     requestTimeoutMs: profile?.timeout_ms ?? 30_000, maxResponseBytes: profile?.max_response_bytes ?? 4 * 1024 * 1024 };
   for (const value of Object.values(limits)) if (!Number.isSafeInteger(value) || value <= 0) throw new Error("Prometheus access limits must be positive integers");
@@ -42,25 +43,57 @@ export async function collectPerfMetrics(run: Run, directory: string, source: Pr
   finally { writeRunData(run, directory); }
 }
 
-/** Offline replay never resolves a Plugin or Case runner; recollection reuses frozen queries. */
+/** @spec Operation probes are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
+export async function observePerf(run: Run, directory: string, operations: readonly Operation[],
+  context: CommandContext, namespace: string, url?: string,
+): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
+  const declared = operations.filter(operation => operation.probes?.length);
+  if (!declared.length) return { metricsComplete: true, metricIssues: [] };
+  const metricIssues: string[] = [];
+  const missing = (message: string) => { metricIssues.push(message); useLogger("perf").warn(message); };
+  try {
+    const source = await perfMetricSource(context, url);
+    if (!source) {
+      missing("Operation 已声明 probe，但未配置 Prometheus/VM；仅保留请求事实");
+    } else {
+      const probes: PrometheusProbe[] = [];
+      for (const operation of declared) {
+        try {
+          probes.push(...operationMetricProbes([operation], source.kind, item => ({ namespace,
+            ...context.profile.value.prometheus?.parameters?.[item.serviceName],
+          })));
+        } catch (error) {
+          missing(`${operation.id()} 指标未采集：${diagnosticMessage(error)}`);
+        }
+      }
+      if (probes.length) {
+        planMetrics(run, probes, source);
+        writeRunData(run, directory);
+        useLogger("perf").info(`请求与查询计划已保存；自动查询 ${probes.length} 组 Operation 指标`);
+        await collectPerfMetrics(run, directory, source, context.signal);
+        if (!perfMetricsComplete(run)) missing("部分指标查询失败或缺少样本；已取得的指标与请求事实均已保留");
+      }
+    }
+  } catch (error) {
+    missing(`指标采集未完成：${diagnosticMessage(error)}`);
+  } finally {
+    writeRunData(run, directory);
+  }
+  return { metricsComplete: metricIssues.length === 0 && perfMetricsComplete(run), metricIssues };
+}
+
+/** Offline replay only reads saved facts; it never resolves a Plugin, runner or metric source. */
 export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
-  const original = loadRun(opts.from!);
+  const run = loadRun(opts.from!);
   const artifact = createPerfArtifact(config);
   cpSync(opts.from!, artifact.path, { recursive: true });
   context.artifacts.add({ command: "perf", path: artifact.path });
-  let run = original;
-  if (opts.collectMetrics) {
-    const source = await perfMetricSource(context, opts.prometheus);
-    writeOutput("[perf] 使用保存的查询计划补采指标；原始目录保留。\n", process.stderr);
-    try { run = await recollectMetrics(artifact.path, [source], { signal: context.signal }); }
-    catch (error) { if (!context.signal.aborted) throw error; run = loadRun(artifact.path); }
-  }
   const metadataPath = join(artifact.path, "perf.json");
   const metadata = existsSync(metadataPath) ? JSON.parse(readFileSync(metadataPath, "utf8")) : undefined;
   if (metadata && metadata.schema !== 1) throw new Error("Unsupported Doctor Perf metadata schema");
-  const metricsComplete = perfMetricsComplete(run);
+  const metricsComplete = metadata?.metricsComplete ?? perfMetricsComplete(run);
   return { status: context.signal.aborted ? CommandStatus.Cancelled
     : run.status !== "completed" || !metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
-    output: { run, outputDir: artifact.path, metricsComplete, caseFacets: metadata?.caseFacets }, artifacts: context.artifacts.list() };
+    output: { run, outputDir: artifact.path, metricsComplete, metricIssues: metadata?.metricIssues, caseFacets: metadata?.caseFacets }, artifacts: context.artifacts.list() };
 }

@@ -1,14 +1,15 @@
 import { expect, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SSEOperation, graphFromServices } from "@compforge/harness-common";
 import { bindService, createServiceCatalog } from "@compforge/doctor-plugin";
-import { buildCallgraph, writeRunData, Engine, loadRun, operationMetricProbes, planMetrics } from "@compforge/perf-harness";
+import { buildCallgraph, writeRunData, Engine, loadRun } from "@compforge/perf-harness";
+import { cleanupTemporaryArtifacts } from "../src/app/delivery";
 import { CommandContext } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { perfCommand } from "../src/perf/command";
-import { collectPerfMetrics, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
+import { collectPerfMetrics, observePerf, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
 import { writePerfReport } from "../src/perf/report";
 
 const operation = new SSEOperation({ serviceName: "chat", name: "chat", method: "POST", path: "/chat",
@@ -39,6 +40,8 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
   } });
   const context = new CommandContext({}, { name: "test", configPath: "", pluginConfig: {}, value: { readonly: true, prometheus: { url: server.url.toString(), concurrency: 2 } } },
     { loadPlugin: async () => { throw new Error("offline replay must not load Plugin"); } });
+  const artifactPaths: string[] = [];
+  const noSource = new CommandContext({}, { name: "test", configPath: "", pluginConfig: {}, value: { readonly: true } });
   try {
     const cases = { caseset: "chat", cases: [{ id: "greeting", input: { query: "你好" } }, { id: "python", input: { query: "用 Python 计算下 1+1" } }] };
     const run = await new Engine({ service, graph: graphFromServices([service]).toJSON(), caseSet: cases,
@@ -46,49 +49,65 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
         run: async ({ input, signal }) => {
           const result = await fetch(new URL("/chat", server.url), { method: "POST", body: JSON.stringify(input.input), signal });
           await result.text();
-          return { status: result.status, durationMs: 1, meta: { trace_id: "manual-follow-up" } };
+          return { status: result.status, durationMs: 1, events: 1, nbytes: 0, metrics: {}, meta: { trace_id: "manual-follow-up" } };
         }, classify: () => ({ ok: true }),
       }), operation),
       loads: [{ request_rate: 100, max_inflight: 1, hold_s: 0.06 }],
     }).run();
     expect(requests).toBeGreaterThan(0);
     expect(new Set(run.executions.flatMap(arm => arm.operation_runs.map(item => item.operation.id())))).toEqual(new Set([operation.id()]));
-    const source = await perfMetricSource(context);
-    planMetrics(run, operationMetricProbes([operation], source.kind, () => ({ namespace: 'qa"safe' })), source);
     writeRunData(run, directory);
+    const mixedRun = loadRun(directory), failedRun = loadRun(directory);
+    const noProbes = await observePerf(run, directory, [], context, "qa");
+    expect(noProbes.metricsComplete).toBe(true);
+    const unavailable = await observePerf(run, directory, [operation], noSource, "qa");
+    expect(unavailable.metricsComplete).toBe(false);
+    expect(unavailable.metricIssues?.join()).toContain("未配置 Prometheus");
+    expect(metrics).toBe(0);
     const before = readFileSync(join(directory, "requests.jsonl"), "utf8");
     expect(before).not.toContain('"probes"');
     expect(before).not.toContain('"calls"');
-    await collectPerfMetrics(run, directory, source, context.signal);
+    const automatic = await observePerf(run, directory, [operation], context, 'qa"safe');
+    expect(automatic).toEqual({ metricsComplete: true, metricIssues: [] });
+    expect(metrics).toBeGreaterThan(0);
     expect(perfMetricsComplete(run)).toBe(true);
     expect(JSON.stringify(buildCallgraph(run))).toContain('"value":0');
     expect(readFileSync(writePerfReport({ run, outputDir: directory, metricsComplete: true }), "utf8")).toContain("Callgraph");
     expect(existsSync(join(directory, "callgraph.json"))).toBe(false);
+    const invalid = new SSEOperation({ serviceName: "chat", name: "missing-parameter", method: "POST", path: "/other",
+      probes: [{ type: "prometheus", metrics: { qps: { expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
+    const partial = await observePerf(mixedRun, directory, [invalid, operation], context, "qa");
+    expect(partial.metricsComplete).toBe(false);
+    expect(partial.metricIssues?.join()).toContain(invalid.id());
+    expect(perfMetricsComplete(mixedRun)).toBe(true);
+    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖缺口");
     response = "missing";
+    const source = await perfMetricSource(context);
+    if (!source) throw new Error("fixture Prometheus source missing");
     await collectPerfMetrics(run, directory, source, context.signal);
     expect(perfMetricsComplete(run)).toBe(false);
     expect(JSON.stringify(buildCallgraph(run))).toContain('"status":"missing"');
     response = "error";
-    await collectPerfMetrics(run, directory, source, context.signal);
-    expect(JSON.stringify(buildCallgraph(run))).toContain('"status":"error"');
+    const failed = await observePerf(failedRun, directory, [operation], context, "qa");
+    expect(failed.metricsComplete).toBe(false);
+    expect(failed.metricIssues?.join()).toContain("部分指标查询失败");
+    expect(JSON.stringify(buildCallgraph(failedRun))).toContain('"status":"error"');
+    writeFileSync(join(directory, "perf.json"), JSON.stringify({ schema: 1, ...failed }));
     expect(readFileSync(join(directory, "requests.jsonl"), "utf8")).toBe(before);
     const counts = [requests, metrics];
     const replay = await perfCommand.run(context, { from: directory });
-    expect(replay.output?.services[0]?.result.output?.run.run_id).toBe(run.run_id);
+    artifactPaths.push(...replay.artifacts.map(artifact => artifact.path));
+    const replayed = replay.output?.services[0]?.result.output;
+    expect(replayed?.run.run_id).toBe(run.run_id);
+    expect(replayed?.metricsComplete).toBe(false);
+    expect(replayed?.metricIssues).toEqual(failed.metricIssues);
     expect([requests, metrics]).toEqual(counts);
-    response = "observed";
-    const recollection = await perfCommand.run(context, { from: directory, collectMetrics: true });
-    const collected = recollection.output?.services[0]?.result.output;
-    expect(collected?.metricsComplete).toBe(true);
-    expect(requests).toBe(counts[0]!);
-    expect(metrics).toBeGreaterThan(counts[1]!);
-    expect(readFileSync(join(collected!.outputDir, "requests.jsonl"), "utf8")).toBe(before);
+    expect(readFileSync(join(replayed!.outputDir, "requests.jsonl"), "utf8")).toBe(before);
     expect(JSON.stringify(loadRun(directory).executions[0]!.prometheus_observations)).toContain("Prometheus HTTP 503");
-    for (const result of [replay, recollection]) for (const artifact of result.artifacts) rmSync(artifact.path, {recursive: true, force: true});
     expect(loadRun(directory).executions[0]!.operation_runs[0]!.operation.id()).toBe(operation.id());
   } finally {
-    server.stop(true); await context.disposeClients();
-    for (const artifact of context.artifacts.list()) rmSync(artifact.path, { recursive: true, force: true });
+    server.stop(true); await context.disposeClients(); await noSource.disposeClients();
+    cleanupTemporaryArtifacts([...artifactPaths, ...context.artifacts.list().map(artifact => artifact.path)]);
     rmSync(directory, { recursive: true, force: true });
   }
 });

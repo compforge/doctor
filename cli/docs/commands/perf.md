@@ -25,8 +25,6 @@ doctor perf --service app --scenario ordinary --caseset chat --cases greeting,py
   --levels 1,5 --ramp 10 --hold 60 --prometheus https://metrics.example.net
 
 doctor perf --from ./saved-perf --format html
-
-doctor perf --from ./saved-perf --collect-metrics --prometheus https://metrics.example.net
 ```
 
 并发最高 50，默认档位 5、10、15、20；交互入口可选最高并发 1、5、10、20、50。
@@ -39,9 +37,12 @@ Service.operations 是唯一声明源，Graph 与 Observation 在内存组装，
 Run 保存本次拓扑与查询证据；Callgraph 视图从这些事实临时投影，不另存 Graph 文件。
 报告保留 Case/Facet 与首 token 统计；Callgraph 将窗口指标投影到 Operation。
 
-`--from` 不加载 Plugin、不准备 Kubernetes、不调用 runner；补采只能使用已保存的查询计划与相同
-source URL / backend，凭据从当前 profile 获取。输出写入新的 Artifact，原目录保留。
-Harness 保存补采历史，只更新指标事实，原始请求与 Evaluation 文件保持不变。
+Operation 声明 probe 且 Doctor 配置了 Prometheus/VM 时，正常 Perf 运行自动采集对应窗口的指标，
+无需额外开关。未配置来源、某个 Operation 参数不全、后端不可用或部分查询失败时保留请求事实与
+已取得的指标，报告记录覆盖缺口，不阻止其他 Operation 的有效查询。没有 probe 时只运行请求。
+
+`--from` 只离线读取已有事实，不加载 Plugin、不准备 Kubernetes、不调用 runner，也不访问指标源。
+输出写入新的 Artifact，原目录保留。
 
 ## Profile 示例
 
@@ -58,7 +59,8 @@ prometheus:
 ```
 
 `{{name}}` 只绑定经过 JSON 字符串转义的标签值，`$window` 由 Perf 绑定到本次窗口。
-缺少必需参数、后端变体缺失或同一 metric role 出现多个 producer，均在发压前失败。
+缺少必需参数、后端变体缺失或同一 metric role 出现多个 producer 时，跳过该 Operation 的指标
+并记录原因；不会猜测标签或改写表达式。
 
 ## 结果边界
 

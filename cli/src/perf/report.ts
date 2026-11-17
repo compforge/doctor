@@ -62,7 +62,9 @@ export function writePerfReport(result: PerfResult): string {
           + `<td>${escapeHtml(firstToken?.p99.toFixed(0) ?? "-")}</td></tr>`;
       }));
   }).join("\n") || "<tr><td colspan=\"9\">没有带 Facet 的请求结果</td></tr>";
-  const sections = `<h2>负载结果</h2><table><thead><tr><th>ArmRun</th><th>并发</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th><th>停止原因</th></tr></thead><tbody>${armRows}</tbody></table>
+  const metricIssues = result.metricIssues?.length
+    ? `<h2>指标覆盖缺口</h2><ul>${result.metricIssues.map(issue => `<li>${escapeHtml(issue)}</li>`).join("")}</ul>` : "";
+  const sections = `${metricIssues}<h2>负载结果</h2><table><thead><tr><th>ArmRun</th><th>并发</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th><th>停止原因</th></tr></thead><tbody>${armRows}</tbody></table>
 <h2>按 Case</h2><table><thead><tr><th>ArmRun</th><th>Case</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${caseRows}</tbody></table>
 <h2>按 Facet</h2><table><thead><tr><th>ArmRun</th><th>Facet</th><th>值</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${facetRows}</tbody></table>
 <p>原始契约产物：run.json · requests.jsonl · evaluations.json · perf.json</p>`;

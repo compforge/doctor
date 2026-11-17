@@ -364,7 +364,7 @@ describe("command help", () => {
     expect(result.stdout).not.toContain("--trace-samples");
     expect(result.stdout).not.toContain("--interval");
     expect(result.stdout).toContain("--from <directory>");
-    expect(result.stdout).toContain("--collect-metrics");
+    expect(result.stdout).not.toContain("--collect-metrics");
     expect(result.stdout).toContain('(default: "10")');
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');
