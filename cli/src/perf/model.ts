@@ -2,12 +2,11 @@ import type { FacetSpec } from "@compforge/spec-case/model";
 import type { Run } from "@compforge/perf-harness";
 
 export interface PerfCliOpts {
-  service?: string;
-  scenario?: string;
-  caseFile?: string;
+
   caseset?: string;
   cases?: string;
-  levels?: string;
+  qps?: string;
+  maxInflight?: string;
   ramp?: string;
   hold?: string;
   /** Removed in Harness 0.1; retained only to reject stale embedded inputs explicitly. */
@@ -31,9 +30,8 @@ export interface PerfCliOpts {
 export type PerfOutputFormat = "default" | "html" | "bundle";
 
 export interface PerfConfig {
-  service?: string;
-  scenario?: string;
-  levels: number[];
+  qps: number;
+  maxInflight?: number;
   rampSeconds: number;
   holdSeconds: number;
   abortErrorRate: number;

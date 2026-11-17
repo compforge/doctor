@@ -2,9 +2,6 @@ import type { LoadPlan, Stage } from "@compforge/perf-harness";
 import { join } from "node:path";
 import type { PerfCliOpts, PerfConfig, PerfOutputFormat } from "./model";
 
-export const PERF_MAX_CONCURRENCY_OPTIONS = [1, 5, 10, 20, 50] as const;
-export const MAX_PERF_CONCURRENCY = 50;
-
 function integer(value: string | undefined, fallback: number, label: string, minimum: number): number {
   const parsed = Number(value ?? fallback);
   if (!Number.isInteger(parsed) || parsed < minimum) {
@@ -27,27 +24,6 @@ function fraction(value: string | undefined, fallback: number, label: string): n
   return parsed;
 }
 
-export function parsePerfLevels(raw = "5,10,15,20"): number[] {
-  const levels = [...new Set(raw.split(",").map((item) => Number(item.trim())))];
-  if (
-    !levels.length
-    || levels.some((level) => !Number.isInteger(level) || level < 1 || level > MAX_PERF_CONCURRENCY)
-  ) {
-    throw new Error(`--levels 必须是逗号分隔的 1-${MAX_PERF_CONCURRENCY} 整数，例如 5,10,15,20`);
-  }
-  return levels;
-}
-
-export function perfLevelsThrough(maxConcurrency: number): number[] {
-  if (!PERF_MAX_CONCURRENCY_OPTIONS.includes(
-    maxConcurrency as (typeof PERF_MAX_CONCURRENCY_OPTIONS)[number],
-  )) {
-    throw new Error(`最高并发只支持 ${PERF_MAX_CONCURRENCY_OPTIONS.join("、")}`);
-  }
-  if (maxConcurrency === 1) return [1];
-  return Array.from({ length: maxConcurrency / 5 }, (_, index) => (index + 1) * 5);
-}
-
 export function perfRunName(now = new Date()): string {
   const pad = (value: number): string => String(value).padStart(2, "0");
   return `doctor-perf-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`
@@ -63,7 +39,7 @@ export function parsePerfOutputFormat(value: string | undefined): PerfOutputForm
 }
 
 export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConfig {
-  if (opts.maxRequests !== undefined) throw new Error("Perf Harness 0.1 已移除 --max-requests；请使用 --levels、--ramp、--hold 和 --abort-error-rate 控制负载");
+  if (opts.maxRequests !== undefined) throw new Error("Perf Harness 0.1 已移除 --max-requests；请使用 --qps、--max-inflight、--hold 和 --abort-error-rate 控制负载");
   const outputFormat = parsePerfOutputFormat(opts.format);
   const bundleName = perfRunName(now);
   const outputCandidate = opts.output?.trim() || join(".", bundleName);
@@ -80,9 +56,8 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
     throw new Error("--format bundle 的输出路径不能使用 .html 后缀");
   }
   return {
-    service: opts.service?.trim() || undefined,
-    scenario: opts.scenario?.trim() || undefined,
-    levels: parsePerfLevels(opts.levels),
+    qps: seconds(opts.qps, 0, "--qps"),
+    maxInflight: seconds(opts.qps, 0, "--qps") > 0 ? integer(opts.maxInflight, 20, "--max-inflight", 1) : undefined,
     rampSeconds: seconds(opts.ramp, 10, "--ramp"),
     holdSeconds: seconds(opts.hold, 60, "--hold"),
     abortErrorRate: fraction(opts.abortErrorRate, 0.1, "--abort-error-rate"),
@@ -94,25 +69,18 @@ export function resolvePerfConfig(opts: PerfCliOpts, now = new Date()): PerfConf
   };
 }
 
-/** Saturated load uses concurrency as its only pacing axis; each level has an explicit ramp and hold. */
+/** Injection rate and full-request concurrency are independent controls. */
 export function perfLoadPlans(config: PerfConfig): LoadPlan[] {
-  if (config.holdSeconds + config.rampSeconds <= 0) throw new Error("--ramp 与 --hold 不能同时为 0");
-  return config.levels.map(level => {
-    const stages: Stage[] = [];
-    if (config.rampSeconds > 0) stages.push({
-      kind: "warmup", request_rate: Infinity, max_inflight: level, duration_s: config.rampSeconds,
-    });
-    if (config.holdSeconds > 0) stages.push({
-      kind: "hold", request_rate: Infinity, max_inflight: level, duration_s: config.holdSeconds,
-    });
-    return {
-      request_rate: Infinity,
-      max_inflight: config.rampSeconds > 0 ? 1 : level,
-      hold_s: config.holdSeconds || config.rampSeconds,
-      stages,
-      abort_on_error_rate: config.abortErrorRate,
-      breaker_min_n: config.breakerMinN,
-      cooldown_timeout_s: config.gracefulStopSeconds,
-    };
+  if (config.holdSeconds <= 0) throw new Error("--hold 必须大于 0");
+  if (config.qps === 0) return [{request_rate: 0, hold_s: config.holdSeconds, cooldown_timeout_s: 0}];
+  const stages: Stage[] = [];
+  if (config.qps > 0 && config.rampSeconds > 0) stages.push({
+    kind: "warmup", shape: "ramp", request_rate: config.qps,
+    max_inflight: config.maxInflight!, duration_s: config.rampSeconds,
   });
+  stages.push({kind: "hold", request_rate: config.qps, max_inflight: config.maxInflight!, duration_s: config.holdSeconds});
+  return [{request_rate: config.qps > 0 && config.rampSeconds > 0 ? Math.min(1, config.qps) : config.qps,
+    max_inflight: config.maxInflight, hold_s: config.holdSeconds, stages,
+    abort_on_error_rate: config.abortErrorRate, breaker_min_n: config.breakerMinN,
+    cooldown_timeout_s: config.qps === 0 ? 0 : config.gracefulStopSeconds}];
 }

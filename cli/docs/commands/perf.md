@@ -1,52 +1,57 @@
-# doctor perf 主动性能诊断
+# doctor perf 流量下的性能观测
 
-`doctor perf` 按所选 Case 产生受控负载，再查询外部 Prometheus / VictoriaMetrics 的对应历史窗口，
-交付请求统计与 Operation Callgraph。执行前展示并确认目标、Case、并发、时长、熔断和业务影响。
+`doctor perf` 观察系统在一段流量条件下的表现。自然流量已经能说明问题时，`--qps 0` 只观测；
+需要额外流量时，再配置正 QPS。两者复用 Case 入口、时间窗口、指标采集和 HTML Callgraph。
 
-## 声明与职责
+## 选择与参数
 
-- Common `Operation` 静态描述 Service 能力，携带 `calls`、`mayCalls` 和 `probes`；`Service.operations`
-  贡献目录。Core 将各 Service 绑定到本次 Environment，校验所有权与引用并组装全局 Graph。
-- `Service.cases` 提供 CaseSet、可选 producer 和单请求 runner。source 的 `operation` 静态引用
-  同一 Service 的入口能力；不同输入仍指向同一 Operation，见 [Operation 与 Case](../plugin.md#case-与-operation)。
-- `perf.scenarios` 只提供实验预设及 `cases: { service, source }`，不再列出 Metric/Log Service。
-- Core 选择 Cases、授权、准备访问和调度。Runner 每次只发起一笔请求，拥有协议、鉴权与原始 Outcome；
-  Judge 独立分类。Perf Harness 拥有 Stage / Window、查询计划、归约和 Callgraph 渲染。
-- Probe 声明属于 Common；PromQL 参数绑定及 Prometheus 客户端属于 Toolbox；后端变体由声明显式提供，
-  选定后不自动降级或重写表达式。Profile 提供访问凭据、并发、超时、响应大小上限和各 Service 标签值。
+交互式依次选择 CaseSet、一个或多个 Case、加压 QPS、hold 观测时长；只有正 QPS 才询问最大在途数。
+不选择 Service、Operation 或 scenario。Case source 的 `operation` 决定观测入口。
 
-Perf 不抓取 Service `/metrics`，不启动 Prombed，不自动采集日志或 Trace。Outcome 的业务/Trace ID
-保留在原始记录中，供后续显式诊断使用。独立的 metric、log、trace 命令维持各自职责。
+| 参数 | 含义 |
+|---|---|
+| `--qps` | Harness `request_rate`，配置的加压速率，默认 0 |
+| `--max-inflight` | 正 QPS 下 Harness 未完成请求的上限，默认 20；QPS=0 不需要配置 |
+| `--hold` | hold 观测秒数，默认 60，必须大于 0 |
 
-## 执行与离线复查
+加压 QPS、实际发出 QPS、服务吞吐 QPS 分别记录。达到在途上限后，实际发出速率可能低于配置；
+服务端吞吐由系统实际表现决定，包含指标选择器匹配的自然流量。DB、VDB、模型等下游性能均可能影响它，
+不能仅凭吞吐与加压值的差推断某个瓶颈。
 
 ```bash
-doctor perf --service app --scenario ordinary --caseset chat --cases greeting,python \
-  --levels 1,5 --ramp 10 --hold 60 --prometheus https://metrics.example.net
+# 只观测，不要求业务租户、Runner 或 Kubernetes 访问
+doctor perf --caseset chat --cases greeting --qps 0 --hold 300
 
+# 叠加受控业务请求；执行前确认目标和影响
+doctor perf --caseset chat --cases greeting,python --qps 5 --max-inflight 20 --hold 60
+
+# 离线重新生成报告
 doctor perf --from ./saved-perf --format html
 ```
 
-并发最高 50，默认档位 5、10、15、20；交互入口可选最高并发 1、5、10、20、50。
-多 Case 等权随机抽取；Case 不携带并发或环境配置。`--abort-error-rate` 与 `--breaker-min-n`
-共同控制错误率熔断，`--graceful-stop` 限制正常收尾。Ctrl+C 传播取消并保存已有证据。
+QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业务 runner、请求身份或业务访问。
+正 QPS 按 setup → warmup → hold → cooldown → cleanup 执行；多 Case 等权随机抽取。
+`--ramp` 控制 warmup，`--graceful-stop` 限制等待在途请求的时间，
+`--abort-error-rate` 和 `--breaker-min-n` 控制注入请求的错误率熔断。
 
-请求事实先落盘；查询计划在任何指标 I/O 前冻结，包含来源、后端、表达式与窗口。
-`run.json`、`requests.jsonl`、`evaluations.json` 和 `perf.json` 不依赖是否选择 HTML。
-Service.operations 是唯一声明源，Graph 与 Observation 在内存组装，不维护独立声明 JSON/YAML。
-Run 保存本次拓扑与查询证据；Callgraph 视图从这些事实临时投影，不另存 Graph 文件。
-报告保留 Case/Facet 与首 token 统计；Callgraph 将窗口指标投影到 Operation。
+交互时按回车正常结束本轮：封闭实际观测窗口，正 QPS 停止发出并收尾，随后采集指标、生成报告。
+Ctrl+C 为任务取消，含义不同。手动结束不要求跑满原计划 hold，但不能据此宣称验证了该计划时长。
 
-Operation 声明 probe 且 Doctor 配置了 Prometheus/VM 时，正常 Perf 运行自动采集对应窗口的指标，
-无需额外开关。未配置来源、某个 Operation 参数不全、后端不可用或部分查询失败时保留请求事实与
-已取得的指标，报告记录覆盖缺口，不阻止其他 Operation 的有效查询。没有 probe 时只运行请求。
+## 声明与职责
 
-`--from` 只离线读取已有事实，不加载 Plugin、不准备 Kubernetes、不调用 runner，也不访问指标源。
-输出写入新的 Artifact，原目录保留。
+- Service.operations 声明 Operation、calls/mayCalls 和 Probe。Core 汇总当前 Plugin 的全部 Service 构建全图。
+- Service.cases 提供离线 CaseSet、Operation 引用和可选 runner；同一入口的不同输入仍指向同一 Operation。
+- Core 选择 Case、确认加压影响并准备所需访问；Harness 拥有调度、窗口、查询计划、归约和报告。
+- Probe 的后端表达式和统计口径由 Plugin 声明；Toolbox 提供参数绑定与 Prometheus 客户端。
 
-## Profile 示例
+HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标和适用的请求统计；Callgraph 展示调用图。
+所有已注册 Operation 的 Probe 都参与观测。Callgraph 默认显示 Case Operation 的可达子图，沿 calls/mayCalls
+展开，可切换全图；两种视图使用同一批证据。共享节点与环不会复制或改变身份。
+
+## Profile 与证据
 
 ```yaml
+namespace: production
 prometheus:
   url: https://metrics.example.net
   kind: prometheus # 或 victoriametrics
@@ -55,16 +60,21 @@ prometheus:
   max_response_bytes: 4194304
   parameters:
     app:
-      namespace: test
+      namespace: production
 ```
 
-`{{name}}` 只绑定经过 JSON 字符串转义的标签值，`$window` 由 Perf 绑定到本次窗口。
-缺少必需参数、后端变体缺失或同一 metric role 出现多个 producer 时，跳过该 Operation 的指标
-并记录原因；不会猜测标签或改写表达式。
+自然观测的 namespace 来自参数/profile，无需访问 Kubernetes；跨 namespace 的 Service 通过 parameters 覆盖。
+`{{name}}` 绑定经过 JSON 字符串转义的标签值，`$window` 绑定实际窗口。缺参数、后端不匹配和重复 producer
+保留明确错误，不猜测配置。Perf 读取外部历史指标，不启动内嵌 Prometheus。
+
+运行事实先保存，查询计划在指标 I/O 前冻结；`run.json`、`requests.jsonl`、`evaluations.json`、`perf.json`
+保留窗口、入口、拓扑、注入事实和指标覆盖情况。请求统计及 Case/Facet 分组只在存在注入请求证据时展示。
+QPS=0 的空请求集合不表示系统零流量或零延迟。未声明 Probe、缺样本、查询失败分别保留。
+
+`--from` 只读取保存的事实，不加载 Plugin、Kubernetes、Runner 或指标源，输出写入新 Artifact。
 
 ## 结果边界
 
-Run.status 表示负载执行完成度；查询失败或已计划指标缺样本使命令结果为 partial，取消为 cancelled。
-实测零值、缺样本和查询错误分别保留。没有 Probe 的 Operation 显示 N/A。
-静态 calls / mayCalls 不证明某条边实际发生；服务端指标可能包含匹配的其他流量，不能归因到单个 Case。
-HTTP 成功不等于 SSE 业务成功，路径上的延迟分位数不能相加。
+Run.status 表示执行完成度；指标未取得或查询不完整使命令 partial。自然观测没有 Probe 时也为 partial。
+静态 calls/mayCalls 不证明某条边实际发生；节点指标不按 Case 拆分，不把自然流量归因于加压。
+HTTP 成功不代表 SSE 业务成功，路径上的延迟分位数不能相加。

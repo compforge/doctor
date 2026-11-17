@@ -148,13 +148,6 @@ export interface ServiceCaseProbeOptions {
   requestIdentity?: ServiceRequestIdentity;
 }
 
-export interface ServicePerfScenario {
-  cases: ServiceCaseRef;
-  id: string;
-  title: string;
-  description: string;
-}
-
 export interface ServiceInspectResolution {
   inputId: string;
   resolvedAs: string;

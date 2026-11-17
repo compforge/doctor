@@ -23,7 +23,7 @@ Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Tra
 观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
 通过 capability 提供 store、model、case 等可复用能力，
 必要时以受控 HTTP 或协议调用主动复现问题。Eval 按 canonical CaseSet 逐例触发请求并采集关联证据，
-但不在 Doctor 内评价回答质量；只在压力下出现的问题归 Perf 施压与同窗口信号关联。Model、MCP 等
+但不在 Doctor 内评价回答质量；流量下的性能表现归 Perf 观测，按需叠加受控压力并关联同窗口信号。Model、MCP 等
 业务特有领域仍复用同一套 Service 与 capability 模型。
 
 `image`、`debug`、`install`、`resize` 属于 Provision，负责显式准备镜像、临时环境和工具，以及调整当前实例的资源限制。确定性问题由 Core 的

@@ -44,7 +44,7 @@ function capabilityProviders(
   if (capability.scope === "extension") return [...new Set(plugin.services.extensions(capability.name).map(item => item.service.name))];
   return plugin.services.services.filter(service => capability.name === "dataSources" ? Boolean(service.dataSources?.length)
     : capability.name === "resources" ? Boolean(service.resources?.length)
-    : capability.name === "cases" ? service.cases?.some(source => source.runner) : service.logs !== undefined).map(service => service.name);
+    : capability.name === "cases" ? Boolean(service.cases?.length) : service.logs !== undefined).map(service => service.name);
 }
 
 export function evaluatePluginCapabilities(

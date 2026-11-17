@@ -119,29 +119,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   },
   perf: {
     command: "doctor perf",
-    needs: [{
-      requirement: "required",
-      capability: { scope: "extension", name: "perf.scenarios" },
-      purpose: "提供 Case 组合与可观测性预设",
-    }, {
-      requirement: "required",
-      capability: { scope: "resource", name: "cases" },
-      purpose: "提供稳定 Case 资产以及单次请求触发和协议判定",
-    }, {
-      requirement: "required",
-      capability: { scope: "extension", name: "metric.configuration" },
-      purpose: "压测窗口内复用 doctor metric 采集指标",
-    }, {
-      requirement: "preferred",
-      fallback: "保留压测结果，跳过不可用的 Trace",
-      capability: { scope: "extension", name: "trace.resolve" },
-      purpose: "复用 doctor trace 收集代表请求的链路证据",
-    }, {
-      requirement: "preferred",
-      fallback: "保留压测结果和其它已取得证据",
-      capability: { scope: "resource", name: "logs" },
-      purpose: "复用 doctor log 收集代表请求的日志证据",
-    }],
+    needs: [{requirement: "required", capability: {scope: "resource", name: "cases"},
+      purpose: "提供 Case 资产和静态 Operation 观测入口"}],
   },
 } as const satisfies Record<string, PluginCapabilityContract>;
 

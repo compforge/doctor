@@ -4,7 +4,7 @@ import { clientKey, type Operation } from "@compforge/harness-common";
 import { HttpClient } from "@compforge/harness-toolbox/http";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import { PrometheusClient, type PrometheusReader } from "@compforge/harness-toolbox/prometheus";
-import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, type Run, type PrometheusProbe } from "@compforge/perf-harness";
+import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
@@ -48,18 +48,21 @@ export async function observePerf(run: Run, directory: string, operations: reado
   context: CommandContext, namespace: string, url?: string,
 ): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
   const declared = operations.filter(operation => operation.probes?.length);
-  if (!declared.length) return { metricsComplete: true, metricIssues: [] };
+  if (!declared.length) {
+    const observationOnly = run.executions.every(arm => observesOnly(arm.arm.load));
+    return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["未声明 Operation 指标 Probe；仅记录观测窗口，无法确认系统表现"] : [] };
+  }
   const metricIssues: string[] = [];
   const missing = (message: string) => { metricIssues.push(message); useLogger("perf").warn(message); };
   try {
     const source = await perfMetricSource(context, url);
     if (!source) {
-      missing("Operation 已声明 probe，但未配置 Prometheus/VM；仅保留请求事实");
+      missing("Operation 已声明 probe，但未配置 Prometheus/VM；保留运行窗口与已有请求事实");
     } else {
       const probes: PrometheusProbe[] = [];
       for (const operation of declared) {
         try {
-          probes.push(...operationMetricProbes([operation], source.kind, item => ({ namespace,
+          probes.push(...operationMetricProbes([operation], source.kind, item => ({ ...(namespace ? {namespace} : {}),
             ...context.profile.value.prometheus?.parameters?.[item.serviceName],
           })));
         } catch (error) {
