@@ -1,4 +1,5 @@
-import { immutableJsonObject, type JsonObject } from "@compforge/harness-common";
+import { immutableJsonObject, type JsonObject, type DataSource, type Client } from "@compforge/harness-common";
+import type { PluginContext } from "../context";
 import { validateCaseRef, type ServiceCaseRef } from "../cases";
 import { validateExtension, type Extension, type ExtensionRegistration } from "./index";
 
@@ -26,11 +27,26 @@ export interface HealthProbeResult {
   /** Bounded, credential-free evidence; the provider owns its meaning. */
   evidence?: JsonObject;
 }
-export interface HealthProbeExtension extends Extension<HealthCheckQuery & { checkpoint(result: HealthProbeResult): void }, HealthProbeResult> {
+export interface HealthProbeInput<C extends Client = Client> extends HealthCheckQuery {
+  checkpoint(result: HealthProbeResult): void;
+  /** Initialized only after approving this resolved source's check. */
+  client?: () => Promise<C>;
+}
+export interface HealthProbeExtension<C extends Client = Client> extends Extension<HealthProbeInput<C>, HealthProbeResult> {
   kind: HealthCheckKind;
   execution: "probe";
   description: string;
-  /** Displayed before configuration/client preparation or probe execution. */
+  /**
+   * @spec Resolve configuration only, without connecting to or probing the target.
+   * Core authorizes discovery once, then reuses identical source/probe/parameter results within this Health session.
+   * The returned source lives inside this invocation; Core disposes its clients before closing the Plugin context.
+   */
+  dataSource?(context: PluginContext, query: HealthCheckQuery): Promise<DataSource<C>>;
+  /** Stable probe implementation/version; required for DataSource-backed checks. */
+  probe?: string;
+  /** Inputs and verdict policy that distinguish checks of the same source. */
+  parameters?: JsonObject;
+  /** Displayed before probe execution; standalone probes also approve configuration access here. */
   approval: { risk: "observe" | "disrupt"; target: string; impact: readonly string[] };
 }
 export interface HealthCaseExtension extends Extension<HealthCheckQuery, HealthCaseBindingsResult> {
@@ -58,6 +74,10 @@ export function requireHealthCheckExtension(extension: ExtensionRegistration): H
   if (check.execution === "probe" && (!check.approval || !["observe", "disrupt"].includes(check.approval.risk)
     || !check.approval.target?.trim() || !Array.isArray(check.approval.impact) || check.approval.impact.some(line => typeof line !== "string"))) {
     throw new Error(`${check.id}: HealthCheck approval must declare risk, target and impact`);
+  }
+  if (check.execution === "probe" && check.dataSource !== undefined) {
+    if (typeof check.dataSource !== "function" || !check.probe?.trim()) throw new Error(`${check.id}: DataSource checks require a resolver and probe identifier`);
+    if (check.parameters !== undefined) immutableJsonObject(check.parameters, "HealthCheck parameters");
   }
   return check;
 }

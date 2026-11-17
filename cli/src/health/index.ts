@@ -1,6 +1,5 @@
-import { healthCheckScope, validateHealthProbeResult, type HealthCheckQuery, type HealthProbeResult } from "@compforge/doctor-plugin";
+import { healthCheckScope, type HealthCheckQuery } from "@compforge/doctor-plugin";
 import { CommandInputError, CommandStatus, aggregateCommandStatus, defineCommand, type CommandContext, type CommandInput, type CommandResult } from "../command";
-import { approvalDeniedReason } from "../command/approval";
 import { prepareCommandRequirements } from "../command/prepare";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { commandOptions, type CommandHostOption } from "../command/options";
@@ -9,6 +8,7 @@ import { parseCollectOutputFormat } from "../collect/composite";
 import { serializeEvidence } from "../collect/serialize";
 import { renderEvidence } from "../report/evidence";
 import { isInteractive } from "../terminal/policy";
+import { createHealthProbeRunner } from "./probe";
 import { HealthInteraction } from "./interaction";
 import { overviewServiceNames } from "../overview/options";
 import { useLogger } from "../terminal/log";
@@ -42,6 +42,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
   const interaction = new HealthInteraction(context);
   const invoke = createPluginOperationInvoker(context, executor, kube.kubernetes);
   const approve = createHealthCaseApproval(context, kube.kubernetes.namespace, interaction.approve);
+  const runProbe = createHealthProbeRunner(context, selected, invoke, interaction);
   let snapshot: HealthResult | undefined;
   let directory: string | undefined;
   let result: HealthResult;
@@ -54,15 +55,7 @@ async function health(prepared: HealthPreparation, context: CommandContext): Pro
         const label = `${provider.name}/${check.id}`;
         useLogger("health").info(`执行 ${scope} 检查：${label}`);
         try {
-          if (check.execution === "probe") {
-            if (scope !== "self" || check.approval.risk !== "observe") {
-              const decision = await interaction.approve({ id: `healthcheck:${provider.namespace}:${label}`, title: check.description, ...check.approval });
-              if (!decision.approved) return { status: interaction.stopped || decision.source !== "prompt" ? "not-run" : "skipped", summary: approvalDeniedReason(decision.source) };
-            }
-            const save = (value: HealthProbeResult) => { validateHealthProbeResult(value); checkpoint(structuredClone({ status: value.status, summary: value.summary, evidence: value.evidence })); };
-            const value = await invoke(provider.service, check, { ...query, checkpoint: save });
-            validateHealthProbeResult(value); return { status: value.status, summary: value.summary, evidence: value.evidence };
-          }
+          if (check.execution === "probe") return await runProbe(provider, check, query, checkpoint);
           const preparedCases = await prepareServiceCases(context.plugin, provider.service, [check], input.tenantId,
             casePrepareActions(context, executor, kube.kubernetes, input));
           const snapshots: import("./cases/run").CaseCheckResult[] = [];

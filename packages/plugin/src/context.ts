@@ -51,6 +51,8 @@ export interface PluginClientContext {
 export interface PluginDataSource<C extends Client> extends Pick<DataSource<C>, "clientKey"> {
   /** The host additionally namespaces this key by target, configuration and declared access. */
   readonly clientKey: string;
+  /** Resolve runtime configuration without initializing a target client. */
+  resolve?(context: PluginContext): Promise<DataSource<C>>;
   createClient(context: PluginClientContext): C;
 }
 
