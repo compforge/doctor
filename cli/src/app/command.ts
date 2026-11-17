@@ -47,7 +47,11 @@ async function executeCommand<Input extends CommandInput, Output>(
   try {
     const context = prepareCommand(opts, runtime.printProfile ?? true, runtime.plugin);
     input = withoutShadowedDefaults(input, context.profile.value);
-    const interrupt = () => context.cancel(new Error(`${spec.name} interrupted`));
+    const interrupt = () => {
+      context.interrupt(new Error(`${spec.name} interrupted`));
+      // A graceful stop keeps requests and finalization alive, including repeated interrupts.
+      if (!context.signal.aborted) process.once("SIGINT", interrupt);
+    };
     process.once("SIGINT", interrupt);
     try {
       let result: CommandResult<Output>;

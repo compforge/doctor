@@ -88,6 +88,7 @@ export interface CommandContextOptions {
 /** Shared environment, Plugin, decisions and cancellation; each run owns its artifacts and temporary resources. */
 export class CommandContext {
   readonly #controller = new AbortController();
+  #interruptHandler?: () => void;
   #pluginPromise?: Promise<PluginDefinition | undefined>;
   #hostPromise?: Promise<DoctorHostInfo>;
   #kubernetesPromise?: Promise<KubernetesInspection>;
@@ -138,6 +139,18 @@ export class CommandContext {
 
   get pluginIdentity(): string | undefined {
     return this.#plugin ? `${this.#plugin.id}@${this.#plugin.version}` : undefined;
+  }
+
+  /** CLI interrupts may request a domain-owned graceful stop; explicit cancellation still aborts the tree. */
+  interrupt(reason: unknown): void {
+    if (this.#interruptHandler) this.#interruptHandler();
+    else this.cancel(reason);
+  }
+
+  onInterrupt(handler: () => void): () => void {
+    const previous = this.#interruptHandler;
+    this.#interruptHandler = handler;
+    return () => { if (this.#interruptHandler === handler) this.#interruptHandler = previous; };
   }
 
   cancel(reason: unknown = new Error("Command cancelled")): void { this.#controller.abort(reason); }

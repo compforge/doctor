@@ -1,10 +1,10 @@
-import { createInterface } from "node:readline";
 import { writeOutput } from "../terminal/output";
 import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, loadCaseCatalog, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
 import { Engine, writeRunData, type CaseMixEntry, type CaseSet, type Outcome, type Run, type Experiment } from "@compforge/perf-harness";
-import { observePerf } from "./observations";
+import { observePerf, preparePerfMetrics } from "./observations";
+import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import { resolveCaseRequestIdentity } from "../case";
@@ -147,7 +147,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
       impact:[`注入 QPS ${config.qps}，最大在途 ${config.maxInflight}，hold ${config.holdSeconds}s，warmup ${config.rampSeconds}s`,
         `Case: ${selection.cases.map(item => item.id).join(", ")}；多 Case 等权随机抽取`,
         "真实业务请求可能写入数据、产生模型费用并增加下游压力；不设置请求总数上限",
-        `错误率 ${(config.abortErrorRate*100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）熔断；Ctrl+C 取消`]});
+        `错误率 ${(config.abortErrorRate*100).toFixed(0)}%（至少 ${config.breakerMinN} 个样本）熔断；Ctrl+C 结束观测并生成报告`]});
     if (!approved.approved) return {status:CommandStatus.Cancelled, artifacts:[]};
     const kube = await resolveKubernetesCommandConfig(opts, undefined, context);
     if (!kube) return {status:CommandStatus.Cancelled, artifacts:[]};
@@ -171,6 +171,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
         timeoutMs:config.requestTimeoutMs, requestIdentity});
     }, operation);
   }
+  const preparedMetrics = await preparePerfMetrics(declarations, context, namespace, opts.prometheus);
   writeOutput(formatPerfCaseMix(selection.source.caseSet, selection.cases.map(item => ({id:item.id, weight:1}))), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
@@ -179,35 +180,34 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   writePerfMetadata(outputDir, metadata);
   const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
     source:`declared:plugin/${plugin.id}`, version:plugin.version});
-  const stop = new AbortController();
-  let input: ReturnType<typeof createInterface> | undefined;
+  const progress = new PerfProgress();
   let run: Run | undefined, failure: unknown;
   try {
-    run = await new Engine({name:`doctor-${selected.service.name}-perf`, service, graph:graph.toJSON(),
-      entryIds:[operation.id()], ...adapter, caseSet:selection.source.caseSet,
-      caseMix:selection.cases.map(item => ({id:item.id, weight:1})), loads, signal:context.signal, stopSignal:stop.signal,
-      onArmStart: () => {
-        writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
-        if (isInteractive()) {
-          writeOutput("[perf] 回车结束本轮观测并生成报告；Ctrl+C 取消。\n", process.stderr);
-          input = createInterface({input:process.stdin, output:process.stderr});
-          input.once("line", () => stop.abort());
-        }
-      },
-    }).run();
-  } catch (error) { failure = error; }
-  finally {
-    input?.close();
-    try { if (run) writeRunData(run, outputDir); }
-    finally { try { await managed?.dispose(); } catch (error) { failure ??= error; } }
-  }
-  if (!run) {
-    if (context.signal.aborted) return {status:CommandStatus.Cancelled, artifacts:context.artifacts.list()};
-    throw failure ?? new Error("Perf 未形成运行记录");
-  }
-  const metrics = await observePerf(run, outputDir, declarations, context, namespace, opts.prometheus);
-  writePerfMetadata(outputDir, metadata, metrics);
-  return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
-    reason:failure ? diagnosticMessage(failure) : undefined,
-    output:{run, outputDir, ...metrics, caseFacets:selection.source.caseSet.facets}, artifacts:context.artifacts.list()};
+    try {
+      run = await new Engine({name:`doctor-${selected.service.name}-perf`, service, graph:graph.toJSON(),
+        entryIds:[operation.id()], ...progress.observe(adapter), caseSet:selection.source.caseSet,
+        caseMix:selection.cases.map(item => ({id:item.id, weight:1})), loads, signal:context.signal, stopSignal:progress.stop.signal,
+        onArmStart: () => {
+          writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
+          writeOutput("[perf] Ctrl+C 结束本轮观测并生成报告。\n", process.stderr);
+          progress.start(context);
+        },
+      }).run();
+    } catch (error) { failure = error; }
+    finally {
+      progress.requestsFinished();
+      try { if (run) writeRunData(run, outputDir); }
+      finally { try { await managed?.dispose(); } catch (error) { failure ??= error; } }
+    }
+    if (!run) {
+      if (context.signal.aborted) return {status:CommandStatus.Cancelled, artifacts:context.artifacts.list()};
+      throw failure ?? new Error("Perf 未形成运行记录");
+    }
+    const metrics = await observePerf(run, outputDir, declarations, context, namespace, opts.prometheus, preparedMetrics);
+    writePerfMetadata(outputDir, metadata, metrics);
+    writeOutput(formatPerfSummary(run, metrics.metricIssues), process.stderr);
+    return {status:context.signal.aborted ? CommandStatus.Cancelled : failure || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
+      reason:failure ? diagnosticMessage(failure) : undefined,
+      output:{run, outputDir, ...metrics, caseFacets:selection.source.caseSet.facets}, artifacts:context.artifacts.list()};
+  } finally { progress.dispose(); }
 }
