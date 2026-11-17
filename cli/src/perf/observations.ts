@@ -43,45 +43,64 @@ export async function collectPerfMetrics(run: Run, directory: string, source: Pr
   finally { writeRunData(run, directory); }
 }
 
-/** @spec Operation probes are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
-export async function observePerf(run: Run, directory: string, operations: readonly Operation[],
-  context: CommandContext, namespace: string, url?: string,
-): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
+export interface PreparedPerfMetrics {
+  declared: boolean;
+  source?: PrometheusReader;
+  probes: PrometheusProbe[];
+  issues: string[];
+}
+
+/** Check declared coverage before traffic; historical queries still use the realized run windows. */
+export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
+  namespace: string, url?: string): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.probes?.length);
+  const prepared: PreparedPerfMetrics = { declared: declared.length > 0, probes: [], issues: [] };
+  const missing = (message: string) => { prepared.issues.push(message); useLogger("perf").warn(message); };
   if (!declared.length) {
-    const observationOnly = run.executions.every(arm => observesOnly(arm.arm.load));
-    return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["未声明 Operation 指标 Probe；仅记录观测窗口，无法确认系统表现"] : [] };
+    useLogger("perf").info("未声明 Operation 指标 Probe；本轮只保留运行窗口与已有请求事实");
+    return prepared;
   }
-  const metricIssues: string[] = [];
-  const missing = (message: string) => { metricIssues.push(message); useLogger("perf").warn(message); };
   try {
-    const source = await perfMetricSource(context, url);
-    if (!source) {
-      missing("Operation 已声明 probe，但未配置 Prometheus/VM；保留运行窗口与已有请求事实");
+    prepared.source = await perfMetricSource(context, url);
+    if (!prepared.source) {
+      missing("Operation 已声明 probe，但未配置 Prometheus/VM；本轮仅保留运行窗口与已有请求事实");
     } else {
-      const probes: PrometheusProbe[] = [];
       for (const operation of declared) {
         try {
-          probes.push(...operationMetricProbes([operation], source.kind, item => ({ ...(namespace ? {namespace} : {}),
+          prepared.probes.push(...operationMetricProbes([operation], prepared.source.kind, item => ({ ...(namespace ? {namespace} : {}),
             ...context.profile.value.prometheus?.parameters?.[item.serviceName],
           })));
         } catch (error) {
           missing(`${operation.id()} 指标未采集：${diagnosticMessage(error)}`);
         }
       }
-      if (probes.length) {
-        planMetrics(run, probes, source);
-        writeRunData(run, directory);
-        useLogger("perf").info(`请求与查询计划已保存；自动查询 ${probes.length} 组 Operation 指标`);
-        await collectPerfMetrics(run, directory, source, context.signal);
-        if (!perfMetricsComplete(run)) missing("部分指标查询失败或缺少样本；已取得的指标与请求事实均已保留");
-      }
+      useLogger("perf").info(`已准备 ${prepared.probes.length} 组 Operation 指标；观测结束后按实际窗口查询`);
     }
-  } catch (error) {
-    missing(`指标采集未完成：${diagnosticMessage(error)}`);
-  } finally {
-    writeRunData(run, directory);
+  } catch (error) { missing(`指标源准备未完成：${diagnosticMessage(error)}`); }
+  return prepared;
+}
+
+/** @spec Operation probes are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
+export async function observePerf(run: Run, directory: string, operations: readonly Operation[],
+  context: CommandContext, namespace: string, url?: string, prepared?: PreparedPerfMetrics,
+): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
+  const plan = prepared ?? await preparePerfMetrics(operations, context, namespace, url);
+  if (!plan.declared) {
+    const observationOnly = run.executions.every(arm => observesOnly(arm.arm.load));
+    return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["未声明 Operation 指标 Probe；仅记录观测窗口，无法确认系统表现"] : [] };
   }
+  const metricIssues = [...plan.issues];
+  const missing = (message: string) => { metricIssues.push(message); useLogger("perf").warn(message); };
+  try {
+    if (plan.source && plan.probes.length) {
+      planMetrics(run, plan.probes, plan.source);
+      writeRunData(run, directory);
+      useLogger("perf").info(`请求与查询计划已保存；自动查询 ${plan.probes.length} 组 Operation 指标`);
+      await collectPerfMetrics(run, directory, plan.source, context.signal);
+      if (!perfMetricsComplete(run)) missing("部分指标查询失败或缺少样本；已取得的指标与请求事实均已保留");
+    }
+  } catch (error) { missing(`指标采集未完成：${diagnosticMessage(error)}`); }
+  finally { writeRunData(run, directory); }
   return { metricsComplete: metricIssues.length === 0 && perfMetricsComplete(run), metricIssues };
 }
 

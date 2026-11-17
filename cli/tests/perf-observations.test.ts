@@ -10,7 +10,7 @@ import { commandExitCode } from "../src/app/command";
 import { CommandContext, CommandInputError, CommandStatus } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { perfCommand } from "../src/perf/command";
-import { collectPerfMetrics, observePerf, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
+import { collectPerfMetrics, observePerf, preparePerfMetrics, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
 import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
@@ -194,4 +194,21 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
     expect(html).not.toContain("Injected request windows");
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
+});
+
+/** Metric configuration is checked before running; preparation never sends a history query. */
+test("metric preflight reports unavailable sources and binds probes without querying", async () => {
+  let calls = 0;
+  const server = Bun.serve({ port: 0, fetch: () => { calls++; return new Response("unexpected"); } });
+  const missing = new CommandContext({});
+  const context = new CommandContext({}, {name:"test",configPath:"",pluginConfig:{},value:{readonly:true,
+    prometheus:{url:server.url.toString()}}});
+  try {
+    const unavailable = await preparePerfMetrics([operation], missing, "test");
+    expect(unavailable.issues.join()).toContain("未配置 Prometheus");
+    const ready = await preparePerfMetrics([operation], context, "test");
+    expect(ready.issues).toEqual([]);
+    expect(ready.probes.length).toBeGreaterThan(0);
+    expect(calls).toBe(0);
+  } finally { await context.disposeClients(); await missing.disposeClients(); server.stop(true); }
 });
