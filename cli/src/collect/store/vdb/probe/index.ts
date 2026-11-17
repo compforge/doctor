@@ -18,5 +18,3 @@ export function makeVdbProbes(): Array<Probe<VdbObservation, VdbInspectionFacts,
     },
   }];
 }
-export * from "../../../../datasource/opensearch/capacity";
-export * from "../../../../datasource/opensearch/cluster";

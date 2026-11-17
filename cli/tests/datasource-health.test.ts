@@ -43,9 +43,15 @@ test("93 percent plus unavailable primary is collected evidence, not a false mis
   expect(again).toBe(health);
   expect(calls).toHaveLength(6);
   expect(health.status).toBe("ok");
-  expect(health.findings.map(finding => finding.kind)).toContain("vdb.disk-capacity-high");
-  expect(health.findings.map(finding => finding.kind)).toContain("vdb.unassigned-primary-shards");
-  expect(health.findings.map(finding => finding.kind)).not.toContain("vdb.disk-capacity-exhausted");
+  const observationIds = new Set<string>(health.observations.map(item => item.id));
+  for (const finding of health.findings) {
+    expect(finding.schemaVersion).toBe(1);
+    expect(finding.producer.origin).toBe("core");
+    for (const evidence of finding.evidence) expect(observationIds.has(evidence.observationId)).toBe(true);
+  }
+  expect(health.findings.map(finding => finding.kind)).toContain("opensearch.disk-capacity-high");
+  expect(health.findings.map(finding => finding.kind)).toContain("opensearch.unassigned-primary-shards");
+  expect(health.findings.map(finding => finding.kind)).not.toContain("opensearch.disk-capacity-exhausted");
   const allocation = health.observations.find(item => item.kind === "opensearch-allocation");
   expect(allocation?.nodes[1]?.diskAvailableBytes).toBeUndefined();
   await new DataSourceHealthSession().probe(search);
@@ -54,8 +60,8 @@ test("93 percent plus unavailable primary is collected evidence, not a false mis
 
 test("low watermark warns before high watermark is reached", async () => {
   const health = await OPENSEARCH_HEALTH_EXTENSION.run({ search: fixture(86).search });
-  expect(health.findings.map(finding => finding.kind)).toContain("vdb.disk-capacity-low");
-  expect(health.findings.map(finding => finding.kind)).not.toContain("vdb.disk-capacity-high");
+  expect(health.findings.map(finding => finding.kind)).toContain("opensearch.disk-capacity-low");
+  expect(health.findings.map(finding => finding.kind)).not.toContain("opensearch.disk-capacity-high");
 });
 
 test("permissions and malformed responses remain evidence gaps while sibling probes succeed", async () => {
@@ -70,7 +76,7 @@ test("permissions and malformed responses remain evidence gaps while sibling pro
   expect(health.status).toBe("partial");
   expect(health.probes.find(probe => probe.id === "cluster-settings")?.reason).toContain("403");
   expect(health.observations.some(item => item.kind === "opensearch-health")).toBe(false);
-  expect(health.findings.find(item => item.kind === "vdb.disk-capacity-high")?.confidence).toBe("medium");
+  expect(health.findings.find(item => item.kind === "opensearch.disk-capacity-high")?.confidence).toBe("medium");
 });
 
 test("deadline stops subsequent requests and preserves unavailable outcomes", async () => {
@@ -93,6 +99,6 @@ test("missing watermarks are unknown, never parsed as zero; unrelated settings a
   expect(health.status).toBe("partial");
   expect(health.summary).toContain("未取得实时水位");
   expect(health.summary).toContain("90%");
-  expect(health.findings.some(finding => finding.kind.startsWith("vdb.disk-capacity"))).toBe(false);
+  expect(health.findings.some(finding => finding.kind.startsWith("opensearch.disk-capacity"))).toBe(false);
   expect(JSON.stringify(health)).not.toContain("must-not-be-persisted");
 });

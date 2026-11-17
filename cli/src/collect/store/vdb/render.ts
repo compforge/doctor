@@ -1,5 +1,5 @@
 import type { EvidenceGapFinding } from "../../evidence-gaps";
-import { effectiveDiskSettings, vdbCapacityConclusion } from "./detector";
+import { vdbCapacityConclusion } from "./detector";
 import type { VdbFinding, VdbObservations } from "./model";
 
 function formatBytes(value: number | undefined): string {
@@ -28,7 +28,7 @@ export function buildVdbSummary(input: {
   const health = observations.health;
   const stats = observations.stats;
   const shards = observations.shards;
-  const diskSettings = effectiveDiskSettings(observations);
+  const diskSettings = observations.diskSettings;
   const lines = [
     "# VDB 诊断摘要",
     "",
@@ -48,11 +48,12 @@ export function buildVdbSummary(input: {
   }
   lines.push(
     "",
+    // @rule Render collected watermarks only; fallback thresholds belong to Harness analysis.
     "## Capacity policy",
     "",
-    `- low: ${diskSettings.low.raw}${diskSettings.source === "fallback-defaults" ? "（含 fallback）" : ""}`,
-    `- high: ${diskSettings.high.raw}${diskSettings.source === "fallback-defaults" ? "（含 fallback）" : ""}`,
-    `- flood-stage: ${diskSettings.floodStage.raw}${diskSettings.source === "fallback-defaults" ? "（含 fallback）" : ""}`,
+    `- low: ${diskSettings?.low.raw || "未取得"}`,
+    `- high: ${diskSettings?.high.raw || "未取得"}`,
+    `- flood-stage: ${diskSettings?.floodStage.raw || "未取得"}`,
     `- read_only_allow_delete indices: ${observations.indexBlocks?.readOnlyAllowDelete.length ?? "未取得"}`,
     "",
     "## Cluster",

@@ -1140,7 +1140,7 @@ describe("OpenSearch VDB probe", () => {
 test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () => {
   const observations: VdbObservations = {
     health: {
-      id: "vdb-health",
+      id: "opensearch-health",
       kind: "opensearch-health",
       ...CORE_OBSERVATION_META,
       status: "red",
@@ -1154,13 +1154,13 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
       pendingTasks: 0,
     },
     allocation: {
-      id: "vdb-allocation",
+      id: "opensearch-allocation",
       kind: "opensearch-allocation",
       ...CORE_OBSERVATION_META,
       nodes: [{ node: "data-0", shards: 2, diskPercent: 96 }],
     },
     diskSettings: {
-      id: "vdb-disk-settings",
+      id: "opensearch-disk-settings",
       kind: "opensearch-disk-settings",
       ...CORE_OBSERVATION_META,
       low: { raw: "70%", kind: "used-ratio", usedRatio: 0.7 },
@@ -1169,13 +1169,13 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
       source: "cluster-settings",
     },
     indexBlocks: {
-      id: "vdb-index-blocks",
+      id: "opensearch-index-blocks",
       kind: "opensearch-index-blocks",
       ...CORE_OBSERVATION_META,
       readOnlyAllowDelete: ["idx"],
     },
     shards: {
-      id: "vdb-shards",
+      id: "opensearch-shards",
       kind: "opensearch-shards",
       ...CORE_OBSERVATION_META,
       total: 3,
@@ -1186,9 +1186,9 @@ test("detector 区分容量偏高、flood-stage 与 primary shard 故障", () =>
     missing: [],
   };
   const kinds = detectVdbFindings(observations).map((finding) => finding.kind);
-  expect(kinds).toContain("vdb.cluster-red");
-  expect(kinds).toContain("vdb.disk-capacity-exhausted");
-  expect(kinds).toContain("vdb.index-write-blocked");
-  expect(kinds).toContain("vdb.unassigned-primary-shards");
+  expect(kinds).toContain("opensearch.cluster-red");
+  expect(kinds).toContain("opensearch.disk-capacity-exhausted");
+  expect(kinds).toContain("opensearch.index-write-blocked");
+  expect(kinds).toContain("opensearch.unassigned-primary-shards");
   expect(vdbCapacityConclusion(observations)).toContain("写入已受限");
 });

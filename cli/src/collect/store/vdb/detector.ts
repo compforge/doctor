@@ -2,7 +2,7 @@ import { evidenceGaps, type EvidenceGapFinding } from "../../evidence-gaps";
 import type { Detector, } from "../../protocol";
 import type { VdbEvidence, VdbFinding } from "./model";
 import { groupVdbObservations } from "./model";
-import { detectVdbFindings, effectiveDiskSettings } from "../../../datasource/opensearch/detector";
+import { detectVdbFindings } from "../../../datasource/opensearch/detector";
 export * from "../../../datasource/opensearch/detector";
 
 export const vdbDetectors: readonly Detector<VdbEvidence, VdbFinding>[] = [
@@ -16,11 +16,12 @@ export function detectVdbEvidenceGaps(
   const accessReason = evidence.facts.access.status === "collected"
     ? undefined
     : evidence.facts.access.reason;
-  const diskSettings = effectiveDiskSettings(observations);
+  const diskSettings = observations.diskSettings;
   const healthMissing = observations.health ? [] : [accessReason ?? "cluster health 未取得"];
   const capacityMissing = [
     ...(!observations.allocation ? [accessReason ?? "node allocation 未取得"] : []),
-    ...(diskSettings.source === "fallback-defaults"
+    ...(!diskSettings || diskSettings.source === "fallback-defaults"
+      || [diskSettings.low, diskSettings.high, diskSettings.floodStage].some(value => value.kind === "unknown")
       ? ["cluster disk watermarks 未完整取得，缺失项按常见默认值判断"]
       : []),
     ...(!observations.indexBlocks ? ["index read_only_allow_delete 状态未取得"] : []),
