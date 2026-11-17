@@ -4,7 +4,7 @@ import { expect, spyOn, test } from "bun:test";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { redisDataSource, s3DataSource } from "@compforge/doctor-plugin";
-import { RedisClient } from "@compforge/harness-toolbox/redis";
+import { RedisClient } from "@compforge/harness-toolbox/kv/redis";
 import { CommandContext } from "../src/command";
 import { resolveDataSourceTarget } from "../src/datasource/workload";
 import { borrowServiceClient } from "../src/datasource/client";

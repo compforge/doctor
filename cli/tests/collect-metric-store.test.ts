@@ -192,8 +192,9 @@ describe("metric Store observability", () => {
       "profiles:",
       "  prometheus-only:",
       "    readonly: true",
-      "    prometheus:",
+      "    metricdb:",
       "      url: http://prometheus.example",
+      "      kind: prometheus",
       "default_profile: prometheus-only",
       "",
     ].join("\n"));
@@ -203,7 +204,7 @@ describe("metric Store observability", () => {
         configPath,
         value: {
           readonly: true,
-          prometheus: { url: "http://prometheus.example" },
+          metricdb: { url: "http://prometheus.example", kind: "prometheus" },
         },
         pluginConfig: {},
       });

@@ -3,14 +3,14 @@ import {
   collectRedisKeyStats,
   type RedisConnectionApi,
   type RedisEndpoint,
-} from "@compforge/harness-toolbox/redis";
+} from "@compforge/harness-toolbox/kv/redis";
 import { redisTopology, type RedisCommandContext } from "../context";
 import type { RedisDatabaseScope } from "../fact/model";
 import type { RedisGroup, RedisKey, RedisNode, RedisScan } from "../model";
 import type { RedisPressureProbeOutput, RedisRuntimeProbeOutput } from "./runtime";
 import { sleep } from "@compforge/harness-toolbox/process";
 
-export { redisGroupedSampleSizes } from "@compforge/harness-toolbox/redis";
+export { redisGroupedSampleSizes } from "@compforge/harness-toolbox/kv/redis";
 
 interface ScanOptions {
   mode: "quick" | "sample";

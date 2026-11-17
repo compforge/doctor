@@ -3,7 +3,7 @@ export type {
   DbCredentials,
   PluginProfileConfig,
   Profile,
-  PrometheusProfileConfig,
+  MetricDBProfileConfig,
   RedisProfileConfig,
   RegistryProfileConfig,
 } from "../../command/profile";

@@ -1,5 +1,5 @@
 import { forServices } from "../../command/services";
-import type { DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
+import type { DatabaseQueryResult } from "@compforge/harness-toolbox/db/mysql";
 import { prepareCommandRequirements } from "../../command/prepare";
 import { serializeEvidenceResult } from "../serialize";
 import { mkdtempSync, writeFileSync } from "node:fs";

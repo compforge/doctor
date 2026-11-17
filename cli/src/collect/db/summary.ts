@@ -1,4 +1,4 @@
-import type { DatabaseQueryResult } from "@compforge/harness-toolbox/mysql";
+import type { DatabaseQueryResult } from "@compforge/harness-toolbox/db/mysql";
 import type { CommandStatus } from "../../command";
 import { summaryText, summaryValue } from "../../command/summary";
 import type { DbAction } from "./input";

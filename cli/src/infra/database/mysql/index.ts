@@ -1,1 +1,1 @@
-export * from "@compforge/harness-toolbox/mysql";
+export * from "@compforge/harness-toolbox/db/mysql";

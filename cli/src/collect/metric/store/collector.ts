@@ -1,5 +1,5 @@
 import { connectionDataSources } from "@compforge/doctor-plugin";
-import { parseExposition } from "@compforge/prombed";
+import { parseExposition, type FetchLike as MetricFetch } from "@compforge/prombed";
 import type {
   Database,
   PluginDefinition,
@@ -17,8 +17,8 @@ import {
   listServiceNetwork,
   type KubernetesService,
 } from "@compforge/harness-toolbox/kubernetes/service";
-import type { EmbeddedMetricSource, MetricFetch } from "../../../infra/metric";
-import type { RedisEndpoint } from "@compforge/harness-toolbox/redis";
+import type { EmbeddedMetricSource } from "../../../infra/metric";
+import type { RedisEndpoint } from "@compforge/harness-toolbox/kv/redis";
 import { borrowServiceClient } from "../../../datasource/client";
 import { STORE_METRIC_NAMES, type MetricStoreKind } from "./contract";
 

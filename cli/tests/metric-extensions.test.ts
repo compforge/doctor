@@ -67,7 +67,8 @@ test("native Metric discovery stays offline and remote preparation needs no Kube
   const services = createServiceCatalog([{ ...base, extensions: [{ ...extension, run: withSummary({ title: "Fixture", fields: [] }, run) }] }]);
   expect(metricConfigurationProviders(services)).toHaveLength(1);
   expect(run).not.toHaveBeenCalled();
-  const command = new CommandContext({});
+  const command = new CommandContext({}, {name:"fixture",configPath:"",pluginConfig:{},value:{readonly:true,
+    metricdb:{url:"http://prometheus.example",kind:"prometheus"}}});
   try {
     const config = await resolveMetricConfig({ prometheus: "http://prometheus.example" }, services, command, false);
     const executor = { run: mock(async () => { throw new Error("unexpected Kubernetes"); }), exec: mock(async () => { throw new Error("unexpected Kubernetes"); }) };

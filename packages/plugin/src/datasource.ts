@@ -5,11 +5,11 @@ import type { ServiceDefinition } from "./service";
 import type { DatabaseTarget } from "./database";
 import type { PluginDataSource } from "./context";
 import type { CapabilityWithAccess } from "./kubernetes";
-import type { MysqlClient } from "@compforge/harness-toolbox/mysql";
+import type { MysqlClient } from "@compforge/harness-toolbox/db/mysql";
 import type { Client } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
-import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/redis";
-import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch";
+import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/kv/redis";
+import type { OpenSearchReadApi } from "@compforge/harness-toolbox/vectordb/opensearch";
 
 export type ServiceDataSourceKind = "db" | "vdb" | "s3" | "redis";
 

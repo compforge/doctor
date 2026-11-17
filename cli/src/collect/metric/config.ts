@@ -93,8 +93,8 @@ export async function resolveMetricConfig(
   if (format === "bundle" && /\.(?:html|md)$/i.test(opts.output ?? "")) {
     throw new Error("--format bundle 的输出路径不能使用 .html/.md 后缀");
   }
-  const prometheusUrl = opts.prometheus?.trim() || resolvedProfile.profile.prometheus?.url?.trim();
-  const configuredPrometheus = resolvedProfile.profile.prometheus;
+  const metricdbUrl = opts.prometheus?.trim() || resolvedProfile.profile.metricdb?.url?.trim();
+  const configuredMetricDB = resolvedProfile.profile.metricdb;
   const services = parseMetricServices(opts.services, catalog);
   const configurationNeedsKubernetes = metricConfigurationProviders(catalog).some(({ service, extension }) => (
     services.includes(service.name) && Boolean(extension.access.kubernetes?.length)
@@ -108,11 +108,11 @@ export async function resolveMetricConfig(
   let kubeContext = opts.context;
   let profileName = resolvedProfile.name;
   let storeSupplementUnavailableReason: string | undefined;
-  if (!prometheusUrl || hasStoreMetrics || configurationNeedsKubernetes) {
+  if (!metricdbUrl || hasStoreMetrics || configurationNeedsKubernetes) {
     try {
       const collect = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
       if (!collect) {
-        if (!prometheusUrl || configurationNeedsKubernetes) return undefined;
+        if (!metricdbUrl || configurationNeedsKubernetes) return undefined;
         storeSupplementUnavailableReason = "Kubernetes target selection cancelled";
       } else {
         profileName = collect.profileName;
@@ -124,7 +124,7 @@ export async function resolveMetricConfig(
         kubeContext = collect.kubernetes.context;
       }
     } catch (error) {
-      if (!prometheusUrl || configurationNeedsKubernetes) throw error;
+      if (!metricdbUrl || configurationNeedsKubernetes) throw error;
       // Remote Prometheus is the primary source. A missing Kubernetes channel only disables
       // the optional live Store supplement; Store probes can still query exporter metrics remotely.
       storeSupplementUnavailableReason = error instanceof Error ? error.message : String(error);
@@ -136,12 +136,11 @@ export async function resolveMetricConfig(
     watch,
     intervalMs: parseMetricInterval(opts.interval),
     profileName,
-    prometheus: prometheusUrl ? {
-      url: prometheusUrl,
-      username: configuredPrometheus?.username,
-      password: configuredPrometheus?.password,
-      timeoutMs: 10_000,
-      maxResponseBytes: 4 * 1024 * 1024,
+    metricdb: metricdbUrl ? {
+      url: metricdbUrl,
+      kind: configuredMetricDB?.kind,
+      username: configuredMetricDB?.username,
+      password: configuredMetricDB?.password,
     } : undefined,
     storeSupplementUnavailableReason,
     namespace: namespace.namespace,

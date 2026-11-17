@@ -1,10 +1,10 @@
 import type { ServiceMetricChart, ServiceMetricDetector } from "@compforge/doctor-plugin";
 import type { KubernetesCommandConfig } from "../../command/kubernetes-target";
 import type { CommandContext } from "../../command";
+import type { MetricDBProfileConfig } from "../../command/profile";
 import type {
   EmbeddedMetricSource,
   MetricQuerySource,
-  RemoteMetricSourceOptions,
 } from "../../infra/metric";
 import type { EvidenceBundle } from "../evidence";
 import type {
@@ -42,7 +42,7 @@ export interface MetricConfig {
   watch: MetricWatch;
   intervalMs: number;
   profileName: string;
-  prometheus?: RemoteMetricSourceOptions;
+  metricdb?: MetricDBProfileConfig;
   /** Remote Service metrics remain usable when optional Kubernetes Store sampling cannot be prepared. */
   storeSupplementUnavailableReason?: string;
   namespace: string;

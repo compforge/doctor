@@ -48,7 +48,7 @@ QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业
 - Service.operations 声明 Operation、calls/mayCalls 和 Probe。Core 汇总当前 Plugin 的全部 Service 构建全图。
 - Service.cases 提供离线 CaseSet、Operation 引用和可选 runner；同一入口的不同输入仍指向同一 Operation。
 - Core 选择 Case、确认加压影响并准备所需访问；Harness 拥有调度、窗口、查询计划、归约和报告。
-- Probe 的后端表达式和统计口径由 Plugin 声明；Toolbox 提供参数绑定与 Prometheus 客户端。
+- Probe 的后端表达式和统计口径由 Plugin 声明；Toolbox 提供参数绑定与 MetricDB 客户端。
 
 HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标和适用的请求统计；Callgraph 展示调用图。
 所有已注册 Operation 的 Probe 都参与观测。Callgraph 默认显示 Case Operation 的可达子图，沿 calls/mayCalls
@@ -57,14 +57,16 @@ HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标�
 ## Profile 与证据
 
 ```yaml
-prometheus:
+metricdb:
+  kind: victoriametrics # 或 prometheus；省略时识别后端
   url: https://metrics.example.net
   # username: ...
   # password: ...
 ```
 
-Profile 只提供地址和必要认证。指标客户端用不读取业务时序的常量查询识别 Prometheus/VM，
-按 `datasourceKind` 选择 Operation Probe；认证、连接和无法识别的响应保留错误，不猜测后端。
+Profile 提供地址、必要认证和可选 `kind`。显式 kind 选择对应后端；省略时客户端用常量查询识别
+Prometheus/VM。按 `type: metricdb` 与 `kind` 选择 Operation Probe；认证、连接和无法识别的响应
+保留错误，不切换后端。旧 `prometheus` profile 字段需改为 `metricdb`，原有 URL 与认证字段可原样迁移。
 Operation Probe 提供完整查询选择条件，Core 不从 Kubernetes namespace 或用户参数拼接范围；
 `$window` 由 Harness 绑定实际窗口。查询并发、超时和响应大小由客户端统一限定。
 

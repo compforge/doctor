@@ -102,7 +102,7 @@ export async function runCollectMetric(
     const configurations = await loadMetricConfigurations(config, plugin.services, commandContext, injectedExecutor);
     preparation = await prepareMetricSource(config, plugin, commandContext, injectedExecutor, configurations);
     useLogger().info(preparation.sourceKind === "remote"
-      ? `[collect] metric source: remote Prometheus ${config.prometheus!.url}\n`
+      ? `[collect] metric source: remote MetricDB ${config.metricdb!.kind ?? "auto"} ${config.metricdb!.url}\n`
       : preparation.sourceKind === "hybrid"
         ? `[collect] metric source: remote Prometheus + embedded Store sampling（interval=${config.intervalMs}ms）\n`
       : `[collect] metric source: embedded Prombed（interval=${config.intervalMs}ms）`);
@@ -199,7 +199,8 @@ function writeMetricManifest(
       source: facts?.source.status === "collected" ? facts.source.sourceKind : undefined,
       watch: config.watch.label,
       interval_ms: config.intervalMs,
-      prometheus: config.prometheus ? config.prometheus.url : undefined,
+      metricdb: config.metricdb?.url,
+      metricdb_kind: config.metricdb?.kind,
     },
     startedAt: window ? new Date(window.startedAt).toISOString() : now,
     finishedAt: window ? new Date(window.finishedAt).toISOString() : now,

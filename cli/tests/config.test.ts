@@ -182,21 +182,21 @@ describe("validateProfile", () => {
     }).errors.some((e) => e.includes("registry.password"))).toBe(true);
   });
 
-  it("validates Prometheus URL and credentials", () => {
+  it("validates MetricDB URL and credentials", () => {
     expect(validateProfile({
       readonly: true,
-      prometheus: {
-        url: "https://prometheus.example/prefix",
+      metricdb: {
+        url: "https://metricdb.example/prefix",
         username: "doctor",
         password: "secret",
       },
     }).errors).toEqual([]);
     const invalid = validateProfile({
       readonly: true,
-      prometheus: { url: "redis://prometheus", username: "doctor" },
+      metricdb: { url: "redis://prometheus", username: "doctor" },
     });
-    expect(invalid.errors.some((error) => error.includes("prometheus.url"))).toBe(true);
-    expect(invalid.errors.some((error) => error.includes("prometheus.password"))).toBe(true);
+    expect(invalid.errors.some((error) => error.includes("metricdb.url"))).toBe(true);
+    expect(invalid.errors.some((error) => error.includes("metricdb.password"))).toBe(true);
   });
 });
 
@@ -272,9 +272,9 @@ it("profile validates log timePadding as a positive duration", () => {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it("Prometheus profile rejects query scope and backend settings instead of silently ignoring them", () => {
-  for (const key of ["parameters", "kind", "concurrency", "timeout_ms", "max_response_bytes"]) {
-    const path = makeTmpFile("old-metrics.yaml", `profiles:\n  test:\n    readonly: true\n    prometheus:\n      url: http://metrics\n      ${key}: invalid\n`);
-    expect(() => loadConfig(path)).toThrow(`prometheus.${key} is not supported`);
+it("MetricDB profile rejects query scope and capacity settings instead of silently ignoring them", () => {
+  for (const key of ["parameters", "concurrency", "timeout_ms", "max_response_bytes"]) {
+    const path = makeTmpFile("old-metrics.yaml", `profiles:\n  test:\n    readonly: true\n    metricdb:\n      url: http://metrics\n      ${key}: invalid\n`);
+    expect(() => loadConfig(path)).toThrow(`metricdb.${key} is not supported`);
   }
 });

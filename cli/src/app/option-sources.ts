@@ -31,7 +31,7 @@ export function withoutShadowedDefaults<T extends object>(options: T, profile: P
     namespace: profile.namespace,
     debugImage: profile.kube?.debug_image,
     image: source?.command === "debug" ? profile.kube?.debug_image : undefined,
-    prometheus: profile.prometheus?.url,
+    prometheus: profile.metricdb?.url,
     sampleCount: profile.overview?.sample_count,
     collectConcurrency: profile.overview?.collect_concurrency,
   };

@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import type { SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import type { EvidenceBundle } from "../evidence";
 import { countSpans, downloadSpans } from "./opensearch";
 

@@ -90,16 +90,20 @@ function validateProfileShape(value: unknown, name: string): Profile {
       throw new Error(`profile '${name}'.${field} must be a positive integer`);
     }
   }
-  const prometheus = optionalMap(profile.prometheus, `profile '${name}'.prometheus`);
-  if (prometheus) {
-    if (typeof prometheus.url !== "string" || !prometheus.url) {
-      throw new Error(`profile '${name}'.prometheus.url must be a non-empty string`);
+  if (profile.prometheus !== undefined) throw new Error(`profile '${name}'.prometheus is no longer supported; use metricdb with optional kind`);
+  const metricdb = optionalMap(profile.metricdb, `profile '${name}'.metricdb`);
+  if (metricdb) {
+    if (typeof metricdb.url !== "string" || !metricdb.url) {
+      throw new Error(`profile '${name}'.metricdb.url must be a non-empty string`);
     }
-    for (const key of Object.keys(prometheus)) {
-      if (!["url", "username", "password"].includes(key)) throw new Error(`profile '${name}'.prometheus.${key} is not supported; configure only URL and credentials`);
+    if (metricdb.kind !== undefined && !["prometheus", "victoriametrics"].includes(metricdb.kind as string)) {
+      throw new Error(`profile '${name}'.metricdb.kind must be prometheus or victoriametrics`);
     }
-    optionalScalar(prometheus.username, "string", `profile '${name}'.prometheus.username`);
-    optionalScalar(prometheus.password, "string", `profile '${name}'.prometheus.password`);
+    for (const key of Object.keys(metricdb)) {
+      if (!["url", "kind", "username", "password"].includes(key)) throw new Error(`profile '${name}'.metricdb.${key} is not supported; configure only kind, URL and credentials`);
+    }
+    optionalScalar(metricdb.username, "string", `profile '${name}'.metricdb.username`);
+    optionalScalar(metricdb.password, "string", `profile '${name}'.metricdb.password`);
   }
   return profile as unknown as Profile;
 }
@@ -208,17 +212,20 @@ export function validateProfile(
   if (!!p.registry?.username !== !!p.registry?.password) {
     errors.push("registry.username / registry.password 必须成对配置");
   }
-  if (p.prometheus) {
+  if (p.metricdb) {
+    if (p.metricdb.kind !== undefined && !["prometheus", "victoriametrics"].includes(p.metricdb.kind)) {
+      errors.push("metricdb.kind 只支持 prometheus 或 victoriametrics");
+    }
     try {
-      const url = new URL(p.prometheus.url);
+      const url = new URL(p.metricdb.url);
       if (url.protocol !== "http:" && url.protocol !== "https:") {
-        errors.push("prometheus.url 只支持 http:// 或 https://");
+        errors.push("metricdb.url 只支持 http:// 或 https://");
       }
     } catch {
-      errors.push("prometheus.url 不是有效 URL");
+      errors.push("metricdb.url 不是有效 URL");
     }
-    if (!!p.prometheus.username !== !!p.prometheus.password) {
-      errors.push("prometheus.username / prometheus.password 必须成对配置");
+    if (!!p.metricdb.username !== !!p.metricdb.password) {
+      errors.push("metricdb.username / metricdb.password 必须成对配置");
     }
   }
 

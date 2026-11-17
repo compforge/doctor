@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { ClientManager } from "@compforge/harness-common";
-import { OpenSearchClient } from "@compforge/harness-toolbox/opensearch";
+import { OpenSearchClient } from "@compforge/harness-toolbox/vectordb/opensearch";
 import { PodRelayTransport } from "@compforge/harness-toolbox/transport";
 import { sharedPodRelay } from "../src/datasource/pod-relay";
 import { inCommandScope } from "../src/command/execution-scope";

@@ -1,4 +1,4 @@
-import { probeOpenSearchHealth as probe } from "@compforge/harness-toolbox/opensearch/health";
+import { probeOpenSearchHealth as probe } from "@compforge/harness-toolbox/vectordb/opensearch/health";
 import type { DataSourceHealthInput, DataSourceHealthResult } from "../health/extension";
 import { observation } from "./metadata";
 export async function probeOpenSearchHealth(input: DataSourceHealthInput): Promise<DataSourceHealthResult> {

@@ -1,7 +1,7 @@
 import { createAgentRunIR } from "@compforge/trace-harness";
 import { SerializeContext } from "../src/command/serialization/context";
 import { afterEach, expect, spyOn, test } from "bun:test";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
+import type { SearchEngine } from "@compforge/harness-toolbox/vectordb/opensearch";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

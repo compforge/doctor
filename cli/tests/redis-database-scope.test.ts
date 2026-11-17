@@ -14,7 +14,7 @@ import {
   type RedisInspectionFacts,
 } from "../src/collect/redis/fact/model";
 import { collectRedisRuntime } from "../src/collect/redis/probe/collector";
-import type { RedisAccessApi, RedisConnectionApi } from "@compforge/harness-toolbox/redis";
+import type { RedisAccessApi, RedisConnectionApi } from "@compforge/harness-toolbox/kv/redis";
 import { resolveRedisOutputPath } from "../src/collect/redis";
 
 test("Redis 默认双交付接受 tar.gz 输出路径", () => {
