@@ -1,5 +1,5 @@
 import * as serviceNetwork from "@compforge/harness-toolbox/kubernetes/service";
-import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service/port-forward";
 import { prepareStoreMetricCollection } from "../src/collect/metric/store/collector";
 import { EmbeddedMetricSource } from "../src/infra/metric";
 import { expect, spyOn, test } from "bun:test";

@@ -1,6 +1,6 @@
 import { mcpConfigurationProvider } from "./extensions";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
-import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

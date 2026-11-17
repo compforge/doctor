@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { Client as OpenSearchDriver } from "@opensearch-project/opensearch";
-import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch/client";
+import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { finalizeResult } from "./report-fixture";
 import { readBundleText, readBundleIndex } from "./bundle-fixture";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";

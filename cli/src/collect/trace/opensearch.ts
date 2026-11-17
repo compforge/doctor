@@ -1,4 +1,4 @@
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { searchAfterPages } from "@compforge/harness-toolbox/opensearch/search-after";
 
 /** --index 显式最优先；--index-date 是 jaeger-span-<date> 的便捷写法；缺省通配跨日期查 */

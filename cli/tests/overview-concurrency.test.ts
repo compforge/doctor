@@ -5,8 +5,8 @@ import { onCommandDispose } from "../src/command/execution-scope";
 import type { CollectInput, CollectOutput } from "../src/collect/composite";
 import { collectOverviewSamples } from "../src/overview/collect";
 import { overviewCollectConcurrency } from "../src/overview/options";
-import { runPodLogCapturePlan } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
-import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import { runPodLogCapturePlan } from "@compforge/harness-toolbox/kubernetes/pod/log/capture-plan";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 
 const kinds: CollectInput["kinds"] = ["data", "trace", "log"];
 const delay = () => new Promise<void>((resolve) => setTimeout(resolve, 1));

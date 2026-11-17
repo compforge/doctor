@@ -23,7 +23,7 @@ import {
   runLocalCommand,
   type LocalContainerEngine,
 } from "../../infra/host/container-engine";
-import { spawnProcess } from "@compforge/harness-toolbox/process/index";
+import { spawnProcess } from "@compforge/harness-toolbox/process";
 
 import { useLogger } from "../../terminal/log";
 import {

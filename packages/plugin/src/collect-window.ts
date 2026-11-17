@@ -1,5 +1,5 @@
 import { parseDuration } from "@compforge/harness-toolbox/duration";
-import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
+import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import type { Identity, RecordFact } from "./capability";
 
 export const COLLECT_WINDOW_KIND = "collect.window";

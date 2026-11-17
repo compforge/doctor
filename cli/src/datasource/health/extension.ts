@@ -1,5 +1,5 @@
 import type { ExtensionRegistration } from "@compforge/doctor-plugin";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import type { VdbFinding, VdbObservation } from "../opensearch/model";
 
 export const DATASOURCE_HEALTH_KIND = "datasource.health";

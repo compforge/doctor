@@ -12,13 +12,13 @@ import type { KubernetesCommandConfig } from "../../../command/kubernetes-target
 import { borrowDatabase } from "../../../datasource/database";
 import type { DatabaseTarget } from "../../../infra/database";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service/port-forward";
 import {
   listServiceNetwork,
   type KubernetesService,
 } from "@compforge/harness-toolbox/kubernetes/service";
 import type { EmbeddedMetricSource, MetricFetch } from "../../../infra/metric";
-import type { RedisEndpoint } from "@compforge/harness-toolbox/redis/index";
+import type { RedisEndpoint } from "@compforge/harness-toolbox/redis";
 import { borrowServiceClient } from "../../../datasource/client";
 import { STORE_METRIC_NAMES, type MetricStoreKind } from "./contract";
 

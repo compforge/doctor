@@ -1,4 +1,4 @@
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { createDoctorExtensionRegistry } from "../../plugin/extension-registry";
 import { DATASOURCE_HEALTH_KIND, type DataSourceHealthExtension, type DataSourceHealthResult } from "./extension";
 

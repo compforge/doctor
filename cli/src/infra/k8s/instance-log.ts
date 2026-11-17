@@ -1,5 +1,5 @@
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { KubernetesPodLogAccess, PodLogResult } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess, PodLogResult } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { currentCommandSignal } from "../../command/execution-scope";
 
 /**

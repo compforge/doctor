@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DOCTOR_CLI_VERSION } from "../../../app/version";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
 import { commandOutcome, type CommandResult, type CommandStatus, type CommandContext } from "../../../command";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { parseOpenSearchEndpoint } from "../../../infra/search/opensearch";
 
 import { useLogger } from "../../../terminal/log";

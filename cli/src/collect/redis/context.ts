@@ -1,8 +1,8 @@
 import type { EvidenceBundle } from "../evidence";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisTarget } from "./fact/target";
-import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
-import { discoverRedisTopology, type RedisTopology } from "@compforge/harness-toolbox/redis/index";
+import type { RedisAccessApi } from "@compforge/harness-toolbox/redis";
+import { discoverRedisTopology, type RedisTopology } from "@compforge/harness-toolbox/redis";
 import type { RedisConfig } from "./config";
 import type { CommandContext } from "../../command";
 

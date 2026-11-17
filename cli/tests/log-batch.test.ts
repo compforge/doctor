@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parsePods } from "@compforge/harness-toolbox/kubernetes/pod";
-import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { CommandContext, CommandStatus } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { collectLog } from "../src/collect/log";

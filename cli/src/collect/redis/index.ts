@@ -1,7 +1,7 @@
 import { commandOutcome, type CommandResult, type CommandStatus } from "../../command";
 import type { ServiceCatalog } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
+import type { RedisAccessApi } from "@compforge/harness-toolbox/redis";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

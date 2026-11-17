@@ -1,6 +1,6 @@
 {
   "name": "@compforge/doctor-plugin-example",
-  "version": "0.0.27",
+  "version": "0.0.28",
   "private": true,
   "type": "module",
   "doctorPlugin": {
@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@compforge/doctor-plugin": "workspace:*",
-    "@compforge/harness-common": "0.7.0"
+    "@compforge/harness-common": "0.7.2"
   },
   "devDependencies": {
     "@types/bun": "latest",

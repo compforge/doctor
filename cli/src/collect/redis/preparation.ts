@@ -2,7 +2,7 @@ import type { Client } from "@compforge/harness-common";
 import { ClientManager, clientKey } from "@compforge/harness-common";
 import { currentCommandClients } from "../../command/execution-scope";
 import { ServicePortForwardTransport } from "@compforge/harness-toolbox/transport";
-import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
+import { RedisAccess, type RedisAccessApi } from "@compforge/harness-toolbox/redis";
 import type { Executor, ExecTarget } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { RedisConfig } from "./config";
 import type { RedisEnvironmentFact, RedisTargetFact } from "./fact/model";

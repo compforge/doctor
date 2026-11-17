@@ -10,9 +10,9 @@ import { traceLogWindows } from "../src/collect/log/trace-window";
 import { timePaddingMs, selectLogTimeWindow } from "../src/collect/log/window";
 import { createServiceCatalog } from "@compforge/doctor-plugin";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
+import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { parsePods } from "@compforge/harness-toolbox/kubernetes/pod";
-import type { PodLogRequest } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { PodLogRequest } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
 import { logService, podDiscoveryExecutor, logPlugin } from "./log-fixture";
 
