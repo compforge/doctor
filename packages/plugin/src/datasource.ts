@@ -8,8 +8,8 @@ import type { CapabilityWithAccess } from "./kubernetes";
 import type { MysqlClient } from "@compforge/harness-toolbox/mysql";
 import type { Client } from "@compforge/harness-common";
 import type { S3Client, S3Target } from "@compforge/harness-toolbox/s3";
-import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/redis/index";
-import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch/client";
+import type { RedisClient, RedisDataSourceTarget, RedisAccessApi } from "@compforge/harness-toolbox/redis";
+import type { OpenSearchReadApi } from "@compforge/harness-toolbox/opensearch";
 
 export type ServiceDataSourceKind = "db" | "vdb" | "s3" | "redis";
 

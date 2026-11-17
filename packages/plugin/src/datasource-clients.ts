@@ -4,7 +4,7 @@ import { PortForwardTransport, type TcpTransport } from "@compforge/harness-tool
 import { serviceIdentity } from "@compforge/harness-toolbox/kubernetes/service";
 import type { PluginClientContext, PluginDataSource } from "./context";
 import { MysqlClient } from "@compforge/harness-toolbox/mysql";
-import { RedisClient } from "@compforge/harness-toolbox/redis/index";
+import { RedisClient } from "@compforge/harness-toolbox/redis";
 import type { ServiceS3Client, ServiceVdbClient, ServiceRedisClient, ServiceDatabaseTarget } from "./datasource";
 
 function kubernetesTransport(context: PluginClientContext): PortForwardTransport {
@@ -48,7 +48,7 @@ export function s3DataSource(key: string, resolve: (context: PluginClientContext
 
 export function vdbDataSource(key: string, resolve: (context: PluginClientContext) => Promise<ServiceVdbClient["target"]>): PluginDataSource<ServiceVdbClient> {
   return configuredSource(key, resolve, async (target, context) => {
-    const { OpenSearchClient } = await import("@compforge/harness-toolbox/opensearch/client");
+    const { OpenSearchClient } = await import("@compforge/harness-toolbox/opensearch");
     if (target.backend !== "opensearch" || !target.endpoint) throw new Error("VDB source 需要 opensearch endpoint");
     return new OpenSearchClient(async () => ({ node: target.endpoint!,
       auth: { username: target.username, password: target.password }, requestTimeoutMs: 15_000 }), new ManagedTransport([kubernetesTransport(context)]), { signal: context.signal });

@@ -1,4 +1,4 @@
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import type { ExecTarget, Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
 import type { EvidenceBundle } from "../../evidence";
 import type { OpenSearchAccessPreparation } from "../../shared/opensearch-access";

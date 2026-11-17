@@ -12,9 +12,9 @@ import { makeLogProbe } from "../src/collect/log/probe/service";
 import { buildLogEvidence, detectLogEvidenceGaps } from "../src/collect/log/detector";
 import { renderLogResult } from "../src/collect/log/render";
 import { writeLogHtmlReport } from "../src/collect/log/html";
-import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/log-timestamp";
+import { logTimestampNanos } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import type { LogInspectionFacts, LogProbeConfig } from "../src/collect/log/model";
-import type { KubernetesPodLogAccess, PodLogResult } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess, PodLogResult } from "@compforge/harness-toolbox/kubernetes/pod/log";
 
 test("trace discovery precedes content filtering and fires once per ID while retaining multiline errors", () => {
   const hits: string[] = [];

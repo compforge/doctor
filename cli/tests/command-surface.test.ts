@@ -361,7 +361,10 @@ describe("command help", () => {
     expect(result.stdout).toContain("最大 50；指定后跳过最高并发询问");
     expect(result.stdout).not.toContain("--max-requests");
     expect(result.stdout).toContain("--hold <seconds>");
-    expect(result.stdout).toContain("--trace-samples <n>");
+    expect(result.stdout).not.toContain("--trace-samples");
+    expect(result.stdout).not.toContain("--interval");
+    expect(result.stdout).toContain("--from <directory>");
+    expect(result.stdout).not.toContain("--collect-metrics");
     expect(result.stdout).toContain('(default: "10")');
     expect(result.stdout).toContain("--format <format>");
     expect(result.stdout.replace(/\s+/g, " ")).toContain('"html", "bundle", "manifest"');

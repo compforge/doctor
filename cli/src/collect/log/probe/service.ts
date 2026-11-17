@@ -3,12 +3,12 @@ import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "../../../command/log-policy";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { PROBE_RUNNABLE, probeUnavailable, type Probe } from "../../protocol";
-import type { PodLogCapturePlanItem } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
-import { PodLogDataSource } from "@compforge/harness-toolbox/kubernetes/pod-log-datasource";
+import type { PodLogCapturePlanItem } from "@compforge/harness-toolbox/kubernetes/pod/log/capture-plan";
+import { PodLogDataSource } from "@compforge/harness-toolbox/kubernetes/pod/log/datasource";
 import type {
   PodLogCaptureStatus,
   PodLogResult,
-} from "@compforge/harness-toolbox/kubernetes/pod-log";
+} from "@compforge/harness-toolbox/kubernetes/pod/log";
 import type {
   LogCommandContext,
   LogInspectionFacts,

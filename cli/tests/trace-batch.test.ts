@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
 import { Client as OpenSearchDriver } from "@opensearch-project/opensearch";
-import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch/client";
+import { OpenSearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { finalizeResult } from "./report-fixture";
 import { readBundleText, readBundleIndex } from "./bundle-fixture";
 import { traceExtension } from "../../packages/plugin/tests/extension-fixture";
@@ -168,7 +168,7 @@ for (const resolved of [true, false]) test(`Trace preserves health evidence with
     const artifacts = result.artifacts.filter(artifact => artifact.command === "datasource-health");
     expect(artifacts).toHaveLength(1);
     const health = JSON.parse(readFileSync(join(artifacts[0]!.path, "health.json"), "utf8")).health;
-    expect(health.findings.map((finding: { kind: string }) => finding.kind)).toContain("vdb.disk-capacity-high");
+    expect(health.findings.map((finding: { kind: string }) => finding.kind)).toContain("opensearch.disk-capacity-high");
     const { SerializeContext } = await import("../src/command/serialization/context");
     const { mkdtempSync } = await import("node:fs");
     const { tmpdir } = await import("node:os");

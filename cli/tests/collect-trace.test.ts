@@ -1,5 +1,5 @@
 import { createServiceCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
-import type { SearchEngine } from "@compforge/harness-toolbox/opensearch/types";
+import type { SearchEngine } from "@compforge/harness-toolbox/opensearch";
 import { EvidenceDependency, type Detector, type TraceContributions } from "@compforge/trace-harness";
 import { describe, expect, test } from "bun:test";
 import { strFromU8, unzipSync } from "fflate";

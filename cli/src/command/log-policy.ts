@@ -1,4 +1,4 @@
-import type { PodLogCapturePolicy } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
+import type { PodLogCapturePolicy } from "@compforge/harness-toolbox/kubernetes/pod/log/capture-plan";
 
 /** Doctor owns customer-site defaults; the shared toolbox only enforces supplied limits. */
 export const DEFAULT_POD_LOG_CAPTURE_POLICY: PodLogCapturePolicy = {

@@ -550,3 +550,18 @@ Resource/ResourceSnapshot。`doctor resource` 按 Service、资源 ID 或开放 
 `ServiceDefinition.endpoints` 保存声明的对外依赖地址及可选消费方 Workload，Catalog 校验声明。
 它不自动触发 Health。需要主动验证的依赖由 Service 显式贡献 `healthcheck.deps`，
 Plugin 选择实例、解析运行时配置并复用 Toolbox 网络探测；详细契约见 [Health](commands/health.md)。
+
+## Case 与 Operation
+
+`Service.operations` 声明静态能力及 `calls`、`mayCalls`、`probes`；Case source 通过 `operation`
+引用同一 Service 的能力，runner 留在 source 中。Perf 要求这个引用；只提供离线资产的其他来源可以省略。
+
+```text
+Operation: chat/chat
+  ├─ Case greeting: query="你好"
+  └─ Case python:   query="用 Python 计算下 1+1"
+```
+
+两种输入使用同一个入口 Operation。第二种输入可能触发工具调用，静态 `mayCalls` 描述这种可能性；
+实际发生哪些调用由运行证据说明。Core 在执行前解析引用，运行记录同时保存 Case 与 Operation identity。
+Probe 定义不包含环境凭据或实验窗口，由 Host 绑定访问参数、由 Perf 绑定窗口。

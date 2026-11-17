@@ -1,4 +1,4 @@
-import { describeOpenSearchError, OpenSearchEngine, type OpenSearchAuth } from "@compforge/harness-toolbox/opensearch/client";
+import { describeOpenSearchError, OpenSearchEngine, type OpenSearchAuth } from "@compforge/harness-toolbox/opensearch";
 
 const USER_KEYS = ["DOCTOR_OPENSEARCH_USER", "DOCTOR_OPENSEARCH_USERNAME"];
 const PASS_KEYS = ["DOCTOR_OPENSEARCH_PASSWORD"];

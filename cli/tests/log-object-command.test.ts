@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { createServiceCatalog } from "@compforge/doctor-plugin";
 import { KubectlExecutor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
+import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { parsePods } from "@compforge/harness-toolbox/kubernetes/pod";
 import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { CommandContext, CommandStatus } from "../src/command";

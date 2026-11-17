@@ -1,4 +1,3 @@
-import type { CommandResult } from "../command";
 import type { FacetSpec } from "@compforge/spec-case/model";
 import type { Run } from "@compforge/perf-harness";
 
@@ -17,8 +16,7 @@ export interface PerfCliOpts {
   breakerMinN?: string;
   gracefulStop?: string;
   requestTimeout?: string;
-  traceSamples?: string;
-  interval?: string;
+  from?: string;
   prometheus?: string;
   namespace?: string;
   kubeconfig?: string;
@@ -42,27 +40,14 @@ export interface PerfConfig {
   breakerMinN: number;
   gracefulStopSeconds: number;
   requestTimeoutMs: number;
-  traceSamples: number;
   outputFormat: PerfOutputFormat;
   bundleName: string;
-}
-
-export interface PerfEvidenceSample {
-  armRunId: string;
-  caseId?: string;
-  correlationKey: string;
-  correlationId: string;
-  firstTokenMs?: number;
-  durationMs: number;
-  errorKind?: string;
-  trace: CommandResult<unknown>;
-  log?: CommandResult<unknown>;
 }
 
 export interface PerfResult {
   run: Run;
   outputDir: string;
-  metric: CommandResult<void>;
-  samples: PerfEvidenceSample[];
+  metricsComplete: boolean;
+  metricIssues?: readonly string[];
   caseFacets?: Readonly<Record<string, FacetSpec>>;
 }

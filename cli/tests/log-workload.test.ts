@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { ServiceDefinition, Workload } from "@compforge/doctor-plugin";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { PodLogRequest, KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { PodLogRequest, KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { CommandContext, CommandStatus } from "../src/command";
 import { EvidenceBundle } from "../src/collect/evidence";
 import { collectLog, resolveLogServiceSelection, type LogCollectOptions } from "../src/collect/log";

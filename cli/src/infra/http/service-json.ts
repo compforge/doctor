@@ -1,5 +1,5 @@
 import type { Executor, KubectlOptions } from "@compforge/harness-toolbox/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service/port-forward";
 import type {
   HttpServiceTarget,
   HttpTransportResponse,

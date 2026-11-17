@@ -1,76 +1,70 @@
 # doctor perf 主动性能诊断
 
-## 理念 / 概念
+`doctor perf` 按所选 Case 产生受控负载，再查询外部 Prometheus / VictoriaMetrics 的对应历史窗口，
+交付请求统计与 Operation Callgraph。执行前展示并确认目标、Case、并发、时长、熔断和业务影响。
 
-`doctor perf` 回答“逐档提升并发时，普通业务请求从哪一档开始变慢，慢在哪里”。交互运行会让用户从
-1、5、10、20、50 中选择最高并发，默认 20；自动化运行可通过 `--levels` 显式指定不超过 50 的档位。
-Perf 是带自身加压动作的组合工作流：它拥有负载执行和 Perf Artifact，同时触发 Metric、代表请求的 Trace
-和 Log；这些产物最终由统一 Delivery 一起交付。
+## 声明与职责
 
-Perf 是与 Provision、Collect、Eval、Chat 平级的顶层工作流。它会产生真实业务数据、Trace 和可能的模型费用，
-因此执行前必须展示发压时长、并发档位、无请求总数上限及熔断条件和影响并取得确认。
+- Common `Operation` 静态描述 Service 能力，携带 `calls`、`mayCalls` 和 `probes`；`Service.operations`
+  贡献目录。Core 将各 Service 绑定到本次 Environment，校验所有权与引用并组装全局 Graph。
+- `Service.cases` 提供 CaseSet、可选 producer 和单请求 runner。source 的 `operation` 静态引用
+  同一 Service 的入口能力；不同输入仍指向同一 Operation，见 [Operation 与 Case](../plugin.md#case-与-operation)。
+- `perf.scenarios` 只提供实验预设及 `cases: { service, source }`，不再列出 Metric/Log Service。
+- Core 选择 Cases、授权、准备访问和调度。Runner 每次只发起一笔请求，拥有协议、鉴权与原始 Outcome；
+  Judge 独立分类。Perf Harness 拥有 Stage / Window、查询计划、归约和 Callgraph 渲染。
+- Probe 声明属于 Common；PromQL 参数绑定及 Prometheus 客户端属于 Toolbox；后端变体由声明显式提供，
+  选定后不自动降级或重写表达式。Profile 提供访问凭据、并发、超时、响应大小上限和各 Service 标签值。
 
-## 职责边界
+Perf 不抓取 Service `/metrics`，不启动 Prombed，不自动采集日志或 Trace。Outcome 的业务/Trace ID
+保留在原始记录中，供后续显式诊断使用。独立的 metric、log、trace 命令维持各自职责。
 
-- 语言中立的 Perf Harness 契约定义 Case、Arm、ArmRun、Stage、Window、Outcome 和落盘 IR；Python 与
-  TypeScript 是两个平级实现，互不作为对方的规范。
-- Doctor Core 使用 TypeScript 实现调度负载、控制并发和时长、按 dispatch 时间归窗，并写出
-  `run.json` / `requests.jsonl` / `evaluations.json`。
-- `Service.cases` 的同一来源提供 spec-case canonical CaseSet 和并发安全的单请求 runner；
-  `perf.scenarios` Extension 返回观测预设，显式引用 `cases: { service, source }`，并包含关联键优先级和可观测 Service 清单。Case 从所引用来源的共享目录选择，
-  单选时始终执行该 Case，多选时由 Harness 等权随机抽取。Case
-  不携带环境、凭据、并发度或权重。
-- CaseSet 用受控 Facet 词表声明 `difficulty`、`task_type` 等分类轴；Case 只选择每个轴上的值。
-  spec-case 统一校验完整资产，Perf Harness 按 Facet 归约性能数据，避免用自由字符串形成不可维护的报告维度。
-- HTTP/SSE 私有字段、鉴权、连接复用和首 token 语义留在 Plugin runner，Core 不认识某个产品的 Chat
-  body、身份 header 或业务 ID 语义。
-- Case 需要租户/用户身份时，由 Plugin 声明目录 Service 并读取自身 profile 配置；Core 复用
-  `tenantDirectory` 补齐缺失的租户和用户选择。用户目录按关键词和页码查询，Plugin 必须在业务目录侧
-  执行筛选与分页，不能先聚合全量用户；IAM 等私有查询协议仍留在 Plugin。
-- “如何加压”分成两个所有者：Core 决定何时 dispatch、并发多少、何时停止；每个 dispatch 如何变成一笔
-  真实业务请求由 Plugin runner 决定。Runner 可以在 ArmRun 生命周期内 setup/cleanup，但不能自行启动隐藏
-  的请求循环，否则 Core 无法执行预算、熔断和 Window 归属。
-- `doctor metric`、`doctor trace`、`doctor log` 仍分别拥有三个可观测数据面的采集与报告；Perf 只负责
-  统一窗口，并把 Plugin 声明的业务 ID 分别交给各领域入口。Log 直接匹配输入 key 并自行扩展关联，
-  不要求 Trace 成功；已执行的 trace resolver 查询在同一轮中复用。
+## 执行与离线复查
 
-## 流程
+```bash
+doctor perf --service app --scenario ordinary --caseset chat --cases greeting,python \
+  --levels 1,5 --ramp 10 --hold 60 --prometheus https://metrics.example.net
 
-1. 选择提供 `perf.scenarios` 的 Service 与观测预设，解析其引用的 Case 来源，再选择 runner 支持的一个或多个 Case。来源可以属于另一 Service，runner 使用该来源的访问上下文。当前目录的 `doctor-cases.yaml` 也可提供兼容 CaseSet；`--caseset` / `--cases` 支持非交互选择。
-2. 交互运行选择最高并发；按需从 Plugin 声明的目录选择租户，再通过服务端关键词搜索和分页选择用户；
-   随后展示并确认并发档位、每档发压时长、无请求总数上限、错误率熔断和持久数据影响。非交互运行默认使用
-   5、10、15、20 四档，并必须由 Plugin profile 提供身份。
-3. 先启动 Metric watch，确认窗口已经开始后再依次执行各并发 ArmRun。
-4. 每次请求记录 Case ID、Facet、首字节、首 token、完整响应耗时、协议事件和 OTel 关联键；错误率达到
-   阈值时停止当前档，并同时形成总体、`by_case` 与 `by_facet` 统计。
-5. 负载结束后封口 Metric 报告，从各 ArmRun 选择慢请求/错误请求的关联 ID，复用 Trace 与 Log 采集。
-6. Perf 通过统一 CommandSpec 调用 Metric/Trace/Log，显式汇总每次调用的状态和 Artifacts；根 Finalize 调用 Perf renderer 组合子 Report，Delivery 生成离线 HTML，并在
-   `--format bundle` 时把完整目录一次性压成 `.tar.gz`。Perf 目录保留 `run.json`、`requests.jsonl`、`evaluations.json` 和
-   `verdict.json` 等 Harness 契约产物。
+doctor perf --from ./saved-perf --format html
+```
 
-Trace/Log 的部分采集失败不会抹掉负载与 Metric 事实；综合报告必须显示具体缺口。Metric 窗口无法开始时
-则不发起业务负载，避免得到无法解释的压测数据。
+并发最高 50，默认档位 5、10、15、20；交互入口可选最高并发 1、5、10、20、50。
+多 Case 等权随机抽取；Case 不携带并发或环境配置。`--abort-error-rate` 与 `--breaker-min-n`
+共同控制错误率熔断，`--graceful-stop` 限制正常收尾。Ctrl+C 传播取消并保存已有证据。
 
-命令结果保留 Metric 和各代表请求的 Trace/Log 状态，部分证据失败时为 partial，用户取消时为 cancelled。
-Metric 窗口正常封口只停止该采集窗口，不取消整轮 Perf；根取消信号则同时停止负载和正在执行的采集。
+请求事实先落盘；查询计划在任何指标 I/O 前冻结，包含来源、后端、表达式与窗口。
+`run.json`、`requests.jsonl`、`evaluations.json` 和 `perf.json` 不依赖是否选择 HTML。
+Service.operations 是唯一声明源，Graph 与 Observation 在内存组装，不维护独立声明 JSON/YAML。
+Run 保存本次拓扑与查询证据；Callgraph 视图从这些事实临时投影，不另存 Graph 文件。
+报告保留 Case/Facet 与首 token 统计；Callgraph 将窗口指标投影到 Operation。
 
-## Harness 0.8 接入
+Operation 声明 probe 且 Doctor 配置了 Prometheus/VM 时，正常 Perf 运行自动采集对应窗口的指标，
+无需额外开关。未配置来源、某个 Operation 参数不全、后端不可用或部分查询失败时保留请求事实与
+已取得的指标，报告记录覆盖缺口，不阻止其他 Operation 的有效查询。没有 probe 时只运行请求。
 
-旧版 `--max-requests` 已移除；使用并发、ramp/hold 时长及错误率熔断控制负载。请求总数不设上限，
-实际调用量取决于响应速度，执行确认会明确展示这一点。旧 CLI 参数或嵌入调用的 maxRequests 会报错，不静默忽略。
+`--from` 只离线读取已有事实，不加载 Plugin、不准备 Kubernetes、不调用 runner，也不访问指标源。
+输出写入新的 Artifact，原目录保留。
 
-Doctor 使用 Runner 记录单次请求的 Outcome，独立 Judge 调用 Plugin 的协议分类；原始错误信息保留在
-Outcome.meta，判定写入 evaluations。schema 12 的 Run.executions 保存 ArmRun，每笔请求通过
-operation_run_id 关联 OperationRun。代表请求仅从已完成请求中选取，错误类型读取独立判定；被取消的
-在途请求保留为 interrupted，不参加判定和延迟分布。
+## Profile 示例
 
-每档使用 request_rate=Infinity 的饱和加压，由 max_inflight 控制并发；显式 Stage 从 1 并发 ramp 到目标，
-再 hold。报告读取 phase=hold 窗口；请求耗时按 dispatch 归窗，吞吐按窗口内完成事件计数。warmup 与 cooldown 分别保留，避免混入稳定负载指标。
+```yaml
+prometheus:
+  url: https://metrics.example.net
+  kind: prometheus # 或 victoriametrics
+  concurrency: 4
+  timeout_ms: 30000
+  max_response_bytes: 4194304
+  parameters:
+    app:
+      namespace: test
+```
 
-Ctrl+C 由 Doctor 宿主转换为共享 AbortSignal，同时通知 Harness、请求资源上下文和 Metric 窗口。
-Harness 立即停止新请求、取消在途请求并等待它们退出，再执行 cleanup；取消时跳过常规 cooldown 等待。
-Plugin runner 必须响应 signal。正常结束仍使用 --graceful-stop 限制在途请求的收尾等待。
-取消、Metric 收尾、资源清理、报告生成和 Bundle 保存会向 stderr 显示进度，不受日志级别过滤。
-已取消的运行保留已采集证据并以 130 退出，不继续采集新的代表请求。
+`{{name}}` 只绑定经过 JSON 字符串转义的标签值，`$window` 由 Perf 绑定到本次窗口。
+缺少必需参数、后端变体缺失或同一 metric role 出现多个 producer 时，跳过该 Operation 的指标
+并记录原因；不会猜测标签或改写表达式。
 
-Run.status 表示执行完成度（completed / stopped / error）；请求判定使用 code，success 表示成功，其余非空 code 表示失败。Plugin 的 ok/errorKind 由 Core adapter 转换，原始 Outcome 保留用于复查。
+## 结果边界
+
+Run.status 表示负载执行完成度；查询失败或已计划指标缺样本使命令结果为 partial，取消为 cancelled。
+实测零值、缺样本和查询错误分别保留。没有 Probe 的 Operation 显示 N/A。
+静态 calls / mayCalls 不证明某条边实际发生；服务端指标可能包含匹配的其他流量，不能归因到单个 Case。
+HTTP 成功不等于 SSE 业务成功，路径上的延迟分位数不能相加。

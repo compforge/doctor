@@ -21,7 +21,7 @@ import {
   type ServiceChoice,
 } from "../../infra/k8s/service-selection";
 import type { RecentSelections } from "../../infra/recent";
-import { sleep } from "@compforge/harness-toolbox/process/index";
+import { sleep } from "@compforge/harness-toolbox/process";
 import { findSelectableFiles } from "../../terminal/file-selection";
 import { writeOutput } from "../../terminal/output";
 import { useLogger } from "../../terminal/log";

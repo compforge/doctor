@@ -2,7 +2,7 @@ import { DEFAULT_POD_LOG_CAPTURE_POLICY } from "./log-policy";
 import { ClientManager, EnvironmentContext } from "@compforge/harness-common";
 import { resolveKubernetesEnvironment, type ResolvedKubernetesEnvironment } from "../infra/k8s/environment";
 import { ConcurrencyPool } from "@compforge/harness-toolbox/concurrency";
-import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/log-capture-plan";
+import { PodLogByteBudget } from "@compforge/harness-toolbox/kubernetes/pod/log/capture-plan";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import {
   createKubernetesCommandContext,

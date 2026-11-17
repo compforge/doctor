@@ -1,6 +1,6 @@
 import { isIP } from "node:net";
 import type { RedisProfileConfig } from "../../../app/config/model";
-import type { RedisDataSourceTarget } from "@compforge/harness-toolbox/redis/index";
+import type { RedisDataSourceTarget } from "@compforge/harness-toolbox/redis";
 
 /** 本轮 Redis 连接目标；包含凭据，只能停留在 Inspect / Probe 执行链内。 */
 export type RedisTarget = RedisDataSourceTarget & {

@@ -3,7 +3,7 @@ import type { MetricConfiguration } from "@compforge/doctor-plugin";
 import type { CommandContext } from "../../command";
 import { resolveKubernetesCommandContext } from "../../command";
 import { KubectlExecutor, type Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service-port-forward";
+import { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service/port-forward";
 import {
   EmbeddedMetricSource,
   RemoteMetricSource,

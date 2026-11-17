@@ -2,9 +2,9 @@ import { KubernetesClient } from "@compforge/harness-toolbox/kubernetes/client";
 import { startS3Fixture } from "./s3-fixture";
 import { expect, spyOn, test } from "bun:test";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { redisDataSource, s3DataSource } from "@compforge/doctor-plugin";
-import { RedisClient } from "@compforge/harness-toolbox/redis/index";
+import { RedisClient } from "@compforge/harness-toolbox/redis";
 import { CommandContext } from "../src/command";
 import { resolveDataSourceTarget } from "../src/datasource/workload";
 import { borrowServiceClient } from "../src/datasource/client";
@@ -373,7 +373,7 @@ test("Redis store and metric share source without Pod config reads; each metric 
       maxKeys: "1", maxKeysPerSecond: "1", top: "1" }, command, exec, command.plugin.services);
     const metric = await prepareStoreMetricCollection({ plugin: command.plugin, commandContext: command,
       collect: selected!.config.collect, executor: exec, services: [service.name], namespace: "demo", intervalMs: 1000,
-      forwarder: {} as import("@compforge/harness-toolbox/kubernetes/service-port-forward").ServicePortForwarder });
+      forwarder: {} as import("@compforge/harness-toolbox/kubernetes/service/port-forward").ServicePortForwarder });
     const output = new EmbeddedMetricSource({ retentionMs: 60_000, sampleIntervalMs: 1000 });
     const ingest = spyOn(output, "ingest");
     expect(metric.directCount).toBe(1);

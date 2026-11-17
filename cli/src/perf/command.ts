@@ -1,14 +1,11 @@
 import { forServices } from "../command/services";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
-import { logCommand } from "../collect/log/command";
-import { metricCommand } from "../collect/metric/command";
-import { traceCommand } from "../collect/trace/command";
-import { defineCommand, type CommandInput } from "../command";
+import { CommandInputError, defineCommand, type CommandInput } from "../command";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { renderEvidence } from "../report/evidence";
-import { composeReports } from "../report/model";
+import { replayPerf } from "./observations";
 import { runPerf } from "./index";
 import type { PerfCliOpts, PerfResult } from "./model";
 import { writePerfReport } from "./report";
@@ -16,41 +13,25 @@ import { writePerfReport } from "./report";
 type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
 const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   name: "doctor perf",
-  serialize: async (context, result) => {
-    const children = [];
-    if (result.output) {
-      children.push(await context.serialize(metricCommand, result.output.metric));
-      for (const sample of result.output.samples) {
-        children.push(await context.serialize(traceCommand, sample.trace));
-        if (sample.log) children.push(await context.serialize(logCommand, sample.log));
-      }
-    }
-    const own = serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "perf"));
-    return { ...own, children };
+  validate: input => {
+    if (input.from !== undefined && !input.from.trim()) throw new CommandInputError("--from 不能为空");
+    if (input.from && input.service) throw new CommandInputError("--from uses saved Service identity; omit --service");
   },
-  render: async (context, result) => {
-    const reports = [await renderEvidence(context, result, {
-      command: "perf", title: "Perf", scope: "负载 / 时间窗口",
-      render: artifact => {
-        if (!result.output) throw new Error("未形成 Perf 结果");
-        writePerfReport({ ...result.output, outputDir: artifact.path });
-        context.write(artifact, context.read(artifact, "perf.html"));
-      },
-    })];
-    if (result.output) {
-      reports.push(await context.render(metricCommand, result.output.metric));
-      for (const sample of result.output.samples) {
-        reports.push(await context.render(traceCommand, sample.trace));
-        if (sample.log) reports.push(await context.render(logCommand, sample.log));
-      }
-    }
-    return composeReports("doctor perf", reports);
-  },
+  serialize: async (context, result) => serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "perf")),
+  render: (context, result) => renderEvidence(context, result, {
+    command: "perf", title: "Perf", scope: "负载 / 时间窗口",
+    render: artifact => {
+      if (!result.output) throw new Error("未形成 Perf 结果");
+      writePerfReport({ ...result.output, outputDir: artifact.path });
+      context.write(artifact, context.read(artifact, "perf.html"));
+    },
+  }),
   prepare: async (context, input) => {
+    if (input.from) return input;
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf, environment: { kubernetes: true } });
     return input;
   },
-  run: (context, input) => runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
+  run: (context, input) => input.from ? replayPerf({ ...input, ...commandOptions(context) }, context) : runPerf({ ...input, ...commandOptions(context) }, context.plugin, context),
 });
 
 export const perfCommand = forServices(perfServiceCommand);

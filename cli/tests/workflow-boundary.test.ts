@@ -21,15 +21,14 @@ test("CLI 的 provision、collect 与 chat 三条主路径互不依赖", () => {
   }
 });
 
-test("perf 只编排 collect 的稳定信号入口，不依赖 provision 或 chat", () => {
+test("perf 通过 Harness 与外部指标协议采集，不调用 collect 信号命令", () => {
   const sources = sourceFiles(join(import.meta.dir, "../src/perf"))
     .map((path) => readFileSync(path, "utf-8"))
     .join("\n");
 
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|chat)(?:\/[^"']*)?["']/);
-  expect(sources).toContain('from "../collect/metric/command"');
-  expect(sources).toContain('from "../collect/trace/command"');
-  expect(sources).toContain('from "../collect/log/command"');
+  expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/collect\/(?:metric|trace|log)\/command["']/);
+  expect(sources).toContain('from "@compforge/harness-toolbox/prometheus"');
 });
 
 test("eval 只编排 Case 与 collect 的稳定数据入口，不依赖 provision、perf 或 chat", () => {

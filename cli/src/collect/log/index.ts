@@ -6,16 +6,16 @@ import { collectLogAssociations } from "./association";
 import { projectDataFacts } from "../data/projection";
 import { detectDataEvidenceGaps } from "../data/detector";
 import { logIdentities, logKeys } from "./correlation";
-import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { CommandStatus, aggregateCommandStatus, commandOutcome, type CommandResult } from "../../command";
 
 import { useLogger } from "../../terminal/log";
 // Log run resolves IDs and captures shared Pod evidence; report renders each item during root finalize.
 // Kubernetes 的 Pod 枚举和日志读取由 Toolkit 提供；本目录只保留业务选择和证据语义。
 import { type PluginDefinition } from "@compforge/doctor-plugin";
-import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/client-node-pod-log";
+import { ClientNodePodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import type { Executor } from "@compforge/harness-toolbox/kubernetes/executor";
-import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import { KubectlPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

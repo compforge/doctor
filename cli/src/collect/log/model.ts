@@ -1,8 +1,8 @@
 import type { WorkloadInstance } from "@compforge/doctor-plugin";
 import type { Diagnosis, Evidence, Fact, ObservationMeta } from "../protocol";
 import type { EvidenceBundle } from "../evidence";
-import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod-log";
-import type { PodLogCaptureStatus } from "@compforge/harness-toolbox/kubernetes/pod-log";
+import type { KubernetesPodLogAccess } from "@compforge/harness-toolbox/kubernetes/pod/log";
+import type { PodLogCaptureStatus } from "@compforge/harness-toolbox/kubernetes/pod/log";
 import type { CommandContext } from "../../command";
 
 export interface LogCollectOptions {

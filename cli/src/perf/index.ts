@@ -1,7 +1,9 @@
 import { writeOutput } from "../terminal/output";
 import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/runners";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
-import { METRIC_CONFIGURATION_KIND } from "@compforge/doctor-plugin";
+import { bindService } from "@compforge/doctor-plugin";
+import { graphFromServices, type Operation } from "@compforge/harness-common";
+import { observePerf } from "./observations";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {
@@ -21,10 +23,9 @@ import {
 } from "@compforge/perf-harness";
 import { resolveCaseRequestIdentity } from "../case";
 import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
-import { logCommand } from "../collect/log/command";
-import { metricCommand } from "../collect/metric/command";
-import { traceCommand } from "../collect/trace/command";
-import { CommandStatus, aggregateCommandStatus, type CommandContext, type CommandResult } from "../command";
+import { CommandStatus, type CommandContext, type CommandResult } from "../command";
+import { diagnosticMessage } from "../command/diagnostic";
+import { recordExecutionFailure } from "../command/execution-scope";
 import { approvalDeniedReason } from "../command/approval";
 import {
   createKubernetesExecutor,
@@ -41,8 +42,8 @@ import {
   resolvePerfConfig,
   perfLoadPlans,
 } from "./config";
-import type { PerfCliOpts, PerfEvidenceSample, PerfResult } from "./model";
-import { createPerfArtifact } from "./output";
+import type { PerfCliOpts, PerfResult } from "./model";
+import { createPerfArtifact, writePerfMetadata } from "./output";
 
 export * from "./config";
 export * from "./model";
@@ -81,12 +82,13 @@ function toObservation(outcome: Outcome): ServiceCaseObservation {
  * @why Raw protocol observations survive independently of the request verdict in schema 12.
  */
 export function perfAdapterFromCaseFactory(
-  name: string, create: () => Promise<ServiceCaseRunner>,
+  name: string, create: () => Promise<ServiceCaseRunner>, operation?: Operation,
 ): Pick<Experiment, "runner" | "judge"> {
   let runner: ServiceCaseRunner | undefined;
   return {
     runner: {
       name,
+      operation: operation ? () => operation : undefined,
       setup: async ({ run_id, signal }) => {
         runner ??= await create();
         signal.throwIfAborted();
@@ -123,138 +125,6 @@ export function perfAdapterFromCaseFactory(
   };
 }
 
-function correlation(outcome: Outcome, keys: readonly string[]): { key: string; id: string } | undefined {
-  for (const key of keys) {
-    const value = outcome.meta?.[key];
-    if (typeof value === "string" && value.trim()) return { key, id: value.trim() };
-  }
-  return undefined;
-}
-
-function firstToken(outcome: Outcome): number | undefined {
-  return outcome.metrics?.first_token_ms;
-}
-
-interface PerfRequest {
-  outcome: Outcome;
-  ok?: boolean;
-  errorKind?: string;
-}
-
-function percentileOutcome(
-  outcomes: PerfRequest[],
-  quantile: number,
-  correlationKeys: readonly string[],
-): PerfRequest | undefined {
-  const values = outcomes.filter((item) => correlation(item.outcome, correlationKeys)).sort(
-    (left, right) => (firstToken(left.outcome) ?? left.outcome.duration_ms)
-      - (firstToken(right.outcome) ?? right.outcome.duration_ms),
-  );
-  if (!values.length) return undefined;
-  return values[Math.min(values.length - 1, Math.floor(quantile * values.length))];
-}
-
-export function selectPerfSamples(run: Run, limit: number, correlationKeys: readonly string[]): Array<{
-  armRunId: string;
-  correlationKey: string;
-  correlationId: string;
-  outcome: Outcome;
-  errorKind?: string;
-}> {
-  if (limit <= 0) return [];
-  const selected: Array<{
-    armRunId: string;
-    correlationKey: string;
-    correlationId: string;
-    outcome: Outcome;
-    errorKind?: string;
-  }> = [];
-  const seen = new Set<string>();
-  for (const execution of run.executions) {
-    const completed = new Set(execution.requests.filter(item => item.state === "finished").map(item => item.operation_run_id));
-    const outcomes: PerfRequest[] = execution.operation_runs.filter(item => completed.has(item.id)).map(item => ({
-      outcome: item.outcome,
-      ok: execution.evaluations[item.id] ? execution.evaluations[item.id]!.code === "success" : undefined,
-      errorKind: execution.evaluations[item.id]?.code === "success" ? undefined : execution.evaluations[item.id]?.code,
-    }));
-    const slowest = [...outcomes].filter(
-      (item) => correlation(item.outcome, correlationKeys),
-    ).sort(
-      (left, right) => (firstToken(right.outcome) ?? right.outcome.duration_ms)
-        - (firstToken(left.outcome) ?? left.outcome.duration_ms),
-    );
-    const candidates = [
-      percentileOutcome(outcomes, 1, correlationKeys),
-      percentileOutcome(outcomes, 0.95, correlationKeys),
-      outcomes.find(
-        (item) => item.ok === false && correlation(item.outcome, correlationKeys),
-      ),
-      ...slowest,
-    ];
-    for (const candidate of candidates) {
-      const correlated = candidate && correlation(candidate.outcome, correlationKeys);
-      if (!candidate || !correlated || seen.has(correlated.id)) continue;
-      seen.add(correlated.id);
-      selected.push({
-        armRunId: execution.id,
-        correlationKey: correlated.key,
-        correlationId: correlated.id,
-        outcome: candidate.outcome,
-        errorKind: candidate.errorKind,
-      });
-      if (selected.length >= limit) return selected;
-    }
-  }
-  return selected;
-}
-
-async function collectCorrelatedEvidence(input: {
-  run: Run;
-  limit: number;
-  namespace: string;
-  kubeconfig?: string;
-  context?: string;
-  profileName: string;
-  services: readonly string[];
-  correlationKeys: readonly string[];
-  plugin: PluginDefinition;
-  commandContext: CommandContext;
-}): Promise<PerfEvidenceSample[]> {
-  const samples: PerfEvidenceSample[] = [];
-  for (const selected of selectPerfSamples(
-    input.run,
-    input.limit,
-    input.correlationKeys,
-  )) {
-    if (input.commandContext.signal.aborted) break;
-    writeOutput(`[perf] 正在采集代表请求的 Trace / Log（${samples.length + 1}/${input.limit}）…\n`, process.stderr);
-    const trace = await traceCommand.run(input.commandContext, {
-      bizIds: [selected.correlationId],
-      namespace: input.namespace,
-    });
-    input.commandContext.artifacts.add(trace.artifacts);
-    const log = trace.status === CommandStatus.Cancelled ? undefined : await logCommand.run(input.commandContext, {
-      bizIds: [selected.correlationId],
-      namespace: input.namespace,
-      services: input.services,
-      sinceTime: input.run.executions.find((execution) => execution.id === selected.armRunId)?.started_at,
-    });
-    if (log) input.commandContext.artifacts.add(log.artifacts);
-    samples.push({
-      armRunId: selected.armRunId,
-      caseId: selected.outcome.case_id,
-      correlationKey: selected.correlationKey,
-      correlationId: selected.correlationId,
-      firstTokenMs: firstToken(selected.outcome),
-      durationMs: selected.outcome.duration_ms,
-      errorKind: selected.errorKind,
-      trace,
-      log,
-    });
-  }
-  return samples;
-}
-
 /** Root cancellation remains visible even when an embedding distribution suppresses info logs. */
 export async function runPerf(
   opts: PerfCliOpts,
@@ -277,7 +147,6 @@ async function executePerf(
   commandContext: CommandContext,
 ): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
-  const loads = perfLoadPlans(config);
   const selected = selectPerfProvider(plugin.services, config.service);
   const provider = selected.service;
   const kube = await resolveKubernetesCommandConfig(opts, undefined, commandContext);
@@ -326,6 +195,13 @@ async function executePerf(
     if (maxConcurrency === undefined) return { status: CommandStatus.Cancelled, artifacts: [] };
     config.levels = perfLevelsThrough(maxConcurrency);
   }
+
+  const loads = perfLoadPlans(config);
+  const operationId = runnerProvider.source.operation;
+  if (!operationId) throw new Error("Perf Case source must declare its Operation");
+  const operation = plugin.services.operation(operationId).operation;
+  // Bind the catalog to the same resolved environment as the request runner below.
+  const declarations = plugin.services.operations().map(item => item.operation);
 
   let requestIdentity: ServiceRequestIdentity | undefined;
   const identityRequirement = runnerProvider.factory.requestIdentity;
@@ -382,6 +258,13 @@ async function executePerf(
     return { status: CommandStatus.Cancelled, artifacts: [] };
   }
 
+  const artifact = createPerfArtifact(config);
+  const outputDir = artifact.path;
+  commandContext.artifacts.add({ command: "perf", path: outputDir });
+  const metadata = { caseSource: declaredScenario.cases,
+    operation: operation.id(), caseFacets: caseSet.facets ?? {}, caseIds: caseSelection.cases.map(item => item.id) };
+  writePerfMetadata(outputDir, metadata);
+
   const managed = await openPluginContext(executor, {
     namespace: kube.kubernetes.namespace,
     kubeconfig: kube.kubernetes.kubeconfig,
@@ -395,126 +278,46 @@ async function executePerf(
     clients: commandContext.clients,
   });
 
-  const unknownMetric = declaredScenario.observability.metricServices.filter(
-    (service) => !plugin.services.extensions(METRIC_CONFIGURATION_KIND).some(provider => provider.service.name === plugin.services.find(service)?.name),
-  );
-  const unknownLog = declaredScenario.observability.logServices.filter(
-    (service) => !plugin.services.find(service)?.logs,
-  );
-  if (unknownMetric.length || unknownLog.length) {
-    await managed.dispose();
-    throw new Error([
-      unknownMetric.length ? `metric capability 缺失: ${unknownMetric.join(", ")}` : "",
-      unknownLog.length ? `log capability 缺失: ${unknownLog.join(", ")}` : "",
-    ].filter(Boolean).join("；"));
-  }
-  if (!caseMix.length
-    || !declaredScenario.observability.metricServices.length
-    || !declaredScenario.observability.logServices.length
-    || !declaredScenario.observability.correlationKeys.length) {
-    await managed.dispose();
-    throw new Error("Service perf scenario 必须选择 Case 并提供 Metric/Log Service 和 correlation keys");
-  }
-  let artifact: ReturnType<typeof createPerfArtifact>;
-  try {
-    artifact = createPerfArtifact(config);
-  } catch (error) {
-    await managed.dispose();
-    throw error;
-  }
-  const outputDir = artifact.path;
-  commandContext.artifacts.add({ command: "perf", path: outputDir });
-
-  const metricController = new AbortController();
-  let markMetricStarted!: () => void;
-  let rejectMetricStart!: (error: Error) => void;
-  let metricStarted = false;
-  const metricReady = new Promise<void>((resolveReady, rejectReady) => {
-    markMetricStarted = () => {
-      metricStarted = true;
-      resolveReady();
-    };
-    rejectMetricStart = rejectReady;
-  });
-  writeOutput("[perf] 正在启动 Metric 采集窗口…\n", process.stderr);
-  const metricPromise = metricCommand.run(commandContext, {
-    services: declaredScenario.observability.metricServices,
-    watch: "until-interrupt",
-    interval: opts.interval ?? "5s",
-    prometheus: opts.prometheus,
-    namespace: kube.kubernetes.namespace,
-    window: { signal: metricController.signal, onWindowStart: markMetricStarted },
-  });
-  metricPromise.then((result) => {
-    if (!metricStarted) rejectMetricStart(new Error(`Metric 采集窗口启动失败（${result.status}）`));
-  }, (error) => {
-    if (!metricStarted) rejectMetricStart(error instanceof Error ? error : new Error(String(error)));
-  });
-
   let run: Run | undefined;
   let loadError: unknown;
-  let metric: CommandResult<void>;
   try {
-    await metricReady;
-    writeOutput(`[perf] Metric 已就绪；开始并发 ${config.levels.join(" → ")}\n`, process.stderr);
+  const graph = graphFromServices(plugin.services.services.map(service => bindService(service, managed.target.service.environment)), {
+    source: `declared:plugin/${plugin.id}`, version: plugin.version,
+  });
+    writeOutput(`[perf] 开始并发 ${config.levels.join(" → ")}\n`, process.stderr);
     run = await new Engine({
       name: `doctor-${provider.name}-${declaredScenario.id}`,
       service: managed.target.service,
+      graph: graph.toJSON(),
       ...perfAdapterFromCaseFactory(`${runnerProvider.service.name}/${runnerProvider.source.id}`, () => createCaseRunner(runnerProvider.factory, managed, {
-        caseSetId: caseSet.caseset,
-        timeoutMs: config.requestTimeoutMs,
-        requestIdentity,
-      })),
-      caseSet,
-      caseMix,
-      loads,
-      signal: commandContext.signal,
-      onArmStart: (context) => {
-        writeOutput(`[perf] 开始 ${context.arm.id}\n${formatPerfCaseMix(caseSet, caseMix)}`, process.stderr);
-      },
+        caseSetId: caseSet.caseset, timeoutMs: config.requestTimeoutMs, requestIdentity,
+      }), operation),
+      caseSet, caseMix, loads, signal: commandContext.signal,
+      onArmStart: context => { writeOutput(`[perf] 开始 ${context.arm.id}\n${formatPerfCaseMix(caseSet, caseMix)}`, process.stderr); },
     }).run();
   } catch (error) {
     loadError = error;
   } finally {
-    metricController.abort(commandContext.signal.aborted ? commandContext.signal.reason : undefined);
-    writeOutput("[perf] 正在等待 Metric 采集收尾…\n", process.stderr);
-    try {
-      // Join the child before closing the parent's scope, even when parent cleanup fails.
-      metric = await metricPromise;
-      commandContext.artifacts.add(metric.artifacts);
-    } finally {
-      writeOutput("[perf] 正在释放请求资源…\n", process.stderr);
-      await managed.dispose();
+    // Persist request evidence even if resource disposal or later observation fails.
+    try { if (run) writeRunData(run, outputDir); }
+    finally {
+      const startedAt = Date.now();
+      try { await managed.dispose(); }
+      catch (error) {
+        recordExecutionFailure(error, { phase: "cleanup", target: runnerProvider.service.name, startedAt });
+        loadError ??= error;
+      }
     }
   }
-  if (loadError) {
+  if (!run) {
     if (commandContext.signal.aborted) return { status: CommandStatus.Cancelled, artifacts: commandContext.artifacts.list() };
-    throw loadError;
+    throw loadError ?? new Error("Perf Harness 未形成 Run");
   }
-  if (!run) throw new Error("Perf Harness 未形成 Run");
-  writeOutput("[perf] 正在保存负载结果…\n", process.stderr);
-  writeRunData(run, outputDir);
-  const samples = await collectCorrelatedEvidence({
-    run,
-    limit: config.traceSamples,
-    namespace: kube.kubernetes.namespace,
-    kubeconfig: kube.kubernetes.kubeconfig,
-    context: kube.kubernetes.context,
-    profileName: kube.profileName,
-    services: declaredScenario.observability.logServices,
-    correlationKeys: declaredScenario.observability.correlationKeys,
-    plugin,
-    commandContext,
-  });
-  const result: PerfResult = {
-    run,
-    outputDir,
-    metric,
-    samples,
-    caseFacets: caseSet.facets,
-  };
-  const statuses = [run.status === "completed" ? CommandStatus.Ok : CommandStatus.Partial, metric.status, ...samples.flatMap((sample) => (
-    [sample.trace.status, ...(sample.log ? [sample.log.status] : [])]
-  ))];
-  return { status: commandContext.signal.aborted ? CommandStatus.Cancelled : aggregateCommandStatus(statuses), output: result, artifacts: commandContext.artifacts.list() };
+  const metrics = await observePerf(run, outputDir, declarations, commandContext, kube.kubernetes.namespace, opts.prometheus);
+  writePerfMetadata(outputDir, metadata, metrics);
+  return { status: commandContext.signal.aborted ? CommandStatus.Cancelled
+    : loadError || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
+    reason: loadError ? `请求资源清理未完成；已有结果已保存：${diagnosticMessage(loadError)}` : undefined,
+    output: { run, outputDir, ...metrics, caseFacets: caseSet.facets },
+    artifacts: commandContext.artifacts.list() };
 }
