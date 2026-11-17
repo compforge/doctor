@@ -1,7 +1,7 @@
 import { forServices } from "../command/services";
 import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidence } from "../collect/serialize";
-import { defineCommand, type CommandInput } from "../command";
+import { CommandInputError, defineCommand, type CommandInput } from "../command";
 import { commandOptions, type CommandHostOption } from "../command/options";
 import { PLUGIN_COMMAND_CAPABILITIES } from "../command/plugin-command-capabilities";
 import { renderEvidence } from "../report/evidence";
@@ -14,7 +14,7 @@ type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
 const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   name: "doctor perf",
   validate: input => {
-    if (input.from && input.service) throw new Error("--from uses saved Service identity; omit --service");
+    if (input.from && input.service) throw new CommandInputError("--from uses saved Service identity; omit --service");
   },
   serialize: async (context, result) => serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "perf")),
   render: (context, result) => renderEvidence(context, result, {

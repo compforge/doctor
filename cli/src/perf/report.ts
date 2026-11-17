@@ -68,7 +68,7 @@ export function writePerfReport(result: PerfResult): string {
 <h2>按 Case</h2><table><thead><tr><th>ArmRun</th><th>Case</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${caseRows}</tbody></table>
 <h2>按 Facet</h2><table><thead><tr><th>ArmRun</th><th>Facet</th><th>值</th><th>请求数</th><th>吞吐 req/s</th><th>错误率</th><th>首 token P50 ms</th><th>P95</th><th>P99</th></tr></thead><tbody>${facetRows}</tbody></table>
 <p>原始契约产物：run.json · requests.jsonl · evaluations.json · perf.json</p>`;
-  const html = renderPerfReport(result.run).replace("<h2>Callgraph</h2>", sections + "<h2>Callgraph</h2>");
+  const html = renderPerfReport(result.run).replace("<h2>Callgraph</h2>", () => sections + "<h2>Callgraph</h2>");
   const path = join(result.outputDir, "perf.html");
   writeFileSync(path, html);
   return path;

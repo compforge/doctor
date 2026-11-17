@@ -6,7 +6,8 @@ import { SSEOperation, graphFromServices } from "@compforge/harness-common";
 import { bindService, createServiceCatalog } from "@compforge/doctor-plugin";
 import { buildCallgraph, writeRunData, Engine, loadRun } from "@compforge/perf-harness";
 import { cleanupTemporaryArtifacts } from "../src/app/delivery";
-import { CommandContext } from "../src/command";
+import { commandExitCode } from "../src/app/command";
+import { CommandContext, CommandInputError } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { perfCommand } from "../src/perf/command";
 import { collectPerfMetrics, observePerf, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
@@ -23,6 +24,17 @@ test("Case sources statically reference owned Operations without runner callback
   expect(catalog.operation(catalog.caseSources()[0]!.source.operation!).operation).toBe(operation);
   expect(() => createServiceCatalog([{ ...definition, cases: [{ ...definition.cases[0]!, operation: "operation:chat/missing" }] }])).toThrow("Missing Service Operation");
   expect(() => createServiceCatalog([{ ...definition, operations: [operation, operation] }])).toThrow("Duplicate Operation");
+});
+
+test("offline Perf rejects a Service selection as a usage error before preparing resources", async () => {
+  const context = new CommandContext({}, undefined, {
+    loadPlugin: async () => { throw new Error("invalid input must not load a Plugin"); },
+  });
+  const result = await perfCommand.run(context, { from: "/unused-perf-evidence", services: ["chat"] });
+  expect("error" in result && result.error).toBeInstanceOf(CommandInputError);
+  expect("reason" in result && result.reason).toBe("--from uses saved Service identity; omit --service");
+  expect(commandExitCode(result)).toBe(2);
+  expect(result.artifacts).toEqual([]);
 });
 
 /** @case id=perf_external_replay,desc=`Two Cases enter one API`,expect=`Frozen query plan and requests survive metric gaps; replay does not load Plugin or send requests` */

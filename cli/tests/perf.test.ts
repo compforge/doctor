@@ -251,7 +251,7 @@ test("Perf preserves configured identity and only queries missing user", async (
   expect(listedTenants).toBe(0);
 });
 
-test("perf report renders Facet values in their declared order", () => {
+test("perf report preserves literal data and renders Facet values in their declared order", () => {
   const stats = {
     n: 1,
     n_ok: 1,
@@ -319,12 +319,14 @@ test("perf report renders Facet values in their declared order", () => {
       run,
       outputDir,
       metricsComplete: true,
+      metricIssues: ["$& $` $' $$ <tag>"],
       caseFacets: {
         difficulty: { values: ["simple", "medium", "complex"], ordered: true },
       },
     });
     const html = readFileSync(report, "utf-8");
     expect(html).toContain("按 Facet");
+    expect(html).toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
     expect(html.indexOf("<td>simple</td>")).toBeLessThan(html.indexOf("<td>medium</td>"));
     expect(html.indexOf("<td>medium</td>")).toBeLessThan(html.indexOf("<td>complex</td>"));
   } finally {
