@@ -24,9 +24,15 @@ export class ServiceCatalog<T extends ServiceDefinition = ServiceDefinition> {
         operationIds.add(id);
       }
     }
-    for (const { operation } of this.operations()) {
-      for (const target of [...operation.calls ?? [], ...operation.mayCalls ?? []]) {
-        if (!operationIds.has(target)) throw new Error(`Unknown downstream Operation: ${target}`);
+    for (const { service, operation } of this.operations()) {
+      for (const field of ["calls", "mayCalls"] as const) {
+        const targets = operation[field];
+        if (targets !== undefined && (!Array.isArray(targets) || targets.some(target => typeof target !== "string" || !target))) {
+          throw new Error(`${service.name}: ${operation.id()}.${field} must be an array of Operation IDs`);
+        }
+        for (const target of targets ?? []) {
+          if (!operationIds.has(target)) throw new Error(`Unknown downstream Operation: ${target} (${operation.id()}.${field})`);
+        }
       }
     }
     const resourceKinds = new Map<string, string>();

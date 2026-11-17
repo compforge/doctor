@@ -14,6 +14,7 @@ type PerfServiceInput = CommandInput & Omit<PerfCliOpts, CommandHostOption>;
 const perfServiceCommand = defineCommand<PerfServiceInput, PerfResult>({
   name: "doctor perf",
   validate: input => {
+    if (input.from !== undefined && !input.from.trim()) throw new CommandInputError("--from 不能为空");
     if (input.from && input.service) throw new CommandInputError("--from uses saved Service identity; omit --service");
   },
   serialize: async (context, result) => serializeEvidence(context, result.artifacts.filter(artifact => artifact.command === "perf")),

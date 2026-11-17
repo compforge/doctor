@@ -7,10 +7,11 @@ import { bindService, createServiceCatalog } from "@compforge/doctor-plugin";
 import { buildCallgraph, writeRunData, Engine, loadRun } from "@compforge/perf-harness";
 import { cleanupTemporaryArtifacts } from "../src/app/delivery";
 import { commandExitCode } from "../src/app/command";
-import { CommandContext, CommandInputError } from "../src/command";
+import { CommandContext, CommandInputError, CommandStatus } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import { perfCommand } from "../src/perf/command";
 import { collectPerfMetrics, observePerf, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
+import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
 const operation = new SSEOperation({ serviceName: "chat", name: "chat", method: "POST", path: "/chat",
@@ -35,6 +36,18 @@ test("offline Perf rejects a Service selection as a usage error before preparing
   expect("reason" in result && result.reason).toBe("--from uses saved Service identity; omit --service");
   expect(commandExitCode(result)).toBe(2);
   expect(result.artifacts).toEqual([]);
+});
+
+test("empty offline paths are usage errors and never enter online preparation", async () => {
+  const context = new CommandContext({}, undefined, {
+    loadPlugin: async () => { throw new Error("empty --from must not load a Plugin"); },
+  });
+  for (const from of ["", "   "]) {
+    const result = await perfCommand.run(context, { from });
+    expect(commandExitCode(result)).toBe(2);
+    expect("reason" in result && result.reason).toBe("--from 不能为空");
+    expect(result.artifacts).toEqual([]);
+  }
 });
 
 /** @case id=perf_external_replay,desc=`Two Cases enter one API`,expect=`Frozen query plan and requests survive metric gaps; replay does not load Plugin or send requests` */
@@ -115,7 +128,21 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(failed.metricsComplete).toBe(false);
     expect(failed.metricIssues?.join()).toContain("部分指标查询失败");
     expect(JSON.stringify(buildCallgraph(failedRun))).toContain('"status":"error"');
-    writeFileSync(join(directory, "perf.json"), JSON.stringify({ schema: 1, ...failed }));
+    expect(JSON.stringify(loadRun(directory).executions[0]!.prometheus_observations)).toContain("Prometheus HTTP 503");
+    for (const invalid of ["{", '{"schema":2}', "null"]) {
+      writeFileSync(join(directory, "perf.json"), invalid);
+      const rejected = await perfCommand.run(context, { from: directory });
+      artifactPaths.push(...rejected.artifacts.map(artifact => artifact.path));
+      expect(commandExitCode(rejected)).toBe(2);
+      expect("reason" in rejected && rejected.reason).toContain(join(directory, "perf.json"));
+      expect(rejected.artifacts).toEqual([]);
+    }
+    // Recorded queries all succeeded; only Doctor metadata retains the skipped Operation gap.
+    writeRunData(mixedRun, directory);
+    const metadata = { caseSource: { service: "chat", source: "chat.cases" }, operation: operation.id(), caseIds: cases.cases.map(item => item.id),
+      caseFacets: { difficulty: { ordered: true, values: ["simple", "medium", "complex"] } } };
+    writePerfMetadata(directory, metadata, partial);
+    expect(JSON.parse(readFileSync(join(directory, "perf.json"), "utf8"))).toEqual({ schema: 1, ...metadata, ...partial });
     expect(readFileSync(join(directory, "requests.jsonl"), "utf8")).toBe(before);
     const counts = [requests, metrics];
     const replay = await perfCommand.run(context, { from: directory });
@@ -123,10 +150,18 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     const replayed = replay.output?.services[0]?.result.output;
     expect(replayed?.run.run_id).toBe(run.run_id);
     expect(replayed?.metricsComplete).toBe(false);
-    expect(replayed?.metricIssues).toEqual(failed.metricIssues);
+    expect(replayed?.metricIssues).toEqual(partial.metricIssues);
+    expect(replayed?.caseFacets).toEqual(metadata.caseFacets);
+    expect(replay.status).toBe(CommandStatus.Partial);
     expect([requests, metrics]).toEqual(counts);
     expect(readFileSync(join(replayed!.outputDir, "requests.jsonl"), "utf8")).toBe(before);
-    expect(JSON.stringify(loadRun(directory).executions[0]!.prometheus_observations)).toContain("Prometheus HTTP 503");
+    rmSync(join(directory, "perf.json"));
+    const fallback = await perfCommand.run(context, { from: directory });
+    artifactPaths.push(...fallback.artifacts.map(artifact => artifact.path));
+    expect(fallback.status).toBe(CommandStatus.Ok);
+    expect(fallback.output?.services[0]?.result.output?.metricsComplete).toBe(true);
+    expect(fallback.output?.services[0]?.result.output?.caseFacets).toBeUndefined();
+    expect([requests, metrics]).toEqual(counts);
     expect(loadRun(directory).executions[0]!.operation_runs[0]!.operation.id()).toBe(operation.id());
   } finally {
     server.stop(true); await context.disposeClients(); await noSource.disposeClients();

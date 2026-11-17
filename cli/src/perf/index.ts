@@ -1,5 +1,3 @@
-import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { writeOutput } from "../terminal/output";
 import { caseRunnerProvider, createCaseRunner, runnerCaseCatalog } from "../case/runners";
 import { selectPerfProvider, loadPerfScenarios } from "./extensions";
@@ -45,7 +43,7 @@ import {
   perfLoadPlans,
 } from "./config";
 import type { PerfCliOpts, PerfResult } from "./model";
-import { createPerfArtifact } from "./output";
+import { createPerfArtifact, writePerfMetadata } from "./output";
 
 export * from "./config";
 export * from "./model";
@@ -263,9 +261,9 @@ async function executePerf(
   const artifact = createPerfArtifact(config);
   const outputDir = artifact.path;
   commandContext.artifacts.add({ command: "perf", path: outputDir });
-  const metadata = { schema: 1, caseSource: declaredScenario.cases,
+  const metadata = { caseSource: declaredScenario.cases,
     operation: operation.id(), caseFacets: caseSet.facets ?? {}, caseIds: caseSelection.cases.map(item => item.id) };
-  writeFileSync(join(outputDir, "perf.json"), JSON.stringify(metadata, null, 2));
+  writePerfMetadata(outputDir, metadata);
 
   const managed = await openPluginContext(executor, {
     namespace: kube.kubernetes.namespace,
@@ -316,7 +314,7 @@ async function executePerf(
     throw loadError ?? new Error("Perf Harness 未形成 Run");
   }
   const metrics = await observePerf(run, outputDir, declarations, commandContext, kube.kubernetes.namespace, opts.prometheus);
-  writeFileSync(join(outputDir, "perf.json"), JSON.stringify({ ...metadata, ...metrics }, null, 2));
+  writePerfMetadata(outputDir, metadata, metrics);
   return { status: commandContext.signal.aborted ? CommandStatus.Cancelled
     : loadError || run.status !== "completed" || !metrics.metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
     reason: loadError ? `请求资源清理未完成；已有结果已保存：${diagnosticMessage(loadError)}` : undefined,

@@ -1,4 +1,5 @@
 import { expect, mock, test } from "bun:test";
+import { Operation } from "@compforge/harness-common";
 import { caseSetFromRaw } from "@compforge/spec-case/model";
 import { caseProducer, caseRunner, createServiceCatalog, describeService, loadCaseCatalog, withSummary,
   type ServiceCaseSource, type ServiceDefinition } from "../src";
@@ -65,4 +66,17 @@ test("offline CaseSet normalization rejects duplicate and invalid assets", () =>
   expect(() => loadCaseCatalog({ id: "source", load: () => [caseSet, caseSet] })).toThrow("duplicate");
   expect(() => loadCaseCatalog({ id: "source", load: () => [{ ...caseSet, cases: [] }] })).toThrow("empty");
   expect(() => loadCaseCatalog({ id: "source", load: () => [{ ...caseSet, cases: [{ id: "ping", input: {}, facets: { unknown: "value" } }] }] })).toThrow("unknown facet");
+});
+
+test("untyped Operation edge declarations report the owner and field before reference lookup", () => {
+  const operation = new Operation({ serviceName: base.name, name: "chat" });
+  for (const field of ["calls", "mayCalls"] as const) {
+    for (const value of ["operation:catalog/other", {}, null, [1], [""]]) {
+      const malformed = { ...operation, id: () => operation.id(), [field]: value } as unknown as Operation;
+      expect(() => createServiceCatalog([{ ...base, operations: [malformed] }]))
+        .toThrow(`${base.name}: ${operation.id()}.${field} must be an array of Operation IDs`);
+    }
+    const linked = new Operation({ serviceName: base.name, name: "other", [field]: [operation.id()] });
+    expect(createServiceCatalog([{ ...base, operations: [operation, linked] }]).operation(linked.id()).operation).toBe(linked);
+  }
 });

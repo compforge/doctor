@@ -5,7 +5,7 @@ import { HttpClient } from "@compforge/harness-toolbox/http";
 import { DirectTransport } from "@compforge/harness-toolbox/transport";
 import { PrometheusClient, type PrometheusReader } from "@compforge/harness-toolbox/prometheus";
 import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, type Run, type PrometheusProbe } from "@compforge/perf-harness";
-import { CommandStatus, type CommandContext, type CommandResult } from "../command";
+import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
 import { createPerfArtifact } from "./output";
@@ -85,13 +85,17 @@ export async function observePerf(run: Run, directory: string, operations: reado
 /** Offline replay only reads saved facts; it never resolves a Plugin, runner or metric source. */
 export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Promise<CommandResult<PerfResult>> {
   const config = resolvePerfConfig(opts);
+  const metadataPath = join(opts.from!, "perf.json");
+  let metadata;
+  if (existsSync(metadataPath)) {
+    try { metadata = JSON.parse(readFileSync(metadataPath, "utf8")); }
+    catch (error) { throw new CommandInputError(`无法读取 ${metadataPath}：${diagnosticMessage(error)}`); }
+    if (!metadata || metadata.schema !== 1) throw new CommandInputError(`Unsupported Doctor Perf metadata schema: ${metadataPath}`);
+  }
   const run = loadRun(opts.from!);
   const artifact = createPerfArtifact(config);
   cpSync(opts.from!, artifact.path, { recursive: true });
   context.artifacts.add({ command: "perf", path: artifact.path });
-  const metadataPath = join(artifact.path, "perf.json");
-  const metadata = existsSync(metadataPath) ? JSON.parse(readFileSync(metadataPath, "utf8")) : undefined;
-  if (metadata && metadata.schema !== 1) throw new Error("Unsupported Doctor Perf metadata schema");
   const metricsComplete = metadata?.metricsComplete ?? perfMetricsComplete(run);
   return { status: context.signal.aborted ? CommandStatus.Cancelled
     : run.status !== "completed" || !metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
