@@ -31,7 +31,7 @@ export function printHealth(result: HealthResult): void {
   for (const provider of result.providers) {
     writeOutput(`\n${provider.name} (${provider.namespace})\n`);
     if (provider.unsupported) writeOutput(`  ${provider.unsupported}\n`);
-    for (const check of provider.checks) writeOutput(`  ${check.scope} ${check.description} [${check.id}]: ${probeStatusLabel(check.status)} · ${check.summary}\n`);
+    for (const check of provider.checks) writeOutput(`  ${check.scope} ${check.description} [${check.id}]: ${probeStatusLabel(check.status)} · ${check.summary}${check.reusedFrom ? `（复用 ${check.reusedFrom.service}/${check.reusedFrom.check}）` : ""}\n`);
   }
 }
 export function writeHealthEvidence(result: HealthResult, context: CommandContext,
@@ -44,6 +44,7 @@ export function buildHealthHtml(result: HealthResult): string {
 <h1>Doctor Health</h1><p>${escapeHtml(result.checkedAt)}</p>` + result.providers.map(provider =>
     `<h2>${escapeHtml(provider.name)}</h2>${provider.unsupported ? `<p>${escapeHtml(provider.unsupported)}</p>` : ""}` + provider.checks.map(check =>
       `<h3>${escapeHtml(check.scope)} ${escapeHtml(check.description)} · ${escapeHtml(probeStatusLabel(check.status))}</h3><p>${escapeHtml(check.summary)}</p>`
+      + (check.reusedFrom ? `<p>复用：${escapeHtml(check.reusedFrom.service)}/${escapeHtml(check.reusedFrom.check)}</p>` : "")
       + `<details><summary>检查证据</summary><pre>${escapeHtml(JSON.stringify(check, null, 2))}</pre></details>`
       + (check.cases ? casesHtml(check.cases) : "")).join("")).join("") + "</html>";
 }

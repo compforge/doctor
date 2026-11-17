@@ -324,10 +324,16 @@ test("perf report preserves literal data and renders Facet values in their decla
       },
     });
     const html = readFileSync(report, "utf-8");
-    expect(html).toContain("By Facet");
+    expect(html.match(/<h2>By Facet<\/h2>/g)).toHaveLength(1);
     expect(html).toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
     expect(html.indexOf("<td>simple</td>")).toBeLessThan(html.indexOf("<td>medium</td>"));
     expect(html.indexOf("<td>medium</td>")).toBeLessThan(html.indexOf("<td>complex</td>"));
+    run.executions[0]!.arm.load = { request_rate: 0, hold_s: 1 };
+    run.executions[0]!.windows[0]!.request = undefined;
+    run.executions[0]!.windows[0]!.by_facet = {};
+    const observed = readFileSync(writePerfReport({ run, outputDir, metricsComplete: true }), "utf8");
+    expect(observed).not.toContain("NaN");
+    expect(observed).not.toContain("Injected request windows");
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }

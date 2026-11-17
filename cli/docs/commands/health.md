@@ -11,7 +11,10 @@
 ## 按 scope 递进
 
 Service 各自贡献检查，Core 按 `infra → self → deps → biz` 执行：先完成所有 Service 的 infra，再进入 self，以此类推。
-同一 scope、同一类型的多个检查分别执行；两个 Service 的 DB host 不同，各自的检查与结果都保留。
+DataSource-backed Probe 按已解析的 `DataSource.id()`、scope、probe 版本、参数与批准风险在本轮复用结果。
+同一数据库和访问身份只探测一次；数据库、凭据、环境或判定策略不同，仍分别执行。
+各 Service 保留自己的结果，复用项记录 `dataSourceId` 与 `reusedFrom`，终端和 HTML 标明来源。
+未声明 DataSource 的 Probe 按 Service 分别执行；Case 仍按消费方实例执行。
 
 | scope | 查验内容 | Plugin 检查示例 |
 |---|---|---|
@@ -39,7 +42,9 @@ infra/self/deps 自动发现所选范围的显式检查，进入 biz 才选择 S
 显式选择但未提供所选检查的 Service 报告不支持；未显式选择时不列入候选。
 
 self 中只读 Probe 自动执行；其它 Probe 先显示描述、目标和影响，y 执行、n 跳过、q 结束，默认 n。
-批准发生在配置读取、客户端建立及请求之前。S3 的上传、预签名下载、内容校验与清理只批准一次；已上传对象的清理不再次询问。
+DataSource-backed Probe 先统一批准只读配置解析，再对每个唯一目标批准探测；跳过解析不会读取配置。
+解析只确定身份，不建立目标客户端；复用已有结果不重复询问。其它 Probe 的批准仍在配置读取前。
+S3 的上传、预签名下载、内容校验与清理只批准一次；已上传对象的清理不再次询问。
 Case 按实际消费方实例和请求逐项批准；租户/用户准备与批准请求分开，身份仅在所属 scope 执行时准备。
 非交互不询问 scope，默认 all；只读操作自动执行，写操作需要 `-y`，缺少批准记为未执行。
 
@@ -75,6 +80,13 @@ Core 只拥有发现、scope 调度、交互批准、取消、Case 执行与报�
 Plugin 拥有检查定义、目标和配置、实例采样、执行位置、适用条件与健康判定。
 Toolbox 提供 DB/S3/Workload/网络等可复用机制，不认识 Doctor scope 或业务 Service。
 采集 Probe 与 HealthCheck 的契约独立；可以共享底层函数，不通过继承或双重登记混用执行语义。
+
+DataSource 直接使用 Harness Common 0.8 的 Identity 契约；客户端配置仍由 `clientKey` 管理。
+DataSource-backed Probe 提供 `dataSource(context, query)` 配置解析器、稳定的 `probe` 名称/版本，
+以及覆盖输入和判定策略的 `parameters`。身份必须覆盖实际目标与访问上下文，不能包含明文凭据或 Service 别名。
+Core 批准后提供 `input.client()`，由 Probe 在错误处理范围内借用已初始化客户端；
+客户端在当前 Plugin 调用结束前释放，结果只在本轮保留，不跨运行缓存。
+失败、证据不完整与用户跳过均保留原状态；取消、未执行和未返回有效结果的异常不进入复用缓存。
 
 Probe 通过 `context.signal` 传播取消；用 `input.checkpoint(result)` 保存中间证据。
 完整结果和每次检查点均要求 JSON 安全、无凭据且不超过 128 KiB；超限或无效结果不能算通过。

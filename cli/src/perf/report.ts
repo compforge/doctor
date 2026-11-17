@@ -3,12 +3,13 @@ import { writeFileSync } from "node:fs";
 import { renderPerfReport } from "@compforge/perf-harness";
 import type { PerfResult } from "./model";
 
-/** The Harness owns performance views; Doctor owns Artifact delivery and coverage notes. */
+/** @spec Harness owns report tables; Doctor supplies coverage issues and declared Facet ordering. */
 export function writePerfReport(result: PerfResult): string {
+  const facetOrder = Object.fromEntries(Object.entries(result.caseFacets ?? {})
+    .filter(([, facet]) => facet.ordered && facet.values)
+    .map(([name, facet]) => [name, facet.values!]));
+  const html = renderPerfReport(result.run, { issues: result.metricIssues, facetOrder });
   const path = join(result.outputDir, "perf.html");
-  writeFileSync(path, renderPerfReport(result.run, {issues:result.metricIssues, facetOrder:Object.fromEntries(
-    Object.entries(result.caseFacets ?? {}).filter(([,spec]) => spec.ordered && spec.values)
-      .map(([key,spec]) => [key,spec.values!])
-  )}));
+  writeFileSync(path, html);
   return path;
 }

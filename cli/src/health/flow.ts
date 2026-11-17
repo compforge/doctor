@@ -7,6 +7,8 @@ export interface HealthCheckResult {
   id: string; scope: HealthScope; description: string;
   status: HealthProbeResult["status"] | "skipped" | "not-run" | "cancelled";
   startedAt?: string; finishedAt?: string; summary: string;
+  reusedFrom?: { service: string; check: string };
+  dataSourceId?: string;
   evidence?: HealthProbeResult["evidence"]; cases?: CaseCheckResult[];
 }
 export interface HealthResult { checkedAt: string; query: HealthCheckQuery; providers: {
