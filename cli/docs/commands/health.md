@@ -84,6 +84,9 @@ Toolbox 提供 DB/S3/Workload/网络等可复用机制，不认识 Doctor scope 
 DataSource 直接使用 Harness Common 0.8 的 Identity 契约；客户端配置仍由 `clientKey` 管理。
 DataSource-backed Probe 提供 `dataSource(context, query)` 配置解析器、稳定的 `probe` 名称/版本，
 以及覆盖输入和判定策略的 `parameters`。身份必须覆盖实际目标与访问上下文，不能包含明文凭据或 Service 别名。
+DataSource 的 `description` 是无凭据的可读目标描述，Core 在探测批准界面展示；未提供时使用检查声明的 target。
+Case 请求确认同时展示 Case 的 `desc`（若有）。
+描述不参与去重身份。动态 Endpoint 解析后，Plugin 可用 `context.logger.info` 输出名称、描述与 host:port，再执行探测。
 Core 批准后提供 `input.client()`，由 Probe 在错误处理范围内借用已初始化客户端；
 客户端在当前 Plugin 调用结束前释放，结果只在本轮保留，不跨运行缓存。
 失败、证据不完整与用户跳过均保留原状态；取消、未执行和未返回有效结果的异常不进入复用缓存。

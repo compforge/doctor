@@ -16,8 +16,9 @@ export class HealthInteraction {
     if (this.stopped) return { approved: false, source: "prompt" };
     if (this.context.options.yes) return resolveApprovalGate(this.context.options)(request);
     if (!this.interactive) return request.risk === "observe" ? approveAll() : resolveApprovalGate(this.context.options)(request);
-    writeOutput(`\n${request.title}\n目标：${request.target}\n`);
+    writeOutput(`\n${request.title}\n`);
     if (request.purpose) writeOutput(`${request.purpose}\n`);
+    writeOutput(`目标：${request.target}\n`);
     for (const detail of request.impact) writeOutput(`  ${detail}\n`);
     const choice = await this.prompt({ question: "执行？[y] 执行 / [n] 跳过 / [q] 结束巡检（默认 n）：",
       emptyValue: "skip" as const,

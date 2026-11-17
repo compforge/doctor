@@ -48,6 +48,7 @@ test("same resolved source probes once across Services, preserves provenance and
   const second = await f.run(run, f.check(), "b");
   expect(second).toMatchObject({ status: "passed", evidence: { count: 1 }, reusedFrom: { service: "a", check: "database" }, dataSourceId: "mysql:shared" });
   expect(f.requests.map(item => item.id)).toEqual(["health-datasource-discovery", "healthcheck:a:database"]);
+  expect(f.requests[1]!.target).toBe("database");
   expect(f.events).toEqual(["resolve", "connect", "query", "dispose", "context:closed", "resolve", "context:closed"]);
   await f.run(f.runner()); // New Health session must probe again.
   expect(f.events.filter(item => item === "query")).toHaveLength(2);
@@ -105,5 +106,23 @@ test("provider result cannot replace host-owned identity and reuse provenance", 
   check.run = withSummary({ title: "DB", fields: [] }, async () => ({ status: "passed", summary: "ok", id: "forged", reusedFrom: { service: "forged", check: "forged" } }));
   const result = await f.run(f.runner(), check);
   expect(result.id).toBeUndefined(); expect(result.reusedFrom).toBeUndefined();
+  await f.context.disposeClients();
+});
+
+
+test("resolved descriptions identify approval targets without initializing clients or changing reuse", async () => {
+  const f = fixture(); const run = f.runner();
+  const described = (description: string) => {
+    const check = f.check(); const resolve = check.dataSource!;
+    return { ...check, dataSource: async (context: PluginContext, query: {}) => ({ ...await resolve(context, query), description }) };
+  };
+  f.interaction.approve = async request => {
+    expect(f.events).not.toContain("connect");
+    f.requests.push(request); return { approved: true, source: "prompt" };
+  };
+  await f.run(run, described("MySQL db.example:3306/chat"));
+  await f.run(run, described("Same source from another Service"), "b");
+  expect(f.requests.map(request => request.target)).toEqual(["a, b", "MySQL db.example:3306/chat"]);
+  expect(f.events.filter(event => event === "query")).toHaveLength(1);
   await f.context.disposeClients();
 });
