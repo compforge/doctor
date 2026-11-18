@@ -109,6 +109,8 @@ async function selectParameters(opts: PerfCliOpts, config: PerfConfig): Promise<
   ] as const) {
     if (option === "maxInflight" && config.qps > 0) config.maxInflight = resolvePerfConfig({...opts, qps: String(config.qps)}).maxInflight;
     if (opts[option] !== undefined || (option === "maxInflight" && config.qps === 0)) continue;
+    if (option === "hold") writeOutput("[perf] hold 建议覆盖 4～5 个 scrape（指标采样）周期：间隔 15s 时约 60～75s，间隔 60s 时约 240～300s。\n"
+      + "[perf] 窗口内若只有 1 个采样点，无法计算增量、窗口 p95 或错误率属于预期情况；请按实际采样间隔选择时长。\n", process.stderr);
     const value = await promptListedChoice({question: `${title}（默认 ${config[key]}，q 取消）：`,
       emptyValue: config[key], invalidMessage: "请输入有效数值。",
       match: answer => {
