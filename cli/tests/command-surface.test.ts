@@ -373,7 +373,7 @@ describe("command help", () => {
     expect(result.stdout).toContain("Usage: doctor perf [options]");
     expect(result.stdout).toContain("--qps <number>");
     expect(result.stdout).toContain("--max-inflight <number>");
-    expect(result.stdout).not.toContain("--service");
+    expect(result.stdout).toContain("--service");
     expect(result.stdout).not.toContain("--scenario");
     expect(result.stdout).not.toContain("--max-requests");
     expect(result.stdout).toContain("--hold <seconds>");

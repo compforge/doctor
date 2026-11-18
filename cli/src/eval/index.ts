@@ -1,5 +1,6 @@
 import { createCaseRunner, runnableCaseCatalog } from "../case/runners";
-import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
+import { doctorCaseCatalog } from "../case/catalog";
+import { selectDoctorCases } from "../terminal/case-selection";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
 import type {

@@ -199,7 +199,7 @@ export async function runCollectHttp(
   commandContext: CommandContext,
   sendHttp?: SendHttp,
   inspectEndpoint?: InspectHttpEndpoint,
-  preparedScenario?: { scenario: HttpScenario; source: string; caseIds?: readonly string[] },
+  preparedScenario?: { scenario: HttpScenario; source: string; origin: { type:string; service:string; caseset?:string; cases:string[]; refs:string[] } },
 ): Promise<CommandResult<void>> {
   if (opts.example !== undefined) {
     if (opts.file) {
@@ -370,9 +370,7 @@ export async function runCollectHttp(
       target: {
         scenario: scenario.name,
         execution: executionTarget,
-        source: preparedScenario
-          ? { type: "doctor_case", caseset: scenario.name, cases: preparedScenario.caseIds }
-          : { type: "http_file", file: basename(scenarioFile) },
+        source: preparedScenario?.origin ?? { type: "http_file", file: basename(scenarioFile) },
       },
       inspectionFacts: facts ? { ...facts } : {},
       params: {
@@ -400,9 +398,7 @@ export async function runCollectHttp(
     target: {
       scenario: scenario.name,
       execution: executionTarget,
-      source: preparedScenario
-        ? { type: "doctor_case", caseset: scenario.name, cases: preparedScenario.caseIds }
-        : { type: "http_file", file: basename(scenarioFile) },
+      source: preparedScenario?.origin ?? { type: "http_file", file: basename(scenarioFile) },
     },
     inspectionFacts: { ...facts },
     params: {

@@ -1,12 +1,15 @@
 # doctor perf 流量下的性能观测
 
 `doctor perf` 观察系统在一段流量条件下的表现。自然流量已经能说明问题时，`--qps 0` 只观测；
-需要额外流量时，再配置正 QPS。两者复用 Case 入口、时间窗口、指标采集和 HTML Callgraph。
+需要额外流量时，再配置正 QPS。两者按 Operation 的 Probe 采集指标并生成 HTML Callgraph。
 
 ## 选择与参数
 
-交互式依次选择 CaseSet、一个或多个 Case、加压 QPS、hold 观测时长；只有正 QPS 才询问最大在途数。
-不选择 Service、Operation 或 scenario。Case source 的 `operation` 决定观测入口。
+Plugin 可通过 `perf.defaultService` 指定候选 Service 的默认值，可通过 `-s/--service` 指定。
+QPS 为 0 时直接选择观测 Operation。正 QPS 时按 CaseSet 分组展示所选 Service 可执行的 Case，
+可跨组多选。每次发送等概率抽取一个 Case，总目标 QPS 由所有选中 Case 共享。
+Case 来源绑定同一 Operation 时默认使用该入口，也可通过 `--operation <id>` 指定观测入口。
+`--cases` 接受逗号分隔的 Case ID，重名时使用 `source/caseset/case`。
 
 | 参数 | 含义 |
 |---|---|
@@ -20,10 +23,10 @@
 
 ```bash
 # 只观测，不要求业务租户、Runner 或 Kubernetes 访问
-doctor perf --caseset chat --cases greeting --qps 0 --hold 300
+doctor perf -s example-api --operation operation:example-api/chat --qps 0 --hold 300
 
 # 叠加受控业务请求；执行前确认目标和影响
-doctor perf --caseset chat --cases greeting,python --qps 5 --max-inflight 20 --hold 60
+doctor perf -s example-api --cases lookup,summary --qps 5 --max-inflight 20 --hold 60
 
 # 离线重新生成报告
 doctor perf --from ./saved-perf --format html
@@ -51,7 +54,7 @@ QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业
 - Probe 的后端表达式和统计口径由 Plugin 声明；Toolbox 提供参数绑定与 MetricDB 客户端。
 
 HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标和适用的请求统计；Callgraph 展示调用图。
-所有已注册 Operation 的 Probe 都参与观测。Callgraph 默认显示 Case Operation 的可达子图，沿 calls/mayCalls
+所有已注册 Operation 的 Probe 都参与观测。Callgraph 默认显示 所选 Operation 的可达子图，沿 calls/mayCalls
 展开，可切换全图；两种视图使用同一批证据。共享节点与环不会复制或改变身份。
 
 ## Profile 与证据

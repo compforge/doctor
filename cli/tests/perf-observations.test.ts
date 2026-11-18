@@ -179,17 +179,18 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
   }});
   const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
   const plugin={id:"test",version:"1",services:createServiceCatalog([
-    {...definition,cases:[{id:"chat.cases",operation:operation.id(),load:()=>[{caseset:"chat",cases:[{id:"hello",input:{}}]}]}]},
+    {...definition,cases:[{id:"chat.cases",operation:operation.id(),load:()=>{throw new Error("纯观测不应加载 Case")}}]},
     {...definition,name:"other",operations:[other],cases:[]},
   ])};
   const context=new CommandContext({}, {name:"production",configPath:"",pluginConfig:{},value:{readonly:true,
     namespace:"production",metricdb:{url:server.url.toString()}}}, {plugin});
   try {
-    const result=await perfCommand.run(context,{qps:"0",hold:"0.03"});
+    const result=await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
     expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
     expect(queries).toBeGreaterThanOrEqual(4);
     const run=result.output!.run;
     expect(run.entry_ids).toEqual([operation.id()]);
+    expect(run.case_ids).toEqual([]);
     expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
     expect(run.executions[0]!.requests).toEqual([]);
     expect(run.executions[0]!.phases.map(p=>p.kind)).toEqual(["hold"]);

@@ -1,8 +1,11 @@
+import { Operation } from "@compforge/harness-common";
+import { selectPerfTarget } from "../src/perf/selection";
 import { bindService, withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type CaseCatalog, type CaseRunnerFactory, type ServiceDefinition, type PluginDefinition } from "@compforge/doctor-plugin";
 import { caseRunnerProvider, createCaseRunner, runnableCaseCatalog, runnerCaseCatalog } from "../src/case/runners";
-import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
+import { doctorCaseCatalog } from "../src/case/catalog";
+import { selectDoctorCases } from "../src/terminal/case-selection";
 import { createHostPluginContext } from "../src/plugin/context";
 import { selectEvalProvider, executeEvalCases } from "../src/eval";
 import { perfAdapterFromCaseFactory } from "../src/perf";
@@ -115,4 +118,19 @@ test("Perf Harness owns lazy creation and cleanup when cancellation races with s
     expect(cleanup).toHaveBeenCalledTimes(preCancelled ? 0 : 1);
     expect(fire).not.toHaveBeenCalled();
   }
+});
+
+test("positive load can use a Case source without an Operation and observe a separate service", async () => {
+  const op = new Operation({name:"search", serviceName:"store"});
+  const plugin = {id:"fixture", version:"1", perf:{defaultService:"entry"}, services:createServiceCatalog([
+    {...base, aliases:[], name:"other", cases:[{id:"chat",load:catalog.load,runner:extension}]},
+    {...base, name:"entry", cases:[{id:"chat", load:catalog.load, runner:extension}]},
+    {...base, aliases:[], name:"store", operations:[op]},
+  ])};
+  const selected = await selectPerfTarget(plugin, {operation:op.id(), cases:"hello"}, true);
+  expect(selected?.service.name).toBe("entry");
+  expect((await selectPerfTarget(plugin, {service:"other",operation:op.id()}, true))?.service.name).toBe("other");
+  expect((await selectPerfTarget(plugin, {}, false))?.service.name).toBe("store");
+  expect(selected?.operation.id()).toBe(op.id());
+  expect(selected?.selected.map(c => c.item.id)).toEqual(["hello"]);
 });

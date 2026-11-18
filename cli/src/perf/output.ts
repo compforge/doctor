@@ -17,7 +17,10 @@ export function createPerfArtifact(config: PerfConfig): PerfArtifact {
 }
 
 export interface PerfMetadata {
-  caseSource: ServiceCaseRef;
+  service?: string;
+  caseCounts?: Record<string, number>;
+  caseRefs?: Record<string, string>;
+  caseSource?: ServiceCaseRef;
   operation: string;
   caseFacets: NonNullable<PerfResult["caseFacets"]>;
   caseIds: readonly string[];

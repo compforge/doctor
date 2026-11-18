@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。Service 通过 `cases` 贡献 Case 来源，与 DataSource、Workload 并列；每个来源集中持有离线定义及可选的运行时 producer、单请求 runner。`doctor case` 按 Service 列出其贡献的 Case；当前目录 `doctor-cases.yaml` 的输入也必须绑定到一个已声明 Service。交互选择一个或多个 HTTP Case 并确认发送，或在非交互调用中使用 `--send`。选择发生在执行命令时，CaseSet 不保存本次选择。
+Case 是可复用的请求输入，沿用 spec-case 的 canonical CaseSet YAML。Service 通过 `cases` 贡献 Case 来源，与 DataSource、Workload 并列；每个来源集中持有离线定义及可选的运行时 producer、单请求 runner。`doctor case` 按 Service 列出其贡献的 Case；当前目录 `doctor-cases.yaml` 的输入也必须绑定到一个已声明 Service。交互选择一个或多个 Case 查看详情；使用 `--send` 可显式发送 HTTP 请求。选择发生在执行命令时，CaseSet 不保存本次选择。
 
 可执行性由协议决定：HTTP 按输入协议筛选，Perf/Eval 使用来源 runner 的 `supports(case)`。Facet 描述用例分类，不承担命令路由。SDK 提供 LLM、Embedding、Rerank 连通性与流式性能采样模板，Service 显式贡献后才进入目录；Core 不注册 builtin Model/HTTP Case，也不创建虚拟 Service。
 
@@ -33,7 +33,7 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 ## 流程
 
-1. `doctor case` 只读列出可用 Case。交互终端可选 CaseSet 和一个或多个 HTTP Case，再确认是否发送、提供目标 base URL 和请求执行位置。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
+1. `doctor case` 只读列出可用 Case。交互终端先选 Service（或用 `-s` 指定），再按 CaseSet 分组浏览；所有 Case 连续编号，可跨组多选。选择后优先展示 cURL。相对路径使用 `BASE_URL`，也可传入 `--base-url`。Plugin 可提供带身份占位符的离线请求模板；无法生成离线请求时显示原因。预览标明哪些 Case 可发送。存在可发送的 Case 时只询问一次是否发送，回车默认取消。确认后使用刚选中的可发送项；显式 `--send` 跳过确认。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
 2. 发送复用 HTTP Collect：从本机或指定 Pod/Container 发起请求；先 Inspect 目标 host:port 的 DNS/TCP，再串行执行选中的 Case。`--repeat` 控制轮次，`--interval` 控制轮间等待。每次请求保留状态、headers/body、传输阶段耗时和可选 SSE 时间线。
 3. Detector 依据传输完整性、HTTP 状态、Content-Type、耗时和 SSE 终态产生 Findings；同一 Case 的多轮结果可识别偶现失败。报告保存实际 Request Plan 的可复现 cURL，异常响应可在 HTML/Markdown 查看，完整原始证据进入 Bundle。
 4. `doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，预算、并发和熔断仍由 Perf 命令控制。`doctor eval` 默认逐例执行所选 CaseSet 的全部 Eval Case，一次一个请求，也可用 `--cases` 选择子集。

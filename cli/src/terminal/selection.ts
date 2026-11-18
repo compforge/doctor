@@ -1,3 +1,4 @@
+import { isInteractive } from "./policy";
 import { currentCommandSignal } from "../command/execution-scope";
 import { withTerminalInput } from "./interaction";
 import { terminalOutputStream, writeOutput } from "./output";
@@ -181,4 +182,17 @@ export async function promptSearchableChoice<Value, Choice>(input: {
       readline.close();
     }
   });
+}
+
+export async function chooseName(names: string[], label: string, option: string, preferred?: string) {
+  if (!names.length) throw new Error(`没有可选的 ${label}`);
+  if (names.length === 1) return names[0];
+  if (!isInteractive()) {
+    if (preferred) return preferred;
+    throw new Error(`请用 ${option} 指定 ${label}：${names.join(", ")}`);
+  }
+  printNumberedChoices(names, `可选 ${label}：`, name => name);
+  return promptListedChoice({question: `请选择 ${label}（编号${preferred ? `，默认 ${preferred}` : ""}，q 取消）：`,
+    ...(preferred ? {emptyValue: preferred} : {}), match: answer => matchListedChoice(names, answer, x => x, x => x),
+    invalidMessage: `请输入列表中的 ${label} 编号或名称。`});
 }

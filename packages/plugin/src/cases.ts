@@ -1,3 +1,4 @@
+import type { ServiceJsonRequest } from "./http";
 import type { Case, CaseSet } from "@compforge/spec-case/model";
 import { caseSetFromRaw, validateCaseSet } from "@compforge/spec-case/model";
 import { validateCaseProducer, type CaseProducer } from "./case-producer";
@@ -22,6 +23,8 @@ export interface CaseCatalog {
 export interface ServiceCaseSource extends CaseCatalog {
   /** Static capability exercised by these Cases; input variations do not change Operation identity. */
   readonly operation?: string;
+  /** Offline request template. Use placeholders for runtime identities and credentials. */
+  previewHttp?(item: Case): (ServiceJsonRequest & { baseUrl: string; stream?: boolean }) | undefined;
   readonly produce?: CaseProducer;
   readonly runner?: CaseRunnerFactory;
 }
@@ -41,6 +44,7 @@ export function caseRunner(source: ServiceCaseSource): CaseRunnerFactory {
 
 export function validateCaseSource(source: ServiceCaseSource): void {
   if (!source || typeof source.id !== "string" || !source.id.trim() || typeof source.load !== "function") throw new Error("Invalid Service Case source");
+  if (source.previewHttp !== undefined && typeof source.previewHttp !== "function") throw new Error("Invalid Case HTTP preview");
   if (source.operation !== undefined && (typeof source.operation !== "string" || !source.operation.trim())) throw new Error("Case source operation must be a non-empty Operation ID");
   if (source.produce !== undefined) caseProducer(source);
   if (source.runner !== undefined) caseRunner(source);

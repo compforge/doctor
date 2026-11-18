@@ -78,6 +78,7 @@ Case 命令离线展示它。来源决定探测哪些业务对象，命令只补
 `load()` 不访问 Target；`produce` / `runner` 分别声明 access，并复用宿主的结果信封和资源生命周期。
 canonical Case 保存稳定刺激；运行时 subject 保存业务对象身份，targets 保存地址、凭据和新鲜会话。
 模型来源可贡献 `MODEL_CONNECTIVITY_CASE_SET`，使用 `modelHttpCases(model)` 绑定其选定模型。
+Case 来源可声明同步的 `previewHttp(case)`，通过与 runner 共享的请求构造函数提供离线 cURL 模板。运行时身份和凭据使用占位符。
 runner 用 `supports(case)` 声明协议兼容性，同一来源可同时服务 Health、Perf、Eval；Facet 只负责分类。
 
 `trace.analysis` 采用 Trace Harness 的纯分析扩展；`trace.source.dataSource` 是首选存储资源引用。

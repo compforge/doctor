@@ -118,6 +118,8 @@ export interface PluginDefinition extends PluginIdentity, Pick<Product, "descrip
   /** Offline resources registered by the Plugin, independent of Service runtime access. */
   extensions?: readonly ExtensionRegistration[];
   trace?: TraceCapability;
+  /** Preselect this Service when it is eligible for the requested Perf mode. */
+  perf?: { readonly defaultService?: string };
   /** Runtime-resolved Skills from the same exact Plugin version. */
   skills?: readonly PluginSkill[];
   /** Validate the opaque profile config before Doctor prepares target access for a command. */
