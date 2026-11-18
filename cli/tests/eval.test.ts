@@ -14,7 +14,8 @@ import { expect, spyOn, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
+import { doctorCaseCatalog } from "../src/case/catalog";
+import { selectDoctorCases } from "../src/terminal/case-selection";
 import { finalizeResult, readReport } from "./report-fixture";
 import { CommandContext, CommandStatus } from "../src/command";
 import {

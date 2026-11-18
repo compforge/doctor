@@ -5,7 +5,7 @@
 
 ## 选择与参数
 
-选择 Service 时默认使用候选中的 `chat-server`，可通过 `-s/--service` 指定。
+Plugin 可通过 `perf.defaultService` 指定候选 Service 的默认值，可通过 `-s/--service` 指定。
 QPS 为 0 时直接选择观测 Operation。正 QPS 时按 CaseSet 分组展示所选 Service 可执行的 Case，
 可跨组多选。每次发送等概率抽取一个 Case，总目标 QPS 由所有选中 Case 共享。
 Case 来源绑定同一 Operation 时默认使用该入口，也可通过 `--operation <id>` 指定观测入口。
@@ -23,10 +23,10 @@ Case 来源绑定同一 Operation 时默认使用该入口，也可通过 `--ope
 
 ```bash
 # 只观测，不要求业务租户、Runner 或 Kubernetes 访问
-doctor perf -s chat-server --operation operation:chat-server/chat --qps 0 --hold 300
+doctor perf -s example-api --operation operation:example-api/chat --qps 0 --hold 300
 
 # 叠加受控业务请求；执行前确认目标和影响
-doctor perf -s chat-server --cases ordinary_chat,python_addition --qps 5 --max-inflight 20 --hold 60
+doctor perf -s example-api --cases lookup,summary --qps 5 --max-inflight 20 --hold 60
 
 # 离线重新生成报告
 doctor perf --from ./saved-perf --format html

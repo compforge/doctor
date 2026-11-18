@@ -1,9 +1,10 @@
 import { expect, spyOn, test } from "bun:test";
-import { prepareHttpCases } from "../src/case/http";
+import { caseCurlPreview, prepareHttpCases } from "../src/case/http";
 import type { ArmContext } from "@compforge/perf-harness";
 import { validateCaseSet } from "@compforge/spec-case/model";
 import type { DoctorCaseSet } from "../src/case/catalog";
-import { chooseServiceCases } from "../src/case/choices";
+import { caseRef, resolveCaseChoices } from "../src/case/choices";
+import { chooseServiceCases, printCaseDetails } from "../src/terminal/case-selection";
 import { perfCaseMix, routePerfCases } from "../src/perf/selection";
 import { perfAdapterFromCaseFactory } from "../src/perf";
 import * as policy from "../src/terminal/policy";
@@ -15,14 +16,21 @@ test("grouped Case numbers route duplicate IDs to their own runner and judge", a
     caseSet:{caseset:"chat", cases:[{id:"hello", input:{query:sourceId}}, {id:"inspect", input:{}}]},
   }));
   const interactive = spyOn(policy, "isInteractive").mockReturnValue(true);
-  const prompt = spyOn(menu, "promptListedChoice").mockImplementation(async request => request.match("1,2"));
+  const prompt = spyOn(menu, "promptListedChoice").mockImplementation(async request => request.match("1,2,3"));
   const output = spyOn(process.stdout, "write").mockReturnValue(true);
   try {
-    const choices = await chooseServiceCases(groups,{browse:true, supports:(_, c) => !!c.input.query});
+    const selected = await chooseServiceCases(groups,{browse:true, supports:(_, c) => !!c.input.query});
+    printCaseDetails(selected!);
+    const choices = selected!.filter(c => !!c.item.input.query);
     const printed = output.mock.calls.map(args => args[0]).join("");
     expect(printed).toContain("chat-server / chat (a)");
-    expect(printed).toContain("2) hello");
-    expect(printed).toContain("（仅查看） inspect");
+    expect(printed).toContain("3) hello");
+    expect(printed).toContain("2) inspect");
+    expect(printed).toContain("a/chat/inspect（仅预览）\ncURL：此 Case 未提供离线 HTTP 请求模板。");
+    const [first, second] = choices!;
+    expect(() => resolveCaseChoices(choices!, ["hello"])).toThrow("重名");
+    expect(resolveCaseChoices(choices!, [caseRef(second!), caseRef(first!), caseRef(second!)]))
+      .toEqual([second!, first!]);
     const mix = perfCaseMix(choices!);
     validateCaseSet(mix.caseSet!);
     expect(new Set(mix.caseMix.map(c => c.id)).size).toBe(2);
@@ -68,4 +76,13 @@ test("HTTP selection preserves source and request identity across CaseSets", () 
     ["api:public:ping","api:public:ping","http://127.0.0.1/public"],
     ["api:admin:ping","api:admin:ping","http://127.0.0.1/admin"],
   ]);
+});
+
+test("curl preview quotes the path and references body files without opening them", () => {
+  const item = {id:"upload", input:{method:"POST", path:"/upload?q=one&n=2", body_file:"missing.bin"}};
+  const source: DoctorCaseSet = {service:"files", source:"local", file:"/fixtures/cases.yaml", caseSet:{caseset:"files",cases:[item]}};
+  const [curl] = caseCurlPreview({source,item});
+  expect(curl).toContain('--data-binary \'@/fixtures/missing.bin\'');
+  expect(curl).toContain('"\${BASE_URL:?set BASE_URL}"\'/upload?q=one&n=2\'');
+  expect(caseCurlPreview({source,item},"http://localhost:8000")[0]).toContain("'http://localhost:8000/upload?q=one&n=2'");
 });

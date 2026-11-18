@@ -83,11 +83,11 @@ import { mcpCommand } from "../collect/mcp/command";
 import { collectCommand } from "../collect/composite";
 import { evalCommand } from "../eval/command";
 import { perfCommand } from "../perf/command";
-import { caseRef, chooseName, chooseServiceCases } from "../case/choices";
+import { chooseServiceCases, printCaseDetails } from "../terminal/case-selection";
 import { localCaseCatalog } from "../case/local";
 import { doctorCaseCatalog, caseMatchesCommand } from "../case/catalog";
 import { isInteractive, withInteractionOptions } from "../terminal/policy";
-import { promptListedChoice } from "../terminal/selection";
+import { chooseName, promptListedChoice } from "../terminal/selection";
 
 type RawBizIdOptions<T> = Omit<T, "bizIds" | "bizId"> & { bizId?: string[] };
 
@@ -357,7 +357,7 @@ function withMcpOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
-    .option("-s, --service <name>", "选择 Service，默认 chat-server")
+    .option("-s, --service <name>", "选择 Service，默认值可由 Plugin 声明")
     .option("--operation <id>", "指定观测入口 Operation")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
@@ -811,13 +811,13 @@ export function createDoctorProgram(
     });
   }
   withCaseOptions(
-    catalog.command("case").helpGroup("Collect · 采集与分析:").description("列出 Case；选择一个或多个 HTTP Case 后发送并生成诊断报告")
+    catalog.command("case").helpGroup("Collect · 采集与分析:").description("查看 Service 的 Case、说明和 cURL，确认后可发送 HTTP Case")
       .addHelpText("after", `
 列表：
   doctor case --list [-s <service>] [--caseset <id>] [-f json]
   列表会读取消费绑定并解析当前 URL；不会执行 Case，动态 URL 查询参数脱敏。
 分析思路：
-  从 Case 目录选择请求，确认目标与执行位置后实际发送，并保留协议响应和诊断证据。
+  选择 Service 和 Case 查看请求详情。需要主动诊断时，使用 --send 发送 HTTP Case 并保留响应证据。
 结果解读：
   检查请求是否执行及响应判定；一次通过只覆盖该 Case、身份和执行位置，不能代表全部业务可用。
 `),
@@ -867,20 +867,24 @@ export function createDoctorProgram(
           writeOutput(`${source.id}（运行时 Case，可通过 doctor case --list 查看）\n`);
         }
       }
-      const choices = await chooseServiceCases(sources, {...opts, browse:true,
+      const selected = await chooseServiceCases(sources, {...opts, browse:!opts.send,
         supports:(_source, item) => caseMatchesCommand(item, "http")});
-      if (!choices) return 130;
+      if (!selected) return 130;
+      printCaseDetails(selected, opts.baseUrl, {
+        timeoutSeconds: opts.timeout === undefined ? undefined : Number(opts.timeout),
+      });
+      const choices = selected.filter(({item}) => caseMatchesCommand(item, "http"));
       if (!choices.length) {
         if (opts.send) throw new Error("没有可发送的 HTTP Case");
-        writeOutput("此 Service 没有可直接发送的 HTTP Case。运行 doctor case --list 可查看运行时来源。\n");
+        if (!selected.length) writeOutput("没有可查看的静态 Case。\n");
         return;
       }
       if (!opts.send) {
-        const send = await promptListedChoice({
-          question: `发送 ${choices.map(caseRef).join(", ")}？[y/N] `,
-          match: (answer) => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
-          invalidMessage: "请输入 y/yes 或 n/no。", emptyValue: false,
-        });
+        const question = choices.length === selected.length ? "是否发送？[y/N] "
+          : `是否发送其中 ${choices.length} 个可发送的 Case？[y/N] `;
+        const send = await promptListedChoice({question, emptyValue:false,
+          match: answer => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
+          invalidMessage:"请输入 y 或 n。"});
         if (!send) return;
       }
       let baseUrl = opts.baseUrl;

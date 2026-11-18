@@ -17,21 +17,29 @@ function quotePosix(value: string): string {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
 
-export function renderHttpRequestAsCurl(request: HttpRequestPlan): string {
+type CurlRequest = Pick<HttpRequestPlan, "method" | "headers" | "url" | "body"> & Partial<Pick<HttpRequestPlan, "followRedirects" | "timeoutMs">>;
+
+export function renderHttpRequestAsCurl(request: CurlRequest, options: { stream?: boolean; useBaseUrl?: boolean; bodyFile?: string } = {}): string {
   const clauses = ["curl"];
+  if (options.stream) clauses.push("--no-buffer");
   if (request.followRedirects) clauses.push("--location");
   clauses.push(`--request ${quotePosix(request.method)}`);
-  clauses.push(`--max-time ${quotePosix(String(request.timeoutMs / 1000))}`);
+  if (request.timeoutMs !== undefined) clauses.push(`--max-time ${quotePosix(String(request.timeoutMs / 1000))}`);
   for (const [name, value] of Object.entries(request.headers)) {
     clauses.push(`--header ${quotePosix(`${name}: ${value}`)}`);
   }
-  if (request.body !== undefined) {
+  if (request.body !== undefined || options.bodyFile !== undefined) {
     if (!Object.keys(request.headers).some((name) => name.toLowerCase() === "content-type")) {
       clauses.push(`--header ${quotePosix("Content-Type:")}`);
     }
-    clauses.push(`--data-binary ${quotePosix(new TextDecoder().decode(request.body))}`);
+    const data = options.bodyFile ? "@" + options.bodyFile : new TextDecoder().decode(request.body);
+    const flag = !options.bodyFile && data.startsWith("@") ? "--data-raw" : "--data-binary";
+    clauses.push(`${flag} ${quotePosix(data)}`);
   }
-  clauses.push(quotePosix(request.url));
+  if (options.useBaseUrl) {
+    const url = new URL(request.url);
+    clauses.push('"${BASE_URL:?set BASE_URL}"' + quotePosix(url.pathname + url.search));
+  } else clauses.push(quotePosix(request.url));
   return clauses.join(" \\\n  ");
 }
 

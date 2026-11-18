@@ -1,8 +1,10 @@
+import { chooseName } from "../terminal/selection";
 import { Operation } from "@compforge/harness-common";
 import type { CaseSet, Experiment } from "@compforge/perf-harness";
 import type { PluginDefinition } from "@compforge/doctor-plugin";
 import { loadCaseCatalog } from "@compforge/doctor-plugin";
-import { caseRef, chooseName, chooseServiceCases, type CaseChoice } from "../case/choices";
+import { caseRef, type CaseChoice } from "../case/choices";
+import { chooseServiceCases } from "../terminal/case-selection";
 import type { DoctorCaseSet } from "../case/catalog";
 import type { PerfCliOpts } from "./model";
 
@@ -30,7 +32,8 @@ export async function selectPerfTarget(plugin: PluginDefinition, opts: PerfCliOp
   if (!inject && explicitOp && owner && explicitOp.service.name !== owner) {
     throw new Error(`Operation ${opts.operation} 不属于 Service ${owner}`);
   }
-  const name = owner ?? (!inject && explicitOp ? explicitOp.service.name : await chooseName(names, "Service", "--service", names.includes("chat-server") ? "chat-server" : undefined));
+  const preferred = plugin.perf?.defaultService;
+  const name = owner ?? (!inject && explicitOp ? explicitOp.service.name : await chooseName(names, "Service", "--service", preferred && names.includes(preferred) ? preferred : undefined));
   if (!name) return;
   const selected = inject ? await chooseServiceCases(groups.filter(g => g.service === name), {
     ...opts, supports:(source, item) => source.supports!(item),
