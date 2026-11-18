@@ -340,56 +340,6 @@ for (const crossNamespace of [true, false]) {
   });
 }
 
-/** @case id=redis-store-metric-source,desc=`Store and Metric borrow one source and refresh topology`,expect=`one initialization, fresh masters, root-only disposal` */
-test("Redis store and metric share source without Pod config reads; each metric sample refreshes masters", async () => {
-  const { prepareStoreMetricCollection } = await import("../src/collect/metric/store/collector");
-  const { EmbeddedMetricSource } = await import("../src/infra/metric");
-  const f = executor();
-  const exec: Executor = { ...f.exec, run: async (args, options) => {
-    if (args[0] === "get" && ["services", "pods"].includes(args[1]!)) {
-      return { ...ok, stdout: '{"items":[]}', command: args };
-    }
-    return f.exec.run(args, options);
-  } };
-  let starts = 0, closes = 0, discoveries = 0;
-  const visited: string[] = [];
-  const client: ServiceRedisClient = {
-    target: { endpoints: [{ host: "seed", port: 26379 }], database: 2, useSsl: false,
-      timeoutMs: 1000, clusterType: "sentinel", sentinelMasterName: "primary", password: "private-password" },
-    topology: async () => ({ clusterType: "sentinel", replicas: [], slotRanges: [], masters: [{ host: `master-${++discoveries}`, port: 6379 }] }),
-    access: { connection: async (endpoint, database) => {
-      expect(database).toBe(2);
-      visited.push(endpoint.host);
-      return { endpoint, ping: async () => "PONG", info: async () => ({ connected_clients: 3 }),
-        dbSize: async () => 0, command: async () => null, pipeline: async () => [], scan: async () => ({ cursor: "0", keys: [] }) };
-    }, close: async () => { throw new Error("Borrower must not close access"); } },
-    initialize: async () => { starts++; }, dispose: async () => { closes++; },
-  };
-  const service = { ...logService("logical"), workloads: [], dataSources: [{ id: "redis", kind: "redis" as const,
-    backend: "redis" as const, source: { clientKey: "cache", createClient: () => client } }] };
-  const command = new CommandContext({}, undefined, { plugin: logPlugin(service) });
-  try {
-    const selected = await resolveRedisConfig({ namespace: "demo", service: service.name,
-      maxKeys: "1", maxKeysPerSecond: "1", top: "1" }, command, exec, command.plugin.services);
-    const metric = await prepareStoreMetricCollection({ plugin: command.plugin, commandContext: command,
-      collect: selected!.config.collect, executor: exec, services: [service.name], namespace: "demo", intervalMs: 1000,
-      forwarder: {} as import("@compforge/harness-toolbox/kubernetes/service/port-forward").ServicePortForwarder });
-    const output = new EmbeddedMetricSource({ retentionMs: 60_000, sampleIntervalMs: 1000 });
-    const ingest = spyOn(output, "ingest");
-    expect(metric.directCount).toBe(1);
-    expect(starts).toBe(1);
-    expect(await metric.sample(output)).toEqual([]);
-    expect(await metric.sample(output)).toEqual([]);
-    expect(visited).toEqual(["master-1", "master-2"]);
-    expect(ingest.mock.calls[0]![1]?.labels).toMatchObject({ doctor_service: "logical", doctor_store: "redis" });
-    expect(JSON.stringify(ingest.mock.calls)).not.toContain("private-password");
-    await metric.close();
-    expect(closes).toBe(0);
-    ingest.mockRestore();
-  } finally { await command.disposeClients(); }
-  expect(closes).toBe(1);
-});
-
 test("TCP sources keep external endpoints direct and authorize Service forwarding in its own namespace", async () => {
   const { tcpTransports } = await import("@compforge/doctor-plugin");
   const namespaces: string[] = [];

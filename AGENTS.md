@@ -19,8 +19,8 @@ Inspect/Probe/Detector contribution 声明确定性诊断工作，通过 capabil
 产品主线是：部署后、承接业务前用 Health 主动巡检；运行一段时间后用 Overview 回顾情况；
 发现问题后用 Collect 汇集证据，并按信息类型进入具体命令。
 
-Doctor 的诊断范围从通用信号逐步深入到业务语义：先覆盖 Trace、Metric、Log 三类可观测性信号，再
-观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
+Doctor 的诊断范围从通用信号逐步深入到业务语义：Collect 汇集 Trace 与 Log，Perf 按 Operation 和时间窗口
+从 MetricDB 查询指标；专项命令观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
 通过 capability 提供 store、model、case 等可复用能力，
 必要时以受控 HTTP 或协议调用主动复现问题。Eval 按 canonical CaseSet 逐例触发请求并采集关联证据，
 但不在 Doctor 内评价回答质量；流量下的性能表现归 Perf 观测，按需叠加受控压力并关联同窗口信号。Model、MCP 等
@@ -45,13 +45,14 @@ Health 按 `infra → self → deps → biz` 调度各 Service 贡献的探测�
 数据覆盖范围；支持采样的条目可以取得代表 biz-id，再经确认进入 Collect。
 
 Collect 汇集解释问题所需的信息，各具体命令按信息类型拥有查询、采集和分析能力。集合命令当前组合
-Inspect、Tenant、Data、Trace、Log 和 Metric；这些命令也能单独运行。其它专项工具按问题需要显式调用：
+Inspect、Tenant、Data、Trace 和 Log；这些命令也能单独运行。其它专项工具按问题需要显式调用：
 
 | 所需信息 | 具体命令 |
 |---|---|
 | Service 运行状态、配置与资源 | `inspect`、`compute`、`resource` |
 | 租户与业务对象记录 | `tenant`、`data` |
-| 请求链路、日志与指标 | `trace`、`log`、`metric` |
+| 请求链路与日志 | `trace`、`log` |
+| Operation 性能指标与调用图 | `perf` |
 | 存储状态与具体数据库记录、对象 | `store`、`db`、`s3` |
 | CPU、内存与网络现场 | `cpu`、`mem`、`net`；`mema`、`neta` 分析离线产物 |
 

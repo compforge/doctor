@@ -149,7 +149,6 @@ test("collect default delivery contains combined HTML and child full bundles", a
       bizIds: ["biz-1"],
       kinds: ["inspect", "data"],
       namespace: "doctor-system",
-      prometheus: "https://prometheus.example.internal",
       kubeconfig: "/private/kubeconfig",
       config: "/private/doctor.yaml",
       output,

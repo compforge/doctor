@@ -86,14 +86,6 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "发现可用模型",
     }],
   },
-  metric: {
-    command: "doctor metric",
-    needs: [{
-      requirement: "required",
-      capability: { scope: "extension", name: "metric.configuration" },
-      purpose: "定位指标端点并提供业务指标语义",
-    }],
-  },
   eval: {
     command: "doctor eval",
     needs: [{

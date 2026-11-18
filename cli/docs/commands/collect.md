@@ -2,7 +2,7 @@
 
 ## 理念 / 概念
 
-`doctor collect [biz-id...]` 是 Inspect、Tenant、Data、Trace、Log 和 Metric 的集合命令。它只负责选择采集面、
+`doctor collect [biz-id...]` 是 Inspect、Tenant、Data、Trace 和 Log 的集合命令。它只负责选择采集面、
 调用已有 collector，不拥有新的 Fact、Probe、Detector、业务 capability 或交付实现，也不改变任何
 具体命令的采集语义。
 
@@ -22,7 +22,7 @@ Application 数据按查询粒度进入不同数据面：Tenant 承载 tenant-id
 1. 接收采集面需要的作用域参数：Data/Trace/Log 使用一个或多个业务 ID，Tenant 使用 tenant ID/name；
    交互终端缺省时多选采集命令，非交互模式默认选择全部，也可用 `--include` 显式指定。
 2. 各子命令按自己的 Plugin capability contract 检查前提，单个采集面不可用不阻断其它采集面。
-3. 依次调用所选的 Inspect、Tenant、Data、Trace、Log 和 Metric collector。集合层不读取外部资源，也不实现
+3. 依次调用所选的 Inspect、Tenant、Data、Trace 和 Log collector。集合层不读取外部资源，也不实现
    降级查询。
 4. 每个 collector 注册自己的 Artifacts 并返回结构化结果。根 Finalize 调用 Collect renderer，显式组合
    子 Command 的 Report；Delivery 生成离线 HTML 并将报告和全部 Artifacts 放入一个 Bundle。
@@ -31,7 +31,7 @@ Application 数据按查询粒度进入不同数据面：Tenant 承载 tenant-id
 
 ### 集合层只有编排所有权
 
-Inspect、Tenant、Data、Trace、Log 和 Metric 是独立证据面，集合命令不能为了统一入口复制它们的配置、访问或
+Inspect、Tenant、Data、Trace 和 Log 是独立证据面，集合命令不能为了统一入口复制它们的配置、访问或
 判定逻辑。新增或修正具体采集行为时只修改对应 collector；`doctor collect` 只维护选择和调用，组合交付
 属于共享 finalize 阶段。
 
@@ -59,12 +59,7 @@ Tenant 使用 `--tenant-id` / `--tenant-name`，业务 ID 仍只传给 Data、Tr
 `--since`、`--since-time`、`--until-time` 适用于 Log 和 Data/Inspect 中的历史事件。
 绝对起点优先；相对窗口在准备前以显式终点或当前时刻解析一次，所有子命令沿用相同边界。
 未提供这些参数时，各采集器保留自己的默认策略。窗口不会把数据库记录、Pod 当前状态变成历史快照，
-也不会改变按业务 ID 获取 Trace 或 Metric 的语义。协议见 [Inspect 查询时间窗](../plugin.md#inspect-查询时间窗)。
-
-### Metric 保持时间窗口语义
-
-Metric 仍按 Service 与时间窗口采集，集合命令只透传 `--watch`、
-`--interval` 和 `--prometheus`；它不会把业务 ID 伪装成 Metric label 或在集合层推导查询语义。
+也不会改变按业务 ID 获取 Trace 的语义。协议见 [Inspect 查询时间窗](../plugin.md#inspect-查询时间窗)。
 
 ### 部分成功仍然交付
 

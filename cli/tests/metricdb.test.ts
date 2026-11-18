@@ -5,9 +5,8 @@ import { join } from "node:path";
 import { loadConfig } from "../src/app/config/config";
 import { CommandContext } from "../src/command";
 import { perfMetricSource } from "../src/perf/observations";
-import { RemoteMetricSource } from "../src/infra/metric";
 
-/** @case Explicit profile kind drives the shared perf/metric backend without capability guesses. */
+/** @case Explicit profile kind drives the Perf backend without capability guesses. */
 for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile metricdb ${kind} applies authentication and backend query semantics`, async () => {
   const requests: URL[] = [];
   let partial = false;
@@ -27,15 +26,12 @@ for (const kind of ["prometheus", "victoriametrics"] as const) test(`profile met
     expect(source?.kind).toBe(kind);
     expect(requests).toHaveLength(0);
     await source!.query("requests", 123.456, context.signal);
-    const metric = new RemoteMetricSource(source!, context.signal);
-    await metric.query("requests", 123456);
-    await metric.queryRange("requests", 120000, 123456, 500);
-    expect(requests).toHaveLength(3);
+    await source!.queryRange("requests", 120, 123.456, 0.5, context.signal);
+    expect(requests).toHaveLength(2);
     expect(requests[0]!.searchParams.get("time")).toBe("123.456");
-    expect(requests[1]!.searchParams.get("time")).toBe("123.456");
-    expect(Object.fromEntries(requests[2]!.searchParams)).toMatchObject({start:"120",end:"123.456",step:"0.5"});
+    expect(Object.fromEntries(requests[1]!.searchParams)).toMatchObject({start:"120",end:"123.456",step:"0.5"});
     partial = true;
-    await expect(metric.query("requests", 123456)).rejects.toThrow("MetricDB query incomplete");
+    expect((await source!.query("requests", 123.456, context.signal)).isPartial).toBe(true);
   } finally {await context.disposeClients();server.stop(true);}
 });
 

@@ -10,7 +10,6 @@ import { COLLECT_KINDS, collectCommand, resolveCollectKinds, type CollectKind } 
 import { dataCommand } from "../src/collect/data/command";
 import { inspectCommand } from "../src/collect/inspect/command";
 import { logCommand } from "../src/collect/log/command";
-import { metricCommand } from "../src/collect/metric/command";
 import { tenantCommand } from "../src/collect/tenant/command";
 import { traceCommand } from "../src/collect/trace/command";
 import { CommandContext, CommandStatus, defineCommand, type CommandInput, type Command } from "../src/command";
@@ -60,7 +59,6 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
   replace(dataCommand, "data", input => expect(input.bizIds).toEqual(["a", "b", "c", "d", "e"]));
   replace(traceCommand, "trace");
   replace(logCommand, "log", (input) => expect(input.services).toEqual(["chat-server"]));
-  replace(metricCommand, "metric");
   try {
     const kinds = await resolveCollectKinds(undefined, false);
     expect(kinds).toEqual([...COLLECT_KINDS]);
@@ -68,7 +66,7 @@ test.each([1, 2])("overview with collect concurrency %i delivers same-named arti
       kinds: kinds!, namespace: "ns", tenantId: "tenant-one",
     }, concurrency);
     expect(result.status).toBe(CommandStatus.Partial);
-    expect(calls).toEqual({ inspect: 1, tenant: 1, data: 1, trace: 1, log: 1, metric: 1 });
+    expect(calls).toEqual({ inspect: 1, tenant: 1, data: 1, trace: 1, log: 1 });
     for (const command of ["inspect", "tenant"]) expect(result.artifacts.filter((artifact) => artifact.command === command)).toHaveLength(1);
     const manifests = result.artifacts.filter((artifact) => artifact.command === "collect");
     expect(manifests).toHaveLength(1);

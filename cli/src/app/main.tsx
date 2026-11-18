@@ -24,7 +24,6 @@ import { writeOutput } from "../terminal/output";
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
 //   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
-//   doctor metric            → 基于 Prometheus 或内嵌 Prombed 采集并可视化 Service metrics
 //   doctor eval              → 按 canonical CaseSet 顺序触发请求，采集关联 trace/log/data，不做质量评分
 //   doctor perf              → 观测流量下的性能，按需加压并采集外部指标
 //   doctor install           → 向选定 Pod container 安装 GDB
@@ -77,7 +76,6 @@ import { dataCommand } from "../collect/data/command";
 import { inspectCommand } from "../collect/inspect/command";
 import { tenantCommand } from "../collect/tenant/command";
 import { tenantDirectoryCommand } from "../collect/tenant/directory";
-import { metricCommand } from "../collect/metric/command";
 import { storeCommand } from "../collect/store/command";
 import { registerResourceCommand } from "../resource/command";
 import { withDbOptions } from "../collect/db/options";
@@ -252,7 +250,7 @@ function withDataOptions(cmd: CommandT, defaultServiceNames: readonly string[]):
 
 function withCollectOptions(cmd: CommandT): CommandT {
   return withBizIdInputs(cmd, "需要联合采集的业务 ID；可重复传入")
-    .option("--include <kinds>", "要编排的命令：inspect、tenant、data、trace、log、metric；逗号分隔，交互模式缺省时多选")
+    .option("--include <kinds>", "要编排的命令：inspect、tenant、data、trace、log；逗号分隔，交互模式缺省时多选")
     .option("--tenant-id <id>", "传给 doctor tenant 的租户 ID")
     .option("--tenant-name <name>", "传给 doctor tenant 的租户名")
     .option("--deployment-config", "传给 inspect：采集 Deployment Env/ConfigMap")
@@ -263,11 +261,8 @@ function withCollectOptions(cmd: CommandT): CommandT {
     .option("--since-time <timestamp>", "Log 与 Data/Inspect 事件的统一起点，优先于 --since")
     .option("--until-time <timestamp>", "Log 与 Data/Inspect 事件的统一终点（RFC3339，包含边界）")
     .option("--time-padding <duration>", "自动日志窗口的前后余量；优先于业务贡献及 profile log.timePadding，默认 10m")
-    .option("--watch <duration>", "传给 doctor metric 的采集窗口；默认 0")
-    .option("--interval <duration>", "传给 doctor metric 的抓取间隔；默认 5s")
-    .option("--prometheus <url>", "传给 doctor metric 的 Prometheus 地址")
     .addOption(deliveryFormatOption(["html", "bundle", "summary"]))
-    .option("--profile <name>", "从 profile 取 namespace / kubeconfig / Prometheus")
+    .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
     .option("-o, --output <path>", "集合报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
@@ -387,17 +382,6 @@ function withModelOptions(cmd: CommandT): CommandT {
       "-o, --output <path>",
       "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）",
     );
-}
-
-function withMetricOptions(cmd: CommandT): CommandT {
-  return cmd
-    .addOption(serviceOption("metric provider；缺省时交互多选，非交互使用全部已注册 Service"))
-    .option("--watch <duration>", "采集窗口：0、1m、2m、5m、10m 或 until-interrupt；非交互默认 0")
-    .option("--interval <duration>", "内嵌 Prombed 抓取间隔（500ms..60s）", "5s")
-    .option("--prometheus <url>", "MetricDB 地址；优先于 profile.metricdb.url")
-    .addOption(deliveryFormatOption(["html", "bundle"]))
-    .option("--profile <name>", "从 profile 取 Prometheus 或 namespace / kubeconfig")
-    .option("-o, --output <path>", "报告 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）");
 }
 
 function withPerfOptions(cmd: CommandT): CommandT {
@@ -693,7 +677,7 @@ export function createDoctorProgram(
     )
       .addHelpText("after", `
 分析思路：
-  按所选数据面调用 inspect / tenant / data / trace / log / metric，并汇总各自证据。
+  按所选数据面调用 inspect / tenant / data / trace / log，并汇总各自证据。
 结果解读：
   逐项检查成功、失败和缺口，汇总完成不代表每项完整；精确控制单个数据面时运行对应命令。
 `),
@@ -971,18 +955,6 @@ export function createDoctorProgram(
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(modelCommand, opts, domainInput(opts), commandRuntime);
-  });
-  withMetricOptions(
-    catalog.command("metric").helpGroup("Collect · 采集与分析:").description("采集 Service 声明的 Prometheus metrics，执行 detector 并生成离线 HTML 图表")
-      .addHelpText("after", `
-分析思路：
-  按 Service 声明采集和查询指标，在同一窗口内保留曲线、规则发现与覆盖缺口。
-结果解读：
-  先核对数据源、窗口和指标口径；空数据不是零值或正常，跨窗口或副本的数值不能直接归因。
-`),
-  ).action(async (opts, command: CommandT) => {
-    opts = commandOptionsWithSources(command);
-    await runCommand(metricCommand, opts, domainInput(opts), commandRuntime);
   });
   withEvalOptions(
     catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分")

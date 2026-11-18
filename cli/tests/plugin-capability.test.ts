@@ -90,7 +90,7 @@ test("tenant consumes paged data; identity lookup is required only when selected
   ]);
 });
 
-test("perf observes Case entries without requiring a runner or metric.configuration", () => {
+test("perf observes Case entries without requiring a runner", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.perf.needs.map(need => need.capability)).toEqual([
     { scope: "resource", name: "cases" },
   ]);

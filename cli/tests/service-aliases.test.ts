@@ -1,11 +1,10 @@
 import { allLogWorkloads } from "@compforge/doctor-plugin";
-import { inspectExtension, metricExtension } from "../../packages/plugin/tests/extension-fixture";
+import { inspectExtension } from "../../packages/plugin/tests/extension-fixture";
 import { expect, test } from "bun:test";
 import { createServiceCatalog, describeService, type ServiceDefinition } from "@compforge/doctor-plugin";
 import { parseInspectServices } from "../src/collect/inspect/options";
 import { parseDataServices } from "../src/collect/data/config";
 import { resolveLogServices } from "../src/collect/log/config";
-import { parseMetricServices } from "../src/collect/metric/config";
 import { validatePluginDefinition } from "../src/plugin/definition";
 import type { PluginManifest } from "../src/plugin/manifest";
 import { formatServiceDescription } from "../src/app/plugin-description";
@@ -16,16 +15,16 @@ const service: ServiceDefinition = {
   aliases: ["api"],
   workloads: [],
   logs: {},
-  extensions: [allLogWorkloads(), ...[metricExtension({ endpoint: { host: "api-server", port: 80, path: "/metrics" }, metricNames: [], charts: [] }),
+  extensions: [allLogWorkloads(),
   inspectExtension({
     access: {}, accepts: ["biz_id"], provides: ["record"],
     resolveTarget: async () => { throw new Error("offline"); },
     inspect: async () => { throw new Error("offline"); },
-  })]]
+  })]
 };
 const catalog = createServiceCatalog([service]);
 
-for (const [name, parse] of Object.entries({ inspect: parseInspectServices, data: parseDataServices, log: resolveLogServices, metric: parseMetricServices })) {
+for (const [name, parse] of Object.entries({ inspect: parseInspectServices, data: parseDataServices, log: resolveLogServices })) {
   test(`${name} canonicalizes aliases and schedules a Service only once`, () => {
     expect(parse(["api", "api-server", "api"], catalog)).toEqual(["api-server"]);
     expect(() => parse(["missing"], catalog)).toThrow();

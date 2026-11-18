@@ -179,7 +179,6 @@ CapabilityAccess 声明具体实现的访问需求，prepare 无需执行函数�
 | workload.probe | Workload 实例、已取得的 Facts → 类型化 Observation | Inspect |
 | service.downstreams | 可选业务 ID、消费方实例 → 当前下游关系与网络入口 | Health deps |
 | healthcheck.* | 显式检查：健康结论与证据，或 Case 消费关系 | Health |
-| metric.configuration | 无入参 → 抓取端点、指标名、图表与阈值规则 | Metric、Perf |
 | model.stream | 推理请求、取消信号 → 响应头与可读字节流 | Chat、Model Performance |
 
 `data.page` 的记录采用 Common `Value`，Service 声明对应 `ValueCodec`，负责查询、字段投影以及主动缩减。
@@ -221,13 +220,6 @@ Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 da
 
 Data 的具体行为见 [Data 汇集诊断](commands/data.md)；Plugin 的加载、分发与信任边界见
 [Plugin](plugin.md)，Command 生命周期见 [Command 生命周期](command-lifecycle.md)。
-
-Metric 在抓取前读取每个 Service 的配置快照，查询与 Detector 共用该快照。配置函数的访问权限与
-Command 抓取 metrics endpoint 的权限分别检查。无 Kubernetes 访问需求的函数使用 Host 上下文，
-保留共享 Client、取消和清理机制；声明 Kubernetes 访问需求的函数使用解析后的集群上下文。
-
-Perf 按 Service 选择唯一的场景扩展，再从场景引用的 `Service.cases` 来源选择 runner 支持的 Case；确认场景观测配置和 Case 后再申请施压审批。
-场景读取有独立的权限和调用上下文，读取完成即释放；请求 runner 的创建、调度和清理由 Command 管理。
 
 Case 来源的 `runner` 声明协议兼容性、端点和请求身份需求，发现时校验元数据，调用时创建
 runner。Command 在主动请求审批后调用创建函数，并持有访问上下文直到 runner 生命周期结束；

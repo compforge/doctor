@@ -66,43 +66,6 @@ export interface TenantDirectory {
   searchActiveUsers?(input: UserDirectorySearch): Promise<UserDirectorySearchResult>;
 }
 
-export interface ServiceMetricQuery {
-  /** Query for a cumulative /metrics snapshot. */
-  instant: string;
-  /** Query for a watched window. `{{window}}` is replaced with the collection duration. */
-  range: string;
-}
-
-export interface ServiceMetricChart {
-  id: string;
-  title: string;
-  description: string;
-  kind: "line" | "pie";
-  query: ServiceMetricQuery;
-  unit?: "seconds" | "percent" | "count";
-  /** PromQL result labels used as the chart series/slice name. */
-  label?: string;
-}
-
-export interface ServiceMetricDetector {
-  id: string;
-  title: string;
-  query: ServiceMetricQuery;
-  operator: "gt";
-  threshold: number;
-  severity: "warning" | "critical";
-  message: string;
-}
-
-/** Service-owned Prometheus contract consumed by doctor metric. */
-export interface MetricConfiguration {
-  endpoint: ServiceEndpoint & { path: string };
-  /** Limits embedded scraping to the metric families required by this declaration. */
-  metricNames: readonly string[];
-  charts: readonly ServiceMetricChart[];
-  detectors?: readonly ServiceMetricDetector[];
-}
-
 /** Protocol facts returned by one Case trigger; Doctor maps them to the shared Perf Outcome IR. */
 export interface ServiceCaseObservation {
   status: number | null;

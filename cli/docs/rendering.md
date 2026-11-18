@@ -41,7 +41,7 @@ Collect 默认采用 Command 优先的导航。用户在 Trace 选择请求 B �
 支持同一对象，就继续定位请求 B。某对象没有对应结果时明确展示缺失或失败，不静默切到其它请求。
 这套关联信息也能支持面向请求的阅读组织，无需重复采集或复制页面；双视图切换不是默认要求。
 
-Inspect 的环境范围、Tenant 的租户范围、Metric 的 Service/时间窗口范围不伪装成 biz-id。
+Inspect 的环境范围、Tenant 的租户范围不伪装成 biz-id。
 切换到这些页面时展示其真实作用域，共享结果只保存一份。对象与租户的关联必须来自已有结果，
 报告层不通过额外查询推导关系。
 
@@ -88,7 +88,7 @@ Trace 的树/详情/火焰图、Log 的时间线和筛选、Data 的记录与关
 scope 和页面列表。`ReportPage.subject` 显式关联业务对象，`source` 用 Artifact ID 与相对文件名定位
 本地页面；无可用页面时保留原因。`renderError` 单独表达渲染失败，不覆盖采集终态。
 
-Trace / Log / Data 从批量结果生成逐项页面；Inspect / Tenant / Metric 使用已保存的 Diagnosis。
+Trace / Log / Data 从批量结果生成逐项页面；Inspect / Tenant 使用已保存的 Diagnosis。
 Store 和 HTTP 也可保存脱敏后的本地展示投影，renderer 使用同一报告 shell 生成页面。聚合层只组合
 这些引用，视图内容按哈希去重存储，引用本身按页面 ID 与业务对象保留。
 
