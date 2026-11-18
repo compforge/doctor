@@ -1,9 +1,11 @@
+import coreVersion from "../../../VERSION" with { type: "text" };
 import type { PluginIdentity } from "@compforge/doctor-plugin";
 import type { DoctorHostInfo } from "../infra/host";
 import type { Distribution } from "./distribution";
 
-// Doctor Core 的唯一版本事实源；运行时和构建流程都读取这里。
-export const DOCTOR_CLI_VERSION = "0.1.283";
+// +spec=Core version comes from the root VERSION and is embedded in built artifacts.
+// +why=Version bumps change metadata without rewriting source or requiring a runtime file.
+export const DOCTOR_CLI_VERSION = coreVersion.trim();
 
 export function formatDistributionVersion(distribution: Distribution = {}): string {
   return `${distribution.name ?? "doctor"} ${distribution.version ?? DOCTOR_CLI_VERSION}`;

@@ -11,7 +11,7 @@ BUNDLE_RUNTIME ?= true
 ifeq ($(filter $(BUNDLE_RUNTIME),true false),)
 $(error BUNDLE_RUNTIME must be true or false)
 endif
-DOCTOR_CLI_VERSION ?= $(shell sed -n 's/^export const DOCTOR_CLI_VERSION = "\([^"]*\)";/\1/p' src/app/version.ts)
+DOCTOR_CLI_VERSION ?= $(shell cat ../VERSION)
 DOCTOR_ARTIFACT_PREFIX := doctor-$(DOCTOR_CLI_VERSION)
 TEST_FILES ?=
 

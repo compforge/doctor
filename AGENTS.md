@@ -97,8 +97,8 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
    `packages/agent`；Skill 跟随 Doctor Host 当前加载的精确 Plugin 版本，不建立独立安装、选择或升级生命周期。
 6. **Core 内容与版本同步演进**：Doctor Core 的代码或非 Markdown 用户可见内容发生变化时，必须在同一
    PR 运行 `make -C cli bump-version` 提升 patch version；纯 Markdown 文档改动无需提升版本。
-   `cli/src/app/version.ts` 是唯一版本事实源，运行时、构建产物命名与 Release 都读取该值，不在其它
-   文件重复维护版本号。
+   根 `VERSION` 是 Core 的唯一版本事实源；`cli/src/app/version.ts` 通过 text import 读取并在构建时嵌入，
+   保留版本展示逻辑。bump、构建产物命名与 Release 共用该值，不生成或重复维护版本号；交付产物不依赖外部 VERSION 文件。
 7. **Toolkit 独立演进**：工具、debug image、离线系统包与兼容性 manifest 归 `toolkit/`，不进入 CLI
    executable；任一交付内容变化都必须提升 `toolkit/VERSION`。平台按资源实际执行位置解析，不能用
    Doctor Host 平台替代 Kubernetes Target 平台。
