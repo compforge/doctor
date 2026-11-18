@@ -5,7 +5,7 @@ import { promptMultiSelect } from "../terminal/multi-select";
 import { matchListedChoice, printNumberedChoices, promptListedChoice } from "../terminal/selection";
 import { localCaseCatalog } from "./local";
 
-export type DoctorCaseCommand = "http" | "model" | "perf" | "eval";
+export type DoctorCaseCommand = "http" | "perf" | "eval";
 
 export interface DoctorCaseSet {
   source: "plugin" | "local";
@@ -36,9 +36,6 @@ export function caseMatchesCommand(item: Case, command: DoctorCaseCommand): bool
   if (command === "http") return typeof item.input.path === "string"
     && (item.input.protocol === undefined || item.input.protocol === "http")
     && (item.input.body === undefined || typeof item.input.body === "string");
-  if (command === "model") return item.input.kind === "performance"
-    || (["/chat/completions", "/embeddings", "/rerank"].includes(String(item.input.path))
-      && typeof item.input.body === "object" && item.input.body !== null);
   // Perf/Eval must supply the selected runner's protocol contract.
   return false;
 }
@@ -53,14 +50,11 @@ export async function selectDoctorCases(input: {
   command: DoctorCaseCommand;
   caseSetId?: string;
   caseIds?: string;
-  modelType?: string;
-  defaultCaseIds?: readonly string[];
   supports?: CaseSupport;
 }): Promise<DoctorCaseSelection | undefined> {
   const available = input.catalog.map((source) => ({
     source,
-    cases: source.caseSet.cases.filter((item) => (input.supports ?? source.supports ?? ((item: Case) => caseMatchesCommand(item, input.command)))(item)
-      && (!input.modelType || !item.facets?.model_type || item.facets.model_type === input.modelType)),
+    cases: source.caseSet.cases.filter((item) => (input.supports ?? source.supports ?? ((item: Case) => caseMatchesCommand(item, input.command)))(item)),
   })).filter((entry) => entry.cases.length > 0);
   if (!available.length) throw new Error(`没有可用于 doctor ${input.command} 的 Case`);
   const requestedSet = input.caseSetId;
@@ -83,8 +77,8 @@ export async function selectDoctorCases(input: {
   if (!chosen) throw new Error(`有 ${available.length} 个可用 CaseSet；请用 --caseset 指定`);
   const requestedIds = input.caseIds?.split(",").map((id) => id.trim()).filter(Boolean);
   if (input.caseIds !== undefined && !requestedIds?.length) throw new Error("--cases 未解析出任何 Case ID");
-  const defaults = input.defaultCaseIds ?? (input.command === "eval"
-    ? chosen.cases.map((item) => item.id) : [chosen.cases[0]!.id]);
+  const defaults = input.command === "eval"
+    ? chosen.cases.map((item) => item.id) : [chosen.cases[0]!.id];
   let ids = requestedIds;
   if (!ids && isInteractive()) {
     ids = await promptMultiSelect({

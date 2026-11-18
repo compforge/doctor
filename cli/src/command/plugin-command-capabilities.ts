@@ -70,22 +70,6 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
       purpose: "定位业务 MCP server 并解释工具语义",
     }],
   },
-  model: {
-    command: "doctor model",
-    needs: [{
-      requirement: "preferred",
-      capability: { scope: "extension", name: "tenant.list" },
-      purpose: "列出可诊断租户",
-    }, {
-      requirement: "preferred",
-      capability: { scope: "extension", name: "tenant.resolve" },
-      purpose: "按名称解析可诊断租户",
-    }, {
-      requirement: "required",
-      capability: { scope: "extension", name: "model.query" },
-      purpose: "发现可用模型",
-    }],
-  },
   eval: {
     command: "doctor eval",
     needs: [{
