@@ -95,8 +95,8 @@ export const PLUGIN_COMMAND_CAPABILITIES = {
   },
   perf: {
     command: "doctor perf",
-    needs: [{requirement: "required", capability: {scope: "resource", name: "cases"},
-      purpose: "提供 Case 资产和静态 Operation 观测入口"}],
+    needs: [{requirement: "preferred", capability: {scope: "resource", name: "cases"},
+      purpose: "提供加压请求", fallback: "按 Operation 观测自然流量"}],
   },
 } as const satisfies Record<string, PluginCapabilityContract>;
 

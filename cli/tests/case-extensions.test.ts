@@ -1,3 +1,5 @@
+import { Operation } from "@compforge/harness-common";
+import { selectPerfTarget } from "../src/perf/selection";
 import { bindService, withSummary } from "@compforge/doctor-plugin";
 import { expect, mock, test } from "bun:test";
 import { createServiceCatalog, type CaseCatalog, type CaseRunnerFactory, type ServiceDefinition, type PluginDefinition } from "@compforge/doctor-plugin";
@@ -115,4 +117,16 @@ test("Perf Harness owns lazy creation and cleanup when cancellation races with s
     expect(cleanup).toHaveBeenCalledTimes(preCancelled ? 0 : 1);
     expect(fire).not.toHaveBeenCalled();
   }
+});
+
+test("positive load can use a Case source without an Operation and observe a separate service", async () => {
+  const op = new Operation({name:"search", serviceName:"store"});
+  const plugin = {id:"fixture", version:"1", services:createServiceCatalog([
+    {...base, name:"chat-server", cases:[{id:"chat", load:catalog.load, runner:extension}]},
+    {...base, aliases:[], name:"store", operations:[op]},
+  ])};
+  const selected = await selectPerfTarget(plugin, {operation:op.id(), cases:"hello"}, true);
+  expect(selected?.service.name).toBe("chat-server");
+  expect(selected?.operation.id()).toBe(op.id());
+  expect(selected?.selected.map(c => c.item.id)).toEqual(["hello"]);
 });

@@ -33,7 +33,7 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 ## 流程
 
-1. `doctor case` 只读列出可用 Case。交互终端可选 CaseSet 和一个或多个 HTTP Case，再确认是否发送、提供目标 base URL 和请求执行位置。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
+1. `doctor case` 只读列出可用 Case。交互终端先选 Service（或用 `-s` 指定），再按 CaseSet 分组浏览；HTTP Case 连续编号，可跨组多选，其他 Case 标为仅查看，再确认是否发送、提供目标 base URL 和请求执行位置。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
 2. 发送复用 HTTP Collect：从本机或指定 Pod/Container 发起请求；先 Inspect 目标 host:port 的 DNS/TCP，再串行执行选中的 Case。`--repeat` 控制轮次，`--interval` 控制轮间等待。每次请求保留状态、headers/body、传输阶段耗时和可选 SSE 时间线。
 3. Detector 依据传输完整性、HTTP 状态、Content-Type、耗时和 SSE 终态产生 Findings；同一 Case 的多轮结果可识别偶现失败。报告保存实际 Request Plan 的可复现 cURL，异常响应可在 HTML/Markdown 查看，完整原始证据进入 Bundle。
 4. `doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，预算、并发和熔断仍由 Perf 命令控制。`doctor eval` 默认逐例执行所选 CaseSet 的全部 Eval Case，一次一个请求，也可用 `--cases` 选择子集。

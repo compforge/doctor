@@ -3,6 +3,8 @@ import type { Run } from "@compforge/perf-harness";
 
 export interface PerfCliOpts {
 
+  service?: string;
+  operation?: string;
   caseset?: string;
   cases?: string;
   qps?: string;

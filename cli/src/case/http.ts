@@ -3,6 +3,7 @@ import type { Case } from "@compforge/spec-case/model";
 import { validateHttpCase } from "@compforge/spec-case/http";
 import { parseHttpScenario, type HttpScenarioOverrides } from "../collect/shared/http/config";
 import type { HttpScenario } from "../collect/shared/http/model";
+import { caseRef, type CaseChoice } from "./choices";
 import type { DoctorCaseSelection } from "./catalog";
 
 function requestUrl(baseUrl: string, path: unknown, id: string): string {
@@ -60,4 +61,23 @@ export function httpScenarioFromDoctorCases(
     name: selection.source.caseSet.caseset,
     requests: selection.cases.map((item) => requestFromCase(item, baseUrl)),
   }, sourcePath, overrides);
+}
+
+export function prepareHttpCases(choices: CaseChoice[], baseUrl: string, overrides: HttpScenarioOverrides = {}) {
+  if (!choices.length) throw new Error("请选择 HTTP Case");
+  const first = choices[0]!.source;
+  const multiple = choices.some(c => c.source !== first);
+  const name = multiple ? first.service : first.caseSet.caseset;
+  const requests = choices.flatMap(choice => {
+    const {source, item} = choice;
+    const scenario = httpScenarioFromDoctorCases({source, cases:[item]}, baseUrl, overrides);
+    if (!multiple) return scenario.requests;
+    const id = caseRef(choice).replaceAll("/", ":");
+    return scenario.requests.map(group => ({...group, id, entrypoints:group.entrypoints.map(plan => ({...plan, requestId:id}))}));
+  });
+  return {
+    scenario:{schema:"doctor-http/v1" as const, name, requests}, source:first.file ?? name,
+    origin:{type:"doctor_case", service:first.service, caseset:multiple ? undefined : first.caseSet.caseset,
+      cases:requests.map(r => r.id), refs:choices.map(caseRef)},
+  };
 }

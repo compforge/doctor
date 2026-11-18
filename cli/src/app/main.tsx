@@ -83,7 +83,9 @@ import { mcpCommand } from "../collect/mcp/command";
 import { collectCommand } from "../collect/composite";
 import { evalCommand } from "../eval/command";
 import { perfCommand } from "../perf/command";
-import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
+import { caseRef, chooseName, chooseServiceCases } from "../case/choices";
+import { localCaseCatalog } from "../case/local";
+import { doctorCaseCatalog, caseMatchesCommand } from "../case/catalog";
 import { isInteractive, withInteractionOptions } from "../terminal/policy";
 import { promptListedChoice } from "../terminal/selection";
 
@@ -355,9 +357,11 @@ function withMcpOptions(cmd: CommandT): CommandT {
 
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
+    .option("-s, --service <name>", "选择 Service，默认 chat-server")
+    .option("--operation <id>", "指定观测入口 Operation")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
-    .option("--qps <number>", "注入 QPS；0 只观测自然流量（默认 0）")
+    .option("--qps <number>", "所有选中 Case 的总注入 QPS；0 只观测自然流量（默认 0）")
     .option("--max-inflight <number>", "最大在途请求数（默认 20）；QPS=0 时不参与执行")
     .option("--ramp <seconds>", "warmup 升压时间（秒），QPS=0 时跳过", "10")
     .option("--hold <seconds>", "hold 观测时间（秒，默认 60；建议覆盖 4～5 个 scrape 周期）")
@@ -831,25 +835,49 @@ export function createDoctorProgram(
         if (!service) throw new Error(`Unknown Service: ${name}`);
         return service.name;
       });
-      const sources = doctorCaseCatalog(active, opts.caseFile, undefined, owners?.length === 1 ? owners[0] : undefined)
-        .filter(source => !owners || owners.includes(source.service));
-      for (const source of sources) {
-        writeOutput(`${source.caseSet.caseset} (${source.source}/${source.service}${source.sourceId ? `/${source.sourceId}` : ""})\n`);
-        for (const item of source.caseSet.cases) {
-          writeOutput(`  ${item.id}${item.desc ? `  ${item.desc}` : ""}\n`);
+      if (opts.send && !isInteractive()) {
+        await runCommand(caseCommand, opts, domainInput(opts), commandRuntime);
+        return;
+      }
+      let owner = owners?.length === 1 ? owners[0] : undefined;
+      if (isInteractive() && !owner) {
+        const services = localCaseCatalog(opts.caseFile).file ? active?.services.services.map(s => s.name)
+          : active?.services.caseSources().map(s => s.service.name);
+        owner = await chooseName([...new Set(services)].filter(name => !owners || owners.includes(name)), "Service", "--service");
+        if (!owner) return 130;
+      }
+      const sources = doctorCaseCatalog(active, opts.caseFile, undefined, owner)
+        .filter(source => owner ? source.service === owner : !owners || owners.includes(source.service));
+      if (!isInteractive() && !opts.send) {
+        for (const source of sources) {
+          writeOutput(`${source.caseSet.caseset} (${source.source}/${source.service}${source.sourceId ? `/${source.sourceId}` : ""})\n`);
+          for (const item of source.caseSet.cases) {
+            writeOutput(`  ${item.id}${item.desc ? `  ${item.desc}` : ""}\n`);
+          }
+        }
+        for (const { service, source } of active?.services.caseSources() ?? []) {
+          if ((!owners || owners.includes(service.name)) && !sources.some(item => item.service === service.name && item.sourceId === source.id)) {
+            writeOutput(`${service.name}/${source.id} (plugin · runtime Cases)${source.description ? `  ${source.description}` : ""}\n`);
+          }
+        }
+        return;
+      }
+      for (const {service, source} of active?.services.caseSources() ?? []) {
+        if (service.name === owner && !sources.some(s => s.sourceId === source.id)) {
+          writeOutput(`${source.id}（运行时 Case，可通过 doctor case --list 查看）\n`);
         }
       }
-      for (const { service, source } of active?.services.caseSources() ?? []) {
-        if ((!owners || owners.includes(service.name)) && !sources.some(item => item.service === service.name && item.sourceId === source.id)) {
-          writeOutput(`${service.name}/${source.id} (plugin · runtime Cases)${source.description ? `  ${source.description}` : ""}\n`);
-        }
+      const choices = await chooseServiceCases(sources, {...opts, browse:true,
+        supports:(_source, item) => caseMatchesCommand(item, "http")});
+      if (!choices) return 130;
+      if (!choices.length) {
+        if (opts.send) throw new Error("没有可发送的 HTTP Case");
+        writeOutput("此 Service 没有可直接发送的 HTTP Case。运行 doctor case --list 可查看运行时来源。\n");
+        return;
       }
-      if (!opts.send && !isInteractive()) return;
-      const selection = await selectDoctorCases({ catalog: sources, command: "http", caseSetId: opts.caseset, caseIds: opts.cases });
-      if (!selection) return 130;
       if (!opts.send) {
         const send = await promptListedChoice({
-          question: `发送 ${selection.source.caseSet.caseset}/${selection.cases.map((item) => item.id).join(", ")}？[y/N] `,
+          question: `发送 ${choices.map(caseRef).join(", ")}？[y/N] `,
           match: (answer) => /^(y|yes)$/i.test(answer) ? true : /^(n|no)$/i.test(answer) ? false : undefined,
           invalidMessage: "请输入 y/yes 或 n/no。", emptyValue: false,
         });
@@ -868,9 +896,9 @@ export function createDoctorProgram(
           invalidMessage: "请输入无凭据的 http(s) URL。",
         });
       }
+      if (!baseUrl && isInteractive()) return 130;
       if (!baseUrl) throw new Error("发送 Case 需要 --base-url");
-      await runCommand(caseCommand, opts, domainInput({ ...opts, caseset: selection.source.caseSet.caseset,
-        cases: selection.cases.map((item) => item.id).join(","), baseUrl }), commandRuntime);
+      await runCommand(caseCommand, opts, domainInput({ ...opts, choices, baseUrl }), commandRuntime);
     }));
   });
   withNetworkOptions(
@@ -929,7 +957,7 @@ export function createDoctorProgram(
     catalog.command("perf").description("观测流量下的性能，按需加压并关联 Operation graph")
       .addHelpText("after", `
 分析思路：
-  以所选 Case 的 Operation 为入口观测；QPS=0 使用自然流量，正 QPS 叠加加压。
+  QPS=0 直接观测 Operation；正 QPS 在同一 Service 的所选 Case 间等概率随机发送。
   查询外部 Prometheus/VM 同窗口指标，离线渲染 Report 与 Callgraph。
 结果解读：
   比较实际负载、错误率、延迟与证据覆盖；单次结果仅适用于本次目标、Case 和负载条件。

@@ -2,8 +2,9 @@ import { prepareCommandRequirements } from "../command/prepare";
 import { serializeEvidenceResult } from "../collect/serialize";
 import { runCollectCpu } from "../collect/cpu";
 import { runCollectHttp } from "../collect/http";
+import type { CaseChoice } from "../case/choices";
 import { doctorCaseCatalog, selectDoctorCases } from "../case/catalog";
-import { httpScenarioFromDoctorCases } from "../case/http";
+import { prepareHttpCases } from "../case/http";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectNetwork } from "../collect/network";
 import type { HtmlReportOptions } from "../collect/output/html";
@@ -100,6 +101,7 @@ export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof ru
 });
 
 export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption> & {
+  choices?: CaseChoice[];
   caseFile?: string;
   services?: string[];
   caseset?: string;
@@ -115,27 +117,25 @@ export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
   prepare: async (_context, input) => input,
   run: async (context, input) => {
     if (!input.baseUrl) throw new Error("发送 HTTP Case 需要 --base-url");
-    const plugin = await context.resolvePlugin();
-    const services = input.services?.map(name => {
-      const service = plugin?.services.find(name);
-      if (!service) throw new Error(`Unknown Service: ${name}`);
-      return service.name;
+    let choices = input.choices;
+    if (!choices) {
+      const plugin = await context.resolvePlugin();
+      const owners = input.services?.map(name => {
+        const owner = plugin?.services.find(name);
+        if (!owner) throw new Error(`Unknown Service: ${name}`);
+        return owner.name;
+      });
+      const catalog = doctorCaseCatalog(plugin, input.caseFile, undefined, owners?.length === 1 ? owners[0] : undefined);
+      const selection = await selectDoctorCases({catalog:catalog.filter(source => !owners || owners.includes(source.service)),
+        command:"http", caseSetId:input.caseset, caseIds:input.cases});
+      if (!selection) return commandOutcome(130);
+      choices = selection.cases.map(item => ({source:selection.source, item}));
+    }
+    const prepared = prepareHttpCases(choices, input.baseUrl, {
+      timeoutSeconds:input.timeout === undefined ? undefined : Number(input.timeout),
+      maxResponseMiB:input.maxSize === undefined ? undefined : Number(input.maxSize),
     });
-    const selection = await selectDoctorCases({
-      catalog: doctorCaseCatalog(plugin, input.caseFile, undefined, services?.length === 1 ? services[0] : undefined)
-        .filter(entry => !services || services.includes(entry.service)),
-      command: "http", caseSetId: input.caseset, caseIds: input.cases,
-    });
-    if (!selection) return commandOutcome(130);
-    const scenario = httpScenarioFromDoctorCases(selection, input.baseUrl, {
-      timeoutSeconds: input.timeout === undefined ? undefined : Number(input.timeout),
-      maxResponseMiB: input.maxSize === undefined ? undefined : Number(input.maxSize),
-    });
-    return runCollectHttp(
-      { ...input, ...commandOptions(context) }, context, undefined, undefined,
-      { scenario, source: selection.source.file ?? selection.source.caseSet.caseset,
-        caseIds: selection.cases.map((item) => item.id) },
-    );
+    return runCollectHttp({...input, ...commandOptions(context)}, context, undefined, undefined, prepared);
   },
 });
 
