@@ -85,7 +85,6 @@ test("模型协议不暴露 Plugin 原始 backend 配置", () => {
   const roots = [
     join(import.meta.dir, "../src"),
     join(import.meta.dir, "../../../cli/src/model"),
-    join(import.meta.dir, "../../../cli/src/collect/model"),
   ];
   const privateBackendFields = /\b(?:ModelID|ModelName|Credentials|Parameters|Features|AudioConfig|Property)\b/;
   for (const root of roots) {

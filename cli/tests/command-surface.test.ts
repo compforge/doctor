@@ -103,7 +103,7 @@ describe("root surface", () => {
     expect(result.stdout).toContain("data [options]");
     expect(result.stdout).toContain("store [options]");
     expect(result.stdout).toContain("tenant [options]");
-    expect(result.stdout).toContain("model [options]");
+    expect(result.stdout).not.toContain("model [options]");
     expect(result.stdout).toContain("eval [options]");
     expect(result.stdout).toContain("perf [options]");
     expect(result.stdout).toContain("overview [options]");
@@ -606,25 +606,8 @@ describe("command help", () => {
     expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
   });
 
-  test("model exposes tenant/model selection and inference diagnosis options", async () => {
-    const result = await runWithPlugin(["model", "--help"]);
-    expect(result.exitCode).toBe(0);
-    expect(result.stdout).toContain("从模型目录选择可用模型，执行 validation 与真实 inference");
-    expect(result.stdout).toContain("--tenant-id <id>");
-    expect(result.stdout).toContain("--tenant-name <name>");
-    expect(result.stdout).toContain("--model <id|name>");
-    expect(result.stdout).toContain("--type <type>");
-    expect(result.stdout).toContain("--model-catalog-service <name>");
-    expect(result.stdout).toContain("--tenant-directory-service <name>");
-    expect(result.stdout).toContain("--timeout <seconds>");
-    expect(result.stdout).toContain("--performance");
-    expect(result.stdout).toContain("--no-performance");
-    expect(result.stdout).toContain("--repeat <n>");
-    expect(result.stdout).toContain("--max-output-tokens <n>");
-    expect(result.stdout).toContain("-f, --format <format>");
-    expect(result.stdout.replace(/\s+/g, " ")).toContain("当前默认 default（HTML + Bundle）");
-    expect(result.stdout).toContain("--output <path>");
-    expect(result.stdout).toContain("-f default -o ./report → ./report.html 与 ./report.tar.gz（两个文件）");
+  test("model is absent from the command catalog", () => {
+    expect(createDoctorProgram({ plugin: testPlugin }).commands.some(cmd => cmd.name() === "model")).toBe(false);
   });
 
   test("mem uses PyHeap without exposing backend selection or historical modes", async () => {

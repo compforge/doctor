@@ -15,7 +15,7 @@ Doctor CLI 是本地诊断入口，以 Provision、Health、Overview、Collect�
 - **系统体检**：`doctor health` 交互时先选 scope；按 infra → self → deps → biz 递进；infra/self/deps 自动发现检查项，infra 包含 DB、Host S3 与 OpenSearch，infra/deps 逐项确认；仅进入 biz 才选 Service；Case 按声明的 deps/biz 层级准备身份与执行。不查询代表 biz-id 或触发 Collect。
 - **运行概览**：`doctor overview` 展示历史统计和耗时分布，按需从可下钻条目选取 biz-id，确认后复用 Collect。
 - **数据集采集**：`doctor eval` 从统一 Case 目录选择 CaseSet，逐例触发并复用 Collect 取得关联证据，不做质量评分。
-- **Case 与性能观测**：`doctor case` 列出并发送选中的 HTTP Case；`doctor model` 和 `doctor perf` 从同一目录选择适用的 Case，Perf 复用共享 Harness 观测自然流量，按需加压并采集同窗口证据。
+- **Case 与性能观测**：`doctor case` 列出并发送选中的 HTTP Case；`doctor perf` 从目录选择适用的 Case，Perf 复用共享 Harness 观测自然流量，按需加压并采集同窗口证据。
 - **开放式问答**：`doctor chat` 默认运行本地 Agent；显式 `--server` 才连接远端，两者共用 AgentUE/chat-tui 交互。
 - **Extension 扩展**：Core、Plugin、Service 和本地适配器共用按 kind 发现的注册机制；公共契约归 `../packages/plugin`。
 
@@ -49,7 +49,7 @@ cli/src/
 ├── perf/                自然流量/加压观测与同窗口证据编排
 ├── chat/                Session / Controller 与 AgentUE adapter
 ├── plugin/              Plugin 宿主选择、加载与公共协议适配
-├── model/               Model Collect 与 Chat 共用的模型访问
+├── model/               Chat 使用的模型目录与推理访问
 ├── terminal/            选择、确认与输出边界
 ├── protocol/            可选远端协议 client
 └── infra/               Host、Target、Kubernetes 与外部资源 adapter

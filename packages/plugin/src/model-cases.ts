@@ -65,7 +65,7 @@ export const MODEL_CASE_SET: CaseSet = {
   ],
 };
 
-/** Functional stimuli only; model throughput sampling remains owned by doctor model. */
+/** Functional stimuli for model connectivity checks. */
 export function modelConnectivityCases(model: Pick<Model, "type" | "inputModalities">): Case[] {
   return MODEL_CASE_SET.cases.filter(item => item.facets?.mode === "connectivity"
     && item.facets.model_type === model.type

@@ -10,7 +10,6 @@ export interface SelectedInferenceModel extends Model {
 
 /**
  * @spec Model Evidence 只持久化公共白名单字段，不能因 Plugin runtime 对象携带额外属性而泄漏凭据或私有配置
- * @see {@link ../../docs/commands/model-diagnosis.md}
  */
 export function modelSnapshot(model: Model): Model {
   return {

@@ -23,7 +23,6 @@ import { writeOutput } from "../terminal/output";
 //   doctor case              → 列出 Case，多选后通过 HTTP 发送并分析响应（collect/）
 //   doctor net               → 协调目标服务 Pod 短时抓包并主动发起染色请求（collect/）
 //   doctor mcp               → MCP tool 多维取证与规则分析（collect/）
-//   doctor model             → 从模型目录选择目标并执行 validation/inference（collect/）
 //   doctor eval              → 按 canonical CaseSet 顺序触发请求，采集关联 trace/log/data，不做质量评分
 //   doctor perf              → 观测流量下的性能，按需加压并采集外部指标
 //   doctor install           → 向选定 Pod container 安装 GDB
@@ -81,7 +80,6 @@ import { registerResourceCommand } from "../resource/command";
 import { withDbOptions } from "../collect/db/options";
 import { withS3Options } from "../collect/s3/options";
 import { mcpCommand } from "../collect/mcp/command";
-import { modelCommand } from "../collect/model/command";
 import { collectCommand } from "../collect/composite";
 import { evalCommand } from "../eval/command";
 import { perfCommand } from "../perf/command";
@@ -355,35 +353,6 @@ function withMcpOptions(cmd: CommandT): CommandT {
     );
 }
 
-function withModelOptions(cmd: CommandT): CommandT {
-  return cmd
-    .option("--case-file <path>", "归属所选 Service 的 CaseSet YAML；缺省读取当前目录 doctor-cases.yaml")
-    .option("--caseset <id>", "选择 CaseSet")
-    .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
-    .option("--tenant-id <id>", "租户 ID；交互终端缺省时从租户目录中选择")
-    .option("--tenant-name <name>", "通过租户目录精确解析租户名")
-    .option("--model <id|name>", "模型 ID 或名称；交互终端缺省时从模型目录中选择")
-    .option("--type <type>", "只列出指定类型：llm、embedding、rerank 或 audio")
-    .option("--timeout <seconds>", "模型 validation/inference 请求超时（1..600 秒）", "60")
-    .option("--performance", "默认选择四个内置 LLM 流式性能 Case；也可用 --cases 指定")
-    .option("--no-performance", "显式禁止选择 LLM 流式性能 Case")
-    .option("--repeat <n>", "每个性能测试场景的采样次数（1..20）", "3")
-    .option("--max-output-tokens <n>", "持续生成场景的最大输出 token（32..4096）", "256")
-    .option("--model-provider <service[/extension]>", "模型查询 Extension 提供方；多候选时必须选择")
-    .option("--inference-provider <service[/extension]>", "模型推理 Extension 提供方")
-    .option("--model-catalog-service <name>", "模型目录 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--model-catalog-port <port>", "模型目录 Service HTTP 端口；缺省由 Plugin 声明")
-    .option("--directory-provider <service[/extension]>", "租户目录 Extension 提供方")
-    .option("--tenant-directory-service <name>", "租户目录 Kubernetes Service；缺省由 Plugin 声明")
-    .option("--tenant-directory-port <port>", "租户目录 Service HTTP 端口；缺省由 Plugin 声明")
-    .option("--profile <name>", "从 profile 取 namespace / kubeconfig")
-    .addOption(deliveryFormatOption(["bundle", "json", "html"]))
-    .option(
-      "-o, --output <path>",
-      "输出 basename/路径（未指定 format 时生成同名 .html 与 .tar.gz）",
-    );
-}
-
 function withPerfOptions(cmd: CommandT): CommandT {
   return cmd
     .option("--caseset <id>", "选择 CaseSet")
@@ -443,7 +412,7 @@ export function createDoctorProgram(
       "  回顾近期运行情况 → overview 查看错误与耗时分布，按需选取代表业务 ID",
       "  排查具体问题     → collect 汇集关联证据；trace / log / data 等命令可单独取证",
       "  检查部署与依赖   → inspect 查看运行态与配置；store / db / s3 检查存储与数据",
-      "  复现与性能分析   → case / model / mcp 发起请求；eval 批量取证，perf 受控压测",
+      "  复现与性能分析   → case / mcp 发起请求；eval 批量取证，perf 受控压测",
       "  CPU / 内存 / 网络 → cpu / mem / net 采集，mema / neta 离线分析",
       "  了解业务与排查方法 → knowledge 查阅知识，chat 交互问诊",
       "",
@@ -808,7 +777,7 @@ export function createDoctorProgram(
   确定租户后按 biz-type 查询数据；缺省查询所有支持租户过滤的类型。
   各 Service/类型独立分页，total 为该租户过滤后的总数；当前页不代表完整盘点。
 结果解读：
-  租户可见的配置或模型目录不证明实际调用成功；模型调用用 model，单请求记录用 data / trace。
+  租户可见的配置或模型目录不证明实际调用成功；单请求记录用 data / trace。
 `)
       .addHelpText("after", ({ command }) => plugin ? dataTypesHelp(plugin.services, command.opts().services, true) : ""),
   ).action(async (opts: CollectTenantCliOptions & { bizType?: string[] }, command: CommandT) => {
@@ -943,18 +912,6 @@ export function createDoctorProgram(
   ).action(async (opts, command: CommandT) => {
     opts = commandOptionsWithSources(command);
     await runCommand(mcpCommand, opts, domainInput(opts), commandRuntime);
-  });
-  withModelOptions(
-    catalog.command("model").helpGroup("Collect · 采集与分析:").description("从模型目录选择可用模型，执行 validation 与真实 inference")
-      .addHelpText("after", `
-分析思路：
-  按租户与模型身份检查 backend validation，再执行所选 Case 的真实 inference。
-结果解读：
-  validation 通过不保证推理成功；串行性能样本只反映本次请求，不能作为并发容量结论。
-`),
-  ).action(async (opts, command: CommandT) => {
-    opts = commandOptionsWithSources(command);
-    await runCommand(modelCommand, opts, domainInput(opts), commandRuntime);
   });
   withEvalOptions(
     catalog.command("eval").description("按 canonical CaseSet 触发真实请求并采集关联 trace、log、data，不做质量评分")

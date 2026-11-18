@@ -117,7 +117,6 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
 | `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
 | `doctor case` | 列出内置与当前目录的 Case；选择一个或多个 HTTP Case 发送并分析响应 |
-| `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
 | `doctor net` | 协调多个 Service Pod 短时抓包；选择 YAML 跟踪已知请求，或守候页面操作产生的请求 |
 | `doctor neta [input]` | 纯离线分析 NetBundle，生成业务调用 Diagnosis 的 Markdown、泳道/瀑布 HTML 与结构化 JSON |
 | `doctor version` | 显示 Doctor、当前平台及嵌入 Plugin 的精确版本 |
@@ -140,7 +139,6 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Store 诊断](docs/commands/store-diagnosis.md)
 - [S3 对象取证](docs/commands/s3.md)
 - [MCP 诊断](docs/commands/mcp-diagnosis.md)
-- [Model 诊断](docs/commands/model-diagnosis.md)
 - [Image 准备](docs/commands/image.md)
 - [Debug container](docs/commands/debug-container.md)
 - [Container GDB 安装](docs/commands/install.md)

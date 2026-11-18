@@ -5,15 +5,11 @@ import { join } from "node:path";
 import { doctorCaseCatalog, selectDoctorCases } from "../src/case/catalog";
 import { httpScenarioFromDoctorCases } from "../src/case/http";
 import { createDoctorExtensionRegistry } from "../src/plugin/extension-registry";
-import { MODEL_CASE_SET, createServiceCatalog, withSummary, type CaseCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
+import { createServiceCatalog, withSummary, type CaseCatalog, type PluginDefinition } from "@compforge/doctor-plugin";
 
 const localOwner: PluginDefinition = { id: "fixture", version: "1", services: createServiceCatalog([{
   name: "app", component: { name: "app", repository: { forge: { name: "test" }, path: "app" } }, workloads: [],
 }]) };
-const modelOwner: PluginDefinition = { ...localOwner, services: createServiceCatalog([{
-  ...localOwner.services.find("app")!, cases: [{ id: "model-diagnosis", load: () => [MODEL_CASE_SET] }],
-}]) };
-
 test("shared catalog filters one canonical CaseSet by command and selects multiple IDs", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-catalog-"));
   try {
@@ -21,7 +17,6 @@ test("shared catalog filters one canonical CaseSet by command and selects multip
     const catalog = doctorCaseCatalog(localOwner, undefined, directory);
     const http = await selectDoctorCases({ catalog, command: "http", caseSetId: "shared", caseIds: "health,ping" });
     expect(http?.cases.map((item) => item.id)).toEqual(["health", "ping"]);
-    expect((await selectDoctorCases({ catalog, command: "model", caseSetId: "shared", caseIds: "chat" }))?.cases).toHaveLength(1);
     expect((await selectDoctorCases({ catalog, command: "perf", supports: item => typeof item.input.query === "string", caseSetId: "shared", caseIds: "load,load_more" }))?.cases.map((item) => item.id)).toEqual(["load", "load_more"]);
     expect(() => httpScenarioFromDoctorCases(http!, "http://127.0.0.1:8765")).not.toThrow();
     const scenario = httpScenarioFromDoctorCases(http!, "http://127.0.0.1:8765");
@@ -67,26 +62,6 @@ test("catalog does not auto-load the old doctor-case.yaml filename", () => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
-
-for (const { caseId, role, roles } of [
-  { caseId: "llm_adjacent_assistants", role: "assistant", roles: ["system", "user", "assistant", "assistant", "user"] },
-  { caseId: "llm_adjacent_users", role: "user", roles: ["system", "user", "user"] },
-]) {
-  test(`Service-contributed Model Case keeps adjacent ${role} messages in the request`, async () => {
-    const directory = mkdtempSync(join(tmpdir(), "doctor-model-adjacent-"));
-    try {
-      const selected = await selectDoctorCases({
-        catalog: doctorCaseCatalog(modelOwner, undefined, directory), command: "model",
-        caseSetId: "doctor_model", caseIds: caseId, modelType: "llm",
-      });
-      const messages = (selected?.cases[0]?.input.body as { messages: { role: string }[] }).messages;
-      expect(messages.map((message) => message.role)).toEqual(roles);
-      expect(selected?.cases[0]?.desc).toContain(`${role} 消息相邻`);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
-  });
-}
 
 test("Service assets and local Cases are selected by protocol, not command facets", async () => {
   const directory = mkdtempSync(join(tmpdir(), "doctor-case-extensions-"));

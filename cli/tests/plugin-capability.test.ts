@@ -76,14 +76,6 @@ test("preferred Plugin capability 缺失时允许命令降级", () => {
   expect(evaluation.facts[0]?.available).toBe(false);
 });
 
-test("model command 不依赖租户配置采集能力", () => {
-  expect(PLUGIN_COMMAND_CAPABILITIES.model.needs.map((need) => need.capability)).toEqual([
-    { scope: "extension", name: "tenant.list" },
-    { scope: "extension", name: "tenant.resolve" },
-    { scope: "extension", name: "model.query" },
-  ]);
-});
-
 test("tenant consumes paged data; identity lookup is required only when selected", () => {
   expect(PLUGIN_COMMAND_CAPABILITIES.tenant.needs.map(need => need.capability)).toEqual([
     { scope: "extension", name: "data.page" },

@@ -141,7 +141,6 @@ async function prepareModelDiscovery(
 
 /**
  * @spec Model discovery 只打开 tenant directory 与 model catalog，不能创建 inference 流量
- * @see {@link ../../docs/commands/model-diagnosis.md}
  */
 export async function openModelDiscoveryAccess(
   options: OpenModelAccessOptions,
