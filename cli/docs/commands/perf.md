@@ -53,9 +53,14 @@ QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业
 - Core 选择 Case、确认加压影响并准备所需访问；Harness 拥有调度、窗口、查询计划、归约和报告。
 - Probe 的后端表达式和统计口径由 Plugin 声明；Toolbox 提供参数绑定与 MetricDB 客户端。
 
-HTML 与 eval-perf 一样分为两个 tab：Report 展示观测概况、指标和适用的请求统计；Callgraph 展示调用图。
-所有已注册 Operation 的 Probe 都参与观测。Callgraph 默认显示 所选 Operation 的可达子图，沿 calls/mayCalls
-展开，可切换全图；两种视图使用同一批证据。共享节点与环不会复制或改变身份。
+## 阅读 HTML 报告
+
+两个页签使用同一次运行的证据，可以先找出指标发生变化的时段，再沿调用关系缩小排查范围。
+
+- **Trends（趋势，部分版本标为 Report）** 在同一页展示所选 Case 和入口 Operation。沿时间轴对照加压器的目标 QPS、实际请求和 Operation Probe 指标，可以看出延迟或错误率从何时开始上升。Probe 也可以提供首包耗时等业务指标。请求按 Case 分组；多个 Case 共用一个 Operation 时，共享该 Operation 的指标曲线。
+- **Callgraph（调用图）** 从所选 Case 的入口 Operation 或显式选择的 Operation 出发，沿 `calls` 和 `mayCalls` 展开。用各节点在选定窗口的 RED 汇总值（请求速率、错误率、延迟）判断哪一段值得进一步排查。默认显示可达子图，可切换全图；共享节点只展示一次。
+
+所有已注册 Operation 的 Probe 都参与观测。自然流量和注入流量可能同时出现在 Operation 指标中。
 
 ## Profile 与证据
 
