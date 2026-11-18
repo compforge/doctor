@@ -1,6 +1,7 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { Operation } from "@compforge/harness-common";
+import { serviceResourceProbes } from "./resources";
+import type { Operation, Service } from "@compforge/harness-common";
 import type { MetricDBReader } from "@compforge/harness-toolbox/metricdb";
 import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
@@ -46,18 +47,19 @@ export interface PreparedPerfMetrics {
  * @link cli/docs/commands/perf.md
  */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
-  url?: string): Promise<PreparedPerfMetrics> {
+  url?: string, services: readonly Pick<Service,"name"|"workloads">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.probes?.length);
-  const prepared: PreparedPerfMetrics = { declared: declared.length > 0, probes: [], issues: [] };
+  const workloads = services.filter(service => service.workloads.length);
+  const prepared: PreparedPerfMetrics = { declared: declared.length + workloads.length > 0, probes: [], issues: [] };
   const missing = (message: string) => { prepared.issues.push(message); useLogger("perf").warn(message); };
-  if (!declared.length) {
-    useLogger("perf").info("未声明 Operation 指标 Probe；本轮只保留运行窗口与已有请求事实");
+  if (!prepared.declared) {
+    useLogger("perf").info("未声明 Operation 指标或 Service workload；本轮只保留运行窗口与已有请求事实");
     return prepared;
   }
   try {
     prepared.source = await perfMetricSource(context, url);
     if (!prepared.source) {
-      missing("Operation 已声明 probe，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
+      missing("已声明观测指标，但未配置 metricdb（Prometheus/VM）；本轮仅保留运行窗口与已有请求事实");
     } else {
       for (const operation of declared) {
         try {
@@ -66,7 +68,14 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
           missing(`${operation.id()} 指标未采集：${diagnosticMessage(error)}`);
         }
       }
-      useLogger("perf").info(`指标后端=${prepared.source.kind}；已准备 ${prepared.probes.length} 组 Operation 查询（不代表已有样本），结束后按实际窗口读取`);
+      for (const service of workloads) {
+        try {
+          prepared.probes.push(...serviceResourceProbes([service], namespace));
+        } catch (error) {
+          missing(`${service.name} 资源指标未采集：${diagnosticMessage(error)}`);
+        }
+      }
+      useLogger("perf").info(`指标后端=${prepared.source.kind}；已准备 ${prepared.probes.length} 组指标查询（不代表已有样本），结束后按实际窗口读取`);
     }
   } catch (error) { missing(`指标源准备未完成：${diagnosticMessage(error)}`); }
   return prepared;
@@ -122,7 +131,7 @@ export async function observePerf(run: Run, directory: string, operations: reado
     if (plan.source && plan.probes.length) {
       planMetrics(run, plan.probes, plan.source);
       writeRunData(run, directory);
-      useLogger("perf").info(`请求与查询计划已保存；自动查询 ${plan.probes.length} 组 Operation 指标`);
+      useLogger("perf").info(`请求与查询计划已保存；自动查询 ${plan.probes.length} 组指标`);
       await collectPerfMetrics(run, directory, plan.source, context.signal);
       const gaps = perfMetricIssues(run);
       metricIssues.push(...gaps);

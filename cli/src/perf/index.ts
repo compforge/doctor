@@ -1,3 +1,4 @@
+import { resolveCollectNamespace } from "../infra/k8s/context";
 import { useLogger } from "../terminal/log";
 import { writeOutput } from "../terminal/output";
 import { caseRunnerProvider, createCaseRunner } from "../case/runners";
@@ -180,7 +181,8 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     }
     adapter = routePerfCases(mix, adapters);
   }
-  const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus);
+  const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus,
+    plugin.services.services, resolveCollectNamespace(opts, context.profile).namespace);
   if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
