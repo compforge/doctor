@@ -72,6 +72,8 @@ metricdb:
   # password: ...
 ```
 
+在线观测（含 QPS=0）需要指标源。在当前配置文件的 `profiles.<名称>` 下添加上面的 `metricdb` 配置，或通过 `--prometheus <url>` 指定本次查询地址。缺少地址时，命令在选择 Case 和发压前报错退出。
+
 Profile 提供地址、必要认证和可选 `kind`。显式 kind 选择对应后端；省略时客户端用常量查询识别
 Prometheus/VM。按 `type: metricdb` 与 `kind` 选择 Operation Probe；认证、连接和无法识别的响应
 保留错误，不切换后端。旧 `prometheus` profile 字段需改为 `metricdb`，原有 URL 与认证字段可原样迁移。
