@@ -39,7 +39,11 @@ export interface PreparedPerfMetrics {
   issues: string[];
 }
 
-/** Check declared coverage before traffic; historical queries still use the realized run windows. */
+/**
+ * @spec Operation probes read externally collected metrics through MetricDB for the realized run windows.
+ * @why Missing metrics remain evidence gaps; diagnosis must not start a second scraper or query engine.
+ * @link cli/docs/commands/perf.md
+ */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
   url?: string): Promise<PreparedPerfMetrics> {
   const declared = operations.filter(operation => operation.probes?.length);

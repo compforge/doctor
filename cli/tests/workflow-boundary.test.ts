@@ -27,7 +27,7 @@ test("perf 通过 Harness 与外部指标协议采集，不调用 collect 信号
     .join("\n");
 
   expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/(?:provision|chat)(?:\/[^"']*)?["']/);
-  expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/collect\/(?:metric|trace|log)\/command["']/);
+  expect(sources).not.toMatch(/\bfrom\s+["'][^"']*\/collect\/(?:trace|log)\/command["']/);
   expect(sources).toContain('from "@compforge/harness-toolbox/metricdb"');
 });
 

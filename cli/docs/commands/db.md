@@ -78,7 +78,7 @@ toolbox 在独占、一次性的原生 MySQL 会话内固定 SQL mode、设置 S
 污染其它借用者。READ ONLY 不是任意 SQL 沙箱，仍要求最小权限账号，不建议使用管理员凭据。
 
 需要支持 `max_execution_time` 的 MySQL（5.7.8+）；不将此支持范围扩展为 MariaDB 或其它数据库兼容承诺。
-Pod Python 路径不支持有界只读接口时明确失败，不能退回完整缓冲查询。Metric 的 MySQL 直采与 Store、DB 共用 Service 声明的 source Client。
+Pod Python 路径不支持有界只读接口时明确失败，不能退回完整缓冲查询。Store、DB 共用 Service 声明的 source Client。
 
 ### 限制在接收过程中生效
 

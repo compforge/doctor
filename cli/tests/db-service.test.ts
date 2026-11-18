@@ -1,7 +1,3 @@
-import * as serviceNetwork from "@compforge/harness-toolbox/kubernetes/service";
-import type { ServicePortForwarder } from "@compforge/harness-toolbox/kubernetes/service/port-forward";
-import { prepareStoreMetricCollection } from "../src/collect/metric/store/collector";
-import { EmbeddedMetricSource } from "../src/infra/metric";
 import { expect, spyOn, test } from "bun:test";
 import { createServiceCatalog, describeService, type PluginDefinition, type PluginDataSource, type ServiceDatabaseDataSource, type ServiceDatabaseTarget } from "@compforge/doctor-plugin";
 import { MysqlClient, MysqlDatabase } from "@compforge/harness-toolbox/db/mysql";
@@ -29,11 +25,9 @@ const executor: Executor = {
   exec: async () => { throw new Error("unexpected Pod exec"); },
 };
 
-test("store, db, metric and business consumers share a source without configuration Pods and root-owned cleanup", async () => {
+test("store, db and business consumers share a source without configuration Pods and root-owned cleanup", async () => {
   let starts = 0, closes = 0;
   const database = new MysqlDatabase([], { connectTimeoutMs: 100, queryTimeoutMs: 100 });
-  const query = spyOn(database, "query").mockResolvedValue([{ Variable_name: "Queries", Value: "7" }]);
-  const network = spyOn(serviceNetwork, "listServiceNetwork").mockResolvedValue({ services: [], pods: [] });
   class FakeClient extends MysqlClient<ServiceDatabaseTarget> {
     override async initialize() { starts++; }
     override async dispose() { closes++; }
@@ -79,19 +73,6 @@ test("store, db, metric and business consumers share a source without configurat
       expect(providers.failures).toEqual([]);
       expect(access.mock.calls[0]![2]).toBe("logical-api");
     } finally { access.mockRestore(); }
-    const metrics = await prepareStoreMetricCollection({
-      plugin, commandContext: command, collect, services: ["logical-api"], executor,
-      forwarder: { forwardServiceTargets: async () => [] } as unknown as ServicePortForwarder,
-      namespace: "app", intervalMs: 1000,
-    });
-    const metricSource = new EmbeddedMetricSource({ retentionMs: 60_000, sampleIntervalMs: 1000 });
-    const ingest = spyOn(metricSource, "ingest");
-    try {
-      expect(metrics.directCount).toBe(1);
-      expect(await metrics.sample(metricSource)).toEqual([]);
-      expect(query).toHaveBeenCalledWith(target, "SHOW GLOBAL STATUS", []);
-      expect(ingest.mock.calls[0]?.[0]).toContain("mysql_global_status_queries 7");
-    } finally { ingest.mockRestore(); await metrics.close(); }
     const business = await openPluginContext(executor, { namespace: "app" }, {
       clients: command.clients, config: command.profile.pluginConfig,
       service: {
@@ -104,7 +85,7 @@ test("store, db, metric and business consumers share a source without configurat
     finally { await business.dispose(); }
     expect(starts).toBe(1);
     expect(closes).toBe(0);
-  } finally { network.mockRestore(); query.mockRestore(); await command.disposeClients(); await database.close(); }
+  } finally { await command.disposeClients(); await database.close(); }
   expect(closes).toBe(1);
 });
 

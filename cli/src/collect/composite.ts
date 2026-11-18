@@ -27,11 +27,10 @@ import { timePaddingMs, type TraceLogWindow } from "./log/window";
 import { traceLogWindows } from "./log/trace-window";
 import { dataLogWindows, type DataLogWindows } from "./log/data-window";
 import { logCommand } from "./log/command";
-import { metricCommand } from "./metric/command";
 import { createTenantInput, tenantCommand } from "./tenant/command";
 import { traceCommand } from "./trace/command";
 
-export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log", "metric"] as const;
+export const COLLECT_KINDS = ["inspect", "tenant", "data", "trace", "log"] as const;
 export type CollectKind = typeof COLLECT_KINDS[number];
 export type CollectOutputFormat = "default" | "bundle" | "html";
 
@@ -41,7 +40,6 @@ const COLLECT_LABELS: Record<CollectKind, string> = {
   data: "Data · 业务关联数据",
   trace: "Trace · 调用链与耗时",
   log: "Log · 关联日志",
-  metric: "Metric · Service 指标",
 };
 
 export interface CollectCliOpts {
@@ -55,9 +53,6 @@ export interface CollectCliOpts {
   since?: string;
   sinceTime?: string;
   untilTime?: string;
-  watch?: string;
-  interval?: string;
-  prometheus?: string;
   deploymentConfig?: boolean;
   dependencies?: boolean;
   kubeconfig?: string;
@@ -108,8 +103,6 @@ export function createCollectManifest(input: CollectManifestInput): Record<strin
       since: input.opts.since,
       since_time: input.opts.sinceTime,
       until_time: input.opts.untilTime,
-      metric_watch: input.opts.watch,
-      metric_interval: input.opts.interval,
       deployment_config: input.opts.deploymentConfig,
       dependencies: input.opts.dependencies,
     },
@@ -198,9 +191,8 @@ export async function runCollectDelegates(
   return results;
 }
 
-function providerNames(plugin: PluginDefinition, capability: "inspect" | "log" | "metric"): string[] {
-  const kind = capability === "inspect" ? "data.id" : "metric.configuration";
-  return [...new Set(plugin.services.extensions(kind).map(({ service }) => service.name))];
+function dataServiceNames(plugin: PluginDefinition): string[] {
+  return [...new Set(plugin.services.extensions("data.id").map(({ service }) => service.name))];
 }
 
 /** biz-id 不能推导 Service 范围；组合执行时显式采用 Plugin 声明的完整业务 Service 边界。 */
@@ -225,7 +217,7 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
         ...common, tenantId: input.tenantId, tenantName: input.tenantName,
       }));
       case "data": return dataCommand.run(context, {
-        ...common, ...time, bizIds: input.bizIds, services: providerNames(plugin, "inspect"),
+        ...common, ...time, bizIds: input.bizIds, services: dataServiceNames(plugin),
       }).then(result => { dataWindows = dataLogWindows(result.output); return result; });
       case "trace": return traceCommand.run(context, { ...common, bizIds: input.bizIds }).then(result => {
         if (!input.since && !input.sinceTime && !input.untilTime) logWindows = traceLogWindows(result.output);
@@ -239,10 +231,6 @@ function collectDelegate(input: CollectInput, context: CommandContext): CollectD
           .filter(service => service.extensions?.some(extension => extension.kind === "log.workloads")).map((service) => service.name),
         since: input.since, sinceTime: input.sinceTime, untilTime: input.untilTime, itemConcurrency: input.itemConcurrency,
       });
-      case "metric": return metricCommand.run(context, {
-        ...common, services: providerNames(plugin, "metric"), watch: input.watch ?? "0",
-        interval: input.interval, prometheus: input.prometheus,
-      });
     }
   };
 }
@@ -254,7 +242,7 @@ export function createCollectCommand(delegate?: CollectDelegate) {
     serialize: async (context, result) => {
       const commands: Record<CollectKind, Pick<CommandSpec<CommandInput, unknown>, "name" | "serialize">> = {
         inspect: inspectCommand, tenant: tenantCommand, data: dataCommand,
-        trace: traceCommand, log: logCommand, metric: metricCommand,
+        trace: traceCommand, log: logCommand,
       };
       const children: ResultRef[] = [];
       for (const step of result.output?.steps ?? []) children.push(await context.serialize(commands[step.kind], step.result));
@@ -281,7 +269,6 @@ export function createCollectCommand(delegate?: CollectDelegate) {
           case "data": reports.push(await context.render(dataCommand, step.result)); break;
           case "trace": reports.push(await context.render(traceCommand, step.result)); break;
           case "log": reports.push(await context.render(logCommand, step.result)); break;
-          case "metric": reports.push(await context.render(metricCommand, step.result)); break;
         }
       }
       return composeReports("doctor collect", reports);

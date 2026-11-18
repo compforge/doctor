@@ -26,7 +26,7 @@ Plugin API 18 使用路径数组和 `infra.kubernetes.readFiles`，Plugin 需按
 
 Plugin API 19 要求 Redis DataSource 声明 `source`，不再支持 `environment` 映射。
 `redisDataSource` 接收 toolbox 的完整目标（种子 endpoint、拓扑、独立 Sentinel 凭据和毫秒超时）；
-store/metric 共用连接生命周期，拓扑每轮刷新。MySQL 和 Redis 的原生连接/Pod relay 候选由
+store 与业务 capability 共用连接生命周期，拓扑每轮刷新。MySQL 和 Redis 的原生连接/Pod relay 候选由
 `tcpTransports` 统一提供。
 
 Plugin 作者只需导出 `PluginDefinition` 和 Service Catalog。模型、租户等领域的提供方由 Command

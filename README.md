@@ -14,7 +14,7 @@ A Plugin supplies the application's Service catalog and business knowledge; Core
 |---|---|---|
 | After deployment, before serving traffic | `doctor health` | Active checks of service health, dependency connectivity and business functionality |
 | After the system has been running | `doctor overview` | Errors, diagnostic patterns and duration distributions over a time window, with optional representative samples |
-| When a problem needs investigation | `doctor collect` | Related configuration, business data, traces, logs and metrics in one evidence bundle |
+| When a problem needs investigation | `doctor collect` | Related configuration, business data, traces and logs in one evidence bundle |
 
 Start at the stage that matches your situation. You can also run a focused command such as `inspect`,
 `trace`, `log` or `data` directly; CPU, memory and network investigations have their own tools.

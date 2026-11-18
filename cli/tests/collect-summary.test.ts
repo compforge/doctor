@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import * as execution from "../src/app/command";
 import { createDoctorProgram } from "../src/app/main";
 import { createCollectCommand } from "../src/collect/composite";
-import { parseMetricOutputFormat } from "../src/collect/metric/config";
 import { parseTraceOutputFormat } from "../src/collect/trace";
 import { CommandContext, CommandStatus } from "../src/command";
 import { commandOptions } from "../src/command/options";
@@ -24,12 +23,11 @@ test("collect accepts explicit summary without changing the distribution default
 });
 
 for (const format of ["summary", "manifest"]) {
-  test(`root ${format} prepares complete evidence with legacy Trace and Metric collectors`, async () => {
+  test(`root ${format} prepares Trace bundle evidence`, async () => {
     const context = new CommandContext({}, undefined, { format });
     try {
       const options = commandOptions(context);
       expect(parseTraceOutputFormat(options.format)).toBe("bundle");
-      expect(parseMetricOutputFormat(options.format)).toBe("bundle");
       expect(context.options.format).toBe(format);
     } finally { await context.disposeClients(); }
   });
@@ -57,14 +55,14 @@ for (const format of ["summary", "manifest"] as const) {
     const command = createCollectCommand(async kind => kind === "log"
       ? { status: CommandStatus.Ok, output, artifacts: [],
         summary: { title: "Logs", text: "30 requests collected", fields: [] } }
-      : { status: CommandStatus.Failed, artifacts: [], reason: "metrics unavailable" });
+      : { status: CommandStatus.Failed, artifacts: [], reason: "tenant unavailable" });
     const stdout = spyOn(process.stdout, "write").mockImplementation(() => true);
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     const captured = captureSerializedDirectory();
     const render = spyOn(command, "render");
     let directory: string | undefined;
     try {
-      const input = { bizIds: ["request-0"], kinds: ["log", "metric"] as const };
+      const input = { bizIds: ["request-0"], kinds: ["log", "tenant"] as const };
       const result = await command.run(context, { ...input, kinds: [...input.kinds] });
       expect(result.status).toBe(CommandStatus.Partial);
       const code = await finalizeResult(context, command, result, { format });
@@ -73,8 +71,8 @@ for (const format of ["summary", "manifest"] as const) {
       if (format === "summary") {
         directory = captured.directory;
         expect(terminal).toContain("log: ok");
-        expect(terminal).toContain("metric: failed");
-        expect(terminal).toContain("metrics unavailable");
+        expect(terminal).toContain("tenant: failed");
+        expect(terminal).toContain("tenant unavailable");
         expect(terminal).toContain("30 requests collected");
         expect(terminal).not.toContain("manifest.json");
         expect(terminal).not.toContain("证据导航");
@@ -92,8 +90,8 @@ for (const format of ["summary", "manifest"] as const) {
       const logPath = join(directory!, manifest.children[0].manifest);
       const log = JSON.parse(readFileSync(logPath, "utf8"));
       expect(JSON.parse(readFileSync(join(dirname(logPath), log.files.output.path), "utf8"))).toEqual(output);
-      const metric = JSON.parse(readFileSync(join(directory!, manifest.children[1].manifest), "utf8"));
-      expect(metric.execution).toMatchObject({ status: "failed", reason: "metrics unavailable" });
+      const tenant = JSON.parse(readFileSync(join(directory!, manifest.children[1].manifest), "utf8"));
+      expect(tenant.execution).toMatchObject({ status: "failed", reason: "tenant unavailable" });
     } finally {
       render.mockRestore(); stdout.mockRestore(); stderr.mockRestore(); captured.restore();
       await context.disposeClients();

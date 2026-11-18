@@ -405,11 +405,13 @@ describe("command help", () => {
     expect(result.stdout).toContain("Usage: doctor collect [options] [biz-ids...]");
     expect(result.stdout).toContain("生成诊断报告和证据包");
     expect(result.stdout).toContain("--include <kinds>");
-    expect(result.stdout).toContain("inspect、tenant、data、trace、log、metric");
+    expect(result.stdout).toContain("inspect、tenant、data、trace、log");
     expect(result.stdout).toContain("--biz-id <id>");
     expect(result.stdout).toContain("--deployment-config");
     expect(result.stdout).toContain("--dependencies");
-    expect(result.stdout).toContain("--watch <duration>");
+    expect(result.stdout).not.toContain("--watch");
+    expect(result.stdout).not.toContain("--interval");
+    expect(result.stdout).not.toContain("--prometheus");
   });
 
   test("health forwards Plugin instance selectors", async () => {

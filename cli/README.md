@@ -109,7 +109,7 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
 | `doctor health` | 主动检查 Service 自身健康、依赖连通性与业务功能 |
 | `doctor overview` | 展示历史统计与耗时分布，按需采样并进入 Collect |
-| `doctor collect [id...]` | 集合选择并汇总 Inspect、Tenant、Data、Trace、Log、Metric；自身不实现具体采集 |
+| `doctor collect [id...]` | 集合选择并汇总 Inspect、Tenant、Data、Trace、Log；自身不实现具体采集 |
 | `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线选择 trace/node view，渲染 text / JSON / HTML / Bundle（[说明](docs/commands/trace.md)） |
 | `doctor s3 ls/stat/cat` | 按 Service 连接浏览 bucket / 目录前缀、检查对象元数据和有界读取内容 |
 | `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
@@ -118,7 +118,6 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 | `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
 | `doctor case` | 列出内置与当前目录的 Case；选择一个或多个 HTTP Case 发送并分析响应 |
 | `doctor model` | 从模型目录选择目标，执行 validation/inference，并可选进行流式性能采样 |
-| `doctor metric` | 使用 profile 中的 Prometheus，或临时抓取 Service `/metrics`，执行业务 detector 并生成离线 HTML 图表 |
 | `doctor net` | 协调多个 Service Pod 短时抓包；选择 YAML 跟踪已知请求，或守候页面操作产生的请求 |
 | `doctor neta [input]` | 纯离线分析 NetBundle，生成业务调用 Diagnosis 的 Markdown、泳道/瀑布 HTML 与结构化 JSON |
 | `doctor version` | 显示 Doctor、当前平台及嵌入 Plugin 的精确版本 |
@@ -133,7 +132,6 @@ Coverage 独立，只有采集批次和交付页面共享。
 - [Command 生命周期](docs/command-lifecycle.md) · [Collect 共享协议](docs/collect-protocol.md)
 - [Collect 集合采集](docs/commands/collect.md)
 - [Service Inspect](docs/commands/inspect.md)
-- [Metric 诊断](docs/commands/metric-diagnosis.md)
 - [Memory 诊断](docs/commands/memory-diagnosis.md)
 - [CPU 诊断](docs/commands/cpu-diagnosis.md)
 - [Log 采集](docs/commands/log.md)

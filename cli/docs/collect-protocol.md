@@ -19,17 +19,12 @@ Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证�
 每格只填一次；完整取得记为 `ok`，部分取得记为 `partial`，访问失败、前置不可用和已证明无需取得分别
 记为 `failed / unavailable / unnecessary`。收尾仍未填的格子必须 settle 为明确缺失原因。
 
-### Trace、Log、Metric 是三个基本可观测数据面
+### 请求证据与窗口观测
 
-Doctor Collect 把 OpenTelemetry 的三类基本信号作为正交证据面：Trace 解释一次请求跨 Service 的因果与
-耗时分布，Log 保留离散业务事件和错误上下文，Metric 描述一段时间内的总体趋势与资源/业务指标。三者
-可以通过 `trace_id` 和时间窗口对齐，但不能互相代替；CPU 不高也不能据此推断首 token 延迟正常。
-
-`doctor perf` 不另造采集协议。它负责产生刺激、封口压测窗口，并从请求 Outcome 中保留 Plugin 声明的
-`trace_id` / `message_id` 等关联键；窗口内调用现有 `doctor metric`，结束后把代表请求的业务 ID 交给
-现有 `doctor trace` 和 `doctor log`；Log 自行匹配输入 key 并按声明扩展关联，不要求 Trace 成功。
-某个数据面因权限、保留期或现场部署缺失时，已取得的其它证据仍应交付，并把命令结果标为
-partial，而不是把缺数据解释为系统健康。
+Collect 中的 Trace 解释请求跨 Service 的因果与耗时，Log 保留离散业务事件和错误上下文。
+Perf 通过 Operation Probe 与 MetricDB 查询实际窗口内的指标，由 Harness 保存查询证据、归约并呈现调用图。
+Prometheus/VM 负责持续抓取与存储；Doctor 只读取已采集的指标，不启动临时抓取或查询引擎。
+指标缺失、查询失败与正常结果分别记录；已取得的请求事实仍应交付。
 
 ## 执行数据模型
 

@@ -45,8 +45,8 @@ profiles:
 ```
 
 采样并去重、经用户确认采集后，Core 复用 Collect 的命令选择：交互模式选择一次，非交互默认全部；`--include` 可显式
-指定 inspect、tenant、data、trace、log、metric 的子集（例如 `--include inspect,tenant,data,trace,log`）。
-Core 将整批 biz-id 交给一次 Collect，各子命令接收完整列表。Inspect、Tenant、Metric 在该批次中各执行一次；
+指定 inspect、tenant、data、trace、log 的子集（例如 `--include inspect,tenant,data,trace,log`）。
+Core 将整批 biz-id 交给一次 Collect，各子命令接收完整列表。Inspect、Tenant 在该批次中各执行一次；
 Data 共用访问准备与 Identity 查询，Log 共用目标准备与原始日志源，每个输入仍独立诊断和保留证据。
 `--collect-concurrency` 覆盖 profile 的 `overview.collect_concurrency`，控制批次内需要逐 ID 执行的日志工作，
 默认 2。失败请求不阻止其它请求完成；取消后不启动排队工作，已经取得的证据仍统一交付。

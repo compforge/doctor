@@ -3,10 +3,10 @@ import type {
   ExtensionContext, DataIdExtension, TenantDirectory, ServiceEndpoint, ModelCatalog, ModelInference,
   ModelInferenceTarget, ServiceCaseProbeOptions, ServiceCaseRunner, ServiceCaseIdentityRequirement,
   CaseRunnerFactory, TraceResolveExtension, FacetSummarizeExtension, FacetSampleExtension,
-  MetricConfiguration, WorkloadProbeExtension,
+  WorkloadProbeExtension,
   TenantListExtension, TenantResolveExtension, UserSearchExtension, ModelQueryExtension,
   ModelBackendInspectExtension, ModelBackendValidateExtension, ModelInvokeExtension, ModelStreamExtension,
-  McpConfigurationExtension, MetricConfigurationExtension,
+  McpConfigurationExtension,
 } from "../src";
 import { modelBackendOutput } from "../src";
 export type DataRun<E extends { run: (...args: any[]) => Promise<{ data: unknown }> }> = (...args: Parameters<E["run"]>) => Promise<Awaited<ReturnType<E["run"]>>["data"]>;
@@ -101,7 +101,4 @@ export function overviewExtensions(value: {
     { id: "facet.summarize", kind: "facet.summarize", access: value.access, facets: value.facets, run: withSummary({"title":"业务概览","fields":[{"label":"条目数","path":["length"]}]}, value.summarize) } satisfies FacetSummarizeExtension,
     { id: "facet.sample", kind: "facet.sample", access: value.access, run: withSummary({"title":"业务样本","fields":[{"label":"样本数","path":["length"]}]}, value.sample) } satisfies FacetSampleExtension,
   ];
-}
-export function metricExtension(value: MetricConfiguration): MetricConfigurationExtension {
-  return { id: "metric.configuration", kind: "metric.configuration" as const, access: {}, run: withSummary({ title: "指标配置", fields: [] }, async () => value) };
 }

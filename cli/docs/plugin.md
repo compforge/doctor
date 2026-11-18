@@ -354,7 +354,7 @@ DB 必须通过 `source: PluginDataSource<MysqlClient>` 贡献访问能力；
 同一 Service 可声明多个同类型 dataSources，每个 ID 保留稳定的逻辑依赖身份；不同声明在某个环境
 可能解析到同一目标，也可能分开部署。目标归并由消费命令依据解析结果完成，不能用声明 ID 或
 Client 的缓存 key 代替资源身份。库表通过 Client 实时发现，不由 Plugin 重复维护清单。
-`store`、`db`、Metric MySQL 直采与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
+`store`、`db` 与业务 Inspect 消费同一 source，共享访问而不共享查询结果。
 数据库环境变量、配置文件和来源副本选择由 Plugin 实现；Core 只借用初始化后的 Client。
 
 DB、VDB、S3、Redis 都可通过 `source` 贡献实现 initialize/dispose 的类型化 Client，由同一根
@@ -378,7 +378,7 @@ Workload 日志读取在流开始、结束时核对 Pod UID 和已知的 runtime
 详见 [数据库取证](commands/db.md)。
 
 网络 endpoint 跟随实际消费它的 capability 声明，不放在 Service 根上假设一个全局端口。同一 Service
-可以分别为 tenant directory、model catalog、inference、MCP 或 metrics 提供不同 endpoint；命令只为
+可以分别为 tenant directory、model catalog、inference 或 MCP 提供不同 endpoint；命令只为
 本轮选中的 capability 建立对应连接。endpoint 必须显式声明 `host` 与 `port`，Core 不用逻辑 Service 名
 推导网络地址。
 
@@ -534,9 +534,9 @@ Plugin API 19 要求 Service 的 Redis DataSource 必须提供 `source`，不再
 `RedisDataSourceTarget`：`endpoints` 是所选模式的种子地址，超时统一使用毫秒；Sentinel
 使用独立的 sentinel 凭据。Core 不再为 Service 猜测 Redis 环境变量名称或配置来源 Pod。
 
-store、metric 与业务 capability 在各自权限检查后借用同一个根生命周期 Client；连接复用，
+store 与业务 capability 在各自权限检查后借用同一个根生命周期 Client；连接复用，
 拓扑每轮重新发现。MySQL 与 Redis 共用 `tcpTransports` 的原生连接、Pod relay 候选顺序，
-只在映射或握手网络失败时切换，认证失败及已发送的命令不会触发重放。metric 按 Service/source
+只在映射或握手网络失败时切换，认证失败及已发送的命令不会触发重放。访问按 Service/source
 保留归属，不以相同 endpoint 合并不同权限与凭据的数据源。源配置及凭据不进入采集证据。
 
 ## Service Resource
