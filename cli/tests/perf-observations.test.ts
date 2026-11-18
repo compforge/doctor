@@ -15,7 +15,7 @@ import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
 const operation = new SSEOperation({ serviceName: "chat", name: "chat", method: "POST", path: "/chat",
-  probes: [{ type: "metricdb", metrics: { qps: { expression: 'sum(rate(chat_total{namespace="declared-scope"}[$window]))', unit: "rps", semantics: "completed" } } }] });
+  probes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{namespace="declared-scope"}[$window]))', unit: "rps", semantics: "completed" } } }] });
 const definition = { name: "chat", component: { name: "chat", repository: { forge: { name: "test" }, path: "fixture/chat" } }, workloads: [], operations: [operation],
   cases: [{ id: "chat.cases", operation: operation.id(), load: () => [] }] };
 const service = bindService(definition, { name: "test" });
@@ -56,6 +56,9 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     const url = new URL(request.url);
     const detection = backendDetection(url); if (detection) return detection;
     if (url.pathname === "/chat") { requests++; receivedInputs.push(await request.json()); return new Response('data: {"done":true}\n\n', { headers: { "Content-Type": "text/event-stream" } }); }
+    if (url.pathname === "/api/v1/query_range") return Response.json({
+      status:"success", data:{resultType:"matrix", result:[{metric:{},values:[[Number(url.searchParams.get("start")), "0"]]}]},
+    });
     expect(url.pathname).toBe("/api/v1/query"); metrics++;
     expect(readFileSync(join(directory, "run.json"), "utf8")).toContain("source_url");
     if (response === "error") return new Response("upstream failed", { status: 503 });
@@ -110,12 +113,12 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(readFileSync(writePerfReport({ run, outputDir: directory, metricsComplete: true }), "utf8")).toContain("Callgraph");
     expect(existsSync(join(directory, "callgraph.json"))).toBe(false);
     const invalid = new SSEOperation({ serviceName: "chat", name: "missing-parameter", method: "POST", path: "/other",
-      probes: [{ type: "metricdb", metrics: { qps: { expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
+      probes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
     const partial = await observePerf(mixedRun, directory, [invalid, operation], context);
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
-    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).not.toContain("指标覆盖明细");
+    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
     response = "missing";
     const source = await perfMetricSource(context);
     if (!source) throw new Error("fixture Prometheus source missing");
@@ -183,7 +186,7 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
   const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
   const plugin={id:"test",version:"1",services:createServiceCatalog([
     {...definition,cases:[{id:"chat.cases",operation:operation.id(),load:()=>{throw new Error("纯观测不应加载 Case")}}]},
-    {...definition,name:"other",operations:[other],cases:[]},
+    {...definition,name:"other",operations:[other],cases:[],workloads:[{name:"main",platform:"kubernetes",location:{kind:"service",name:"worker"}}]},
   ])};
   const context=new CommandContext({}, {name:"production",configPath:"",pluginConfig:{},value:{readonly:true,
     namespace:"production",metricdb:{url:server.url.toString()}}}, {plugin});
@@ -196,7 +199,12 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     expect(run.case_ids).toEqual([]);
     expect(run.case_entries).toEqual({});
     const ranges = run.executions[0]!.prometheus_observations?.filter(query => query.step_s !== null);
-    expect(ranges?.map(query => query.labels.operation)).toEqual([operation.id()]);
+    expect(ranges?.filter(q=>q.labels.operation).map(q=>q.labels.operation).sort()).toEqual([operation.id(), other.id()].sort());
+    const resources = ranges!.filter(q => !q.labels.operation);
+    expect(resources).toHaveLength(6);
+    expect(resources.every(q => q.labels.service === "other" && q.expression.includes('namespace="production"') &&
+      q.expression.includes('label_kubernetes_io_service_name="worker"'))).toBe(true);
+    expect(resources.map(q=>q.metric)).toContain("prometheus_query.service:other.mem_limit");
     expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
     expect(run.executions[0]!.requests).toEqual([]);
     expect(run.executions[0]!.phases.map(p=>p.kind)).toEqual(["hold"]);
@@ -206,7 +214,11 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const file=writePerfReport(result.output!);
     const html=readFileSync(file,"utf8");
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
-    expect(html).toContain("Case 与入口 Operation 时间趋势");
+    expect(html).toContain(">Overview</button>");
+    expect(html).toContain("<summary>请求 RED</summary>");
+    expect(html).toContain("<summary>资源耗费</summary>");
+    expect(html).toContain('"name":"cpu_usage"');
+    expect(html).toContain('"name":"mem_limit"');
     expect(html).toContain('id="callgraph-menu"');
     expect(html).not.toContain("指标覆盖明细");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
@@ -236,8 +248,8 @@ test("metric preflight detects backend without querying application metrics", as
 /** @case A declared RED probe does not guarantee metric storage; successful siblings remain usable. */
 test("natural observation preserves independent observed, missing and failed RED metrics", async () => {
   const red = new SSEOperation({serviceName:"chat",name:"chat",method:"POST",path:"/chat",probes:[{
-    type:"metricdb",metrics:{qps:{unit:"rps",expression:"fixture_qps"},
-      p95:{unit:"s",expression:"fixture_latency"},error_rate:{unit:"ratio",expression:"fixture_errors"}},
+    type:"metricdb",metrics:{qps:{category:"red:qps",unit:"rps",expression:"fixture_qps"},
+      p95:{category:"red:p95",unit:"s",expression:"fixture_latency"},error_rate:{category:"red:error_rate",unit:"ratio",expression:"fixture_errors"}},
   }]});
   const server = Bun.serve({port:0,fetch: request => {
     const url = new URL(request.url), detection = backendDetection(url); if (detection) return detection;
@@ -263,7 +275,7 @@ test("natural observation preserves independent observed, missing and failed RED
     expect(coverage).toContain("只有 1 个采样点");
     expect(coverage).toContain("属预期情况");
     expect(coverage).toContain("不能仅凭此确认原因");
-    expect(readFileSync(writePerfReport(result.output!), "utf8")).not.toContain("指标覆盖明细");
+    expect(readFileSync(writePerfReport(result.output!), "utf8")).toContain("指标覆盖明细");
     expect(result.output!.metricIssues?.join()).toContain("p95：查询失败");
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));}
 });

@@ -250,7 +250,7 @@ test("Perf preserves configured identity and only queries missing user", async (
   expect(listedTenants).toBe(0);
 });
 
-test("perf report omits coverage details and renders Facet values in their declared order", () => {
+test("perf report shows coverage details and renders Facet values in their declared order", () => {
   const stats = {
     n: 1,
     n_ok: 1,
@@ -324,7 +324,7 @@ test("perf report omits coverage details and renders Facet values in their decla
     });
     const html = readFileSync(report, "utf-8");
     expect(html).toContain("<summary>2. 按维度拆（如 difficulty/lang）</summary>");
-    expect(html).not.toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
+    expect(html).toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
     const facetValues = [...html.matchAll(/<td data-v="(?:simple|medium|complex)">([^<]+)<\/td>/g)].map(match => match[1]);
     expect(facetValues).toEqual(["simple", "medium", "complex"]);
     run.executions[0]!.arm.load = { request_rate: 0, hold_s: 1 };
