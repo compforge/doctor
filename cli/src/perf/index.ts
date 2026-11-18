@@ -135,6 +135,10 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   if (!target) return {status:CommandStatus.Cancelled, artifacts:[]};
   const {operation} = target;
   const mix = perfCaseMix(target.selected);
+  const caseEntries = Object.fromEntries(mix.routes.map(({id, choice}) => [id,
+    plugin.services.caseSource({service:target.service.name, source:choice.source.sourceId!}).source.operation ?? operation.id(),
+  ]));
+  const entryIds = [...new Set([operation.id(), ...Object.values(caseEntries)])];
   const loads = perfLoadPlans(config);
   const declarations = plugin.services.operations().map(item => item.operation);
   let service = bindService(target.service, {name:context.profile.name});
@@ -180,7 +184,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   if (mix.caseSet) writeOutput(formatPerfCaseMix(mix.caseSet, mix.caseMix), process.stderr);
   const artifact = createPerfArtifact(config), outputDir = artifact.path;
   context.artifacts.add({command:"perf", path:outputDir});
-  const metadata = {service:target.service.name, caseRefs:mix.caseRefs, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
+  const metadata = {service:target.service.name, caseRefs:mix.caseRefs, caseEntries, caseSource:mix.sources.length === 1 ? {service:target.service.name, source:mix.sources[0]!.sourceId!} : undefined, operation:operation.id(),
     caseFacets:mix.caseSet?.facets ?? {}, caseIds:mix.caseMix.map(item => item.id)};
   writePerfMetadata(outputDir, metadata);
   const graph = graphFromServices(plugin.services.services.map(item => bindService(item, service.environment)), {
@@ -190,7 +194,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   try {
     try {
       run = await new Engine({name:`doctor-${target.service.name}-perf`, service, graph:graph.toJSON(),
-        entryIds:[operation.id()], ...progress.observe(adapter), caseSet:mix.caseSet,
+        entryIds, ...progress.observe(adapter), caseSet:mix.caseSet,
         caseMix:mix.caseMix, loads, signal:context.signal, stopSignal:progress.stop.signal,
         onArmStart: () => {
           writeOutput(`[perf] 开始观测：注入 QPS=${config.qps}，${config.qps ? `max_inflight=${config.maxInflight}，` : ""}hold=${config.holdSeconds}s\n`, process.stderr);
@@ -198,6 +202,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
           progress.start(context);
         },
       }).run();
+      run.case_entries = caseEntries;
       if (!config.qps) run.case_ids = [];
     } catch (error) { failure = error; }
     finally {

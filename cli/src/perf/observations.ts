@@ -21,6 +21,7 @@ export async function perfMetricSource(context: CommandContext, url?: string): P
 export function perfMetricsComplete(run: Run): boolean {
   const queries = run.executions.flatMap(arm => arm.prometheus_observations ?? []);
   if (!queries.length || queries.some(query => query.collected_at_s === null || query.error !== null)) return false;
+  if (rangeIssues(run).length) return false;
   const graph = buildCallgraph(run);
   return !graph?.arms.some(arm => arm.windows.some(window => window.nodes.some(node =>
     Object.values(node.properties.perf.metrics).some(metric => metric.queries.length > 0 && metric.status !== "observed"))));
@@ -71,9 +72,21 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
   return prepared;
 }
 
+function rangeIssues(run: Run): string[] {
+  return run.executions.flatMap(arm => (arm.prometheus_observations ?? []).flatMap(query => {
+    if (query.step_s === null) return [];
+    const labels = Object.entries(query.labels).sort(([a], [b]) => a.localeCompare(b))
+      .map(([key,value]) => `${key}=${JSON.stringify(value)}`).join(",");
+    const address = `${query.metric}{${labels}}`;
+    const reason = query.error ? "查询失败" : query.collected_at_s === null ? "尚未采集"
+      : arm.series?.[address]?.length ? undefined : "窗口内无可用点";
+    return reason ? [`${arm.id} / ${query.metric} 时间序列：${reason}`] : [];
+  }));
+}
+
 /** Query evidence, not scrape assumptions: an empty result cannot identify why a source has no samples. */
 export function perfMetricIssues(run: Run): string[] {
-  const issues = new Set<string>();
+  const issues = new Set(rangeIssues(run));
   const graph = buildCallgraph(run);
   for (const arm of graph?.arms ?? []) for (const window of arm.windows) for (const node of window.nodes) {
     for (const [role, metric] of Object.entries(node.properties.perf.metrics)) {
@@ -113,7 +126,7 @@ export async function observePerf(run: Run, directory: string, operations: reado
       await collectPerfMetrics(run, directory, plan.source, context.signal);
       const gaps = perfMetricIssues(run);
       metricIssues.push(...gaps);
-      if (gaps.length) useLogger("perf").warn(`指标覆盖存在 ${gaps.length} 项缺口；报告区分查询失败与窗口内无可计算值，并提示采样间隔限制`);
+      if (gaps.length) useLogger("perf").warn(`指标覆盖存在 ${gaps.length} 项缺口；详见 Evidence Bundle 中 perf.json 的 metricIssues`);
     }
   } catch (error) { missing(`指标采集未完成：${diagnosticMessage(error)}`); }
   finally { writeRunData(run, directory); }
@@ -131,6 +144,7 @@ export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Pr
     if (!metadata || metadata.schema !== 1) throw new CommandInputError(`Unsupported Doctor Perf metadata schema: ${metadataPath}`);
   }
   const run = loadRun(opts.from!);
+  run.case_entries ??= metadata?.caseEntries;
   const artifact = createPerfArtifact(config);
   cpSync(opts.from!, artifact.path, { recursive: true });
   context.artifacts.add({ command: "perf", path: artifact.path });

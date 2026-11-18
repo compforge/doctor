@@ -88,3 +88,8 @@ QPS=0 的空请求集合不表示系统零流量或零延迟。未声明 Probe�
 Run.status 表示执行完成度；指标未取得或查询不完整使命令 partial。自然观测没有 Probe 时也为 partial。
 静态 calls/mayCalls 不证明某条边实际发生；节点指标不按 Case 拆分，不把自然流量归因于加压。
 HTTP 成功不代表 SSE 业务成功，路径上的延迟分位数不能相加。
+
+
+Report 同页按入口 Operation 展示本轮选中的 Case。请求时延、首个输出和完成吞吐按 Case 归属；
+入口 Operation 的 RED 及其他指标覆盖匹配的服务端流量。Callgraph 从所有入口展开，共享下游合并。
+完整覆盖缺口保存在 Evidence Bundle 的 `perf.json`（`metricIssues`）。范围查询使用已有 metricdb 时序。

@@ -69,7 +69,7 @@ export function formatPerfSummary(run: Run, metricIssues: readonly string[] = []
   if (metricIssues.length) {
     lines.push(`  指标覆盖不完整：${metricIssues.length} 项缺口`);
     lines.push(...metricIssues.slice(0, 5).map(issue => `    ${issue}`));
-    if (metricIssues.length > 5) lines.push(`    其余 ${metricIssues.length - 5} 项见报告中的指标覆盖明细。`);
+    if (metricIssues.length > 5) lines.push(`    其余 ${metricIssues.length - 5} 项见 Evidence Bundle 中 perf.json 的 metricIssues。`);
   }
   else lines.push(run.executions.some(arm => arm.prometheus_observations?.length)
     ? "  指标采集无已知缺口。" : "  本轮未产生指标查询。");

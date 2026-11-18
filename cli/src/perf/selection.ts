@@ -46,7 +46,7 @@ export async function selectPerfTarget(plugin: PluginDefinition, opts: PerfCliOp
   const candidates = defaults.length > 1 && defaults.every(Boolean)
     ? operations.filter(o => defaults.includes(o.operation.id()))
     : localOps.length ? localOps : operations;
-  const opId = explicitOp?.operation.id() ?? (defaults.length === 1 ? defaults[0] : undefined)
+  const opId = explicitOp?.operation.id() ?? (defaults.every(Boolean) ? defaults[0] : undefined)
     ?? await chooseName(candidates.map(o => o.operation.id()), "Operation", "--operation");
   if (!opId) return;
   return {service:registry.find(name)!, operation:registry.operation(opId).operation, selected};

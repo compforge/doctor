@@ -115,7 +115,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
-    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
+    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).not.toContain("指标覆盖明细");
     response = "missing";
     const source = await perfMetricSource(context);
     if (!source) throw new Error("fixture Prometheus source missing");
@@ -174,7 +174,10 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
   const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
   let queries=0;
   const server=Bun.serve({port:0,fetch(request) {
-    const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;expect(url.pathname).toBe("/api/v1/query");queries++;
+    const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;
+    if (url.pathname === "/api/v1/query_range") return Response.json({status:"success", data:{resultType:"matrix",
+      result:[{metric:{}, values:[[Number(url.searchParams.get("start")), "7"]]}]}});
+    expect(url.pathname).toBe("/api/v1/query");queries++;
     return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
   }});
   const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
@@ -191,6 +194,9 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const run=result.output!.run;
     expect(run.entry_ids).toEqual([operation.id()]);
     expect(run.case_ids).toEqual([]);
+    expect(run.case_entries).toEqual({});
+    const ranges = run.executions[0]!.prometheus_observations?.filter(query => query.step_s !== null);
+    expect(ranges?.map(query => query.labels.operation)).toEqual([operation.id()]);
     expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
     expect(run.executions[0]!.requests).toEqual([]);
     expect(run.executions[0]!.phases.map(p=>p.kind)).toEqual(["hold"]);
@@ -200,6 +206,9 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const file=writePerfReport(result.output!);
     const html=readFileSync(file,"utf8");
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
+    expect(html).toContain("Case 与入口 Operation 时间趋势");
+    expect(html).toContain('id="callgraph-menu"');
+    expect(html).not.toContain("指标覆盖明细");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 });
@@ -254,7 +263,7 @@ test("natural observation preserves independent observed, missing and failed RED
     expect(coverage).toContain("只有 1 个采样点");
     expect(coverage).toContain("属预期情况");
     expect(coverage).toContain("不能仅凭此确认原因");
-    expect(readFileSync(writePerfReport(result.output!), "utf8")).toContain("建议延长 hold");
+    expect(readFileSync(writePerfReport(result.output!), "utf8")).not.toContain("指标覆盖明细");
     expect(result.output!.metricIssues?.join()).toContain("p95：查询失败");
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));}
 });
