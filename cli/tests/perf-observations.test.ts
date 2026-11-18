@@ -248,7 +248,12 @@ test("natural observation preserves independent observed, missing and failed RED
     expect(metrics.qps).toMatchObject({status:"observed",value:7});
     expect(metrics.p95).toMatchObject({status:"error",value:null,reason:"query_error"});
     expect(metrics.error_rate).toMatchObject({status:"missing",value:null,reason:"empty_result"});
-    expect(result.output!.metricIssues?.join()).toContain("查询成功但无可用样本");
+    const coverage = result.output!.metricIssues!.join("\n");
+    expect(coverage).toContain("查询成功，当前窗口无可计算值");
+    expect(coverage).toContain("只有 1 个采样点");
+    expect(coverage).toContain("属预期情况");
+    expect(coverage).toContain("不能仅凭此确认原因");
+    expect(readFileSync(writePerfReport(result.output!), "utf8")).toContain("建议延长 hold");
     expect(result.output!.metricIssues?.join()).toContain("p95：查询失败");
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));}
 });

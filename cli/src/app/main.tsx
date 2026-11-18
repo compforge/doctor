@@ -407,7 +407,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--qps <number>", "注入 QPS；0 只观测自然流量（默认 0）")
     .option("--max-inflight <number>", "最大在途请求数（默认 20）；QPS=0 时不参与执行")
     .option("--ramp <seconds>", "warmup 升压时间（秒），QPS=0 时跳过", "10")
-    .option("--hold <seconds>", "hold 观测时间（秒，默认 60）")
+    .option("--hold <seconds>", "hold 观测时间（秒，默认 60；建议覆盖 4～5 个 scrape 周期）")
     .option("--abort-error-rate <ratio>", "注入请求错误率熔断阈值 (0,1]", "0.1")
     .option("--breaker-min-n <n>", "启用错误率熔断前的最少请求数", "10")
     .option("--graceful-stop <seconds>", "停止发压后等待在途请求的时间", "60")

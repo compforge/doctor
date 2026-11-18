@@ -75,7 +75,10 @@ export function perfMetricIssues(run: Run): string[] {
     for (const [role, metric] of Object.entries(node.properties.perf.metrics)) {
       if (!metric.queries.length || metric.status === "observed") continue;
       const detail = metric.status === "error" ? "查询失败"
-        : metric.reason === "not_collected" ? "尚未采集" : "查询成功但无可用样本（不等同于零流量或 scrape 故障）";
+        : metric.reason === "not_collected" ? "尚未采集"
+        : metric.reason === "empty_result" ? "查询成功，当前窗口无可计算值；若 hold 相对 scrape 间隔过短、窗口内只有 1 个采样点，无法计算增量属预期情况，建议延长 hold 至 4～5 个采样周期；空结果也可能没有匹配时序，不能仅凭此确认原因"
+        : metric.reason === "no_observations" ? "查询成功，直方图在当前窗口没有可用于计算分位数的观测增量（不等同于未采集）"
+        : "查询成功，当前窗口无可计算值（不等同于未采集或 scrape 故障）";
       issues.add(`${node.id} / ${arm.id}/${window.id} / ${role}：${detail}`);
     }
   }
@@ -106,7 +109,7 @@ export async function observePerf(run: Run, directory: string, operations: reado
       await collectPerfMetrics(run, directory, plan.source, context.signal);
       const gaps = perfMetricIssues(run);
       metricIssues.push(...gaps);
-      if (gaps.length) useLogger("perf").warn(`指标覆盖存在 ${gaps.length} 项缺口；报告按 Operation、窗口和指标区分无样本与查询失败`);
+      if (gaps.length) useLogger("perf").warn(`指标覆盖存在 ${gaps.length} 项缺口；报告区分查询失败与窗口内无可计算值，并提示采样间隔限制`);
     }
   } catch (error) { missing(`指标采集未完成：${diagnosticMessage(error)}`); }
   finally { writeRunData(run, directory); }
