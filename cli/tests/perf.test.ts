@@ -288,10 +288,9 @@ test("perf report preserves literal data and renders Facet values in their decla
       started_at: "",
       finished_at: "",
       windows: [{
-        id: "measurement",
-        name: "measurement",
-        kind: "phase",
-        phase: "hold",
+        id: "full",
+        name: "full",
+        kind: "full",
         start_s: 0,
         end_s: 1,
         complete: true,
@@ -324,16 +323,17 @@ test("perf report preserves literal data and renders Facet values in their decla
       },
     });
     const html = readFileSync(report, "utf-8");
-    expect(html.match(/<h2>By Facet<\/h2>/g)).toHaveLength(1);
+    expect(html).toContain("<summary>2. 按维度拆（如 difficulty/lang）</summary>");
     expect(html).toContain("<li>$&amp; $` $&#39; $$ &lt;tag&gt;</li>");
-    expect(html.indexOf("<td>simple</td>")).toBeLessThan(html.indexOf("<td>medium</td>"));
-    expect(html.indexOf("<td>medium</td>")).toBeLessThan(html.indexOf("<td>complex</td>"));
+    const facetValues = [...html.matchAll(/<td data-v="(?:simple|medium|complex)">([^<]+)<\/td>/g)].map(match => match[1]);
+    expect(facetValues).toEqual(["simple", "medium", "complex"]);
     run.executions[0]!.arm.load = { request_rate: 0, hold_s: 1 };
     run.executions[0]!.windows[0]!.request = undefined;
     run.executions[0]!.windows[0]!.by_facet = {};
     const observed = readFileSync(writePerfReport({ run, outputDir, metricsComplete: true }), "utf8");
-    expect(observed).not.toContain("NaN");
-    expect(observed).not.toContain("Injected request windows");
+    expect(observed).not.toContain('data-v="NaN"');
+    expect(observed).toContain("无分组维度");
+    expect(observed).toContain('<td data-v="N/A">N/A</td>');
   } finally {
     rmSync(outputDir, { recursive: true, force: true });
   }
@@ -371,7 +371,7 @@ test("Perf adapter cancels active Case requests and round-trips interrupted evid
     expect(JSON.parse(readFileSync(join(directory, "evaluations.json"), "utf8")))
       .toEqual({ [run.executions[0]!.id]: {} });
     expect(readFileSync(writePerfReport({ run: restored, outputDir: directory, metricsComplete: false }), "utf8"))
-      .toContain("requests.jsonl");
+      .toContain("[aborted]: —，中断 1 在途");
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

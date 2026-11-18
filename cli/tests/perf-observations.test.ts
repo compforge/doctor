@@ -115,7 +115,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
     expect(perfMetricsComplete(mixedRun)).toBe(true);
-    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("Metric coverage");
+    expect(readFileSync(writePerfReport({ run: mixedRun, outputDir: directory, ...partial }), "utf8")).toContain("指标覆盖明细");
     response = "missing";
     const source = await perfMetricSource(context);
     if (!source) throw new Error("fixture Prometheus source missing");
@@ -199,7 +199,7 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const file=writePerfReport(result.output!);
     const html=readFileSync(file,"utf8");
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
-    expect(html).not.toContain("Injected request windows");
+    expect(html).toContain('<td data-v="N/A">N/A</td>');
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 });
 
