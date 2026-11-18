@@ -1,4 +1,5 @@
-import { styleTerminalText, supportsTerminalColor, writeOutput } from "../terminal/output";
+import { useLogger } from "../terminal/log";
+import { writeOutput } from "../terminal/output";
 import { caseRunnerProvider, createCaseRunner } from "../case/runners";
 import { bindService, loadCaseCatalog, type PluginDefinition, type ServiceCaseObservation, type ServiceCaseRunner } from "@compforge/doctor-plugin";
 import { graphFromServices, type Operation } from "@compforge/harness-common";
@@ -110,9 +111,8 @@ async function selectParameters(opts: PerfCliOpts, config: PerfConfig): Promise<
     if (option === "maxInflight" && config.qps > 0) config.maxInflight = resolvePerfConfig({...opts, qps: String(config.qps)}).maxInflight;
     if (opts[option] !== undefined || (option === "maxInflight" && config.qps === 0)) continue;
     if (option === "hold") {
-      const hint = styleTerminalText("hold 建议覆盖 4～5 个 scrape（指标采样）周期", "info", supportsTerminalColor(process.stderr));
-      writeOutput(`[perf] ${hint}：间隔 15s 时约 60～75s，间隔 60s 时约 240～300s。\n`
-        + "[perf] 窗口内若只有 1 个采样点，无法计算增量、窗口 p95 或错误率属于预期情况；请按实际采样间隔选择时长。\n", process.stderr);
+      useLogger("perf").warn("hold 建议覆盖 4～5 个 scrape（指标采样）周期：间隔 15s 时约 60～75s，间隔 60s 时约 240～300s。\n"
+        + "窗口内若只有 1 个采样点，无法计算增量、窗口 p95 或错误率属于预期情况；请按实际采样间隔选择时长。");
     }
     const value = await promptListedChoice({question: `${title}（默认 ${config[key]}，q 取消）：`,
       emptyValue: config[key], invalidMessage: "请输入有效数值。",
