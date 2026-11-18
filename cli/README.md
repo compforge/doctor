@@ -30,6 +30,9 @@ doctor inspect --kubeconfig /path/to/config --context staging --service api -n a
 
 ## 本地构建
 
+在 `cli/` 运行 `make test` 验证行为。`make build` 生成本机 CLI，再验证 Bun executable、Node bundle、
+Node SEA 和版本嵌入。跨平台发布使用仓库根的 `make build` 或 CLI 的 `make build-all`。
+
 ```bash
 make build
 ```

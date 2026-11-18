@@ -14,5 +14,5 @@
     "types": ["bun"],
     "lib": ["ES2023"]
   },
-  "include": ["src/**/*", "tests/**/*"]
+  "include": ["src/**/*", "tests/**/*", "packaging/**/*"]
 }
