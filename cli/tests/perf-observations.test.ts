@@ -194,6 +194,9 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const run=result.output!.run;
     expect(run.entry_ids).toEqual([operation.id()]);
     expect(run.case_ids).toEqual([]);
+    expect(run.case_entries).toEqual({});
+    const ranges = run.executions[0]!.prometheus_observations?.filter(query => query.step_s !== null);
+    expect(ranges?.map(query => query.labels.operation)).toEqual([operation.id()]);
     expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
     expect(run.executions[0]!.requests).toEqual([]);
     expect(run.executions[0]!.phases.map(p=>p.kind)).toEqual(["hold"]);
@@ -203,6 +206,9 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const file=writePerfReport(result.output!);
     const html=readFileSync(file,"utf8");
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
+    expect(html).toContain("Case 与入口 Operation 时间趋势");
+    expect(html).toContain('id="callgraph-menu"');
+    expect(html).not.toContain("指标覆盖明细");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
 });

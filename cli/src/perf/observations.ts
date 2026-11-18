@@ -144,7 +144,7 @@ export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Pr
     if (!metadata || metadata.schema !== 1) throw new CommandInputError(`Unsupported Doctor Perf metadata schema: ${metadataPath}`);
   }
   const run = loadRun(opts.from!);
-  if (metadata?.caseEntries) Object.assign(run, {case_entries: metadata.caseEntries});
+  run.case_entries ??= metadata?.caseEntries;
   const artifact = createPerfArtifact(config);
   cpSync(opts.from!, artifact.path, { recursive: true });
   context.artifacts.add({ command: "perf", path: artifact.path });

@@ -202,7 +202,7 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
           progress.start(context);
         },
       }).run();
-      Object.assign(run, {case_entries:caseEntries});
+      run.case_entries = caseEntries;
       if (!config.qps) run.case_ids = [];
     } catch (error) { failure = error; }
     finally {
