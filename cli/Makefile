@@ -32,10 +32,13 @@ install: $(if $(filter true,$(BUNDLE_RUNTIME)),build-mac,build-node)
 dev:
 	bun run --watch $(DOCTOR_ENTRY)
 
-# Core 只构建 CLI；诊断工具、image 与系统包由根目录 toolkit/ 独立发布。
-build:
-	rm -rf $(DIST_DIR)
-	$(MAKE) $(if $(filter true,$(BUNDLE_RUNTIME)),build-all,build-node)
+# 构建本机 CLI 并验证打包行为。跨平台发布矩阵使用 build-all。
+build: $(if $(filter true,$(BUNDLE_RUNTIME)),build-host,build-node)
+	bun test ./packaging/*.build.ts
+
+.PHONY: build-host
+build-host: prepare-dist
+	bun scripts/build-bun-doctor.ts --entry $(DOCTOR_ENTRY) --outfile $(DIST_DIR)/doctor --commands '$(DOCTOR_COMMANDS)'
 
 .PHONY: build-node
 build-node: prepare-dist
@@ -87,7 +90,8 @@ build-kylin-x86-64: prepare-dist
 	bun scripts/build-node-sea-doctor.ts --entry $(DOCTOR_ENTRY) --arch x64 --outfile $(DIST_DIR)/$(DOCTOR_ARTIFACT_PREFIX)-kylin-x86-64-kernel-4.19-glibc-2.28 --commands '$(DOCTOR_COMMANDS)'
 
 test:
-	bun test $(TEST_FILES)
+	$(if $(filter packaging/% ./packaging/%,$(TEST_FILES)),$(error Packaging cases belong to make build))
+	bun test $(if $(strip $(TEST_FILES)),$(TEST_FILES),./tests)
 
 typecheck:
 	bunx tsc --noEmit

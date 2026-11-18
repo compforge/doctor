@@ -8,7 +8,7 @@ function argument(name: string): string {
   return value;
 }
 
-const target = argument("--target");
+const target = Bun.argv.includes("--target") ? argument("--target") : `bun-${process.platform}-${process.arch}`;
 const outfile = resolve(argument("--outfile"));
 const main = resolve(argument("--entry"));
 const commands = Bun.argv.includes("--commands") ? argument("--commands") : "all";
