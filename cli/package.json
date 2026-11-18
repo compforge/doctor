@@ -34,7 +34,7 @@
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/harness-common": "0.9.2",
     "@compforge/harness-toolbox": "0.13.1",
-    "@compforge/perf-harness": "0.13.1",
+    "@compforge/perf-harness": "0.13.2",
     "@compforge/spec-case": "0.0.7",
     "@compforge/trace-harness": "0.3.2",
     "@earendil-works/pi-agent-core": "0.87.1",
