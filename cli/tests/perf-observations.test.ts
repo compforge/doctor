@@ -15,7 +15,7 @@ import { writePerfMetadata } from "../src/perf/output";
 import { writePerfReport } from "../src/perf/report";
 
 const operation = new SSEOperation({ serviceName: "chat", name: "chat", method: "POST", path: "/chat",
-  probes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{namespace="declared-scope"}[$window]))', unit: "rps", semantics: "completed" } } }] });
+  observes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{namespace="declared-scope"}[$window]))', unit: "rps", semantics: "completed" } } }] });
 const definition = { name: "chat", component: { name: "chat", repository: { forge: { name: "test" }, path: "fixture/chat" } }, workloads: [], operations: [operation],
   cases: [{ id: "chat.cases", operation: operation.id(), load: () => [] }] };
 const service = bindService(definition, { name: "test" });
@@ -103,7 +103,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
         outcome: { status: 200, meta: { trace_id: "manual-follow-up" } },
       });
     }
-    expect(before).not.toContain('"probes"');
+    expect(before).not.toContain('"observes"');
     expect(before).not.toContain('"calls"');
     const automatic = await observePerf(run, directory, [operation], context);
     expect(automatic).toEqual({ metricsComplete: true, metricIssues: [] });
@@ -113,7 +113,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(readFileSync(writePerfReport({ run, outputDir: directory, metricsComplete: true }), "utf8")).toContain("Callgraph");
     expect(existsSync(join(directory, "callgraph.json"))).toBe(false);
     const invalid = new SSEOperation({ serviceName: "chat", name: "missing-parameter", method: "POST", path: "/other",
-      probes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
+      observes: [{ type: "metricdb", metrics: { qps: { category: "red:qps", expression: 'sum(rate(chat_total{tenant={{tenant}}}[$window]))', unit: "rps", semantics: "completed" } } }] });
     const partial = await observePerf(mixedRun, directory, [invalid, operation], context);
     expect(partial.metricsComplete).toBe(false);
     expect(partial.metricIssues?.join()).toContain(invalid.id());
@@ -173,7 +173,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
 });
 
 /** @case Natural traffic observation requires only a Case/Operation and metric source, without business access. */
-test("QPS zero observes all registered probes without Kubernetes, identity, runner or approval", async () => {
+test("QPS zero observes all registered observations without Kubernetes, identity, runner or approval", async () => {
   const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
   let queries=0;
   const server=Bun.serve({port:0,fetch(request) {
@@ -183,10 +183,11 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     expect(url.pathname).toBe("/api/v1/query");queries++;
     return Response.json({status:"success",data:{resultType:"vector",result:[{metric:{},value:[Number(url.searchParams.get("time")),"7"]}]}});
   }});
-  const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",probes:operation.probes});
+  const depth = {type:"metricdb",metrics:{depth:{unit:"count",expression:"queue_depth{app={{service}}}"}}};
+  const other = new SSEOperation({serviceName:"other",name:"work",method:"POST",path:"/work",observes:operation.observes});
   const plugin={id:"test",version:"1",services:createServiceCatalog([
     {...definition,cases:[{id:"chat.cases",operation:operation.id(),load:()=>{throw new Error("纯观测不应加载 Case")}}]},
-    {...definition,name:"other",operations:[other],cases:[],workloads:[{name:"main",platform:"kubernetes",location:{kind:"service",name:"worker"}}]},
+    {...definition,name:"other",operations:[other],cases:[],observes:[depth],workloads:[{name:"main",observes:[depth],platform:"kubernetes",location:{kind:"service",name:"worker"}}]},
   ])};
   const context=new CommandContext({}, {name:"production",configPath:"",pluginConfig:{},value:{readonly:true,
     namespace:"production",metricdb:{url:server.url.toString()}}}, {plugin});
@@ -200,10 +201,16 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     expect(run.case_entries).toEqual({});
     const ranges = run.executions[0]!.prometheus_observations?.filter(query => query.step_s !== null);
     expect(ranges?.filter(q=>q.labels.operation).map(q=>q.labels.operation).sort()).toEqual([operation.id(), other.id()].sort());
-    const resources = ranges!.filter(q => !q.labels.operation);
+    const depths = ranges!.filter(q => q.expression === 'queue_depth{app="other"}');
+    expect(depths.map(q => [q.metric, q.labels])).toEqual([
+      ["prometheus_query.service:other.depth", {service:"other"}],
+      ["prometheus_query.workload:other/main.depth", {service:"other", workload:"main"}],
+    ]);
+    const resources = ranges!.filter(q => !q.labels.operation && q.expression !== 'queue_depth{app="other"}');
     expect(resources).toHaveLength(6);
     expect(resources.every(q => q.labels.service === "other" && q.expression.includes('namespace="production"') &&
-      q.expression.includes('label_kubernetes_io_service_name="worker"'))).toBe(true);
+      q.expression.includes('label_kubernetes_io_service_name="worker"') &&
+      q.expression.includes('endpoint="worker"') && q.expression.includes('count by (namespace,pod_ip)'))).toBe(true);
     expect(resources.map(q=>q.metric)).toContain("prometheus_query.service:other.mem_limit");
     expect(run.executions[0]!.arm.load.max_inflight).toBeUndefined();
     expect(run.executions[0]!.requests).toEqual([]);
@@ -215,8 +222,9 @@ test("QPS zero observes all registered probes without Kubernetes, identity, runn
     const html=readFileSync(file,"utf8");
     expect(html).toContain("Case entry");expect(html).toContain("Full graph");
     expect(html).toContain(">Overview</button>");
+    expect(html).toContain(">Metrics</button>");
     expect(html).toContain("<summary>请求 RED</summary>");
-    expect(html).toContain("<summary>资源耗费</summary>");
+    expect(html).toContain(">Resources</button>");
     expect(html).toContain('"name":"cpu_usage"');
     expect(html).toContain('"name":"mem_limit"');
     expect(html).toContain('id="callgraph-menu"');
@@ -245,9 +253,9 @@ test("metric preflight detects backend without querying application metrics", as
   } finally { await context.disposeClients(); await missing.disposeClients(); server.stop(true); }
 });
 
-/** @case A declared RED probe does not guarantee metric storage; successful siblings remain usable. */
+/** @case A declared RED observation does not guarantee metric storage; successful siblings remain usable. */
 test("natural observation preserves independent observed, missing and failed RED metrics", async () => {
-  const red = new SSEOperation({serviceName:"chat",name:"chat",method:"POST",path:"/chat",probes:[{
+  const red = new SSEOperation({serviceName:"chat",name:"chat",method:"POST",path:"/chat",observes:[{
     type:"metricdb",metrics:{qps:{category:"red:qps",unit:"rps",expression:"fixture_qps"},
       p95:{category:"red:p95",unit:"s",expression:"fixture_latency"},error_rate:{category:"red:error_rate",unit:"ratio",expression:"fixture_errors"}},
   }]});

@@ -84,7 +84,7 @@ Plugin 选择实例、解析运行时配置并复用 Toolbox 网络探测；详�
 
 ## Case 与 Operation
 
-`Service.operations` 声明静态能力及 `calls`、`mayCalls`、`probes`；Case source 通过 `operation`
+`Service.operations` 声明静态能力及 `calls`、`mayCalls`、`observes`；Case source 通过 `operation`
 引用同一 Service 的能力，runner 留在 source 中。Perf 要求这个引用；只提供离线资产的其他来源可以省略。
 
 ```text
@@ -95,7 +95,7 @@ Operation: chat/chat
 
 两种输入使用同一个入口 Operation。第二种输入可能触发工具调用，静态 `mayCalls` 描述这种可能性；
 实际发生哪些调用由运行证据说明。Core 在执行前解析引用，运行记录同时保存 Case 与 Operation identity。
-Probe 定义不包含环境凭据或实验窗口，由 Host 绑定访问参数、由 Perf 绑定窗口。
+Service、Operation 和 Workload 都可通过 `observes` 声明自己的观测指标。Host 绑定 MetricDB 访问参数，Perf 按实际运行窗口查询。
 
 ## Core 与 Plugin Service 的职责
 
