@@ -22,7 +22,7 @@ Evidence Bundle 同时保存原始输出、步骤和结构化状态。固定证�
 ### 请求证据与窗口观测
 
 Collect 中的 Trace 解释请求跨 Service 的因果与耗时，Log 保留离散业务事件和错误上下文。
-Perf 通过 Operation Probe 与 MetricDB 查询实际窗口内的指标，由 Harness 保存查询证据、归约并呈现调用图。
+Perf 通过 `Operation.observes` 与 MetricDB 查询实际窗口内的指标，由 Harness 保存查询证据、归约并呈现调用图。
 Prometheus/VM 负责持续抓取与存储；Doctor 只读取已采集的指标，不启动临时抓取或查询引擎。
 指标缺失、查询失败与正常结果分别记录；已取得的请求事实仍应交付。
 

@@ -22,7 +22,7 @@ export interface RegistryProfileConfig {
   password?: string;
 }
 
-/** Metric source access only; Operation probes own queries. An omitted kind enables capability detection. */
+/** Metric source access only; observation declarations own queries. An omitted kind enables capability detection. */
 export interface MetricDBProfileConfig {
   url: string;
   kind?: MetricDBKind;

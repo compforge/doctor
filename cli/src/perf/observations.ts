@@ -1,9 +1,8 @@
 import { cpSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { serviceResourceProbes } from "./resources";
 import type { Operation, Service } from "@compforge/harness-common";
-import type { MetricDBReader } from "@compforge/harness-toolbox/metricdb";
-import { buildCallgraph, collectMetrics, loadRun, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
+import { workloadResourceObservation, type MetricDBReader } from "@compforge/harness-toolbox/metricdb";
+import { buildCallgraph, collectMetrics, loadRun, rangeObservation, serviceMetricProbes, operationMetricProbes, planMetrics, writeRunData, observesOnly, type Run, type PrometheusProbe } from "@compforge/perf-harness";
 import { CommandInputError, CommandStatus, type CommandContext, type CommandResult } from "../command";
 import { useLogger } from "../terminal/log";
 import { diagnosticMessage } from "../command/diagnostic";
@@ -42,18 +41,18 @@ export interface PreparedPerfMetrics {
 }
 
 /**
- * @spec Operation probes read externally collected metrics through MetricDB for the realized run windows.
+ * @spec Observations read externally collected metrics through MetricDB for the realized run windows.
  * @why Missing metrics remain evidence gaps; diagnosis must not start a second scraper or query engine.
  * @link cli/docs/commands/perf.md
  */
 export async function preparePerfMetrics(operations: readonly Operation[], context: CommandContext,
-  url?: string, services: readonly Pick<Service,"name"|"workloads">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
-  const declared = operations.filter(operation => operation.probes?.length);
-  const workloads = services.filter(service => service.workloads.length);
-  const prepared: PreparedPerfMetrics = { declared: declared.length + workloads.length > 0, probes: [], issues: [] };
+  url?: string, services: readonly Pick<Service,"name"|"workloads"|"observes">[] = [], namespace?: string): Promise<PreparedPerfMetrics> {
+  const declared = operations.filter(operation => operation.observes?.some(item => item.type === "metricdb"));
+  const targets = services.filter(service => service.workloads.length || service.observes?.some(item => item.type === "metricdb"));
+  const prepared: PreparedPerfMetrics = { declared: declared.length + targets.length > 0, probes: [], issues: [] };
   const missing = (message: string) => { prepared.issues.push(message); useLogger("perf").warn(message); };
   if (!prepared.declared) {
-    useLogger("perf").info("未声明 Operation 指标或 Service workload；本轮只保留运行窗口与已有请求事实");
+    useLogger("perf").info("未声明观测指标或 Service workload；本轮只保留运行窗口与已有请求事实");
     return prepared;
   }
   try {
@@ -63,16 +62,33 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
     } else {
       for (const operation of declared) {
         try {
-          prepared.probes.push(...operationMetricProbes([operation], prepared.source.kind));
+          prepared.probes.push(...operationMetricProbes([operation], prepared.source.kind, op => ({service: op.serviceName, operation: op.name})));
         } catch (error) {
           missing(`${operation.id()} 指标未采集：${diagnosticMessage(error)}`);
         }
       }
-      for (const service of workloads) {
+      const backend = prepared.source.kind;
+      for (const service of targets) {
+        const declarations = [...(service.observes ?? [])];
         try {
-          prepared.probes.push(...serviceResourceProbes([service], namespace));
+          const resources = workloadResourceObservation(service.workloads, namespace);
+          if (resources) declarations.push(resources);
         } catch (error) {
           missing(`${service.name} 资源指标未采集：${diagnosticMessage(error)}`);
+        }
+        try {
+          prepared.probes.push(...serviceMetricProbes(service.name, declarations, backend, undefined, {service: service.name}));
+        } catch (error) {
+          missing(`${service.name} 指标未采集：${diagnosticMessage(error)}`);
+        }
+        for (const workload of service.workloads) {
+          if (!workload.observes?.length) continue;
+          try {
+            prepared.probes.push(...serviceMetricProbes(service.name, workload.observes, backend, workload.name,
+              {service: service.name, workload: workload.name}));
+          } catch (error) {
+            missing(`${service.name}/${workload.name} 指标未采集：${diagnosticMessage(error)}`);
+          }
         }
       }
       useLogger("perf").info(`指标后端=${prepared.source.kind}；已准备 ${prepared.probes.length} 组指标查询（不代表已有样本），结束后按实际窗口读取`);
@@ -84,11 +100,8 @@ export async function preparePerfMetrics(operations: readonly Operation[], conte
 function rangeIssues(run: Run): string[] {
   return run.executions.flatMap(arm => (arm.prometheus_observations ?? []).flatMap(query => {
     if (query.step_s === null) return [];
-    const labels = Object.entries(query.labels).sort(([a], [b]) => a.localeCompare(b))
-      .map(([key,value]) => `${key}=${JSON.stringify(value)}`).join(",");
-    const address = `${query.metric}{${labels}}`;
-    const reason = query.error ? "查询失败" : query.collected_at_s === null ? "尚未采集"
-      : arm.series?.[address]?.length ? undefined : "窗口内无可用点";
+    const { status } = rangeObservation(arm, query);
+    const reason = { query_error: "查询失败", not_collected: "尚未采集", empty_result: "窗口内无可用点", observed: undefined }[status];
     return reason ? [`${arm.id} / ${query.metric} 时间序列：${reason}`] : [];
   }));
 }
@@ -116,14 +129,14 @@ export function perfMetricIssues(run: Run): string[] {
   return [...issues];
 }
 
-/** @spec Operation probes are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
+/** @spec Declared observations are collected automatically; unavailable metrics cannot discard request facts or sibling observations. */
 export async function observePerf(run: Run, directory: string, operations: readonly Operation[],
   context: CommandContext, url?: string, prepared?: PreparedPerfMetrics,
 ): Promise<Pick<PerfResult, "metricsComplete" | "metricIssues">> {
   const plan = prepared ?? await preparePerfMetrics(operations, context, url);
   if (!plan.declared) {
     const observationOnly = run.executions.every(arm => observesOnly(arm.arm.load));
-    return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["未声明 Operation 指标 Probe；仅记录观测窗口，无法确认系统表现"] : [] };
+    return { metricsComplete: !observationOnly, metricIssues: observationOnly ? ["本次仅记录观测窗口。要获取指标，请声明 observes 或 Service 的 Kubernetes Workload。"] : [] };
   }
   const metricIssues = [...plan.issues];
   const missing = (message: string) => { metricIssues.push(message); useLogger("perf").warn(message); };
