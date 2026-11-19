@@ -114,7 +114,7 @@ Evidence、Findings 和纯 Detector，再实现 Inspect、Probe 与 Renderer。�
 5. **Catalog 与运行状态分开**：Catalog 只声明可能提供的 contribution/capability；collect 再结合现场环境判断本次
    是否可用。
 6. **Case 资产与消费流程分开**：Service.cases 贡献离线目录、运行时 producer 和单请求 runner；Health 通过 healthcheck.* 引用来源和消费方 Workload。Plugin case runner 每次只触发一个 Case；Eval 顺序执行每个选中 Case
-   一次并保留关联证据，Perf/Core 独占并发调度、预算、熔断和 Window 归约。两者都不在 runner 内隐藏循环。
+   一次并保留关联证据，Perf 由 Core 选择 Case 与入口 Operation、解析负载参数、确认授权并准备访问，Perf Harness 负责并发调度、预算执行、熔断和窗口归约。
 7. **工具与执行通道分开**：根目录 `toolkit/` 只分发版本化资源；CLI `infra/toolkit` 按 Host process、
    Host container 或 Kubernetes container 的实际 OS/arch 选取资源，再交给对应 infra adapter 执行。
    同一 Host 能力同时支持 container 与 process 时，先探测已有且可用的本地 container；不可用才回退
@@ -129,29 +129,15 @@ Evidence、Findings 和纯 Detector，再实现 Inspect、Probe 与 Renderer。�
    `docs/command-output.md` 的“证据与清单”。
    根入口统一 finalize：释放 Client 后调用 CommandSpec.serialize，再按需 render 和 Delivery；序列化只处理本地结果与显式子引用。单次调用的临时资源与产物独立，环境、决策、共享基础设施资源及取消信号在整轮内共享。
 
-## References
+## 按开发任务查文档
 
-- [Command 生命周期](docs/command-lifecycle.md) — 准备扩展点、Service 选择、幂等调用和资源归属
-- [配置与目标](docs/configuration.md) — 参数来源、Environment 身份和 Chat/Skill 目标传递
-- [数据源生命周期](docs/datasource.md) — ClientManager、DataSource、Transport 与协议访问装配
-- `docs/collect-protocol.md` — Collect 数据流、Probe 调度、部分完成、Evidence 与退出码契约
-- `docs/rendering.md` — 基于 Command Output 的 HTML 页面组织、交互导航与离线加载
-- `docs/plugin.md` — Plugin capability、上下文、分发与信任边界
-- `docs/extension.md` — 面向各类 Command 的 Extension 协议、调用边界与接入示例
-- `docs/distribution.md` — Doctor 发行版的身份、命令展示与 Plugin 装配边界
-- `docs/command-output.md` — Command 输出数据的规范与组织：执行结果、Evidence 保存、manifest 清单与交付
-- `docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
-- `docs/commands/case.md` — Case 目录、发送与 HTTP 取证边界
-- `docs/commands/resource.md` — Service Resource 声明、只读快照、kind 筛选与覆盖边界
-- `docs/commands/knowledge.md` — 结构化知识、作用域、引用与词典查询
-- `docs/commands/compute.md` — 集群容量、Service Workload 资源与权限覆盖
-- `docs/commands/health.md` — 系统体检、消费方 Case 与主动请求审批
-- `docs/commands/overview.md` — Facet / Entry 契约、概览与可选采集
-- `docs/commands/perf.md` — Perf 自然流量/加压观测、共享契约与证据编排
-- `docs/commands/tenant.md` — Tenant 身份选择、业务类型分页与共享数据查询
-- `docs/commands/s3.md` — Service S3 连接、mc 风格路径与有界对象取证
-- `docs/commands/db.md` — Service DB 目标、交互参数与有界只读 SQL 取证
-- `docs/naming.md` — chat 内部短名与跨边界公开命名约定
-- `docs/commands/` — 各 `doctor <command>` 的领域理念、主流程与关键设计
+| 要改什么 | 从哪里开始 |
+|---|---|
+| 命令准备、执行作用域与资源回收 | [Command 生命周期](docs/command-lifecycle.md)、[配置与目标](docs/configuration.md)、[数据源生命周期](docs/datasource.md) |
+| 证据采集、状态与交付 | [Collect 协议](docs/collect-protocol.md) 管采集与判断，[Command 输出](docs/command-output.md) 管状态、Artifact 与 manifest，[HTML 渲染](docs/rendering.md) 管离线页面与导航 |
+| Service 声明、业务扩展与宿主装配 | [Plugin 契约](docs/plugin.md)、[Extension 调用边界](docs/extension.md)、[发行版](docs/distribution.md)、[公开命名](docs/naming.md) |
+| Case 资产、执行与负载观测 | [Case](docs/commands/case.md)、[Eval](docs/commands/eval.md)、[Perf](docs/commands/perf.md) |
+| 巡检、回顾与问题取证 | [Health](docs/commands/health.md)、[Overview](docs/commands/overview.md)、[Collect](docs/commands/collect.md) |
+| 资源、租户与存储 | [Resource](docs/commands/resource.md)、[Compute](docs/commands/compute.md)、[Resize](docs/commands/resize.md)、[Tenant](docs/commands/tenant.md)、[DB](docs/commands/db.md)、[S3](docs/commands/s3.md) |
 
-- `docs/commands/resize.md` — 手动调整内存上限、授权、操作记录与生效边界
+业务知识的组织见 [Knowledge](docs/commands/knowledge.md)。其它命令的入口与领域设计见[命令文档目录](docs/commands/)。

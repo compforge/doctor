@@ -36,13 +36,13 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 1. `doctor case` 只读列出可用 Case。交互终端先选 Service（或用 `-s` 指定），再按 CaseSet 分组浏览；所有 Case 连续编号，可跨组多选。选择后优先展示 cURL。相对路径使用 `BASE_URL`，也可传入 `--base-url`。Plugin 可提供带身份占位符的离线请求模板；无法生成离线请求时显示原因。预览标明哪些 Case 可发送。存在可发送的 Case 时只询问一次是否发送，回车默认取消。确认后使用刚选中的可发送项；显式 `--send` 跳过确认。非交互使用 `doctor case --send --caseset doctor_smoke --cases health --base-url http://127.0.0.1:8000`。
 2. 发送复用 HTTP Collect：从本机或指定 Pod/Container 发起请求；先 Inspect 目标 host:port 的 DNS/TCP，再串行执行选中的 Case。`--repeat` 控制轮次，`--interval` 控制轮间等待。每次请求保留状态、headers/body、传输阶段耗时和可选 SSE 时间线。
 3. Detector 依据传输完整性、HTTP 状态、Content-Type、耗时和 SSE 终态产生 Findings；同一 Case 的多轮结果可识别偶现失败。报告保存实际 Request Plan 的可复现 cURL，异常响应可在 HTML/Markdown 查看，完整原始证据进入 Bundle。
-4. `doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，预算、并发和熔断仍由 Perf 命令控制。`doctor eval` 默认逐例执行所选 CaseSet 的全部 Eval Case，一次一个请求，也可用 `--cases` 选择子集。
+4. `doctor perf` 把选中的 Case 交给 Perf Harness；多选时每次 dispatch 等权随机取样，Core 传入负载参数，Harness 执行预算、并发调度和熔断。`doctor eval` 默认逐例执行所选 CaseSet 的全部 Eval Case，一次一个请求，也可用 `--cases` 选择子集。
 
 ## 关键设计
 
 Service Case source 是可被多个 Command 引用的资源，不是命令扩展的集合。离线 `load` 提供目录；
 `CaseProducer` 绑定本次对象和目标；`CaseRunnerFactory` 创建由命令接管的单请求 runner。
-三者由同一 `{ service, source }` 标识。Health 的消费关系与 Perf 的场景仍是各命令自己的 Extension。
+三者由同一 `{ service, source }` 标识。Perf 通过所选 Case source 的 `operation` 引用定位入口；同一来源的不同 Case 可以共用一个 Operation。问候和 Python 加法的 Chat 示例及字段契约见 [Case 与 Operation](../plugin.md#case-与-operation)。
 
 原生操作与 Extension 共用 `PluginOperation` 的 access、PluginContext 和结果信封，因此不需要为使用
 统一权限、客户端和清理机制而额外注册。producer 返回后释放调用上下文；runner factory 的上下文保留至

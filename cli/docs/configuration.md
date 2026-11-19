@@ -9,6 +9,7 @@ Kubernetes 连接参数在根命令统一声明，通过 Commander 全局选项�
 声明，不借进程环境变量传播目标。参数解析和 Help 构造不触发环境访问。
 
 CLI adapter 保留 Commander 参数来源，在共享 Command 准备入口消除被 profile 覆盖的默认值；
+Commander 和 Distribution 自动填入的值均属默认层。显式传入的 `false` 或 `0` 也是有效来源，空值是否合法由参数契约决定。
 领域 resolver 仍负责字段校验与来源记录。新增 profile-backed 参数时，应同步更新入口的字段映射。
 Chat 校验、Skill 目标注入和远端 kubeconfig 上传使用本次调用的有效目标，不直接复用原始 profile。
 本地 Skill 可读取 `TARGET_KUBE_CONTEXT` 并作为 `--context` 传给 Doctor/kubectl。

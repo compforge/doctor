@@ -7,30 +7,18 @@
 ## 三阶段生命周期
 
 ```text
-Prepare
-  → 解析 Config / Profile / Target / Service
-  → 选择 Core 与 Plugin Service contributions
-  → 形成 access plan 与 CommandContext
+Prepare   按本次输入解析配置，准备所需依赖
   ↓
-Execute（Core 驱动）
-  → Inspect [Core Inspect + Plugin Service Inspect]
-  → 汇总并冻结 Facts
-  → Probe(Facts) [Core Probe + Plugin Service Probe]
-  → 汇总 Observations，构建 Evidence
-  → Detector(Evidence) [Core Detector + Plugin Service Detector]
-  → Findings / Diagnosis
+Execute   执行领域工作，返回状态和本次调用的 Artifact 引用
   ↓
-Finalize
-  → 释放共享 Client
-  → 根 CommandSpec.serialize（本地持久化 / 显式子执行引用）
-  → 按格式触发 CommandSpec.render（本地领域页面 / 子报告组合）
-  → Report / Artifact / Bundle
-  → Delivery / Cleanup / exit status
+Finalize  根入口释放共享 Client，序列化本地结果，按格式渲染、交付并设置退出状态
 ```
 
-Inspect 与 Probe 之间存在阶段屏障：选中的 Inspect 全部收敛并冻结 Facts 后，Core 才生成 Probe 计划。
-Detector 只能在 Observations 汇总成 Evidence 后运行。Plugin Service 只注册 contribution；阶段推进、
-调度、失败隔离和收尾始终由 Core 控制。
+| 执行路径 | Prepare 与 Execute 的分工 |
+|---|---|
+| [Collect](collect-protocol.md) | 确定目标与贡献项。执行时先完成选中的 Inspect 并冻结 Facts，再生成 Probe 计划，最后由 Detector 消费已取得的 Evidence。 |
+| [在线 Perf](commands/perf.md) | Core 选择入口并准备所需访问，正 QPS 时确认加压。Perf Harness 调度负载和窗口，Core 按实际窗口组织指标采集与产物。 |
+| [Perf 离线回放](commands/perf.md#profile-与证据) | `--from` 选择已保存的运行，从本地证据生成新报告，无需加载业务 Plugin 或连接指标源。 |
 
 ## 准备扩展点
 

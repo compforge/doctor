@@ -61,9 +61,19 @@ QPS=0 只执行 hold，不进行 setup/warmup/cooldown/cleanup，不初始化业
 - **Trends（趋势）** 按请求 RED、资源耗费、自定义指标展示时间序列。每张图都可对照同一档位全部 Case 实际发出的总 `request_qps`。完成吞吐按完成时刻统计。Operation 的服务端 QPS 包含其他匹配流量，纯观测时仍可有值。
 - **Callgraph（调用图）** 从所选 Case 的入口 Operation 或显式选择的 Operation 出发，沿 `calls` 和 `mayCalls` 展开。用各节点在选定窗口的 RED 汇总值（请求速率、错误率、延迟）判断哪一段值得进一步排查。默认显示可达子图，可切换全图；共享节点只展示一次。
 
+同一时间轴上的曲线有三种归属：
+
+| 数据归属 | 读什么 | 多个 Case 同时运行时如何解读 |
+|---|---|---|
+| Case 的注入请求 | 压测器记录的请求、完成状态和延迟 | 单次请求可按 Case 分组。图中用于对照负载的 `request_qps` 是该档位所有 Case 实际发出的总速率。 |
+| Operation 的指标 | Probe 查询的服务端 QPS、错误率、延迟及首包耗时等自定义指标 | 共用入口的 Case 共享该 Operation 的曲线。查询还可能匹配自然流量，不能据此拆算每个 Case 的贡献。 |
+| Service Workload 的资源 | 同期副本与容器的 CPU、内存使用量及 request、limit | 按 Service 汇总。同一服务的多个 Operation 共用这份资源观测。 |
+
+Operation 指标按声明分类：`red:qps`、`red:error_rate`、`red:p95` 对应 RED，`resource:cpu`、`resource:mem` 归入资源耗费，其余指标按原名展示。各 Operation 的同名指标分别展示。
+
 资源时间线按 Service 的 Kubernetes workload 汇总副本和容器，CPU 用 cores，内存用 MiB。usage、request、limit 分别成线。数据来自当前 profile 或 `--prometheus` 选定的 Prometheus/VM：cAdvisor 提供用量，kube-state-metrics 提供容器成员及配额。Service 定位使用 EndpointSlice 的 Pod 引用与 `kubernetes.io/service-name` 标签，标签选择器依赖已导出的 Pod 标签。数据源需覆盖目标集群和命名空间。缺少成员映射、用量或配额时对应采样点留空。
 
-所有已注册 Operation 的 Probe 都参与观测。自然流量和注入流量可能同时出现在 Operation 指标中。
+所有已注册 Operation 的 Probe 都参与观测。指标覆盖缺口记录在 Evidence Bundle 的 `perf.json` 的 `metricIssues` 中。
 
 ## Profile 与证据
 
@@ -96,6 +106,3 @@ QPS=0 的空请求集合不表示系统零流量或零延迟。未声明 Probe�
 Run.status 表示执行完成度；指标未取得或查询不完整使命令 partial。自然观测没有 Probe 时也为 partial。
 静态 calls/mayCalls 不证明某条边实际发生；节点指标不按 Case 拆分，不把自然流量归因于加压。
 HTTP 成功不代表 SSE 业务成功，路径上的延迟分位数不能相加。
-
-
-Trends 按注册声明展示 Operation 指标。`red:qps`、`red:error_rate`、`red:p95` 是标准 RED；`resource:cpu` 和 `resource:mem` 归入资源耗费。其他或未标记的指标按原名进入自定义指标；各 Operation 的同名指标分别展示。范围查询读取已有 metricdb 时序。覆盖缺口同时保存在 Evidence Bundle 的 `perf.json`（`metricIssues`）。
