@@ -147,7 +147,7 @@ export async function resolveCollectKinds(
   const selected = await promptMultiSelect({
     choices: COLLECT_KINDS.map((name) => ({ name })),
     defaults: COLLECT_KINDS,
-    title: "选择 doctor collect 要编排的采集命令",
+    title: "采集项（默认全选，直接按 Enter 确认）",
     renderChoice: (choice) => COLLECT_LABELS[choice.name as CollectKind],
   });
   return selected as CollectKind[] | undefined;

@@ -20,7 +20,7 @@ Application 数据按查询粒度进入不同数据面：Tenant 承载 tenant-id
 ## 流程
 
 1. 接收采集面需要的作用域参数：Data/Trace/Log 使用一个或多个业务 ID，Tenant 使用 tenant ID/name；
-   交互终端缺省时多选采集命令，非交互模式默认选择全部，也可用 `--include` 显式指定。
+   默认选择全部采集项。交互终端可直接按 Enter 确认，也可调整选项。用 `--include` 可显式指定采集项。
 2. 各子命令按自己的 Plugin capability contract 检查前提，单个采集面不可用不阻断其它采集面。
 3. 依次调用所选的 Inspect、Tenant、Data、Trace 和 Log collector。集合层不读取外部资源，也不实现
    降级查询。
