@@ -99,7 +99,7 @@ Help 根据有效入口隐藏 profile 相关选项和 `init/profile` 命令，�
 
 例如 `log.format = "manifest"` 让 `samplectl log` 默认交付机器可读索引，
 `samplectl log --format html` 仍显式选择 HTML。`manifest` 的证据目录与输出契约见
-[Command 输出规范](command-output.md)。
+[Command 输出规范](command.md#输出契约)。
 
 ### 执行过程与最终交付分开
 

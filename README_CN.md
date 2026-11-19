@@ -38,12 +38,12 @@ make build-local
 ```
 
 `make build-local` 构建本机 macOS 产物，`make build` 构建各平台产物到 `dist/`。
-使用已内置应用 Plugin 的发行版，或按 [Plugin 指南](cli/docs/plugin.md) 接入自己的应用。
+使用已内置应用 Plugin 的发行版，或按 [Plugin 作者指南](packages/plugin/README.md) 接入自己的应用。
 开发检查使用 `make lint-all` 与 `make test-all`。
 
 ## 进一步阅读
 
 - [CLI 使用与构建选项](cli/README.md) · [自定义发行版](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
-- [Plugin 契约](cli/docs/plugin.md) · [Plugin 示例](plugins/example) · [Toolkit](toolkit/README.md)
-- [Collect 证据协议](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)
+- [Service 契约](cli/docs/service.md) · [Plugin 示例](plugins/example) · [Toolkit](toolkit/README.md)
+- [Collect 证据协议](cli/docs/collect.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)

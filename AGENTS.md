@@ -16,9 +16,6 @@ Inspect/Probe/Detector contribution 声明确定性诊断工作，通过 capabil
 
 ## 诊断能力模型
 
-产品主线是：部署后、承接业务前用 Health 主动巡检；运行一段时间后用 Overview 回顾情况；
-发现问题后用 Collect 汇集证据，并按信息类型进入具体命令。
-
 Doctor 的诊断范围从通用信号逐步深入到业务语义：Collect 汇集 Trace 与 Log，Perf 按 Operation 和时间窗口
 从 MetricDB 查询指标；专项命令观察 CPU、内存、网络等运行时状态；业务侧通过 contribution 补充 data、config 等领域采集与判断，
 通过 capability 提供 store、model、case 等可复用能力，
@@ -108,25 +105,8 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
 
 ## 全局配置优先级
 
-所有 Command 对同一配置项统一遵循 **CLI 显式参数 > 当前 profile 配置 > 默认值**。
-CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可复用的运行配置；默认值补齐两者都未指定的项。
-高优先级值覆盖低优先级值是正常选择，不作为配置冲突拒绝执行，也不修改持久化的 profile。
-
-- 按配置项确定有效值；未提供某个 CLI 参数时，仍可使用该项的 profile 配置。
-- 保留“显式提供”与“自动填入默认值”的区别。Commander 或 Distribution 提供的默认值属于默认层，
-  不能因为已经出现在解析结果里就覆盖 profile。是否提供参数不能用 truthiness 判断；合法的 `false`
-  或 `0` 也表达用户意图，空值是否合法由该参数的契约决定。
-- 优先级只决定取值来源，不是失败重试顺序。选定值无效、目标不可达或执行失败时，应报告对应错误，
-  不自动尝试低优先级的配置。配置结构校验、参数约束与权限校验仍须执行。
-
-例如，显式 `--kubeconfig` 覆盖 profile 中的 kubeconfig；该文件不存在或解析失败时直接报错，
-不能改用 profile 或默认集群。只有上层未指定时，才进入该参数已有的默认查找规则。
-这条约定适用于所有配置项，不限于 Kubernetes；不要求每个 CLI 参数都新增对应的 profile 字段。
-
-
-宿主或 Skill 将业务环境名解析为通用参数后交给 Doctor；Core 不解释具体产品的环境名。
-目标展示和后续访问使用同一份有效配置，并保留来源。具体解析与 Environment 身份见
-[配置与目标](cli/docs/configuration.md)。
+所有 Command 逐项按 **CLI 显式参数 > 当前 profile 配置 > 默认值** 选择有效值。覆盖只作用于本次调用。
+选定来源后，校验或访问失败就报告该来源的错误。参数来源识别、目标展示和 Kubernetes 解析示例见[配置与目标](cli/docs/configuration.md)。
 
 ## 文档归属
 
@@ -137,9 +117,10 @@ CLI 显式参数代表用户本次调用最实时的诉求；profile 保存可�
 ## References
 
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
-- [Command 生命周期](cli/docs/command-lifecycle.md) — 命令准备、调用作用域、幂等复用与取消
-- [Collect 协议](cli/docs/collect-protocol.md) — 采集数据模型、调度、授权与执行状态
+- [Command 执行与输出](cli/docs/command.md) — 调用作用域、产物、清单与交付
+- [Report 组织与渲染](cli/docs/report.md) — 页面组合、状态展示与离线阅读
+- [Collect 协议](cli/docs/collect.md) — 采集数据模型、调度、授权与执行状态
 - [配置与目标](cli/docs/configuration.md) — 参数来源、Environment 身份与宿主目标传递
-- `cli/docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- [Service 声明与接入](cli/docs/service.md) · [Plugin 分发](cli/docs/plugin.md) — 业务声明与宿主装配
 - `cli/docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/chat.md` — Doctor Chat 数据流、Agent 复用边界与 Plugin Skill 生命周期

@@ -2,8 +2,8 @@
 
 DataSource 表达可复用的访问资源，Client 提供协议操作，Transport 管理访问路径；
 它们不拥有业务 Query、诊断结论或报告。Plugin 的声明与 SDK 接入见
-[Plugin](plugin.md#协议负责能力对接sdk-负责代码复用)，调用与资源归属见
-[Command 生命周期](command-lifecycle.md#context-与调用归属)。
+[Plugin](service.md#协议负责能力对接sdk-负责代码复用)，调用与资源归属见
+[Command 生命周期](command.md#context-与调用归属)。
 
 ## 共享身份与访问边界
 

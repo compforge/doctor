@@ -1,42 +1,17 @@
 # @compforge/doctor-plugin
 
-Doctor 的公共 Plugin SDK。Plugin 通常对应一个以 Service 为组成单位的 Product，
-将产品知识、Service 与排障 Skill 打包为可离线分发的版本化交付物；
-Service 描述业务身份、运行负载和数据源，并注册可供 Doctor 调用的 Extension。
+Doctor 的公共 Plugin SDK。一个 Plugin 可以为多个 Service 提供业务能力、知识与排障 Skill。
 
-## 接入方式
+## 接入一个 Service
 
-Service 在 `extensions` 中提供函数；SDK 的 kind 契约约定输入输出，Command 决定选用哪些实现和如何组合。
-例如 `data.id` 返回业务记录与关系，`model.query` 返回模型清单，`workload.probe` 返回现场观察。
-声明和发现不执行函数；调用时宿主提供受权限约束的上下文、取消信号与资源生命周期。
+1. 从[示例 Plugin 的入口](../../plugins/example/src/index.ts)开始，导出 Plugin 定义并建立 Service Catalog。为服务声明稳定名称、Component 和 Workload。Catalog 可以离线加载。
+2. 根据诊断目标选择声明。数据访问放在 `dataSources`，可复用的请求输入放在 `cases`，静态 API 和调用关系放在 `operations`。命令需要 Plugin 执行业务查询时，通过 `extensions` 声明 kind、实现和所需 access。分别见 [Service 声明](../../cli/docs/service.md) 和 [Extension 调用契约](../../cli/docs/extension.md)。
+3. 在[示例目录](../../plugins/example/README.md)运行 `make build`，用 `doctor plugin install <归档路径>` 安装生成的归档。修改代码或 Skills 后提升 Plugin 版本并封存内容。宿主与归档须使用相同的 Plugin API 版本。参见 [Plugin 分发与加载](../../cli/docs/plugin.md)。
+4. 用下面两条命令验证示例。第一条从当前 Catalog 读取 Service 声明；第二条列出 API 提供的 Case 及其消费关系。要验证 Worker 能在部署环境中访问 API，运行 `doctor health --service example-worker` 并选择相应检查。
 
-`dataSources` 描述可复用的数据访问资源，`detectors` 注册只读 Evidence 的纯分析函数，
-`inspect.probe` Extension 提供按需执行的 Service 检查。这些对象各有所有权，不需要包装成可调用函数。
-`logs` 控制通用日志采集的参与范围。配置文件通过静态 `dataSources` 声明，
-`doctor inspect --field config` 读取这些文件以及 Pod 环境变量。
+```sh
+doctor plugin --service example-api --format json
+doctor case --list --service example-api
+```
 
-`fileDataSource(paths, { workload, access, resolve })` 直接作为数组成员，
-无需 Store 的 `id/kind/source` 包装。加载 Catalog 不执行 `resolve`；宿主首次创建客户端时
-传入 `PluginClientContext`，定位 Pod/Container，随后按需读取。底层复用 Quality Harness
-的 `PodFileDataSource`，客户端由根 Command 管理，文件读取有大小与时间上限。
-`paths` 是非空、无重复的绝对路径数组，表示可以从同一 Pod/Container 一起获取的文件组；
-组内只定位一次目标、发起一次 exec，逐文件返回结果。单文件失败不丢弃成功文件。
-Plugin API 18 使用路径数组和 `infra.kubernetes.readFiles`，Plugin 需按新接口重新构建。
-`configurationInspection` 已移除。
-
-Plugin API 19 要求 Redis DataSource 声明 `source`，不再支持 `environment` 映射。
-`redisDataSource` 接收 toolbox 的完整目标（种子 endpoint、拓扑、独立 Sentinel 凭据和毫秒超时）；
-store 与业务 capability 共用连接生命周期，拓扑每轮刷新。MySQL 和 Redis 的原生连接/Pod relay 候选由
-`tcpTransports` 统一提供。
-
-Plugin 作者只需导出 `PluginDefinition` 和 Service Catalog。模型、租户等领域的提供方由 Command
-从 kind 候选中选择；多候选必须按命令规则明确选择，不用注册顺序决定默认提供方。
-
-## 开发与分发
-
-参考 [示例 Plugin](../../plugins/example) 构建第一个 Plugin。
-同一 `plugin@version` 的代码和 Skills 内容不可变；修改后运行 SDK 的版本工具封存内容，
-再构建自包含归档。Doctor 与归档的 Plugin API 版本必须精确匹配。
-
-- [Extension 契约与调用边界](../../cli/docs/extension.md)
-- [Plugin 安装、版本与信任模型](../../cli/docs/plugin.md)
+选择诊断命令见 [CLI 使用指南](../../cli/README.md#命令)。构建内置 Plugin 的定制 CLI 见[发行版](../../cli/docs/distribution.md)。

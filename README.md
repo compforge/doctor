@@ -40,12 +40,12 @@ make build-local
 ```
 
 `make build-local` builds the local macOS artifact; `make build` builds platform artifacts into `dist/`.
-Use a distribution with your application's Plugin, or follow the [Plugin guide](cli/docs/plugin.md) to add one.
+Use a distribution with your application's Plugin, or follow the [Plugin author guide](packages/plugin/README.md) to add one.
 For development checks, run `make lint-all` and `make test-all`.
 
 ## Learn more
 
 - [CLI usage and build options](cli/README.md) · [Custom distributions](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
-- [Plugin contracts](cli/docs/plugin.md) · [Example Plugin](plugins/example) · [Toolkit](toolkit/README.md)
-- [Collect evidence protocol](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)
+- [Service contracts](cli/docs/service.md) · [Example Plugin](plugins/example) · [Toolkit](toolkit/README.md)
+- [Collect evidence protocol](cli/docs/collect.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)

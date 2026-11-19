@@ -74,7 +74,7 @@ Core 检查无损 JSON 和大小预算，保存编码数据及采集时 Summary�
 
 ### Evidence、Detector 与 Diagnosis
 
-Evidence 的持久化布局、清单与正文边界见 [Command 输出规范](command-output.md)。
+Evidence 的持久化布局、清单与正文边界见 [Command 输出规范](command.md#输出契约)。
 
 Evidence 是本次诊断明确选择的 Facts 与 Observations。Detector 回答“已有证据说明什么”：
 
@@ -117,7 +117,7 @@ Core 统一驱动三段式生命周期；Plugin Service 只注册 Inspect、Prob
    校验 Finding 的 `id / kind / schemaVersion / producer`、本轮 ID 唯一性及 Evidence 引用后形成 Findings；
    同一阶段也用 Finding 解释证据不足及其影响。
 5. **Finalize**：根入口释放共享 Client，序列化完整结果，再按格式触发本地 Renderer 和 Delivery；
-   具体阶段顺序见 [Command 生命周期](command-lifecycle.md#三阶段生命周期)。
+   具体阶段顺序见 [Command 生命周期](command.md#三阶段生命周期)。
 
 `runInspects`、`runProbes` 与 `runDiagnosis` 是 Collect engine 的低层实现入口；新增领域 Command 必须通过
 `runCollect` 进入 Execute。所有领域 Command 已完成迁移，架构测试禁止 `collect/<domain>` 直接调用这些
@@ -179,7 +179,7 @@ Partial 报告沿用用户请求的 HTML、Markdown 或 Bundle 格式，并必�
 
 报告保持单文件、离线可读。`CommandSpec.render` 在根 Finalize 中消费本地结果；公共 `report` 模块拥有
 阅读结构、对象联动和按需加载，公共 output 提供 shell 与通用表格/图表；领域 Renderer 决定
-章节顺序、文案与数据口径，不从 Markdown 文案反解析结构化数据。具体契约见 [渲染设计](rendering.md)。
+章节顺序、文案与数据口径，不从 Markdown 文案反解析结构化数据。具体契约见 [渲染设计](report.md)。
 
 ### 副作用与授权
 

@@ -219,7 +219,7 @@ Data 使用 [data.id](../../packages/plugin/src/extension/data-id.ts) 接入这�
 Data 按 Service 归属查询与结果，因此每个 Service 只选择一个 data.id 实现，多个实现会报歧义。
 
 Data 的具体行为见 [Data 汇集诊断](commands/data.md)；Plugin 的加载、分发与信任边界见
-[Plugin](plugin.md)，Command 生命周期见 [Command 生命周期](command-lifecycle.md)。
+[Plugin](plugin.md)，Command 生命周期见 [Command 生命周期](command.md)。
 
 Case 来源的 `runner` 声明协议兼容性、端点和请求身份需求，发现时校验元数据，调用时创建
 runner。Command 在主动请求审批后调用创建函数，并持有访问上下文直到 runner 生命周期结束；
