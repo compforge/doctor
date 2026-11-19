@@ -84,6 +84,24 @@ make -C ../toolkit build-all
 
 ## 命令
 
+| 想做什么 | 命令与说明 |
+|---|---|
+| 验证部署或回顾运行情况 | [health](docs/commands/health.md) 主动巡检；[overview](docs/commands/overview.md) 查看窗口统计并选择样本。 |
+| 排查已知业务 ID | [collect](docs/commands/collect.md) 汇集多种证据；也可单查 [trace](docs/commands/trace.md)、[log](docs/commands/log.md)、[data](docs/commands/data.md) 或 [tenant](docs/commands/tenant.md)。 |
+| 检查部署与资源 | [inspect](docs/commands/inspect.md) 检查 Workload 与配置，[compute](docs/commands/compute.md) 查看容量，[resource](docs/commands/resource.md) 盘点 Service 声明的资源。 |
+| 检查存储或外部工具 | [store](docs/commands/store-diagnosis.md) 诊断存储依赖，[db](docs/commands/db.md) 查询数据库，[s3](docs/commands/s3.md) 浏览对象，[mcp](docs/commands/mcp-diagnosis.md) 排查工具调用。 |
+| 分析 CPU、内存或网络 | [cpu](docs/commands/cpu-diagnosis.md) 采集 CPU 和线程证据；[mem / mema](docs/commands/memory-diagnosis.md) 采集与分析堆；[net / neta](docs/commands/network-diagnosis.md) 抓包与离线分析。 |
+| 执行 Case 或观察负载 | [case](docs/commands/case.md) 预览并按需发送 HTTP 请求，[eval](docs/commands/eval.md) 逐例执行并保留证据，[perf](docs/commands/perf.md) 对照负载与指标。 |
+| 准备或调整现场环境 | [image](docs/commands/image.md) 准备镜像，[debug](docs/commands/debug-container.md) 准备临时容器，[install](docs/commands/install.md) 安装诊断工具，[resize](docs/commands/resize.md) 调整资源限制。 |
+| 查询产品知识或进入问诊 | [knowledge](docs/commands/knowledge.md) 查询 Plugin 知识，[chat](#chat-会话) 进入或恢复会话。 |
+| 查看当前 CLI | [plugin](#查看生效的-plugin) 查看 Service 声明，`doctor version` 查看版本，`doctor help` 查看命令帮助。 |
+
+`trace`、`log`、`data` 的业务 ID 既可直接写成 positional（如 `doctor trace <id>`），也可重复传入
+`--biz-id`（如 `--biz-id=1 --biz-id=2`）。批量 HTML 按原始 ID 分 tab；每个 ID 的证据、Finding 和
+Coverage 独立，只有采集批次和交付页面共享。
+
+### 查看生效的 Plugin
+
 用 `doctor plugin` 离线查看当前生效的 Plugin、版本、加载来源及其声明的 Service。
 `doctor plugin --format json` 返回 `{ "plugins": [...] }`，包含产品说明、concepts、workflows，
 以及由 `name`、`aliases` 和可选简短介绍组成的服务索引。
@@ -99,54 +117,6 @@ doctor plugin --format json | jq -r '.plugins[].services[].name'
 入口注入的 Plugin 优先于本机激活版本；没有生效 Plugin 时列表为空。输出是 Catalog 声明，
 不表示目标环境中的服务已部署、健康或可达，也不表示每个 Service 支持全部采集命令。
 本机其它已安装但未激活的版本不进入此列表。安装与卸载仍使用 `doctor plugin install/uninstall`。
-
-| 命令 | 用途 |
-|---|---|
-| `doctor plugin` | 展示当前生效的 Plugin 与 Service 声明；`--format json` 供脚本消费 |
-| `doctor chat` | 进入交互式 AI 问诊，默认自动保存本地会话 |
-| `doctor cpu` | 对目标 Pod 做 Python CPU、卡顿与线程栈取证 |
-| `doctor mem` | 使用 fork-pyheap attach 并回传对象堆；余量不足时按安全进程拓扑准备 Headroom |
-| `doctor mema [inputs...]` | 在 Doctor Host 用独立 Go analyzer 解析、缓存并诊断 `.pyheap` artifact |
-| `doctor image` | 将当前目录的 image tar 按需准备到 Target Registry、Doctor Host 或两处 |
-| `doctor debug` | 为目标 Pod 启动或复用 ptrace 临时容器；debug image 不可用时复用业务镜像 |
-| `doctor install` | 交互选择并向目标 Pod container 安装 GDB，在线源失败时尝试 Doctor 离线包 |
-| `doctor health` | 主动检查 Service 自身健康、依赖连通性与业务功能 |
-| `doctor overview` | 展示历史统计与耗时分布，按需采样并进入 Collect |
-| `doctor collect [id...]` | 集合选择并汇总 Inspect、Tenant、Data、Trace、Log；自身不实现具体采集 |
-| `doctor trace` | 按业务 ID 下载 trace / 指定 span；manifest 索引节点与原始证据，`--from` 离线选择 trace/node view，渲染 text / JSON / HTML / Bundle（[说明](docs/commands/trace.md)） |
-| `doctor s3 ls/stat/cat` | 按 Service 连接浏览 bucket / 目录前缀、检查对象元数据和有界读取内容 |
-| `doctor store` | 从 Service Pod 获取凭据，一次选择一个或多个 DB、VDB、S3、Redis 诊断；S3 同时统计前缀和对象年龄 |
-| `doctor log [id...]` | 不带 ID 按 Service / 时间范围采集日志；带 ID 则解析 trace 并分组聚合关联日志 |
-| `doctor data [id...]` | 先扩展业务 ID，再按输入 ID 独立汇集各服务声明的数据 |
-| `doctor inspect` | 检查 Service 的 workload 与配置，包括 Pod 重启/OOM、Toolchain、应用依赖和配置对照 |
-| `doctor case` | 列出内置与当前目录的 Case；选择一个或多个 HTTP Case 发送并分析响应 |
-| `doctor net` | 协调多个 Service Pod 短时抓包；选择 YAML 跟踪已知请求，或守候页面操作产生的请求 |
-| `doctor neta [input]` | 纯离线分析 NetBundle，生成业务调用 Diagnosis 的 Markdown、泳道/瀑布 HTML 与结构化 JSON |
-| `doctor version` | 显示 Doctor、当前平台及嵌入 Plugin 的精确版本 |
-| `doctor help` | 显示命令帮助 |
-
-`trace`、`log`、`data` 的业务 ID 既可直接写成 positional（如 `doctor trace <id>`），也可重复传入
-`--biz-id`（如 `--biz-id=1 --biz-id=2`）。批量 HTML 按原始 ID 分 tab；每个 ID 的证据、Finding 和
-Coverage 独立，只有采集批次和交付页面共享。
-
-## 详细文档
-
-- [Command 生命周期](docs/command-lifecycle.md) · [Collect 共享协议](docs/collect-protocol.md)
-- [Collect 集合采集](docs/commands/collect.md)
-- [Service Inspect](docs/commands/inspect.md)
-- [Memory 诊断](docs/commands/memory-diagnosis.md)
-- [CPU 诊断](docs/commands/cpu-diagnosis.md)
-- [Log 采集](docs/commands/log.md)
-- [Data 汇集诊断](docs/commands/data.md)
-- [Trace 采集](docs/commands/trace-diagnosis.md)
-- [Store 诊断](docs/commands/store-diagnosis.md)
-- [S3 对象取证](docs/commands/s3.md)
-- [MCP 诊断](docs/commands/mcp-diagnosis.md)
-- [Image 准备](docs/commands/image.md)
-- [Debug container](docs/commands/debug-container.md)
-- [Container GDB 安装](docs/commands/install.md)
-- [Case 选择、发送与诊断](docs/commands/case.md)
-- [Network 抓包与离线分析](docs/commands/network-diagnosis.md)
 
 ### Chat 会话
 

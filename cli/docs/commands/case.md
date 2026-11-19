@@ -42,7 +42,7 @@ HTTP Case 的 `input` 是一个请求：`path`、method、headers、`json`/`body
 
 Service Case source 是可被多个 Command 引用的资源，不是命令扩展的集合。离线 `load` 提供目录；
 `CaseProducer` 绑定本次对象和目标；`CaseRunnerFactory` 创建由命令接管的单请求 runner。
-三者由同一 `{ service, source }` 标识。Perf 通过所选 Case source 的 `operation` 引用定位入口；同一来源的不同 Case 可以共用一个 Operation。问候和 Python 加法的 Chat 示例及字段契约见 [Case 与 Operation](../plugin.md#case-与-operation)。
+三者由同一 `{ service, source }` 标识。Perf 通过所选 Case source 的 `operation` 引用定位入口；同一来源的不同 Case 可以共用一个 Operation。问候和 Python 加法的 Chat 示例及字段契约见 [Case 与 Operation](../service.md#case-与-operation)。
 
 原生操作与 Extension 共用 `PluginOperation` 的 access、PluginContext 和结果信封，因此不需要为使用
 统一权限、客户端和清理机制而额外注册。producer 返回后释放调用上下文；runner factory 的上下文保留至

@@ -117,9 +117,10 @@ Core 与 Plugin 共用的基础设施由 Quality Harness 的 `@compforge/harness
 ## References
 
 - `cli/AGENTS.md` — CLI 定位、分层与诊断能力地图
-- [Command 生命周期](cli/docs/command-lifecycle.md) — 命令准备、调用作用域、幂等复用与取消
+- [Command 执行与输出](cli/docs/command.md) — 调用作用域、产物、清单与交付
+- [Report 组织与渲染](cli/docs/report.md) — 页面组合、状态展示与离线阅读
 - [Collect 协议](cli/docs/collect-protocol.md) — 采集数据模型、调度、授权与执行状态
 - [配置与目标](cli/docs/configuration.md) — 参数来源、Environment 身份与宿主目标传递
-- `cli/docs/plugin.md` — Plugin capability、上下文、分发与信任边界
+- [Service 声明与接入](cli/docs/service.md) · [Plugin 分发](cli/docs/plugin.md) — 业务声明与宿主装配
 - `cli/docs/commands/eval.md` — Eval 数据集触发、关联证据采集与质量评估边界
 - `docs/chat.md` — Doctor Chat 数据流、Agent 复用边界与 Plugin Skill 生命周期

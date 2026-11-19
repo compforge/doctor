@@ -34,5 +34,5 @@ Command 的 EnvironmentContext 借用根 ClientManager；Service 绑定、Worklo
 ## 相关入口
 
 - [发行版](distribution.md#目标配置归宿主)：发行默认值与嵌入入口的目标配置。
-- [Command 生命周期](command-lifecycle.md)：准备结果与本轮共享 Context。
+- [Command 生命周期](command.md)：准备结果与本轮共享 Context。
 - [Doctor Chat](../../docs/chat.md)：本地及远端会话的宿主边界。

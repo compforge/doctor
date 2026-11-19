@@ -126,16 +126,16 @@ Evidence、Findings 和纯 Detector，再实现 Inspect、Probe 与 Renderer。�
    finalize 在该目录生成 `AGENTS.md`，说明面向人的 HTML 完整路径、证据阅读顺序和不可信 raw 内容边界。
    显式 format 选择交付视图，不改变采集范围。领域 Command 通过 `CommandSpec.run` 返回本次调用的状态和 Artifacts；组合命令显式纳入子结果，
    根与 Artifact manifest 只保存元数据和证据索引，不重复内嵌 raw 正文；Render 按索引读取，约束见
-   `docs/command-output.md` 的“证据与清单”。
+   `docs/command.md` 的“统一 Manifest”。
    根入口统一 finalize：释放 Client 后调用 CommandSpec.serialize，再按需 render 和 Delivery；序列化只处理本地结果与显式子引用。单次调用的临时资源与产物独立，环境、决策、共享基础设施资源及取消信号在整轮内共享。
 
 ## 按开发任务查文档
 
 | 要改什么 | 从哪里开始 |
 |---|---|
-| 命令准备、执行作用域与资源回收 | [Command 生命周期](docs/command-lifecycle.md)、[配置与目标](docs/configuration.md)、[数据源生命周期](docs/datasource.md) |
-| 证据采集、状态与交付 | [Collect 协议](docs/collect-protocol.md) 管采集与判断，[Command 输出](docs/command-output.md) 管状态、Artifact 与 manifest，[HTML 渲染](docs/rendering.md) 管离线页面与导航 |
-| Service 声明、业务扩展与宿主装配 | [Plugin 契约](docs/plugin.md)、[Extension 调用边界](docs/extension.md)、[发行版](docs/distribution.md)、[公开命名](docs/naming.md) |
+| 命令准备、执行作用域与资源回收 | [Command 生命周期](docs/command.md)、[配置与目标](docs/configuration.md)、[数据源生命周期](docs/datasource.md) |
+| 证据采集、状态与交付 | [Collect 协议](docs/collect-protocol.md) 管采集与判断，[Command 输出](docs/command.md#输出契约) 管状态、Artifact 与 manifest，[HTML 渲染](docs/report.md) 管离线页面与导航 |
+| Service 声明、业务扩展与宿主装配 | [Service 声明](docs/service.md)、[Plugin 分发](docs/plugin.md)、[Extension 调用边界](docs/extension.md)、[发行版](docs/distribution.md)、[公开命名](docs/naming.md) |
 | Case 资产、执行与负载观测 | [Case](docs/commands/case.md)、[Eval](docs/commands/eval.md)、[Perf](docs/commands/perf.md) |
 | 巡检、回顾与问题取证 | [Health](docs/commands/health.md)、[Overview](docs/commands/overview.md)、[Collect](docs/commands/collect.md) |
 | 资源、租户与存储 | [Resource](docs/commands/resource.md)、[Compute](docs/commands/compute.md)、[Resize](docs/commands/resize.md)、[Tenant](docs/commands/tenant.md)、[DB](docs/commands/db.md)、[S3](docs/commands/s3.md) |

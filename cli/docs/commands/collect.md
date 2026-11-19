@@ -59,7 +59,7 @@ Tenant 使用 `--tenant-id` / `--tenant-name`，业务 ID 仍只传给 Data、Tr
 `--since`、`--since-time`、`--until-time` 适用于 Log 和 Data/Inspect 中的历史事件。
 绝对起点优先；相对窗口在准备前以显式终点或当前时刻解析一次，所有子命令沿用相同边界。
 未提供这些参数时，各采集器保留自己的默认策略。窗口不会把数据库记录、Pod 当前状态变成历史快照，
-也不会改变按业务 ID 获取 Trace 的语义。协议见 [Inspect 查询时间窗](../plugin.md#inspect-查询时间窗)。
+也不会改变按业务 ID 获取 Trace 的语义。协议见 [Inspect 查询时间窗](data.md#inspect-查询时间窗)。
 
 ### 部分成功仍然交付
 
@@ -75,4 +75,4 @@ Command tabs 与业务对象选择联动；共享环境、租户和时间窗口�
 biz-id 的数据面组合使用 `doctor-collect-batch-<timestamp>.html/.tar.gz`。组合命令只向 Artifact 注册表
 提供该 basename，最终路径与格式仍由统一 Delivery 决定；自动化调用可用 `--output` 指定稳定前缀。
 
-渲染契约与四种阅读场景见 [HTML 报告渲染](../rendering.md)。
+渲染契约与四种阅读场景见 [HTML 报告渲染](../report.md)。

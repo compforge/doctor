@@ -29,7 +29,7 @@ export function cleanupTemporaryArtifacts(paths: readonly string[]): void {
  * Delivery consumes an already serialized, portable directory. It never reconstructs domain results.
  * @spec Output delivery creates missing parent directories and refuses existing destinations.
  * @case id=nested_output,desc=`Output has missing ancestors`,expect=`All file formats and manifest are delivered`
- * @see {@link component://docs/command-output.md}
+ * @see {@link component://docs/command.md#输出契约}
  */
 export async function deliverSerialized(input: { directory: string; options: CommandDeliveryOptions;
   code: number; reportName: string }): Promise<boolean> {

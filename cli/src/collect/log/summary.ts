@@ -19,7 +19,7 @@ export function logEvidenceImpact(resolutionGaps: readonly string[], missingEvid
  * @why Keep per-query counts: shared Pod captures can match multiple IDs and must not be added as unique logs.
  * @why Evidence and gaps precede context so bounded parent summaries retain both success and failure.
  * @see {@link ../../../docs/commands/log.md#终端摘要}
- * @see {@link ../../../docs/command-output.md#摘要与原始证据}
+ * @see {@link ../../../docs/command.md#摘要与原始证据}
  */
 export function logSummary(output: LogOutput): Summary {
   const impact = logEvidenceImpact(

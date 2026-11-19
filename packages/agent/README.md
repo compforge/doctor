@@ -9,3 +9,5 @@ Skills do not have an independent installation lifecycle. A Plugin loader select
 its resolved `PluginSkill` views to the agent. The agent never scans a global Skill directory or interprets Plugin
 storage layout. Pi lists Skill metadata and its absolute `SKILL.md` location in the system prompt; the model reads the
 full instructions and referenced files on demand through the same `ExecutionEnv` used to run Skill scripts.
+
+See [Doctor Chat](../../docs/chat.md) for host integration, session persistence, and local and remote execution.
