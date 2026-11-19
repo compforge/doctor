@@ -134,7 +134,7 @@ Evidence、Findings 和纯 Detector，再实现 Inspect、Probe 与 Renderer。�
 | 要改什么 | 从哪里开始 |
 |---|---|
 | 命令准备、执行作用域与资源回收 | [Command 生命周期](docs/command.md)、[配置与目标](docs/configuration.md)、[数据源生命周期](docs/datasource.md) |
-| 证据采集、状态与交付 | [Collect 协议](docs/collect-protocol.md) 管采集与判断，[Command 输出](docs/command.md#输出契约) 管状态、Artifact 与 manifest，[HTML 渲染](docs/report.md) 管离线页面与导航 |
+| 证据采集、状态与交付 | [Collect 协议](docs/collect.md) 管采集与判断，[Command 输出](docs/command.md#输出契约) 管状态、Artifact 与 manifest，[HTML 渲染](docs/report.md) 管离线页面与导航 |
 | Service 声明、业务扩展与宿主装配 | [Service 声明](docs/service.md)、[Plugin 分发](docs/plugin.md)、[Extension 调用边界](docs/extension.md)、[发行版](docs/distribution.md)、[公开命名](docs/naming.md) |
 | Case 资产、执行与负载观测 | [Case](docs/commands/case.md)、[Eval](docs/commands/eval.md)、[Perf](docs/commands/perf.md) |
 | 巡检、回顾与问题取证 | [Health](docs/commands/health.md)、[Overview](docs/commands/overview.md)、[Collect](docs/commands/collect.md) |

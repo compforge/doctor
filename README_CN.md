@@ -46,4 +46,4 @@ make build-local
 - [CLI 使用与构建选项](cli/README.md) · [自定义发行版](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
 - [Service 契约](cli/docs/service.md) · [Plugin 示例](plugins/example) · [Toolkit](toolkit/README.md)
-- [Collect 证据协议](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)
+- [Collect 证据协议](cli/docs/collect.md) · [Chat](docs/chat.md) · [仓库地图](AGENTS.md)

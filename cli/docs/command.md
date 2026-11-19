@@ -2,7 +2,7 @@
 
 本篇沿一次命令说明[执行阶段](#三阶段生命周期)、[输出契约](#输出契约)和[交付状态](#状态与读取顺序)。所有主路径共用命令准备、调用作用域和根 Finalize。各路径的领域结果及依赖方向见
 [CLI 开发约定](../AGENTS.md#执行模型与调用归属)；Collect 内部的数据流与调度见
-[Collect 协议](collect-protocol.md)。
+[Collect 协议](collect.md)。
 
 ## 三阶段生命周期
 
@@ -16,7 +16,7 @@ Finalize  根入口释放共享 Client，序列化本地结果，按格式渲染
 
 | 执行路径 | Prepare 与 Execute 的分工 |
 |---|---|
-| [Collect](collect-protocol.md) | 确定目标与贡献项。执行时先完成选中的 Inspect 并冻结 Facts，再生成 Probe 计划，最后由 Detector 消费已取得的 Evidence。 |
+| [Collect](collect.md) | 确定目标与贡献项。执行时先完成选中的 Inspect 并冻结 Facts，再生成 Probe 计划，最后由 Detector 消费已取得的 Evidence。 |
 | [在线 Perf](commands/perf.md) | Core 选择入口并准备所需访问，正 QPS 时确认加压。Perf Harness 调度负载和窗口，Core 按实际窗口组织指标采集与产物。 |
 | [Perf 离线回放](commands/perf.md#profile-与证据) | `--from` 选择已保存的运行，从本地证据生成新报告，无需加载业务 Plugin 或连接指标源。 |
 

@@ -48,4 +48,4 @@ For development checks, run `make lint-all` and `make test-all`.
 - [CLI usage and build options](cli/README.md) · [Custom distributions](cli/docs/distribution.md)
 - [Health](cli/docs/commands/health.md) · [Overview](cli/docs/commands/overview.md) · [Collect](cli/docs/commands/collect.md)
 - [Service contracts](cli/docs/service.md) · [Example Plugin](plugins/example) · [Toolkit](toolkit/README.md)
-- [Collect evidence protocol](cli/docs/collect-protocol.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)
+- [Collect evidence protocol](cli/docs/collect.md) · [Chat](docs/chat.md) · [Repository map](AGENTS.md)
