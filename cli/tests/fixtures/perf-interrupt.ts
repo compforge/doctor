@@ -11,4 +11,4 @@ const plugin = { id: "fixture", version: "1", services: createServiceCatalog([{
   }],
 }]) };
 await runCommand(perfCommand, { config: process.argv[2], output: process.argv[3], format: "bundle", yes: true },
-  { qps: "0", hold: "60", caseset: "fixture", cases: "natural" }, { plugin, printProfile: false });
+  { prometheus: "http://127.0.0.1:9090", qps: "0", hold: "60", caseset: "fixture", cases: "natural" }, { plugin, printProfile: false });

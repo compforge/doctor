@@ -26,6 +26,18 @@ export const perfCommand = defineCommand<PerfServiceInput, PerfResult>({
   }),
   prepare: async (context, input) => {
     if (input.from) return input;
+    if (!input.prometheus?.trim() && !context.profile.value.metricdb?.url?.trim()) {
+      const { name, configPath } = context.profile;
+      if (!name) throw new CommandInputError("在线 perf 需要指标源。当前未启用 profile，请指定 --prometheus <url>，或使用 --config <path> 加载已配置 metricdb.url 的 profile。");
+      throw new CommandInputError([
+        `在线 perf 需要指标源，profile '${name}' 缺少 metricdb.url。`,
+        `请在 ${configPath || "Doctor 配置文件"} 的 profiles.${name} 下添加以下配置，并将 URL 替换为实际查询地址：`,
+        "  metricdb:",
+        "    kind: prometheus  # VictoriaMetrics 使用 victoriametrics",
+        "    url: https://metrics.example.net",
+        "也可在本次命令中指定 --prometheus <url>。",
+      ].join("\n"));
+    }
     await prepareCommandRequirements(context, { plugin: PLUGIN_COMMAND_CAPABILITIES.perf });
     return input;
   },

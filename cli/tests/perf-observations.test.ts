@@ -34,6 +34,21 @@ test("Case sources statically reference owned Operations without runner callback
 });
 
 
+test("live perf requires a metric source before loading the plugin or selecting cases", async () => {
+  let loaded = false;
+  const context = new CommandContext({}, {
+    name: "qa", configPath: "/tmp/qa.yaml", pluginConfig: {}, value: {readonly: true},
+  }, { loadPlugin: async () => { loaded = true; throw new Error("unexpected plugin load"); } });
+  for (const qps of ["0", "1"]) {
+    const result = await perfCommand.run(context, { qps });
+    expect(commandExitCode(result)).toBe(2);
+    const reason = "reason" in result ? result.reason : "";
+    for (const hint of ["/tmp/qa.yaml", "profiles.qa", "metricdb.url", "--prometheus <url>"]) expect(reason).toContain(hint);
+    expect(result.artifacts).toEqual([]);
+  }
+  expect(loaded).toBe(false);
+});
+
 test("empty offline paths are usage errors and never enter online preparation", async () => {
   const context = new CommandContext({}, undefined, {
     loadPlugin: async () => { throw new Error("empty --from must not load a Plugin"); },
@@ -147,7 +162,7 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
     expect(JSON.parse(readFileSync(join(directory, "perf.json"), "utf8"))).toEqual({ schema: 1, ...metadata, ...partial });
     expect(readFileSync(join(directory, "requests.jsonl"), "utf8")).toBe(before);
     const counts = [requests, metrics];
-    const replay = await perfCommand.run(context, { from: directory });
+    const replay = await perfCommand.run(noSource, { from: directory });
     artifactPaths.push(...replay.artifacts.map(artifact => artifact.path));
     const replayed = replay.output;
     expect(replayed?.run.run_id).toBe(run.run_id);
