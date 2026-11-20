@@ -2,12 +2,18 @@
 export const REPORT_SCRIPT = `
 const reportStartedAt = window.__doctorReportStartedAt ?? performance.now();
 document.querySelectorAll('.sidebar a[href^="#"]').forEach((link) => {
-  link.addEventListener('click', () => {
-    const target = document.querySelector(link.getAttribute('href'));
-    let parent = target && target.parentElement;
+  link.addEventListener('click', (event) => {
+    const target = document.getElementById(link.getAttribute('href').slice(1));
+    if (!target) return;
+    let parent = target.parentElement;
     while (parent) {
       if (parent.tagName === 'DETAILS') parent.open = true;
       parent = parent.parentElement;
+    }
+    // A fragment link in srcdoc resolves against the containing report's URL.
+    if (window.location.protocol === 'about:' && window.location.pathname === 'srcdoc') {
+      event.preventDefault();
+      target.scrollIntoView();
     }
   });
 });

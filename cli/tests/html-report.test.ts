@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { runInNewContext } from "node:vm";
 import { EvidenceBundle } from "../src/collect/evidence";
 import {
   htmlPieChartSection,
@@ -17,6 +18,43 @@ test("离线表格脚本只挂载当前页记录且保持可执行", () => {
   expect(REPORT_SCRIPT).toContain("renderRows(filteredRows.slice(start, end))");
   expect(REPORT_SCRIPT).toContain("body.replaceChildren(fragment)");
   expect(REPORT_SCRIPT).not.toContain("payload.rows.forEach");
+});
+
+test.each([
+  { url: "about:srcdoc", embedded: true },
+  { url: "file:///inspect.html", embedded: false },
+])("report directory follows an existing heading in $url", ({ url, embedded }) => {
+  const details = { tagName: "DETAILS", open: false, parentElement: null };
+  let scrolled = false;
+  const heading = {
+    parentElement: details,
+    scrollIntoView() {
+      expect(details.open).toBe(true);
+      scrolled = true;
+    },
+  };
+  let click: ((event: Event) => void) | undefined;
+  const link = {
+    getAttribute: () => "#report-heading-2",
+    addEventListener: (_type: string, handler: (event: Event) => void) => { click = handler; },
+  };
+  runInNewContext(REPORT_SCRIPT, {
+    window: { location: new URL(url), addEventListener() {} },
+    document: {
+      querySelectorAll: (selector: string) => selector === '.sidebar a[href^="#"]' ? [link] : [],
+      getElementById: (id: string) => id === "report-heading-2" ? heading : null,
+      getElementsByTagName: () => [],
+    },
+    performance,
+    console: { log() {} },
+    requestAnimationFrame() {},
+  });
+  expect(click).toBeDefined();
+  const event = new Event("click", { cancelable: true });
+  click!(event);
+  expect(details.open).toBe(true);
+  expect(event.defaultPrevented).toBe(embedded);
+  expect(scrolled).toBe(embedded);
 });
 
 test("htmlTable 为离线报告提供数值/字符串排序和分页控件", () => {
