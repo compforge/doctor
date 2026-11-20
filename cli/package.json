@@ -33,7 +33,7 @@
     "@compforge/doctor-agent": "workspace:*",
     "@compforge/doctor-plugin": "workspace:*",
     "@compforge/harness-common": "0.10.0",
-    "@compforge/harness-toolbox": "0.14.0",
+    "@compforge/harness-toolbox": "0.14.1",
     "@compforge/perf-harness": "0.15.2",
     "@compforge/spec-case": "0.0.7",
     "@compforge/trace-harness": "0.3.2",
