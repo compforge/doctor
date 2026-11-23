@@ -89,6 +89,11 @@ export function printCaseDetails(choices: readonly CaseChoice[], baseUrl?: strin
     const action = caseMatchesCommand(choice.item, "http") ? "可发送" : "仅预览";
     writeOutput(`\n${choice.source.service} / ${caseRef(choice)}（${action}）\n`);
     if (choice.item.desc) writeOutput(`${choice.item.desc}\n`);
+    for (const [name, param] of Object.entries(choice.item.params ?? {})) {
+      const source = param.source ? ` source=${param.source}` : "";
+      const fallback = param.default !== undefined ? ` default=${JSON.stringify(param.default)}` : "";
+      writeOutput(`  ${name}: ${param.type}${source}${fallback}\n`);
+    }
     try {
       const commands = caseCurlPreview(choice, baseUrl, overrides);
       writeOutput(commands.length ? commands.join("\n\n") + "\n" : "cURL：此 Case 未提供离线 HTTP 请求模板。\n");

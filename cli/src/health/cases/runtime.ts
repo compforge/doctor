@@ -68,6 +68,6 @@ export function caseCheckActions(context: CommandContext, executor: Executor,
       if (!result.ok) throw new Error(result.stderr.trim() || `curl unavailable (exit=${result.exitCode}, timedOut=${result.timedOut})`);
       return createPodHttpSender(executor, target, supportsPodCurlDiagnostics(result.stdout));
     },
-    produce: (service, source, query) => invoke(service, caseProducer(source), query),
+    produce: (service, source, query) => invoke(service, caseProducer(source), query, query.requestIdentity ?? { tenantId: query.requestTenantId }),
   };
 }

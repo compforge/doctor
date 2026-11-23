@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "@compforge/harness-common": "0.10.0",
-    "@compforge/spec-case": "0.0.7",
+    "@compforge/spec-case": "0.0.8",
     "@compforge/trace-harness": "0.3.2",
     "@compforge/harness-toolbox": "0.14.2"
   },

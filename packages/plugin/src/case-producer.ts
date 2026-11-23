@@ -1,11 +1,12 @@
-import type { ServiceCaseIdentityRequirement, ServiceRequestIdentity } from "./service";
+import type { CommandInvocation } from "./context";
+import type { ServiceCaseIdentityRequirement } from "./service";
 import { validateHttpCase, type HttpCase } from "@compforge/spec-case/http";
 import { validateOperation, type PluginOperation } from "./operation";
 
 export interface CaseProduceQuery {
   readonly tenantId?: string;
   /** Prepared probe identity; independent of the command's statistics scope. */
-  readonly requestIdentity?: ServiceRequestIdentity;
+  readonly requestIdentity?: Required<CommandInvocation>;
   /** Prepared tenant for tenant-only probes; does not narrow the Health statistics query. */
   readonly requestTenantId?: string;
   /** Bound preparation at its data source; temporary URLs belong only to this invocation. */

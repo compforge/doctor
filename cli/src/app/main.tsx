@@ -361,6 +361,7 @@ function withPerfOptions(cmd: CommandT): CommandT {
     .option("--operation <id>", "指定观测入口 Operation")
     .option("--caseset <id>", "选择 CaseSet")
     .option("--cases <ids>", "逗号分隔的 Case ID；交互时可多选")
+    .option("--case-dataset <csv>", "按参数名读取 CSV 列，每次注入请求随机选一整行")
     .option("--qps <number>", "所有选中 Case 的总注入 QPS；0 只观测自然流量（默认 0）")
     .option("--max-inflight <number>", "最大在途请求数（默认 20）；QPS=0 时不参与执行")
     .option("--ramp <seconds>", "warmup 升压时间（秒），QPS=0 时跳过", "10")

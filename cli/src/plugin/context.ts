@@ -160,6 +160,7 @@ function createKubernetesAccess(
 export type ManagedPluginContext = PluginContext & { dispose(): Promise<void> };
 
 interface PluginContextOptions {
+  command?: PluginContext["command"];
   signal?: AbortSignal;
   environment: ResolvedKubernetesEnvironment | { readonly kind: "host"; readonly name: string };
   /** An explicitly supplied root owner is useful outside the command async scope. */
@@ -243,6 +244,7 @@ export function createPluginContext(
   const unregister = onCommandDispose(dispose);
   return {
     ...access(signal),
+    command: Object.freeze({ ...options.command }),
     dependencies: options.dependencies ?? {},
     clients: {
       get: async source => {

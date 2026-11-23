@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createServiceCatalog, kubernetesServiceWorkload, withSummary,
-  type CaseProducer, type ServiceRequestIdentity, type TenantDirectory } from "@compforge/doctor-plugin";
+  type CaseProducer, type CommandInvocation, type TenantDirectory } from "@compforge/doctor-plugin";
 import { CommandContext } from "../src/command";
 import { resolveCaseProducerIdentity, resolveCaseProducerTenant } from "../src/case/prepare-identity";
 import { prepareServiceCases } from "../src/health/cases/prepare";
@@ -136,7 +136,7 @@ test("prepare binds identities without target access; run preserves fresh produc
   const source = { name: "source", component, workloads: [], cases: [{ id: "hello", load: () => [], produce: producer }] };
   const plugin = { id: "test", version: "1", services: createServiceCatalog([consumer, source]) };
   const signal = new AbortController().signal;
-  const identity: ServiceRequestIdentity = { tenantId: tenant.id, userId: user.id };
+  const identity: Required<CommandInvocation> = { tenantId: tenant.id, userId: user.id };
   const calls: string[] = [];
   const prepared = await prepareServiceCases(plugin, consumer, [consume], undefined, {
     signal,

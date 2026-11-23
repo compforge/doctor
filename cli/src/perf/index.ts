@@ -9,7 +9,9 @@ import { observePerf, preparePerfMetrics } from "./observations";
 import { PerfProgress, formatPerfSummary } from "./progress";
 import { discoverTenantDirectory } from "../plugin/tenant-directory";
 import { isInteractive } from "../terminal/policy";
-import { resolveCaseRequestIdentity } from "../case";
+import type { Case } from "@compforge/spec-case/model";
+import { prepareCaseInput, prepareRunnerCommand, runnerIdentity } from "../case";
+import { loadCaseDataset } from "./case-dataset";
 import { perfCaseMix, routePerfCases, selectPerfTarget } from "./selection";
 import type { DoctorCaseSet } from "../case/catalog";
 import { CommandStatus, type CommandContext, type CommandResult } from "../command";
@@ -74,7 +76,7 @@ export function perfAdapterFromCaseFactory(
       },
       fire: async ({ case: perfCase, run_id, signal }) => {
         const observation = await runner!.run({
-          input: { id: perfCase.id, input: perfCase.input, facets: perfCase.facets },
+          input: perfCase,
           runId: run_id, signal,
         });
         return {
@@ -146,6 +148,8 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
   const contexts: Awaited<ReturnType<typeof openPluginContext>>[] = [];
   let adapter: Pick<Experiment, "runner" | "judge"> = {};
   if (config.qps > 0) {
+    const rows = opts.caseDataset === undefined ? [] : await loadCaseDataset(opts.caseDataset, target.selected.map(c => c.item));
+    if (rows.length) useLogger("perf").info(`Case dataset：${rows.length} 行，每次请求随机选取一行`);
     const approved = await resolveApprovalGate(opts)({id:"perf-load", risk:"disrupt", title:"执行 Perf 加压",
       purpose:"观察系统在受控注入流量下的表现", target:`${context.profile.name}/${target.service.name}`,
       impact:[`注入 QPS ${config.qps}，最大在途 ${config.maxInflight}，hold ${config.holdSeconds}s，warmup ${config.rampSeconds}s`,
@@ -159,27 +163,33 @@ export async function runPerf(opts: PerfCliOpts, plugin: PluginDefinition, conte
     const environment = await resolveKubernetesEnvironment(executor);
     service = bindService(target.service, environment);
     const adapters = new Map<DoctorCaseSet, ReturnType<typeof perfAdapterFromCaseFactory>>();
+    const inputs = new Map<Case, () => Case>();
     for (const source of mix.sources) {
       const provider = caseRunnerProvider(plugin.services, target.service.name, source.sourceId);
-      const configured = provider.factory.requestIdentity?.configured(context.profile.pluginConfig);
-      const requestIdentity = configured ? await resolveCaseRequestIdentity({configured,
-        directory: discoverTenantDirectory(plugin.services, (owner, extension) => openPluginContext(executor, kube.kubernetes, {
-          config:context.profile.pluginConfig, service:owner, endpoint:extension.endpoint, capability:extension,
-          clients:context.clients, signal:context.signal, environment,
-        })), commandLabel:"Perf", logPrefix:"perf"}) : undefined;
-      if (configured && !requestIdentity) return {status:CommandStatus.Cancelled, artifacts:[]};
+      const cases = mix.routes.filter(route => route.choice.source === source).map(route => route.choice.item);
+      const directory = discoverTenantDirectory(plugin.services, (owner, extension) => openPluginContext(executor, kube.kubernetes, {
+        config: context.profile.pluginConfig, service: owner, endpoint: extension.endpoint, capability: extension,
+        clients: context.clients, signal: context.signal, environment,
+      }), { commandContext: context });
+      const command = await prepareRunnerCommand(provider.factory, cases, rows, context, directory, "Perf");
+      if (!command) return {status:CommandStatus.Cancelled, artifacts:[]};
+      for (const item of cases) {
+        const render = await prepareCaseInput(item, rows, command);
+        if (!render) return {status:CommandStatus.Cancelled, artifacts:[]};
+        inputs.set(item, render);
+      }
       // Lazy access: Engine owns the setup boundary and QPS=0 never enters this factory.
       const adapter = perfAdapterFromCaseFactory(`${target.service.name}/${source.sourceId}`, async () => {
-        const managed = await openPluginContext(executor, kube.kubernetes, {config:context.profile.pluginConfig,
+        const managed = await openPluginContext(executor, kube.kubernetes, {command, config:context.profile.pluginConfig,
           service:target.service, endpoint:provider.factory.endpoint, capability:provider.factory,
           clients:context.clients, signal:context.signal, environment});
         contexts.push(managed);
         return createCaseRunner(provider.factory, managed, {caseSetId:source.caseSet.caseset,
-          timeoutMs:config.requestTimeoutMs, requestIdentity});
+          timeoutMs:config.requestTimeoutMs, requestIdentity:runnerIdentity(command)});
       }, provider.source.operation ? plugin.services.operation(provider.source.operation).operation : undefined);
       adapters.set(source, adapter);
     }
-    adapter = routePerfCases(mix, adapters);
+    adapter = routePerfCases(mix, adapters, inputs);
   }
   const preparedMetrics = await preparePerfMetrics(declarations, context, opts.prometheus,
     plugin.services.services, resolveCollectNamespace(opts, context.profile).namespace);

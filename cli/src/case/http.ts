@@ -1,3 +1,4 @@
+import { previewCaseInput } from "./params";
 import { dirname, resolve } from "node:path";
 import type { Case } from "@compforge/spec-case/model";
 import { validateHttpCase } from "@compforge/spec-case/http";
@@ -85,7 +86,8 @@ export function prepareHttpCases(choices: CaseChoice[], baseUrl: string, overrid
 }
 
 export function caseCurlPreview(choice: CaseChoice, baseUrl?: string, overrides: HttpScenarioOverrides = {}): string[] {
-  const {source, item} = choice;
+  const {source} = choice;
+  const item = previewCaseInput(choice.item);
   const template = source.previewHttp?.(item);
   if (template) {
     const headers = {...template.headers};

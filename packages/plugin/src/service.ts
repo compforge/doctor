@@ -1,6 +1,6 @@
 import { repositoryId, Service, type Component, type Repository } from "@compforge/harness-common";
 import type { Case } from "@compforge/spec-case/model";
-import type { PluginContext } from "./context";
+import type { CommandInvocation, PluginContext } from "./context";
 import type { RegisteredExtension } from "./extension";
 import type { ServiceDataSource } from "./datasource";
 import type { ServiceCaseSource, ServiceCaseRef } from "./cases";
@@ -82,17 +82,13 @@ export interface ServiceCaseVerdict {
   errorKind?: string;
 }
 
-export interface ServiceRequestIdentity {
-  tenantId: string;
-  userId: string;
-}
 
 /**
  * Declares that a Case needs tenant/user identity from a tenant directory.
  * The Plugin owns its profile schema; Core only fills missing identity interactively.
  */
 export interface ServiceCaseIdentityRequirement {
-  configured(config: Readonly<Record<string, unknown>>): Partial<ServiceRequestIdentity>;
+  configured(config: Readonly<Record<string, unknown>>): CommandInvocation;
 }
 
 /**
@@ -108,7 +104,8 @@ export interface ServiceCaseRunner extends ProbeRunner<Case, ServiceCaseObservat
 export interface ServiceCaseProbeOptions {
   caseSetId: string;
   timeoutMs: number;
-  requestIdentity?: ServiceRequestIdentity;
+  /** @deprecated Read PluginContext.command in new runners. */
+  requestIdentity?: Required<CommandInvocation>;
 }
 
 export interface ServiceInspectResolution {

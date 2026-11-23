@@ -1,10 +1,10 @@
-import type { CaseProducer, ServiceRequestIdentity, TenantDirectory } from "@compforge/doctor-plugin";
+import type { CaseProducer, CommandInvocation, TenantDirectory } from "@compforge/doctor-plugin";
 import { defineCommandDecision, type CommandContext } from "../command";
 import { resolveCaseRequestIdentity } from "./identity";
 import { isInteractive } from "../terminal/policy";
 import { resolveTenant } from "../terminal/tenant";
 
-const identityDecision = defineCommandDecision<ServiceRequestIdentity | undefined>("case-producer-identity");
+const identityDecision = defineCommandDecision<Required<CommandInvocation> | undefined>("case-producer-identity");
 
 export async function resolveCaseProducerTenant(context: CommandContext, producer: CaseProducer,
   input: { tenantId?: string }, directory: TenantDirectory,
@@ -20,7 +20,7 @@ export async function resolveCaseProducerTenant(context: CommandContext, produce
 export function resolveCaseProducerIdentity(context: CommandContext, producer: CaseProducer,
   input: { tenantId?: string; userId?: string }, directory: TenantDirectory,
   selection: Pick<Parameters<typeof resolveCaseRequestIdentity>[0], "promptTenant" | "promptUser" | "interactive"> = {},
-): Promise<ServiceRequestIdentity | undefined> {
+): Promise<Required<CommandInvocation> | undefined> {
   const configured = producer.requestIdentity!.configured(context.profile.pluginConfig);
   const tenantId = input.tenantId?.trim() || configured.tenantId?.trim();
   // A user belongs to its configured tenant; a CLI tenant override must not reuse a different tenant's user.

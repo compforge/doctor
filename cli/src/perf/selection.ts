@@ -1,3 +1,4 @@
+import type { Case } from "@compforge/spec-case/model";
 import { chooseName } from "../terminal/selection";
 import { Operation } from "@compforge/harness-common";
 import type { CaseSet, Experiment } from "@compforge/perf-harness";
@@ -72,7 +73,8 @@ export function perfCaseMix(selected: CaseChoice[]) {
 type Adapter = Required<Pick<Experiment, "runner" | "judge">>;
 
 /** Each factory owns one CaseSet. Harness chooses the Case once per arrival and returns its ID to the judge. */
-export function routePerfCases(mix: ReturnType<typeof perfCaseMix>, adapters: Map<DoctorCaseSet, Adapter>): Adapter {
+export function routePerfCases(mix: ReturnType<typeof perfCaseMix>, adapters: Map<DoctorCaseSet, Adapter>,
+  inputs?: ReadonlyMap<Case, () => Case>): Adapter {
   const routes = new Map(mix.routes.map(({id, choice}) => [id, {item:choice.item, adapter:adapters.get(choice.source)!}]));
   const active: Adapter[] = [];
   return {
@@ -86,7 +88,7 @@ export function routePerfCases(mix: ReturnType<typeof perfCaseMix>, adapters: Ma
       },
       fire:ctx => {
         const route = routes.get(ctx.case.id)!;
-        return route.adapter.runner.fire({...ctx, case:route.item});
+        return route.adapter.runner.fire({...ctx, case:inputs?.get(route.item)?.() ?? route.item});
       },
       operation:ctx => {
         const route = routes.get(ctx.case.id)!;

@@ -5,6 +5,7 @@ import { runCollectHttp } from "../collect/http";
 import type { CaseChoice } from "../case/choices";
 import { doctorCaseCatalog } from "../case/catalog";
 import { selectDoctorCases } from "../terminal/case-selection";
+import { prepareCaseInput } from "../case/params";
 import { prepareHttpCases } from "../case/http";
 import { runCollectMemory, runCollectMemoryAnalysis } from "../collect/memory";
 import { runCollectNetwork } from "../collect/network";
@@ -103,6 +104,8 @@ export const cpuCommand = defineCommand<CommandInput & Omit<Parameters<typeof ru
 
 export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof runCollectHttp>[0], CommandHostOption> & {
   choices?: CaseChoice[];
+  tenantId?: string;
+  userId?: string;
   caseFile?: string;
   services?: string[];
   caseset?: string;
@@ -132,7 +135,13 @@ export const caseCommand = defineCommand<CommandInput & Omit<Parameters<typeof r
       if (!selection) return commandOutcome(130);
       choices = selection.cases.map(item => ({source:selection.source, item}));
     }
-    const prepared = prepareHttpCases(choices, input.baseUrl, {
+    const resolved: CaseChoice[] = [];
+    for (const choice of choices) {
+      const render = await prepareCaseInput(choice.item, [], { tenantId: input.tenantId, userId: input.userId });
+      if (!render) return commandOutcome(130);
+      resolved.push({ ...choice, item: render() });
+    }
+    const prepared = prepareHttpCases(resolved, input.baseUrl, {
       timeoutSeconds:input.timeout === undefined ? undefined : Number(input.timeout),
       maxResponseMiB:input.maxSize === undefined ? undefined : Number(input.maxSize),
     });

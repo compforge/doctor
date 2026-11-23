@@ -15,7 +15,15 @@ Case 来源绑定同一 Operation 时默认使用该入口，也可通过 `--ope
 |---|---|
 | `--qps` | Harness `request_rate`，配置的加压速率，默认 0 |
 | `--max-inflight` | 正 QPS 下 Harness 未完成请求的上限，默认 20；QPS=0 不需要配置 |
+| `--case-dataset <csv>` | 正 QPS 下为选中的 Case 提供参数，每次请求有放回地随机抽一行 |
 | `--hold` | hold 观测秒数，默认 60，必须大于 0 |
+
+CSV 首行是参数名，例如只提供 `query` 一列即可为声明该参数的 Case 更换问句。每行列数须一致，含逗号或换行的值用双引号包裹。
+多 Case 共享一份 CSV，每个 Case 使用自己声明的列。每项参数依次从当前行、声明的 `source`、`default` 取值。
+列存在时，空单元格作为空字符串处理。缺值在加压前询问一次，非交互运行时报告缺少的参数。
+`command.tenant_id` 和 `command.user_id` 复用命令的身份选择。
+`input` 的值可以是字面量，也可以在任意层级用 `{ $param: query }` 引用参数。
+字符串保留原文，其他类型支持 JSON 形式的 `integer`、`number`、`boolean`、`array`、`object`、`null`。
 
 加压 QPS、实际发出 QPS、服务吞吐 QPS 分别记录。达到在途上限后，实际发出速率可能低于配置；
 服务端吞吐由系统实际表现决定，包含指标选择器匹配的自然流量。DB、VDB、模型等下游性能均可能影响它，

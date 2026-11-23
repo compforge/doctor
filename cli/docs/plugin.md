@@ -281,3 +281,10 @@ manifest 入口，并使用临时目录加原子 rename，避免半安装状态�
 - <a id="fact-的摘要展示"></a>[Fact 的摘要展示](commands/data.md#fact-的摘要展示)
 - <a id="inspect-来源采集结果"></a>[Inspect 来源采集结果](commands/data.md#inspect-来源采集结果)
 - <a id="inspect-查询时间窗"></a>[Inspect 查询时间窗](commands/data.md#inspect-查询时间窗)
+
+
+### CommandInvocation
+
+Case runner 和 producer 可以从 `PluginContext.command` 读取本次 capability 调用已准备好的 `tenantId`、`userId`。
+两者均可缺省。Health 统计过滤条件继续由 query 传入。跨请求复用的 Client 只持有 `PluginClientContext`，
+逐请求的参数值由 Core 渲染到 Case input 后交给 runner。`command.tenant_id` 与 `command.user_id` 是 Case 声明中对应的 source 名称。
