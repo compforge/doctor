@@ -9,6 +9,7 @@ import { cleanupTemporaryArtifacts } from "../src/app/delivery";
 import { commandExitCode } from "../src/app/command";
 import { CommandContext, CommandInputError, CommandStatus } from "../src/command";
 import { perfAdapterFromCaseFactory } from "../src/perf";
+import { finalizeResult } from "./report-fixture";
 import { perfCommand } from "../src/perf/command";
 import { collectPerfMetrics, observePerf, preparePerfMetrics, perfMetricSource, perfMetricsComplete } from "../src/perf/observations";
 import { writePerfMetadata } from "../src/perf/output";
@@ -191,8 +192,19 @@ test("two Chat Cases share identity; external metrics and offline replay preserv
 test("QPS zero observes all registered observations without Kubernetes, identity, runner or approval", async () => {
   const directory=mkdtempSync(join(tmpdir(),"doctor-natural-perf-"));
   let queries=0;
+  let collectorAvailable = true;
+  const yaml = "# original formatting\nglobal: {scrape_interval: 1m}\nscrape_configs: [{job_name: chat-pool, scrape_interval: 15s}]\n";
+  const targets = JSON.stringify({status:"success",data:{activeTargets:[
+    {labels:{service:"chat", namespace:"production"}, scrapePool:"chat-pool", scrapeUrl:"http://private", health:"up"},
+    {labels:{service:"chat", namespace:"elsewhere"}, scrapeInterval:"5m", scrapeUrl:"http://unrelated"},
+  ],droppedTargets:[]}}, null, 2);
+
   const server=Bun.serve({port:0,fetch(request) {
     const url=new URL(request.url);const detection=backendDetection(url);if(detection)return detection;
+    if (url.pathname.endsWith("/status/config")) return collectorAvailable
+      ? Response.json({status:"success",data:{yaml}}) : new Response(null, {status:403});
+    if (url.pathname.endsWith("/targets")) return collectorAvailable
+      ? new Response(targets) : new Response(null, {status:404});
     if (url.pathname === "/api/v1/query_range") return Response.json({status:"success", data:{resultType:"matrix",
       result:[{metric:{}, values:[[Number(url.searchParams.get("start")), "7"]]}]}});
     expect(url.pathname).toBe("/api/v1/query");queries++;
@@ -210,6 +222,24 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     const result=await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
     expect({status:result.status, reason:"reason" in result ? result.reason : undefined}).toEqual({status:CommandStatus.Ok,reason:undefined});
     expect(queries).toBeGreaterThanOrEqual(4);
+    const snapshot = result.output!.scrape;
+    expect(snapshot).toMatchObject({recommendedHoldSeconds:60, groups:[{pool:"chat-pool", intervalSeconds:15, intervalSource:"config"}]});
+    const saved = readFileSync(join(result.output!.outputDir, "perf.json"), "utf8");
+    expect(JSON.parse(saved).scrape).toEqual(snapshot);
+    expect(saved).not.toContain("http://private");
+    const offlineContext = new CommandContext({});
+    const offline = await perfCommand.run(offlineContext, {from:result.output!.outputDir});
+    expect(offline.output!.scrape).toEqual(snapshot);
+    expect(readFileSync(writePerfReport(offline.output!), "utf8")).toContain("hold 0.03s 短于 4 个抓取周期");
+    const archive = join(directory, "perf.tar.gz");
+    expect(await finalizeResult(offlineContext, perfCommand, offline, {format:"bundle",output:archive})).toBe(0);
+    const entries = Bun.spawnSync(["tar", "-tzf", archive]).stdout.toString().split("\n");
+    for (const [file, expected] of [["config.yaml", yaml], ["targets.json", targets]]) {
+      const entry = entries.find(name => name.endsWith("/raw/scrape/" + file));
+      expect(entry).toBeDefined();
+      expect(Bun.spawnSync(["tar", "-xOzf", archive, entry!]).stdout.toString()).toBe(expected!);
+    }
+    await offlineContext.disposeClients();
     const run=result.output!.run;
     expect(run.entry_ids).toEqual([operation.id()]);
     expect(run.case_ids).toEqual([]);
@@ -243,10 +273,16 @@ test("QPS zero observes all registered observations without Kubernetes, identity
     expect(html).toContain('"name":"cpu_usage"');
     expect(html).toContain('"name":"mem_limit"');
     expect(html).toContain('id="callgraph-menu"');
-    expect(html).not.toContain("指标覆盖明细");
+    expect(html).toContain("抓取任务 chat-pool");
     expect(html).toContain('<td data-v="N/A">N/A</td>');
+    collectorAvailable = false;
+    const unavailable = await perfCommand.run(context,{service:"chat",qps:"0",hold:"0.03"});
+    expect(unavailable.status).toBe(CommandStatus.Ok);
+    expect(unavailable.output!.metricsComplete).toBe(true);
+    expect(unavailable.output!.scrape).toMatchObject({configError:"HTTP 403 (permission_denied)",targetsError:"HTTP 404 (resource_not_found)"});
+    expect(existsSync(join(unavailable.output!.outputDir,"raw/scrape"))).toBe(false);
   } finally {await context.disposeClients();server.stop(true);cleanupTemporaryArtifacts(context.artifacts.list().map(a=>a.path));rmSync(directory,{recursive:true,force:true});}
-});
+}, 30_000);
 
 /** Metric configuration is checked before running; preparation never sends a history query. */
 test("metric preflight detects backend without querying application metrics", async () => {

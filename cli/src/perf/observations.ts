@@ -173,5 +173,5 @@ export async function replayPerf(opts: PerfCliOpts, context: CommandContext): Pr
   const metricsComplete = metadata?.metricsComplete ?? perfMetricsComplete(run);
   return { status: context.signal.aborted ? CommandStatus.Cancelled
     : run.status !== "completed" || !metricsComplete ? CommandStatus.Partial : CommandStatus.Ok,
-    output: { run, outputDir: artifact.path, metricsComplete, metricIssues: metadata?.metricIssues, caseFacets: metadata?.caseFacets }, artifacts: context.artifacts.list() };
+    output: { run, outputDir: artifact.path, metricsComplete, metricIssues: metadata?.metricIssues, scrape: metadata?.scrape, caseFacets: metadata?.caseFacets }, artifacts: context.artifacts.list() };
 }
